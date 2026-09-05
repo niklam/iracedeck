@@ -1016,6 +1016,72 @@ describe("proximity scheduling (#867)", () => {
   });
 });
 
+// ─── Focus without a script (issue #1065) ────────────────────────────────────
+//
+// The spotter lines are contracts, so a pack whose script omits them is
+// silent for them — and that silence must be the whole cost. The focus floor
+// exists to keep chatter from talking over a call the engineer is about to
+// make; with no call to make it would only mute every lower-weight callout
+// for as long as a car is alongside.
+
+describe("focus without a script (issue #1065)", () => {
+  const CHATTER_CLIP = "test/blocker.mp3";
+
+  /** A routine NORMAL-weight line — what a SAFETY floor would hold back. */
+  function fireNormalChatter(): void {
+    getScenarioEngine().defineScenario({
+      id: "test.chatter",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      weight: WEIGHT.NORMAL,
+      frame: NO_FRAME,
+      sequence: [CHATTER_CLIP],
+    });
+    getScenarioEngine().fire("test.chatter");
+  }
+
+  it("a car alongside acquires no focus floor when the active voice does not script the spotter, so NORMAL chatter still plays", () => {
+    getScenarioEngine().setScripts(new Map(SCRIPT_VOICES.map((v) => [v, { ...SPOTTER_SCRIPT, scenarios: {} }])));
+    const acquireSpy = vi.spyOn(getScenarioEngine(), "acquireFocus");
+    registerSpotterEngine(bus, deps);
+
+    bus.publishRadar("left");
+    expect(acquireSpy).not.toHaveBeenCalled();
+    expect(voicePaths()).toEqual([]);
+
+    fireNormalChatter();
+    expect(voicePaths()).toEqual([CHATTER_CLIP]);
+  });
+
+  it("with the bundled script the floor is raised as before, and the same NORMAL chatter is held back", () => {
+    const acquireSpy = vi.spyOn(getScenarioEngine(), "acquireFocus");
+    registerSpotterEngine(bus, deps);
+
+    bus.publishRadar("left");
+    expect(acquireSpy).toHaveBeenCalledWith(AudioBus.Voice, SPOTTER_FOCUS_OWNER, WEIGHT.SAFETY);
+    audio._triggerChannelEnd(VOICE);
+
+    fireNormalChatter();
+    expect(voicePaths()).toEqual([`${BASE}car-left.mp3`]);
+  });
+
+  it("releases a floor it holds when the voice stops scripting the spotter mid-episode", () => {
+    registerSpotterEngine(bus, deps);
+    bus.publishRadar("left");
+    audio._triggerChannelEnd(VOICE);
+
+    // A rescan handed the engine a script map without the spotter entries
+    // while the car is still alongside; the next transition lets go.
+    getScenarioEngine().setScripts(new Map(SCRIPT_VOICES.map((v) => [v, { ...SPOTTER_SCRIPT, scenarios: {} }])));
+    const releaseSpy = vi.spyOn(getScenarioEngine(), "releaseFocus");
+    bus.publishRadar("two-left", "left");
+
+    expect(releaseSpy).toHaveBeenCalledWith(AudioBus.Voice, SPOTTER_FOCUS_OWNER);
+    fireNormalChatter();
+    expect(voicePaths()).toEqual([`${BASE}car-left.mp3`, CHATTER_CLIP]);
+  });
+});
+
 // ─── Voice substitution ──────────────────────────────────────────────────────
 
 describe("voice substitution", () => {

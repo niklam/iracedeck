@@ -701,8 +701,13 @@ describe("the overtake reaction contracts (issue #1065)", () => {
 });
 
 describe("registerOvertakeVocabulary (issue #1065)", () => {
-  function ctxWith(data: Partial<GainedSnap> | null): ScenarioContext {
-    return { event: null, telemetry: null, data, now: 0, vars: {} };
+  /** The fire context of an `overtake.completed` fire with this payload; `null` = an imperative fire. */
+  function ctxWith(data: Partial<GainedSnap> | null, event: SimEventName = "overtake.completed"): ScenarioContext {
+    if (data === null) return { event: null, telemetry: null, data: null, now: 0, vars: {} };
+
+    const envelope = { event, timestamp: 0, telemetry: {}, data } as unknown as SimEventOf<SimEventName>;
+
+    return { event: envelope, telemetry: envelope.telemetry, data, now: 0, vars: {} };
   }
 
   it("publishes the gained-reaction case and the come-on var, each with a description for a pack author", () => {
@@ -766,6 +771,18 @@ describe("registerOvertakeVocabulary (issue #1065)", () => {
 
   it("resolves no key for an imperative fire with no payload — the case takes the script's default", () => {
     expect(resolveOvertakeGainedReaction(ctxWith(null))).toBeNull();
+  });
+
+  // A pack may name the case from any entry. Named from the lost line, the
+  // fire's payload is an `overtake.lost` one — the same position fields, so
+  // an unguarded read would call a drop to P2 a podium pass. The resolver
+  // answers only for the event it is about.
+  it("resolves no key for a fire that is not an overtake.completed — a lost line naming the case gets its default", () => {
+    const lost = ctxWith({ position: 2, previousPosition: 1 }, "overtake.lost");
+
+    expect(resolveOvertakeGainedReaction(lost)).toBeNull();
+    // The same payload under the right event resolves as usual.
+    expect(resolveOvertakeGainedReaction(ctxWith({ position: 2, previousPosition: 1 }))).toBe("p2");
   });
 });
 

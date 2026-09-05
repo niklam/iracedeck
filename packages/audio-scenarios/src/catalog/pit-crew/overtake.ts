@@ -119,12 +119,20 @@ export const OVERTAKE_GAINED_REACTION_KEYS: Readonly<Record<OvertakeGainedReacti
  * (the reaction fires immediately, so the payload is current): the effective
  * position — class P1/2/3 in multi-class, overall otherwise (#588/#599) —
  * picks the podium line, and `isMultiClass` picks the "…in class" variant.
- * `null` for an imperative fire with no payload, which takes the script's
- * `default` branch.
+ *
+ * Answers only for an `overtake.completed` fire. A pack may name the case
+ * from any entry, and the lost line's `overtake.lost` payload carries the
+ * same position fields — an unguarded read would call a drop to P2 a podium
+ * pass. For any other fire, an imperative one included, the resolver returns
+ * `null`: the case then takes the script's `default` branch if the entry
+ * declares one, else contributes nothing. The bundled gained entry declares
+ * no `default`, because its contract's `where:` guarantees the payload.
  *
  * @internal Exported for testing.
  */
 export function resolveOvertakeGainedReaction(ctx: ScenarioContext): OvertakeGainedReaction | null {
+  if (ctx.event?.event !== "overtake.completed") return null;
+
   const data = ctx.data as SimEventOf<"overtake.completed">["data"] | null | undefined;
 
   if (data == null) return null;

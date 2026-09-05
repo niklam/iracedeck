@@ -30,7 +30,7 @@ import { NO_FRAME, WEIGHT } from "../../dsl.js";
 import type { AudioAssetsManifest } from "../../interpreter.js";
 import { _resetAudioScenarios, getScenarioEngine, initializeAudioScenarios } from "../../interpreter.js";
 import { _setFurledRaisedSpoken } from "./flag-alerts.js";
-import { _resetGapCalloutCooldown, _setLastGapEvent } from "./gaps.js";
+import { _resetGapCalloutCooldown } from "./gaps.js";
 import { _resetLastIncidentPoints } from "./incidents.js";
 import {
   _resetOpponentPitPending,
@@ -2276,7 +2276,6 @@ describe("Race Engineer master gate (issue #515)", () => {
 describe("gap callouts fire end-to-end (issue #933)", () => {
   afterEach(() => {
     _resetGapCalloutCooldown();
-    _setLastGapEvent(null);
     // The master-gate test in this block leaves the flag off; restore it so a
     // test added after this describe isn't silenced by the leftover state.
     voiceMasterEnabled = true;

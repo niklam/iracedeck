@@ -235,12 +235,18 @@ describe("the bundled script is complete for every contract the catalog register
     expect([...legacyScenarios.keys()], "legacy scenarios registered by the catalog").toEqual([]);
   });
 
-  it("registers the whole catalog clean against the bundled manifest — no empty code pool, no disabled scenario", () => {
-    // The family tests register against hand-built manifests, which is how a
-    // family once shipped registered, enabled, unit-tested and mute (the #1051
-    // entry in the callout-examples rule). Against the real manifest a warn is
-    // a code pool with no default-voice clip or a `{voice}` path that resolves
-    // to nothing, and an error is a scenario validation disabled outright.
+  it("registers the whole catalog clean — no duplicate id, no scheduling-metadata error disabling a contract", () => {
+    // With every catalog entry a contract, registration has no sequence to
+    // check: no code pool is registered (nothing to warn about an empty one
+    // for the reference voice) and no `{voice}` path is resolved here — that
+    // is the manifest-backed pool check below, and the family tests' own
+    // fires. What registration can still say is narrower and still worth
+    // holding to nothing: a warn is an id defined twice (`redefined`, the
+    // second silently replacing the first), and an error is a contract
+    // `validation.ts` disabled outright for its scheduling metadata — a
+    // non-finite `weight`, `resumable` without `queueable`, a negative
+    // `pendingHoldMs`. Either would be a callout that never fires, with no
+    // test in the family file to notice.
     expect(registrationWarnings).toEqual([]);
     expect(registrationErrors).toEqual([]);
   });

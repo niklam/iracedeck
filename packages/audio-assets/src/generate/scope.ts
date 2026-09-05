@@ -96,9 +96,10 @@ export function parseScopeArgs(argv: readonly string[]): { scope: Scope; remaini
  * Voice ids come from the `configs/*.voice.json` filename stems. Group
  * names come from the union of `groups` across every loaded voice — so a
  * `--group <name>` filter is accepted as long as *at least one* voice
- * defines that group (in practice the parity test enforces equality, but
- * the validator is intentionally permissive so a mid-refactor mismatch
- * doesn't block work).
+ * defines that group. Voices are not held to the same group set (parity is
+ * deliberately not enforced since #1065; `script-coverage.test.ts` holds
+ * each voice to its own script instead), so the union is the right answer,
+ * not merely a permissive one.
  */
 export function validateScope(scope: Scope, voiceConfigs: Map<string, VoiceConfig>): void {
   if (scope.voices) {

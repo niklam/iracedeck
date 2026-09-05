@@ -237,6 +237,12 @@ export const CalloutScriptSchema: z.ZodType<CalloutScript> = z.strictObject({
   pools: z.record(poolDefinitionName, PoolDefinitionSchema),
   // Optional, so no script written before #1065 has to change: absent means
   // the script defines no fragment. The generator still always emits the key.
+  // Added under `schema: 1` without a bump, which is only fine because no
+  // plugin reading `schema: 1` shipped without it. Once a version has
+  // shipped, an additive key needs a version bump (an older plugin then
+  // reports "written for a newer version" rather than `unrecognized key`)
+  // or a `minPluginVersion` on the pack's catalog entry — see CLAUDE.md,
+  // *Evolving the grammar*.
   fragments: z.record(fragmentName, FragmentDefinitionSchema).optional(),
 });
 

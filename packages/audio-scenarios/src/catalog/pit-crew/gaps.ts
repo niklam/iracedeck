@@ -15,12 +15,21 @@
  * scheduled; WHAT is said lives in the active voice's `callouts.json` under
  * the same ids, paired at `setScripts` time. The bundled script speaks the
  * line through a var (`gap.line` / `gap.thresholdLine`, selected by the
- * stashed event's side and direction) and follows it with the `gap-readout`
+ * firing event's side and direction) and follows it with the `gap-readout`
  * fragment both entries share: an `optional` clause of `gap.readoutIntro`,
  * `gap.second`, `gap.decimal`. The readout is a WHOLE clause ("Gap is one
  * point five seconds.") after a line that is complete on its own, which is
  * why it may be optional — and why all three vars resolve from ONE
  * speakable-gap check, so the clause plays whole or not at all.
+ *
+ * Every var reads the FIRE'S OWN event (`ctx.data`, the `gap.trendChanged`
+ * or `gap.thresholdCrossed` payload), never a module-scope stash written by
+ * `where:`. Both contracts are queueable and carry different weights, so a
+ * stash could be repointed by a fire that never played: a threshold call
+ * waiting in the pending slot, a lighter trend fire arriving meanwhile —
+ * its `where:` runs, then `setPending` drops it — and the replay would have
+ * announced the dropped fire's side and car. A pending fire keeps its event,
+ * so the payload cannot be moved from under it.
  *
  * Numbers are read LIVE at speak time (the #574 pattern) via the injected
  * live-gaps resolver, reusing the `lap-time-second` / `lap-time-decimal`
@@ -40,7 +49,7 @@ import type { GapSide, SimEventOf } from "@iracedeck/event-bus";
 import type { LiveGaps } from "@iracedeck/sim-events-iracing";
 
 import { poolRef, WEIGHT } from "../../dsl.js";
-import type { ScenarioContract } from "../../dsl.js";
+import type { ScenarioContext, ScenarioContract } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
 import { overtakeContextAllows, type OvertakeGateResolver } from "./overtake-gate.js";
 
@@ -93,20 +102,34 @@ export function _resetGapCalloutCooldown(): void {
   lastGapCalloutAt = null;
 }
 
-/** The stashed identity of the last ACCEPTED gap event. */
-type GapEventStash = { side: GapSide; direction: "closing" | "opening"; carIdx: number };
+/** The identity of the gap event a fire is about: which neighbor, which way, which car. */
+type GapFire = { side: GapSide; direction: "closing" | "opening"; carIdx: number };
 
-/** Last accepted gap event — read by the var resolvers at expansion time. */
-let lastGapEvent: GapEventStash | null = null;
+/**
+ * The gap event that fired the callout, read off the fire's own context —
+ * `null` for a fire with no gap event behind it (an imperative `fire(id)`,
+ * or a var named from some other family's entry), which resolves every gap
+ * var to nothing. A threshold crossing is always a closing gap.
+ */
+function gapFireOf(ctx: ScenarioContext): GapFire | null {
+  if (ctx.event?.event === "gap.trendChanged") {
+    const data = ctx.data as SimEventOf<"gap.trendChanged">["data"];
 
-/** @internal Test-only stash override. */
-export function _setLastGapEvent(event: GapEventStash | null): void {
-  lastGapEvent = event;
+    return { side: data.side, direction: data.direction, carIdx: data.carIdx };
+  }
+
+  if (ctx.event?.event === "gap.thresholdCrossed") {
+    const data = ctx.data as SimEventOf<"gap.thresholdCrossed">["data"];
+
+    return { side: data.side, direction: "closing", carIdx: data.carIdx };
+  }
+
+  return null;
 }
 
 /**
  * Split a speakable gap into whole seconds + tenths, or `null` when the live
- * gap for the stashed side is unavailable, negative, or ≥ 60 s (the reused
+ * gap for the fire's side is unavailable, negative, or ≥ 60 s (the reused
  * lap-time-second clips cover 0–59). All three readout vars resolve through
  * this one check so the clause always speaks whole or not at all.
  *
@@ -116,13 +139,18 @@ export function _setLastGapEvent(event: GapEventStash | null): void {
  * a different car than the line names. A mismatch drops the readout clause
  * and leaves the line itself intact.
  */
-function resolveSpeakableGap(getLiveGaps: LiveGapsResolver): { seconds: number; tenths: number } | null {
-  if (!lastGapEvent) return null;
+function resolveSpeakableGap(
+  ctx: ScenarioContext,
+  getLiveGaps: LiveGapsResolver,
+): { seconds: number; tenths: number } | null {
+  const fire = gapFireOf(ctx);
+
+  if (!fire) return null;
 
   const live = getLiveGaps();
-  const side = lastGapEvent.side === "ahead" ? live?.ahead : live?.behind;
+  const side = fire.side === "ahead" ? live?.ahead : live?.behind;
 
-  if (!side || side.carIdx !== lastGapEvent.carIdx) return null;
+  if (!side || side.carIdx !== fire.carIdx) return null;
 
   if (side.gapSeconds === null || side.lapDelta !== 0) return null;
 
@@ -139,24 +167,24 @@ function resolveSpeakableGap(getLiveGaps: LiveGapsResolver): { seconds: number; 
  * defined so the first `setScripts` compile sees them.
  */
 export function registerGapVocabulary(engine: Pick<IScenarioEngine, "defineVar">, getLiveGaps: LiveGapsResolver): void {
-  // Trend-flip line, selected by the stashed event's side + direction.
+  // Trend-flip line, selected by the firing event's side + direction.
   engine.defineVar(
     "gap.line",
-    () => {
-      if (!lastGapEvent) return null;
+    (ctx) => {
+      const fire = gapFireOf(ctx);
 
-      return poolRef(GAP_GROUP, `${lastGapEvent.side}-${lastGapEvent.direction}`);
+      return fire ? poolRef(GAP_GROUP, `${fire.side}-${fire.direction}`) : null;
     },
     "The trend line for the gap that just changed, drawn from the gap group by side and direction: gap/ahead-closing, gap/ahead-opening, gap/behind-closing, gap/behind-opening. A complete sentence on its own.",
   );
 
-  // Threshold line, selected by the stashed event's side.
+  // Threshold line, selected by the firing event's side.
   engine.defineVar(
     "gap.thresholdLine",
-    () => {
-      if (!lastGapEvent) return null;
+    (ctx) => {
+      const fire = gapFireOf(ctx);
 
-      return poolRef(GAP_GROUP, `threshold-${lastGapEvent.side}`);
+      return fire ? poolRef(GAP_GROUP, `threshold-${fire.side}`) : null;
     },
     "The line for a gap that just dropped under the driver's alert threshold, drawn from the gap group by side: gap/threshold-ahead (we have caught the car ahead) or gap/threshold-behind (the car behind is right with us). A complete sentence on its own.",
   );
@@ -165,16 +193,16 @@ export function registerGapVocabulary(engine: Pick<IScenarioEngine, "defineVar">
   // speakable-gap check so a partial readout can never play.
   engine.defineVar(
     "gap.readoutIntro",
-    () => {
-      return resolveSpeakableGap(getLiveGaps) === null ? null : poolRef(GAP_GROUP, "readout-intro");
+    (ctx) => {
+      return resolveSpeakableGap(ctx, getLiveGaps) === null ? null : poolRef(GAP_GROUP, "readout-intro");
     },
     'The lead-in of the live gap readout ("Gap is"), from gap/readout-intro. Resolves only when the gap can be read at speak time — under a minute, on the same lap, and still to the car the line named — and gap.second and gap.decimal resolve on exactly the same test, so the three are spoken together or not at all.',
   );
 
   engine.defineVar(
     "gap.second",
-    () => {
-      const gap = resolveSpeakableGap(getLiveGaps);
+    (ctx) => {
+      const gap = resolveSpeakableGap(ctx, getLiveGaps);
 
       return gap === null ? null : poolRef(LAP_TIME_GROUP_SECOND, String(gap.seconds));
     },
@@ -183,8 +211,8 @@ export function registerGapVocabulary(engine: Pick<IScenarioEngine, "defineVar">
 
   engine.defineVar(
     "gap.decimal",
-    () => {
-      const gap = resolveSpeakableGap(getLiveGaps);
+    (ctx) => {
+      const gap = resolveSpeakableGap(ctx, getLiveGaps);
 
       return gap === null ? null : poolRef(LAP_TIME_GROUP_DECIMAL, String(gap.tenths));
     },
@@ -216,22 +244,9 @@ export function buildGapTrendContract(
     id: "pit-crew.gap-trend",
     when: {
       event: "gap.trendChanged",
-      where: (ev) => {
-        if (ev.event !== "gap.trendChanged") return false;
-
-        const data = ev.data as SimEventOf<"gap.trendChanged">["data"];
-
-        if (!gapWhereGates(getRaceFinishedFired, getGate, getGapCooldownMs)) return false;
-
-        // Stash AFTER every gate (the #922 convention, see `incidents.ts`):
-        // both gap contracts are `queueable`, and a deferred fire re-resolves
-        // its vars at drain time WITHOUT re-running `where:`. A suppressed
-        // event writing the stash would make that queued fire speak the wrong
-        // side / direction / car.
-        lastGapEvent = { side: data.side, direction: data.direction, carIdx: data.carIdx };
-
-        return true;
-      },
+      // Nothing is stashed here: the vars read the fire's own payload (see
+      // the header), so a fire this gate accepts carries what it will say.
+      where: (ev) => ev.event === "gap.trendChanged" && gapWhereGates(getRaceFinishedFired, getGate, getGapCooldownMs),
     },
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
@@ -252,18 +267,8 @@ export function buildGapThresholdContract(
     id: "pit-crew.gap-threshold",
     when: {
       event: "gap.thresholdCrossed",
-      where: (ev) => {
-        if (ev.event !== "gap.thresholdCrossed") return false;
-
-        const data = ev.data as SimEventOf<"gap.thresholdCrossed">["data"];
-
-        if (!gapWhereGates(getRaceFinishedFired, getGate, getGapCooldownMs)) return false;
-
-        // Stash AFTER every gate — see the trend contract above.
-        lastGapEvent = { side: data.side, direction: "closing", carIdx: data.carIdx };
-
-        return true;
-      },
+      where: (ev) =>
+        ev.event === "gap.thresholdCrossed" && gapWhereGates(getRaceFinishedFired, getGate, getGapCooldownMs),
     },
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,

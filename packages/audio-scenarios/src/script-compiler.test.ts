@@ -2,7 +2,7 @@ import type { CalloutScript, ScriptStep } from "@iracedeck/callout-script";
 import { describe, expect, it, vi } from "vitest";
 
 import { DEFAULT_FRAME, NO_FRAME, type ResolvedStep, resolveStep, type ScenarioContext, type Step } from "./dsl.js";
-import { type CompileDeps, compileVoiceScript } from "./script-compiler.js";
+import { type CompileDeps, compileVoiceScript, FRAGMENT_EXPANSION_LIMIT } from "./script-compiler.js";
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -467,6 +467,151 @@ describe("compileVoiceScript — fragments", () => {
 
     expect(scenario).toBeUndefined();
     expect(skip).toEqual({ id: "pit-crew.flag-blue", reason: 'unknown fragment "x"', deliberate: false });
+  });
+
+  // The cycle guard stops a chain that never ends; it says nothing about one
+  // that ends after 2^30 steps. Thirty fragments each including the next
+  // twice is 2 KB of JSON, five levels deep — inside every limit the parser
+  // and the scanner apply — and would compile to a billion steps on the
+  // plugin's main thread. The budget is per entry (and per frame), counted
+  // over every step the conversion produces, fragments inlined or not.
+  it("refuses a fragment expansion past FRAGMENT_EXPANSION_LIMIT steps, promptly, naming the limit", () => {
+    const fragments: Record<string, { sequence: ScriptStep[] }> = {};
+
+    for (let i = 0; i < 30; i++) fragments[`f${i}`] = { sequence: [`@f${i + 1}`, `@f${i + 1}`] };
+
+    fragments.f30 = { sequence: ["flags/blue-01.mp3"] };
+
+    const started = Date.now();
+    const { scenario, skip } = compileOne(["@f0"], { script: { fragments } });
+
+    expect(Date.now() - started).toBeLessThan(1000);
+    expect(scenario).toBeUndefined();
+    expect(skip).toEqual({
+      id: "pit-crew.flag-blue",
+      reason: `fragment expansion exceeds ${FRAGMENT_EXPANSION_LIMIT} steps`,
+      deliberate: false,
+    });
+  });
+
+  it("compiles a large flat entry under the limit — the budget is generous next to any real body", () => {
+    const sequence: ScriptStep[] = Array.from({ length: FRAGMENT_EXPANSION_LIMIT - 1 }, () => "flags/blue-01.mp3");
+    const { scenario, skip } = compileOne(sequence);
+
+    expect(skip).toBeUndefined();
+    expect(scenario!.resolved).toHaveLength(FRAGMENT_EXPANSION_LIMIT - 1);
+  });
+
+  it("resets the budget per entry and per frame, so a script's total never adds up to a refusal", () => {
+    const nearly: ScriptStep[] = Array.from({ length: FRAGMENT_EXPANSION_LIMIT - 1 }, () => "flags/blue-01.mp3");
+    const compiled = compileVoiceScript(
+      script({
+        scenarios: {
+          "pit-crew.flag-blue": { sequence: nearly },
+          "pit-crew.flag-red": { sequence: nearly },
+        },
+        frames: { radio: { open: nearly, close: [] } },
+      }),
+      deps({
+        contracts: new Map([
+          ["pit-crew.flag-blue", { frame: DEFAULT_FRAME }],
+          ["pit-crew.flag-red", { frame: DEFAULT_FRAME }],
+        ]),
+      }),
+    );
+
+    expect(compiled.skipped).toEqual([]);
+    expect(compiled.failedFrames.size).toBe(0);
+    expect(compiled.scenarios.size).toBe(2);
+  });
+
+  it("counts a frame's open and close against ONE budget — the frame is compiled as a unit", () => {
+    const half: ScriptStep[] = Array.from({ length: FRAGMENT_EXPANSION_LIMIT / 2 + 1 }, () => "flags/blue-01.mp3");
+    const compiled = compileVoiceScript(script({ frames: { radio: { open: half, close: half } } }), deps());
+
+    expect(compiled.failedFrames.get("radio")).toBe(`fragment expansion exceeds ${FRAGMENT_EXPANSION_LIMIT} steps`);
+  });
+});
+
+// A fragment is converted when something includes it, so a fragment nothing
+// includes — or that only a `skip: true` entry includes, which the compiler
+// never reads past — was never checked at all: a typo in it produced no
+// diagnostic, while `collectScriptReferences` still counted its pools as
+// referenced. The compiler now checks every defined fragment that no
+// conversion reached, and reports what it found by fragment name.
+describe("compileVoiceScript — fragments nothing includes", () => {
+  it("checks a defined fragment no entry or frame includes, reporting its problem by name", () => {
+    const compiled = compileVoiceScript(
+      script({ fragments: { old: { sequence: ["pool:flag-blue", { if: "cond.nope", then: ["pool:x"] }] } } }),
+      deps(),
+    );
+
+    expect(compiled.fragmentProblems).toEqual(new Map([["old", 'unknown condition "cond.nope"']]));
+    // The entry that never included it is unaffected.
+    expect(compiled.skipped).toEqual([]);
+  });
+
+  it("checks a fragment that only a `skip: true` entry includes — the skip is never read past", () => {
+    const compiled = compileVoiceScript(
+      script({
+        scenarios: { "pit-crew.flag-blue": { skip: true, sequence: ["@old"] } },
+        fragments: { old: { sequence: ["pool:ghost"] } },
+      }),
+      deps(),
+    );
+
+    expect(compiled.fragmentProblems).toEqual(new Map([["old", 'unknown pool "ghost"']]));
+  });
+
+  it("reports nothing for a fragment that is well-formed, and nothing for one an entry already inlined", () => {
+    const compiled = compileVoiceScript(
+      script({
+        scenarios: { "pit-crew.flag-blue": { sequence: ["@used"] } },
+        fragments: {
+          used: { sequence: ["pool:ghost"] },
+          spare: { sequence: ["pool:flag-blue"] },
+        },
+      }),
+      deps(),
+    );
+
+    // `used` is reported through the entry that includes it, not twice.
+    expect(compiled.skipped).toEqual([{ id: "pit-crew.flag-blue", reason: 'unknown pool "ghost"', deliberate: false }]);
+    expect(compiled.fragmentProblems).toEqual(new Map());
+  });
+
+  it("guards the standalone check against a cycle and against the expansion budget", () => {
+    const fragments: Record<string, { sequence: ScriptStep[] }> = {
+      loop: { sequence: ["@loop-b"] },
+      "loop-b": { sequence: ["@loop"] },
+    };
+
+    for (let i = 0; i < 30; i++) fragments[`f${i}`] = { sequence: [`@f${i + 1}`, `@f${i + 1}`] };
+
+    fragments.f30 = { sequence: ["flags/blue-01.mp3"] };
+
+    const compiled = compileVoiceScript(script({ fragments }), deps());
+
+    expect(compiled.fragmentProblems.get("loop")).toBe("fragment cycle: loop → loop-b → loop");
+    expect(compiled.fragmentProblems.get("f0")).toBe(`fragment expansion exceeds ${FRAGMENT_EXPANSION_LIMIT} steps`);
+  });
+
+  it("checks a fragment reached only through another unincluded fragment once, under the root that reached it", () => {
+    const compiled = compileVoiceScript(
+      script({
+        fragments: {
+          old: { sequence: ["@helper"] },
+          helper: { sequence: ["pool:ghost"] },
+        },
+      }),
+      deps(),
+    );
+
+    expect(compiled.fragmentProblems).toEqual(new Map([["old", 'unknown pool "ghost"']]));
+  });
+
+  it("reports an empty map for a script with no fragments", () => {
+    expect(compileVoiceScript(script(), deps()).fragmentProblems).toEqual(new Map());
   });
 });
 

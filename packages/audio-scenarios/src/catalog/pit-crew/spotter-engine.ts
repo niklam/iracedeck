@@ -36,10 +36,13 @@
  *
  * While a car is alongside the engine holds an exclusive-focus floor
  * (`WEIGHT.SAFETY`) on `AudioBus.Voice` so routine chatter is held back while
- * safety-band callouts (flags) still break through, and runs a "still there"
- * reminder loop (default 3 s, user-configurable 1–10 s via the
- * `spotterStillThereSeconds` global setting). It reads `getTrackDirection()` to swap road
- * (left/right) terminology for oval (inside/outside) terminology.
+ * safety-band callouts (flags) still break through — only while the active
+ * voice's script has a body for the call (`engine.isScripted`), since a floor
+ * protecting a call that will never be made would just mute everything else
+ * — and runs a "still there" reminder loop (default 3 s, user-configurable
+ * 1–10 s via the `spotterStillThereSeconds` global setting). It reads
+ * `getTrackDirection()` to swap road (left/right) terminology for oval
+ * (inside/outside) terminology.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { IEventBus, RadarState, SimEventOf } from "@iracedeck/event-bus";
@@ -311,7 +314,22 @@ function fireInfoClip(path: string): void {
 // still alongside. acquireFocus is idempotent and releaseFocus is a no-op when
 // another owner holds the bus, so re-asserting/releasing unconditionally is safe
 // and keeps the engine and the interpreter in sync.
+//
+// Only for a call the active voice will actually make (issue #1065). The floor
+// keeps chatter from talking over the proximity call this engine is about to
+// fire; a pack whose script omits the spotter is silent for it — a pack is
+// never punished for what it does not say — and with no call to protect, the
+// floor would only mute every lower-weight callout for as long as a car is
+// alongside. So the same transition that would raise it lets it go instead,
+// which also drops a floor raised under a voice that scripted the spotter
+// before a rescan or a voice change took the entry away mid-episode.
 function acquireFocus(): void {
+  if (!getScenarioEngine().isScripted(SPOTTER_CALL_SCENARIO_ID)) {
+    releaseFocus();
+
+    return;
+  }
+
   getScenarioEngine().acquireFocus(AudioBus.Voice, SPOTTER_FOCUS_OWNER, WEIGHT.SAFETY);
 }
 

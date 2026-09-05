@@ -2,6 +2,7 @@ import {
   type CalloutScript,
   CASE_DEFAULT_BRANCH,
   CONNECTOR_POOL,
+  type FragmentDefinition,
   NO_FRAME,
   parseCondReference,
   parseStringStep,
@@ -47,6 +48,18 @@ export type ScriptReferences = {
    * consumer can state it without walking the grammar.
    */
   fragments: readonly string[];
+  /**
+   * The defined fragments nothing LIVE includes: not an entry that is not
+   * `skip: true`, not a frame, and not another fragment that is itself
+   * included by one of those (transitively — `old` including `helper`, with
+   * nothing including `old`, leaves both here). The compiler converts a
+   * fragment only when something includes it, so what one of these
+   * references is resolved by no entry the engine compiles; a consumer
+   * that counts a script's references against its clips walks the live
+   * fragments only, and a consumer that wants every fragment used holds
+   * this to `[]`. `includes` still lists every include, from these too.
+   */
+  unincludedFragments: readonly string[];
 };
 
 class Collector {
@@ -104,6 +117,46 @@ function sorted(values: Iterable<string>): string[] {
 }
 
 /**
+ * The includes one step list makes, in the two spellings, without walking
+ * anything else — the edges of the include graph `liveFragments` follows.
+ */
+function includesOf(steps: readonly ScriptStep[]): string[] {
+  const collector = new Collector();
+  collector.walk(steps);
+
+  return [...collector.includes];
+}
+
+/**
+ * The fragments reachable through includes from the live roots — every
+ * non-skipped entry and every frame — following fragment-to-fragment
+ * includes until nothing new is reached. A name the script does not define
+ * is an unknown include, listed under `includes` and not a fragment; it is
+ * dropped here rather than followed.
+ */
+function liveFragments(script: CalloutScript, fragments: Readonly<Record<string, FragmentDefinition>>): Set<string> {
+  const live = new Set<string>();
+  const pending: string[] = [];
+
+  for (const entry of Object.values(script.scenarios)) {
+    if (entry.skip !== true && entry.sequence) pending.push(...includesOf(entry.sequence));
+  }
+
+  for (const frame of Object.values(script.frames)) pending.push(...includesOf(frame.open), ...includesOf(frame.close));
+
+  while (pending.length > 0) {
+    const name = pending.pop() as string;
+
+    if (live.has(name) || !Object.hasOwn(fragments, name)) continue;
+
+    live.add(name);
+    pending.push(...includesOf(fragments[name].sequence));
+  }
+
+  return live;
+}
+
+/**
  * Walk a parsed script and list everything it references by name — through
  * every `then`/`else`/`optional`/`of` branch, through the frames' own
  * `open`/`close` sequences, and through every fragment's sequence (a pool
@@ -133,6 +186,8 @@ export function collectScriptReferences(script: CalloutScript): ScriptReferences
 
   for (const fragment of Object.values(fragments)) collector.walk(fragment.sequence);
 
+  const live = liveFragments(script, fragments);
+
   return {
     scenarioIds: sorted(Object.keys(script.scenarios)),
     pools: sorted(collector.pools),
@@ -142,5 +197,6 @@ export function collectScriptReferences(script: CalloutScript): ScriptReferences
     includes: sorted(collector.includes),
     frames: sorted(frames),
     fragments: sorted(Object.keys(fragments)),
+    unincludedFragments: sorted(Object.keys(fragments).filter((name) => !live.has(name))),
   };
 }

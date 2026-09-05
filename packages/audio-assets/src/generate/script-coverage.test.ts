@@ -15,19 +15,33 @@
  * could — a typo in `default.voice.json` itself. Three rules, for every
  * `configs/<voice-id>.voice.json`:
  *
- * (a) ORPHANS — every `<group>/<base>` the config's `groups` author (base = the
- *     entry name minus its `-NN` variant suffix) inside a group the script
- *     addresses must be referenced by the script. A base in such a group that
- *     nothing references is a clip that never plays: a misspelling, or a line
- *     that lost its consumer.
+ * (a) ORPHANS — every `<group>/<name>` the config's `groups` author inside a
+ *     group the script addresses must be referenced by the script. A name in
+ *     such a group that nothing references is a clip that never plays: a
+ *     misspelling, or a line that lost its consumer.
  * (b) DANGLING — every `<group>/<base>` the script references, in either
- *     spelling, must be authored in `groups`; and every plain pool NAME must be
+ *     spelling, must be authored in `groups`; every plain pool NAME must be
  *     defined under `pools`, a `{ connector: true }` step included (the engine
  *     draws it from the named `connector` pool, so a script that uses one has
- *     to define it). A reference to nothing is a callout the engine aborts at
- *     fire time (#835), silently.
- * (c) A vacuity floor for the bundled voice, so a walk that resolved nothing
+ *     to define it); and every literal clip path must be one this check can
+ *     place — the voice's own `voice/<voice>/<group>/<name>.mp3`, or a shared
+ *     `sfx/…` built-in, which is nobody's to author. A reference to nothing is
+ *     a callout the engine aborts at fire time (#835), silently.
+ * (c) FRAGMENTS — every fragment the script defines is included from a live
+ *     entry or a frame (directly, or through another live fragment), and every
+ *     include names a fragment the script defines. The compiler converts a
+ *     fragment only when something includes it, so a fragment nothing includes
+ *     — or that only a `skip: true` entry includes — is checked by nobody
+ *     through an entry, and what it references counts here as unreferenced.
+ * (d) A vacuity floor for the bundled voice, so a walk that resolved nothing
  *     reads as blind rather than clean.
+ *
+ * Authored names are read the way the engine's `poolMemberPattern` reads the
+ * files: `<base>-NN.mp3` is a take of `<base>`, and the bare `<name>.mp3` is a
+ * pool of its own — so an authored `countdown-90` with no `-01` take answers
+ * to a reference to `countdown-90` AND, `90` being two digits, to `countdown`.
+ * Reading the name one way only reports such a clip as an orphan and its own
+ * reference as dangling, which the engine would have played fine.
  *
  * What the check cannot see, and how that is handled: a var resolver produces
  * a `poolRef(group, base)` at fire time, and the vocabulary lives in
@@ -111,6 +125,14 @@ function stripVariantSuffix(name: string): string {
 const VOICE_CLIP_PATH = /^voice\/[^/]+\/([^/]+)\/([^/]+)\.mp3$/;
 
 /**
+ * The shared built-ins a frame plays around every voice (the ticks, the
+ * ambience bed): the plugin's, never a voice's to author, so a literal that
+ * addresses one is not this check's business. A leading `/` is the DSL's
+ * escape from a contract's `base`; the engine strips it, and so does this.
+ */
+const SHARED_SFX_PREFIX = "sfx/";
+
+/**
  * Every literal clip a step list plays — a bare path string or a `{ clip }`
  * object — through every `optional` / `then` / `else` / `of` branch. A fragment
  * is walked as a source of its own, not through its includes.
@@ -154,30 +176,52 @@ function stepLists(script: CalloutScript): readonly ScriptStep[][] {
 }
 
 type Coverage = {
-  /** `<group>/<base>` keys the config authors. */
+  /** `<group>/<base>` keys the config authors, each entry name with its `-NN` suffix stripped. */
   authored: Set<string>;
+  /** `<group>/<name>` keys the config authors, the entry names as written. */
+  authoredNames: Set<string>;
   /** `<group>/<base>` keys the script references, in any spelling, plus every defined pool's source. */
   referenced: Set<string>;
   /** The groups `referenced` touches. */
   scriptedGroups: Set<string>;
   /** Plain pool names a sequence draws from that `pools` does not define. */
   undefinedPools: string[];
+  /** Literal clip paths this check cannot place (rule b): not the voice's own, not a shared `sfx/` built-in. */
+  unrecognisedLiterals: string[];
+  /** Fragments the script defines that no live entry, frame or live fragment includes (rule c). */
+  unincludedFragments: string[];
+  /** Includes of fragments the script does not define (rule c). */
+  unknownIncludes: string[];
 };
 
 /**
  * What a voice's script covers of its own clips. Pure over the parsed config,
  * so a fixture can prove the rules bite before the real configs are held to
- * them.
+ * them. References are read off the LIVE script — the fragments nothing
+ * includes taken out — since what a dead fragment names is resolved by no
+ * entry the engine compiles; the fragment itself is reported instead.
  */
 function coverageOf(config: VoiceConfig): Coverage {
   const script = buildCalloutScript(config);
-  const refs = collectScriptReferences(script);
+  const all = collectScriptReferences(script);
+  const unincludedFragments = [...all.unincludedFragments];
+  const unknownIncludes = all.includes.filter((name) => !all.fragments.includes(name));
+  const fragments = Object.fromEntries(
+    Object.entries(script.fragments ?? {}).filter(([name]) => !unincludedFragments.includes(name)),
+  );
+  const live: CalloutScript = { ...script, fragments };
+  const refs = collectScriptReferences(live);
   const authored = new Set<string>();
+  const authoredNames = new Set<string>();
   const referenced = new Set<string>();
   const undefinedPools: string[] = [];
+  const unrecognisedLiterals: string[] = [];
 
   for (const [group, entries] of Object.entries(config.groups)) {
-    for (const entry of entries) authored.add(`${group}/${stripVariantSuffix(entry.name)}`);
+    for (const entry of entries) {
+      authored.add(`${group}/${stripVariantSuffix(entry.name)}`);
+      authoredNames.add(`${group}/${entry.name}`);
+    }
   }
 
   for (const name of refs.pools) {
@@ -199,34 +243,78 @@ function coverageOf(config: VoiceConfig): Coverage {
   // sequence draws from the name yet.
   for (const { group, base } of Object.values(script.pools)) referenced.add(`${group}/${base}`);
 
-  for (const steps of stepLists(script)) {
+  for (const steps of stepLists(live)) {
     for (const clip of literalClips(steps)) {
-      const match = VOICE_CLIP_PATH.exec(clip);
+      const path = clip.startsWith("/") ? clip.slice(1) : clip;
+
+      if (path.startsWith(SHARED_SFX_PREFIX)) continue;
+
+      const match = VOICE_CLIP_PATH.exec(path);
 
       if (match) referenced.add(`${match[1]}/${stripVariantSuffix(match[2])}`);
+      else unrecognisedLiterals.push(path);
     }
   }
 
   const scriptedGroups = new Set([...referenced].map((key) => key.slice(0, key.indexOf("/"))));
 
-  return { authored, referenced, scriptedGroups, undefinedPools };
+  return {
+    authored,
+    authoredNames,
+    referenced,
+    scriptedGroups,
+    undefinedPools,
+    unrecognisedLiterals,
+    unincludedFragments,
+    unknownIncludes,
+  };
 }
 
-/** Rule (a): authored bases in a scripted group that nothing references, less the two declared lists. */
-function orphansOf({ authored, referenced, scriptedGroups }: Coverage): string[] {
-  return [...authored]
-    .filter((key) => scriptedGroups.has(key.slice(0, key.indexOf("/"))))
-    .filter((key) => !referenced.has(key))
-    .filter((key) => !VAR_DRIVEN_BASES.some(({ pattern }) => pattern.test(key)))
-    .filter((key) => !DELIBERATELY_UNSPOKEN.some(({ base }) => base === key))
-    .sort();
+/** The `<group>/` prefix of a `<group>/<name>` key. */
+function groupOf(key: string): string {
+  return key.slice(0, key.indexOf("/") + 1);
 }
 
-/** Rule (b): referenced bases nothing authors, and named pools nothing defines. */
-function danglingOf({ authored, referenced, undefinedPools }: Coverage): string[] {
+/**
+ * Rule (a): authored names in a scripted group that nothing references, less
+ * the two declared lists. An authored name is referenced when the script
+ * names it as written OR by its `-NN`-stripped base — the two pools the
+ * engine would count the file into (see the header). Reported by base.
+ */
+function orphansOf({ authoredNames, referenced, scriptedGroups }: Coverage): string[] {
+  const orphans = new Set<string>();
+
+  for (const key of authoredNames) {
+    const group = groupOf(key);
+    const name = key.slice(group.length);
+    const base = `${group}${stripVariantSuffix(name)}`;
+
+    if (!scriptedGroups.has(group.slice(0, -1))) continue;
+
+    if (referenced.has(key) || referenced.has(base)) continue;
+
+    if (VAR_DRIVEN_BASES.some(({ pattern }) => pattern.test(base))) continue;
+
+    if (DELIBERATELY_UNSPOKEN.some((entry) => entry.base === base)) continue;
+
+    orphans.add(base);
+  }
+
+  return [...orphans].sort();
+}
+
+/**
+ * Rule (b): referenced bases nothing authors — a referenced base is authored
+ * when some entry name equals it or strips to it — plus named pools nothing
+ * defines, plus literal clip paths this check cannot place.
+ */
+function danglingOf({ authored, authoredNames, referenced, undefinedPools, unrecognisedLiterals }: Coverage): string[] {
   return [
-    ...[...referenced].filter((key) => !authored.has(key)),
+    ...[...referenced].filter((key) => !authored.has(key) && !authoredNames.has(key)),
     ...undefinedPools.map((name) => `pool "${name}" (named, defined nowhere under pools)`),
+    ...unrecognisedLiterals.map(
+      (path) => `literal "${path}" (not voice/<voice>/<group>/<name>.mp3 — a path this check cannot place)`,
+    ),
   ].sort();
 }
 
@@ -337,6 +425,101 @@ describe("script coverage — the rules bite (positive controls over a mistyped 
     expect(orphansOf(coverage)).toEqual(["flags/green"]);
     expect(danglingOf(coverage)).toEqual([]);
   });
+
+  // The engine's pool rule (`poolMemberPattern`) admits `<base>-NN.mp3` AND
+  // the bare `<base>.mp3`, so an authored `countdown-90` with no `-01` take
+  // is a member of the `countdown-90` pool in its own right — and, `90`
+  // being two digits, of the `countdown` pool as well. The check has to read
+  // an authored name both ways too, or it reports the clip as an orphan and
+  // its own reference as dangling.
+  it("reads an unsuffixed two-digit base the way the engine does — matched as itself and as a variant", () => {
+    const coverage = coverageOf(
+      fixture({
+        groups: {
+          "start-lights": [
+            { name: "countdown-90", text: "Ninety." },
+            { name: "countdown-60", text: "Sixty." },
+          ],
+        },
+        scenarios: {
+          "pit-crew.start-countdown-90": { ...ENTRY, sequence: ["pool:start-lights/countdown-90"] },
+          "pit-crew.start-countdown-60": { ...ENTRY, sequence: ["pool:start-lights/countdown"] },
+        },
+      }),
+    );
+
+    expect(orphansOf(coverage)).toEqual([]);
+    expect(danglingOf(coverage)).toEqual([]);
+  });
+
+  // The compiler converts a fragment only when something includes it, so a
+  // fragment nothing includes — or that only a skipped entry includes — is
+  // dead: what it references is resolved by no entry the engine compiles.
+  it("names a defined fragment nothing includes, and counts what only it references as unreferenced", () => {
+    const coverage = coverageOf(
+      fixture({
+        groups: {
+          flags: [
+            { name: "blue-01", text: "Blue flag." },
+            { name: "white-01", text: "White flag." },
+          ],
+        },
+        fragments: {
+          tail: { sequence: ["pool:flags/white", "pool:flags/ghost"] },
+        },
+        scenarios: {
+          "pit-crew.flag-blue": { ...ENTRY, sequence: ["pool:flags/blue"] },
+          "pit-crew.flag-green": { ...ENTRY, skip: true, sequence: ["@tail"] },
+        },
+      }),
+    );
+
+    expect(coverage.unincludedFragments).toEqual(["tail"]);
+    // `white` is referenced only from the dead fragment: an orphan. The dead
+    // fragment's own dangling `ghost` is the compiler's to report, not this
+    // check's — it is not a reference anything live resolves.
+    expect(orphansOf(coverage)).toEqual(["flags/white"]);
+    expect(danglingOf(coverage)).toEqual([]);
+  });
+
+  it("names an include of a fragment the script never defines", () => {
+    const coverage = coverageOf(
+      fixture({
+        groups: { flags: [{ name: "blue-01", text: "Blue flag." }] },
+        fragments: { "readback-body": { sequence: ["pool:flags/blue"] } },
+        scenarios: { "pit-crew.flag-blue": { ...ENTRY, sequence: ["@readback-bod"] } },
+      }),
+    );
+
+    expect(coverage.unknownIncludes).toEqual(["readback-bod"]);
+  });
+
+  // A literal clip step is checked when it addresses one of the voice's own
+  // clips (`voice/<voice>/<group>/<name>.mp3`) and left alone when it
+  // addresses a shared built-in (`sfx/…`, the bundled frame's ticks). Any
+  // other spelling — a base-relative `flags/blue-01.mp3`, which the engine
+  // would resolve against the contract's `base` — cannot be placed by this
+  // check, so it is a finding rather than a silent drop.
+  it("names a literal clip path it cannot place — base-relative — and passes the shared sfx paths", () => {
+    const coverage = coverageOf(
+      fixture({
+        groups: { flags: [{ name: "blue-01", text: "Blue flag." }] },
+        frames: { radio: { open: [{ clip: "sfx/IRD-tick-open.mp3" }], close: ["/sfx/IRD-tick-close.mp3"] } },
+        scenarios: {
+          "pit-crew.flag-blue": {
+            ...ENTRY,
+            sequence: ["/voice/{voice}/flags/blue-01.mp3", "flags/blue-01.mp3", { clip: "voice/flags/blue-01.mp3" }],
+          },
+        },
+      }),
+    );
+
+    expect(orphansOf(coverage)).toEqual([]);
+    expect(danglingOf(coverage)).toEqual([
+      'literal "flags/blue-01.mp3" (not voice/<voice>/<group>/<name>.mp3 — a path this check cannot place)',
+      'literal "voice/flags/blue-01.mp3" (not voice/<voice>/<group>/<name>.mp3 — a path this check cannot place)',
+    ]);
+  });
 });
 
 describe("the two declared lists are alive — nothing parked here has quietly stopped being true", () => {
@@ -399,6 +582,14 @@ describe("every voice's script covers its own clips (issue #1065)", () => {
           dangling,
           `referenced in "${voiceId}" but authored nowhere (a fire-time abort, #835):\n  ${dangling.join("\n  ")}`,
         ).toEqual([]);
+      });
+
+      it("includes every fragment it defines, from a live entry or frame — a fragment nothing includes is checked by nobody", () => {
+        expect(coverage.unincludedFragments, `fragments in "${voiceId}" no live entry or frame includes`).toEqual([]);
+      });
+
+      it("defines every fragment it includes — an include resolves only within the same script", () => {
+        expect(coverage.unknownIncludes, `includes in "${voiceId}" of fragments it does not define`).toEqual([]);
       });
 
       if (voiceId === DEFAULT_VOICE_ID) {

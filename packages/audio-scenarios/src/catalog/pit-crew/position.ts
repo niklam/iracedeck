@@ -13,8 +13,8 @@
  * is *deferred* and replayed once the bus goes idle (see `finishFire` →
  * `drainPending`). Lap-time stays default `WEIGHT.NORMAL`; position is
  * `WEIGHT.CHATTER` + `queueable: true` so it queues behind. The deferred replay
- * carries the original event payload, so the snapshot resolver still reads the
- * correct lap's position.
+ * carries the original event payload, and the vocabulary reads THAT payload
+ * (`ctx.data`, see `snapshotOf`), so the replay speaks the lap that fired it.
  *
  * Both contracts share the `lap.completed` trigger but sit on different
  * families (`lap-time` vs `position`), so neither preempts the other.
@@ -62,11 +62,14 @@
  *     about their class standing, not the overall mixed-field order).
  *   - Single-class → `position` (overall).
  *
- * Snapshot-at-fire-time (session-start / lap-time pattern): the var and case
- * resolvers read the most recent `lap.completed` payload via a closure,
- * shared with the lap-time contract in each plugin. A deferred replay
- * speaks the frozen lap's position rather than whatever position the
- * driver holds when the engineer finally gets bus time.
+ * The var and case resolvers read the `lap.completed` payload of the fire
+ * itself (`ctx.data`) — the same payload the `where:` decided on — and fall
+ * back to the plugin's most recent `lap.completed` snapshot (the closure
+ * shared with the lap-time contract) only for a fire with no such event
+ * behind it, an imperative `fire(id)`. A deferred replay therefore speaks
+ * the frozen lap's position rather than whatever position the driver holds
+ * when the engineer finally gets bus time — and rather than whatever lap
+ * the plugin's snapshot has moved on to.
  *
  * `where:` filters:
  *   - **Qualifying or race** — qualifying fires on every lap update
@@ -89,7 +92,7 @@ import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { SimEventOf } from "@iracedeck/event-bus";
 
 import { poolRef, WEIGHT } from "../../dsl.js";
-import type { ScenarioContract } from "../../dsl.js";
+import type { ScenarioContext, ScenarioContract } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
 import {
   liveCurrentlyAnnounceable,
@@ -272,11 +275,22 @@ export function resolvePositionReadoutShape(
 }
 
 /**
+ * The lap snapshot a fire is about: the fire's own `lap.completed` payload
+ * when it has one — a deferred replay keeps its event, so this is the lap
+ * that fired it however many laps the plugin's snapshot has moved on by —
+ * else the plugin's latest snapshot, for an imperative fire.
+ */
+function snapshotOf(ctx: ScenarioContext, getSnapshot: LapCompletedSnapshotResolver) {
+  return ctx.event?.event === "lap.completed" ? (ctx.data as SimEventOf<"lap.completed">["data"]) : getSnapshot();
+}
+
+/**
  * Register the vocabulary the position-change script references (issue
  * #1065): the readout-shape case and the three vars. Must run before
  * {@link buildPositionContract} is registered so the first `setScripts`
- * compile sees them. Every resolver reads the snapshot resolver at expansion
- * time; the race number reads the live position (issue #574).
+ * compile sees them. Every resolver reads the fire's own lap payload at
+ * expansion time (`snapshotOf`); the race number reads the live position
+ * (issue #574).
  */
 export function registerPositionVocabulary(
   engine: Pick<IScenarioEngine, "defineVar" | "defineCase">,
@@ -285,15 +299,15 @@ export function registerPositionVocabulary(
 ): void {
   engine.defineCase(
     "position.readoutShape",
-    () => resolvePositionReadoutShape(getSnapshot()),
+    (ctx) => resolvePositionReadoutShape(snapshotOf(ctx, getSnapshot)),
     POSITION_READOUT_SHAPE_KEYS,
     "Which shape the position readout takes for the lap just completed: an invalidated qualifying lap, a lap that put the driver on pole, or the standard intro and number. Exactly one applies per lap; the invalid-lap shape takes precedence.",
   );
 
   engine.defineVar(
     "position.intro",
-    () => {
-      const s = getSnapshot();
+    (ctx) => {
+      const s = snapshotOf(ctx, getSnapshot);
 
       if (!s) return null;
 
@@ -316,8 +330,8 @@ export function registerPositionVocabulary(
 
   engine.defineVar(
     "position.number",
-    () => {
-      const s = getSnapshot();
+    (ctx) => {
+      const s = snapshotOf(ctx, getSnapshot);
 
       if (!s) return null;
 
@@ -345,8 +359,8 @@ export function registerPositionVocabulary(
   // `isPoleAchievement` for the trigger conditions.
   engine.defineVar(
     "position.pole",
-    () => {
-      const s = getSnapshot();
+    (ctx) => {
+      const s = snapshotOf(ctx, getSnapshot);
 
       if (!s) return null;
 

@@ -150,6 +150,31 @@ describe("VoiceConfigSchema callout script keys (#1064)", () => {
     );
   });
 
+  // A misspelled top-level map — `fragements` — used to be stripped by the
+  // parse and extracted as `{}`: every fragment the author wrote vanished
+  // from the artifact, and the first sign was an `unknown fragment` skip in
+  // the plugin log, reported against a name they could see right there in
+  // the file. The config object is strict for the same reason the artifact's
+  // is: the mistake is named where it was made.
+  it("rejects an unknown top-level key, naming it — a misspelled `fragements` is refused, not dropped", () => {
+    const result = VoiceConfigSchema.safeParse({
+      id: "voice-id",
+      label: "Test",
+      model_id: "m",
+      voice_settings: { stability: 1, similarity_boost: 1 },
+      groups: {},
+      fragements: { "readback-body": { sequence: ["pool:flags/green"] } },
+    });
+
+    expect(result.success).toBe(false);
+
+    const issues = result.success ? [] : result.error.issues;
+
+    expect(issues).toContainEqual(
+      expect.objectContaining({ code: "unrecognized_keys", keys: ["fragements"], path: [] }),
+    );
+  });
+
   it("rejects a scenario entry with no sequence unless it is skipped", () => {
     expect(() => buildVoiceConfig({}, { scenarios: { "pit-crew.flag-green": { comment: "no body" } } })).toThrow();
     expect(() => buildVoiceConfig({}, { scenarios: { "pit-crew.flag-green": { skip: true } } })).not.toThrow();

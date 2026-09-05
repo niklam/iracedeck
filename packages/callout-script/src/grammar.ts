@@ -40,8 +40,14 @@ export const CASE_DEFAULT_BRANCH = "default";
 
 /**
  * The pool an unqualified `{ connector: true }` step draws from — a filler
- * word between two phrases. A script may define it like any other pool, and
- * the engine falls back to its code-registered pool of that name otherwise.
+ * word between two phrases. Like any other unqualified pool name, it must be
+ * defined under the script's own `pools` — the engine's compiler checks a
+ * slash-less name against the script's `pools` and then against the code
+ * registry, and the catalog registers no code pool since #1065, so for a
+ * pack the registry is empty. A script that uses the step therefore defines
+ * a `connector` alias (`"connector": { "group": "<group>", "base": "<base>" }`)
+ * or addresses the filler's group directly as `pool:<group>/<base>` instead
+ * of using the step. The bundled script does neither: it has no connectors.
  */
 export const CONNECTOR_POOL = "connector";
 

@@ -463,6 +463,31 @@ describe("position-change contract", () => {
     ]);
   });
 
+  // The shape and the qualifying number are read off the FIRE'S OWN payload,
+  // not the plugin's latest snapshot: a deferred replay carries its event, so
+  // the lap it speaks about is the lap that fired it whatever completed since.
+  it("speaks the lap that fired it, not the latest snapshot the plugin holds", () => {
+    lastSnapshot = snap({ position: 9, previousPosition: 10 });
+    bus.publishEvent("lap.completed", snap({ position: 3, previousPosition: 5 }) as unknown as Record<string, unknown>);
+    flush(audio);
+
+    expect(voicePaths()).toEqual([
+      `voice/${VOICE}/position-intro-better/that-puts-us-to-01.mp3`,
+      `voice/${VOICE}/position-number/3.mp3`,
+    ]);
+  });
+
+  it("falls back to the plugin's snapshot for a fire with no lap.completed behind it", () => {
+    lastSnapshot = snap({ position: 3, previousPosition: 5 });
+    engine.fire("pit-crew.position-change");
+    flush(audio);
+
+    expect(voicePaths()).toEqual([
+      `voice/${VOICE}/position-intro-better/that-puts-us-to-01.mp3`,
+      `voice/${VOICE}/position-number/3.mp3`,
+    ]);
+  });
+
   it("keeps every scheduling field verbatim and carries no sequence — what is said is the voice script's", () => {
     const c = buildPositionContract();
 

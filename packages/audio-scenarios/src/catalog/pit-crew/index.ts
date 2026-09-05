@@ -332,7 +332,6 @@ export {
 } from "./race-status.js";
 export {
   _resetGapCalloutCooldown,
-  _setLastGapEvent,
   buildGapThresholdContract,
   buildGapTrendContract,
   GAP_CALLOUT_DEFAULT_COOLDOWN_MS,

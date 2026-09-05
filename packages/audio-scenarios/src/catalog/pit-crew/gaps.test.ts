@@ -4,7 +4,8 @@
  * Pins:
  *   - resolveGapCooldownMs: clamping + fallback
  *   - tryClaimGapCallout: shared cooldown claim semantics
- *   - Var resolvers: side/direction pool selection; the readout trio resolves
+ *   - Var resolvers: side/direction pool selection from the FIRE'S OWN event
+ *     (never a stash a dropped fire could repoint); the readout trio resolves
  *     all-or-nothing (never a partial "Gap is" without a number)
  *   - where: gating — race-finished latch, overtake gate, cooldown as the
  *     LAST gate
@@ -20,13 +21,12 @@ import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedec
 import type { LiveGaps } from "@iracedeck/sim-events-iracing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { WEIGHT } from "../../dsl.js";
-import type { ScenarioContract } from "../../dsl.js";
+import { NO_FRAME, WEIGHT } from "../../dsl.js";
+import type { ScenarioContext, ScenarioContract } from "../../dsl.js";
 import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios, poolMemberPattern } from "../../interpreter.js";
 import {
   _resetGapCalloutCooldown,
-  _setLastGapEvent,
   buildGapThresholdContract,
   buildGapTrendContract,
   GAP_CALLOUT_DEFAULT_COOLDOWN_MS,
@@ -153,6 +153,8 @@ const manifest: AudioAssetsManifest = {
     ...GAP_CLIP_SOURCES.map(({ group, base }) => `voice/${VOICE}/${group}/${base}-01.mp3`),
     ...Array.from({ length: 60 }, (_, i) => `voice/${VOICE}/lap-time-second/${i}.mp3`),
     ...Array.from({ length: 10 }, (_, i) => `voice/${VOICE}/lap-time-decimal/${i}.mp3`),
+    // A line that holds the Voice bus at NORMAL, for the pending-replay test.
+    "test/blocker.mp3",
   ],
   ambientLoop: "sfx/IRD-ambient-pit.mp3",
   ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
@@ -176,19 +178,25 @@ const BUNDLED_VOICE = "default";
 
 afterEach(() => {
   _resetGapCalloutCooldown();
-  _setLastGapEvent(null);
 });
 
+type GapResolver = (ctx: ScenarioContext) => string | null;
+
 /** Capture var resolvers via a minimal engine stub. */
-function captureVars(getLiveGaps: () => LiveGaps | null): Map<string, () => string | null> {
-  const vars = new Map<string, () => string | null>();
+function captureVars(getLiveGaps: () => LiveGaps | null): Map<string, GapResolver> {
+  const vars = new Map<string, GapResolver>();
 
   registerGapVocabulary(
-    { defineVar: (name: string, resolver: () => string | null) => vars.set(name, resolver) } as never,
+    { defineVar: (name: string, resolver: GapResolver) => vars.set(name, resolver) } as never,
     getLiveGaps,
   );
 
   return vars;
+}
+
+/** The fire context a gap event produces — what every gap var reads. */
+function fireOf(event: SimEventOf<"gap.trendChanged"> | SimEventOf<"gap.thresholdCrossed"> | null): ScenarioContext {
+  return { event, telemetry: event?.telemetry ?? null, data: event?.data ?? null, now: 0, vars: {} };
 }
 
 function liveGaps(aheadGap: number | null, behindGap: number | null): LiveGaps {
@@ -250,34 +258,46 @@ describe("tryClaimGapCallout", () => {
 });
 
 describe("gap var resolvers", () => {
-  it("selects the trend line pool by side + direction", () => {
+  it("selects the trend line pool by the firing event's side + direction", () => {
     const vars = captureVars(() => null);
 
-    _setLastGapEvent({ side: "ahead", direction: "closing", carIdx: 3 });
-    expect(vars.get("gap.line")!()).toBe("pool:gap/ahead-closing");
+    expect(vars.get("gap.line")!(fireOf(trendEvent("ahead", "closing")))).toBe("pool:gap/ahead-closing");
+    expect(vars.get("gap.line")!(fireOf(trendEvent("behind", "opening")))).toBe("pool:gap/behind-opening");
+    expect(vars.get("gap.thresholdLine")!(fireOf(thresholdEvent("behind")))).toBe("pool:gap/threshold-behind");
+  });
 
-    _setLastGapEvent({ side: "behind", direction: "opening", carIdx: 5 });
-    expect(vars.get("gap.line")!()).toBe("pool:gap/behind-opening");
-    expect(vars.get("gap.thresholdLine")!()).toBe("pool:gap/threshold-behind");
+  it("reads a threshold crossing as a closing gap on its side, whichever line is asked for", () => {
+    const vars = captureVars(() => null);
+
+    expect(vars.get("gap.line")!(fireOf(thresholdEvent("ahead")))).toBe("pool:gap/ahead-closing");
+    expect(vars.get("gap.thresholdLine")!(fireOf(thresholdEvent("ahead")))).toBe("pool:gap/threshold-ahead");
+  });
+
+  it("resolves every var to null for a fire with no gap event behind it", () => {
+    const vars = captureVars(() => liveGaps(1.55, null));
+
+    for (const name of ["gap.line", "gap.thresholdLine", "gap.readoutIntro", "gap.second", "gap.decimal"]) {
+      expect(vars.get(name)!(fireOf(null)), name).toBeNull();
+    }
   });
 
   it("resolves the readout trio from the live gap (1.55 s → 'one' + 'point six')", () => {
     const vars = captureVars(() => liveGaps(1.55, null));
+    const ctx = fireOf(trendEvent("ahead", "closing"));
 
-    _setLastGapEvent({ side: "ahead", direction: "closing", carIdx: 3 });
-    expect(vars.get("gap.readoutIntro")!()).toBe("pool:gap/readout-intro");
-    expect(vars.get("gap.second")!()).toBe("pool:lap-time-second/1");
-    expect(vars.get("gap.decimal")!()).toBe("pool:lap-time-decimal/6");
+    expect(vars.get("gap.readoutIntro")!(ctx)).toBe("pool:gap/readout-intro");
+    expect(vars.get("gap.second")!(ctx)).toBe("pool:lap-time-second/1");
+    expect(vars.get("gap.decimal")!(ctx)).toBe("pool:lap-time-decimal/6");
   });
 
   it("resolves the whole trio to null when the gap is unavailable or ≥ 60 s", () => {
     for (const gaps of [null, liveGaps(null, null), liveGaps(61.2, null)]) {
       const vars = captureVars(() => gaps);
+      const ctx = fireOf(trendEvent("ahead", "closing"));
 
-      _setLastGapEvent({ side: "ahead", direction: "closing", carIdx: 3 });
-      expect(vars.get("gap.readoutIntro")!()).toBeNull();
-      expect(vars.get("gap.second")!()).toBeNull();
-      expect(vars.get("gap.decimal")!()).toBeNull();
+      expect(vars.get("gap.readoutIntro")!(ctx)).toBeNull();
+      expect(vars.get("gap.second")!(ctx)).toBeNull();
+      expect(vars.get("gap.decimal")!(ctx)).toBeNull();
     }
   });
 
@@ -288,13 +308,13 @@ describe("gap var resolvers", () => {
       ahead: { carIdx: 7, gapSeconds: 6.4, lapDelta: 0, trend: null },
       behind: null,
     }));
+    const ctx = fireOf(trendEvent("ahead", "closing"));
 
-    _setLastGapEvent({ side: "ahead", direction: "closing", carIdx: 3 });
-    expect(vars.get("gap.readoutIntro")!()).toBeNull();
-    expect(vars.get("gap.second")!()).toBeNull();
-    expect(vars.get("gap.decimal")!()).toBeNull();
+    expect(vars.get("gap.readoutIntro")!(ctx)).toBeNull();
+    expect(vars.get("gap.second")!(ctx)).toBeNull();
+    expect(vars.get("gap.decimal")!(ctx)).toBeNull();
     // The line itself still plays — only the number clause is dropped.
-    expect(vars.get("gap.line")!()).toBe("pool:gap/ahead-closing");
+    expect(vars.get("gap.line")!(ctx)).toBe("pool:gap/ahead-closing");
   });
 });
 
@@ -354,10 +374,11 @@ describe("gap contract gating", () => {
     expect(whereOf(clean)(trendEvent("ahead", "closing") as never)).toBe(true);
   });
 
-  it("does not let a suppressed event overwrite the accepted event's stash", () => {
-    // #922 convention: both contracts are queueable, and a deferred fire
-    // re-resolves its vars at drain time without re-running `where:`. An
-    // event rejected by the shared cooldown must leave the stash alone.
+  it("a suppressed event changes nothing about what an accepted fire will say — the vars read the fire's own payload", () => {
+    // Both contracts are queueable, and a deferred fire re-resolves its vars
+    // at drain time without re-running `where:` — from its OWN event, so a
+    // later event this gate rejects (or accepts and the scheduler drops) has
+    // nothing to repoint.
     const vars = captureVars(() => null);
     const trend = buildGapTrendContract(
       () => false,
@@ -369,8 +390,9 @@ describe("gap contract gating", () => {
       () => PERMISSIVE_OVERTAKE_GATE,
       () => 30_000,
     );
+    const accepted = trendEvent("ahead", "closing");
 
-    expect(whereOf(trend)(trendEvent("ahead", "closing") as never)).toBe(true);
+    expect(whereOf(trend)(accepted as never)).toBe(true);
     // Rejected on the shared cooldown — and on the race-finished latch.
     expect(whereOf(threshold)(thresholdEvent("behind") as never)).toBe(false);
     expect(
@@ -384,7 +406,7 @@ describe("gap contract gating", () => {
     ).toBe(false);
 
     // The queued fire still speaks the accepted event's side + direction.
-    expect(vars.get("gap.line")!()).toBe("pool:gap/ahead-closing");
+    expect(vars.get("gap.line")!(fireOf(accepted))).toBe("pool:gap/ahead-closing");
   });
 
   it("keeps every scheduling field verbatim and carries no sequence — what is said is the voice script's", () => {
@@ -415,6 +437,7 @@ describe("the gap lines through the real script", () => {
   let audio: FakeAudio;
   let engine: IScenarioEngine;
   let currentGaps: LiveGaps | null;
+  let cooldownMs: number;
 
   function voicePaths(): string[] {
     return audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path);
@@ -422,6 +445,7 @@ describe("the gap lines through the real script", () => {
 
   beforeEach(() => {
     currentGaps = null;
+    cooldownMs = 30_000;
     bus = createMockBus();
     audio = createFakeAudio();
     engine = initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
@@ -431,14 +455,14 @@ describe("the gap lines through the real script", () => {
       buildGapTrendContract(
         () => false,
         () => PERMISSIVE_OVERTAKE_GATE,
-        () => 30_000,
+        () => cooldownMs,
       ),
     );
     engine.defineContract(
       buildGapThresholdContract(
         () => false,
         () => PERMISSIVE_OVERTAKE_GATE,
-        () => 30_000,
+        () => cooldownMs,
       ),
     );
     engine.setScripts(new Map([[VOICE, GAP_SCRIPT]]));
@@ -481,6 +505,44 @@ describe("the gap lines through the real script", () => {
     flush(audio);
 
     expect(voicePaths()).toEqual([`voice/${VOICE}/gap/behind-opening-01.mp3`]);
+  });
+
+  // Both contracts are queueable and carry different weights. A threshold
+  // fire (NORMAL) that could not take the bus waits in the pending slot with
+  // its own event; a trend fire (CHATTER) arriving meanwhile is dropped by
+  // `setPending` as the lighter of the two — but its `where:` had already
+  // run. A resolver reading a module-scope stash the `where:` wrote would
+  // speak the dropped fire's side and car at the replay; the fire's own
+  // `ctx.data` cannot be repointed by a fire that never played.
+  it("a queued threshold call still speaks its own side and car after a dropped trend fire for the other side", () => {
+    cooldownMs = 0;
+    currentGaps = {
+      ahead: { carIdx: 3, gapSeconds: 0.9, lapDelta: 0, trend: null },
+      behind: { carIdx: 5, gapSeconds: 1.2, lapDelta: 0, trend: null },
+    };
+    engine.defineScenario({
+      id: "test.blocker",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      weight: WEIGHT.NORMAL,
+      frame: NO_FRAME,
+      sequence: ["test/blocker.mp3"],
+    });
+    engine.fire("test.blocker");
+
+    // Car A ahead crosses the threshold: equal weight, no interrupt — pends.
+    bus.publishEvent("gap.thresholdCrossed", thresholdEvent("ahead").data);
+    // Car B behind opens up: CHATTER, lighter than the pending fire — dropped.
+    bus.publishEvent("gap.trendChanged", { ...trendEvent("behind", "opening").data, carIdx: 5 });
+    flush(audio);
+
+    expect(voicePaths()).toEqual([
+      "test/blocker.mp3",
+      `voice/${VOICE}/gap/threshold-ahead-01.mp3`,
+      `voice/${VOICE}/gap/readout-intro-01.mp3`,
+      `voice/${VOICE}/lap-time-second/0.mp3`,
+      `voice/${VOICE}/lap-time-decimal/9.mp3`,
+    ]);
   });
 
   it("plays inside the radio frame", () => {

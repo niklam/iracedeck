@@ -47,6 +47,7 @@ describe("collectScriptReferences", () => {
       includes: ["frag", "frag2"],
       frames: ["terse"],
       fragments: [],
+      unincludedFragments: [],
     });
   });
 
@@ -80,6 +81,7 @@ describe("collectScriptReferences", () => {
       includes: [],
       frames: [],
       fragments: [],
+      unincludedFragments: [],
     });
   });
 
@@ -106,6 +108,7 @@ describe("collectScriptReferences", () => {
       includes: [],
       frames: [],
       fragments: [],
+      unincludedFragments: [],
     });
   });
 
@@ -191,7 +194,51 @@ describe("collectScriptReferences", () => {
       includes: ["readback-body", "sign-off"],
       frames: [],
       fragments: ["readback-body", "sign-off"],
+      unincludedFragments: [],
     });
+  });
+
+  // The compiler converts a fragment only when something includes it, so a
+  // fragment nothing includes — or that only a `skip: true` entry includes —
+  // is checked by nobody through an entry, and what it references is not a
+  // reference anything the engine compiles will resolve. The set is listed
+  // so a consumer can hold it to `[]`, and can walk the live fragments only.
+  it("lists the fragments no live entry, frame or live fragment includes — a skip: true entry's include does not count", () => {
+    const script: CalloutScript = {
+      schema: 1,
+      scenarios: {
+        s: { sequence: ["@used"] },
+        skipped: { skip: true, sequence: ["@only-skipped"] },
+      },
+      frames: { f: { open: ["@in-frame"], close: [] } },
+      pools: {},
+      fragments: {
+        used: { sequence: ["@through-used"] },
+        "through-used": { sequence: ["pool:a"] },
+        "in-frame": { sequence: ["pool:b"] },
+        "only-skipped": { sequence: ["pool:c"] },
+        dead: { sequence: ["@dead-helper"] },
+        "dead-helper": { sequence: ["pool:d"] },
+      },
+    };
+    const refs = collectScriptReferences(script);
+
+    expect(refs.unincludedFragments).toEqual(["dead", "dead-helper", "only-skipped"]);
+    // `includes` and `fragments` are unchanged by it: every include anywhere, every definition.
+    expect(refs.includes).toEqual(["dead-helper", "in-frame", "through-used", "used"]);
+    expect(refs.fragments).toEqual(["dead", "dead-helper", "in-frame", "only-skipped", "through-used", "used"]);
+  });
+
+  it("does not list a fragment that reaches itself only through a live include as unincluded", () => {
+    const script: CalloutScript = {
+      schema: 1,
+      scenarios: { s: { sequence: ["@a"] } },
+      frames: {},
+      pools: {},
+      fragments: { a: { sequence: ["@b"] }, b: { sequence: ["@a"] } },
+    };
+
+    expect(collectScriptReferences(script).unincludedFragments).toEqual([]);
   });
 
   it("lists an include of a fragment the script never defines, so a consumer can see the mismatch", () => {
@@ -217,6 +264,7 @@ describe("collectScriptReferences", () => {
       includes: [],
       frames: [],
       fragments: [],
+      unincludedFragments: [],
     });
   });
 });

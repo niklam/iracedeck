@@ -30,6 +30,19 @@
  * reaches itself through any chain is refused with the chain named
  * (`fragment cycle: a → b → a`); an include of a name the script does not
  * define is `unknown fragment "x"`.
+ *
+ * Two guards the cycle check does not give. **A budget**: a chain that ends
+ * can still be enormous — thirty fragments each including the next twice is
+ * 2 KB of JSON, five levels deep, and 2^30 steps once inlined — so every
+ * step a conversion produces is counted, per entry and per frame, and past
+ * `FRAGMENT_EXPANSION_LIMIT` the unit is refused with `fragment expansion
+ * exceeds <N> steps`. **A pass over what nothing reached**: a fragment is
+ * converted when something includes it, so one that nothing includes — or
+ * that only a `skip: true` entry includes, which is never read past — would
+ * otherwise never be checked at all. After the entries and frames, every
+ * defined fragment no conversion reached is converted on its own (fresh
+ * budget, the same cycle guard), and its problem, if any, is reported under
+ * `fragmentProblems` by fragment name.
  */
 import {
   type CalloutScript,
@@ -44,6 +57,15 @@ import {
 } from "@iracedeck/callout-script";
 
 import { parseStepShorthand, type ResolvedStep, type VocabularyResolver } from "./dsl.js";
+
+/**
+ * The most `ResolvedStep`s one entry (or one frame, both halves together)
+ * may compile to, fragments inlined. Generous: the bundled readback body,
+ * the largest in the catalog, is about thirty. What it bounds is not a real
+ * body but a doubling include chain (see the header), which the cycle guard
+ * lets through and which would otherwise run on the plugin's main thread.
+ */
+export const FRAGMENT_EXPANSION_LIMIT = 2000;
 
 /** One voice's script, compiled against the engine's registries. */
 export type CompiledVoiceScript = {
@@ -62,6 +84,13 @@ export type CompiledVoiceScript = {
   pools: ReadonlyMap<string, { group: string; base: string }>;
   /** Every contract this voice does NOT speak, and why. `deliberate` = `skip: true` or no entry at all. */
   skipped: readonly { id: string; reason: string; deliberate: boolean }[];
+  /**
+   * Fragment name → why it did not compile, for every defined fragment that
+   * no entry or frame inlined (so nothing else reported it). A fragment an
+   * entry DID inline is reported through that entry's skip reason instead,
+   * never twice. Empty when every fragment is used and well-formed.
+   */
+  fragmentProblems: ReadonlyMap<string, string>;
 };
 
 /** What the engine holds, as the compiler needs to see it. */
@@ -137,15 +166,47 @@ export function compileVoiceScript(script: CalloutScript, deps: CompileDeps): Co
 
   for (const [name, pool] of Object.entries(script.pools)) pools.set(name, { group: pool.group, base: pool.base });
 
-  return { scenarios, frames: compiledFrames, failedFrames, pools, skipped };
+  return {
+    scenarios,
+    frames: compiledFrames,
+    failedFrames,
+    pools,
+    skipped,
+    fragmentProblems: checkUnreached(converter),
+  };
 }
 
 function compileFrame(converter: StepConverter, frame: FrameDefinition): FrameResult {
+  // One budget for the whole frame: its two halves play around one body.
+  converter.beginUnit();
+
   try {
     return { ok: true, open: converter.convertAll(frame.open), close: converter.convertAll(frame.close) };
   } catch (err) {
     return { ok: false, reason: describe(err) };
   }
+}
+
+/**
+ * Convert every defined fragment that no entry or frame reached, each on its
+ * own budget, and collect what failed. A fragment reached on the way — `old`
+ * including `helper`, neither included by an entry — counts as reached from
+ * then on, so a problem inside `helper` is reported once, under `old`.
+ */
+function checkUnreached(converter: StepConverter): ReadonlyMap<string, string> {
+  const problems = new Map<string, string>();
+
+  for (const [name, fragment] of converter.unreachedFragments()) {
+    converter.beginUnit();
+
+    try {
+      converter.convertFragment(name, fragment);
+    } catch (err) {
+      problems.set(name, describe(err));
+    }
+  }
+
+  return problems;
 }
 
 function compileEntry(
@@ -169,6 +230,8 @@ function compileEntry(
 
     if (!compiled.ok) return { ok: false, reason: `frame "${frame}": ${compiled.reason}` };
   }
+
+  converter.beginUnit();
 
   try {
     return { ok: true, resolved: converter.convertAll(entry.sequence), frame };
@@ -199,14 +262,47 @@ class StepConverter {
    * author where the loop closes.
    */
   private readonly inlining: string[] = [];
+  /** Every fragment some conversion inlined, so the unreached ones can be checked afterwards. */
+  private readonly reached = new Set<string>();
+  /** Steps produced since `beginUnit`, checked against `FRAGMENT_EXPANSION_LIMIT` on every one. */
+  private produced = 0;
 
   constructor(
     private readonly script: CalloutScript,
     private readonly deps: CompileDeps,
   ) {}
 
+  /** Start a fresh expansion budget: once per entry, once per frame, once per standalone fragment. */
+  beginUnit(): void {
+    this.produced = 0;
+    this.inlining.length = 0;
+  }
+
   convertAll(steps: readonly ScriptStep[]): ResolvedStep[] {
     return steps.flatMap((step) => this.convert(step));
+  }
+
+  /**
+   * Convert a fragment as its own unit — for one that nothing included — with
+   * its name on the inlining stack, so a chain that leads back to it is
+   * reported from it (`old → helper → old`), the way an include would.
+   */
+  convertFragment(name: string, fragment: FragmentDefinition): ResolvedStep[] {
+    this.reached.add(name);
+    this.inlining.push(name);
+
+    try {
+      return this.convertAll(fragment.sequence);
+    } finally {
+      this.inlining.pop();
+    }
+  }
+
+  /** Every defined fragment no conversion has inlined so far, in definition order. */
+  *unreachedFragments(): Iterable<[string, FragmentDefinition]> {
+    for (const [name, fragment] of Object.entries(this.script.fragments ?? {})) {
+      if (!this.reached.has(name)) yield [name, fragment];
+    }
   }
 
   private convert(step: ScriptStep): ResolvedStep[] {
@@ -216,7 +312,7 @@ class StepConverter {
       return parsed.kind === "include" ? this.inline(parsed.id) : [this.check(parsed)];
     }
 
-    if ("clip" in step) return [{ kind: "clip", path: step.clip }];
+    if ("clip" in step) return [this.emit({ kind: "clip", path: step.clip })];
 
     if ("var" in step) return [this.check({ kind: "var", name: step.var })];
 
@@ -224,17 +320,34 @@ class StepConverter {
 
     if ("connector" in step) return [this.check({ kind: "connector" })];
 
-    if ("pause" in step) return [{ kind: "pause", ms: step.pause }];
+    if ("pause" in step) return [this.emit({ kind: "pause", ms: step.pause })];
 
     if ("include" in step) return this.inline(step.include);
 
-    if ("ambient" in step) return [{ kind: "ambient", action: step.ambient }];
+    if ("ambient" in step) return [this.emit({ kind: "ambient", action: step.ambient })];
 
-    if ("optional" in step) return [{ kind: "optional", steps: this.convertAll(step.optional) }];
+    if ("optional" in step) return [this.emit({ kind: "optional", steps: this.convertAll(step.optional) })];
 
     if ("if" in step) return [this.convertIf(step.if, step.then, step.else)];
 
     return [this.convertCase(step.case, step.of)];
+  }
+
+  /**
+   * Every `ResolvedStep` the conversion produces passes through here once —
+   * a leaf, or a container whose contents were counted as they were made —
+   * which is what makes the budget a count of the compiled tree rather than
+   * of the script's lines. An include produces no step of its own; the steps
+   * it splices in are counted where they are produced.
+   */
+  private emit(step: ResolvedStep): ResolvedStep {
+    this.produced += 1;
+
+    if (this.produced > FRAGMENT_EXPANSION_LIMIT) {
+      throw new CompileProblem(`fragment expansion exceeds ${FRAGMENT_EXPANSION_LIMIT} steps`);
+    }
+
+    return step;
   }
 
   /**
@@ -258,7 +371,7 @@ class StepConverter {
         break;
     }
 
-    return step;
+    return this.emit(step);
   }
 
   /**
@@ -278,13 +391,7 @@ class StepConverter {
       throw new CompileProblem(`fragment cycle: ${[...this.inlining.slice(openedAt), name].join(" → ")}`);
     }
 
-    this.inlining.push(name);
-
-    try {
-      return this.convertAll(fragment.sequence);
-    } finally {
-      this.inlining.pop();
-    }
+    return this.convertFragment(name, fragment);
   }
 
   private fragmentNamed(name: string): FragmentDefinition | undefined {
@@ -320,12 +427,12 @@ class StepConverter {
     // may branch on the event that fired the callout.
     const predicate: VocabularyResolver<boolean> = negated ? (ctx) => !cond(ctx) : (ctx) => cond(ctx);
 
-    return {
+    return this.emit({
       kind: "if",
       predicate,
       then: this.convertAll(thenSteps),
       else: elseSteps ? this.convertAll(elseSteps) : undefined,
-    };
+    });
   }
 
   private convertCase(name: string, of: Record<string, ScriptStep[]>): ResolvedStep {
@@ -347,6 +454,6 @@ class StepConverter {
       branches.set(key, this.convertAll(steps));
     }
 
-    return { kind: "case", name, of: branches, fallback };
+    return this.emit({ kind: "case", name, of: branches, fallback });
   }
 }

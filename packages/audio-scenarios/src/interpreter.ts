@@ -174,6 +174,15 @@ export interface IScenarioEngine {
    * Runs on every voice-pack rescan, exactly as `setManifest` does.
    */
   setScripts(scripts: ReadonlyMap<string, CalloutScript>): void;
+  /**
+   * Whether the ACTIVE voice's compiled script has a body for the scenario
+   * id — the same lookup a fire makes. `false` when the entry is absent or
+   * `skip: true`, when the voice has no script, and when no voice is active.
+   * For an imperative owner deciding whether a call is worth preparing for
+   * (the spotter's focus floor, #1065): a pack is never punished for what it
+   * does not say, and neither is every other callout.
+   */
+  isScripted(scenarioId: string): boolean;
   /** Everything the vocabulary registries hold, for the reference generator and the pack linter (#1066). */
   vocabulary(): VocabularyReport;
   setEnabled(scenarioId: string, enabled: boolean): void;
@@ -406,7 +415,7 @@ class ScenarioEngine implements IScenarioEngine {
    */
   private readonly scriptPoolState = new Map<string, Map<string, PoolState>>();
   /**
-   * The four once-per warn sets. Every one is cleared by `setScripts`: a new
+   * The five once-per warn sets. Every one is cleared by `setScripts`: a new
    * script map is a new state of affairs — a rescan, a Rescan press, a pack
    * installed — and a pack that is still broken should say so again on that
    * run rather than only on the first. Within a script map each warns once.
@@ -416,6 +425,13 @@ class ScenarioEngine implements IScenarioEngine {
    * load's diagnostics on the first fire.
    */
   private readonly warnedSkips = new Set<string>();
+  /**
+   * `(voice, fragment)` pairs whose fragment nothing includes and which did
+   * not compile (the compiler's `fragmentProblems`) — warned once each, keyed
+   * `voice|name|reason` like the skips. An included fragment's problem is
+   * the including entry's skip, reported there.
+   */
+  private readonly warnedFragments = new Set<string>();
   /** `(case, key)` pairs a resolver returned without declaring — a code bug, warned once each. */
   private readonly warnedCaseKeys = new Set<string>();
   /** `(voice, frame)` pairs a legacy scenario asked for that the voice's script does not provide — warned once each. */
@@ -706,9 +722,18 @@ class ScenarioEngine implements IScenarioEngine {
     };
   }
 
+  isScripted(scenarioId: string): boolean {
+    this.ensureCompiled();
+
+    const voice = this.getActiveVoice();
+
+    return voice !== null && (this.compiled.get(voice)?.scenarios.has(scenarioId) ?? false);
+  }
+
   setScripts(scripts: ReadonlyMap<string, CalloutScript>): void {
     this.scripts = new Map(scripts);
     this.warnedSkips.clear();
+    this.warnedFragments.clear();
     this.warnedCaseKeys.clear();
     this.warnedLegacyFrames.clear();
     this.warnedFrameAborts.clear();
@@ -790,6 +815,15 @@ class ScenarioEngine implements IScenarioEngine {
 
         this.warnedSkips.add(key);
         this.logger.warn(`Voice "${voice}": scenario "${skip.id}" skipped — ${skip.reason}`);
+      }
+
+      for (const [name, reason] of result.fragmentProblems) {
+        const key = `${voice}|${name}|${reason}`;
+
+        if (this.warnedFragments.has(key)) continue;
+
+        this.warnedFragments.add(key);
+        this.logger.warn(`Voice "${voice}": fragment "${name}" — ${reason}`);
       }
     }
 

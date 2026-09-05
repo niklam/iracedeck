@@ -3126,6 +3126,74 @@ describe("pack-owned scripts (issue #1064)", () => {
     ]);
   });
 
+  // An imperative engine (the spotter) holds a focus floor for as long as a
+  // condition lasts, and the floor is only worth holding for a call the
+  // active voice will actually make: a pack that omits the spotter lines is
+  // silent for them, and must not mute every other callout as well.
+  it("(l) isScripted says whether the ACTIVE voice's compiled script has a body for the id", () => {
+    engine.defineContract(contract({ frame: NO_FRAME }));
+    engine.defineContract(contract({ id: "test.silent", frame: NO_FRAME }));
+    engine.setScripts(
+      new Map([
+        [
+          "default",
+          script({ scenarios: { "test.green": { sequence: ["pool:flag-green"] }, "test.silent": { skip: true } } }),
+        ],
+        ["laconic", script({ scenarios: {} })],
+      ]),
+    );
+
+    expect(engine.isScripted("test.green")).toBe(true);
+    // `skip: true`, and no entry at all, are both "not scripted".
+    expect(engine.isScripted("test.silent")).toBe(false);
+    expect(engine.isScripted("test.unknown")).toBe(false);
+
+    activeVoice = "laconic";
+    expect(engine.isScripted("test.green")).toBe(false);
+
+    // No script for the voice, and no active voice: false, never a throw.
+    activeVoice = "clips-only";
+    expect(engine.isScripted("test.green")).toBe(false);
+    activeVoice = null;
+    expect(engine.isScripted("test.green")).toBe(false);
+  });
+
+  it("(l) isScripted sees a contract registered after setScripts — the dirty recompile runs first", () => {
+    engine.setScripts(new Map([["default", GREEN_SCRIPT]]));
+    expect(engine.isScripted("test.green")).toBe(false);
+
+    engine.defineContract(contract({ frame: NO_FRAME }));
+    expect(engine.isScripted("test.green")).toBe(true);
+  });
+
+  // A fragment nothing includes is checked on its own by the compiler (it
+  // would otherwise never be checked at all); its problem reaches the log
+  // like an entry's — once per (voice, fragment), deduped across the dirty
+  // recompiles, and said again after the next setScripts.
+  it("(k) warns once per (voice, fragment) about a fragment nothing includes that does not compile, and again after setScripts", () => {
+    engine.defineContract(contract({ frame: NO_FRAME }));
+    const broken = script({
+      scenarios: { "test.green": { sequence: ["pool:flag-green"] } },
+      fragments: { old: { sequence: ["pool:nope"] }, fine: { sequence: ["pool:flag-green"] } },
+    });
+    engine.setScripts(new Map([["default", broken]]));
+
+    const fragmentWarns = () =>
+      mockLogger.warn.mock.calls.map(([msg]) => String(msg)).filter((msg) => msg.includes("fragment"));
+    expect(fragmentWarns()).toEqual(['Voice "default": fragment "old" — unknown pool "nope"']);
+
+    // A registration marks the scripts dirty; the recompile repeats nothing.
+    engine.defineVar("late", () => null);
+    engine.fire("test.green");
+    flushVoiceAndSfx(audio);
+    expect(fragmentWarns()).toHaveLength(1);
+    // The entry itself was never affected.
+    expect(voicePaths()).toEqual(["voice/default/flags/green-01.mp3"]);
+
+    engine.setScripts(new Map([["default", broken]]));
+    expect(fragmentWarns()).toHaveLength(2);
+  });
+
   it("frames a legacy scenario from the active voice's script, and plays it unframed when the voice has none", () => {
     engine.defineScenario({
       id: "test.legacy",

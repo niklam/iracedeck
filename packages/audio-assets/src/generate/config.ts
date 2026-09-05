@@ -131,7 +131,11 @@ export const EntrySchema = z.object({
   use_pvc_as_ivc: z.boolean().optional(),
 });
 
-export const VoiceConfigSchema = z.object({
+// Strict, like every object in the artifact's grammar: a misspelled top-level
+// map (`fragements`) is refused here, naming the key, rather than stripped and
+// extracted as `{}` — which would leave the author's every fragment out of the
+// artifact and surface only as `unknown fragment` skips in the plugin log.
+export const VoiceConfigSchema = z.strictObject({
   // Voice metadata — required.
   id: z.string().min(1),
   label: z.string().min(1),
