@@ -159,7 +159,7 @@ That file is generator-only today and never reaches the plugin, so `pnpm generat
 
 The guarantee: **a pack is never punished for what it does not say.**
 
-- **Absent from the pack → skipped.** One aggregate `info` line per pack load (`Voice pack "laconic": 62 of 104 callouts defined, 42 skipped`), individual ids at debug. A hundred warn lines every start would itself be the loud failure this exists to avoid.
+- **Absent from the pack → skipped.** One parameter-free `info` line per load (`Voice scripts loaded`), then per voice at `debug` the aggregate (`Voice "laconic": 62 of 104 callouts scripted`) and the individual ids. The first draft put the aggregate at `info`; `.claude/rules/logging.md` keeps parameters out of info lines, and the rule wins (decided 2026-09-04) — a support log needs debug logging on to show coverage, which is the same switch every other Race Engineer detail is behind. A hundred warn lines every start would itself be the loud failure this exists to avoid.
 - **`"skip": true` → identical behaviour**, but self-documenting in the file and surviving the bundled-pack completeness check as a deliberate declaration rather than an oversight.
 - **Unknown pool, var, condition, case key, include or frame → warn once, that scenario skipped.** Never an exception, never a half-played callout.
 - **Missing clip at fire time → unchanged.** The #835 rule already does the right thing: a required step aborts the callout, an `{optional}` clause is skipped.
