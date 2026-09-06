@@ -71,11 +71,14 @@ export const MEDIA_CAPTURE_GLOBAL_KEYS: Record<string, string> = {
   "take-giant-screenshot": "mediaCaptureGiantScreenshot",
 };
 
-const MediaCaptureSettings = CommonSettings.extend({
+/**
+ * @internal Exported for testing
+ */
+export const MediaCaptureSettings = CommonSettings.extend({
   mode: z.enum(ACTION_VALUES).default("start-stop-video"),
 });
 
-type MediaCaptureSettings = z.infer<typeof MediaCaptureSettings>;
+export type MediaCaptureSettings = z.infer<typeof MediaCaptureSettings>;
 
 /**
  * @internal Exported for testing

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { generateMediaCaptureSvg, MEDIA_CAPTURE_GLOBAL_KEYS } from "./media-capture.js";
+import { generateMediaCaptureSvg, MEDIA_CAPTURE_GLOBAL_KEYS, MediaCaptureSettings } from "./media-capture.js";
 
 vi.mock("@iracedeck/icons/media-capture/start-stop-video.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
@@ -167,28 +167,28 @@ describe("MediaCapture", () => {
 
   describe("generateMediaCaptureSvg", () => {
     it("should generate a valid data URI for start-stop-video", () => {
-      const result = generateMediaCaptureSvg({ mode: "start-stop-video" });
+      const result = generateMediaCaptureSvg(MediaCaptureSettings.parse({ mode: "start-stop-video" }));
 
       expect(result).toContain("data:image/svg+xml");
     });
 
     it("should generate valid data URIs for all 7 actions", () => {
       for (const mode of ALL_ACTIONS) {
-        const result = generateMediaCaptureSvg({ mode });
+        const result = generateMediaCaptureSvg(MediaCaptureSettings.parse({ mode }));
 
         expect(result).toContain("data:image/svg+xml");
       }
     });
 
     it("should produce different icons for different actions", () => {
-      const startStop = generateMediaCaptureSvg({ mode: "start-stop-video" });
-      const screenshot = generateMediaCaptureSvg({ mode: "take-screenshot" });
+      const startStop = generateMediaCaptureSvg(MediaCaptureSettings.parse({ mode: "start-stop-video" }));
+      const screenshot = generateMediaCaptureSvg(MediaCaptureSettings.parse({ mode: "take-screenshot" }));
 
       expect(startStop).not.toBe(screenshot);
     });
 
     it("should include correct labels for start-stop-video", () => {
-      const result = generateMediaCaptureSvg({ mode: "start-stop-video" });
+      const result = generateMediaCaptureSvg(MediaCaptureSettings.parse({ mode: "start-stop-video" }));
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("START/STOP");
@@ -196,7 +196,7 @@ describe("MediaCapture", () => {
     });
 
     it("should include correct labels for take-screenshot", () => {
-      const result = generateMediaCaptureSvg({ mode: "take-screenshot" });
+      const result = generateMediaCaptureSvg(MediaCaptureSettings.parse({ mode: "take-screenshot" }));
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("SCREENSHOT");
@@ -215,9 +215,11 @@ describe("MediaCapture", () => {
       };
 
       for (const [mode, labels] of Object.entries(expectedLabels)) {
-        const result = generateMediaCaptureSvg({
-          mode: mode as (typeof ALL_ACTIONS)[number],
-        });
+        const result = generateMediaCaptureSvg(
+          MediaCaptureSettings.parse({
+            mode: mode as (typeof ALL_ACTIONS)[number],
+          }),
+        );
         const decoded = decodeURIComponent(result);
 
         expect(decoded).toContain(labels.mainLabel);

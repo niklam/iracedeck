@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { generateToggleUiElementsSvg, UI_ELEMENT_GLOBAL_KEYS } from "./toggle-ui-elements.js";
+import { generateToggleUiElementsSvg, ToggleUiElementsSettings, UI_ELEMENT_GLOBAL_KEYS } from "./toggle-ui-elements.js";
 
 vi.mock("@iracedeck/icons/toggle-ui-elements/dash-box.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
@@ -177,13 +177,13 @@ describe("ToggleUiElements", () => {
 
   describe("generateToggleUiElementsSvg", () => {
     it("should generate a valid data URI for dash-box", () => {
-      const result = generateToggleUiElementsSvg({ element: "dash-box" });
+      const result = generateToggleUiElementsSvg(ToggleUiElementsSettings.parse({ element: "dash-box" }));
 
       expect(result).toContain("data:image/svg+xml");
     });
 
     it("should generate a valid data URI for replay-ui", () => {
-      const result = generateToggleUiElementsSvg({ element: "replay-ui" });
+      const result = generateToggleUiElementsSvg(ToggleUiElementsSettings.parse({ element: "replay-ui" }));
 
       expect(result).toContain("data:image/svg+xml");
     });
@@ -203,32 +203,32 @@ describe("ToggleUiElements", () => {
       ] as const;
 
       for (const element of elements) {
-        const result = generateToggleUiElementsSvg({ element });
+        const result = generateToggleUiElementsSvg(ToggleUiElementsSettings.parse({ element }));
         expect(result).toContain("data:image/svg+xml");
       }
     });
 
     it("should produce different icons for different elements", () => {
-      const dashBox = generateToggleUiElementsSvg({ element: "dash-box" });
-      const replayUi = generateToggleUiElementsSvg({ element: "replay-ui" });
+      const dashBox = generateToggleUiElementsSvg(ToggleUiElementsSettings.parse({ element: "dash-box" }));
+      const replayUi = generateToggleUiElementsSvg(ToggleUiElementsSettings.parse({ element: "replay-ui" }));
 
       expect(dashBox).not.toBe(replayUi);
     });
 
     it("should include DASH BOX label for dash-box element", () => {
-      const result = generateToggleUiElementsSvg({ element: "dash-box" });
+      const result = generateToggleUiElementsSvg(ToggleUiElementsSettings.parse({ element: "dash-box" }));
 
       expect(decodeURIComponent(result)).toContain("DASH BOX");
     });
 
     it("should include REPLAY UI label for replay-ui element", () => {
-      const result = generateToggleUiElementsSvg({ element: "replay-ui" });
+      const result = generateToggleUiElementsSvg(ToggleUiElementsSettings.parse({ element: "replay-ui" }));
 
       expect(decodeURIComponent(result)).toContain("REPLAY UI");
     });
 
     it("should include TOGGLE label for dash-box element", () => {
-      const result = generateToggleUiElementsSvg({ element: "dash-box" });
+      const result = generateToggleUiElementsSvg(ToggleUiElementsSettings.parse({ element: "dash-box" }));
 
       expect(decodeURIComponent(result)).toContain("TOGGLE");
     });
@@ -248,7 +248,7 @@ describe("ToggleUiElements", () => {
       };
 
       for (const [element, labels] of Object.entries(expectedLabels)) {
-        const result = generateToggleUiElementsSvg({ element: element as any });
+        const result = generateToggleUiElementsSvg(ToggleUiElementsSettings.parse({ element: element as any }));
         const decoded = decodeURIComponent(result);
 
         expect(decoded).toContain(labels.mainLabel);

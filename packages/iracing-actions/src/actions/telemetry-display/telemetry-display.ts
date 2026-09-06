@@ -23,13 +23,16 @@ import z from "zod";
 
 import telemetryDisplayTemplate from "../../../icons/telemetry-display.svg";
 
-const TelemetryDisplaySettings = CommonSettings.extend({
+/**
+ * @internal Exported for testing
+ */
+export const TelemetryDisplaySettings = CommonSettings.extend({
   template: z.string().default("#{{self.car_number}}\n{{self.first_name}}"),
   title: z.string().default("I AM"),
   fontSize: z.coerce.number().default(15),
 });
 
-type TelemetryDisplaySettings = z.infer<typeof TelemetryDisplaySettings>;
+export type TelemetryDisplaySettings = z.infer<typeof TelemetryDisplaySettings>;
 
 /**
  * @internal Exported for testing

@@ -175,7 +175,10 @@ export const CAMERA_EDITOR_GLOBAL_KEYS: Record<AdjustmentType, Record<DirectionT
   "focus-depth": { increase: "camEditFocusDepthIncrease", decrease: "camEditFocusDepthDecrease" },
 };
 
-const CameraEditorAdjustmentsSettings = CommonSettings.extend({
+/**
+ * @internal Exported for testing
+ */
+export const CameraEditorAdjustmentsSettings = CommonSettings.extend({
   adjustment: z.enum(ADJUSTMENT_VALUES).default("latitude"),
   direction: z.enum(["increase", "decrease"]).default("increase"),
   // Dial-surface settings (#804), under the `dial` root so keypad and dial keys
@@ -184,7 +187,7 @@ const CameraEditorAdjustmentsSettings = CommonSettings.extend({
   dial: DialSettings.catch(() => DialSettings.parse({})),
 });
 
-type CameraEditorAdjustmentsSettings = z.infer<typeof CameraEditorAdjustmentsSettings>;
+export type CameraEditorAdjustmentsSettings = z.infer<typeof CameraEditorAdjustmentsSettings>;
 
 /**
  * @internal Exported for testing

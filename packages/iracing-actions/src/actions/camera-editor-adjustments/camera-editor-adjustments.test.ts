@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { CAMERA_EDITOR_GLOBAL_KEYS, generateCameraEditorAdjustmentsSvg } from "./camera-editor-adjustments.js";
+import {
+  CAMERA_EDITOR_GLOBAL_KEYS,
+  CameraEditorAdjustmentsSettings,
+  generateCameraEditorAdjustmentsSvg,
+} from "./camera-editor-adjustments.js";
 
 vi.mock("@iracedeck/icons/camera-editor-adjustments/latitude-increase.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">latitude-increase {{mainLabel}} {{subLabel}}</svg>',
@@ -265,16 +269,20 @@ describe("CameraEditorAdjustments", () => {
 
   describe("generateCameraEditorAdjustmentsSvg", () => {
     it("should generate a valid data URI for latitude increase", () => {
-      const result = generateCameraEditorAdjustmentsSvg({ adjustment: "latitude", direction: "increase" });
+      const result = generateCameraEditorAdjustmentsSvg(
+        CameraEditorAdjustmentsSettings.parse({ adjustment: "latitude", direction: "increase" }),
+      );
 
       expect(result).toContain("data:image/svg+xml");
     });
 
     it("should generate a valid data URI for auto-set-mic-gain", () => {
-      const result = generateCameraEditorAdjustmentsSvg({
-        adjustment: "auto-set-mic-gain",
-        direction: "increase",
-      });
+      const result = generateCameraEditorAdjustmentsSvg(
+        CameraEditorAdjustmentsSettings.parse({
+          adjustment: "auto-set-mic-gain",
+          direction: "increase",
+        }),
+      );
 
       expect(result).toContain("data:image/svg+xml");
     });
@@ -301,58 +309,78 @@ describe("CameraEditorAdjustments", () => {
 
       for (const adjustment of adjustments) {
         for (const direction of directions) {
-          const result = generateCameraEditorAdjustmentsSvg({ adjustment, direction });
+          const result = generateCameraEditorAdjustmentsSvg(
+            CameraEditorAdjustmentsSettings.parse({ adjustment, direction }),
+          );
           expect(result).toContain("data:image/svg+xml");
         }
       }
     });
 
     it("should produce different icons for different adjustments", () => {
-      const latitude = generateCameraEditorAdjustmentsSvg({ adjustment: "latitude", direction: "increase" });
-      const yaw = generateCameraEditorAdjustmentsSvg({ adjustment: "yaw", direction: "increase" });
+      const latitude = generateCameraEditorAdjustmentsSvg(
+        CameraEditorAdjustmentsSettings.parse({ adjustment: "latitude", direction: "increase" }),
+      );
+      const yaw = generateCameraEditorAdjustmentsSvg(
+        CameraEditorAdjustmentsSettings.parse({ adjustment: "yaw", direction: "increase" }),
+      );
 
       expect(latitude).not.toBe(yaw);
     });
 
     it("should produce different icons for increase vs decrease", () => {
-      const increase = generateCameraEditorAdjustmentsSvg({ adjustment: "latitude", direction: "increase" });
-      const decrease = generateCameraEditorAdjustmentsSvg({ adjustment: "latitude", direction: "decrease" });
+      const increase = generateCameraEditorAdjustmentsSvg(
+        CameraEditorAdjustmentsSettings.parse({ adjustment: "latitude", direction: "increase" }),
+      );
+      const decrease = generateCameraEditorAdjustmentsSvg(
+        CameraEditorAdjustmentsSettings.parse({ adjustment: "latitude", direction: "decrease" }),
+      );
 
       expect(increase).not.toBe(decrease);
     });
 
     it("should produce the same icon for auto-set-mic-gain regardless of direction", () => {
-      const increase = generateCameraEditorAdjustmentsSvg({
-        adjustment: "auto-set-mic-gain",
-        direction: "increase",
-      });
-      const decrease = generateCameraEditorAdjustmentsSvg({
-        adjustment: "auto-set-mic-gain",
-        direction: "decrease",
-      });
+      const increase = generateCameraEditorAdjustmentsSvg(
+        CameraEditorAdjustmentsSettings.parse({
+          adjustment: "auto-set-mic-gain",
+          direction: "increase",
+        }),
+      );
+      const decrease = generateCameraEditorAdjustmentsSvg(
+        CameraEditorAdjustmentsSettings.parse({
+          adjustment: "auto-set-mic-gain",
+          direction: "decrease",
+        }),
+      );
 
       expect(increase).toBe(decrease);
     });
 
     it("should include correct labels for latitude increase", () => {
-      const result = generateCameraEditorAdjustmentsSvg({ adjustment: "latitude", direction: "increase" });
+      const result = generateCameraEditorAdjustmentsSvg(
+        CameraEditorAdjustmentsSettings.parse({ adjustment: "latitude", direction: "increase" }),
+      );
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("LATITUDE</svg>");
     });
 
     it("should include correct labels for fov-zoom decrease", () => {
-      const result = generateCameraEditorAdjustmentsSvg({ adjustment: "fov-zoom", direction: "decrease" });
+      const result = generateCameraEditorAdjustmentsSvg(
+        CameraEditorAdjustmentsSettings.parse({ adjustment: "fov-zoom", direction: "decrease" }),
+      );
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("FOV ZOOM</svg>");
     });
 
     it("should include correct labels for auto-set-mic-gain", () => {
-      const result = generateCameraEditorAdjustmentsSvg({
-        adjustment: "auto-set-mic-gain",
-        direction: "increase",
-      });
+      const result = generateCameraEditorAdjustmentsSvg(
+        CameraEditorAdjustmentsSettings.parse({
+          adjustment: "auto-set-mic-gain",
+          direction: "increase",
+        }),
+      );
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("AUTO");
@@ -382,10 +410,12 @@ describe("CameraEditorAdjustments", () => {
 
       for (const [adjustment, title] of Object.entries(expectedTitles)) {
         for (const direction of ["increase", "decrease"]) {
-          const result = generateCameraEditorAdjustmentsSvg({
-            adjustment: adjustment as any,
-            direction: direction as any,
-          });
+          const result = generateCameraEditorAdjustmentsSvg(
+            CameraEditorAdjustmentsSettings.parse({
+              adjustment: adjustment as any,
+              direction: direction as any,
+            }),
+          );
           const decoded = decodeURIComponent(result);
 
           expect(decoded).toContain(`${title}</svg>`);

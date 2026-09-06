@@ -118,13 +118,16 @@ export const TELEMETRY_CONTROL_GLOBAL_KEYS: Record<string, string> = {
   "mark-event": "telemetryControlMarkEvent",
 };
 
-const TelemetryControlSettings = CommonSettings.extend({
+/**
+ * @internal Exported for testing
+ */
+export const TelemetryControlSettings = CommonSettings.extend({
   mode: z.enum(ACTION_VALUES).default("toggle-logging"),
   // Output directory for the "snapshot" mode (blank = default folder).
   outputDir: z.string().default(""),
 });
 
-type TelemetryControlSettings = z.infer<typeof TelemetryControlSettings>;
+export type TelemetryControlSettings = z.infer<typeof TelemetryControlSettings>;
 
 /**
  * @internal Exported for testing

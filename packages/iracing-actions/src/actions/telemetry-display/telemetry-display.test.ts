@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { generateTelemetryDisplaySvg, generateValueContent, TelemetryDisplay } from "./telemetry-display.js";
+import {
+  generateTelemetryDisplaySvg,
+  generateValueContent,
+  TelemetryDisplay,
+  TelemetryDisplaySettings,
+} from "./telemetry-display.js";
 
 vi.mock("../../../icons/telemetry-display.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">{{backgroundColor}} {{titleContent}} {{valueContent}}</svg>',
@@ -106,39 +111,51 @@ describe("TelemetryDisplay", () => {
 
   describe("generateTelemetryDisplaySvg", () => {
     it("should produce a data URI", () => {
-      const result = generateTelemetryDisplaySvg("CAR #", "100", {
-        template: "{{sessionInfo.DriverInfo.DriverCarIdx}}",
-        title: "CAR #",
-        fontSize: 18,
-      });
+      const result = generateTelemetryDisplaySvg(
+        "CAR #",
+        "100",
+        TelemetryDisplaySettings.parse({
+          template: "{{sessionInfo.DriverInfo.DriverCarIdx}}",
+          title: "CAR #",
+          fontSize: 18,
+        }),
+      );
 
       expect(result).toContain("data:image/svg+xml");
     });
 
     it("should use custom colors via colorOverrides", () => {
-      const result = generateTelemetryDisplaySvg("TEST", "42", {
-        template: "42",
-        title: "TEST",
-        fontSize: 24,
-        colorOverrides: {
-          backgroundColor: "#ff0000",
-          textColor: "#00ff00",
-        },
-      });
+      const result = generateTelemetryDisplaySvg(
+        "TEST",
+        "42",
+        TelemetryDisplaySettings.parse({
+          template: "42",
+          title: "TEST",
+          fontSize: 24,
+          colorOverrides: {
+            backgroundColor: "#ff0000",
+            textColor: "#00ff00",
+          },
+        }),
+      );
 
       expect(result).toContain(encodeURIComponent("#ff0000"));
       expect(result).toContain(encodeURIComponent("#00ff00"));
     });
 
     it("should use text color for title", () => {
-      const result = generateTelemetryDisplaySvg("SPEED", "150", {
-        template: "",
-        title: "SPEED",
-        fontSize: 18,
-        colorOverrides: {
-          textColor: "#ff0000",
-        },
-      });
+      const result = generateTelemetryDisplaySvg(
+        "SPEED",
+        "150",
+        TelemetryDisplaySettings.parse({
+          template: "",
+          title: "SPEED",
+          fontSize: 18,
+          colorOverrides: {
+            textColor: "#ff0000",
+          },
+        }),
+      );
 
       const decoded = decodeURIComponent(result);
       // titleColor should match textColor
@@ -146,11 +163,15 @@ describe("TelemetryDisplay", () => {
     });
 
     it("should encode title and value", () => {
-      const result = generateTelemetryDisplaySvg("SPEED", "150", {
-        template: "",
-        title: "SPEED",
-        fontSize: 18,
-      });
+      const result = generateTelemetryDisplaySvg(
+        "SPEED",
+        "150",
+        TelemetryDisplaySettings.parse({
+          template: "",
+          title: "SPEED",
+          fontSize: 18,
+        }),
+      );
 
       expect(result).toContain(encodeURIComponent("SPEED"));
       expect(result).toContain(encodeURIComponent("150"));
