@@ -21,7 +21,7 @@ const {
   mockTapBinding: vi.fn().mockResolvedValue(undefined),
   mockHoldBinding: vi.fn().mockResolvedValue(undefined),
   mockReleaseBinding: vi.fn().mockResolvedValue(undefined),
-  mockIsBindingMissing: vi.fn(() => false),
+  mockIsBindingMissing: vi.fn((_keys?: string | string[] | null) => false),
   mockStepRaceEngineerVolumeBy: vi.fn((_steps: number) => 50),
   mockStepRadarVolumeBy: vi.fn((_steps: number) => 50),
   mockReadRaceEngineerVolume: vi.fn(() => 50),

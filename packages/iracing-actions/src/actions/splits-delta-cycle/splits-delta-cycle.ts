@@ -94,7 +94,10 @@ const MIN_HOLD_MS = 100;
 
 const delay = (ms: number): Promise<void> => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-const SplitsDeltaCycleSettings = CommonSettings.extend({
+/**
+ * @internal Exported for testing
+ */
+export const SplitsDeltaCycleSettings = CommonSettings.extend({
   mode: z.enum(MODES).default("cycle"),
   direction: z.enum(["next", "previous"]).default("next"),
   // Dial-surface settings (#807), under the `dial` root so keypad and dial keys
@@ -103,7 +106,7 @@ const SplitsDeltaCycleSettings = CommonSettings.extend({
   dial: DialSettings.catch(() => DialSettings.parse({})),
 });
 
-type SplitsDeltaCycleSettings = z.infer<typeof SplitsDeltaCycleSettings>;
+export type SplitsDeltaCycleSettings = z.infer<typeof SplitsDeltaCycleSettings>;
 
 /**
  * @internal Exported for testing

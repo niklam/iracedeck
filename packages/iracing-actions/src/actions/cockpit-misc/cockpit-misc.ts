@@ -108,7 +108,10 @@ export const COCKPIT_MISC_GLOBAL_KEYS: Record<string, string> = {
   "in-lap-mode": "cockpitMiscInLapMode",
 };
 
-const CockpitMiscSettings = CommonSettings.extend({
+/**
+ * @internal Exported for testing
+ */
+export const CockpitMiscSettings = CommonSettings.extend({
   control: z
     .enum([
       "toggle-wipers",
@@ -127,7 +130,7 @@ const CockpitMiscSettings = CommonSettings.extend({
   dial: DialSettings.catch(() => DialSettings.parse({})),
 });
 
-type CockpitMiscSettings = z.infer<typeof CockpitMiscSettings>;
+export type CockpitMiscSettings = z.infer<typeof CockpitMiscSettings>;
 
 /**
  * @internal Exported for testing

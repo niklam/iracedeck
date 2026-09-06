@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { parseAudioControlsSettings } from "./audio-controls-settings.js";
 import { AUDIO_CONTROLS_GLOBAL_KEYS, AudioControls, generateAudioControlsSvg } from "./audio-controls.js";
 
 const { mockTapBinding, mockHoldBinding, mockReleaseBinding, mockStepRadarVolumeBy, mockStepRaceEngineerVolumeBy } =
@@ -206,13 +207,15 @@ describe("AudioControls", () => {
 
   describe("generateAudioControlsSvg", () => {
     it("should generate a valid data URI for voice-chat mute", () => {
-      const result = generateAudioControlsSvg({ category: "voice-chat", action: "mute" });
+      const result = generateAudioControlsSvg(parseAudioControlsSettings({ category: "voice-chat", action: "mute" }));
 
       expect(result).toContain("data:image/svg+xml");
     });
 
     it("should generate a valid data URI for master volume-down", () => {
-      const result = generateAudioControlsSvg({ category: "master", action: "volume-down" });
+      const result = generateAudioControlsSvg(
+        parseAudioControlsSettings({ category: "master", action: "volume-down" }),
+      );
 
       expect(result).toContain("data:image/svg+xml");
     });
@@ -223,23 +226,29 @@ describe("AudioControls", () => {
 
       for (const category of categories) {
         for (const action of actions) {
-          const result = generateAudioControlsSvg({ category, action });
+          const result = generateAudioControlsSvg(parseAudioControlsSettings({ category, action }));
           expect(result).toContain("data:image/svg+xml");
         }
       }
     });
 
     it("should produce different icons for different categories", () => {
-      const voiceChat = generateAudioControlsSvg({ category: "voice-chat", action: "volume-up" });
-      const master = generateAudioControlsSvg({ category: "master", action: "volume-up" });
+      const voiceChat = generateAudioControlsSvg(
+        parseAudioControlsSettings({ category: "voice-chat", action: "volume-up" }),
+      );
+      const master = generateAudioControlsSvg(parseAudioControlsSettings({ category: "master", action: "volume-up" }));
 
       expect(voiceChat).not.toBe(master);
     });
 
     it("should produce different icons for different actions within same category", () => {
-      const volumeUp = generateAudioControlsSvg({ category: "voice-chat", action: "volume-up" });
-      const volumeDown = generateAudioControlsSvg({ category: "voice-chat", action: "volume-down" });
-      const mute = generateAudioControlsSvg({ category: "voice-chat", action: "mute" });
+      const volumeUp = generateAudioControlsSvg(
+        parseAudioControlsSettings({ category: "voice-chat", action: "volume-up" }),
+      );
+      const volumeDown = generateAudioControlsSvg(
+        parseAudioControlsSettings({ category: "voice-chat", action: "volume-down" }),
+      );
+      const mute = generateAudioControlsSvg(parseAudioControlsSettings({ category: "voice-chat", action: "mute" }));
 
       expect(volumeUp).not.toBe(volumeDown);
       expect(volumeUp).not.toBe(mute);
@@ -247,7 +256,7 @@ describe("AudioControls", () => {
     });
 
     it("should fall back to volume-up icon for master with mute action", () => {
-      const masterMute = generateAudioControlsSvg({ category: "master", action: "mute" });
+      const masterMute = generateAudioControlsSvg(parseAudioControlsSettings({ category: "master", action: "mute" }));
       // The mute action uses the volume-up icon (falls back to master-volume-up SVG)
       // but has its own title "VOLUME\nMASTER"
       expect(masterMute).toContain("data:image/svg+xml");
@@ -255,7 +264,9 @@ describe("AudioControls", () => {
     });
 
     it("should include correct labels for voice-chat volume-up", () => {
-      const result = generateAudioControlsSvg({ category: "voice-chat", action: "volume-up" });
+      const result = generateAudioControlsSvg(
+        parseAudioControlsSettings({ category: "voice-chat", action: "volume-up" }),
+      );
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("VOICE");
@@ -263,7 +274,7 @@ describe("AudioControls", () => {
     });
 
     it("should include correct labels for voice-chat mute", () => {
-      const result = generateAudioControlsSvg({ category: "voice-chat", action: "mute" });
+      const result = generateAudioControlsSvg(parseAudioControlsSettings({ category: "voice-chat", action: "mute" }));
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("VOICE");
@@ -271,7 +282,9 @@ describe("AudioControls", () => {
     });
 
     it("should include correct labels for master volume-down", () => {
-      const result = generateAudioControlsSvg({ category: "master", action: "volume-down" });
+      const result = generateAudioControlsSvg(
+        parseAudioControlsSettings({ category: "master", action: "volume-down" }),
+      );
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("MASTER");
@@ -279,21 +292,29 @@ describe("AudioControls", () => {
     });
 
     it("should generate a valid data URI for push-to-talk", () => {
-      const result = generateAudioControlsSvg({ category: "push-to-talk", action: "volume-up" });
+      const result = generateAudioControlsSvg(
+        parseAudioControlsSettings({ category: "push-to-talk", action: "volume-up" }),
+      );
 
       expect(result).toContain("data:image/svg+xml");
     });
 
     it("should include correct labels for push-to-talk", () => {
-      const result = generateAudioControlsSvg({ category: "push-to-talk", action: "volume-up" });
+      const result = generateAudioControlsSvg(
+        parseAudioControlsSettings({ category: "push-to-talk", action: "volume-up" }),
+      );
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("TALK");
     });
 
     it("should produce a different icon for push-to-talk vs voice-chat", () => {
-      const ptt = generateAudioControlsSvg({ category: "push-to-talk", action: "volume-up" });
-      const voiceChat = generateAudioControlsSvg({ category: "voice-chat", action: "volume-up" });
+      const ptt = generateAudioControlsSvg(
+        parseAudioControlsSettings({ category: "push-to-talk", action: "volume-up" }),
+      );
+      const voiceChat = generateAudioControlsSvg(
+        parseAudioControlsSettings({ category: "voice-chat", action: "volume-up" }),
+      );
 
       expect(ptt).not.toBe(voiceChat);
     });
@@ -314,10 +335,12 @@ describe("AudioControls", () => {
 
       for (const [category, actions] of Object.entries(expectedLabels)) {
         for (const [action, labels] of Object.entries(actions)) {
-          const result = generateAudioControlsSvg({
-            category: category as any,
-            action: action as any,
-          });
+          const result = generateAudioControlsSvg(
+            parseAudioControlsSettings({
+              category: category as any,
+              action: action as any,
+            }),
+          );
           const decoded = decodeURIComponent(result);
 
           expect(decoded).toContain(labels.mainLabel);
@@ -414,8 +437,12 @@ describe("AudioControls", () => {
     });
 
     it("generates labelled icons for race-engineer volume", () => {
-      const up = decodeURIComponent(generateAudioControlsSvg({ category: "race-engineer", action: "volume-up" }));
-      const down = decodeURIComponent(generateAudioControlsSvg({ category: "race-engineer", action: "volume-down" }));
+      const up = decodeURIComponent(
+        generateAudioControlsSvg(parseAudioControlsSettings({ category: "race-engineer", action: "volume-up" })),
+      );
+      const down = decodeURIComponent(
+        generateAudioControlsSvg(parseAudioControlsSettings({ category: "race-engineer", action: "volume-down" })),
+      );
 
       expect(up).toContain("ENGINEER");
       expect(up).toContain("VOL UP");
@@ -425,8 +452,12 @@ describe("AudioControls", () => {
     });
 
     it("generates labelled icons for radar volume", () => {
-      const up = decodeURIComponent(generateAudioControlsSvg({ category: "radar", action: "volume-up" }));
-      const down = decodeURIComponent(generateAudioControlsSvg({ category: "radar", action: "volume-down" }));
+      const up = decodeURIComponent(
+        generateAudioControlsSvg(parseAudioControlsSettings({ category: "radar", action: "volume-up" })),
+      );
+      const down = decodeURIComponent(
+        generateAudioControlsSvg(parseAudioControlsSettings({ category: "radar", action: "volume-down" })),
+      );
 
       expect(up).toContain("RADAR");
       expect(up).toContain("VOL UP");
