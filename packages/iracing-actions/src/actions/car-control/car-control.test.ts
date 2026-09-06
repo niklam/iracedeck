@@ -1,10 +1,11 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import ignitionTemplate from "../../../icons/car-control-ignition.svg";
 import starterTemplate from "../../../icons/car-control-starter.svg";
 import {
   CAR_CONTROL_GLOBAL_KEYS,
   CarControl,
+  CarControlSettings,
   generateCarControlSvg,
   getEnterExitTowState,
   getPitSpeedLimit,
@@ -293,13 +294,13 @@ describe("CarControl", () => {
 
   describe("generateCarControlSvg", () => {
     it("should generate a valid data URI for starter", () => {
-      const result = generateCarControlSvg({ control: "starter" });
+      const result = generateCarControlSvg(CarControlSettings.parse({ control: "starter" }));
 
       expect(result).toContain("data:image/svg+xml");
     });
 
     it("should generate a valid data URI for ignition", () => {
-      const result = generateCarControlSvg({ control: "ignition" });
+      const result = generateCarControlSvg(CarControlSettings.parse({ control: "ignition" }));
 
       expect(result).toContain("data:image/svg+xml");
     });
@@ -314,14 +315,14 @@ describe("CarControl", () => {
       ] as const;
 
       for (const control of controls) {
-        const result = generateCarControlSvg({ control });
+        const result = generateCarControlSvg(CarControlSettings.parse({ control }));
         expect(result).toContain("data:image/svg+xml");
       }
     });
 
     it("should produce different icons for different controls", () => {
-      const starter = generateCarControlSvg({ control: "starter" });
-      const ignition = generateCarControlSvg({ control: "ignition" });
+      const starter = generateCarControlSvg(CarControlSettings.parse({ control: "starter" }));
+      const ignition = generateCarControlSvg(CarControlSettings.parse({ control: "ignition" }));
 
       expect(starter).not.toBe(ignition);
     });
@@ -337,7 +338,7 @@ describe("CarControl", () => {
       };
 
       for (const [control, labels] of Object.entries(expectedLabels)) {
-        const result = generateCarControlSvg({ control: control as any });
+        const result = generateCarControlSvg(CarControlSettings.parse({ control: control as any }));
         const decoded = decodeURIComponent(result);
 
         expect(decoded).toContain(labels.line1);
@@ -545,17 +546,19 @@ describe("CarControl", () => {
     it("should render a different icon for each of the three states", () => {
       for (const control of ["ignition", "starter"] as const) {
         const key = control === "ignition" ? "ignitionState" : "starterState";
-        const on = generateCarControlSvg({ control } as any, { [key]: "on" } as any);
-        const off = generateCarControlSvg({ control } as any, { [key]: "off" } as any);
-        const na = generateCarControlSvg({ control } as any, { [key]: "na" } as any);
+        const on = generateCarControlSvg(CarControlSettings.parse({ control }), { [key]: "on" } as any);
+        const off = generateCarControlSvg(CarControlSettings.parse({ control }), { [key]: "off" } as any);
+        const na = generateCarControlSvg(CarControlSettings.parse({ control }), { [key]: "na" } as any);
 
         expect(new Set([on, off, na]).size).toBe(3);
       }
     });
 
     it("should fall back to the na icon when no telemetry state was resolved", () => {
-      const bare = generateCarControlSvg({ control: "ignition" } as any);
-      const na = generateCarControlSvg({ control: "ignition" } as any, { ignitionState: "na" } as any);
+      const bare = generateCarControlSvg(CarControlSettings.parse({ control: "ignition" }));
+      const na = generateCarControlSvg(CarControlSettings.parse({ control: "ignition" }), {
+        ignitionState: "na",
+      } as any);
 
       expect(bare).toBe(na);
     });
@@ -677,7 +680,7 @@ describe("CarControl", () => {
         customPosition: 0,
       } as any);
 
-      const hidden = decodeURIComponent(generateCarControlSvg({ control: "starter" } as any));
+      const hidden = decodeURIComponent(generateCarControlSvg(CarControlSettings.parse({ control: "starter" })));
 
       expect(hidden).not.toContain("START</text>");
       expect(hidden).toContain("N/A");
@@ -805,10 +808,11 @@ describe("CarControl", () => {
   describe("generateCarControlSvg telemetry variants", () => {
     it("should render the green ON status bar when the limiter is active", () => {
       const decoded = decodeURIComponent(
-        generateCarControlSvg(
-          { control: "pit-speed-limiter" },
-          { pitLimiterAvailable: true, pitLimiterActive: true, pitSpeedLimit: 80 },
-        ),
+        generateCarControlSvg(CarControlSettings.parse({ control: "pit-speed-limiter" }), {
+          pitLimiterAvailable: true,
+          pitLimiterActive: true,
+          pitSpeedLimit: 80,
+        }),
       );
 
       expect(decoded).toContain(">ON<");
@@ -820,10 +824,11 @@ describe("CarControl", () => {
 
     it("should render the red OFF status bar when the limiter is inactive", () => {
       const decoded = decodeURIComponent(
-        generateCarControlSvg(
-          { control: "pit-speed-limiter" },
-          { pitLimiterAvailable: true, pitLimiterActive: false, pitSpeedLimit: 80 },
-        ),
+        generateCarControlSvg(CarControlSettings.parse({ control: "pit-speed-limiter" }), {
+          pitLimiterAvailable: true,
+          pitLimiterActive: false,
+          pitSpeedLimit: 80,
+        }),
       );
 
       expect(decoded).toContain(">OFF<");
@@ -831,7 +836,9 @@ describe("CarControl", () => {
     });
 
     it("should default to the OFF status bar when no telemetry state is provided", () => {
-      const decoded = decodeURIComponent(generateCarControlSvg({ control: "pit-speed-limiter" }));
+      const decoded = decodeURIComponent(
+        generateCarControlSvg(CarControlSettings.parse({ control: "pit-speed-limiter" })),
+      );
 
       expect(decoded).toContain(">OFF<");
     });
@@ -849,7 +856,10 @@ describe("CarControl", () => {
       });
 
       const decoded = decodeURIComponent(
-        generateCarControlSvg({ control: "pit-speed-limiter" }, { pitLimiterActive: false, pitSpeedLimit: 80 }),
+        generateCarControlSvg(CarControlSettings.parse({ control: "pit-speed-limiter" }), {
+          pitLimiterActive: false,
+          pitSpeedLimit: 80,
+        }),
       );
 
       expect(decoded).toContain('r="33"');
@@ -868,7 +878,10 @@ describe("CarControl", () => {
       });
 
       const decoded = decodeURIComponent(
-        generateCarControlSvg({ control: "pit-speed-limiter" }, { pitLimiterActive: false, pitSpeedLimit: 80 }),
+        generateCarControlSvg(CarControlSettings.parse({ control: "pit-speed-limiter" }), {
+          pitLimiterActive: false,
+          pitSpeedLimit: 80,
+        }),
       );
 
       expect(decoded).toContain('r="24"');
@@ -876,7 +889,10 @@ describe("CarControl", () => {
 
     it("should include the speed limit in the icon", () => {
       const decoded = decodeURIComponent(
-        generateCarControlSvg({ control: "pit-speed-limiter" }, { pitLimiterActive: false, pitSpeedLimit: 60 }),
+        generateCarControlSvg(CarControlSettings.parse({ control: "pit-speed-limiter" }), {
+          pitLimiterActive: false,
+          pitSpeedLimit: 60,
+        }),
       );
 
       expect(decoded).toContain("60");
@@ -884,7 +900,7 @@ describe("CarControl", () => {
 
     it("should use the default speed when pitSpeedLimit is undefined", () => {
       const decoded = decodeURIComponent(
-        generateCarControlSvg({ control: "pit-speed-limiter" }, { pitLimiterActive: true }),
+        generateCarControlSvg(CarControlSettings.parse({ control: "pit-speed-limiter" }), { pitLimiterActive: true }),
       );
 
       expect(decoded).toContain("80");
@@ -892,10 +908,11 @@ describe("CarControl", () => {
 
     it("should render the grey N/A status bar (not on/off) when the limiter is unavailable (issue #638)", () => {
       const decoded = decodeURIComponent(
-        generateCarControlSvg(
-          { control: "pit-speed-limiter" },
-          { pitLimiterAvailable: false, pitLimiterActive: false, pitSpeedLimit: 80 },
-        ),
+        generateCarControlSvg(CarControlSettings.parse({ control: "pit-speed-limiter" }), {
+          pitLimiterAvailable: false,
+          pitLimiterActive: false,
+          pitSpeedLimit: 80,
+        }),
       );
 
       // Grey N/A status bar — not the on/off bars.
@@ -912,10 +929,11 @@ describe("CarControl", () => {
 
     it("should show the unavailable state even when reported active (availability wins)", () => {
       const decoded = decodeURIComponent(
-        generateCarControlSvg(
-          { control: "pit-speed-limiter" },
-          { pitLimiterAvailable: false, pitLimiterActive: true, pitSpeedLimit: 80 },
-        ),
+        generateCarControlSvg(CarControlSettings.parse({ control: "pit-speed-limiter" }), {
+          pitLimiterAvailable: false,
+          pitLimiterActive: true,
+          pitSpeedLimit: 80,
+        }),
       );
 
       expect(decoded).toContain(">N/A<");
@@ -923,28 +941,31 @@ describe("CarControl", () => {
     });
 
     it("should not affect other controls when pitLimiterActive is passed", () => {
-      const starter = generateCarControlSvg({ control: "starter" }, { pitLimiterActive: true, pitSpeedLimit: 80 });
-      const starterDefault = generateCarControlSvg({ control: "starter" });
+      const starter = generateCarControlSvg(CarControlSettings.parse({ control: "starter" }), {
+        pitLimiterActive: true,
+        pitSpeedLimit: 80,
+      });
+      const starterDefault = generateCarControlSvg(CarControlSettings.parse({ control: "starter" }));
 
       expect(starter).toBe(starterDefault);
     });
 
     it("should render DRS ON status bar when drsActive is true", () => {
-      const result = generateCarControlSvg({ control: "drs" }, { drsActive: true });
+      const result = generateCarControlSvg(CarControlSettings.parse({ control: "drs" }), { drsActive: true });
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain(">ON<");
     });
 
     it("should render DRS OFF status bar when drsActive is false", () => {
-      const result = generateCarControlSvg({ control: "drs" }, { drsActive: false });
+      const result = generateCarControlSvg(CarControlSettings.parse({ control: "drs" }), { drsActive: false });
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain(">OFF<");
     });
 
     it("should render DRS N/A status bar when drsActive is undefined (no telemetry)", () => {
-      const result = generateCarControlSvg({ control: "drs" }, {});
+      const result = generateCarControlSvg(CarControlSettings.parse({ control: "drs" }), {});
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain(">N/A<");
@@ -952,28 +973,32 @@ describe("CarControl", () => {
     });
 
     it("should render DRS N/A status bar when telemetryState is not provided", () => {
-      const result = generateCarControlSvg({ control: "drs" });
+      const result = generateCarControlSvg(CarControlSettings.parse({ control: "drs" }));
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain(">N/A<");
     });
 
     it("should render Push-to-Pass ON status bar when pushToPassActive is true", () => {
-      const result = generateCarControlSvg({ control: "push-to-pass" }, { pushToPassActive: true });
+      const result = generateCarControlSvg(CarControlSettings.parse({ control: "push-to-pass" }), {
+        pushToPassActive: true,
+      });
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain(">ON<");
     });
 
     it("should render Push-to-Pass OFF status bar when pushToPassActive is false", () => {
-      const result = generateCarControlSvg({ control: "push-to-pass" }, { pushToPassActive: false });
+      const result = generateCarControlSvg(CarControlSettings.parse({ control: "push-to-pass" }), {
+        pushToPassActive: false,
+      });
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain(">OFF<");
     });
 
     it("should render Push-to-Pass N/A status bar when pushToPassActive is undefined (no telemetry)", () => {
-      const result = generateCarControlSvg({ control: "push-to-pass" }, {});
+      const result = generateCarControlSvg(CarControlSettings.parse({ control: "push-to-pass" }), {});
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain(">N/A<");
@@ -981,7 +1006,7 @@ describe("CarControl", () => {
     });
 
     it("should render Push-to-Pass N/A status bar when telemetryState is not provided", () => {
-      const result = generateCarControlSvg({ control: "push-to-pass" });
+      const result = generateCarControlSvg(CarControlSettings.parse({ control: "push-to-pass" }));
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain(">N/A<");
@@ -1118,7 +1143,7 @@ describe("CarControl", () => {
       };
 
       for (const [control, labels] of Object.entries(expected)) {
-        const result = generateCarControlSvg({ control: control as any });
+        const result = generateCarControlSvg(CarControlSettings.parse({ control: control as any }));
 
         expect(result).toContain("data:image/svg+xml");
         const decoded = decodeURIComponent(result);
@@ -1131,7 +1156,7 @@ describe("CarControl", () => {
 
     it("should produce a distinct icon per mode", () => {
       const controls = ["handbrake", "second-clutch", "second-up-shift", "second-down-shift"] as const;
-      const unique = new Set(controls.map((control) => generateCarControlSvg({ control })));
+      const unique = new Set(controls.map((control) => generateCarControlSvg(CarControlSettings.parse({ control }))));
 
       expect(unique.size).toBe(controls.length);
     });
@@ -1362,13 +1387,13 @@ describe("CarControl", () => {
 
   describe("generateCarControlSvg escape", () => {
     it("should generate a valid data URI for escape", () => {
-      const result = generateCarControlSvg({ control: "escape" });
+      const result = generateCarControlSvg(CarControlSettings.parse({ control: "escape" }));
 
       expect(result).toContain("data:image/svg+xml");
     });
 
     it("should include ESCAPE label", () => {
-      const result = generateCarControlSvg({ control: "escape" });
+      const result = generateCarControlSvg(CarControlSettings.parse({ control: "escape" }));
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("ESCAPE");
@@ -1377,35 +1402,43 @@ describe("CarControl", () => {
 
   describe("generateCarControlSvg enter-exit-tow states", () => {
     it("should generate state-specific icon for enter-exit-tow with enter-car state", () => {
-      const result = generateCarControlSvg({ control: "enter-exit-tow" }, { enterExitTowState: "enter-car" });
+      const result = generateCarControlSvg(CarControlSettings.parse({ control: "enter-exit-tow" }), {
+        enterExitTowState: "enter-car",
+      });
       const decoded = decodeURIComponent(result);
       expect(decoded).toContain("enter-car");
       expect(decoded).toContain("DRIVE");
     });
 
     it("should generate state-specific icon for enter-exit-tow with exit-car state", () => {
-      const result = generateCarControlSvg({ control: "enter-exit-tow" }, { enterExitTowState: "exit-car" });
+      const result = generateCarControlSvg(CarControlSettings.parse({ control: "enter-exit-tow" }), {
+        enterExitTowState: "exit-car",
+      });
       const decoded = decodeURIComponent(result);
       expect(decoded).toContain("exit-car");
       expect(decoded).toContain("EXIT");
     });
 
     it("should generate state-specific icon for enter-exit-tow with reset-to-pits state", () => {
-      const result = generateCarControlSvg({ control: "enter-exit-tow" }, { enterExitTowState: "reset-to-pits" });
+      const result = generateCarControlSvg(CarControlSettings.parse({ control: "enter-exit-tow" }), {
+        enterExitTowState: "reset-to-pits",
+      });
       const decoded = decodeURIComponent(result);
       expect(decoded).toContain("reset-to-pits");
       expect(decoded).toContain("RESET");
     });
 
     it("should generate state-specific icon for enter-exit-tow with tow state", () => {
-      const result = generateCarControlSvg({ control: "enter-exit-tow" }, { enterExitTowState: "tow" });
+      const result = generateCarControlSvg(CarControlSettings.parse({ control: "enter-exit-tow" }), {
+        enterExitTowState: "tow",
+      });
       const decoded = decodeURIComponent(result);
       expect(decoded).toContain("tow");
       expect(decoded).toContain("TOW");
     });
 
     it("should default to enter-car when no telemetry state for enter-exit-tow", () => {
-      const result = generateCarControlSvg({ control: "enter-exit-tow" });
+      const result = generateCarControlSvg(CarControlSettings.parse({ control: "enter-exit-tow" }));
       const decoded = decodeURIComponent(result);
       expect(decoded).toContain("enter-car");
       expect(decoded).toContain("DRIVE");
@@ -1413,7 +1446,9 @@ describe("CarControl", () => {
 
     it("should produce different icons for each enter-exit-tow state", () => {
       const states = ["enter-car", "exit-car", "reset-to-pits", "tow"] as const;
-      const results = states.map((s) => generateCarControlSvg({ control: "enter-exit-tow" }, { enterExitTowState: s }));
+      const results = states.map((s) =>
+        generateCarControlSvg(CarControlSettings.parse({ control: "enter-exit-tow" }), { enterExitTowState: s }),
+      );
       const unique = new Set(results);
       expect(unique.size).toBe(4);
     });
@@ -1421,10 +1456,10 @@ describe("CarControl", () => {
 
   describe("generateCarControlSvg session-context appearance (issue #632)", () => {
     it("should render green background, steering wheel, and TEST label for test context", () => {
-      const result = generateCarControlSvg(
-        { control: "enter-exit-tow" },
-        { enterExitTowState: "enter-car", sessionContext: "test" },
-      );
+      const result = generateCarControlSvg(CarControlSettings.parse({ control: "enter-exit-tow" }), {
+        enterExitTowState: "enter-car",
+        sessionContext: "test",
+      });
       const decoded = decodeURIComponent(result);
       expect(decoded).toContain('bg="#0fa30f"');
       expect(decoded).toContain("enter-car");
@@ -1432,10 +1467,10 @@ describe("CarControl", () => {
     });
 
     it("should render blue background, steering wheel, and PRACTICE label for practice context", () => {
-      const result = generateCarControlSvg(
-        { control: "enter-exit-tow" },
-        { enterExitTowState: "enter-car", sessionContext: "practice" },
-      );
+      const result = generateCarControlSvg(CarControlSettings.parse({ control: "enter-exit-tow" }), {
+        enterExitTowState: "enter-car",
+        sessionContext: "practice",
+      });
       const decoded = decodeURIComponent(result);
       expect(decoded).toContain('bg="#1f5fd6"');
       expect(decoded).toContain("enter-car");
@@ -1443,10 +1478,10 @@ describe("CarControl", () => {
     });
 
     it("should render purple background, lightning icon, and QUALIFY label for qualify context", () => {
-      const result = generateCarControlSvg(
-        { control: "enter-exit-tow" },
-        { enterExitTowState: "enter-car", sessionContext: "qualify" },
-      );
+      const result = generateCarControlSvg(CarControlSettings.parse({ control: "enter-exit-tow" }), {
+        enterExitTowState: "enter-car",
+        sessionContext: "qualify",
+      });
       const decoded = decodeURIComponent(result);
       expect(decoded).toContain('bg="#9013f5"');
       expect(decoded).toContain("session-qualify");
@@ -1454,10 +1489,10 @@ describe("CarControl", () => {
     });
 
     it("should render green background, car icon, and GRID label for grid context", () => {
-      const result = generateCarControlSvg(
-        { control: "enter-exit-tow" },
-        { enterExitTowState: "enter-car", sessionContext: "grid" },
-      );
+      const result = generateCarControlSvg(CarControlSettings.parse({ control: "enter-exit-tow" }), {
+        enterExitTowState: "enter-car",
+        sessionContext: "grid",
+      });
       const decoded = decodeURIComponent(result);
       expect(decoded).toContain('bg="#0fa30f"');
       expect(decoded).toContain("session-grid");
@@ -1465,10 +1500,10 @@ describe("CarControl", () => {
     });
 
     it("should render green background, flag icon, and RACE label for race context", () => {
-      const result = generateCarControlSvg(
-        { control: "enter-exit-tow" },
-        { enterExitTowState: "enter-car", sessionContext: "race" },
-      );
+      const result = generateCarControlSvg(CarControlSettings.parse({ control: "enter-exit-tow" }), {
+        enterExitTowState: "enter-car",
+        sessionContext: "race",
+      });
       const decoded = decodeURIComponent(result);
       expect(decoded).toContain('bg="#0fa30f"');
       expect(decoded).toContain("session-race");
@@ -1476,10 +1511,10 @@ describe("CarControl", () => {
     });
 
     it("should keep the legacy DRIVE appearance for unknown context", () => {
-      const result = generateCarControlSvg(
-        { control: "enter-exit-tow" },
-        { enterExitTowState: "enter-car", sessionContext: "unknown" },
-      );
+      const result = generateCarControlSvg(CarControlSettings.parse({ control: "enter-exit-tow" }), {
+        enterExitTowState: "enter-car",
+        sessionContext: "unknown",
+      });
       const decoded = decodeURIComponent(result);
       expect(decoded).not.toContain("bg=");
       expect(decoded).toContain("enter-car");
@@ -1487,14 +1522,18 @@ describe("CarControl", () => {
     });
 
     it("should keep the legacy DRIVE appearance when sessionContext is not provided", () => {
-      const result = generateCarControlSvg({ control: "enter-exit-tow" }, { enterExitTowState: "enter-car" });
+      const result = generateCarControlSvg(CarControlSettings.parse({ control: "enter-exit-tow" }), {
+        enterExitTowState: "enter-car",
+      });
       const decoded = decodeURIComponent(result);
       expect(decoded).not.toContain("bg=");
       expect(decoded).toContain("DRIVE");
     });
 
     it("should render red background for exit-car state", () => {
-      const result = generateCarControlSvg({ control: "enter-exit-tow" }, { enterExitTowState: "exit-car" });
+      const result = generateCarControlSvg(CarControlSettings.parse({ control: "enter-exit-tow" }), {
+        enterExitTowState: "exit-car",
+      });
       const decoded = decodeURIComponent(result);
       expect(decoded).toContain('bg="#ff0000"');
       expect(decoded).toContain("exit-car");
@@ -1502,7 +1541,9 @@ describe("CarControl", () => {
     });
 
     it("should render red background for reset-to-pits state", () => {
-      const result = generateCarControlSvg({ control: "enter-exit-tow" }, { enterExitTowState: "reset-to-pits" });
+      const result = generateCarControlSvg(CarControlSettings.parse({ control: "enter-exit-tow" }), {
+        enterExitTowState: "reset-to-pits",
+      });
       const decoded = decodeURIComponent(result);
       expect(decoded).toContain('bg="#ff0000"');
       expect(decoded).toContain("reset-to-pits");
@@ -1510,7 +1551,9 @@ describe("CarControl", () => {
     });
 
     it("should render red background for tow state", () => {
-      const result = generateCarControlSvg({ control: "enter-exit-tow" }, { enterExitTowState: "tow" });
+      const result = generateCarControlSvg(CarControlSettings.parse({ control: "enter-exit-tow" }), {
+        enterExitTowState: "tow",
+      });
       const decoded = decodeURIComponent(result);
       expect(decoded).toContain('bg="#ff0000"');
       expect(decoded).toContain("tow");
@@ -1518,10 +1561,10 @@ describe("CarControl", () => {
     });
 
     it("should ignore session context for in-car states (red background wins)", () => {
-      const result = generateCarControlSvg(
-        { control: "enter-exit-tow" },
-        { enterExitTowState: "tow", sessionContext: "race" },
-      );
+      const result = generateCarControlSvg(CarControlSettings.parse({ control: "enter-exit-tow" }), {
+        enterExitTowState: "tow",
+        sessionContext: "race",
+      });
       const decoded = decodeURIComponent(result);
       expect(decoded).toContain('bg="#ff0000"');
       expect(decoded).toContain("TOW");
@@ -1530,7 +1573,10 @@ describe("CarControl", () => {
     it("should produce different icons for different session contexts", () => {
       const contexts = ["test", "practice", "qualify", "grid", "race"] as const;
       const results = contexts.map((sessionContext) =>
-        generateCarControlSvg({ control: "enter-exit-tow" }, { enterExitTowState: "enter-car", sessionContext }),
+        generateCarControlSvg(CarControlSettings.parse({ control: "enter-exit-tow" }), {
+          enterExitTowState: "enter-car",
+          sessionContext,
+        }),
       );
       const unique = new Set(results);
       expect(unique.size).toBe(contexts.length);
@@ -1542,10 +1588,10 @@ describe("CarControl", () => {
       const { resolveIconColors } = await import("@iracedeck/deck-core");
       vi.mocked(resolveIconColors).mockReturnValueOnce({ backgroundColor: "#123456" });
 
-      const result = generateCarControlSvg(
-        { control: "enter-exit-tow" },
-        { enterExitTowState: "enter-car", sessionContext: "race" },
-      );
+      const result = generateCarControlSvg(CarControlSettings.parse({ control: "enter-exit-tow" }), {
+        enterExitTowState: "enter-car",
+        sessionContext: "race",
+      });
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain('bg="#0fa30f"');
@@ -1556,7 +1602,9 @@ describe("CarControl", () => {
       const { resolveIconColors } = await import("@iracedeck/deck-core");
       vi.mocked(resolveIconColors).mockReturnValueOnce({ backgroundColor: "#123456" });
 
-      const result = generateCarControlSvg({ control: "enter-exit-tow" }, { enterExitTowState: "tow" });
+      const result = generateCarControlSvg(CarControlSettings.parse({ control: "enter-exit-tow" }), {
+        enterExitTowState: "tow",
+      });
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain('bg="#ff0000"');
