@@ -10414,7 +10414,9 @@
             "We're estimating that we have about 10 laps of fuel left after completing this lap."
           ],
           "takes": 1,
-          "usedBy": [],
+          "usedBy": [
+            "pit-crew.fuel-laps-left-10"
+          ],
           "viaVar": [],
           "playedBy": null
         },
@@ -23179,7 +23181,9 @@
             "Ten seconds to race start."
           ],
           "takes": 1,
-          "usedBy": [],
+          "usedBy": [
+            "pit-crew.start-light-countdown-10"
+          ],
           "viaVar": [],
           "playedBy": null
         },
@@ -23189,7 +23193,9 @@
             "Thirty seconds to race start."
           ],
           "takes": 1,
-          "usedBy": [],
+          "usedBy": [
+            "pit-crew.start-light-countdown-30"
+          ],
           "viaVar": [],
           "playedBy": null
         },
@@ -23199,7 +23205,9 @@
             "Sixty seconds to race start."
           ],
           "takes": 1,
-          "usedBy": [],
+          "usedBy": [
+            "pit-crew.start-light-countdown-60"
+          ],
           "viaVar": [],
           "playedBy": null
         },
@@ -23209,7 +23217,9 @@
             "Ninety seconds to race start."
           ],
           "takes": 1,
-          "usedBy": [],
+          "usedBy": [
+            "pit-crew.start-light-countdown-90"
+          ],
           "viaVar": [],
           "playedBy": null
         },

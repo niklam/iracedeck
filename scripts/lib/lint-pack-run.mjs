@@ -13,7 +13,7 @@
 // pack is clean, 1 when it has problems, 2 when the tool could not run — no
 // argument, a path that is not a directory, or a missing dist (`pnpm build`
 // first; the loader names the fix).
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 
 import { BUNDLED_VOICE, registerCatalogEngine } from "./catalog-engine.mjs";
@@ -196,6 +196,20 @@ export function createLintPackFileSystem() {
  * }} [io]
  * @returns {Promise<number>} The exit code.
  */
+/**
+ * Whether `resolved` is a directory we can stat — `false` for a path that is
+ * missing, not a directory, or gone/unreadable between the check and the
+ * stat, so every one of those exits with the usage status instead of an
+ * unhandled rejection.
+ */
+function isDirectory(resolved) {
+  try {
+    return statSync(resolved).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
 export async function runLintPack(argv, io = {}) {
   const log = io.log ?? ((line) => console.log(line));
   const error = io.error ?? ((line) => console.error(line));
@@ -211,7 +225,7 @@ export async function runLintPack(argv, io = {}) {
 
   const resolved = path.resolve(packDir);
 
-  if (!existsSync(resolved) || !statSync(resolved).isDirectory()) {
+  if (!isDirectory(resolved)) {
     error(`${resolved} is not a directory`);
     error(USAGE);
 

@@ -141,6 +141,9 @@ const GROUPS: PackReferenceInput["groups"] = {
     { name: "points-2", text: "Two points." },
   ],
   spotter: [{ name: "car-left-01", text: "Car left." }],
+  // A base whose NAME ends in two digits, with a real take behind it: the
+  // `-10` is not a take suffix, and a reference to it must not be stripped.
+  fuel: [{ name: "laps-left-10-01", text: "Ten laps of fuel." }],
   "pit-readback": [{ name: "fuel-on-01", text: "Fuel is on." }],
   units: [{ name: "km", text: "kilometers per hour" }],
   openers: [{ name: "alright", text: "Alright" }],
@@ -152,6 +155,7 @@ const MANIFEST_CLIPS: readonly string[] = [
   "voice/default/units/km.mp3",
   "voice/default/spotter/car-left-01.mp3",
   "voice/default/pit-readback/fuel-on-01.mp3",
+  "voice/default/fuel/laps-left-10-01.mp3",
   "voice/default/orphan-group/lonely-01.mp3",
   "voice/default/openers/alright.mp3",
   "voice/default/incidents/points-2.mp3",
@@ -247,6 +251,7 @@ describe("buildPackReference", () => {
     expect(ref.vocabulary.conds.map((c) => c.name)).toEqual(["readback.fuelQueued", "session.isRace"]);
     expect(ref.recordingScript.map((g) => g.group)).toEqual([
       "flags",
+      "fuel",
       "incidents",
       "names",
       "openers",
@@ -357,7 +362,7 @@ describe("buildPackReference", () => {
     });
     // Another voice's clips and the shared sfx are not this voice's lines.
     expect(ref.recordingScript.some((g) => g.group === "sfx")).toBe(false);
-    expect(ref.recordingScript.flatMap((g) => g.lines).reduce((n, l) => n + l.takes, 0)).toBe(14);
+    expect(ref.recordingScript.flatMap((g) => g.lines).reduce((n, l) => n + l.takes, 0)).toBe(15);
   });
 
   it("orders texts by shipped take — a bare take first, then -01, -02, … — whatever order the config or the manifest lists them in, and only for takes that ship", () => {
@@ -518,6 +523,24 @@ describe("buildPackReference", () => {
 
     expect(ref.callouts.find((c) => c.id === "pit-crew.flag-green")?.references.pools).toEqual(["flags/green-01"]);
     expect(lineOf(ref, "flags", "green").usedBy).toEqual(["pit-crew.flag-green"]);
+  });
+
+  // The converse trap: `fuel/laps-left-10` and `start-lights/countdown-90` are
+  // BASES whose names end in two digits (their takes are `laps-left-10-01`), so
+  // a reference to one keys that line as written — stripping first would send
+  // it to a `laps-left` line that does not exist and lose the consumer.
+  it("keeps a two-digit-numbered base as the line key when such a line exists", () => {
+    const ref = buildPackReference(
+      input({
+        script: {
+          ...SCRIPT,
+          scenarios: { ...SCRIPT.scenarios, "pit-crew.flag-green": { sequence: ["pool:fuel/laps-left-10"] } },
+        },
+      }),
+    );
+
+    expect(lineOf(ref, "fuel", "laps-left-10").usedBy).toEqual(["pit-crew.flag-green"]);
+    expect(lineOf(ref, "fuel", "laps-left-10").texts).toEqual(["Ten laps of fuel."]);
   });
 
   // The plugin plays a few clips by path outside any script (the radio check,

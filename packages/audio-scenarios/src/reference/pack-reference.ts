@@ -458,15 +458,24 @@ function takeOrder(name: string): number {
 }
 
 /**
- * A pool reference as a recording-line key: `group/base-01` — a legal step
- * naming one take — lands on the line of its base, the way a literal clip's
- * take does in `walkEntry`. An alias the script never defined has no slash
- * and is left as written; it keys no line.
+ * A pool reference as a recording-line key. A reference is normally a base
+ * (`fuel/laps-left-10`, `start-lights/countdown-90`) and keys that line as
+ * written — a trailing `-NN` is part of the NAME whenever a line carries it.
+ * Only a reference that keys no line and strips to one (`flags/green-01`, a
+ * legal step naming one take) lands on the line of its base, the way a
+ * literal clip's take does in `walkEntry`. Stripping first would send
+ * `laps-left-10` to a `laps-left` line that does not exist and lose the
+ * consumer. An alias the script never defined has no slash and is left as
+ * written; it keys no line.
  */
-function lineKeyOf(pool: string): string {
+function lineKeyOf(pool: string, lineKeys: ReadonlySet<string>): string {
   const slash = pool.indexOf("/");
 
-  return slash < 0 ? pool : `${pool.slice(0, slash + 1)}${stripTakeSuffix(pool.slice(slash + 1))}`;
+  if (slash < 0 || lineKeys.has(pool)) return pool;
+
+  const stripped = `${pool.slice(0, slash + 1)}${stripTakeSuffix(pool.slice(slash + 1))}`;
+
+  return lineKeys.has(stripped) ? stripped : pool;
 }
 
 function buildRecordingScript(
@@ -506,10 +515,14 @@ function buildRecordingScript(
   }
 
   // Direct consumers: the callouts whose entries draw from a base by pool or by literal clip.
+  const lineKeys = new Set<string>();
+
+  for (const [group, bases] of takesByGroup) for (const base of bases.keys()) lineKeys.add(`${group}/${base}`);
+
   const directUsers = new Map<string, Set<string>>();
 
   for (const [id, { references, clipBases }] of walks) {
-    for (const key of [...references.pools.map(lineKeyOf), ...clipBases]) {
+    for (const key of [...references.pools.map((pool) => lineKeyOf(pool, lineKeys)), ...clipBases]) {
       let ids = directUsers.get(key);
 
       if (!ids) {
