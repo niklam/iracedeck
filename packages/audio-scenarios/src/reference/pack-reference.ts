@@ -319,7 +319,12 @@ export function descriptionNamesGroup(description: string, group: string): boole
 /** What one entry references, its included fragments walked, plus the voice clips it plays by literal path. */
 type EntryWalk = {
   references: CalloutReferences;
-  /** `group/base` of every literal `voice/<voice>/<group>/<name>.mp3` step, the take suffix stripped. */
+  /**
+   * `group/name` of every literal `voice/<voice>/<group>/<name>.mp3` step, AS
+   * WRITTEN — the line it lands on is resolved with `lineKeyOf` against the
+   * recording lines, exact name first, so `laps-left-10.mp3` and
+   * `green-01.mp3` each reach the right line.
+   */
   clipBases: ReadonlySet<string>;
 };
 
@@ -375,7 +380,7 @@ function walkEntry(script: CalloutScript, entry: CalloutScriptEntry): EntryWalk 
     for (const clip of collectLiteralClips(steps)) {
       const match = VOICE_CLIP_PATH.exec(clip);
 
-      if (match) clipBases.add(`${match[1]}/${stripTakeSuffix(match[2])}`);
+      if (match) clipBases.add(`${match[1]}/${match[2]}`);
     }
   }
 
@@ -522,7 +527,7 @@ function buildRecordingScript(
   const directUsers = new Map<string, Set<string>>();
 
   for (const [id, { references, clipBases }] of walks) {
-    for (const key of [...references.pools.map((pool) => lineKeyOf(pool, lineKeys)), ...clipBases]) {
+    for (const key of [...references.pools, ...clipBases].map((ref) => lineKeyOf(ref, lineKeys))) {
       let ids = directUsers.get(key);
 
       if (!ids) {

@@ -183,7 +183,7 @@ A problem at the document's root — the file is not JSON, or not an object — 
 
 ## What happens when the script is compiled
 
-A script that passes the schema is compiled against the callouts, variables, conditions, cases and frames this version of iRaceDeck knows, once per voice, whenever packs are scanned. The compiler never throws and never half-plays anything; a mistake costs exactly the entry that made it.
+A script that passes the schema is compiled against the callouts, variables, conditions, cases and frames this version of iRaceDeck knows, once per voice, whenever packs are scanned. The compiler never throws and never half-plays anything. A mistake inside an entry costs that entry; a frame that fails to compile costs every entry that uses it, and a fragment that fails to compile costs every entry that includes it.
 
 - An entry that names something the engine does not know — an unknown variable, condition, case, case key, pool alias, fragment or frame — is skipped, with one warning in the log naming the reference: `Voice "my-voice": scenario "pit-crew.flag-green" skipped — unknown var "lapTime.minutes"`. The callout is silent in that voice until the entry is fixed.
 - An entry for an id this version has no callout for is skipped with the reason `no contract`; a `skip: true` entry is never warned about, whatever its id.

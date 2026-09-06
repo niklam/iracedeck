@@ -543,6 +543,26 @@ describe("buildPackReference", () => {
     expect(lineOf(ref, "fuel", "laps-left-10").texts).toEqual(["Ten laps of fuel."]);
   });
 
+  // The same two rules for a LITERAL clip: its take lands on the base's line,
+  // and a name ending in two digits is kept when that is the line's name.
+  it("resolves a literal clip path to its line the same way — take to base, numbered base kept", () => {
+    const ref = buildPackReference(
+      input({
+        script: {
+          ...SCRIPT,
+          scenarios: {
+            ...SCRIPT.scenarios,
+            "pit-crew.flag-green": { sequence: [{ clip: "voice/{voice}/flags/green-02.mp3" }] },
+            "pit-crew.flag-blue": { sequence: [{ clip: "voice/{voice}/fuel/laps-left-10-01.mp3" }] },
+          },
+        },
+      }),
+    );
+
+    expect(lineOf(ref, "flags", "green").usedBy).toEqual(["pit-crew.flag-green"]);
+    expect(lineOf(ref, "fuel", "laps-left-10").usedBy).toEqual(["pit-crew.flag-blue"]);
+  });
+
   // The plugin plays a few clips by path outside any script (the radio check,
   // the driver's name); the artifact says so per LINE, from the runner's list,
   // so the website has nothing to mirror. Exact base first, then a group's
