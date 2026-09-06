@@ -96,7 +96,10 @@ export const CHAT_GLOBAL_KEYS: Record<string, string> = {
   toggle: "chatToggle",
 };
 
-const ChatSettings = CommonSettings.extend({
+/**
+ * @internal Exported for testing
+ */
+export const ChatSettings = CommonSettings.extend({
   mode: z.enum(["send-message", "macro", "reply", "whisper", "toggle", "open-chat", "cancel"]).default("send-message"),
   message: z.string().default(""),
   macroNumber: z.coerce.number().min(1).max(15).default(1),
@@ -105,7 +108,7 @@ const ChatSettings = CommonSettings.extend({
   fontSize: z.coerce.number().min(5).max(36).default(11),
 });
 
-type ChatSettings = z.infer<typeof ChatSettings>;
+export type ChatSettings = z.infer<typeof ChatSettings>;
 
 /**
  * @internal Exported for testing

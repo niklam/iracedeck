@@ -648,7 +648,10 @@ export type CarControlTelemetryState = {
   starterState?: ToggleState;
 };
 
-const CarControlSettings = CommonSettings.extend({
+/**
+ * @internal Exported for testing
+ */
+export const CarControlSettings = CommonSettings.extend({
   control: z
     .enum([
       "pit-speed-limiter",
@@ -677,7 +680,7 @@ const CarControlSettings = CommonSettings.extend({
     .transform((arr) => [...new Set(arr)]),
 });
 
-type CarControlSettings = z.infer<typeof CarControlSettings>;
+export type CarControlSettings = z.infer<typeof CarControlSettings>;
 
 /**
  * @internal Exported for testing

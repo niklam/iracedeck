@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { BLACK_BOX_GLOBAL_KEYS, BlackBoxSelector, generateBlackBoxSelectorSvg } from "./black-box-selector.js";
+import {
+  BLACK_BOX_GLOBAL_KEYS,
+  BlackBoxSelector,
+  BlackBoxSelectorSettings,
+  generateBlackBoxSelectorSvg,
+} from "./black-box-selector.js";
 
 const { mockTapBinding, mockSetActiveBinding } = vi.hoisted(() => ({
   mockTapBinding: vi.fn().mockResolvedValue(undefined),
@@ -176,61 +181,79 @@ describe("BlackBoxSelector", () => {
 
   describe("generateBlackBoxSelectorSvg", () => {
     it("should generate a valid data URI for direct mode with lap-timing", () => {
-      const result = generateBlackBoxSelectorSvg({ mode: "direct", blackBox: "lap-timing" });
+      const result = generateBlackBoxSelectorSvg(
+        BlackBoxSelectorSettings.parse({ mode: "direct", blackBox: "lap-timing" }),
+      );
 
       expect(result).toContain("data:image/svg+xml");
     });
 
     it("should generate valid data URIs for all direct black boxes", () => {
       for (const blackBox of ALL_BLACK_BOXES) {
-        const result = generateBlackBoxSelectorSvg({ mode: "direct", blackBox });
+        const result = generateBlackBoxSelectorSvg(BlackBoxSelectorSettings.parse({ mode: "direct", blackBox }));
 
         expect(result).toContain("data:image/svg+xml");
       }
     });
 
     it("should generate a valid data URI for next cycle mode", () => {
-      const result = generateBlackBoxSelectorSvg({ mode: "next", blackBox: "lap-timing" });
+      const result = generateBlackBoxSelectorSvg(
+        BlackBoxSelectorSettings.parse({ mode: "next", blackBox: "lap-timing" }),
+      );
 
       expect(result).toContain("data:image/svg+xml");
     });
 
     it("should generate a valid data URI for previous cycle mode", () => {
-      const result = generateBlackBoxSelectorSvg({ mode: "previous", blackBox: "lap-timing" });
+      const result = generateBlackBoxSelectorSvg(
+        BlackBoxSelectorSettings.parse({ mode: "previous", blackBox: "lap-timing" }),
+      );
 
       expect(result).toContain("data:image/svg+xml");
     });
 
     it("should produce different icons for different black boxes", () => {
-      const lapTiming = generateBlackBoxSelectorSvg({ mode: "direct", blackBox: "lap-timing" });
-      const fuel = generateBlackBoxSelectorSvg({ mode: "direct", blackBox: "fuel" });
+      const lapTiming = generateBlackBoxSelectorSvg(
+        BlackBoxSelectorSettings.parse({ mode: "direct", blackBox: "lap-timing" }),
+      );
+      const fuel = generateBlackBoxSelectorSvg(BlackBoxSelectorSettings.parse({ mode: "direct", blackBox: "fuel" }));
 
       expect(lapTiming).not.toBe(fuel);
     });
 
     it("should produce different icons for next vs previous cycle mode", () => {
-      const next = generateBlackBoxSelectorSvg({ mode: "next", blackBox: "lap-timing" });
-      const previous = generateBlackBoxSelectorSvg({ mode: "previous", blackBox: "lap-timing" });
+      const next = generateBlackBoxSelectorSvg(
+        BlackBoxSelectorSettings.parse({ mode: "next", blackBox: "lap-timing" }),
+      );
+      const previous = generateBlackBoxSelectorSvg(
+        BlackBoxSelectorSettings.parse({ mode: "previous", blackBox: "lap-timing" }),
+      );
 
       expect(next).not.toBe(previous);
     });
 
     it("should include correct labels for direct lap-timing", () => {
-      const result = generateBlackBoxSelectorSvg({ mode: "direct", blackBox: "lap-timing" });
+      const result = generateBlackBoxSelectorSvg(
+        BlackBoxSelectorSettings.parse({ mode: "direct", blackBox: "lap-timing" }),
+      );
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("LAP TIMING");
     });
 
     it("should include NEXT label for next cycle mode", () => {
-      const result = generateBlackBoxSelectorSvg({ mode: "next", blackBox: "lap-timing" });
+      const result = generateBlackBoxSelectorSvg(
+        BlackBoxSelectorSettings.parse({ mode: "next", blackBox: "lap-timing" }),
+      );
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("NEXT");
     });
 
     it("should include PREVIOUS label for previous cycle mode", () => {
-      const result = generateBlackBoxSelectorSvg({ mode: "previous", blackBox: "lap-timing" });
+      const result = generateBlackBoxSelectorSvg(
+        BlackBoxSelectorSettings.parse({ mode: "previous", blackBox: "lap-timing" }),
+      );
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("PREVIOUS");
@@ -252,7 +275,9 @@ describe("BlackBoxSelector", () => {
       };
 
       for (const [blackBox, titleText] of Object.entries(expectedTitleText)) {
-        const result = generateBlackBoxSelectorSvg({ mode: "direct", blackBox: blackBox as any });
+        const result = generateBlackBoxSelectorSvg(
+          BlackBoxSelectorSettings.parse({ mode: "direct", blackBox: blackBox }),
+        );
         const decoded = decodeURIComponent(result);
 
         expect(decoded).toContain(titleText);

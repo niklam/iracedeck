@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { generateLookDirectionSvg, LOOK_DIRECTION_GLOBAL_KEYS, LookDirection } from "./look-direction.js";
+import {
+  generateLookDirectionSvg,
+  LOOK_DIRECTION_GLOBAL_KEYS,
+  LookDirection,
+  LookDirectionSettings,
+} from "./look-direction.js";
 
 const { mockHoldBinding, mockReleaseBinding } = vi.hoisted(() => ({
   mockHoldBinding: vi.fn().mockResolvedValue(undefined),
@@ -143,13 +148,13 @@ describe("LookDirection", () => {
 
   describe("generateLookDirectionSvg", () => {
     it("should generate a valid data URI for look-left", () => {
-      const result = generateLookDirectionSvg({ direction: "look-left" });
+      const result = generateLookDirectionSvg(LookDirectionSettings.parse({ direction: "look-left" }));
 
       expect(result).toContain("data:image/svg+xml");
     });
 
     it("should generate a valid data URI for look-right", () => {
-      const result = generateLookDirectionSvg({ direction: "look-right" });
+      const result = generateLookDirectionSvg(LookDirectionSettings.parse({ direction: "look-right" }));
 
       expect(result).toContain("data:image/svg+xml");
     });
@@ -158,14 +163,14 @@ describe("LookDirection", () => {
       const directions = ["look-left", "look-right", "look-up", "look-down"] as const;
 
       for (const direction of directions) {
-        const result = generateLookDirectionSvg({ direction });
+        const result = generateLookDirectionSvg(LookDirectionSettings.parse({ direction }));
         expect(result).toContain("data:image/svg+xml");
       }
     });
 
     it("should produce different icons for different directions", () => {
-      const left = generateLookDirectionSvg({ direction: "look-left" });
-      const right = generateLookDirectionSvg({ direction: "look-right" });
+      const left = generateLookDirectionSvg(LookDirectionSettings.parse({ direction: "look-left" }));
+      const right = generateLookDirectionSvg(LookDirectionSettings.parse({ direction: "look-right" }));
 
       expect(left).not.toBe(right);
     });
@@ -174,7 +179,7 @@ describe("LookDirection", () => {
       const directions = ["look-left", "look-right", "look-up", "look-down"] as const;
 
       for (const direction of directions) {
-        const result = generateLookDirectionSvg({ direction });
+        const result = generateLookDirectionSvg(LookDirectionSettings.parse({ direction }));
         expect(decodeURIComponent(result)).toContain("LOOK");
       }
     });
@@ -188,7 +193,7 @@ describe("LookDirection", () => {
       };
 
       for (const [direction, labels] of Object.entries(expectedLabels)) {
-        const result = generateLookDirectionSvg({ direction: direction as any });
+        const result = generateLookDirectionSvg(LookDirectionSettings.parse({ direction: direction }));
         const decoded = decodeURIComponent(result);
 
         expect(decoded).toContain(labels.mainLabel);

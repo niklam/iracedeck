@@ -62,7 +62,10 @@ const TireCode = z.enum(["lf", "rf", "lr", "rr"]);
 /** Version threshold: instances added before this default to "toggle" mode */
 const TOGGLE_MODE_INTRODUCED = "1.13.0";
 
-const TireServiceSettings = CommonSettings.extend({
+/**
+ * @internal Exported for testing
+ */
+export const TireServiceSettings = CommonSettings.extend({
   mode: z.enum(["change-all-tires", "clear-tires", "toggle-tires", "change-compound"]).default("change-all-tires"),
   toggleMode: z.enum(["select", "toggle"]).optional(),
   tires: z
@@ -76,7 +79,7 @@ const TireServiceSettings = CommonSettings.extend({
   rr: z.coerce.boolean().optional(),
 });
 
-type TireServiceSettings = z.infer<typeof TireServiceSettings>;
+export type TireServiceSettings = z.infer<typeof TireServiceSettings>;
 
 /**
  * @internal Exported for testing

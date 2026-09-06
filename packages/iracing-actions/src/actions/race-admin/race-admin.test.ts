@@ -1,4 +1,9 @@
-import { getGlobalSettings, requestProfileSwitch, updateGlobalSettings } from "@iracedeck/deck-core";
+import {
+  getGlobalSettings,
+  type KeyCombination,
+  requestProfileSwitch,
+  updateGlobalSettings,
+} from "@iracedeck/deck-core";
 import {
   buildTemplateContext,
   classifyCarNumberTarget,
@@ -159,7 +164,7 @@ vi.mock("@iracedeck/icons/race-admin/rc-message.svg", () => ({
 const mockSendMessage = vi.fn(async () => true);
 const mockBeginChat = vi.fn(() => true);
 const mockSetClipboardText = vi.fn(() => true);
-const mockSendKeyCombination = vi.fn(async () => true);
+const mockSendKeyCombination = vi.fn<(combination: KeyCombination) => Promise<boolean>>(async () => true);
 const mockCameraSwitchNum = vi.fn(() => true);
 // Small default open→paste delay so the real-timer tests below resolve quickly.
 // vi.hoisted so the object-returning factory is initialized before the hoisted
@@ -743,11 +748,9 @@ describe("RaceAdmin", () => {
       expect(mockSendKeyCombination).toHaveBeenCalledWith({ key: "v", code: "KeyV", modifiers: ["ctrl"] });
 
       // Crucially: no Enter key sent and no SDK chat.sendMessage call.
-      const enterCalls = mockSendKeyCombination.mock.calls.filter((c) => {
-        const arg = c[0] as { key?: string };
-
-        return arg?.key === "enter" || arg?.key === "Enter";
-      });
+      const enterCalls = mockSendKeyCombination.mock.calls.filter(
+        ([combination]) => combination.key.toLowerCase() === "enter",
+      );
       expect(enterCalls).toHaveLength(0);
       expect(mockSendMessage).not.toHaveBeenCalled();
     });
@@ -1162,7 +1165,7 @@ describe("RaceAdmin", () => {
         const action = new RaceAdmin();
         // A focus-camera dispatch only proceeds past the sessionInfo guard when
         // session info is present — the default mock's getSessionInfo() is null.
-        action.sdkController.getSessionInfo = vi.fn(() => ({}) as never);
+        action["sdkController"].getSessionInfo = vi.fn(() => ({}) as never);
 
         return action;
       }
@@ -1220,8 +1223,8 @@ describe("RaceAdmin", () => {
 
         await action.onWillAppear(makeSelectorAppear("ctx-sel", 1, 0, selectorSettings));
 
-        const telemetryCallback = action["sdkController"].subscribe.mock.calls[0][1];
-        await telemetryCallback({ CamCarIdx: 5 });
+        const telemetryCallback = vi.mocked(action["sdkController"].subscribe).mock.calls[0]![1];
+        await telemetryCallback({ CamCarIdx: 5 }, true);
 
         expect(generateSelectorSvg).toHaveBeenLastCalledWith(
           expect.objectContaining({ carIdx: 5 }),
@@ -1348,20 +1351,23 @@ describe("RaceAdmin", () => {
   describe("RaceAdmin settings migration (useViewedCar → driverTarget)", () => {
     function makeWillAppearEvent(settings: Record<string, unknown>) {
       return {
-        action: { id: "ctx-1", setSettings: vi.fn(async () => {}) },
+        action: {
+          id: "ctx-1",
+          setSettings: vi.fn<(settings: Record<string, unknown>) => Promise<void>>(async () => {}),
+        },
         payload: { settings },
-      } as never;
+      };
     }
 
     it("persists migrated payload (without useViewedCar) when legacy key present", async () => {
       const action = new RaceAdmin();
       const ev = makeWillAppearEvent({ mode: "dq-driver", useViewedCar: false, carNumber: "7" });
 
-      await action.onWillAppear(ev);
+      await action.onWillAppear(ev as never);
 
-      const setSettings = ev.action.setSettings as unknown as ReturnType<typeof vi.fn>;
+      const setSettings = ev.action.setSettings;
       expect(setSettings).toHaveBeenCalledTimes(1);
-      const persisted = setSettings.mock.calls[0]![0] as Record<string, unknown>;
+      const persisted = setSettings.mock.calls[0]![0];
       expect(persisted).toMatchObject({ mode: "dq-driver", driverTarget: "specific", carNumber: "7" });
       expect(persisted.useViewedCar).toBeUndefined();
     });
@@ -1370,9 +1376,9 @@ describe("RaceAdmin", () => {
       const action = new RaceAdmin();
       const ev = makeWillAppearEvent({ mode: "dq-driver", driverTarget: "viewed-car" });
 
-      await action.onWillAppear(ev);
+      await action.onWillAppear(ev as never);
 
-      const setSettings = ev.action.setSettings as unknown as ReturnType<typeof vi.fn>;
+      const setSettings = ev.action.setSettings;
       expect(setSettings).not.toHaveBeenCalled();
     });
 
@@ -1380,10 +1386,10 @@ describe("RaceAdmin", () => {
       const action = new RaceAdmin();
       const ev = makeWillAppearEvent({ mode: "dq-driver", useViewedCar: true });
 
-      await action.onWillAppear(ev);
+      await action.onWillAppear(ev as never);
 
-      const setSettings = ev.action.setSettings as unknown as ReturnType<typeof vi.fn>;
-      const persisted = setSettings.mock.calls[0]![0] as Record<string, unknown>;
+      const setSettings = ev.action.setSettings;
+      const persisted = setSettings.mock.calls[0]![0];
       expect(persisted.driverTarget).toBe("viewed-car");
     });
 
@@ -1395,11 +1401,11 @@ describe("RaceAdmin", () => {
       const action = new RaceAdmin();
       const ev = makeWillAppearEvent({ mode: "dq-driver", addedWithVersion: "1.15.0" });
 
-      await action.onWillAppear(ev);
+      await action.onWillAppear(ev as never);
 
-      const setSettings = ev.action.setSettings as unknown as ReturnType<typeof vi.fn>;
+      const setSettings = ev.action.setSettings;
       expect(setSettings).toHaveBeenCalledTimes(1);
-      const persisted = setSettings.mock.calls[0]![0] as Record<string, unknown>;
+      const persisted = setSettings.mock.calls[0]![0];
       expect(persisted.driverTarget).toBe("viewed-car");
       expect(persisted.useViewedCar).toBeUndefined();
     });
@@ -1412,9 +1418,9 @@ describe("RaceAdmin", () => {
       const action = new RaceAdmin();
       const ev = makeWillAppearEvent({ mode: "yellow" });
 
-      await action.onWillAppear(ev);
+      await action.onWillAppear(ev as never);
 
-      const setSettings = ev.action.setSettings as unknown as ReturnType<typeof vi.fn>;
+      const setSettings = ev.action.setSettings;
       expect(setSettings).not.toHaveBeenCalled();
     });
   });

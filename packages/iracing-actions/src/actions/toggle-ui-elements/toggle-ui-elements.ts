@@ -88,7 +88,10 @@ export const UI_ELEMENT_GLOBAL_KEYS: Record<string, string> = {
   "display-ref-car": "toggleUiDisplayRefCar",
 };
 
-const ToggleUiElementsSettings = CommonSettings.extend({
+/**
+ * @internal Exported for testing
+ */
+export const ToggleUiElementsSettings = CommonSettings.extend({
   element: z
     .enum([
       "dash-box",
@@ -105,7 +108,7 @@ const ToggleUiElementsSettings = CommonSettings.extend({
     .default("dash-box"),
 });
 
-type ToggleUiElementsSettings = z.infer<typeof ToggleUiElementsSettings>;
+export type ToggleUiElementsSettings = z.infer<typeof ToggleUiElementsSettings>;
 
 /**
  * @internal Exported for testing

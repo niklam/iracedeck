@@ -189,11 +189,14 @@ export const CAMERA_EDITOR_CONTROLS_GLOBAL_KEYS: Record<ControlType, string> = {
   "load-car-camera": "camCtrlLoadCarCamera",
 };
 
-const CameraEditorControlsSettings = CommonSettings.extend({
+/**
+ * @internal Exported for testing
+ */
+export const CameraEditorControlsSettings = CommonSettings.extend({
   control: z.enum(CONTROL_VALUES).default("open-camera-tool"),
 });
 
-type CameraEditorControlsSettings = z.infer<typeof CameraEditorControlsSettings>;
+export type CameraEditorControlsSettings = z.infer<typeof CameraEditorControlsSettings>;
 
 /**
  * @internal Exported for testing

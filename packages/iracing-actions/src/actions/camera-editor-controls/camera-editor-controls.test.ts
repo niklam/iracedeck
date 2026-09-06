@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { CAMERA_EDITOR_CONTROLS_GLOBAL_KEYS, generateCameraEditorControlsSvg } from "./camera-editor-controls.js";
+import {
+  CAMERA_EDITOR_CONTROLS_GLOBAL_KEYS,
+  CameraEditorControlsSettings,
+  generateCameraEditorControlsSvg,
+} from "./camera-editor-controls.js";
 
 vi.mock("@iracedeck/icons/camera-editor-controls/open-camera-tool.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
@@ -248,28 +252,36 @@ describe("CameraEditorControls", () => {
 
   describe("generateCameraEditorControlsSvg", () => {
     it("should generate a valid data URI for open-camera-tool", () => {
-      const result = generateCameraEditorControlsSvg({ control: "open-camera-tool" });
+      const result = generateCameraEditorControlsSvg(
+        CameraEditorControlsSettings.parse({ control: "open-camera-tool" }),
+      );
 
       expect(result).toContain("data:image/svg+xml");
     });
 
     it("should generate valid data URIs for all 30 controls", () => {
       for (const control of ALL_CONTROLS) {
-        const result = generateCameraEditorControlsSvg({ control });
+        const result = generateCameraEditorControlsSvg(CameraEditorControlsSettings.parse({ control }));
 
         expect(result).toContain("data:image/svg+xml");
       }
     });
 
     it("should produce different icons for different controls", () => {
-      const openTool = generateCameraEditorControlsSvg({ control: "open-camera-tool" });
-      const insertCamera = generateCameraEditorControlsSvg({ control: "insert-camera" });
+      const openTool = generateCameraEditorControlsSvg(
+        CameraEditorControlsSettings.parse({ control: "open-camera-tool" }),
+      );
+      const insertCamera = generateCameraEditorControlsSvg(
+        CameraEditorControlsSettings.parse({ control: "insert-camera" }),
+      );
 
       expect(openTool).not.toBe(insertCamera);
     });
 
     it("should include correct labels for open-camera-tool", () => {
-      const result = generateCameraEditorControlsSvg({ control: "open-camera-tool" });
+      const result = generateCameraEditorControlsSvg(
+        CameraEditorControlsSettings.parse({ control: "open-camera-tool" }),
+      );
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("OPEN");
@@ -277,7 +289,7 @@ describe("CameraEditorControls", () => {
     });
 
     it("should include correct labels for insert-camera", () => {
-      const result = generateCameraEditorControlsSvg({ control: "insert-camera" });
+      const result = generateCameraEditorControlsSvg(CameraEditorControlsSettings.parse({ control: "insert-camera" }));
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("INSERT");
@@ -319,9 +331,11 @@ describe("CameraEditorControls", () => {
       };
 
       for (const [control, labels] of Object.entries(expectedLabels)) {
-        const result = generateCameraEditorControlsSvg({
-          control: control as (typeof ALL_CONTROLS)[number],
-        });
+        const result = generateCameraEditorControlsSvg(
+          CameraEditorControlsSettings.parse({
+            control: control as (typeof ALL_CONTROLS)[number],
+          }),
+        );
         const decoded = decodeURIComponent(result);
 
         expect(decoded).toContain(labels.mainLabel);

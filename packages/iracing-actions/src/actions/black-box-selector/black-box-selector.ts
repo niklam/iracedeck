@@ -82,7 +82,10 @@ const BLACK_BOX_TITLE_TEXT: Record<string, string> = {
  */
 export { BLACK_BOX_GLOBAL_KEYS };
 
-const BlackBoxSelectorSettings = CommonSettings.extend({
+/**
+ * @internal Exported for testing
+ */
+export const BlackBoxSelectorSettings = CommonSettings.extend({
   mode: z.enum(["direct", "next", "previous"]).default("direct"),
   blackBox: z
     .enum([
@@ -105,7 +108,7 @@ const BlackBoxSelectorSettings = CommonSettings.extend({
   dial: DialSettings.catch(() => DialSettings.parse({})),
 });
 
-type BlackBoxSelectorSettings = z.infer<typeof BlackBoxSelectorSettings>;
+export type BlackBoxSelectorSettings = z.infer<typeof BlackBoxSelectorSettings>;
 
 /**
  * Global settings keys for cycle actions

@@ -30,18 +30,23 @@ const NO_TYPECHECK_SCRIPT = new Map([]);
 // the size of what each is hiding. An exception that states its own magnitude and
 // its own expiry condition is a debt with a maturity date; one that says "excluded,
 // see docs" is where things go to be forgotten.
-const TYPECHECK_EXCLUDES_TESTS = new Map([
-  [
-    "iracing-actions",
-    'tsconfig sets "exclude": ["src/**/*.test.ts"]. Its 84 sources ARE checked (#1078); its 76 ' +
-      "test files are not. Removing the exclusion surfaced 541 errors when measured on 2026-09-01 — " +
-      "386 TS2345 (partial settings literals passed where the full parsed settings type is required) " +
-      "and 70 TS2445 (tests reaching protected members) dominate, across 34 files. Tracked in #1078. " +
-      "NOTE: that count is a dated measurement, not an invariant — the assertion below only checks " +
-      "that SOME test file is still excluded, so nothing here re-verifies the number. It is recorded " +
-      "to size the remaining work, and it is dated so it cannot quietly become false.",
-  ],
-]);
+//
+// It is EMPTY too, and for the same reason the list above stays. #1078 closed its
+// last entry: `iracing-actions` had excluded its 76 test files, hiding 541 errors
+// across 34 of them (measured 2026-09-01, and again unchanged on 2026-09-06 before
+// the fix) — 386 of them partial settings literals handed to functions typed with
+// the full parsed settings, 70 of them tests reaching protected members through
+// the real class type. Every one was in test code; the fix touched no production
+// signature. Two assertions below share the work: the forward one fails a
+// `tsc -p` package the moment its program leaves a test file out, naming this
+// Map as the place to declare what the exclusion hides, and the reverse one is
+// what retired this entry the moment the exclusion went. With both Maps empty
+// the reverse branch is dormant, and the whole guarantee rests on
+// `testFilesOnDisk` finding the files — an empty walk returns early instead of
+// failing — which is why the walker has a smoke test of its own further down.
+// Nothing here re-verifies the 541; it is a dated measurement, kept because it
+// sizes what the gate was missing.
+const TYPECHECK_EXCLUDES_TESTS = new Map([]);
 
 // Resolve a tsconfig the way tsc does, rather than pattern-matching its `exclude`
 // array: `parseJsonConfigFileContent` applies the same include/exclude/files
@@ -432,6 +437,22 @@ describe("every package with TypeScript is covered by pnpm typecheck", () => {
     // It would also go false the day anyone adds a `.ts` under `.github` — if
     // that happens, move it to a fixture rather than deleting the assertion.
     expect(hasTypeScriptSources(join(repoRoot, ".github"))).toBe(false);
+  });
+
+  // The walker's own smoke test (#1078). Once every package checks every test
+  // file, `testFilesOnDisk` is the only thing the per-package assertion still
+  // depends on: its callers return early on an empty result, so a regression
+  // that made it find nothing — a prune name too many, a filter inverted — would
+  // let a test exclusion come back with the suite green. Two plugin packages
+  // legitimately take that early return today, so an empty result raises no
+  // eyebrow on its own. Pin the positive against a package whose tests it must
+  // find, and the pruning against the one directory that would otherwise flood
+  // the result.
+  it("finds a package's test files without descending into what it must skip", () => {
+    const found = testFilesOnDisk(join(repoRoot, "packages", "iracing-actions"));
+    expect(found.length).toBeGreaterThan(0);
+    expect(found).toContain(toPosix(join(repoRoot, "packages", "iracing-actions", "src", "actions", "comms-catalog.test.ts")));
+    expect(found.filter((f) => f.includes("/node_modules/") || f.includes("/dist/") || f.includes("/build/"))).toEqual([]);
   });
 
   it("has no stale allow-list entries", () => {

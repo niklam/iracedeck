@@ -1,4 +1,5 @@
 import { getDualPressDirections } from "@iracedeck/deck-core";
+import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { generateSetupAeroSvg, parseSetupAeroSettings, SETUP_AERO_GLOBAL_KEYS, SetupAero } from "./setup-aero.js";
@@ -217,13 +218,15 @@ describe("SetupAero", () => {
 
   describe("generateSetupAeroSvg", () => {
     it("should generate a valid data URI for rf-brake-attached", () => {
-      const result = generateSetupAeroSvg({ setting: "rf-brake-attached", direction: "increase" });
+      const result = generateSetupAeroSvg(
+        parseSetupAeroSettings({ setting: "rf-brake-attached", direction: "increase" }),
+      );
 
       expect(result).toContain("data:image/svg+xml");
     });
 
     it("should generate a valid data URI for front-wing increase", () => {
-      const result = generateSetupAeroSvg({ setting: "front-wing", direction: "increase" });
+      const result = generateSetupAeroSvg(parseSetupAeroSettings({ setting: "front-wing", direction: "increase" }));
 
       expect(result).toContain("data:image/svg+xml");
     });
@@ -234,35 +237,43 @@ describe("SetupAero", () => {
 
       for (const setting of settings) {
         for (const direction of directions) {
-          const result = generateSetupAeroSvg({ setting, direction });
+          const result = generateSetupAeroSvg(parseSetupAeroSettings({ setting, direction }));
           expect(result).toContain("data:image/svg+xml");
         }
       }
     });
 
     it("should produce different icons for different settings", () => {
-      const frontWing = generateSetupAeroSvg({ setting: "front-wing", direction: "increase" });
-      const rfBrake = generateSetupAeroSvg({ setting: "rf-brake-attached", direction: "increase" });
+      const frontWing = generateSetupAeroSvg(parseSetupAeroSettings({ setting: "front-wing", direction: "increase" }));
+      const rfBrake = generateSetupAeroSvg(
+        parseSetupAeroSettings({ setting: "rf-brake-attached", direction: "increase" }),
+      );
 
       expect(frontWing).not.toBe(rfBrake);
     });
 
     it("should produce different icons for increase vs decrease on directional controls", () => {
-      const increase = generateSetupAeroSvg({ setting: "front-wing", direction: "increase" });
-      const decrease = generateSetupAeroSvg({ setting: "front-wing", direction: "decrease" });
+      const increase = generateSetupAeroSvg(parseSetupAeroSettings({ setting: "front-wing", direction: "increase" }));
+      const decrease = generateSetupAeroSvg(parseSetupAeroSettings({ setting: "front-wing", direction: "decrease" }));
 
       expect(increase).not.toBe(decrease);
     });
 
     it("should produce same icon for non-directional controls regardless of direction", () => {
-      const increase = generateSetupAeroSvg({ setting: "rf-brake-attached", direction: "increase" });
-      const decrease = generateSetupAeroSvg({ setting: "rf-brake-attached", direction: "decrease" });
+      const increase = generateSetupAeroSvg(
+        parseSetupAeroSettings({ setting: "rf-brake-attached", direction: "increase" }),
+      );
+      const decrease = generateSetupAeroSvg(
+        parseSetupAeroSettings({ setting: "rf-brake-attached", direction: "decrease" }),
+      );
 
       expect(increase).toBe(decrease);
     });
 
     it("should include correct labels for rf-brake-attached", () => {
-      const result = generateSetupAeroSvg({ setting: "rf-brake-attached", direction: "increase" });
+      const result = generateSetupAeroSvg(
+        parseSetupAeroSettings({ setting: "rf-brake-attached", direction: "increase" }),
+      );
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("RF BRAKE");
@@ -270,7 +281,7 @@ describe("SetupAero", () => {
     });
 
     it("should include correct labels for front-wing increase", () => {
-      const result = generateSetupAeroSvg({ setting: "front-wing", direction: "increase" });
+      const result = generateSetupAeroSvg(parseSetupAeroSettings({ setting: "front-wing", direction: "increase" }));
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("FRONT WING");
@@ -278,7 +289,7 @@ describe("SetupAero", () => {
     });
 
     it("should include correct labels for front-wing decrease", () => {
-      const result = generateSetupAeroSvg({ setting: "front-wing", direction: "decrease" });
+      const result = generateSetupAeroSvg(parseSetupAeroSettings({ setting: "front-wing", direction: "decrease" }));
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("FRONT WING");
@@ -307,10 +318,12 @@ describe("SetupAero", () => {
 
       for (const [setting, directions] of Object.entries(expectedLabels)) {
         for (const [direction, labels] of Object.entries(directions)) {
-          const result = generateSetupAeroSvg({
-            setting: setting as any,
-            direction: direction as any,
-          });
+          const result = generateSetupAeroSvg(
+            parseSetupAeroSettings({
+              setting: setting,
+              direction: direction,
+            }),
+          );
           const decoded = decodeURIComponent(result);
 
           expect(decoded).toContain(labels.line1);
@@ -378,14 +391,17 @@ describe("SetupAero", () => {
 
     beforeEach(() => {
       action = new SetupAero();
-      (action.sdkController.getCurrentTelemetry as any).mockReturnValue({ dcFrontWing: 4, dcRearWing: 6 });
+      vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue({
+        dcFrontWing: 4,
+        dcRearWing: 6,
+      } as TelemetryData);
     });
 
     it("renders the formatted telemetry value for View Front Wing", async () => {
       const ev = fakeEvent("action-1", { setting: "view-front-wing" }) as any;
       await action.onWillAppear(ev);
-      const calls = (action.setKeyImage as any).mock.calls;
-      const svg = decodeURIComponent(calls[0][1] as string);
+      const [[, image]] = vi.mocked(action["setKeyImage"]).mock.calls;
+      const svg = decodeURIComponent(image as string);
       expect(svg).toContain("4");
     });
 

@@ -1,11 +1,22 @@
+import type { CommDescriptor } from "@iracedeck/deck-core";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import { DIAL_CATEGORIES } from "./audio-controls/audio-controls-settings.js";
-import { COMMS_CATALOG } from "./comms-catalog.js";
+import { type ActionCommMeta, COMMS_CATALOG } from "./comms-catalog.js";
 
 const JSON_PATH = new URL("./data/action-comms.json", import.meta.url);
 const KEY_BINDINGS_PATH = new URL("./data/key-bindings.json", import.meta.url);
+
+/**
+ * `_meta` is a real key of an entry rather than a sibling of it (see
+ * `ActionCommEntry`), so every value read out of one is
+ * `CommDescriptor | ActionCommMeta` and needs narrowing before its descriptor
+ * fields are readable.
+ */
+function isDescriptor(value: CommDescriptor | ActionCommMeta): value is CommDescriptor {
+  return "method" in value;
+}
 
 /** Every global binding key referenced anywhere in the catalog. */
 function catalogBindingKeys(): Set<string> {
@@ -58,6 +69,10 @@ describe("action-comms catalog", () => {
     for (const [action, map] of Object.entries(COMMS_CATALOG)) {
       for (const [mode, descriptor] of Object.entries(map)) {
         if (mode === "_meta") continue;
+
+        if (!isDescriptor(descriptor)) {
+          throw new Error(`${action}.${mode} is not a comm descriptor`);
+        }
 
         expect(["api", "keybind", "chat"], `${action}.${mode}.method`).toContain(descriptor.method);
 

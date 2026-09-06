@@ -60,11 +60,14 @@ export const SPOTTER_TITLES: Record<SpotterControl, string> = {
   silence: "MUTE\nSPOTTER",
 };
 
-const AiSpotterControlsSettings = CommonSettings.extend({
+/**
+ * @internal Exported for testing
+ */
+export const AiSpotterControlsSettings = CommonSettings.extend({
   control: z.enum(SPOTTER_CONTROLS).default("damage-report"),
 });
 
-type AiSpotterControlsSettings = z.infer<typeof AiSpotterControlsSettings>;
+export type AiSpotterControlsSettings = z.infer<typeof AiSpotterControlsSettings>;
 
 /**
  * @internal Exported for testing

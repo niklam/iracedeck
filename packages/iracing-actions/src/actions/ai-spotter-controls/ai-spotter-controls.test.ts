@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   AiSpotterControls,
+  AiSpotterControlsSettings,
   generateAiSpotterControlsSvg,
   SPOTTER_GLOBAL_KEYS,
   SPOTTER_ICONS,
@@ -221,15 +222,15 @@ describe("AiSpotterControls", () => {
       ] as const;
 
       for (const control of controls) {
-        const result = generateAiSpotterControlsSvg({ control });
+        const result = generateAiSpotterControlsSvg(AiSpotterControlsSettings.parse({ control }));
         expect(result).toContain("data:image/svg+xml");
       }
     });
 
     it("should produce different icons for different controls", () => {
-      const damageReport = generateAiSpotterControlsSvg({ control: "damage-report" });
-      const louder = generateAiSpotterControlsSvg({ control: "louder" });
-      const silence = generateAiSpotterControlsSvg({ control: "silence" });
+      const damageReport = generateAiSpotterControlsSvg(AiSpotterControlsSettings.parse({ control: "damage-report" }));
+      const louder = generateAiSpotterControlsSvg(AiSpotterControlsSettings.parse({ control: "louder" }));
+      const silence = generateAiSpotterControlsSvg(AiSpotterControlsSettings.parse({ control: "silence" }));
 
       expect(damageReport).not.toBe(louder);
       expect(damageReport).not.toBe(silence);
@@ -237,7 +238,7 @@ describe("AiSpotterControls", () => {
     });
 
     it("should include correct labels for damage-report", () => {
-      const result = generateAiSpotterControlsSvg({ control: "damage-report" });
+      const result = generateAiSpotterControlsSvg(AiSpotterControlsSettings.parse({ control: "damage-report" }));
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("REPORT");
@@ -245,7 +246,7 @@ describe("AiSpotterControls", () => {
     });
 
     it("should include correct labels for louder", () => {
-      const result = generateAiSpotterControlsSvg({ control: "louder" });
+      const result = generateAiSpotterControlsSvg(AiSpotterControlsSettings.parse({ control: "louder" }));
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("VOL UP");
@@ -253,7 +254,7 @@ describe("AiSpotterControls", () => {
     });
 
     it("should include correct labels for silence", () => {
-      const result = generateAiSpotterControlsSvg({ control: "silence" });
+      const result = generateAiSpotterControlsSvg(AiSpotterControlsSettings.parse({ control: "silence" }));
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("MUTE");
@@ -262,7 +263,7 @@ describe("AiSpotterControls", () => {
 
     it("should include correct labels for all controls", () => {
       for (const [control, titleText] of Object.entries(SPOTTER_TITLES)) {
-        const result = generateAiSpotterControlsSvg({ control: control as any });
+        const result = generateAiSpotterControlsSvg(AiSpotterControlsSettings.parse({ control: control }));
         const decoded = decodeURIComponent(result);
         const lines = titleText.split("\n");
 

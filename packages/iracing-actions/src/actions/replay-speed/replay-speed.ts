@@ -36,11 +36,14 @@ const REPLAY_SPEED_TITLES: Record<SpeedDirection, string> = {
   decrease: "REPLAY\nSLOWER",
 };
 
-const ReplaySpeedSettings = CommonSettings.extend({
+/**
+ * @internal Exported for testing
+ */
+export const ReplaySpeedSettings = CommonSettings.extend({
   direction: z.enum(["increase", "decrease"]).default("increase"),
 });
 
-type ReplaySpeedSettings = z.infer<typeof ReplaySpeedSettings>;
+export type ReplaySpeedSettings = z.infer<typeof ReplaySpeedSettings>;
 
 /**
  * @internal Exported for testing

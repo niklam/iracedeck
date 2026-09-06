@@ -55,11 +55,14 @@ export const LOOK_DIRECTION_GLOBAL_KEYS: Record<LookDirectionType, string> = {
   "look-down": "lookDirectionDown",
 };
 
-const LookDirectionSettings = CommonSettings.extend({
+/**
+ * @internal Exported for testing
+ */
+export const LookDirectionSettings = CommonSettings.extend({
   direction: z.enum(["look-left", "look-right", "look-up", "look-down"]).default("look-left"),
 });
 
-type LookDirectionSettings = z.infer<typeof LookDirectionSettings>;
+export type LookDirectionSettings = z.infer<typeof LookDirectionSettings>;
 
 /**
  * @internal Exported for testing

@@ -46,11 +46,14 @@ const STATIC_ACTION_ICONS: Partial<Record<PitQuickActionType, string>> = {
  */
 const TELEMETRY_AWARE_ACTIONS = new Set<PitQuickActionType>(["windshield-tearoff", "request-fast-repair"]);
 
-const PitQuickActionsSettings = CommonSettings.extend({
+/**
+ * @internal Exported for testing
+ */
+export const PitQuickActionsSettings = CommonSettings.extend({
   mode: z.enum(["clear-all-checkboxes", "windshield-tearoff", "request-fast-repair"]).default("clear-all-checkboxes"),
 });
 
-type PitQuickActionsSettings = z.infer<typeof PitQuickActionsSettings>;
+export type PitQuickActionsSettings = z.infer<typeof PitQuickActionsSettings>;
 
 /**
  * @internal Exported for testing

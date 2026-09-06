@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   Chat,
   CHAT_GLOBAL_KEYS,
+  ChatSettings,
   generateChatSvg,
   generateMacroSvg,
   generateSendMessageSvg,
@@ -187,15 +188,15 @@ function chatSettings(
     keyText: string;
     fontSize: number;
   }> = {},
-) {
-  return {
-    mode: (overrides.mode ?? "send-message") as ChatMode,
+): ChatSettings {
+  return ChatSettings.parse({
+    mode: overrides.mode ?? "send-message",
     message: overrides.message ?? "",
     macroNumber: overrides.macroNumber ?? 1,
     iconColor: overrides.iconColor ?? "#4a90d9",
     keyText: overrides.keyText ?? "",
     fontSize: overrides.fontSize ?? 11,
-  };
+  });
 }
 
 describe("Chat", () => {
@@ -248,14 +249,16 @@ describe("Chat", () => {
     it("should display resolved message in send-message icon when keyText is empty", () => {
       // When resolveSettingsTemplates resolves message, generateChatSvg should
       // show the resolved value (not raw {{...}}) in the chat bubble
-      const result = generateChatSvg({
-        mode: "send-message",
-        message: "Going 95 mph",
-        keyText: "",
-        macroNumber: 1,
-        iconColor: "#4a90d9",
-        fontSize: 11,
-      });
+      const result = generateChatSvg(
+        ChatSettings.parse({
+          mode: "send-message",
+          message: "Going 95 mph",
+          keyText: "",
+          macroNumber: 1,
+          iconColor: "#4a90d9",
+          fontSize: 11,
+        }),
+      );
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("Going 95 mph");
@@ -266,16 +269,14 @@ describe("Chat", () => {
   describe("generateChatSvg", () => {
     const allModes = ["open-chat", "reply", "whisper", "toggle", "cancel", "send-message", "macro"] as const;
 
-    const defaultSettings = { message: "", macroNumber: 1, iconColor: "#4a90d9", keyText: "", fontSize: 11 };
-
     it.each(allModes)("should generate a valid data URI for %s", (mode) => {
-      const result = generateChatSvg({ mode, ...defaultSettings });
+      const result = generateChatSvg(chatSettings({ mode }));
 
       expect(result).toContain("data:image/svg+xml");
     });
 
     it("should produce different icons for different modes", () => {
-      const icons = allModes.map((mode) => generateChatSvg({ mode, ...defaultSettings }));
+      const icons = allModes.map((mode) => generateChatSvg(chatSettings({ mode })));
 
       for (let i = 0; i < icons.length; i++) {
         for (let j = i + 1; j < icons.length; j++) {
@@ -295,7 +296,7 @@ describe("Chat", () => {
       };
 
       for (const [mode, labels] of Object.entries(expectedLabels)) {
-        const result = generateChatSvg({ mode: mode as any, ...defaultSettings });
+        const result = generateChatSvg(chatSettings({ mode: mode as ChatMode }));
         const decoded = decodeURIComponent(result);
 
         expect(decoded).toContain(labels.line1);
@@ -304,14 +305,16 @@ describe("Chat", () => {
     });
 
     it("should render send-message mode with message text inside bubble", () => {
-      const result = generateChatSvg({
-        mode: "send-message",
-        message: "Thank you!",
-        macroNumber: 1,
-        iconColor: "#4a90d9",
-        keyText: "",
-        fontSize: 11,
-      });
+      const result = generateChatSvg(
+        ChatSettings.parse({
+          mode: "send-message",
+          message: "Thank you!",
+          macroNumber: 1,
+          iconColor: "#4a90d9",
+          keyText: "",
+          fontSize: 11,
+        }),
+      );
       const decoded = decodeURIComponent(result);
 
       // Should contain the message text
@@ -322,14 +325,16 @@ describe("Chat", () => {
     });
 
     it("should prefer keyText over message for send-message mode", () => {
-      const result = generateChatSvg({
-        mode: "send-message",
-        message: "Original message",
-        macroNumber: 1,
-        iconColor: "#4a90d9",
-        keyText: "Custom label",
-        fontSize: 11,
-      });
+      const result = generateChatSvg(
+        ChatSettings.parse({
+          mode: "send-message",
+          message: "Original message",
+          macroNumber: 1,
+          iconColor: "#4a90d9",
+          keyText: "Custom label",
+          fontSize: 11,
+        }),
+      );
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("Custom label");
@@ -346,7 +351,7 @@ describe("Chat", () => {
 
     it("should use custom icon color", () => {
       const customColor = "#ff5500";
-      const result = generateChatSvg({ mode: "open-chat", ...defaultSettings, iconColor: customColor });
+      const result = generateChatSvg(chatSettings({ mode: "open-chat", iconColor: customColor }));
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain(customColor);
@@ -354,7 +359,7 @@ describe("Chat", () => {
 
     it("should use custom key text when provided", () => {
       const customText = "CUSTOM";
-      const result = generateChatSvg({ mode: "open-chat", ...defaultSettings, keyText: customText });
+      const result = generateChatSvg(chatSettings({ mode: "open-chat", keyText: customText }));
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("CUSTOM");
@@ -364,7 +369,7 @@ describe("Chat", () => {
     });
 
     it("should use default labels when keyText is empty", () => {
-      const result = generateChatSvg({ mode: "reply", ...defaultSettings, keyText: "" });
+      const result = generateChatSvg(chatSettings({ mode: "reply", keyText: "" }));
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("REPLY");
@@ -373,7 +378,7 @@ describe("Chat", () => {
 
     it("should support two-line custom key text", () => {
       const twoLineText = "LINE1\nLINE2";
-      const result = generateChatSvg({ mode: "open-chat", ...defaultSettings, keyText: twoLineText });
+      const result = generateChatSvg(chatSettings({ mode: "open-chat", keyText: twoLineText }));
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("LINE1");
@@ -382,7 +387,7 @@ describe("Chat", () => {
 
     it("should trim whitespace from custom key text", () => {
       const textWithWhitespace = "  TRIMMED  ";
-      const result = generateChatSvg({ mode: "open-chat", ...defaultSettings, keyText: textWithWhitespace });
+      const result = generateChatSvg(chatSettings({ mode: "open-chat", keyText: textWithWhitespace }));
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("TRIMMED");

@@ -58,7 +58,10 @@ const REPLAY_TRANSPORT_ICONS: Record<TransportAction, string> = {
   "frame-backward": frameBackwardIconSvg,
 };
 
-const ReplayTransportSettings = CommonSettings.extend({
+/**
+ * @internal Exported for testing
+ */
+export const ReplayTransportSettings = CommonSettings.extend({
   transport: z
     .enum([
       "play",
@@ -73,7 +76,7 @@ const ReplayTransportSettings = CommonSettings.extend({
     .default("play"),
 });
 
-type ReplayTransportSettings = z.infer<typeof ReplayTransportSettings>;
+export type ReplayTransportSettings = z.infer<typeof ReplayTransportSettings>;
 
 /**
  * @internal Exported for testing

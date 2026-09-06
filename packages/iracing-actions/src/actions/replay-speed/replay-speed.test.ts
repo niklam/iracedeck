@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { generateReplaySpeedSvg } from "./replay-speed.js";
+import { generateReplaySpeedSvg, ReplaySpeedSettings } from "./replay-speed.js";
 
 vi.mock("@iracedeck/icons/replay-speed/increase.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
@@ -79,33 +79,35 @@ describe("ReplaySpeed", () => {
     const ALL_DIRECTIONS = ["increase", "decrease"] as const;
 
     it.each(ALL_DIRECTIONS)("should generate a valid data URI for %s", (direction) => {
-      const result = generateReplaySpeedSvg({ direction });
+      const result = generateReplaySpeedSvg(ReplaySpeedSettings.parse({ direction }));
 
       expect(result).toContain("data:image/svg+xml");
     });
 
     it("should produce different icons for increase vs decrease", () => {
-      const results = ALL_DIRECTIONS.map((direction) => generateReplaySpeedSvg({ direction }));
+      const results = ALL_DIRECTIONS.map((direction) =>
+        generateReplaySpeedSvg(ReplaySpeedSettings.parse({ direction })),
+      );
 
       const uniqueResults = new Set(results);
       expect(uniqueResults.size).toBe(ALL_DIRECTIONS.length);
     });
 
     it("should include FASTER label for increase direction", () => {
-      const result = generateReplaySpeedSvg({ direction: "increase" });
+      const result = generateReplaySpeedSvg(ReplaySpeedSettings.parse({ direction: "increase" }));
 
       expect(decodeURIComponent(result)).toContain("FASTER");
     });
 
     it("should include SLOWER label for decrease direction", () => {
-      const result = generateReplaySpeedSvg({ direction: "decrease" });
+      const result = generateReplaySpeedSvg(ReplaySpeedSettings.parse({ direction: "decrease" }));
 
       expect(decodeURIComponent(result)).toContain("SLOWER");
     });
 
     it("should include REPLAY secondary label for both directions", () => {
       for (const direction of ALL_DIRECTIONS) {
-        const result = generateReplaySpeedSvg({ direction });
+        const result = generateReplaySpeedSvg(ReplaySpeedSettings.parse({ direction }));
         expect(decodeURIComponent(result)).toContain("REPLAY");
       }
     });

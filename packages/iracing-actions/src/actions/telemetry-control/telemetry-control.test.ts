@@ -8,6 +8,7 @@ import {
   resolveSnapshotDir,
   TELEMETRY_CONTROL_GLOBAL_KEYS,
   TelemetryControl,
+  TelemetryControlSettings,
 } from "./telemetry-control.js";
 
 const { mockTapBinding, mockMkdirSync, mockWriteFileSync, mockGetCurrentTelemetry, mockGetSessionInfo } = vi.hoisted(
@@ -200,28 +201,28 @@ describe("TelemetryControl", () => {
 
   describe("generateTelemetryControlSvg", () => {
     it("should generate a valid data URI for toggle-logging", () => {
-      const result = generateTelemetryControlSvg({ mode: "toggle-logging" });
+      const result = generateTelemetryControlSvg(TelemetryControlSettings.parse({ mode: "toggle-logging" }));
 
       expect(result).toContain("data:image/svg+xml");
     });
 
     it("should generate valid data URIs for all actions", () => {
       for (const mode of ALL_ACTIONS) {
-        const result = generateTelemetryControlSvg({ mode });
+        const result = generateTelemetryControlSvg(TelemetryControlSettings.parse({ mode }));
 
         expect(result).toContain("data:image/svg+xml");
       }
     });
 
     it("should produce different icons for different actions", () => {
-      const toggleLogging = generateTelemetryControlSvg({ mode: "toggle-logging" });
-      const markEvent = generateTelemetryControlSvg({ mode: "mark-event" });
+      const toggleLogging = generateTelemetryControlSvg(TelemetryControlSettings.parse({ mode: "toggle-logging" }));
+      const markEvent = generateTelemetryControlSvg(TelemetryControlSettings.parse({ mode: "mark-event" }));
 
       expect(toggleLogging).not.toBe(markEvent);
     });
 
     it("should include correct labels for toggle-logging", () => {
-      const result = generateTelemetryControlSvg({ mode: "toggle-logging" });
+      const result = generateTelemetryControlSvg(TelemetryControlSettings.parse({ mode: "toggle-logging" }));
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("LOGGING");
@@ -229,7 +230,7 @@ describe("TelemetryControl", () => {
     });
 
     it("should include correct labels for mark-event", () => {
-      const result = generateTelemetryControlSvg({ mode: "mark-event" });
+      const result = generateTelemetryControlSvg(TelemetryControlSettings.parse({ mode: "mark-event" }));
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("MARK");
@@ -247,9 +248,11 @@ describe("TelemetryControl", () => {
       };
 
       for (const [mode, labels] of Object.entries(expectedLabels)) {
-        const result = generateTelemetryControlSvg({
-          mode: mode as (typeof ALL_ACTIONS)[number],
-        });
+        const result = generateTelemetryControlSvg(
+          TelemetryControlSettings.parse({
+            mode: mode as (typeof ALL_ACTIONS)[number],
+          }),
+        );
         const decoded = decodeURIComponent(result);
 
         expect(decoded).toContain(labels.mainLabel);

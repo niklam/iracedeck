@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { generateReplayTransportSvg } from "./replay-transport.js";
+import { generateReplayTransportSvg, ReplayTransportSettings } from "./replay-transport.js";
 
 vi.mock("@iracedeck/icons/replay-transport/play.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
@@ -110,64 +110,74 @@ describe("ReplayTransport", () => {
     ] as const;
 
     it.each(ALL_TRANSPORTS)("should generate a valid data URI for %s", (transport) => {
-      const result = generateReplayTransportSvg({ transport });
+      const result = generateReplayTransportSvg(ReplayTransportSettings.parse({ transport }));
 
       expect(result).toContain("data:image/svg+xml");
     });
 
     it("should produce different icons for different transport actions", () => {
-      const results = ALL_TRANSPORTS.map((transport) => generateReplayTransportSvg({ transport }));
+      const results = ALL_TRANSPORTS.map((transport) =>
+        generateReplayTransportSvg(ReplayTransportSettings.parse({ transport })),
+      );
 
       const uniqueResults = new Set(results);
       expect(uniqueResults.size).toBe(ALL_TRANSPORTS.length);
     });
 
     it("should include PLAY label for play transport", () => {
-      const result = generateReplayTransportSvg({ transport: "play" });
+      const result = generateReplayTransportSvg(ReplayTransportSettings.parse({ transport: "play" }));
 
       expect(decodeURIComponent(result)).toContain("PLAY");
     });
 
     it("should include PAUSE label for pause transport", () => {
-      const result = generateReplayTransportSvg({ transport: "pause" });
+      const result = generateReplayTransportSvg(ReplayTransportSettings.parse({ transport: "pause" }));
 
       expect(decodeURIComponent(result)).toContain("PAUSE");
     });
 
     it("should include STOP label for stop transport", () => {
-      const result = generateReplayTransportSvg({ transport: "stop" });
+      const result = generateReplayTransportSvg(ReplayTransportSettings.parse({ transport: "stop" }));
 
       expect(decodeURIComponent(result)).toContain("STOP");
     });
 
     it("should include FORWARD and FAST labels for fast-forward transport", () => {
-      const decoded = decodeURIComponent(generateReplayTransportSvg({ transport: "fast-forward" }));
+      const decoded = decodeURIComponent(
+        generateReplayTransportSvg(ReplayTransportSettings.parse({ transport: "fast-forward" })),
+      );
 
       expect(decoded).toContain("FORWARD");
       expect(decoded).toContain("FAST");
     });
 
     it("should include REWIND label for rewind transport", () => {
-      const result = generateReplayTransportSvg({ transport: "rewind" });
+      const result = generateReplayTransportSvg(ReplayTransportSettings.parse({ transport: "rewind" }));
 
       expect(decodeURIComponent(result)).toContain("REWIND");
     });
 
     it("should include MOTION and SLOW labels for slow-motion transport", () => {
-      const decoded = decodeURIComponent(generateReplayTransportSvg({ transport: "slow-motion" }));
+      const decoded = decodeURIComponent(
+        generateReplayTransportSvg(ReplayTransportSettings.parse({ transport: "slow-motion" })),
+      );
 
       expect(decoded).toContain("MOTION");
       expect(decoded).toContain("SLOW");
     });
 
     it("should include FRAME FWD label for frame-forward", () => {
-      const decoded = decodeURIComponent(generateReplayTransportSvg({ transport: "frame-forward" }));
+      const decoded = decodeURIComponent(
+        generateReplayTransportSvg(ReplayTransportSettings.parse({ transport: "frame-forward" })),
+      );
 
       expect(decoded).toContain("FRAME FWD");
     });
 
     it("should include FRAME BACK label for frame-backward", () => {
-      const decoded = decodeURIComponent(generateReplayTransportSvg({ transport: "frame-backward" }));
+      const decoded = decodeURIComponent(
+        generateReplayTransportSvg(ReplayTransportSettings.parse({ transport: "frame-backward" })),
+      );
 
       expect(decoded).toContain("FRAME BACK");
     });

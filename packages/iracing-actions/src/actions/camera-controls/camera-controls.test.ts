@@ -1008,7 +1008,7 @@ describe("CameraControls dial surface (host integration)", () => {
       deviceType: 2,
       isKey: () => false,
       isDial: () => true,
-      setImage: vi.fn(async () => {}),
+      setImage: vi.fn<(dataUri: string) => Promise<void>>(async () => {}),
       setTitle: vi.fn(async () => {}),
       setSettings: vi.fn(async () => {}),
       setFeedback: vi.fn(async () => {}),

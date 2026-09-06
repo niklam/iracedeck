@@ -1,4 +1,10 @@
-import { FLAG_DEFINITIONS, resolveActiveFlag, SessionState, TrackWetness } from "@iracedeck/iracing-sdk";
+import {
+  FLAG_DEFINITIONS,
+  resolveActiveFlag,
+  SessionState,
+  type TelemetryData,
+  TrackWetness,
+} from "@iracedeck/iracing-sdk";
 import {
   getFuelStats,
   getLiveGaps,
@@ -1373,28 +1379,28 @@ describe("SessionInfo", () => {
 
         await action.onWillAppear(fakeEvent("action-1", { mode: "laps-to-empty" }) as any);
 
-        const telemetryCallback = action["sdkController"].subscribe.mock.calls[0][1];
+        const telemetryCallback = vi.mocked(action["sdkController"].subscribe).mock.calls[0][1];
 
-        await telemetryCallback({ FuelLevel: 42.3, DisplayUnits: 1 });
+        await telemetryCallback({ FuelLevel: 42.3, DisplayUnits: 1 }, true);
 
-        const callsAfterFirst = action["updateKeyImage"].mock.calls.length;
+        const callsAfterFirst = vi.mocked(action["updateKeyImage"]).mock.calls.length;
         expect(callsAfterFirst).toBeGreaterThan(0);
-        expect(decodeURIComponent(action["updateKeyImage"].mock.calls[callsAfterFirst - 1][1] as string)).toContain(
-          "14.10",
-        );
+        expect(
+          decodeURIComponent(vi.mocked(action["updateKeyImage"]).mock.calls[callsAfterFirst - 1][1] as string),
+        ).toContain("14.10");
 
         // Same average, less fuel — the state key busts on the live tank level alone.
-        await telemetryCallback({ FuelLevel: 39.3, DisplayUnits: 1 });
+        await telemetryCallback({ FuelLevel: 39.3, DisplayUnits: 1 }, true);
 
-        const calls = action["updateKeyImage"].mock.calls;
+        const calls = vi.mocked(action["updateKeyImage"]).mock.calls;
         expect(calls.length).toBeGreaterThan(callsAfterFirst);
         expect(decodeURIComponent(calls[calls.length - 1][1] as string)).toContain("13.10");
 
         // A refuel raises the estimate immediately — the tank level is live
         // even though the refuel lap itself is excluded from the average.
-        await telemetryCallback({ FuelLevel: 60, DisplayUnits: 1 });
+        await telemetryCallback({ FuelLevel: 60, DisplayUnits: 1 }, true);
 
-        const callsAfterRefuel = action["updateKeyImage"].mock.calls;
+        const callsAfterRefuel = vi.mocked(action["updateKeyImage"]).mock.calls;
         expect(decodeURIComponent(callsAfterRefuel[callsAfterRefuel.length - 1][1] as string)).toContain("20.00");
       });
     });
@@ -1501,7 +1507,7 @@ describe("SessionInfo", () => {
        */
       async function triggerPositionUpdate(
         sessionInfo: unknown,
-        telemetry: Record<string, unknown>,
+        telemetry: TelemetryData,
         settings: Record<string, unknown> = { mode: "position" },
       ): Promise<string> {
         action["sdkController"].getCurrentTelemetry = vi.fn().mockReturnValue(null);
@@ -1511,12 +1517,12 @@ describe("SessionInfo", () => {
 
         action["sdkController"].getCurrentTelemetry = vi.fn().mockReturnValue(telemetry);
 
-        const subscribeCall = action["sdkController"].subscribe.mock.calls[0];
+        const subscribeCall = vi.mocked(action["sdkController"].subscribe).mock.calls[0];
         const telemetryCallback = subscribeCall[1];
 
-        await telemetryCallback(telemetry);
+        await telemetryCallback(telemetry, true);
 
-        const calls = action["updateKeyImage"].mock.calls;
+        const calls = vi.mocked(action["updateKeyImage"]).mock.calls;
         expect(calls.length).toBeGreaterThan(0);
         const lastCall = calls[calls.length - 1];
 
@@ -1827,7 +1833,7 @@ describe("SessionInfo", () => {
           fakeEvent("action-1", { mode: "position", positionType: "class", positionShowTotal: true }) as any,
         );
 
-        const calls = action["setKeyImage"].mock.calls;
+        const calls = vi.mocked(action["setKeyImage"]).mock.calls;
         const lastCall = calls[calls.length - 1];
         const decoded = decodeURIComponent(lastCall[1] as string);
 

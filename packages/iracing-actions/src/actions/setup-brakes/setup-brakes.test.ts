@@ -5,6 +5,7 @@ import { getDualPressDirections } from "@iracedeck/deck-core";
 // ABS Toggle tri-state (#827)
 // ---------------------------------------------------------------------------
 import { renderIconTemplate, resolveBorderSettings } from "@iracedeck/deck-core";
+import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { parseSetupBrakesSettings } from "./setup-brakes-settings.js";
@@ -557,7 +558,7 @@ describe("SetupBrakes", () => {
     beforeEach(() => {
       action = new SetupBrakes();
       // iRacing exposes dcBrakeBias in percent units (54, not 0.54).
-      (action.sdkController.getCurrentTelemetry as any).mockReturnValue({ dcBrakeBias: 56 });
+      vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue({ dcBrakeBias: 56 } as TelemetryData);
     });
 
     it("renders the formatted telemetry value for a View setting on willAppear", async () => {
@@ -565,7 +566,7 @@ describe("SetupBrakes", () => {
       await action.onWillAppear(ev);
 
       // The icon SVG carries the formatted value via the {{value}} placeholder.
-      const calls = (action.setKeyImage as any).mock.calls;
+      const calls = vi.mocked(action["setKeyImage"]).mock.calls;
       expect(calls.length).toBeGreaterThan(0);
       const svg = decodeURIComponent(calls[0][1] as string);
       expect(svg).toContain("56.0%");
@@ -578,8 +579,8 @@ describe("SetupBrakes", () => {
     });
 
     it("subscribes to telemetry on willAppear and unsubscribes on willDisappear", async () => {
-      const subscribe = action.sdkController.subscribe as any;
-      const unsubscribe = action.sdkController.unsubscribe as any;
+      const subscribe = vi.mocked(action["sdkController"].subscribe);
+      const unsubscribe = vi.mocked(action["sdkController"].unsubscribe);
       await action.onWillAppear(fakeEvent("action-1", { setting: "view-brake-bias" }) as any);
 
       expect(subscribe).toHaveBeenCalledWith("action-1", expect.any(Function));
@@ -589,7 +590,7 @@ describe("SetupBrakes", () => {
     });
 
     it("clears active binding when switching to a View setting with dual-press off", async () => {
-      const setActive = action.setActiveBinding as any;
+      const setActive = vi.mocked(action["setActiveBinding"]);
       await action.onWillAppear(fakeEvent("action-1", { setting: "view-brake-bias", dualPressEnabled: false }) as any);
 
       expect(setActive).toHaveBeenCalledWith(null);

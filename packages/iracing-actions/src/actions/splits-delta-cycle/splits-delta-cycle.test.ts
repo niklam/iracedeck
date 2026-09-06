@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { generateSplitsDeltaCycleSvg, GLOBAL_KEY_NAMES, SplitsDeltaCycle } from "./splits-delta-cycle.js";
+import {
+  generateSplitsDeltaCycleSvg,
+  GLOBAL_KEY_NAMES,
+  SplitsDeltaCycle,
+  SplitsDeltaCycleSettings,
+} from "./splits-delta-cycle.js";
 
 const { mockTapBinding, mockHoldBinding, mockReleaseBinding } = vi.hoisted(() => ({
   mockTapBinding: vi.fn().mockResolvedValue(undefined),
@@ -164,53 +169,65 @@ describe("SplitsDeltaCycle", () => {
 
   describe("generateSplitsDeltaCycleSvg", () => {
     it("should generate a valid data URI for next direction", () => {
-      const result = generateSplitsDeltaCycleSvg({ mode: "cycle", direction: "next" });
+      const result = generateSplitsDeltaCycleSvg(SplitsDeltaCycleSettings.parse({ mode: "cycle", direction: "next" }));
 
       expect(result).toContain("data:image/svg+xml");
     });
 
     it("should generate a valid data URI for previous direction", () => {
-      const result = generateSplitsDeltaCycleSvg({ mode: "cycle", direction: "previous" });
+      const result = generateSplitsDeltaCycleSvg(
+        SplitsDeltaCycleSettings.parse({ mode: "cycle", direction: "previous" }),
+      );
 
       expect(result).toContain("data:image/svg+xml");
     });
 
     it("should produce different icons for next and previous", () => {
-      const next = generateSplitsDeltaCycleSvg({ mode: "cycle", direction: "next" });
-      const previous = generateSplitsDeltaCycleSvg({ mode: "cycle", direction: "previous" });
+      const next = generateSplitsDeltaCycleSvg(SplitsDeltaCycleSettings.parse({ mode: "cycle", direction: "next" }));
+      const previous = generateSplitsDeltaCycleSvg(
+        SplitsDeltaCycleSettings.parse({ mode: "cycle", direction: "previous" }),
+      );
 
       expect(next).not.toBe(previous);
     });
 
     it("should include NEXT label for next direction", () => {
-      const result = generateSplitsDeltaCycleSvg({ mode: "cycle", direction: "next" });
+      const result = generateSplitsDeltaCycleSvg(SplitsDeltaCycleSettings.parse({ mode: "cycle", direction: "next" }));
 
       expect(decodeURIComponent(result)).toContain("NEXT");
     });
 
     it("should include PREVIOUS label for previous direction", () => {
-      const result = generateSplitsDeltaCycleSvg({ mode: "cycle", direction: "previous" });
+      const result = generateSplitsDeltaCycleSvg(
+        SplitsDeltaCycleSettings.parse({ mode: "cycle", direction: "previous" }),
+      );
 
       expect(decodeURIComponent(result)).toContain("PREVIOUS");
     });
 
     it("should include SPLITS DELTA label for cycle mode", () => {
-      const next = generateSplitsDeltaCycleSvg({ mode: "cycle", direction: "next" });
-      const previous = generateSplitsDeltaCycleSvg({ mode: "cycle", direction: "previous" });
+      const next = generateSplitsDeltaCycleSvg(SplitsDeltaCycleSettings.parse({ mode: "cycle", direction: "next" }));
+      const previous = generateSplitsDeltaCycleSvg(
+        SplitsDeltaCycleSettings.parse({ mode: "cycle", direction: "previous" }),
+      );
 
       expect(decodeURIComponent(next)).toContain("SPLITS DELTA");
       expect(decodeURIComponent(previous)).toContain("SPLITS DELTA");
     });
 
     it("should generate ref car icon for toggle-ref-car mode", () => {
-      const result = generateSplitsDeltaCycleSvg({ mode: "toggle-ref-car", direction: "next" });
+      const result = generateSplitsDeltaCycleSvg(
+        SplitsDeltaCycleSettings.parse({ mode: "toggle-ref-car", direction: "next" }),
+      );
 
       expect(result).toContain("data:image/svg+xml");
       expect(decodeURIComponent(result)).toContain("ref-car");
     });
 
     it("should include REFERENCE and CAR labels for toggle-ref-car mode", () => {
-      const result = generateSplitsDeltaCycleSvg({ mode: "toggle-ref-car", direction: "next" });
+      const result = generateSplitsDeltaCycleSvg(
+        SplitsDeltaCycleSettings.parse({ mode: "toggle-ref-car", direction: "next" }),
+      );
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("REFERENCE");
@@ -218,69 +235,95 @@ describe("SplitsDeltaCycle", () => {
     });
 
     it("should produce different icons for cycle and toggle-ref-car modes", () => {
-      const cycle = generateSplitsDeltaCycleSvg({ mode: "cycle", direction: "next" });
-      const refCar = generateSplitsDeltaCycleSvg({ mode: "toggle-ref-car", direction: "next" });
+      const cycle = generateSplitsDeltaCycleSvg(SplitsDeltaCycleSettings.parse({ mode: "cycle", direction: "next" }));
+      const refCar = generateSplitsDeltaCycleSvg(
+        SplitsDeltaCycleSettings.parse({ mode: "toggle-ref-car", direction: "next" }),
+      );
 
       expect(cycle).not.toBe(refCar);
     });
 
     it("should generate custom-sector-start icon", () => {
-      const result = generateSplitsDeltaCycleSvg({ mode: "custom-sector-start", direction: "next" });
+      const result = generateSplitsDeltaCycleSvg(
+        SplitsDeltaCycleSettings.parse({ mode: "custom-sector-start", direction: "next" }),
+      );
       expect(result).toContain("data:image/svg+xml");
       expect(decodeURIComponent(result)).toContain("custom-sector-start");
     });
 
     it("should include SECTOR and START labels for custom-sector-start mode", () => {
-      const result = generateSplitsDeltaCycleSvg({ mode: "custom-sector-start", direction: "next" });
+      const result = generateSplitsDeltaCycleSvg(
+        SplitsDeltaCycleSettings.parse({ mode: "custom-sector-start", direction: "next" }),
+      );
       const decoded = decodeURIComponent(result);
       expect(decoded).toContain("START");
       expect(decoded).toContain("SECTOR");
     });
 
     it("should generate custom-sector-end icon", () => {
-      const result = generateSplitsDeltaCycleSvg({ mode: "custom-sector-end", direction: "next" });
+      const result = generateSplitsDeltaCycleSvg(
+        SplitsDeltaCycleSettings.parse({ mode: "custom-sector-end", direction: "next" }),
+      );
       expect(result).toContain("data:image/svg+xml");
       expect(decodeURIComponent(result)).toContain("custom-sector-end");
     });
 
     it("should include SECTOR and END labels for custom-sector-end mode", () => {
-      const result = generateSplitsDeltaCycleSvg({ mode: "custom-sector-end", direction: "next" });
+      const result = generateSplitsDeltaCycleSvg(
+        SplitsDeltaCycleSettings.parse({ mode: "custom-sector-end", direction: "next" }),
+      );
       const decoded = decodeURIComponent(result);
       expect(decoded).toContain("END");
       expect(decoded).toContain("SECTOR");
     });
 
     it("should generate active-reset-set icon", () => {
-      const result = generateSplitsDeltaCycleSvg({ mode: "active-reset-set", direction: "next" });
+      const result = generateSplitsDeltaCycleSvg(
+        SplitsDeltaCycleSettings.parse({ mode: "active-reset-set", direction: "next" }),
+      );
       expect(result).toContain("data:image/svg+xml");
       expect(decodeURIComponent(result)).toContain("active-reset-set");
     });
 
     it("should include SET and RESET POINT labels for active-reset-set mode", () => {
-      const result = generateSplitsDeltaCycleSvg({ mode: "active-reset-set", direction: "next" });
+      const result = generateSplitsDeltaCycleSvg(
+        SplitsDeltaCycleSettings.parse({ mode: "active-reset-set", direction: "next" }),
+      );
       const decoded = decodeURIComponent(result);
       expect(decoded).toContain("SET");
       expect(decoded).toContain("RESET POINT");
     });
 
     it("should generate active-reset-run icon", () => {
-      const result = generateSplitsDeltaCycleSvg({ mode: "active-reset-run", direction: "next" });
+      const result = generateSplitsDeltaCycleSvg(
+        SplitsDeltaCycleSettings.parse({ mode: "active-reset-run", direction: "next" }),
+      );
       expect(result).toContain("data:image/svg+xml");
       expect(decodeURIComponent(result)).toContain("active-reset-run");
     });
 
     it("should include RESET and TO START labels for active-reset-run mode", () => {
-      const result = generateSplitsDeltaCycleSvg({ mode: "active-reset-run", direction: "next" });
+      const result = generateSplitsDeltaCycleSvg(
+        SplitsDeltaCycleSettings.parse({ mode: "active-reset-run", direction: "next" }),
+      );
       const decoded = decodeURIComponent(result);
       expect(decoded).toContain("RESET");
       expect(decoded).toContain("TO START");
     });
 
     it("should produce different icons for all new modes", () => {
-      const sectorStart = generateSplitsDeltaCycleSvg({ mode: "custom-sector-start", direction: "next" });
-      const sectorEnd = generateSplitsDeltaCycleSvg({ mode: "custom-sector-end", direction: "next" });
-      const resetSet = generateSplitsDeltaCycleSvg({ mode: "active-reset-set", direction: "next" });
-      const resetRun = generateSplitsDeltaCycleSvg({ mode: "active-reset-run", direction: "next" });
+      const sectorStart = generateSplitsDeltaCycleSvg(
+        SplitsDeltaCycleSettings.parse({ mode: "custom-sector-start", direction: "next" }),
+      );
+      const sectorEnd = generateSplitsDeltaCycleSvg(
+        SplitsDeltaCycleSettings.parse({ mode: "custom-sector-end", direction: "next" }),
+      );
+      const resetSet = generateSplitsDeltaCycleSvg(
+        SplitsDeltaCycleSettings.parse({ mode: "active-reset-set", direction: "next" }),
+      );
+      const resetRun = generateSplitsDeltaCycleSvg(
+        SplitsDeltaCycleSettings.parse({ mode: "active-reset-run", direction: "next" }),
+      );
       const allIcons = [sectorStart, sectorEnd, resetSet, resetRun];
       expect(new Set(allIcons).size).toBe(4);
     });

@@ -16,6 +16,7 @@ import {
   migrateTireSettings,
   resolveToggleMode,
   TireService,
+  TireServiceSettings,
 } from "./tire-service.js";
 
 const {
@@ -505,7 +506,7 @@ describe("TireService", () => {
   describe("generateToggleTiresIconContent", () => {
     it("should return SVG with 4 tire indicator rects", () => {
       const result = generateToggleTiresIconContent(
-        { mode: "toggle-tires", tires: ["lf", "rf", "lr", "rr"] },
+        TireServiceSettings.parse({ mode: "toggle-tires", tires: ["lf", "rf", "lr", "rr"] }),
         { lf: false, rf: false, lr: false, rr: false },
       );
       const rects = result.match(/<rect[^>]+>/g) ?? [];
@@ -514,7 +515,7 @@ describe("TireService", () => {
 
     it("should use correct colors per tire position", () => {
       const result = generateToggleTiresIconContent(
-        { mode: "toggle-tires", tires: ["lf", "lr"] },
+        TireServiceSettings.parse({ mode: "toggle-tires", tires: ["lf", "lr"] }),
         { lf: true, rf: false, lr: false, rr: false },
       );
       // LF: configured + on = green
@@ -537,7 +538,7 @@ describe("TireService", () => {
 
     it("should show all green when all configured and active", () => {
       const result = generateToggleTiresIconContent(
-        { mode: "toggle-tires", tires: ["lf", "rf", "lr", "rr"] },
+        TireServiceSettings.parse({ mode: "toggle-tires", tires: ["lf", "rf", "lr", "rr"] }),
         { lf: true, rf: true, lr: true, rr: true },
       );
       const rects = result.match(/<rect[^>]+>/g) ?? [];
@@ -550,7 +551,7 @@ describe("TireService", () => {
 
     it("should show all red when all configured but inactive", () => {
       const result = generateToggleTiresIconContent(
-        { mode: "toggle-tires", tires: ["lf", "rf", "lr", "rr"] },
+        TireServiceSettings.parse({ mode: "toggle-tires", tires: ["lf", "rf", "lr", "rr"] }),
         { lf: false, rf: false, lr: false, rr: false },
       );
       const rects = result.match(/<rect[^>]+>/g) ?? [];
@@ -568,12 +569,18 @@ describe("TireService", () => {
 
     describe("change-all-tires mode", () => {
       it("should generate a valid data URI", () => {
-        const result = generateTireServiceSvg({ mode: "change-all-tires", tires: ["lf", "rf", "lr", "rr"] }, noTires);
+        const result = generateTireServiceSvg(
+          TireServiceSettings.parse({ mode: "change-all-tires", tires: ["lf", "rf", "lr", "rr"] }),
+          noTires,
+        );
         expect(result).toContain("data:image/svg+xml");
       });
 
       it("should include CHANGE and ALL TIRES labels", () => {
-        const result = generateTireServiceSvg({ mode: "change-all-tires", tires: ["lf", "rf", "lr", "rr"] }, noTires);
+        const result = generateTireServiceSvg(
+          TireServiceSettings.parse({ mode: "change-all-tires", tires: ["lf", "rf", "lr", "rr"] }),
+          noTires,
+        );
         const decoded = decodeURIComponent(result);
         expect(decoded).toContain("CHANGE");
         expect(decoded).toContain("ALL TIRES");
@@ -582,43 +589,58 @@ describe("TireService", () => {
 
     describe("toggle-tires mode", () => {
       it("should generate a valid data URI", () => {
-        const result = generateTireServiceSvg({ mode: "toggle-tires", tires: ["lf", "rf", "lr", "rr"] }, noTires);
+        const result = generateTireServiceSvg(
+          TireServiceSettings.parse({ mode: "toggle-tires", tires: ["lf", "rf", "lr", "rr"] }),
+          noTires,
+        );
         expect(result).toContain("data:image/svg+xml");
       });
 
       it("should show red for configured but inactive tires", () => {
-        const result = generateTireServiceSvg({ mode: "toggle-tires", tires: ["lf", "rf", "lr", "rr"] }, noTires);
+        const result = generateTireServiceSvg(
+          TireServiceSettings.parse({ mode: "toggle-tires", tires: ["lf", "rf", "lr", "rr"] }),
+          noTires,
+        );
         const decoded = decodeURIComponent(result);
         expect(decoded).toContain("#FF4444");
       });
 
       it("should show green for configured and active tires", () => {
-        const result = generateTireServiceSvg({ mode: "toggle-tires", tires: ["lf", "rf", "lr", "rr"] }, allTires);
+        const result = generateTireServiceSvg(
+          TireServiceSettings.parse({ mode: "toggle-tires", tires: ["lf", "rf", "lr", "rr"] }),
+          allTires,
+        );
         const decoded = decodeURIComponent(result);
         expect(decoded).toContain("#44FF44");
       });
 
       it("should show black for unconfigured tires", () => {
-        const result = generateTireServiceSvg({ mode: "toggle-tires", tires: [] }, allTires);
+        const result = generateTireServiceSvg(TireServiceSettings.parse({ mode: "toggle-tires", tires: [] }), allTires);
         const decoded = decodeURIComponent(result);
         expect(decoded).toContain("#000000ff");
       });
 
       it("should include car content in output", () => {
-        const result = generateTireServiceSvg({ mode: "toggle-tires", tires: ["lf", "rf", "lr", "rr"] }, noTires);
+        const result = generateTireServiceSvg(
+          TireServiceSettings.parse({ mode: "toggle-tires", tires: ["lf", "rf", "lr", "rr"] }),
+          noTires,
+        );
         const decoded = decodeURIComponent(result);
         expect(decoded).toContain("toggle-tires-car");
       });
 
       it("should include title text", () => {
-        const result = generateTireServiceSvg({ mode: "toggle-tires", tires: ["lf", "rf", "lr", "rr"] }, noTires);
+        const result = generateTireServiceSvg(
+          TireServiceSettings.parse({ mode: "toggle-tires", tires: ["lf", "rf", "lr", "rr"] }),
+          noTires,
+        );
         const decoded = decodeURIComponent(result);
         expect(decoded).toContain("TIRES");
       });
     });
 
     describe("change-compound mode", () => {
-      const compoundSettings = { mode: "change-compound" as const, tires: ["lf", "rf", "lr", "rr"] };
+      const compoundSettings = TireServiceSettings.parse({ mode: "change-compound", tires: ["lf", "rf", "lr", "rr"] });
 
       beforeEach(() => {
         mockGetSessionInfo.mockReturnValue({
@@ -690,12 +712,18 @@ describe("TireService", () => {
 
     describe("clear-tires mode", () => {
       it("should generate a valid data URI", () => {
-        const result = generateTireServiceSvg({ mode: "clear-tires", tires: ["lf", "rf", "lr", "rr"] }, noTires);
+        const result = generateTireServiceSvg(
+          TireServiceSettings.parse({ mode: "clear-tires", tires: ["lf", "rf", "lr", "rr"] }),
+          noTires,
+        );
         expect(result).toContain("data:image/svg+xml");
       });
 
       it("should include CLEAR and TIRES labels", () => {
-        const result = generateTireServiceSvg({ mode: "clear-tires", tires: ["lf", "rf", "lr", "rr"] }, noTires);
+        const result = generateTireServiceSvg(
+          TireServiceSettings.parse({ mode: "clear-tires", tires: ["lf", "rf", "lr", "rr"] }),
+          noTires,
+        );
         const decoded = decodeURIComponent(result);
         expect(decoded).toContain("CLEAR");
         expect(decoded).toContain("TIRES");
@@ -774,7 +802,7 @@ describe("TireService", () => {
       await action.onWillAppear(ev as any);
 
       // Should not throw — rendering continues (setKeyImage is on the base class mock)
-      expect(action.setKeyImage).toHaveBeenCalled();
+      expect(action["setKeyImage"]).toHaveBeenCalled();
     });
 
     it("should persist action -> mode rename via setSettings for legacy instances", async () => {

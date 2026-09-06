@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { COCKPIT_MISC_GLOBAL_KEYS, CockpitMisc, generateCockpitMiscSvg } from "./cockpit-misc.js";
+import { COCKPIT_MISC_GLOBAL_KEYS, CockpitMisc, CockpitMiscSettings, generateCockpitMiscSvg } from "./cockpit-misc.js";
 
 const { mockTapBinding } = vi.hoisted(() => ({
   mockTapBinding: vi.fn().mockResolvedValue(undefined),
@@ -185,43 +185,61 @@ describe("CockpitMisc", () => {
 
   describe("generateCockpitMiscSvg", () => {
     it("should generate a valid data URI for toggle-wipers", () => {
-      const result = generateCockpitMiscSvg({ control: "toggle-wipers", direction: "increase" });
+      const result = generateCockpitMiscSvg(
+        CockpitMiscSettings.parse({ control: "toggle-wipers", direction: "increase" }),
+      );
       expect(result).toContain("data:image/svg+xml");
     });
 
     it("should produce same icon for toggle-wipers regardless of direction", () => {
-      const increase = generateCockpitMiscSvg({ control: "toggle-wipers", direction: "increase" });
-      const decrease = generateCockpitMiscSvg({ control: "toggle-wipers", direction: "decrease" });
+      const increase = generateCockpitMiscSvg(
+        CockpitMiscSettings.parse({ control: "toggle-wipers", direction: "increase" }),
+      );
+      const decrease = generateCockpitMiscSvg(
+        CockpitMiscSettings.parse({ control: "toggle-wipers", direction: "decrease" }),
+      );
       expect(increase).toBe(decrease);
     });
 
     it("should include correct labels for toggle-wipers", () => {
-      const result = generateCockpitMiscSvg({ control: "toggle-wipers", direction: "increase" });
+      const result = generateCockpitMiscSvg(
+        CockpitMiscSettings.parse({ control: "toggle-wipers", direction: "increase" }),
+      );
       const decoded = decodeURIComponent(result);
       expect(decoded).toContain("WIPERS");
       expect(decoded).toContain("TOGGLE");
     });
 
     it("should produce different icons for toggle-wipers vs trigger-wipers", () => {
-      const toggle = generateCockpitMiscSvg({ control: "toggle-wipers", direction: "increase" });
-      const trigger = generateCockpitMiscSvg({ control: "trigger-wipers", direction: "increase" });
+      const toggle = generateCockpitMiscSvg(
+        CockpitMiscSettings.parse({ control: "toggle-wipers", direction: "increase" }),
+      );
+      const trigger = generateCockpitMiscSvg(
+        CockpitMiscSettings.parse({ control: "trigger-wipers", direction: "increase" }),
+      );
       expect(toggle).not.toBe(trigger);
     });
 
     it("should generate a valid data URI for trigger-wipers", () => {
-      const result = generateCockpitMiscSvg({ control: "trigger-wipers", direction: "increase" });
+      const result = generateCockpitMiscSvg(
+        CockpitMiscSettings.parse({ control: "trigger-wipers", direction: "increase" }),
+      );
 
       expect(result).toContain("data:image/svg+xml");
     });
 
     it("should generate a valid data URI for report-latency", () => {
-      const result = generateCockpitMiscSvg({ control: "report-latency", direction: "increase" });
+      const result = generateCockpitMiscSvg(
+        CockpitMiscSettings.parse({ control: "report-latency", direction: "increase" }),
+      );
 
       expect(result).toContain("data:image/svg+xml");
     });
 
     it("should generate a valid data URI for in-lap-mode", () => {
-      const result = generateCockpitMiscSvg({ control: "in-lap-mode", direction: "increase" });
+      const result = generateCockpitMiscSvg(
+        CockpitMiscSettings.parse({ control: "in-lap-mode", direction: "increase" }),
+      );
 
       expect(result).toContain("data:image/svg+xml");
     });
@@ -240,35 +258,49 @@ describe("CockpitMisc", () => {
 
       for (const control of controls) {
         for (const direction of directions) {
-          const result = generateCockpitMiscSvg({ control, direction });
+          const result = generateCockpitMiscSvg(CockpitMiscSettings.parse({ control, direction }));
           expect(result).toContain("data:image/svg+xml");
         }
       }
     });
 
     it("should produce different icons for different controls", () => {
-      const wipers = generateCockpitMiscSvg({ control: "trigger-wipers", direction: "increase" });
-      const latency = generateCockpitMiscSvg({ control: "report-latency", direction: "increase" });
+      const wipers = generateCockpitMiscSvg(
+        CockpitMiscSettings.parse({ control: "trigger-wipers", direction: "increase" }),
+      );
+      const latency = generateCockpitMiscSvg(
+        CockpitMiscSettings.parse({ control: "report-latency", direction: "increase" }),
+      );
 
       expect(wipers).not.toBe(latency);
     });
 
     it("should produce different icons for increase vs decrease on directional controls", () => {
-      const increase = generateCockpitMiscSvg({ control: "ffb-max-force", direction: "increase" });
-      const decrease = generateCockpitMiscSvg({ control: "ffb-max-force", direction: "decrease" });
+      const increase = generateCockpitMiscSvg(
+        CockpitMiscSettings.parse({ control: "ffb-max-force", direction: "increase" }),
+      );
+      const decrease = generateCockpitMiscSvg(
+        CockpitMiscSettings.parse({ control: "ffb-max-force", direction: "decrease" }),
+      );
 
       expect(increase).not.toBe(decrease);
     });
 
     it("should produce same icon for non-directional controls regardless of direction", () => {
-      const increase = generateCockpitMiscSvg({ control: "trigger-wipers", direction: "increase" });
-      const decrease = generateCockpitMiscSvg({ control: "trigger-wipers", direction: "decrease" });
+      const increase = generateCockpitMiscSvg(
+        CockpitMiscSettings.parse({ control: "trigger-wipers", direction: "increase" }),
+      );
+      const decrease = generateCockpitMiscSvg(
+        CockpitMiscSettings.parse({ control: "trigger-wipers", direction: "decrease" }),
+      );
 
       expect(increase).toBe(decrease);
     });
 
     it("should include correct labels for trigger-wipers", () => {
-      const result = generateCockpitMiscSvg({ control: "trigger-wipers", direction: "increase" });
+      const result = generateCockpitMiscSvg(
+        CockpitMiscSettings.parse({ control: "trigger-wipers", direction: "increase" }),
+      );
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("WIPERS");
@@ -276,7 +308,9 @@ describe("CockpitMisc", () => {
     });
 
     it("should include correct labels for ffb-max-force increase", () => {
-      const result = generateCockpitMiscSvg({ control: "ffb-max-force", direction: "increase" });
+      const result = generateCockpitMiscSvg(
+        CockpitMiscSettings.parse({ control: "ffb-max-force", direction: "increase" }),
+      );
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("FFB FORCE");
@@ -284,7 +318,9 @@ describe("CockpitMisc", () => {
     });
 
     it("should include correct labels for ffb-max-force decrease", () => {
-      const result = generateCockpitMiscSvg({ control: "ffb-max-force", direction: "decrease" });
+      const result = generateCockpitMiscSvg(
+        CockpitMiscSettings.parse({ control: "ffb-max-force", direction: "decrease" }),
+      );
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("FFB FORCE");
@@ -292,7 +328,9 @@ describe("CockpitMisc", () => {
     });
 
     it("should include correct labels for dash-page-1 increase", () => {
-      const result = generateCockpitMiscSvg({ control: "dash-page-1", direction: "increase" });
+      const result = generateCockpitMiscSvg(
+        CockpitMiscSettings.parse({ control: "dash-page-1", direction: "increase" }),
+      );
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("DASH PG 1");
@@ -300,7 +338,9 @@ describe("CockpitMisc", () => {
     });
 
     it("should include correct labels for dash-page-2 decrease", () => {
-      const result = generateCockpitMiscSvg({ control: "dash-page-2", direction: "decrease" });
+      const result = generateCockpitMiscSvg(
+        CockpitMiscSettings.parse({ control: "dash-page-2", direction: "decrease" }),
+      );
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("DASH PG 2");
@@ -308,7 +348,9 @@ describe("CockpitMisc", () => {
     });
 
     it("should include correct labels for in-lap-mode", () => {
-      const result = generateCockpitMiscSvg({ control: "in-lap-mode", direction: "increase" });
+      const result = generateCockpitMiscSvg(
+        CockpitMiscSettings.parse({ control: "in-lap-mode", direction: "increase" }),
+      );
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("IN LAP");
@@ -349,10 +391,12 @@ describe("CockpitMisc", () => {
 
       for (const [control, directions] of Object.entries(expectedLabels)) {
         for (const [direction, labels] of Object.entries(directions)) {
-          const result = generateCockpitMiscSvg({
-            control: control as any,
-            direction: direction as any,
-          });
+          const result = generateCockpitMiscSvg(
+            CockpitMiscSettings.parse({
+              control: control,
+              direction: direction,
+            }),
+          );
           const decoded = decodeURIComponent(result);
 
           expect(decoded).toContain(labels.mainLabel);

@@ -3,6 +3,7 @@ import {
   getAllCarNumbers,
   getCarNumberFromSessionInfo,
   getCarNumberRawFromSessionInfo,
+  type ReplayPosMode,
   TrkLoc,
 } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -877,9 +878,9 @@ describe("ReplayControl", () => {
 
     it("should return next car by number order", () => {
       vi.mocked(getAllCarNumbers).mockReturnValue([
-        { carIdx: 0, carNumber: "4", carNumberRaw: 4 },
-        { carIdx: 1, carNumber: "7", carNumberRaw: 7 },
-        { carIdx: 2, carNumber: "42", carNumberRaw: 42 },
+        { carIdx: 0, carNumber: "4", carNumberRaw: 4, userName: "" },
+        { carIdx: 1, carNumber: "7", carNumberRaw: 7, userName: "" },
+        { carIdx: 2, carNumber: "42", carNumberRaw: 42, userName: "" },
       ]);
       vi.mocked(getCarNumberFromSessionInfo).mockReturnValue("7");
 
@@ -888,9 +889,9 @@ describe("ReplayControl", () => {
 
     it("should return previous car by number order", () => {
       vi.mocked(getAllCarNumbers).mockReturnValue([
-        { carIdx: 0, carNumber: "4", carNumberRaw: 4 },
-        { carIdx: 1, carNumber: "7", carNumberRaw: 7 },
-        { carIdx: 2, carNumber: "42", carNumberRaw: 42 },
+        { carIdx: 0, carNumber: "4", carNumberRaw: 4, userName: "" },
+        { carIdx: 1, carNumber: "7", carNumberRaw: 7, userName: "" },
+        { carIdx: 2, carNumber: "42", carNumberRaw: 42, userName: "" },
       ]);
       vi.mocked(getCarNumberFromSessionInfo).mockReturnValue("7");
 
@@ -899,9 +900,9 @@ describe("ReplayControl", () => {
 
     it("should wrap around from last to first", () => {
       vi.mocked(getAllCarNumbers).mockReturnValue([
-        { carIdx: 0, carNumber: "4", carNumberRaw: 4 },
-        { carIdx: 1, carNumber: "7", carNumberRaw: 7 },
-        { carIdx: 2, carNumber: "42", carNumberRaw: 42 },
+        { carIdx: 0, carNumber: "4", carNumberRaw: 4, userName: "" },
+        { carIdx: 1, carNumber: "7", carNumberRaw: 7, userName: "" },
+        { carIdx: 2, carNumber: "42", carNumberRaw: 42, userName: "" },
       ]);
       vi.mocked(getCarNumberFromSessionInfo).mockReturnValue("42");
 
@@ -910,9 +911,9 @@ describe("ReplayControl", () => {
 
     it("should wrap around from first to last", () => {
       vi.mocked(getAllCarNumbers).mockReturnValue([
-        { carIdx: 0, carNumber: "4", carNumberRaw: 4 },
-        { carIdx: 1, carNumber: "7", carNumberRaw: 7 },
-        { carIdx: 2, carNumber: "42", carNumberRaw: 42 },
+        { carIdx: 0, carNumber: "4", carNumberRaw: 4, userName: "" },
+        { carIdx: 1, carNumber: "7", carNumberRaw: 7, userName: "" },
+        { carIdx: 2, carNumber: "42", carNumberRaw: 42, userName: "" },
       ]);
       vi.mocked(getCarNumberFromSessionInfo).mockReturnValue("4");
 
@@ -921,8 +922,8 @@ describe("ReplayControl", () => {
 
     it("should return first car when current car not found and direction is next", () => {
       vi.mocked(getAllCarNumbers).mockReturnValue([
-        { carIdx: 0, carNumber: "4", carNumberRaw: 4 },
-        { carIdx: 1, carNumber: "7", carNumberRaw: 7 },
+        { carIdx: 0, carNumber: "4", carNumberRaw: 4, userName: "" },
+        { carIdx: 1, carNumber: "7", carNumberRaw: 7, userName: "" },
       ]);
       vi.mocked(getCarNumberFromSessionInfo).mockReturnValue(null);
 
@@ -931,8 +932,8 @@ describe("ReplayControl", () => {
 
     it("should return last car when current car not found and direction is prev", () => {
       vi.mocked(getAllCarNumbers).mockReturnValue([
-        { carIdx: 0, carNumber: "4", carNumberRaw: 4 },
-        { carIdx: 1, carNumber: "7", carNumberRaw: 7 },
+        { carIdx: 0, carNumber: "4", carNumberRaw: 4, userName: "" },
+        { carIdx: 1, carNumber: "7", carNumberRaw: 7, userName: "" },
       ]);
       vi.mocked(getCarNumberFromSessionInfo).mockReturnValue(null);
 
@@ -941,9 +942,9 @@ describe("ReplayControl", () => {
 
     it("should return carNumberRaw for cars with leading zeros", () => {
       vi.mocked(getAllCarNumbers).mockReturnValue([
-        { carIdx: 0, carNumber: "7", carNumberRaw: 7 },
-        { carIdx: 1, carNumber: "042", carNumberRaw: 3042 },
-        { carIdx: 2, carNumber: "99", carNumberRaw: 99 },
+        { carIdx: 0, carNumber: "7", carNumberRaw: 7, userName: "" },
+        { carIdx: 1, carNumber: "042", carNumberRaw: 3042, userName: "" },
+        { carIdx: 2, carNumber: "99", carNumberRaw: 99, userName: "" },
       ]);
       vi.mocked(getCarNumberFromSessionInfo).mockReturnValue("7");
 
@@ -952,9 +953,9 @@ describe("ReplayControl", () => {
 
     it("skips cars that left the world when a presence predicate is given (#885)", () => {
       vi.mocked(getAllCarNumbers).mockReturnValue([
-        { carIdx: 0, carNumber: "4", carNumberRaw: 4 },
-        { carIdx: 1, carNumber: "7", carNumberRaw: 7 },
-        { carIdx: 2, carNumber: "42", carNumberRaw: 42 },
+        { carIdx: 0, carNumber: "4", carNumberRaw: 4, userName: "" },
+        { carIdx: 1, carNumber: "7", carNumberRaw: 7, userName: "" },
+        { carIdx: 2, carNumber: "42", carNumberRaw: 42, userName: "" },
       ]);
       vi.mocked(getCarNumberFromSessionInfo).mockReturnValue("4");
 
@@ -967,10 +968,10 @@ describe("ReplayControl", () => {
       // whole pace lap because the presence predicate demanded a completed lap.
       // Snapshot 20260417-081043 — four cars on track, every CarIdxLapCompleted -1.
       vi.mocked(getAllCarNumbers).mockReturnValue([
-        { carIdx: 1, carNumber: "1", carNumberRaw: 1 },
-        { carIdx: 11, carNumber: "11", carNumberRaw: 11 },
-        { carIdx: 14, carNumber: "14", carNumberRaw: 14 },
-        { carIdx: 17, carNumber: "17", carNumberRaw: 17 },
+        { carIdx: 1, carNumber: "1", carNumberRaw: 1, userName: "" },
+        { carIdx: 11, carNumber: "11", carNumberRaw: 11, userName: "" },
+        { carIdx: 14, carNumber: "14", carNumberRaw: 14, userName: "" },
+        { carIdx: 17, carNumber: "17", carNumberRaw: 17, userName: "" },
       ]);
       vi.mocked(getCarNumberFromSessionInfo).mockReturnValue("14");
 
@@ -990,8 +991,8 @@ describe("ReplayControl", () => {
 
     it("returns null when no other car is present in the world (#885)", () => {
       vi.mocked(getAllCarNumbers).mockReturnValue([
-        { carIdx: 0, carNumber: "4", carNumberRaw: 4 },
-        { carIdx: 1, carNumber: "7", carNumberRaw: 7 },
+        { carIdx: 0, carNumber: "4", carNumberRaw: 4, userName: "" },
+        { carIdx: 1, carNumber: "7", carNumberRaw: 7, userName: "" },
       ]);
       vi.mocked(getCarNumberFromSessionInfo).mockReturnValue("4");
 
@@ -1217,7 +1218,7 @@ describe("ReplayControl", () => {
         expect((action as any).replaySpeed.get("pb-ctx")).toBe(0);
 
         // Both displays should have been re-rendered
-        expect(action.updateKeyImage).toHaveBeenCalled();
+        expect(action["updateKeyImage"]).toHaveBeenCalled();
       });
     });
 
@@ -1451,19 +1452,19 @@ describe("ReplayControl", () => {
       await action.onWillAppear(fakeEvent("ctx-1", { mode: "next-car" }) as any);
       await action.onKeyDown(fakeEvent("ctx-1", { mode: "next-car" }) as any);
 
-      expect(action.tapBinding).toHaveBeenCalledWith("replayControlNextCar");
+      expect(action["tapBinding"]).toHaveBeenCalledWith("replayControlNextCar");
     });
 
     it("prev-car onKeyDown taps the replayControlPrevCar global binding", async () => {
       await action.onWillAppear(fakeEvent("ctx-1", { mode: "prev-car" }) as any);
       await action.onKeyDown(fakeEvent("ctx-1", { mode: "prev-car" }) as any);
 
-      expect(action.tapBinding).toHaveBeenCalledWith("replayControlPrevCar");
+      expect(action["tapBinding"]).toHaveBeenCalledWith("replayControlPrevCar");
     });
 
     it("next-car does NOT consult telemetry for car selection", async () => {
       // Arrange: telemetry that would normally be inspected by the legacy path
-      action.sdkController.getCurrentTelemetry = vi.fn(() => ({
+      action["sdkController"].getCurrentTelemetry = vi.fn(() => ({
         CamCarIdx: 0,
         CarIdxLapDistPct: [0.1, 0.2],
         CarIdxOnPitRoad: [false, false],
@@ -1487,7 +1488,7 @@ describe("ReplayControl", () => {
         payload: { settings: { mode: "next-car" }, ticks: 1 },
       } as any);
 
-      expect(action.tapBinding).toHaveBeenCalledWith("replayControlNextCar");
+      expect(action["tapBinding"]).toHaveBeenCalledWith("replayControlNextCar");
     });
 
     it("dial counter-rotation on next-car taps the prev-car binding", async () => {
@@ -1498,22 +1499,22 @@ describe("ReplayControl", () => {
         payload: { settings: { mode: "next-car" }, ticks: -1 },
       } as any);
 
-      expect(action.tapBinding).toHaveBeenCalledWith("replayControlPrevCar");
+      expect(action["tapBinding"]).toHaveBeenCalledWith("replayControlPrevCar");
     });
 
     it("declares the active binding so readiness tracking matches the configured key", async () => {
       await action.onWillAppear(fakeEvent("ctx-1", { mode: "next-car" }) as any);
 
-      expect(action.setActiveBinding).toHaveBeenCalledWith("replayControlNextCar");
+      expect(action["setActiveBinding"]).toHaveBeenCalledWith("replayControlNextCar");
     });
 
     it("clears the active binding when switched to a non-keystroke mode", async () => {
       await action.onWillAppear(fakeEvent("ctx-1", { mode: "next-car" }) as any);
-      vi.mocked(action.setActiveBinding).mockClear();
+      vi.mocked(action["setActiveBinding"]).mockClear();
 
       await action.onDidReceiveSettings(fakeEvent("ctx-1", { mode: "next-session" }) as any);
 
-      expect(action.setActiveBinding).toHaveBeenCalledWith(null);
+      expect(action["setActiveBinding"]).toHaveBeenCalledWith(null);
     });
   });
 
@@ -1554,8 +1555,8 @@ describe("ReplayControl", () => {
       ]);
 
       action = new ReplayControl();
-      action.sdkController.getCurrentTelemetry = vi.fn(() => TELEMETRY);
-      action.sdkController.getSessionInfo = vi.fn(() => ({}));
+      action["sdkController"].getCurrentTelemetry = vi.fn(() => TELEMETRY);
+      action["sdkController"].getSessionInfo = vi.fn(() => ({}));
       await action.onWillAppear({
         action: { id: "ctx-1", setTitle: vi.fn(), setImage: vi.fn() },
         payload: { settings: { mode: "next-car-number" } },
@@ -1616,7 +1617,7 @@ describe("ReplayControl", () => {
       prevSession: vi.fn(() => true),
       goToStart: vi.fn(() => true),
       goToEnd: vi.fn(() => true),
-      setPlayPosition: vi.fn(() => true),
+      setPlayPosition: vi.fn<(mode: ReplayPosMode, frameNumber: number) => boolean>(() => true),
       searchSessionTime: vi.fn(() => true),
     };
 
@@ -1669,13 +1670,13 @@ describe("ReplayControl", () => {
       });
 
       it("returns DriverCarIdx from session info when target is always-my-car", () => {
-        action.sdkController.getSessionInfo = vi.fn(() => ({ DriverInfo: { DriverCarIdx: 3 } }) as any);
+        action["sdkController"].getSessionInfo = vi.fn(() => ({ DriverInfo: { DriverCarIdx: 3 } }) as any);
 
         expect(action.resolveFastestLapCarIdx("always-my-car", { CamCarIdx: 99 } as any)).toBe(3);
       });
 
       it("returns -1 when target is always-my-car and session info is missing", () => {
-        action.sdkController.getSessionInfo = vi.fn(() => null);
+        action["sdkController"].getSessionInfo = vi.fn(() => null);
 
         expect(action.resolveFastestLapCarIdx("always-my-car", { CamCarIdx: 99 } as any)).toBe(-1);
       });
@@ -1683,7 +1684,7 @@ describe("ReplayControl", () => {
 
     describe("dispatch", () => {
       it("logs a warning and does nothing when no target car is available (viewed-car)", async () => {
-        action.sdkController.getCurrentTelemetry = vi.fn(() => ({ CamCarIdx: -1 }) as any);
+        action["sdkController"].getCurrentTelemetry = vi.fn(() => ({ CamCarIdx: -1 }) as any);
 
         await action.onWillAppear(
           fakeEvent("ctx-1", { mode: "jump-to-fastest-lap", fastestLapTarget: "viewed-car" }) as any,
@@ -1695,13 +1696,13 @@ describe("ReplayControl", () => {
         expect(mockReplay.nextLap).not.toHaveBeenCalled();
         expect(mockReplay.prevLap).not.toHaveBeenCalled();
         expect(mockCamera.switchNum).not.toHaveBeenCalled();
-        expect(action.logger.warn).toHaveBeenCalledWith(expect.stringContaining("No target car"));
+        expect(action["logger"].warn).toHaveBeenCalledWith(expect.stringContaining("No target car"));
       });
 
       it("rejects CarIdx 255 (no-driver/pace-car placeholder) before resolving the fastest lap", async () => {
         // CamCarIdx=255 happens mid-camera-transition and on the pace car —
         // never a real target. Should short-circuit before any walk starts.
-        action.sdkController.getCurrentTelemetry = vi.fn(() => ({ CamCarIdx: 255 }) as any);
+        action["sdkController"].getCurrentTelemetry = vi.fn(() => ({ CamCarIdx: 255 }) as any);
 
         await action.onWillAppear(
           fakeEvent("ctx-1", { mode: "jump-to-fastest-lap", fastestLapTarget: "viewed-car" }) as any,
@@ -1713,13 +1714,13 @@ describe("ReplayControl", () => {
         expect(mockReplay.nextLap).not.toHaveBeenCalled();
         expect(mockReplay.prevLap).not.toHaveBeenCalled();
         expect(mockCamera.switchNum).not.toHaveBeenCalled();
-        expect(action.logger.warn).toHaveBeenCalledWith(expect.stringContaining("No target car"));
+        expect(action["logger"].warn).toHaveBeenCalledWith(expect.stringContaining("No target car"));
       });
 
       it("aborts the walk and warns when camera.switchNum fails", async () => {
         // Camera switch returns false (SDK refused) — walker must not start.
         mockCamera.switchNum.mockReturnValueOnce(false);
-        action.sdkController.getCurrentTelemetry = vi.fn(() => telemetryWithBest(2, 5, 0) as any);
+        action["sdkController"].getCurrentTelemetry = vi.fn(() => telemetryWithBest(2, 5, 0) as any);
 
         await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
         await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
@@ -1727,11 +1728,11 @@ describe("ReplayControl", () => {
         expect(mockCamera.switchNum).toHaveBeenCalledWith(2, 0, 0);
         expect(mockReplay.pause).not.toHaveBeenCalled();
         expect(mockReplay.setPlayPosition).not.toHaveBeenCalled();
-        expect(action.logger.warn).toHaveBeenCalledWith(expect.stringContaining("camera switch failed"));
+        expect(action["logger"].warn).toHaveBeenCalledWith(expect.stringContaining("camera switch failed"));
       });
 
       it("logs info and skips when the target car has no best lap yet", async () => {
-        action.sdkController.getCurrentTelemetry = vi.fn(() => telemetryWithBest(2, 0, 0) as any);
+        action["sdkController"].getCurrentTelemetry = vi.fn(() => telemetryWithBest(2, 0, 0) as any);
 
         await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
         await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
@@ -1739,7 +1740,7 @@ describe("ReplayControl", () => {
         expect(mockReplay.pause).not.toHaveBeenCalled();
         expect(mockReplay.setPlayPosition).not.toHaveBeenCalled();
         expect(mockCamera.switchNum).not.toHaveBeenCalled();
-        expect(action.logger.info).toHaveBeenCalledWith(expect.stringContaining("no best lap"));
+        expect(action["logger"].info).toHaveBeenCalledWith(expect.stringContaining("no best lap"));
       });
 
       /**
@@ -1835,7 +1836,7 @@ describe("ReplayControl", () => {
           return true;
         });
 
-        action.sdkController.getCurrentTelemetry = vi.fn(() => {
+        action["sdkController"].getCurrentTelemetry = vi.fn(() => {
           const session = findSession(cursor.frame);
 
           if (!session) {
@@ -1870,7 +1871,7 @@ describe("ReplayControl", () => {
           } as any;
         });
 
-        action.sdkController.getSessionInfo = vi.fn(
+        action["sdkController"].getSessionInfo = vi.fn(
           () =>
             ({
               DriverInfo: { DriverCarIdx: opts.driverCarIdx ?? carIdx },
@@ -2295,7 +2296,7 @@ describe("ReplayControl", () => {
             await vi.runAllTimersAsync();
 
             // Bisection-driven setPlayPosition calls (skip the trailing back-step).
-            const bisectionFrames = mockReplay.setPlayPosition.mock.calls.slice(0, -1).map((call) => call[1] as number);
+            const bisectionFrames = mockReplay.setPlayPosition.mock.calls.slice(0, -1).map((call) => call[1]);
 
             // Guard against a vacuously-passing loop if the walker never
             // actually bisected — without this the test would silently miss
@@ -2345,8 +2346,8 @@ describe("ReplayControl", () => {
             // before it (= the pre-back-step cursor position) should be 2
             // frames higher than the LAST setPlayPosition's target.
             const calls = mockReplay.setPlayPosition.mock.calls;
-            const lastTargetFrame = calls[calls.length - 1][1] as number;
-            const secondLastTargetFrame = calls[calls.length - 2]?.[1] as number | undefined;
+            const lastTargetFrame = calls[calls.length - 1][1];
+            const secondLastTargetFrame = calls[calls.length - 2]?.[1];
 
             // The very last call IS the back-step. It targets a frame 2 less
             // than the frame the cursor sat on right before it.
@@ -2401,9 +2402,9 @@ describe("ReplayControl", () => {
             );
             // CamCarIdx is 3 by default in multiSessionBuffer — override telemetry
             // so the camera is on a DIFFERENT car (99).
-            const originalGetTelemetry = action.sdkController.getCurrentTelemetry;
+            const originalGetTelemetry = action["sdkController"].getCurrentTelemetry;
 
-            action.sdkController.getCurrentTelemetry = vi.fn(() => {
+            action["sdkController"].getCurrentTelemetry = vi.fn(() => {
               const tel = (originalGetTelemetry as any)() as any;
 
               return { ...tel, CamCarIdx: 99 };
@@ -2430,21 +2431,21 @@ describe("ReplayControl", () => {
 
         it("warns when the target car has no resolvable car number", async () => {
           vi.mocked(getCarNumberRawFromSessionInfo).mockReturnValue(null);
-          action.sdkController.getCurrentTelemetry = vi.fn(() => telemetryWithBest(2, 5, 3) as any);
+          action["sdkController"].getCurrentTelemetry = vi.fn(() => telemetryWithBest(2, 5, 3) as any);
 
           await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
           await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
 
           expect(mockCamera.switchNum).not.toHaveBeenCalled();
           expect(mockReplay.pause).not.toHaveBeenCalled();
-          expect(action.logger.warn).toHaveBeenCalledWith(expect.stringContaining("car number"));
+          expect(action["logger"].warn).toHaveBeenCalledWith(expect.stringContaining("car number"));
         });
       });
     });
 
     describe("encoder is a no-op for this mode", () => {
       it("onDialDown does nothing", async () => {
-        action.sdkController.getCurrentTelemetry = vi.fn(() => telemetryWithBest(2, 10, 5) as any);
+        action["sdkController"].getCurrentTelemetry = vi.fn(() => telemetryWithBest(2, 10, 5) as any);
 
         await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
         await action.onDialDown({
@@ -2459,7 +2460,7 @@ describe("ReplayControl", () => {
       });
 
       it("onDialRotate does nothing in either direction", async () => {
-        action.sdkController.getCurrentTelemetry = vi.fn(() => telemetryWithBest(2, 10, 5) as any);
+        action["sdkController"].getCurrentTelemetry = vi.fn(() => telemetryWithBest(2, 10, 5) as any);
 
         await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
         await action.onDialRotate({
@@ -2527,7 +2528,7 @@ describe("ReplayControl", () => {
 
         await vi.advanceTimersByTimeAsync(15_000);
 
-        expect(action.logger.warn).toHaveBeenCalledWith(expect.stringContaining("safety timeout"));
+        expect(action["logger"].warn).toHaveBeenCalledWith(expect.stringContaining("safety timeout"));
       } finally {
         vi.useRealTimers();
       }
@@ -2547,7 +2548,7 @@ describe("ReplayControl", () => {
         // Advance past safety timeout — no error, nothing happens
         await vi.advanceTimersByTimeAsync(15_000);
         expect((action as any).repeatTimers.has("action-1")).toBe(false);
-        expect(action.logger.warn).not.toHaveBeenCalledWith(expect.stringContaining("safety timeout"));
+        expect(action["logger"].warn).not.toHaveBeenCalledWith(expect.stringContaining("safety timeout"));
       } finally {
         vi.useRealTimers();
       }
