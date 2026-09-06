@@ -39,6 +39,17 @@ export {
   type StepObjectKey,
   type StringStepForm,
 } from "./grammar.js";
+export {
+  checkCoverage,
+  type Coverage,
+  type CoverageInput,
+  coverageOf,
+  type CoverageReport,
+  danglingBasesOf,
+  danglingOf,
+  orphansOf,
+  type VarDrivenGroup,
+} from "./coverage.js";
 export { CALLOUT_SCRIPT_FILE, calloutScriptPath } from "./paths.js";
 export {
   collectLiteralClips,

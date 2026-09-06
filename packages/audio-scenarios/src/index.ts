@@ -41,6 +41,18 @@ export type {
   VoiceConfigLine,
 } from "./reference/pack-reference.js";
 export { buildPackReference, descriptionNamesGroup, serializePackReference } from "./reference/pack-reference.js";
+// `lint:pack` (#1066): the pure linter the root script `scripts/lint-pack.mjs`
+// runs off this package's dist, over an injected filesystem.
+export type {
+  LintFileRead,
+  LintPackFileSystem,
+  LintPackInput,
+  LintProblem,
+  LintProblemKind,
+  LintReport,
+  VoiceLintSummary,
+} from "./reference/lint-pack.js";
+export { formatLintReport, lintPack } from "./reference/lint-pack.js";
 export type { CompileDeps, CompiledVoiceScript } from "./script-compiler.js";
 export { compileVoiceScript } from "./script-compiler.js";
 export { validateScenario } from "./validation.js";

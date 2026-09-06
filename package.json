@@ -33,6 +33,7 @@
     "dev": "turbo run dev",
     "clean": "turbo run clean",
     "lint": "eslint \"packages/*/src/**\" \"scripts/**/*.mjs\" vitest.config.ts",
+    "lint:pack": "node scripts/lint-pack.mjs",
     "lint:fix": "eslint --fix \"packages/*/src/**\" vitest.config.ts",
     "format": "prettier --check \"**/*.ts\" \"**/*.json\"",
     "format:fix": "prettier --write \"**/*.ts\" \"**/*.json\"",
