@@ -1,4 +1,5 @@
 import { getDualPressDirections } from "@iracedeck/deck-core";
+import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { generateSetupFuelSvg, parseSetupFuelSettings, SETUP_FUEL_GLOBAL_KEYS, SetupFuel } from "./setup-fuel.js";
@@ -217,31 +218,39 @@ describe("SetupFuel", () => {
 
   describe("generateSetupFuelSvg", () => {
     it("should generate a valid data URI for disable-fuel-cut", () => {
-      const result = generateSetupFuelSvg({ setting: "disable-fuel-cut", direction: "increase" });
+      const result = generateSetupFuelSvg(
+        parseSetupFuelSettings({ setting: "disable-fuel-cut", direction: "increase" }),
+      );
 
       expect(result).toContain("data:image/svg+xml");
     });
 
     it("should generate a valid data URI for low-fuel-accept", () => {
-      const result = generateSetupFuelSvg({ setting: "low-fuel-accept", direction: "increase" });
+      const result = generateSetupFuelSvg(
+        parseSetupFuelSettings({ setting: "low-fuel-accept", direction: "increase" }),
+      );
 
       expect(result).toContain("data:image/svg+xml");
     });
 
     it("should generate a valid data URI for fcy-mode-toggle", () => {
-      const result = generateSetupFuelSvg({ setting: "fcy-mode-toggle", direction: "increase" });
+      const result = generateSetupFuelSvg(
+        parseSetupFuelSettings({ setting: "fcy-mode-toggle", direction: "increase" }),
+      );
 
       expect(result).toContain("data:image/svg+xml");
     });
 
     it("should generate a valid data URI for fuel-mixture", () => {
-      const result = generateSetupFuelSvg({ setting: "fuel-mixture", direction: "increase" });
+      const result = generateSetupFuelSvg(parseSetupFuelSettings({ setting: "fuel-mixture", direction: "increase" }));
 
       expect(result).toContain("data:image/svg+xml");
     });
 
     it("should generate a valid data URI for fuel-cut-position", () => {
-      const result = generateSetupFuelSvg({ setting: "fuel-cut-position", direction: "increase" });
+      const result = generateSetupFuelSvg(
+        parseSetupFuelSettings({ setting: "fuel-cut-position", direction: "increase" }),
+      );
 
       expect(result).toContain("data:image/svg+xml");
     });
@@ -258,49 +267,65 @@ describe("SetupFuel", () => {
 
       for (const setting of settings) {
         for (const direction of directions) {
-          const result = generateSetupFuelSvg({ setting, direction });
+          const result = generateSetupFuelSvg(parseSetupFuelSettings({ setting, direction }));
           expect(result).toContain("data:image/svg+xml");
         }
       }
     });
 
     it("should produce different icons for different settings", () => {
-      const fuelMixture = generateSetupFuelSvg({ setting: "fuel-mixture", direction: "increase" });
-      const disableFuelCut = generateSetupFuelSvg({ setting: "disable-fuel-cut", direction: "increase" });
+      const fuelMixture = generateSetupFuelSvg(
+        parseSetupFuelSettings({ setting: "fuel-mixture", direction: "increase" }),
+      );
+      const disableFuelCut = generateSetupFuelSvg(
+        parseSetupFuelSettings({ setting: "disable-fuel-cut", direction: "increase" }),
+      );
 
       expect(fuelMixture).not.toBe(disableFuelCut);
     });
 
     it("should produce different icons for increase vs decrease on directional controls", () => {
-      const increase = generateSetupFuelSvg({ setting: "fuel-mixture", direction: "increase" });
-      const decrease = generateSetupFuelSvg({ setting: "fuel-mixture", direction: "decrease" });
+      const increase = generateSetupFuelSvg(parseSetupFuelSettings({ setting: "fuel-mixture", direction: "increase" }));
+      const decrease = generateSetupFuelSvg(parseSetupFuelSettings({ setting: "fuel-mixture", direction: "decrease" }));
 
       expect(increase).not.toBe(decrease);
     });
 
     it("should produce same icon for non-directional controls regardless of direction", () => {
-      const increase = generateSetupFuelSvg({ setting: "disable-fuel-cut", direction: "increase" });
-      const decrease = generateSetupFuelSvg({ setting: "disable-fuel-cut", direction: "decrease" });
+      const increase = generateSetupFuelSvg(
+        parseSetupFuelSettings({ setting: "disable-fuel-cut", direction: "increase" }),
+      );
+      const decrease = generateSetupFuelSvg(
+        parseSetupFuelSettings({ setting: "disable-fuel-cut", direction: "decrease" }),
+      );
 
       expect(increase).toBe(decrease);
     });
 
     it("should produce same icon for low-fuel-accept regardless of direction", () => {
-      const increase = generateSetupFuelSvg({ setting: "low-fuel-accept", direction: "increase" });
-      const decrease = generateSetupFuelSvg({ setting: "low-fuel-accept", direction: "decrease" });
+      const increase = generateSetupFuelSvg(
+        parseSetupFuelSettings({ setting: "low-fuel-accept", direction: "increase" }),
+      );
+      const decrease = generateSetupFuelSvg(
+        parseSetupFuelSettings({ setting: "low-fuel-accept", direction: "decrease" }),
+      );
 
       expect(increase).toBe(decrease);
     });
 
     it("should produce same icon for fcy-mode-toggle regardless of direction", () => {
-      const increase = generateSetupFuelSvg({ setting: "fcy-mode-toggle", direction: "increase" });
-      const decrease = generateSetupFuelSvg({ setting: "fcy-mode-toggle", direction: "decrease" });
+      const increase = generateSetupFuelSvg(
+        parseSetupFuelSettings({ setting: "fcy-mode-toggle", direction: "increase" }),
+      );
+      const decrease = generateSetupFuelSvg(
+        parseSetupFuelSettings({ setting: "fcy-mode-toggle", direction: "decrease" }),
+      );
 
       expect(increase).toBe(decrease);
     });
 
     it("should include correct labels for fuel-mixture increase", () => {
-      const result = generateSetupFuelSvg({ setting: "fuel-mixture", direction: "increase" });
+      const result = generateSetupFuelSvg(parseSetupFuelSettings({ setting: "fuel-mixture", direction: "increase" }));
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("FUEL MIX");
@@ -308,7 +333,7 @@ describe("SetupFuel", () => {
     });
 
     it("should include correct labels for fuel-mixture decrease", () => {
-      const result = generateSetupFuelSvg({ setting: "fuel-mixture", direction: "decrease" });
+      const result = generateSetupFuelSvg(parseSetupFuelSettings({ setting: "fuel-mixture", direction: "decrease" }));
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("FUEL MIX");
@@ -316,7 +341,9 @@ describe("SetupFuel", () => {
     });
 
     it("should include correct labels for fuel-cut-position increase", () => {
-      const result = generateSetupFuelSvg({ setting: "fuel-cut-position", direction: "increase" });
+      const result = generateSetupFuelSvg(
+        parseSetupFuelSettings({ setting: "fuel-cut-position", direction: "increase" }),
+      );
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("FUEL CUT");
@@ -324,7 +351,9 @@ describe("SetupFuel", () => {
     });
 
     it("should include correct labels for disable-fuel-cut", () => {
-      const result = generateSetupFuelSvg({ setting: "disable-fuel-cut", direction: "increase" });
+      const result = generateSetupFuelSvg(
+        parseSetupFuelSettings({ setting: "disable-fuel-cut", direction: "increase" }),
+      );
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("FUEL CUT");
@@ -332,7 +361,9 @@ describe("SetupFuel", () => {
     });
 
     it("should include correct labels for low-fuel-accept", () => {
-      const result = generateSetupFuelSvg({ setting: "low-fuel-accept", direction: "increase" });
+      const result = generateSetupFuelSvg(
+        parseSetupFuelSettings({ setting: "low-fuel-accept", direction: "increase" }),
+      );
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("LOW FUEL");
@@ -340,7 +371,9 @@ describe("SetupFuel", () => {
     });
 
     it("should include correct labels for fcy-mode-toggle", () => {
-      const result = generateSetupFuelSvg({ setting: "fcy-mode-toggle", direction: "increase" });
+      const result = generateSetupFuelSvg(
+        parseSetupFuelSettings({ setting: "fcy-mode-toggle", direction: "increase" }),
+      );
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("FCY MODE");
@@ -373,10 +406,12 @@ describe("SetupFuel", () => {
 
       for (const [setting, directions] of Object.entries(expectedLabels)) {
         for (const [direction, labels] of Object.entries(directions)) {
-          const result = generateSetupFuelSvg({
-            setting: setting as any,
-            direction: direction as any,
-          });
+          const result = generateSetupFuelSvg(
+            parseSetupFuelSettings({
+              setting: setting as any,
+              direction: direction as any,
+            }),
+          );
           const decoded = decodeURIComponent(result);
 
           expect(decoded).toContain(labels.line1);
@@ -456,14 +491,14 @@ describe("SetupFuel", () => {
 
     beforeEach(() => {
       action = new SetupFuel();
-      (action.sdkController.getCurrentTelemetry as any).mockReturnValue({ dcFuelMixture: 5 });
+      vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue({ dcFuelMixture: 5 } as TelemetryData);
     });
 
     it("renders the formatted telemetry value for a View setting", async () => {
       const ev = fakeEvent("action-1", { setting: "view-fuel-mixture" }) as any;
       await action.onWillAppear(ev);
-      const calls = (action.setKeyImage as any).mock.calls;
-      const svg = decodeURIComponent(calls[0][1] as string);
+      const [[, image]] = vi.mocked(action["setKeyImage"]).mock.calls;
+      const svg = decodeURIComponent(image as string);
       expect(svg).toContain("5");
     });
 
