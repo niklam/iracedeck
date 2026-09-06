@@ -3,6 +3,7 @@ import { getDualPressDirections } from "@iracedeck/deck-core";
 // TC Toggle tri-state (#827)
 // ---------------------------------------------------------------------------
 import { renderIconTemplate, resolveBorderSettings } from "@iracedeck/deck-core";
+import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -242,13 +243,17 @@ describe("SetupTraction", () => {
 
   describe("generateSetupTractionSvg", () => {
     it("should generate a valid data URI for tc-toggle", () => {
-      const result = generateSetupTractionSvg({ setting: "tc-toggle", direction: "increase" });
+      const result = generateSetupTractionSvg(
+        parseSetupTractionSettings({ setting: "tc-toggle", direction: "increase" }),
+      );
 
       expect(result).toContain("data:image/svg+xml");
     });
 
     it("should generate a valid data URI for tc-slot-1 increase", () => {
-      const result = generateSetupTractionSvg({ setting: "tc-slot-1", direction: "increase" });
+      const result = generateSetupTractionSvg(
+        parseSetupTractionSettings({ setting: "tc-slot-1", direction: "increase" }),
+      );
 
       expect(result).toContain("data:image/svg+xml");
     });
@@ -259,35 +264,49 @@ describe("SetupTraction", () => {
 
       for (const setting of settings) {
         for (const direction of directions) {
-          const result = generateSetupTractionSvg({ setting, direction });
+          const result = generateSetupTractionSvg(parseSetupTractionSettings({ setting, direction }));
           expect(result).toContain("data:image/svg+xml");
         }
       }
     });
 
     it("should produce different icons for different settings", () => {
-      const tcToggle = generateSetupTractionSvg({ setting: "tc-toggle", direction: "increase" });
-      const tcSlot1 = generateSetupTractionSvg({ setting: "tc-slot-1", direction: "increase" });
+      const tcToggle = generateSetupTractionSvg(
+        parseSetupTractionSettings({ setting: "tc-toggle", direction: "increase" }),
+      );
+      const tcSlot1 = generateSetupTractionSvg(
+        parseSetupTractionSettings({ setting: "tc-slot-1", direction: "increase" }),
+      );
 
       expect(tcToggle).not.toBe(tcSlot1);
     });
 
     it("should produce different icons for increase vs decrease on directional controls", () => {
-      const increase = generateSetupTractionSvg({ setting: "tc-slot-1", direction: "increase" });
-      const decrease = generateSetupTractionSvg({ setting: "tc-slot-1", direction: "decrease" });
+      const increase = generateSetupTractionSvg(
+        parseSetupTractionSettings({ setting: "tc-slot-1", direction: "increase" }),
+      );
+      const decrease = generateSetupTractionSvg(
+        parseSetupTractionSettings({ setting: "tc-slot-1", direction: "decrease" }),
+      );
 
       expect(increase).not.toBe(decrease);
     });
 
     it("should produce same icon for non-directional controls regardless of direction", () => {
-      const increase = generateSetupTractionSvg({ setting: "tc-toggle", direction: "increase" });
-      const decrease = generateSetupTractionSvg({ setting: "tc-toggle", direction: "decrease" });
+      const increase = generateSetupTractionSvg(
+        parseSetupTractionSettings({ setting: "tc-toggle", direction: "increase" }),
+      );
+      const decrease = generateSetupTractionSvg(
+        parseSetupTractionSettings({ setting: "tc-toggle", direction: "decrease" }),
+      );
 
       expect(increase).toBe(decrease);
     });
 
     it("should include correct labels for tc-toggle", () => {
-      const result = generateSetupTractionSvg({ setting: "tc-toggle", direction: "increase" });
+      const result = generateSetupTractionSvg(
+        parseSetupTractionSettings({ setting: "tc-toggle", direction: "increase" }),
+      );
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("TC");
@@ -295,7 +314,9 @@ describe("SetupTraction", () => {
     });
 
     it("should include correct labels for tc-slot-1 increase", () => {
-      const result = generateSetupTractionSvg({ setting: "tc-slot-1", direction: "increase" });
+      const result = generateSetupTractionSvg(
+        parseSetupTractionSettings({ setting: "tc-slot-1", direction: "increase" }),
+      );
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("TC1");
@@ -303,7 +324,9 @@ describe("SetupTraction", () => {
     });
 
     it("should include correct labels for tc-slot-1 decrease", () => {
-      const result = generateSetupTractionSvg({ setting: "tc-slot-1", direction: "decrease" });
+      const result = generateSetupTractionSvg(
+        parseSetupTractionSettings({ setting: "tc-slot-1", direction: "decrease" }),
+      );
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("TC1");
@@ -336,10 +359,12 @@ describe("SetupTraction", () => {
 
       for (const [setting, directions] of Object.entries(expectedLabels)) {
         for (const [direction, labels] of Object.entries(directions)) {
-          const result = generateSetupTractionSvg({
-            setting: setting as any,
-            direction: direction as any,
-          });
+          const result = generateSetupTractionSvg(
+            parseSetupTractionSettings({
+              setting: setting as any,
+              direction: direction as any,
+            }),
+          );
           const decoded = decodeURIComponent(result);
 
           expect(decoded).toContain(labels.mainLabel);
@@ -408,25 +433,25 @@ describe("SetupTraction", () => {
 
     beforeEach(() => {
       action = new SetupTraction();
-      (action.sdkController.getCurrentTelemetry as any).mockReturnValue({
+      vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue({
         dcTractionControl: 3,
         dcTractionControl2: 5,
-      });
+      } as TelemetryData);
     });
 
     it("renders the formatted telemetry value for View TC1", async () => {
       const ev = fakeEvent("action-1", { setting: "view-tc-slot-1" }) as any;
       await action.onWillAppear(ev);
-      const calls = (action.setKeyImage as any).mock.calls;
-      const svg = decodeURIComponent(calls[0][1] as string);
+      const [[, image]] = vi.mocked(action["setKeyImage"]).mock.calls;
+      const svg = decodeURIComponent(image as string);
       expect(svg).toContain("3");
     });
 
     it("reads the per-slot dc field for View TC2", async () => {
       const ev = fakeEvent("action-1", { setting: "view-tc-slot-2" }) as any;
       await action.onWillAppear(ev);
-      const calls = (action.setKeyImage as any).mock.calls;
-      const svg = decodeURIComponent(calls[0][1] as string);
+      const [[, image]] = vi.mocked(action["setKeyImage"]).mock.calls;
+      const svg = decodeURIComponent(image as string);
       expect(svg).toContain("5");
     });
 

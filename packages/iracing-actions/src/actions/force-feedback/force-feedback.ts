@@ -89,7 +89,10 @@ export const FORCE_FEEDBACK_GLOBAL_KEYS: Record<string, string> = {
   "bass-shaker-lfe-decrease": "forceFeedbackBassShakerLfeQuieter",
 };
 
-const ForceFeedbackSettings = CommonSettings.extend({
+/**
+ * @internal Exported for testing
+ */
+export const ForceFeedbackSettings = CommonSettings.extend({
   mode: z
     .enum(["auto-compute-ffb-force", "ffb-force", "wheel-lfe", "bass-shaker-lfe"])
     .default("auto-compute-ffb-force"),
@@ -100,7 +103,7 @@ const ForceFeedbackSettings = CommonSettings.extend({
   dial: DialSettings.catch(() => DialSettings.parse({})),
 });
 
-type ForceFeedbackSettings = z.infer<typeof ForceFeedbackSettings>;
+export type ForceFeedbackSettings = z.infer<typeof ForceFeedbackSettings>;
 
 /**
  * @internal Exported for testing

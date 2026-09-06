@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { FORCE_FEEDBACK_GLOBAL_KEYS, ForceFeedback, generateForceFeedbackSvg } from "./force-feedback.js";
+import {
+  FORCE_FEEDBACK_GLOBAL_KEYS,
+  ForceFeedback,
+  ForceFeedbackSettings,
+  generateForceFeedbackSvg,
+} from "./force-feedback.js";
 
 const { mockTapBinding } = vi.hoisted(() => ({
   mockTapBinding: vi.fn().mockResolvedValue(undefined),
@@ -173,19 +178,29 @@ describe("ForceFeedback", () => {
 
   describe("generateForceFeedbackSvg", () => {
     it("should generate a valid data URI for auto-compute-ffb-force", () => {
-      const result = generateForceFeedbackSvg({ mode: "auto-compute-ffb-force", direction: "increase" });
+      const result = generateForceFeedbackSvg(
+        ForceFeedbackSettings.parse({ mode: "auto-compute-ffb-force", direction: "increase" }),
+      );
       expect(result).toContain("data:image/svg+xml");
     });
 
     it("should produce same icon for auto-compute regardless of direction", () => {
-      const increase = generateForceFeedbackSvg({ mode: "auto-compute-ffb-force", direction: "increase" });
-      const decrease = generateForceFeedbackSvg({ mode: "auto-compute-ffb-force", direction: "decrease" });
+      const increase = generateForceFeedbackSvg(
+        ForceFeedbackSettings.parse({ mode: "auto-compute-ffb-force", direction: "increase" }),
+      );
+      const decrease = generateForceFeedbackSvg(
+        ForceFeedbackSettings.parse({ mode: "auto-compute-ffb-force", direction: "decrease" }),
+      );
       expect(increase).toBe(decrease);
     });
 
     it("should produce different icons for increase vs decrease on directional modes", () => {
-      const increase = generateForceFeedbackSvg({ mode: "ffb-force", direction: "increase" });
-      const decrease = generateForceFeedbackSvg({ mode: "ffb-force", direction: "decrease" });
+      const increase = generateForceFeedbackSvg(
+        ForceFeedbackSettings.parse({ mode: "ffb-force", direction: "increase" }),
+      );
+      const decrease = generateForceFeedbackSvg(
+        ForceFeedbackSettings.parse({ mode: "ffb-force", direction: "decrease" }),
+      );
       expect(increase).not.toBe(decrease);
     });
 
@@ -195,41 +210,51 @@ describe("ForceFeedback", () => {
 
       for (const mode of modes) {
         for (const direction of directions) {
-          const result = generateForceFeedbackSvg({ mode, direction });
+          const result = generateForceFeedbackSvg(ForceFeedbackSettings.parse({ mode, direction }));
           expect(result).toContain("data:image/svg+xml");
         }
       }
     });
 
     it("should produce different icons for different modes", () => {
-      const ffb = generateForceFeedbackSvg({ mode: "ffb-force", direction: "increase" });
-      const wheelLfe = generateForceFeedbackSvg({ mode: "wheel-lfe", direction: "increase" });
+      const ffb = generateForceFeedbackSvg(ForceFeedbackSettings.parse({ mode: "ffb-force", direction: "increase" }));
+      const wheelLfe = generateForceFeedbackSvg(
+        ForceFeedbackSettings.parse({ mode: "wheel-lfe", direction: "increase" }),
+      );
       expect(ffb).not.toBe(wheelLfe);
     });
 
     it("should include correct labels for auto-compute-ffb-force", () => {
-      const result = generateForceFeedbackSvg({ mode: "auto-compute-ffb-force", direction: "increase" });
+      const result = generateForceFeedbackSvg(
+        ForceFeedbackSettings.parse({ mode: "auto-compute-ffb-force", direction: "increase" }),
+      );
       const decoded = decodeURIComponent(result);
       expect(decoded).toContain("AUTO");
       expect(decoded).toContain("FFB FORCE");
     });
 
     it("should include correct labels for ffb-force increase", () => {
-      const result = generateForceFeedbackSvg({ mode: "ffb-force", direction: "increase" });
+      const result = generateForceFeedbackSvg(
+        ForceFeedbackSettings.parse({ mode: "ffb-force", direction: "increase" }),
+      );
       const decoded = decodeURIComponent(result);
       expect(decoded).toContain("INCREASE");
       expect(decoded).toContain("FFB FORCE");
     });
 
     it("should include correct labels for wheel-lfe decrease", () => {
-      const result = generateForceFeedbackSvg({ mode: "wheel-lfe", direction: "decrease" });
+      const result = generateForceFeedbackSvg(
+        ForceFeedbackSettings.parse({ mode: "wheel-lfe", direction: "decrease" }),
+      );
       const decoded = decodeURIComponent(result);
       expect(decoded).toContain("QUIETER");
       expect(decoded).toContain("WHEEL LFE");
     });
 
     it("should include correct labels for bass-shaker-lfe increase", () => {
-      const result = generateForceFeedbackSvg({ mode: "bass-shaker-lfe", direction: "increase" });
+      const result = generateForceFeedbackSvg(
+        ForceFeedbackSettings.parse({ mode: "bass-shaker-lfe", direction: "increase" }),
+      );
       const decoded = decodeURIComponent(result);
       expect(decoded).toContain("LOUDER");
       expect(decoded).toContain("BASS SHAKER");

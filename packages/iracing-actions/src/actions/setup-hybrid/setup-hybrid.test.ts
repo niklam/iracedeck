@@ -1,4 +1,5 @@
 import { getDualPressDirections } from "@iracedeck/deck-core";
+import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -240,19 +241,23 @@ describe("SetupHybrid", () => {
 
   describe("generateSetupHybridSvg", () => {
     it("should generate a valid data URI for mguk-regen-gain", () => {
-      const result = generateSetupHybridSvg({ setting: "mguk-regen-gain", direction: "increase" });
+      const result = generateSetupHybridSvg(
+        parseSetupHybridSettings({ setting: "mguk-regen-gain", direction: "increase" }),
+      );
 
       expect(result).toContain("data:image/svg+xml");
     });
 
     it("should generate a valid data URI for hys-boost", () => {
-      const result = generateSetupHybridSvg({ setting: "hys-boost", direction: "increase" });
+      const result = generateSetupHybridSvg(parseSetupHybridSettings({ setting: "hys-boost", direction: "increase" }));
 
       expect(result).toContain("data:image/svg+xml");
     });
 
     it("should generate a valid data URI for hys-no-boost", () => {
-      const result = generateSetupHybridSvg({ setting: "hys-no-boost", direction: "increase" });
+      const result = generateSetupHybridSvg(
+        parseSetupHybridSettings({ setting: "hys-no-boost", direction: "increase" }),
+      );
 
       expect(result).toContain("data:image/svg+xml");
     });
@@ -270,42 +275,60 @@ describe("SetupHybrid", () => {
 
       for (const setting of settings) {
         for (const direction of directions) {
-          const result = generateSetupHybridSvg({ setting, direction });
+          const result = generateSetupHybridSvg(parseSetupHybridSettings({ setting, direction }));
           expect(result).toContain("data:image/svg+xml");
         }
       }
     });
 
     it("should produce different icons for different settings", () => {
-      const regenGain = generateSetupHybridSvg({ setting: "mguk-regen-gain", direction: "increase" });
-      const hysBoost = generateSetupHybridSvg({ setting: "hys-boost", direction: "increase" });
+      const regenGain = generateSetupHybridSvg(
+        parseSetupHybridSettings({ setting: "mguk-regen-gain", direction: "increase" }),
+      );
+      const hysBoost = generateSetupHybridSvg(
+        parseSetupHybridSettings({ setting: "hys-boost", direction: "increase" }),
+      );
 
       expect(regenGain).not.toBe(hysBoost);
     });
 
     it("should produce different icons for increase vs decrease on directional controls", () => {
-      const increase = generateSetupHybridSvg({ setting: "mguk-regen-gain", direction: "increase" });
-      const decrease = generateSetupHybridSvg({ setting: "mguk-regen-gain", direction: "decrease" });
+      const increase = generateSetupHybridSvg(
+        parseSetupHybridSettings({ setting: "mguk-regen-gain", direction: "increase" }),
+      );
+      const decrease = generateSetupHybridSvg(
+        parseSetupHybridSettings({ setting: "mguk-regen-gain", direction: "decrease" }),
+      );
 
       expect(increase).not.toBe(decrease);
     });
 
     it("should produce same icon for non-directional controls regardless of direction", () => {
-      const increase = generateSetupHybridSvg({ setting: "hys-boost", direction: "increase" });
-      const decrease = generateSetupHybridSvg({ setting: "hys-boost", direction: "decrease" });
+      const increase = generateSetupHybridSvg(
+        parseSetupHybridSettings({ setting: "hys-boost", direction: "increase" }),
+      );
+      const decrease = generateSetupHybridSvg(
+        parseSetupHybridSettings({ setting: "hys-boost", direction: "decrease" }),
+      );
 
       expect(increase).toBe(decrease);
     });
 
     it("should produce same icon for toggle control regardless of direction", () => {
-      const increase = generateSetupHybridSvg({ setting: "hys-no-boost", direction: "increase" });
-      const decrease = generateSetupHybridSvg({ setting: "hys-no-boost", direction: "decrease" });
+      const increase = generateSetupHybridSvg(
+        parseSetupHybridSettings({ setting: "hys-no-boost", direction: "increase" }),
+      );
+      const decrease = generateSetupHybridSvg(
+        parseSetupHybridSettings({ setting: "hys-no-boost", direction: "decrease" }),
+      );
 
       expect(increase).toBe(decrease);
     });
 
     it("should include correct labels for mguk-regen-gain increase", () => {
-      const result = generateSetupHybridSvg({ setting: "mguk-regen-gain", direction: "increase" });
+      const result = generateSetupHybridSvg(
+        parseSetupHybridSettings({ setting: "mguk-regen-gain", direction: "increase" }),
+      );
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("REGEN GAIN");
@@ -313,7 +336,9 @@ describe("SetupHybrid", () => {
     });
 
     it("should include correct labels for mguk-regen-gain decrease", () => {
-      const result = generateSetupHybridSvg({ setting: "mguk-regen-gain", direction: "decrease" });
+      const result = generateSetupHybridSvg(
+        parseSetupHybridSettings({ setting: "mguk-regen-gain", direction: "decrease" }),
+      );
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("REGEN GAIN");
@@ -321,7 +346,7 @@ describe("SetupHybrid", () => {
     });
 
     it("should include correct labels for hys-boost", () => {
-      const result = generateSetupHybridSvg({ setting: "hys-boost", direction: "increase" });
+      const result = generateSetupHybridSvg(parseSetupHybridSettings({ setting: "hys-boost", direction: "increase" }));
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("HYS");
@@ -329,7 +354,9 @@ describe("SetupHybrid", () => {
     });
 
     it("should include correct labels for hys-no-boost", () => {
-      const result = generateSetupHybridSvg({ setting: "hys-no-boost", direction: "increase" });
+      const result = generateSetupHybridSvg(
+        parseSetupHybridSettings({ setting: "hys-no-boost", direction: "increase" }),
+      );
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("HYS");
@@ -366,10 +393,12 @@ describe("SetupHybrid", () => {
 
       for (const [setting, directions] of Object.entries(expectedLabels)) {
         for (const [direction, labels] of Object.entries(directions)) {
-          const result = generateSetupHybridSvg({
-            setting: setting as any,
-            direction: direction as any,
-          });
+          const result = generateSetupHybridSvg(
+            parseSetupHybridSettings({
+              setting: setting as any,
+              direction: direction as any,
+            }),
+          );
           const decoded = decodeURIComponent(result);
 
           expect(decoded).toContain(labels.mainLabel);
@@ -502,14 +531,14 @@ describe("SetupHybrid", () => {
 
     beforeEach(() => {
       action = new SetupHybrid();
-      (action.sdkController.getCurrentTelemetry as any).mockReturnValue({ dcMGUKDeployMode: 2 });
+      vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue({ dcMGUKDeployMode: 2 } as TelemetryData);
     });
 
     it("renders the formatted telemetry value for a View setting", async () => {
       const ev = fakeEvent("action-1", { setting: "view-mguk-deploy-mode" }) as any;
       await action.onWillAppear(ev);
-      const calls = (action.setKeyImage as any).mock.calls;
-      const svg = decodeURIComponent(calls[0][1] as string);
+      const [[, image]] = vi.mocked(action["setKeyImage"]).mock.calls;
+      const svg = decodeURIComponent(image as string);
       expect(svg).toContain("2");
     });
 

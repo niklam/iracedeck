@@ -1,4 +1,5 @@
 import { getDualPressDirections } from "@iracedeck/deck-core";
+import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { generateSetupEngineSvg, parseSetupEngineSettings, SETUP_ENGINE_GLOBAL_KEYS } from "./setup-engine.js";
@@ -225,19 +226,25 @@ describe("SetupEngine", () => {
 
   describe("generateSetupEngineSvg", () => {
     it("should generate a valid data URI for engine-power increase", () => {
-      const result = generateSetupEngineSvg({ setting: "engine-power", direction: "increase" });
+      const result = generateSetupEngineSvg(
+        parseSetupEngineSettings({ setting: "engine-power", direction: "increase" }),
+      );
 
       expect(result).toContain("data:image/svg+xml");
     });
 
     it("should generate a valid data URI for throttle-shaping increase", () => {
-      const result = generateSetupEngineSvg({ setting: "throttle-shaping", direction: "increase" });
+      const result = generateSetupEngineSvg(
+        parseSetupEngineSettings({ setting: "throttle-shaping", direction: "increase" }),
+      );
 
       expect(result).toContain("data:image/svg+xml");
     });
 
     it("should generate a valid data URI for boost-level decrease", () => {
-      const result = generateSetupEngineSvg({ setting: "boost-level", direction: "decrease" });
+      const result = generateSetupEngineSvg(
+        parseSetupEngineSettings({ setting: "boost-level", direction: "decrease" }),
+      );
 
       expect(result).toContain("data:image/svg+xml");
     });
@@ -248,22 +255,30 @@ describe("SetupEngine", () => {
 
       for (const setting of settings) {
         for (const direction of directions) {
-          const result = generateSetupEngineSvg({ setting, direction });
+          const result = generateSetupEngineSvg(parseSetupEngineSettings({ setting, direction }));
           expect(result).toContain("data:image/svg+xml");
         }
       }
     });
 
     it("should produce different icons for different settings", () => {
-      const enginePower = generateSetupEngineSvg({ setting: "engine-power", direction: "increase" });
-      const boostLevel = generateSetupEngineSvg({ setting: "boost-level", direction: "increase" });
+      const enginePower = generateSetupEngineSvg(
+        parseSetupEngineSettings({ setting: "engine-power", direction: "increase" }),
+      );
+      const boostLevel = generateSetupEngineSvg(
+        parseSetupEngineSettings({ setting: "boost-level", direction: "increase" }),
+      );
 
       expect(enginePower).not.toBe(boostLevel);
     });
 
     it("should produce different icons for increase vs decrease", () => {
-      const increase = generateSetupEngineSvg({ setting: "engine-power", direction: "increase" });
-      const decrease = generateSetupEngineSvg({ setting: "engine-power", direction: "decrease" });
+      const increase = generateSetupEngineSvg(
+        parseSetupEngineSettings({ setting: "engine-power", direction: "increase" }),
+      );
+      const decrease = generateSetupEngineSvg(
+        parseSetupEngineSettings({ setting: "engine-power", direction: "decrease" }),
+      );
 
       expect(increase).not.toBe(decrease);
     });
@@ -272,14 +287,16 @@ describe("SetupEngine", () => {
       const settings = ["engine-power", "throttle-shaping", "boost-level", "launch-rpm"] as const;
 
       for (const setting of settings) {
-        const increase = generateSetupEngineSvg({ setting, direction: "increase" });
-        const decrease = generateSetupEngineSvg({ setting, direction: "decrease" });
+        const increase = generateSetupEngineSvg(parseSetupEngineSettings({ setting, direction: "increase" }));
+        const decrease = generateSetupEngineSvg(parseSetupEngineSettings({ setting, direction: "decrease" }));
         expect(increase).not.toBe(decrease);
       }
     });
 
     it("should include correct labels for engine-power increase", () => {
-      const result = generateSetupEngineSvg({ setting: "engine-power", direction: "increase" });
+      const result = generateSetupEngineSvg(
+        parseSetupEngineSettings({ setting: "engine-power", direction: "increase" }),
+      );
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("ENG POWER");
@@ -287,7 +304,9 @@ describe("SetupEngine", () => {
     });
 
     it("should include correct labels for throttle-shaping decrease", () => {
-      const result = generateSetupEngineSvg({ setting: "throttle-shaping", direction: "decrease" });
+      const result = generateSetupEngineSvg(
+        parseSetupEngineSettings({ setting: "throttle-shaping", direction: "decrease" }),
+      );
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("THROTTLE");
@@ -316,10 +335,12 @@ describe("SetupEngine", () => {
 
       for (const [setting, directions] of Object.entries(expectedLabels)) {
         for (const [direction, labels] of Object.entries(directions)) {
-          const result = generateSetupEngineSvg({
-            setting: setting as any,
-            direction: direction as any,
-          });
+          const result = generateSetupEngineSvg(
+            parseSetupEngineSettings({
+              setting: setting as any,
+              direction: direction as any,
+            }),
+          );
           const decoded = decodeURIComponent(result);
 
           expect(decoded).toContain(labels.line1);
@@ -387,14 +408,14 @@ describe("SetupEngine", () => {
 
     beforeEach(() => {
       action = new SetupEngine();
-      (action.sdkController.getCurrentTelemetry as any).mockReturnValue({ dcEnginePower: 7 });
+      vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue({ dcEnginePower: 7 } as TelemetryData);
     });
 
     it("renders the formatted telemetry value for a View setting", async () => {
       const ev = fakeEvent("action-1", { setting: "view-engine-power" }) as any;
       await action.onWillAppear(ev);
-      const calls = (action.setKeyImage as any).mock.calls;
-      const svg = decodeURIComponent(calls[0][1] as string);
+      const [[, image]] = vi.mocked(action["setKeyImage"]).mock.calls;
+      const svg = decodeURIComponent(image as string);
       expect(svg).toContain("7");
     });
 

@@ -1,4 +1,5 @@
 import { getDualPressDirections } from "@iracedeck/deck-core";
+import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -242,6 +243,10 @@ function fakeEvent(actionId: string, settings: Record<string, unknown> = {}) {
   };
 }
 
+function mockTelemetry(action: SetupChassis, telemetry: Partial<TelemetryData>): void {
+  vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue(telemetry as TelemetryData);
+}
+
 describe("SetupChassis", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -370,19 +375,23 @@ describe("SetupChassis", () => {
 
   describe("generateSetupChassisSvg", () => {
     it("should generate a valid data URI for differential-preload increase", () => {
-      const result = generateSetupChassisSvg({ setting: "differential-preload", direction: "increase" });
+      const result = generateSetupChassisSvg(
+        parseSetupChassisSettings({ setting: "differential-preload", direction: "increase" }),
+      );
 
       expect(result).toContain("data:image/svg+xml");
     });
 
     it("should generate a valid data URI for front-arb increase", () => {
-      const result = generateSetupChassisSvg({ setting: "front-arb", direction: "increase" });
+      const result = generateSetupChassisSvg(
+        parseSetupChassisSettings({ setting: "front-arb", direction: "increase" }),
+      );
 
       expect(result).toContain("data:image/svg+xml");
     });
 
     it("should generate a valid data URI for lf-shock decrease", () => {
-      const result = generateSetupChassisSvg({ setting: "lf-shock", direction: "decrease" });
+      const result = generateSetupChassisSvg(parseSetupChassisSettings({ setting: "lf-shock", direction: "decrease" }));
 
       expect(result).toContain("data:image/svg+xml");
     });
@@ -407,22 +416,30 @@ describe("SetupChassis", () => {
 
       for (const setting of settings) {
         for (const direction of directions) {
-          const result = generateSetupChassisSvg({ setting, direction });
+          const result = generateSetupChassisSvg(parseSetupChassisSettings({ setting, direction }));
           expect(result).toContain("data:image/svg+xml");
         }
       }
     });
 
     it("should produce different icons for different settings", () => {
-      const diffPreload = generateSetupChassisSvg({ setting: "differential-preload", direction: "increase" });
-      const lfShock = generateSetupChassisSvg({ setting: "lf-shock", direction: "increase" });
+      const diffPreload = generateSetupChassisSvg(
+        parseSetupChassisSettings({ setting: "differential-preload", direction: "increase" }),
+      );
+      const lfShock = generateSetupChassisSvg(
+        parseSetupChassisSettings({ setting: "lf-shock", direction: "increase" }),
+      );
 
       expect(diffPreload).not.toBe(lfShock);
     });
 
     it("should produce different icons for increase vs decrease", () => {
-      const increase = generateSetupChassisSvg({ setting: "differential-preload", direction: "increase" });
-      const decrease = generateSetupChassisSvg({ setting: "differential-preload", direction: "decrease" });
+      const increase = generateSetupChassisSvg(
+        parseSetupChassisSettings({ setting: "differential-preload", direction: "increase" }),
+      );
+      const decrease = generateSetupChassisSvg(
+        parseSetupChassisSettings({ setting: "differential-preload", direction: "decrease" }),
+      );
 
       expect(increase).not.toBe(decrease);
     });
@@ -445,14 +462,16 @@ describe("SetupChassis", () => {
       ] as const;
 
       for (const setting of settings) {
-        const increase = generateSetupChassisSvg({ setting, direction: "increase" });
-        const decrease = generateSetupChassisSvg({ setting, direction: "decrease" });
+        const increase = generateSetupChassisSvg(parseSetupChassisSettings({ setting, direction: "increase" }));
+        const decrease = generateSetupChassisSvg(parseSetupChassisSettings({ setting, direction: "decrease" }));
         expect(increase).not.toBe(decrease);
       }
     });
 
     it("should include correct labels for differential-preload increase", () => {
-      const result = generateSetupChassisSvg({ setting: "differential-preload", direction: "increase" });
+      const result = generateSetupChassisSvg(
+        parseSetupChassisSettings({ setting: "differential-preload", direction: "increase" }),
+      );
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("DIFF PRELOAD");
@@ -460,7 +479,9 @@ describe("SetupChassis", () => {
     });
 
     it("should include correct labels for power-steering decrease", () => {
-      const result = generateSetupChassisSvg({ setting: "power-steering", direction: "decrease" });
+      const result = generateSetupChassisSvg(
+        parseSetupChassisSettings({ setting: "power-steering", direction: "decrease" }),
+      );
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("PWR STEER");
@@ -525,10 +546,12 @@ describe("SetupChassis", () => {
 
       for (const [setting, directions] of Object.entries(expectedLabels)) {
         for (const [direction, labels] of Object.entries(directions)) {
-          const result = generateSetupChassisSvg({
-            setting: setting as any,
-            direction: direction as any,
-          });
+          const result = generateSetupChassisSvg(
+            parseSetupChassisSettings({
+              setting: setting as any,
+              direction: direction as any,
+            }),
+          );
           const decoded = decodeURIComponent(result);
 
           expect(decoded).toContain(labels.line1);
@@ -596,25 +619,22 @@ describe("SetupChassis", () => {
 
     beforeEach(() => {
       action = new SetupChassis();
-      (action.sdkController.getCurrentTelemetry as any).mockReturnValue({
-        dcDiffEntry: 4,
-        dcWeightJackerRight: 0.06,
-      });
+      mockTelemetry(action, { dcDiffEntry: 4, dcWeightJackerRight: 0.06 });
     });
 
     it("renders the formatted telemetry value for a View setting", async () => {
       const ev = fakeEvent("action-1", { setting: "view-diff-entry" }) as any;
       await action.onWillAppear(ev);
-      const calls = (action.setKeyImage as any).mock.calls;
-      const svg = decodeURIComponent(calls[0][1] as string);
+      const [[, image]] = vi.mocked(action["setKeyImage"]).mock.calls;
+      const svg = decodeURIComponent(image as string);
       expect(svg).toContain("4");
     });
 
     it("renders the signed-percent formatter for weight-jacker-right", async () => {
       const ev = fakeEvent("action-1", { setting: "view-weight-jacker-right" }) as any;
       await action.onWillAppear(ev);
-      const calls = (action.setKeyImage as any).mock.calls;
-      const svg = decodeURIComponent(calls[0][1] as string);
+      const [[, image]] = vi.mocked(action["setKeyImage"]).mock.calls;
+      const svg = decodeURIComponent(image as string);
       expect(svg).toContain("+6%");
     });
 
@@ -790,11 +810,12 @@ describe("SetupChassis", () => {
     });
 
     it("renders the pending pit-stop offset for the LR spring View", async () => {
-      (action.sdkController.getCurrentTelemetry as any).mockReturnValue({ dpWeightJackerLeft: 2.54, DisplayUnits: 1 });
+      mockTelemetry(action, { dpWeightJackerLeft: 2.54, DisplayUnits: 1 });
 
       await action.onWillAppear(fakeEvent("action-1", { setting: "view-lr-spring-offset" }) as any);
 
-      const svg = decodeURIComponent((action.setKeyImage as any).mock.calls[0][1] as string);
+      const [[, image]] = vi.mocked(action["setKeyImage"]).mock.calls;
+      const svg = decodeURIComponent(image as string);
       expect(svg).toContain("3 mm");
     });
 
@@ -900,21 +921,23 @@ describe("SetupChassis", () => {
 
     it("forces the spring View to imperial on a metric-display sim", async () => {
       const action = new SetupChassis();
-      (action.sdkController.getCurrentTelemetry as any).mockReturnValue({ dpWeightJackerLeft: 3.175, DisplayUnits: 1 });
+      mockTelemetry(action, { dpWeightJackerLeft: 3.175, DisplayUnits: 1 });
 
       await action.onWillAppear(fakeEvent("action-1", { setting: "view-lr-spring-offset", units: "imperial" }) as any);
 
-      const svg = decodeURIComponent((action.setKeyImage as any).mock.calls[0][1] as string);
+      const [[, image]] = vi.mocked(action["setKeyImage"]).mock.calls;
+      const svg = decodeURIComponent(image as string);
       expect(svg).toContain('0.125"');
     });
 
     it("keeps following the sim's display units on auto", async () => {
       const action = new SetupChassis();
-      (action.sdkController.getCurrentTelemetry as any).mockReturnValue({ dpWeightJackerLeft: 3.175, DisplayUnits: 1 });
+      mockTelemetry(action, { dpWeightJackerLeft: 3.175, DisplayUnits: 1 });
 
       await action.onWillAppear(fakeEvent("action-1", { setting: "view-lr-spring-offset" }) as any);
 
-      const svg = decodeURIComponent((action.setKeyImage as any).mock.calls[0][1] as string);
+      const [[, image]] = vi.mocked(action["setKeyImage"]).mock.calls;
+      const svg = decodeURIComponent(image as string);
       expect(svg).toContain("3 mm");
     });
   });
