@@ -9,7 +9,6 @@
 // three source files and hands everything over. The generator script is left
 // with file I/O and a summary; the freshness test rebuilds through the same
 // function and compares text.
-
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import url from "node:url";
@@ -41,7 +40,9 @@ function readJson(relative) {
  * @returns {Promise<import("@iracedeck/audio-scenarios").PackReference>}
  */
 export async function buildPackReferenceData() {
-  const { engine, manifest, audioScenarios } = await registerCatalogEngine({ voice: BUNDLED_VOICE });
+  // The engine's active voice is irrelevant here — nothing fires, and the
+  // builder is told which voice's clips to read explicitly below.
+  const { engine, manifest, audioScenarios } = await registerCatalogEngine();
   const { version } = readJson("package.json");
   const script = readJson(BUNDLED_SCRIPT_PATH);
   const { groups } = readJson(BUNDLED_VOICE_CONFIG_PATH);
@@ -72,14 +73,20 @@ export async function serializePackReferenceData(reference) {
 
 /**
  * What the generator prints and the coordinator reads: the counts, the lines
- * the config has no text for, and the groups nothing draws from — a group no
- * callout and no var accounts for is either recorded for nothing or a var
- * whose description the `viaVar` heuristic could not read.
+ * the config has no text for, and what nothing draws from — a whole group no
+ * callout and no var accounts for, and, inside a group that IS drawn from,
+ * the single lines with neither a direct consumer nor a var naming their
+ * group. Either is recorded for nothing, or is a var whose description the
+ * `viaVar` heuristic could not read.
  *
  * @param {import("@iracedeck/audio-scenarios").PackReference} reference
  */
 export function summarizePackReference(reference) {
   const lines = reference.recordingScript.flatMap((group) => group.lines.map((line) => ({ group: group.group, line })));
+  const unconsumed = (line) => line.usedBy.length === 0 && line.viaVar.length === 0;
+  const groupsWithoutConsumer = reference.recordingScript
+    .filter((group) => group.lines.every(unconsumed))
+    .map((group) => group.group);
 
   return {
     callouts: reference.callouts.length,
@@ -90,10 +97,14 @@ export function summarizePackReference(reference) {
     groups: reference.recordingScript.length,
     lines: lines.length,
     takes: lines.reduce((total, { line }) => total + line.takes, 0),
-    nullTextLines: lines.filter(({ line }) => line.text === null).map(({ group, line }) => `${group}/${line.base}`),
-    groupsWithoutConsumer: reference.recordingScript
-      .filter((group) => group.lines.every((line) => line.usedBy.length === 0 && line.viaVar.length === 0))
-      .map((group) => group.group),
+    linesWithoutText: lines
+      .filter(({ line }) => line.texts.length === 0)
+      .map(({ group, line }) => `${group}/${line.base}`),
+    groupsWithoutConsumer,
+    /** Lines nothing draws from inside a group something else does — `group/base`. */
+    linesWithoutConsumer: lines
+      .filter(({ group, line }) => !groupsWithoutConsumer.includes(group) && unconsumed(line))
+      .map(({ group, line }) => `${group}/${line.base}`),
     unusedVocabulary: [
       ...reference.vocabulary.vars.filter((v) => v.usedBy.length === 0).map((v) => `var ${v.name}`),
       ...reference.vocabulary.conds.filter((c) => c.usedBy.length === 0).map((c) => `cond ${c.name}`),

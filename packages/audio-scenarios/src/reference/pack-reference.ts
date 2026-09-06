@@ -22,8 +22,9 @@
  *   `usedBy` and the recording lines' `usedBy` are that attribution inverted.
  * - A var draws from a clip group the reference can only know by reading the
  *   var's DESCRIPTION (`descriptionNamesGroup`) — a heuristic by design, since
- *   a resolver is a closure. It is what fills a recording line's `viaVar` and
- *   extends its `usedBy` to the callouts that name the var.
+ *   a resolver is a closure. It fills a recording line's `viaVar` and nothing
+ *   else: `usedBy` stays the DIRECT consumers, so a reader can tell "this
+ *   entry names the line" from "some var in this group might".
  *
  * The builder refuses a contract the script has no entry for. Since #1065 the
  * catalog is contracts-only and the bundled script covers all of it, so an
@@ -100,11 +101,21 @@ export type PackReferenceVocabulary = {
 /** One line a full pack records: a base with all its takes. */
 export type RecordingLine = {
   base: string;
-  /** The bundled config's text of the first take (`<base>-01`, else the bare `<base>`); `null` when the config has none. */
-  text: string | null;
+  /**
+   * The bundled config's text of EVERY shipped take, in take order — a bare
+   * `<base>` first, then `<base>-01`, `-02`, … — since the bundled voice's
+   * takes are alternate wordings, not repeats. A take the config has no text
+   * for is left out, so `texts.length <= takes`; `[]` when it has none.
+   */
+  texts: readonly string[];
   /** How many takes the bundled voice ships — every `<base>-NN.mp3`, or the bare `<base>.mp3`. */
   takes: number;
-  /** Callout ids whose entries draw from the line directly, or through a var that draws from its group. */
+  /**
+   * Callout ids whose entries — or the fragments they include — address the
+   * base DIRECTLY: a `pool:<group>/<base>` step, a `pools` alias resolving to
+   * it, or a literal clip. A var that draws from the group is `viaVar`; its
+   * callouts are on the vocabulary page, not repeated here.
+   */
   usedBy: readonly string[];
   /** Var names whose description names the line's group — see {@link descriptionNamesGroup}. */
   viaVar: readonly string[];
@@ -153,10 +164,7 @@ export function buildPackReference(input: PackReferenceInput): PackReference {
   const { script } = input;
   const voice = input.voice ?? DEFAULT_VOICE;
 
-  const unscripted = input.contracts
-    .map((c) => c.id)
-    .filter((id) => !Object.hasOwn(script.scenarios, id))
-    .sort();
+  const unscripted = sorted(input.contracts.map((c) => c.id).filter((id) => !Object.hasOwn(script.scenarios, id)));
 
   if (unscripted.length > 0) {
     throw new Error(
@@ -363,8 +371,17 @@ function buildVocabulary(report: VocabularyReport, walks: ReadonlyMap<string, En
 // ─── Recording script ────────────────────────────────────────────────────────
 
 /** The `-NN` take suffix, as the engine's manifest-derived pools read it (`green-01` → `green`). */
+const TAKE_SUFFIX = /-(\d{2})$/;
+
 function stripTakeSuffix(name: string): string {
-  return name.replace(/-\d{2}$/, "");
+  return name.replace(TAKE_SUFFIX, "");
+}
+
+/** Where a take sits in the recording order: the bare `<base>` first, then `-01`, `-02`, … */
+function takeOrder(name: string): number {
+  const match = TAKE_SUFFIX.exec(name);
+
+  return match ? Number(match[1]) : 0;
 }
 
 function buildRecordingScript(
@@ -374,9 +391,9 @@ function buildRecordingScript(
   walks: ReadonlyMap<string, EntryWalk>,
   vars: readonly VocabularyItem[],
 ): RecordingGroup[] {
-  // Takes per base, per group, off the voice's manifest clips.
+  // The shipped take names per base, per group, off the voice's manifest clips.
   const prefix = `voice/${voice}/`;
-  const takes = new Map<string, Map<string, number>>();
+  const takesByGroup = new Map<string, Map<string, string[]>>();
 
   for (const clip of manifestClips) {
     if (!clip.startsWith(prefix) || !clip.endsWith(".mp3")) continue;
@@ -387,15 +404,19 @@ function buildRecordingScript(
     if (slash <= 0 || rest.includes("/", slash + 1)) continue;
 
     const group = rest.slice(0, slash);
-    const base = stripTakeSuffix(rest.slice(slash + 1));
-    let bases = takes.get(group);
+    const name = rest.slice(slash + 1);
+    const base = stripTakeSuffix(name);
+    let bases = takesByGroup.get(group);
 
     if (!bases) {
       bases = new Map();
-      takes.set(group, bases);
+      takesByGroup.set(group, bases);
     }
 
-    bases.set(base, (bases.get(base) ?? 0) + 1);
+    const names = bases.get(base);
+
+    if (names) names.push(name);
+    else bases.set(base, [name]);
   }
 
   // Direct consumers: the callouts whose entries draw from a base by pool or by literal clip.
@@ -414,23 +435,31 @@ function buildRecordingScript(
     }
   }
 
-  return sorted(takes.keys()).map((group) => {
-    // Consumers through a var: every var whose description names the group
-    // draws some line of it, so its callouts are consumers of every line here.
-    const viaVar = vars.filter((v) => descriptionNamesGroup(v.description, group));
-    const varUsers = viaVar.flatMap((v) => v.usedBy);
-    const lines = Object.hasOwn(groups, group) ? groups[group] : [];
-    const bases = takes.get(group) ?? new Map<string, number>();
+  return sorted(takesByGroup.keys()).map((group) => {
+    // The vars whose description names the group — noted on every line of
+    // it, since which line a resolver picks is a runtime decision. Their
+    // callouts are deliberately NOT folded into `usedBy` (see the type).
+    const viaVar = vars.filter((v) => descriptionNamesGroup(v.description, group)).map((v) => v.name);
+    const authored = new Map((Object.hasOwn(groups, group) ? groups[group] : []).map((l) => [l.name, l.text]));
+    const bases = takesByGroup.get(group) ?? new Map<string, string[]>();
 
     return {
       group,
-      lines: sorted(bases.keys()).map((base) => ({
-        base,
-        text: lines.find((l) => l.name === `${base}-01`)?.text ?? lines.find((l) => l.name === base)?.text ?? null,
-        takes: bases.get(base) ?? 0,
-        usedBy: sorted(new Set([...(directUsers.get(`${group}/${base}`) ?? []), ...varUsers])),
-        viaVar: viaVar.map((v) => v.name),
-      })),
+      lines: sorted(bases.keys()).map((base) => {
+        const names = [...(bases.get(base) ?? [])].sort((a, b) => takeOrder(a) - takeOrder(b));
+
+        return {
+          base,
+          texts: names.flatMap((name) => {
+            const text = authored.get(name);
+
+            return text === undefined ? [] : [text];
+          }),
+          takes: names.length,
+          usedBy: sorted(directUsers.get(`${group}/${base}`) ?? []),
+          viaVar: [...viaVar],
+        };
+      }),
     };
   });
 }

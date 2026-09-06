@@ -119,9 +119,11 @@ const SCRIPT: CalloutScript = {
 
 const GROUPS: PackReferenceInput["groups"] = {
   flags: [
-    { name: "green-01", text: "Green flag, go go go." },
+    // Authored out of take order: the line's `texts` follow the take number, not the file.
     { name: "green-02", text: "Green green green." },
     { name: "blue-01", text: "Blue flag." },
+    { name: "green-03", text: "Green flag. Go racing." },
+    { name: "green-01", text: "Green flag, go go go." },
   ],
   incidents: [
     { name: "points-1", text: "One point." },
@@ -286,21 +288,23 @@ describe("buildPackReference", () => {
     expect(lineOf(ref, "flags", "blue").usedBy).toEqual([]);
   });
 
-  it("builds the recording script off the voice's manifest clips: takes per base, the text of the first take, null when the config has no line", () => {
+  it("builds the recording script off the voice's manifest clips: takes per base, every take's text in take order, [] when the config has none", () => {
     const ref = buildPackReference(input());
 
-    // `-NN` takes collapse to one base; the text is the `-01` take's.
+    // `-NN` takes collapse to one base; every take's text is kept, by take
+    // number — the bundled voice's takes differ per take, so publishing only
+    // the first would hide the alternates a pack author is asked to record.
     expect(lineOf(ref, "flags", "green")).toEqual({
       base: "green",
-      text: "Green flag, go go go.",
+      texts: ["Green flag, go go go.", "Green green green.", "Green flag. Go racing."],
       takes: 3,
       usedBy: ["pit-crew.flag-green"],
       viaVar: [],
     });
-    // A bare name (no take suffix) is looked up as written.
+    // A bare name (no take suffix) is looked up as written, and counts as the first take.
     expect(lineOf(ref, "units", "km")).toEqual({
       base: "km",
-      text: "kilometers per hour",
+      texts: ["kilometers per hour"],
       takes: 1,
       usedBy: ["pit-crew.spotter-call"],
       viaVar: [],
@@ -308,7 +312,7 @@ describe("buildPackReference", () => {
     // A clip the config never describes still ships, so it is still a line to record.
     expect(lineOf(ref, "orphan-group", "lonely")).toEqual({
       base: "lonely",
-      text: null,
+      texts: [],
       takes: 1,
       usedBy: [],
       viaVar: [],
@@ -318,18 +322,69 @@ describe("buildPackReference", () => {
     expect(ref.recordingScript.flatMap((g) => g.lines).reduce((n, l) => n + l.takes, 0)).toBe(11);
   });
 
-  it("names a line's consumers through a var whose description names the group, and lists the var as viaVar", () => {
+  it("orders texts by shipped take — a bare take first, then -01, -02, … — whatever order the config or the manifest lists them in, and only for takes that ship", () => {
+    const ref = buildPackReference(
+      input({
+        manifestClips: [
+          "voice/default/flags/green-02.mp3",
+          "voice/default/flags/green.mp3",
+          "voice/default/flags/green-01.mp3",
+        ],
+        groups: {
+          flags: [
+            { name: "green-02", text: "two" },
+            { name: "green-03", text: "three — authored, never shipped" },
+            { name: "green", text: "bare" },
+            { name: "green-01", text: "one" },
+          ],
+        },
+      }),
+    );
+
+    expect(lineOf(ref, "flags", "green")).toEqual({
+      base: "green",
+      texts: ["bare", "one", "two"],
+      takes: 3,
+      usedBy: ["pit-crew.flag-green"],
+      viaVar: [],
+    });
+  });
+
+  it("lists a var-only line with no direct consumer and the var in viaVar — the website derives the var's callouts from the vocabulary", () => {
     const ref = buildPackReference(input());
 
+    // `incident.points` draws `incidents/points-N`; no entry addresses either
+    // base directly, so `usedBy` is empty and the var is the only link.
     for (const base of ["points-1", "points-2"]) {
       expect(lineOf(ref, "incidents", base)).toEqual({
         base,
-        text: base === "points-1" ? "One point." : "Two points.",
+        texts: [base === "points-1" ? "One point." : "Two points."],
         takes: 1,
-        usedBy: ["pit-crew.incident"],
+        usedBy: [],
         viaVar: ["incident.points"],
       });
     }
+
+    expect(ref.vocabulary.vars.find((v) => v.name === "incident.points")?.usedBy).toEqual(["pit-crew.incident"]);
+  });
+
+  it("keeps a directly addressed line's consumers to the entries that address it, even inside a group a var also draws from", () => {
+    const ref = buildPackReference(
+      input({
+        manifestClips: [...MANIFEST_CLIPS, "voice/default/incidents/type-contact-01.mp3"],
+        groups: { ...GROUPS, incidents: [...GROUPS.incidents, { name: "type-contact-01", text: "Contact." }] },
+      }),
+    );
+
+    // The incident entry names `incidents/type-contact` itself, so it is the
+    // direct consumer; the group-level var is still noted, and only there.
+    expect(lineOf(ref, "incidents", "type-contact")).toEqual({
+      base: "type-contact",
+      texts: ["Contact."],
+      takes: 1,
+      usedBy: ["pit-crew.incident"],
+      viaVar: ["incident.points"],
+    });
   });
 
   it("resolves a pools alias to its group/base, keeps an alias the script does not define as written, and counts literal voice clips in either spelling", () => {
@@ -376,8 +431,9 @@ describe("buildPackReference", () => {
     expect(ref.recordingScript).toEqual([
       {
         group: "flags",
+        // One shipped take, so one text — the two other authored takes are not this voice's.
         lines: [
-          { base: "green", text: "Green flag, go go go.", takes: 1, usedBy: ["pit-crew.flag-green"], viaVar: [] },
+          { base: "green", texts: ["Green flag, go go go."], takes: 1, usedBy: ["pit-crew.flag-green"], viaVar: [] },
         ],
       },
     ]);

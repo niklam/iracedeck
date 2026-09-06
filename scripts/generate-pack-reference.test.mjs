@@ -6,12 +6,12 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import url from "node:url";
-
 import { describe, expect, it } from "vitest";
 
+import { importAudioScenarios } from "./lib/catalog-engine.mjs";
 import {
-  BUNDLED_SCRIPT_PATH,
   buildPackReferenceData,
+  BUNDLED_SCRIPT_PATH,
   PACK_REFERENCE_GENERATE_COMMAND,
   PACK_REFERENCE_PATH,
   serializePackReferenceData,
@@ -28,6 +28,12 @@ describe("pack-reference.json", () => {
       existsSync(path.join(repoRoot, "packages/audio-scenarios/dist/index.js")),
       "packages/audio-scenarios/dist is missing — this test reads the BUILT package. Run `pnpm build` first.",
     ).toBe(true);
+    // A dist that exists but predates the builder would otherwise fail below
+    // with a bare TypeError; name the fix instead.
+    expect(
+      typeof (await importAudioScenarios()).buildPackReference,
+      "packages/audio-scenarios/dist is stale — it has no `buildPackReference`. Run `pnpm build` first.",
+    ).toBe("function");
 
     const committed = readFileSync(path.join(repoRoot, PACK_REFERENCE_PATH), "utf-8");
     const expected = await serializePackReferenceData(await buildPackReferenceData());

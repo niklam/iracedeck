@@ -37,13 +37,23 @@ const reference = await buildPackReferenceData();
 writeFileSync(outputFile, await serializePackReferenceData(reference), "utf-8");
 
 const summary = summarizePackReference(reference);
-const list = (items) => (items.length === 0 ? "none" : items.join(", "));
+/** Up to a handful of names; past that, the count already said what matters. */
+const SHOWN = 8;
+const list = (items) =>
+  items.length === 0
+    ? "none"
+    : items.length <= SHOWN
+      ? items.join(", ")
+      : `${items.slice(0, SHOWN).join(", ")}, … (${items.length - SHOWN} more)`;
 
 console.log(`Generated ${outputFile}`);
 console.log(`Catalog version: ${reference.generatedFrom.catalogVersion}`);
 console.log(`Callouts: ${summary.callouts} (skipped in the bundled voice: ${list(summary.skipped)})`);
 console.log(`Vocabulary: ${summary.vars} vars, ${summary.conds} conditions, ${summary.cases} cases`);
 console.log(`Recording script: ${summary.groups} groups, ${summary.lines} lines, ${summary.takes} takes`);
-console.log(`Lines with no config text: ${summary.nullTextLines.length} (${list(summary.nullTextLines)})`);
+console.log(`Lines with no config text: ${summary.linesWithoutText.length} (${list(summary.linesWithoutText)})`);
 console.log(`Groups no callout or var draws from: ${list(summary.groupsWithoutConsumer)}`);
+console.log(
+  `Lines no callout or var draws from, in groups something else does: ${summary.linesWithoutConsumer.length} (${list(summary.linesWithoutConsumer)})`,
+);
 console.log(`Vocabulary no callout uses: ${list(summary.unusedVocabulary)}`);
