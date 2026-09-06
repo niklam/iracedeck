@@ -1,0 +1,154 @@
+---
+// packages/website/src/components/PackReferenceRecordingScript.astro
+// Every line the bundled voice records, by clip group, from the generated
+// pack-author reference (src/data/pack-reference.json, issue #1066): the
+// base, how many takes ship, the text of every take, the callouts whose
+// entries address the line directly, and the callouts that reach it through
+// a variable — listed apart, because a variable's attribution is coarse (a
+// var that draws from `incidents/` counts against every line of it).
+import raw from "../data/pack-reference.json";
+import { parseRecordingScript, parseVocabulary } from "../pack-reference-types.js";
+import {
+  calloutHref,
+  groupAnchor,
+  groupNote,
+  isUnusedGroup,
+  isUnusedLine,
+  lineAnchor,
+  PLUGIN_PLAYED_GROUPS,
+  renderTakeText,
+  UNUSED_LINE_NOTE,
+  varHref,
+  viaVarConsumers,
+} from "../pack-reference-view.js";
+
+const groups = parseRecordingScript(raw.recordingScript);
+const vocabulary = parseVocabulary(raw.vocabulary);
+
+const lineCount = groups.reduce((n, g) => n + g.lines.length, 0);
+const takeCount = groups.reduce((n, g) => n + g.lines.reduce((m, l) => m + l.takes, 0), 0);
+const unusedGroups = groups.filter((g) => isUnusedGroup(g) && !(g.group in PLUGIN_PLAYED_GROUPS)).map((g) => g.group);
+---
+
+<p class="pack-ref-count">
+  {groups.length} groups, {lineCount} lines, {takeCount} takes.
+</p>
+
+{
+  groups.map((group) => {
+    const note = groupNote(group);
+    const markLines = note === undefined;
+
+    return (
+      <section class="pack-ref-group">
+        <h2 id={groupAnchor(group.group)}>
+          <code>{group.group}/</code>
+        </h2>
+        {note !== undefined && <p class="pack-ref-note">{note}</p>}
+        <table>
+          <thead>
+            <tr>
+              <th>Line</th>
+              <th>Takes</th>
+              <th>Text</th>
+              <th>Used by</th>
+            </tr>
+          </thead>
+          <tbody>
+            {group.lines.map((line) => {
+              const pool = `${group.group}/${line.base}`;
+              const via = viaVarConsumers(line, vocabulary);
+
+              return (
+                <tr id={lineAnchor(pool)}>
+                  <td>
+                    <code>{line.base}</code>
+                  </td>
+                  <td>{line.takes}</td>
+                  <td>
+                    {line.texts.length === 0 ? (
+                      <em>no text on file</em>
+                    ) : line.texts.length === 1 ? (
+                      renderTakeText(line.texts[0])
+                    ) : (
+                      <ol class="pack-ref-takes">
+                        {line.texts.map((text) => (
+                          <li>{renderTakeText(text)}</li>
+                        ))}
+                      </ol>
+                    )}
+                  </td>
+                  <td>
+                    {line.usedBy.length > 0 && (
+                      <p>
+                        {line.usedBy.map((id, i) => (
+                          <>
+                            {i > 0 && ", "}
+                            <a href={calloutHref(id)}>
+                              <code>{id}</code>
+                            </a>
+                          </>
+                        ))}
+                      </p>
+                    )}
+                    {via.map((v) => (
+                      <p>
+                        via{" "}
+                        <a href={varHref(v.name)}>
+                          <code>{`{{${v.name}}}`}</code>
+                        </a>
+                        {v.usedBy.length > 0 && ": "}
+                        {v.usedBy.map((id, i) => (
+                          <>
+                            {i > 0 && ", "}
+                            <a href={calloutHref(id)}>
+                              <code>{id}</code>
+                            </a>
+                          </>
+                        ))}
+                      </p>
+                    ))}
+                    {markLines && isUnusedLine(line) && <p class="pack-ref-note">{UNUSED_LINE_NOTE}</p>}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </section>
+    );
+  })
+}
+
+{
+  unusedGroups.length > 0 && (
+    <p class="pack-ref-count">
+      Groups nothing draws from: {unusedGroups.map((g) => `${g}/`).join(", ")}.
+    </p>
+  )
+}
+
+<style>
+  .pack-ref-count,
+  .pack-ref-note {
+    color: var(--sl-color-gray-3);
+    font-size: var(--sl-text-sm);
+  }
+  .pack-ref-group {
+    margin-top: 2rem;
+  }
+  .pack-ref-group td > p {
+    margin: 0;
+    font-size: var(--sl-text-sm);
+  }
+  .pack-ref-group td > p + p {
+    margin-top: 0.25rem;
+  }
+  .pack-ref-takes {
+    margin: 0;
+    padding-inline-start: 1.25rem;
+  }
+  .pack-ref-takes li + li {
+    margin-top: 0.25rem;
+  }
+</style>

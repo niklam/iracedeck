@@ -1,0 +1,152 @@
+---
+// packages/website/src/components/PackReferenceVocabulary.astro
+// Every variable, condition and case a callout script may name, from the
+// generated pack-author reference (src/data/pack-reference.json, issue #1066):
+// the name and description each registration carries in the code, a case's
+// declared keys with their descriptions, and the callouts whose bundled
+// entries use it.
+import raw from "../data/pack-reference.json";
+import { parseVocabulary } from "../pack-reference-types.js";
+import { calloutHref, caseAnchor, condAnchor, varAnchor, VOCABULARY_SECTIONS } from "../pack-reference-view.js";
+
+const vocabulary = parseVocabulary(raw.vocabulary);
+const [varsSection, condsSection, casesSection] = VOCABULARY_SECTIONS;
+---
+
+<p class="pack-ref-count">
+  {vocabulary.vars.length} variables, {vocabulary.conds.length} conditions and {vocabulary.cases.length} cases.
+</p>
+
+<section>
+  <h2 id={varsSection.anchor}>{varsSection.label}</h2>
+  <p>
+    A variable resolves at fire time to one clip, or to a pool it picks a take from — a number, a name, a line chosen
+    by the sim's state. Write it as <code>{"{{name}}"}</code>, or as <code>{'{ "var": "name" }'}</code>. A variable
+    that resolves to nothing aborts the callout unless the step sits inside an <code>optional</code>.
+  </p>
+  {
+    vocabulary.vars.map((item) => (
+      <article class="pack-ref-item">
+        <h3 id={varAnchor(item.name)}>
+          <code>{`{{${item.name}}}`}</code>
+        </h3>
+        <p>{item.description}</p>
+        <p class="pack-ref-used-by">
+          <strong>Used by:</strong>{" "}
+          {item.usedBy.length === 0
+            ? "no bundled entry — available to a pack all the same"
+            : item.usedBy.map((id, i) => (
+                <>
+                  {i > 0 && ", "}
+                  <a href={calloutHref(id)}>
+                    <code>{id}</code>
+                  </a>
+                </>
+              ))}
+        </p>
+      </article>
+    ))
+  }
+</section>
+
+<section>
+  <h2 id={condsSection.anchor}>{condsSection.label}</h2>
+  <p>
+    A condition answers yes or no at fire time. Write it in an <code>if</code> step —{" "}
+    <code>{'{ "if": "name", "then": [ … ], "else": [ … ] }'}</code> — and negate it with a single leading{" "}
+    <code>!</code>. That <code>!</code> is the only operator the format has.
+  </p>
+  {
+    vocabulary.conds.map((item) => (
+      <article class="pack-ref-item">
+        <h3 id={condAnchor(item.name)}>
+          <code>{item.name}</code>
+        </h3>
+        <p>{item.description}</p>
+        <p class="pack-ref-used-by">
+          <strong>Used by:</strong>{" "}
+          {item.usedBy.length === 0
+            ? "no bundled entry — available to a pack all the same"
+            : item.usedBy.map((id, i) => (
+                <>
+                  {i > 0 && ", "}
+                  <a href={calloutHref(id)}>
+                    <code>{id}</code>
+                  </a>
+                </>
+              ))}
+        </p>
+      </article>
+    ))
+  }
+</section>
+
+<section>
+  <h2 id={casesSection.anchor}>{casesSection.label}</h2>
+  <p>
+    A case resolves at fire time to one of its declared keys, and a <code>case</code> step maps keys to steps:{" "}
+    <code>{'{ "case": "name", "of": { "key": [ … ], "default": [ … ] } }'}</code>. A key not in <code>of</code> takes
+    the <code>default</code> branch, or plays nothing when there is none; several keys may map to the same line, and a
+    key may map to <code>[]</code> to say nothing about it. A key that is not declared below is refused when the script
+    is compiled.
+  </p>
+  {
+    vocabulary.cases.map((item) => (
+      <article class="pack-ref-item">
+        <h3 id={caseAnchor(item.name)}>
+          <code>{item.name}</code>
+        </h3>
+        <p>{item.description}</p>
+        <dl class="pack-ref-keys">
+          {Object.entries(item.keys).map(([key, description]) => (
+            <>
+              <dt>
+                <code>{key}</code>
+              </dt>
+              <dd>{description}</dd>
+            </>
+          ))}
+        </dl>
+        <p class="pack-ref-used-by">
+          <strong>Used by:</strong>{" "}
+          {item.usedBy.length === 0
+            ? "no bundled entry — available to a pack all the same"
+            : item.usedBy.map((id, i) => (
+                <>
+                  {i > 0 && ", "}
+                  <a href={calloutHref(id)}>
+                    <code>{id}</code>
+                  </a>
+                </>
+              ))}
+        </p>
+      </article>
+    ))
+  }
+</section>
+
+<style>
+  .pack-ref-count {
+    color: var(--sl-color-gray-3);
+    font-size: var(--sl-text-sm);
+  }
+  .pack-ref-item {
+    margin-top: 1.5rem;
+    padding-top: 0.25rem;
+    border-top: 1px solid var(--sl-color-hairline-light);
+  }
+  .pack-ref-used-by {
+    font-size: var(--sl-text-sm);
+  }
+  .pack-ref-keys {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    column-gap: 1rem;
+    row-gap: 0.25rem;
+    margin-top: 0.75rem;
+    font-size: var(--sl-text-sm);
+  }
+  .pack-ref-keys dd {
+    margin: 0;
+  }
+</style>

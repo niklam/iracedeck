@@ -1,0 +1,14 @@
+---
+title: Callouts
+description: Every callout the Race Engineer can make, grouped by family — when it fires, its trigger event, default frame, weight and scheduling, what the bundled voice's entry says and how to hear it, and what that entry references.
+---
+
+import PackReferenceCallouts from "../../../../../components/PackReferenceCallouts.astro";
+
+Every callout a voice pack's `callouts.json` may script, keyed by the id you write under `scenarios`. Each entry below is half code and half bundled script: the description, trigger, frame, weight and scheduling come from the callout's contract in iRaceDeck's code — the part a pack cannot change — and **Says** and **Hear it** are the bundled voice's own `comment` and `test` lines. The references at the end are what the bundled entry draws on, its included fragments walked, so you can see which lines to record and which [vocabulary](/docs/voice-packs/reference/vocabulary/) it names; a pool links to its line on the [recording script](/docs/voice-packs/reference/recording-script/).
+
+Callouts are grouped by **family**. Callouts in one family preempt each other whatever their weights, so a newer one replaces a family-mate that is still playing; the callouts with no family come last. When a callout stays silent in your voice, read its description and its **Hear it** line before touching your entry — a callout is triggered by the code, and your entry is consulted only after that trigger has fired. See [A correct script can be silent](/docs/voice-packs/#a-correct-script-can-be-silent).
+
+This page is generated from the code and the bundled script, and a test fails when the two drift apart, so it matches the release it documents.
+
+<PackReferenceCallouts />

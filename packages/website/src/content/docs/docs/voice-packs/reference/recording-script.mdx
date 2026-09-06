@@ -1,0 +1,16 @@
+---
+title: Recording Script
+description: Every line the bundled Race Engineer voice records, by clip group — the text of every take, how many takes ship, and which callouts or variables draw from each line. The list of lines a full voice pack records.
+---
+
+import PackReferenceRecordingScript from "../../../../../components/PackReferenceRecordingScript.astro";
+
+This is the list of lines a full voice pack records: every clip group of the bundled voice, every line (**base**) in it, the text of each take, and how many takes ship. A pack that records a line stores it at `voice/<voice-id>/<group>/<base>-01.mp3`, with a second take as `-02.mp3`, and a script plays it as `pool:<group>/<base>`. Where a line has several takes, they are several wordings of the same line rather than one sentence read twice — record as many as you like, or one. A `…` in a take's text marks a pause the bundled voice leaves.
+
+**Used by** says who reaches the line. Callouts listed directly address it themselves — a `pool:` step, a `pools` alias, or a literal clip in their entry or an included fragment. Callouts listed *via* a variable reach the group through that variable at fire time — `{{incident.points}}` picks `incidents/points-2` for a two-point incident, for instance — so a variable's callouts are listed against every line of the group, since the reference cannot know which line a given fire picks. Record the whole group for a variable-driven callout.
+
+Two groups are played by the plugin itself, outside any script: `toggle/` — the radio check when the sim connects, the going-silent and resuming acknowledgments when the Race Engineer is switched off and on, and the corner-names on/off acknowledgments — and `names/`, the driver's name, one clip per name, spoken before the radio check. No script entry can reach either, so their **Used by** columns are empty; a pack that wants those moments voiced records them too; both groups are optional. The other groups nothing draws from — noted where they appear, and listed at the end — are the bundled voice's own leftovers, and a pack does not need them.
+
+This page is generated from the bundled voice's clips and its script, and a test fails when they drift apart, so it matches the release it documents.
+
+<PackReferenceRecordingScript />
