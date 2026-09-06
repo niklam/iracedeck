@@ -35,7 +35,7 @@ What a pack can never change is **when** a callout fires and **what it may inter
 
 A pack that ships a voice **without** a script — one built before scripts existed, or one whose script file went missing — still loads. The voice is listed under **Installed Voices** and you can select it, but every callout is skipped in it — the script is where every callout comes from — so the engineer goes quiet. While a scriptless voice is the one selected, a banner at the top of the Settings window and of every key's Property Inspector names it and says what to do: reinstall the pack, or pick another voice. The banner clears by itself as soon as the selected voice has a script.
 
-If you build packs, the script is an ordinary JSON file that references iRaceDeck's own vocabulary of callouts, conditions and spoken values by name. The format, and the full list of what a script can reference, will be documented for pack authors separately; the pack that ships with iRaceDeck is the worked example in the meantime.
+If you build packs, the script is an ordinary JSON file that references iRaceDeck's own vocabulary of callouts, conditions and spoken values by name. The [Voice Packs](/docs/voice-packs/) section is written for you: what a pack can and cannot change, [the format](/docs/voice-packs/format/) of the script, a [tutorial](/docs/voice-packs/first-pack/) that ends with your own voice playing three callouts, and reference pages — generated from iRaceDeck's code and its bundled pack — listing [every callout](/docs/voice-packs/reference/callouts/), [everything a script may name](/docs/voice-packs/reference/vocabulary/), and [every line a full pack records](/docs/voice-packs/reference/recording-script/).
 
 ## Downloading a Voice Pack
 

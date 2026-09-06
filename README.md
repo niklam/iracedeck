@@ -193,6 +193,8 @@ Race Engineer voices are distributed as downloadable packs (`packages/audio-asse
 
 A pack carries more than clips: each voice's callout script (`voice/<id>/callouts.json`, extracted from `configs/<id>.voice.json` by `pnpm generate:callout-scripts`) travels in the archive beside them. When a pack's clips or script change: bump its `version`, run `pnpm --filter @iracedeck/audio-assets pack:voice`, and commit the regenerated catalog entry. The next release publishes it.
 
+Writing a pack — ours or anyone's — is documented on the site under [Voice Packs](https://iracedeck.com/docs/voice-packs/): the concept, a first-pack tutorial, the `callouts.json` format, and a reference of every callout, every name a script may use and the full recording script, generated from the catalog by `pnpm generate:pack-reference`; from a clone of the repo, `pnpm lint:pack <packDir>` (after `pnpm build`) reports everything in a pack folder that the plugin would otherwise skip quietly.
+
 `.github/workflows/publish-voice-packs.yml` is the manual path, dispatched from the Actions tab. With `publish` off (the default) it is a dry run — pack and verify, upload nothing, attach the archives as a `voice-packs` artifact — worth running once before tagging a release that changes a pack. With `publish` on it publishes the archives and then deploys the website so the catalog offers the new version, for a pack that has to ship between plugin releases. That deploy builds the site from the latest stable plugin tag with only `packages/audio-assets/catalog/` taken from the dispatched branch, so documentation for unreleased work on `master` never reaches the site early.
 
 ### Requirements

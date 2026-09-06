@@ -165,7 +165,7 @@ export function registerSessionStartVocabulary(
 
       return s ? poolRef("session-start", `speed-unit-${s.speedUnit}`) : null;
     },
-    "The speed unit word after the pit speed limit — kilometres per hour or miles per hour, per the driver's display setting. Draws the speed-unit-kmh and speed-unit-mph lines from the session-start clip group.",
+    "The speed unit word after the pit speed limit — kilometers per hour or miles per hour, per the driver's display setting. Draws the speed-unit-kmh and speed-unit-mph lines from the session-start clip group.",
   );
 
   engine.defineVar(
@@ -276,6 +276,8 @@ export function buildSessionStartContract(getSnapshot: SessionStartSnapshotResol
     // read TrackWetness / TrackTempCrew / AirTemp. See
     // `SESSION_START_DELAY_MS` for the rationale.
     triggerDelay: SESSION_START_DELAY_MS,
+    description:
+      "A practice or qualifying session begins and three seconds pass, whether you are in the garage or on track — but not when iRaceDeck connects while you are already out lapping.",
   };
 }
 

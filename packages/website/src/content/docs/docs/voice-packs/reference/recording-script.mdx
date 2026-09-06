@@ -1,0 +1,16 @@
+---
+title: Recording Script
+description: Every line the bundled Race Engineer voice records, by clip group — the text of every take, how many takes ship, and which callouts or variables draw from each line. The list of lines a full voice pack records.
+---
+
+import PackReferenceRecordingScript from "../../../../../components/PackReferenceRecordingScript.astro";
+
+This is the list of lines a full voice pack records: every clip group of the bundled voice, every line (**base**) in it, the text of each take, and how many takes ship. A pack that records a line stores it at `voice/<voice-id>/<group>/<base>-01.mp3`, with a second take as `-02.mp3`, and a script plays it as `pool:<group>/<base>`. Where a line has several takes, they are several wordings of the same line rather than one sentence read twice — record as many as you like, or one. A `…` in a take's text marks a pause the bundled voice leaves.
+
+**Used by** says who reaches the line. Callouts listed directly address it themselves — a `pool:` step, a `pools` alias, or a literal clip in their entry or an included fragment. Callouts listed *via* a variable reach the group through that variable at fire time — `{{incident.points}}` picks `incidents/points-2` for a two-point incident, for instance — so a variable's callouts are listed against every line of the group, since the reference cannot know which line a given fire picks. Record the whole group for a variable-driven callout.
+
+A few lines are played by the plugin itself, outside any script — the radio check when the sim connects, the acknowledgments when the Race Engineer or the corner names are switched off and on, the greeting the Race Engineer **Test** button in iRaceDeck Settings plays, and the driver's name that opens the radio check and the Test button. Each is marked where it appears, in its **Used by** column (or once above the table, where a whole group is played the same way), with what plays it and what else it needs: the radio check and the Test button both play `names/<driver>` first and stop at the first clip they cannot find, so voicing either takes a `names/` clip for the name the Race Engineer is set to as well. No script entry can reach any of these lines, and all of them are optional. The other lines nothing draws from — noted where they appear, and, for a whole group, listed at the end — are the bundled voice's own leftovers, and a pack does not need them.
+
+This page is generated from the bundled voice's clips and its script, and a test fails when they drift apart, so it matches the release it documents.
+
+<PackReferenceRecordingScript />

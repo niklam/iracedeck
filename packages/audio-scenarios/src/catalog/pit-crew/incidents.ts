@@ -110,6 +110,28 @@ export function registerIncidentVocabulary(engine: Pick<IScenarioEngine, "define
   );
 }
 
+/**
+ * Each contract's `description` (#1066): the sim moment per incident type.
+ * The translator waits for a crash sequence to go quiet (about a second and
+ * a half) and reports its worst outcome, so every sentence says what must
+ * NOT follow for that type to be the one spoken — the reason a light contact
+ * that ends in the wall never plays the contact line.
+ */
+const INCIDENT_DESCRIPTIONS: Record<IncidentType, string> = {
+  "off-track":
+    "You run all four wheels off the track in any session outside the pits, and nothing worse follows within a second or two; on a timed qualifying lap the lap-invalidated line speaks first.",
+  "out-of-control":
+    "You lose control of the car — a spin — in any session outside the pits, and nothing worse follows within a second or two.",
+  "contact-world":
+    "You brush a wall or a trackside object lightly in any session outside the pits, with no harder hit following within a second or two.",
+  "collision-world":
+    "You hit a wall or a trackside object hard enough for iRacing to score it as a collision, in any session outside the pits, with no car collision following within a second or two.",
+  "contact-car":
+    "You make light contact with another car in any session outside the pits, with no heavier collision following within a second or two.",
+  "collision-car":
+    "You collide heavily with another car in any session outside the pits — the worst outcome a crash sequence can reach, called once the sequence has settled.",
+};
+
 function incidentContract(id: string, type: IncidentType): ScenarioContract {
   return {
     id: `pit-crew.incident-${id}`,
@@ -117,6 +139,7 @@ function incidentContract(id: string, type: IncidentType): ScenarioContract {
     bus: AudioBus.Voice,
     base: "voice/{voice}",
     family: "incident",
+    description: INCIDENT_DESCRIPTIONS[type],
     when: {
       event: "incident.occurred",
       // No session-type gate here. In qualifying sessions, the

@@ -56,11 +56,13 @@ const PIT_WINDOW_WEIGHT = 65;
  * `family`/`weight`/`bus`/`channel`/`base`/scheduling defaults in a single place
  * (the catalog's "small constructor" convention, mirroring `track-conditions.ts`
  * / `flag-alerts.ts`) so a future re-tune is one edit. The contract id derives
- * from `direction`; `to` is the `PitsOpen` value this direction fires on.
+ * from `direction`; `to` is the `PitsOpen` value this direction fires on;
+ * `description` is the reference's (#1066) one sentence on when it fires.
  */
-function pitWindowContract(direction: "opened" | "closed", to: boolean): ScenarioContract {
+function pitWindowContract(direction: "opened" | "closed", to: boolean, description: string): ScenarioContract {
   return {
     id: `pit-crew.pit-window-${direction}`,
+    description,
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
     base: "voice/{voice}",
@@ -72,8 +74,16 @@ function pitWindowContract(direction: "opened" | "closed", to: boolean): Scenari
   };
 }
 
-const PIT_WINDOW_OPENED = pitWindowContract("opened", true);
-const PIT_WINDOW_CLOSED = pitWindowContract("closed", false);
+const PIT_WINDOW_OPENED = pitWindowContract(
+  "opened",
+  true,
+  "Pit road switches from closed to open while you are in a race session.",
+);
+const PIT_WINDOW_CLOSED = pitWindowContract(
+  "closed",
+  false,
+  "Pit road switches from open to closed while you are in a race session.",
+);
 
 export const PIT_WINDOW_CONTRACTS: readonly ScenarioContract[] = [PIT_WINDOW_OPENED, PIT_WINDOW_CLOSED];
 

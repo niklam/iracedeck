@@ -81,6 +81,8 @@ export function buildCornerNameContract(getSnapshot: CornerNameSnapshotResolver)
     family: "corner-name",
     queueable: false,
     frame: NO_FRAME,
+    description:
+      "Your car reaches the point about a second (the configured lead) before a named corner in a practice or test session, once per corner per lap; qualifying and races stay silent.",
     when: {
       event: "cornerName.approaching",
       where: (e) => {

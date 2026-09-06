@@ -127,6 +127,22 @@ export default defineConfig({
           ],
         },
         {
+          label: "Voice Packs",
+          items: [
+            { slug: "docs/voice-packs" },
+            { slug: "docs/voice-packs/first-pack" },
+            { slug: "docs/voice-packs/format" },
+            {
+              label: "Reference",
+              items: [
+                { slug: "docs/voice-packs/reference/callouts" },
+                { slug: "docs/voice-packs/reference/vocabulary" },
+                { slug: "docs/voice-packs/reference/recording-script" },
+              ],
+            },
+          ],
+        },
+        {
           label: "Actions",
           items: [
             { slug: "docs/actions/overview" },

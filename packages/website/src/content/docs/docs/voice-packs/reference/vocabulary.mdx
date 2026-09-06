@@ -1,0 +1,14 @@
+---
+title: Vocabulary
+description: Every variable, condition and case a voice pack's callout script may name — what each resolves to, a case's declared keys and what each key means, and which callouts use it.
+---
+
+import PackReferenceVocabulary from "../../../../../components/PackReferenceVocabulary.astro";
+
+Everything a `callouts.json` may reference by name, and nothing else: the **variables** a step plays, the **conditions** an `if` branches on, and the **cases** a `case` step maps. All three are registered in iRaceDeck's code with the descriptions you read here; a script names them and can never define one. A name that is not on this page is an unknown reference, and an entry that uses one is skipped when the script is compiled, with the name in the log.
+
+**Used by** lists the callouts whose bundled entries name the item, included fragments walked — it links to the [callout reference](/docs/voice-packs/reference/callouts/), where you can see the entry that uses it. An item no bundled entry uses is still yours to use. The vocabulary is published generously on purpose: it is exactly what bounds the phrasings a pack can express, so if a phrasing you want has no variable or case here, that is a request to make rather than a workaround to find.
+
+This page is generated from the code, and a test fails when the two drift apart, so it matches the release it documents.
+
+<PackReferenceVocabulary />

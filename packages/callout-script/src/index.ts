@@ -39,8 +39,28 @@ export {
   type StepObjectKey,
   type StringStepForm,
 } from "./grammar.js";
+export {
+  checkCoverage,
+  type Coverage,
+  type CoverageInput,
+  coverageOf,
+  type CoverageReport,
+  danglingBasesOf,
+  danglingOf,
+  orphansOf,
+  stripTakeSuffix,
+  TAKE_SUFFIX,
+  type VarDrivenGroup,
+  VOICE_CLIP_PATH,
+} from "./coverage.js";
 export { CALLOUT_SCRIPT_FILE, calloutScriptPath } from "./paths.js";
-export { collectLiteralClips, collectScriptReferences, type ScriptReferences } from "./references.js";
+export {
+  collectLiteralClips,
+  collectScriptReferences,
+  collectStepReferences,
+  type ScriptReferences,
+  type StepReferences,
+} from "./references.js";
 export {
   CalloutScriptEntrySchema,
   CalloutScriptSchema,

@@ -143,6 +143,7 @@ export function registerOpponentFlagVocabulary(
 function opponentFlagContract(
   id: string,
   weight: number,
+  description: string,
   where: (e: SimEventOf<"opponentFlag.flagged">) => boolean,
 ): ScenarioContract {
   return {
@@ -153,6 +154,7 @@ function opponentFlagContract(
     weight,
     interrupt: false,
     queueable: true,
+    description,
     when: {
       event: "opponentFlag.flagged",
       where: (e) => where(e as SimEventOf<"opponentFlag.flagged">),
@@ -160,12 +162,33 @@ function opponentFlagContract(
   };
 }
 
+/**
+ * The two halves of each per-car contract's `description` (#1066): which car
+ * the relation means in the sim's terms — the translator's qualification
+ * window, so a pack author learns why a flag on a car four places up never
+ * speaks — and the moment each subject names. Composed per id below, so
+ * every one of the twelve carries its own sentence.
+ */
+const RELATION_CAR: Record<OpponentFlagFullRelation, string> = {
+  ahead: "A car in your class up to three places ahead of you on the same lap",
+  behind: "The car in your class one place behind you on the same lap",
+  "track-ahead": "A car less than about ten seconds ahead of you on the road, of any class or lap and not in the pits,",
+};
+
+const SUBJECT_MOMENT: Record<OpponentFlagCalloutId, string> = {
+  furled: "is shown a furled black flag",
+  black: "is black-flagged",
+  meatball: "is shown the meatball flag",
+  disqualify: "is disqualified",
+};
+
 function subjectRelationContract(subject: OpponentFlagCalloutId, relation: OpponentFlagFullRelation): ScenarioContract {
   const weight = relation === "track-ahead" ? WEIGHT.SAFETY : WEIGHT.NORMAL;
   const id = `pit-crew.opponent-flag-${subject}-${relation}`;
+  const description = `${RELATION_CAR[relation]} ${SUBJECT_MOMENT[subject]} in a race, between the green and the checkered flag.`;
 
   if (relation === "ahead") {
-    return opponentFlagContract(id, weight, (ev) => {
+    return opponentFlagContract(id, weight, description, (ev) => {
       // relation + flag gate. `trigger` ("raised" vs "entered-range") is
       // deliberately ignored — the spoken line reads identically either
       // way; the payload keeps it for the harness/future use.
@@ -197,7 +220,7 @@ function subjectRelationContract(subject: OpponentFlagCalloutId, relation: Oppon
     });
   }
 
-  return opponentFlagContract(id, weight, (ev) => {
+  return opponentFlagContract(id, weight, description, (ev) => {
     return ev.data.relation === relation && ev.data.flag === SUBJECT_TO_FLAG[subject];
   });
 }
@@ -205,6 +228,7 @@ function subjectRelationContract(subject: OpponentFlagCalloutId, relation: Oppon
 const OTHERS_CONTRACT: ScenarioContract = opponentFlagContract(
   "pit-crew.opponent-flag-others",
   WEIGHT.NORMAL,
+  "A third car near you picks up a penalty flag within twelve seconds of the first two in a race, and further flagged cars stay uncalled until things go quiet.",
   (ev) => ev.data.relation === "others",
 );
 

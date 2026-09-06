@@ -58,9 +58,23 @@ export const PIT_BOX_PENDING_HOLD_MS = 2500;
 /** The six marks, in the order the translator emits them on the approach. */
 const PIT_BOX_MARKS: readonly PitBoxMark[] = ["five", "four", "three", "two", "one", "pit-now"];
 
+/**
+ * When each mark fires, for the generated reference (#1066) — one sentence
+ * per mark, since the distance is the only thing that tells them apart.
+ */
+const PIT_BOX_DESCRIPTIONS: Record<PitBoxMark, string> = {
+  five: "On pit road heading for your own box, you close to 120 meters from it.",
+  four: "On pit road heading for your own box, you close to 100 meters from it.",
+  three: "On pit road heading for your own box, you close to 80 meters from it.",
+  two: "On pit road heading for your own box, you close to 60 meters from it.",
+  one: "On pit road heading for your own box, you close to 40 meters from it.",
+  "pit-now": "On pit road heading for your own box, you close to 20 meters from it.",
+};
+
 function pitBoxContract(mark: PitBoxMark): ScenarioContract {
   return {
     id: `pit-crew.pit-box-${mark}`,
+    description: PIT_BOX_DESCRIPTIONS[mark],
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
     base: "voice/{voice}",

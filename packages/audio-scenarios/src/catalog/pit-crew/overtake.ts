@@ -187,6 +187,8 @@ export function buildOvertakeGainedContract(
 ): ScenarioContract {
   return {
     id: "pit-crew.overtake-gained",
+    description:
+      "You gain a place in a race and hold it a few seconds in a clean moment — always for a podium place, about one in three otherwise, and in a single-class race never when the car ahead simply retired.",
     when: {
       event: "overtake.completed",
       where: (ev) => {
@@ -229,6 +231,8 @@ export function buildOvertakeLostContract(
 ): ScenarioContract {
   return {
     id: "pit-crew.overtake-lost",
+    description:
+      "You lose a place in a race and the drop holds for a few seconds in a clean moment — always when it costs you a podium place, about one time in three otherwise.",
     when: {
       event: "overtake.lost",
       where: (ev) => {

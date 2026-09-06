@@ -234,6 +234,8 @@ export function buildRaceEndContract(getSnapshot: RaceFinishedSnapshotResolver):
     weight: WEIGHT.CHATTER,
     queueable: true,
     family: "race-end",
+    description:
+      "You take the checkered flag and cross the line in a race, and your final position (your class position in a multi-class race) is known.",
   };
 }
 

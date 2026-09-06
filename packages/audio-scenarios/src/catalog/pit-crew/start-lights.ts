@@ -75,6 +75,7 @@ const START_READY: ScenarioContract = {
   queueable: true,
   family: "start-light",
   when: { event: "startLight.start-ready.raised", where: liveRaceCar },
+  description: "The start lights come on over the grid of a standing-start race while you sit live in the car.",
 };
 
 const START_GO: ScenarioContract = {
@@ -87,6 +88,7 @@ const START_GO: ScenarioContract = {
   queueable: true,
   family: "start-light",
   when: { event: "startLight.start-go.raised", where: liveRaceCar },
+  description: "The start lights go out at a standing-start race and the field is released, with you live in the car.",
 };
 
 /**
@@ -104,6 +106,14 @@ const START_GO: ScenarioContract = {
  */
 const COUNTDOWN_SECONDS: readonly StartCountdownSeconds[] = [90, 60, 30, 10];
 
+/** One sentence per mark for the generated reference (#1066) — when each countdown line fires, in the sim's terms. */
+const COUNTDOWN_DESCRIPTIONS: Readonly<Record<StartCountdownSeconds, string>> = {
+  90: "The pre-start countdown of a standing-start race passes ninety seconds to go, whether you are in the car or still in the garage.",
+  60: "The pre-start countdown of a standing-start race passes sixty seconds to go, whether you are in the car or still in the garage.",
+  30: "The pre-start countdown of a standing-start race passes thirty seconds to go, whether you are in the car or still in the garage.",
+  10: "The pre-start countdown of a standing-start race passes ten seconds to go, whether you are in the car or still in the garage.",
+};
+
 function countdownContract(seconds: StartCountdownSeconds): ScenarioContract {
   return {
     id: `pit-crew.start-light-countdown-${seconds}`,
@@ -118,6 +128,7 @@ function countdownContract(seconds: StartCountdownSeconds): ScenarioContract {
       where: (e) =>
         isRaceSession(getSessionType()) && (e as SimEventOf<"startLight.countdown.raised">).data.seconds === seconds,
     },
+    description: COUNTDOWN_DESCRIPTIONS[seconds],
   };
 }
 

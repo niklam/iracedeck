@@ -262,6 +262,8 @@ export function buildQualifyingInvalidationContract(
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
     family: "qualifying-invalidation",
+    description:
+      "You pick up an incident on a counted flying lap of a qualifying session, at the first incident of that lap.",
   };
 }
 

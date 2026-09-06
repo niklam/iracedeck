@@ -376,6 +376,8 @@ export function buildRaceStartContract(getSnapshot: RaceStartSnapshotResolver, l
     // read TrackWetness / TrackTempCrew / AirTemp / PlayerCarPosition. See
     // `RACE_START_DELAY_MS` for the rationale.
     triggerDelay: RACE_START_DELAY_MS,
+    description:
+      "A race session begins and three seconds pass — a restart on the pre-green grid included, but not when iRaceDeck connects to a race already under way.",
   };
 }
 

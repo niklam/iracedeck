@@ -22,6 +22,8 @@ import type { ScenarioContract } from "../../dsl.js";
 const DAMAGE_REPAIR_NEEDED: ScenarioContract = {
   id: "pit-crew.damage-repair-needed",
   when: { event: "damage.repairNeeded.raised" },
+  description:
+    "Your car takes damage that keeps the repair indicator lit for three seconds running, and again only after a repair has cleared it.",
   channel: AudioChannel.Voice,
   bus: AudioBus.Voice,
   base: "voice/{voice}",

@@ -242,6 +242,8 @@ export function buildGapTrendContract(
 ): ScenarioContract {
   return {
     id: "pit-crew.gap-trend",
+    description:
+      "The gap to the car ahead or behind you in your class turns — closing fast enough to reach it within eight laps, or opening into a breakaway — in a race, with no car alongside and no recent incident.",
     when: {
       event: "gap.trendChanged",
       // Nothing is stashed here: the vars read the fire's own payload (see
@@ -265,6 +267,8 @@ export function buildGapThresholdContract(
 ): ScenarioContract {
   return {
     id: "pit-crew.gap-threshold",
+    description:
+      "The live gap to the car ahead or behind you in your class first drops under your alert threshold in a race, in a clean moment with no car alongside and no recent incident.",
     when: {
       event: "gap.thresholdCrossed",
       where: (ev) =>

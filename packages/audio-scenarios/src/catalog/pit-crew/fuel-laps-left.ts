@@ -40,6 +40,7 @@ function fuelContract(
   subject: string,
   weight: number,
   when: ScenarioContract["when"],
+  description: string,
   interrupt?: boolean,
 ): ScenarioContract {
   return {
@@ -52,10 +53,17 @@ function fuelContract(
     queueable: true,
     family: "fuel",
     when,
+    description,
   };
 }
 
-function fuelLapsLeftContract(subject: string, count: number, weight: number, interrupt?: boolean): ScenarioContract {
+function fuelLapsLeftContract(
+  subject: string,
+  count: number,
+  weight: number,
+  description: string,
+  interrupt?: boolean,
+): ScenarioContract {
   return fuelContract(
     subject,
     weight,
@@ -63,6 +71,7 @@ function fuelLapsLeftContract(subject: string, count: number, weight: number, in
       event: "fuel.lapsLeft.crossed",
       where: (e) => (e as SimEventOf<"fuel.lapsLeft.crossed">).data.count === count,
     },
+    description,
     interrupt,
   );
 }
@@ -76,22 +85,84 @@ function fuelLapsLeftContract(subject: string, count: number, weight: number, in
  * anything), `queueable` for the same reason as the warnings: the diff
  * latches on EMIT, so a dropped fire would never replay.
  */
-const FUEL_RACE_COVERED: ScenarioContract = fuelContract("race-covered", WEIGHT.NORMAL, {
-  event: "fuel.lapsLeft.raceCovered",
-});
+const FUEL_RACE_COVERED: ScenarioContract = fuelContract(
+  "race-covered",
+  WEIGHT.NORMAL,
+  {
+    event: "fuel.lapsLeft.raceCovered",
+  },
+  "Inside the last ten laps of a race, live in the car, the mid-lap fuel estimate shows the tank covering the rest of the race with a full lap in hand — once per stint.",
+);
 
 export const FUEL_LAPS_LEFT_CONTRACTS: readonly ScenarioContract[] = [
-  fuelLapsLeftContract("10", 10, WEIGHT.NORMAL),
-  fuelLapsLeftContract("9", 9, WEIGHT.NORMAL),
-  fuelLapsLeftContract("8", 8, WEIGHT.NORMAL),
-  fuelLapsLeftContract("7", 7, WEIGHT.NORMAL),
-  fuelLapsLeftContract("6", 6, WEIGHT.NORMAL),
-  fuelLapsLeftContract("5", 5, WEIGHT.NORMAL),
-  fuelLapsLeftContract("4", 4, WEIGHT.NORMAL),
-  fuelLapsLeftContract("3", 3, WEIGHT.SAFETY),
-  fuelLapsLeftContract("2", 2, WEIGHT.SAFETY),
-  fuelLapsLeftContract("1", 1, WEIGHT.CRITICAL, true),
-  fuelLapsLeftContract("box", 0, WEIGHT.CRITICAL, true),
+  fuelLapsLeftContract(
+    "10",
+    10,
+    WEIGHT.NORMAL,
+    "Mid-lap in a race, live in the car, your fuel estimate first drops to ten more full laps — once per stint, and never once the tank covers the rest of the race.",
+  ),
+  fuelLapsLeftContract(
+    "9",
+    9,
+    WEIGHT.NORMAL,
+    "Mid-lap in a race, live in the car, your fuel estimate first drops to nine more full laps — once per stint, and never once the tank covers the rest of the race.",
+  ),
+  fuelLapsLeftContract(
+    "8",
+    8,
+    WEIGHT.NORMAL,
+    "Mid-lap in a race, live in the car, your fuel estimate first drops to eight more full laps — once per stint, and never once the tank covers the rest of the race.",
+  ),
+  fuelLapsLeftContract(
+    "7",
+    7,
+    WEIGHT.NORMAL,
+    "Mid-lap in a race, live in the car, your fuel estimate first drops to seven more full laps — once per stint, and never once the tank covers the rest of the race.",
+  ),
+  fuelLapsLeftContract(
+    "6",
+    6,
+    WEIGHT.NORMAL,
+    "Mid-lap in a race, live in the car, your fuel estimate first drops to six more full laps — once per stint, and never once the tank covers the rest of the race.",
+  ),
+  fuelLapsLeftContract(
+    "5",
+    5,
+    WEIGHT.NORMAL,
+    "Mid-lap in a race, live in the car, your fuel estimate first drops to five more full laps — once per stint, and never once the tank covers the rest of the race.",
+  ),
+  fuelLapsLeftContract(
+    "4",
+    4,
+    WEIGHT.NORMAL,
+    "Mid-lap in a race, live in the car, your fuel estimate first drops to four more full laps — once per stint, and never once the tank covers the rest of the race.",
+  ),
+  fuelLapsLeftContract(
+    "3",
+    3,
+    WEIGHT.SAFETY,
+    "Mid-lap in a race, live in the car, your fuel estimate first drops to three more full laps — once per stint, and never once the tank covers the rest of the race.",
+  ),
+  fuelLapsLeftContract(
+    "2",
+    2,
+    WEIGHT.SAFETY,
+    "Mid-lap in a race, live in the car, your fuel estimate first drops to two more full laps — once per stint, and never once the tank covers the rest of the race.",
+  ),
+  fuelLapsLeftContract(
+    "1",
+    1,
+    WEIGHT.CRITICAL,
+    "Mid-lap in a race, live in the car, your fuel estimate first drops to one more full lap — once per stint, and never once the tank covers the rest of the race.",
+    true,
+  ),
+  fuelLapsLeftContract(
+    "box",
+    0,
+    WEIGHT.CRITICAL,
+    "Mid-lap in a race, live in the car, your fuel estimate first drops below one more full lap — once per stint, and never once the tank covers the rest of the race.",
+    true,
+  ),
   FUEL_RACE_COVERED,
 ];
 

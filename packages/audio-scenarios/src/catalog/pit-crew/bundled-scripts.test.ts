@@ -15,17 +15,25 @@
  * something the code registries or the script itself defines, and every pool
  * it draws from, in either spelling, has a clip for the bundled voice.
  *
- * The contract set is read off a pass-through spy on `engine.defineContract`
- * installed before the real registration runs (the `register-pit-crew.test.ts`
- * shape) — the engine exposes no contract enumeration, and this test adds
- * none. Since #1065 the set is the WHOLE catalog: every family is a contract
- * plus a script entry, and a sibling spy on `engine.defineScenario` proves the
- * catalog makes no legacy `Scenario` (a contract with an inline sequence) at
- * all. The vacuity floor is therefore two-sided — at least `CATALOG_FLOOR`
- * contracts, and exactly zero legacy scenarios — because a spy installed late
- * would see nothing and let every "for each contract" assertion pass for
- * nothing, and a family re-added in the legacy shape would slip past every
- * script check while still speaking from code.
+ * The contract set is read off `engine.contracts()` after the real
+ * registration runs — the enumeration the reference generator and `lint:pack`
+ * read (#1066), so this test holds the bundled voice to exactly the set they
+ * publish. Since #1065 the set is the WHOLE catalog: every family is a
+ * contract plus a script entry, and a pass-through spy on
+ * `engine.defineScenario`, installed before the registration (the
+ * `register-pit-crew.test.ts` shape), proves the catalog makes no legacy
+ * `Scenario` (a contract with an inline sequence) at all. The enumeration
+ * lists a legacy scenario beside the contracts, which is why that check stays
+ * on the spy: a legacy id would otherwise pass every "for each contract"
+ * assertion here while speaking from code. The vacuity floor is therefore
+ * two-sided — at least `CATALOG_FLOOR` contracts, and exactly zero legacy
+ * scenarios — because a family that silently dropped out of `registerPitCrew`
+ * would shrink the set rather than fail anything, and a family re-added in
+ * the legacy shape would slip past every script check.
+ *
+ * Every contract must also carry the `description` the reference publishes
+ * beside the entry's `comment` and `test` — the one sentence telling a pack
+ * author WHEN the callout fires, which no script field can say.
  */
 import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "json" };
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
@@ -41,9 +49,9 @@ import {
 import type { IEventBus, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from "vitest";
 
-import type { Scenario, ScenarioContract } from "../../dsl.js";
+import type { Scenario } from "../../dsl.js";
 import { DEFAULT_FRAME } from "../../dsl.js";
-import type { AudioAssetsManifest } from "../../interpreter.js";
+import type { AudioAssetsManifest, ContractReport } from "../../interpreter.js";
 import {
   _resetAudioScenarios,
   initializeAudioScenarios,
@@ -72,7 +80,7 @@ const VOICE = "default";
 /**
  * How many contracts the catalog registered when #1065 closed it: 24 flags
  * (#1064) plus the 125 callouts migrated in #1065. Bump the literal when a
- * callout is added — it is only the vacuity floor for the spy; the
+ * callout is added — it is only the vacuity floor for the enumeration; the
  * completeness checks below are what actually guard the catalog.
  */
 const CATALOG_FLOOR = 149;
@@ -83,6 +91,13 @@ const CATALOG_FLOOR = 149;
  * that resolved fewer went blind rather than finding the script clean.
  */
 const CLIP_SOURCE_FLOOR = 150;
+
+/**
+ * The longest a contract's `description` may run: one sentence that still
+ * reads as a table cell in the generated reference (#1066). A paragraph on the
+ * gate's every clause belongs in the family file's comments, not here.
+ */
+const DESCRIPTION_MAX_LENGTH = 200;
 
 /** The JSON import types `schema` as `number`, hence the cast; the freshness test in audio-assets proves it parses. */
 const SCRIPT = defaultScript as CalloutScript;
@@ -149,11 +164,15 @@ function createFakeAudio(): IAudioService {
 }
 
 let engine: IScenarioEngine;
-let defineContractSpy: MockInstance<(c: ScenarioContract) => void>;
 let defineScenarioSpy: MockInstance<(s: Scenario) => void>;
-/** Every contract the real registration made, by id — the set the script is held complete against. */
-let contracts: Map<string, ScenarioContract>;
-/** Every legacy `Scenario` the real registration made, by id — frame consumers, held to the same frame check. */
+/**
+ * Every contract the real registration made, by id, as `engine.contracts()`
+ * reports it — the set the script is held complete against, and the one the
+ * reference generator publishes (#1066). Frames and weights arrive effective
+ * (the defaults filled in), so a check here reads what the scheduler would.
+ */
+let contracts: Map<string, ContractReport>;
+/** Every legacy `Scenario` the real registration made, by id — must be none; see the header. */
 let legacyScenarios: Map<string, Scenario>;
 /** What registration itself warned and errored, against the real manifest — kept apart from what `setScripts` says. */
 let registrationWarnings: string[];
@@ -162,11 +181,10 @@ let registrationErrors: string[];
 beforeEach(() => {
   const bus = createBus();
   engine = initializeAudioScenarios(bus, createFakeAudio(), MANIFEST, logger as never, () => VOICE);
-  // Pass-through spies, installed BEFORE the registration so they see all of it.
-  defineContractSpy = vi.spyOn(engine, "defineContract");
+  // A pass-through spy, installed BEFORE the registration so it sees all of it.
   defineScenarioSpy = vi.spyOn(engine, "defineScenario");
   registerPitCrew(bus, { logger: logger as never });
-  contracts = new Map(defineContractSpy.mock.calls.map(([c]) => [c.id, c]));
+  contracts = new Map(engine.contracts().map((c) => [c.id, c]));
   legacyScenarios = new Map(defineScenarioSpy.mock.calls.map(([s]) => [s.id, s]));
   registrationWarnings = logger.warn.mock.calls.map(([message]) => String(message));
   registrationErrors = logger.error.mock.calls.map(([message]) => String(message));
@@ -185,9 +203,9 @@ afterEach(() => {
 
 describe("the bundled script is complete for every contract the catalog registers (issue #1064)", () => {
   it("sees the registration: the whole catalog arrives as contracts, and nothing arrives as a legacy scenario", () => {
-    // The vacuity floor, two-sided. The spy already collects every contract;
-    // the count only proves it was installed in time — and that no family
-    // silently dropped out of `registerPitCrew`.
+    // The vacuity floor, two-sided. `engine.contracts()` reports whatever is
+    // registered, so a family that silently dropped out of `registerPitCrew`
+    // would only shrink the set — the count is what notices.
     expect(contracts.size).toBeGreaterThanOrEqual(CATALOG_FLOOR);
 
     for (const id of FLAG_SCENARIO_IDS) {
@@ -240,6 +258,29 @@ describe("the bundled script is complete for every contract the catalog register
 
       expect(entry.sequence?.length ?? 0, `${id}: sequence`).toBeGreaterThan(0);
     }
+  });
+
+  it("every contract carries the one-sentence description the reference publishes — when the callout fires, in the sim's terms", () => {
+    // The generated reference (#1066) shows a pack author three things per
+    // callout: the contract's `description` (WHEN it fires), and the bundled
+    // entry's `comment` (what is said) and `test` (how to hear it). The first
+    // is the only one no script field can supply, and a contract without it
+    // publishes a blank row. One sentence: it ends in a full stop, it is
+    // short enough to read as a table cell, and it does not open by
+    // restating the id the row already shows.
+    const problems: string[] = [];
+
+    for (const [id, { description }] of contracts) {
+      const text = description.trim();
+
+      if (text.length === 0) problems.push(`${id}: no description`);
+      else if (!text.endsWith(".")) problems.push(`${id}: does not end with a full stop`);
+      else if (text.length > DESCRIPTION_MAX_LENGTH)
+        problems.push(`${id}: longer than ${DESCRIPTION_MAX_LENGTH} chars`);
+      else if (text.startsWith(id)) problems.push(`${id}: starts with its own id`);
+    }
+
+    expect(problems, "contracts whose `description` is not one sentence on when the callout fires").toEqual([]);
   });
 });
 
@@ -352,11 +393,12 @@ describe("everything the bundled script references by name is defined (issue #10
     const defined = new Set(Object.keys(SCRIPT.frames));
     const problems: string[] = [];
 
-    // Effective frame per contract: entry override → contract default → DEFAULT_FRAME.
+    // Effective frame per contract: entry override → contract default, where
+    // the report's `frame` is already DEFAULT_FRAME for a contract naming none.
     // A frame the script lacks compiles as `unknown frame` and skips the
     // callout for the voice, which the bundle must never do.
     for (const [id, contract] of contracts) {
-      const frame = SCRIPT.scenarios[id]?.frame ?? contract.frame ?? DEFAULT_FRAME;
+      const frame = SCRIPT.scenarios[id]?.frame ?? contract.frame;
 
       if (frame !== NO_FRAME && !defined.has(frame)) problems.push(`${id} → frame "${frame}"`);
     }

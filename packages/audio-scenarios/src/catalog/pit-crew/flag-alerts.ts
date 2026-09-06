@@ -123,6 +123,8 @@ function flagContract(id: string): ScenarioContract {
 
 const YELLOW_LOCAL: ScenarioContract = {
   ...flagContract("yellow-local"),
+  description:
+    "iRacing shows you a standing (not waving) local yellow for an incident in the sector ahead, in any session.",
   when: {
     event: "flag.yellow.raised",
     where: (e) => (e as SimEventOf<"flag.yellow.raised">).data.scope === "local",
@@ -131,6 +133,8 @@ const YELLOW_LOCAL: ScenarioContract = {
 
 const YELLOW_FULL: ScenarioContract = {
   ...flagContract("yellow-full"),
+  description:
+    "iRacing shows you a standing (not waving) full-course caution, putting the whole field under yellow, in any session.",
   when: {
     event: "flag.yellow.raised",
     where: (e) => (e as SimEventOf<"flag.yellow.raised">).data.scope === "full",
@@ -145,21 +149,29 @@ const YELLOW_FULL: ScenarioContract = {
 const YELLOW_CLEARED: ScenarioContract = {
   ...flagContract("yellow-cleared"),
   queueable: true,
+  description:
+    "Every yellow and caution flag has been down for three seconds straight after a yellow, so the all-clear is confirmed rather than a gap between zones.",
   when: { event: "flag.yellow.cleared" },
 };
 
 const GREEN: ScenarioContract = {
   ...flagContract("green"),
+  description:
+    "The green flag comes out at the start of a practice or qualifying session or at a race restart; the initial race start belongs to the start lights and stays silent here.",
   when: { event: "flag.green.raised" },
 };
 
 const BLUE: ScenarioContract = {
   ...flagContract("blue"),
+  description:
+    "A faster car is closing to lap you and iRacing shows you the blue flag, in any session; a blue shown together with the green at a start is ignored.",
   when: { event: "flag.blue.raised" },
 };
 
 const WHITE: ScenarioContract = {
   ...flagContract("white"),
+  description:
+    "iRacing raises the white flag: in a race while the leader is still approaching the line for the final lap, in practice or qualifying as you begin your own last lap.",
   when: { event: "flag.white.raised" },
 };
 
@@ -183,6 +195,8 @@ const WHITE: ScenarioContract = {
 const WHITE_LAST_LAP: ScenarioContract = {
   ...flagContract("white-last-lap"),
   queueable: true,
+  description:
+    "You cross the start/finish line with the white flag flying in a race and begin your own final lap, once per white flag; a crossing that lands while the heads-up is still playing is skipped.",
   when: { event: "flag.white-last-lap.raised", where: () => raceOnly() },
 };
 
@@ -197,11 +211,14 @@ const WHITE_LAST_LAP: ScenarioContract = {
 const WHITE_LEADER: ScenarioContract = {
   ...flagContract("white-leader"),
   queueable: true,
+  description:
+    "The overall race leader starts the final lap, judged from lap counting, while you are not the leader and have no white flag of your own yet; once per race.",
   when: { event: "flag.white-leader.raised", where: () => raceOnly() },
 };
 
 const RED: ScenarioContract = {
   ...flagContract("red"),
+  description: "A red flag is thrown and the session is halted, in any session type.",
   when: { event: "flag.red.raised" },
 };
 
@@ -219,16 +236,22 @@ const RED: ScenarioContract = {
 const BLACK: ScenarioContract = {
   ...flagContract("black"),
   queueable: true,
+  description:
+    "iRacing shows you the black flag on its own, in any session; when it comes together with a disqualification the disqualify line speaks instead.",
   when: { event: "flag.black.raised" },
 };
 
 const CHECKERED: ScenarioContract = {
   ...flagContract("checkered"),
+  description:
+    "You take the checkered flag: at your own crossing of the line in qualifying and a race (the flag flies for the field before that), or the moment the session ends in practice.",
   when: { event: "flag.checkered.raised" },
 };
 
 const DEBRIS: ScenarioContract = {
   ...flagContract("debris"),
+  description:
+    "iRacing shows the debris flag for something lying on the track ahead, in any session; only the raise speaks, never the clear.",
   when: { event: "flag.debris.raised" },
 };
 
@@ -245,6 +268,8 @@ const DEBRIS: ScenarioContract = {
 // until obeyed, so a ~1 s-late replay is always correct.
 const MEATBALL: ScenarioContract = {
   id: "pit-crew.flag-meatball",
+  description:
+    "Your car takes enough damage that iRacing orders it to the pits and shows you the meatball flag, in any session.",
   when: { event: "flag.meatball.raised" },
   channel: AudioChannel.Voice,
   bus: AudioBus.Voice,
@@ -263,6 +288,8 @@ const MEATBALL: ScenarioContract = {
 const DISQUALIFY: ScenarioContract = {
   ...flagContract("disqualify"),
   queueable: true,
+  description:
+    "iRacing disqualifies you and shows the disqualify flag — the incident limit, or a race admin — in any session; a black flag shown alongside it stays silent.",
   when: { event: "flag.disqualify.raised" },
 };
 
@@ -356,6 +383,8 @@ function furledWithdrawn(): boolean {
 const FURLED: ScenarioContract = {
   ...flagContract("furled"),
   queueable: true,
+  description:
+    "The furled black flag has stayed up on your car for a full second — a warning for time gained off track, not the half-second flicker of a brief excursion — in any session.",
   when: {
     event: "flag.furled.raised",
     // A fresh raised episode invalidates any stale spoken marker a previous
@@ -381,6 +410,8 @@ const FURLED: ScenarioContract = {
 const FURLED_CLEARED: ScenarioContract = {
   ...flagContract("furled-cleared"),
   queueable: true,
+  description:
+    "The furled black flag comes down off your car after it was called, in any session, with no black flag or disqualification taking its place at that moment.",
   when: {
     event: "flag.furled.cleared",
     // Passive read — consumption happens at speak time in the script's
@@ -395,6 +426,8 @@ const FURLED_CLEARED: ScenarioContract = {
 const DQ_SCORING_INVALID: ScenarioContract = {
   ...flagContract("dq-scoring-invalid"),
   queueable: true,
+  description:
+    "iRacing shows the flag that disqualifies you and invalidates your scoring at the same time, in any session.",
   when: { event: "flag.dq-scoring-invalid.raised" },
 };
 
@@ -402,6 +435,8 @@ const DQ_SCORING_INVALID: ScenarioContract = {
 // ten-to-go, five-to-go.
 const CROSSED: ScenarioContract = {
   ...flagContract("crossed"),
+  description:
+    "The crossed flags come out at the halfway point of a race while you are live in the car; never in practice or qualifying, and never after the checkered.",
   when: { event: "flag.crossed.raised", where: liveRaceCar },
 };
 
@@ -411,21 +446,29 @@ const CROSSED: ScenarioContract = {
 // session + in the car + not post-race).
 const ONE_PACE_LAP_TO_GO: ScenarioContract = {
   ...flagContract("one-pace-lap-to-go"),
+  description:
+    "The pace car crosses the start/finish line to complete the first pace lap of a two-lap rolling start while the green is still held, with you live in the car.",
   when: { event: "flag.one-pace-lap-to-go.raised", where: liveRaceCar },
 };
 
 const GREEN_HELD: ScenarioContract = {
   ...flagContract("green-held"),
+  description:
+    "iRacing holds the green on the final pace lap of a rolling start or restart, as the pace car pulls in, while you are live in the car; never on a standing-start grid.",
   when: { event: "flag.green-held.raised", where: rollingFormationOnly },
 };
 
 const TEN_TO_GO: ScenarioContract = {
   ...flagContract("ten-to-go"),
+  description:
+    "Ten laps remain in a race and iRacing raises the ten-to-go flag while you are live in the car; never after the checkered or outside a race.",
   when: { event: "flag.ten-to-go.raised", where: liveRaceCar },
 };
 
 const FIVE_TO_GO: ScenarioContract = {
   ...flagContract("five-to-go"),
+  description:
+    "Five laps remain in a race and iRacing raises the five-to-go flag while you are live in the car; never after the checkered or outside a race.",
   when: { event: "flag.five-to-go.raised", where: liveRaceCar },
 };
 
@@ -446,12 +489,16 @@ export const WAVING_FLAG_COOLDOWN_MS = 30_000;
 const YELLOW_WAVING: ScenarioContract = {
   ...flagContract("yellow-waving"),
   cooldown: WAVING_FLAG_COOLDOWN_MS,
+  description:
+    "You enter the zone of a fresh incident and iRacing shows you the waving local yellow, in any session; a later pass through the same zone re-raises it, at most once per thirty seconds.",
   when: { event: "flag.yellow-waving.raised" },
 };
 
 const CAUTION_WAVING: ScenarioContract = {
   ...flagContract("caution-waving"),
   cooldown: WAVING_FLAG_COOLDOWN_MS,
+  description:
+    "The full-course caution is shown waving to the field, in any session; a repeat inside thirty seconds stays silent.",
   when: { event: "flag.caution-waving.raised" },
 };
 

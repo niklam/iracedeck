@@ -195,6 +195,8 @@ export function buildRaceStatusContract(
     weight: WEIGHT.CHATTER,
     queueable: true,
     family: "race-status",
+    description:
+      "Three laps pass in a race without your position changing, and every three laps after that — never on the final lap, and not within twenty seconds of another position readout.",
   };
 }
 

@@ -33,7 +33,12 @@ import type { ScenarioContract } from "../../dsl.js";
 
 type Direction = "worsening" | "drying";
 
-function trackConditionsContract(direction: Direction, target: TrackWetness, slug: string): ScenarioContract {
+function trackConditionsContract(
+  direction: Direction,
+  target: TrackWetness,
+  slug: string,
+  description: string,
+): ScenarioContract {
   return {
     id: `pit-crew.track-conditions-${direction}-${slug}`,
     channel: AudioChannel.Voice,
@@ -50,25 +55,81 @@ function trackConditionsContract(direction: Direction, target: TrackWetness, slu
         return direction === "worsening" ? data.to > data.from : data.to < data.from;
       },
     },
+    description,
   };
 }
 
 export const TRACK_CONDITIONS_CONTRACTS: readonly ScenarioContract[] = [
   // Worsening — Dry isn't a worsening target.
-  trackConditionsContract("worsening", TrackWetness.MostlyDry, "mostly-dry"),
-  trackConditionsContract("worsening", TrackWetness.VeryLightlyWet, "very-lightly-wet"),
-  trackConditionsContract("worsening", TrackWetness.LightlyWet, "lightly-wet"),
-  trackConditionsContract("worsening", TrackWetness.ModeratelyWet, "moderately-wet"),
-  trackConditionsContract("worsening", TrackWetness.VeryWet, "very-wet"),
-  trackConditionsContract("worsening", TrackWetness.ExtremelyWet, "extremely-wet"),
+  trackConditionsContract(
+    "worsening",
+    TrackWetness.MostlyDry,
+    "mostly-dry",
+    "The track's wetness rises to mostly dry from dry.",
+  ),
+  trackConditionsContract(
+    "worsening",
+    TrackWetness.VeryLightlyWet,
+    "very-lightly-wet",
+    "The track's wetness rises to very lightly wet from any drier state.",
+  ),
+  trackConditionsContract(
+    "worsening",
+    TrackWetness.LightlyWet,
+    "lightly-wet",
+    "The track's wetness rises to lightly wet from any drier state.",
+  ),
+  trackConditionsContract(
+    "worsening",
+    TrackWetness.ModeratelyWet,
+    "moderately-wet",
+    "The track's wetness rises to moderately wet from any drier state.",
+  ),
+  trackConditionsContract(
+    "worsening",
+    TrackWetness.VeryWet,
+    "very-wet",
+    "The track's wetness rises to very wet from any drier state.",
+  ),
+  trackConditionsContract(
+    "worsening",
+    TrackWetness.ExtremelyWet,
+    "extremely-wet",
+    "The track's wetness rises to extremely wet from any drier state.",
+  ),
 
   // Drying — ExtremelyWet isn't a drying target.
-  trackConditionsContract("drying", TrackWetness.Dry, "dry"),
-  trackConditionsContract("drying", TrackWetness.MostlyDry, "mostly-dry"),
-  trackConditionsContract("drying", TrackWetness.VeryLightlyWet, "very-lightly-wet"),
-  trackConditionsContract("drying", TrackWetness.LightlyWet, "lightly-wet"),
-  trackConditionsContract("drying", TrackWetness.ModeratelyWet, "moderately-wet"),
-  trackConditionsContract("drying", TrackWetness.VeryWet, "very-wet"),
+  trackConditionsContract("drying", TrackWetness.Dry, "dry", "The track's wetness falls to dry from any wetter state."),
+  trackConditionsContract(
+    "drying",
+    TrackWetness.MostlyDry,
+    "mostly-dry",
+    "The track's wetness falls to mostly dry from any wetter state.",
+  ),
+  trackConditionsContract(
+    "drying",
+    TrackWetness.VeryLightlyWet,
+    "very-lightly-wet",
+    "The track's wetness falls to very lightly wet from any wetter state.",
+  ),
+  trackConditionsContract(
+    "drying",
+    TrackWetness.LightlyWet,
+    "lightly-wet",
+    "The track's wetness falls to lightly wet from any wetter state.",
+  ),
+  trackConditionsContract(
+    "drying",
+    TrackWetness.ModeratelyWet,
+    "moderately-wet",
+    "The track's wetness falls to moderately wet from any wetter state.",
+  ),
+  trackConditionsContract(
+    "drying",
+    TrackWetness.VeryWet,
+    "very-wet",
+    "The track's wetness falls to very wet from extremely wet.",
+  ),
 ];
 
 /** Contract ids exported for tests so a typo here surfaces as a test failure. */

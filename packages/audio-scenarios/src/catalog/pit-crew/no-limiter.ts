@@ -74,6 +74,8 @@ export const NO_LIMITER_SPEEDING: ScenarioContract = {
     event: "limiter.speeding",
     where: (e) => lacksPitLimiter(e.telemetry as TelemetryData | null),
   },
+  description:
+    "You go over the pit speed limit on pit road in a car that has no pit limiter, no more than once every five seconds.",
   channel: AudioChannel.Voice,
   bus: AudioBus.Voice,
   base: "pit-crew",
@@ -86,6 +88,7 @@ export const NO_LIMITER_ENTRY: ScenarioContract = {
     event: "pitLane.entered",
     where: (e) => lacksPitLimiter(e.telemetry as TelemetryData | null),
   },
+  description: "You drive onto pit road in a car that has no pit limiter.",
   channel: AudioChannel.Voice,
   bus: AudioBus.Voice,
   base: "pit-crew",

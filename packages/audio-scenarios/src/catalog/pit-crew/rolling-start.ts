@@ -48,6 +48,8 @@ const ROLLING_START_PACE_CAR: ScenarioContract = {
   weight: WEIGHT.SAFETY,
   family: "rolling-start",
   when: { event: "rollingStart.pace-car-moving.raised", where: liveRaceCar },
+  description:
+    "The pace car pulls away from the grid to lead the formation lap of a rolling-start race, with you live in the car.",
 };
 
 export const ROLLING_START_CONTRACTS: readonly ScenarioContract[] = [ROLLING_START_PACE_CAR];

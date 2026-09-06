@@ -186,7 +186,7 @@
       ]
     },
     "pit-crew.flag-one-pace-lap-to-go": {
-      "comment": "One more pace lap before the green on a rolling start — keep the spacing tidy and warm the tyres. Race-only, live in the car.",
+      "comment": "One more pace lap before the green on a rolling start — keep the spacing tidy and warm the tires. Race-only, live in the car.",
       "test": "Harness → Flags → One Pace Lap to Go, with the race session preset and the hot-lap telemetry preset. In-sim: the second-to-last pace lap of a rolling start.",
       "sequence": [
         "pool:flags/one-pace-lap-to-go"
@@ -299,7 +299,7 @@
       ]
     },
     "pit-crew.track-conditions-worsening-lightly-wet": {
-      "comment": "The track is now lightly wet and getting wetter — the point where wet tyres start to be a question.",
+      "comment": "The track is now lightly wet and getting wetter — the point where wet tires start to be a question.",
       "test": "Harness → Scenario Shortcuts → Track Conditions — Worsening → Lightly Wet. In-sim: steady rain on a very lightly wet track.",
       "sequence": [
         "pool:track-conditions/worsening-lightly-wet"
@@ -669,7 +669,7 @@
       ]
     },
     "pit-crew.opponent-flag-furled-ahead": {
-      "comment": "The car directly ahead in the standings has been shown a furled black flag, named by its position: the car-in lead-in (the opponent-pit family's clip, reused because the words are the same), the number, then the furled tail. The number is part of the sentence — a position the voice cannot say skips the whole line. Every opponent-flag line queues behind a busier one rather than cutting it, because each describes a different car.",
+      "comment": "A car up to three places ahead in the standings has been shown a furled black flag, named by its position: the car-in lead-in (the opponent-pit family's clip, reused because the words are the same), the number, then the furled tail. The number is part of the sentence — a position the voice cannot say skips the whole line. Every opponent-flag line queues behind a busier one rather than cutting it, because each describes a different car.",
       "test": "Harness → Opponent Flags → P5 ahead: furled. In-sim: the car one place ahead of you picks up a furled black flag during a race.",
       "sequence": [
         "pool:opponent-pit/car-in",
@@ -692,7 +692,7 @@
       ]
     },
     "pit-crew.opponent-flag-black-ahead": {
-      "comment": "The car directly ahead in the standings has been black-flagged, named by its position — car-in, the number, the black tail. The number is part of the sentence.",
+      "comment": "A car up to three places ahead in the standings has been black-flagged, named by its position — car-in, the number, the black tail. The number is part of the sentence.",
       "test": "Harness → Opponent Flags → P5 ahead: black flag. In-sim: the car one place ahead of you is black-flagged during a race.",
       "sequence": [
         "pool:opponent-pit/car-in",
@@ -715,7 +715,7 @@
       ]
     },
     "pit-crew.opponent-flag-meatball-ahead": {
-      "comment": "The car directly ahead in the standings has the meatball (repair) flag, named by its position — car-in, the number, the meatball tail. The number is part of the sentence.",
+      "comment": "A car up to three places ahead in the standings has the meatball (repair) flag, named by its position — car-in, the number, the meatball tail. The number is part of the sentence.",
       "test": "Harness → Opponent Flags → P5 ahead: meatball. In-sim: the car one place ahead of you is shown the meatball flag during a race.",
       "sequence": [
         "pool:opponent-pit/car-in",
@@ -738,7 +738,7 @@
       ]
     },
     "pit-crew.opponent-flag-disqualify-ahead": {
-      "comment": "The car directly ahead in the standings has been disqualified, named by its position — car-in, the number, the disqualified tail. The number is part of the sentence.",
+      "comment": "A car up to three places ahead in the standings has been disqualified, named by its position — car-in, the number, the disqualified tail. The number is part of the sentence.",
       "test": "Harness → Opponent Flags → P5 ahead: DQ. In-sim: the car one place ahead of you is disqualified during a race.",
       "sequence": [
         "pool:opponent-pit/car-in",
@@ -946,7 +946,7 @@
       ]
     },
     "pit-crew.gap-trend": {
-      "comment": "The gap to a standings neighbour has turned: we are gaining on the car ahead, it is pulling away, the car behind is gaining, or we are dropping it. The line is chosen by side and direction; the live gap readout follows through the gap-readout fragment. Both gap lines share one cooldown (30 s by default), so a second one inside it stays silent.",
+      "comment": "The gap to a standings neighbor has turned: we are gaining on the car ahead, it is pulling away, the car behind is gaining, or we are dropping it. The line is chosen by side and direction; the live gap readout follows through the gap-readout fragment. Both gap lines share one cooldown (30 s by default), so a second one inside it stays silent.",
       "test": "Harness → Gaps → Trend: closing on car ahead, Trend: car ahead pulling away, Trend: car behind gaining or Trend: dropping the car behind — the seconds clause needs a live gap, so drive the harness session with cars around you. In-sim: race with a car a few seconds ahead and close on it lap after lap.",
       "sequence": [
         "{{gap.line}}",
@@ -954,7 +954,7 @@
       ]
     },
     "pit-crew.gap-threshold": {
-      "comment": "The gap to a standings neighbour first dropped under the driver's alert threshold — we have caught the car ahead, or the car behind is right with us — then the live gap through the same gap-readout fragment. Shares the trend line's cooldown.",
+      "comment": "The gap to a standings neighbor first dropped under the driver's alert threshold — we have caught the car ahead, or the car behind is right with us — then the live gap through the same gap-readout fragment. Shares the trend line's cooldown.",
       "test": "Harness → Gaps → Caught the car ahead (threshold) or Car behind within threshold, with a live gap for the seconds clause. In-sim: close to within the configured gap threshold of the car ahead.",
       "sequence": [
         "{{gap.thresholdLine}}",

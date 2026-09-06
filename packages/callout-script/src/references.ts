@@ -10,14 +10,46 @@ import {
 } from "./grammar.js";
 
 /**
+ * What ONE step list refers to by name — the per-sequence half of
+ * {@link ScriptReferences}, for a consumer that attributes references to the
+ * entry or fragment that makes them (the generated pack-author reference
+ * lists each callout's own, #1066) rather than to the script as a whole.
+ *
+ * Every list is deduped and sorted, so two step lists that reference the same
+ * things compare equal however they are laid out.
+ */
+export type StepReferences = {
+  /**
+   * Every pool name the steps reference, string and object forms alike; a
+   * `group/base` name is included as written. A `{ connector: true }` step draws
+   * from the `connector` pool, so it is reported here under that name.
+   */
+  pools: readonly string[];
+  vars: readonly string[];
+  /** Condition names without their `!`. */
+  conds: readonly string[];
+  /** Each case with the branch keys the steps map, `"default"` excluded; keys merge across uses. */
+  cases: readonly { name: string; keys: readonly string[] }[];
+  /**
+   * Included fragment names without their `@`. An include is NOT followed
+   * here: what the fragment itself references belongs to whoever holds the
+   * script and can look the fragment up.
+   */
+  includes: readonly string[];
+};
+
+/**
  * Everything a script refers to by name. A consumer checks each list against
  * what it holds — the engine against its contracts and vocabulary, a linter
  * against the published reference — without walking the grammar itself.
  *
  * Every list is deduped and sorted, so two scripts that reference the same
- * things compare equal however they are laid out.
+ * things compare equal however they are laid out. The five
+ * {@link StepReferences} lists are merged over every sequence the script
+ * plays: entries, the frames' `open` / `close`, and every fragment's
+ * `sequence`.
  */
-export type ScriptReferences = {
+export type ScriptReferences = StepReferences & {
   /**
    * Keys of `scenarios`, `skip: true` entries included. A `skip: true` entry
    * contributes its id and NOTHING else — not its `frame`, not anything a
@@ -26,19 +58,6 @@ export type ScriptReferences = {
    * will resolve.
    */
   scenarioIds: readonly string[];
-  /**
-   * Every pool name any sequence references, string and object forms alike; a
-   * `group/base` name is included as written. A `{ connector: true }` step draws
-   * from the `connector` pool, so it is reported here under that name.
-   */
-  pools: readonly string[];
-  vars: readonly string[];
-  /** Condition names without their `!`. */
-  conds: readonly string[];
-  /** Each case with the branch keys the script maps, `"default"` excluded; keys merge across uses. */
-  cases: readonly { name: string; keys: readonly string[] }[];
-  /** Included fragment names without their `@`, from entries and from fragments alike. */
-  includes: readonly string[];
   /** Every `frame` override an entry names. `"none"` is the reserved word for unframed, not a reference, so it is left out; defaults are the engine's. */
   frames: readonly string[];
   /**
@@ -110,6 +129,32 @@ class Collector {
     else if (form.kind === "var") this.vars.add(form.name);
     else if (form.kind === "include") this.includes.add(form.id);
   }
+
+  /** What has been walked so far, deduped and sorted — the {@link StepReferences} shape. */
+  report(): StepReferences {
+    return {
+      pools: sorted(this.pools),
+      vars: sorted(this.vars),
+      conds: sorted(this.conds),
+      cases: sorted(this.cases.keys()).map((name) => ({ name, keys: sorted(this.cases.get(name) ?? []) })),
+      includes: sorted(this.includes),
+    };
+  }
+}
+
+/**
+ * List what one step list references by name — through every
+ * `then`/`else`/`optional`/`of` branch, an include NOT followed (see
+ * {@link StepReferences.includes}). The per-sequence walk
+ * {@link collectScriptReferences} runs over every sequence a script plays,
+ * exposed so a consumer can attribute references to the entry or fragment
+ * that makes them (#1066) with the same arms a new step form is added to.
+ */
+export function collectStepReferences(steps: readonly ScriptStep[]): StepReferences {
+  const collector = new Collector();
+  collector.walk(steps);
+
+  return collector.report();
 }
 
 /**
@@ -226,11 +271,7 @@ export function collectScriptReferences(script: CalloutScript): ScriptReferences
 
   return {
     scenarioIds: sorted(Object.keys(script.scenarios)),
-    pools: sorted(collector.pools),
-    vars: sorted(collector.vars),
-    conds: sorted(collector.conds),
-    cases: sorted(collector.cases.keys()).map((name) => ({ name, keys: sorted(collector.cases.get(name) ?? []) })),
-    includes: sorted(collector.includes),
+    ...collector.report(),
     frames: sorted(frames),
     fragments: sorted(Object.keys(fragments)),
     unincludedFragments: sorted(Object.keys(fragments).filter((name) => !live.has(name))),
