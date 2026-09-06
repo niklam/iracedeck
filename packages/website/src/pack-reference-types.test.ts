@@ -18,7 +18,12 @@ describe("the committed artifact", () => {
   it("has the shape the reference pages render", () => {
     const parsed = parsePackReference(reference);
 
-    expect(parsed.generatedFrom.catalogVersion).toMatch(/^\d+\.\d+\.\d+/);
+    // Provenance is repo-relative source paths and nothing else — never a
+    // version, which a release bump would stale (the freshness test is what
+    // keeps the artifact current).
+    expect(parsed._meta.generatedFrom.length).toBeGreaterThan(0);
+    expect(parsed._meta.generatedFrom).toContain("packages/audio-assets/voice/default/callouts.json");
+    expect(Object.keys(parsed._meta)).toEqual(["generatedFrom"]);
     expect(parsed.callouts.length).toBeGreaterThan(100);
     expect(parsed.vocabulary.vars.length).toBeGreaterThan(0);
     expect(parsed.vocabulary.conds.length).toBeGreaterThan(0);
@@ -122,5 +127,21 @@ describe("parsePackReference", () => {
     delete drifted.vocabulary;
 
     expect(() => parsePackReference(drifted)).toThrow("vocabulary: expected an object");
+  });
+
+  // The retired provenance shape stamped the root package version into the
+  // artifact; a regression to it must fail here, not go red on master at the
+  // next release bump.
+  it("refuses the retired version-stamped provenance shape", () => {
+    const drifted = copy();
+    delete drifted._meta;
+    drifted.generatedFrom = { catalogVersion: "3.2.0" };
+
+    expect(() => parsePackReference(drifted)).toThrow("(document).generatedFrom: unrecognized key");
+
+    const stamped = copy();
+    stamped._meta.catalogVersion = "3.2.0";
+
+    expect(() => parsePackReference(stamped)).toThrow("_meta.catalogVersion: unrecognized key");
   });
 });

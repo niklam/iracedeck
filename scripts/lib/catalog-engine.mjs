@@ -141,23 +141,6 @@ function createFakeAudio() {
 /** The one registration this process makes — see `registerCatalogEngine`. */
 let registration = /** @type {Promise<CatalogEngine> | null} */ (null);
 
-/** The voice the engine reports as active — see `setActiveVoice`. */
-let activeVoice = BUNDLED_VOICE;
-
-/**
- * Switch the voice the shared engine reports as active. PROCESS-GLOBAL: the
- * engine is registered once per process (see `registerCatalogEngine`) and
- * reads the voice through a closure on every use, so this changes it for
- * every holder of the engine at once, past and future. Nothing in this
- * process resets it; a caller that needs the bundled voice back sets it back.
- * The bundled voice is active until the first call.
- *
- * @param {string} voice - A voice id, e.g. `default`.
- */
-export function setActiveVoice(voice) {
-  activeVoice = voice;
-}
-
 /**
  * The whole pit-crew catalog registered on an engine, with the dist module it
  * came from so a caller can reach the package's other exports (the reference
@@ -167,8 +150,10 @@ export function setActiveVoice(voice) {
  * own sub-engines (radar, spotter, pit speeding) are module singletons bound
  * to the first bus they see, and a second `registerPitCrew` on another bus
  * throws. The catalog is static, so one registration answers every caller.
- * The active voice is the one process-global knob, set explicitly through
- * `setActiveVoice` — never through this call, which selects nothing.
+ * The engine reports the bundled voice as active, and nothing here changes
+ * that: neither caller fires a callout — the generator names the voice whose
+ * clips it reads explicitly, and the linter reads a pack's files — so there
+ * is no consumer for a voice switch, and none is offered.
  *
  * @returns {Promise<CatalogEngine>}
  */
@@ -196,7 +181,7 @@ async function register() {
   // A fresh engine, whatever this process did with the singleton before.
   audioScenarios._resetAudioScenarios();
 
-  const engine = audioScenarios.initializeAudioScenarios(bus, createFakeAudio(), manifest, logger, () => activeVoice);
+  const engine = audioScenarios.initializeAudioScenarios(bus, createFakeAudio(), manifest, logger, () => BUNDLED_VOICE);
   registerPitCrew(bus, { logger });
 
   return { engine, manifest, audioScenarios };

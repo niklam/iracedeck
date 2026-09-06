@@ -27,9 +27,10 @@
  * `USABLE_CLIP` rule, restated); the script — missing means a clips-only
  * voice, which the plugin accepts and which is silent for every callout, so
  * it is reported (the plugin raises the missing-script banner for exactly
- * this); one larger than the scanner reads (`VOICE_SCRIPT_MAX_BYTES`,
- * restated) is reported as the scanner would refuse it, unread; a script
- * that does not parse is reported with the grammar's own problems; a script
+ * this); one larger than the scanner accepts (`VOICE_SCRIPT_MAX_BYTES`,
+ * restated) is reported as the scanner treats it — read, then refused before
+ * it is parsed; a script that does not parse is reported with the grammar's
+ * own problems; a script
  * that parses is compiled, and every skip the pack did NOT mean is reported
  * with the compiler's reason, as are frames and fragments that fail; then
  * the coverage rules over the clip files — bases the script references that
@@ -376,7 +377,7 @@ function lintVoice(id: string, ctx: VoiceContext): VoiceLintSummary {
   if (read.text.length > VOICE_SCRIPT_MAX_BYTES) {
     problem(
       "script",
-      `${scriptPath} is larger than ${VOICE_SCRIPT_MAX_BYTES} bytes — the plugin refuses it unread and drops the voice`,
+      `${scriptPath} is larger than ${VOICE_SCRIPT_MAX_BYTES} bytes — the plugin refuses it before it is parsed and drops the voice`,
     );
 
     return brokenScript;

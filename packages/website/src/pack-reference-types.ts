@@ -80,11 +80,13 @@ export type RecordingLine = {
 
 export type RecordingGroup = { group: string; lines: readonly RecordingLine[] };
 
+/** Provenance, the shape the repo's other generated artifacts carry: the repo-relative sources the generator read. No version, by design. */
+export type PackReferenceMeta = {
+  generatedFrom: readonly string[];
+};
+
 export type PackReference = {
-  generatedFrom: {
-    /** The root `package.json` version the reference was built from. */
-    catalogVersion: string;
-  };
+  _meta: PackReferenceMeta;
   callouts: readonly Callout[];
   vocabulary: PackReferenceVocabulary;
   recordingScript: readonly RecordingGroup[];
@@ -290,13 +292,13 @@ export function parseRecordingScript(value: unknown, path = "recordingScript"): 
  */
 export function parsePackReference(value: unknown): PackReference {
   const source = record(value, "(document)");
-  onlyKeys(source, "(document)", ["generatedFrom", "callouts", "vocabulary", "recordingScript"]);
+  onlyKeys(source, "(document)", ["_meta", "callouts", "vocabulary", "recordingScript"]);
 
-  const generatedFrom = record(source.generatedFrom, "generatedFrom");
-  onlyKeys(generatedFrom, "generatedFrom", ["catalogVersion"]);
+  const meta = record(source._meta, "_meta");
+  onlyKeys(meta, "_meta", ["generatedFrom"]);
 
   return {
-    generatedFrom: { catalogVersion: string(generatedFrom.catalogVersion, "generatedFrom.catalogVersion") },
+    _meta: { generatedFrom: stringArray(meta.generatedFrom, "_meta.generatedFrom") },
     callouts: parseCallouts(source.callouts),
     vocabulary: parseVocabulary(source.vocabulary),
     recordingScript: parseRecordingScript(source.recordingScript),

@@ -13,7 +13,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import url from "node:url";
 
-import { BUNDLED_VOICE, importAudioScenarios, registerCatalogEngine } from "./catalog-engine.mjs";
+import { AUDIO_MANIFEST_PATH, BUNDLED_VOICE, importAudioScenarios, registerCatalogEngine } from "./catalog-engine.mjs";
 
 const repoRoot = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "../..");
 
@@ -29,6 +29,23 @@ export const BUNDLED_SCRIPT_PATH = `packages/audio-assets/voice/${BUNDLED_VOICE}
 /** The bundled voice's authored config — the text of every recorded line, under `groups`. */
 export const BUNDLED_VOICE_CONFIG_PATH = `packages/audio-assets/configs/${BUNDLED_VOICE}.voice.json`;
 
+/** The catalog whose `contracts()` and `vocabulary()` the reference publishes — the source tree, not the dist the scripts load it from. */
+export const CATALOG_SOURCE_PATH = "packages/audio-scenarios/src/catalog/pit-crew";
+
+/**
+ * What the generator reads, repo-relative, recorded in the artifact as
+ * `_meta.generatedFrom` — the provenance shape `changelog.json` and
+ * `getting-started.json` carry. Paths only, never a version: the artifact is
+ * freshness-tested against a rebuild, and a version stamp would make every
+ * release bump commit stale it on `master`.
+ */
+export const PACK_REFERENCE_SOURCES = Object.freeze([
+  CATALOG_SOURCE_PATH,
+  BUNDLED_SCRIPT_PATH,
+  BUNDLED_VOICE_CONFIG_PATH,
+  AUDIO_MANIFEST_PATH,
+]);
+
 function readJson(relative) {
   return JSON.parse(readFileSync(path.join(repoRoot, relative), "utf-8"));
 }
@@ -43,12 +60,11 @@ export async function buildPackReferenceData() {
   // The engine's active voice is irrelevant here — nothing fires, and the
   // builder is told which voice's clips to read explicitly below.
   const { engine, manifest, audioScenarios } = await registerCatalogEngine();
-  const { version } = readJson("package.json");
   const script = readJson(BUNDLED_SCRIPT_PATH);
   const { groups } = readJson(BUNDLED_VOICE_CONFIG_PATH);
 
   return audioScenarios.buildPackReference({
-    catalogVersion: version,
+    generatedFrom: PACK_REFERENCE_SOURCES,
     contracts: engine.contracts(),
     vocabulary: engine.vocabulary(),
     script,

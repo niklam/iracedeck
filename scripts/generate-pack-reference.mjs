@@ -47,7 +47,7 @@ const list = (items) =>
       : `${items.slice(0, SHOWN).join(", ")}, … (${items.length - SHOWN} more)`;
 
 console.log(`Generated ${outputFile}`);
-console.log(`Catalog version: ${reference.generatedFrom.catalogVersion}`);
+console.log(`Built from: ${reference._meta.generatedFrom.join(", ")}`);
 console.log(`Callouts: ${summary.callouts} (skipped in the bundled voice: ${list(summary.skipped)})`);
 console.log(`Vocabulary: ${summary.vars} vars, ${summary.conds} conditions, ${summary.cases} cases`);
 console.log(`Recording script: ${summary.groups} groups, ${summary.lines} lines, ${summary.takes} takes`);

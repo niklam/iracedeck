@@ -105,7 +105,7 @@ Put the folder in iRaceDeck's voices folder — `%LOCALAPPDATA%\iRaceDeck\Race E
     └── damage\repair-needed-01.mp3
 ```
 
-Then, in iRaceDeck Settings on the Race Engineer tab, press **Rescan voices** and choose **My Voice** from the **Race Engineer Voice** dropdown. [Race Engineer Voices](/docs/features/race-engineer-voices/#installing-a-voice-pack-by-hand) has the rest — the folder-name rule and the list of reasons a pack is refused — and **Installed Voices** on that same tab names the problem when yours does not appear. From here on, the green flag that opens your next practice session is in your voice.
+Then, in iRaceDeck Settings on the Race Engineer tab, press **Rescan voices** and choose **My Voice** from the **Race Engineer Voice** dropdown. [Race Engineer Voices](/docs/features/race-engineer-voices/#installing-a-voice-pack-by-hand) has the rest — the folder-name rule and the list of reasons a pack is refused — and **Installed Voices** on that same tab names the problem when yours does not appear. One thing to know before you press it: the **Test** button beside **Race Engineer Volume** plays `names/<driver>` and then `welcome/greeting-01`, neither of which this pack records, so it is silent for **My Voice** by design — a pack that wants the Test button voiced records that greeting line too (both are in the [recording script](/docs/voice-packs/reference/recording-script/)). From here on, the green flag that opens your next practice session is in your voice.
 
 ## Hear it in the harness
 

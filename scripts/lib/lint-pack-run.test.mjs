@@ -119,9 +119,11 @@ describe("runLintPack", () => {
     await runLintPack([dir], { ...sinks(), register });
 
     expect(calls[0].pluginPlayedGroups).toBe(PLUGIN_PLAYED_GROUPS);
-    // The two groups plugin code plays by path today; each entry in the
+    // The three groups plugin code plays by path today (`names` and `toggle`
+    // from pit-crew.ts / audio-toggles.ts, `welcome` from voice-test.ts — the
+    // settings window's Race Engineer Test button); each entry in the
     // constant names the file that plays it.
-    expect([...PLUGIN_PLAYED_GROUPS]).toEqual(["names", "toggle"]);
+    expect([...PLUGIN_PLAYED_GROUPS]).toEqual(["names", "toggle", "welcome"]);
   });
 
   it("exits 1 when the report has problems", async () => {

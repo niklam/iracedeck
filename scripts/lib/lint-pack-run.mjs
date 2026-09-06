@@ -31,7 +31,9 @@ export const EXIT_USAGE = 2;
  * as `pluginPlayedGroups` and never calls a base in one an orphan. The list
  * lives HERE, on the plugin side of the seam, because the pure linter is as
  * ignorant of the plugin as the reference builder is; each entry names the
- * code that plays it, and a new by-path consumer is a new entry.
+ * code that plays it, and a new by-path consumer is a new entry. The
+ * exemption is per GROUP, so a base in one that nothing plays (`welcome/hello`
+ * today) is excused with it.
  */
 export const PLUGIN_PLAYED_GROUPS = Object.freeze([
   // `voice/<voice>/names/<driver>.mp3` — the driver-name clip the connect
@@ -41,6 +43,10 @@ export const PLUGIN_PLAYED_GROUPS = Object.freeze([
   // going-silent / resuming / corner-names acknowledgments
   // (packages/iracing-actions/src/audio/audio-toggles.ts, pit-crew.ts).
   "toggle",
+  // `voice/<voice>/welcome/greeting-01.mp3` — what the settings window's Race
+  // Engineer Test button plays after the driver's name
+  // (packages/iracing-actions/src/audio/voice-test.ts).
+  "welcome",
 ]);
 
 /**

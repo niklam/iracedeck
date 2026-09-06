@@ -151,9 +151,12 @@ const MANIFEST_CLIPS: readonly string[] = [
   "voice/default/flags/blue-01.mp3",
 ];
 
+/** The sources a caller would name — recorded verbatim, in this order, and nothing is derived from them. */
+const SOURCES = ["packages/audio-scenarios/src/catalog/pit-crew", "packages/audio-assets/voice/default/callouts.json"];
+
 function input(overrides: Partial<PackReferenceInput> = {}): PackReferenceInput {
   return {
-    catalogVersion: "3.2.0-dev.0",
+    generatedFrom: SOURCES,
     contracts: CONTRACTS,
     vocabulary: VOCABULARY,
     script: SCRIPT,
@@ -177,7 +180,11 @@ describe("buildPackReference", () => {
   it("publishes every contract as a callout: the contract's own fields, the entry's prose, and what the entry references", () => {
     const ref = buildPackReference(input());
 
-    expect(ref.generatedFrom).toEqual({ catalogVersion: "3.2.0-dev.0" });
+    // Provenance only — a copy of the caller's list, no version anywhere in
+    // the artifact (a release bump must not stale the freshness test).
+    expect(ref._meta).toEqual({ generatedFrom: SOURCES });
+    expect(ref._meta.generatedFrom).not.toBe(SOURCES);
+    expect(JSON.stringify(ref)).not.toMatch(/version/i);
     expect(ref.callouts).toHaveLength(CONTRACTS.length);
     expect(ref.callouts.find((c) => c.id === "pit-crew.incident")).toEqual({
       id: "pit-crew.incident",
@@ -461,9 +468,11 @@ describe("serializePackReference", () => {
   it("writes 2-space JSON with a trailing newline, keys in declared order", () => {
     const text = serializePackReference(buildPackReference(input()));
 
-    expect(text.startsWith('{\n  "generatedFrom": {\n    "catalogVersion": "3.2.0-dev.0"\n  },\n  "callouts": [')).toBe(
-      true,
-    );
+    expect(
+      text.startsWith(
+        '{\n  "_meta": {\n    "generatedFrom": [\n      "packages/audio-scenarios/src/catalog/pit-crew",\n      "packages/audio-assets/voice/default/callouts.json"\n    ]\n  },\n  "callouts": [',
+      ),
+    ).toBe(true);
     expect(text.endsWith("}\n")).toBe(true);
     expect(text).toMatch(
       /"id": "pit-crew\.flag-blue",\n\s+"family": "flag",\n\s+"event": "flag\.blue\.raised",\n\s+"description": /,

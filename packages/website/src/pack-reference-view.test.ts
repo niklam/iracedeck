@@ -192,9 +192,11 @@ describe("unused lines and groups", () => {
     expect(PLUGIN_PLAYED_GROUPS.has("constructor")).toBe(false);
   });
 
-  // The two plugin-played groups are unreferenced in the artifact by
+  // The three plugin-played groups are unreferenced in the artifact by
   // construction; if a script ever draws from one, the note is wrong.
   it("finds the plugin-played groups unreferenced in the artifact", () => {
+    expect([...PLUGIN_PLAYED_GROUPS.keys()].sort()).toEqual(["names", "toggle", "welcome"]);
+
     for (const name of PLUGIN_PLAYED_GROUPS.keys()) {
       const group = artifact.recordingScript.find((g) => g.group === name);
 

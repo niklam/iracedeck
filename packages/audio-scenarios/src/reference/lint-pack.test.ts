@@ -247,7 +247,7 @@ describe("lintPack", () => {
     const report = lint(packFiles({ script: atLimit }));
 
     expect(messages(report.problems)).toEqual([
-      `${VOICE} script: voice/${VOICE}/callouts.json is larger than 1048576 bytes — the plugin refuses it unread and drops the voice`,
+      `${VOICE} script: voice/${VOICE}/callouts.json is larger than 1048576 bytes — the plugin refuses it before it is parsed and drops the voice`,
     ]);
     expect(report.voices[0]).toMatchObject({ status: "broken-script", scripted: 0 });
 

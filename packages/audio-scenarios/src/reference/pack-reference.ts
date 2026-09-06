@@ -123,11 +123,21 @@ export type RecordingLine = {
 
 export type RecordingGroup = { group: string; lines: readonly RecordingLine[] };
 
+/**
+ * Provenance, in the shape the repo's other generated artifacts carry
+ * (`changelog.json`, `getting-started.json`): the repo-relative sources the
+ * artifact is built from, so a reader of the JSON knows what to edit and
+ * regenerate. Deliberately version-free — the artifact is freshness-tested
+ * against a rebuild, and a version stamp would only make every release bump
+ * stale it.
+ */
+export type PackReferenceMeta = {
+  /** Repo-relative paths of what the generator reads, in the caller's order. */
+  generatedFrom: readonly string[];
+};
+
 export type PackReference = {
-  generatedFrom: {
-    /** The root `package.json` version the reference was built from. */
-    catalogVersion: string;
-  };
+  _meta: PackReferenceMeta;
   callouts: readonly Callout[];
   vocabulary: PackReferenceVocabulary;
   recordingScript: readonly RecordingGroup[];
@@ -139,8 +149,8 @@ export type PackReference = {
 export type VoiceConfigLine = { name: string; text: string };
 
 export type PackReferenceInput = {
-  /** The root `package.json` version. */
-  catalogVersion: string;
+  /** Repo-relative paths of the sources the caller read — recorded as `_meta.generatedFrom`, nothing else. */
+  generatedFrom: readonly string[];
   /** `engine.contracts()` after the catalog registered. */
   contracts: readonly ContractReport[];
   /** `engine.vocabulary()` after the catalog registered. */
@@ -202,7 +212,7 @@ export function buildPackReference(input: PackReferenceInput): PackReference {
   const vocabulary = buildVocabulary(input.vocabulary, walks);
   const recordingScript = buildRecordingScript(input.groups, input.manifestClips, voice, walks, vocabulary.vars);
 
-  return { generatedFrom: { catalogVersion: input.catalogVersion }, callouts, vocabulary, recordingScript };
+  return { _meta: { generatedFrom: [...input.generatedFrom] }, callouts, vocabulary, recordingScript };
 }
 
 /** Serialise the artifact exactly as it is committed — 2-space JSON, trailing newline — so the freshness test can compare text. */

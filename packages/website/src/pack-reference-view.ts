@@ -160,9 +160,12 @@ export function isUnusedGroup(group: Pick<RecordingGroup, "lines">): boolean {
  * Groups the PLUGIN plays outside the script, with the moments they voice.
  * Nothing in a script references them, so the coverage columns are empty,
  * but a pack that wants those moments voiced records them too — verified
- * against `pit-crew.ts` (`playRadioCheck`) and `audio-toggles.ts` in
+ * against `pit-crew.ts` (`playRadioCheck`), `audio-toggles.ts` and
+ * `voice-test.ts` (the settings window's Race Engineer Test button) in
  * `@iracedeck/iracing-actions`, which play these clips through
- * `playVoiceSequence` rather than through a callout.
+ * `playVoiceSequence` rather than through a callout. Mirrors
+ * `PLUGIN_PLAYED_GROUPS` in `scripts/lib/lint-pack-run.mjs`, the linter's
+ * list; a new by-path consumer is a new entry in both.
  *
  * A `Map`, not an object literal: a group name is a third party's folder
  * name, and an object lookup would find `toString` on the prototype chain.
@@ -175,6 +178,10 @@ export const PLUGIN_PLAYED_GROUPS: ReadonlyMap<string, string> = new Map([
   [
     "names",
     "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check. The names a pack ships are the names its users can be called by; the group is optional.",
+  ],
+  [
+    "welcome",
+    "Played by the plugin itself, outside the script: greeting-01 is what the Race Engineer Test button in iRaceDeck Settings plays, after the driver's name. A pack that wants the Test button voiced records that line; nothing plays hello, and the group is optional.",
   ],
 ]);
 
