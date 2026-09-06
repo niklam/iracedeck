@@ -1,6 +1,6 @@
 {
   "name": "@iracedeck/callout-script",
-  "version": "3.2.0",
+  "version": "3.3.0-dev.0",
   "description": "The JSON grammar for Race Engineer voice-pack callout scripts: types, Zod schema, parser and reference collector.",
   "type": "module",
   "main": "dist/index.js",
