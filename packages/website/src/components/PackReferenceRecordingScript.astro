@@ -27,7 +27,7 @@ const vocabulary = parseVocabulary(raw.vocabulary);
 
 const lineCount = groups.reduce((n, g) => n + g.lines.length, 0);
 const takeCount = groups.reduce((n, g) => n + g.lines.reduce((m, l) => m + l.takes, 0), 0);
-const unusedGroups = groups.filter((g) => isUnusedGroup(g) && !(g.group in PLUGIN_PLAYED_GROUPS)).map((g) => g.group);
+const unusedGroups = groups.filter((g) => isUnusedGroup(g) && !PLUGIN_PLAYED_GROUPS.has(g.group)).map((g) => g.group);
 ---
 
 <p class="pack-ref-count">

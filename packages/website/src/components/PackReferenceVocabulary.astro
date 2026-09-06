@@ -7,7 +7,8 @@
 // entries use it.
 import raw from "../data/pack-reference.json";
 import { parseVocabulary } from "../pack-reference-types.js";
-import { calloutHref, caseAnchor, condAnchor, varAnchor, VOCABULARY_SECTIONS } from "../pack-reference-view.js";
+import { caseAnchor, condAnchor, varAnchor, VOCABULARY_SECTIONS } from "../pack-reference-view.js";
+import PackReferenceUsedBy from "./PackReferenceUsedBy.astro";
 
 const vocabulary = parseVocabulary(raw.vocabulary);
 const [varsSection, condsSection, casesSection] = VOCABULARY_SECTIONS;
@@ -31,19 +32,7 @@ const [varsSection, condsSection, casesSection] = VOCABULARY_SECTIONS;
           <code>{`{{${item.name}}}`}</code>
         </h3>
         <p>{item.description}</p>
-        <p class="pack-ref-used-by">
-          <strong>Used by:</strong>{" "}
-          {item.usedBy.length === 0
-            ? "no bundled entry — available to a pack all the same"
-            : item.usedBy.map((id, i) => (
-                <>
-                  {i > 0 && ", "}
-                  <a href={calloutHref(id)}>
-                    <code>{id}</code>
-                  </a>
-                </>
-              ))}
-        </p>
+        <PackReferenceUsedBy usedBy={item.usedBy} />
       </article>
     ))
   }
@@ -63,19 +52,7 @@ const [varsSection, condsSection, casesSection] = VOCABULARY_SECTIONS;
           <code>{item.name}</code>
         </h3>
         <p>{item.description}</p>
-        <p class="pack-ref-used-by">
-          <strong>Used by:</strong>{" "}
-          {item.usedBy.length === 0
-            ? "no bundled entry — available to a pack all the same"
-            : item.usedBy.map((id, i) => (
-                <>
-                  {i > 0 && ", "}
-                  <a href={calloutHref(id)}>
-                    <code>{id}</code>
-                  </a>
-                </>
-              ))}
-        </p>
+        <PackReferenceUsedBy usedBy={item.usedBy} />
       </article>
     ))
   }
@@ -107,19 +84,7 @@ const [varsSection, condsSection, casesSection] = VOCABULARY_SECTIONS;
             </>
           ))}
         </dl>
-        <p class="pack-ref-used-by">
-          <strong>Used by:</strong>{" "}
-          {item.usedBy.length === 0
-            ? "no bundled entry — available to a pack all the same"
-            : item.usedBy.map((id, i) => (
-                <>
-                  {i > 0 && ", "}
-                  <a href={calloutHref(id)}>
-                    <code>{id}</code>
-                  </a>
-                </>
-              ))}
-        </p>
+        <PackReferenceUsedBy usedBy={item.usedBy} />
       </article>
     ))
   }
@@ -134,9 +99,6 @@ const [varsSection, condsSection, casesSection] = VOCABULARY_SECTIONS;
     margin-top: 1.5rem;
     padding-top: 0.25rem;
     border-top: 1px solid var(--sl-color-hairline-light);
-  }
-  .pack-ref-used-by {
-    font-size: var(--sl-text-sm);
   }
   .pack-ref-keys {
     display: grid;

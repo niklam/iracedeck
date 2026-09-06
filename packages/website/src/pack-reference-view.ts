@@ -163,13 +163,20 @@ export function isUnusedGroup(group: Pick<RecordingGroup, "lines">): boolean {
  * against `pit-crew.ts` (`playRadioCheck`) and `audio-toggles.ts` in
  * `@iracedeck/iracing-actions`, which play these clips through
  * `playVoiceSequence` rather than through a callout.
+ *
+ * A `Map`, not an object literal: a group name is a third party's folder
+ * name, and an object lookup would find `toString` on the prototype chain.
  */
-export const PLUGIN_PLAYED_GROUPS: Readonly<Record<string, string>> = {
-  toggle:
+export const PLUGIN_PLAYED_GROUPS: ReadonlyMap<string, string> = new Map([
+  [
+    "toggle",
     "Played by the plugin itself, outside the script: the radio check when the sim connects, the going-silent and resuming acknowledgments when the Race Engineer is switched off and on, and the corner-names on/off acknowledgments. A pack that wants those moments voiced records these lines; no script entry can reach them.",
-  names:
+  ],
+  [
+    "names",
     "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check. The names a pack ships are the names its users can be called by; the group is optional.",
-};
+  ],
+]);
 
 /** The note shown under an unreferenced group the plugin does not play either — the bundled voice's own leftovers. */
 export const UNUSED_GROUP_NOTE =
@@ -180,7 +187,7 @@ export const UNUSED_LINE_NOTE = "Nothing in the script draws from this line.";
 
 /** The note for a group: what the plugin plays from it, or that nothing does. `undefined` for a group the script uses. */
 export function groupNote(group: RecordingGroup): string | undefined {
-  const pluginPlayed = PLUGIN_PLAYED_GROUPS[group.group];
+  const pluginPlayed = PLUGIN_PLAYED_GROUPS.get(group.group);
 
   if (pluginPlayed !== undefined) return pluginPlayed;
 

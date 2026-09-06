@@ -35,9 +35,9 @@ my-pack/
 }
 ```
 
-Clips sit at `voice/<voice-id>/<group>/<name>.mp3` — one folder per group inside the voice folder, lowercase `.mp3`. A file one level too shallow (`voice/my-voice/sample.mp3`) or with an uppercase extension is refused, with the reason listed under Installed Voices. Where the packs folder is and how a pack is installed by hand is on [Race Engineer Voices](/docs/features/race-engineer-voices/#installing-a-voice-pack-by-hand).
+Clips sit at `voice/<voice-id>/<group>/<name>.mp3` — one folder per group inside the voice folder, lowercase `.mp3`. A file one level too shallow (`voice/my-voice/sample.mp3`) or with an uppercase extension is dropped. The reason is listed under Installed Voices only when that leaves a voice with no playable clip at all; one stray `blue-01.MP3` among thirty good clips is dropped without a message anywhere, and `pnpm lint:pack` is what names it. Where the packs folder is and how a pack is installed by hand is on [Race Engineer Voices](/docs/features/race-engineer-voices/#installing-a-voice-pack-by-hand).
 
-A voice with no `callouts.json` still loads: it is a clips-only voice, and every callout is skipped in it. A voice whose script exists but cannot be read is left out of the pack, with the reason listed; the pack's other voices still load.
+A voice with no `callouts.json` still loads: it is a clips-only voice, and every callout is skipped in it. When the file is there, it is read as UTF-8 — a leading byte-order mark, which some Windows editors write, is tolerated — and refused unread if it is larger than 1 MB, many times the size of the bundled script. A voice whose script exists but cannot be read, is too large, or fails the rules below is left out of the pack, with the reason listed; the pack's other voices still load.
 
 ## The file at a glance
 
@@ -165,7 +165,7 @@ The whole file is validated before a voice loads, and a script that fails costs 
 - An `if` reference is an optional single `!` followed by a name.
 - A fragment's `sequence` has at least one step.
 - A step object names exactly one of the ten forms; an object naming none is reported with the list of the ten.
-- The document is a JSON object — a leading UTF-8 byte-order mark is tolerated, since some Windows editors write one — nested no deeper than 64 levels of arrays and objects, and no larger than 1 MB.
+- The document is a JSON object, nested no deeper than 64 levels of arrays and objects — a guard the parser applies before the schema runs, so a runaway nesting is refused unread rather than crashing the validator.
 
 ## What a problem looks like
 

@@ -180,15 +180,22 @@ describe("unused lines and groups", () => {
   });
 
   it("notes a plugin-played group by what the plugin plays, an unused one as a leftover, a used one not at all", () => {
-    expect(groupNote({ group: "toggle", lines: unused.lines })).toBe(PLUGIN_PLAYED_GROUPS.toggle);
+    expect(groupNote({ group: "toggle", lines: unused.lines })).toBe(PLUGIN_PLAYED_GROUPS.get("toggle"));
     expect(groupNote(unused)).toBe(UNUSED_GROUP_NOTE);
     expect(groupNote(used)).toBeUndefined();
+  });
+
+  // A group name is a third party's folder name; a prototype property must
+  // not read as a plugin-played group.
+  it("does not mistake a prototype property for a plugin-played group", () => {
+    expect(groupNote({ group: "toString", lines: unused.lines })).toBe(UNUSED_GROUP_NOTE);
+    expect(PLUGIN_PLAYED_GROUPS.has("constructor")).toBe(false);
   });
 
   // The two plugin-played groups are unreferenced in the artifact by
   // construction; if a script ever draws from one, the note is wrong.
   it("finds the plugin-played groups unreferenced in the artifact", () => {
-    for (const name of Object.keys(PLUGIN_PLAYED_GROUPS)) {
+    for (const name of PLUGIN_PLAYED_GROUPS.keys()) {
       const group = artifact.recordingScript.find((g) => g.group === name);
 
       expect(group, name).toBeDefined();
