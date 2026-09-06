@@ -109,6 +109,9 @@ function packFiles(overrides: { manifest?: string | null; script?: unknown | nul
   return files;
 }
 
+/** A file whose text is this marker is present but unreadable — the port answers `{ ok: false, missing: false }` for it. */
+const UNREADABLE = "<locked>";
+
 /** The scanner's three operations over a map of files; nothing here touches a disk. */
 function memoryFs(files: Files): LintPackFileSystem {
   const relative = (path: string): string => path.slice(PACK_DIR.length + 1);
@@ -125,14 +128,24 @@ function memoryFs(files: Files): LintPackFileSystem {
     readTextFile: (file) => {
       const text = files[relative(file)];
 
-      return text === undefined ? { ok: false, missing: true, reason: "ENOENT" } : { ok: true, text };
+      if (text === undefined) return { ok: false, missing: true, reason: "ENOENT" };
+
+      if (text === UNREADABLE) return { ok: false, missing: false, reason: "EBUSY" };
+
+      return { ok: true, text };
     },
     listMp3Files: (dir) => within(dir).filter((f) => /\.mp3$/i.test(f)),
   };
 }
 
-function lint(files: Files) {
-  return lintPack({ packDir: PACK_DIR, fs: memoryFs(files), contracts: CONTRACTS, vocabulary: VOCABULARY });
+function lint(files: Files, pluginPlayedGroups?: readonly string[]) {
+  return lintPack({
+    packDir: PACK_DIR,
+    fs: memoryFs(files),
+    contracts: CONTRACTS,
+    vocabulary: VOCABULARY,
+    ...(pluginPlayedGroups === undefined ? {} : { pluginPlayedGroups }),
+  });
 }
 
 const messages = (problems: readonly LintProblem[]) =>
@@ -159,7 +172,7 @@ describe("lintPack", () => {
 
     expect(messages(report.problems)).toEqual([
       `${VOICE} dangling: "flags/gren" is referenced but the pack ships no voice/${VOICE}/flags/gren*.mp3 — a required step that resolves to nothing aborts the whole callout at fire time`,
-      `${VOICE} orphan: "flags/green" is shipped but nothing in the script references it — it never plays`,
+      `${VOICE} orphan: "flags/green" is shipped as voice/${VOICE}/flags/green*.mp3 but nothing in the script references it — it never plays`,
     ]);
     expect(report.ok).toBe(false);
   });
@@ -170,7 +183,7 @@ describe("lintPack", () => {
     );
 
     expect(messages(report.problems)).toEqual([
-      `${VOICE} orphan: "flags/blue" is shipped but nothing in the script references it — it never plays`,
+      `${VOICE} orphan: "flags/blue" is shipped as voice/${VOICE}/flags/blue*.mp3 but nothing in the script references it — it never plays`,
     ]);
   });
 
@@ -216,7 +229,75 @@ describe("lintPack", () => {
     expect(report.problems).toHaveLength(1);
     expect(report.problems[0]).toMatchObject({ voice: VOICE, kind: "script" });
     expect(report.problems[0].message).toMatch(/^voice\/demo\/callouts\.json — \(document\): not valid JSON/);
-    expect(report.voices).toEqual([{ id: VOICE, status: "broken-script", scripted: 0, total: 4, skipped: [] }]);
+    expect(report.voices).toEqual([
+      { id: VOICE, status: "broken-script", scripted: 0, total: 4, skipped: CONTRACTS.map((c) => c.id).sort() },
+    ]);
+  });
+
+  it("reports a callouts.json larger than the scanner reads, unparsed — the plugin refuses it and drops the voice", () => {
+    // Exactly the scanner's boundary: one code unit over 1 MiB, in an
+    // otherwise perfect script (padding inside a comment keeps it valid JSON).
+    const script = structuredClone(SCRIPT) as typeof SCRIPT & { scenarios: Record<string, { comment: string }> };
+    const text = JSON.stringify(script);
+    script.scenarios["pit-crew.flag-green"].comment += "x".repeat(1024 * 1024 + 1 - text.length);
+
+    const atLimit = JSON.stringify(structuredClone(script));
+    expect(atLimit.length).toBe(1024 * 1024 + 1);
+
+    const report = lint(packFiles({ script: atLimit }));
+
+    expect(messages(report.problems)).toEqual([
+      `${VOICE} script: voice/${VOICE}/callouts.json is larger than 1048576 bytes — the plugin refuses it unread and drops the voice`,
+    ]);
+    expect(report.voices[0]).toMatchObject({ status: "broken-script", scripted: 0 });
+
+    // One code unit shorter is read and compiles clean.
+    const underLimit = JSON.stringify({
+      ...script,
+      scenarios: {
+        ...script.scenarios,
+        "pit-crew.flag-green": {
+          ...script.scenarios["pit-crew.flag-green"],
+          comment: script.scenarios["pit-crew.flag-green"].comment.slice(1),
+        },
+      },
+    });
+    expect(underLimit.length).toBe(1024 * 1024);
+    expect(lint(packFiles({ script: underLimit })).problems).toEqual([]);
+  });
+
+  it("reports a callouts.json that exists but cannot be read — broken-script, every callout skipped", () => {
+    const report = lint(packFiles({ script: UNREADABLE }));
+
+    expect(messages(report.problems)).toEqual([
+      `${VOICE} script: voice/${VOICE}/callouts.json could not be read (EBUSY)`,
+    ]);
+    expect(report.voices).toEqual([
+      { id: VOICE, status: "broken-script", scripted: 0, total: 4, skipped: CONTRACTS.map((c) => c.id).sort() },
+    ]);
+  });
+
+  it("reports a manifest that exists but cannot be read, then scans voice/*/", () => {
+    const report = lint(packFiles({ manifest: UNREADABLE }));
+
+    expect(messages(report.problems)).toEqual([
+      "(pack) manifest: voice-pack.json could not be read (EBUSY); the voices under voice/ were linted anyway",
+    ]);
+    expect(report.voices.map((v) => v.id)).toEqual([VOICE]);
+  });
+
+  it("never calls a base in a plugin-played group an orphan — the runner's list, empty by default", () => {
+    const files = packFiles({
+      clips: [...CLIPS, `voice/${VOICE}/names/dave.mp3`, `voice/${VOICE}/toggle/radio-check-01.mp3`],
+    });
+
+    expect(messages(lint(files).problems)).toEqual([
+      `${VOICE} orphan: "names/dave" is shipped as voice/${VOICE}/names/dave*.mp3 but nothing in the script references it — it never plays`,
+      `${VOICE} orphan: "toggle/radio-check" is shipped as voice/${VOICE}/toggle/radio-check*.mp3 but nothing in the script references it — it never plays`,
+    ]);
+    expect(lint(files, ["names", "toggle"]).problems).toEqual([]);
+    // The list names GROUPS: a base elsewhere is still held to the rule.
+    expect(messages(lint(files, ["names"]).problems)).toHaveLength(1);
   });
 
   it("reports a defined fragment nothing includes, and a frame that fails to compile, once each", () => {
@@ -297,6 +378,7 @@ describe("lintPack", () => {
       [VOICE, "linted"],
       ["ghost", "dropped"],
     ]);
+    expect(report.voices[1].skipped).toEqual(CONTRACTS.map((c) => c.id).sort());
   });
 
   it("reports a file under the voice the engine cannot play — the wrong depth, or an upper-case extension", () => {
@@ -324,7 +406,7 @@ describe("formatLintReport", () => {
       "",
       "voice demo:",
       `  dangling: "flags/gren" is referenced but the pack ships no voice/demo/flags/gren*.mp3 — a required step that resolves to nothing aborts the whole callout at fire time`,
-      `  orphan: "flags/green" is shipped but nothing in the script references it — it never plays`,
+      `  orphan: "flags/green" is shipped as voice/demo/flags/green*.mp3 but nothing in the script references it — it never plays`,
       "",
       "demo: 3 of 4 callouts scripted; skipped: 1",
       "  pit-crew.position-gained",

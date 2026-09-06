@@ -12,6 +12,7 @@ import {
   EXIT_CLEAN,
   EXIT_PROBLEMS,
   EXIT_USAGE,
+  PLUGIN_PLAYED_GROUPS,
   runLintPack,
   USAGE,
 } from "./lint-pack-run.mjs";
@@ -110,6 +111,17 @@ describe("runLintPack", () => {
     expect(typeof calls[0].fs.listMp3Files).toBe("function");
     expect(io.out).toEqual([`Linting ${path.resolve(dir)}`, "", "formatted 0"]);
     expect(io.err).toEqual([]);
+  });
+
+  it("passes the plugin-played groups through — the plugin-side list the pure linter does not know", async () => {
+    const { register, calls } = stubCatalog({ ok: true, problems: [], voices: [] });
+
+    await runLintPack([dir], { ...sinks(), register });
+
+    expect(calls[0].pluginPlayedGroups).toBe(PLUGIN_PLAYED_GROUPS);
+    // The two groups plugin code plays by path today; each entry in the
+    // constant names the file that plays it.
+    expect([...PLUGIN_PLAYED_GROUPS]).toEqual(["names", "toggle"]);
   });
 
   it("exits 1 when the report has problems", async () => {

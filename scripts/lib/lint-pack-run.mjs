@@ -13,7 +13,6 @@
 // pack is clean, 1 when it has problems, 2 when the tool could not run — no
 // argument, a path that is not a directory, or a missing dist (`pnpm build`
 // first; the loader names the fix).
-
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 
@@ -24,6 +23,25 @@ export const USAGE = "usage: pnpm lint:pack <packDir>  — the folder that holds
 export const EXIT_CLEAN = 0;
 export const EXIT_PROBLEMS = 1;
 export const EXIT_USAGE = 2;
+
+/**
+ * Clip groups PLUGIN CODE plays with the active voice by path, outside any
+ * script or var — so no script references them, no vocabulary description
+ * names them, and yet a pack that ships them is heard. `lintPack` takes them
+ * as `pluginPlayedGroups` and never calls a base in one an orphan. The list
+ * lives HERE, on the plugin side of the seam, because the pure linter is as
+ * ignorant of the plugin as the reference builder is; each entry names the
+ * code that plays it, and a new by-path consumer is a new entry.
+ */
+export const PLUGIN_PLAYED_GROUPS = Object.freeze([
+  // `voice/<voice>/names/<driver>.mp3` — the driver-name clip the connect
+  // radio check opens with (packages/iracing-actions/src/actions/pit-crew/pit-crew.ts).
+  "names",
+  // `voice/<voice>/toggle/<clip>.mp3` — the radio check and the
+  // going-silent / resuming / corner-names acknowledgments
+  // (packages/iracing-actions/src/audio/audio-toggles.ts, pit-crew.ts).
+  "toggle",
+]);
 
 /**
  * The linter's three disk operations over `node:fs` — the same shape as
@@ -135,6 +153,7 @@ export async function runLintPack(argv, io = {}) {
     fs,
     contracts: engine.contracts(),
     vocabulary: engine.vocabulary(),
+    pluginPlayedGroups: PLUGIN_PLAYED_GROUPS,
   });
 
   log(`Linting ${resolved}`);

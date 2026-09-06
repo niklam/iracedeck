@@ -27,16 +27,21 @@
  * `USABLE_CLIP` rule, restated); the script — missing means a clips-only
  * voice, which the plugin accepts and which is silent for every callout, so
  * it is reported (the plugin raises the missing-script banner for exactly
- * this); a script that does not parse is reported with the grammar's own
- * problems; a script that parses is compiled, and every skip the pack did
- * NOT mean is reported with the compiler's reason, as are frames and
- * fragments that fail; then the coverage rules over the clip files — bases
- * the script references that the pack does not ship, and bases the pack
- * ships that nothing references. A base is referenced when an entry or
- * fragment addresses it directly, or when a var whose description names its
- * group exists ({@link descriptionNamesGroup}) — the same heuristic the
- * reference's recording script uses, so the two never disagree about which
- * lines a var accounts for. There is no per-pack allowlist.
+ * this); one larger than the scanner reads (`VOICE_SCRIPT_MAX_BYTES`,
+ * restated) is reported as the scanner would refuse it, unread; a script
+ * that does not parse is reported with the grammar's own problems; a script
+ * that parses is compiled, and every skip the pack did NOT mean is reported
+ * with the compiler's reason, as are frames and fragments that fail; then
+ * the coverage rules over the clip files — bases the script references that
+ * the pack does not ship, and bases the pack ships that nothing references.
+ * A base is referenced when an entry or fragment addresses it directly, or
+ * when a var whose description names its group exists
+ * ({@link descriptionNamesGroup}) — the same heuristic the reference's
+ * recording script uses, so the two never disagree about which lines a var
+ * accounts for — or when its group is one plugin code plays by path with
+ * the active voice (`pluginPlayedGroups`, handed in by the runner: the
+ * driver-name clips and the toggle acknowledgments). There is no per-pack
+ * allowlist.
  *
  * Two coverage findings are left to the compiler on purpose: a named pool
  * nothing defines and an include of a fragment nothing defines are both
@@ -120,7 +125,12 @@ export type VoiceLintSummary = {
   scripted: number;
   /** Every contract the catalog registers. */
   total: number;
-  /** Contract ids the voice deliberately does not speak — `skip: true`, no entry, or no script at all — sorted. */
+  /**
+   * Contract ids the voice does not speak, sorted: for a `linted` voice the
+   * deliberate skips (`skip: true`, or no entry); for every other status,
+   * every contract — a voice with no script, a refused one, or no playable
+   * clip speaks nothing, and the summary line says so as `0 of N`.
+   */
   skipped: readonly string[];
 };
 
@@ -141,6 +151,16 @@ export type LintPackInput = {
   contracts: readonly ContractReport[];
   /** `engine.vocabulary()` after the catalog registered. */
   vocabulary: VocabularyReport;
+  /**
+   * Clip groups PLUGIN CODE plays with the active voice, outside any script
+   * — the driver-name clips and the toggle acknowledgments today. Their
+   * bases are never orphans: nothing in a script or the vocabulary names
+   * them, and yet a pack that ships them is heard. The list is the plugin's
+   * knowledge, so the runner passes it (`scripts/lib/lint-pack-run.mjs`,
+   * each entry naming the file that plays it) and this module defaults to
+   * none, staying as ignorant of the plugin as the reference builder is.
+   */
+  pluginPlayedGroups?: readonly string[];
 };
 
 // ─── Linting ─────────────────────────────────────────────────────────────────
@@ -148,7 +168,13 @@ export type LintPackInput = {
 const MANIFEST_FILE = "voice-pack.json";
 const VOICE_ROOT = "voice";
 
-export function lintPack({ packDir: rawPackDir, fs, contracts, vocabulary }: LintPackInput): LintReport {
+export function lintPack({
+  packDir: rawPackDir,
+  fs,
+  contracts,
+  vocabulary,
+  pluginPlayedGroups = [],
+}: LintPackInput): LintReport {
   const packDir = rawPackDir.replace(/[\\/]+$/, "");
   const problems: LintProblem[] = [];
   const packProblem = (message: string): void => {
@@ -180,7 +206,10 @@ export function lintPack({ packDir: rawPackDir, fs, contracts, vocabulary }: Lin
     clips: fs.listMp3Files(packDir),
     deps: compileDepsOf(contracts, vocabulary),
     contractIds: contracts.map((c) => c.id).sort(),
-    varDriven: (group) => vocabulary.vars.some((v) => descriptionNamesGroup(v.description, group)),
+    // A group is nobody's typo to report when a var's description names it
+    // (a resolver draws from it) or when plugin code plays it by path.
+    varDriven: (group) =>
+      pluginPlayedGroups.includes(group) || vocabulary.vars.some((v) => descriptionNamesGroup(v.description, group)),
     problems,
   };
   const voices = voiceIds.map((id) => lintVoice(id, context));
@@ -288,6 +317,14 @@ type VoiceContext = {
 
 const MP3 = ".mp3";
 
+/**
+ * The largest `callouts.json` the plugin will read — deck-core's
+ * `VOICE_SCRIPT_MAX_BYTES` (`voice-pack-scanner.ts`), restated: the scanner
+ * refuses a bigger file before parsing it and drops the voice, so a pack
+ * that lints clean here must be one the scanner would read.
+ */
+const VOICE_SCRIPT_MAX_BYTES = 1024 * 1024;
+
 function lintVoice(id: string, ctx: VoiceContext): VoiceLintSummary {
   const total = ctx.contractIds.length;
   const prefix = `${VOICE_ROOT}/${id}/`;
@@ -308,7 +345,8 @@ function lintVoice(id: string, ctx: VoiceContext): VoiceLintSummary {
   if (usable.length === 0) {
     problem("clips", `no ${own.length === 0 ? "" : "playable "}clips under ${prefix} — the plugin drops the voice`);
 
-    return { id, status: "dropped", scripted: 0, total, skipped: [] };
+    // A dropped voice speaks nothing, so every contract is what it skips.
+    return { id, status: "dropped", scripted: 0, total, skipped: ctx.contractIds };
   }
 
   const authored = usable.map((clip) => clip.slice(prefix.length, -MP3.length));
@@ -316,6 +354,7 @@ function lintVoice(id: string, ctx: VoiceContext): VoiceLintSummary {
   // The script.
   const scriptPath = calloutScriptPath(id);
   const read = ctx.fs.readTextFile(`${ctx.packDir}/${scriptPath}`);
+  const brokenScript: VoiceLintSummary = { id, status: "broken-script", scripted: 0, total, skipped: ctx.contractIds };
 
   if (!read.ok) {
     if (read.missing) {
@@ -329,7 +368,18 @@ function lintVoice(id: string, ctx: VoiceContext): VoiceLintSummary {
 
     problem("script", `${scriptPath} could not be read (${read.reason})`);
 
-    return { id, status: "broken-script", scripted: 0, total, skipped: [] };
+    return brokenScript;
+  }
+
+  // The scanner's size gate, applied BEFORE parsing as the scanner applies
+  // it — the same `length` comparison, so the two agree on the boundary.
+  if (read.text.length > VOICE_SCRIPT_MAX_BYTES) {
+    problem(
+      "script",
+      `${scriptPath} is larger than ${VOICE_SCRIPT_MAX_BYTES} bytes — the plugin refuses it unread and drops the voice`,
+    );
+
+    return brokenScript;
   }
 
   const parsed = parseCalloutScriptText(read.text);
@@ -337,7 +387,7 @@ function lintVoice(id: string, ctx: VoiceContext): VoiceLintSummary {
   if (!parsed.ok) {
     for (const reason of parsed.problems) problem("script", `${scriptPath} — ${reason}`);
 
-    return { id, status: "broken-script", scripted: 0, total, skipped: [] };
+    return brokenScript;
   }
 
   const compiled = compileVoiceScript(parsed.script, ctx.deps);
@@ -399,7 +449,10 @@ function reportCoverage(
   }
 
   for (const base of coverage.orphans) {
-    problem("orphan", `"${base}" is shipped but nothing in the script references it — it never plays`);
+    problem(
+      "orphan",
+      `"${base}" is shipped as ${prefix}${base}*${MP3} but nothing in the script references it — it never plays`,
+    );
   }
 }
 
