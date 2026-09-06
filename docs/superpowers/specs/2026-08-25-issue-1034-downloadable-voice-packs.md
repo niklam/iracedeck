@@ -191,6 +191,8 @@ Two things follow, and the second is a trap:
 - **Do not reuse `updateCheck`.** It is presented on the What's New tab (`global-common-updates.ejs`) as a release-notes control. Silently widening it so that declining update notifications also removes the ability to install a voice is precisely the kind of surprise that produces support threads about a feature the user never connected to the switch they flipped.
 - **Stage 3 changes the answer.** Once the bundle is dropped, a fresh install has an empty voices folder and *no* bundled pack, so first-run must download — at launch, unprompted. At that point "no setting" becomes "phones home on every launch with no way to stop it", and stage 3 must either add the setting or make that first fetch something the user acts on. Decide it there; do not let it arrive by default.
 
+  **Decided 2026-09-06, for stage 3: neither.** No setting, and no user-initiated first fetch. The plugin fetches the catalog at launch and ensures `default` unconditionally — downloads it when it is missing, refreshes it when the catalog carries a newer version — so that a user who tries the Race Engineer finds it working. "At least for now": the domain is iracedeck.com, which the update check already talks to, and a switch can be added the day a user asks for one.
+
 `minPluginVersion` is compared with `semver`, already a `deck-core` dependency, so a pack needing a newer runtime is listed but not offered.
 
 **Archive hosting is GitHub Releases**, not `packages/website/public/`. A ~7.9 MB zip per pack version in the website repo would bloat every Firebase deploy and the git history. The catalog itself stays on iracedeck.com, so the fixed-URL rule still holds: one constant URL the plugin trusts, pointing at release assets.
@@ -260,8 +262,9 @@ Staged over two releases:
 
 **Stage 3 inherits two obligations that are inert until it lands, and both fail silently if forgotten.** Neither is a defect in stage 2; each is a consequence of removing the bundle, which is why they are recorded here rather than fixed early.
 
-1. **The catalog fetch gains a launch-time, unprompted path** and therefore needs either a setting or a user-initiated first fetch. Reasoning in the *Catalog* section above.
-2. **The startup sweep and the seed run inside the plugin's settings-store-ready block**, so on the fail-closed unreadable-settings path neither executes. Today that is harmless — `default` is bundled and plays from root 1 whatever happens in AppData. Once the bundle is gone, the same path leaves a user with **no voice at all**, and the settings failure that caused it says nothing about audio, so the symptom and the cause look unrelated. Stage 3 must either move the seed out of that gate or make the failure explicit.
+1. **The catalog fetch gains a launch-time, unprompted path.** Settled 2026-09-06 (see the *Catalog* section): unconditional — no setting, no first press. The launch step fetches the catalog and ensures `default`.
+2. **The startup sweep and the seed run inside the plugin's settings-store-ready block**, so on the fail-closed unreadable-settings path neither executes. Today that is harmless — `default` is bundled and plays from root 1 whatever happens in AppData. Once the bundle is gone, the same path leaves a user with **no voice at all**, and the settings failure that caused it says nothing about audio, so the symptom and the cause look unrelated. Stage 3 must either move the seed out of that gate or make the failure explicit. **Settled 2026-09-06: out of the gate.** The ensure step is governed by no setting, so it has no reason to wait for the store; it runs on its own, and the fail-closed settings path no longer costs the voice.
+3. **The seed fires only on an empty voices folder** (`voice-pack-installer.ts` `seed()` returns `skipped: packs-present` otherwise), so a `default` that release N seeded from the bundle would never move again on its own. Settled 2026-09-06: **stage 3 refreshes it.** Release N+1 adds content to `default` — its pack version bumps past the 1.0.0 that release N seeds — and the launch step updates an installed `default` whose version is behind the catalog's, the same compare the Settings card's Update button makes. The seed's empty-folder rule stands for sideloaded and other catalog packs; only the pack iRaceDeck itself keeps current is refreshed unasked.
 
 **Vixen is not published in stage 2 — settled 2026-09-02.** It exists as a generated test voice on the `vixen` branch, has not had the radio-filter pass, and publishing it is a separate decision about what iRaceDeck distributes rather than a consequence of the catalog existing. It is not a catalog entry, not a bundled pack, and not a stage-2 deliverable.
 
@@ -277,13 +280,13 @@ Progress is therefore **passive only**, in surfaces the user has already chosen 
 
 | Surface | Visible when | Content |
 |---|---|---|
-| `_warnings` banner | a Property Inspector is open | `info`: *"Downloading the Race Engineer voice… 4.2 / 7.9 MB"*; `error` with a retry hint on failure |
 | Settings window, Race Engineer card | the user opened it | Full state, per-pack, with Install / Update / Retry |
-| Pit Crew key | always, including mid-race | A "downloading" / "no voice installed" state in the status bar `generatePitCrewSvg` already renders from global state |
+
+**Settled 2026-09-06:** two further surfaces this table designed — an `info` / `error` `_warnings` banner in the Property Inspector with download progress, and a "downloading" / "no voice installed" state on the Pit Crew key — were never built in stages 1–2 and are **dropped**; the Settings card is the one progress surface. The `_warnings` key still carries the voice-pack *removal* failure (#1100), which is a different producer.
 
 During a race the download is silent by construction. That is the intended behaviour, not a gap.
 
-The banner is cheaper than it looks: `_warnings` is run-scoped since #1014, and a write touching only run-scoped keys skips the settings-store save entirely, so a 1 Hz progress update costs a listener fan-out and a loopback push and never a disk write. The richer `_voicePackStatus` payload the Settings card reads is enrolled in `RUN_SCOPED_SETTING_KEYS` for the same reason — it is an observation about this run, not user state.
+The `_voicePackStatus` payload the Settings card reads is enrolled in `RUN_SCOPED_SETTING_KEYS` (#1014): a write touching only run-scoped keys skips the settings-store save entirely, so a 1 Hz progress update costs a listener fan-out and a loopback push and never a disk write — it is an observation about this run, not user state.
 
 ## Settings UI
 
@@ -297,7 +300,7 @@ A sideloaded pack is unsigned and unverified. The UI says where a pack came from
 
 | Situation | Behaviour |
 |---|---|
-| Offline on first run | No voice; `info` banner explaining, retry button, re-attempted next start. Every non-audio feature unaffected. |
+| Offline on first run | No voice; the Settings window's Race Engineer card says so, with Retry; re-attempted next start. Every non-audio feature unaffected. |
 | Offline on the upgrade release | Cannot happen — release N seeds from the bundle. |
 | Catalog unreachable | "We do not know": installed packs keep working, nothing is offered. |
 | Hash mismatch | Discard, report, no automatic retry. |

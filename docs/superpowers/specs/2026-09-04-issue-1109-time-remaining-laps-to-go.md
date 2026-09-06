@@ -38,7 +38,7 @@ The unlimited sentinel (`IRSDK_UNLIMITED_LAPS`) or a missing reading means the l
 
 ### 4. Display
 
-The laps figure is the bare count with the title `LAPS LEFT`; the clock rendering is unchanged. The under-five-minutes flash gets a laps counterpart: flash on the final lap. That is a review call, recorded so it is not re-derived — one lap is the only threshold that means the same thing on every track.
+The laps figure is the bare count with the title `LAPS LEFT`; the clock rendering is unchanged. No flashing. The website's Session Info page says the icon flashes under five minutes; no code does that (`updateDisplayFromTelemetry` starts a flash for the incidents and flags modes only), and a final-lap counterpart was proposed here. Settled 2026-09-06: neither, for now — the stale website line is corrected in this issue's PR, and a flash for either limit is a separate decision if anyone asks.
 
 ### 5. Two hygiene fixes that fall out of the helper
 
@@ -57,4 +57,4 @@ The laps figure is the bare count with the title `LAPS LEFT`; the clock renderin
 
 ## Verification
 
-Tests for the helper: lap-limited, timed, dual-limit before and after an estimate, both unlimited. Session Info tests for the title switch and the final-lap flash. Manual: a lap race, a timed race, and the harness driving `SessionLapsRemainEx` across the last lap.
+Tests for the helper: lap-limited, timed, dual-limit before and after an estimate, both unlimited. Session Info tests for the title switch. Manual: a lap race, a timed race, and the harness driving `SessionLapsRemainEx` across the last lap.
