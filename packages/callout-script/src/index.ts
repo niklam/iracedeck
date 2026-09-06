@@ -48,7 +48,10 @@ export {
   danglingBasesOf,
   danglingOf,
   orphansOf,
+  stripTakeSuffix,
+  TAKE_SUFFIX,
   type VarDrivenGroup,
+  VOICE_CLIP_PATH,
 } from "./coverage.js";
 export { CALLOUT_SCRIPT_FILE, calloutScriptPath } from "./paths.js";
 export {

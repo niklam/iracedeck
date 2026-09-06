@@ -1,10 +1,13 @@
+import type { CalloutScript } from "@iracedeck/callout-script";
 import { describe, expect, it } from "vitest";
 
 import type { ContractReport, VocabularyReport } from "../interpreter.js";
+import { type CompileDeps, compileVoiceScript } from "../script-compiler.js";
 import {
   formatLintReport,
   lintPack,
   type LintPackFileSystem,
+  type LintPackInput,
   type LintProblem,
   type LintReport,
   SUMMARY_WIDTH,
@@ -27,6 +30,7 @@ function contract(id: string, overrides: Partial<ContractReport> = {}): Contract
     weight: 100,
     queueable: false,
     interrupt: false,
+    base: null,
     ...overrides,
   };
 }
@@ -51,9 +55,32 @@ const VOCABULARY: VocabularyReport = {
   ],
 };
 
+/**
+ * The compile the linter is handed — in the plugin, `engine.compileScript`;
+ * here the same pure compiler over deps built from the fixture catalog, the
+ * shape the engine's private `compileDeps()` produces (inert resolvers:
+ * nothing fires under a lint, existence is all a compile checks).
+ */
+const DEPS: CompileDeps = {
+  contracts: new Map(CONTRACTS.map((c) => [c.id, { frame: c.frame }])),
+  vars: new Set(VOCABULARY.vars.map((v) => v.name)),
+  conds: new Map(VOCABULARY.conds.map((c) => [c.name, () => false])),
+  cases: new Map(VOCABULARY.cases.map((c) => [c.name, { resolve: () => null, keys: new Set(Object.keys(c.keys)) }])),
+  legacyPools: new Set(),
+};
+
+const compile = (script: CalloutScript) => compileVoiceScript(script, DEPS);
+
+/** The plugin's built-ins as its manifest lists them — the frame's tick paths are checked against these. */
+const SHARED_CLIPS = ["sfx/IRD-ambient-pit.mp3", "sfx/IRD-tick-close.mp3", "sfx/IRD-tick-open.mp3"];
+
+/** The voice id the plugin's own bundle provides; a pack declaring it has that voice dropped. */
+const BUNDLED_VOICE_IDS = ["default"];
+
 // ─── The fixture pack ────────────────────────────────────────────────────────
 
 const PACK_DIR = "/packs/demo";
+const PACK_DIR_NAME = "demo";
 const VOICE = "demo";
 
 const MANIFEST = JSON.stringify({
@@ -138,13 +165,18 @@ function memoryFs(files: Files): LintPackFileSystem {
   };
 }
 
-function lint(files: Files, pluginPlayedGroups?: readonly string[]) {
+function lint(files: Files, overrides: Partial<Omit<LintPackInput, "fs" | "packDir">> = {}) {
   return lintPack({
     packDir: PACK_DIR,
+    packDirName: PACK_DIR_NAME,
     fs: memoryFs(files),
     contracts: CONTRACTS,
     vocabulary: VOCABULARY,
-    ...(pluginPlayedGroups === undefined ? {} : { pluginPlayedGroups }),
+    compile,
+    sharedClips: SHARED_CLIPS,
+    bundledVoiceIds: BUNDLED_VOICE_IDS,
+    pluginPlayedBases: [],
+    ...overrides,
   });
 }
 
@@ -175,6 +207,60 @@ describe("lintPack", () => {
       `${VOICE} orphan: "flags/green" is shipped as voice/${VOICE}/flags/green*.mp3 but nothing in the script references it — it never plays`,
     ]);
     expect(report.ok).toBe(false);
+  });
+
+  // A frame's built-in paths used to be skipped unread; a misspelled tick
+  // linted clean and aborted every framed callout at fire time.
+  it("names a built-in the plugin does not ship — the misspelled tick in a frame", () => {
+    const script = structuredClone(SCRIPT);
+    script.frames.radio.open = [{ clip: "sfx/IRD-tick-opne.mp3" }];
+
+    const report = lint(packFiles({ script }));
+
+    expect(messages(report.problems)).toEqual([
+      `${VOICE} dangling: literal "sfx/IRD-tick-opne.mp3" names a built-in clip the plugin does not ship — a step that resolves to nothing aborts the callout at fire time, and in a frame every callout it wraps`,
+    ]);
+    // The right path, with or without the leading-slash escape, is not a finding.
+    script.frames.radio.open = [{ clip: "/sfx/IRD-tick-open.mp3" }];
+    expect(lint(packFiles({ script })).problems).toEqual([]);
+  });
+
+  // An alias no step names used to count as a reference on its own, which
+  // hid the orphan its source had become.
+  it("names a pools alias nothing uses, and still reports its source — as an orphan when shipped, as dangling when not", () => {
+    const script = structuredClone(SCRIPT) as typeof SCRIPT & { pools: Record<string, unknown> };
+    script.pools = {
+      "flag-green": { group: "flags", base: "green", comment: "the entry names flags/green directly now" },
+      "flag-red": { group: "flags", base: "red", comment: "nothing names this, and red was never recorded" },
+    };
+
+    const report = lint(packFiles({ script }));
+
+    expect(messages(report.problems)).toEqual([
+      `${VOICE} dangling: "flags/red" is referenced but the pack ships no voice/${VOICE}/flags/red*.mp3 — a required step that resolves to nothing aborts the whole callout at fire time`,
+      `${VOICE} orphan: pool alias "flag-green" is defined but nothing uses it — a name that decides nothing`,
+      `${VOICE} orphan: pool alias "flag-red" is defined but nothing uses it — a name that decides nothing`,
+    ]);
+
+    // Used by an entry, the alias is a reference like any other and its source is no orphan.
+    script.scenarios["pit-crew.flag-green"].sequence = ["pool:flag-green"];
+    delete script.pools["flag-red"];
+    expect(lint(packFiles({ script })).problems).toEqual([]);
+  });
+
+  it("compiles every linted voice through the injected compile — the engine's own, in the plugin", () => {
+    const seen: CalloutScript[] = [];
+    const report = lint(packFiles({}), {
+      compile: (script) => {
+        seen.push(script);
+
+        return compile(script);
+      },
+    });
+
+    expect(seen).toHaveLength(1);
+    expect(Object.keys(seen[0].scenarios)).toEqual(Object.keys(SCRIPT.scenarios));
+    expect(report.voices[0]).toMatchObject({ status: "linted", scripted: 3 });
   });
 
   it("names a shipped clip nothing references — the orphan — and excuses a group a var draws from", () => {
@@ -286,18 +372,29 @@ describe("lintPack", () => {
     expect(report.voices.map((v) => v.id)).toEqual([VOICE]);
   });
 
-  it("never calls a base in a plugin-played group an orphan — the runner's list, empty by default", () => {
+  it("never calls a clip plugin code plays by path an orphan — by exact base, or every base of a group — and holds the rest to the rule", () => {
     const files = packFiles({
-      clips: [...CLIPS, `voice/${VOICE}/names/dave.mp3`, `voice/${VOICE}/toggle/radio-check-01.mp3`],
+      clips: [
+        ...CLIPS,
+        `voice/${VOICE}/names/dave.mp3`,
+        `voice/${VOICE}/toggle/radio-check-01.mp3`,
+        `voice/${VOICE}/toggle/radio-chek-01.mp3`,
+      ],
     });
 
     expect(messages(lint(files).problems)).toEqual([
       `${VOICE} orphan: "names/dave" is shipped as voice/${VOICE}/names/dave*.mp3 but nothing in the script references it — it never plays`,
       `${VOICE} orphan: "toggle/radio-check" is shipped as voice/${VOICE}/toggle/radio-check*.mp3 but nothing in the script references it — it never plays`,
+      `${VOICE} orphan: "toggle/radio-chek" is shipped as voice/${VOICE}/toggle/radio-chek*.mp3 but nothing in the script references it — it never plays`,
     ]);
-    expect(lint(files, ["names", "toggle"]).problems).toEqual([]);
-    // The list names GROUPS: a base elsewhere is still held to the rule.
-    expect(messages(lint(files, ["names"]).problems)).toHaveLength(1);
+    // The list names CLIPS: the misspelled sibling in the same group is still an orphan.
+    expect(messages(lint(files, { pluginPlayedBases: ["names/*", "toggle/radio-check"] }).problems)).toEqual([
+      `${VOICE} orphan: "toggle/radio-chek" is shipped as voice/${VOICE}/toggle/radio-chek*.mp3 but nothing in the script references it — it never plays`,
+    ]);
+    // A group wildcard excuses every base of that group and nothing outside it.
+    expect(messages(lint(files, { pluginPlayedBases: ["toggle/*"] }).problems)).toEqual([
+      `${VOICE} orphan: "names/dave" is shipped as voice/${VOICE}/names/dave*.mp3 but nothing in the script references it — it never plays`,
+    ]);
   });
 
   it("reports a defined fragment nothing includes, and a frame that fails to compile, once each", () => {
@@ -332,12 +429,110 @@ describe("lintPack", () => {
       /^\(pack\) manifest: voice-pack\.json is not valid JSON: /,
     );
 
-    const noIds = lint(packFiles({ manifest: JSON.stringify({ schema: 1, voices: "demo" }) }));
+    const noIds = lint(
+      packFiles({
+        manifest: JSON.stringify({ schema: 1, id: "demo", label: "Demo", version: "1.0.0", voices: "demo" }),
+      }),
+    );
 
     expect(messages(noIds.problems)).toEqual([
       "(pack) manifest: voice-pack.json has no voices[].id list — the plugin reads the voices from it; the voices under voice/ were linted anyway",
     ]);
     expect(noIds.voices.map((v) => v.id)).toEqual([VOICE]);
+  });
+
+  it("keeps the per-entry problems when EVERY declared id is unusable, then scans voice/*/ — never the generic message", () => {
+    const report = lint(
+      packFiles({
+        manifest: JSON.stringify({
+          schema: 1,
+          id: "demo",
+          label: "Demo",
+          version: "1.0.0",
+          voices: [{ id: "MyVoice", label: "My Voice" }],
+        }),
+      }),
+    );
+
+    expect(messages(report.problems)).toEqual([
+      `(pack) manifest: voice-pack.json: voices[0].id "MyVoice" is not lowercase kebab-case (a-z, 0-9, dashes) — the plugin refuses the manifest; the voices under voice/ were linted anyway`,
+    ]);
+    expect(report.voices.map((v) => v.id)).toEqual([VOICE]);
+  });
+
+  // The rest of the manifest is deck-core's schema to validate in full; these
+  // are the fields the plugin refuses a pack over that the linter can read
+  // as plain JSON, each in the scanner's own terms.
+  it("reports a manifest the scanner would refuse: schema, id, label, version, a voice without a label", () => {
+    const report = lint(
+      packFiles({
+        manifest: JSON.stringify({
+          schema: 2,
+          id: "other-pack",
+          label: "",
+          version: "1.0",
+          voices: [{ id: VOICE }],
+        }),
+      }),
+    );
+
+    expect(messages(report.problems)).toEqual([
+      "(pack) manifest: voice-pack.json: schema must be the number 1 (got 2) — the plugin refuses the manifest",
+      `(pack) manifest: voice-pack.json: id "other-pack" does not match the pack folder name "${PACK_DIR_NAME}" — the plugin refuses the pack`,
+      "(pack) manifest: voice-pack.json: label must be a non-empty string of at most 60 characters — the plugin refuses the manifest",
+      '(pack) manifest: voice-pack.json: version "1.0" is not a semver version (major.minor.patch) — the plugin refuses the manifest',
+      "(pack) manifest: voice-pack.json: voices[0] has no label — the plugin refuses the manifest",
+    ]);
+    // The voice itself is still linted, so the author gets the clip and script feedback too.
+    expect(report.voices).toEqual([
+      { id: VOICE, status: "linted", scripted: 3, total: 4, skipped: ["pit-crew.position-gained"] },
+    ]);
+  });
+
+  it("reports a manifest missing its schema, id, label or version, and an id that is not kebab-case", () => {
+    const report = lint(packFiles({ manifest: JSON.stringify({ voices: [{ id: VOICE, label: "Demo voice" }] }) }));
+
+    expect(messages(report.problems)).toEqual([
+      "(pack) manifest: voice-pack.json: schema is missing — must be the number 1; the plugin refuses the manifest",
+      "(pack) manifest: voice-pack.json: id is missing — the plugin refuses the manifest",
+      "(pack) manifest: voice-pack.json: label must be a non-empty string of at most 60 characters — the plugin refuses the manifest",
+      "(pack) manifest: voice-pack.json: version is missing — the plugin refuses the manifest",
+    ]);
+
+    // The folder is `Demo/` on disk: the scanner compares case-insensitively, and the id rule is what refuses the capital.
+    const capital = lint(
+      packFiles({ manifest: JSON.stringify({ schema: 1, id: "Demo", label: "Demo", version: "1.0.0", voices: [] }) }),
+      { packDirName: "Demo" },
+    );
+
+    expect(messages(capital.problems)).toEqual([
+      '(pack) manifest: voice-pack.json: id "Demo" is not lowercase kebab-case (a-z, 0-9, dashes) — the plugin refuses the manifest',
+      "(pack) manifest: voice-pack.json has no voices[].id list — the plugin reads the voices from it; the voices under voice/ were linted anyway",
+    ]);
+  });
+
+  it("accepts a pack whose folder differs from its id only in case, as the scanner does", () => {
+    expect(lint(packFiles({}), { packDirName: "DEMO" }).problems).toEqual([]);
+  });
+
+  it("reports a voice id the plugin's bundled audio already provides — the plugin drops that voice", () => {
+    const manifest = JSON.stringify({
+      schema: 1,
+      id: "demo",
+      label: "Demo",
+      version: "1.0.0",
+      voices: [
+        { id: VOICE, label: "Demo voice" },
+        { id: "default", label: "A second default" },
+      ],
+    });
+    const report = lint(packFiles({ manifest, clips: [...CLIPS, "voice/default/flags/green-01.mp3"] }));
+
+    expect(messages(report.problems)).toEqual([
+      '(pack) manifest: voice-pack.json: voices[1].id "default" is provided by the plugin\'s bundled audio — the plugin drops the voice',
+      "default script: no voice/default/callouts.json — a clips-only voice: every callout is skipped in it, and the plugin shows the missing-script banner when it is selected",
+    ]);
+    expect(report.voices.map((v) => v.id)).toEqual([VOICE, "default"]);
   });
 
   it("reports a declared id the plugin would refuse, or one that is not a string, and lints the rest", () => {

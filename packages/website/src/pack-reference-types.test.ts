@@ -87,6 +87,22 @@ describe("parsePackReference", () => {
     expect(() => parsePackReference(drifted)).toThrow("recordingScript[0].lines[0].texts: expected an array");
   });
 
+  // The three facts the artifact took over from the website's own tables and
+  // lists: an artifact without them is the older shape, not a looser one.
+  it("refuses a callout without its weight band or base, and a line without playedBy", () => {
+    const noBand = copy();
+    delete noBand.callouts[0].weightBand;
+    expect(() => parsePackReference(noBand)).toThrow("callouts[0].weightBand: expected a string");
+
+    const noBase = copy();
+    delete noBase.callouts[0].base;
+    expect(() => parsePackReference(noBase)).toThrow("callouts[0].base: expected a string");
+
+    const noPlayedBy = copy();
+    delete noPlayedBy.recordingScript[0].lines[0].playedBy;
+    expect(() => parsePackReference(noPlayedBy)).toThrow("recordingScript[0].lines[0].playedBy: expected a string");
+  });
+
   it("refuses a key the type does not declare, at its own path", () => {
     const drifted = copy();
     drifted.callouts[0].extra = "stray";

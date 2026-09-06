@@ -53,11 +53,12 @@ export const CONNECTOR_POOL = "connector";
 
 /**
  * How deeply a script may nest containers — arrays and objects, the document
- * root counted as the first — before the parser refuses it unread. The bundled
- * script sits near ten; the limit exists because the step schema is recursive
- * and a document nested a thousand levels deep exhausts the call stack inside
- * the validator, which is a throw the parser promises never to make. The
- * depth is measured with an explicit stack before any schema runs.
+ * root counted as the first — before the parser refuses it, ahead of any
+ * schema. The bundled script sits near ten; the limit exists because the step
+ * schema is recursive and a document nested a thousand levels deep exhausts
+ * the call stack inside the validator, which is a throw the parser promises
+ * never to make. The depth is measured with an explicit stack before any
+ * schema runs.
  */
 export const CALLOUT_SCRIPT_MAX_DEPTH = 64;
 

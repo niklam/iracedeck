@@ -61,26 +61,28 @@ export function familyAnchor(family: string): string {
 }
 
 /**
- * The scheduling weight bands, mirrored from `WEIGHT` in
- * `packages/audio-scenarios/src/dsl.ts`. A contract may carry any integer;
- * the band name is shown beside the number only where the number is one of
- * these, so a reader can tell "70" is the safety band without opening the
- * engine.
+ * `70` with band `SAFETY` → `"70 (safety)"`; an off-band value such as `65`
+ * is shown bare. The band is the artifact's — the generator names it from
+ * the engine's `WEIGHT` — so the page mirrors no table of its own.
  */
-export const WEIGHT_BANDS: Readonly<Record<number, string>> = {
-  5: "transient",
-  10: "chatter",
-  50: "normal",
-  70: "safety",
-  100: "critical",
-  120: "proximity",
-};
+export function describeWeight(callout: Pick<Callout, "weight" | "weightBand">): string {
+  return callout.weightBand === null
+    ? String(callout.weight)
+    : `${callout.weight} (${callout.weightBand.toLowerCase()})`;
+}
 
-/** `70` → `"70 (safety)"`; an off-band value such as `65` is shown bare. */
-export function describeWeight(weight: number): string {
-  const band = WEIGHT_BANDS[weight];
+/** The `base` that puts a bare clip path inside the active voice's folder — the common one, worth its own words. */
+export const VOICE_FOLDER_BASE = "voice/{voice}";
 
-  return band === undefined ? String(weight) : `${weight} (${band})`;
+/** Where a bare literal clip path in this callout's entry resolves, in words: the voice's folder, the audio root, or under the base. */
+export function describeBase(callout: Pick<Callout, "base">): string {
+  if (callout.base === null) return "none — a bare clip path resolves from the audio root";
+
+  if (callout.base === VOICE_FOLDER_BASE) {
+    return `${VOICE_FOLDER_BASE} — a bare clip path resolves inside the active voice's folder`;
+  }
+
+  return `${callout.base} — a bare clip path resolves under ${callout.base}/ from the audio root`;
 }
 
 /**
@@ -146,44 +148,30 @@ export function viaVarConsumers(
   return line.viaVar.map((name) => ({ name, usedBy: findVar(vocabulary, name)?.usedBy ?? [] }));
 }
 
-/** Whether nothing in the script — no entry, no fragment, no var — draws from the line. */
-export function isUnusedLine(line: Pick<RecordingLine, "usedBy" | "viaVar">): boolean {
-  return line.usedBy.length === 0 && line.viaVar.length === 0;
+/** Whether nothing — no entry, no fragment, no var, no plugin code — draws from the line. */
+export function isUnusedLine(line: Pick<RecordingLine, "usedBy" | "viaVar" | "playedBy">): boolean {
+  return line.usedBy.length === 0 && line.viaVar.length === 0 && line.playedBy === null;
 }
 
-/** Whether nothing in the script draws from any line of the group. */
+/** Whether nothing draws from any line of the group. */
 export function isUnusedGroup(group: Pick<RecordingGroup, "lines">): boolean {
   return group.lines.every(isUnusedLine);
 }
 
 /**
- * Groups the PLUGIN plays outside the script, with the moments they voice.
- * Nothing in a script references them, so the coverage columns are empty,
- * but a pack that wants those moments voiced records them too — verified
- * against `pit-crew.ts` (`playRadioCheck`), `audio-toggles.ts` and
- * `voice-test.ts` (the settings window's Race Engineer Test button) in
- * `@iracedeck/iracing-actions`, which play these clips through
- * `playVoiceSequence` rather than through a callout. Mirrors
- * `PLUGIN_PLAYED_GROUPS` in `scripts/lib/lint-pack-run.mjs`, the linter's
- * list; a new by-path consumer is a new entry in both.
- *
- * A `Map`, not an object literal: a group name is a third party's folder
- * name, and an object lookup would find `toString` on the prototype chain.
+ * The one `playedBy` EVERY line of the group carries, or `undefined`. The
+ * artifact says per line what plugin code plays it for (the generator's
+ * words — the website keeps no list of its own); where a whole group says
+ * the same thing (`names/`, one clip per driver name), the page says it once
+ * above the table instead of on every row.
  */
-export const PLUGIN_PLAYED_GROUPS: ReadonlyMap<string, string> = new Map([
-  [
-    "toggle",
-    "Played by the plugin itself, outside the script: the radio check when the sim connects, the going-silent and resuming acknowledgments when the Race Engineer is switched off and on, and the corner-names on/off acknowledgments. A pack that wants those moments voiced records these lines; no script entry can reach them.",
-  ],
-  [
-    "names",
-    "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check. The names a pack ships are the names its users can be called by; the group is optional.",
-  ],
-  [
-    "welcome",
-    "Played by the plugin itself, outside the script: greeting-01 is what the Race Engineer Test button in iRaceDeck Settings plays, after the driver's name. A pack that wants the Test button voiced records that line; nothing plays hello, and the group is optional.",
-  ],
-]);
+export function groupPlayedBy(group: Pick<RecordingGroup, "lines">): string | undefined {
+  const [first, ...rest] = group.lines;
+
+  if (first === undefined || first.playedBy === null) return undefined;
+
+  return rest.every((line) => line.playedBy === first.playedBy) ? first.playedBy : undefined;
+}
 
 /** The note shown under an unreferenced group the plugin does not play either — the bundled voice's own leftovers. */
 export const UNUSED_GROUP_NOTE =
@@ -192,13 +180,14 @@ export const UNUSED_GROUP_NOTE =
 /** The note shown beside an unreferenced line inside a group that is otherwise used. */
 export const UNUSED_LINE_NOTE = "Nothing in the script draws from this line.";
 
-/** The note for a group: what the plugin plays from it, or that nothing does. `undefined` for a group the script uses. */
+/** The note for a group: what the plugin plays every line of it for, or that nothing draws from it. `undefined` otherwise. */
 export function groupNote(group: RecordingGroup): string | undefined {
-  const pluginPlayed = PLUGIN_PLAYED_GROUPS.get(group.group);
+  return groupPlayedBy(group) ?? (isUnusedGroup(group) ? UNUSED_GROUP_NOTE : undefined);
+}
 
-  if (pluginPlayed !== undefined) return pluginPlayed;
-
-  return isUnusedGroup(group) ? UNUSED_GROUP_NOTE : undefined;
+/** The line's own `playedBy`, unless the group note already says it for every line. `null` when there is nothing to add. */
+export function linePlayedBy(line: Pick<RecordingLine, "playedBy">, note: string | undefined): string | null {
+  return line.playedBy !== null && line.playedBy !== note ? line.playedBy : null;
 }
 
 /** `corner-names` → `group-corner-names`. */

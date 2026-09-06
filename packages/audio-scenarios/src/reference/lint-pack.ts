@@ -10,17 +10,29 @@
  * reach from here, so the port is restated). The root script
  * (`scripts/lint-pack.mjs`) binds it to `node:fs`, registers the catalog
  * and hands over `engine.contracts()` / `engine.vocabulary()` — the same two
- * reports the pack-author reference is built from, which is the point: the
- * linter names exactly what the reference publishes, through the same
- * `compileVoiceScript` the plugin runs and the same coverage rules the
- * bundled voice is held to (`@iracedeck/callout-script`'s `coverage.ts`).
+ * reports the pack-author reference is built from — and the engine's own
+ * `compileScript`, which is the point: the linter names exactly what the
+ * reference publishes, compiles through the very deps the plugin compiles a
+ * pack with, and applies the same coverage rules the bundled voice is held
+ * to (`@iracedeck/callout-script`'s `coverage.ts`).
  *
- * The manifest (`voice-pack.json`) is read as PLAIN JSON and only its
- * `voices[].id` are taken — deck-core's schema, which the plugin validates
- * the whole file with at install time, is unreachable from this package.
- * When the manifest is missing, unparseable or carries no ids, that is
- * reported as a problem AND the voices are taken from the directories under
- * `voice/` instead, so the author still gets clip and script feedback.
+ * The manifest (`voice-pack.json`) is read as PLAIN JSON — deck-core's
+ * schema, which the plugin validates the whole file with at install time,
+ * is unreachable from this package, and moving it into the leaf beside the
+ * script schema is a follow-up. What IS checked is every field the scanner
+ * refuses a pack over that plain JSON can read, in the scanner's own terms:
+ * `schema` exactly `1`; `id` lowercase kebab-case and equal to the pack
+ * folder's name lowercased (the scanner's rule — the filesystem is
+ * case-insensitive, the id regex is not); `label` a non-empty string of at
+ * most 60 characters; `version` semver by shape (the scanner uses `semver`;
+ * a regex is what plain JSON affords here); each `voices[]` entry a
+ * kebab-case `id` with a `label`; and no voice id the plugin's bundled audio
+ * already provides (`bundledVoiceIds`, handed in by the runner) — the
+ * collision the scanner drops the voice over. A field problem is reported
+ * and the voice is linted anyway; when the manifest is missing, unparseable
+ * or carries no usable id at all, that is reported AND the voices are taken
+ * from the directories under `voice/` instead, so the author still gets
+ * clip and script feedback.
  *
  * Per voice, in this order: the clip files under `voice/<id>/` (every one
  * must be `voice/<id>/<group>/<name>.mp3`, lowercase extension — deck-core's
@@ -30,30 +42,31 @@
  * this); one larger than the scanner accepts (`VOICE_SCRIPT_MAX_BYTES`,
  * restated) is reported as the scanner treats it — read, then refused before
  * it is parsed; a script that does not parse is reported with the grammar's
- * own problems; a script
- * that parses is compiled, and every skip the pack did NOT mean is reported
- * with the compiler's reason, as are frames and fragments that fail; then
- * the coverage rules over the clip files — bases the script references that
- * the pack does not ship, and bases the pack ships that nothing references.
- * A base is referenced when an entry or fragment addresses it directly, or
- * when a var whose description names its group exists
- * ({@link descriptionNamesGroup}) — the same heuristic the reference's
- * recording script uses, so the two never disagree about which lines a var
- * accounts for — or when its group is one plugin code plays by path with
- * the active voice (`pluginPlayedGroups`, handed in by the runner: the
- * driver-name clips and the toggle acknowledgments). There is no per-pack
- * allowlist.
+ * own problems; a script that parses is compiled, and every skip the pack
+ * did NOT mean is reported with the compiler's reason, as are frames and
+ * fragments that fail; then the coverage rules over the clip files — bases
+ * the script references that the pack does not ship, `sfx/…` literals that
+ * name no built-in the plugin ships (`sharedClips`, the bundled manifest's
+ * non-voice clips), `pools` aliases nothing names, and bases the pack ships
+ * that nothing references. A base is referenced when an entry, frame or
+ * fragment addresses it directly, or when a var whose description names its
+ * group exists ({@link descriptionNamesGroup}) — the same heuristic the
+ * reference's recording script uses, so the two never disagree about which
+ * lines a var accounts for; and a base plugin code plays by path with the
+ * active voice is never an orphan (`pluginPlayedBases`, handed in by the
+ * runner: `group/base` keys, `group/*` for a group the plugin plays every
+ * base of). There is no per-pack allowlist.
+ *
+ * One limitation of the var reading, stated for whoever meets it: the
+ * exemption is per GROUP, so a misspelled clip in a group a var also draws
+ * from is never reported as an orphan — the linter cannot tell which bases
+ * a resolver produces. Declared sources on `defineVar` would close it.
  *
  * Two coverage findings are left to the compiler on purpose: a named pool
  * nothing defines and an include of a fragment nothing defines are both
- * reported by `compileVoiceScript` with the ENTRY that made the reference
+ * reported by the compile with the ENTRY that made the reference
  * (`unknown pool "x"`, `unknown fragment "x"`), which is the better line;
  * repeating them from the coverage side would say the same thing twice.
- *
- * The compiler needs resolvers for conditions and cases; a lint never runs
- * one, so inert stand-ins are built from the vocabulary report — existence
- * is all the compile checks. `legacyPools` is empty: the catalog registers
- * no named pools since #1065, and `IScenarioEngine` exposes no list of them.
  */
 import {
   type CalloutScript,
@@ -64,8 +77,8 @@ import {
 } from "@iracedeck/callout-script";
 
 import type { ContractReport, VocabularyReport } from "../interpreter.js";
-import { type CompileDeps, compileVoiceScript } from "../script-compiler.js";
-import { descriptionNamesGroup } from "./pack-reference.js";
+import type { CompiledVoiceScript } from "../script-compiler.js";
+import { descriptionNamesGroup, pluginPlayedEntry } from "./pack-reference.js";
 
 // ─── The port ────────────────────────────────────────────────────────────────
 
@@ -97,9 +110,9 @@ export type LintProblemKind =
   | "frame"
   /** A fragment that fails to compile, or that nothing includes. */
   | "fragment"
-  /** A base the script references that the pack does not ship. */
+  /** A base the script references that the pack does not ship, a built-in it names that the plugin does not, or a literal it cannot place. */
   | "dangling"
-  /** A base the pack ships that nothing references. */
+  /** A base the pack ships that nothing references, or a `pools` alias nothing names. */
   | "orphan";
 
 /** One thing the plugin would skip quietly. */
@@ -147,21 +160,43 @@ export type LintReport = {
 export type LintPackInput = {
   /** The pack folder — the one that holds `voice-pack.json` and `voice/`. */
   packDir: string;
+  /**
+   * The pack folder's own name (`path.basename(packDir)`, the runner's to
+   * derive — path semantics are `node:path`'s, not this module's), which the
+   * scanner requires the manifest's `id` to equal, lowercased.
+   */
+  packDirName: string;
   fs: LintPackFileSystem;
   /** `engine.contracts()` after the catalog registered. */
   contracts: readonly ContractReport[];
   /** `engine.vocabulary()` after the catalog registered. */
   vocabulary: VocabularyReport;
   /**
-   * Clip groups PLUGIN CODE plays with the active voice, outside any script
-   * — the driver-name clips and the toggle acknowledgments today. Their
-   * bases are never orphans: nothing in a script or the vocabulary names
-   * them, and yet a pack that ships them is heard. The list is the plugin's
-   * knowledge, so the runner passes it (`scripts/lib/lint-pack-run.mjs`,
-   * each entry naming the file that plays it) and this module defaults to
-   * none, staying as ignorant of the plugin as the reference builder is.
+   * The engine's own compile — `engine.compileScript.bind(engine)` — so a
+   * pack is compiled against the deps the plugin compiles it with, never a
+   * rebuild off the public reports (which would miss a code-registered pool
+   * and count a legacy scenario as a contract).
    */
-  pluginPlayedGroups?: readonly string[];
+  compile: (script: CalloutScript) => CompiledVoiceScript;
+  /**
+   * The plugin's built-ins: the bundled manifest's clips outside `voice/`
+   * (`sfx/IRD-tick-open.mp3`, …), which every `sfx/…` literal in a script —
+   * a frame's ticks, typically — is checked against.
+   */
+  sharedClips: readonly string[];
+  /** Voice ids the plugin's own bundled audio provides; a pack declaring one has that voice dropped by the scanner. */
+  bundledVoiceIds: readonly string[];
+  /**
+   * Clips PLUGIN CODE plays with the active voice by path, outside any
+   * script — the connect radio check, the toggle acknowledgments, the Test
+   * button's greeting, the driver-name clips — as `group/base` keys, with
+   * `group/*` for a group the plugin plays every base of. Never orphans:
+   * nothing in a script or the vocabulary names them, and yet a pack that
+   * ships them is heard. The list is the plugin's knowledge, so the runner
+   * passes it (`PLUGIN_PLAYED_CLIPS` in `scripts/lib/lint-pack-run.mjs`,
+   * each entry naming the file that plays it) and this module knows none.
+   */
+  pluginPlayedBases: readonly string[];
 };
 
 // ─── Linting ─────────────────────────────────────────────────────────────────
@@ -171,10 +206,14 @@ const VOICE_ROOT = "voice";
 
 export function lintPack({
   packDir: rawPackDir,
+  packDirName,
   fs,
   contracts,
   vocabulary,
-  pluginPlayedGroups = [],
+  compile,
+  sharedClips,
+  bundledVoiceIds,
+  pluginPlayedBases,
 }: LintPackInput): LintReport {
   const packDir = rawPackDir.replace(/[\\/]+$/, "");
   const problems: LintProblem[] = [];
@@ -183,10 +222,10 @@ export function lintPack({
   };
 
   const onDisk = [...fs.listDirectories(`${packDir}/${VOICE_ROOT}`)].sort();
-  const declared = readDeclaredVoices(fs.readTextFile(`${packDir}/${MANIFEST_FILE}`));
+  const declared = readManifest(fs.readTextFile(`${packDir}/${MANIFEST_FILE}`), packDirName, bundledVoiceIds);
   let voiceIds: readonly string[];
 
-  if (declared.ok) {
+  if (declared.ids !== null) {
     voiceIds = declared.ids;
 
     for (const message of declared.problems) packProblem(message);
@@ -197,20 +236,37 @@ export function lintPack({
       }
     }
   } else {
-    packProblem(`${declared.problem}; the voices under ${VOICE_ROOT}/ were linted anyway`);
+    // Every problem is reported; the last carries the fallback note.
+    declared.problems.forEach((message, index) => {
+      packProblem(
+        index === declared.problems.length - 1
+          ? `${message}; the voices under ${VOICE_ROOT}/ were linted anyway`
+          : message,
+      );
+    });
     voiceIds = onDisk;
   }
 
+  const pluginPlayed = pluginPlayedBases.map((key) => {
+    const slash = key.indexOf("/");
+
+    return { group: key.slice(0, slash), base: key.slice(slash + 1) };
+  });
   const context: VoiceContext = {
     packDir,
     fs,
     clips: fs.listMp3Files(packDir),
-    deps: compileDepsOf(contracts, vocabulary),
+    compile,
+    sharedClips,
     contractIds: contracts.map((c) => c.id).sort(),
-    // A group is nobody's typo to report when a var's description names it
-    // (a resolver draws from it) or when plugin code plays it by path.
-    varDriven: (group) =>
-      pluginPlayedGroups.includes(group) || vocabulary.vars.some((v) => descriptionNamesGroup(v.description, group)),
+    // A group is nobody's typo to report when a var's description names it — a resolver draws from it.
+    varDriven: (group) => vocabulary.vars.some((v) => descriptionNamesGroup(v.description, group)),
+    // A clip plugin code plays by path is heard without any script naming it.
+    pluginPlayed: (base) => {
+      const slash = base.indexOf("/");
+
+      return pluginPlayedEntry(pluginPlayed, base.slice(0, slash), base.slice(slash + 1)) !== undefined;
+    },
     problems,
   };
   const voices = voiceIds.map((id) => lintVoice(id, context));
@@ -218,32 +274,51 @@ export function lintPack({
   return { ok: problems.length === 0, problems, voices };
 }
 
-type DeclaredVoices =
-  { ok: true; ids: readonly string[]; problems: readonly string[] } | { ok: false; problem: string };
+/**
+ * The manifest as the linter read it: the voice ids to lint — `null` when
+ * the file gave none and the `voice/` directories stand in — and every
+ * problem found on the way, in manifest order.
+ */
+type DeclaredVoices = { ids: readonly string[] | null; problems: readonly string[] };
 
 /**
  * Pack and voice ids are lowercase kebab-case — deck-core's `packId` rule,
  * restated. Checked here for two reasons: the plugin refuses a manifest with
- * any other id, which an author should hear before installing; and the id
- * becomes a directory segment (`voice/<id>/`) below, so an id that is not
+ * any other id, which an author should hear before installing; and a voice
+ * id becomes a directory segment (`voice/<id>/`) below, so an id that is not
  * one is never used as a path.
  */
-const VOICE_ID = /^[a-z][a-z0-9-]*$/;
+const PACK_ID = /^[a-z][a-z0-9-]*$/;
+
+/** deck-core's `displayLabel` bound, restated: a third party's string rendered straight into a dropdown row. */
+const LABEL_MAX_LENGTH = 60;
 
 /**
- * `voices[].id` off the manifest read as plain JSON — see the header for
- * why nothing else in the file is looked at here. An entry with no string
- * id, or one the plugin would refuse, is reported (the plugin refuses such a
- * manifest whole) and the others are kept; no usable id at all falls back to
- * the directories.
+ * Semver by shape — `major.minor.patch`, an optional pre-release and build —
+ * the regex semver.org publishes. The scanner asks the `semver` package
+ * instead (`semverValid`); this package has no such dependency, and a version
+ * the regex accepts that `semver` would not is not a case the format has met.
  */
-function readDeclaredVoices(read: LintFileRead): DeclaredVoices {
+const SEMVER =
+  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/;
+
+const REFUSED = "the plugin refuses the manifest";
+
+/**
+ * The manifest read as plain JSON, checked for what the scanner refuses a
+ * pack over (see the header). An entry with no usable id is reported (the
+ * plugin refuses such a manifest whole) and the others are kept; no usable id
+ * at all falls back to the directories, the per-entry problems intact.
+ */
+function readManifest(read: LintFileRead, packDirName: string, bundledVoiceIds: readonly string[]): DeclaredVoices {
   if (!read.ok) {
     return {
-      ok: false,
-      problem: read.missing
-        ? `${MANIFEST_FILE} is missing — the plugin will not see this folder as a pack`
-        : `${MANIFEST_FILE} could not be read (${read.reason})`,
+      ids: null,
+      problems: [
+        read.missing
+          ? `${MANIFEST_FILE} is missing — the plugin will not see this folder as a pack`
+          : `${MANIFEST_FILE} could not be read (${read.reason})`,
+      ],
     };
   }
 
@@ -253,55 +328,93 @@ function readDeclaredVoices(read: LintFileRead): DeclaredVoices {
     json = JSON.parse(read.text.charCodeAt(0) === 0xfeff ? read.text.slice(1) : read.text);
   } catch (err) {
     return {
-      ok: false,
-      problem: `${MANIFEST_FILE} is not valid JSON: ${err instanceof Error ? err.message : String(err)}`,
+      ids: null,
+      problems: [`${MANIFEST_FILE} is not valid JSON: ${err instanceof Error ? err.message : String(err)}`],
     };
   }
 
-  const voices = json !== null && typeof json === "object" ? (json as { voices?: unknown }).voices : undefined;
+  const manifest: Record<string, unknown> = json !== null && typeof json === "object" ? (json as never) : {};
+  const problems: string[] = [];
 
-  if (!Array.isArray(voices)) {
-    return { ok: false, problem: `${MANIFEST_FILE} has no voices[].id list — the plugin reads the voices from it` };
+  if (manifest.schema === undefined) {
+    problems.push(`${MANIFEST_FILE}: schema is missing — must be the number 1; ${REFUSED}`);
+  } else if (manifest.schema !== 1) {
+    problems.push(
+      `${MANIFEST_FILE}: schema must be the number 1 (got ${JSON.stringify(manifest.schema)}) — ${REFUSED}`,
+    );
+  }
+
+  if (typeof manifest.id !== "string" || manifest.id === "") {
+    problems.push(`${MANIFEST_FILE}: id is missing — ${REFUSED}`);
+  } else if (!PACK_ID.test(manifest.id)) {
+    problems.push(`${MANIFEST_FILE}: id "${manifest.id}" is not lowercase kebab-case (a-z, 0-9, dashes) — ${REFUSED}`);
+  } else if (manifest.id !== packDirName.toLowerCase()) {
+    // The scanner's comparison, case-insensitive on the folder side: the
+    // filesystem underneath is, and the id regex already forbids capitals.
+    problems.push(
+      `${MANIFEST_FILE}: id "${manifest.id}" does not match the pack folder name "${packDirName}" — the plugin refuses the pack`,
+    );
+  }
+
+  if (!isLabel(manifest.label)) {
+    problems.push(
+      `${MANIFEST_FILE}: label must be a non-empty string of at most ${LABEL_MAX_LENGTH} characters — ${REFUSED}`,
+    );
+  }
+
+  if (typeof manifest.version !== "string" || manifest.version === "") {
+    problems.push(`${MANIFEST_FILE}: version is missing — ${REFUSED}`);
+  } else if (!SEMVER.test(manifest.version)) {
+    problems.push(
+      `${MANIFEST_FILE}: version "${manifest.version}" is not a semver version (major.minor.patch) — ${REFUSED}`,
+    );
+  }
+
+  const voices = manifest.voices;
+
+  if (!Array.isArray(voices) || voices.length === 0) {
+    return {
+      ids: null,
+      problems: [...problems, `${MANIFEST_FILE} has no voices[].id list — the plugin reads the voices from it`],
+    };
   }
 
   const ids: string[] = [];
-  const problems: string[] = [];
 
-  voices.forEach((entry, index) => {
-    const id = entry !== null && typeof entry === "object" ? (entry as { id?: unknown }).id : undefined;
+  voices.forEach((entry: unknown, index) => {
+    const voice: Record<string, unknown> = entry !== null && typeof entry === "object" ? (entry as never) : {};
+    const id = voice.id;
 
     if (typeof id !== "string" || id === "") {
-      problems.push(`${MANIFEST_FILE}: voices[${index}] has no string id — the plugin refuses the manifest`);
-    } else if (!VOICE_ID.test(id)) {
-      problems.push(
-        `${MANIFEST_FILE}: voices[${index}].id "${id}" is not lowercase kebab-case (a-z, 0-9, dashes) — the plugin refuses the manifest`,
-      );
-    } else if (!ids.includes(id)) {
-      ids.push(id);
+      problems.push(`${MANIFEST_FILE}: voices[${index}] has no string id — ${REFUSED}`);
+
+      return;
     }
+
+    if (!PACK_ID.test(id)) {
+      problems.push(
+        `${MANIFEST_FILE}: voices[${index}].id "${id}" is not lowercase kebab-case (a-z, 0-9, dashes) — ${REFUSED}`,
+      );
+
+      return;
+    }
+
+    if (!isLabel(voice.label)) problems.push(`${MANIFEST_FILE}: voices[${index}] has no label — ${REFUSED}`);
+
+    if (bundledVoiceIds.includes(id)) {
+      problems.push(
+        `${MANIFEST_FILE}: voices[${index}].id "${id}" is provided by the plugin's bundled audio — the plugin drops the voice`,
+      );
+    }
+
+    if (!ids.includes(id)) ids.push(id);
   });
 
-  if (ids.length === 0) {
-    return { ok: false, problem: `${MANIFEST_FILE} has no voices[].id list — the plugin reads the voices from it` };
-  }
-
-  return { ok: true, ids, problems };
+  return { ids: ids.length === 0 ? null : ids, problems };
 }
 
-/**
- * What the compiler needs, off the two public reports. Existence is all a
- * compile checks — the resolvers only run at fire time, and nothing fires
- * here — so a condition is a predicate that answers `false` and a case a
- * resolver that answers `null`, each with its real declared key set.
- */
-function compileDepsOf(contracts: readonly ContractReport[], vocabulary: VocabularyReport): CompileDeps {
-  return {
-    contracts: new Map(contracts.map((c) => [c.id, { frame: c.frame }])),
-    vars: new Set(vocabulary.vars.map((v) => v.name)),
-    conds: new Map(vocabulary.conds.map((c) => [c.name, () => false])),
-    cases: new Map(vocabulary.cases.map((c) => [c.name, { resolve: () => null, keys: new Set(Object.keys(c.keys)) }])),
-    legacyPools: new Set(),
-  };
+function isLabel(value: unknown): boolean {
+  return typeof value === "string" && value.length > 0 && value.length <= LABEL_MAX_LENGTH;
 }
 
 type VoiceContext = {
@@ -309,10 +422,13 @@ type VoiceContext = {
   fs: LintPackFileSystem;
   /** Every `.mp3` under the pack, POSIX-relative. */
   clips: readonly string[];
-  deps: CompileDeps;
+  compile: (script: CalloutScript) => CompiledVoiceScript;
+  sharedClips: readonly string[];
   /** Every contract id, sorted — what a scriptless voice skips. */
   contractIds: readonly string[];
   varDriven: VarDrivenGroup;
+  /** Whether plugin code plays a `group/base` by path — never an orphan. */
+  pluginPlayed: (base: string) => boolean;
   problems: LintProblem[];
 };
 
@@ -391,7 +507,7 @@ function lintVoice(id: string, ctx: VoiceContext): VoiceLintSummary {
     return brokenScript;
   }
 
-  const compiled = compileVoiceScript(parsed.script, ctx.deps);
+  const compiled = ctx.compile(parsed.script);
 
   for (const skip of [...compiled.skipped].filter((s) => !s.deliberate).sort((a, b) => compare(a.id, b.id))) {
     problem("callout", `"${skip.id}" is skipped — ${skip.reason}`);
@@ -405,7 +521,7 @@ function lintVoice(id: string, ctx: VoiceContext): VoiceLintSummary {
     problem("fragment", `"${name}" does not compile — ${reason}`);
   }
 
-  reportCoverage(parsed.script, authored, prefix, ctx.varDriven, problem);
+  reportCoverage(parsed.script, authored, prefix, ctx, problem);
 
   return {
     id,
@@ -423,10 +539,10 @@ function reportCoverage(
   script: CalloutScript,
   authored: readonly string[],
   prefix: string,
-  varDriven: VarDrivenGroup,
+  ctx: Pick<VoiceContext, "sharedClips" | "varDriven" | "pluginPlayed">,
   problem: (kind: LintProblemKind, message: string) => void,
 ): void {
-  const coverage = checkCoverage({ script, authored }, varDriven);
+  const coverage = checkCoverage({ script, authored, sharedClips: ctx.sharedClips }, ctx.varDriven);
 
   for (const name of coverage.unincludedFragments) {
     problem(
@@ -442,6 +558,13 @@ function reportCoverage(
     );
   }
 
+  for (const path of coverage.missingSharedClips) {
+    problem(
+      "dangling",
+      `literal "${path}" names a built-in clip the plugin does not ship — a step that resolves to nothing aborts the callout at fire time, and in a frame every callout it wraps`,
+    );
+  }
+
   for (const path of coverage.unrecognisedLiterals) {
     problem(
       "dangling",
@@ -449,11 +572,18 @@ function reportCoverage(
     );
   }
 
-  for (const base of coverage.orphans) {
+  // The plugin-played exemption is applied HERE, by base, on top of the
+  // shared rule — the coverage module's predicate is per group and means
+  // "a var draws from it", which this is not.
+  for (const base of coverage.orphans.filter((base) => !ctx.pluginPlayed(base))) {
     problem(
       "orphan",
       `"${base}" is shipped as ${prefix}${base}*${MP3} but nothing in the script references it — it never plays`,
     );
+  }
+
+  for (const name of coverage.unusedAliases) {
+    problem("orphan", `pool alias "${name}" is defined but nothing uses it — a name that decides nothing`);
   }
 }
 

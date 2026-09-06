@@ -42,8 +42,12 @@ export type Callout = {
   /** The contract's default frame — an entry's override is under `references.frames`. */
   frame: string;
   weight: number;
+  /** The engine's `WEIGHT` band the weight is exactly (`"SAFETY"` for 70); `null` for a weight on no band. */
+  weightBand: string | null;
   queueable: boolean;
   interrupt: boolean;
+  /** The contract's `base` — what a bare literal clip path in the entry resolves against; `null` for the audio root. */
+  base: string | null;
   /** The bundled entry's `comment` (what is said); `null` when the entry carries none. */
   comment: string | null;
   /** The bundled entry's `test` (how to hear it); `null` when the entry carries none. */
@@ -76,6 +80,8 @@ export type RecordingLine = {
   usedBy: readonly string[];
   /** Var names whose description names the line's group — their callouts draw from it through the var. */
   viaVar: readonly string[];
+  /** What plugin code plays the line for, outside any script, in the generator's words; `null` for every line only a script reaches. */
+  playedBy: string | null;
 };
 
 export type RecordingGroup = { group: string; lines: readonly RecordingLine[] };
@@ -192,8 +198,10 @@ const CALLOUT_KEYS = [
   "description",
   "frame",
   "weight",
+  "weightBand",
   "queueable",
   "interrupt",
+  "base",
   "comment",
   "test",
   "skip",
@@ -211,8 +219,10 @@ export function parseCallout(value: unknown, path = "callout"): Callout {
     description: string(source.description, `${path}.description`),
     frame: string(source.frame, `${path}.frame`),
     weight: integer(source.weight, `${path}.weight`),
+    weightBand: nullableString(source.weightBand, `${path}.weightBand`),
     queueable: boolean(source.queueable, `${path}.queueable`),
     interrupt: boolean(source.interrupt, `${path}.interrupt`),
+    base: nullableString(source.base, `${path}.base`),
     comment: nullableString(source.comment, `${path}.comment`),
     test: nullableString(source.test, `${path}.test`),
     skip: boolean(source.skip, `${path}.skip`),
@@ -262,7 +272,7 @@ export function parseVocabulary(value: unknown, path = "vocabulary"): PackRefere
 
 function parseRecordingLine(value: unknown, path: string): RecordingLine {
   const source = record(value, path);
-  onlyKeys(source, path, ["base", "texts", "takes", "usedBy", "viaVar"]);
+  onlyKeys(source, path, ["base", "texts", "takes", "usedBy", "viaVar", "playedBy"]);
 
   return {
     base: string(source.base, `${path}.base`),
@@ -270,6 +280,7 @@ function parseRecordingLine(value: unknown, path: string): RecordingLine {
     takes: integer(source.takes, `${path}.takes`),
     usedBy: stringArray(source.usedBy, `${path}.usedBy`),
     viaVar: stringArray(source.viaVar, `${path}.viaVar`),
+    playedBy: nullableString(source.playedBy, `${path}.playedBy`),
   };
 }
 

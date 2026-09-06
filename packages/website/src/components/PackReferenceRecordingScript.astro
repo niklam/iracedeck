@@ -3,9 +3,11 @@
 // Every line the bundled voice records, by clip group, from the generated
 // pack-author reference (src/data/pack-reference.json, issue #1066): the
 // base, how many takes ship, the text of every take, the callouts whose
-// entries address the line directly, and the callouts that reach it through
-// a variable — listed apart, because a variable's attribution is coarse (a
-// var that draws from `incidents/` counts against every line of it).
+// entries address the line directly, the callouts that reach it through a
+// variable — listed apart, because a variable's attribution is coarse (a
+// var that draws from `incidents/` counts against every line of it) — and,
+// for the handful of lines plugin code plays by path outside any script,
+// what plays them, in the artifact's own words.
 import raw from "../data/pack-reference.json";
 import { parseRecordingScript, parseVocabulary } from "../pack-reference-types.js";
 import {
@@ -15,8 +17,9 @@ import {
   isUnusedGroup,
   isUnusedLine,
   lineAnchor,
-  PLUGIN_PLAYED_GROUPS,
+  linePlayedBy,
   renderTakeText,
+  UNUSED_GROUP_NOTE,
   UNUSED_LINE_NOTE,
   varHref,
   viaVarConsumers,
@@ -27,7 +30,7 @@ const vocabulary = parseVocabulary(raw.vocabulary);
 
 const lineCount = groups.reduce((n, g) => n + g.lines.length, 0);
 const takeCount = groups.reduce((n, g) => n + g.lines.reduce((m, l) => m + l.takes, 0), 0);
-const unusedGroups = groups.filter((g) => isUnusedGroup(g) && !PLUGIN_PLAYED_GROUPS.has(g.group)).map((g) => g.group);
+const unusedGroups = groups.filter(isUnusedGroup).map((g) => g.group);
 ---
 
 <p class="pack-ref-count">
@@ -37,7 +40,8 @@ const unusedGroups = groups.filter((g) => isUnusedGroup(g) && !PLUGIN_PLAYED_GRO
 {
   groups.map((group) => {
     const note = groupNote(group);
-    const markLines = note === undefined;
+    // A line is marked unused unless the whole group already is.
+    const markLines = note !== UNUSED_GROUP_NOTE;
 
     return (
       <section class="pack-ref-group">
@@ -58,6 +62,7 @@ const unusedGroups = groups.filter((g) => isUnusedGroup(g) && !PLUGIN_PLAYED_GRO
             {group.lines.map((line) => {
               const pool = `${group.group}/${line.base}`;
               const via = viaVarConsumers(line, vocabulary);
+              const playedBy = linePlayedBy(line, note);
 
               return (
                 <tr id={lineAnchor(pool)}>
@@ -108,6 +113,7 @@ const unusedGroups = groups.filter((g) => isUnusedGroup(g) && !PLUGIN_PLAYED_GRO
                         ))}
                       </p>
                     ))}
+                    {playedBy !== null && <p class="pack-ref-note">{playedBy}</p>}
                     {markLines && isUnusedLine(line) && <p class="pack-ref-note">{UNUSED_LINE_NOTE}</p>}
                   </td>
                 </tr>

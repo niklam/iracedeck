@@ -1,11 +1,14 @@
 import type { CalloutScript } from "@iracedeck/callout-script";
 import { describe, expect, it } from "vitest";
 
+import { WEIGHT } from "../dsl.js";
 import type { ContractReport, VocabularyReport } from "../interpreter.js";
 import {
   buildPackReference,
   descriptionNamesGroup,
   type PackReferenceInput,
+  PLUGIN_PLAYED_ANY_BASE,
+  type PluginPlayedClip,
   serializePackReference,
 } from "./pack-reference.js";
 
@@ -23,16 +26,24 @@ function contract(overrides: Partial<ContractReport> & { id: string }): Contract
     description: "The green flag flies.",
     frame: "radio",
     family: "flag",
-    weight: 100,
+    weight: WEIGHT.CRITICAL,
     queueable: false,
     interrupt: false,
+    base: null,
     ...overrides,
   };
 }
 
 const CONTRACTS: readonly ContractReport[] = [
   // Deliberately out of order: the builder sorts, whatever the engine handed it.
-  contract({ id: "pit-crew.spotter-call", event: null, family: "spotter", description: "A car pulls alongside." }),
+  contract({
+    id: "pit-crew.spotter-call",
+    event: null,
+    family: "spotter",
+    description: "A car pulls alongside.",
+    base: "voice/{voice}",
+  }),
+  // An off-band weight: the artifact says so with `weightBand: null` rather than inventing a name.
   contract({ id: "pit-crew.readback-entry", event: "pitLane.entered", family: "pit-readback", weight: 200 }),
   contract({ id: "pit-crew.flag-green" }),
   contract({
@@ -149,6 +160,15 @@ const MANIFEST_CLIPS: readonly string[] = [
   "voice/default/flags/green-01.mp3",
   "voice/default/flags/green-02.mp3",
   "voice/default/flags/blue-01.mp3",
+  "voice/default/toggle/radio-check-01.mp3",
+  "voice/default/toggle/stray-01.mp3",
+  "voice/default/names/dave.mp3",
+];
+
+/** The runner's list, by clip: one exact base, and every base of a group. */
+const PLUGIN_PLAYED: readonly PluginPlayedClip[] = [
+  { group: "toggle", base: "radio-check", playedBy: "the radio check when the sim connects" },
+  { group: "names", base: PLUGIN_PLAYED_ANY_BASE, playedBy: "the driver's name, one clip per name" },
 ];
 
 /** The sources a caller would name — recorded verbatim, in this order, and nothing is derived from them. */
@@ -162,6 +182,7 @@ function input(overrides: Partial<PackReferenceInput> = {}): PackReferenceInput 
     script: SCRIPT,
     groups: GROUPS,
     manifestClips: MANIFEST_CLIPS,
+    pluginPlayed: PLUGIN_PLAYED,
     ...overrides,
   };
 }
@@ -180,11 +201,12 @@ describe("buildPackReference", () => {
   it("publishes every contract as a callout: the contract's own fields, the entry's prose, and what the entry references", () => {
     const ref = buildPackReference(input());
 
-    // Provenance only — a copy of the caller's list, no version anywhere in
-    // the artifact (a release bump must not stale the freshness test).
+    // Provenance only — a copy of the caller's list, and no version key at
+    // either level (a release bump must not stale the freshness test).
     expect(ref._meta).toEqual({ generatedFrom: SOURCES });
     expect(ref._meta.generatedFrom).not.toBe(SOURCES);
-    expect(JSON.stringify(ref)).not.toMatch(/version/i);
+    expect(Object.keys(ref)).toEqual(["_meta", "callouts", "vocabulary", "recordingScript"]);
+    expect(Object.keys(ref._meta)).toEqual(["generatedFrom"]);
     expect(ref.callouts).toHaveLength(CONTRACTS.length);
     expect(ref.callouts.find((c) => c.id === "pit-crew.incident")).toEqual({
       id: "pit-crew.incident",
@@ -193,8 +215,10 @@ describe("buildPackReference", () => {
       description: "The green flag flies.",
       frame: "radio",
       weight: 100,
+      weightBand: "CRITICAL",
       queueable: true,
       interrupt: true,
+      base: null,
       comment: "An incident and what it cost.",
       test: "Harness → Incidents → Contact.",
       skip: false,
@@ -224,10 +248,12 @@ describe("buildPackReference", () => {
     expect(ref.recordingScript.map((g) => g.group)).toEqual([
       "flags",
       "incidents",
+      "names",
       "openers",
       "orphan-group",
       "pit-readback",
       "spotter",
+      "toggle",
       "units",
     ]);
     expect(ref.recordingScript[0].lines.map((l) => l.base)).toEqual(["blue", "green"]);
@@ -285,8 +311,10 @@ describe("buildPackReference", () => {
       description: "A faster car is behind.",
       frame: "radio",
       weight: 100,
+      weightBand: "CRITICAL",
       queueable: false,
       interrupt: false,
+      base: null,
       comment: "Not spoken in this voice.",
       test: null,
       skip: true,
@@ -307,6 +335,7 @@ describe("buildPackReference", () => {
       takes: 3,
       usedBy: ["pit-crew.flag-green"],
       viaVar: [],
+      playedBy: null,
     });
     // A bare name (no take suffix) is looked up as written, and counts as the first take.
     expect(lineOf(ref, "units", "km")).toEqual({
@@ -315,6 +344,7 @@ describe("buildPackReference", () => {
       takes: 1,
       usedBy: ["pit-crew.spotter-call"],
       viaVar: [],
+      playedBy: null,
     });
     // A clip the config never describes still ships, so it is still a line to record.
     expect(lineOf(ref, "orphan-group", "lonely")).toEqual({
@@ -323,10 +353,11 @@ describe("buildPackReference", () => {
       takes: 1,
       usedBy: [],
       viaVar: [],
+      playedBy: null,
     });
     // Another voice's clips and the shared sfx are not this voice's lines.
     expect(ref.recordingScript.some((g) => g.group === "sfx")).toBe(false);
-    expect(ref.recordingScript.flatMap((g) => g.lines).reduce((n, l) => n + l.takes, 0)).toBe(11);
+    expect(ref.recordingScript.flatMap((g) => g.lines).reduce((n, l) => n + l.takes, 0)).toBe(14);
   });
 
   it("orders texts by shipped take — a bare take first, then -01, -02, … — whatever order the config or the manifest lists them in, and only for takes that ship", () => {
@@ -354,6 +385,7 @@ describe("buildPackReference", () => {
       takes: 3,
       usedBy: ["pit-crew.flag-green"],
       viaVar: [],
+      playedBy: null,
     });
   });
 
@@ -369,6 +401,7 @@ describe("buildPackReference", () => {
         takes: 1,
         usedBy: [],
         viaVar: ["incident.points"],
+        playedBy: null,
       });
     }
 
@@ -391,6 +424,7 @@ describe("buildPackReference", () => {
       takes: 1,
       usedBy: ["pit-crew.incident"],
       viaVar: ["incident.points"],
+      playedBy: null,
     });
   });
 
@@ -425,6 +459,82 @@ describe("buildPackReference", () => {
     expect(unframed?.test).toBeNull();
   });
 
+  // The website used to mirror `WEIGHT` by hand to name a band beside the
+  // number; the artifact carries the name now, so the mirror is gone.
+  it("names the WEIGHT band a contract's weight sits in, and null for a weight on no band", () => {
+    const ref = buildPackReference(
+      input({
+        contracts: [
+          contract({ id: "test.transient", weight: WEIGHT.TRANSIENT }),
+          contract({ id: "test.chatter", weight: WEIGHT.CHATTER }),
+          contract({ id: "test.normal", weight: WEIGHT.NORMAL }),
+          contract({ id: "test.safety", weight: WEIGHT.SAFETY }),
+          contract({ id: "test.critical", weight: WEIGHT.CRITICAL }),
+          contract({ id: "test.proximity", weight: WEIGHT.PROXIMITY }),
+          contract({ id: "test.between", weight: 65 }),
+        ],
+        script: {
+          ...SCRIPT,
+          scenarios: Object.fromEntries(
+            ["transient", "chatter", "normal", "safety", "critical", "proximity", "between"].map((name) => [
+              `test.${name}`,
+              { skip: true },
+            ]),
+          ),
+        },
+      }),
+    );
+
+    expect(ref.callouts.map((c) => [c.id, c.weight, c.weightBand])).toEqual([
+      ["test.between", 65, null],
+      ["test.chatter", WEIGHT.CHATTER, "CHATTER"],
+      ["test.critical", WEIGHT.CRITICAL, "CRITICAL"],
+      ["test.normal", WEIGHT.NORMAL, "NORMAL"],
+      ["test.proximity", WEIGHT.PROXIMITY, "PROXIMITY"],
+      ["test.safety", WEIGHT.SAFETY, "SAFETY"],
+      ["test.transient", WEIGHT.TRANSIENT, "TRANSIENT"],
+    ]);
+    expect(buildPackReference(input()).callouts.find((c) => c.id === "pit-crew.readback-entry")?.weightBand).toBeNull();
+  });
+
+  it("publishes the contract's base as registered, so the format page can say where a bare literal resolves", () => {
+    const ref = buildPackReference(input());
+
+    expect(ref.callouts.find((c) => c.id === "pit-crew.spotter-call")?.base).toBe("voice/{voice}");
+    expect(ref.callouts.find((c) => c.id === "pit-crew.flag-green")?.base).toBeNull();
+  });
+
+  // A `pool:<group>/<base>-NN` step is a legal reference to one take; the
+  // line it belongs to is keyed by the base, so the consumer has to land there.
+  it("attributes a take-suffixed pool reference to the line of its base", () => {
+    const ref = buildPackReference(
+      input({
+        script: {
+          ...SCRIPT,
+          scenarios: { ...SCRIPT.scenarios, "pit-crew.flag-green": { sequence: ["pool:flags/green-01"] } },
+        },
+      }),
+    );
+
+    expect(ref.callouts.find((c) => c.id === "pit-crew.flag-green")?.references.pools).toEqual(["flags/green-01"]);
+    expect(lineOf(ref, "flags", "green").usedBy).toEqual(["pit-crew.flag-green"]);
+  });
+
+  // The plugin plays a few clips by path outside any script (the radio check,
+  // the driver's name); the artifact says so per LINE, from the runner's list,
+  // so the website has nothing to mirror. Exact base first, then a group's
+  // wildcard; a base in a plugin-played group the plugin never plays is not.
+  it("marks the lines plugin code plays by path with the runner's words, by exact base or a group wildcard, and nothing else", () => {
+    const ref = buildPackReference(input());
+
+    expect(lineOf(ref, "toggle", "radio-check").playedBy).toBe("the radio check when the sim connects");
+    expect(lineOf(ref, "toggle", "stray").playedBy).toBeNull();
+    expect(lineOf(ref, "names", "dave").playedBy).toBe("the driver's name, one clip per name");
+    expect(lineOf(ref, "flags", "green").playedBy).toBeNull();
+    // Nothing references them either — the plugin is their only consumer.
+    expect(lineOf(ref, "toggle", "radio-check").usedBy).toEqual([]);
+  });
+
   it("refuses a contract the script has no entry for, naming it — a legacy scenario speaking from code is exactly what that looks like", () => {
     const contracts = [...CONTRACTS, contract({ id: "pit-crew.legacy-line" }), contract({ id: "pit-crew.another" })];
 
@@ -440,7 +550,14 @@ describe("buildPackReference", () => {
         group: "flags",
         // One shipped take, so one text — the two other authored takes are not this voice's.
         lines: [
-          { base: "green", texts: ["Green flag, go go go."], takes: 1, usedBy: ["pit-crew.flag-green"], viaVar: [] },
+          {
+            base: "green",
+            texts: ["Green flag, go go go."],
+            takes: 1,
+            usedBy: ["pit-crew.flag-green"],
+            viaVar: [],
+            playedBy: null,
+          },
         ],
       },
     ]);

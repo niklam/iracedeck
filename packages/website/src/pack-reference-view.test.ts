@@ -8,20 +8,22 @@ import {
   caseAnchor,
   caseHref,
   condHref,
+  describeBase,
   describeScheduling,
   describeTrigger,
   describeWeight,
   familyAnchor,
   groupByFamily,
   groupNote,
+  groupPlayedBy,
   isUnusedGroup,
   isUnusedLine,
   lineAnchor,
   lineHref,
+  linePlayedBy,
   NO_FAMILY_ANCHOR,
   NO_FAMILY_LABEL,
   PAUSE_MARKER,
-  PLUGIN_PLAYED_GROUPS,
   recordingScriptToc,
   renderTakeText,
   UNUSED_GROUP_NOTE,
@@ -41,8 +43,10 @@ function callout(overrides: Partial<Callout>): Callout {
     description: "",
     frame: "radio",
     weight: 50,
+    weightBand: "NORMAL",
     queueable: false,
     interrupt: false,
+    base: null,
     comment: null,
     test: null,
     skip: false,
@@ -91,10 +95,47 @@ describe("familyAnchor", () => {
 });
 
 describe("describeWeight", () => {
-  it("names a band the engine declares and leaves an off-band value bare", () => {
-    expect(describeWeight(70)).toBe("70 (safety)");
-    expect(describeWeight(120)).toBe("120 (proximity)");
-    expect(describeWeight(65)).toBe("65");
+  it("names the artifact's band beside the number and leaves an off-band value bare", () => {
+    expect(describeWeight({ weight: 70, weightBand: "SAFETY" })).toBe("70 (safety)");
+    expect(describeWeight({ weight: 120, weightBand: "PROXIMITY" })).toBe("120 (proximity)");
+    expect(describeWeight({ weight: 65, weightBand: null })).toBe("65");
+  });
+
+  // The band is the generator's, from the engine's `WEIGHT`; the page keeps
+  // no table to drift. A band names one number, and no callout is left
+  // bandless on a number some other callout has a band for.
+  it("finds the artifact's bands consistent with their numbers", () => {
+    const byBand = new Map<string, Set<number>>();
+
+    for (const c of artifact.callouts) {
+      if (c.weightBand === null) continue;
+
+      const weights = byBand.get(c.weightBand) ?? new Set<number>();
+      weights.add(c.weight);
+      byBand.set(c.weightBand, weights);
+    }
+
+    expect(byBand.size).toBeGreaterThan(0);
+
+    for (const [band, weights] of byBand) expect([...weights], band).toHaveLength(1);
+
+    const banded = new Set(artifact.callouts.filter((c) => c.weightBand !== null).map((c) => c.weight));
+
+    for (const c of artifact.callouts) {
+      if (c.weightBand === null) expect(banded.has(c.weight), `${c.id} (${c.weight})`).toBe(false);
+    }
+  });
+});
+
+describe("describeBase", () => {
+  it("says where a bare clip path resolves: the voice's folder, the audio root, or under the base", () => {
+    expect(describeBase({ base: "voice/{voice}" })).toBe(
+      "voice/{voice} — a bare clip path resolves inside the active voice's folder",
+    );
+    expect(describeBase({ base: null })).toBe("none — a bare clip path resolves from the audio root");
+    expect(describeBase({ base: "pit-crew" })).toBe(
+      "pit-crew — a bare clip path resolves under pit-crew/ from the audio root",
+    );
   });
 });
 
@@ -156,53 +197,83 @@ describe("viaVarConsumers", () => {
 });
 
 describe("unused lines and groups", () => {
+  const line = (base: string, overrides: Partial<RecordingGroup["lines"][number]> = {}) => ({
+    base,
+    texts: [],
+    takes: 1,
+    usedBy: [],
+    viaVar: [],
+    playedBy: null,
+    ...overrides,
+  });
   const used: RecordingGroup = {
     group: "flags",
-    lines: [
-      { base: "green-race", texts: [], takes: 1, usedBy: ["pit-crew.flag-green"], viaVar: [] },
-      { base: "orphan", texts: [], takes: 1, usedBy: [], viaVar: [] },
-    ],
+    lines: [line("green-race", { usedBy: ["pit-crew.flag-green"] }), line("orphan")],
   };
-  const unused: RecordingGroup = {
-    group: "openers",
-    lines: [{ base: "hi", texts: [], takes: 1, usedBy: [], viaVar: [] }],
+  const unused: RecordingGroup = { group: "openers", lines: [line("hi")] };
+  const RADIO_CHECK = "Played by the plugin itself: the radio check when the sim connects.";
+  const NAME = "Played by the plugin itself: the driver's name, one clip per name.";
+  // The plugin plays one line of it by path and nothing plays the other.
+  const toggle: RecordingGroup = {
+    group: "toggle",
+    lines: [line("hello"), line("radio-check", { playedBy: RADIO_CHECK })],
+  };
+  // Every line of it is played the same way — the artifact repeats the text per line.
+  const names: RecordingGroup = {
+    group: "names",
+    lines: [line("dave", { playedBy: NAME }), line("niklas", { playedBy: NAME })],
   };
 
-  it("marks a line nothing draws from, directly or through a var", () => {
+  it("marks a line nothing draws from — not an entry, a var, or plugin code", () => {
     expect(isUnusedLine(used.lines[0])).toBe(false);
     expect(isUnusedLine(used.lines[1])).toBe(true);
-    expect(isUnusedLine({ usedBy: [], viaVar: ["incident.points"] })).toBe(false);
+    expect(isUnusedLine({ usedBy: [], viaVar: ["incident.points"], playedBy: null })).toBe(false);
+    expect(isUnusedLine({ usedBy: [], viaVar: [], playedBy: RADIO_CHECK })).toBe(false);
   });
 
   it("marks a group only when every line is unused", () => {
     expect(isUnusedGroup(used)).toBe(false);
     expect(isUnusedGroup(unused)).toBe(true);
+    expect(isUnusedGroup(toggle)).toBe(false);
   });
 
-  it("notes a plugin-played group by what the plugin plays, an unused one as a leftover, a used one not at all", () => {
-    expect(groupNote({ group: "toggle", lines: unused.lines })).toBe(PLUGIN_PLAYED_GROUPS.get("toggle"));
+  it("hoists a playedBy every line of a group shares to the group, and leaves a mixed group's to its lines", () => {
+    expect(groupPlayedBy(names)).toBe(NAME);
+    expect(groupPlayedBy(toggle)).toBeUndefined();
+    expect(groupPlayedBy(used)).toBeUndefined();
+    expect(groupPlayedBy({ lines: [] })).toBeUndefined();
+  });
+
+  it("notes a group by the playedBy it shares, an unused one as a leftover, any other not at all", () => {
+    expect(groupNote(names)).toBe(NAME);
     expect(groupNote(unused)).toBe(UNUSED_GROUP_NOTE);
     expect(groupNote(used)).toBeUndefined();
+    expect(groupNote(toggle)).toBeUndefined();
   });
 
-  // A group name is a third party's folder name; a prototype property must
-  // not read as a plugin-played group.
-  it("does not mistake a prototype property for a plugin-played group", () => {
-    expect(groupNote({ group: "toString", lines: unused.lines })).toBe(UNUSED_GROUP_NOTE);
-    expect(PLUGIN_PLAYED_GROUPS.has("constructor")).toBe(false);
+  it("puts a line's playedBy on the line unless the group note already says it", () => {
+    expect(linePlayedBy(toggle.lines[1], groupNote(toggle))).toBe(RADIO_CHECK);
+    expect(linePlayedBy(names.lines[0], groupNote(names))).toBeNull();
+    expect(linePlayedBy(toggle.lines[0], groupNote(toggle))).toBeNull();
   });
 
-  // The three plugin-played groups are unreferenced in the artifact by
-  // construction; if a script ever draws from one, the note is wrong.
-  it("finds the plugin-played groups unreferenced in the artifact", () => {
-    expect([...PLUGIN_PLAYED_GROUPS.keys()].sort()).toEqual(["names", "toggle", "welcome"]);
+  // The artifact carries the plugin-played lines; the page derives everything
+  // from it. Whatever the generator marked has no script consumer (the plugin
+  // is its only one), and the driver names read as one group note.
+  it("finds every playedBy line in the artifact free of script consumers, and the names group hoisted", () => {
+    const played = artifact.recordingScript.flatMap((g) => g.lines.filter((l) => l.playedBy !== null));
 
-    for (const name of PLUGIN_PLAYED_GROUPS.keys()) {
-      const group = artifact.recordingScript.find((g) => g.group === name);
+    expect(played.length).toBeGreaterThan(0);
 
-      expect(group, name).toBeDefined();
-      expect(isUnusedGroup(group as RecordingGroup), name).toBe(true);
+    for (const l of played) {
+      expect(l.usedBy, l.base).toEqual([]);
+      expect(l.viaVar, l.base).toEqual([]);
     }
+
+    const namesGroup = artifact.recordingScript.find((g) => g.group === "names");
+
+    expect(namesGroup).toBeDefined();
+    expect(groupPlayedBy(namesGroup as RecordingGroup)).toMatch(/driver's name/);
   });
 });
 

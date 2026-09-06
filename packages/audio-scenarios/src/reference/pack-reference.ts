@@ -26,6 +26,12 @@
  *   else: `usedBy` stays the DIRECT consumers, so a reader can tell "this
  *   entry names the line" from "some var in this group might".
  *
+ * A third attribution is not the builder's to know: the few clips PLUGIN CODE
+ * plays by path outside any script (the connect radio check, the driver's
+ * name). The caller hands them in (`pluginPlayed`, the runner's list) and the
+ * builder writes each onto its recording line as `playedBy`, so the website
+ * renders the artifact's words and mirrors no list of its own.
+ *
  * The builder refuses a contract the script has no entry for. Since #1065 the
  * catalog is contracts-only and the bundled script covers all of it, so an
  * id with no entry is either a legacy `Scenario` speaking from code — which
@@ -39,8 +45,12 @@ import {
   collectStepReferences,
   NO_FRAME,
   type ScriptStep,
+  stripTakeSuffix,
+  TAKE_SUFFIX,
+  VOICE_CLIP_PATH,
 } from "@iracedeck/callout-script";
 
+import { WEIGHT } from "../dsl.js";
 import type { ContractReport, VocabularyReport } from "../interpreter.js";
 
 // ─── The artifact ────────────────────────────────────────────────────────────
@@ -75,8 +85,16 @@ export type Callout = {
   /** The contract's default frame — an entry's override is under `references.frames`. */
   frame: string;
   weight: number;
+  /** The `WEIGHT` band the weight is exactly (`"SAFETY"` for 70); `null` for a weight on no band. */
+  weightBand: string | null;
   queueable: boolean;
   interrupt: boolean;
+  /**
+   * The contract's `base` as registered — what a bare literal clip path in
+   * the entry resolves against (`"voice/{voice}"` puts `flags/green-01.mp3`
+   * in the voice's folder; `null` leaves it at the audio root).
+   */
+  base: string | null;
   /** The bundled entry's `comment` (what is said); `null` when the entry carries none. */
   comment: string | null;
   /** The bundled entry's `test` (how to hear it); `null` when the entry carries none. */
@@ -119,9 +137,43 @@ export type RecordingLine = {
   usedBy: readonly string[];
   /** Var names whose description names the line's group — see {@link descriptionNamesGroup}. */
   viaVar: readonly string[];
+  /**
+   * What plugin code plays this line for, outside any script, in the
+   * caller's words (`pluginPlayed`); `null` for the lines only a script can
+   * reach — which is every line but the handful the plugin plays by path.
+   */
+  playedBy: string | null;
 };
 
 export type RecordingGroup = { group: string; lines: readonly RecordingLine[] };
+
+/**
+ * One clip plugin code plays by path with the active voice, outside any
+ * script: the group and base it addresses, and — for the recording line —
+ * what plays it, said for a pack author. `base` may be
+ * {@link PLUGIN_PLAYED_ANY_BASE} for a group the plugin plays every base of
+ * (the driver-name clips: one per name, the name chosen at runtime).
+ */
+export type PluginPlayedClip = { group: string; base: string; playedBy: string };
+
+/** The `base` of a {@link PluginPlayedClip} that stands for every base of its group. */
+export const PLUGIN_PLAYED_ANY_BASE = "*";
+
+/**
+ * The plugin-played entry a `group/base` falls under — the exact base first,
+ * then the group's wildcard — or `undefined`. Shared with `lint:pack`, whose
+ * orphan exemption is the same lookup without the words.
+ */
+export function pluginPlayedEntry<T extends { group: string; base: string }>(
+  entries: readonly T[],
+  group: string,
+  base: string,
+): T | undefined {
+  return (
+    entries.find((entry) => entry.group === group && entry.base === base) ??
+    entries.find((entry) => entry.group === group && entry.base === PLUGIN_PLAYED_ANY_BASE)
+  );
+}
 
 /**
  * Provenance, in the shape the repo's other generated artifacts carry
@@ -161,6 +213,13 @@ export type PackReferenceInput = {
   groups: Readonly<Record<string, readonly VoiceConfigLine[]>>;
   /** The runtime manifest's `clips` — every voice's, plus the shared sfx; the builder keeps the voice's. */
   manifestClips: readonly string[];
+  /**
+   * The clips plugin code plays by path outside any script, with the words
+   * for each — the runner's `PLUGIN_PLAYED_CLIPS` (`scripts/lib/lint-pack-run.mjs`),
+   * the plugin's knowledge rather than this builder's. Written onto the
+   * matching recording lines as `playedBy`.
+   */
+  pluginPlayed: readonly PluginPlayedClip[];
   /** Which voice's clips make the recording script. Defaults to the bundled voice, `default`. */
   voice?: string;
 };
@@ -200,8 +259,10 @@ export function buildPackReference(input: PackReferenceInput): PackReference {
         description: contract.description,
         frame: contract.frame,
         weight: contract.weight,
+        weightBand: weightBandOf(contract.weight),
         queueable: contract.queueable,
         interrupt: contract.interrupt,
+        base: contract.base,
         comment: entry.comment ?? null,
         test: entry.test ?? null,
         skip: entry.skip === true,
@@ -210,7 +271,14 @@ export function buildPackReference(input: PackReferenceInput): PackReference {
     });
 
   const vocabulary = buildVocabulary(input.vocabulary, walks);
-  const recordingScript = buildRecordingScript(input.groups, input.manifestClips, voice, walks, vocabulary.vars);
+  const recordingScript = buildRecordingScript(
+    input.groups,
+    input.manifestClips,
+    voice,
+    walks,
+    vocabulary.vars,
+    input.pluginPlayed,
+  );
 
   return { _meta: { generatedFrom: [...input.generatedFrom] }, callouts, vocabulary, recordingScript };
 }
@@ -218,6 +286,11 @@ export function buildPackReference(input: PackReferenceInput): PackReference {
 /** Serialise the artifact exactly as it is committed — 2-space JSON, trailing newline — so the freshness test can compare text. */
 export function serializePackReference(reference: PackReference): string {
   return `${JSON.stringify(reference, null, 2)}\n`;
+}
+
+/** The `WEIGHT` key whose value IS the weight (`70` → `"SAFETY"`), or `null` — a band is named only where the number is exactly one. */
+function weightBandOf(weight: number): string | null {
+  return Object.entries(WEIGHT).find(([, value]) => value === weight)?.[0] ?? null;
 }
 
 /**
@@ -251,9 +324,6 @@ type EntryWalk = {
 };
 
 const NO_REFERENCES: CalloutReferences = { pools: [], vars: [], conds: [], cases: [], includes: [], frames: [] };
-
-/** A literal step addressing one of the voice's own clips, in either spelling (`{voice}` or a voice id), with or without the leading-slash escape. */
-const VOICE_CLIP_PATH = /^\/?voice\/[^/]+\/([^/]+)\/([^/]+)\.mp3$/;
 
 /**
  * Walk an entry's sequence and, transitively, every fragment it includes.
@@ -380,18 +450,23 @@ function buildVocabulary(report: VocabularyReport, walks: ReadonlyMap<string, En
 
 // ─── Recording script ────────────────────────────────────────────────────────
 
-/** The `-NN` take suffix, as the engine's manifest-derived pools read it (`green-01` → `green`). */
-const TAKE_SUFFIX = /-(\d{2})$/;
-
-function stripTakeSuffix(name: string): string {
-  return name.replace(TAKE_SUFFIX, "");
-}
-
 /** Where a take sits in the recording order: the bare `<base>` first, then `-01`, `-02`, … */
 function takeOrder(name: string): number {
   const match = TAKE_SUFFIX.exec(name);
 
   return match ? Number(match[1]) : 0;
+}
+
+/**
+ * A pool reference as a recording-line key: `group/base-01` — a legal step
+ * naming one take — lands on the line of its base, the way a literal clip's
+ * take does in `walkEntry`. An alias the script never defined has no slash
+ * and is left as written; it keys no line.
+ */
+function lineKeyOf(pool: string): string {
+  const slash = pool.indexOf("/");
+
+  return slash < 0 ? pool : `${pool.slice(0, slash + 1)}${stripTakeSuffix(pool.slice(slash + 1))}`;
 }
 
 function buildRecordingScript(
@@ -400,6 +475,7 @@ function buildRecordingScript(
   voice: string,
   walks: ReadonlyMap<string, EntryWalk>,
   vars: readonly VocabularyItem[],
+  pluginPlayed: readonly PluginPlayedClip[],
 ): RecordingGroup[] {
   // The shipped take names per base, per group, off the voice's manifest clips.
   const prefix = `voice/${voice}/`;
@@ -433,7 +509,7 @@ function buildRecordingScript(
   const directUsers = new Map<string, Set<string>>();
 
   for (const [id, { references, clipBases }] of walks) {
-    for (const key of [...references.pools, ...clipBases]) {
+    for (const key of [...references.pools.map(lineKeyOf), ...clipBases]) {
       let ids = directUsers.get(key);
 
       if (!ids) {
@@ -468,6 +544,7 @@ function buildRecordingScript(
           takes: names.length,
           usedBy: sorted(directUsers.get(`${group}/${base}`) ?? []),
           viaVar: [...viaVar],
+          playedBy: pluginPlayedEntry(pluginPlayed, group, base)?.playedBy ?? null,
         };
       }),
     };

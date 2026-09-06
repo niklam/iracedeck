@@ -5,7 +5,9 @@
  * (`coverage.ts`) — one module for this package's per-voice test and for
  * `lint:pack`, which runs the same rules over the clip files a pack ships —
  * and this is the glue that feeds them a config: `groups` become the
- * `<group>/<name>` list, and `buildCalloutScript` produces the script.
+ * `<group>/<name>` list, `buildCalloutScript` produces the script, and the
+ * caller hands over the plugin's built-ins (the runtime manifest's clips
+ * outside `voice/`), which a frame's `sfx/…` literals are checked against.
  *
  * What a config cannot tell the rules, and the test beside this file
  * carries instead: which groups a var resolver draws from. The vocabulary
@@ -25,9 +27,13 @@ export function authoredNamesOf(config: VoiceConfig): string[] {
   return Object.entries(config.groups).flatMap(([group, entries]) => entries.map((entry) => `${group}/${entry.name}`));
 }
 
-/** What the config's extracted script covers of the lines the config authors. */
-export function coverageOfConfig(config: VoiceConfig): Coverage {
-  return coverageOf({ script: buildCalloutScript(config), authored: authoredNamesOf(config) });
+/**
+ * What the config's extracted script covers of the lines the config authors.
+ * `sharedClips` is the plugin's built-in list — `manifest.json`'s clips not
+ * under `voice/` — so a frame's misspelled tick is a finding here too.
+ */
+export function coverageOfConfig(config: VoiceConfig, sharedClips: readonly string[]): Coverage {
+  return coverageOf({ script: buildCalloutScript(config), authored: authoredNamesOf(config), sharedClips });
 }
 
 /**

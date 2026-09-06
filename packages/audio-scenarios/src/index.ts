@@ -34,13 +34,20 @@ export type {
   PackReference,
   PackReferenceInput,
   PackReferenceVocabulary,
+  PluginPlayedClip,
   RecordingGroup,
   RecordingLine,
   VocabularyCase,
   VocabularyItem,
   VoiceConfigLine,
 } from "./reference/pack-reference.js";
-export { buildPackReference, descriptionNamesGroup, serializePackReference } from "./reference/pack-reference.js";
+export {
+  buildPackReference,
+  descriptionNamesGroup,
+  PLUGIN_PLAYED_ANY_BASE,
+  pluginPlayedEntry,
+  serializePackReference,
+} from "./reference/pack-reference.js";
 // `lint:pack` (#1066): the pure linter the root script `scripts/lint-pack.mjs`
 // runs off this package's dist, over an injected filesystem.
 export type {

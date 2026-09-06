@@ -77,7 +77,7 @@ import { applyBase, DEFAULT_FRAME, DEFAULT_WEIGHT, NO_FRAME, resolveStep } from 
 // Manifest types + helpers live in `./manifest.js` to break a circular
 // import with `./validation.js`, which also needs `referenceVoice`.
 import { type AudioAssetsManifest, referenceVoice } from "./manifest.js";
-import { type CompiledVoiceScript, compileVoiceScript } from "./script-compiler.js";
+import { type CompileDeps, type CompiledVoiceScript, compileVoiceScript } from "./script-compiler.js";
 import { validateScenario } from "./validation.js";
 
 // Re-export so existing consumers of `interpreter.js` keep their import paths.
@@ -110,10 +110,11 @@ export type VocabularyReport = {
  * it, the prose on when it fires, and the scheduling a pack cannot change but
  * an author should know about. Every field is EFFECTIVE — `frame` and `weight`
  * carry the default a contract left unset (`DEFAULT_FRAME`, `DEFAULT_WEIGHT`),
- * `event` is `null` for a contract only `fire()` triggers, `family` is `null`
- * when it has none — so a consumer never re-derives a default the scheduler
- * already applies. A legacy `Scenario` is reported through the same shape;
- * the reference generator refuses one, and the enumeration is what lets it.
+ * `event` is `null` for a contract only `fire()` triggers, `family` and `base`
+ * are `null` when it has none — so a consumer never re-derives a default the
+ * scheduler already applies. A legacy `Scenario` is reported through the same
+ * shape; the reference generator refuses one, and the enumeration is what
+ * lets it.
  */
 export type ContractReport = {
   id: string;
@@ -125,6 +126,14 @@ export type ContractReport = {
   weight: number;
   queueable: boolean;
   interrupt: boolean;
+  /**
+   * The contract's `base` as registered (`"voice/{voice}"`, `"pit-crew"`),
+   * `null` when it has none: what a bare literal clip path in a script entry
+   * is resolved against — `flags/green-01.mp3` plays from the voice's folder
+   * under the first, from the audio root under none — so the reference can
+   * say which callouts resolve a literal where (#1066).
+   */
+  base: string | null;
 };
 
 /**
@@ -209,6 +218,14 @@ export interface IScenarioEngine {
    * Runs on every voice-pack rescan, exactly as `setManifest` does.
    */
   setScripts(scripts: ReadonlyMap<string, CalloutScript>): void;
+  /**
+   * Compile ONE script against the registries as they stand now — the very
+   * compile `setScripts` runs per voice, same deps, same result — and hand
+   * the diagnostics back instead of logging them. Loads nothing and changes
+   * nothing: what `lint:pack` (#1066) reports for a pack is thereby what the
+   * plugin would log for it, rather than a rebuild off the public reports.
+   */
+  compileScript(script: CalloutScript): CompiledVoiceScript;
   /**
    * Whether the ACTIVE voice's compiled script has a body for the scenario
    * id — the same lookup a fire makes. `false` when the entry is absent or
@@ -776,8 +793,13 @@ class ScenarioEngine implements IScenarioEngine {
         weight: raw.weight ?? DEFAULT_WEIGHT,
         queueable: raw.queueable ?? false,
         interrupt: raw.interrupt ?? false,
+        base: raw.base ?? null,
       }))
       .sort((a, b) => codePointOrder(a.id, b.id));
+  }
+
+  compileScript(script: CalloutScript): CompiledVoiceScript {
+    return compileVoiceScript(script, this.compileDeps());
   }
 
   isScripted(scenarioId: string): boolean {
@@ -819,16 +841,13 @@ class ScenarioEngine implements IScenarioEngine {
   }
 
   /**
-   * Compile every voice's script against the registries as they stand now.
-   * Per voice: one debug line with the scripted count, the deliberate skips
-   * at debug, and ONE warn per (voice, scenario) for a skip the pack did not
-   * mean — deduped across recompiles, so a dirty recompile only reports what
-   * changed. The compiler never throws; neither does this.
+   * What the compiler needs, read off the registries as they stand now — the
+   * ONE place the engine's state is turned into `CompileDeps`, so the eager
+   * per-voice compile and the linter's `compileScript` cannot diverge on
+   * which ids are contracts (a legacy scenario is not: its body is welded on)
+   * or which pool names are code-registered.
    */
-  private compileScripts(): void {
-    this.scriptsDirty = false;
-    this.scriptPoolState.clear();
-
+  private compileDeps(): CompileDeps {
     const contracts = new Map<string, { frame: string }>();
 
     for (const [id, entry] of this.scenarios) {
@@ -843,7 +862,7 @@ class ScenarioEngine implements IScenarioEngine {
 
     for (const [name, { resolve, keys }] of this.cases) cases.set(name, { resolve, keys: new Set(Object.keys(keys)) });
 
-    const deps = {
+    return {
       contracts,
       vars: new Set(this.vars.keys()),
       conds,
@@ -851,14 +870,27 @@ class ScenarioEngine implements IScenarioEngine {
       // Registered names only: the `pool:` keys are cached dynamic refs, not pools a script may name.
       legacyPools: new Set([...this.pools.keys()].filter((name) => !name.startsWith("pool:"))),
     };
+  }
 
+  /**
+   * Compile every voice's script against the registries as they stand now.
+   * Per voice: one debug line with the scripted count, the deliberate skips
+   * at debug, and ONE warn per (voice, scenario) for a skip the pack did not
+   * mean — deduped across recompiles, so a dirty recompile only reports what
+   * changed. The compiler never throws; neither does this.
+   */
+  private compileScripts(): void {
+    this.scriptsDirty = false;
+    this.scriptPoolState.clear();
+
+    const deps = this.compileDeps();
     const compiled = new Map<string, CompiledVoiceScript>();
 
     for (const [voice, script] of this.scripts) {
       const result = compileVoiceScript(script, deps);
       compiled.set(voice, result);
 
-      this.logger.debug(`Voice "${voice}": ${result.scenarios.size} of ${contracts.size} callouts scripted`);
+      this.logger.debug(`Voice "${voice}": ${result.scenarios.size} of ${deps.contracts.size} callouts scripted`);
 
       const deliberate = result.skipped.filter((skip) => skip.deliberate).map((skip) => skip.id);
 

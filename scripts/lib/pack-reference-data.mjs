@@ -4,16 +4,19 @@
 // committed JSON.
 //
 // Composition only: `registerCatalogEngine` (catalog-engine.mjs) provides the
-// registered engine off the built dist, `buildPackReference` (the package's
-// pure builder) owns the shape and the sorting, and this module reads the
-// three source files and hands everything over. The generator script is left
-// with file I/O and a summary; the freshness test rebuilds through the same
-// function and compares text.
+// registered engine and the manifest off the built dist, `buildPackReference`
+// (the package's pure builder) owns the shape and the sorting, and this module
+// reads the two source files the engine does not (the bundled script and the
+// voice config — `PACK_REFERENCE_SOURCES` names all four), adds the plugin's
+// list of clips it plays by path, and hands everything over. The generator
+// script is left with file I/O and a summary; the freshness test rebuilds
+// through the same function and compares text.
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import url from "node:url";
 
 import { AUDIO_MANIFEST_PATH, BUNDLED_VOICE, importAudioScenarios, registerCatalogEngine } from "./catalog-engine.mjs";
+import { PLUGIN_PLAYED_CLIPS } from "./lint-pack-run.mjs";
 
 const repoRoot = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "../..");
 
@@ -70,6 +73,10 @@ export async function buildPackReferenceData() {
     script,
     groups,
     manifestClips: manifest.clips,
+    // The clips plugin code plays by path, written onto their recording
+    // lines as `playedBy` — the one list the linter exempts by, so the site
+    // renders the artifact and keeps no list of its own.
+    pluginPlayed: PLUGIN_PLAYED_CLIPS,
     voice: BUNDLED_VOICE,
   });
 }
@@ -90,16 +97,16 @@ export async function serializePackReferenceData(reference) {
 /**
  * What the generator prints and the coordinator reads: the counts, the lines
  * the config has no text for, and what nothing draws from — a whole group no
- * callout and no var accounts for, and, inside a group that IS drawn from,
- * the single lines with neither a direct consumer nor a var naming their
- * group. Either is recorded for nothing, or is a var whose description the
- * `viaVar` heuristic could not read.
+ * callout, no var and no plugin code accounts for, and, inside a group that
+ * IS drawn from, the single lines with no direct consumer, no var naming
+ * their group and no `playedBy`. Either is recorded for nothing, or is a var
+ * whose description the `viaVar` heuristic could not read.
  *
  * @param {import("@iracedeck/audio-scenarios").PackReference} reference
  */
 export function summarizePackReference(reference) {
   const lines = reference.recordingScript.flatMap((group) => group.lines.map((line) => ({ group: group.group, line })));
-  const unconsumed = (line) => line.usedBy.length === 0 && line.viaVar.length === 0;
+  const unconsumed = (line) => line.usedBy.length === 0 && line.viaVar.length === 0 && line.playedBy === null;
   const groupsWithoutConsumer = reference.recordingScript
     .filter((group) => group.lines.every(unconsumed))
     .map((group) => group.group);

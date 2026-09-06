@@ -3105,6 +3105,7 @@ describe("pack-owned scripts (issue #1064)", () => {
         weight: WEIGHT.SAFETY,
         queueable: true,
         interrupt: true,
+        base: "voice/{voice}",
       }),
     );
 
@@ -3118,6 +3119,7 @@ describe("pack-owned scripts (issue #1064)", () => {
         weight: DEFAULT_WEIGHT,
         queueable: false,
         interrupt: false,
+        base: null,
       },
       {
         id: "test.full",
@@ -3128,6 +3130,7 @@ describe("pack-owned scripts (issue #1064)", () => {
         weight: WEIGHT.SAFETY,
         queueable: true,
         interrupt: true,
+        base: "voice/{voice}",
       },
     ]);
   });
@@ -3150,6 +3153,7 @@ describe("pack-owned scripts (issue #1064)", () => {
         weight: DEFAULT_WEIGHT,
         queueable: false,
         interrupt: false,
+        base: null,
       },
     ]);
   });
@@ -3199,6 +3203,49 @@ describe("pack-owned scripts (issue #1064)", () => {
     expect(skipWarns).toEqual([
       'Voice "default": scenario "test.green" skipped — unknown var "ghost"',
       'Voice "laconic": scenario "test.green" skipped — unknown pool "nope"',
+    ]);
+  });
+
+  // `lint:pack` compiles a pack's script through this seam (#1066), so what
+  // it reports has to be what `setScripts` would log — the same private deps,
+  // not a rebuild off the public reports: a code-registered pool is known, a
+  // legacy scenario is not a contract, and nothing about the engine changes.
+  it("(k) compileScript compiles one script exactly as setScripts does, against the engine's own deps, without touching it", () => {
+    engine.defineContract(contract({ frame: NO_FRAME }));
+    engine.defineContract(contract({ id: "test.blue", frame: NO_FRAME }));
+    engine.definePool("legacy-green", ["voice/{voice}/flags/green-01.mp3"]);
+    engine.defineScenario({
+      ...contract({ id: "test.legacy", frame: NO_FRAME }),
+      sequence: ["voice/{voice}/flags/blue-01.mp3"],
+    });
+    const candidate = script({
+      scenarios: {
+        "test.green": { sequence: ["pool:legacy-green"] },
+        "test.legacy": { sequence: ["pool:flag-green"] },
+        "test.blue": { sequence: ["{{ghost}}"] },
+      },
+      fragments: { old: { sequence: ["pool:nope"] } },
+    });
+
+    const compiled = engine.compileScript(candidate);
+
+    expect([...compiled.scenarios.keys()]).toEqual(["test.green"]);
+    expect(compiled.skipped).toEqual([
+      { id: "test.legacy", reason: "no contract", deliberate: false },
+      { id: "test.blue", reason: 'unknown var "ghost"', deliberate: false },
+    ]);
+    expect([...compiled.fragmentProblems]).toEqual([["old", 'unknown pool "nope"']]);
+    // Nothing was loaded: the engine still has no script for the active voice.
+    expect(engine.isScripted("test.green")).toBe(false);
+    expect(mockLogger.warn).not.toHaveBeenCalled();
+
+    engine.setScripts(new Map([["default", candidate]]));
+
+    expect(engine.isScripted("test.green")).toBe(true);
+    expect(mockLogger.warn.mock.calls.map(([msg]) => String(msg))).toEqual([
+      'Voice "default": scenario "test.legacy" skipped — no contract',
+      'Voice "default": scenario "test.blue" skipped — unknown var "ghost"',
+      'Voice "default": fragment "old" — unknown pool "nope"',
     ]);
   });
 

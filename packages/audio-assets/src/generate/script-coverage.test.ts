@@ -33,6 +33,7 @@
  * the bundled voice, not rules.
  */
 import { type Coverage, danglingOf, orphansOf } from "@iracedeck/callout-script";
+import fs from "node:fs";
 import path from "node:path";
 import url from "node:url";
 import { describe, expect, it } from "vitest";
@@ -45,6 +46,17 @@ const PACKAGE_ROOT = path.resolve(__dirname, "../..");
 const CONFIGS_DIR = path.join(PACKAGE_ROOT, "configs");
 
 const DEFAULT_VOICE_ID = "default";
+
+/**
+ * The plugin's built-ins — the runtime manifest's clips outside `voice/`
+ * (the ticks, the ambience bed, the radar tones) — which every frame's
+ * `sfx/…` literal is checked against, the same list `lint:pack` hands the
+ * rules. Read off the committed manifest, which `manifest.test.ts` holds to
+ * the file tree.
+ */
+const SHARED_CLIPS: readonly string[] = (
+  JSON.parse(fs.readFileSync(path.join(PACKAGE_ROOT, "manifest.json"), "utf-8")) as { clips: string[] }
+).clips.filter((clip) => !clip.startsWith("voice/"));
 
 /**
  * How many clip groups the bundled voice's script addresses directly — the
@@ -112,11 +124,16 @@ function fixture(extra: Record<string, unknown>): VoiceConfig {
   });
 }
 
+/** A fixture's coverage against the real built-in list, so a fixture frame is held to the same tick paths the bundled voice is. */
+function coverageOfFixture(config: VoiceConfig): Coverage {
+  return coverageOfConfig(config, SHARED_CLIPS);
+}
+
 const ENTRY = { comment: "fixture", test: "fixture" };
 
 describe("script coverage — the rules bite (positive controls over a mistyped fixture)", () => {
   it("names an authored base a scripted group carries that no step references — the misspelled take", () => {
-    const coverage = coverageOfConfig(
+    const coverage = coverageOfFixture(
       fixture({
         groups: {
           flags: [
@@ -133,7 +150,7 @@ describe("script coverage — the rules bite (positive controls over a mistyped 
   });
 
   it("names a referenced base nothing authors, in every spelling — slashed step, object step, named alias, literal clip", () => {
-    const coverage = coverageOfConfig(
+    const coverage = coverageOfFixture(
       fixture({
         groups: { flags: [{ name: "blue-01", text: "Blue flag." }] },
         pools: { "flag-red": { group: "flags", base: "red", comment: "an alias onto a base nobody recorded" } },
@@ -152,7 +169,7 @@ describe("script coverage — the rules bite (positive controls over a mistyped 
   });
 
   it("names a plain pool the script draws from but never defines — a `connector` step included", () => {
-    const coverage = coverageOfConfig(
+    const coverage = coverageOfFixture(
       fixture({
         groups: { flags: [{ name: "blue-01", text: "Blue flag." }] },
         scenarios: {
@@ -168,7 +185,7 @@ describe("script coverage — the rules bite (positive controls over a mistyped 
   });
 
   it("skips a group no step addresses — var-driven, its bases are a resolver's to pick", () => {
-    const coverage = coverageOfConfig(
+    const coverage = coverageOfFixture(
       fixture({
         groups: {
           flags: [{ name: "blue-01", text: "Blue flag." }],
@@ -186,7 +203,7 @@ describe("script coverage — the rules bite (positive controls over a mistyped 
   });
 
   it("reads a skipped entry as referencing nothing, and a fragment or frame as referencing what it plays", () => {
-    const coverage = coverageOfConfig(
+    const coverage = coverageOfFixture(
       fixture({
         groups: {
           flags: [
@@ -216,7 +233,7 @@ describe("script coverage — the rules bite (positive controls over a mistyped 
   // an authored name both ways too, or it reports the clip as an orphan and
   // its own reference as dangling.
   it("reads an unsuffixed two-digit base the way the engine does — matched as itself and as a variant", () => {
-    const coverage = coverageOfConfig(
+    const coverage = coverageOfFixture(
       fixture({
         groups: {
           "start-lights": [
@@ -239,7 +256,7 @@ describe("script coverage — the rules bite (positive controls over a mistyped 
   // fragment nothing includes — or that only a skipped entry includes — is
   // dead: what it references is resolved by no entry the engine compiles.
   it("names a defined fragment nothing includes, and counts what only it references as unreferenced", () => {
-    const coverage = coverageOfConfig(
+    const coverage = coverageOfFixture(
       fixture({
         groups: {
           flags: [
@@ -266,7 +283,7 @@ describe("script coverage — the rules bite (positive controls over a mistyped 
   });
 
   it("names an include of a fragment the script never defines", () => {
-    const coverage = coverageOfConfig(
+    const coverage = coverageOfFixture(
       fixture({
         groups: { flags: [{ name: "blue-01", text: "Blue flag." }] },
         fragments: { "readback-body": { sequence: ["pool:flags/blue"] } },
@@ -278,13 +295,13 @@ describe("script coverage — the rules bite (positive controls over a mistyped 
   });
 
   // A literal clip step is checked when it addresses one of the voice's own
-  // clips (`voice/<voice>/<group>/<name>.mp3`) and left alone when it
-  // addresses a shared built-in (`sfx/…`, the bundled frame's ticks). Any
-  // other spelling — a base-relative `flags/blue-01.mp3`, which the engine
-  // would resolve against the contract's `base` — cannot be placed by this
-  // check, so it is a finding rather than a silent drop.
+  // clips (`voice/<voice>/<group>/<name>.mp3`) and against the plugin's
+  // built-in list when it addresses a shared one (`sfx/…`, the bundled
+  // frame's ticks). Any other spelling — a base-relative `flags/blue-01.mp3`,
+  // which the engine would resolve against the contract's `base` — cannot be
+  // placed by this check, so it is a finding rather than a silent drop.
   it("names a literal clip path it cannot place — base-relative — and passes the shared sfx paths", () => {
-    const coverage = coverageOfConfig(
+    const coverage = coverageOfFixture(
       fixture({
         groups: { flags: [{ name: "blue-01", text: "Blue flag." }] },
         frames: { radio: { open: [{ clip: "sfx/IRD-tick-open.mp3" }], close: ["/sfx/IRD-tick-close.mp3"] } },
@@ -303,6 +320,45 @@ describe("script coverage — the rules bite (positive controls over a mistyped 
       'literal "voice/flags/blue-01.mp3" (not voice/<voice>/<group>/<name>.mp3 — a path this check cannot place)',
     ]);
   });
+
+  // The built-ins used to be skipped unread, so a misspelled tick in a frame
+  // linted clean and aborted every framed callout at fire time (#835).
+  it("names a shared sfx/ path the plugin does not ship — the misspelled tick", () => {
+    const coverage = coverageOfFixture(
+      fixture({
+        groups: { flags: [{ name: "blue-01", text: "Blue flag." }] },
+        frames: { radio: { open: [{ clip: "sfx/IRD-tick-opne.mp3" }], close: ["/sfx/IRD-tick-close.mp3"] } },
+        scenarios: { "pit-crew.flag-blue": { ...ENTRY, sequence: ["pool:flags/blue"] } },
+      }),
+    );
+
+    expect(coverage.sharedLiterals).toEqual(["sfx/IRD-tick-close.mp3", "sfx/IRD-tick-opne.mp3"]);
+    expect(danglingOf(coverage)).toEqual(['built-in "sfx/IRD-tick-opne.mp3" (not a clip the plugin ships)']);
+  });
+
+  // A defined alias used to count as a reference on its own, which let an
+  // alias nothing named hide the orphan its source had become.
+  it("names a pools alias no step draws from, and its shipped source as the orphan it is", () => {
+    const coverage = coverageOfFixture(
+      fixture({
+        groups: {
+          flags: [
+            { name: "blue-01", text: "Blue flag." },
+            { name: "green-01", text: "Green flag." },
+          ],
+        },
+        pools: {
+          "flag-green": { group: "flags", base: "green", comment: "nothing names this any more" },
+          "flag-red": { group: "flags", base: "red", comment: "nor this, and nobody recorded red" },
+        },
+        scenarios: { "pit-crew.flag-blue": { ...ENTRY, sequence: ["pool:flags/blue"] } },
+      }),
+    );
+
+    expect(coverage.unusedAliases).toEqual(["flag-green", "flag-red"]);
+    expect(bundledOrphansOf(coverage)).toEqual(["flags/green"]);
+    expect(danglingOf(coverage)).toEqual(["flags/red"]);
+  });
 });
 
 describe("the two declared lists are alive — nothing parked here has quietly stopped being true", () => {
@@ -314,7 +370,7 @@ describe("the two declared lists are alive — nothing parked here has quietly s
 
   if (!defaultVoice) return;
 
-  const coverage = coverageOfConfig(defaultVoice);
+  const coverage = coverageOfConfig(defaultVoice, SHARED_CLIPS);
 
   it("every var-driven pattern matches at least one authored base of the bundled voice, in a group a script addresses", () => {
     // A pattern matching nothing is a resolver that went away, or a group
@@ -347,7 +403,7 @@ describe("every voice's script covers its own clips (issue #1065)", () => {
 
   for (const [voiceId, voice] of voiceConfigs) {
     describe(`voice "${voiceId}"`, () => {
-      const coverage = coverageOfConfig(voice);
+      const coverage = coverageOfConfig(voice, SHARED_CLIPS);
 
       it("references every clip it authors in a group its script addresses — an unreferenced base is a typo or a lost consumer", () => {
         const orphans = bundledOrphansOf(coverage);
@@ -373,6 +429,10 @@ describe("every voice's script covers its own clips (issue #1065)", () => {
 
       it("defines every fragment it includes — an include resolves only within the same script", () => {
         expect(coverage.unknownIncludes, `includes in "${voiceId}" of fragments it does not define`).toEqual([]);
+      });
+
+      it("draws from every pools alias it defines — an alias nothing names is a name that stopped carrying a decision", () => {
+        expect(coverage.unusedAliases, `pools aliases in "${voiceId}" no live step names`).toEqual([]);
       });
 
       if (voiceId === DEFAULT_VOICE_ID) {

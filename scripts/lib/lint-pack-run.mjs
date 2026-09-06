@@ -16,7 +16,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 
-import { registerCatalogEngine } from "./catalog-engine.mjs";
+import { BUNDLED_VOICE, registerCatalogEngine } from "./catalog-engine.mjs";
 
 export const USAGE = "usage: pnpm lint:pack <packDir>  — the folder that holds voice-pack.json and voice/";
 
@@ -25,29 +25,103 @@ export const EXIT_PROBLEMS = 1;
 export const EXIT_USAGE = 2;
 
 /**
- * Clip groups PLUGIN CODE plays with the active voice by path, outside any
- * script or var — so no script references them, no vocabulary description
- * names them, and yet a pack that ships them is heard. `lintPack` takes them
- * as `pluginPlayedGroups` and never calls a base in one an orphan. The list
- * lives HERE, on the plugin side of the seam, because the pure linter is as
- * ignorant of the plugin as the reference builder is; each entry names the
- * code that plays it, and a new by-path consumer is a new entry. The
- * exemption is per GROUP, so a base in one that nothing plays (`welcome/hello`
- * today) is excused with it.
+ * The `base` of a `PLUGIN_PLAYED_CLIPS` entry that stands for every base of
+ * its group — the builder's `PLUGIN_PLAYED_ANY_BASE`, restated here because
+ * the constant below is built before the dist is loaded.
  */
-export const PLUGIN_PLAYED_GROUPS = Object.freeze([
-  // `voice/<voice>/names/<driver>.mp3` — the driver-name clip the connect
-  // radio check opens with (packages/iracing-actions/src/actions/pit-crew/pit-crew.ts).
-  "names",
-  // `voice/<voice>/toggle/<clip>.mp3` — the radio check and the
-  // going-silent / resuming / corner-names acknowledgments
-  // (packages/iracing-actions/src/audio/audio-toggles.ts, pit-crew.ts).
-  "toggle",
-  // `voice/<voice>/welcome/greeting-01.mp3` — what the settings window's Race
-  // Engineer Test button plays after the driver's name
-  // (packages/iracing-actions/src/audio/voice-test.ts).
-  "welcome",
+export const ANY_BASE = "*";
+
+/**
+ * The clips PLUGIN CODE plays with the active voice by path, outside any
+ * script or var — so no script references them, no vocabulary description
+ * names them, and yet a pack that ships them is heard. One list, two
+ * readers: `lintPack` takes the `group/base` keys as `pluginPlayedBases` and
+ * never calls one an orphan, and `buildPackReference` takes the entries as
+ * `pluginPlayed` and writes each `playedBy` onto its recording line, so the
+ * website renders these words from the artifact and mirrors no list of its
+ * own. The list lives HERE, on the plugin side of the seam, because the pure
+ * linter and the pure builder are both ignorant of the plugin; each entry
+ * names the code that plays it, and a new by-path consumer is a new entry.
+ *
+ * The exemption is per CLIP: the plugin plays each of these by its exact
+ * name (`toggle/radio-check-01.mp3` — the `-01` take, not the pool), so a
+ * misspelled sibling in the same group (`toggle/radio-chek`) is the orphan it
+ * is, and `welcome/hello` — which nothing plays — is one too. `names/` is the
+ * one group played whole: one clip per driver name, the name chosen at
+ * runtime, so every base of it is heard. `lint-pack-run.test.mjs` holds every
+ * exact entry to a clip in the bundled manifest.
+ *
+ * Two of these are the second step of a chain that stops at the first clip
+ * it cannot start (`playVoiceSequence` in audio-toggles.ts, `if (!ok)
+ * finish()`): the connect radio check and the Test button both play
+ * `names/<driver>` FIRST, and the driver name resolves from the union of
+ * every installed voice's names (`scanDriverNames`; `resolveActiveDriverName`
+ * falls back to `driver`, then to the first name) — so a pack that records
+ * `toggle/radio-check` or `welcome/greeting` without a `names/` clip for the
+ * name the user is set to plays nothing at all for either. The `playedBy`
+ * text says so, since it is what a pack author reads.
+ *
+ * @type {readonly { group: string, base: string, playedBy: string }[]}
+ */
+export const PLUGIN_PLAYED_CLIPS = Object.freeze([
+  {
+    group: "toggle",
+    base: "radio-check",
+    // packages/iracing-actions/src/actions/pit-crew/pit-crew.ts (`playRadioCheck`):
+    // `voice/${voice}/names/${driverName}.mp3`, then `voice/${voice}/toggle/radio-check-01.mp3`.
+    playedBy:
+      "Played by the plugin itself, outside the script: the radio check when the sim connects, as toggle/radio-check-01 after the driver's name. The check plays names/<driver> first and stops at the first clip it cannot find, so record a names/ clip for the name the Race Engineer is set to as well.",
+  },
+  {
+    group: "toggle",
+    base: "going-silent",
+    // packages/iracing-actions/src/audio/audio-toggles.ts (`playToggleAck`):
+    // `voice/${voice}/toggle/${clipName}.mp3` with clipName "going-silent-01" | "resuming-01".
+    playedBy:
+      "Played by the plugin itself, outside the script: the acknowledgment when the Race Engineer is switched off, as toggle/going-silent-01.",
+  },
+  {
+    group: "toggle",
+    base: "resuming",
+    // audio-toggles.ts (`playToggleAck`), the other clipName.
+    playedBy:
+      "Played by the plugin itself, outside the script: the acknowledgment when the Race Engineer is switched back on, as toggle/resuming-01.",
+  },
+  {
+    group: "toggle",
+    base: "corner-names-on",
+    // audio-toggles.ts (`toggleCornerNamesFeature`):
+    // `voice/${voice}/toggle/corner-names-${next ? "on" : "off"}-01.mp3`.
+    playedBy:
+      "Played by the plugin itself, outside the script: the acknowledgment when corner-name callouts are switched on, as toggle/corner-names-on-01.",
+  },
+  {
+    group: "toggle",
+    base: "corner-names-off",
+    // audio-toggles.ts (`toggleCornerNamesFeature`), the `off` side.
+    playedBy:
+      "Played by the plugin itself, outside the script: the acknowledgment when corner-name callouts are switched off, as toggle/corner-names-off-01.",
+  },
+  {
+    group: "welcome",
+    base: "greeting",
+    // packages/iracing-actions/src/audio/voice-test.ts (`playRaceEngineerVoiceTest`):
+    // `voice/${voice}/names/${driverName}.mp3` (when a name resolves), then `voice/${voice}/welcome/greeting-01.mp3`.
+    playedBy:
+      "Played by the plugin itself, outside the script: what the Race Engineer Test button in iRaceDeck Settings plays, as welcome/greeting-01 after the driver's name. The button plays names/<driver> first and stops at the first clip it cannot find, so a pack that wants the Test button voiced records a names/ clip for the name it is set to as well.",
+  },
+  {
+    group: "names",
+    base: ANY_BASE,
+    // pit-crew.ts (`playRadioCheck`) and voice-test.ts (`playRaceEngineerVoiceTest`):
+    // `voice/${voice}/names/${driverName}.mp3`, the name from `resolveActiveDriverName`.
+    playedBy:
+      "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional.",
+  },
 ]);
+
+/** The `group/base` keys of `PLUGIN_PLAYED_CLIPS`, `group/*` for a group played whole — what `lintPack` takes. */
+export const PLUGIN_PLAYED_BASES = Object.freeze(PLUGIN_PLAYED_CLIPS.map((clip) => `${clip.group}/${clip.base}`));
 
 /**
  * The linter's three disk operations over `node:fs` — the same shape as
@@ -114,7 +188,8 @@ export function createLintPackFileSystem() {
  *   log?: (line: string) => void,
  *   error?: (line: string) => void,
  *   register?: () => Promise<{
- *     engine: Pick<import("@iracedeck/audio-scenarios").IScenarioEngine, "contracts" | "vocabulary">,
+ *     engine: Pick<import("@iracedeck/audio-scenarios").IScenarioEngine, "contracts" | "vocabulary" | "compileScript">,
+ *     manifest: Pick<import("@iracedeck/audio-scenarios").AudioAssetsManifest, "clips">,
  *     audioScenarios: Pick<typeof import("@iracedeck/audio-scenarios"), "lintPack" | "formatLintReport">,
  *   }>,
  *   fs?: import("@iracedeck/audio-scenarios").LintPackFileSystem,
@@ -153,13 +228,19 @@ export async function runLintPack(argv, io = {}) {
     return EXIT_USAGE;
   }
 
-  const { engine, audioScenarios } = catalog;
+  const { engine, manifest, audioScenarios } = catalog;
   const report = audioScenarios.lintPack({
     packDir: resolved,
+    packDirName: path.basename(resolved),
     fs,
     contracts: engine.contracts(),
     vocabulary: engine.vocabulary(),
-    pluginPlayedGroups: PLUGIN_PLAYED_GROUPS,
+    // The engine's own compile, so a pack is checked against the deps the plugin compiles it with.
+    compile: engine.compileScript.bind(engine),
+    // The plugin's built-ins — the runtime manifest's clips outside `voice/` (the ticks, the ambience bed, the radar tones).
+    sharedClips: manifest.clips.filter((clip) => !clip.startsWith("voice/")),
+    bundledVoiceIds: [BUNDLED_VOICE],
+    pluginPlayedBases: PLUGIN_PLAYED_BASES,
   });
 
   log(`Linting ${resolved}`);

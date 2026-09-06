@@ -10,6 +10,7 @@ import { parseCallouts } from "../pack-reference-types.js";
 import {
   caseHref,
   condHref,
+  describeBase,
   describeScheduling,
   describeTrigger,
   describeWeight,
@@ -65,9 +66,11 @@ function hasReferences(c: (typeof callouts)[number]): boolean {
             <dt>Default frame</dt>
             <dd>{c.frame === "none" ? "none — plays unframed" : <code>{c.frame}</code>}</dd>
             <dt>Weight</dt>
-            <dd>{describeWeight(c.weight)}</dd>
+            <dd>{describeWeight(c)}</dd>
             <dt>Scheduling</dt>
             <dd>{describeScheduling(c)}</dd>
+            <dt>Base</dt>
+            <dd>{describeBase(c)}</dd>
           </dl>
           {c.skip ? (
             <p>
