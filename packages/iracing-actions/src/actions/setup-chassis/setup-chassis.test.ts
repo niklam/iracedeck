@@ -548,8 +548,8 @@ describe("SetupChassis", () => {
         for (const [direction, labels] of Object.entries(directions)) {
           const result = generateSetupChassisSvg(
             parseSetupChassisSettings({
-              setting: setting as any,
-              direction: direction as any,
+              setting: setting,
+              direction: direction,
             }),
           );
           const decoded = decodeURIComponent(result);

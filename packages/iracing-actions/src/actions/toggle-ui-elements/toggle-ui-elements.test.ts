@@ -248,7 +248,7 @@ describe("ToggleUiElements", () => {
       };
 
       for (const [element, labels] of Object.entries(expectedLabels)) {
-        const result = generateToggleUiElementsSvg(ToggleUiElementsSettings.parse({ element: element as any }));
+        const result = generateToggleUiElementsSvg(ToggleUiElementsSettings.parse({ element: element }));
         const decoded = decodeURIComponent(result);
 
         expect(decoded).toContain(labels.mainLabel);

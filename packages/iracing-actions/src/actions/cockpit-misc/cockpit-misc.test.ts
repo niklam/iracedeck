@@ -393,8 +393,8 @@ describe("CockpitMisc", () => {
         for (const [direction, labels] of Object.entries(directions)) {
           const result = generateCockpitMiscSvg(
             CockpitMiscSettings.parse({
-              control: control as any,
-              direction: direction as any,
+              control: control,
+              direction: direction,
             }),
           );
           const decoded = decodeURIComponent(result);

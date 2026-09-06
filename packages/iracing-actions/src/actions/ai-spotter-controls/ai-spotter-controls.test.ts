@@ -263,7 +263,7 @@ describe("AiSpotterControls", () => {
 
     it("should include correct labels for all controls", () => {
       for (const [control, titleText] of Object.entries(SPOTTER_TITLES)) {
-        const result = generateAiSpotterControlsSvg(AiSpotterControlsSettings.parse({ control: control as any }));
+        const result = generateAiSpotterControlsSvg(AiSpotterControlsSettings.parse({ control: control }));
         const decoded = decodeURIComponent(result);
         const lines = titleText.split("\n");
 

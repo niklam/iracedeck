@@ -338,7 +338,7 @@ describe("CarControl", () => {
       };
 
       for (const [control, labels] of Object.entries(expectedLabels)) {
-        const result = generateCarControlSvg(CarControlSettings.parse({ control: control as any }));
+        const result = generateCarControlSvg(CarControlSettings.parse({ control: control }));
         const decoded = decodeURIComponent(result);
 
         expect(decoded).toContain(labels.line1);
@@ -546,9 +546,9 @@ describe("CarControl", () => {
     it("should render a different icon for each of the three states", () => {
       for (const control of ["ignition", "starter"] as const) {
         const key = control === "ignition" ? "ignitionState" : "starterState";
-        const on = generateCarControlSvg(CarControlSettings.parse({ control }), { [key]: "on" } as any);
-        const off = generateCarControlSvg(CarControlSettings.parse({ control }), { [key]: "off" } as any);
-        const na = generateCarControlSvg(CarControlSettings.parse({ control }), { [key]: "na" } as any);
+        const on = generateCarControlSvg(CarControlSettings.parse({ control }), { [key]: "on" });
+        const off = generateCarControlSvg(CarControlSettings.parse({ control }), { [key]: "off" });
+        const na = generateCarControlSvg(CarControlSettings.parse({ control }), { [key]: "na" });
 
         expect(new Set([on, off, na]).size).toBe(3);
       }
@@ -558,7 +558,7 @@ describe("CarControl", () => {
       const bare = generateCarControlSvg(CarControlSettings.parse({ control: "ignition" }));
       const na = generateCarControlSvg(CarControlSettings.parse({ control: "ignition" }), {
         ignitionState: "na",
-      } as any);
+      });
 
       expect(bare).toBe(na);
     });
@@ -1143,7 +1143,7 @@ describe("CarControl", () => {
       };
 
       for (const [control, labels] of Object.entries(expected)) {
-        const result = generateCarControlSvg(CarControlSettings.parse({ control: control as any }));
+        const result = generateCarControlSvg(CarControlSettings.parse({ control: control }));
 
         expect(result).toContain("data:image/svg+xml");
         const decoded = decodeURIComponent(result);

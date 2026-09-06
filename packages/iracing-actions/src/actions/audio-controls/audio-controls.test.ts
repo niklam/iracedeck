@@ -337,8 +337,8 @@ describe("AudioControls", () => {
         for (const [action, labels] of Object.entries(actions)) {
           const result = generateAudioControlsSvg(
             parseAudioControlsSettings({
-              category: category as any,
-              action: action as any,
+              category: category,
+              action: action,
             }),
           );
           const decoded = decodeURIComponent(result);

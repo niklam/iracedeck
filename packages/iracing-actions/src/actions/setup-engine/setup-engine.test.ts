@@ -337,8 +337,8 @@ describe("SetupEngine", () => {
         for (const [direction, labels] of Object.entries(directions)) {
           const result = generateSetupEngineSvg(
             parseSetupEngineSettings({
-              setting: setting as any,
-              direction: direction as any,
+              setting: setting,
+              direction: direction,
             }),
           );
           const decoded = decodeURIComponent(result);

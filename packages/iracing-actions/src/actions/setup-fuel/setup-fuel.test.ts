@@ -408,8 +408,8 @@ describe("SetupFuel", () => {
         for (const [direction, labels] of Object.entries(directions)) {
           const result = generateSetupFuelSvg(
             parseSetupFuelSettings({
-              setting: setting as any,
-              direction: direction as any,
+              setting: setting,
+              direction: direction,
             }),
           );
           const decoded = decodeURIComponent(result);

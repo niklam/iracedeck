@@ -37,9 +37,15 @@ const NO_TYPECHECK_SCRIPT = new Map([]);
 // the fix) — 386 of them partial settings literals handed to functions typed with
 // the full parsed settings, 70 of them tests reaching protected members through
 // the real class type. Every one was in test code; the fix touched no production
-// signature. The reverse-direction assertion below is what forced this entry out
-// the moment the exclusion went, and it is what makes the next package that tries
-// to exclude its tests declare the size of what it hides.
+// signature. Two assertions below share the work: the forward one fails a
+// `tsc -p` package the moment its program leaves a test file out, naming this
+// Map as the place to declare what the exclusion hides, and the reverse one is
+// what retired this entry the moment the exclusion went. With both Maps empty
+// the reverse branch is dormant, and the whole guarantee rests on
+// `testFilesOnDisk` finding the files — an empty walk returns early instead of
+// failing — which is why the walker has a smoke test of its own further down.
+// Nothing here re-verifies the 541; it is a dated measurement, kept because it
+// sizes what the gate was missing.
 const TYPECHECK_EXCLUDES_TESTS = new Map([]);
 
 // Resolve a tsconfig the way tsc does, rather than pattern-matching its `exclude`
@@ -431,6 +437,22 @@ describe("every package with TypeScript is covered by pnpm typecheck", () => {
     // It would also go false the day anyone adds a `.ts` under `.github` — if
     // that happens, move it to a fixture rather than deleting the assertion.
     expect(hasTypeScriptSources(join(repoRoot, ".github"))).toBe(false);
+  });
+
+  // The walker's own smoke test (#1078). Once every package checks every test
+  // file, `testFilesOnDisk` is the only thing the per-package assertion still
+  // depends on: its callers return early on an empty result, so a regression
+  // that made it find nothing — a prune name too many, a filter inverted — would
+  // let a test exclusion come back with the suite green. Two plugin packages
+  // legitimately take that early return today, so an empty result raises no
+  // eyebrow on its own. Pin the positive against a package whose tests it must
+  // find, and the pruning against the one directory that would otherwise flood
+  // the result.
+  it("finds a package's test files without descending into what it must skip", () => {
+    const found = testFilesOnDisk(join(repoRoot, "packages", "iracing-actions"));
+    expect(found.length).toBeGreaterThan(0);
+    expect(found).toContain(toPosix(join(repoRoot, "packages", "iracing-actions", "src", "actions", "comms-catalog.test.ts")));
+    expect(found.filter((f) => f.includes("/node_modules/") || f.includes("/dist/") || f.includes("/build/"))).toEqual([]);
   });
 
   it("has no stale allow-list entries", () => {

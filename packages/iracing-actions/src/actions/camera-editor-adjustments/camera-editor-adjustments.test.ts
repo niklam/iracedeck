@@ -412,8 +412,8 @@ describe("CameraEditorAdjustments", () => {
         for (const direction of ["increase", "decrease"]) {
           const result = generateCameraEditorAdjustmentsSvg(
             CameraEditorAdjustmentsSettings.parse({
-              adjustment: adjustment as any,
-              direction: direction as any,
+              adjustment: adjustment,
+              direction: direction,
             }),
           );
           const decoded = decodeURIComponent(result);

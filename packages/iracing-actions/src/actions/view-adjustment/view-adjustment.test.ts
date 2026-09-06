@@ -344,8 +344,8 @@ describe("ViewAdjustment", () => {
         for (const [direction, labels] of Object.entries(directions)) {
           const result = generateViewAdjustmentSvg(
             ViewAdjustmentSettings.parse({
-              adjustment: adjustment as any,
-              direction: direction as any,
+              adjustment: adjustment,
+              direction: direction,
             }),
           );
           const decoded = decodeURIComponent(result);

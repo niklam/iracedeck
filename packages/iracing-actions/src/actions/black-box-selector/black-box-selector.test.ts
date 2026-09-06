@@ -276,7 +276,7 @@ describe("BlackBoxSelector", () => {
 
       for (const [blackBox, titleText] of Object.entries(expectedTitleText)) {
         const result = generateBlackBoxSelectorSvg(
-          BlackBoxSelectorSettings.parse({ mode: "direct", blackBox: blackBox as any }),
+          BlackBoxSelectorSettings.parse({ mode: "direct", blackBox: blackBox }),
         );
         const decoded = decodeURIComponent(result);
 

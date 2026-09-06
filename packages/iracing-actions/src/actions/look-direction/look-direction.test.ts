@@ -193,7 +193,7 @@ describe("LookDirection", () => {
       };
 
       for (const [direction, labels] of Object.entries(expectedLabels)) {
-        const result = generateLookDirectionSvg(LookDirectionSettings.parse({ direction: direction as any }));
+        const result = generateLookDirectionSvg(LookDirectionSettings.parse({ direction: direction }));
         const decoded = decodeURIComponent(result);
 
         expect(decoded).toContain(labels.mainLabel);
