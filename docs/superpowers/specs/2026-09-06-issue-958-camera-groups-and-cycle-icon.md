@@ -2,7 +2,7 @@
 >
 > Point-in-time design record. The code and `.claude/rules/` are the truth; this is not documentation.
 
-# Camera Controls: the two missing TV groups, and a Cycle Camera key that shows the current camera
+# Camera Controls: the missing camera groups, and a Cycle Camera key that shows the current camera
 
 ## The problem
 
@@ -14,7 +14,7 @@ Two Discord requests from Moartl31, filed as #958 and #959, land on the same thr
 
 ## What ships
 
-The two new groups are appended to every list with their own icons, **off by default** in the cycle subset. Cycle Camera keys gain a per-key **Icon Shows** setting, `Next camera` (default, today's behaviour) or `Current camera`. Nothing changes on the dial.
+**Five** groups — TV Static, TV Mixed, TV4, Spotter, Spectator — are appended to every list with their own icons, **off by default** in the cycle subset. Cycle Camera keys gain a per-key **Icon Shows** setting, `Next camera` (default, today's behaviour) or `Current camera`. Nothing changes on the dial.
 
 ## Decisions
 
@@ -22,31 +22,33 @@ The two new groups are appended to every list with their own icons, **off by def
 
 Both issues edit the same icon map, the same `updateCycleIcon` neighbourhood and the same PI script block; split across two branches they conflict on every one. #958 lands first because it grows the icon map `current` mode reads, so `current` is written and tested once against the final list. One PR titled for #958, `Fixes #958` and `Fixes #959`. Rejected: a PR each, which buys nothing but conflicts and a second review of the same diff.
 
-### 2. The exact group names come from a live session, before anything is written
+### 2. Five groups, not two — the names come from the captures we already have
 
-The names in the request and in the issue sketch — "TV Static", "TV Mixed" — are **unverified**. Nothing in the repo lists them: the mock in `packages/iracing-native/src/mock-data/session-info.ts` is truncated to ten groups, and a repo-wide search finds neither string. The whole feature resolves by exact `GroupName` match, so a wrong capitalisation or a missing space is a silently dead menu entry.
+The issue calls for a capture because the committed mock is truncated to ten groups. It is — but 61 gitignored **Telemetry Control snapshots** under `local/` already hold real `CameraInfo.Groups` lists, and they settle both open questions. `TV Static` and `TV Mixed` are confirmed verbatim on 35 of them. And two Lakeland captures (oval and dirt road) carry **25** groups: the same twenty plus those two and three more we also do not list — `TV4`, `Spotter`, `Spectator`, each a real group with cameras (TV Mixed alone has 23).
 
-So task one is a capture: take a session snapshot with the Telemetry Control **Take Snapshot** key on content that has the groups, read `SessionInfo.CameraInfo.Groups`, and write the strings from that. The capture also answers the second question — whether iRacing exposes further groups we still do not list — which the issue only guesses at. Rejected: coding to the sketch and fixing it after a bug report; a name we cannot test locally is exactly the thing to confirm before, not after.
+So all five ship. The request was "the remaining camera options (like TV Static or TV Mixed)" — the two named were examples, and shipping only them leaves three missing on exactly the oval and dirt content this affects: the same issue again in a month, against the same four files. It widens #958 past its title, so the issue text is updated to name all five. Rejected: the literal two, and deferring the other three to a follow-up nobody would open.
 
-### 3. Appended at 21 and 22 — the numbers are ours, the names are iRacing's
+Two facts from the same captures are load-bearing below: the sim's own group **numbers vary by content** (Scenic is 10 on one track, our map calls it 20; TV1 is 11 there and 17 for us), and one capture reports `Pit Lane2` without the space that the other 60 have.
 
-`CAMERA_GROUP_MAP`'s keys are a plugin-side enumeration (the PI dropdown's stored value), not iRacing's group numbers: our 10 is Blimp, the mock session's 6 is Cockpit. `executeChangeCamera` resolves the map's **name** against the live session's groups, and the numbers only order the dropdown. Appending at 21 and 22 therefore leaves every stored value meaning what it meant. Rejected: renumbering into the sim's order or inserting the new groups next to TV1–TV3, both of which would silently repoint every existing Change Camera key.
+### 3. Appended at 21–25 — the numbers are ours, the names are iRacing's
 
-The PI's `ALL_GROUPS` order is its own display order, so the two new entries join the **Track** section there and `GROUP_SECTIONS` becomes Car 0–9, Chase 9–12, Track 12–20, Aerial 20–22.
+`CAMERA_GROUP_MAP`'s keys are a plugin-side enumeration (the PI dropdown's stored value), not iRacing's group numbers — the captures above prove they cannot be, since the sim renumbers per content. `executeChangeCamera` resolves the map's **name** against the live session's groups; the numbers only order the dropdown. Appending at 21–25 therefore leaves every stored value meaning what it meant. Rejected: renumbering into the sim's order, or inserting the new groups next to TV1–TV3, both of which would silently repoint every existing Change Camera key.
+
+All five join the PI's **Track** section (its own display order), so `GROUP_SECTIONS` becomes Car 0–9, Chase 9–12, Track 12–23, Aerial 23–25.
 
 ### 4. Off by default in the cycle subset
 
-`DEFAULT_ENABLED_GROUPS` is untouched, so no existing cycle gains two stops, and a key that has never been configured keeps the same six. Rejected: enabling them by default, and a one-shot migration that adds them to saved subsets — both change what a press does on a key the user never touched, for a group most content does not have.
+`DEFAULT_ENABLED_GROUPS` is untouched, so no existing cycle gains five stops, and a key that has never been configured keeps the same six. Rejected: enabling them by default, and a one-shot migration that adds them to saved subsets — both change what a press does on a key the user never touched, for groups most content does not have.
 
 ### 5. The schema bound follows the map, and `cameraGroup` gains its own `.catch`
 
-`cameraGroup`'s `.max(20)` is derived from `CAMERA_GROUP_MAP` rather than bumped to a fresh literal, so the next group added cannot be rejected by a bound nobody remembered. It also gains `.catch(9)`: `parseSettings` uses `safeParse` and falls back to **full defaults** on any failure, so a key holding `21` read by an older build would today lose its mode, direction and subset as well — the same downgrade trap the `dial` sub-object already carries a `.catch` for. Rejected: the bare `.max(22)` from the sketch, which leaves that trap armed.
+`cameraGroup`'s `.max(20)` is derived from `CAMERA_GROUP_MAP` rather than bumped to a fresh literal, so the next group added cannot be rejected by a bound nobody remembered. It also gains `.catch(9)`: `parseSettings` uses `safeParse` and falls back to **full defaults** on any failure, so a key holding `23` read by an older build would today lose its mode, direction and subset as well — the same downgrade trap the `dial` sub-object already carries a `.catch` for. Rejected: the bare `.max(22)` from the sketch, which leaves that trap armed.
 
 ### 6. A group the session does not have: skip, don't send our index
 
-`executeChangeCamera` falls back to the raw stored number when the name is not in the session's groups (`?? cameraGroup`). With session groups known, that number is ours, not iRacing's, so it selects the wrong camera or nothing — harmless-looking until TV Static on old content becomes the common case. When the session's groups are readable and the target name is absent, the press now sends nothing and logs it; the raw-number path stays only for when no session info is readable at all. One rule for every group, no special case for the new two. Rejected: leaving the fallback, which spends a press on a wrong camera.
+`executeChangeCamera` falls back to the raw stored number when the name is not in the session's groups (`?? cameraGroup`). That number is ours and the sim's differ, so the fallback picks a wrong camera whenever it fires — rare while every mapped group existed everywhere, routine once Spotter or TV Mixed sits on a key and the user loads road content. With the session's groups readable and the name absent, the press now sends nothing and logs it; the raw-number path stays only for when no session info is readable at all. One rule for every group. Rejected: leaving the fallback, which spends a press on a wrong camera.
 
-Cycle Camera needs no equivalent: `getNextSelectedGroupEntry` intersects the enabled subset with the session's groups, so an absent group is already skipped.
+That makes the `Pit Lane2` capture matter: with the fallback gone, a name that fails to match is a dead press rather than a lucky one, so the session-name lookup applies the same `LEGACY_NAMES` normalisation `parseGroupSubset` already carries, from one shared helper. Cycle Camera needs no other change — `getNextSelectedGroupEntry` intersects the enabled subset with the session's groups, so an absent group is already skipped.
 
 ### 7. The duplicated PI list gets a test
 
@@ -66,14 +68,15 @@ The dial is untouched: `computeCameraCarousel` already centres the current group
 
 ## Verification
 
-The group-name capture comes first and its strings are what the map is written from. Unit tests: the two names present in `DEFAULT_CAMERA_GROUPS`, `CAMERA_SELECT_ICONS` and `CAMERA_GROUP_MAP` and absent from `DEFAULT_ENABLED_GROUPS`; the derived schema bound accepts 21/22 while a junk value degrades to 9 without resetting the key; the missing-name skip; the PI-list consistency test; `updateCycleIcon` in both modes, including a current group outside the enabled subset, an unmapped group, and no telemetry.
+The five names are copied from the `local/` captures, and the 25-group list from those two Lakeland snapshots is what the mock in `packages/iracing-native/src/mock-data/session-info.ts` is widened to, so the tests run against a session shaped like the real thing. Unit tests: the five names present in `DEFAULT_CAMERA_GROUPS`, `CAMERA_SELECT_ICONS` and `CAMERA_GROUP_MAP` and absent from `DEFAULT_ENABLED_GROUPS`; the derived schema bound accepts 21–25 while a junk value degrades to 9 without resetting the key; the missing-name skip and the `Pit Lane2` normalisation; the PI-list consistency test; `updateCycleIcon` in both modes, including a current group outside the enabled subset, an unmapped group, and no telemetry.
 
-Manual, on content that has the groups: Change Camera to each new group switches, and the same key on content without them does nothing and says so; both new groups appear unchecked in the keypad and dial grids and cycle once enabled; `Next camera` behaves exactly as before; `Current camera` tracks the sim's group, including when the camera is moved by another key; the dial carousel is unchanged.
+Manual, on Lakeland (which has all five) and on road content (which has none): Change Camera to each new group switches on the first, does nothing and says so on the second; the five appear unchecked in the keypad and dial grids and cycle once enabled; `Next camera` behaves exactly as before; `Current camera` tracks the sim's group, including when the camera is moved by another key; the dial carousel is unchanged.
 
 ## Affected artifacts
 
-- `camera-controls/camera-groups.ts` (`DEFAULT_CAMERA_GROUPS`), `camera-controls/camera-controls.ts` (both icon maps, the schema, `executeChangeCamera`, `updateCycleIcon`, `generateCameraSelectSvg`), and their tests.
+- `camera-controls/camera-groups.ts` (`DEFAULT_CAMERA_GROUPS`, the shared name normaliser), `camera-controls/camera-controls.ts` (both icon maps, the schema, `executeChangeCamera`, `updateCycleIcon`, `generateCameraSelectSvg`), and their tests.
 - `camera-focus/camera-focus.ejs`: the Track `<optgroup>`, `ALL_GROUPS`, `GROUP_SECTIONS`, the Icon Shows select and its visibility branch; the new PI-list test.
-- `packages/icons/camera-select/tv-static.svg` and `tv-mixed.svg` in the TV1–TV3 style, then `node scripts/generate-icon-previews.mjs` and `node scripts/generate-icon-defaults.mjs`.
+- `packages/iracing-native/src/mock-data/session-info.ts` — widened to the captured 25-group list.
+- Five icons in `packages/icons/camera-select/` (`tv-static`, `tv-mixed`, `tv4`, `spotter`, `spectator`) in the TV1–TV3 style, then `node scripts/generate-icon-previews.mjs` and `node scripts/generate-icon-defaults.mjs`. `spotter.svg` must read as a camera group, not as the AI Spotter Controls action (`icons.md` distinctiveness).
 - Website `docs/actions/view-camera/camera-focus.md`: the group count in Change Camera, the new setting, and the Telemetry-aware line that describes today's behaviour wrongly; `changelog.mdx` (two bullets — two user-visible changes) plus `pnpm generate:changelog-data`.
 - `.claude/skills/iracedeck-actions/SKILL.md` and `docs/reference/actions.json` — both describe Camera Controls' settings in prose; neither enumerates the groups, so only the new setting lands there.
