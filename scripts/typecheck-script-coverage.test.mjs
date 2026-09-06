@@ -30,18 +30,17 @@ const NO_TYPECHECK_SCRIPT = new Map([]);
 // the size of what each is hiding. An exception that states its own magnitude and
 // its own expiry condition is a debt with a maturity date; one that says "excluded,
 // see docs" is where things go to be forgotten.
-const TYPECHECK_EXCLUDES_TESTS = new Map([
-  [
-    "iracing-actions",
-    'tsconfig sets "exclude": ["src/**/*.test.ts"]. Its 84 sources ARE checked (#1078); its 76 ' +
-      "test files are not. Removing the exclusion surfaced 541 errors when measured on 2026-09-01 — " +
-      "386 TS2345 (partial settings literals passed where the full parsed settings type is required) " +
-      "and 70 TS2445 (tests reaching protected members) dominate, across 34 files. Tracked in #1078. " +
-      "NOTE: that count is a dated measurement, not an invariant — the assertion below only checks " +
-      "that SOME test file is still excluded, so nothing here re-verifies the number. It is recorded " +
-      "to size the remaining work, and it is dated so it cannot quietly become false.",
-  ],
-]);
+//
+// It is EMPTY too, and for the same reason the list above stays. #1078 closed its
+// last entry: `iracing-actions` had excluded its 76 test files, hiding 541 errors
+// across 34 of them (measured 2026-09-01, and again unchanged on 2026-09-06 before
+// the fix) — 386 of them partial settings literals handed to functions typed with
+// the full parsed settings, 70 of them tests reaching protected members through
+// the real class type. Every one was in test code; the fix touched no production
+// signature. The reverse-direction assertion below is what forced this entry out
+// the moment the exclusion went, and it is what makes the next package that tries
+// to exclude its tests declare the size of what it hides.
+const TYPECHECK_EXCLUDES_TESTS = new Map([]);
 
 // Resolve a tsconfig the way tsc does, rather than pattern-matching its `exclude`
 // array: `parseJsonConfigFileContent` applies the same include/exclude/files

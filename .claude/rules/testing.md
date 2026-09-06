@@ -16,9 +16,7 @@ pnpm typecheck              # the type gate: tsc --noEmit per package (#987)
 
 `pnpm test` does not typecheck: Vitest transforms through esbuild, which strips types without checking them. Neither did `pnpm build`, for the rollup-built packages — that gap is what #987 closed. `pnpm typecheck` is the explicit gate; its turbo task declares `dependsOn: ["^build"]` because packages resolve each other's types through emitted `dist/`, so it builds what it needs and needs no separate build step first.
 
-**What it does not reach**, so nobody mistakes a green run for full coverage. `scripts/typecheck-script-coverage.test.mjs` discovers a package if it has TypeScript sources **or** a `tsconfig.json` — a union, so a config-only package is included too. The reason it is not keyed on the config alone is that doing so let three packages escape as absences rather than as exclusions. Every package is now in the gate, and one documented gap remains:
-
-- **`iracing-actions` test files.** Its 84 sources are checked (#1078 gave the package a `tsconfig.json`, plus the `svg.d.ts` / `platform-features.d.ts` ambient declarations its program needs), but its tsconfig still sets `"exclude": ["src/**/*.test.ts"]`. Removing that exclusion surfaced **541 errors across 34 test files** when measured on 2026-09-01 — dominated by partial settings literals passed where the full parsed settings type is required (386 `TS2345`) and tests reaching `protected` members (70 `TS2445`). Tracked in #1078; the size is recorded in `TYPECHECK_EXCLUDES_TESTS` as a dated measurement, which nothing re-verifies. It predates #987 and #987 did not widen it; it is recorded here because a gate is only useful if its edges are known.
+**What it reaches**, stated so nobody has to infer it from a green run. `scripts/typecheck-script-coverage.test.mjs` discovers a package if it has TypeScript sources **or** a `tsconfig.json` — a union, so a config-only package is included too. The reason it is not keyed on the config alone is that doing so let three packages escape as absences rather than as exclusions. Every package is in the gate, and since #1078 so is every test file: both of the guard's allow-lists (`NO_TYPECHECK_SCRIPT`, `TYPECHECK_EXCLUDES_TESTS`) are empty and deliberately kept, so the next package that skips the gate or excludes its tests has to say so on the record, with the size of what it hides. The last entry to go was `iracing-actions`' 76 test files, excluded by their tsconfig: **541 errors across 34 of them** (measured 2026-09-01, unchanged on 2026-09-06), every one in test code and none needing a production signature to move. Two patterns accounted for 456 of them and are now the convention for action tests — see *Settings literals and protected members* under **Testing Stream Deck Actions** below.
 
 Two things worth knowing about the gate's shape rather than its edges:
 
@@ -136,6 +134,15 @@ describe("MyAction", () => {
   });
 });
 ```
+
+### Settings literals and protected members (#1078)
+
+Test files are typechecked with their package (`pnpm typecheck`), so a test has to type what it hands the code under test. Two rules cover what used to be the bulk of the errors there:
+
+- **A partial settings literal parses through the action's own schema.** A function typed with the parsed settings (`generateXSvg(settings: XSettings)`) requires every defaulted key — `addedWithVersion`, and `dualPressEnabled` / `dial` on dial actions — so `generateXSvg({ mode: "x" })` does not type-check. Write `generateXSvg(XSettings.parse({ mode: "x" }))`, or use the action's exported `parseXSettings(...)` where one exists (the setup actions, Audio Controls, Fuel Service). The zod *input* type makes the defaulted keys optional, and the runtime is what production does: under the `CommonSettings` mock most action tests use, `parse` returns its input unchanged; under the real schema (the `importOriginal` files) the defaults are filled in. Where the schema is not exported yet, export the const **and** its type together, the const carrying `/** @internal Exported for testing */` — one without the other is TS2395. Never widen the production parameter or cast the literal to make a test compile.
+- **A protected member of the mocked base class is reached by bracket access, and a mock method through `vi.mocked`.** `action["sdkController"]` bypasses the `protected` check by design, and `vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue({ dcFuelMixture: 5 } as TelemetryData)` replaces the old `as any`. A file that sets telemetry repeatedly keeps one local `mockTelemetry(action, partial)` helper so that cast lives once. Assertions need nothing extra: `expect(action["setKeyImage"]).toHaveBeenCalled()`.
+
+Two smaller ones from the same sweep: an untyped `vi.fn()` has `mock.calls` typed `[]`, so give the mock its signature (`vi.fn<(id: string, image: string) => Promise<void>>()`) rather than casting `undefined as string`; and no `@ts-expect-error` / `@ts-ignore` in a test — what the gate found once it reached these files was stale fixtures and stale test-local types, which is exactly what it is there to catch.
 
 ### Reference Implementation
 
