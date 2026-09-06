@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { z } from "zod";
 
 import { _resetFeatureGateSync } from "../../audio/feature-gates.js";
 // Imports appear above the `vi.mock(...)` blocks because the repo-wide
@@ -233,8 +234,8 @@ vi.mock("@iracedeck/deck-core", async () => {
 // ─── Fixtures ───────────────────────────────────────────────────────────────
 
 type TestInputs = {
-  mode?: "race-engineer" | "radar" | "radar-volume";
-  direction?: "up" | "down";
+  mode?: z.input<typeof Settings>["mode"];
+  direction?: z.input<typeof Settings>["direction"];
   /** `_testRadarVolume` arrives from the PI as `String(Date.now())` — tests
    *  accept both to exercise the coercion path. */
   _testRadarVolume?: number | string;

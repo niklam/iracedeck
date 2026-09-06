@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { generateViewAdjustmentSvg, VIEW_ADJUSTMENT_GLOBAL_KEYS, ViewAdjustment } from "./view-adjustment.js";
+import {
+  generateViewAdjustmentSvg,
+  VIEW_ADJUSTMENT_GLOBAL_KEYS,
+  ViewAdjustment,
+  ViewAdjustmentSettings,
+} from "./view-adjustment.js";
 
 const { mockTapBinding, mockBringPointerToSim } = vi.hoisted(() => ({
   mockTapBinding: vi.fn().mockResolvedValue(undefined),
@@ -128,40 +133,40 @@ describe("ViewAdjustment", () => {
 
   describe("VIEW_ADJUSTMENT_GLOBAL_KEYS", () => {
     it("should have correct mapping for fov increase", () => {
-      expect(VIEW_ADJUSTMENT_GLOBAL_KEYS.fov.increase).toBe("viewAdjustFovIncrease");
+      expect(VIEW_ADJUSTMENT_GLOBAL_KEYS.fov?.increase).toBe("viewAdjustFovIncrease");
     });
 
     it("should have correct mapping for fov decrease", () => {
-      expect(VIEW_ADJUSTMENT_GLOBAL_KEYS.fov.decrease).toBe("viewAdjustFovDecrease");
+      expect(VIEW_ADJUSTMENT_GLOBAL_KEYS.fov?.decrease).toBe("viewAdjustFovDecrease");
     });
 
     it("should have correct mapping for horizon up", () => {
-      expect(VIEW_ADJUSTMENT_GLOBAL_KEYS.horizon.increase).toBe("viewAdjustHorizonUp");
+      expect(VIEW_ADJUSTMENT_GLOBAL_KEYS.horizon?.increase).toBe("viewAdjustHorizonUp");
     });
 
     it("should have correct mapping for horizon down", () => {
-      expect(VIEW_ADJUSTMENT_GLOBAL_KEYS.horizon.decrease).toBe("viewAdjustHorizonDown");
+      expect(VIEW_ADJUSTMENT_GLOBAL_KEYS.horizon?.decrease).toBe("viewAdjustHorizonDown");
     });
 
     it("should have correct mapping for driver height up", () => {
-      expect(VIEW_ADJUSTMENT_GLOBAL_KEYS["driver-height"].increase).toBe("viewAdjustDriverHeightUp");
+      expect(VIEW_ADJUSTMENT_GLOBAL_KEYS["driver-height"]?.increase).toBe("viewAdjustDriverHeightUp");
     });
 
     it("should have correct mapping for driver height down", () => {
-      expect(VIEW_ADJUSTMENT_GLOBAL_KEYS["driver-height"].decrease).toBe("viewAdjustDriverHeightDown");
+      expect(VIEW_ADJUSTMENT_GLOBAL_KEYS["driver-height"]?.decrease).toBe("viewAdjustDriverHeightDown");
     });
 
     it("should have correct mapping for recenter VR", () => {
-      expect(VIEW_ADJUSTMENT_GLOBAL_KEYS["recenter-vr"].increase).toBe("viewAdjustRecenterVr");
-      expect(VIEW_ADJUSTMENT_GLOBAL_KEYS["recenter-vr"].decrease).toBe("viewAdjustRecenterVr");
+      expect(VIEW_ADJUSTMENT_GLOBAL_KEYS["recenter-vr"]?.increase).toBe("viewAdjustRecenterVr");
+      expect(VIEW_ADJUSTMENT_GLOBAL_KEYS["recenter-vr"]?.decrease).toBe("viewAdjustRecenterVr");
     });
 
     it("should have correct mapping for UI size increase", () => {
-      expect(VIEW_ADJUSTMENT_GLOBAL_KEYS["ui-size"].increase).toBe("viewAdjustUiSizeIncrease");
+      expect(VIEW_ADJUSTMENT_GLOBAL_KEYS["ui-size"]?.increase).toBe("viewAdjustUiSizeIncrease");
     });
 
     it("should have correct mapping for UI size decrease", () => {
-      expect(VIEW_ADJUSTMENT_GLOBAL_KEYS["ui-size"].decrease).toBe("viewAdjustUiSizeDecrease");
+      expect(VIEW_ADJUSTMENT_GLOBAL_KEYS["ui-size"]?.decrease).toBe("viewAdjustUiSizeDecrease");
     });
 
     it("should map exactly the 5 binding-backed adjustment types", () => {
@@ -184,16 +189,20 @@ describe("ViewAdjustment", () => {
 
   describe("generateViewAdjustmentSvg", () => {
     it("should generate a valid data URI for fov increase", () => {
-      const result = generateViewAdjustmentSvg({ adjustment: "fov", direction: "increase" });
+      const result = generateViewAdjustmentSvg(
+        ViewAdjustmentSettings.parse({ adjustment: "fov", direction: "increase" }),
+      );
 
       expect(result).toContain("data:image/svg+xml");
     });
 
     it("should generate a valid data URI for recenter-vr", () => {
-      const result = generateViewAdjustmentSvg({
-        adjustment: "recenter-vr",
-        direction: "increase",
-      });
+      const result = generateViewAdjustmentSvg(
+        ViewAdjustmentSettings.parse({
+          adjustment: "recenter-vr",
+          direction: "increase",
+        }),
+      );
 
       expect(result).toContain("data:image/svg+xml");
     });
@@ -204,58 +213,76 @@ describe("ViewAdjustment", () => {
 
       for (const adjustment of adjustments) {
         for (const direction of directions) {
-          const result = generateViewAdjustmentSvg({ adjustment, direction });
+          const result = generateViewAdjustmentSvg(ViewAdjustmentSettings.parse({ adjustment, direction }));
           expect(result).toContain("data:image/svg+xml");
         }
       }
     });
 
     it("should generate a valid data URI for mouse-to-sim", () => {
-      const result = generateViewAdjustmentSvg({
-        adjustment: "mouse-to-sim",
-        direction: "increase",
-      });
+      const result = generateViewAdjustmentSvg(
+        ViewAdjustmentSettings.parse({
+          adjustment: "mouse-to-sim",
+          direction: "increase",
+        }),
+      );
 
       expect(result).toContain("data:image/svg+xml");
       expect(decodeURIComponent(result)).toContain("mouse-to-sim");
     });
 
     it("should use the same mouse-to-sim icon for both directions", () => {
-      const increase = generateViewAdjustmentSvg({ adjustment: "mouse-to-sim", direction: "increase" });
-      const decrease = generateViewAdjustmentSvg({ adjustment: "mouse-to-sim", direction: "decrease" });
+      const increase = generateViewAdjustmentSvg(
+        ViewAdjustmentSettings.parse({ adjustment: "mouse-to-sim", direction: "increase" }),
+      );
+      const decrease = generateViewAdjustmentSvg(
+        ViewAdjustmentSettings.parse({ adjustment: "mouse-to-sim", direction: "decrease" }),
+      );
 
       expect(increase).toBe(decrease);
     });
 
     it("should produce different icons for different adjustments", () => {
-      const fov = generateViewAdjustmentSvg({ adjustment: "fov", direction: "increase" });
-      const horizon = generateViewAdjustmentSvg({ adjustment: "horizon", direction: "increase" });
+      const fov = generateViewAdjustmentSvg(ViewAdjustmentSettings.parse({ adjustment: "fov", direction: "increase" }));
+      const horizon = generateViewAdjustmentSvg(
+        ViewAdjustmentSettings.parse({ adjustment: "horizon", direction: "increase" }),
+      );
 
       expect(fov).not.toBe(horizon);
     });
 
     it("should produce different icons for increase vs decrease", () => {
-      const increase = generateViewAdjustmentSvg({ adjustment: "fov", direction: "increase" });
-      const decrease = generateViewAdjustmentSvg({ adjustment: "fov", direction: "decrease" });
+      const increase = generateViewAdjustmentSvg(
+        ViewAdjustmentSettings.parse({ adjustment: "fov", direction: "increase" }),
+      );
+      const decrease = generateViewAdjustmentSvg(
+        ViewAdjustmentSettings.parse({ adjustment: "fov", direction: "decrease" }),
+      );
 
       expect(increase).not.toBe(decrease);
     });
 
     it("should produce the same icon for recenter-vr regardless of direction", () => {
-      const increase = generateViewAdjustmentSvg({
-        adjustment: "recenter-vr",
-        direction: "increase",
-      });
-      const decrease = generateViewAdjustmentSvg({
-        adjustment: "recenter-vr",
-        direction: "decrease",
-      });
+      const increase = generateViewAdjustmentSvg(
+        ViewAdjustmentSettings.parse({
+          adjustment: "recenter-vr",
+          direction: "increase",
+        }),
+      );
+      const decrease = generateViewAdjustmentSvg(
+        ViewAdjustmentSettings.parse({
+          adjustment: "recenter-vr",
+          direction: "decrease",
+        }),
+      );
 
       expect(increase).toBe(decrease);
     });
 
     it("should include correct labels for FOV increase", () => {
-      const result = generateViewAdjustmentSvg({ adjustment: "fov", direction: "increase" });
+      const result = generateViewAdjustmentSvg(
+        ViewAdjustmentSettings.parse({ adjustment: "fov", direction: "increase" }),
+      );
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("FOV");
@@ -263,7 +290,9 @@ describe("ViewAdjustment", () => {
     });
 
     it("should include correct labels for horizon down", () => {
-      const result = generateViewAdjustmentSvg({ adjustment: "horizon", direction: "decrease" });
+      const result = generateViewAdjustmentSvg(
+        ViewAdjustmentSettings.parse({ adjustment: "horizon", direction: "decrease" }),
+      );
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("HORIZON");
@@ -271,10 +300,12 @@ describe("ViewAdjustment", () => {
     });
 
     it("should include correct labels for recenter VR", () => {
-      const result = generateViewAdjustmentSvg({
-        adjustment: "recenter-vr",
-        direction: "increase",
-      });
+      const result = generateViewAdjustmentSvg(
+        ViewAdjustmentSettings.parse({
+          adjustment: "recenter-vr",
+          direction: "increase",
+        }),
+      );
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("RECENTER");
@@ -311,10 +342,12 @@ describe("ViewAdjustment", () => {
 
       for (const [adjustment, directions] of Object.entries(expectedLabels)) {
         for (const [direction, labels] of Object.entries(directions)) {
-          const result = generateViewAdjustmentSvg({
-            adjustment: adjustment as any,
-            direction: direction as any,
-          });
+          const result = generateViewAdjustmentSvg(
+            ViewAdjustmentSettings.parse({
+              adjustment: adjustment as any,
+              direction: direction as any,
+            }),
+          );
           const decoded = decodeURIComponent(result);
 
           expect(decoded).toContain(labels.line1);

@@ -119,7 +119,10 @@ export const VIEW_ADJUSTMENT_GLOBAL_KEYS: Partial<Record<AdjustmentType, Record<
   },
 };
 
-const ViewAdjustmentSettings = CommonSettings.extend({
+/**
+ * @internal Exported for testing
+ */
+export const ViewAdjustmentSettings = CommonSettings.extend({
   adjustment: z.enum(["fov", "horizon", "driver-height", "recenter-vr", "ui-size", "mouse-to-sim"]).default("fov"),
   direction: z.enum(["increase", "decrease"]).default("increase"),
   // Dial-surface settings (#806), under the `dial` root so keypad and dial keys
@@ -128,7 +131,7 @@ const ViewAdjustmentSettings = CommonSettings.extend({
   dial: DialSettings.catch(() => DialSettings.parse({})),
 });
 
-type ViewAdjustmentSettings = z.infer<typeof ViewAdjustmentSettings>;
+export type ViewAdjustmentSettings = z.infer<typeof ViewAdjustmentSettings>;
 
 /**
  * @internal Exported for testing
