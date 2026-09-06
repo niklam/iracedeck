@@ -52,3 +52,15 @@ Confirm the run echoed the right target before trusting a finding, and cross-che
 ## When to run one
 
 Before opening a PR — `build-and-commit.md` has the ask-first step. Pick the level from the table at that point, and say which row the change landed in when proposing the review.
+
+## How reviews are staged inside an issue
+
+Decided by Niklas on 2026-09-06 after #1066, where an eight-task branch ran five task reviews, five scoped re-reviews, a whole-branch review and the `/code-review` — 3.4M of the 6.8M agent tokens the issue cost, with the five re-reviews (1.2M) finding nothing new in any of them. The evidence from that branch is what the rules below rest on.
+
+1. **Review at a consumer seam, before the consumer starts.** A task whose OUTPUT another task builds on — an artifact shape, a public type, a generated file a page renders — gets a task-scoped review as soon as it lands, and the dependent task is dispatched only afterwards. On #1066 that was the generator (Task 30) → the website (Task 40): its review changed the artifact's shape three times, and each change would otherwise have been a rewrite of the page that rendered it. This is the one place a staged review paid for itself.
+2. **A leaf task gets no review of its own.** Descriptions, prose pages, a linter nobody else consumes, rule edits: their findings surface in the full read at the end a few hours later, and their fixes were small. Skipping the four leaf reviews on #1066 would have saved about 1.2M with the same final result.
+3. **Fix diffs are verified by the coordinator, never by a scoped re-review agent.** A fix round is 30–200 lines. Read the diff, run the covering tests, check the finding is gone. Dispatching a re-reviewer for that costs a quarter-million tokens per round and, on #1066, five rounds found nothing.
+4. **The whole branch gets exactly one full read: the `/code-review`,** at the level from the table above, targeted at the worktree, report-only. It is not optional — on #1066 the full read found the three things no task review could see (a stale voice-pack catalog entry that would have failed the release, a version stamped into a freshness-tested artifact that would have turned `master` red at every bump, a clip the plugin plays that the linter called dead). But do not run a second full-branch reviewer beside it; the `superpowers` plan-execution skill's own "final review" step is that duplicate, and this rule replaces it.
+5. **Reviewer models follow the same complexity rule as workers** (`CLAUDE.md`): a review that must weigh a claim against the code runs on `opus`; a mechanical check runs on `sonnet`; the `/code-review` picks its own.
+
+The repo's skills and the `superpowers` plugin describe a per-task review cadence; this section overrides it for issue work here.
