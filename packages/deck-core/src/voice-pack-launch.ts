@@ -46,11 +46,16 @@ export const VOICE_PACK_RETRY_DELAYS_MS = Object.freeze({
 
 export const VOICE_PACK_RETRY_STEADY_MS = Object.freeze({ engineerOn: 900_000, engineerOff: 3_600_000 });
 
-/** Failure codes a retry against the same catalog answer can plausibly clear. */
+/**
+ * Failure codes a retry against the SAME catalog answer can plausibly clear: the
+ * network, the disk, a lock, a bug. A hash mismatch (`verify`), a malformed
+ * archive (`extract`) and an archive that is not the pack asked for
+ * (`invalid-pack`) are the catalog's fault, not the connection's, and are not
+ * retried until the catalog answer changes — the spec's *Stage 3 — dropping the
+ * bundle* retry paragraph; a Rescan press or the next start re-runs the ensure.
+ */
 const TRANSIENT_FAILURES: ReadonlySet<VoicePackInstallFailureCode> = new Set<VoicePackInstallFailureCode>([
   "download",
-  "verify",
-  "extract",
   "storage",
   "promote",
   "busy",
@@ -133,6 +138,15 @@ export function createVoicePackLaunchStep(deps: VoicePackLaunchStepDeps): VoiceP
 
     if (unsupported !== undefined) {
       return giveUp(`"${unsupported.id}" needs plugin ${unsupported.minPluginVersion ?? "?"} or newer`);
+    }
+
+    // A catalog with no entry for the managed pack is a publishing mistake, not
+    // "up to date": there is nothing this step could install, and a reassuring
+    // line would hide it.
+    if (!catalog.packs.some((pack) => isManagedVoicePack(pack.id))) {
+      deps.logger.debug(`Voice pack "${ENSURED_VOICE_PACK_ID}" is not in the catalog`);
+
+      return giveUp(`the catalog names no "${ENSURED_VOICE_PACK_ID}" pack`);
     }
 
     const ids = targets(catalog.packs);

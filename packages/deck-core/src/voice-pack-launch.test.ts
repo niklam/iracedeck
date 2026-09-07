@@ -262,6 +262,41 @@ describe("voice-pack launch step", () => {
     expect(installer.refreshCatalog).toHaveBeenCalledTimes(2);
   });
 
+  it.each(["verify", "extract", "invalid-pack"] as const)(
+    "classes %s as permanent for this catalog answer: given up, not retried",
+    async (code) => {
+      const failure: VoicePackInstallResult = { ok: false, code, reason: "The archive is wrong." };
+      const installer = fakeInstaller(
+        ok([offer({ id: "default", verdict: "install" })]),
+        vi.fn(async () => failure),
+      );
+      const step = createVoicePackLaunchStep({
+        installer,
+        settled: () => Promise.resolve(),
+        isRaceEngineerEnabled: () => true,
+        logger,
+      });
+      await expect(step.start()).resolves.toMatchObject({ state: "given-up" });
+      await vi.advanceTimersByTimeAsync(VOICE_PACK_RETRY_STEADY_MS.engineerOn * 2);
+      expect(installer.refreshCatalog).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("gives up when the catalog answers but names no default pack, rather than calling that up to date", async () => {
+    const installer = fakeInstaller(ok([offer({ id: "luca", verdict: "installed" })]));
+    const step = createVoicePackLaunchStep({
+      installer,
+      settled: () => Promise.resolve(),
+      isRaceEngineerEnabled: () => true,
+      logger,
+    });
+    await expect(step.start()).resolves.toEqual({ state: "given-up", reason: 'the catalog names no "default" pack' });
+    expect(installer.install).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(VOICE_PACK_RETRY_STEADY_MS.engineerOn * 2);
+    expect(installer.refreshCatalog).toHaveBeenCalledTimes(1);
+  });
+
   it("a poke during an ensure runs one more ensure after it, not a concurrent one", async () => {
     let resolveInstall!: (r: VoicePackInstallResult) => void;
     const install = vi.fn(
