@@ -40,15 +40,16 @@ export function buildSeedSettings() {
       { id: "737065616b657273", name: "Speakers (Realtek High Definition Audio)" },
     ]),
     _deckDevices: JSON.stringify([{ id: "DEVICE-1", name: "Stream Deck +", type: 7 }]),
-    // The name the pack gave its voice (#1034) — what the dropdown shows in
+    // The name each pack gave its voice (#1034) — what the dropdown shows in
     // place of the capitalised id. Seeded because a real install always has it:
-    // the plugin writes it in the same call as the list above.
-    _voiceLabels: JSON.stringify({ luca: "Luca" }),
-    // The one non-bundled voice above, as the pack that provides it, plus one
-    // pack that was ignored — the Installed Voices list shows both halves of a
-    // scan (#1034), and a shot of the empty state would document neither. Kept
-    // to two rows deliberately: the capture is the real window at its default
-    // size, so a longer list pushes the Rescan button below the fold.
+    // the plugin writes it in the same call as the list above, and since stage 3
+    // `default` arrives in a pack like any other, so it carries a label too.
+    _voiceLabels: JSON.stringify({ default: "Default", luca: "Luca" }),
+    // Both voices above, as the packs that provide them, plus one pack that was
+    // ignored — the Installed Voices list shows both halves of a scan (#1034),
+    // and a shot of the empty state would document neither. Kept to two rows
+    // deliberately: the capture is the real window at its default size, so a
+    // longer list pushes the Rescan button below the fold.
     _voicePacks: JSON.stringify({
       packs: [
         // The voice iRaceDeck keeps current (#1034 stage 3). The plugin ships

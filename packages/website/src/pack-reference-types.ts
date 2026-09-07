@@ -1,7 +1,7 @@
 /**
  * The shape of `src/data/pack-reference.json` — the pack-author reference
  * (issue #1066) the root generator (`pnpm generate:pack-reference`) writes
- * from the engine's contracts and vocabulary plus the bundled voice's script
+ * from the engine's contracts and vocabulary plus the reference voice's script
  * and clips, and the three reference pages under `docs/voice-packs/reference/`
  * render.
  *
@@ -16,7 +16,7 @@
 
 // ─── The artifact ────────────────────────────────────────────────────────────
 
-/** What one callout's bundled entry references by name, its included fragments walked. */
+/** What one callout's entry in the reference voice references by name, its included fragments walked. */
 export type CalloutReferences = {
   /** Every pool the entry draws from, in `group/base` form — an alias resolved to its source. */
   pools: readonly string[];
@@ -31,7 +31,7 @@ export type CalloutReferences = {
   frames: readonly string[];
 };
 
-/** One callout: the contract, the bundled entry's prose, and what the entry references. */
+/** One callout: the contract, the reference voice's prose, and what the entry references. */
 export type Callout = {
   id: string;
   family: string | null;
@@ -48,11 +48,11 @@ export type Callout = {
   interrupt: boolean;
   /** The contract's `base` — what a bare literal clip path in the entry resolves against; `null` for the audio root. */
   base: string | null;
-  /** The bundled entry's `comment` (what is said); `null` when the entry carries none. */
+  /** The entry's `comment` (what is said); `null` when the entry carries none. */
   comment: string | null;
-  /** The bundled entry's `test` (how to hear it); `null` when the entry carries none. */
+  /** The entry's `test` (how to hear it); `null` when the entry carries none. */
   test: string | null;
-  /** `true` for a `skip: true` entry — deliberately silent in the bundled voice. */
+  /** `true` for a `skip: true` entry — deliberately silent in the reference voice. */
   skip: boolean;
   references: CalloutReferences;
 };
@@ -72,9 +72,9 @@ export type PackReferenceVocabulary = {
 /** One line a full pack records: a base with all its takes. */
 export type RecordingLine = {
   base: string;
-  /** The bundled config's text of EVERY take, in take order; `[]` when the config has none. May carry SSML verbatim. */
+  /** The reference voice config's text of EVERY take, in take order; `[]` when the config has none. May carry SSML verbatim. */
   texts: readonly string[];
-  /** How many takes the bundled voice ships — every `<base>-NN.mp3`, or the bare `<base>.mp3`. */
+  /** How many takes the reference voice ships — every `<base>-NN.mp3`, or the bare `<base>.mp3`. */
   takes: number;
   /** Callout ids whose entries (or included fragments) address the base directly. */
   usedBy: readonly string[];

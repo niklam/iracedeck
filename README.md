@@ -43,7 +43,7 @@
 **Key highlights:**
 
 - Live telemetry at 4 Hz with automatic iRacing connection/reconnection
-- **Pit Crew** action with **Radar** directional proximity ticks via multi-channel audio mixer (miniaudio); a voice **Race Engineer** feature is planned for a follow-up release
+- **Pit Crew** action with **Radar** directional proximity ticks and a spoken **Race Engineer**, both through a multi-channel audio mixer (miniaudio); no voice ships inside the plugin — every one is a downloadable pack, and the plugin installs and updates its own at launch
 - All keyboard shortcuts are user-configurable via the Property Inspector
 - SDK-first design: uses iRacing broadcast commands where possible, keyboard simulation only as fallback
 - Native C++ addon for low-latency Win32 API access (iRacing SDK, keyboard input, audio engine)

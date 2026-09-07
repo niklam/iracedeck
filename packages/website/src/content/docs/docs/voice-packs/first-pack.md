@@ -17,7 +17,7 @@ Start with callouts that fire on a plain event and say one line, so nothing abou
 | `pit-crew.pit-window-opened`   | Pit road switches from closed to open while you are in a race.                                        | **Pit Window → Pits opened**  |
 | `pit-crew.damage-repair-needed`| Your car takes damage that keeps the repair indicator lit for three seconds, and again only after a repair has cleared it. | **Damage → Damage Detected**  |
 
-Every callout has an entry like this in the [callout reference](/docs/voice-packs/reference/callouts/): what triggers it, how to hear it, and what the bundled voice's entry references. That reference is where you will pick the next three from.
+Every callout has an entry like this in the [callout reference](/docs/voice-packs/reference/callouts/): what triggers it, how to hear it, and what the reference voice (`default`) says. That is the voice iRaceDeck publishes and installs for you, and every reference page is generated from it. That reference is where you will pick the next three from.
 
 ## Record three lines
 
@@ -31,7 +31,7 @@ voice/my-voice/damage/repair-needed-01.mp3 "We've picked up some damage — the 
 
 The wording is yours. The path is what matters: `voice/<voice-id>/<group>/<base>-NN.mp3`, one folder per group, lowercase `.mp3`. A clip one folder too shallow, or exported as `.MP3`, is dropped — and only when a voice is left with no playable clip at all does **Installed Voices** say so; one bad file among good ones is dropped with no message, which is what the [lint step](#lint-the-pack) below is for. Every take of a line is one **pool** — record a second take later as `green-02.mp3` and the engine alternates between them; nothing in the script changes.
 
-Two things about how your clips will sound. The clips iRaceDeck ships are radio-filtered when the plugin is built — a band-pass, some gain into a soft clip, a limiter — but a pack you install plays exactly what you recorded; if you want the walkie-talkie colour, apply an effect of your own in the editor before exporting. And the built-in radio frame — the open tick, the pit-lane ambience underneath, the close tick — is the plugin's, and plays around your clips because your script says so in the next step; leave it out if you prefer your lines bare.
+Two things about how your clips will sound. The clips in iRaceDeck's own pack are radio-filtered before it is packed — a band-pass, some gain into a soft clip, a limiter — but a pack you build plays exactly what you recorded; if you want the walkie-talkie colour, apply an effect of your own in the editor before exporting. And the built-in radio frame — the open tick, the pit-lane ambience underneath, the close tick — is the plugin's, and plays around your clips because your script says so in the next step; leave it out if you prefer your lines bare.
 
 ## Write `voice-pack.json`
 
@@ -87,7 +87,7 @@ Beside the clips, at `voice/my-voice/callouts.json`:
 
 Each entry names a callout by id and plays one pool: `pool:<group>/<base>`, the path of the clips you just recorded with the take number left off. `comment` and `test` are for you and whoever reads the file next; iRaceDeck does not act on them.
 
-The `frames` block matters more than it looks. All three of these callouts are framed by default, so the script must say what `radio` means or every one of them is skipped with `unknown frame "radio"` in the log. The frame above is the bundled voice's, and `sfx/IRD-tick-open.mp3` and `sfx/IRD-tick-close.mp3` are the plugin's own sound effects, available to every pack. If you would rather hear your lines with no ticks and no ambience, add `"frame": "none"` to each entry instead, and `"frames": {}` is enough.
+The `frames` block matters more than it looks. All three of these callouts are framed by default, so the script must say what `radio` means or every one of them is skipped with `unknown frame "radio"` in the log. The frame above is the reference voice's, and `sfx/IRD-tick-open.mp3` and `sfx/IRD-tick-close.mp3` are the plugin's own sound effects, available to every pack. If you would rather hear your lines with no ticks and no ambience, add `"frame": "none"` to each entry instead, and `"frames": {}` is enough.
 
 The [format page](/docs/voice-packs/format/) has every key and every step form.
 
@@ -122,7 +122,7 @@ pnpm --filter @iracedeck/scenario-harness dev
 IRACEDECK_VOICE_PACKS_PATH="$LOCALAPPDATA/iRaceDeck/Race Engineer/Voices" pnpm --filter @iracedeck/scenario-harness dev
 ```
 
-Open `http://127.0.0.1:5750/`. Under **Global Settings**, pick your voice in the **Voice** dropdown — the harness lists voices by id, so yours is `my-voice`, beside the bundled `default`. Then, under **Scenario Shortcuts**, press **Flags → Green**, **Pit Window → Pits opened** and **Damage → Damage Detected**. Each fires the real event through the real engine, so what you hear is exactly what the plugin plays.
+Open `http://127.0.0.1:5750/`. Under **Global Settings**, pick your voice in the **Voice** dropdown — the harness lists voices by id, so yours is `my-voice`, beside iRaceDeck's own `default`. Then, under **Scenario Shortcuts**, press **Flags → Green**, **Pit Window → Pits opened** and **Damage → Damage Detected**. Each fires the real event through the real engine, so what you hear is exactly what the plugin plays.
 
 The harness terminal logs at debug level, so among the boot lines you will find `Voice "my-voice": 3 of 149 callouts scripted` — the count of entries that compiled — and a warning for any entry that did not, naming what it could not resolve. After editing `callouts.json`, press **Reload audio** in the harness and the packs are rescanned without a restart; a script that no longer parses is reported in the terminal and that voice is left out until it parses again, exactly as the plugin would treat it.
 
@@ -147,6 +147,6 @@ Work through these in order.
 
 ## Next steps
 
-- **Add a family.** The [recording script](/docs/voice-packs/reference/recording-script/) lists every line of the bundled voice by group, with the text of each take and which callouts draw from it. Pick a group — `pit-window/` is two lines, `flags/` is thirty — record it, and copy the bundled entries for the callouts it serves from the [callout reference](/docs/voice-packs/reference/callouts/).
-- **Word the green flag per session.** The bundled entry for `pit-crew.flag-green` branches on the case `session.type` with a line each for practice, qualifying and the race; the [callout reference](/docs/voice-packs/reference/callouts/) shows the three pools it draws from, and the [vocabulary](/docs/voice-packs/reference/vocabulary/) lists the case's keys. Record `flags/green-practice`, `flags/green-qualifying` and `flags/green-race` and swap the entry's sequence for the case.
+- **Add a family.** The [recording script](/docs/voice-packs/reference/recording-script/) lists every line of the reference voice by group, with the text of each take and which callouts draw from it. Pick a group — `pit-window/` is two lines, `flags/` is thirty — record it, and copy the reference voice's entries for the callouts it serves from the [callout reference](/docs/voice-packs/reference/callouts/).
+- **Word the green flag per session.** The reference voice's entry for `pit-crew.flag-green` branches on the case `session.type` with a line each for practice, qualifying and the race; the [callout reference](/docs/voice-packs/reference/callouts/) shows the three pools it draws from, and the [vocabulary](/docs/voice-packs/reference/vocabulary/) lists the case's keys. Record `flags/green-practice`, `flags/green-qualifying` and `flags/green-race` and swap the entry's sequence for the case.
 - **Share it.** A pack is a folder; zip it and pass it on, and whoever receives it installs it the same way you did. It stays yours — see [Third-Party Voice Packs](/docs/features/race-engineer-voices/#third-party-voice-packs) for what that means and what it does not.

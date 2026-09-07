@@ -6,6 +6,18 @@
   },
   "releases": [
     {
+      "version": "3.3.0",
+      "date": null,
+      "categories": [
+        {
+          "title": "Features",
+          "items": [
+            "The plugin no longer carries the <strong>Default</strong> Race Engineer voice inside its own folder — every download is about 8 MB smaller. Instead iRaceDeck installs Default from its catalog the first time the plugin starts, keeps it up to date afterwards, and also updates any other voice you installed from the catalog when a newer version is published. All of it runs quietly in the background — a failed download is retried on its own, more often while the Race Engineer is on — and Default now shows <em>Kept up to date by iRaceDeck</em> in place of a Remove button. If you upgraded from 3.2.0 you already have the voice and nothing is downloaded. See <a href=\"https://iracedeck.com/docs/features/race-engineer-voices/\" target=\"_blank\" rel=\"noopener noreferrer\">Race Engineer Voices</a>."
+          ]
+        }
+      ]
+    },
+    {
       "version": "3.2.0",
       "date": "2026-09-06",
       "categories": [

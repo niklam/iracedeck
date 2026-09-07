@@ -4,7 +4,7 @@
 // generated pack-author reference (src/data/pack-reference.json, issue #1066).
 // Nothing here is hand-typed: the contract's description, trigger, frame,
 // weight and scheduling come from the code, the comment and test from the
-// bundled voice's script, and the references from walking that entry.
+// reference voice's script, and the references from walking that entry.
 import raw from "../data/pack-reference.json";
 import { parseCallouts } from "../pack-reference-types.js";
 import {
@@ -35,7 +35,7 @@ function hasReferences(c: (typeof callouts)[number]): boolean {
 ---
 
 <p class="pack-ref-count">
-  {callouts.length} callouts in {groups.length} groups; the bundled voice scripts {scripted} of them.
+  {callouts.length} callouts in {groups.length} groups; the reference voice scripts {scripted} of them.
 </p>
 
 {
@@ -74,7 +74,7 @@ function hasReferences(c: (typeof callouts)[number]): boolean {
           </dl>
           {c.skip ? (
             <p>
-              <strong>Bundled entry:</strong> <code>skip: true</code> — the bundled voice is deliberately silent here.
+              <strong>Reference entry:</strong> <code>skip: true</code> — the reference voice is deliberately silent here.
             </p>
           ) : (
             <>

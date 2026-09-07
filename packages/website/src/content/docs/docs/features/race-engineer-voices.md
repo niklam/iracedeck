@@ -3,7 +3,7 @@ title: Race Engineer Voices
 description: How Race Engineer voice packs work, where they are stored, how to download or install one, and why they survive plugin updates.
 ---
 
-The Race Engineer speaks with a **voice pack** — a folder of recorded lines that iRaceDeck plays during a session, plus a **callout script** for each voice that says how those lines are put together. iRaceDeck comes with its own, and you can add more — downloaded from iRaceDeck itself, or installed by hand.
+The Race Engineer speaks with a **voice pack** — a folder of recorded lines that iRaceDeck plays during a session, plus a **callout script** for each voice that says how those lines are put together. iRaceDeck downloads its own voice, **Default**, the first time the plugin starts, and you can add more — downloaded from iRaceDeck itself, or installed by hand.
 
 Voice packs live **outside the plugin folder**, in your own AppData directory:
 
@@ -21,9 +21,9 @@ Open **iRaceDeck Settings** from any action's Property Inspector, go to the **Ra
 
 Some voices are listed with their pack's name in front, as **Pack: Voice**. That happens when the voice's name alone could be ambiguous — a pack providing more than one voice, or a pack whose own name differs from its voice's. A pack that provides a single voice with a matching name is listed by that name alone. The rule depends only on the pack itself, so installing another pack never renames a voice you have already chosen.
 
-**Installed Voices** just below the dropdown lists every pack iRaceDeck has loaded, with its version and where it came from — **Built-in** for the voice that ships with iRaceDeck itself, **Downloaded** for one from iRaceDeck's own catalog, and **Installed by hand** for one you placed in the folder yourself. Anything in the folder that iRaceDeck could not load is listed underneath, with the reason — so a pack that is present but silent tells you why without you going looking for it.
+**Installed Voices** just below the dropdown lists every pack iRaceDeck has loaded, with its version and where it came from — **Downloaded** for one from iRaceDeck's own catalog, **Installed by iRaceDeck** for one an earlier version of the plugin placed there, and **Installed by hand** for one you placed in the folder yourself. Anything in the folder that iRaceDeck could not load is listed underneath, with the reason — so a pack that is present but silent tells you why without you going looking for it.
 
-The built-in voice is listed like any other pack, but has no **Remove** button: it comes with iRaceDeck and stays available whatever is in the folder, so there is nothing to remove. The row reads *Included with the plugin* in place of the button.
+**The Default voice is managed by iRaceDeck.** The plugin no longer ships a voice inside its own folder: at every start it checks iRaceDeck's catalog, downloads **Default** (about 8 MB, from GitHub) if it is missing, and updates it — and any other voice you installed from the catalog — when a newer version is published. If the download fails, it is retried quietly in the background, more often while the Race Engineer is switched on. The row for Default reads *Kept up to date by iRaceDeck* in place of a Remove button. Because iRaceDeck keeps this folder matching the catalog, **anything you change inside it is eventually replaced** — the next published version of Default swaps the whole folder rather than merging into it, and a folder iRaceDeck cannot recognise as its own copy is replaced at the next start. To customise the Default voice, copy the folder to a new name first and edit the copy; a pack under its own name is never touched.
 
 ## What a Voice Pack Decides
 
@@ -35,7 +35,7 @@ What a pack can never change is **when** a callout fires and **what it may inter
 
 A pack that ships a voice **without** a script — one built before scripts existed, or one whose script file went missing — still loads. The voice is listed under **Installed Voices** and you can select it, but every callout is skipped in it — the script is where every callout comes from — so the engineer goes quiet. While a scriptless voice is the one selected, a banner at the top of the Settings window and of every key's Property Inspector names it and says what to do: reinstall the pack, or pick another voice. The banner clears by itself as soon as the selected voice has a script.
 
-If you build packs, the script is an ordinary JSON file that references iRaceDeck's own vocabulary of callouts, conditions and spoken values by name. The [Voice Packs](/docs/voice-packs/) section is written for you: what a pack can and cannot change, [the format](/docs/voice-packs/format/) of the script, a [tutorial](/docs/voice-packs/first-pack/) that ends with your own voice playing three callouts, and reference pages — generated from iRaceDeck's code and its bundled pack — listing [every callout](/docs/voice-packs/reference/callouts/), [everything a script may name](/docs/voice-packs/reference/vocabulary/), and [every line a full pack records](/docs/voice-packs/reference/recording-script/).
+If you build packs, the script is an ordinary JSON file that references iRaceDeck's own vocabulary of callouts, conditions and spoken values by name. The [Voice Packs](/docs/voice-packs/) section is written for you: what a pack can and cannot change, [the format](/docs/voice-packs/format/) of the script, a [tutorial](/docs/voice-packs/first-pack/) that ends with your own voice playing three callouts, and reference pages — generated from iRaceDeck's code and its own Default pack — listing [every callout](/docs/voice-packs/reference/callouts/), [everything a script may name](/docs/voice-packs/reference/vocabulary/), and [every line a full pack records](/docs/voice-packs/reference/recording-script/).
 
 ## Downloading a Voice Pack
 
@@ -47,7 +47,7 @@ The download can happen **while iRacing is running**, including mid-race — iRa
 
 If iRaceDeck can't reach the catalog — no connection, or a bad one — nothing already installed is affected. Every voice you have keeps working exactly as before; iRaceDeck just has nothing new to offer until it can check again.
 
-A downloaded pack is verified against a checksum before it replaces anything, so a corrupted or incomplete download is discarded rather than installed. A pack you no longer want can be removed from the same Voices section — every pack except the built-in voice, which has no Remove button.
+A downloaded pack is verified against a checksum before it replaces anything, so a corrupted or incomplete download is discarded rather than installed. A pack you no longer want can be removed from the same Voices section — every pack except Default, which iRaceDeck keeps current.
 
 The list of packs available to download shows only what you do not already have. Once a pack is installed it moves to **Installed Voices** and leaves that list, so a pack never appears twice. When you have every voice iRaceDeck publishes, the section says so rather than sitting empty.
 
@@ -74,7 +74,7 @@ If you rescan and the voice does not appear, iRaceDeck ignored the pack — and 
 - **Clips iRaceDeck cannot play** — the pack has audio under the voice, but not where iRaceDeck looks for it. Clips must sit at `voice/<voice>/<group>/<name>.mp3` — one folder per group inside the voice folder — and the extension must be lowercase `.mp3`. A pack whose files are one level too shallow, or exported as `.MP3`, is refused with this reason rather than installing and then saying nothing.
 - **A voice's callout script is broken** — `voice/<voice>/callouts.json` is there but is not valid JSON, is not a script iRaceDeck can read, or could not be opened. That one voice is left out and the reason names the file and the place in it that failed; the pack's other voices still load. A voice with *no* script file at all is not an error — it loads, and simply skips the callouts its script would have given it, as described under [What a Voice Pack Decides](#what-a-voice-pack-decides).
 - **Another pack already provides that voice** — two packs cannot both supply the same voice. The one that comes first alphabetically wins and the other is ignored; rename or remove one of them.
-- **iRaceDeck already includes that voice** — a pack cannot take over a voice that comes with the plugin. The included one always wins.
+- **The pack claims the id `default`** — that name belongs to the pack iRaceDeck keeps current, so this one is not listed with a reason: the pack loads, and then a folder with that name is replaced with the catalog's copy at the next start. Use a different id.
 
 ## Third-Party Voice Packs
 
