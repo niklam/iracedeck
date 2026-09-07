@@ -171,6 +171,30 @@ describe("createVoicePackService", () => {
     expect(String(logger.warn.mock.calls[0][0])).toContain("luca");
   });
 
+  it("forwards priorityPacks so the managed pack claims its voice before a sideload that sorts first", () => {
+    const { service } = make(
+      {
+        aaa: ["voice/default/flags/a.mp3"],
+        default: ["voice/default/flags/a.mp3"],
+      },
+      { priorityPacks: ["default"] },
+      {
+        "/packs/aaa/voice-pack.json": JSON.stringify({
+          schema: 1,
+          id: "aaa",
+          label: "Aaa",
+          version: "1.0.0",
+          voices: [{ id: "default", label: "Mine" }],
+        }),
+      },
+    );
+
+    expect(service.refresh().map((pack) => pack.id)).toEqual(["default"]);
+    expect(service.problems()).toEqual([
+      { pack: "aaa", reason: 'voice "default" is already provided by pack "default"' },
+    ]);
+  });
+
   it("forwards reservedVoices so a pack cannot claim a bundled voice", () => {
     const { service, applyRoots } = make({ luca: ["voice/luca/flags/a.mp3"] }, { reservedVoices: ["luca"] });
 

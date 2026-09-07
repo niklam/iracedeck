@@ -283,16 +283,32 @@ export interface VoicePackInstallerDeps {
   logger: ILogger;
 }
 
+export interface VoicePackInstallOptions {
+  /**
+   * Download and replace even when the installed record's digest already
+   * equals the catalog's. That digest is a claim about what was WRITTEN, not
+   * about what is on disk now: a `default` whose `.install.json` survived
+   * while its clips did not reads as `installed` to the catalog verdict, is
+   * dropped by the scanner as a pack with no clips, and — being un-removable
+   * in the settings window — has no in-app escape but this one. The launch
+   * step passes it for exactly that case (#1034 stage 3). Both short-circuits
+   * are skipped, the post-lock one too: with a matching digest that check
+   * would otherwise "confirm" the very record being distrusted.
+   */
+  force?: boolean;
+}
+
 export interface VoicePackInstaller {
   /**
    * Install or update `id` from the catalog.
    *
    * A second call for the same id while one is in flight JOINS it — same
-   * promise, same outcome, no second download. The alternative, refusing with
-   * `busy`, would make a double-click on the Install button report an error
-   * about the very install it started.
+   * promise, same outcome, no second download (and whichever call's `options`
+   * came first stand). The alternative, refusing with `busy`, would make a
+   * double-click on the Install button report an error about the very install
+   * it started.
    */
-  install(id: string): Promise<VoicePackInstallResult>;
+  install(id: string, options?: VoicePackInstallOptions): Promise<VoicePackInstallResult>;
   /**
    * The Remove command: retire `<root>/<id>` to the trash and refresh.
    *
@@ -999,7 +1015,7 @@ export function createVoicePackInstaller(deps: VoicePackInstallerDeps): VoicePac
     return { ok: true, outcome: promoted.trashedAt === undefined ? "installed" : "updated" };
   }
 
-  async function runInstall(id: string): Promise<VoicePackInstallResult> {
+  async function runInstall(id: string, force: boolean): Promise<VoicePackInstallResult> {
     const entry = await guarded("the catalog entry lookup", () => catalog.entry(id));
 
     if (entry === undefined) {
@@ -1019,7 +1035,7 @@ export function createVoicePackInstaller(deps: VoicePackInstallerDeps): VoicePac
       );
     }
 
-    if (installedSha(id) === entry.sha256) {
+    if (!force && installedSha(id) === entry.sha256) {
       clearInstall(id);
       publish();
       logger.info("Voice pack already up to date");
@@ -1028,7 +1044,7 @@ export function createVoicePackInstaller(deps: VoicePackInstallerDeps): VoicePac
       return { ok: true, outcome: "unchanged" };
     }
 
-    logger.info("Voice pack install started");
+    logger.info(force ? "Voice pack reinstall started" : "Voice pack install started");
     logger.debug(`Voice pack "${id}" ${entry.version}: ${entry.bytes} bytes from ${entry.url}`);
     // Published BEFORE the lock, so a plugin waiting on another ecosystem's
     // install of the same pack shows the download it is waiting for rather
@@ -1040,8 +1056,10 @@ export function createVoicePackInstaller(deps: VoicePackInstallerDeps): VoicePac
 
     try {
       // The lock may have been held by another plugin installing exactly this
-      // pack, in which case the work is done and the digest now matches.
-      if (lock.acquired && installedSha(id) === entry.sha256) {
+      // pack, in which case the work is done and the digest now matches. Not
+      // under `force`, where a matching digest is the very thing distrusted;
+      // a second plugin forcing the same pack costs one archive more, once.
+      if (!force && lock.acquired && installedSha(id) === entry.sha256) {
         clearInstall(id);
         publish();
         logger.info("Voice pack was installed by another plugin");
@@ -1116,7 +1134,7 @@ export function createVoicePackInstaller(deps: VoicePackInstallerDeps): VoicePac
   }
 
   return {
-    async install(id) {
+    async install(id, options) {
       if (!packId.safeParse(id).success) {
         // Unreachable from the page — the command handler validates ids
         // before routing — so this is a programming error, and it is logged
@@ -1142,7 +1160,7 @@ export function createVoicePackInstaller(deps: VoicePackInstallerDeps): VoicePac
         return failed(id, "busy", "This pack is being removed. Wait a moment and try again.");
       }
 
-      return occupy(id, "install", () => neverThrows(id, () => runInstall(id)));
+      return occupy(id, "install", () => neverThrows(id, () => runInstall(id, options?.force === true)));
     },
 
     async remove(id) {

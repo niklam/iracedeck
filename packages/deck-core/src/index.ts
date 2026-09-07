@@ -278,6 +278,7 @@ export {
   type VoicePackInstallerCatalog,
   type VoicePackInstallerDeps,
   type VoicePackInstallerFileSystem,
+  type VoicePackInstallOptions,
   type VoicePackInstallOutcome,
   type VoicePackInstallResult,
   type VoicePackRemoveResult,

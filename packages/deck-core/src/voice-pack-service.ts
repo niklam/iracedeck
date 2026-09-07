@@ -22,6 +22,12 @@ export interface VoicePackServiceDeps {
    */
   reservedVoices: readonly string[];
   /**
+   * Pack ids the scanner visits before the alphabetical order — the managed
+   * pack, so a sideload that sorts first cannot claim its voice. See
+   * `priorityPacks` on `ScanVoicePacksOptions` for why.
+   */
+  priorityPacks?: readonly string[];
+  /**
    * Hand the ordered audio roots to the audio service.
    *
    * The plugin's own directory comes first and carries no `clips`, which means
@@ -144,6 +150,7 @@ export function createVoicePackService(deps: VoicePackServiceDeps): VoicePackSer
           root: deps.root,
           fs: deps.fs,
           reservedVoices: deps.reservedVoices,
+          ...(deps.priorityPacks === undefined ? {} : { priorityPacks: deps.priorityPacks }),
         });
         // Bundled first, then installed. The two sets cannot overlap — the
         // scanner refuses a pack's claim on a reserved id — so the order is a

@@ -100,6 +100,17 @@ export interface VoicePackLaunchStepDeps {
    * call it, so a promise taken at construction would be the discarded pre-init one.
    */
   settled: () => Promise<void>;
+  /**
+   * True when the scanner's last result lists the pack WITH at least one
+   * voice — `voicePacks.installed().some(...)`. The catalog's `installed`
+   * verdict is a digest comparison of `.install.json`, a claim about what was
+   * written; this is what is on disk now. A managed pack whose record
+   * survived while its clips did not is otherwise stuck: the scanner drops
+   * it, the card shows nothing actionable for an `installed` verdict, and
+   * `default` cannot be removed — so it is the one thing this step replaces
+   * by force.
+   */
+  isPackUsable: (id: string) => boolean;
   /** Live read of `pitCrewRaceEngineerEnabled`. */
   isRaceEngineerEnabled: () => boolean;
   /**
@@ -163,13 +174,28 @@ export function createVoicePackLaunchStep(deps: VoicePackLaunchStepDeps): VoiceP
     return delays[consecutiveFailures - 1] ?? steady;
   }
 
-  function targets(packs: readonly VoicePackOffer[]): string[] {
+  type Target = { id: string; force: boolean };
+
+  function targets(packs: readonly VoicePackOffer[]): Target[] {
     // `update` means a provenance record names this pack and its digest is behind — a pack the
     // catalog installed. `install` means nothing (or a record-less folder) is there; only the
     // managed pack is installed unasked, and for it a record-less folder is replaced by force.
-    return packs
-      .filter((pack) => pack.verdict === "update" || (isManagedVoicePack(pack.id) && pack.verdict === "install"))
-      .map((pack) => pack.id);
+    // `installed` is a record at the catalog's digest — and for the managed pack, only if the
+    // scanner agrees a usable copy is there: a record whose clips are gone is reinstalled by
+    // force, since nothing else in the app can (see `isPackUsable`).
+    const found: Target[] = [];
+
+    for (const pack of packs) {
+      if (pack.verdict === "update" || (isManagedVoicePack(pack.id) && pack.verdict === "install")) {
+        found.push({ id: pack.id, force: false });
+      } else if (isManagedVoicePack(pack.id) && pack.verdict === "installed" && !deps.isPackUsable(pack.id)) {
+        deps.logger.warn("Voice packs: the managed pack is installed but unusable; reinstalling it");
+        deps.logger.debug(`Voice pack "${pack.id}": record present, no usable voice on disk`);
+        found.push({ id: pack.id, force: true });
+      }
+    }
+
+    return found;
   }
 
   function isPermanent(result: InstallFailure): boolean {
@@ -200,12 +226,14 @@ export function createVoicePackLaunchStep(deps: VoicePackLaunchStepDeps): VoiceP
       return giveUp(`the catalog names no "${ENSURED_VOICE_PACK_ID}" pack`);
     }
 
-    const ids = targets(catalog.packs);
+    const wanted = targets(catalog.packs);
 
-    if (ids.length === 0) return current();
+    if (wanted.length === 0) return current();
 
     deps.logger.info("Voice packs: installing or updating");
-    deps.logger.debug(`Voice packs to install or update: ${ids.join(", ")}`);
+    deps.logger.debug(
+      `Voice packs to install or update: ${wanted.map((t) => (t.force ? `${t.id} (forced)` : t.id)).join(", ")}`,
+    );
 
     // One at a time, never `Promise.all`: every promote stops ALL voice
     // playback and runs a full rescan, so two installs racing would stop the
@@ -213,8 +241,10 @@ export function createVoicePackLaunchStep(deps: VoicePackLaunchStepDeps): VoiceP
     // `seed()` batch is sequential for the same reason.
     const failures: { id: string; result: InstallFailure }[] = [];
 
-    for (const id of ids) {
-      const result = await deps.installer.install(id);
+    for (const { id, force } of wanted) {
+      // No options object on the ordinary path: the installer's own defaults
+      // apply, and a test can assert the plain call shape.
+      const result = force ? await deps.installer.install(id, { force: true }) : await deps.installer.install(id);
 
       if (!result.ok) failures.push({ id, result });
     }

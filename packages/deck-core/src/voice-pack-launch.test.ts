@@ -88,6 +88,7 @@ describe("voice-pack launch step", () => {
     const step = createVoicePackLaunchStep({
       installer,
       settled: () => settled,
+      isPackUsable: () => true,
       isRaceEngineerEnabled: () => true,
       logger,
     });
@@ -107,11 +108,59 @@ describe("voice-pack launch step", () => {
     const step = createVoicePackLaunchStep({
       installer,
       settled: () => Promise.resolve(),
+      isPackUsable: () => true,
       isRaceEngineerEnabled: () => true,
       logger,
     });
     await expect(step.start()).resolves.toEqual({ state: "current" });
     expect(installer.install).toHaveBeenCalledWith("default");
+  });
+
+  describe("a managed pack whose record says installed but whose clips are gone (isPackUsable)", () => {
+    function usable(packs: VoicePackOffer[], isPackUsable: (id: string) => boolean) {
+      const installer = fakeInstaller(ok(packs));
+      const step = createVoicePackLaunchStep({
+        installer,
+        settled: () => Promise.resolve(),
+        isPackUsable,
+        isRaceEngineerEnabled: () => true,
+        logger,
+      });
+
+      return { installer, step };
+    }
+
+    it("force-reinstalls default when the scanner lists no usable copy of it", async () => {
+      const { installer, step } = usable([offer({ id: "default", verdict: "installed" })], () => false);
+      await expect(step.start()).resolves.toEqual({ state: "current" });
+      expect(installer.install).toHaveBeenCalledTimes(1);
+      expect(installer.install).toHaveBeenCalledWith("default", { force: true });
+      expect(logger.warn).toHaveBeenCalledWith(
+        "Voice packs: the managed pack is installed but unusable; reinstalling it",
+      );
+      expect(logger.debug).toHaveBeenCalledWith('Voice pack "default": record present, no usable voice on disk');
+    });
+
+    it("leaves a usable default alone", async () => {
+      const { installer, step } = usable([offer({ id: "default", verdict: "installed" })], () => true);
+      await expect(step.start()).resolves.toEqual({ state: "current" });
+      expect(installer.install).not.toHaveBeenCalled();
+    });
+
+    it("never force-reinstalls another pack, however unusable — only the managed pack is the plugin's to replace", async () => {
+      const { installer, step } = usable(
+        [offer({ id: "default", verdict: "installed" }), offer({ id: "luca", verdict: "installed" })],
+        (id) => id !== "luca",
+      );
+      await expect(step.start()).resolves.toEqual({ state: "current" });
+      expect(installer.install).not.toHaveBeenCalled();
+    });
+
+    it("installs an ordinary target without the force option", async () => {
+      const { installer, step } = usable([offer({ id: "default", verdict: "update" })], () => true);
+      await expect(step.start()).resolves.toEqual({ state: "current" });
+      expect(installer.install).toHaveBeenCalledWith("default");
+    });
   });
 
   it("updates default and every other catalog-installed pack that is behind, but never installs another pack that is merely absent", async () => {
@@ -126,6 +175,7 @@ describe("voice-pack launch step", () => {
     const step = createVoicePackLaunchStep({
       installer,
       settled: () => Promise.resolve(),
+      isPackUsable: () => true,
       isRaceEngineerEnabled: () => true,
       logger,
     });
@@ -139,6 +189,7 @@ describe("voice-pack launch step", () => {
     const step = createVoicePackLaunchStep({
       installer,
       settled: () => Promise.resolve(),
+      isPackUsable: () => true,
       isRaceEngineerEnabled: () => true,
       logger,
     });
@@ -170,6 +221,7 @@ describe("voice-pack launch step", () => {
     const step = createVoicePackLaunchStep({
       installer,
       settled: () => Promise.resolve(),
+      isPackUsable: () => true,
       isRaceEngineerEnabled: () => false,
       logger,
     });
@@ -188,6 +240,7 @@ describe("voice-pack launch step", () => {
     const step = createVoicePackLaunchStep({
       installer,
       settled: () => Promise.resolve(),
+      isPackUsable: () => true,
       isRaceEngineerEnabled: () => enabled,
       logger,
     });
@@ -211,6 +264,7 @@ describe("voice-pack launch step", () => {
         vi.fn(async () => transient),
       ),
       settled: () => Promise.resolve(),
+      isPackUsable: () => true,
       isRaceEngineerEnabled: () => true,
       logger,
     });
@@ -223,6 +277,7 @@ describe("voice-pack launch step", () => {
     const givenUp = createVoicePackLaunchStep({
       installer: permanentInstaller,
       settled: () => Promise.resolve(),
+      isPackUsable: () => true,
       isRaceEngineerEnabled: () => true,
       logger,
     });
@@ -245,6 +300,7 @@ describe("voice-pack launch step", () => {
     const step = createVoicePackLaunchStep({
       installer,
       settled: () => Promise.resolve(),
+      isPackUsable: () => true,
       isRaceEngineerEnabled: () => true,
       logger,
     });
@@ -273,6 +329,7 @@ describe("voice-pack launch step", () => {
     const step = createVoicePackLaunchStep({
       installer,
       settled: () => Promise.resolve(),
+      isPackUsable: () => true,
       isRaceEngineerEnabled: () => true,
       logger,
     });
@@ -295,6 +352,7 @@ describe("voice-pack launch step", () => {
       const step = createVoicePackLaunchStep({
         installer,
         settled: () => Promise.resolve(),
+        isPackUsable: () => true,
         isRaceEngineerEnabled: () => true,
         logger,
       });
@@ -312,6 +370,7 @@ describe("voice-pack launch step", () => {
     const step = createVoicePackLaunchStep({
       installer,
       settled: () => Promise.resolve(),
+      isPackUsable: () => true,
       isRaceEngineerEnabled: () => true,
       logger,
     });
@@ -329,6 +388,7 @@ describe("voice-pack launch step", () => {
     const step = createVoicePackLaunchStep({
       installer,
       settled: () => Promise.resolve(),
+      isPackUsable: () => true,
       isRaceEngineerEnabled: () => true,
       logger,
     });
@@ -353,6 +413,7 @@ describe("voice-pack launch step", () => {
     const step = createVoicePackLaunchStep({
       installer,
       settled: () => Promise.resolve(),
+      isPackUsable: () => true,
       isRaceEngineerEnabled: () => true,
       logger,
     });
@@ -378,6 +439,7 @@ describe("voice-pack launch step", () => {
     const step = createVoicePackLaunchStep({
       installer,
       settled: () => Promise.resolve(),
+      isPackUsable: () => true,
       isRaceEngineerEnabled: () => true,
       logger,
     });
@@ -401,6 +463,7 @@ describe("voice-pack launch step", () => {
     const step = createVoicePackLaunchStep({
       installer,
       settled: () => settled,
+      isPackUsable: () => true,
       isRaceEngineerEnabled: () => true,
       logger,
     });
@@ -426,6 +489,7 @@ describe("voice-pack launch step", () => {
     const step = createVoicePackLaunchStep({
       installer,
       settled: () => Promise.resolve(),
+      isPackUsable: () => true,
       isRaceEngineerEnabled: () => true,
       logger,
     });
@@ -448,6 +512,7 @@ describe("voice-pack launch step", () => {
       const step = createVoicePackLaunchStep({
         installer,
         settled: () => Promise.resolve(),
+        isPackUsable: () => true,
         isRaceEngineerEnabled: () => enabled,
         onSettingsChange,
         logger,
@@ -527,6 +592,7 @@ describe("voice-pack launch step", () => {
     const step = createVoicePackLaunchStep({
       installer,
       settled: () => Promise.resolve(),
+      isPackUsable: () => true,
       isRaceEngineerEnabled: () => true,
       logger,
     });
@@ -547,6 +613,7 @@ describe("voice-pack launch step", () => {
     const step = createVoicePackLaunchStep({
       installer,
       settled: () => Promise.resolve(),
+      isPackUsable: () => true,
       isRaceEngineerEnabled: () => true,
       logger,
       setTimeout: setTimeoutFn,
@@ -565,7 +632,13 @@ describe("voice-pack launch step", () => {
     const installer = fakeInstaller(ok([offer({ id: "default", verdict: "installed" })]));
     installer.sweep.mockRejectedValue(new Error("disk"));
     const settled = vi.fn(() => Promise.resolve());
-    const step = createVoicePackLaunchStep({ installer, settled, isRaceEngineerEnabled: () => true, logger });
+    const step = createVoicePackLaunchStep({
+      installer,
+      settled,
+      isPackUsable: () => true,
+      isRaceEngineerEnabled: () => true,
+      logger,
+    });
     await expect(step.start()).resolves.toEqual({ state: "current" });
     expect(logger.error).toHaveBeenCalled();
     expect(installer.seed).toHaveBeenCalledTimes(1);
@@ -579,6 +652,7 @@ describe("voice-pack launch step", () => {
     const step = createVoicePackLaunchStep({
       installer,
       settled: () => Promise.resolve(),
+      isPackUsable: () => true,
       isRaceEngineerEnabled: () => true,
       logger,
     });
@@ -603,6 +677,7 @@ describe("voice-pack launch step", () => {
     const step = createVoicePackLaunchStep({
       installer,
       settled: () => Promise.resolve(),
+      isPackUsable: () => true,
       isRaceEngineerEnabled: () => true,
       logger,
     });
@@ -615,6 +690,7 @@ describe("voice-pack launch step", () => {
     const step = createVoicePackLaunchStep({
       installer,
       settled: () => Promise.resolve(),
+      isPackUsable: () => true,
       isRaceEngineerEnabled: () => true,
       logger,
     });
