@@ -323,6 +323,106 @@ describe("voice-pack launch step", () => {
     expect(installer.refreshCatalog).toHaveBeenCalledTimes(2);
   });
 
+  it("a poke before start has passed the settle wait runs nothing; the first ensure covers it", async () => {
+    const installer = fakeInstaller(ok([offer({ id: "default", verdict: "installed" })]));
+    let release!: () => void;
+    const settled = new Promise<void>((r) => {
+      release = r;
+    });
+    const step = createVoicePackLaunchStep({
+      installer,
+      settled: () => settled,
+      isRaceEngineerEnabled: () => true,
+      logger,
+    });
+    step.poke();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(installer.refreshCatalog).not.toHaveBeenCalled();
+    const started = step.start();
+    await vi.advanceTimersByTimeAsync(0);
+    step.poke();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(installer.refreshCatalog).not.toHaveBeenCalled();
+    release();
+    await expect(started).resolves.toEqual({ state: "current" });
+    expect(installer.refreshCatalog).toHaveBeenCalledTimes(1);
+  });
+
+  it("stop mid-ensure: the failure that lands afterwards is given up as stopped, with no timer", async () => {
+    let resolveInstall!: (r: VoicePackInstallResult) => void;
+    const install = vi.fn(
+      () =>
+        new Promise<VoicePackInstallResult>((r) => {
+          resolveInstall = r;
+        }),
+    );
+    const installer = fakeInstaller(ok([offer({ id: "default", verdict: "install" })]), install);
+    const step = createVoicePackLaunchStep({
+      installer,
+      settled: () => Promise.resolve(),
+      isRaceEngineerEnabled: () => true,
+      logger,
+    });
+    const started = step.start();
+    await vi.advanceTimersByTimeAsync(0);
+    step.stop();
+    resolveInstall({ ok: false, code: "download", reason: "The network dropped." });
+    await expect(started).resolves.toEqual({ state: "given-up", reason: "stopped" });
+    await vi.advanceTimersByTimeAsync(VOICE_PACK_RETRY_STEADY_MS.engineerOn * 2);
+    expect(installer.refreshCatalog).toHaveBeenCalledTimes(1);
+  });
+
+  it("arms the retry on the injected timers, unrefs the handle, and clears it through the injected clearTimeout on stop", async () => {
+    const handle = { unref: vi.fn() } as unknown as ReturnType<typeof globalThis.setTimeout>;
+    const setTimeoutFn = vi.fn<typeof globalThis.setTimeout>().mockReturnValue(handle);
+    const clearTimeoutFn = vi.fn<typeof globalThis.clearTimeout>();
+    const installer = fakeInstaller({ state: "unknown" });
+    const step = createVoicePackLaunchStep({
+      installer,
+      settled: () => Promise.resolve(),
+      isRaceEngineerEnabled: () => true,
+      logger,
+      setTimeout: setTimeoutFn,
+      clearTimeout: clearTimeoutFn,
+    });
+    await expect(step.start()).resolves.toMatchObject({ state: "retry-scheduled" });
+    expect(setTimeoutFn).toHaveBeenCalledTimes(1);
+    expect(setTimeoutFn).toHaveBeenCalledWith(expect.any(Function), VOICE_PACK_RETRY_DELAYS_MS.engineerOn[0]);
+    expect((handle as unknown as { unref: ReturnType<typeof vi.fn> }).unref).toHaveBeenCalledTimes(1);
+    step.stop();
+    expect(clearTimeoutFn).toHaveBeenCalledTimes(1);
+    expect(clearTimeoutFn).toHaveBeenCalledWith(handle);
+  });
+
+  it("never rejects — a throwing sweep is logged, and the seed, the settle wait and the ensure still run", async () => {
+    const installer = fakeInstaller(ok([offer({ id: "default", verdict: "installed" })]));
+    installer.sweep.mockRejectedValue(new Error("disk"));
+    const settled = vi.fn(() => Promise.resolve());
+    const step = createVoicePackLaunchStep({ installer, settled, isRaceEngineerEnabled: () => true, logger });
+    await expect(step.start()).resolves.toEqual({ state: "current" });
+    expect(logger.error).toHaveBeenCalled();
+    expect(installer.seed).toHaveBeenCalledTimes(1);
+    expect(settled).toHaveBeenCalledTimes(1);
+    expect(installer.refreshCatalog).toHaveBeenCalledTimes(1);
+  });
+
+  it("never rejects — a throwing catalog read is logged and scheduled for retry", async () => {
+    const installer = fakeInstaller({ state: "unknown" });
+    installer.refreshCatalog.mockRejectedValue(new Error("boom"));
+    const step = createVoicePackLaunchStep({
+      installer,
+      settled: () => Promise.resolve(),
+      isRaceEngineerEnabled: () => true,
+      logger,
+    });
+    await expect(step.start()).resolves.toMatchObject({
+      state: "retry-scheduled",
+      inMs: VOICE_PACK_RETRY_DELAYS_MS.engineerOn[0],
+    });
+    expect(logger.error).toHaveBeenCalled();
+    expect(installer.republishStatus).toHaveBeenCalledTimes(1);
+  });
+
   it("never rejects — a throwing installer is logged and scheduled for retry", async () => {
     const installer = fakeInstaller(
       ok([offer({ id: "default", verdict: "install" })]),

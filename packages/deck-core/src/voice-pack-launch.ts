@@ -92,7 +92,13 @@ export interface VoicePackLaunchStep {
   start(): Promise<VoicePackLaunchOutcome>;
   /** Run the ensure again now — the Race Engineer gate flipping on, or Rescan. Joins an ensure in flight (it re-runs once that one finishes). */
   poke(): void;
-  /** Cancel any scheduled retry. */
+  /**
+   * Permanent shutdown — the plugin stopping, and tests. Cancels any scheduled
+   * retry and refuses every later run: `poke()` is inert, no retry is armed, a
+   * follow-up queued behind an in-flight ensure is dropped, and a `start()`
+   * still waiting on the settle resolves without an ensure. Never call it for a
+   * gate flip; that is `poke()`'s job.
+   */
   stop(): void;
   /** The last outcome, for tests and logs. */
   lastOutcome(): VoicePackLaunchOutcome | undefined;
@@ -106,6 +112,8 @@ export function createVoicePackLaunchStep(deps: VoicePackLaunchStepDeps): VoiceP
   let inFlight: Promise<VoicePackLaunchOutcome> | undefined;
   let pokedWhileInFlight = false;
   let stopped = false;
+  /** Set once `start()` has passed the settle wait; the ensure never runs before it. */
+  let ready = false;
   let last: VoicePackLaunchOutcome | undefined;
 
   function scheduleFor(): number {
@@ -134,6 +142,10 @@ export function createVoicePackLaunchStep(deps: VoicePackLaunchStepDeps): VoiceP
 
     if (catalog.state !== "ok") return failed("the catalog could not be read");
 
+    // Both guards below sit before `targets()`, so a catalog that cannot offer
+    // the managed pack — or omits it — also skips pending updates of every other
+    // pack: a catalog in that state is a publishing mistake, and the next start
+    // retries the whole ensure.
     const unsupported = catalog.packs.find((pack) => isManagedVoicePack(pack.id) && pack.verdict === "unsupported");
 
     if (unsupported !== undefined) {
@@ -187,17 +199,21 @@ export function createVoicePackLaunchStep(deps: VoicePackLaunchStepDeps): VoiceP
   function failed(reason: string): VoicePackLaunchOutcome {
     consecutiveFailures += 1;
     const inMs = scheduleFor();
+
+    // Stopped mid-ensure: a retry that can never fire is not "scheduled".
+    if (!arm(inMs)) return { state: "given-up", reason: "stopped" };
+
     deps.logger.warn("Voice packs: could not be brought up to date; will retry");
     deps.logger.debug(`Voice packs retry in ${inMs} ms — ${reason}`);
-    arm(inMs);
 
     return { state: "retry-scheduled", inMs, reason };
   }
 
-  function arm(inMs: number): void {
+  /** Arms the retry timer; false when stopped, in which case nothing is armed. */
+  function arm(inMs: number): boolean {
     disarm();
 
-    if (stopped) return;
+    if (stopped) return false;
 
     timer = setTimer(() => {
       timer = undefined;
@@ -205,6 +221,8 @@ export function createVoicePackLaunchStep(deps: VoicePackLaunchStepDeps): VoiceP
     }, inMs);
     // A pending retry must not keep the process alive on its own.
     (timer as { unref?: () => void }).unref?.();
+
+    return true;
   }
 
   function disarm(): void {
@@ -248,18 +266,26 @@ export function createVoicePackLaunchStep(deps: VoicePackLaunchStepDeps): VoiceP
     return last;
   }
 
+  async function guarded(what: string, step: () => Promise<unknown>): Promise<void> {
+    try {
+      await step();
+    } catch (error: unknown) {
+      deps.logger.error(`Voice pack startup ${what} failed: ${String(error)}`);
+    }
+  }
+
   return {
     async start() {
       // Every step is written never to reject; the guards keep a disk fault on
-      // the startup path out of Node's unhandled-rejection handler.
-      try {
-        await deps.installer.sweep();
-        await deps.installer.seed();
-      } catch (error: unknown) {
-        deps.logger.error(`Voice pack startup failed: ${String(error)}`);
-      }
-
-      await deps.settled();
+      // the startup path out of Node's unhandled-rejection handler. Each step
+      // is guarded on its own so a sweep that throws still lets the seed run
+      // and the settle wait happen — `whenSettingsStoreSettled` is documented
+      // never to reject, but this module's guarantee must not rest on a dep's
+      // promise.
+      await guarded("sweep", () => deps.installer.sweep());
+      await guarded("seed", () => deps.installer.seed());
+      await guarded("settle wait", () => deps.settled());
+      ready = true;
 
       if (stopped) return last ?? { state: "given-up", reason: "stopped" };
 
@@ -267,6 +293,11 @@ export function createVoicePackLaunchStep(deps: VoicePackLaunchStepDeps): VoiceP
     },
     poke() {
       if (stopped) return;
+
+      // Before `start()` has passed the settle wait an ensure would run with no
+      // sweep, no seed and the `_devBaseUrl` override unread — the very thing
+      // the wait exists for. The first ensure is imminent and covers this poke.
+      if (!ready) return;
 
       consecutiveFailures = 0;
       void run(true);
