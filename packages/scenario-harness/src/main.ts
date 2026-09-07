@@ -108,7 +108,12 @@ async function main(): Promise<void> {
   // Every voice the authored manifest describes — since #1034 stage 3 that is
   // no longer "what a plugin bundles": the harness auditions every PUBLISHED
   // voice. The scanner-facing dep it feeds is still named `bundledVoices`
-  // (`voice-scripts.ts`), which is the reserved-voices list it maps onto.
+  // (`voice-scripts.ts`), which is the reserved-voices list it maps onto — and
+  // the harness DOES reserve them, where a plugin now reserves nothing: these
+  // voices play from the audio-assets source tree here, so a pack under
+  // `IRACEDECK_VOICE_PACKS_PATH` claiming one of their ids (a downloaded
+  // `default`) would only add extra takes into a voice already being
+  // auditioned, a half-merged voice nobody asked for. Dropped instead.
   const { raceEngineerVoices: publishedVoices } = seedGlobalSettings(adapter);
   // A `let`, like the plugins' `raceEngineerVoices`: an installed voice pack
   // (below) extends the list after the engine is constructed.

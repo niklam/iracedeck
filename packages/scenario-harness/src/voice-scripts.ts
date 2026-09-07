@@ -20,8 +20,14 @@
  * - {@link loadInstalledVoiceScripts} runs the plugins' own voice-pack service
  *   over a packs directory (`IRACEDECK_VOICE_PACKS_PATH`), with the real file
  *   system port, so a sideloaded or downloaded pack's clips AND script load
- *   exactly as they do in a plugin — the service applies roots, then the
- *   manifest, then the scripts, in the order the plugins rely on.
+ *   as they do in a plugin — the service applies roots, then the manifest,
+ *   then the scripts, in the order the plugins rely on. One carve-out: the
+ *   harness RESERVES every published voice (the plugins, bundling nothing
+ *   since #1034 stage 3, reserve none), so a pack claiming one of those ids —
+ *   a downloaded `default` under that directory, say — is dropped here and
+ *   admitted in a plugin. Deliberate: the harness serves those voices from
+ *   the audio-assets source tree, and admitting a pack's copy beside it would
+ *   make a half-merged voice nobody is auditioning.
  *
  * And one re-loader, {@link reloadVoiceScripts}, for the UI's Reload and Wipe
  * cache buttons: the audio processor copies a regenerated `callouts.json`

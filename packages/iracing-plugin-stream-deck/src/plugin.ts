@@ -105,6 +105,7 @@ import {
   createVoicePackStorageFileSystem,
   createVoiceScriptWarningReporter,
   deleteGlobalSettings,
+  ENSURED_VOICE_PACK_ID,
   evaluateSetupWarning,
   findChromiumBrowserOnThisMachine,
   FIRST_RUN_VERSION_KEY,
@@ -474,6 +475,10 @@ const voicePacks = createVoicePackService({
   logger: voicePacksLogger,
   pluginAudioDir: audioRootDir,
   reservedVoices: bundledVoices,
+  // The managed pack claims its voice before the alphabetical order does
+  // (#1034 stage 3): with nothing reserved, a sideloaded folder sorting
+  // before `default` could otherwise take the `default` voice id off it.
+  priorityPacks: [ENSURED_VOICE_PACK_ID],
   applyRoots: (roots) => getAudio().setRoots(roots),
   applyManifest: (fragments) => {
     activeManifest = mergeManifests(audioAssetsManifest, fragments);
@@ -660,26 +665,15 @@ const voicePackLaunch = createVoicePackLaunchStep({
   // A thunk: `initGlobalSettings` (further down) re-arms the settle signal, so
   // the promise must be taken inside `start()`, which runs after it.
   settled: () => whenSettingsStoreSettled(),
+  // What is on disk now, as against the record's digest: the scanner's last
+  // result listing the pack with a voice. A managed pack whose record
+  // survived but whose clips did not is reinstalled by force off this.
+  isPackUsable: (id) => voicePacks.installed().some((pack) => pack.id === id && pack.voices.length > 0),
   isRaceEngineerEnabled: () => (getGlobalSettings() as Record<string, unknown>).pitCrewRaceEngineerEnabled === true,
+  // The step watches the Race Engineer gate itself and re-runs the ensure on
+  // the false→true edge — the moment a missing or stale voice starts to matter.
+  onSettingsChange: onGlobalSettingsChange,
   logger: voicePacksLogger,
-});
-
-// A user switching the Race Engineer on is the moment a missing or stale voice
-// starts to matter: retry the launch ensure now, on the tighter schedule
-// (#1034 stage 3). Its own listener rather than a line inside the gate sync
-// above, which is registered before this step exists — and edge-triggered, so
-// the settings arrivals that leave the gate where it was cost nothing. On a
-// start where the engineer is already on the first arrival IS an edge, but it
-// lands while `start()` is still inside its settle wait, where a poke is
-// deliberately inert because the first ensure is imminent and covers it.
-let raceEngineerWasEnabled = false;
-
-onGlobalSettingsChange(() => {
-  const raceEngineerEnabled = (getGlobalSettings() as Record<string, unknown>).pitCrewRaceEngineerEnabled === true;
-
-  if (raceEngineerEnabled && !raceEngineerWasEnabled) voicePackLaunch.poke();
-
-  raceEngineerWasEnabled = raceEngineerEnabled;
 });
 
 // The radio frame's two opt-outs (#1064), read live at frame expansion so the
