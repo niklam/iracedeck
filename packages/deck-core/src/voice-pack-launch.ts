@@ -7,7 +7,9 @@
  * bundles nothing), publish the status the settings window reads, wait for the
  * settings load to settle, then ENSURE — make `default` match the catalog and
  * bring every other catalog-installed pack up to date — and retry that on a
- * schedule until it holds.
+ * schedule until it holds. A failure a retry cannot fix (the catalog omits
+ * `default`, or offers an archive that is not it) is given up for THIS catalog
+ * answer and re-observed hourly, never abandoned for the process.
  *
  * Why the settle wait: the catalog client reads the `_devBaseUrl` override
  * from the settings cache, and an ensure fired before the load would silently
@@ -18,6 +20,10 @@
  * a missing `default` is a mute engineer, and a failed update is a voice whose
  * newer callouts are silent. Neither is benign, and the user who has the
  * engineer switched on is the one who notices.
+ *
+ * The Race Engineer gate turning on is the other moment a missing voice starts
+ * to matter, so the step watches the settings itself (`onSettingsChange`) and
+ * pokes on the false→true edge — once here rather than once per plugin.
  *
  * Silent by construction: nothing here opens a window — the structural test
  * over every `voice*.ts` module holds this one to that too.
@@ -45,15 +51,23 @@ export const VOICE_PACK_RETRY_DELAYS_MS = Object.freeze({
   engineerOff: Object.freeze([300_000, 900_000, 3_600_000]),
 });
 
+/** The steady intervals once the delays run out; `engineerOff` is also the cadence a given-up ensure is re-observed at. */
 export const VOICE_PACK_RETRY_STEADY_MS = Object.freeze({ engineerOn: 900_000, engineerOff: 3_600_000 });
 
 /**
  * Failure codes a retry against the SAME catalog answer can plausibly clear: the
- * network, the disk, a lock, a bug. A hash mismatch (`verify`), a malformed
- * archive (`extract`) and an archive that is not the pack asked for
- * (`invalid-pack`) are the catalog's fault, not the connection's, and are not
- * retried until the catalog answer changes — the spec's *Stage 3 — dropping the
- * bundle* retry paragraph; a Rescan press or the next start re-runs the ensure.
+ * network, the disk, a lock, a bug — these follow the failure schedule. A hash
+ * mismatch (`verify`), a malformed archive (`extract`) and an archive that is
+ * not the pack asked for (`invalid-pack`) are the catalog's fault, not the
+ * connection's: they are GIVEN UP for this answer — the spec's *Stage 3 —
+ * dropping the bundle* retry paragraph — and re-observed on the hourly
+ * cadence (`VOICE_PACK_RETRY_STEADY_MS.engineerOff`, whatever the gate says)
+ * with a fresh catalog read, because "until the catalog answer changes" needs
+ * a mechanism: the catalog's failure TTL governs a FAILED fetch, not a
+ * successful one followed by an archive that is wrong, and a captive portal
+ * substituting the archive, or a catalog momentarily missing `default`, must
+ * not cost the rest of the session. The hour bounds the pathological cost to
+ * one archive an hour; a Rescan press or the next start re-runs it sooner.
  */
 const TRANSIENT_FAILURES: ReadonlySet<VoicePackInstallFailureCode> = new Set<VoicePackInstallFailureCode>([
   "download",
@@ -69,7 +83,12 @@ export type VoicePackLaunchOutcome =
   /** Everything the step is responsible for is at the catalog's digest. */
   | { state: "current" }
   | { state: "retry-scheduled"; inMs: number; reason: string }
-  /** A failure a retry cannot fix (unsupported / not-in-catalog / invalid-pack). */
+  /**
+   * A failure a retry against this catalog answer cannot fix (unsupported /
+   * not-in-catalog / invalid-pack), or the step was stopped. Given up for
+   * NOW: unless stopped, the ensure is re-observed hourly with a fresh
+   * catalog read.
+   */
   | { state: "given-up"; reason: string };
 
 export interface VoicePackLaunchStepDeps {
@@ -83,6 +102,15 @@ export interface VoicePackLaunchStepDeps {
   settled: () => Promise<void>;
   /** Live read of `pitCrewRaceEngineerEnabled`. */
   isRaceEngineerEnabled: () => boolean;
+  /**
+   * Subscribe to global-settings changes — `onGlobalSettingsChange` — and
+   * return the unsubscribe. Subscribed once `start()` has passed the settle
+   * wait (so the first arrival of a loaded file is never mistaken for a gate
+   * flip), read through `isRaceEngineerEnabled` on every change, and poked on
+   * the false→true edge only; `stop()` unsubscribes. Optional so a caller
+   * with no settings (tests) need not fake one.
+   */
+  onSettingsChange?: (listener: () => void) => () => void;
   logger: ILogger;
   setTimeout?: typeof globalThis.setTimeout;
   clearTimeout?: typeof globalThis.clearTimeout;
@@ -91,14 +119,21 @@ export interface VoicePackLaunchStepDeps {
 export interface VoicePackLaunchStep {
   /** Plugin start. Never rejects. Resolves after the FIRST ensure completes (retries continue in the background). */
   start(): Promise<VoicePackLaunchOutcome>;
-  /** Run the ensure again now — the Race Engineer gate flipping on, or Rescan. Joins an ensure in flight (it re-runs once that one finishes). */
+  /**
+   * Run the ensure again now, asking the catalog afresh — Rescan, and the step's
+   * own gate-flip listener. Joins an ensure in flight (it re-runs once that one
+   * finishes). Before `start()` has passed the settle wait it is DEFERRED, not
+   * dropped: the first ensure then bypasses the catalog TTLs, since the person
+   * who pressed Rescan asked for a request.
+   */
   poke(): void;
   /**
    * Permanent shutdown — the plugin stopping, and tests. Cancels any scheduled
-   * retry and refuses every later run: `poke()` is inert, no retry is armed, a
-   * follow-up queued behind an in-flight ensure is dropped, and a `start()`
-   * still waiting on the settle resolves without an ensure. Never call it for a
-   * gate flip; that is `poke()`'s job.
+   * retry or hourly re-observation, unsubscribes from settings changes, and
+   * refuses every later run: `poke()` is inert, no retry is armed, a follow-up
+   * queued behind an in-flight ensure is dropped, and a `start()` still waiting
+   * on the settle resolves without an ensure. Never call it for a gate flip;
+   * the step watches the gate itself.
    */
   stop(): void;
   /** The last outcome, for tests and logs. */
@@ -115,6 +150,9 @@ export function createVoicePackLaunchStep(deps: VoicePackLaunchStepDeps): VoiceP
   let stopped = false;
   /** Set once `start()` has passed the settle wait; the ensure never runs before it. */
   let ready = false;
+  /** A poke that arrived before `ready`, honoured by the first ensure. */
+  let pokedBeforeReady = false;
+  let unsubscribeSettings: (() => void) | undefined;
   let last: VoicePackLaunchOutcome | undefined;
 
   function scheduleFor(): number {
@@ -169,8 +207,17 @@ export function createVoicePackLaunchStep(deps: VoicePackLaunchStepDeps): VoiceP
     deps.logger.info("Voice packs: installing or updating");
     deps.logger.debug(`Voice packs to install or update: ${ids.join(", ")}`);
 
-    const results = await Promise.all(ids.map(async (id) => ({ id, result: await deps.installer.install(id) })));
-    const failures = results.filter((r): r is { id: string; result: InstallFailure } => !r.result.ok);
+    // One at a time, never `Promise.all`: every promote stops ALL voice
+    // playback and runs a full rescan, so two installs racing would stop the
+    // engineer twice and rescan twice for one result — the installer's own
+    // `seed()` batch is sequential for the same reason.
+    const failures: { id: string; result: InstallFailure }[] = [];
+
+    for (const id of ids) {
+      const result = await deps.installer.install(id);
+
+      if (!result.ok) failures.push({ id, result });
+    }
 
     if (failures.length === 0) return current();
 
@@ -193,6 +240,9 @@ export function createVoicePackLaunchStep(deps: VoicePackLaunchStepDeps): VoiceP
   function giveUp(reason: string): VoicePackLaunchOutcome {
     consecutiveFailures = 0;
     deps.logger.warn(`Voice packs: cannot be brought up to date — ${reason}`);
+    // Re-observed hourly, gate or no gate (see TRANSIENT_FAILURES): the answer
+    // is given up, the process is not. Stopped → nothing armed, as for `failed`.
+    arm(VOICE_PACK_RETRY_STEADY_MS.engineerOff);
 
     return { state: "given-up", reason };
   }
@@ -275,6 +325,26 @@ export function createVoicePackLaunchStep(deps: VoicePackLaunchStepDeps): VoiceP
     }
   }
 
+  function poke(): void {
+    if (stopped) return;
+
+    // Before `start()` has passed the settle wait an ensure would run with no
+    // sweep, no seed and the `_devBaseUrl` override unread — the very thing
+    // the wait exists for. The first ensure is imminent and covers this poke
+    // — latched, so that ensure re-asks the catalog the way a poke does. The
+    // window is 10–30 s on a fresh install, and the settings window's Rescan
+    // is reachable inside it.
+    if (!ready) {
+      pokedBeforeReady = true;
+      deps.logger.debug("Voice pack poke deferred until the launch step is ready");
+
+      return;
+    }
+
+    consecutiveFailures = 0;
+    void run(true);
+  }
+
   return {
     async start() {
       // Every step is written never to reject; the guards keep a disk fault on
@@ -294,22 +364,36 @@ export function createVoicePackLaunchStep(deps: VoicePackLaunchStepDeps): VoiceP
 
       if (stopped) return last ?? { state: "given-up", reason: "stopped" };
 
-      return run(false);
-    },
-    poke() {
-      if (stopped) return;
+      // Subscribed only now, with the gate's current value as the baseline:
+      // the cache already holds the loaded file, so the first arrival — an
+      // "edge" from the schema default to the stored value — is not a flip
+      // the user made, and the ensure about to run covers it anyway.
+      if (deps.onSettingsChange !== undefined && unsubscribeSettings === undefined) {
+        let wasEnabled = deps.isRaceEngineerEnabled();
 
-      // Before `start()` has passed the settle wait an ensure would run with no
-      // sweep, no seed and the `_devBaseUrl` override unread — the very thing
-      // the wait exists for. The first ensure is imminent and covers this poke.
-      if (!ready) return;
+        unsubscribeSettings = deps.onSettingsChange(() => {
+          const enabled = deps.isRaceEngineerEnabled();
 
-      consecutiveFailures = 0;
-      void run(true);
+          // A user switching the Race Engineer on is the moment a missing or
+          // stale voice starts to matter: retry now, on the tighter schedule.
+          // Edge-triggered, so the arrivals that leave the gate where it was
+          // cost nothing.
+          if (enabled && !wasEnabled) poke();
+
+          wasEnabled = enabled;
+        });
+      }
+
+      // A poke deferred from before the settle wait asked for a request, not
+      // a conditional read: the first ensure bypasses the catalog TTLs for it.
+      return run(pokedBeforeReady);
     },
+    poke,
     stop() {
       stopped = true;
       disarm();
+      unsubscribeSettings?.();
+      unsubscribeSettings = undefined;
     },
     lastOutcome() {
       return last;

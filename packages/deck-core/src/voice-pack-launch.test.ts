@@ -216,21 +216,31 @@ describe("voice-pack launch step", () => {
     });
     await expect(retrying.start()).resolves.toMatchObject({ state: "retry-scheduled" });
 
-    const stopped = createVoicePackLaunchStep({
-      installer: fakeInstaller(
-        catalog,
-        vi.fn(async () => permanent),
-      ),
+    const permanentInstaller = fakeInstaller(
+      catalog,
+      vi.fn(async () => permanent),
+    );
+    const givenUp = createVoicePackLaunchStep({
+      installer: permanentInstaller,
       settled: () => Promise.resolve(),
       isRaceEngineerEnabled: () => true,
       logger,
     });
-    await expect(stopped.start()).resolves.toMatchObject({ state: "given-up" });
+    await expect(givenUp.start()).resolves.toMatchObject({ state: "given-up" });
+    // Given up for THIS catalog answer, not for the process: re-observed on
+    // the hour whatever the gate says, so a captive portal or a momentarily
+    // wrong catalog does not cost the rest of the session.
     await vi.advanceTimersByTimeAsync(VOICE_PACK_RETRY_STEADY_MS.engineerOn * 2);
-    expect(stopped.lastOutcome()).toMatchObject({ state: "given-up" });
+    expect(givenUp.lastOutcome()).toMatchObject({ state: "given-up" });
+    expect(permanentInstaller.refreshCatalog).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(
+      VOICE_PACK_RETRY_STEADY_MS.engineerOff - VOICE_PACK_RETRY_STEADY_MS.engineerOn * 2,
+    );
+    expect(permanentInstaller.refreshCatalog).toHaveBeenCalledTimes(2);
+    expect(permanentInstaller.refreshCatalog).toHaveBeenLastCalledWith({ bypassTtl: true });
   });
 
-  it("gives up without a timer when the catalog says default needs a newer plugin", async () => {
+  it("gives up when the catalog says default needs a newer plugin, and re-asks hourly rather than never", async () => {
     const installer = fakeInstaller(ok([offer({ id: "default", verdict: "unsupported", minPluginVersion: "9.0.0" })]));
     const step = createVoicePackLaunchStep({
       installer,
@@ -240,8 +250,15 @@ describe("voice-pack launch step", () => {
     });
     await expect(step.start()).resolves.toEqual({ state: "given-up", reason: expect.stringContaining("9.0.0") });
     expect(installer.install).not.toHaveBeenCalled();
-    await vi.advanceTimersByTimeAsync(VOICE_PACK_RETRY_STEADY_MS.engineerOn * 2);
+    await vi.advanceTimersByTimeAsync(VOICE_PACK_RETRY_STEADY_MS.engineerOff - 1);
     expect(installer.refreshCatalog).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(installer.refreshCatalog).toHaveBeenCalledTimes(2);
+    expect(installer.refreshCatalog).toHaveBeenLastCalledWith({ bypassTtl: true });
+    expect(step.lastOutcome()).toMatchObject({ state: "given-up" });
+    // And again an hour later: a give-up re-arms itself.
+    await vi.advanceTimersByTimeAsync(VOICE_PACK_RETRY_STEADY_MS.engineerOff);
+    expect(installer.refreshCatalog).toHaveBeenCalledTimes(3);
   });
 
   it("a failure set that mixes permanent and transient still retries, since a retry can fix part of it", async () => {
@@ -268,7 +285,7 @@ describe("voice-pack launch step", () => {
   });
 
   it.each(["verify", "extract", "invalid-pack"] as const)(
-    "classes %s as permanent for this catalog answer: given up, not retried",
+    "classes %s as permanent for this catalog answer: given up, and re-observed hourly rather than on the failure schedule",
     async (code) => {
       const failure: VoicePackInstallResult = { ok: false, code, reason: "The archive is wrong." };
       const installer = fakeInstaller(
@@ -284,6 +301,9 @@ describe("voice-pack launch step", () => {
       await expect(step.start()).resolves.toMatchObject({ state: "given-up" });
       await vi.advanceTimersByTimeAsync(VOICE_PACK_RETRY_STEADY_MS.engineerOn * 2);
       expect(installer.refreshCatalog).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(VOICE_PACK_RETRY_STEADY_MS.engineerOff);
+      expect(installer.refreshCatalog).toHaveBeenCalledTimes(2);
+      expect(installer.refreshCatalog).toHaveBeenLastCalledWith({ bypassTtl: true });
     },
   );
 
@@ -300,6 +320,50 @@ describe("voice-pack launch step", () => {
     expect(logger.warn).toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(VOICE_PACK_RETRY_STEADY_MS.engineerOn * 2);
     expect(installer.refreshCatalog).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(VOICE_PACK_RETRY_STEADY_MS.engineerOff);
+    expect(installer.refreshCatalog).toHaveBeenCalledTimes(2);
+  });
+
+  it("stop cancels the hourly re-observation a give-up armed", async () => {
+    const installer = fakeInstaller(ok([offer({ id: "luca", verdict: "installed" })]));
+    const step = createVoicePackLaunchStep({
+      installer,
+      settled: () => Promise.resolve(),
+      isRaceEngineerEnabled: () => true,
+      logger,
+    });
+    await expect(step.start()).resolves.toMatchObject({ state: "given-up" });
+    step.stop();
+    await vi.advanceTimersByTimeAsync(VOICE_PACK_RETRY_STEADY_MS.engineerOff * 2);
+    expect(installer.refreshCatalog).toHaveBeenCalledTimes(1);
+  });
+
+  it("installs its targets one after another, never concurrently — each promote stops playback and rescans", async () => {
+    const pending = new Map<string, (r: VoicePackInstallResult) => void>();
+    const install = vi.fn(
+      (id: string) =>
+        new Promise<VoicePackInstallResult>((r) => {
+          pending.set(id, r);
+        }),
+    );
+    const installer = fakeInstaller(
+      ok([offer({ id: "default", verdict: "update" }), offer({ id: "luca", verdict: "update" })]),
+      install,
+    );
+    const step = createVoicePackLaunchStep({
+      installer,
+      settled: () => Promise.resolve(),
+      isRaceEngineerEnabled: () => true,
+      logger,
+    });
+    const started = step.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(install.mock.calls.map(([id]) => id)).toEqual(["default"]);
+    pending.get("default")?.(installed);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(install.mock.calls.map(([id]) => id)).toEqual(["default", "luca"]);
+    pending.get("luca")?.(installed);
+    await expect(started).resolves.toEqual({ state: "current" });
   });
 
   it("a poke during an ensure runs one more ensure after it, not a concurrent one", async () => {
@@ -328,7 +392,7 @@ describe("voice-pack launch step", () => {
     expect(installer.refreshCatalog).toHaveBeenCalledTimes(2);
   });
 
-  it("a poke before start has passed the settle wait runs nothing; the first ensure covers it", async () => {
+  it("a poke before start has passed the settle wait runs nothing, and the first ensure then bypasses the catalog TTLs for it", async () => {
     const installer = fakeInstaller(ok([offer({ id: "default", verdict: "installed" })]));
     let release!: () => void;
     const settled = new Promise<void>((r) => {
@@ -351,6 +415,104 @@ describe("voice-pack launch step", () => {
     release();
     await expect(started).resolves.toEqual({ state: "current" });
     expect(installer.refreshCatalog).toHaveBeenCalledTimes(1);
+    // The person pressed Rescan while the step was still waiting: they asked
+    // for a request, and the ensure that covers the poke honours that.
+    expect(installer.refreshCatalog).toHaveBeenLastCalledWith({ bypassTtl: true });
+    expect(logger.debug).toHaveBeenCalledWith("Voice pack poke deferred until the launch step is ready");
+  });
+
+  it("a start with no poke behind it asks the catalog conditionally", async () => {
+    const installer = fakeInstaller(ok([offer({ id: "default", verdict: "installed" })]));
+    const step = createVoicePackLaunchStep({
+      installer,
+      settled: () => Promise.resolve(),
+      isRaceEngineerEnabled: () => true,
+      logger,
+    });
+    await expect(step.start()).resolves.toEqual({ state: "current" });
+    expect(installer.refreshCatalog).toHaveBeenCalledTimes(1);
+    expect(installer.refreshCatalog).toHaveBeenLastCalledWith({ bypassTtl: false });
+  });
+
+  describe("the Race Engineer gate (onSettingsChange)", () => {
+    function gated(initiallyEnabled: boolean) {
+      let enabled = initiallyEnabled;
+      let listener: (() => void) | undefined;
+      const unsubscribe = vi.fn();
+      const onSettingsChange = vi.fn((l: () => void) => {
+        listener = l;
+
+        return unsubscribe;
+      });
+      const installer = fakeInstaller(ok([offer({ id: "default", verdict: "installed" })]));
+      const step = createVoicePackLaunchStep({
+        installer,
+        settled: () => Promise.resolve(),
+        isRaceEngineerEnabled: () => enabled,
+        onSettingsChange,
+        logger,
+      });
+
+      return {
+        step,
+        installer,
+        onSettingsChange,
+        unsubscribe,
+        settle(next: boolean) {
+          enabled = next;
+          listener?.();
+        },
+      };
+    }
+
+    it("pokes on the gate turning on, once per edge", async () => {
+      const { step, installer, settle, onSettingsChange } = gated(false);
+      await step.start();
+      expect(onSettingsChange).toHaveBeenCalledTimes(1);
+      settle(true);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(installer.refreshCatalog).toHaveBeenCalledTimes(2);
+      expect(installer.refreshCatalog).toHaveBeenLastCalledWith({ bypassTtl: true });
+      // Still on: not an edge.
+      settle(true);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(installer.refreshCatalog).toHaveBeenCalledTimes(2);
+      // Off, then on again: a second edge.
+      settle(false);
+      settle(true);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(installer.refreshCatalog).toHaveBeenCalledTimes(3);
+    });
+
+    it("does nothing for a settings arrival that leaves the gate where it was, or turns it off", async () => {
+      const { step, installer, settle } = gated(true);
+      await step.start();
+      settle(true);
+      settle(false);
+      settle(false);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(installer.refreshCatalog).toHaveBeenCalledTimes(1);
+    });
+
+    it("subscribes only once start has passed the settle wait, and stop unsubscribes", async () => {
+      const { step, onSettingsChange, unsubscribe, installer, settle } = gated(false);
+      expect(onSettingsChange).not.toHaveBeenCalled();
+      await step.start();
+      expect(onSettingsChange).toHaveBeenCalledTimes(1);
+      step.stop();
+      expect(unsubscribe).toHaveBeenCalledTimes(1);
+      settle(true);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(installer.refreshCatalog).toHaveBeenCalledTimes(1);
+    });
+
+    it("never subscribes when stopped before the settle wait passed", async () => {
+      const { step, onSettingsChange, unsubscribe } = gated(false);
+      step.stop();
+      await step.start();
+      expect(onSettingsChange).not.toHaveBeenCalled();
+      expect(unsubscribe).not.toHaveBeenCalled();
+    });
   });
 
   it("stop mid-ensure: the failure that lands afterwards is given up as stopped, with no timer", async () => {
