@@ -318,6 +318,17 @@ export function scanVoicePacks({ root, fs, reservedVoices }: ScanVoicePacksOptio
     // code rather than by a person. Neither is true today; if either becomes
     // true, this marker stops being an acceptable instrument.
     //
+    // Stage 3 (#1034) shrank what the marker is worth rather than growing it,
+    // which is the outcome the paragraph above was watching for. The withheld
+    // Remove is now keyed by the plugin-published `managed` flag
+    // (`isManagedVoicePack`) — the plugin's own statement about the pack IT
+    // refreshes — never by provenance, so no record a pack author can write
+    // reaches it. The provenance-keyed row is out of reach as well: it needs
+    // `droppedToBundle > 0`, and a plugin that bundles no audio reserves no
+    // voice ids, so nothing is ever dropped to the bundle and the branch cannot
+    // fire at all. On such a plugin a forged `bundled-seed` record buys its
+    // author nothing whatsoever.
+    //
     // Keep the exemption exactly this narrow. It requires OUR source value and
     // a record that names this same pack, so it cannot be widened by accident
     // into "any pack with an .install.json may claim a bundled voice".

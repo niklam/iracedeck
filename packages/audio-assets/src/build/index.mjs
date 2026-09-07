@@ -484,9 +484,11 @@ async function runProcessAndCopy({ srcRoot, destRoot, cacheRoot, hash, logger, w
       // only the BUNDLED set (#1100). Everything else is published to the
       // catalog and installed at runtime instead.
       //
-      // A no-op today — `default` is the only authored voice and it is bundled
-      // — and that is the point: the release that stops shipping audio becomes
-      // one edit to `voice-packs.mjs` rather than a change to the build.
+      // Since #1034 stage 3 that filter admits NOTHING: no voice is bundled,
+      // so this loop copies no voice at all and `assets/audio/` is the sfx tree
+      // alone. The build did not change for it — the release that stopped
+      // shipping audio was an edit to `voice-packs.mjs`, which is what this
+      // per-voice shape was built for.
       //
       // The cache path keeps its `<cacheRoot>/voice/<id>/…` shape, which the
       // packer's `processVoiceTree` resolves to as well. Diverging here would

@@ -4,9 +4,10 @@
  *
  * In order: sweep the installer's working directories, seed any bundled pack
  * into an empty folder (a permanent rule that is a no-op in a release that
- * bundles nothing), wait for the settings load to settle, then ENSURE — make
- * `default` match the catalog and bring every other catalog-installed pack up
- * to date — and retry that on a schedule until it holds.
+ * bundles nothing), publish the status the settings window reads, wait for the
+ * settings load to settle, then ENSURE — make `default` match the catalog and
+ * bring every other catalog-installed pack up to date — and retry that on a
+ * schedule until it holds.
  *
  * Why the settle wait: the catalog client reads the `_devBaseUrl` override
  * from the settings cache, and an ensure fired before the load would silently
@@ -284,6 +285,10 @@ export function createVoicePackLaunchStep(deps: VoicePackLaunchStepDeps): VoiceP
       // promise.
       await guarded("sweep", () => deps.installer.sweep());
       await guarded("seed", () => deps.installer.seed());
+      // Publish once here, before the settle wait and the first (possibly slow)
+      // catalog fetch: the settings window renders `_voicePackStatus`, and a key
+      // that only appears after the fetch leaves it with nothing to read.
+      await guarded("status publish", async () => deps.installer.republishStatus());
       await guarded("settle wait", () => deps.settled());
       ready = true;
 

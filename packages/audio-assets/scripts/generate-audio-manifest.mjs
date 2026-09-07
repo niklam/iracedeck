@@ -9,8 +9,8 @@
  *
  * `manifest.json` covers every AUTHORED voice; `manifest.bundled.json` covers
  * only the voices a plugin distributable carries (`BUNDLED_VOICE_IDS`). They
- * differ by whatever is published-but-not-bundled — nothing, until #1034
- * stage 3 drops the bundle.
+ * differ by whatever is published-but-not-bundled, which since #1034 stage 3
+ * is every voice: the bundled slice is the sfx tree and nothing else.
  *
  * The manifest lets `@iracedeck/audio-scenarios` validate every clip
  * reference at catalog-load time (design doc §9 — broken scenarios log and
@@ -96,11 +96,11 @@ export function buildManifest({ voices } = {}) {
       // `voice/` is the one folder the two slices disagree about. The BUNDLED
       // manifest is the one a plugin compiles in: it describes what the
       // distributable ITSELF provides, so it names no voice the build does not
-      // ship. That is what stage 3 turns on — a plugin reserves voice ids off
+      // ship. That is what stage 3 turned on — a plugin reserves voice ids off
       // the manifest it carries, so no downloaded pack may claim one the plugin
-      // already has, and once `default` stops being bundled and leaves this
-      // slice the DOWNLOADED `default` pack loads instead of being refused as
-      // "provided by the plugin's bundled audio".
+      // already has, and now that `default` has left this slice the DOWNLOADED
+      // `default` pack loads instead of being refused as "provided by the
+      // plugin's bundled audio".
       //
       // The AUTHORED manifest names every voice on disk: the set the harness
       // auditions and this package's own generators and tests read as "the

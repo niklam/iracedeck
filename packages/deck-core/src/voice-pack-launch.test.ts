@@ -57,9 +57,12 @@ describe("voice-pack launch step", () => {
     expect(isManagedVoicePack("luca")).toBe(false);
   });
 
-  it("runs sweep, then seed, then waits for the settings load, then asks the catalog", async () => {
+  it("runs sweep, then seed, then publishes status, then waits for the settings load, then asks the catalog", async () => {
     const order: string[] = [];
     const installer = fakeInstaller(ok([offer({ id: "default", verdict: "installed" })]));
+    installer.republishStatus.mockImplementation(() => {
+      order.push("republish");
+    });
     installer.sweep.mockImplementation(async () => {
       order.push("sweep");
 
@@ -90,11 +93,13 @@ describe("voice-pack launch step", () => {
     });
     const started = step.start();
     await vi.advanceTimersByTimeAsync(0);
-    expect(order).toEqual(["sweep", "seed"]);
+    // The status is published BEFORE the settle wait, so `_voicePackStatus` is
+    // in the cache for the settings window from the start rather than only once
+    // the first (possibly slow) catalog fetch has come back.
+    expect(order).toEqual(["sweep", "seed", "republish"]);
     release();
     await expect(started).resolves.toEqual({ state: "current" });
-    expect(order).toEqual(["sweep", "seed", "settled", "catalog"]);
-    expect(installer.republishStatus).toHaveBeenCalled();
+    expect(order).toEqual(["sweep", "seed", "republish", "settled", "catalog", "republish"]);
   });
 
   it("installs default when the catalog offers it as missing, and reports current afterwards", async () => {
@@ -420,7 +425,10 @@ describe("voice-pack launch step", () => {
       inMs: VOICE_PACK_RETRY_DELAYS_MS.engineerOn[0],
     });
     expect(logger.error).toHaveBeenCalled();
-    expect(installer.republishStatus).toHaveBeenCalledTimes(1);
+    // Twice: the startup publish after the seed, then the ensure's own `finally`
+    // — the point here being that the second one still happens when the catalog
+    // read threw.
+    expect(installer.republishStatus).toHaveBeenCalledTimes(2);
   });
 
   it("never rejects — a throwing installer is logged and scheduled for retry", async () => {
