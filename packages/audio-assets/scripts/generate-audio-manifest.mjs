@@ -71,7 +71,7 @@ function collectClips(dir) {
  * The manifest for one voice slice. `voices: "all"` names every authored voice
  * — the manifest the harness, the generators and this package's own tests read
  * as "what is authored". `voices: "bundled"` names only the slice a plugin
- * distributable carries, which is the one the plugins import (#1034 stage 3).
+ * distributable carries — the manifest a plugin compiles in (#1034 stage 3).
  */
 export function buildManifest({ voices } = {}) {
   // No default and no tolerance: a caller that means one slice and is handed
@@ -94,17 +94,17 @@ export function buildManifest({ voices } = {}) {
     .sort()
     .flatMap((folder) =>
       // `voice/` is the one folder the two slices disagree about. The BUNDLED
-      // manifest describes what the plugin ITSELF provides, so it names no
-      // voice the build does not ship — and it is where `bundledVoices` comes
-      // from, the ids the scanner reserves so no downloaded pack may claim one.
-      // That is what makes stage 3 work: once `default` stops being bundled it
-      // leaves that manifest, and the DOWNLOADED `default` pack loads instead
-      // of being refused as "provided by the plugin's bundled audio".
+      // manifest is the one a plugin compiles in: it describes what the
+      // distributable ITSELF provides, so it names no voice the build does not
+      // ship. That is what stage 3 turns on — a plugin reserves voice ids off
+      // the manifest it carries, so no downloaded pack may claim one the plugin
+      // already has, and once `default` stops being bundled and leaves this
+      // slice the DOWNLOADED `default` pack loads instead of being refused as
+      // "provided by the plugin's bundled audio".
       //
-      // The AUTHORED manifest names every voice on disk. Nothing derives
-      // reserved ids from it; the harness auditions what is authored and this
-      // package's generators and tests read it as "the authored voice", which
-      // an empty bundle would otherwise leave them without.
+      // The AUTHORED manifest names every voice on disk: the set the harness
+      // auditions and this package's own generators and tests read as "the
+      // authored voice", which an empty bundle would otherwise leave without.
       folder === VOICE_ROOT
         ? authoredVoiceIds()
             .filter((voiceId) => voices === "all" || BUNDLED_VOICE_IDS.includes(voiceId))

@@ -15,9 +15,8 @@ const BUNDLED_MANIFEST_PATH = path.join(PACKAGE_ROOT, "manifest.bundled.json");
 describe("audio-assets manifest", () => {
   // Two manifests, one generator: `manifest.json` describes every AUTHORED
   // voice (what the harness and the generators read as "the authored voice"),
-  // `manifest.bundled.json` only the slice a plugin distributable carries —
-  // which is what the plugins import, and what the scanner's reserved-voice
-  // list derives from (#1034 stage 3).
+  // `manifest.bundled.json` only the slice a plugin distributable carries, the
+  // manifest a plugin compiles in (#1034 stage 3).
   it("manifest.json is up to date with the file tree — every authored voice", () => {
     const committed = JSON.parse(fs.readFileSync(MANIFEST_PATH, "utf-8"));
 
@@ -38,13 +37,22 @@ describe("audio-assets manifest", () => {
     expect(() => buildManifest()).toThrow(/voices must be "all" or "bundled"/);
   });
 
-  it("the bundled manifest names no voice outside BUNDLED_VOICE_IDS", () => {
-    const bundled = buildManifest({ voices: "bundled" });
-    const voiceClips = bundled.clips.filter((clip: string) => clip.startsWith("voice/"));
+  // The freshness pair above cannot catch a broken filter on its own: both
+  // sides of it come from this same generator, so a filter that dropped EVERY
+  // voice would still match the file it had just written. Deriving one slice
+  // from the other is the check that holds — and unlike a "names no voice
+  // outside the bundled set" loop, it cannot go vacuous when that set empties,
+  // which is precisely what stage 3 does to it.
+  it("the bundled manifest is exactly the authored manifest filtered to BUNDLED_VOICE_IDS", () => {
+    const all = buildManifest({ voices: "all" });
+    const bundledClips = all.clips.filter(
+      (clip: string) => !clip.startsWith("voice/") || BUNDLED_VOICE_IDS.includes(clip.split("/")[1]),
+    );
 
-    for (const clip of voiceClips) {
-      expect(BUNDLED_VOICE_IDS).toContain(clip.split("/")[1]);
-    }
+    // Both sides being empty would prove nothing; the authored side is the
+    // whole file tree, so say so rather than assume it.
+    expect(all.clips.length).toBeGreaterThan(0);
+    expect(buildManifest({ voices: "bundled" })).toEqual({ ...all, clips: bundledClips });
   });
 
   // The manifest is the list of CLIPS the engine resolves against. The

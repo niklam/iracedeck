@@ -13,8 +13,8 @@ packages/audio-assets/
 ├── dist/voice-packs/        # Staged packs + archives from pack:voice (gitignored)
 ├── generate.config.json     # TTS source: voices, groups, entries, voice settings
 ├── generate.manifest.json   # TTS cache: per-entry hash + ElevenLabs request id
-├── manifest.json            # Deployment manifest consumed by audio-service at runtime
-├── manifest.bundled.json    # The same, narrowed to the voices a plugin bundles
+├── manifest.json            # Authored manifest: every voice in this package
+├── manifest.bundled.json    # The bundled slice a plugin compiles in and ships
 ├── scripts/                 # generate-audio-manifest.mjs, pack-voice.mjs, …
 └── src/
     ├── build/               # Build helpers used during plugin packaging; voice-packs.mjs registry
@@ -23,9 +23,10 @@ packages/audio-assets/
 ```
 
 `generate.manifest.json` is a build cache for the generator. `manifest.json` is
-the runtime manifest, listing every authored voice, and `manifest.bundled.json`
-is the slice a plugin distributable carries; both are regenerated from the file
-tree by `pnpm --filter @iracedeck/audio-assets generate:manifest`.
+the authored manifest, listing every voice in this package, and
+`manifest.bundled.json` is the bundled slice a plugin compiles in and ships;
+both are regenerated from the file tree by
+`pnpm --filter @iracedeck/audio-assets generate:manifest`.
 
 ## TTS generator
 
