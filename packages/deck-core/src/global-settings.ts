@@ -1218,6 +1218,36 @@ let storeRef: SettingsStore | null = null;
  */
 let storeReady = false;
 
+/**
+ * Resolved once the load has SETTLED — ready by any path, or the fail-closed
+ * give-up (#1034 stage 3). Distinct from {@link storeReady}, which the give-up
+ * path deliberately never sets: a consumer that must not act on defaults gates
+ * on ready, while a consumer that merely wants the cache to hold whatever the
+ * file had before it acts — the voice-pack launch step reading the catalog dev
+ * override — waits for settled and then proceeds regardless of which of the
+ * two outcomes it got.
+ *
+ * Re-armed per run — by {@link initGlobalSettings} and by
+ * {@link _resetGlobalSettings} — so a previous run's settle can never release
+ * this run's waiter. Ask for it AFTER init: a promise taken before that call
+ * belongs to the signal init replaces, and would never resolve.
+ */
+let settled: SettledSignal = createSettledSignal();
+
+interface SettledSignal {
+  promise: Promise<void>;
+  resolve: () => void;
+}
+
+function createSettledSignal(): SettledSignal {
+  let resolve!: () => void;
+  const promise = new Promise<void>((r) => {
+    resolve = r;
+  });
+
+  return { promise, resolve };
+}
+
 export type SettingsStoreSource = "file" | "host" | "fresh";
 
 /** How the cache was filled — set by becomeReady(); null until then. */
@@ -1613,6 +1643,7 @@ export function initGlobalSettings(
   logger = log;
   storeRef = store;
   initialized = true;
+  settled = createSettledSignal();
   logger.info("Initializing");
 
   const migrationTimeoutMs = opts.migrationTimeoutMs ?? MIGRATION_TIMEOUT_MS;
@@ -1721,6 +1752,7 @@ export function initGlobalSettings(
 
     storeReady = true;
     storeSource = source;
+    settled.resolve();
     earlyWrites = null;
     earlyDeletes = null;
     logger?.info(
@@ -2000,6 +2032,10 @@ export function initGlobalSettings(
       "Settings file could not be read; running on defaults WITHOUT saving so the file is not overwritten — check the file's permissions/locks and restart",
     );
     logger?.debug(`Settings store: ${store.path}; last error: ${String(error)}`);
+    // Settled by the other outcome: the load is over, it just never became
+    // ready. Everything gated on readiness stays shut; only a waiter that
+    // asked for "the file has had its say" is released (#1034 stage 3).
+    settled.resolve();
   };
 
   // Two-arg `then`, not `.catch`: only a store READ failure may reach
@@ -2043,6 +2079,21 @@ export function getGlobalSettings(): GlobalSettings {
  */
 export function isSettingsStoreReady(): boolean {
   return storeReady;
+}
+
+/**
+ * Resolves when the settings load has SETTLED: the store became ready (file,
+ * host migration, or fresh) OR the unreadable-file path ran out of attempts and
+ * the run continues on defaults without saving. Never rejects, and resolves
+ * immediately when that has already happened.
+ *
+ * Not a readiness gate — {@link isSettingsStoreReady} is, and it stays false on
+ * the give-up path by design. Use this only where waiting forever on a file
+ * that cannot be read would be worse than proceeding on defaults; see the note
+ * on the module-level signal for which consumer wants which.
+ */
+export function whenSettingsStoreSettled(): Promise<void> {
+  return settled.promise;
 }
 
 /** How the cache was filled once ready ("file" | "host" | "fresh"); null before. */
@@ -2413,6 +2464,7 @@ export function _resetGlobalSettings(): void {
   storeReady = false;
   storeSource = null;
   storeSalvageFailed = false;
+  settled = createSettledSignal();
   earlyWrites = null;
   earlyDeletes = null;
 

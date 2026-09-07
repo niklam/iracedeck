@@ -161,6 +161,7 @@ export {
   deleteGlobalSettings,
   isGlobalSettingsInitialized,
   isSettingsStoreReady,
+  whenSettingsStoreSettled,
   getSettingsStoreSource,
   type SettingsStoreSource,
   hostMirrorPayload,

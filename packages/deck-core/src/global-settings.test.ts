@@ -22,6 +22,7 @@ import {
   resolveActiveDriverName,
   resolveActiveRaceEngineerVoice,
   updateGlobalSettings,
+  whenSettingsStoreSettled,
 } from "./global-settings.js";
 import { PI_WARNINGS_KEY, setWarning } from "./pi-warnings.js";
 import { createMemorySettingsStore } from "./settings-store.js";
@@ -2231,5 +2232,66 @@ describe("migration deadline vs. host connect (#1056)", () => {
     expect(isSettingsStoreReady()).toBe(true);
     expect(mock.getGlobalSettings).not.toHaveBeenCalled();
     expect(mock.hostReadySubscribers).toBe(0);
+  });
+});
+
+describe("whenSettingsStoreSettled (#1034 stage 3)", () => {
+  it("resolves once the file has loaded", async () => {
+    const mock = createMockAdapter();
+    const store = createMemorySettingsStore({ driverName: "nick" });
+
+    initGlobalSettings(mock.adapter, createMockLogger(), store);
+
+    const settled = vi.fn();
+    void whenSettingsStoreSettled().then(settled);
+
+    await vi.waitFor(() => expect(isSettingsStoreReady()).toBe(true));
+    await tick();
+
+    expect(settled).toHaveBeenCalledTimes(1);
+  });
+
+  it("resolves when the unreadable-file path gives up, although the store is never ready", async () => {
+    vi.useFakeTimers();
+
+    try {
+      const mock = createMockAdapter();
+      const store = createUnreadableStore(LOAD_ATTEMPTS, { driverName: "nick" });
+
+      initGlobalSettings(mock.adapter, createMockLogger(), store, { loadRetryDelayMs: 10 });
+
+      const settled = vi.fn();
+      void whenSettingsStoreSettled().then(settled);
+
+      // The same back-off schedule the retry test above walks: the sixth and
+      // last attempt only lands after ~310 ms.
+      await vi.advanceTimersByTimeAsync(400);
+
+      expect(store.attempts).toBe(LOAD_ATTEMPTS);
+      // The whole point of the signal: the fail-closed path deliberately never
+      // becomes ready, and a settled-waiter must still be released.
+      expect(isSettingsStoreReady()).toBe(false);
+      expect(settled).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("resolves at once when called after the store already settled", async () => {
+    await initWithStore({ driverName: "nick" });
+
+    expect(isSettingsStoreReady()).toBe(true);
+    await expect(whenSettingsStoreSettled()).resolves.toBeUndefined();
+  });
+
+  it("_resetGlobalSettings arms a fresh promise, so one run's settle cannot release the next run's waiter", async () => {
+    await initWithStore({ driverName: "nick" });
+    _resetGlobalSettings();
+
+    const settled = vi.fn();
+    void whenSettingsStoreSettled().then(settled);
+    await tick();
+
+    expect(settled).not.toHaveBeenCalled();
   });
 });
