@@ -105,10 +105,14 @@ async function main(): Promise<void> {
   // ── Audio scenarios ──────────────────────────────────────────────────────
   const adapter = new MockPlatformAdapter(logger);
   const manifest = getAudioAssetsManifest();
-  const { raceEngineerVoices: bundledVoices } = seedGlobalSettings(adapter);
+  // Every voice the authored manifest describes — since #1034 stage 3 that is
+  // no longer "what a plugin bundles": the harness auditions every PUBLISHED
+  // voice. The scanner-facing dep it feeds is still named `bundledVoices`
+  // (`voice-scripts.ts`), which is the reserved-voices list it maps onto.
+  const { raceEngineerVoices: publishedVoices } = seedGlobalSettings(adapter);
   // A `let`, like the plugins' `raceEngineerVoices`: an installed voice pack
   // (below) extends the list after the engine is constructed.
-  let raceEngineerVoices: readonly string[] = bundledVoices;
+  let raceEngineerVoices: readonly string[] = publishedVoices;
 
   // The radio frame's two opt-outs (#1064), read live at frame expansion from
   // the same global-settings cache the plugins read, through the same
@@ -201,7 +205,7 @@ async function main(): Promise<void> {
       root: voicePacksRoot,
       pluginAudioDir: audioBasePath,
       bundledManifest: manifest,
-      bundledVoices,
+      bundledVoices: publishedVoices,
       bundledScripts,
       logger: voicePacksLogger,
       applyRoots: (roots) => audio.setRoots(roots),

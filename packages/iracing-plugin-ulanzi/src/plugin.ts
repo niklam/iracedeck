@@ -570,17 +570,19 @@ const voicePackCatalog = createVoicePackCatalogService({
 // ships can be SEEDED — copied into an empty packs folder with the catalog's
 // own `sha256` as its provenance, which is what makes the first catalog check
 // after a seed answer "installed" rather than re-download what was just
-// copied. The seed is inert for this release (plugin-root-first resolution
-// means the bundle still provides every clip); its purpose is that the NEXT
-// release, which stops shipping audio, needs no network for anyone.
+// copied. Since 3.3.0 no plugin ships a voice, so this is inert: the loop
+// below matches nothing and the plugin fetches `default` at launch instead.
+// It stays as the permanent rule — set `bundled: true` on an entry in
+// `voice-packs.mjs` and that voice is bundled and seeded again, here, with no
+// code change (an offline installer variant is what would want that).
 //
 // Importing an entry does NOT decide that its pack is bundled. That is decided
 // once, in `@iracedeck/audio-assets`'s `voice-packs.mjs`, and reaches this
 // process as the clips the build copied into `assets/audio` and the manifest
 // it compiled in — `bundledVoices` above, the same set the scanner reserves.
 // An entry whose voices that set does not cover is a published pack this
-// build does not carry, and is simply not seeded. So stage 3's one-word flip
-// needs no edit here: the import goes stale and inert, nothing more.
+// build does not carry, and is simply not seeded. That is why the stage 3 flip
+// needed no edit here: the import went stale and inert, nothing more.
 const compiledInVoicePackEntries: readonly unknown[] = [defaultVoicePackCatalogEntry];
 const bundledVoicePacks: BundledVoicePack[] = [];
 
