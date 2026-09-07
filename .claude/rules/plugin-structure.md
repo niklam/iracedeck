@@ -288,6 +288,12 @@ initGlobalSettings(adapter, adapter.createLogger("GlobalSettings"), settingsStor
 const settingsChannel = createSettingsChannelPublisher({ adapter, logger: settingsWindowLogger });
 // createSettingsWindowController({ ..., onStarted: (channel) => settingsChannel.publish(channel) })
 
+// 12c. Start the voice-pack launch step (#1034 stage 3). It is CONSTRUCTED
+//      further up, right after the voice-pack installer, and started HERE —
+//      after initGlobalSettings, which re-arms the settle signal it waits on,
+//      and at module scope rather than inside the store-ready block.
+void voicePackLaunch.start();
+
 // 13. Initialize SimHub service AFTER global settings (reads host/port from settings)
 initializeSimHub(adapter.createLogger("SimHub"));
 
@@ -315,6 +321,7 @@ adapter.connect();
 - `initializeRasterizer()` is gated by `__FEATURE_PNG_RASTERIZATION__` and must come before any code that renders a device image (it can run anywhere before `adapter.connect()`, since `toDeviceImage()` passes images through unchanged until it's called); see `@.claude/rules/platform-feature-flags.md`
 - `initializeSimHub()` must come AFTER `initGlobalSettings()` (reads host/port from settings)
 - `initializeBindingDispatcher()` must come AFTER `initGlobalSettings()`, `initializeKeyboard()`, and `initializeSimHub()`
+- The voice-pack launch step (`createVoicePackLaunchStep`, #1034 stage 3) is constructed right after the installer and started at module scope — it waits for `whenSettingsStoreSettled()` itself and must NOT be moved inside the store-ready block. That block never runs on the fail-closed unreadable-file path, and a plugin that cannot read its settings must still end up with a voice. Its `settled` dep is a THUNK for the same reason `start()` sits after `initGlobalSettings`: that call re-arms the signal, so a promise taken at construction would be the discarded pre-init one. Each plugin also pokes it from two places — the Race Engineer gate turning on (edge-triggered, on `onGlobalSettingsChange`) and the settings window's Rescan command
 - Actions are imported from `@iracedeck/iracing-actions` and registered via `adapter.registerAction(UUID, handler)`
 - Logger is injected into each action via constructor: `new MyAction(adapter.createLogger("MyAction"))`
 - `initAppMonitor` requires `initializeSDK()` to be called first
