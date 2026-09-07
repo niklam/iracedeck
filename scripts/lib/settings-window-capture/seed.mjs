@@ -51,20 +51,21 @@ export function buildSeedSettings() {
     // size, so a longer list pushes the Rescan button below the fold.
     _voicePacks: JSON.stringify({
       packs: [
-        // The bundled voice, seeded into the packs folder on every install
-        // (#1100). Present on EVERY real installation, so a fixture without it
-        // documented a state no user is in — and it is the row that shows the
-        // "Built-in" badge and the absence of a Remove button, which is the
-        // whole point of listing it.
+        // The voice iRaceDeck keeps current (#1034 stage 3). The plugin ships
+        // no audio any more: it installs this pack and refreshes it at launch,
+        // so it is present on every installation that has been online once —
+        // a fixture without it would document a state almost no user is in —
+        // and it is the row that offers no Remove and says why instead, which
+        // is the whole point of listing it.
         {
           id: "default",
           label: "Default",
           version: "1.0.0",
-          // Empty on purpose: the plugin's own audio provides this voice, so
-          // the pack contributes none. This is what keeps a second "Default"
-          // out of the voice dropdown.
-          voices: [],
-          provenance: "bundled-seed",
+          // A real voice now, downloaded like any other pack. Nothing bundled
+          // provides it, so the pack is what puts "Default" in the dropdown.
+          voices: [{ id: "default", label: "Default" }],
+          provenance: "catalog",
+          managed: true,
         },
         {
           id: "luca",

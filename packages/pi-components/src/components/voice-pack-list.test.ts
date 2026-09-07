@@ -231,7 +231,11 @@ describe("ird-voice-pack-list", () => {
       expect(badge?.className).toContain("ird-vp-badge-catalog");
     });
 
-    it("says a bundled-seed pack is built in", () => {
+    // Nothing is built in any more (#1034 stage 3). The provenance itself
+    // survives on an upgrader's installation until the pack is next refreshed,
+    // so the badge still has to say something true of it — and what is true now
+    // is that iRaceDeck put the pack there, not that it ships inside the plugin.
+    it("says a bundled-seed pack was installed by iRaceDeck", () => {
       publish(
         scan([
           {
@@ -246,7 +250,7 @@ describe("ird-voice-pack-list", () => {
 
       const badge = el.querySelector(".ird-vp-badge");
 
-      expect(badge?.textContent).toBe("Built-in");
+      expect(badge?.textContent).toBe("Installed by iRaceDeck");
       expect(badge?.className).toContain("ird-vp-badge-bundled-seed");
     });
 
@@ -536,13 +540,15 @@ describe("ird-voice-pack-list", () => {
       expect(el.querySelector("button[disabled]")).toBeNull();
     });
 
-    // Stage 3, when the plugin stops bundling audio: the same folder scans with
-    // real voices, and it is then an ordinary pack the user owns. The exemption
-    // keys on "provides nothing", not on the provenance alone, so it stops
-    // firing here by itself rather than leaving a working pack permanently
-    // unremovable and mislabelled as included with the plugin.
+    // The exemption keys on "provides nothing", not on the provenance alone, so
+    // a seeded folder that scans with real voices is an ordinary pack the user
+    // owns rather than one left permanently unremovable and mislabelled as
+    // included with the plugin. Deliberately NOT the `default` id: since stage 3
+    // that pack is the managed one, and its rule (below) is the flag, so keeping
+    // the two fixtures on separate ids stops this case from silently testing the
+    // other rule.
     it("offers Remove on a seeded pack that does provide a voice", () => {
-      publish(scan([{ ...seed, voices: [{ id: "default", label: "Default" }] }]));
+      publish(scan([{ ...seed, id: "luca", label: "Luca", voices: [{ id: "luca", label: "Luca" }] }]));
 
       expect(el.querySelector(".ird-vp-remove-button")).not.toBeNull();
       expect(el.querySelector(".ird-vp-note")).toBeNull();
@@ -556,6 +562,70 @@ describe("ird-voice-pack-list", () => {
 
       expect(el.querySelector(".ird-vp-remove-button")).not.toBeNull();
       expect(el.querySelector(".ird-vp-note")).toBeNull();
+    });
+  });
+
+  // #1034 stage 3. The plugin no longer ships the audio: it installs the pack
+  // it keeps current and refreshes it at launch, so that one row still has no
+  // Remove — for a different reason from the seed's, and keyed on a different
+  // field. The plugin SAYS which pack it manages; the list never infers it.
+  describe("the managed pack is listed and offers no Remove (#1034 stage 3)", () => {
+    const managed = {
+      id: "default",
+      label: "Default",
+      version: "1.0.0",
+      voices: [{ id: "default", label: "Default" }],
+      provenance: "catalog" as const,
+      managed: true,
+    };
+
+    it("renders the row with its voice", () => {
+      publish(scan([managed]));
+
+      expect(el.querySelectorAll(".ird-vp-row")).toHaveLength(1);
+    });
+
+    it("offers no Remove button", () => {
+      publish(scan([managed]));
+
+      expect(el.querySelector(".ird-vp-remove-button")).toBeNull();
+    });
+
+    it("says iRaceDeck keeps it current in place of the button", () => {
+      publish(scan([managed]));
+
+      expect(el.querySelector(".ird-vp-note")?.textContent).toBe("Kept up to date by iRaceDeck");
+    });
+
+    it("is keyed by the flag, not by provenance — a sideloaded folder claiming the id is still managed", () => {
+      publish(scan([{ ...managed, provenance: "sideload" as const }]));
+
+      expect(el.querySelector(".ird-vp-remove-button")).toBeNull();
+    });
+
+    it("still offers Remove on an unmanaged pack", () => {
+      publish(scan([{ ...managed, id: "luca", managed: false }]));
+
+      expect(el.querySelector(".ird-vp-remove-button")).not.toBeNull();
+    });
+
+    // The flag is part of a row's identity, so an arm cannot survive across it.
+    // A confirmation given to a removable row, a scan that turns the pack
+    // managed (the button goes away with the arm still held) and one that turns
+    // it back would otherwise hand the returning button a live confirmation the
+    // user never gave it — the pre-armed row `identityOf` exists to prevent.
+    it("does not return a pre-armed button after the pack turns managed and back", () => {
+      const removable = { ...managed, managed: false };
+
+      publish(scan([removable]));
+      el.querySelector<HTMLButtonElement>(".ird-vp-remove-button")?.click();
+
+      expect(el.querySelector(".ird-vp-remove-button")?.textContent).toBe("Remove — are you sure?");
+
+      publish(scan([managed]));
+      publish(scan([removable]));
+
+      expect(el.querySelector(".ird-vp-remove-button")?.textContent).toBe("Remove");
     });
   });
 

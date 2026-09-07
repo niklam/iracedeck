@@ -23,7 +23,11 @@
  * so, the same as it would for a pack deleted by hand and rescanned.
  *
  * PROVENANCE BADGE. Each row now names where its pack came from: downloaded
- * from iRaceDeck's own catalog, bundled with the plugin, or installed by hand.
+ * from iRaceDeck's own catalog, put there by iRaceDeck itself, or installed by
+ * hand. Since #1034 stage 3 the plugin ships no audio, so nothing is "built in"
+ * any more and that middle badge reads "Installed by iRaceDeck" — the
+ * `bundled-seed` provenance behind it is a record written on disk, which an
+ * installation carried over from a bundling release can still be holding.
  * This is deliberately INFORMATION, not a verdict — see the `provenance` field
  * doc on `InstalledVoicePack` in deck-core's `voice-pack-scanner.ts`: "the
  * badge tells a user that a pack came from someone other than us; it is not a
@@ -37,6 +41,17 @@
  * they ARE the row, but provenance is one presentational field on top of an
  * otherwise-valid pack, and a scanner hiccup on that one field must not hide a
  * voice the user can actually play.
+ *
+ * THE MANAGED PACK (#1034 stage 3) is the one row with no Remove: iRaceDeck
+ * installs the pack it keeps current and refreshes it at launch, so removing it
+ * would only be undone at the next start, and the row says so in place of the
+ * button. Which pack that is comes from the plugin, as a `managed` flag on the
+ * row it publishes — this list never infers it from an id or a provenance. So
+ * the badge and the flag stay independent (a hand-placed folder sitting at the
+ * managed id is still the pack the plugin refreshes, and says "Installed by
+ * hand" while offering no Remove), and a later change of which pack iRaceDeck
+ * keeps current needs no edit here. An older plugin's payload carries no flag
+ * at all, which reads as "not managed" and leaves every row as it was.
  *
  * REMOVE is a two-step: the first press arms the button, which relabels itself
  * "Remove — are you sure?", and a second press sends `voicePackRemove`.
@@ -75,10 +90,18 @@ const DEFAULT_PACKS_SETTING = "_voicePacks";
 const KNOWN_PROVENANCE = ["catalog", "bundled-seed", "sideload"] as const;
 type VoicePackProvenance = (typeof KNOWN_PROVENANCE)[number];
 
-/** Badge text per provenance — matches the wording on the website's voices doc. */
+/**
+ * Badge text per provenance — matches the wording on the website's voices doc.
+ *
+ * `bundled-seed` no longer says "Built-in" (#1034 stage 3): the plugin ships no
+ * audio, so nothing is built into it. The VALUE survives, because it is a record
+ * on disk that an installation upgraded from a bundling release keeps until its
+ * pack is next refreshed, and the label has to stay true of what that record now
+ * means — iRaceDeck put the pack there.
+ */
 const PROVENANCE_LABELS: Record<VoicePackProvenance, string> = {
   catalog: "Downloaded",
-  "bundled-seed": "Built-in",
+  "bundled-seed": "Installed by iRaceDeck",
   sideload: "Installed by hand",
 };
 
@@ -106,6 +129,15 @@ type VoicePackEntry = {
   version: string;
   voices: VoicePackVoice[];
   provenance: VoicePackProvenance;
+  /**
+   * The plugin's statement that THIS is the pack iRaceDeck keeps current
+   * (#1034 stage 3) — the one row that offers no Remove.
+   *
+   * Optional and read as `=== true`, never as a truthy test: an older plugin
+   * publishes no such field, and a payload that says nothing about a pack must
+   * leave it as removable as it was.
+   */
+  managed?: boolean;
 };
 type VoicePackProblemEntry = { pack: string; reason: string };
 type VoicePackScan = { packs: VoicePackEntry[]; problems: VoicePackProblemEntry[] };
@@ -147,13 +179,18 @@ function parseScan(raw: string): VoicePackScan {
         })
         // `provenance` is normalized rather than checked in the filter above:
         // a missing/unrecognised value must not drop an otherwise-valid row
-        // (see the module comment), so it is defaulted here instead.
+        // (see the module comment), so it is defaulted here instead. `managed`
+        // is narrowed the same way and for the same reason — an older plugin's
+        // payload omits it, and anything but a literal `true` means "not the
+        // pack iRaceDeck keeps current", so it can never withhold a Remove by
+        // accident.
         .map((entry): VoicePackEntry => ({
           id: entry.id as string,
           label: entry.label as string,
           version: entry.version as string,
           voices: entry.voices as VoicePackVoice[],
           provenance: normalizeProvenance(entry.provenance),
+          managed: entry.managed === true,
         })),
       problems: problems.filter((entry): entry is VoicePackProblemEntry => {
         if (!isRecord(entry)) return false;
@@ -257,8 +294,9 @@ export class VoicePackList extends HTMLElement {
       ird-voice-pack-list .ird-vp-label { flex: 1; }
       ird-voice-pack-list .ird-vp-version { color: #969696; font-size: 8pt; }
       ird-voice-pack-list .ird-vp-empty { color: #969696; font-size: 9pt; padding: 3px 0; }
-      /* Stands where a Remove button would be on a bundled seed (#1100). Muted
-         and unclickable-looking on purpose: it is a statement, not a control. */
+      /* Stands where a Remove button would be on a row that offers none — the
+         pack iRaceDeck manages (#1034 stage 3), or a bundled seed (#1100).
+         Muted and unclickable-looking on purpose: a statement, not a control. */
       ird-voice-pack-list .ird-vp-note { flex: none; color: #969696; font-size: 8pt; }
       /* Provenance badge (#1100) — informational, not a warning: colours stay
          calm and distinct rather than using red/amber alarm colours anywhere. */
@@ -373,11 +411,17 @@ export class VoicePackList extends HTMLElement {
    * arm they gave to what was there before — including the case where only the
    * badge flips, a catalog copy swapped for a hand-placed one.
    *
+   * `managed` joins them for the same reason (#1034 stage 3): it decides
+   * whether the row ends in a button or a note, which is as visible a change as
+   * any of the cells. Without it an arm given to a removable row could survive a
+   * scan that turned the pack managed and back, and the returning button would
+   * render pre-confirmed.
+   *
    * `voices` is excluded because no row renders it; the rule is what the user
    * can SEE change.
    */
   private static identityOf(pack: VoicePackEntry): string {
-    return JSON.stringify([pack.id, pack.version, pack.label, pack.provenance]);
+    return JSON.stringify([pack.id, pack.version, pack.label, pack.provenance, pack.managed === true]);
   }
 
   /**
@@ -462,12 +506,12 @@ export class VoicePackList extends HTMLElement {
     // unloadable pack is not empty, and calling it empty would hide the very
     // row that explains the silence.
     //
-    // Rarer since #1100 listed the bundled seed, but NOT dead, and the wording
-    // is still true wherever it shows. It is reached when the seed is genuinely
-    // absent: seeding failed (an unwritable folder), the user emptied the
-    // folder while the plugin was running, or — the case this is really waiting
-    // for — the release that stops bundling audio, after which a user who has
-    // downloaded nothing has an empty folder and should be told exactly that.
+    // An ordinary state again since #1034 stage 3. It was a rare one while the
+    // plugin seeded a pack out of its own bundle; nothing ships inside the
+    // plugin now, and the pack iRaceDeck keeps current is INSTALLED at launch —
+    // so a first run that could not reach the catalog (offline, or an
+    // unwritable packs folder) genuinely has nothing installed, and should be
+    // told exactly that rather than shown a row for audio not on the disk.
     if (scan.packs.length === 0 && scan.problems.length === 0) {
       const empty = document.createElement("div");
       empty.className = "ird-vp-empty";
@@ -493,6 +537,30 @@ export class VoicePackList extends HTMLElement {
       version.className = "ird-vp-version";
       version.textContent = entry.version;
 
+      // The pack iRaceDeck manages (#1034 stage 3): the launch step installs
+      // and refreshes it, so a Remove would only be undone at the next start.
+      // The row says so in place of the button. Keyed by the plugin-published
+      // flag, never by provenance — the flag is the plugin's statement.
+      //
+      // FIRST, ahead of the bundled-seed rule below: this is the case with a
+      // live reason, and the two would otherwise both be true of one row on an
+      // installation upgraded from a bundling release, whose note would then
+      // say the audio ships with the plugin when it no longer does.
+      if (entry.managed === true) {
+        const note = document.createElement("span");
+
+        note.className = "ird-vp-note";
+        note.textContent = "Kept up to date by iRaceDeck";
+
+        row.appendChild(label);
+        row.appendChild(badge);
+        row.appendChild(version);
+        row.appendChild(note);
+        this.list.appendChild(row);
+
+        continue;
+      }
+
       // A pack the PLUGIN provides gets no Remove, and what stands in its
       // place is a STATEMENT rather than a disabled button (#1100).
       //
@@ -501,13 +569,20 @@ export class VoicePackList extends HTMLElement {
       // audio owns every voice this pack declares — so the row is describing
       // something the user cannot meaningfully delete: removing the folder
       // changes nothing they can hear, because the bundle keeps playing the
-      // voice. Once the plugin stops bundling audio, the same folder scans with
-      // real voices and this branch stops firing on its own, which is what
-      // keeps a working, user-owned pack from becoming permanently unremovable
-      // and mislabelled.
+      // voice.
+      //
+      // That condition is also what retires the branch, and #1034 stage 3 is
+      // the release that does it: with nothing bundled the scanner reserves no
+      // voice ids, so it emits no such row and the case stops arising by
+      // itself, rather than leaving a working, user-owned pack permanently
+      // unremovable and mislabelled. Kept rather than deleted because it
+      // describes a ROW, not a release: a row that provides nothing earns a
+      // statement instead of a button whenever one turns up, and whether one
+      // can turn up is decided by the compiled-in audio manifest, not here.
       //
       // NOT because it would be undone on the next start — that reason is
-      // false often enough to be worth naming. `VoicePackInstaller.seed()`
+      // false often enough to be worth naming, and it belongs to the managed
+      // branch above rather than to this one. `VoicePackInstaller.seed()`
       // skips with `packs-present` whenever any pack directory exists, and its
       // own comment calls removing the seeded copy a choice the plugin must not
       // argue with. So with a second pack installed a removal WOULD stick. The
