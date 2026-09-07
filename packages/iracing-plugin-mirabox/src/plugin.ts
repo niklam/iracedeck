@@ -7,7 +7,10 @@
  * Mirrors the Elgato Stream Deck plugin initialization order.
  */
 import defaultVoicePackCatalogEntry from "@iracedeck/audio-assets/catalog/default.json" with { type: "json" };
-import audioAssetsManifest from "@iracedeck/audio-assets/manifest.json" with { type: "json" };
+// The bundled slice, not the authored manifest: this describes only what THIS
+// plugin ships. `manifest.json` names every authored voice and is for tests,
+// generators, and the harness (#1034 stage 3).
+import audioAssetsManifest from "@iracedeck/audio-assets/manifest.bundled.json" with { type: "json" };
 import { AudioNative } from "@iracedeck/audio-native";
 import {
   type AudioAssetsManifest,

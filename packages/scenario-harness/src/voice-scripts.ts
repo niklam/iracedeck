@@ -9,13 +9,14 @@
  *
  * Two loaders, for the two places a script can come from:
  *
- * - {@link loadBundledVoiceScripts} reads each bundled voice's artifact straight
- *   from the `@iracedeck/audio-assets` source tree — the very file the plugin
- *   build copies and the packer ships. Deliberately LOUD: the harness is a dev
- *   tool, and a bundled voice whose script is missing or malformed is a build
- *   that would ship a silent engineer, which should stop the boot with the file
- *   named rather than be logged past. (The plugins, which must never end the
- *   process over a pack, go through the never-throwing scanner instead.)
+ * - {@link loadBundledVoiceScripts} reads each published voice's artifact
+ *   straight from the `@iracedeck/audio-assets` source tree — the very file the
+ *   plugin build copies (for the bundled subset) and the packer ships (for
+ *   every published voice). Deliberately LOUD: the harness is a dev tool, and a
+ *   published voice whose script is missing or malformed is a build that would
+ *   ship a silent engineer, which should stop the boot with the file named
+ *   rather than be logged past. (The plugins, which must never end the process
+ *   over a pack, go through the never-throwing scanner instead.)
  * - {@link loadInstalledVoiceScripts} runs the plugins' own voice-pack service
  *   over a packs directory (`IRACEDECK_VOICE_PACKS_PATH`), with the real file
  *   system port, so a sideloaded or downloaded pack's clips AND script load
@@ -29,7 +30,7 @@
  * audition" work without a restart. Which of the two loaders it re-runs, and
  * therefore how a broken script surfaces, is the reloader's own note.
  */
-import { audioAssetsPath, BUNDLED_VOICE_IDS } from "@iracedeck/audio-assets/build";
+import { audioAssetsPath, PUBLISHED_VOICE_IDS } from "@iracedeck/audio-assets/build";
 import { type AudioAssetsManifest, mergeManifests } from "@iracedeck/audio-scenarios";
 import { type CalloutScript, calloutScriptPath, parseCalloutScriptText } from "@iracedeck/callout-script";
 import { createVoicePackFileSystem, createVoicePackService, type VoicePackService } from "@iracedeck/deck-core";
@@ -40,23 +41,23 @@ import { join } from "node:path";
 export type LoadBundledVoiceScriptsOptions = {
   /** The audio-assets tree to read from. Default: the workspace package. */
   root?: string;
-  /** The voices to read. Default: every bundled voice. */
+  /** The voices to read. Default: every published voice. */
   voiceIds?: readonly string[];
 };
 
 /**
- * Every bundled voice's script, voice id → parsed script, read from
+ * Each published voice's script, voice id → parsed script, read from
  * `<root>/voice/<voice-id>/callouts.json`.
  *
  * Throws — naming the file — when a voice has no readable artifact, when it is
- * not JSON, or when it fails the grammar. A bundled voice with no script is a
+ * not JSON, or when it fails the grammar. A published voice with no script is a
  * packaging bug, not a clips-only voice, and the harness exists to surface
  * exactly that kind of thing before a release does.
  */
 export function loadBundledVoiceScripts(
   options: LoadBundledVoiceScriptsOptions = {},
 ): ReadonlyMap<string, CalloutScript> {
-  const { root = audioAssetsPath, voiceIds = BUNDLED_VOICE_IDS } = options;
+  const { root = audioAssetsPath, voiceIds = PUBLISHED_VOICE_IDS } = options;
   const scripts = new Map<string, CalloutScript>();
 
   for (const id of voiceIds) {
@@ -166,7 +167,7 @@ export type ReloadVoiceScriptsDeps = {
   voicePacks: VoicePackService | null;
   /** Without a service: the re-read bundled scripts → the engine. */
   applyScripts(scripts: ReadonlyMap<string, CalloutScript>): void;
-  /** Where the bundled scripts are re-read from without a service. Default: the workspace package, every bundled voice. */
+  /** Where the bundled scripts are re-read from without a service. Default: the workspace package, every published voice. */
   bundled?: LoadBundledVoiceScriptsOptions;
 };
 

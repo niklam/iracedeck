@@ -94,7 +94,9 @@ async function main(): Promise<void> {
   const audioLog = logger.createScope("Audio");
   const audioBasePath = join(resolvePackageRoot(), ".cache", "audio");
   audioLog.info("Processing audio assets (radio filter — first run takes a moment)");
-  await processAndCopyAudioAssets({ destRoot: audioBasePath, logger: (m) => audioLog.info(m) });
+  // The harness auditions every published voice (#1034 stage 3); only a plugin
+  // build filters the copy down to the bundled set.
+  await processAndCopyAudioAssets({ destRoot: audioBasePath, logger: (m) => audioLog.info(m), voices: "all" });
   audioLog.debug(`Audio base path: ${audioBasePath}`);
   const audioNative = new AudioNative();
   const audio = initializeAudio(audioLog, audioNative, [audioBasePath]);
@@ -292,13 +294,23 @@ async function main(): Promise<void> {
       // exactly what Reload is pressed to audition. Both handlers end in the
       // same reload: a wipe re-copies the assets too.
       refreshAudioAssets: async () => {
-        await processAndCopyAudioAssets({ destRoot: audioBasePath, logger: (m) => audioLog.info(m), wipe: false });
+        await processAndCopyAudioAssets({
+          destRoot: audioBasePath,
+          logger: (m) => audioLog.info(m),
+          wipe: false,
+          voices: "all",
+        });
         reloadVoiceScripts({ voicePacks, applyScripts: (scripts) => engine.setScripts(scripts) });
       },
       wipeAudioCache: async () => {
         await wipeProcessedCache();
         audioLog.info("Wiped ffmpeg cache; full reprocess on next refresh/restart");
-        await processAndCopyAudioAssets({ destRoot: audioBasePath, logger: (m) => audioLog.info(m), wipe: false });
+        await processAndCopyAudioAssets({
+          destRoot: audioBasePath,
+          logger: (m) => audioLog.info(m),
+          wipe: false,
+          voices: "all",
+        });
         reloadVoiceScripts({ voicePacks, applyScripts: (scripts) => engine.setScripts(scripts) });
       },
     },
