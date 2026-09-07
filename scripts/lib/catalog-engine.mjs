@@ -29,7 +29,12 @@ const repoRoot = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), 
 /** The runtime manifest — every bundled clip, the ambient loop and the ticks. */
 export const AUDIO_MANIFEST_PATH = "packages/audio-assets/manifest.json";
 
-/** The bundled voice: the one whose script and clips ship in every plugin. */
+/**
+ * The reference voice, `default`: the one whose script the pack reference is
+ * built from and the pack iRaceDeck keeps current at launch. No plugin bundles
+ * it since #1034 stage 3; the name predates that and is kept because the
+ * pack-reference generator and its artifact paths are built on it.
+ */
 export const BUNDLED_VOICE = "default";
 
 const AUDIO_SCENARIOS_DIST = "packages/audio-scenarios/dist";

@@ -74,8 +74,8 @@ const compile = (script: CalloutScript) => compileVoiceScript(script, DEPS);
 /** The plugin's built-ins as its manifest lists them — the frame's tick paths are checked against these. */
 const SHARED_CLIPS = ["sfx/IRD-ambient-pit.mp3", "sfx/IRD-tick-close.mp3", "sfx/IRD-tick-open.mp3"];
 
-/** The voice id the plugin's own bundle provides; a pack declaring it has that voice dropped. */
-const BUNDLED_VOICE_IDS = ["default"];
+/** The voice id of the pack iRaceDeck keeps current; a pack declaring it has that voice dropped. */
+const MANAGED_VOICE_IDS = ["default"];
 
 // ─── The fixture pack ────────────────────────────────────────────────────────
 
@@ -174,7 +174,7 @@ function lint(files: Files, overrides: Partial<Omit<LintPackInput, "fs" | "packD
     vocabulary: VOCABULARY,
     compile,
     sharedClips: SHARED_CLIPS,
-    bundledVoiceIds: BUNDLED_VOICE_IDS,
+    managedVoiceIds: MANAGED_VOICE_IDS,
     pluginPlayedBases: [],
     ...overrides,
   });
@@ -515,7 +515,7 @@ describe("lintPack", () => {
     expect(lint(packFiles({}), { packDirName: "DEMO" }).problems).toEqual([]);
   });
 
-  it("reports a voice id the plugin's bundled audio already provides — the plugin drops that voice", () => {
+  it("reports a voice id that belongs to the pack iRaceDeck keeps current — the plugin drops this pack's copy", () => {
     const manifest = JSON.stringify({
       schema: 1,
       id: "demo",
@@ -529,7 +529,7 @@ describe("lintPack", () => {
     const report = lint(packFiles({ manifest, clips: [...CLIPS, "voice/default/flags/green-01.mp3"] }));
 
     expect(messages(report.problems)).toEqual([
-      '(pack) manifest: voice-pack.json: voices[1].id "default" is provided by the plugin\'s bundled audio — the plugin drops the voice',
+      '(pack) manifest: voice-pack.json: voices[1].id "default" belongs to the pack iRaceDeck keeps current, which claims it first — the plugin drops this pack\'s copy of the voice; pick a different voice id',
       "default script: no voice/default/callouts.json — a clips-only voice: every callout is skipped in it, and the plugin shows the missing-script banner when it is selected",
     ]);
     expect(report.voices.map((v) => v.id)).toEqual([VOICE, "default"]);

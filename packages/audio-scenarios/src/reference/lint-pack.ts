@@ -13,8 +13,8 @@
  * reports the pack-author reference is built from — and the engine's own
  * `compileScript`, which is the point: the linter names exactly what the
  * reference publishes, compiles through the very deps the plugin compiles a
- * pack with, and applies the same coverage rules the bundled voice is held
- * to (`@iracedeck/callout-script`'s `coverage.ts`).
+ * pack with, and applies the same coverage rules the reference voice is
+ * held to (`@iracedeck/callout-script`'s `coverage.ts`).
  *
  * The manifest (`voice-pack.json`) is read as PLAIN JSON — deck-core's
  * schema, which the plugin validates the whole file with at install time,
@@ -26,9 +26,10 @@
  * case-insensitive, the id regex is not); `label` a non-empty string of at
  * most 60 characters; `version` semver by shape (the scanner uses `semver`;
  * a regex is what plain JSON affords here); each `voices[]` entry a
- * kebab-case `id` with a `label`; and no voice id the plugin's bundled audio
- * already provides (`bundledVoiceIds`, handed in by the runner) — the
- * collision the scanner drops the voice over. A field problem is reported
+ * kebab-case `id` with a `label`; and no voice id that belongs to the pack
+ * iRaceDeck keeps current (`managedVoiceIds`, handed in by the runner —
+ * `default`), whose claim the scanner honours first so this pack's copy of
+ * that voice is dropped. A field problem is reported
  * and the voice is linted anyway; when the manifest is missing, unparseable
  * or carries no usable id at all, that is reported AND the voices are taken
  * from the directories under `voice/` instead, so the author still gets
@@ -184,8 +185,14 @@ export type LintPackInput = {
    * a frame's ticks, typically — is checked against.
    */
   sharedClips: readonly string[];
-  /** Voice ids the plugin's own bundled audio provides; a pack declaring one has that voice dropped by the scanner. */
-  bundledVoiceIds: readonly string[];
+  /**
+   * Voice ids of the pack iRaceDeck keeps current (`default`). The plugin
+   * bundles no voice since #1034 stage 3 and its scanner reserves nothing;
+   * the managed pack simply claims its voices before every other pack, so a
+   * pack declaring one of these ids has that voice dropped — the scanner's
+   * `priorityPacks` rule, restated for the author.
+   */
+  managedVoiceIds: readonly string[];
   /**
    * Clips PLUGIN CODE plays with the active voice by path, outside any
    * script — the connect radio check, the toggle acknowledgments, the Test
@@ -212,7 +219,7 @@ export function lintPack({
   vocabulary,
   compile,
   sharedClips,
-  bundledVoiceIds,
+  managedVoiceIds,
   pluginPlayedBases,
 }: LintPackInput): LintReport {
   const packDir = rawPackDir.replace(/[\\/]+$/, "");
@@ -222,7 +229,7 @@ export function lintPack({
   };
 
   const onDisk = [...fs.listDirectories(`${packDir}/${VOICE_ROOT}`)].sort();
-  const declared = readManifest(fs.readTextFile(`${packDir}/${MANIFEST_FILE}`), packDirName, bundledVoiceIds);
+  const declared = readManifest(fs.readTextFile(`${packDir}/${MANIFEST_FILE}`), packDirName, managedVoiceIds);
   let voiceIds: readonly string[];
 
   if (declared.ids !== null) {
@@ -310,7 +317,7 @@ const REFUSED = "the plugin refuses the manifest";
  * plugin refuses such a manifest whole) and the others are kept; no usable id
  * at all falls back to the directories, the per-entry problems intact.
  */
-function readManifest(read: LintFileRead, packDirName: string, bundledVoiceIds: readonly string[]): DeclaredVoices {
+function readManifest(read: LintFileRead, packDirName: string, managedVoiceIds: readonly string[]): DeclaredVoices {
   if (!read.ok) {
     return {
       ids: null,
@@ -401,9 +408,9 @@ function readManifest(read: LintFileRead, packDirName: string, bundledVoiceIds: 
 
     if (!isLabel(voice.label)) problems.push(`${MANIFEST_FILE}: voices[${index}] has no label — ${REFUSED}`);
 
-    if (bundledVoiceIds.includes(id)) {
+    if (managedVoiceIds.includes(id)) {
       problems.push(
-        `${MANIFEST_FILE}: voices[${index}].id "${id}" is provided by the plugin's bundled audio — the plugin drops the voice`,
+        `${MANIFEST_FILE}: voices[${index}].id "${id}" belongs to the pack iRaceDeck keeps current, which claims it first — the plugin drops this pack's copy of the voice; pick a different voice id`,
       );
     }
 
