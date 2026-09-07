@@ -1219,9 +1219,10 @@ let storeRef: SettingsStore | null = null;
 let storeReady = false;
 
 /**
- * Resolved once the load has SETTLED — ready by any path, or the fail-closed
- * give-up (#1034 stage 3). Distinct from {@link storeReady}, which the give-up
- * path deliberately never sets: a consumer that must not act on defaults gates
+ * Resolved once the load has SETTLED — ready by any path, the fail-closed
+ * give-up, or a throw while applying what was loaded (#1034 stage 3).
+ * Distinct from {@link storeReady}, which the two failure paths deliberately
+ * never set: a consumer that must not act on defaults gates
  * on ready, while a consumer that merely wants the cache to hold whatever the
  * file had before it acts — the voice-pack launch step reading the catalog dev
  * override — waits for settled and then proceeds regardless of which of the
@@ -2050,6 +2051,14 @@ export function initGlobalSettings(
         } catch (error: unknown) {
           logger?.error("Failed to apply the loaded global settings");
           logger?.debug(`Apply error: ${String(error)}`);
+          // The load attempt has SETTLED, ready or not: nothing after a throw
+          // here will ever call `becomeReady` (a migration read that threw
+          // before its deadline was armed, say), and a settled-waiter left
+          // parked here — the voice-pack launch step — would never run its
+          // ensure, arm no retry and ignore every poke, with a log line that
+          // names settings rather than the voice. Idempotent when the throw
+          // came from a listener after `becomeReady` already resolved it.
+          settled.resolve();
         }
       },
       (error: unknown) => onLoadFailed(attempt, error),
@@ -2083,12 +2092,13 @@ export function isSettingsStoreReady(): boolean {
 
 /**
  * Resolves when the settings load has SETTLED: the store became ready (file,
- * host migration, or fresh) OR the unreadable-file path ran out of attempts and
- * the run continues on defaults without saving. Never rejects, and resolves
+ * host migration, or fresh), OR the unreadable-file path ran out of attempts
+ * and the run continues on defaults without saving, OR applying the loaded
+ * settings threw before the store was ready. Never rejects, and resolves
  * immediately when that has already happened.
  *
  * Not a readiness gate — {@link isSettingsStoreReady} is, and it stays false on
- * the give-up path by design. Use this only where waiting forever on a file
+ * both failure paths by design. Use this only where waiting forever on a file
  * that cannot be read would be worse than proceeding on defaults; see the note
  * on the module-level signal for which consumer wants which.
  */

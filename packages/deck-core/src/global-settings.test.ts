@@ -2277,6 +2277,30 @@ describe("whenSettingsStoreSettled (#1034 stage 3)", () => {
     }
   });
 
+  it("resolves when applying the loaded file throws before the store is ready, although the store is never ready", async () => {
+    // The cheapest way through `attemptLoad`'s apply catch: no file, so
+    // `onLoaded` issues the migration read — and the adapter throws on it
+    // synchronously, before the deadline is even armed. Nothing else would
+    // ever settle this run, and the voice-pack launch step would sit on the
+    // wait forever with no ensure, no retry and an inert poke.
+    const mock = createMockAdapter();
+    mock.getGlobalSettings.mockImplementation(() => {
+      throw new Error("host gone");
+    });
+    const logger = createMockLogger();
+
+    initGlobalSettings(mock.adapter, logger, createMemorySettingsStore());
+
+    const settled = vi.fn();
+    void whenSettingsStoreSettled().then(settled);
+    await tick();
+    await tick();
+
+    expect(logger.error).toHaveBeenCalledWith("Failed to apply the loaded global settings");
+    expect(isSettingsStoreReady()).toBe(false);
+    expect(settled).toHaveBeenCalledTimes(1);
+  });
+
   it("resolves at once when called after the store already settled", async () => {
     await initWithStore({ driverName: "nick" });
 
