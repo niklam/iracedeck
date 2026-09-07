@@ -96,7 +96,9 @@ describe(`voice/<voice-id>/${CALLOUT_SCRIPT_FILE}`, () => {
   // never looked up as a clip. A json in `clips` would be a callout that
   // resolves to nothing.
   it("is never listed in manifest.json — the manifest is clips only", () => {
-    const listed = buildManifest().clips.filter((clip: string) => clip.endsWith(`/${CALLOUT_SCRIPT_FILE}`));
+    const listed = buildManifest({ voices: "all" }).clips.filter((clip: string) =>
+      clip.endsWith(`/${CALLOUT_SCRIPT_FILE}`),
+    );
 
     expect(listed).toEqual([]);
   });

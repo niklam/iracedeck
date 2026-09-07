@@ -61,3 +61,10 @@ export const VOICE_PACKS = Object.freeze([
 export const BUNDLED_VOICE_IDS = Object.freeze(
   VOICE_PACKS.filter((pack) => pack.bundled).flatMap((pack) => [...pack.voices]),
 );
+
+/**
+ * Every voice iRaceDeck publishes, bundled or not — what the scenario harness
+ * auditions and what the authored manifest describes. `BUNDLED_VOICE_IDS` is
+ * the subset a plugin ships (#1034 stage 3 makes that subset empty).
+ */
+export const PUBLISHED_VOICE_IDS = Object.freeze(VOICE_PACKS.flatMap((pack) => [...pack.voices]));

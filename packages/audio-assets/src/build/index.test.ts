@@ -138,14 +138,15 @@ describe("processVoiceTree — the voice's callouts.json", () => {
  * and per-voice walk as the real thing, on a tree of two clips.
  */
 describe("processAndCopyAudioAssets — what reaches the plugin's assets/audio", () => {
-  it("lands the bundled voice's callouts.json byte-identical, and nothing from a voice that is not bundled", async () => {
+  /**
+   * A package tree with the one bundled voice (`default`) and a published-only
+   * one (`other`), plus the sfx tone and the `configs/` folder the allow-list
+   * has to leave behind. Both tests below run the copy step over it.
+   */
+  function buildTwoVoiceFixture(): { srcRoot: string; destRoot: string; cacheDir: string } {
     const root = tempDir("ird-audio-copy-");
     const srcRoot = path.join(root, "package");
-    const destRoot = path.join(root, "assets", "audio");
-    const cacheDir = path.join(root, "cache");
 
-    // `default` is the one bundled voice (BUNDLED_VOICE_IDS); `other` is what
-    // a published-only voice looks like to the copy step.
     for (const voice of ["default", "other"]) {
       mkdirSync(path.join(srcRoot, "voice", voice, "flags"), { recursive: true });
       copyFileSync(SAMPLE_CLIP, path.join(srcRoot, "voice", voice, "flags", "blue-01.mp3"));
@@ -155,6 +156,16 @@ describe("processAndCopyAudioAssets — what reaches the plugin's assets/audio",
     mkdirSync(path.join(srcRoot, "sfx"), { recursive: true });
     copyFileSync(SAMPLE_CLIP, path.join(srcRoot, "sfx", "tick.mp3"));
     writeFile(path.join(srcRoot, "configs", "default.voice.json"), "{}");
+
+    return {
+      srcRoot,
+      destRoot: path.join(root, "assets", "audio"),
+      cacheDir: path.join(root, "cache"),
+    };
+  }
+
+  it("lands the bundled voice's callouts.json byte-identical, and nothing from a voice that is not bundled", async () => {
+    const { srcRoot, destRoot, cacheDir } = buildTwoVoiceFixture();
 
     const log: string[] = [];
 
@@ -174,6 +185,26 @@ describe("processAndCopyAudioAssets — what reaches the plugin's assets/audio",
     // The radio cache holds processed clips and nothing else.
     expect(listFiles(cacheDir)).toEqual(["voice/default/flags/blue-01.mp3"]);
     expect(log.some((line) => line.includes('voice "other" is published, not bundled'))).toBe(true);
+  }, 30_000);
+
+  it('copies every authored voice when asked for voices: "all" — the harness auditions what is authored, not what ships', async () => {
+    const { srcRoot, destRoot, cacheDir } = buildTwoVoiceFixture();
+    const log: string[] = [];
+
+    await processAndCopyAudioAssets({ destRoot, srcRoot, cacheDir, voices: "all", logger: (line) => log.push(line) });
+
+    expect(existsSync(path.join(destRoot, "voice", "other"))).toBe(true);
+    expect(existsSync(path.join(destRoot, "voice", "default"))).toBe(true);
+    // Not merely a directory each: the published-only voice arrives whole,
+    // clips processed and script beside them, exactly like the bundled one.
+    expect(listFiles(destRoot)).toEqual([
+      "sfx/tick.mp3",
+      `voice/default/${CALLOUT_SCRIPT_FILE}`,
+      "voice/default/flags/blue-01.mp3",
+      `voice/other/${CALLOUT_SCRIPT_FILE}`,
+      "voice/other/flags/blue-01.mp3",
+    ]);
+    expect(log.some((line) => line.includes("is published, not bundled"))).toBe(false);
   }, 30_000);
 
   it("refuses a source root outside the package unless told where its cache goes", async () => {
