@@ -119,7 +119,7 @@ export function findVar(vocabulary: PackReferenceVocabulary, name: string): Voca
 export const PAUSE_MARKER = "…";
 
 /**
- * A take's text as the page shows it. The bundled config's texts are
+ * A take's text as the page shows it. The reference voice's texts are
  * ElevenLabs prompts and carry SSML verbatim; a `<break time="0.3s"/>` is a
  * pause the actor should leave, so it becomes a visible {@link PAUSE_MARKER},
  * and any other tag is dropped. No markup ever reaches the page from here.
@@ -173,9 +173,9 @@ export function groupPlayedBy(group: Pick<RecordingGroup, "lines">): string | un
   return rest.every((line) => line.playedBy === first.playedBy) ? first.playedBy : undefined;
 }
 
-/** The note shown under an unreferenced group the plugin does not play either — the bundled voice's own leftovers. */
+/** The note shown under an unreferenced group the plugin does not play either — the reference voice's own leftovers. */
 export const UNUSED_GROUP_NOTE =
-  "No script entry or variable draws from this group. It is a leftover of the bundled voice; a pack does not need it.";
+  "No script entry or variable draws from this group. It is a leftover of the reference voice; a pack does not need it.";
 
 /** The note shown beside an unreferenced line inside a group that is otherwise used. */
 export const UNUSED_LINE_NOTE = "Nothing in the script draws from this line.";

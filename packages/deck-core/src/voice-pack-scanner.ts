@@ -109,6 +109,19 @@ export interface ScanVoicePacksOptions {
    * genuinely no bundled audio to protect.
    */
   reservedVoices: readonly string[];
+  /**
+   * Pack ids visited BEFORE the alphabetical order, in the order given — the
+   * plugins pass `[ENSURED_VOICE_PACK_ID]` (#1034 stage 3). With nothing
+   * reserved, the pack-vs-pack rule below is the only thing deciding who
+   * provides the `default` voice, and "first by sorted folder name" would let
+   * any sideloaded folder that sorts before `default` — `aaa`, say — claim the
+   * voice id off the pack the plugin keeps current, silently replacing the
+   * engineer the user hears with the sideload's recordings. The managed pack
+   * claims first; everything else keeps the alphabetical order. An id with no
+   * folder is simply skipped; the folder is matched case-insensitively, the
+   * same way its declared id is.
+   */
+  priorityPacks?: readonly string[];
 }
 
 export interface ScanVoicePacksResult {
@@ -215,6 +228,19 @@ export function readVoiceScript(fs: VoicePackFileSystem, dir: string, voiceId: s
   }
 }
 
+/** The `priorityPacks` that are on disk, in their given order, then every other folder sorted. */
+function visitOrder(folders: readonly string[], priorityPacks: readonly string[]): string[] {
+  const first: string[] = [];
+
+  for (const id of priorityPacks) {
+    const folder = folders.find((name) => name.toLowerCase() === id && !first.includes(name));
+
+    if (folder !== undefined) first.push(folder);
+  }
+
+  return [...first, ...folders.filter((name) => !first.includes(name)).sort()];
+}
+
 /**
  * Read every pack under `root` (issue #1034).
  *
@@ -223,16 +249,22 @@ export function readVoiceScript(fs: VoicePackFileSystem, dir: string, voiceId: s
  * only. Everything it refuses comes back as a `problem` so the reason can be
  * logged and shown rather than silently swallowed.
  *
- * Folders are visited in sorted order, which makes the winner of a voice
- * collision deterministic rather than dependent on directory-listing order.
+ * Folders are visited in a fixed order — the `priorityPacks` first, then the
+ * rest sorted — which makes the winner of a voice collision deterministic
+ * rather than dependent on directory-listing order.
  */
-export function scanVoicePacks({ root, fs, reservedVoices }: ScanVoicePacksOptions): ScanVoicePacksResult {
+export function scanVoicePacks({
+  root,
+  fs,
+  reservedVoices,
+  priorityPacks = [],
+}: ScanVoicePacksOptions): ScanVoicePacksResult {
   const packs: InstalledVoicePack[] = [];
   const problems: VoicePackProblem[] = [];
   const claimedVoices = new Map<string, string>();
   const bundledVoices = new Set(reservedVoices);
 
-  for (const folder of [...fs.listDirectories(root)].sort()) {
+  for (const folder of visitOrder(fs.listDirectories(root), priorityPacks)) {
     // Dot-folders are the installer's own working space (`.tmp`, `.trash`) and
     // anything else a tool decided to hide. Never packs.
     if (folder.startsWith(".")) continue;
@@ -317,6 +349,17 @@ export function scanVoicePacks({ root, fs, reservedVoices }: ScanVoicePacksOptio
     // to delete a pack, or the badge ever being read as a trust decision by
     // code rather than by a person. Neither is true today; if either becomes
     // true, this marker stops being an acceptable instrument.
+    //
+    // Stage 3 (#1034) shrank what the marker is worth rather than growing it,
+    // which is the outcome the paragraph above was watching for. The withheld
+    // Remove is now keyed by the plugin-published `managed` flag
+    // (`isManagedVoicePack`) — the plugin's own statement about the pack IT
+    // refreshes — never by provenance, so no record a pack author can write
+    // reaches it. The provenance-keyed row is out of reach as well: it needs
+    // `droppedToBundle > 0`, and a plugin that bundles no audio reserves no
+    // voice ids, so nothing is ever dropped to the bundle and the branch cannot
+    // fire at all. On such a plugin a forged `bundled-seed` record buys its
+    // author nothing whatsoever.
     //
     // Keep the exemption exactly this narrow. It requires OUR source value and
     // a record that names this same pack, so it cannot be widened by accident

@@ -79,6 +79,9 @@ describe("voice-pack modules open no window (#1034)", () => {
     expect(modules).toContain("voice-pack-catalog.ts");
     expect(modules).toContain("voice-pack-provenance.ts");
     expect(modules).toContain("voice-pack-status.ts");
+    // The stage-3 module that runs unasked at every start and retries on its
+    // own — the one a "download failed" window would most tempt.
+    expect(modules).toContain("voice-pack-launch.ts");
   });
 
   it.each(voicePackModules())("%s reaches nothing that opens a window", (name) => {

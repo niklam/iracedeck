@@ -94,7 +94,9 @@ async function main(): Promise<void> {
   const audioLog = logger.createScope("Audio");
   const audioBasePath = join(resolvePackageRoot(), ".cache", "audio");
   audioLog.info("Processing audio assets (radio filter — first run takes a moment)");
-  await processAndCopyAudioAssets({ destRoot: audioBasePath, logger: (m) => audioLog.info(m) });
+  // The harness auditions every published voice (#1034 stage 3); only a plugin
+  // build filters the copy down to the bundled set.
+  await processAndCopyAudioAssets({ destRoot: audioBasePath, logger: (m) => audioLog.info(m), voices: "all" });
   audioLog.debug(`Audio base path: ${audioBasePath}`);
   const audioNative = new AudioNative();
   const audio = initializeAudio(audioLog, audioNative, [audioBasePath]);
@@ -103,10 +105,19 @@ async function main(): Promise<void> {
   // ── Audio scenarios ──────────────────────────────────────────────────────
   const adapter = new MockPlatformAdapter(logger);
   const manifest = getAudioAssetsManifest();
-  const { raceEngineerVoices: bundledVoices } = seedGlobalSettings(adapter);
+  // Every voice the authored manifest describes — since #1034 stage 3 that is
+  // no longer "what a plugin bundles": the harness auditions every PUBLISHED
+  // voice. The scanner-facing dep it feeds is still named `bundledVoices`
+  // (`voice-scripts.ts`), which is the reserved-voices list it maps onto — and
+  // the harness DOES reserve them, where a plugin now reserves nothing: these
+  // voices play from the audio-assets source tree here, so a pack under
+  // `IRACEDECK_VOICE_PACKS_PATH` claiming one of their ids (a downloaded
+  // `default`) would only add extra takes into a voice already being
+  // auditioned, a half-merged voice nobody asked for. Dropped instead.
+  const { raceEngineerVoices: publishedVoices } = seedGlobalSettings(adapter);
   // A `let`, like the plugins' `raceEngineerVoices`: an installed voice pack
   // (below) extends the list after the engine is constructed.
-  let raceEngineerVoices: readonly string[] = bundledVoices;
+  let raceEngineerVoices: readonly string[] = publishedVoices;
 
   // The radio frame's two opt-outs (#1064), read live at frame expansion from
   // the same global-settings cache the plugins read, through the same
@@ -199,7 +210,7 @@ async function main(): Promise<void> {
       root: voicePacksRoot,
       pluginAudioDir: audioBasePath,
       bundledManifest: manifest,
-      bundledVoices,
+      bundledVoices: publishedVoices,
       bundledScripts,
       logger: voicePacksLogger,
       applyRoots: (roots) => audio.setRoots(roots),
@@ -292,13 +303,23 @@ async function main(): Promise<void> {
       // exactly what Reload is pressed to audition. Both handlers end in the
       // same reload: a wipe re-copies the assets too.
       refreshAudioAssets: async () => {
-        await processAndCopyAudioAssets({ destRoot: audioBasePath, logger: (m) => audioLog.info(m), wipe: false });
+        await processAndCopyAudioAssets({
+          destRoot: audioBasePath,
+          logger: (m) => audioLog.info(m),
+          wipe: false,
+          voices: "all",
+        });
         reloadVoiceScripts({ voicePacks, applyScripts: (scripts) => engine.setScripts(scripts) });
       },
       wipeAudioCache: async () => {
         await wipeProcessedCache();
         audioLog.info("Wiped ffmpeg cache; full reprocess on next refresh/restart");
-        await processAndCopyAudioAssets({ destRoot: audioBasePath, logger: (m) => audioLog.info(m), wipe: false });
+        await processAndCopyAudioAssets({
+          destRoot: audioBasePath,
+          logger: (m) => audioLog.info(m),
+          wipe: false,
+          voices: "all",
+        });
         reloadVoiceScripts({ voicePacks, applyScripts: (scripts) => engine.setScripts(scripts) });
       },
     },

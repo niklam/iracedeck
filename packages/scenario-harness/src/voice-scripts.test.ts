@@ -1,4 +1,4 @@
-import { BUNDLED_VOICE_IDS } from "@iracedeck/audio-assets/build";
+import { PUBLISHED_VOICE_IDS } from "@iracedeck/audio-assets/build";
 import type { AudioAssetsManifest } from "@iracedeck/audio-scenarios";
 import { type CalloutScript, calloutScriptPath, parseCalloutScript } from "@iracedeck/callout-script";
 import { silentLogger } from "@iracedeck/logger";
@@ -35,8 +35,8 @@ describe("loadBundledVoiceScripts", () => {
   it("reads the bundled default voice's committed artifact, and it parses", () => {
     const scripts = loadBundledVoiceScripts();
 
-    expect(BUNDLED_VOICE_IDS).toContain("default");
-    expect([...scripts.keys()]).toEqual([...BUNDLED_VOICE_IDS]);
+    expect(PUBLISHED_VOICE_IDS).toContain("default");
+    expect([...scripts.keys()]).toEqual([...PUBLISHED_VOICE_IDS]);
 
     const script = scripts.get("default");
     expect(script).toBeDefined();

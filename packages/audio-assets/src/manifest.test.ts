@@ -5,31 +5,67 @@ import url from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { buildManifest } from "../scripts/generate-audio-manifest.mjs";
-import { BUNDLED_VOICE_IDS, SHIPPED_FOLDERS } from "./build/index.mjs";
+import { BUNDLED_VOICE_IDS, PUBLISHED_VOICE_IDS, SHIPPED_FOLDERS } from "./build/index.mjs";
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = path.resolve(__dirname, "..");
 const MANIFEST_PATH = path.join(PACKAGE_ROOT, "manifest.json");
+const BUNDLED_MANIFEST_PATH = path.join(PACKAGE_ROOT, "manifest.bundled.json");
 
 describe("audio-assets manifest", () => {
-  it("is up to date with the file tree", () => {
+  // Two manifests, one generator: `manifest.json` describes every AUTHORED
+  // voice (what the harness and the generators read as "the authored voice"),
+  // `manifest.bundled.json` only the slice a plugin distributable carries, the
+  // manifest a plugin compiles in (#1034 stage 3).
+  it("manifest.json is up to date with the file tree — every authored voice", () => {
     const committed = JSON.parse(fs.readFileSync(MANIFEST_PATH, "utf-8"));
-    const regenerated = buildManifest();
 
-    expect(regenerated).toEqual(committed);
+    expect(buildManifest({ voices: "all" })).toEqual(committed);
+  });
+
+  it("manifest.bundled.json is up to date — only the bundled voices", () => {
+    const committed = JSON.parse(fs.readFileSync(BUNDLED_MANIFEST_PATH, "utf-8"));
+
+    expect(buildManifest({ voices: "bundled" })).toEqual(committed);
+  });
+
+  // The two slices will differ by every voice at stage 3, and a caller that
+  // does not say which one it means would get a plausible-looking manifest for
+  // the wrong one — clips that are not there, surfacing only as an engineer
+  // that says nothing. So the generator refuses instead of defaulting.
+  it("refuses to build a manifest for an unnamed slice", () => {
+    expect(() => buildManifest()).toThrow(/voices must be "all" or "bundled"/);
+  });
+
+  // The freshness pair above cannot catch a broken filter on its own: both
+  // sides of it come from this same generator, so a filter that dropped EVERY
+  // voice would still match the file it had just written. Deriving one slice
+  // from the other is the check that holds — and unlike a "names no voice
+  // outside the bundled set" loop, it cannot go vacuous when that set empties,
+  // which is precisely what stage 3 does to it.
+  it("the bundled manifest is exactly the authored manifest filtered to BUNDLED_VOICE_IDS", () => {
+    const all = buildManifest({ voices: "all" });
+    const bundledClips = all.clips.filter(
+      (clip: string) => !clip.startsWith("voice/") || BUNDLED_VOICE_IDS.includes(clip.split("/")[1]),
+    );
+
+    // Both sides being empty would prove nothing; the authored side is the
+    // whole file tree, so say so rather than assume it.
+    expect(all.clips.length).toBeGreaterThan(0);
+    expect(buildManifest({ voices: "bundled" })).toEqual({ ...all, clips: bundledClips });
   });
 
   // The manifest is the list of CLIPS the engine resolves against. The
   // voice's `callouts.json` (#1064) sits inside the same `voice/<id>/` tree
   // and ships beside the clips, but it is read by the voice-pack service,
   // never played — listed here it would be a callout that resolves to
-  // nothing. The bundled voice's file must EXIST for this to prove anything.
-  it("lists no callouts.json, though every bundled voice ships one beside its clips", () => {
+  // nothing. Each published voice's file must EXIST for this to prove anything.
+  it("lists no callouts.json, though every published voice ships one beside its clips", () => {
     const committed = JSON.parse(fs.readFileSync(MANIFEST_PATH, "utf-8"));
 
-    expect(BUNDLED_VOICE_IDS.length).toBeGreaterThan(0);
+    expect(PUBLISHED_VOICE_IDS.length).toBeGreaterThan(0);
 
-    for (const voiceId of BUNDLED_VOICE_IDS) {
+    for (const voiceId of PUBLISHED_VOICE_IDS) {
       expect(fs.existsSync(path.join(PACKAGE_ROOT, calloutScriptPath(voiceId)))).toBe(true);
     }
 
@@ -58,7 +94,7 @@ describe("what the plugin build ships", () => {
   // `dist/` — 16 MB of staged voice pack, in the feature meant to make the
   // download smaller.
   it("ships exactly the folders the manifest resolves against", () => {
-    const manifest = buildManifest();
+    const manifest = buildManifest({ voices: "all" });
     const referenced = new Set(
       [...manifest.clips, manifest.ambientLoop, manifest.ticks.open, manifest.ticks.close].map(
         (clipPath) => clipPath.split("/")[0],

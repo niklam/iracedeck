@@ -186,6 +186,58 @@ describe("scanVoicePacks", () => {
     expect(result.problems).toEqual([{ pack: "zeta", reason: 'voice "luca" is already provided by pack "alpha"' }]);
   });
 
+  describe("priorityPacks (#1034 stage 3)", () => {
+    const aaa = { schema: 1, id: "aaa", label: "Aaa", version: "1.0.0", voices: [{ id: "default", label: "Mine" }] };
+    const dflt = {
+      schema: 1,
+      id: "default",
+      label: "Default",
+      version: "1.0.0",
+      voices: [{ id: "default", label: "Default" }],
+    };
+    const tree = {
+      aaa: { manifest: aaa, clips: ["voice/default/flags/blue-01.mp3"] },
+      default: { manifest: dflt, clips: ["voice/default/flags/blue-01.mp3"] },
+    };
+
+    it("lets the named packs claim their voices before the alphabetical order does", () => {
+      // With nothing reserved, a sideloaded `aaa` sorts before `default` and
+      // would take the `default` VOICE id off the pack the plugin keeps
+      // current — the managed pack claims first.
+      const result = scanVoicePacks({ root: ROOT, reservedVoices: [], priorityPacks: ["default"], fs: fakeFs(tree) });
+
+      expect(result.packs.map((p) => p.id)).toEqual(["default"]);
+      expect(result.problems).toEqual([
+        { pack: "aaa", reason: 'voice "default" is already provided by pack "default"' },
+      ]);
+    });
+
+    it("keeps the alphabetical order without it", () => {
+      const result = scanVoicePacks({ root: ROOT, reservedVoices: [], fs: fakeFs(tree) });
+
+      expect(result.packs.map((p) => p.id)).toEqual(["aaa"]);
+      expect(result.problems).toEqual([
+        { pack: "default", reason: 'voice "default" is already provided by pack "aaa"' },
+      ]);
+    });
+
+    it("skips a priority pack that is not on disk, and matches the folder case-insensitively like the id rule", () => {
+      const result = scanVoicePacks({
+        root: ROOT,
+        reservedVoices: [],
+        priorityPacks: ["missing", "default"],
+        // Both capitalised, so the plain sort still puts `Aaa` first and the
+        // priority is what decides.
+        fs: fakeFs({ Aaa: tree.aaa, Default: tree.default }),
+      });
+
+      expect(result.packs.map((p) => p.id)).toEqual(["default"]);
+      expect(result.problems).toEqual([
+        { pack: "Aaa", reason: 'voice "default" is already provided by pack "Default"' },
+      ]);
+    });
+  });
+
   it("is deterministic regardless of directory-listing order", () => {
     const forward = scanVoicePacks({
       root: ROOT,

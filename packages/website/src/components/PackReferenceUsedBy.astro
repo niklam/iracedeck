@@ -1,8 +1,8 @@
 ---
 // packages/website/src/components/PackReferenceUsedBy.astro
 // The "Used by" line under a vocabulary item (issue #1066): the callouts
-// whose bundled entries name it, each linked to its anchor on the callouts
-// page, or the one sentence that says no bundled entry does. Defined once so
+// whose reference-voice entries name it, each linked to its anchor on the callouts
+// page, or the one sentence that says no entry there does. Defined once so
 // the three vocabulary sections cannot drift apart in wording or markup.
 import { calloutHref } from "../pack-reference-view.js";
 
@@ -17,7 +17,7 @@ const { usedBy } = Astro.props;
   <strong>Used by:</strong>{" "}
   {
     usedBy.length === 0
-      ? "no bundled entry — available to a pack all the same"
+      ? "no entry in the reference voice — available to a pack all the same"
       : usedBy.map((id, i) => (
           <>
             {i > 0 && ", "}

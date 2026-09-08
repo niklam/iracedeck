@@ -253,7 +253,7 @@ export async function runLintPack(argv, io = {}) {
     compile: engine.compileScript.bind(engine),
     // The plugin's built-ins — the runtime manifest's clips outside `voice/` (the ticks, the ambience bed, the radar tones).
     sharedClips: manifest.clips.filter((clip) => !clip.startsWith("voice/")),
-    bundledVoiceIds: [BUNDLED_VOICE],
+    managedVoiceIds: [BUNDLED_VOICE],
     pluginPlayedBases: PLUGIN_PLAYED_BASES,
   });
 

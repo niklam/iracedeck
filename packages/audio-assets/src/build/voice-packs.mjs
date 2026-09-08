@@ -6,9 +6,14 @@
  * into an archive and writes `catalog/<id>.json`, from which the website builds
  * `voice-catalog.json`. `bundled` additionally keeps the pack's clips inside the
  * plugin distributable, which is what lets an upgrade install a voice by copy
- * with no network in the way. Stage 3 of the rollout is the one-word edit that
- * flips `default` to `bundled: false` — nothing else changes, because `default`
- * is a catalog entry like any other rather than a special case.
+ * with no network in the way. Stage 3 of the rollout flipped `default` to
+ * `bundled: false` on 2026-09-07. It was NOT the one-word edit this comment
+ * used to promise: the manifest had to split into an authored `manifest.json`
+ * and a bundled `manifest.bundled.json` first, because with an empty bundle the
+ * two slices stop being the same file (see the spec's *Stage 3* section). What
+ * IS one word is the way back — setting `bundled: true` on an entry re-bundles
+ * that voice with no code change anywhere, which is what an offline installer
+ * variant would do.
  *
  * `version` is the PACK's version, independent of the plugin's. It is what a
  * user reads; the catalog's `sha256` is what decides whether a download is due.
@@ -50,14 +55,23 @@ export const VOICE_PACKS = Object.freeze([
     description: "The Race Engineer voice iRaceDeck ships with.",
     author: "iRaceDeck",
     voices: Object.freeze(["default"]),
-    bundled: true,
+    bundled: false,
   }),
 ]);
 
 /**
  * Voice ids whose clips stay inside the plugin distributable — what the plugin
- * build's audio copy step filters `voice/` down to.
+ * build's audio copy step filters `voice/` down to. EMPTY since stage 3: no
+ * plugin ships a voice, and every one of them is fetched from the catalog at
+ * launch. Empty is a supported state, not a broken one.
  */
 export const BUNDLED_VOICE_IDS = Object.freeze(
   VOICE_PACKS.filter((pack) => pack.bundled).flatMap((pack) => [...pack.voices]),
 );
+
+/**
+ * Every voice iRaceDeck publishes, bundled or not — what the scenario harness
+ * auditions and what the authored manifest describes. `BUNDLED_VOICE_IDS` is
+ * the subset a plugin ships, empty since stage 3 (#1034).
+ */
+export const PUBLISHED_VOICE_IDS = Object.freeze(VOICE_PACKS.flatMap((pack) => [...pack.voices]));

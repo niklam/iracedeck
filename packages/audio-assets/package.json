@@ -9,6 +9,7 @@
       "default": "./src/build/index.mjs"
     },
     "./manifest.json": "./manifest.json",
+    "./manifest.bundled.json": "./manifest.bundled.json",
     "./catalog/*.json": "./catalog/*.json",
     "./voice/*/callouts.json": "./voice/*/callouts.json",
     "./presets": "./src/presets.mjs"

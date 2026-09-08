@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { audioAssetsPath, processAndCopyAudioAssets, processVoiceTree } from "./index.mjs";
+import { audioAssetsPath, BUNDLED_VOICE_IDS, processAndCopyAudioAssets, processVoiceTree } from "./index.mjs";
 
 /** The repository's smallest real clip, so ffmpeg has genuine audio to process. */
 const SAMPLE_CLIP = path.join(audioAssetsPath, "voice/default/lap-time-second/1.mp3");
@@ -42,6 +42,11 @@ function listFiles(dir: string, relative = ""): string[] {
   }
 
   return found.sort();
+}
+
+/** `listFiles`, but a directory the run never had reason to create is no files. */
+function listFilesIfAny(dir: string): string[] {
+  return existsSync(dir) ? listFiles(dir) : [];
 }
 
 function writeFile(file: string, data: Buffer | string): void {
@@ -138,15 +143,23 @@ describe("processVoiceTree — the voice's callouts.json", () => {
  * and per-voice walk as the real thing, on a tree of two clips.
  */
 describe("processAndCopyAudioAssets — what reaches the plugin's assets/audio", () => {
-  it("lands the bundled voice's callouts.json byte-identical, and nothing from a voice that is not bundled", async () => {
+  /**
+   * The two voices the fixture authors. Which of them is BUNDLED is deliberately
+   * not fixed here — the test below derives that from `BUNDLED_VOICE_IDS`, which
+   * since #1034 stage 3 is empty, so today neither is copied.
+   */
+  const FIXTURE_VOICES = ["default", "other"] as const;
+
+  /**
+   * A package tree with both published voices, plus the sfx tone and the
+   * `configs/` folder the allow-list has to leave behind. Both tests below run
+   * the copy step over it.
+   */
+  function buildTwoVoiceFixture(): { srcRoot: string; destRoot: string; cacheDir: string } {
     const root = tempDir("ird-audio-copy-");
     const srcRoot = path.join(root, "package");
-    const destRoot = path.join(root, "assets", "audio");
-    const cacheDir = path.join(root, "cache");
 
-    // `default` is the one bundled voice (BUNDLED_VOICE_IDS); `other` is what
-    // a published-only voice looks like to the copy step.
-    for (const voice of ["default", "other"]) {
+    for (const voice of FIXTURE_VOICES) {
       mkdirSync(path.join(srcRoot, "voice", voice, "flags"), { recursive: true });
       copyFileSync(SAMPLE_CLIP, path.join(srcRoot, "voice", voice, "flags", "blue-01.mp3"));
       writeFile(path.join(srcRoot, "voice", voice, CALLOUT_SCRIPT_FILE), SCRIPT_BYTES);
@@ -156,24 +169,83 @@ describe("processAndCopyAudioAssets — what reaches the plugin's assets/audio",
     copyFileSync(SAMPLE_CLIP, path.join(srcRoot, "sfx", "tick.mp3"));
     writeFile(path.join(srcRoot, "configs", "default.voice.json"), "{}");
 
+    return {
+      srcRoot,
+      destRoot: path.join(root, "assets", "audio"),
+      cacheDir: path.join(root, "cache"),
+    };
+  }
+
+  it("lands each bundled voice's callouts.json byte-identical, and nothing from a voice that is not bundled", async () => {
+    const { srcRoot, destRoot, cacheDir } = buildTwoVoiceFixture();
+
+    // Derived, not spelled out: with #1034 stage 3 `BUNDLED_VOICE_IDS` is empty,
+    // so the expectation below is "no voice reaches the plugin, and the log says
+    // so for both" — and re-bundling a voice moves it back without an edit here.
+    // It cannot go vacuous: the sibling `voices: "all"` test copies both voices
+    // unconditionally, so the walk this one filters is exercised either way.
+    const bundled = FIXTURE_VOICES.filter((voice) => BUNDLED_VOICE_IDS.includes(voice));
+    const skipped = FIXTURE_VOICES.filter((voice) => !BUNDLED_VOICE_IDS.includes(voice));
+
     const log: string[] = [];
 
     await processAndCopyAudioAssets({ destRoot, srcRoot, cacheDir, logger: (line) => log.push(line) });
 
+    expect(listFiles(destRoot)).toEqual(
+      [
+        "sfx/tick.mp3",
+        ...bundled.flatMap((voice) => [`voice/${voice}/${CALLOUT_SCRIPT_FILE}`, `voice/${voice}/flags/blue-01.mp3`]),
+      ].sort(),
+    );
+    // The sfx tone is copied as-is — the one thing that ships whatever is bundled.
+    expect(readFileSync(path.join(destRoot, "sfx", "tick.mp3")).equals(readFileSync(SAMPLE_CLIP))).toBe(true);
+
+    for (const voice of bundled) {
+      expect(readFileSync(path.join(destRoot, "voice", voice, CALLOUT_SCRIPT_FILE)).equals(SCRIPT_BYTES)).toBe(true);
+      // The clip is the processed one, not the source.
+      expect(
+        readFileSync(path.join(destRoot, `voice/${voice}/flags/blue-01.mp3`)).equals(readFileSync(SAMPLE_CLIP)),
+      ).toBe(false);
+    }
+
+    for (const voice of skipped) {
+      expect(existsSync(path.join(destRoot, "voice", voice))).toBe(false);
+      expect(log.some((line) => line.includes(`voice "${voice}" is published, not bundled`))).toBe(true);
+    }
+
+    // Nothing bundled means no `voice/` at all — not an empty directory the
+    // scanner would then find and report on.
+    if (bundled.length === 0) expect(existsSync(path.join(destRoot, "voice"))).toBe(false);
+
+    // The radio cache holds processed clips and nothing else, and only for what
+    // was actually walked.
+    expect(listFilesIfAny(cacheDir)).toEqual(bundled.map((voice) => `voice/${voice}/flags/blue-01.mp3`));
+  }, 30_000);
+
+  it('copies every authored voice when asked for voices: "all" — the harness auditions what is authored, not what ships', async () => {
+    const { srcRoot, destRoot, cacheDir } = buildTwoVoiceFixture();
+    const log: string[] = [];
+
+    await processAndCopyAudioAssets({ destRoot, srcRoot, cacheDir, voices: "all", logger: (line) => log.push(line) });
+
+    expect(existsSync(path.join(destRoot, "voice", "other"))).toBe(true);
+    expect(existsSync(path.join(destRoot, "voice", "default"))).toBe(true);
+    // Not merely a directory each: the published-only voice arrives whole,
+    // clips processed and script beside them, exactly like the bundled one.
     expect(listFiles(destRoot)).toEqual([
       "sfx/tick.mp3",
       `voice/default/${CALLOUT_SCRIPT_FILE}`,
       "voice/default/flags/blue-01.mp3",
+      `voice/other/${CALLOUT_SCRIPT_FILE}`,
+      "voice/other/flags/blue-01.mp3",
     ]);
-    expect(readFileSync(path.join(destRoot, "voice", "default", CALLOUT_SCRIPT_FILE)).equals(SCRIPT_BYTES)).toBe(true);
-    // The sfx tone is copied as-is; the voice clip is the processed one.
-    expect(readFileSync(path.join(destRoot, "sfx", "tick.mp3")).equals(readFileSync(SAMPLE_CLIP))).toBe(true);
-    expect(readFileSync(path.join(destRoot, "voice/default/flags/blue-01.mp3")).equals(readFileSync(SAMPLE_CLIP))).toBe(
-      false,
-    );
-    // The radio cache holds processed clips and nothing else.
-    expect(listFiles(cacheDir)).toEqual(["voice/default/flags/blue-01.mp3"]);
-    expect(log.some((line) => line.includes('voice "other" is published, not bundled'))).toBe(true);
+    // Byte-identical scripts, asserted on THIS path because since #1034 stage 3
+    // it is the only one that copies a voice at all — the bundled filter above
+    // has nothing to prove it on.
+    for (const voice of FIXTURE_VOICES) {
+      expect(readFileSync(path.join(destRoot, "voice", voice, CALLOUT_SCRIPT_FILE)).equals(SCRIPT_BYTES)).toBe(true);
+    }
+    expect(log.some((line) => line.includes("is published, not bundled"))).toBe(false);
   }, 30_000);
 
   it("refuses a source root outside the package unless told where its cache goes", async () => {

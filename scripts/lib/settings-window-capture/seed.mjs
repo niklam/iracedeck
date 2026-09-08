@@ -40,31 +40,33 @@ export function buildSeedSettings() {
       { id: "737065616b657273", name: "Speakers (Realtek High Definition Audio)" },
     ]),
     _deckDevices: JSON.stringify([{ id: "DEVICE-1", name: "Stream Deck +", type: 7 }]),
-    // The name the pack gave its voice (#1034) — what the dropdown shows in
+    // The name each pack gave its voice (#1034) — what the dropdown shows in
     // place of the capitalised id. Seeded because a real install always has it:
-    // the plugin writes it in the same call as the list above.
-    _voiceLabels: JSON.stringify({ luca: "Luca" }),
-    // The one non-bundled voice above, as the pack that provides it, plus one
-    // pack that was ignored — the Installed Voices list shows both halves of a
-    // scan (#1034), and a shot of the empty state would document neither. Kept
-    // to two rows deliberately: the capture is the real window at its default
-    // size, so a longer list pushes the Rescan button below the fold.
+    // the plugin writes it in the same call as the list above, and since stage 3
+    // `default` arrives in a pack like any other, so it carries a label too.
+    _voiceLabels: JSON.stringify({ default: "Default", luca: "Luca" }),
+    // Both voices above, as the packs that provide them, plus one pack that was
+    // ignored — the Installed Voices list shows both halves of a scan (#1034),
+    // and a shot of the empty state would document neither. Kept to two rows
+    // deliberately: the capture is the real window at its default size, so a
+    // longer list pushes the Rescan button below the fold.
     _voicePacks: JSON.stringify({
       packs: [
-        // The bundled voice, seeded into the packs folder on every install
-        // (#1100). Present on EVERY real installation, so a fixture without it
-        // documented a state no user is in — and it is the row that shows the
-        // "Built-in" badge and the absence of a Remove button, which is the
-        // whole point of listing it.
+        // The voice iRaceDeck keeps current (#1034 stage 3). The plugin ships
+        // no audio any more: it installs this pack and refreshes it at launch,
+        // so it is present on every installation that has been online once —
+        // a fixture without it would document a state almost no user is in —
+        // and it is the row that offers no Remove and says why instead, which
+        // is the whole point of listing it.
         {
           id: "default",
           label: "Default",
           version: "1.0.0",
-          // Empty on purpose: the plugin's own audio provides this voice, so
-          // the pack contributes none. This is what keeps a second "Default"
-          // out of the voice dropdown.
-          voices: [],
-          provenance: "bundled-seed",
+          // A real voice now, downloaded like any other pack. Nothing bundled
+          // provides it, so the pack is what puts "Default" in the dropdown.
+          voices: [{ id: "default", label: "Default" }],
+          provenance: "catalog",
+          managed: true,
         },
         {
           id: "luca",

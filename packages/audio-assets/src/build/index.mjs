@@ -18,7 +18,7 @@ import { RADIO_ENGINEER_FILTER } from "../presets.mjs";
 // The bundled-vs-published voice list rides the same `./build` export the
 // plugin Rollup configs already consume, so the audio copy step can filter to
 // BUNDLED_VOICE_IDS without a second package entry point (#1034).
-export { BUNDLED_VOICE_IDS, VOICE_PACKS } from "./voice-packs.mjs";
+export { BUNDLED_VOICE_IDS, PUBLISHED_VOICE_IDS, VOICE_PACKS } from "./voice-packs.mjs";
 import { BUNDLED_VOICE_IDS } from "./voice-packs.mjs";
 
 const require = createRequire(import.meta.url);
@@ -402,6 +402,10 @@ async function runPrebuildCache({ logger }) {
  * is not this package, because a foreign tree's clips must never land in the
  * plugin's own cache under a `voice/…` key the plugin build would then copy.
  *
+ * `voices` (default `"bundled"`) picks which voices under `voice/` are copied:
+ * the bundled subset a plugin distributable carries, or `"all"` — every
+ * authored voice, which is what the scenario harness auditions (#1034).
+ *
  * @param {import("./index.d.ts").ProcessAndCopyAudioAssetsOptions} options
  * @returns {Promise<void>}
  */
@@ -411,6 +415,7 @@ export async function processAndCopyAudioAssets({
   wipe = true,
   srcRoot = audioAssetsPath,
   cacheDir,
+  voices = "bundled",
 } = {}) {
   if (!destRoot) throw new Error("processAndCopyAudioAssets: destRoot is required");
   if (!existsSync(srcRoot)) return;
@@ -418,7 +423,7 @@ export async function processAndCopyAudioAssets({
   const hash = pipelineHash(RADIO_ENGINEER_FILTER, ENCODE_ARGS);
   const cacheRoot = cacheDir ?? sharedCacheRoot(srcRoot, hash);
 
-  return withCacheLock(() => runProcessAndCopy({ srcRoot, destRoot, cacheRoot, hash, logger, wipe }));
+  return withCacheLock(() => runProcessAndCopy({ srcRoot, destRoot, cacheRoot, hash, logger, wipe, voices }));
 }
 
 // The `.cache/<hash>/` root the build shares with the packer — for this
@@ -433,7 +438,7 @@ function sharedCacheRoot(srcRoot, hash) {
   return path.join(CACHE_ROOT, hash);
 }
 
-async function runProcessAndCopy({ srcRoot, destRoot, cacheRoot, hash, logger, wipe }) {
+async function runProcessAndCopy({ srcRoot, destRoot, cacheRoot, hash, logger, wipe, voices }) {
   const ffmpegPath = require("ffmpeg-static");
   const concurrency = Math.min(4, Math.max(1, os.availableParallelism?.() ?? os.cpus().length));
 
@@ -479,9 +484,11 @@ async function runProcessAndCopy({ srcRoot, destRoot, cacheRoot, hash, logger, w
       // only the BUNDLED set (#1100). Everything else is published to the
       // catalog and installed at runtime instead.
       //
-      // A no-op today — `default` is the only authored voice and it is bundled
-      // — and that is the point: the release that stops shipping audio becomes
-      // one edit to `voice-packs.mjs` rather than a change to the build.
+      // Since #1034 stage 3 that filter admits NOTHING: no voice is bundled,
+      // so this loop copies no voice at all and `assets/audio/` is the sfx tree
+      // alone. The build did not change for it — the release that stopped
+      // shipping audio was an edit to `voice-packs.mjs`, which is what this
+      // per-voice shape was built for.
       //
       // The cache path keeps its `<cacheRoot>/voice/<id>/…` shape, which the
       // packer's `processVoiceTree` resolves to as well. Diverging here would
@@ -490,7 +497,12 @@ async function runProcessAndCopy({ srcRoot, destRoot, cacheRoot, hash, logger, w
       for (const voice of readdirSync(srcDir, { withFileTypes: true })) {
         if (!voice.isDirectory()) continue;
 
-        if (!BUNDLED_VOICE_IDS.includes(voice.name)) {
+        // `voices: "bundled"` is what a plugin build wants: only the BUNDLED
+        // set reaches the distributable, everything else is published to the
+        // catalog and installed at runtime (#1100). `voices: "all"` is what
+        // the scenario harness wants: it auditions every authored voice, and
+        // is not a distributable (#1034 stage 3).
+        if (voices === "bundled" && !BUNDLED_VOICE_IDS.includes(voice.name)) {
           logger?.(`Audio assets: voice "${voice.name}" is published, not bundled — skipping`);
           continue;
         }

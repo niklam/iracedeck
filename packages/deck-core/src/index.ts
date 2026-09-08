@@ -161,6 +161,7 @@ export {
   deleteGlobalSettings,
   isGlobalSettingsInitialized,
   isSettingsStoreReady,
+  whenSettingsStoreSettled,
   getSettingsStoreSource,
   type SettingsStoreSource,
   hostMirrorPayload,
@@ -277,11 +278,22 @@ export {
   type VoicePackInstallerCatalog,
   type VoicePackInstallerDeps,
   type VoicePackInstallerFileSystem,
+  type VoicePackInstallOptions,
   type VoicePackInstallOutcome,
   type VoicePackInstallResult,
   type VoicePackRemoveResult,
   type VoicePackSeedResult,
 } from "./voice-pack-installer.js";
+export {
+  createVoicePackLaunchStep,
+  ENSURED_VOICE_PACK_ID,
+  isManagedVoicePack,
+  VOICE_PACK_RETRY_DELAYS_MS,
+  VOICE_PACK_RETRY_STEADY_MS,
+  type VoicePackLaunchOutcome,
+  type VoicePackLaunchStep,
+  type VoicePackLaunchStepDeps,
+} from "./voice-pack-launch.js";
 export { createVoicePackService, type VoicePackService, type VoicePackServiceDeps } from "./voice-pack-service.js";
 export {
   type ExtractVoicePackArchiveOptions,

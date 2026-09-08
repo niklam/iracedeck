@@ -554,6 +554,25 @@ describe("createVoicePackInstaller — deciding", () => {
     expect(published.at(-1)?.installs).toEqual({});
   });
 
+  it("downloads and replaces anyway when forced, whatever the installed digest claims", async () => {
+    // The record says the catalog's digest, but the clips it describes are
+    // gone — the launch step's force path (#1034 stage 3). A digest is a
+    // claim about what was written, not about what is on disk now.
+    const disk = new FakeDisk();
+    disk.file(join(PACK_DIR, VOICE_PACK_PROVENANCE_FILE), OLD_PROVENANCE.replace(OLD_SHA, NEW_SHA));
+    const { installer, fetchImpl, calls } = harness({ disk, entries: [entryFor(NEW_ARCHIVE)] });
+
+    await expect(installer.install(ID, { force: true })).resolves.toEqual({ ok: true, outcome: "updated" });
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(calls).toEqual(["stopPlayback", "promote", "refreshPacks"]);
+    const live = disk.files(PACK_DIR);
+    delete live[VOICE_PACK_PROVENANCE_FILE];
+    expect(live).toEqual(NEW_FILES);
+    expect(readInstalledVoicePackSha(disk.scanFs, PACK_DIR, ID)).toBe(NEW_SHA);
+    expectNoDebris(disk);
+  });
+
   it("refuses something that is not a pack id before looking anything up, and says so in the log", async () => {
     const { installer, catalog, fetchImpl, published } = harness();
 

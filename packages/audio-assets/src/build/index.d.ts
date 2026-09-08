@@ -13,6 +13,8 @@ export type ProcessAndCopyAudioAssetsOptions = {
   srcRoot?: string;
   /** Processed-clip cache root. Default: the build's shared `.cache/<pipeline-hash>/`; required with a foreign `srcRoot`. */
   cacheDir?: string;
+  /** Which voices under `voice/` to copy: the bundled subset (default — a plugin build) or every authored voice (the scenario harness). */
+  voices?: "bundled" | "all";
 };
 
 export function processAndCopyAudioAssets(options: ProcessAndCopyAudioAssetsOptions): Promise<void>;
@@ -78,3 +80,6 @@ export const VOICE_PACKS: readonly VoicePackDefinition[];
 
 /** Voice ids the plugin build's audio copy step keeps inside the distributable. */
 export const BUNDLED_VOICE_IDS: readonly string[];
+
+/** Every voice of every published pack, bundled or not. */
+export const PUBLISHED_VOICE_IDS: readonly string[];

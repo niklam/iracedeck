@@ -7,7 +7,10 @@
  * Mirrors the Elgato Stream Deck plugin initialization order.
  */
 import defaultVoicePackCatalogEntry from "@iracedeck/audio-assets/catalog/default.json" with { type: "json" };
-import audioAssetsManifest from "@iracedeck/audio-assets/manifest.json" with { type: "json" };
+// The bundled slice, not the authored manifest: this describes only what THIS
+// plugin ships. `manifest.json` names every authored voice and is for tests,
+// generators, and the harness (#1034 stage 3).
+import audioAssetsManifest from "@iracedeck/audio-assets/manifest.bundled.json" with { type: "json" };
 import { AudioNative } from "@iracedeck/audio-native";
 import {
   type AudioAssetsManifest,
@@ -103,11 +106,13 @@ import {
   createVoicePackFileSystem,
   createVoicePackInstaller,
   createVoicePackInstallerFileSystem,
+  createVoicePackLaunchStep,
   createVoicePackService,
   createVoicePackStorage,
   createVoicePackStorageFileSystem,
   createVoiceScriptWarningReporter,
   deleteGlobalSettings,
+  ENSURED_VOICE_PACK_ID,
   evaluateSetupWarning,
   findChromiumBrowserOnThisMachine,
   FIRST_RUN_VERSION_KEY,
@@ -132,6 +137,7 @@ import {
   initWindowFocus,
   isGlobalSettingsInitialized,
   isIRacingActive,
+  isManagedVoicePack,
   isSettingsStoreReady,
   isSimHubReachable,
   migrateGlobalSettingsKeys,
@@ -167,6 +173,7 @@ import {
   VOICE_PACKS_KEY,
   voiceDisplayLabels,
   VoicePackCatalogEntrySchema,
+  whenSettingsStoreSettled,
 } from "@iracedeck/deck-core";
 import { initializeEventBus } from "@iracedeck/event-bus";
 import {
@@ -466,6 +473,10 @@ const voicePacks = createVoicePackService({
   logger: voicePacksLogger,
   pluginAudioDir: audioRootDir,
   reservedVoices: bundledVoices,
+  // The managed pack claims its voice before the alphabetical order does
+  // (#1034 stage 3): with nothing reserved, a sideloaded folder sorting
+  // before `default` could otherwise take the `default` voice id off it.
+  priorityPacks: [ENSURED_VOICE_PACK_ID],
   applyRoots: (roots) => getAudio().setRoots(roots),
   applyManifest: (fragments) => {
     activeManifest = mergeManifests(audioAssetsManifest, fragments);
@@ -518,24 +529,12 @@ const voicePackStorage = createVoicePackStorage({
 });
 
 const voicePackCatalog = createVoicePackCatalogService({
-  // Constant TRUE — settled for this release: there is no setting gating the
-  // catalog, and none is added here. Every catalog fetch this build makes is
-  // user-initiated — the settings window being put on screen (`openSettingsWindow`
-  // below), the Rescan button, and Install, which looks the pressed entry up in
-  // the same cache — so there is nothing to opt out of. Nothing asks
-  // iracedeck.com at launch, with one bounded exception: the installer re-asks
-  // the catalog after every promote so the card's verdicts follow, and the seed
-  // of the bundled pack is a promote — once per installation, on the one start
-  // that finds an empty packs folder, never per launch.
-  //
-  // Stage 3 of #1034 changes that, and this is the obligation whoever does it
-  // inherits: once the bundled voice is dropped from the distributable, first
-  // run must fetch the catalog at launch, unprompted — a fresh install has no
-  // engineer until it does — and at that point "no setting" becomes "phones
-  // home every launch". Give this gate a real setting THEN, read live the way
-  // `updateCheck` gates the changelog feed (the service reads the predicate on
-  // every call precisely so that switching it off stops outbound requests
-  // without a restart), rather than leaving it at `true` by omission.
+  // Constant TRUE, and settled that way for stage 3 as well (Niklas,
+  // 2026-09-06): no setting gates the catalog. Since stage 3 the plugin asks
+  // it at launch, unprompted — the bundled voice is gone, so a fresh install
+  // has no engineer until `default` is fetched — and the domain is
+  // iracedeck.com, which the update check already talks to. A switch can be
+  // added the day a user asks for one; do not add one by default.
   isEnabled: () => true,
   getPluginVersion,
   // ONE implementation of "which digest is installed?", shared with the
@@ -574,17 +573,19 @@ const voicePackCatalog = createVoicePackCatalogService({
 // ships can be SEEDED — copied into an empty packs folder with the catalog's
 // own `sha256` as its provenance, which is what makes the first catalog check
 // after a seed answer "installed" rather than re-download what was just
-// copied. The seed is inert for this release (plugin-root-first resolution
-// means the bundle still provides every clip); its purpose is that the NEXT
-// release, which stops shipping audio, needs no network for anyone.
+// copied. Since 3.3.0 no plugin ships a voice, so this is inert: the loop
+// below matches nothing and the plugin fetches `default` at launch instead.
+// It stays as the permanent rule — set `bundled: true` on an entry in
+// `voice-packs.mjs` and that voice is bundled and seeded again, here, with no
+// code change (an offline installer variant is what would want that).
 //
 // Importing an entry does NOT decide that its pack is bundled. That is decided
 // once, in `@iracedeck/audio-assets`'s `voice-packs.mjs`, and reaches this
 // process as the clips the build copied into `assets/audio` and the manifest
 // it compiled in — `bundledVoices` above, the same set the scanner reserves.
 // An entry whose voices that set does not cover is a published pack this
-// build does not carry, and is simply not seeded. So stage 3's one-word flip
-// needs no edit here: the import goes stale and inert, nothing more.
+// build does not carry, and is simply not seeded. That is why the stage 3 flip
+// needed no edit here: the import went stale and inert, nothing more.
 const compiledInVoicePackEntries: readonly unknown[] = [defaultVoicePackCatalogEntry];
 const bundledVoicePacks: BundledVoicePack[] = [];
 
@@ -648,6 +649,28 @@ const voicePackInstaller = createVoicePackInstaller({
   // the same page already renders, and needs no new key.
   warnings: { set: setWarning, clear: clearWarning },
   refreshPacks: () => voicePacks.refresh(),
+  logger: voicePacksLogger,
+});
+
+// The launch step (#1034 stage 3): sweep, seed, then — once the settings load
+// has settled, so the catalog dev override is readable — ensure `default` and
+// update every catalog-installed pack, retrying on its own schedule. Started
+// here, at module scope: nothing in it depends on the settings store being
+// READY (ruling 2 — the fail-closed settings path must not cost the voice),
+// and it opens no window (the structural test holds it to that).
+const voicePackLaunch = createVoicePackLaunchStep({
+  installer: voicePackInstaller,
+  // A thunk: `initGlobalSettings` (further down) re-arms the settle signal, so
+  // the promise must be taken inside `start()`, which runs after it.
+  settled: () => whenSettingsStoreSettled(),
+  // What is on disk now, as against the record's digest: the scanner's last
+  // result listing the pack with a voice. A managed pack whose record
+  // survived but whose clips did not is reinstalled by force off this.
+  isPackUsable: (id) => voicePacks.installed().some((pack) => pack.id === id && pack.voices.length > 0),
+  isRaceEngineerEnabled: () => (getGlobalSettings() as Record<string, unknown>).pitCrewRaceEngineerEnabled === true,
+  // The step watches the Race Engineer gate itself and re-runs the ensure on
+  // the false→true edge — the moment a missing or stale voice starts to matter.
+  onSettingsChange: onGlobalSettingsChange,
   logger: voicePacksLogger,
 });
 
@@ -985,6 +1008,10 @@ function pushVoicePackListIfChanged(): void {
       // Where it came from, for the settings window's provenance badge
       // (#1100). Displayed, never enforced.
       provenance: pack.provenance,
+      // The pack iRaceDeck keeps current itself (#1034 stage 3): the settings
+      // window shows it without a Remove button. Keyed by id, never by
+      // provenance, so a forged provenance record buys nothing.
+      managed: isManagedVoicePack(pack.id),
     })),
     problems: voicePacks.problems().map((problem) => ({ pack: problem.pack, reason: problem.reason })),
   });
@@ -1181,14 +1208,16 @@ const settingsWindow = createSettingsWindowController({
     // page names no directory — which one is scanned is the plugin's decision.
     // Since #1100 a rescan re-asks the catalog too, so the card's Install /
     // Update / Installed verdicts follow a pack the user added or deleted by
-    // hand. This is the ONE call that bypasses the catalog's TTLs: a person
-    // pressing Rescan after fixing their connection is asking for a request,
-    // and the failure TTL would otherwise refuse them for five minutes. It
-    // is still conditional on the cached ETag, so an unchanged catalog costs
-    // a 304 and no body.
+    // hand. Since stage 3 that re-ask is the launch step's rather than a
+    // `refreshCatalog` call of this handler's own, so one press cannot ask
+    // twice. It stays conditional on the cached ETag, so an unchanged catalog
+    // costs a 304 and no body.
     refreshVoicePacks: () => {
       voicePacks.refresh();
-      void voicePackInstaller.refreshCatalog({ bypassTtl: true });
+      // The launch step re-asks the catalog (bypassing the TTLs, as before) and
+      // installs or updates whatever it is responsible for — a Rescan after a
+      // fixed connection is exactly the retry a user is asking for (#1034 stage 3).
+      voicePackLaunch.poke();
     },
     // Install / Remove by pack id (#1100). The handler has validated the id
     // against the manifest's kebab-case rule before it gets here; everything
@@ -1203,6 +1232,15 @@ const settingsWindow = createSettingsWindowController({
       void voicePackInstaller.install(id);
     },
     removeVoicePack: (id) => {
+      // The page never offers Remove for the managed pack; the refusal here is
+      // the second lock on the same door — a removed `default` would only be
+      // reinstalled at the next launch (#1034 stage 3).
+      if (isManagedVoicePack(id)) {
+        voicePacksLogger.warn(`Refused to remove the managed voice pack "${id}"`);
+
+        return;
+      }
+
       void voicePackInstaller.remove(id);
     },
     // Same rule again for the Voices card's Open folder button (#1100). A
@@ -1229,10 +1267,11 @@ const settingsWindow = createSettingsWindowController({
 // Every route that puts the settings window on screen goes through here and
 // asks the voice catalog on the way (#1100). The Race Engineer card answers
 // "what could I download?" from `_voicePackStatus`, and this is the moment
-// that answer is wanted — a user-initiated fetch, which is what lets the
-// catalog gate stay a constant (see `voicePackCatalog`). The service caches
-// the fetch for an hour, so reopening the window is not a second request;
-// the verdicts are recomputed either way. Fire-and-forget on purpose:
+// that answer is wanted — a user-initiated fetch beside the launch step's own
+// unprompted one (see `voicePackCatalog` for why that gate is a constant even
+// so, since #1034 stage 3). The service caches the fetch for an hour, so
+// reopening the window is not a second request; the verdicts are recomputed
+// either way. Fire-and-forget on purpose:
 // `refreshCatalog` never rejects, and the window must not wait on the network
 // to open.
 function openSettingsWindow(options?: SettingsWindowOpenOptions): ReturnType<typeof settingsWindow.open> {
@@ -1364,23 +1403,6 @@ onGlobalSettingsChange((settings) => {
         );
       }
     }
-
-    // Voice packs (#1100), in this order: empty the installer's working
-    // directories of whatever an interrupted run left behind, then seed the
-    // bundled pack into an empty packs folder, then assert what this run
-    // knows about downloadable packs — nothing asked yet, nothing in flight,
-    // or the seed's own outcome — so `_voicePackStatus` exists in the cache
-    // from the start rather than the moment something first happens. The
-    // catalog is deliberately not fetched here; see `isEnabled` on
-    // `voicePackCatalog` for why, and `openSettingsWindow` for where it is.
-    // Every step is written never to reject; the catch is the last line of
-    // that promise, and logs rather than lets Node see an unobserved
-    // rejection on the startup path.
-    void voicePackInstaller
-      .sweep()
-      .then(() => voicePackInstaller.seed())
-      .then(() => voicePackInstaller.republishStatus())
-      .catch((err: unknown) => voicePacksLogger.error(`Voice pack startup failed: ${String(err)}`));
   }
 
   pushRaceEngineerVoicesIfChanged();
@@ -1490,6 +1512,11 @@ adapter.registerAction(VIEW_ADJUSTMENT_UUID, new ViewAdjustment(adapter.createLo
 initGlobalSettings(adapter, adapter.createLogger("GlobalSettings"), settingsStore, {
   pluginVersion: getPluginVersion(),
 });
+
+// The voice-pack launch step starts here, after `initGlobalSettings` has armed
+// the settle signal it waits on, and at module scope rather than inside the
+// store-ready block (#1034 stage 3, ruling 2).
+void voicePackLaunch.start();
 
 // Migrate the pre-#953 spring binding keys (Left/Right -> LR/RR) once real settings arrive
 migrateGlobalSettingsKeys(SETUP_CHASSIS_BINDING_KEY_RENAMES, adapter.createLogger("SettingsMigration"));

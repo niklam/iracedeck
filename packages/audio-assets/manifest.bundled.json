@@ -1,0 +1,15 @@
+{
+  "clips": [
+    "sfx/IRD-ambient-pit.mp3",
+    "sfx/IRD-tick-close.mp3",
+    "sfx/IRD-tick-open.mp3",
+    "sfx/radar/IRD-radar-both.mp3",
+    "sfx/radar/IRD-radar-left.mp3",
+    "sfx/radar/IRD-radar-right.mp3"
+  ],
+  "ambientLoop": "sfx/IRD-ambient-pit.mp3",
+  "ticks": {
+    "open": "sfx/IRD-tick-open.mp3",
+    "close": "sfx/IRD-tick-close.mp3"
+  }
+}
