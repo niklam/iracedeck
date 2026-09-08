@@ -19,13 +19,15 @@
  *   2. **Shared cooldown.** Once a position has been announced (by ANY
  *      trigger), {@link POSITION_READOUT_COOLDOWN_MS} suppresses the next
  *      position announcement from a DIFFERENT trigger — so an overtake readout
- *      immediately followed by a lap-completion readout doesn't double up. The
- *      cooldown is claimed atomically in the contract's `where:` via
- *      {@link tryClaimPositionAnnouncement} as the LAST gate (after every other
- *      condition passes). All position readouts are `weight: WEIGHT.CHATTER` +
- *      `queueable: true`, which the engine defers-and-replays rather than drops,
- *      so a claim at decision time always results in an actual announcement — no
- *      phantom cooldowns.
+ *      immediately followed by a lap-completion readout doesn't double up. Each
+ *      contract's `where:` reads the window with the pure
+ *      {@link canAnnouncePosition} and its `speakGate` claims it with
+ *      {@link tryClaimPositionAnnouncement} (issue #1137) — after the script
+ *      expanded and immediately before the ops take the bus, so a claim is
+ *      always made for a readout that will actually be said. It used to be
+ *      claimed in `where:` on the strength of `queueable: true` meaning the
+ *      fire could only be deferred, never dropped; #835 then made a null
+ *      REQUIRED var abort the expansion, and the claim outlived the callout.
  *
  * The two overtake readout contracts live here (the reaction lines stay in
  * overtake.ts); the race position-change and race-status contracts import the
@@ -44,7 +46,9 @@
  * engine of that day a null var was a no-op step. #835 later made a null
  * REQUIRED var abort the whole callout, and did not touch this file, so
  * from that release on the bare-number path produced silence instead: the
- * readout claimed the shared cooldown in `where:` and then played nothing.
+ * readout claimed the shared cooldown in `where:` and then played nothing
+ * (the claim moved to the speak-time gate in #1137, so an abort now costs
+ * only its own silence).
  * The script restores what #603 documented — "We're currently" is a lead-in
  * to a number that is a true, complete statement without it ("P four" is
  * the designed terse form), so it may be optional under the #1064 rule —
@@ -54,7 +58,7 @@ import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { SimEventOf } from "@iracedeck/event-bus";
 
 import { poolRef, WEIGHT } from "../../dsl.js";
-import type { ScenarioContract } from "../../dsl.js";
+import type { ScenarioContract, SpeakGate } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
 import { overtakeContextAllows, type OvertakeGateResolver } from "./overtake-gate.js";
 
@@ -108,7 +112,11 @@ let lastSpokenPosition = 0;
 /** Injectable RNG for the reaction gate — overridable in tests. */
 let reactionRandom: () => number = Math.random;
 
-/** Read-only check of whether the position cooldown window has elapsed. */
+/**
+ * Read-only check of whether the position cooldown window has elapsed — the
+ * half every position readout's `where:` runs, so a fire outside the cadence
+ * is dropped cheaply at event arrival without touching the window.
+ */
 export function canAnnouncePosition(now: number = Date.now()): boolean {
   return lastPositionAnnouncedAt === 0 || now - lastPositionAnnouncedAt >= POSITION_READOUT_COOLDOWN_MS;
 }
@@ -118,11 +126,15 @@ export function canAnnouncePosition(now: number = Date.now()): boolean {
  * starts a fresh window iff the previous announcement is older than
  * {@link POSITION_READOUT_COOLDOWN_MS}. Claimed by EVERY position readout — the
  * two overtake readouts, the lap-completed readout, and the race-status readout
- * — as the LAST gate. Whichever fires first claims the window; the rest return
- * `false` and defer, so the position is never spoken twice (issue #651), even
- * when the spotter focus floor delays a readout's actual playback by seconds.
- * The position NUMBER is read live at speak-time, so the single surviving
- * readout still states the current position.
+ * — as its `speakGate` (issue #1137), after the script expanded, so a claim
+ * always results in an announcement. Whichever readout speaks first claims the
+ * window; the rest are dropped by {@link canAnnouncePosition} in their `where:`
+ * at event arrival, or — for one already deferred behind a busier line when
+ * the claim was made — refused here at their own gate, so the position is
+ * never spoken twice (issue #651) even when the spotter focus floor delays a
+ * readout's playback by seconds. The position NUMBER is read live at
+ * speak-time, so the single surviving readout still states the current
+ * position.
  */
 export function tryClaimPositionAnnouncement(now: number = Date.now()): boolean {
   if (!canAnnouncePosition(now)) return false;
@@ -131,6 +143,26 @@ export function tryClaimPositionAnnouncement(now: number = Date.now()): boolean 
 
   return true;
 }
+
+/**
+ * The sentence the pack reference publishes for the shared-cooldown gate.
+ * One string for every readout that claims the window, so the four contracts
+ * cannot drift into describing the same rule four ways.
+ */
+export const POSITION_READOUT_SPEAK_GATE_DESCRIPTION =
+  "No other position readout has spoken in the last twenty seconds when this one comes to speak; speaking it starts that window.";
+
+/**
+ * The shared position cooldown as a speak-time gate (issue #1137): the claim
+ * every position readout commits after its script expanded and before the ops
+ * take the bus. Shared by the two overtake readouts and the race-status
+ * readout; `position.ts` carries its own, because its contract also fires in
+ * qualifying, where the cooldown is not consulted at all.
+ */
+export const positionReadoutSpeakGate: SpeakGate = {
+  description: POSITION_READOUT_SPEAK_GATE_DESCRIPTION,
+  admit: () => tryClaimPositionAnnouncement(),
+};
 
 /**
  * Whether an overtake gain/loss should speak the reaction catchphrase (issue
@@ -232,9 +264,10 @@ export function isOvertakeEffectiveLeader(data: {
  * #1065): the intro and the live-position number. Both read the live resolver
  * at expansion time; a `null` number is a defensive guard — the contract's
  * `where:` already gates on the live position being readable. The cooldown
- * is NOT marked here — it's claimed in `where:` via
- * {@link tryClaimPositionAnnouncement}. Must run before the contracts are
- * defined so the first `setScripts` compile sees the vars.
+ * is NOT marked here — it's claimed by the contract's `speakGate` via
+ * {@link tryClaimPositionAnnouncement}, which runs after this expansion.
+ * Must run before the contracts are defined so the first `setScripts`
+ * compile sees the vars.
  */
 export function registerPositionReadoutVocabulary(
   engine: Pick<IScenarioEngine, "defineVar">,
@@ -277,11 +310,12 @@ export function registerPositionReadoutVocabulary(
  * Skips podium gains (P1/P2/P3): their
  * dedicated reaction lines already state the position (issue #603).
  *
- * Claims the shared position cooldown via {@link tryClaimPositionAnnouncement}
- * as the last gate, so a position already announced by any trigger (another
- * overtake, a lap-completed, or a race-status readout — possibly delayed by the
- * spotter focus floor) suppresses this readout instead of doubling it up (issue
- * #651). The reaction catchphrase is a separate contract and still plays.
+ * Reads the shared position cooldown with {@link canAnnouncePosition} as the
+ * last `where:` gate and claims it in its `speakGate` (issue #1137), so a
+ * position already announced by any trigger (another overtake, a
+ * lap-completed, or a race-status readout — possibly delayed by the spotter
+ * focus floor) suppresses this readout instead of doubling it up (issue #651).
+ * The reaction catchphrase is a separate contract and still plays.
  * Suppressed after the race ends and whenever {@link overtakeContextAllows}
  * fails (cars alongside, off-track, crawling, pit road, recent incident).
  */
@@ -318,14 +352,16 @@ export function buildOvertakeGainedPositionContract(
 
         if (!liveCurrentlyAnnounceable(getLivePosition())) return false;
 
-        // Claim the shared cooldown as the LAST gate: if a position was just
-        // announced (another overtake, a lap-completed, or a race-status readout,
-        // possibly deferred by the spotter focus floor), defer to it so the
-        // position is never spoken twice (issue #651). The reaction catchphrase
-        // is a separate contract and still plays.
-        return tryClaimPositionAnnouncement();
+        // Pure cadence check only — the claim is the gate's (issue #1137), so
+        // a fire the script cannot expand never burns the window. If a
+        // position was just announced (another overtake, a lap-completed, or a
+        // race-status readout, possibly deferred by the spotter focus floor),
+        // defer to it so the position is never spoken twice (issue #651). The
+        // reaction catchphrase is a separate contract and still plays.
+        return canAnnouncePosition();
       },
     },
+    speakGate: positionReadoutSpeakGate,
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
     base: "voice/{voice}",
@@ -356,11 +392,14 @@ export function buildOvertakeLostPositionContract(
 
         if (!liveCurrentlyAnnounceable(getLivePosition())) return false;
 
-        // Same shared-cooldown claim as the gained readout — never double up the
-        // position (issue #651). The loss reaction catchphrase still plays.
-        return tryClaimPositionAnnouncement();
+        // Pure cadence check only — the claim is the gate's (issue #1137), so
+        // a fire the script cannot expand never burns the window. Same shared
+        // window as the gained readout: never double up the position (issue
+        // #651). The loss reaction catchphrase still plays.
+        return canAnnouncePosition();
       },
     },
+    speakGate: positionReadoutSpeakGate,
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
     base: "voice/{voice}",

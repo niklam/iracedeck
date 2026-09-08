@@ -62,10 +62,11 @@ import { poolRef, WEIGHT } from "../../dsl.js";
 import type { ScenarioContract } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
 import {
+  canAnnouncePosition,
   liveCurrentlyAnnounceable,
   type LivePositionResolver,
+  positionReadoutSpeakGate,
   selectLivePosition,
-  tryClaimPositionAnnouncement,
 } from "./position-readout.js";
 
 /** Shared snapshot resolver type (same shape as lap-time / position). */
@@ -151,7 +152,8 @@ export function registerRaceStatusVocabulary(
  * two runtime gates: `getRaceFinishedFired` short-circuits on the final lap
  * (race-end takes priority — see header), and `getLivePosition` decides
  * whether the live position is readable before the shared position cooldown
- * is claimed. The spoken branch is the vocabulary's
+ * is read. The window itself is claimed by the contract's `speakGate` (issue
+ * #1137), after the script expanded. The spoken branch is the vocabulary's
  * ({@link registerRaceStatusVocabulary}).
  */
 export function buildRaceStatusContract(
@@ -181,10 +183,13 @@ export function buildRaceStatusContract(
         // position being readable + share the position cooldown.
         if (!liveCurrentlyAnnounceable(getLivePosition())) return false;
 
-        // LAST gate: claim the shared position cooldown only when committing.
-        return tryClaimPositionAnnouncement();
+        // LAST gate, and a pure cadence check only — the claim is the gate's
+        // (issue #1137), so a fire the script cannot expand never burns the
+        // window.
+        return canAnnouncePosition();
       },
     },
+    speakGate: positionReadoutSpeakGate,
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
     base: "voice/{voice}",

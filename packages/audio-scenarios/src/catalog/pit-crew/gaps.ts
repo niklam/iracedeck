@@ -37,19 +37,24 @@
  * clause, never half of it.
  *
  * A single SHARED cooldown gates both contracts (configurable 1–360 s,
- * default 30 s), claimed atomically in `where:` as the LAST gate — the
- * `tryClaimPositionAnnouncement` pattern, safe with `queueable` deferred
- * replays (which never re-run `where:`). Player-side clean-moment
- * suppression reuses the overtake gate (cars alongside / off-track /
- * crawling / pit road / recent incident); the translator already gated the
- * neighbor's side at emission.
+ * default 30 s). `where:` reads it with the pure {@link canClaimGapCallout}
+ * as its LAST gate and each contract's `speakGate` claims it with
+ * {@link tryClaimGapCallout} (issue #1137) — after the script expanded and
+ * before the ops take the bus, so a callout the active voice cannot expand
+ * never burns the window for the next gap event. Both contracts are
+ * `queueable`, and a deferred replay re-expands and meets the gate again
+ * (it never re-runs `where:`), so the claim still happens exactly once per
+ * callout that is actually said. Player-side clean-moment suppression reuses
+ * the overtake gate (cars alongside / off-track / crawling / pit road /
+ * recent incident); the translator already gated the neighbor's side at
+ * emission.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { GapSide, SimEventOf } from "@iracedeck/event-bus";
 import type { LiveGaps } from "@iracedeck/sim-events-iracing";
 
 import { poolRef, WEIGHT } from "../../dsl.js";
-import type { ScenarioContext, ScenarioContract } from "../../dsl.js";
+import type { ScenarioContext, ScenarioContract, SpeakGate } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
 import { overtakeContextAllows, type OvertakeGateResolver } from "./overtake-gate.js";
 
@@ -86,8 +91,9 @@ let lastGapCalloutAt: number | null = null;
 
 /**
  * Claim the shared gap-callout cooldown. Returns false (and claims nothing)
- * while a previous claim is inside `cooldownMs`. Claimed as the LAST
- * `where:` gate so a claim always results in an actual announcement.
+ * while a previous claim is inside `cooldownMs`. Claimed by both gap
+ * contracts as their `speakGate` (issue #1137), after the script expanded, so
+ * a claim always results in an actual announcement.
  */
 export function tryClaimGapCallout(now: number, cooldownMs: number): boolean {
   if (lastGapCalloutAt !== null && now - lastGapCalloutAt < cooldownMs) return false;
@@ -95,6 +101,11 @@ export function tryClaimGapCallout(now: number, cooldownMs: number): boolean {
   lastGapCalloutAt = now;
 
   return true;
+}
+
+/** Read-only twin of {@link tryClaimGapCallout}: whether a claim would succeed now. */
+export function canClaimGapCallout(now: number, cooldownMs: number): boolean {
+  return lastGapCalloutAt === null || now - lastGapCalloutAt >= cooldownMs;
 }
 
 /** @internal Test-only reset for the shared cooldown. */
@@ -230,8 +241,23 @@ function gapWhereGates(
 
   if (!overtakeContextAllows(getGate())) return false;
 
-  // LAST gate: claim the shared cooldown only when everything else passed.
-  return tryClaimGapCallout(Date.now(), getGapCooldownMs());
+  // LAST gate, and a pure cadence read — the claim is the contract's
+  // `speakGate` (issue #1137), so a fire the script cannot expand never burns
+  // the shared window.
+  return canClaimGapCallout(Date.now(), getGapCooldownMs());
+}
+
+/**
+ * The shared gap cooldown as a speak-time gate (issue #1137), built per
+ * contract because the cooldown resolver is a builder dep. One sentence, one
+ * claim: whichever gap callout reaches the speaker first starts the window.
+ */
+function gapSpeakGate(getGapCooldownMs: () => number): SpeakGate {
+  return {
+    description:
+      "No other gap callout has spoken inside the gap cooldown when this one comes to speak; speaking it starts that window.",
+    admit: (ctx) => tryClaimGapCallout(ctx.now, getGapCooldownMs()),
+  };
 }
 
 /** Build the trend-flip contract ("we're gaining / they're pulling away"). */
@@ -250,6 +276,7 @@ export function buildGapTrendContract(
       // the header), so a fire this gate accepts carries what it will say.
       where: (ev) => ev.event === "gap.trendChanged" && gapWhereGates(getRaceFinishedFired, getGate, getGapCooldownMs),
     },
+    speakGate: gapSpeakGate(getGapCooldownMs),
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
     base: "voice/{voice}",
@@ -274,6 +301,7 @@ export function buildGapThresholdContract(
       where: (ev) =>
         ev.event === "gap.thresholdCrossed" && gapWhereGates(getRaceFinishedFired, getGate, getGapCooldownMs),
     },
+    speakGate: gapSpeakGate(getGapCooldownMs),
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
     base: "voice/{voice}",

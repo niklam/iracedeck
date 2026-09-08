@@ -47,7 +47,10 @@
  * brush followed by an off-track in the same corner) collapse to one
  * callout. The latch lives in module-scope state keyed by `(sessionNum,
  * lapCompleted)` and is reset by {@link resetQualifyingInvalidationLatch}
- * (used by tests; production code never calls it).
+ * (used by tests; production code never calls it). It is READ in the
+ * `where:` ({@link qualifyingLatchAllows}) and WRITTEN in the contract's
+ * `speakGate` ({@link claimQualifyingLatch}, issue #1137), so a lap is only
+ * ever latched by a callout that was actually spoken.
  *
  * **Family preemption.** Single subject for v1; the `family` identifier is
  * carried anyway so a future second qualifying-related callout shares
@@ -116,14 +119,18 @@ export function resetQualifyingInvalidationLatch(): void {
  * post-pit-exit lap — and on any lap beyond the counted attempts
  * (`lapCounted === false`, issue #776), where the driver keeps circulating
  * after their qualifying laps are done. None of these is a timed attempt, so
- * an incident there doesn't waste anything. Side-effect: updates the latch
- * on a positive answer so subsequent incidents on the same lap return
- * `false`. The latch is NOT touched on the suppression paths, so a
- * subsequent valid flying-lap incident still triggers cleanly.
+ * an incident there doesn't waste anything.
+ *
+ * PURE (issue #1137): this is the `where:` half, so an incident the active
+ * voice's script cannot expand leaves the lap unlatched and the next incident
+ * on it is still announced. {@link claimQualifyingLatch} is the other half,
+ * and it runs in the contract's `speakGate`. The latch is never touched on a
+ * suppression path, so a subsequent valid flying-lap incident triggers
+ * cleanly.
  *
  * @internal Exported for tests.
  */
-export function checkAndUpdateQualifyingLatch(snapshot: QualifyingInvalidationSnapshot): boolean {
+export function qualifyingLatchAllows(snapshot: QualifyingInvalidationSnapshot): boolean {
   if (snapshot.sessionType !== "qualifying") return false;
 
   // Pit-exit lap — covers both the session out-lap (driver exits the pit
@@ -141,17 +148,23 @@ export function checkAndUpdateQualifyingLatch(snapshot: QualifyingInvalidationSn
   // than going silent on missing data.
   if (snapshot.lapCounted === false) return false;
 
-  if (
+  return !(
     lastAnnounced !== null &&
     lastAnnounced.sessionNum === snapshot.sessionNum &&
     lastAnnounced.lap === snapshot.lapCompleted
-  ) {
-    return false;
-  }
+  );
+}
 
+/**
+ * Latch the snapshot's lap as announced, so later incidents on it are refused
+ * by {@link qualifyingLatchAllows}. The write half of the pair, committed in
+ * the contract's `speakGate` (issue #1137) — after the script expanded, so
+ * the lap is only ever latched by a callout the driver actually hears.
+ *
+ * @internal Exported for tests.
+ */
+export function claimQualifyingLatch(snapshot: QualifyingInvalidationSnapshot): void {
   lastAnnounced = { sessionNum: snapshot.sessionNum, lap: snapshot.lapCompleted };
-
-  return true;
 }
 
 /** Whether the tail clause should be spoken at all. */
@@ -240,9 +253,11 @@ export function registerQualifyingInvalidationVocabulary(
 
 /**
  * Build the contract bound to a snapshot resolver. Stays a builder because
- * the `where:` reads the resolver (qualifying gate + latch); the tail is the
- * vocabulary's ({@link registerQualifyingInvalidationVocabulary}). The
- * literal names no `base` — see the header.
+ * both gates read the resolver: the `where:` asks whether this lap is still
+ * unlatched, and the `speakGate` latches it once the callout has expanded to
+ * something to say (issue #1137). The tail is the vocabulary's
+ * ({@link registerQualifyingInvalidationVocabulary}). The literal names no
+ * `base` — see the header.
  */
 export function buildQualifyingInvalidationContract(
   getSnapshot: QualifyingInvalidationSnapshotResolver,
@@ -256,7 +271,23 @@ export function buildQualifyingInvalidationContract(
 
         if (snapshot === null) return false;
 
-        return checkAndUpdateQualifyingLatch(snapshot);
+        // Pure check only — the latch is claimed by the gate below (issue
+        // #1137), so an incident the script cannot expand never spends the
+        // lap's one callout.
+        return qualifyingLatchAllows(snapshot);
+      },
+    },
+    speakGate: {
+      description:
+        "This is still the first incident of the flying lap when the call comes to speak; speaking it latches the lap.",
+      admit: () => {
+        const snapshot = getSnapshot();
+
+        if (snapshot === null) return false;
+
+        claimQualifyingLatch(snapshot);
+
+        return true;
       },
     },
     channel: AudioChannel.Voice,

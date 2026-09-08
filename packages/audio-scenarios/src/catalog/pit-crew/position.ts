@@ -95,6 +95,7 @@ import { poolRef, WEIGHT } from "../../dsl.js";
 import type { ScenarioContext, ScenarioContract } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
 import {
+  canAnnouncePosition,
   liveCurrentlyAnnounceable,
   type LivePositionResolver,
   selectLivePosition,
@@ -417,9 +418,22 @@ export function buildPositionContract(
 
         if (!liveCurrentlyAnnounceable(getLivePosition())) return false;
 
-        // LAST gate: claim the shared position cooldown only when committing.
-        return tryClaimPositionAnnouncement();
+        // LAST gate, and a pure cadence check only — the claim is the gate's
+        // (issue #1137), so a fire the script cannot expand never burns the
+        // window.
+        return canAnnouncePosition();
       },
+    },
+    speakGate: {
+      description:
+        "In a race, no other position readout has spoken in the last twenty seconds when this one comes to speak; speaking it starts that window.",
+      // The race branch alone shares the position cooldown — the qualifying
+      // path never consulted it, because the snapshot drives both the decision
+      // and the readout there. Read from the fire's own event, the same field
+      // the `where:` reads; an imperative `fire(id)` carries no event and so
+      // claims nothing, exactly as it never did.
+      admit: (ctx) =>
+        (ctx.data as { sessionType?: string } | null)?.sessionType !== "race" || tryClaimPositionAnnouncement(),
     },
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,

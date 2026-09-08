@@ -29,7 +29,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WEIGHT } from "../../dsl.js";
 import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios, poolMemberPattern } from "../../interpreter.js";
-import { _resetPositionReadoutCooldown, registerPitCrew } from "./index.js";
+import { _resetPositionReadoutCooldown, canAnnouncePosition, registerPitCrew } from "./index.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import {
   buildPositionContract,
@@ -432,6 +432,41 @@ describe("position-change contract", () => {
     expect(voicePaths()).toEqual([]);
   });
 
+  it("an aborted expansion in a race leaves the shared position cooldown unclaimed (issue #1137)", () => {
+    // `where:` passes — the live position is readable — but the voice has no
+    // clip for P65, so the expansion aborts (issue #836). The claim is the
+    // speak-time gate's since #1137, and an aborting expansion never reaches
+    // it, so the readout that follows is not silenced by a burned window.
+    fire(snap({ position: 65, previousPosition: 99, sessionType: "race" }));
+
+    expect(voicePaths()).toEqual([]);
+    expect(canAnnouncePosition()).toBe(true);
+
+    fire(snap({ position: 3, previousPosition: 5, sessionType: "race" }));
+
+    expect(hasClip("/position-number/3.mp3")).toBe(true);
+  });
+
+  it("a race readout that plays claims the shared cooldown at speak time (issue #1137)", () => {
+    expect(canAnnouncePosition()).toBe(true);
+
+    fire(snap({ position: 3, previousPosition: 5, sessionType: "race" }));
+
+    expect(hasClip("/position-number/3.mp3")).toBe(true);
+    expect(canAnnouncePosition()).toBe(false);
+  });
+
+  it("a qualifying readout never touches the shared cooldown — only the race branch shares it", () => {
+    // The `where:` has never consulted the cooldown in qualifying (the
+    // snapshot drives both the decision and the readout there), so neither
+    // does the gate — otherwise a qualifying lap would start silencing the
+    // race readouts of the session after it.
+    fire(snap({ position: 3, previousPosition: 5, sessionType: "qualifying" }));
+
+    expect(hasClip("/position-number/3.mp3")).toBe(true);
+    expect(canAnnouncePosition()).toBe(true);
+  });
+
   it("stays silent in practice sessions", () => {
     fire(snap({ position: 3, previousPosition: 5, sessionType: "practice" }));
 
@@ -501,6 +536,8 @@ describe("position-change contract", () => {
     expect(c.family).toBe("position");
     expect(c.frame).toBeUndefined();
     expect("sequence" in c).toBe(false);
+    // The shared-cooldown claim is a speak-time gate since #1137.
+    expect(c.speakGate?.description).toContain("twenty seconds");
   });
 });
 
