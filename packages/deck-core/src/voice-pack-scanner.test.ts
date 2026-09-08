@@ -1027,7 +1027,7 @@ describe("development root (#1143)", () => {
     expect(pack?.dir.replace(/\\/g, "/")).toBe(`${DEV_ROOT}/default`);
   });
 
-  it("lets the dev copy claim a voice ahead of the same pack under root, and reports the loser", () => {
+  it("shadows the same pack id under root with one pack-level problem", () => {
     const result = scanVoicePacks({
       root: ROOT,
       devRoot: DEV_ROOT,
@@ -1042,10 +1042,118 @@ describe("development root (#1143)", () => {
     expect(result.packs.filter((p) => p.id === "default")).toHaveLength(1);
     expect(result.packs[0]?.provenance).toBe("development");
     expect(result.packs[0]?.dir.replace(/\\/g, "/")).toBe(`${DEV_ROOT}/default`);
-    expect(result.problems).toContainEqual({
-      pack: "default",
-      reason: 'voice "default" is already provided by the development build of pack "default"',
+    // The PACK is shadowed, not each of its voices in turn: one id, one row,
+    // one reason. A per-voice reason here would read as nonsense — "pack
+    // default already provides it" about the pack called default — and said
+    // nothing about the row the user is looking at.
+    expect(result.problems).toEqual([
+      {
+        pack: "default",
+        reason: 'pack "default" is provided by the development build; the copy under the packs root is ignored',
+      },
+    ]);
+  });
+
+  it("shadows the whole root pack, including voices the dev copy does not provide", () => {
+    // The real regression: the root copy survived by declaring a voice the dev
+    // copy had not claimed, giving TWO `packs` rows with the same id — and
+    // every consumer of this list is keyed by id, so which of them a lookup
+    // found came down to array order.
+    const devA = { schema: 1, id: "default", label: "Default", version: "3.3.0", voices: [{ id: "a", label: "A" }] };
+    const rootAB = {
+      schema: 1,
+      id: "default",
+      label: "Default",
+      version: "3.3.0",
+      voices: [
+        { id: "a", label: "A" },
+        { id: "b", label: "B" },
+      ],
+    };
+    const result = scanVoicePacks({
+      root: ROOT,
+      devRoot: DEV_ROOT,
+      reservedVoices: [],
+      priorityPacks: ["default"],
+      fs: fakeFsAt({
+        [DEV_ROOT]: { default: { manifest: devA, clips: ["voice/a/flags/blue-01.mp3"] } },
+        [ROOT]: {
+          default: {
+            manifest: rootAB,
+            install: catalogRecord,
+            clips: ["voice/a/flags/blue-01.mp3", "voice/b/flags/blue-01.mp3"],
+          },
+        },
+      }),
     });
+
+    expect(result.packs).toHaveLength(1);
+    expect(result.packs[0]?.provenance).toBe("development");
+    expect(result.packs[0]?.voices.map((v) => v.id)).toEqual(["a"]);
+    expect(result.problems).toEqual([
+      {
+        pack: "default",
+        reason: 'pack "default" is provided by the development build; the copy under the packs root is ignored',
+      },
+    ]);
+  });
+
+  it("keeps the per-voice reason for a collision between DIFFERENT pack ids", () => {
+    // The pack-level rule is about one id existing under both roots. A genuine
+    // voice collision between two different packs still names the voice.
+    const mine = { schema: 1, id: "mine", label: "Mine", version: "1.0.0", voices: [{ id: "default", label: "Mine" }] };
+    const result = scanVoicePacks({
+      root: ROOT,
+      devRoot: DEV_ROOT,
+      reservedVoices: [],
+      fs: fakeFsAt({
+        [DEV_ROOT]: { default: { manifest: dflt, clips } },
+        [ROOT]: { mine: { manifest: mine, clips } },
+      }),
+    });
+
+    expect(result.packs.map((p) => p.id)).toEqual(["default"]);
+    expect(result.problems).toEqual([
+      { pack: "mine", reason: 'voice "default" is already provided by the development build of pack "default"' },
+    ]);
+  });
+
+  it("does not shadow a root pack whose id only a SKIPPED dev folder carries", () => {
+    // The dev folder is listed by the OS but was never listed as a pack — no
+    // manifest. Shadowing on folder name alone would silence the AppData copy
+    // in favour of nothing at all.
+    const result = scanVoicePacks({
+      root: ROOT,
+      devRoot: DEV_ROOT,
+      reservedVoices: [],
+      fs: fakeFsAt({
+        [DEV_ROOT]: { default: { clips } },
+        [ROOT]: { default: { manifest: dflt, clips } },
+      }),
+    });
+
+    expect(result.packs.map((p) => [p.id, p.provenance])).toEqual([["default", "sideload"]]);
+    expect(result.problems.map((p) => p.reason)).toEqual(["no voice-pack.json"]);
+  });
+
+  it("matches the shadowed folder name case-insensitively", () => {
+    const result = scanVoicePacks({
+      root: ROOT,
+      devRoot: DEV_ROOT,
+      reservedVoices: [],
+      fs: fakeFsAt({
+        [DEV_ROOT]: { default: { manifest: dflt, clips } },
+        [ROOT]: { Default: { manifest: dflt, install: catalogRecord, clips } },
+      }),
+    });
+
+    expect(result.packs).toHaveLength(1);
+    expect(result.problems).toEqual([
+      {
+        pack: "Default",
+        reason: 'pack "Default" is provided by the development build; the copy under the packs root is ignored',
+      },
+    ]);
   });
 
   it("falls back to the root pack when the dev copy is unusable", () => {

@@ -274,6 +274,14 @@ type ScanState = {
   problems: VoicePackProblem[];
   /** Voice id → the pack folder that provides it, and whether that pack is a development build. */
   claimedVoices: Map<string, { folder: string; development: boolean }>;
+  /**
+   * Pack ids the development root LISTED (#1143) — lower-cased, which is what
+   * a manifest id already is. A packs-root folder with one of these ids is
+   * shadowed whole; see the branch in {@link scanRoot} for why per-voice is not
+   * enough. Listed, not merely present: a dev folder the scan refused (no
+   * manifest, a bad id) must not silence the AppData copy in favour of nothing.
+   */
+  developmentPackIds: Set<string>;
   bundledVoices: ReadonlySet<string>;
   priorityPacks: readonly string[];
 };
@@ -304,6 +312,7 @@ export function scanVoicePacks({
     packs: [],
     problems: [],
     claimedVoices: new Map(),
+    developmentPackIds: new Set(),
     bundledVoices: new Set(reservedVoices),
     priorityPacks,
   };
@@ -317,12 +326,37 @@ export function scanVoicePacks({
 
 /** One root's folders, appended into the shared `state` — see {@link scanVoicePacks}. */
 function scanRoot(root: string, kind: ScanRootKind, state: ScanState): void {
-  const { fs, packs, problems, claimedVoices, bundledVoices, priorityPacks } = state;
+  const { fs, packs, problems, claimedVoices, developmentPackIds, bundledVoices, priorityPacks } = state;
 
   for (const folder of visitOrder(fs.listDirectories(root), priorityPacks)) {
     // Dot-folders are the installer's own working space (`.tmp`, `.trash`) and
     // anything else a tool decided to hide. Never packs.
     if (folder.startsWith(".")) continue;
+
+    // One pack id, one row (#1143). The development root already listed a pack
+    // with this id, so this folder is the same pack seen twice and is skipped
+    // whole — before its manifest is even read.
+    //
+    // The per-voice rule below is not enough here, and the gap was real: it
+    // drops the voices the dev copy CLAIMED, so a packs-root copy declaring one
+    // extra voice survived with that voice alone. Two `packs` rows then carried
+    // one id, and every consumer of this list is keyed by id — the launch
+    // step's `isPackUsable`, the installer's target lookup, the settings
+    // window's rows — so which copy a lookup found came down to array order.
+    // The extra voice is not a loss worth that: it is a voice of a pack the
+    // developer is in the middle of editing, and the answer is to stage it.
+    //
+    // Matched on the folder name lower-cased, the same case-insensitive
+    // comparison the id-vs-folder check below makes, because the filesystem
+    // underneath is. The reason names the FOLDER as it is on disk (`problem.pack`
+    // throughout this scan) rather than the manifest id, which is unread here.
+    if (kind === "packs" && developmentPackIds.has(folder.toLowerCase())) {
+      problems.push({
+        pack: folder,
+        reason: `pack "${folder}" is provided by the development build; the copy under the packs root is ignored`,
+      });
+      continue;
+    }
 
     const dir = join(root, folder);
     const read = fs.readTextFile(join(dir, MANIFEST_FILE));
@@ -523,6 +557,11 @@ function scanRoot(root: string, kind: ScanRootKind, state: ScanState): void {
         provenance: "bundled-seed",
       });
 
+      // Unreachable under the development root — the provenance record is not
+      // read there, so `isBundledSeed` is false — but recorded anyway so
+      // "listed under the dev root" has exactly one meaning at every push site.
+      if (kind === "development") developmentPackIds.add(manifest.id);
+
       continue;
     }
 
@@ -594,6 +633,10 @@ function scanRoot(root: string, kind: ScanRootKind, state: ScanState): void {
     if (voices.length === 0) continue;
 
     for (const voice of voices) claimedVoices.set(voice.id, { folder, development: kind === "development" });
+
+    // Recorded only for a pack that is actually LISTED, so a dev folder the
+    // scan refused shadows nothing under the packs root (#1143).
+    if (kind === "development") developmentPackIds.add(manifest.id);
 
     packs.push({
       id: manifest.id,
