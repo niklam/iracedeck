@@ -15,12 +15,13 @@
  * its package appears instead of needing to be added to a list here.
  */
 import { spawnSync } from "node:child_process";
-import { copyFileSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
 
+import { DEV_VOICE_PACKS_ROOT_KEY } from "./lib/assert-release-build.mjs";
 import { DEFAULT_DEV_VOICE_PACKS_ROOT, DEV_LOCAL_FILE, readDevLocal } from "./lib/dev-local.mjs";
 import { allPluginManifestRelPaths } from "./lib/version-discovery.mjs";
 
@@ -41,9 +42,12 @@ const CONDITIONAL_SPREAD =
 /** [plugin package dir, package name] pairs, discovered from the committed plugin manifests. */
 const PLUGINS = allPluginManifestRelPaths(repoRoot).map((relPath) => {
   const [, pkg] = relPath.split("/");
-  const { name } = JSON.parse(readFileSync(join(repoRoot, "packages", pkg, "package.json"), "utf-8"));
-  return [pkg, name];
+  const { name, scripts } = JSON.parse(readFileSync(join(repoRoot, "packages", pkg, "package.json"), "utf-8"));
+  return [pkg, name, scripts?.["pack:plugin"]];
 });
+
+/** The assertion every `pack:plugin` must run FIRST — see `assert-release-build.mjs`. */
+const PACK_ASSERTION = "node ../../scripts/assert-release-build.mjs ";
 
 const turbo = JSON.parse(readFileSync(join(repoRoot, "turbo.json"), "utf-8"));
 
@@ -56,6 +60,18 @@ afterAll(() => {
 describe("the development voice root is build-time only (#1143)", () => {
   it("discovers every plugin package (an empty list would silently skip every per-plugin check)", () => {
     expect(PLUGINS.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("at least one plugin has a pack:plugin script (or the pack assertion below checks nothing)", () => {
+    expect(PLUGINS.filter(([, , packScript]) => packScript !== undefined).length).toBeGreaterThan(0);
+  });
+
+  it("the pack assertion script exists and is what the pack scripts name", () => {
+    // The path is written into three package.json scripts as a string; nothing
+    // resolves it until someone packs a release, which is the worst moment to
+    // find out it moved.
+    expect(existsSync(join(repoRoot, "scripts", "assert-release-build.mjs"))).toBe(true);
+    expect(DEV_VOICE_PACKS_ROOT_KEY).toBe("devVoicePacksRoot");
   });
 
   it(`${DEV_LOCAL_FILE} is gitignored, so it can never reach a clone`, () => {
@@ -81,7 +97,7 @@ describe("the development voice root is build-time only (#1143)", () => {
     expect(readDevLocal(root)).toEqual({ voicePacksRoot: join(root, ...DEFAULT_DEV_VOICE_PACKS_ROOT.split("/")) });
   });
 
-  describe.each(PLUGINS)("%s", (pkg, packageName) => {
+  describe.each(PLUGINS)("%s", (pkg, packageName, packScript) => {
     const configSource = readFileSync(join(repoRoot, "packages", pkg, "rollup.config.mjs"), "utf-8");
     const pluginSource = readFileSync(join(repoRoot, "packages", pkg, "src", "plugin.ts"), "utf-8");
 
@@ -107,6 +123,23 @@ describe("the development voice root is build-time only (#1143)", () => {
       // would ship the mechanism in a release build.
       const occurrences = configSource.split("devVoicePacksRoot").length - 1;
       expect(occurrences, "devVoicePacksRoot must appear only inside the conditional spread").toBe(1);
+    });
+
+    it("packs only a release build, asserted before anything is packed", () => {
+      // Conditional on the script EXISTING, because not every plugin has one
+      // (Ulanzi is packed by its host's own tooling today) — and the
+      // "some plugin has one" test below is what stops that making this
+      // vacuous everywhere at once.
+      if (packScript === undefined) {
+        expect(packScript, `${pkg} has no pack:plugin script — nothing to guard`).toBeUndefined();
+
+        return;
+      }
+
+      // FIRST, and chained with `&&`, so a development build stops the whole
+      // command rather than being packed and then complained about.
+      expect(packScript.startsWith(PACK_ASSERTION), `pack:plugin must start with ${PACK_ASSERTION}`).toBe(true);
+      expect(packScript).toContain("/bin/config.json && ");
     });
 
     it(`turbo hashes ${DEV_LOCAL_FILE} as an input of this plugin's build`, () => {
