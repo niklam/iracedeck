@@ -4,7 +4,7 @@ How to run `/code-review` here: which effort level to ask for, what to point it 
 
 ## Pick the effort level from the table — `xhigh` is not the default
 
-State a level explicitly on every invocation. The skill reuses the last level typed when none is given, so a bare call silently inherits whatever the previous review needed, which is how every review ended up at `xhigh`.
+The hook refuses an invocation that names no level, because the skill otherwise reuses the last level typed — which is how every review ended up at `xhigh`.
 
 | Level  | When |
 |--------|------|
@@ -27,15 +27,11 @@ Two tie-breakers: a diff that spans rows takes the **highest** row any changed f
 
 ## Report only — `--fix` is not part of the command
 
-Never pass `--fix`. A review reports; applying is a separate step taken afterwards, finding by finding, once each one has been checked against the code.
-
-Two reasons it isn't a convenience worth having. Findings are candidates, not verdicts — a review produces confident-sounding findings about behavior that is deliberate, and an auto-applied one rewrites a decision nobody re-litigated. And the edits land in whatever tree the run targeted, so a mis-targeted review doesn't merely report on the wrong branch, it modifies it: one bare invocation put eight files of unrelated edits into the `master` checkout.
-
-So: read the findings, verify each against the code, apply the ones that hold as your own edits, and say which you declined and why. Any review-ish subagent gets the same instruction — read-only, report only.
+The hook refuses `--fix`, because findings are candidates rather than verdicts: a review produces confident-sounding findings about behavior that is deliberate, and an auto-applied one rewrites a decision nobody re-litigated — in whatever tree the run targeted, which is how one bare invocation put eight files of unrelated edits into the `master` checkout. So read the findings, verify each against the code, apply the ones that hold as your own edits, and say which you declined and why. Any review-ish subagent gets the same instruction — read-only, report only.
 
 ## Always target the worktree that holds the work
 
-The session's working directory is the `master` checkout, so a bare invocation reviews `master`'s diff — not the `ir-<issue>` worktree the work lives in. Pass the absolute path plus an explicit scope block:
+The hook refuses an invocation that names no `ir-<issue>` path, since the session's working directory is the `master` checkout and a bare call would review `master`'s diff. Pass the absolute path plus an explicit scope block:
 
 ```text
 /code-review high C:/Users/Niklas/Projects/iRaceDeck/ir-<issue>

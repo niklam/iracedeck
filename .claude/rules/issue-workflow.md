@@ -32,6 +32,8 @@ Filing an issue does not assign it or milestone it. Both are signals that work i
 
 Filing early and often is the point: an issue is a place to put a decision so it stops living in a conversation. Milestoning it at that moment makes a promise about a release nobody has planned yet, and assigning it makes a promise about who is doing it. A backlog of unassigned, unmilestoned issues is the correct shape for work that is understood but not scheduled.
 
+The hooks pin both ends of that: `gh issue create` is refused when it carries `--milestone` or `--assignee`, and `git worktree add ../ir-<n>` moves the card to `In progress` — which is the moment to set them.
+
 Labels are different — the issue templates apply `bug` / `enhancement` automatically, and those stay. Do not add `type:` labels to issues; those are for PRs, where they drive release notes.
 
 ### The spec is the one thing that does not go through a PR (2)
@@ -62,7 +64,7 @@ SOLID over quick wins. A shortcut that leaves tech debt is not a saving; it is a
 
 Ask whether to run it, naming the level and which row of the table in `@.claude/rules/code-review.md` the change landed in. **On a yes, you run it** — the ask is the gate, not the execution.
 
-Target the worktree explicitly, in the form that rule prescribes. The session's working directory is the `master` checkout, so a careless invocation reviews the wrong tree — and once wrote eight files of edits into `master`. Afterwards, check every worktree is still clean, not just the target.
+Target the worktree explicitly, in the form that rule prescribes — the hook now refuses an untargeted call. The session's working directory is the `master` checkout, so a careless invocation reviews the wrong tree — and once wrote eight files of edits into `master`. Afterwards, check every worktree is still clean, not just the target.
 
 Findings are candidates: verify each against the code, apply the ones that hold, and say which you declined and why.
 
@@ -88,9 +90,9 @@ One trap with no other home: `gh pr checks` exits non-zero (8) while any check i
 
 ### Merging (11)
 
-Once CodeRabbit has approved and the checks are green, **the agent driving the work merges** — the maintainer is not a second reviewer to wait for. A *review* step never merges; that separation is what `@.claude/rules/build-and-commit.md` protects, and it owns the merge mechanics. Merging includes moving the issue's Roadmap card to `Testing` by hand — the board does not do it on merge, whatever its workflow settings suggest (#1065, 2026-09-05); `@.claude/rules/build-and-commit.md` has the command.
+Once CodeRabbit has approved and the checks are green, **the agent driving the work merges** — the maintainer is not a second reviewer to wait for. A *review* step never merges; that separation is what `@.claude/rules/build-and-commit.md` protects, and it owns the merge mechanics. Merging includes the issue's Roadmap card moving to `Testing` — the post-merge hook does that and reports when it could not, in which case make the move by hand (#1065, 2026-09-05); `@.claude/rules/build-and-commit.md` has the lanes.
 
-**An approval and a green check are both head-specific, and both are re-verified at the moment of merging.** Neither travels with the branch — a push invalidates both, while the PR still displays the old approval beside the new head. Compare the approving review's `commit_id` against the PR's `headRefOid`, and read the check states for that same sha. What a stale read looks like is not an obvious error: it is a *real* approval and a *real* all-green that belong to the previous head. The PR's own `mergeStateStatus` is a cheap cross-check — `BLOCKED` while you believe everything is green means you are reading the wrong head. And `gh pr checks` exits non-zero (8) while anything is still pending, so treat that exit as "not finished", never as "failed".
+**An approval and a green check are both head-specific.** The merge hook (`@.claude/rules/hooks.md`) refuses `gh pr merge` unless the approval and every check are green at the **current** head and the merge method matches the branch — neither travels with a push, while the PR still displays the old approval beside the new head. A `mergeStateStatus` of `BLOCKED` while you believe everything is green means the hook will refuse. And `gh pr checks` exits non-zero (8) while anything is still pending, so treat that exit as "not finished", never as "failed".
 
 Issue work reaches a target branch only through an approved PR. Two documented paths do not: a maintainer-directed **Master** work mode, and a release **back-merge**. Neither is an excuse to skip the PR on issue work.
 
@@ -100,7 +102,7 @@ Since #1070 every CI workflow also runs on pushes to `master` and `release/*` �
 
 **Niklas owns a red master.** The agent that merged is the instrument that watches and reports; it does not own the outcome and does not decide what to do about one.
 
-- **Whoever merges watches all four runs to completion.** `ci-format`, `ci-lint`, `ci-test` and `ci-typecheck` are four separate workflows on the same push, so one green run answers for one of them and nothing else — and the first thing to check is that all four appeared at all. Pressing the merge button does not end the step.
+- **Whoever merges watches all four runs to completion.** `ci-format`, `ci-lint`, `ci-test` and `ci-typecheck` are four separate workflows on the same push, so one green run answers for one of them and nothing else — and the first thing to check is that all four appeared at all (the post-merge hook lists them). Pressing the merge button does not end the step.
 - **A red result goes to the coordinator immediately, and the coordinator takes it to Niklas.** No agent decides on its own to fix it, revert it, or let it stand.
 - **If the merging session ends before the run finishes, the watch passes to the coordinator** — the one party that outlives a worker session.
 

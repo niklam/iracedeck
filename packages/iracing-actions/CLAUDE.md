@@ -58,7 +58,7 @@ See `.claude/rules/stream-deck-actions.md` for the full requirements (UUID const
 
 ## Comms Catalog (#612)
 
-`src/actions/comms-catalog.ts` (in this package) is the authoritative record of how every (action, mode) talks to iRacing — API, key binding, or chat. After editing it, run `pnpm generate:action-comms` from the repo root to regenerate `data/action-comms.json`; a freshness test (`comms-catalog.test.ts`) fails when the committed JSON drifts from the catalog, and a cross-check verifies every keybind key exists in `key-bindings.json`. The full wiring (PI status line, icon overlay) is in `.claude/rules/stream-deck-actions.md` §"Per-Mode Communication Method & Binding Status".
+`src/actions/comms-catalog.ts` (in this package) is the authoritative record of how every (action, mode) talks to iRacing — API, key binding, or chat. Editing it in a Claude Code session regenerates `data/action-comms.json` through the post-edit hook; run `pnpm generate:action-comms` from the repo root otherwise. A freshness test (`comms-catalog.test.ts`) fails when the committed JSON drifts from the catalog, and a cross-check verifies every keybind key exists in `key-bindings.json`. The full wiring (PI status line, icon overlay) is in `.claude/rules/stream-deck-actions.md` §"Per-Mode Communication Method & Binding Status".
 
 ## Build
 

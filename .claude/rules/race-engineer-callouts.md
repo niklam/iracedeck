@@ -170,10 +170,10 @@ The step grammar is the closure DSL's, serialised: `"pool:<group>/<base>"` (or `
 - **A lookup is a var; a condition is a choice.** A table over a closed set (the fifteen tire patterns, a session type) is not a script decision — it is a `case` with a declared key set, or a var, and the mapping stays in the script: with `case` a pack can collapse several keys onto one line or map a key to `[]` and stay silent, which a var returning the clip directly would take away. Writing the same thing as eighteen `if` blocks is the mechanical translation, and it is wrong.
 - **A fragment may not be optional; a clause may.** `{ optional }` swallows a step that resolves to nothing, and whether that is correct depends on what is left behind: drop the number from "you're now P4" and the speech is broken or false; drop the tire clause from a readback and it is shorter and still true. So a whole clause may carry `{ optional }` or a `"default": []` branch, a sentence fragment never. (The lap-time minute is the boundary case, and it is a pack's *register* choice rather than a correctness rule — see the #1064 entry in the examples file.)
 
-Then regenerate the artifact and commit it with the config — and, once the package is built, the website's reference, which reads the reference voice's script and the contract you added, and the voice's catalog entry, because the script ships inside the pack archive (step 11 has the order):
+Then regenerate the artifact and commit it with the config — in a Claude Code session the post-edit hook already ran the extraction when the config was saved, so the first command below is for a run outside one (or after a hook failure) — and, once the package is built, the website's reference, which reads the reference voice's script and the contract you added, and the voice's catalog entry, because the script ships inside the pack archive (step 11 has the order):
 
 ```bash
-pnpm generate:callout-scripts      # configs/*.voice.json → voice/<voice-id>/callouts.json
+pnpm generate:callout-scripts      # configs/*.voice.json → voice/<voice-id>/callouts.json (the post-edit hook runs this in a Claude session)
 pnpm generate:pack-reference       # → packages/website/src/data/pack-reference.json, off the BUILT audio-scenarios dist
 pnpm --filter @iracedeck/audio-assets pack:voice <pack-id>   # → packages/audio-assets/catalog/<pack-id>.json (iRaceDeck's own pack is `default`): callouts.json travels inside the archive, so a changed script is a changed archive, and the publish step refuses an archive whose bytes differ from the committed entry — a pack whose version is already published needs a `version` bump first (audio-assets CLAUDE.md, "Voice packs")
 ```
@@ -234,7 +234,7 @@ If the bus event itself is **new**, also add an entry to `packages/scenario-harn
 
 ```bash
 pnpm install
-pnpm generate:callout-scripts   # after any script edit — the freshness test names this command
+pnpm generate:callout-scripts   # only outside a Claude session (or after a hook failure) — the post-edit hook runs it on a config edit; the freshness test names the command either way
 pnpm build         # tsc — catches type-level issues vitest misses
 pnpm generate:pack-reference    # after any contract, description, vocabulary, bundled-script or bundled-clip change — AFTER build: it reads the built audio-scenarios dist, and `scripts/generate-pack-reference.test.mjs` fails on drift naming this command (and names `pnpm build` when the dist is missing or stale)
 pnpm --filter @iracedeck/audio-assets pack:voice <pack-id>   # after any script OR clip change to a packed voice (`default` for iRaceDeck's own) — the script ships inside the archive, so a changed archive needs a regenerated `catalog/<pack-id>.json`, and NO test catches a stale entry: the release's publish step does, by refusing it. A version already published needs a `version` bump first

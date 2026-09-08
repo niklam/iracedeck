@@ -30,5 +30,65 @@
       "Bash(wc:*)",
       "Bash(* --version)"
     ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/scripts/claude-hooks/session-start.mjs\"",
+            "timeout": 30,
+            "statusMessage": "Reading worktrees, plugin links and origin/master"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/scripts/claude-hooks/pre-bash.mjs\"",
+            "timeout": 60
+          }
+        ]
+      },
+      {
+        "matcher": "Skill|Agent|AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/scripts/claude-hooks/pre-tools.mjs\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/scripts/claude-hooks/post-edit.mjs\"",
+            "timeout": 180,
+            "statusMessage": "Running the generator for the edited file"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/scripts/claude-hooks/post-bash.mjs\"",
+            "timeout": 90
+          }
+        ]
+      }
+    ]
   }
 }

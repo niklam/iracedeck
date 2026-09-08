@@ -32,7 +32,7 @@ This is not a convenience. `@iracedeck/iracing-native` `require()`s its `.node` 
 Three things to know:
 
 - **`scripts/vitest-native-mock.test.mjs` guards it.** The invariant rests on one config line whose removal produces *no* failing test — the symptom is an intermittently dropped worker, which reads as a flake rather than a regression. The guard asserts the runtime effect, so it survives the setting moving elsewhere.
-- **To use the real addon, set `IRACEDECK_REAL_NATIVE=1`.** An external `IRACEDECK_MOCK=0` does **not** work: both consumers test `!!process.env.IRACEDECK_MOCK`, so any non-empty string forces the mock. The same trap applies in `pnpm test:watch` while iterating on a native change — the rebuild will never be loaded without the opt-out.
+- **To use the real addon, set `IRACEDECK_REAL_NATIVE=1`.** The hook refuses `IRACEDECK_MOCK=0`, which would still mock — both consumers test `!!process.env.IRACEDECK_MOCK`, so any non-empty string forces it — and the same trap applies in `pnpm test:watch` while iterating on a native change.
 - **What it does not cover.** `config.env` reaches test *workers* only, never the main Vitest process, so a future `globalSetup` or Vite plugin could still load an addon. It also propagates to child processes, so anything a `scripts/**/*.test.mjs` shells out to inherits it. And the addon-loading branch in both packages now runs in no automated check at all — it was already skipped on Linux CI and is now skipped locally too.
 
 Whether this removes the cause of #1084 is **unestablished**; it removes a path that could produce it.
@@ -49,7 +49,7 @@ Consequences when editing that file — none of these apply to test files or pac
 
 `eslint.config.js` enforces the first two mechanically for `vitest.config.ts` (`no-restricted-globals` plus `@typescript-eslint/consistent-type-imports`), and `pnpm lint` covers the file, so a re-break is caught before the suite is ever started.
 
-To run a subset, pass the filter through the root script — `pnpm test <path>` — so it keeps the native loader; `pnpm exec vitest run <path>` silently falls back to the bundling loader. The per-package `test` scripts (`packages/*/package.json`) are dead weight: Vitest does find the root config from a package directory (it searches upward), but `root` stays at the package directory, so the root-relative `include` globs match nothing and the script exits 1.
+To run a subset, pass the filter through the root script — `pnpm test <path>` — so it keeps the native loader. The hook refuses both ways round it: `pnpm exec vitest` silently falls back to the bundling loader, and the per-package `test` scripts (`packages/*/package.json`) exit 1 because `root` stays at the package directory, where the root-relative `include` globs match nothing.
 
 ## Testing Stream Deck Actions
 

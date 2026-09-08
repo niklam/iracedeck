@@ -198,7 +198,7 @@ brand-new family is written in the contract/script shape, the only shape the
 catalog has had since #1065.
 
 1. New file under `src/catalog/pit-crew/<family>.ts` — `<FAMILY>_CONTRACTS`, `register<Family>Vocabulary(engine)`, the literal `<FAMILY>_CLIP_SOURCES` list, the scenario-id list.
-2. Author the family's script in `packages/audio-assets/configs/default.voice.json`: one `scenarios` entry per contract (`comment`, `test`, `sequence` — the steps addressing clips as `pool:<group>/<base>`), plus a `pools` entry only for a name that carries a decision; then `pnpm generate:callout-scripts`.
+2. Author the family's script in `packages/audio-assets/configs/default.voice.json`: one `scenarios` entry per contract (`comment`, `test`, `sequence` — the steps addressing clips as `pool:<group>/<base>`), plus a `pools` entry only for a name that carries a decision; the post-edit hook then extracts the artifact in a Claude session, `pnpm generate:callout-scripts` by hand otherwise.
 3. In `index.ts`:
    - Add `<Family>CalloutId` (type union of subject ids).
    - Add `<FAMILY>_CALLOUT_SETTING_KEYS: Record<<Family>CalloutId, string>` — exported so plugins can read it.

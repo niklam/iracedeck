@@ -459,7 +459,7 @@ Every action mode talks to iRacing through exactly one of three methods — **AP
 
 When adding or modifying an action, keep these in sync:
 
-1. **Catalog** — add/update the action's entry in `packages/iracing-actions/src/actions/comms-catalog.ts` (one `CommDescriptor` per mode: `api` / `chat`, or a keybind with a constant key, a `keyBy` a secondary setting, multiple keys, or no binding for a fixed key). Use the `keybind` / `keybindBy` / `keybindKeys` / `keybindFixed` helpers. Run `pnpm generate:action-comms` to regenerate `data/action-comms.json`. A freshness test + a cross-check (every keybind key must exist in `key-bindings.json`) guard correctness.
+1. **Catalog** — add/update the action's entry in `packages/iracing-actions/src/actions/comms-catalog.ts` (one `CommDescriptor` per mode: `api` / `chat`, or a keybind with a constant key, a `keyBy` a secondary setting, multiple keys, or no binding for a fixed key). Use the `keybind` / `keybindBy` / `keybindKeys` / `keybindFixed` helpers. Editing the catalog in a Claude Code session regenerates `data/action-comms.json` through the post-edit hook; run `pnpm generate:action-comms` by hand otherwise. A freshness test + a cross-check (every keybind key must exist in `key-bindings.json`) guard correctness.
 2. **PI status line** — add the shared component under the Mode `<sdpi-item>` in the action's `.ejs`:
    ```ejs
    <% var __comms = require('./data/action-comms.json')['<action-name>']; %>

@@ -99,7 +99,7 @@ A `.streamDeckProfile` is **authored in the Stream Deck app and exported** — t
 3. **Set the host-profile marker** on every Switch Profile key in the profile: its *Placed in profile* dropdown must name the profile being authored (#762). This is how the plugin learns the active profile at runtime — the Elgato SDK cannot query it — so the Back-to-previous history stays correct across manual navigation and plugin restarts. Every bundled profile page that can be entered should contain at least one marked key.
 4. Right-click the profile → **Export** → rename the export to the device-suffixed file name, `<display name> <suffix>.streamDeckProfile` (e.g. `iRaceDeck Default XL.streamDeckProfile`) — renaming the file does not touch the bundle contents.
 5. Drop the file next to `manifest.json` in `com.iracedeck.sd.core.sdPlugin/`.
-6. Add the `Profiles[]` entry (device-suffixed `Name`) with the matching `DeviceType`, then run `pnpm generate:action-profiles`.
+6. Add the `Profiles[]` entry (device-suffixed `Name`) with the matching `DeviceType`. Editing the manifest in a Claude Code session regenerates `profiles.json` through the post-edit hook; run `pnpm generate:action-profiles` by hand otherwise.
 7. **Validate in the app** — install the plugin build and confirm the profile imports and switches. This can't be unit-tested; it's a manual check.
 
 ## Distributed bundle format (reference only — never hand-edit)

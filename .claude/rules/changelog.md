@@ -20,7 +20,7 @@ Pre-release versions (`-alpha` / `-beta` / `-rc`) get **no** section of their ow
 
 The plugin ships its own copy of these notes: `pnpm generate:changelog-data` parses this file into `packages/iracing-actions/src/actions/data/changelog.json`, which all three plugin builds compile into `ui/settings-window.html`. Two consequences:
 
-- **Run `pnpm generate:changelog-data` after editing this file, and commit the regenerated JSON.** A freshness test (`scripts/generate-changelog-data.test.mjs`) fails the build otherwise, naming the command.
+- **The regenerated JSON is committed with the edit.** In a Claude Code session the post-edit hook runs `pnpm generate:changelog-data` for you (`@.claude/rules/hooks.md`); run it by hand outside one, or when the hook reports a failure. The guard is unchanged either way: a freshness test (`scripts/generate-changelog-data.test.mjs`) fails the build on a stale artifact, naming the command.
 - **The format below is enforced, not merely conventional.** `scripts/lib/changelog-parse.mjs` throws — naming the line — on a heading that is not a plain `## X.Y.Z`, an unknown or out-of-order category header, a category header with no bullets under it, a bullet before any category, a duplicated version or category, a release filed out of strict newest-first order, and any other prose inside a release section. A malformed entry used to render slightly oddly on the website; now it would drop a whole release from a pane read offline, so it fails instead. `scripts/lib/changelog-parse.test.mjs` runs the parser over this very file, which is where that failure surfaces.
 
 Inline markdown inside a bullet is limited to what the pane can render: backtick code spans, `**bold**`, `*em*` / `_em_`, and `[text](url)` links whose target is either a site-absolute path (`/docs/…`, rebased onto iracedeck.com for the window) or an `http(s)` URL. Anything else throws in `scripts/lib/changelog-inline-html.mjs` rather than reaching a user as raw markup.
@@ -44,4 +44,4 @@ The changelog records **what users get in a release**, not the PR history. Colla
 
 `pnpm --filter @iracedeck/website build` must pass; the page renders at `/changelog/`.
 
-`pnpm generate:changelog-data` must have been run and its output committed, and `pnpm test` must pass — the parser test and the freshness test both read this file. When a release's notes change, the Settings window screenshot is stale too; see `@.claude/rules/website-screenshots.md`.
+`changelog.json` must be regenerated and committed (the post-edit hook does it in a Claude Code session; `pnpm generate:changelog-data` by hand otherwise), and `pnpm test` must pass — the parser test and the freshness test both read this file. When a release's notes change, the Settings window screenshot is stale too; see `@.claude/rules/website-screenshots.md`.
