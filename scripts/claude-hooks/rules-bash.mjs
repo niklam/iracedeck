@@ -79,14 +79,19 @@ export const rules = [
       if (!has(c, GIT_PUSH) || has(c, /--dry-run/)) return null;
       const dir = gitCwd(c, ctx.cwd, GIT_PUSH);
       if (has(c, /\bpush\s[^|&;]*\b(--tags|v\d+\.\d+)/))
-        return { ask: "Pushing a tag cuts a release. Niklas confirms." };
-      const files = ctx.branchFiles(dir);
+        return { ask: "Pushing a tag cuts a release. The maintainer confirms." };
       const branch = ctx.branch(dir);
-      if (branch === MAIN_BRANCH && files && files.length > 0 && files.every((f) => f.startsWith(SPEC_DIR)))
-        return null; // spec-only pushes to master are pre-approved
-      const outside = (files ?? []).filter((f) => !f.startsWith(SPEC_DIR)).length;
+      // The hook runs BEFORE the command, so a commit chained ahead of the push
+      // (`git commit … -- <spec> && git push`) is not in origin/master...HEAD yet —
+      // which asked "0 non-spec file(s)" on every spec push. Count what that
+      // commit would add as if it had landed.
+      const chained = has(c, GIT_COMMIT) ? committedFiles(c, ctx, dir) : [];
+      const files = ctx.branchFiles(dir);
+      const all = files && [...files, ...chained];
+      if (branch === MAIN_BRANCH && all && all.length > 0 && all.every((f) => f.startsWith(SPEC_DIR))) return null; // spec-only pushes to master are pre-approved
+      const outside = (all ?? []).filter((f) => !f.startsWith(SPEC_DIR)).length;
       return {
-        ask: `Push is not a spec-only push to ${MAIN_BRANCH} (${files ? `${outside} non-spec file(s)` : "diff unavailable"}, branch ${branch ?? "?"}). Niklas confirms pushes, and only after his manual test.`,
+        ask: `Push is not a spec-only push to ${MAIN_BRANCH} (${all ? `${outside} non-spec file(s)` : "diff unavailable"}, branch ${branch ?? "?"}). The maintainer confirms pushes, and only after their manual test.`,
       };
     },
   },
@@ -104,7 +109,7 @@ export const rules = [
       const t = title?.[1] ?? title?.[2] ?? title?.[3];
       if (t !== undefined && !TITLE_RE.test(t))
         return `PR title "${t}" must be \`<type>(<scope>): <description> (#<issue>)\` — it becomes the squash commit and drives the release notes (.claude/rules/build-and-commit.md).`;
-      return { ask: "Opening a PR is gated on Niklas's manual test. He confirms." };
+      return { ask: "Opening a PR is gated on the maintainer's manual test. They confirm." };
     },
   },
   {
@@ -305,14 +310,43 @@ export const rules = [
 
 // ---------------------------------------------------------------------------
 
-/** What `git commit` would include: staged, `-a`'s modified files, or an explicit `--only` pathspec. */
+/** The words of one command in a chain: everything up to the next `&&`, `||`, `;` or `|`. */
+function chainWords(text) {
+  const out = [];
+  for (const w of words(text)) {
+    if (/^(&&|\|\||;|\|)$/.test(w)) break;
+    const bare = w.replace(/;$/, "");
+    if (bare) out.push(bare);
+    if (bare !== w) break;
+  }
+  return out;
+}
+
+const asPath = (p) => p.replace(/\\/g, "/");
+
+/**
+ * What `git commit` would include: an explicit `--only` pathspec, else what is
+ * staged plus what a `git add <paths>` EARLIER IN THE SAME COMMAND stages — the
+ * hook runs before any of the chain does, so those paths are not staged yet
+ * when it looks (`-a` folds in the modified files too). A `git add .`/`-A`
+ * names nothing, and an untracked file is invisible to the diff, so that
+ * shape stays unknown and the rules reading this fail towards asking.
+ */
 function committedFiles(command, ctx, dir) {
-  const only = command.match(/\s--\s+(.+)$/m);
-  if (only) return words(only[1]).map((p) => p.replace(/\\/g, "/"));
-  const staged = ctx.staged(dir);
+  // Tokenised, not a line regex: a quoted commit message spans lines, and the
+  // `--` that follows it sits on the message's last line.
+  const afterCommit = chainWords(command.slice(command.search(/\bcommit\b/)));
+  const dash = afterCommit.indexOf("--");
+  if (dash >= 0) return afterCommit.slice(dash + 1).map(asPath);
+  const added = [...command.matchAll(/\bgit\s+(?:-C\s+\S+\s+)?add\s+(.+)$/gm)].flatMap((m) =>
+    chainWords(m[1])
+      .filter((w) => !w.startsWith("-") && w !== ".")
+      .map(asPath),
+  );
+  const staged = [...ctx.staged(dir), ...added];
   if (has(command, /\bcommit\b[^|&;]*\s(-a|--all|-am|-a[a-zA-Z]+)\b/))
     return [...new Set([...staged, ...ctx.modified(dir)])];
-  return staged;
+  return [...new Set(staged)];
 }
 
 /**

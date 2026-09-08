@@ -4,8 +4,8 @@ import { describe, expect, it } from "vitest";
 import { generatorsFor, issueFromWorktreePath, missingWorkflows, prRefFrom, remindersFor } from "./rules-post.mjs";
 import { checkAgent, checkAsk, checkSkill } from "./rules-tools.mjs";
 
-const MASTER = "C:\\Users\\Niklas\\Projects\\iRaceDeck\\master";
-const TREE = "C:/Users/Niklas/Projects/iRaceDeck/ir-1100";
+const MASTER = "C:\\repo\\iRaceDeck\\master";
+const TREE = "C:/repo/iRaceDeck/ir-1100";
 
 describe("checkSkill (/code-review)", () => {
   it("ignores other skills", () => expect(checkSkill({ skill: "website", args: "--fix" })).toBeNull());

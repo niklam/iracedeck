@@ -17,7 +17,7 @@ export function checkSkill({ skill, args = "" }, cwd = "") {
   const a = String(args);
   if (/(^|\s)--fix(\s|$)/.test(a))
     return "Never run /code-review with --fix: findings are candidates, not verdicts. Report only, then apply the ones that hold by hand.";
-  if (/(^|\s)ultra(\s|$)/.test(a)) return null; // the cloud review is Niklas's to launch, and it bundles the branch itself
+  if (/(^|\s)ultra(\s|$)/.test(a)) return null; // the cloud review is the maintainer's to launch, and it bundles the branch itself
   const wordsIn = a.split(/\s+/).filter(Boolean);
   if (!wordsIn.some((w) => LEVELS.includes(w)))
     return `State the effort level explicitly (${LEVELS.join(" / ")}) — a bare call silently reuses the last level typed.`;

@@ -60,7 +60,7 @@ function afterMerge(command, cwd) {
     out.push(
       `Post-merge runs for ${sha.slice(0, 9)}:\n${lines.join("\n") || "  (none created yet)"}` +
         (missing.length ? `\n  not yet started: ${missing.join(", ")}` : "") +
-        `\nThe merge is not finished until all four are green. Watch them: gh run list --commit ${sha} --json workflowName,status,conclusion — a red goes to the coordinator, then to Niklas; never fix or revert on your own.`,
+        `\nThe merge is not finished until all four are green. Watch them: gh run list --commit ${sha} --json workflowName,status,conclusion — a red goes to the coordinator, then to the maintainer; never fix or revert on your own.`,
     );
   }
   return out;

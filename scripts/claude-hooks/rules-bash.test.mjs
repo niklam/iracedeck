@@ -104,6 +104,33 @@ describe("git push", () => {
     expect(asks("git push", ctx({ branchFiles: () => undefined }))).toMatch(/diff unavailable/));
   it("asks on a tag push", () => expect(asks("git push origin v3.2.0")).toMatch(/release/));
   it("ignores --dry-run", () => passes("git push --dry-run"));
+
+  // The hook runs before the command, so a commit chained ahead of the push is
+  // not in origin/master...HEAD yet; the spec workflow's one-liner asked every time.
+  describe("with the commit chained ahead of the push", () => {
+    const SPEC = "docs/superpowers/specs/2026-09-08-issue-1147-x.md";
+    const specWorkflow = [
+      `cd ${MASTER} && git add ${SPEC} && git commit -q -m "docs(specs): title (#1147)`,
+      "",
+      `Claude-Session: https://claude.ai/code/session_x" -- ${SPEC} && git diff --name-only origin/master...HEAD && git push origin HEAD:master 2>&1 | tail -1 && SHA=$(git rev-parse HEAD) && echo "$SHA"`,
+    ].join("\n");
+    it("lets the spec workflow's add + commit -- <spec> + push through with an empty diff", () =>
+      passes(specWorkflow, ctx({ branchFiles: () => [], staged: () => [] })));
+    it("reads the paths a chained `git add` stages when the commit names no pathspec", () =>
+      passes(`git add ${SPEC} && git commit -m x && git push origin master`));
+    it("asks when the chained commit carries a non-spec file", () =>
+      expect(asks("git commit -m x -- src/x.ts && git push origin master")).toMatch(/1 non-spec/));
+    it("asks when the chained commit adds a non-spec file beside the spec", () =>
+      expect(asks(`git add ${SPEC} src/x.ts && git commit -m x && git push origin master`)).toMatch(/1 non-spec/));
+    it("asks when the branch already carries a non-spec file", () =>
+      expect(
+        asks(`git commit -m x -- ${SPEC} && git push origin master`, ctx({ branchFiles: () => ["src/x.ts"] })),
+      ).toMatch(/1 non-spec/));
+    it("asks on `git add .`, whose contents it cannot know", () =>
+      expect(asks("git add . && git commit -m x && git push origin master")).toMatch(/0 non-spec/));
+    it("still asks from a feature branch", () =>
+      asks(`git commit -m x -- ${SPEC} && git push`, ctx({ branch: () => "ir-1" })));
+  });
 });
 
 describe("gh pr create", () => {
@@ -230,6 +257,15 @@ describe("git commit", () => {
       ctx({ branch: () => "ir-1", staged: () => ["docs/superpowers/specs/a.md"] }),
     );
   });
+  it("stops the pathspec at the next command in the chain", () =>
+    passes("git commit --only -m x -- src/x.ts && echo done", ctx({ branch: () => "ir-1" })));
+  it("finds the pathspec after a multi-line quoted message", () =>
+    deny(
+      'git commit -q -m "docs(specs): x (#1)\n\nClaude-Session: https://x" -- docs/superpowers/specs/a.md && echo done',
+      ctx({ branch: () => "ir-1" }),
+    ));
+  it("counts a spec staged by a `git add` earlier in the same command", () =>
+    deny("git add docs/superpowers/specs/a.md && git commit -m x", ctx({ branch: () => "ir-1" })));
   it("honours -C for the branch", () =>
     deny(
       "git -C ../ir-1 commit -m x",

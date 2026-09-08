@@ -16,11 +16,11 @@ The scripts live in `scripts/claude-hooks/` — Node, because `jq` is not instal
 
 ## The Bash guards
 
-A **deny** refuses the call and tells the model why. An **ask** forces the permission prompt even for an allow-listed command, which is how "Niklas confirms" is enforced.
+A **deny** refuses the call and tells the model why. An **ask** forces the permission prompt even for an allow-listed command, which is how "the maintainer confirms" is enforced.
 
 | Command shape | Verdict | Rule it enforces |
 | --- | --- | --- |
-| `git push` of anything but a spec-only diff on `master` | ask | pushes are confirmed after the manual test; spec-only pushes are pre-approved |
+| `git push` of anything but a spec-only diff on `master` | ask | pushes are confirmed after the manual test; spec-only pushes are pre-approved. The diff is `origin/master...HEAD` plus whatever a `git commit` chained ahead of the push in the same command would add (its `--` pathspec, or what is staged plus a chained `git add`'s paths), since the hook runs before the chain does and a commit-then-push one-liner has nothing in the diff yet |
 | `git push` of a tag | ask | a tag cuts a release |
 | `gh pr create` | ask, and deny on a title that is not `<type>(<scope>): … (#<issue>)` | PR title discipline, PR gated on the manual test |
 | `gh pr merge` | deny unless: OPEN, `--squash` (or `--merge` for a `release/*` head), `reviewDecision` APPROVED, a CodeRabbit review at the current head plus an approval, every rollup entry green (fails closed on unknown node types), not BLOCKED/DIRTY. `--admin` skips only the review checks. | approval and checks are head-specific |

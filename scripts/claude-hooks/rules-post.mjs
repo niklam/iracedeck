@@ -76,7 +76,7 @@ export const REMINDERS = [
   },
   {
     match: (rel) => /^\.claude\/rules\/.+\.md$/.test(rel) || /(^|\/)CLAUDE\.md$/.test(rel),
-    text: "Rules/CLAUDE.md edited: this is prose Niklas must see in full before it becomes binding — show the drafted text in the final message.",
+    text: "Rules/CLAUDE.md edited: this is prose the maintainer must see in full before it becomes binding — show the drafted text in the final message.",
   },
 ];
 
