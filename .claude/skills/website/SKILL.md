@@ -15,7 +15,7 @@ Astro + Starlight documentation site deployed via Firebase Hosting. Dark theme b
 |------|---------|
 | `packages/website/astro.config.mjs` | Starlight config: sidebar, logo, social links, GA |
 | `packages/website/src/styles/custom.css` | Brand overrides (accent color, font, dark bg) |
-| `packages/website/src/content.config.ts` | Content collection config with Starlight loader |
+| `packages/website/src/content.config.ts` | Content collections: `docs` (Starlight loader) and an intentionally empty `i18n` (`src/content/i18n/en.json` is `{}` — Starlight 0.42 reads the collection unconditionally and warns when it is undefined or empty, #1152) |
 | `packages/website/src/content/docs/index.mdx` | Landing page (splash template) |
 | `packages/website/src/content/docs/changelog.mdx` | Changelog / version history at `/changelog/` (opened by the plugin on upgrade, #680) |
 | `packages/website/src/content/docs/` | All documentation pages (markdown) |
