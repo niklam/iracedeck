@@ -127,6 +127,12 @@ describe("runDevVoices('on')", () => {
     ["an array", "[]"],
     ["null", "null"],
     ["a non-string root", '{ "voicePacksRoot": 7 }'],
+    // A blank root is the one the hand-rolled validation used to accept: it is
+    // a string, so it passed, and the build then resolved it to the repo root
+    // and scanned the whole checkout as a voice packs folder. `readDevLocal`
+    // has always refused it — sharing the reader is what makes the two agree.
+    ["a blank root", '{ "voicePacksRoot": "" }'],
+    ["a whitespace-only root", '{ "voicePacksRoot": "   " }'],
     ["no root at all", "{}"],
   ])("refuses a marker holding %s", (_label, contents) => {
     writeFileSync(marker, contents);
@@ -157,7 +163,9 @@ describe("runDevVoices('on')", () => {
 
     expect(runDevVoices("on", options({ log }))).toBe(0);
     expect(readFileSync(marker, "utf-8")).toBe(custom);
-    expect(output(log)).toContain("local/my-packs");
+    // The RESOLVED directory, not the text in the file: the message names the
+    // folder that will be scanned, which is what tells two clones apart.
+    expect(output(log)).toContain(join(root, "local", "my-packs"));
   });
 
   it("names the staging command when the dev root holds no pack yet", () => {

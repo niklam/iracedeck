@@ -25,10 +25,10 @@
  * other `scripts/lib` helpers use.
  */
 import { spawnSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-import { DEFAULT_DEV_VOICE_PACKS_ROOT, DEV_LOCAL_FILE } from "./dev-local.mjs";
+import { DEFAULT_DEV_VOICE_PACKS_ROOT, DEV_LOCAL_FILE, readDevLocal } from "./dev-local.mjs";
 import { linkTargets, REAL_DIRECTORY } from "./plugin-links.mjs";
 
 /**
@@ -142,56 +142,59 @@ export function runDevVoices(
 /**
  * Writes the marker unless one is already there. Returns the resolved voice
  * root when the staging hint should be considered for it.
+ *
+ * Validation is `readDevLocal`'s and nothing else's (#1143 review): this
+ * function used to re-implement it — parse, shape-check, hardcode the key list
+ * — and the copy had already drifted, accepting a blank `voicePacksRoot` that
+ * the build then resolved to the repo root. There is exactly one answer to
+ * "is this marker usable?", and it is the reader every plugin's Rollup config
+ * already asks. What stays here is only the exists / kept decision, which the
+ * reader has no opinion about.
  */
 function turnOn(root, log) {
   const file = path.join(root, DEV_LOCAL_FILE);
-  const resolve = (value) => path.resolve(root, value);
 
   if (existsSync(file)) {
-    let parsed;
+    let existing;
+
     try {
-      parsed = JSON.parse(readFileSync(file, "utf-8"));
+      // Absolute, resolved from `root` — so the line below names the directory
+      // that will actually be scanned rather than the text in the file, which
+      // is what a developer wondering where their pack went needs to read.
+      existing = readDevLocal(root).voicePacksRoot;
     } catch (error) {
-      log.error(`Error: ${DEV_LOCAL_FILE} is not valid JSON (${error.message}). Nothing written — fix or delete it.`);
+      log.error(`Error: ${error.message}. Nothing written — fix or delete the file.`);
 
       return { code: 1 };
     }
 
-    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-      log.error(`Error: ${DEV_LOCAL_FILE} does not hold an object. Nothing written — fix or delete it.`);
-
-      return { code: 1 };
-    }
-
-    const unknown = Object.keys(parsed).filter((key) => key !== "voicePacksRoot");
-    if (unknown.length > 0) {
-      log.error(
-        `Error: ${DEV_LOCAL_FILE} carries other key(s): ${unknown.join(", ")}. Nothing written — edit or delete the file yourself.`,
-      );
-
-      return { code: 1 };
-    }
-
-    const existing = typeof parsed.voicePacksRoot === "string" ? parsed.voicePacksRoot : undefined;
+    // The reader is content with `{}` — the key is optional to it, because a
+    // marker with no root is simply development mode off. Here it is a file
+    // the developer meant something by, so it is refused rather than
+    // overwritten: `on` never replaces a marker's contents.
     if (existing === undefined) {
-      log.error(`Error: ${DEV_LOCAL_FILE} has no voicePacksRoot. Nothing written — fix or delete it.`);
+      log.error(`Error: ${DEV_LOCAL_FILE} has no voicePacksRoot. Nothing written — fix or delete the file.`);
 
       return { code: 1 };
     }
 
     log.log(
-      existing === DEFAULT_DEV_VOICE_PACKS_ROOT
+      existing === path.resolve(root, DEFAULT_DEV_VOICE_PACKS_ROOT)
         ? `${DEV_LOCAL_FILE} already points at ${existing} — left as is.`
         : `${DEV_LOCAL_FILE} already points at ${existing} — kept (delete the file to go back to the default).`,
     );
 
-    return { code: 0, stagingHintFor: resolve(existing) };
+    return { code: 0, stagingHintFor: existing };
   }
 
-  writeFileSync(file, `${JSON.stringify({ voicePacksRoot: DEFAULT_DEV_VOICE_PACKS_ROOT }, null, 2)}\n`);
+  writeFileSync(
+    file,
+    `${JSON.stringify({ voicePacksRoot: DEFAULT_DEV_VOICE_PACKS_ROOT }, null, 2)}
+`,
+  );
   log.log(`Wrote ${DEV_LOCAL_FILE}: voicePacksRoot = ${DEFAULT_DEV_VOICE_PACKS_ROOT}`);
 
-  return { code: 0, stagingHintFor: resolve(DEFAULT_DEV_VOICE_PACKS_ROOT) };
+  return { code: 0, stagingHintFor: path.resolve(root, DEFAULT_DEV_VOICE_PACKS_ROOT) };
 }
 
 /** Removes the marker. A missing one is a success — the rebuild still runs. */
