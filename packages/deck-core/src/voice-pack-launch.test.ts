@@ -685,6 +685,23 @@ describe("voice-pack launch step", () => {
     expect(logger.error).toHaveBeenCalled();
   });
 
+  it("stop before start does no startup work: no sweep, no seed, no republish, no catalog", async () => {
+    const installer = fakeInstaller({ state: "unknown" });
+    const step = createVoicePackLaunchStep({
+      installer,
+      settled: () => Promise.resolve(),
+      isPackUsable: () => true,
+      isRaceEngineerEnabled: () => true,
+      logger,
+    });
+    step.stop();
+    await expect(step.start()).resolves.toEqual({ state: "given-up", reason: "stopped" });
+    expect(installer.sweep).not.toHaveBeenCalled();
+    expect(installer.seed).not.toHaveBeenCalled();
+    expect(installer.republishStatus).not.toHaveBeenCalled();
+    expect(installer.refreshCatalog).not.toHaveBeenCalled();
+  });
+
   it("stop cancels a scheduled retry", async () => {
     const installer = fakeInstaller({ state: "unknown" });
     const step = createVoicePackLaunchStep({

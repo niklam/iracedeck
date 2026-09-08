@@ -377,6 +377,11 @@ export function createVoicePackLaunchStep(deps: VoicePackLaunchStepDeps): VoiceP
 
   return {
     async start() {
+      // A step stopped before it started does no startup work either: sweep and
+      // seed write to pack storage, and the shutdown contract is that nothing
+      // is touched after `stop()`.
+      if (stopped) return last ?? { state: "given-up", reason: "stopped" };
+
       // Every step is written never to reject; the guards keep a disk fault on
       // the startup path out of Node's unhandled-rejection handler. Each step
       // is guarded on its own so a sweep that throws still lets the seed run
