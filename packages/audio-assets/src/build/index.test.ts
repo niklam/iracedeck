@@ -323,6 +323,77 @@ describe("processVoiceTree — cache freshness", () => {
     // No snapshot or output temp file left behind, race or not.
     expect(listFiles(cacheDir).filter((f) => f.endsWith(".tmp"))).toEqual([]);
   }, 120_000);
+
+  /**
+   * The publish-order fix (#1143 review): the old sidecar must not be removed
+   * until ffmpeg has actually SUCCEEDED. Proved by observing the sidecar the
+   * instant ffmpeg is launched — strictly before it can have finished — which
+   * is the earliest a process could be killed and still find something on
+   * disk. If invalidation ran up front (the shape the old bug's fix must not
+   * reintroduce), the sidecar would already be gone at that moment.
+   */
+  it("does not remove the old sidecar before ffmpeg has produced a new output (#1143)", async () => {
+    const { srcDir, destDir, cacheDir, clip } = oneClipTree("ird-cache-invalidate-order-");
+
+    await processVoiceTree({ srcDir, destDir, cacheDir });
+
+    const cachedClip = path.join(cacheDir, "flags/blue-01.mp3");
+    const sidecarPath = `${cachedClip}.src.sha256`;
+    const originalSidecar = readFileSync(sidecarPath, "utf-8");
+
+    // A source swap so the second run is a cache MISS and actually re-enters
+    // processClipIntoCache (a fresh cache hit would never spawn ffmpeg at all).
+    copyFileSync(OTHER_SAMPLE_CLIP, clip);
+
+    let sidecarAtSpawn: string | false | null = null;
+
+    spawnHook.onSpawn = () => {
+      sidecarAtSpawn = existsSync(sidecarPath) ? readFileSync(sidecarPath, "utf-8") : false;
+    };
+
+    await processVoiceTree({ srcDir, destDir, cacheDir });
+
+    expect(sidecarAtSpawn).toBe(originalSidecar);
+  }, 60_000);
+
+  /**
+   * The other half of the publish-order fix: a run that FAILS after the
+   * snapshot was taken must leave the previously-published pair — cached
+   * audio and its sidecar — exactly as they were. Corrupting the throwaway
+   * ffmpeg-input snapshot (never `sourcePath`, never `cachedPath`) the moment
+   * ffmpeg is launched is a deterministic way to fail the encode without
+   * touching anything the fix is supposed to protect.
+   */
+  it("leaves the old cached file and sidecar untouched when a later run's ffmpeg fails (#1143)", async () => {
+    const { srcDir, destDir, cacheDir, clip } = oneClipTree("ird-cache-ffmpeg-failure-");
+
+    await processVoiceTree({ srcDir, destDir, cacheDir });
+
+    const cachedClip = path.join(cacheDir, "flags/blue-01.mp3");
+    const sidecarPath = `${cachedClip}.src.sha256`;
+    const originalCached = readFileSync(cachedClip);
+    const originalSidecar = readFileSync(sidecarPath, "utf-8");
+
+    // A source swap so the second run is a cache MISS.
+    copyFileSync(OTHER_SAMPLE_CLIP, clip);
+
+    spawnHook.onSpawn = (args) => {
+      const iIndex = args.indexOf("-i");
+
+      if (iIndex === -1) return;
+
+      // Corrupt the snapshot ffmpeg is about to decode, so the encode fails.
+      writeFileSync(args[iIndex + 1]!, "not an mp3");
+    };
+
+    await expect(processVoiceTree({ srcDir, destDir, cacheDir })).rejects.toThrow();
+
+    // Nothing published: the old audio and its sidecar are exactly what they
+    // were, still paired, and no temp file survives the failure.
+    expect(readFileSync(cachedClip).equals(originalCached)).toBe(true);
+    expect(readFileSync(sidecarPath, "utf-8")).toBe(originalSidecar);
+    expect(listFiles(cacheDir).filter((f) => f.endsWith(".tmp"))).toEqual([]);
+  }, 60_000);
 });
 
 /**

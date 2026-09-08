@@ -203,6 +203,19 @@ function cacheIsFresh(sourcePath, cachedPath) {
   return readFileSync(digestPath, "utf-8").trim() === sourceDigest(sourcePath);
 }
 
+// Per-invocation counter, paired with `process.pid`, so two invocations that
+// happen to touch the SAME cache entry never share a temp file name — one
+// can't clobber the other's snapshot or output mid-encode. This is the only
+// thing it guards: it does not serialize the encode itself, and nothing in
+// the supported orderings needs that. `@iracedeck/audio-assets#build` warms
+// the whole cache once, before the parallel per-plugin builds run, so those
+// only ever READ it; `pack:voice` is a developer running one command by hand.
+// The in-process `withCacheLock` (above) covers the remaining single-process
+// callers — the harness's Reload/Wipe buttons, a watcher rebuild. A
+// cross-process LOCK on one entry is therefore architectural, not enforced
+// here, and is not added by this change.
+let tempInvocationCounter = 0;
+
 /**
  * The ONE place a cached clip is produced: ffmpeg's output and the sidecar that
  * makes it verifiable are written together, so no call site can leave a cache
@@ -221,21 +234,37 @@ function cacheIsFresh(sourcePath, cachedPath) {
  *
  * ffmpeg's own output is written to a `.tmp` file and only `renameSync`'d onto
  * `cachedPath` once it succeeds, so a failed or killed encode can never leave a
- * partial file at the path `cacheIsFresh` trusts. Both temp files are cleaned
- * up unconditionally.
+ * partial file at the path `cacheIsFresh` trusts. Both temp files carry a
+ * per-invocation suffix (the counter above) and are cleaned up unconditionally.
+ *
+ * Publish order, once ffmpeg has succeeded: the EXISTING sidecar is removed
+ * first, the new output is renamed onto `cachedPath` second, and the new
+ * sidecar is written last. A process killed between any two of those steps
+ * must never leave a cache entry `cacheIsFresh` calls fresh but that
+ * mispairs audio with a digest that doesn't describe it — the old bug, where
+ * the rename ran BEFORE the sidecar was cleared: new audio could land under
+ * the OLD digest, and `cacheIsFresh` would then trust that pairing forever,
+ * including if the source later reverted to the bytes the stale digest
+ * actually named. With invalidate-publish-validate, an interruption instead
+ * always lands on one of: the old file with no sidecar (stale — rebuilds),
+ * the new file with no sidecar yet (stale — rebuilds), or both new (fresh,
+ * and correct). Never a live pairing of the wrong two.
  */
 async function processClipIntoCache(ffmpegPath, sourcePath, cachedPath, filterChain) {
   const bytes = readFileSync(sourcePath);
   const digest = hashBytes(bytes);
 
-  const snapshotPath = `${cachedPath}.src.tmp`;
-  const outputTmpPath = `${cachedPath}.tmp`;
+  const invocationId = `${process.pid}.${tempInvocationCounter++}`;
+  const snapshotPath = `${cachedPath}.${invocationId}.src.tmp`;
+  const outputTmpPath = `${cachedPath}.${invocationId}.tmp`;
+  const digestPath = sourceDigestPath(cachedPath);
 
   try {
     writeFileSync(snapshotPath, bytes);
     await runFfmpeg(ffmpegPath, snapshotPath, outputTmpPath, filterChain);
+    rmSync(digestPath, { force: true });
     renameSync(outputTmpPath, cachedPath);
-    writeFileSync(sourceDigestPath(cachedPath), digest, "utf-8");
+    writeFileSync(digestPath, digest, "utf-8");
   } catch (err) {
     rmSync(outputTmpPath, { force: true });
     throw err;
