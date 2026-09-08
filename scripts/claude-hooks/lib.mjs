@@ -12,8 +12,13 @@
  * see the memory note that produced this rule. Node is always present.
  */
 import { spawnSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, readlinkSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
+
+// The deck-host link readers moved to `scripts/lib/plugin-links.mjs` in #1143,
+// where `pnpm dev:voices` also needs them. Re-exported so every hook caller and
+// test that imports them from here keeps working.
+export { linkLocations, linkTargets, REAL_DIRECTORY } from "../lib/plugin-links.mjs";
 
 export const SPEC_DIR = "docs/superpowers/specs/";
 export const MAIN_BRANCH = "master";
@@ -170,48 +175,6 @@ export function isInside(candidate, parent) {
   const c = norm(candidate);
   const p = norm(parent);
   return c === p || c.startsWith(p + path.sep);
-}
-
-// ---------------------------------------------------------------------------
-// Deck-host plugin links
-
-/** Where each deck host expects the dev plugin to be linked. */
-export function linkLocations(env = process.env) {
-  const appdata = env.APPDATA;
-  if (!appdata) return [];
-  return [
-    {
-      host: "Stream Deck",
-      link: path.join(appdata, "Elgato", "StreamDeck", "Plugins", "com.iracedeck.sd.core.sdPlugin"),
-    },
-    {
-      host: "Mirabox",
-      link: path.join(
-        env.MIRABOX_PLUGINS_DIR ?? path.join(appdata, "HotSpot", "StreamDock", "plugins"),
-        "com.iracedeck.sd.core.sdPlugin",
-      ),
-    },
-    {
-      host: "Ulanzi",
-      link: path.join(
-        env.ULANZI_PLUGINS_DIR ?? path.join(appdata, "Ulanzi", "UlanziDeck", "Plugins"),
-        "com.ulanzi.iracedeck.ulanziPlugin",
-      ),
-    },
-  ];
-}
-
-/** `[{ host, target }]` — the symlink/junction target per host, `undefined` when not linked. */
-export function linkTargets(env = process.env) {
-  return linkLocations(env).map(({ host, link }) => {
-    let target;
-    try {
-      target = path.resolve(readlinkSync(link));
-    } catch {
-      target = existsSync(link) ? "(a real directory, not a link)" : undefined;
-    }
-    return { host, link, target };
-  });
 }
 
 // ---------------------------------------------------------------------------
