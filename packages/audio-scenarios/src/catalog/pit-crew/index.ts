@@ -928,9 +928,11 @@ export type PitCrewDeps = {
   getQualifyingInvalidationCalloutEnabled?: (id: QualifyingInvalidationCalloutId) => boolean;
   // Snapshot resolver for the qualifying lap-invalidation callout (issue
   // #567). Plugins wire this to a closure that builds the snapshot from the
-  // latest telemetry tick + session info. Read at fire time inside the
-  // scenario's `where:` predicate (qualifying gate + per-lap latch) and again
-  // inside the tail's conditional branches and the lap-count `var` resolver.
+  // latest telemetry tick + session info. Read at event arrival inside the
+  // scenario's `where:` predicate (qualifying gate + the per-lap latch's pure
+  // check, stashing the approved snapshot for the contract's `speakGate`,
+  // which latches it at speak time — #1137, #1138) and again inside the
+  // tail's conditional branches and the lap-count `var` resolver.
   // Default `() => null` makes the scenario's `where:` short-circuit — a safe
   // stub for tests that don't supply a resolver.
   getQualifyingInvalidationSnapshot?: QualifyingInvalidationSnapshotResolver;
@@ -1728,7 +1730,8 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   // threshold crossings against the class-standings neighbors. The decision
   // reads the event payload; the spoken line and the live gap number are the
   // voice script's `gap.*` vars, read LIVE at speak time. Both contracts
-  // share one cooldown, claimed as the last where: gate.
+  // share one cooldown: the `where:` runs its pure check, the contract's
+  // `speakGate` claims it (#1137).
   registerGapVocabulary(engine, getLiveGaps);
 
   for (const c of [

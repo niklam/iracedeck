@@ -361,12 +361,35 @@ function penaltyBitUp(): boolean {
   return isPenaltyFlagActive(getLatestTelemetry() as TelemetryData | null);
 }
 
-// The raised line's speak-time gate (issue #1138): true while the warning is
-// still up — and admitting the call is what marks the raise as announced, so
-// the side effect lives in the gate on purpose. `admit` is the one place a
-// fire may commit something, because it runs only for a fire that then plays.
+// The two published conditions (issue #1138) — the questions the gates below
+// ask, as PURE reads, and the very predicates those gates call before they
+// commit anything. A pack may wrap either line's body in its condition
+// belt-and-braces, and evaluating one must then move nothing: the marking
+// and the consuming belong to the gate, which runs once, only for a fire
+// that goes on to play. An `if` is also expanded on the resume path (#758),
+// where a marker moved a second time would be a bug of its own.
+function furledStillUp(): boolean {
+  return furledBitUp(true);
+}
+
+// The sub-predicate the cleared pair shares: the warning is down and the
+// raise was actually told to the driver. The escalation check (#846) is kept
+// OUT of it on purpose — the gate consumes the marker on an escalation, the
+// pure read merely reports one.
+function furledClearedAfterSpoken(): boolean {
+  return !furledBitUp(false) && furledRaisedSpoken;
+}
+
+function furledWithdrawnUnspoken(): boolean {
+  return furledClearedAfterSpoken() && !penaltyBitUp();
+}
+
+// The raised line's speak-time gate (issue #1138): the pure read, and then —
+// admitting the call is what marks the raise as announced, so the side effect
+// lives in the gate on purpose. `admit` is the one place a fire may commit
+// something, because it runs only for a fire that then plays.
 function furledStillShown(): boolean {
-  if (!furledBitUp(true)) return false;
+  if (!furledStillUp()) return false;
 
   furledRaisedSpoken = true;
 
@@ -380,28 +403,16 @@ function furledStillShown(): boolean {
 // reset the spoken marker while this clear sat in the queue. A clear meeting
 // Black/Disqualify is the escalation (issue #846) — the episode is over for
 // good (no further cleared event is coming: the diff consumed its announce),
-// so the marker is consumed WITHOUT playing. Otherwise only a clear that
-// actually plays consumes the marker.
+// so the marker is consumed WITHOUT playing — which is why this is NOT
+// `furledWithdrawnUnspoken()` followed by the write: that read folds the
+// escalation in, and a refusal on it must still consume. Otherwise only a
+// clear that actually plays consumes the marker.
 function furledWithdrawn(): boolean {
-  if (furledBitUp(false) || !furledRaisedSpoken) return false;
+  if (!furledClearedAfterSpoken()) return false;
 
   furledRaisedSpoken = false;
 
   return !penaltyBitUp();
-}
-
-// The two published conditions (issue #1138) — the same questions the gates
-// above ask, as PURE reads. A pack may wrap either line's body in its
-// condition belt-and-braces, and evaluating one must then move nothing: the
-// marking and the consuming belong to the gate, which runs once, only for a
-// fire that goes on to play. An `if` is also expanded on the resume path
-// (#758), where a marker moved a second time would be a bug of its own.
-function furledStillUp(): boolean {
-  return furledBitUp(true);
-}
-
-function furledWithdrawnUnspoken(): boolean {
-  return !furledBitUp(false) && furledRaisedSpoken && !penaltyBitUp();
 }
 
 // `queueable: true` so a furled-black-flag call deferred behind another

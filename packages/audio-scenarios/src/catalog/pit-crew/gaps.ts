@@ -90,22 +90,27 @@ export function resolveGapCooldownMs(rawSeconds: unknown): number {
 let lastGapCalloutAt: number | null = null;
 
 /**
- * Claim the shared gap-callout cooldown. Returns false (and claims nothing)
- * while a previous claim is inside `cooldownMs`. Claimed by both gap
- * contracts as their `speakGate` (issue #1137), after the script expanded, so
- * a claim always results in an actual announcement.
+ * Read-only check of the shared gap-callout cooldown: whether a claim would
+ * succeed now. The half both gap contracts' `where:` run, so a fire outside
+ * the cadence is dropped cheaply at event arrival without touching the window.
+ */
+export function canClaimGapCallout(now: number, cooldownMs: number): boolean {
+  return lastGapCalloutAt === null || now - lastGapCalloutAt >= cooldownMs;
+}
+
+/**
+ * Claim the shared gap-callout cooldown: {@link canClaimGapCallout}, then the
+ * write. Returns false (and claims nothing) while a previous claim is inside
+ * `cooldownMs`. Claimed by both gap contracts as their `speakGate` (issue
+ * #1137), after the script expanded, so a claim always results in an actual
+ * announcement.
  */
 export function tryClaimGapCallout(now: number, cooldownMs: number): boolean {
-  if (lastGapCalloutAt !== null && now - lastGapCalloutAt < cooldownMs) return false;
+  if (!canClaimGapCallout(now, cooldownMs)) return false;
 
   lastGapCalloutAt = now;
 
   return true;
-}
-
-/** Read-only twin of {@link tryClaimGapCallout}: whether a claim would succeed now. */
-export function canClaimGapCallout(now: number, cooldownMs: number): boolean {
-  return lastGapCalloutAt === null || now - lastGapCalloutAt >= cooldownMs;
 }
 
 /** @internal Test-only reset for the shared cooldown. */

@@ -98,6 +98,7 @@ import {
   canAnnouncePosition,
   liveCurrentlyAnnounceable,
   type LivePositionResolver,
+  POSITION_READOUT_SPEAK_GATE_DESCRIPTION,
   selectLivePosition,
   tryClaimPositionAnnouncement,
 } from "./position-readout.js";
@@ -228,6 +229,11 @@ function isPoleAchievement(snapshot: SimEventOf<"lap.completed">["data"]): boole
  */
 function isAnnounceableSessionType(snapshot: SimEventOf<"lap.completed">["data"]): boolean {
   return snapshot.sessionType === "qualifying" || snapshot.sessionType === "race";
+}
+
+/** "No other…" → "no other…", for composing the shared gate sentence onto a qualifier. */
+function lowerFirst(sentence: string): string {
+  return sentence.charAt(0).toLowerCase() + sentence.slice(1);
 }
 
 /**
@@ -425,15 +431,19 @@ export function buildPositionContract(
       },
     },
     speakGate: {
-      description:
-        "In a race, no other position readout has spoken in the last twenty seconds when this one comes to speak; speaking it starts that window.",
+      // The shared sentence, qualified: this contract alone also fires in
+      // qualifying, where the window is not consulted.
+      description: `In a race, ${lowerFirst(POSITION_READOUT_SPEAK_GATE_DESCRIPTION)}`,
       // The race branch alone shares the position cooldown — the qualifying
       // path never consulted it, because the snapshot drives both the decision
       // and the readout there. Read from the fire's own event, the same field
-      // the `where:` reads; an imperative `fire(id)` carries no event and so
-      // claims nothing, exactly as it never did.
-      admit: (ctx) =>
-        (ctx.data as { sessionType?: string } | null)?.sessionType !== "race" || tryClaimPositionAnnouncement(),
+      // (and the same type) the `where:` reads; an imperative `fire(id)`
+      // carries no event and so claims nothing, exactly as it never did.
+      admit: (ctx) => {
+        const data = ctx.data as SimEventOf<"lap.completed">["data"] | null;
+
+        return data?.sessionType !== "race" || tryClaimPositionAnnouncement();
+      },
     },
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,

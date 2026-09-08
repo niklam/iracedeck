@@ -136,15 +136,19 @@ export type Step =
  * the limiter switched on, the furled flag withdrawn. `admit` returning
  * `false` drops the fire like a required-step abort: debug level, no
  * cooldown stamp, no bus take, and it never cancels an in-flight callout.
- * It runs once per fire that plays — again when a deferred fire replays at
- * idle, exactly as expansion re-runs there, and NOT on a resume (#758). A
- * resume is the SAME fire either way: continued from the interrupted clip
- * when the fresh expansion matches the stashed one, and replayed whole from
- * the top when it changed (the #481 freshness fallback). Both carry the
- * resume and neither is asked again — the fire passed the gate on its way
- * in and may have committed its claim there — so a contract that is both
- * `resumable` and gated must tolerate its whole body being replayed on the
- * strength of that one answer.
+ * It runs once per fire that plays. A `queueable` fire deferred BEFORE it
+ * ever expanded (parked behind a busier line, or below a focus floor) meets
+ * it at idle-replay, exactly as expansion first runs there. A fire that
+ * already passed the gate — cut mid-playback by an `interrupt` and stashed,
+ * then resumed from the interrupted clip (`resumable`, #758) or replayed
+ * whole from the top (a non-resumable stash, or a resume whose fresh
+ * expansion no longer matched the stashed one — the #481 freshness
+ * fallback) — is NOT asked again: it is the same fire, it passed the gate on
+ * its way in and may have committed its claim there, and a claiming gate
+ * would otherwise refuse its own claim and drop a line the driver had
+ * already begun to hear. So a contract that is both `queueable` and gated
+ * must tolerate its whole body being replayed on the strength of that one
+ * answer.
  *
  * Code-owned on purpose: pacing is withheld from voice packs (#1064), and a
  * gate written as a script `if` holds only for a pack that keeps the `if`.

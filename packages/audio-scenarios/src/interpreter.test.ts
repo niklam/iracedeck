@@ -2,9 +2,9 @@ import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { CalloutScript } from "@iracedeck/callout-script";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 
-import type { ScenarioContract } from "./dsl.js";
+import type { ScenarioContract, SpeakGate } from "./dsl.js";
 import { DEFAULT_FRAME, DEFAULT_WEIGHT, NO_FRAME, poolRef, WEIGHT } from "./dsl.js";
 import type { AudioAssetsManifest, FrameOptions, IScenarioEngine } from "./interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios } from "./interpreter.js";
@@ -240,6 +240,78 @@ describe("pools", () => {
     expect(paths).toEqual(["pit-crew/greeting/a.mp3", "pit-crew/greeting/b.mp3"]);
 
     stub.mockRestore();
+  });
+
+  describe("the no-repeat state commits on acceptance, not on the pick (issue #1138)", () => {
+    function voicePaths(): string[] {
+      return audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path);
+    }
+
+    beforeEach(() => {
+      engine.definePool("shared", ["pit-crew/greeting/a.mp3", "pit-crew/greeting/b.mp3"]);
+      // Pinned: every pick starts at index 0 and only the no-repeat guard moves it.
+      vi.spyOn(Math, "random").mockReturnValue(0);
+      engine.defineScenario({
+        id: "test.plays",
+        channel: AudioChannel.Voice,
+        bus: AudioBus.Voice,
+        sequence: ["pool:shared"],
+      });
+    });
+
+    it("a fire the gate refuses leaves the pool where the last PLAYED take put it", () => {
+      engine.defineScenario({
+        id: "test.refused",
+        channel: AudioChannel.Voice,
+        bus: AudioBus.Voice,
+        speakGate: { description: "Refused.", admit: () => false },
+        sequence: ["pool:shared"],
+      });
+
+      engine.fire("test.plays"); // a (index 0) — the take the driver heard
+      flushVoiceAndSfx(audio);
+      engine.fire("test.refused"); // picked b to avoid a, then refused: nothing played, nothing committed
+      flushVoiceAndSfx(audio);
+      engine.fire("test.plays"); // must still avoid a — before the fix the refused pick had moved the guard to b
+      flushVoiceAndSfx(audio);
+
+      expect(voicePaths()).toEqual(["pit-crew/greeting/a.mp3", "pit-crew/greeting/b.mp3"]);
+    });
+
+    it("a fire that aborts on a required step AFTER the pick commits nothing either", () => {
+      engine.defineVar("missing", () => null);
+      engine.defineScenario({
+        id: "test.aborts",
+        channel: AudioChannel.Voice,
+        bus: AudioBus.Voice,
+        sequence: ["pool:shared", "{{missing}}"],
+      });
+
+      engine.fire("test.plays"); // a
+      flushVoiceAndSfx(audio);
+      engine.fire("test.aborts"); // picked b, then the var aborted the fire
+      flushVoiceAndSfx(audio);
+      engine.fire("test.plays"); // still avoids a
+      flushVoiceAndSfx(audio);
+
+      expect(voicePaths()).toEqual(["pit-crew/greeting/a.mp3", "pit-crew/greeting/b.mp3"]);
+    });
+
+    it("two picks from one pool inside one body still avoid each other, and the last one is what commits", () => {
+      engine.defineScenario({
+        id: "test.twice",
+        channel: AudioChannel.Voice,
+        bus: AudioBus.Voice,
+        sequence: ["pool:shared", "pool:shared"],
+      });
+
+      engine.fire("test.twice"); // a, then b (avoiding a within the same body)
+      flushVoiceAndSfx(audio);
+      engine.fire("test.plays"); // avoids b, the last take committed
+      flushVoiceAndSfx(audio);
+
+      expect(voicePaths()).toEqual(["pit-crew/greeting/a.mp3", "pit-crew/greeting/b.mp3", "pit-crew/greeting/a.mp3"]);
+    });
   });
 });
 
@@ -1090,6 +1162,119 @@ describe("speak-time gate (issue #1138)", () => {
     expect(admit).toHaveBeenCalledTimes(1);
     expect(voicePaths()).toEqual([
       "voice/default/flags/blue-02.mp3",
+      "voice/default/flags/blue-02.mp3",
+      "voice/default/flags/blue-01.mp3",
+      "voice/default/flags/blue-02.mp3",
+    ]);
+  });
+
+  /** A claiming gate: admits once, refuses every later ask — the position and gap cooldowns' shape. */
+  function claimOnce(): Mock<SpeakGate["admit"]> {
+    return vi.fn<SpeakGate["admit"]>().mockReturnValueOnce(true).mockReturnValue(false);
+  }
+
+  it("a queueable fire cut by an interrupt keeps its admission: it replays whole and is not asked again", () => {
+    // Not resumable, so the cut stashes it for a whole replay. Before the fix
+    // the replay re-asked the gate, and a claiming gate refused its OWN
+    // claim — the readout the spotter had cut was dropped instead of replayed.
+    const admit = claimOnce();
+    engine.defineScenario({
+      id: "test.cutter",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      weight: WEIGHT.CRITICAL,
+      interrupt: true,
+      sequence: ["voice/{voice}/flags/blue-01.mp3"],
+    });
+    engine.defineScenario({
+      id: "test.queued",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      queueable: true,
+      speakGate: { description: "Claimed once.", admit },
+      sequence: ["voice/{voice}/flags/blue-02.mp3", "voice/{voice}/flags/blue-02.mp3"],
+    });
+
+    engine.fire("test.queued"); // first blue-02 in flight, gate passed (and claimed)
+    engine.fire("test.cutter"); // cuts it; stashed whole
+    flushVoiceAndSfx(audio); // cutter plays, then the stash replays from the top
+
+    expect(admit).toHaveBeenCalledTimes(1);
+    expect(voicePaths()).toEqual([
+      "voice/default/flags/blue-02.mp3",
+      "voice/default/flags/blue-01.mp3",
+      "voice/default/flags/blue-02.mp3",
+      "voice/default/flags/blue-02.mp3",
+    ]);
+  });
+
+  it("a resumable fire cut on its LAST op keeps its admission and is not asked again", () => {
+    const admit = claimOnce();
+    engine.defineScenario({
+      id: "test.cutter",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      weight: WEIGHT.CRITICAL,
+      interrupt: true,
+      sequence: ["voice/{voice}/flags/blue-01.mp3"],
+    });
+    engine.defineScenario({
+      id: "test.resumable",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      queueable: true,
+      resumable: true,
+      speakGate: { description: "Claimed once.", admit },
+      sequence: ["voice/{voice}/flags/blue-02.mp3", "voice/{voice}/flags/blue-01.mp3"],
+    });
+
+    engine.fire("test.resumable"); // blue-02 in flight
+    audio._triggerChannelEnd(AudioChannel.Voice); // → blue-01, the LAST op, in flight
+    engine.fire("test.cutter"); // cuts it on its last op
+    flushVoiceAndSfx(audio);
+
+    // The tail the driver never heard is delivered, and the gate — a claim
+    // already made for this fire — is not asked to make it twice.
+    expect(admit).toHaveBeenCalledTimes(1);
+    expect(voicePaths()).toEqual([
+      "voice/default/flags/blue-02.mp3",
+      "voice/default/flags/blue-01.mp3",
+      "voice/default/flags/blue-01.mp3",
+      "voice/default/flags/blue-01.mp3",
+    ]);
+  });
+
+  it("an admitted fire re-parked at replay (below a focus floor) carries its admission to the next replay", () => {
+    const admit = claimOnce();
+    engine.defineScenario({
+      id: "test.cutter",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      weight: WEIGHT.CRITICAL,
+      interrupt: true,
+      sequence: ["voice/{voice}/flags/blue-01.mp3"],
+    });
+    engine.defineScenario({
+      id: "test.queued",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      queueable: true,
+      speakGate: { description: "Claimed once.", admit },
+      sequence: ["voice/{voice}/flags/blue-02.mp3"],
+    });
+
+    engine.fire("test.queued"); // gate passed, in flight
+    engine.fire("test.cutter"); // cut; stashed as admitted
+    engine.acquireFocus(AudioBus.Voice, "spotter", WEIGHT.SAFETY); // the replay will be below the floor
+    flushVoiceAndSfx(audio); // cutter finishes; the stash is re-parked under the floor, not played
+
+    expect(voicePaths()).toEqual(["voice/default/flags/blue-02.mp3", "voice/default/flags/blue-01.mp3"]);
+
+    engine.releaseFocus(AudioBus.Voice, "spotter"); // drains the re-parked fire
+    flushVoiceAndSfx(audio);
+
+    expect(admit).toHaveBeenCalledTimes(1);
+    expect(voicePaths()).toEqual([
       "voice/default/flags/blue-02.mp3",
       "voice/default/flags/blue-01.mp3",
       "voice/default/flags/blue-02.mp3",

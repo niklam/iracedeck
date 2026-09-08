@@ -15,6 +15,8 @@ import { type CalloutScript, collectScriptReferences } from "@iracedeck/callout-
 import type { IEventBus, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { ScenarioContext } from "../../dsl.js";
+import { WEIGHT } from "../../dsl.js";
 import type { AudioAssetsManifest } from "../../interpreter.js";
 import {
   _resetAudioScenarios,
@@ -230,6 +232,11 @@ beforeEach(() => {
     logger: mockLogger as never,
     getQualifyingInvalidationCalloutEnabled: () => qualifyingEnabled,
     getQualifyingInvalidationSnapshot: () => lastSnapshot,
+    // The incident callouts share this contract's event and its weight, and
+    // the single pending slot goes to the newest tie — keep them out so the
+    // parked-fire test below exercises the qualifying fire, not the race the
+    // header notes.
+    getIncidentCalloutEnabled: () => false,
   });
   // After the registration, as the plugins do: the callout's body is looked
   // up in the active voice's compiled script at fire time (issue #1065).
@@ -505,6 +512,36 @@ describe("qualifying-invalidation scenario — per-lap latch", () => {
     expect(hasClip("/qualifying-invalidation/invalidated-01.mp3")).toBe(true);
     expect(qualifyingLatchAllows(snap({ lapCompleted: 4 }))).toBe(false);
   });
+
+  it("a fire parked behind a lower-weight line latches the lap its where: approved, not the lap the driver is on by the time it speaks (issue #1138)", () => {
+    // A CHATTER line holds the bus; the incident wins it (higher weight, no
+    // interrupt) and waits for the line to finish. Meanwhile the driver
+    // crosses S/F. The gate must latch lap 4 — the snapshot the `where:`
+    // approved — so lap 5's own first incident is still announced; latching
+    // the live snapshot silenced that one and left lap 4 open instead.
+    getScenarioEngine().defineScenario({
+      id: "test.chatter",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      weight: WEIGHT.CHATTER,
+      sequence: [`voice/${VOICE}/qualifying-invalidation/plenty-of-laps-01.mp3`],
+    });
+    getScenarioEngine().fire("test.chatter"); // in flight, not flushed
+
+    lastSnapshot = snap({ lapCompleted: 4, lapsRemaining: 2 });
+    bus.publishEvent("incident.occurred", { delta: 1, points: 1, type: "off-track" }); // parked
+    lastSnapshot = snap({ lapCompleted: 5, lapsRemaining: 1 }); // S/F crossed while parked
+    flush(audio); // the chatter finishes; the parked incident replays
+
+    expect(hasClip("/qualifying-invalidation/invalidated-01.mp3")).toBe(true);
+    expect(qualifyingLatchAllows(snap({ lapCompleted: 4 }))).toBe(false);
+    expect(qualifyingLatchAllows(snap({ lapCompleted: 5 }))).toBe(true);
+
+    audio._played.length = 0;
+    fire(snap({ lapCompleted: 5, lapsRemaining: 1 })); // lap 5's first incident
+
+    expect(hasClip("/qualifying-invalidation/invalidated-01.mp3")).toBe(true);
+  });
 });
 
 describe("qualifying-invalidation scenario — opt-in gate", () => {
@@ -573,6 +610,50 @@ describe("buildQualifyingInvalidationContract (issue #1065)", () => {
     // The per-lap latch is claimed at speak time since #1137, described for
     // the pack author reading a callout that sometimes says nothing.
     expect(c.speakGate?.description).toContain("first incident of the flying lap");
+  });
+
+  describe("the speak-time gate takes the snapshot the where: approved (issue #1138)", () => {
+    const ctx: ScenarioContext = { event: null, telemetry: null, data: null, now: 0, vars: {} };
+    const incident = { event: "incident.occurred", timestamp: 0, telemetry: null, data: {} } as never;
+
+    beforeEach(() => resetQualifyingInvalidationLatch());
+
+    it("latches the approved lap even when the live snapshot has moved on", () => {
+      let live = snap({ lapCompleted: 4 });
+      const c = buildQualifyingInvalidationContract(() => live);
+
+      expect(c.when?.where?.(incident)).toBe(true);
+      live = snap({ lapCompleted: 5 });
+
+      expect(c.speakGate?.admit(ctx)).toBe(true);
+      expect(qualifyingLatchAllows(snap({ lapCompleted: 4 }))).toBe(false);
+      expect(qualifyingLatchAllows(snap({ lapCompleted: 5 }))).toBe(true);
+    });
+
+    it("refuses a second same-lap fire that raced in after another latched the lap", () => {
+      const live = snap({ lapCompleted: 4 });
+      const c = buildQualifyingInvalidationContract(() => live);
+
+      expect(c.when?.where?.(incident)).toBe(true);
+      claimQualifyingLatch(snap({ lapCompleted: 4 })); // another fire on the lap spoke first
+
+      expect(c.speakGate?.admit(ctx)).toBe(false);
+    });
+
+    it("refuses when no where: stashed a snapshot — an imperative fire latches nothing", () => {
+      const c = buildQualifyingInvalidationContract(() => snap({ lapCompleted: 4 }));
+
+      expect(c.speakGate?.admit(ctx)).toBe(false);
+      expect(qualifyingLatchAllows(snap({ lapCompleted: 4 }))).toBe(true);
+    });
+
+    it("the stash is consumed by the gate: a second admit without a fresh where: refuses", () => {
+      const c = buildQualifyingInvalidationContract(() => snap({ lapCompleted: 4 }));
+
+      expect(c.when?.where?.(incident)).toBe(true);
+      expect(c.speakGate?.admit(ctx)).toBe(true);
+      expect(c.speakGate?.admit(ctx)).toBe(false);
+    });
   });
 });
 
