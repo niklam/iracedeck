@@ -17,9 +17,25 @@ import { MAIN_BRANCH, SPEC_DIR } from "./lib.mjs";
 
 const TITLE_RE = /^(feat|fix|improve|perf|refactor|docs|ci|chore|test|build|style|revert)(\([^)]+\))?!?: .+ \(#\d+\)$/;
 
-/** `git -C <dir>` overrides the working directory of the whole command. */
-export function gitCwd(command, cwd) {
-  const m = command.match(/\bgit\s+-C\s+("([^"]+)"|'([^']+)'|(\S+))/);
+/** The pieces of a chained shell command: split at `&&`, `||`, `;`, `|` and newlines. */
+export function segments(command) {
+  return command
+    .split(/\n|&&|\|\||;|\|/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/**
+ * The working directory of the git command a rule matched: `git -C <dir>`
+ * when THAT command carries one, else the session cwd. Pass the rule's own
+ * `cmd(...)` regex as `re` so the `-C` is read off the segment it matched and
+ * never off a later command in the chain — `git worktree add ../ir-5 … && git
+ * -C ../ir-5 log` used to resolve the new tree against itself, fail the
+ * repo-root lookup there, and deny the add as "inside the repo".
+ */
+export function gitCwd(command, cwd, re) {
+  const scope = re ? (segments(command).find((s) => re.test(s)) ?? command) : command;
+  const m = scope.match(/\bgit\s+-C\s+("([^"]+)"|'([^']+)'|(\S+))/);
   const dir = m?.[2] ?? m?.[3] ?? m?.[4];
   return dir ? path.resolve(cwd, dir) : cwd;
 }
@@ -44,6 +60,12 @@ export function cmd(re) {
 
 // ---------------------------------------------------------------------------
 
+/** The git shapes whose rules read a `-C`; exported so the post-hook scopes the same way. */
+export const GIT_PUSH = cmd(/git\s+(-C\s+\S+\s+)?push\b/);
+export const GIT_COMMIT = cmd(/git\s+(-C\s+\S+\s+)?commit\b/);
+export const GIT_WORKTREE_ADD = cmd(/git\s+(?:-C\s+\S+\s+)?worktree\s+add\b(.*)$/);
+export const GIT_WORKTREE_REMOVE = cmd(/git\s+(?:-c\s+\S+\s+)?(?:-C\s+\S+\s+)?worktree\s+remove\b(.*)$/);
+
 export const rules = [
   {
     name: "code-review is a Skill, never --fix",
@@ -54,8 +76,8 @@ export const rules = [
   {
     name: "git push: spec-only goes through, everything else asks",
     test: (c, ctx) => {
-      if (!has(c, cmd(/git\s+(-C\s+\S+\s+)?push\b/)) || has(c, /--dry-run/)) return null;
-      const dir = gitCwd(c, ctx.cwd);
+      if (!has(c, GIT_PUSH) || has(c, /--dry-run/)) return null;
+      const dir = gitCwd(c, ctx.cwd, GIT_PUSH);
       if (has(c, /\bpush\s[^|&;]*\b(--tags|v\d+\.\d+)/))
         return { ask: "Pushing a tag cuts a release. Niklas confirms." };
       const files = ctx.branchFiles(dir);
@@ -131,8 +153,8 @@ export const rules = [
   {
     name: "git commit: specs go to master only; a dirty lockfile rides with its package.json",
     test: (c, ctx) => {
-      if (!has(c, cmd(/git\s+(-C\s+\S+\s+)?commit\b/))) return null;
-      const dir = gitCwd(c, ctx.cwd);
+      if (!has(c, GIT_COMMIT)) return null;
+      const dir = gitCwd(c, ctx.cwd, GIT_COMMIT);
       const branch = ctx.branch(dir);
       const committed = committedFiles(c, ctx, dir);
       if (branch && branch !== MAIN_BRANCH) {
@@ -152,7 +174,7 @@ export const rules = [
   {
     name: "git worktree add: a sibling of the repo, from a fresh origin/master",
     test: (c, ctx) => {
-      const m = c.match(cmd(/git\s+(?:-C\s+\S+\s+)?worktree\s+add\b(.*)$/));
+      const m = c.match(GIT_WORKTREE_ADD);
       if (!m) return null;
       const args = words(m[1]);
       let target;
@@ -165,7 +187,7 @@ export const rules = [
         }
       }
       if (!target) return null;
-      const dir = gitCwd(c, ctx.cwd);
+      const dir = gitCwd(c, ctx.cwd, GIT_WORKTREE_ADD);
       const resolved = path.resolve(dir, target);
       if (ctx.isInside(resolved, ctx.mainRoot(dir)))
         return `Worktrees are siblings of the repo (${path.join(path.dirname(ctx.mainRoot(dir)), "ir-<issue>")}), never inside it: ${resolved}.`;
@@ -180,11 +202,11 @@ export const rules = [
   {
     name: "git worktree remove: not while a deck host is linked into it",
     test: (c, ctx) => {
-      const m = c.match(cmd(/git\s+(?:-c\s+\S+\s+)?(?:-C\s+\S+\s+)?worktree\s+remove\b(.*)$/));
+      const m = c.match(GIT_WORKTREE_REMOVE);
       if (!m) return null;
       const target = words(m[1]).find((w) => !w.startsWith("-"));
       if (!target) return null;
-      const resolved = path.resolve(gitCwd(c, ctx.cwd), target);
+      const resolved = path.resolve(gitCwd(c, ctx.cwd, GIT_WORKTREE_REMOVE), target);
       const held = ctx.linkTargets().filter((l) => l.target && ctx.isInside(l.target, resolved));
       if (held.length)
         return `${held.map((l) => l.host).join(" and ")} plugin link points into ${resolved}. Relink to master first — or, if another session may be testing there, leave it and say so.`;

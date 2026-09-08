@@ -6,7 +6,7 @@
 import path from "node:path";
 
 import { addToBoard, gh, ghJson, git, postContext, readInput, setBoardStatus } from "./lib.mjs";
-import { gitCwd, words } from "./rules-bash.mjs";
+import { GIT_WORKTREE_ADD, gitCwd, words } from "./rules-bash.mjs";
 import { issueFromWorktreePath, missingWorkflows, prRefFrom } from "./rules-post.mjs";
 
 const input = await readInput();
@@ -23,7 +23,9 @@ if (typeof command === "string") {
     }
     if (/\bgh\s+pr\s+merge\b/.test(command)) notes.push(...afterMerge(command, cwd));
     if (/\bgh\s+issue\s+create\b/.test(command)) notes.push(...afterIssueCreate(stdout, cwd));
-    if (/\bgit\s+(-C\s+\S+\s+)?worktree\s+add\b/.test(command)) notes.push(...afterWorktreeAdd(command, cwd));
+    // Anchored like the pre-hook's rule, so a command that merely MENTIONS the shape
+    // (a printf, a test payload) does not move a card.
+    if (GIT_WORKTREE_ADD.test(command)) notes.push(...afterWorktreeAdd(command, cwd));
   } catch (e) {
     notes.push(`post-bash hook error: ${e?.stack ?? e}`);
   }
@@ -88,7 +90,7 @@ function afterWorktreeAdd(command, cwd) {
     }
   }
   if (!target) return [];
-  const resolved = path.resolve(gitCwd(command, cwd), target);
+  const resolved = path.resolve(gitCwd(command, cwd, GIT_WORKTREE_ADD), target);
   const issue = issueFromWorktreePath(resolved);
   if (!issue) return [];
   const r = gh(["issue", "view", String(issue), "--json", "number"], cwd);

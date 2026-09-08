@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { checkBash, classifyCheck, gitCwd, words } from "./rules-bash.mjs";
+import { checkBash, classifyCheck, cmd, gitCwd, words } from "./rules-bash.mjs";
 
 const MASTER = "C:\\repo\\master";
 
@@ -38,6 +38,13 @@ describe("helpers", () => {
   it("gitCwd honours -C", () => {
     expect(gitCwd("git -C ../ir-5 status", MASTER)).toBe("C:\\repo\\ir-5");
     expect(gitCwd("git status", MASTER)).toBe(MASTER);
+  });
+  it("gitCwd scopes -C to the segment the rule matched, not to a later chained git", () => {
+    const add = cmd(/git\s+(?:-C\s+\S+\s+)?worktree\s+add\b/);
+    expect(gitCwd("git worktree add ../ir-5 -b ir-5 && git -C ../ir-5 log -1", MASTER, add)).toBe(MASTER);
+    expect(gitCwd("git fetch origin; git -C ../ir-5 worktree add ../ir-6", MASTER, add)).toBe("C:\\repo\\ir-5");
+    const status = cmd(/git\s+(?:-C\s+\S+\s+)?status\b/);
+    expect(gitCwd("git -C ../ir-5 status | cat", MASTER, status)).toBe("C:\\repo\\ir-5");
   });
   it("words respects quotes", () => {
     expect(words(`a "b c" 'd e' f`)).toEqual(["a", "b c", "d e", "f"]);
@@ -243,6 +250,12 @@ describe("git worktree add", () => {
       deny("git worktree add ../ir-1 -b ir-1", ctx({ originFresh: () => ({ fresh: false, local: "a", remote: "b" }) })),
     ).toMatch(/stale/));
   it("passes a fresh sibling", () => passes("git worktree add -b ir-1 ../ir-1 origin/master"));
+  it("is not fooled by a -C on a LATER command in the chain naming the new tree", () => {
+    // The tree does not exist yet, so a context asked for the repo root THERE can only fall back.
+    const c = ctx({ mainRoot: (dir) => (dir === MASTER ? MASTER : dir) });
+    passes("git worktree add ../ir-1 -b ir-1 && git -C ../ir-1 log -1 --oneline", c);
+    passes("git fetch origin && git worktree add ../ir-1 -b ir-1 origin/master && git -C ../ir-1 status", c);
+  });
   it("passes when offline (freshness unknown)", () =>
     passes("git worktree add ../ir-1", ctx({ originFresh: () => undefined })));
 });

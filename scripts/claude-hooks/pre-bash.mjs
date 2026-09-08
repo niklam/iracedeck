@@ -36,7 +36,10 @@ if (typeof command === "string" && command.trim()) {
     branchFiles: memo(branchFiles),
     staged: memo((dir) => lines(git(["diff", "--cached", "--name-only"], dir))),
     modified: memo((dir) => lines(git(["diff", "--name-only"], dir))),
-    mainRoot: memo((dir) => mainRepoRoot(dir) ?? dir),
+    // A dir git cannot answer for (not a repo, or not on disk yet) falls back to the
+    // SESSION's repo root, never to the dir itself — comparing a path against itself
+    // is how a valid `worktree add` got denied as "inside the repo".
+    mainRoot: memo((dir) => mainRepoRoot(dir) ?? mainRepoRoot(cwd) ?? cwd),
     originFresh: memo(originMasterFresh),
     linkTargets: memo(() => linkTargets()),
     packages: memo(() => workspacePackages(mainRepoRoot(cwd) ?? cwd)),
