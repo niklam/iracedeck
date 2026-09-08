@@ -12,6 +12,7 @@ import {
   condHref,
   describeBase,
   describeScheduling,
+  describeSpeakGate,
   describeTrigger,
   describeWeight,
   groupByFamily,
@@ -63,6 +64,12 @@ function hasReferences(c: (typeof callouts)[number]): boolean {
           <dl class="pack-ref-facts">
             <dt>Trigger</dt>
             <dd>{c.event === null ? describeTrigger(c) : <code>{c.event}</code>}</dd>
+            {c.speakGate !== null && (
+              <>
+                <dt>Re-checked at speak time</dt>
+                <dd>{describeSpeakGate(c)}</dd>
+              </>
+            )}
             <dt>Default frame</dt>
             <dd>{c.frame === "none" ? "none — plays unframed" : <code>{c.frame}</code>}</dd>
             <dt>Weight</dt>

@@ -103,6 +103,20 @@ describe("parsePackReference", () => {
     expect(() => parsePackReference(noPlayedBy)).toThrow("recordingScript[0].lines[0].playedBy: expected a string");
   });
 
+  it("keeps a callout's speak-time gate, and refuses one that is neither a string nor null (issue #1138)", () => {
+    const gated = copy();
+    gated.callouts[0].speakGate = "The limiter is still on when the reminder comes to speak.";
+
+    expect(parseCallouts(gated.callouts)[0].speakGate).toBe(
+      "The limiter is still on when the reminder comes to speak.",
+    );
+
+    const drifted = copy();
+    drifted.callouts[0].speakGate = 5;
+
+    expect(() => parsePackReference(drifted)).toThrow("callouts[0].speakGate: expected a string");
+  });
+
   it("refuses a key the type does not declare, at its own path", () => {
     const drifted = copy();
     drifted.callouts[0].extra = "stray";

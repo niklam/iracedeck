@@ -10,6 +10,7 @@ import {
   condHref,
   describeBase,
   describeScheduling,
+  describeSpeakGate,
   describeTrigger,
   describeWeight,
   familyAnchor,
@@ -46,6 +47,7 @@ function callout(overrides: Partial<Callout>): Callout {
     weightBand: "NORMAL",
     queueable: false,
     interrupt: false,
+    speakGate: null,
     base: null,
     comment: null,
     test: null,
@@ -154,6 +156,13 @@ describe("describeTrigger", () => {
   it("shows the bus event, or says the plugin fires it", () => {
     expect(describeTrigger({ event: "flag.green.raised" })).toBe("flag.green.raised");
     expect(describeTrigger({ event: null })).toMatch(/fired by the plugin directly/);
+  });
+});
+
+describe("describeSpeakGate", () => {
+  it("returns the gate's sentence, or null when there is none", () => {
+    expect(describeSpeakGate({ speakGate: "The limiter is still on." })).toBe("The limiter is still on.");
+    expect(describeSpeakGate({ speakGate: null })).toBeNull();
   });
 });
 
