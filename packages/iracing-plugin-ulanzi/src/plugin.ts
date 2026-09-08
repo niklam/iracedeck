@@ -1022,7 +1022,12 @@ function pushVoicePackListIfChanged(): void {
       // renders — and it would ride this run-scoped key into every Property
       // Inspector on every push.
       voices: pack.voices.map(({ id, label }) => ({ id, label })),
-      dir: pack.dir,
+      // Only on a development row (#1143), which is the only row that renders
+      // it — the same rule the `voices` comment above states, for the same
+      // reason: this key rides a run-scoped global into every Property
+      // Inspector and the deck-host mirror on every push, so an absolute path
+      // nothing displays is payload with no reader.
+      ...(pack.provenance === "development" ? { dir: pack.dir } : {}),
       // Where it came from, for the settings window's provenance badge
       // (#1100). Displayed, never enforced.
       provenance: pack.provenance,
