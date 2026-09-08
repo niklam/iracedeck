@@ -23,12 +23,13 @@
  * so, the same as it would for a pack deleted by hand and rescanned.
  *
  * PROVENANCE BADGE. Each row now names where its pack came from: downloaded
- * from iRaceDeck's own catalog, put there by iRaceDeck itself, or installed by
- * hand. Since #1034 stage 3 the plugin ships no audio, so nothing is "built in"
- * any more and that middle badge reads "Installed by iRaceDeck" — the
- * `bundled-seed` provenance behind it is a record written on disk, which an
- * installation carried over from a bundling release can still be holding.
- * This is deliberately INFORMATION, not a verdict — see the `provenance` field
+ * from iRaceDeck's own catalog, put there by iRaceDeck itself, installed by
+ * hand, or — on a repo developer's build only (#1143) — found in the
+ * development voice root. Since #1034 stage 3 the plugin ships no audio, so
+ * nothing is "built in" any more and the second of those reads "Installed by
+ * iRaceDeck" — the `bundled-seed` provenance behind it is a record written on
+ * disk, which an installation carried over from a bundling release can still
+ * be holding. This is deliberately INFORMATION, not a verdict — see the `provenance` field
  * doc on `InstalledVoicePack` in deck-core's `voice-pack-scanner.ts`: "the
  * badge tells a user that a pack came from someone other than us; it is not a
  * trust decision the plugin acts on." A user's own sideloaded pack is a
@@ -42,7 +43,18 @@
  * otherwise-valid pack, and a scanner hiccup on that one field must not hide a
  * voice the user can actually play.
  *
- * THE MANAGED PACK (#1034 stage 3) is the one row with no Remove: iRaceDeck
+ * THE DEVELOPMENT BUILD (#1143) is the row a release build can never show. A
+ * plugin built from a worktree carrying `dev.local.json` scans a development
+ * voice root FIRST, so a pack found there is the one actually playing in the
+ * sim — and the row says so, naming the directory in place of a Remove button.
+ * Both halves earn their place: the badge is what tells a developer who forgot
+ * the mode is on why editing the catalog copy changes nothing they hear, and
+ * the directory is what tells two clones of the repo apart. There is no Remove
+ * because the plugin never deletes from a directory it did not create; that
+ * folder is the packer's staged output inside somebody's checkout, and the way
+ * to stop using it is `pnpm dev:voices off`, not a button here.
+ *
+ * THE MANAGED PACK (#1034 stage 3) is another row with no Remove: iRaceDeck
  * installs the pack it keeps current and refreshes it at launch, so removing it
  * would only be undone at the next start, and the row says so in place of the
  * button. Which pack that is comes from the plugin, as a `managed` flag on the
@@ -86,8 +98,13 @@ const DEFAULT_PACKS_SETTING = "_voicePacks";
  * components deliberately re-declare the shapes they render instead of
  * depending on deck-core's Node-oriented package at runtime (see
  * `key-binding-input.ts` and `binding-status.ts` for the same call).
+ *
+ * Four values since #1143. `development` is unlike the other three: it is never
+ * written to a pack's record on disk, but assigned from the ROOT the plugin
+ * found the pack in — so no folder can claim it, and a release build, which
+ * scans no such root, can never publish it.
  */
-const KNOWN_PROVENANCE = ["catalog", "bundled-seed", "sideload"] as const;
+const KNOWN_PROVENANCE = ["catalog", "bundled-seed", "sideload", "development"] as const;
 type VoicePackProvenance = (typeof KNOWN_PROVENANCE)[number];
 
 /**
@@ -98,11 +115,16 @@ type VoicePackProvenance = (typeof KNOWN_PROVENANCE)[number];
  * on disk that an installation upgraded from a bundling release keeps until its
  * pack is next refreshed, and the label has to stay true of what that record now
  * means — iRaceDeck put the pack there.
+ *
+ * `development` (#1143) names the mechanism rather than an origin, because that
+ * is the fact a developer needs: this build is reading a root a release build
+ * does not have, and what is playing is a checkout rather than an install.
  */
 const PROVENANCE_LABELS: Record<VoicePackProvenance, string> = {
   catalog: "Downloaded",
   "bundled-seed": "Installed by iRaceDeck",
   sideload: "Installed by hand",
+  development: "Development build",
 };
 
 /**
@@ -138,6 +160,16 @@ type VoicePackEntry = {
    * leave it as removable as it was.
    */
   managed?: boolean;
+  /**
+   * The directory the pack was found in, rendered on a development row (#1143)
+   * and on no other.
+   *
+   * Optional, and its absence costs the row nothing but the path: it is one
+   * presentational field on an otherwise-valid pack, the same call the
+   * `provenance` fallback makes. A row that says it is a development build with
+   * no directory to show still says the useful half.
+   */
+  dir?: string;
 };
 type VoicePackProblemEntry = { pack: string; reason: string };
 type VoicePackScan = { packs: VoicePackEntry[]; problems: VoicePackProblemEntry[] };
@@ -183,7 +215,8 @@ function parseScan(raw: string): VoicePackScan {
         // is narrowed the same way and for the same reason — an older plugin's
         // payload omits it, and anything but a literal `true` means "not the
         // pack iRaceDeck keeps current", so it can never withhold a Remove by
-        // accident.
+        // accident. `dir` is spread in only when it is a string, so anything
+        // else leaves the field absent rather than rendering as a path.
         .map((entry): VoicePackEntry => ({
           id: entry.id as string,
           label: entry.label as string,
@@ -191,6 +224,7 @@ function parseScan(raw: string): VoicePackScan {
           voices: entry.voices as VoicePackVoice[],
           provenance: normalizeProvenance(entry.provenance),
           managed: entry.managed === true,
+          ...(typeof entry.dir === "string" ? { dir: entry.dir } : {}),
         })),
       problems: problems.filter((entry): entry is VoicePackProblemEntry => {
         if (!isRecord(entry)) return false;
@@ -295,7 +329,8 @@ export class VoicePackList extends HTMLElement {
       ird-voice-pack-list .ird-vp-version { color: #969696; font-size: 8pt; }
       ird-voice-pack-list .ird-vp-empty { color: #969696; font-size: 9pt; padding: 3px 0; }
       /* Stands where a Remove button would be on a row that offers none — the
-         pack iRaceDeck manages (#1034 stage 3), or a bundled seed (#1100).
+         pack iRaceDeck manages (#1034 stage 3), a bundled seed (#1100), or a
+         development build showing its directory (#1143).
          Muted and unclickable-looking on purpose: a statement, not a control. */
       ird-voice-pack-list .ird-vp-note { flex: none; color: #969696; font-size: 8pt; }
       /* Provenance badge (#1100) — informational, not a warning: colours stay
@@ -312,6 +347,10 @@ export class VoicePackList extends HTMLElement {
       ird-voice-pack-list .ird-vp-badge-catalog { background: #1f3a52; color: #8ec9ff; }
       ird-voice-pack-list .ird-vp-badge-bundled-seed { background: #34343a; color: #c8c8c8; }
       ird-voice-pack-list .ird-vp-badge-sideload { background: #3a331f; color: #e0c07a; }
+      /* #1143 — a fourth calm colour, cool and clearly not one of the other
+         three, so a development row reads as distinct without reading as an
+         alarm. It only ever appears on a developer's own build. */
+      ird-voice-pack-list .ird-vp-badge-development { background: #24303d; color: #a9d6ff; }
       ird-voice-pack-list .ird-vp-remove-button {
         flex: none;
         padding: 2px 8px;
@@ -418,7 +457,10 @@ export class VoicePackList extends HTMLElement {
    * render pre-confirmed.
    *
    * `voices` is excluded because no row renders it; the rule is what the user
-   * can SEE change.
+   * can SEE change. `dir` (#1143) is excluded for a different reason: it is
+   * rendered, but only on a development row, which offers no Remove and so can
+   * never hold an arm — and `provenance`, which is what makes a row that kind
+   * of row, is already here.
    */
   private static identityOf(pack: VoicePackEntry): string {
     return JSON.stringify([pack.id, pack.version, pack.label, pack.provenance, pack.managed === true]);
@@ -482,8 +524,13 @@ export class VoicePackList extends HTMLElement {
    * folder name and a manifest field — on the sideload path, all of it is a
    * file some third party wrote. `provenance` is the one field NOT taken from
    * that file (see `voice-pack-provenance.ts`: a pack cannot declare its own
-   * provenance), so its badge text is one of the three fixed labels above —
+   * provenance), so its badge text is one of the four fixed labels above —
    * never rendered from pack-supplied text.
+   *
+   * A development row's `dir` (#1143) is the one path this list renders, and it
+   * comes from the plugin — the root it scanned plus the folder name — rather
+   * than from anything the pack wrote. `textContent` all the same: the rule
+   * here is per cell, not per field's pedigree.
    */
   private render(scan: VoicePackScan): void {
     if (!this.list) return;
@@ -537,12 +584,42 @@ export class VoicePackList extends HTMLElement {
       version.className = "ird-vp-version";
       version.textContent = entry.version;
 
+      // A pack from the development voice root (#1143): what is playing is a
+      // checkout, not an install, and the row names the directory in place of a
+      // button. No Remove, because the plugin never deletes from a directory it
+      // did not create.
+      //
+      // FIRST, ahead of both rules below. A development row is decided by WHERE
+      // the plugin found the pack — the plugin also clears `managed` for it, so
+      // the two should never both be true, but the page's own rule stands on its
+      // own feet rather than on that: whatever else a row claims, iRaceDeck does
+      // not keep a folder in somebody's checkout current, and the note has to
+      // name the directory that is actually playing.
+      if (entry.provenance === "development") {
+        const note = document.createElement("span");
+
+        note.className = "ird-vp-note";
+        // The path is long enough to be truncated by the row's layout, so it is
+        // repeated as a title — the one place a full path is always readable.
+        note.textContent = entry.dir ?? "From the development voice root";
+
+        if (entry.dir !== undefined) note.title = entry.dir;
+
+        row.appendChild(label);
+        row.appendChild(badge);
+        row.appendChild(version);
+        row.appendChild(note);
+        this.list.appendChild(row);
+
+        continue;
+      }
+
       // The pack iRaceDeck manages (#1034 stage 3): the launch step installs
       // and refreshes it, so a Remove would only be undone at the next start.
       // The row says so in place of the button. Keyed by the plugin-published
       // flag, never by provenance — the flag is the plugin's statement.
       //
-      // FIRST, ahead of the bundled-seed rule below: this is the case with a
+      // Ahead of the bundled-seed rule below: this is the case with a
       // live reason, and the two would otherwise both be true of one row on an
       // installation upgraded from a bundling release, whose note would then
       // say the audio ships with the plugin when it no longer does.

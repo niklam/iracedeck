@@ -629,6 +629,66 @@ describe("ird-voice-pack-list", () => {
     });
   });
 
+  // #1143. A repo developer's plugin scans a development root first, and a pack
+  // found there is the one playing in the sim. The row has to SAY so — a
+  // developer who forgot the mode is on otherwise reads a normal-looking list
+  // and wonders why an edit to the catalog copy changes nothing.
+  describe("a development build is listed with its directory and offers no Remove (#1143)", () => {
+    const dev = {
+      id: "default",
+      label: "iRaceDeck",
+      version: "1.2.0",
+      voices: [{ id: "default", label: "Default" }],
+      provenance: "development" as const,
+      dir: "C:\\repo\\packages\\audio-assets\\dist\\voice-packs\\default",
+      managed: false,
+    };
+
+    it("badges the row Development build", () => {
+      publish(scan([dev]));
+
+      const badge = el.querySelector(".ird-vp-badge");
+
+      expect(badge?.textContent).toBe("Development build");
+      expect(badge?.className).toContain("ird-vp-badge-development");
+    });
+
+    // The directory is the useful half: it names the worktree whose staged
+    // output is playing, which is what tells two clones apart.
+    it("shows the pack's directory in place of a control", () => {
+      publish(scan([dev]));
+
+      expect(el.querySelector(".ird-vp-note")?.textContent).toBe(dev.dir);
+    });
+
+    // The plugin never deletes from a directory it did not create.
+    it("offers no Remove button", () => {
+      publish(scan([dev]));
+
+      expect(el.querySelector(".ird-vp-remove-button")).toBeNull();
+    });
+
+    // Where the pack was FOUND decides the row, ahead of the managed flag. The
+    // plugin also clears `managed` for a dev-root pack, so this is belt and
+    // braces — but the note has to name the directory that is actually playing,
+    // not claim iRaceDeck keeps a hand-built folder current.
+    it("keeps the development note even if a plugin flagged the row managed", () => {
+      publish(scan([{ ...dev, managed: true }]));
+
+      expect(el.querySelector(".ird-vp-note")?.textContent).toBe(dev.dir);
+    });
+
+    // `dir` is one presentational field on an otherwise-valid row, so its
+    // absence must not cost the row its badge or its exemption — the same call
+    // the provenance fallback makes.
+    it("says where a development pack comes from when the row carries no dir", () => {
+      publish(scan([{ ...dev, dir: undefined }]));
+
+      expect(el.querySelector(".ird-vp-note")?.textContent).toBe("From the development voice root");
+      expect(el.querySelector(".ird-vp-remove-button")).toBeNull();
+    });
+  });
+
   it("issues no extra settings read in response to a DOM event", () => {
     // A regression pin mirroring ird-enable-feature's: this component only
     // ever learns about settings through the useGlobalSettings push
