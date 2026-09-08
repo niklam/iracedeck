@@ -24,6 +24,36 @@
       "inputs": ["voice/**", "src/build/**", "src/presets.mjs"],
       "outputs": [".cache/**"]
     },
+    "@iracedeck/iracing-plugin-mirabox#build": {
+      "dependsOn": ["^build"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/dev.local.json",
+        "$TURBO_ROOT$/feature-flags.local.json",
+        "$TURBO_ROOT$/scripts/lib/dev-local.mjs"
+      ],
+      "outputs": ["com.iracedeck.sd.*.sdPlugin/**"]
+    },
+    "@iracedeck/iracing-plugin-stream-deck#build": {
+      "dependsOn": ["^build"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/dev.local.json",
+        "$TURBO_ROOT$/feature-flags.local.json",
+        "$TURBO_ROOT$/scripts/lib/dev-local.mjs"
+      ],
+      "outputs": ["com.iracedeck.sd.*.sdPlugin/**"]
+    },
+    "@iracedeck/iracing-plugin-ulanzi#build": {
+      "dependsOn": ["^build"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/dev.local.json",
+        "$TURBO_ROOT$/feature-flags.local.json",
+        "$TURBO_ROOT$/scripts/lib/dev-local.mjs"
+      ],
+      "outputs": ["com.ulanzi.*.ulanziPlugin/**"]
+    },
     "@iracedeck/website#typecheck": {
       "dependsOn": ["^build"],
       "inputs": [
