@@ -4,6 +4,8 @@ import { voiceDisplayLabels } from "./voice-labels.js";
 import { scanVoicePacks, VOICE_SCRIPT_MAX_BYTES, type VoicePackFileSystem } from "./voice-pack-scanner.js";
 
 const ROOT = "/packs";
+/** The development root (#1143) — deliberately no shared path segment with {@link ROOT}. */
+const DEV_ROOT = "/dev/voice-packs";
 
 /** A manifest that exists but cannot be opened — locked, EISDIR, permission denied. */
 const UNREADABLE = Symbol("unreadable");
@@ -19,14 +21,35 @@ type FakePack = {
   files?: Record<string, string | typeof UNREADABLE>;
 };
 
-/** Last path segment, normalised across separators. */
-function folderOf(dir: string): string {
-  return dir.replace(/\\/g, "/").replace(/\/+$/, "").split("/").at(-1) ?? "";
+/** POSIX form of a path the scanner built with `join`, without a trailing slash. */
+function posix(path: string): string {
+  return path.replace(/\\/g, "/").replace(/\/+$/, "");
 }
 
-function fakeFs(tree: Record<string, FakePack>): VoicePackFileSystem {
+/**
+ * A fake disk holding one pack tree PER ROOT (#1143): `listDirectories` answers
+ * for the root it is asked about, and a file is resolved by the root its path
+ * starts under, then by pack folder, then relative to that folder.
+ */
+function fakeFsAt(roots: Record<string, Record<string, FakePack>>): VoicePackFileSystem {
+  const locate = (path: string): { tree: Record<string, FakePack>; parts: string[] } | undefined => {
+    const normalised = posix(path);
+
+    for (const [root, tree] of Object.entries(roots)) {
+      if (normalised === root) return { tree, parts: [] };
+
+      if (normalised.startsWith(`${root}/`)) return { tree, parts: normalised.slice(root.length + 1).split("/") };
+    }
+
+    return undefined;
+  };
+
   return {
-    listDirectories: (dir) => (folderOf(dir) === "packs" ? Object.keys(tree) : []),
+    listDirectories: (dir) => {
+      const at = locate(dir);
+
+      return at !== undefined && at.parts.length === 0 ? Object.keys(at.tree) : [];
+    },
     readTextFile: (file) => {
       // Resolved RELATIVE TO THE PACK FOLDER, never by the file's parent
       // directory alone. The scanner reads three files per pack now — the
@@ -34,10 +57,9 @@ function fakeFs(tree: Record<string, FakePack>): VoicePackFileSystem {
       // under `voice/<id>/` — and keying on the parent would answer a script
       // read with the manifest wherever a voice id equals its pack id, which
       // is the common case. A test would then pass against the wrong document.
-      const parts = file.replace(/\\/g, "/").split("/");
-      const rootAt = parts.indexOf("packs");
-      const entry = tree[parts[rootAt + 1] ?? ""];
-      const relative = parts.slice(rootAt + 2).join("/");
+      const at = locate(file);
+      const entry = at?.tree[at.parts[0] ?? ""];
+      const relative = at?.parts.slice(1).join("/") ?? "";
       const wanted =
         relative === "voice-pack.json"
           ? entry?.manifest
@@ -51,8 +73,17 @@ function fakeFs(tree: Record<string, FakePack>): VoicePackFileSystem {
 
       return { ok: true, text: typeof wanted === "string" ? wanted : JSON.stringify(wanted) };
     },
-    listMp3Files: (packDir) => tree[folderOf(packDir)]?.clips ?? [],
+    listMp3Files: (packDir) => {
+      const at = locate(packDir);
+
+      return at?.tree[at.parts[0] ?? ""]?.clips ?? [];
+    },
   };
+}
+
+/** The single-root fake every pre-#1143 test uses: `tree` sits under {@link ROOT}. */
+function fakeFs(tree: Record<string, FakePack>): VoicePackFileSystem {
+  return fakeFsAt({ [ROOT]: tree });
 }
 
 const luca = { schema: 1, id: "luca", label: "Luca", version: "1.2.0", voices: [{ id: "luca", label: "Luca" }] };
@@ -953,5 +984,227 @@ describe("scanVoicePacks reads a voice's callouts.json beside its clips (#1064)"
     expect(result.problems).toEqual([]);
     expect(result.packs).toHaveLength(1);
     expect(result.packs[0]).toMatchObject({ id: "default", voices: [], clips: [], provenance: "bundled-seed" });
+  });
+});
+
+describe("development root (#1143)", () => {
+  const dflt = {
+    schema: 1,
+    id: "default",
+    label: "Default",
+    version: "3.3.0",
+    voices: [{ id: "default", label: "Default" }],
+  };
+  const catalogRecord = {
+    schema: 1,
+    source: "catalog",
+    id: "default",
+    version: "3.3.0",
+    sha256: "c".repeat(64),
+    installedAt: "2026-09-08T00:00:00.000Z",
+    url: "https://example.com/default-3.3.0.zip",
+  };
+  const clips = ["voice/default/flags/blue-01.mp3"];
+
+  it("lists a pack found under devRoot with provenance development, whatever its record says", () => {
+    // The dev copy carries a catalog `.install.json` naming itself — the
+    // packer's staged output, or a folder copied from AppData. Provenance is
+    // decided by WHERE the pack was found, never read from a record there.
+    const result = scanVoicePacks({
+      root: ROOT,
+      devRoot: DEV_ROOT,
+      reservedVoices: [],
+      fs: fakeFsAt({ [DEV_ROOT]: { default: { manifest: dflt, install: catalogRecord, clips } }, [ROOT]: {} }),
+    });
+
+    expect(result.problems).toEqual([]);
+    expect(result.packs).toHaveLength(1);
+
+    const pack = result.packs.find((p) => p.id === "default");
+
+    expect(pack?.provenance).toBe("development");
+    expect(pack?.voices.map((v) => v.id)).toEqual(["default"]);
+    expect(pack?.dir.replace(/\\/g, "/")).toBe(`${DEV_ROOT}/default`);
+  });
+
+  it("shadows the same pack id under root with one pack-level problem", () => {
+    const result = scanVoicePacks({
+      root: ROOT,
+      devRoot: DEV_ROOT,
+      reservedVoices: [],
+      priorityPacks: ["default"],
+      fs: fakeFsAt({
+        [DEV_ROOT]: { default: { manifest: dflt, clips } },
+        [ROOT]: { default: { manifest: dflt, install: catalogRecord, clips } },
+      }),
+    });
+
+    expect(result.packs.filter((p) => p.id === "default")).toHaveLength(1);
+    expect(result.packs[0]?.provenance).toBe("development");
+    expect(result.packs[0]?.dir.replace(/\\/g, "/")).toBe(`${DEV_ROOT}/default`);
+    // The PACK is shadowed, not each of its voices in turn: one id, one row,
+    // one reason. A per-voice reason here would read as nonsense — "pack
+    // default already provides it" about the pack called default — and said
+    // nothing about the row the user is looking at.
+    expect(result.problems).toEqual([
+      {
+        pack: "default",
+        reason: 'pack "default" is provided by the development build; the copy under the packs root is ignored',
+      },
+    ]);
+  });
+
+  it("shadows the whole root pack, including voices the dev copy does not provide", () => {
+    // The real regression: the root copy survived by declaring a voice the dev
+    // copy had not claimed, giving TWO `packs` rows with the same id — and
+    // every consumer of this list is keyed by id, so which of them a lookup
+    // found came down to array order.
+    const devA = { schema: 1, id: "default", label: "Default", version: "3.3.0", voices: [{ id: "a", label: "A" }] };
+    const rootAB = {
+      schema: 1,
+      id: "default",
+      label: "Default",
+      version: "3.3.0",
+      voices: [
+        { id: "a", label: "A" },
+        { id: "b", label: "B" },
+      ],
+    };
+    const result = scanVoicePacks({
+      root: ROOT,
+      devRoot: DEV_ROOT,
+      reservedVoices: [],
+      priorityPacks: ["default"],
+      fs: fakeFsAt({
+        [DEV_ROOT]: { default: { manifest: devA, clips: ["voice/a/flags/blue-01.mp3"] } },
+        [ROOT]: {
+          default: {
+            manifest: rootAB,
+            install: catalogRecord,
+            clips: ["voice/a/flags/blue-01.mp3", "voice/b/flags/blue-01.mp3"],
+          },
+        },
+      }),
+    });
+
+    expect(result.packs).toHaveLength(1);
+    expect(result.packs[0]?.provenance).toBe("development");
+    expect(result.packs[0]?.voices.map((v) => v.id)).toEqual(["a"]);
+    expect(result.problems).toEqual([
+      {
+        pack: "default",
+        reason: 'pack "default" is provided by the development build; the copy under the packs root is ignored',
+      },
+    ]);
+  });
+
+  it("keeps the per-voice reason for a collision between DIFFERENT pack ids", () => {
+    // The pack-level rule is about one id existing under both roots. A genuine
+    // voice collision between two different packs still names the voice.
+    const mine = { schema: 1, id: "mine", label: "Mine", version: "1.0.0", voices: [{ id: "default", label: "Mine" }] };
+    const result = scanVoicePacks({
+      root: ROOT,
+      devRoot: DEV_ROOT,
+      reservedVoices: [],
+      fs: fakeFsAt({
+        [DEV_ROOT]: { default: { manifest: dflt, clips } },
+        [ROOT]: { mine: { manifest: mine, clips } },
+      }),
+    });
+
+    expect(result.packs.map((p) => p.id)).toEqual(["default"]);
+    expect(result.problems).toEqual([
+      { pack: "mine", reason: 'voice "default" is already provided by the development build of pack "default"' },
+    ]);
+  });
+
+  it("does not shadow a root pack whose id only a SKIPPED dev folder carries", () => {
+    // The dev folder is listed by the OS but was never listed as a pack — no
+    // manifest. Shadowing on folder name alone would silence the AppData copy
+    // in favour of nothing at all.
+    const result = scanVoicePacks({
+      root: ROOT,
+      devRoot: DEV_ROOT,
+      reservedVoices: [],
+      fs: fakeFsAt({
+        [DEV_ROOT]: { default: { clips } },
+        [ROOT]: { default: { manifest: dflt, clips } },
+      }),
+    });
+
+    expect(result.packs.map((p) => [p.id, p.provenance])).toEqual([["default", "sideload"]]);
+    expect(result.problems.map((p) => p.reason)).toEqual(["no voice-pack.json"]);
+  });
+
+  it("matches the shadowed folder name case-insensitively", () => {
+    const result = scanVoicePacks({
+      root: ROOT,
+      devRoot: DEV_ROOT,
+      reservedVoices: [],
+      fs: fakeFsAt({
+        [DEV_ROOT]: { default: { manifest: dflt, clips } },
+        [ROOT]: { Default: { manifest: dflt, install: catalogRecord, clips } },
+      }),
+    });
+
+    expect(result.packs).toHaveLength(1);
+    expect(result.problems).toEqual([
+      {
+        pack: "Default",
+        reason: 'pack "Default" is provided by the development build; the copy under the packs root is ignored',
+      },
+    ]);
+  });
+
+  it("falls back to the root pack when the dev copy is unusable", () => {
+    // A staged folder with no manifest yet — the packer was interrupted, or
+    // the folder is empty. It claims nothing, so the AppData pack is heard.
+    const result = scanVoicePacks({
+      root: ROOT,
+      devRoot: DEV_ROOT,
+      reservedVoices: [],
+      fs: fakeFsAt({
+        [DEV_ROOT]: { default: { clips } },
+        [ROOT]: { default: { manifest: dflt, clips } },
+      }),
+    });
+
+    expect(result.packs.map((p) => [p.id, p.provenance])).toEqual([["default", "sideload"]]);
+    expect(result.problems.map((p) => p.reason)).toContain("no voice-pack.json");
+  });
+
+  it("keeps priorityPacks order within each root", () => {
+    // Under the dev root a sideloaded-looking `aaa` sorts before `default` and
+    // declares the same voice; `priorityPacks` still decides, root by root.
+    const aaa = { schema: 1, id: "aaa", label: "Aaa", version: "1.0.0", voices: [{ id: "default", label: "Mine" }] };
+    const result = scanVoicePacks({
+      root: ROOT,
+      devRoot: DEV_ROOT,
+      reservedVoices: [],
+      priorityPacks: ["default"],
+      fs: fakeFsAt({
+        [DEV_ROOT]: { aaa: { manifest: aaa, clips }, default: { manifest: dflt, clips } },
+        [ROOT]: {},
+      }),
+    });
+
+    expect(result.packs.map((p) => [p.id, p.provenance])).toEqual([["default", "development"]]);
+    expect(result.problems).toEqual([
+      { pack: "aaa", reason: 'voice "default" is already provided by the development build of pack "default"' },
+    ]);
+  });
+
+  it("behaves exactly as before when devRoot is absent", () => {
+    // Same disk, no dev root: the AppData pack is listed with its record's
+    // provenance, and nothing under the development directory is even listed.
+    const fs = fakeFsAt({
+      [DEV_ROOT]: { default: { manifest: dflt, clips } },
+      [ROOT]: { default: { manifest: dflt, install: catalogRecord, clips } },
+    });
+    const result = scanVoicePacks({ root: ROOT, reservedVoices: [], priorityPacks: ["default"], fs });
+
+    expect(result.problems).toEqual([]);
+    expect(result.packs.map((p) => [p.id, p.provenance])).toEqual([["default", "catalog"]]);
+    expect(result.packs[0]?.dir.replace(/\\/g, "/")).toBe(`${ROOT}/default`);
   });
 });

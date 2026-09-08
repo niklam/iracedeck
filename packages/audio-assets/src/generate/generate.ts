@@ -106,11 +106,16 @@ const CACHE_ROOT = path.join(packageRoot, ".cache");
 
 /**
  * Drop the processed mp3 for `relPath` from every filter-hash subdir under
- * `.cache/`. The build helper's mtime check (cache.mtime > source.mtime)
- * is correct in the normal case, but breaks under git checkout / `cp -p`
- * which can preserve an older source mtime even though content changed.
- * Explicit deletion when we know the source is fresh removes that hazard
- * entirely. No-op when `.cache/` doesn't exist yet (clean tree).
+ * `.cache/`. No-op when `.cache/` doesn't exist yet (clean tree).
+ *
+ * This used to be the ONLY thing standing between a re-cut clip and a stale
+ * processed copy: the build helper compared mtimes, which a git checkout or a
+ * `cp -p` defeats by preserving an older source mtime on changed content.
+ * Since #1143 the build keys on the source BYTES, so a re-cut clip invalidates
+ * itself and this is belt-and-braces — kept because deleting what we know is
+ * dead costs nothing. It leaves the entry's `.src.sha256` sidecar behind; with
+ * the clip gone the cache reads as stale anyway, and the next build overwrites
+ * both.
  */
 function invalidateProcessedCache(relPath: string): void {
   if (!existsSync(CACHE_ROOT)) return;

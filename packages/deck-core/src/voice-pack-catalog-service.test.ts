@@ -224,6 +224,72 @@ describe("createVoicePackCatalogService", () => {
         expect(status).toMatchObject({ packs: [{ id: "default", verdict: "install" }] });
       });
     });
+
+    describe("a pack the development root provides (#1143)", () => {
+      // Same situation as a bundled pack, one root along: the voice is on this
+      // machine and plays, and the scanner shadows whatever the install would
+      // put in the packs folder. Pressing Install would download megabytes the
+      // next scan ignores.
+      it("is reported installed with nothing in the packs folder", async () => {
+        const status = await service({
+          fetchImpl: catalogResponse([pack("default")]),
+          getInstalledSha: () => undefined,
+          isProvidedByDevRoot: (id) => id === "default",
+        }).get();
+
+        expect(status).toMatchObject({ state: "ok", packs: [{ id: "default", verdict: "installed" }] });
+      });
+
+      it("is reported installed whatever hash the packs folder holds", async () => {
+        const status = await service({
+          fetchImpl: catalogResponse([pack("default", { sha256: SHA_A })]),
+          getInstalledSha: () => SHA_B,
+          isProvidedByDevRoot: (id) => id === "default",
+        }).get();
+
+        expect(status).toMatchObject({ packs: [{ id: "default", verdict: "installed" }] });
+      });
+
+      it("leaves every other pack alone", async () => {
+        const status = await service({
+          fetchImpl: catalogResponse([pack("default", { sha256: SHA_A }), pack("luca", { sha256: SHA_A })]),
+          getInstalledSha: (id) => (id === "luca" ? SHA_B : undefined),
+          isProvidedByDevRoot: (id) => id === "default",
+        }).get();
+
+        expect(status).toMatchObject({
+          packs: [
+            { id: "default", verdict: "installed" },
+            { id: "luca", verdict: "update" },
+          ],
+        });
+      });
+
+      it("is read live, like getInstalledSha — an emptied dev root resumes the offer", async () => {
+        let provided = true;
+        const svc = service({
+          fetchImpl: catalogResponse([pack("default")]),
+          getInstalledSha: () => undefined,
+          isProvidedByDevRoot: () => provided,
+          successTtlMs: 0,
+        });
+
+        expect(await svc.get()).toMatchObject({ packs: [{ verdict: "installed" }] });
+
+        provided = false;
+
+        expect(await svc.get()).toMatchObject({ packs: [{ verdict: "install" }] });
+      });
+
+      it("changes nothing when the dep is absent — every release build", async () => {
+        const status = await service({
+          fetchImpl: catalogResponse([pack("default")]),
+          getInstalledSha: () => undefined,
+        }).get();
+
+        expect(status).toMatchObject({ packs: [{ id: "default", verdict: "install" }] });
+      });
+    });
   });
 
   it("requests the published catalog url by default", async () => {

@@ -88,6 +88,10 @@ pnpm test
 # Lint and format
 pnpm lint:fix
 pnpm format:fix
+
+# Hear a Race Engineer voice edit in the sim: point this worktree's plugins at
+# the packer's staged voice packs (and `off` to go back to the real download path)
+pnpm dev:voices on
 ```
 
 ## Project Structure

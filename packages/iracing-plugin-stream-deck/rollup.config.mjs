@@ -20,6 +20,7 @@ import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync } from "
 import path from "node:path";
 import process from "node:process";
 import url from "node:url";
+import { DEV_LOCAL_FILE, readDevLocal } from "../../scripts/lib/dev-local.mjs";
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 const rootPackageJson = JSON.parse(readFileSync(path.resolve(__dirname, "../../package.json"), "utf-8"));
@@ -104,6 +105,13 @@ if (existsSync(localFeaturesPath)) {
   }
   platformFeatures = deepMergeObjects(committedFeatures, known);
 }
+
+// A development voice root (#1143): the gitignored dev.local.json at the repo
+// root, resolved to an absolute path and carried in bin/config.json. Absent in
+// every release build, because the file is not in git.
+const repoRoot = path.resolve(__dirname, "../..");
+const devLocalPath = path.join(repoRoot, DEV_LOCAL_FILE);
+const devLocal = readDevLocal(repoRoot);
 
 /**
  * Rollup plugin to import SVG files as strings.
@@ -283,6 +291,7 @@ const config = {
         this.addWatchFile(`${sdPlugin}/manifest.json`);
         this.addWatchFile(platformFeaturesPath);
         if (existsSync(localFeaturesPath)) this.addWatchFile(localFeaturesPath);
+        if (existsSync(devLocalPath)) this.addWatchFile(devLocalPath);
         // Recursively watch SVG files in a directory
         const watchSvgsRecursive = (dir) => {
           try {
@@ -349,6 +358,7 @@ const config = {
           version: rootPackageJson.version,
           platform: "stream-deck",
           featureFlags: platformFeatures,
+          ...(devLocal.voicePacksRoot === undefined ? {} : { devVoicePacksRoot: devLocal.voicePacksRoot }),
         };
         this.emitFile({ fileName: "config.json", source: JSON.stringify(config, null, 2), type: "asset" });
       },

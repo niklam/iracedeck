@@ -50,6 +50,9 @@ desktop.ini
 # Platform feature flag local override (dev-only, merges over platform-features.json at build time)
 feature-flags.local.json
 
+# Development voice root marker (dev-only, read by the plugin rollup configs into bin/config.json, #1143)
+dev.local.json
+
 # Debug
 *.pdb
 

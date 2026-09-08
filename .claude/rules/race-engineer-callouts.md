@@ -245,7 +245,21 @@ pnpm format:fix
 
 Manual: trigger from the scenario harness (no iRacing required), then in iRacing for the real-telemetry path. Toggle the PI checkbox mid-session to confirm the live-read path silences future fires without cutting an in-flight clip.
 
-A pack author auditions the same way, and there is deliberately no in-plugin tooling for it (#1066: authors are assumed to have cloned the repo; the per-callout Play button was dropped). The harness lists a sideloaded pack's voices beside `default` when `IRACEDECK_VOICE_PACKS_PATH` names the packs folder, and `pnpm lint:pack <packDir>` (repo root, after `pnpm build`) says loudly what the plugin would only skip quietly — the one place a pack is told anything, since skip-by-default is the design. Send authors to the tutorial (`/docs/voice-packs/first-pack/`), which walks both, rather than restating them.
+### Auditioning a voice change in the sim (#1143)
+
+Hearing a changed clip or wording in iRacing — as against in the harness — needs the plugin to play a tree you can edit, and since #1034 stage 3 the one it plays is the managed copy in `%LOCALAPPDATA%\iRaceDeck\Race Engineer\Voices\default`, which the launch step keeps matching the published catalog. So point the build at the packer's staged output once per worktree, and then loop:
+
+```bash
+pnpm dev:voices on     # once per worktree: writes the gitignored dev.local.json, rebuilds the three plugins, relinks the hosts linked to THIS worktree
+# edit clips, or configs/<voice-id>.voice.json
+pnpm --filter @iracedeck/audio-assets pack:voice default --no-catalog
+# press "Rescan voices" in iRaceDeck Settings, then drive
+pnpm dev:voices off    # before testing the real download path
+```
+
+What plays is the bytes the packer stages — the radio-filtered clips a user would download — never the raw source tree, and the plugin never installs over what that root provides, so `default` stops being overwritten under you. Two things say the mode is on: `Voice packs: development root active`, logged once per start, and the Installed Voices row, which badges *Development build* and names the directory instead of offering Remove. `--no-catalog` is what keeps the committed `catalog/default.json` — the release contract — out of the loop; the flagless `pack:voice` line in the checklist above is still what a change destined for a release needs, and it belongs in the same commit as the clips. Turn the mode off before testing the real download path: `switch-test-env` and the `relink:*` scripts leave the marker alone by design, so nothing else will. Full mechanics, including the guard that keeps it build-time only, in `@.claude/rules/platform-feature-flags.md`.
+
+A pack author auditions through the harness above rather than through the development root — a third-party pack sits in the packs folder under its own id, where nothing overwrites it, so the root buys them nothing — and there is deliberately no in-plugin tooling for it (#1066: authors are assumed to have cloned the repo; the per-callout Play button was dropped). The harness lists a sideloaded pack's voices beside `default` when `IRACEDECK_VOICE_PACKS_PATH` names the packs folder, and `pnpm lint:pack <packDir>` (repo root, after `pnpm build`) says loudly what the plugin would only skip quietly — the one place a pack is told anything, since skip-by-default is the design. Send authors to the tutorial (`/docs/voice-packs/first-pack/`), which walks both, rather than restating them.
 
 ## Reference implementations
 

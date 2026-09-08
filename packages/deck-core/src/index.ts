@@ -578,6 +578,7 @@ export {
   isPluginConfigInitialized,
   getFeatureFlag,
   getPlatformFeatures,
+  getDevVoicePacksRoot,
   _resetPluginConfig,
   type PluginConfig,
   type PlatformFeatureFlags,

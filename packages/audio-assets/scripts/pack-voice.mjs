@@ -14,10 +14,18 @@
  *      kept there so a maintainer can inspect it or sideload it by hand;
  *   3. zips that stage, deterministically, to `dist/voice-packs/<id>-<version>.zip`;
  *   4. writes `catalog/<id>.json` with the archive's byte size and sha-256, the
- *      entry the website build assembles into `voice-catalog.json`.
+ *      entry the website build assembles into `voice-catalog.json` — unless
+ *      `--no-catalog` is given (#1143), which stops at step 3.
  *
- * Usage: pnpm --filter @iracedeck/audio-assets pack:voice [<pack-id> ...]
- *        node packages/audio-assets/scripts/pack-voice.mjs [<pack-id> ...]
+ * Usage: pnpm --filter @iracedeck/audio-assets pack:voice [<pack-id> ...] [--no-catalog]
+ *        node packages/audio-assets/scripts/pack-voice.mjs [<pack-id> ...] [--no-catalog]
+ *
+ * `--no-catalog` is the development loop's flag: it stages and zips without
+ * touching `catalog/<id>.json`. That entry is the release contract — its
+ * `sha256` is what the installer compares against an installed pack — so a run
+ * whose only purpose is a staged tree to point a development voice root at
+ * must not rewrite it. It is per run, not a mode: the release workflow keeps
+ * calling this script without it.
  *
  * Only the catalog entry is committed. The archive is a GitHub release asset,
  * attached to the release the entry's `url` names by
@@ -414,7 +422,9 @@ export function countSourceClips(dir) {
  *
  * Resolves to the archive, stage and catalog paths, the catalog entry, and two
  * counts: `clips` (mp3s, across every voice) and `scripts` (voices that ship a
- * callout script). The script is never counted as a clip.
+ * callout script). The script is never counted as a clip. With `writeCatalog`
+ * false the entry is still computed and returned — only the FILE is withheld,
+ * and `catalogPath` is then `undefined`.
  *
  * @param {object} options
  * @param {VoicePackDefinition} options.pack
@@ -423,6 +433,7 @@ export function countSourceClips(dir) {
  * @param {string} [options.outDir] — stage directory and archive land here
  * @param {string} [options.catalogDir] — `<pack-id>.json` lands here
  * @param {string} [options.cacheDir] — processed-clip cache root; see above
+ * @param {boolean} [options.writeCatalog] — false leaves `catalogDir` untouched
  * @param {(message: string) => void} [options.logger]
  */
 export async function packVoice({
@@ -432,6 +443,7 @@ export async function packVoice({
   outDir = OUTPUT_DIR,
   catalogDir = CATALOG_DIR,
   cacheDir,
+  writeCatalog = true,
   logger,
 } = {}) {
   if (!pack) throw new Error("packVoice: pack is required");
@@ -533,11 +545,46 @@ export async function packVoice({
     bytes: archive.byteLength,
     sha256: createHash("sha256").update(archive).digest("hex"),
   });
-  const catalogPath = path.join(catalogDir, `${pack.id}.json`);
-  mkdirSync(catalogDir, { recursive: true });
-  writeFileSync(catalogPath, `${JSON.stringify(entry, null, 2)}\n`);
+
+  // The entry is built either way — a caller that wants it can have it without
+  // a second pack — but with `writeCatalog` false nothing under `catalogDir`
+  // is created, opened or removed, not even the directory itself. The path is
+  // the flag's one witness: `undefined` is what a caller reads, and what the
+  // summary line prints as "not written".
+  const catalogPath = writeCatalog ? path.join(catalogDir, `${pack.id}.json`) : undefined;
+
+  if (catalogPath !== undefined) {
+    mkdirSync(catalogDir, { recursive: true });
+    writeFileSync(catalogPath, `${JSON.stringify(entry, null, 2)}\n`);
+  }
 
   return { archivePath, stageDir, catalogPath, entry, clips, scripts };
+}
+
+/**
+ * The command line: bare words are pack ids, `--no-catalog` is the only option.
+ *
+ * An unknown option is refused rather than taken for a pack id, because both
+ * ways of being lenient are worse than a message. Treating `--nocatalog` as an
+ * id would fail with "unknown pack" — a message about the wrong thing —
+ * and ignoring it would write the very committed entry the author typed the
+ * flag to spare, silently.
+ *
+ * @param {readonly string[]} argv — `process.argv.slice(2)`
+ * @returns {{ ids: string[]; writeCatalog: boolean }}
+ */
+export function parseArgs(argv) {
+  /** @type {string[]} */
+  const ids = [];
+  let writeCatalog = true;
+
+  for (const arg of argv) {
+    if (arg === "--no-catalog") writeCatalog = false;
+    else if (arg.startsWith("--")) throw new Error(`unknown option "${arg}" — the only option is --no-catalog`);
+    else ids.push(arg);
+  }
+
+  return { ids, writeCatalog };
 }
 
 function selectPacks(requestedIds) {
@@ -553,8 +600,10 @@ function selectPacks(requestedIds) {
 }
 
 async function main() {
-  for (const pack of selectPacks(process.argv.slice(2))) {
-    const result = await packVoice({ pack, logger: (message) => console.log(message) });
+  const { ids, writeCatalog } = parseArgs(process.argv.slice(2));
+
+  for (const pack of selectPacks(ids)) {
+    const result = await packVoice({ pack, writeCatalog, logger: (message) => console.log(message) });
 
     console.log(
       `Packed ${pack.id}@${pack.version}: ${result.clips} clips, ${result.scripts} callout ` +
@@ -562,8 +611,10 @@ async function main() {
     );
     console.log(`  sha256   ${result.entry.sha256}`);
     console.log(`  archive  ${result.archivePath}`);
-    console.log(`  catalog  ${result.catalogPath}`);
-    console.log(`  release  ${releaseTag(pack)} (asset ${archiveFileName(pack)}, published by scripts/publish-voice-packs.mjs)`);
+    console.log(`  catalog  ${result.catalogPath ?? "not written (--no-catalog)"}`);
+    console.log(
+      `  release  ${releaseTag(pack)} (asset ${archiveFileName(pack)}, published by scripts/publish-voice-packs.mjs)`,
+    );
   }
 }
 

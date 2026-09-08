@@ -84,13 +84,28 @@ export type InstalledVoicePack = {
   provenance: VoicePackProvenanceKind;
 };
 
-/** {@link InstalledVoicePack.provenance}. */
-export type VoicePackProvenanceKind = VoicePackSource | "sideload";
+/**
+ * {@link InstalledVoicePack.provenance}.
+ *
+ * `development` (#1143) is assigned from where the pack was found — under the
+ * scan's `devRoot` — and never read from a record: no folder can claim it, and
+ * the on-disk source enum in `voice-pack-provenance.ts` deliberately has no
+ * such value to write.
+ */
+export type VoicePackProvenanceKind = VoicePackSource | "sideload" | "development";
 
 export type VoicePackProblem = { pack: string; reason: string };
 
 export interface ScanVoicePacksOptions {
   root: string;
+  /**
+   * A development voice root (#1143), scanned BEFORE `root`. Every pack found
+   * here is `development` provenance — decided by where it was found, so no
+   * folder can claim it — and claims its voice ids ahead of every pack under
+   * `root`: the `priorityPacks` idea generalised from one pack first to one
+   * root first. `undefined` in every release build.
+   */
+  devRoot?: string;
   fs: VoicePackFileSystem;
   /**
    * Voice ids the plugin's own bundled audio already provides — the plugin
@@ -242,6 +257,36 @@ function visitOrder(folders: readonly string[], priorityPacks: readonly string[]
 }
 
 /**
+ * Which root a folder was found under, which is all that decides a pack's
+ * provenance there (#1143): `development` for the dev root, and the record's
+ * own answer (or `sideload`) for the packs root.
+ */
+type ScanRootKind = "development" | "packs";
+
+/**
+ * The accumulators one scan shares across its roots (#1143), so a pack found
+ * under an earlier root claims its voice ids ahead of every pack under a later
+ * one — the same `claimedVoices` map, the same `problems` list.
+ */
+type ScanState = {
+  fs: VoicePackFileSystem;
+  packs: InstalledVoicePack[];
+  problems: VoicePackProblem[];
+  /** Voice id → the pack folder that provides it, and whether that pack is a development build. */
+  claimedVoices: Map<string, { folder: string; development: boolean }>;
+  /**
+   * Pack ids the development root LISTED (#1143) — lower-cased, which is what
+   * a manifest id already is. A packs-root folder with one of these ids is
+   * shadowed whole; see the branch in {@link scanRoot} for why per-voice is not
+   * enough. Listed, not merely present: a dev folder the scan refused (no
+   * manifest, a bad id) must not silence the AppData copy in favour of nothing.
+   */
+  developmentPackIds: Set<string>;
+  bundledVoices: ReadonlySet<string>;
+  priorityPacks: readonly string[];
+};
+
+/**
  * Read every pack under `root` (issue #1034).
  *
  * Never throws, and never fails the whole scan for one bad folder: this
@@ -251,23 +296,67 @@ function visitOrder(folders: readonly string[], priorityPacks: readonly string[]
  *
  * Folders are visited in a fixed order — the `priorityPacks` first, then the
  * rest sorted — which makes the winner of a voice collision deterministic
- * rather than dependent on directory-listing order.
+ * rather than dependent on directory-listing order. With a `devRoot` (#1143)
+ * that root is visited first, in the same order within it, and everything it
+ * provides is claimed before the packs root is read at all.
  */
 export function scanVoicePacks({
   root,
+  devRoot,
   fs,
   reservedVoices,
   priorityPacks = [],
 }: ScanVoicePacksOptions): ScanVoicePacksResult {
-  const packs: InstalledVoicePack[] = [];
-  const problems: VoicePackProblem[] = [];
-  const claimedVoices = new Map<string, string>();
-  const bundledVoices = new Set(reservedVoices);
+  const state: ScanState = {
+    fs,
+    packs: [],
+    problems: [],
+    claimedVoices: new Map(),
+    developmentPackIds: new Set(),
+    bundledVoices: new Set(reservedVoices),
+    priorityPacks,
+  };
+
+  if (devRoot !== undefined) scanRoot(devRoot, "development", state);
+
+  scanRoot(root, "packs", state);
+
+  return { packs: state.packs, problems: state.problems };
+}
+
+/** One root's folders, appended into the shared `state` — see {@link scanVoicePacks}. */
+function scanRoot(root: string, kind: ScanRootKind, state: ScanState): void {
+  const { fs, packs, problems, claimedVoices, developmentPackIds, bundledVoices, priorityPacks } = state;
 
   for (const folder of visitOrder(fs.listDirectories(root), priorityPacks)) {
     // Dot-folders are the installer's own working space (`.tmp`, `.trash`) and
     // anything else a tool decided to hide. Never packs.
     if (folder.startsWith(".")) continue;
+
+    // One pack id, one row (#1143). The development root already listed a pack
+    // with this id, so this folder is the same pack seen twice and is skipped
+    // whole — before its manifest is even read.
+    //
+    // The per-voice rule below is not enough here, and the gap was real: it
+    // drops the voices the dev copy CLAIMED, so a packs-root copy declaring one
+    // extra voice survived with that voice alone. Two `packs` rows then carried
+    // one id, and every consumer of this list is keyed by id — the launch
+    // step's `isPackUsable`, the installer's target lookup, the settings
+    // window's rows — so which copy a lookup found came down to array order.
+    // The extra voice is not a loss worth that: it is a voice of a pack the
+    // developer is in the middle of editing, and the answer is to stage it.
+    //
+    // Matched on the folder name lower-cased, the same case-insensitive
+    // comparison the id-vs-folder check below makes, because the filesystem
+    // underneath is. The reason names the FOLDER as it is on disk (`problem.pack`
+    // throughout this scan) rather than the manifest id, which is unread here.
+    if (kind === "packs" && developmentPackIds.has(folder.toLowerCase())) {
+      problems.push({
+        pack: folder,
+        reason: `pack "${folder}" is provided by the development build; the copy under the packs root is ignored`,
+      });
+      continue;
+    }
 
     const dir = join(root, folder);
     const read = fs.readTextFile(join(dir, MANIFEST_FILE));
@@ -364,8 +453,14 @@ export function scanVoicePacks({
     // Keep the exemption exactly this narrow. It requires OUR source value and
     // a record that names this same pack, so it cannot be widened by accident
     // into "any pack with an .install.json may claim a bundled voice".
-    const provenanceRead = fs.readTextFile(join(dir, VOICE_PACK_PROVENANCE_FILE));
-    const provenance = provenanceRead.ok ? parseVoicePackProvenance(provenanceRead.text) : undefined;
+    //
+    // Under the development root (#1143) the record is not read at all: the
+    // provenance there is decided by where the pack was found, and a staged
+    // folder that happens to carry a seed record must not buy the seed's
+    // treatment either — `provenance` stays undefined, so `isBundledSeed` is
+    // false and the pack is judged on its clips like any other.
+    const provenanceRead = kind === "packs" ? fs.readTextFile(join(dir, VOICE_PACK_PROVENANCE_FILE)) : undefined;
+    const provenance = provenanceRead?.ok ? parseVoicePackProvenance(provenanceRead.text) : undefined;
     const isBundledSeed = provenance?.source === "bundled-seed" && provenance.id === manifest.id;
 
     const seen = new Set<string>();
@@ -408,7 +503,16 @@ export function scanVoicePacks({
 
       if (owner === undefined) return true;
 
-      problems.push({ pack: folder, reason: `voice "${voice.id}" is already provided by pack "${owner}"` });
+      // A loser to the development root is told so (#1143): the folder it
+      // names is not one the user can see beside their own, and "already
+      // provided by pack default" about their own `default` would read as
+      // nonsense.
+      problems.push({
+        pack: folder,
+        reason: owner.development
+          ? `voice "${voice.id}" is already provided by the development build of pack "${owner.folder}"`
+          : `voice "${voice.id}" is already provided by pack "${owner.folder}"`,
+      });
       droppedOtherwise += 1;
 
       return false;
@@ -452,6 +556,11 @@ export function scanVoicePacks({
         clips: [],
         provenance: "bundled-seed",
       });
+
+      // Unreachable under the development root — the provenance record is not
+      // read there, so `isBundledSeed` is false — but recorded anyway so
+      // "listed under the dev root" has exactly one meaning at every push site.
+      if (kind === "development") developmentPackIds.add(manifest.id);
 
       continue;
     }
@@ -523,7 +632,11 @@ export function scanVoicePacks({
 
     if (voices.length === 0) continue;
 
-    for (const voice of voices) claimedVoices.set(voice.id, folder);
+    for (const voice of voices) claimedVoices.set(voice.id, { folder, development: kind === "development" });
+
+    // Recorded only for a pack that is actually LISTED, so a dev folder the
+    // scan refused shadows nothing under the packs root (#1143).
+    if (kind === "development") developmentPackIds.add(manifest.id);
 
     packs.push({
       id: manifest.id,
@@ -541,9 +654,10 @@ export function scanVoicePacks({
       // the row would read "Downloaded" for a pack that was never downloaded
       // under that id — which contradicts the field's own definition of
       // `sideload` as the absence of a USABLE record.
-      provenance: provenance?.id === manifest.id ? provenance.source : "sideload",
+      //
+      // Under the development root the answer is the root itself (#1143).
+      provenance:
+        kind === "development" ? "development" : provenance?.id === manifest.id ? provenance.source : "sideload",
     });
   }
-
-  return { packs, problems };
 }

@@ -1,4 +1,5 @@
 import { CALLOUT_SCRIPT_FILE } from "@iracedeck/callout-script";
+import { createHash } from "node:crypto";
 import {
   copyFileSync,
   existsSync,
@@ -7,16 +8,46 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  statSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+// Real `node:child_process.spawn` is kept — every test here runs ffmpeg for
+// real, on genuine audio, exactly as before — but wrapped so a test can
+// observe (and act on) each invocation's argv. This is the "seam" #1143's
+// review comment asks for: with it, the source-swap race is reproduced
+// DETERMINISTICALLY (see "hashes and encodes the same snapshot" below) rather
+// than by racing a timer against a real ffmpeg process.
+const spawnHook = vi.hoisted(() => ({ onSpawn: null as ((args: readonly string[]) => void) | null }));
+
+vi.mock("node:child_process", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:child_process")>();
+
+  return {
+    ...actual,
+    spawn: (command: string, args: readonly string[], options?: unknown) => {
+      spawnHook.onSpawn?.(args);
+
+      return actual.spawn(command, args as string[], options as never);
+    },
+  };
+});
 
 import { audioAssetsPath, BUNDLED_VOICE_IDS, processAndCopyAudioAssets, processVoiceTree } from "./index.mjs";
 
 /** The repository's smallest real clip, so ffmpeg has genuine audio to process. */
 const SAMPLE_CLIP = path.join(audioAssetsPath, "voice/default/lap-time-second/1.mp3");
+
+/**
+ * A DIFFERENT real clip, for the cache-freshness tests below: replacing a
+ * source with this one changes the bytes ffmpeg sees, so a stale cache shows up
+ * as audio, not merely as a counter.
+ */
+const OTHER_SAMPLE_CLIP = path.join(audioAssetsPath, "voice/default/lap-time-second/2.mp3");
 
 /**
  * A script whose bytes are NOT what any serializer here would emit — CRLF
@@ -64,8 +95,13 @@ function tempDir(prefix: string): string {
 }
 
 afterEach(() => {
+  spawnHook.onSpawn = null;
   for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
+
+function sha256(bytes: Buffer): string {
+  return createHash("sha256").update(bytes).digest("hex");
+}
 
 it("has the sample clip to build its fixtures from", () => {
   expect(existsSync(SAMPLE_CLIP)).toBe(true);
@@ -102,7 +138,9 @@ describe("processVoiceTree — the voice's callouts.json", () => {
     // The clip went through the pipeline — the copy is the cached, processed
     // one — while the cache holds clips only.
     expect(readFileSync(path.join(destDir, "flags/blue-01.mp3")).equals(readFileSync(SAMPLE_CLIP))).toBe(false);
-    expect(listFiles(cacheDir)).toEqual(["flags/blue-01.mp3"]);
+    // The cache holds clips and the sidecar digest of the source each was built
+    // from (#1143) — no script, and nothing else.
+    expect(listFiles(cacheDir)).toEqual(["flags/blue-01.mp3", "flags/blue-01.mp3.src.sha256"]);
   }, 30_000);
 
   it("ignores a callouts.json deeper in the tree, like any other non-mp3 file", async () => {
@@ -135,6 +173,227 @@ describe("processVoiceTree — the voice's callouts.json", () => {
     expect(result.script).toBeNull();
     expect(listFiles(destDir)).toEqual(["flags/blue-01.mp3"]);
   }, 30_000);
+});
+
+/**
+ * What makes a cached, ffmpeg-processed clip current (#1143). It is the SOURCE
+ * BYTES, not the source's mtime: on Windows a copy carries the mtime of the file
+ * it was copied FROM, so replacing a clip via an Explorer paste (or `cp -p`)
+ * routinely leaves the new source looking OLDER than the output built from the
+ * old one — which is how a stale clip shipped in a voice pack.
+ */
+describe("processVoiceTree — cache freshness", () => {
+  /** A voice tree of exactly one clip, plus the paths the tests assert on. */
+  function oneClipTree(prefix: string): { srcDir: string; destDir: string; cacheDir: string; clip: string } {
+    const root = tempDir(prefix);
+    const srcDir = path.join(root, "src");
+
+    mkdirSync(path.join(srcDir, "flags"), { recursive: true });
+
+    const clip = path.join(srcDir, "flags", "blue-01.mp3");
+
+    copyFileSync(SAMPLE_CLIP, clip);
+
+    return { srcDir, destDir: path.join(root, "dest"), cacheDir: path.join(root, "cache"), clip };
+  }
+
+  it("rebuilds a clip whose bytes changed but whose mtime went BACKWARDS — the Windows copy case (#1143)", async () => {
+    const { srcDir, destDir, cacheDir, clip } = oneClipTree("ird-cache-older-source-");
+
+    const first = await processVoiceTree({ srcDir, destDir, cacheDir });
+
+    expect(first.processed).toBe(1);
+
+    const firstOutput = readFileSync(path.join(destDir, "flags/blue-01.mp3"));
+
+    // Exactly what a paste over an existing clip produces: different audio,
+    // carrying the mtime of the file it came from — here forced a day behind
+    // the cached output, so no mtime comparison can call the cache stale.
+    copyFileSync(OTHER_SAMPLE_CLIP, clip);
+
+    const behind = new Date(statSync(path.join(cacheDir, "flags/blue-01.mp3")).mtimeMs - 24 * 60 * 60 * 1000);
+
+    utimesSync(clip, behind, behind);
+    expect(statSync(clip).mtimeMs).toBeLessThan(statSync(path.join(cacheDir, "flags/blue-01.mp3")).mtimeMs);
+
+    const second = await processVoiceTree({ srcDir, destDir, cacheDir });
+
+    expect(second).toMatchObject({ processed: 1, cached: 0 });
+    // The claim that matters is the audio, not the counter: what was copied out
+    // is built from the clip that is on disk now.
+    expect(readFileSync(path.join(destDir, "flags/blue-01.mp3")).equals(firstOutput)).toBe(false);
+  }, 60_000);
+
+  it("re-runs nothing for a source that was merely re-touched — same bytes, newer mtime", async () => {
+    const { srcDir, destDir, cacheDir, clip } = oneClipTree("ird-cache-touched-source-");
+
+    const first = await processVoiceTree({ srcDir, destDir, cacheDir });
+
+    expect(first.processed).toBe(1);
+
+    const cachedOutput = readFileSync(path.join(cacheDir, "flags/blue-01.mp3"));
+    const ahead = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    utimesSync(clip, ahead, ahead);
+
+    const second = await processVoiceTree({ srcDir, destDir, cacheDir });
+
+    // The content check is not merely safer than the mtime one — it also spares
+    // the ffmpeg run a checkout or a `touch` used to spend.
+    expect(second).toMatchObject({ processed: 0, cached: 1 });
+    expect(readFileSync(path.join(cacheDir, "flags/blue-01.mp3")).equals(cachedOutput)).toBe(true);
+  }, 60_000);
+
+  it("leaves no temporary snapshot or output file behind after processing (#1143)", async () => {
+    const { srcDir, destDir, cacheDir } = oneClipTree("ird-cache-no-tmp-leftovers-");
+
+    await processVoiceTree({ srcDir, destDir, cacheDir });
+
+    expect(listFiles(cacheDir).filter((f) => f.endsWith(".tmp"))).toEqual([]);
+  }, 30_000);
+
+  /**
+   * The race the fix closes: a source replaced WHILE ffmpeg is still running on
+   * it. This is reproduced deterministically rather than by racing a timer
+   * against a real ffmpeg process, using the `node:child_process` spawn hook
+   * declared at the top of this file — the injectable seam this test needed
+   * and the suite didn't have before. The hook fires synchronously the instant
+   * ffmpeg is launched, i.e. strictly AFTER `processClipIntoCache` has already
+   * read, hashed and snapshotted the source, and it overwrites the live source
+   * file at that exact moment — the earliest point a real mid-build replace
+   * (an Explorer paste, say) could land. The fixed code must be unaffected:
+   * ffmpeg was handed a snapshot, never `sourcePath` itself, so nothing that
+   * happens to `sourcePath` after the snapshot was taken can reach the output.
+   */
+  it("hashes and encodes the same snapshot of a clip, even when the source is replaced while ffmpeg runs on it (#1143)", async () => {
+    const { srcDir, destDir, cacheDir, clip } = oneClipTree("ird-cache-source-swap-race-");
+
+    const originalBytes = readFileSync(clip);
+    const originalDigest = sha256(originalBytes);
+    const spawnedInputs: string[] = [];
+
+    spawnHook.onSpawn = (args) => {
+      const iIndex = args.indexOf("-i");
+
+      if (iIndex === -1) return;
+
+      spawnedInputs.push(args[iIndex + 1]!);
+      // The swap: happens once ffmpeg has already been launched against
+      // whatever `runFfmpeg` was given as its input path.
+      copyFileSync(OTHER_SAMPLE_CLIP, clip);
+    };
+
+    const result = await processVoiceTree({ srcDir, destDir, cacheDir });
+
+    expect(result.processed).toBe(1);
+    expect(spawnedInputs).toHaveLength(1);
+    // The bug this replaces handed ffmpeg `sourcePath` itself, so a swap
+    // landing here would change what got encoded. Assert the fix never does.
+    expect(spawnedInputs[0]).not.toBe(clip);
+
+    // The sidecar must still name the ORIGINAL bytes — the ones read before
+    // the swap — never the replacement the source holds now.
+    const sidecarDigest = readFileSync(`${path.join(cacheDir, "flags/blue-01.mp3")}.src.sha256`, "utf-8").trim();
+
+    expect(sidecarDigest).toBe(originalDigest);
+
+    // And the output must actually BE encoded from those original bytes, not
+    // the replacement. Proved two ways: it matches an uninterrupted encode of
+    // the original bytes (ffmpeg's output is deterministic for a given binary
+    // + args — the same assumption `processVoiceTree`'s own docs and the
+    // voice-pack packer rely on), and it does NOT match an uninterrupted
+    // encode of the replacement bytes.
+    const referenceOf = async (bytes: Buffer, prefix: string): Promise<Buffer> => {
+      const root = tempDir(prefix);
+      const refSrcDir = path.join(root, "src");
+
+      writeFile(path.join(refSrcDir, "flags", "blue-01.mp3"), bytes);
+      await processVoiceTree({ srcDir: refSrcDir, destDir: path.join(root, "dest"), cacheDir: path.join(root, "cache") });
+
+      return readFileSync(path.join(root, "dest", "flags/blue-01.mp3"));
+    };
+
+    const originalEncoded = await referenceOf(originalBytes, "ird-cache-source-swap-original-");
+    const replacementEncoded = await referenceOf(readFileSync(OTHER_SAMPLE_CLIP), "ird-cache-source-swap-replacement-");
+    const raceOutput = readFileSync(path.join(destDir, "flags/blue-01.mp3"));
+
+    expect(raceOutput.equals(originalEncoded)).toBe(true);
+    expect(raceOutput.equals(replacementEncoded)).toBe(false);
+
+    // No snapshot or output temp file left behind, race or not.
+    expect(listFiles(cacheDir).filter((f) => f.endsWith(".tmp"))).toEqual([]);
+  }, 120_000);
+
+  /**
+   * The publish-order fix (#1143 review): the old sidecar must not be removed
+   * until ffmpeg has actually SUCCEEDED. Proved by observing the sidecar the
+   * instant ffmpeg is launched — strictly before it can have finished — which
+   * is the earliest a process could be killed and still find something on
+   * disk. If invalidation ran up front (the shape the old bug's fix must not
+   * reintroduce), the sidecar would already be gone at that moment.
+   */
+  it("does not remove the old sidecar before ffmpeg has produced a new output (#1143)", async () => {
+    const { srcDir, destDir, cacheDir, clip } = oneClipTree("ird-cache-invalidate-order-");
+
+    await processVoiceTree({ srcDir, destDir, cacheDir });
+
+    const cachedClip = path.join(cacheDir, "flags/blue-01.mp3");
+    const sidecarPath = `${cachedClip}.src.sha256`;
+    const originalSidecar = readFileSync(sidecarPath, "utf-8");
+
+    // A source swap so the second run is a cache MISS and actually re-enters
+    // processClipIntoCache (a fresh cache hit would never spawn ffmpeg at all).
+    copyFileSync(OTHER_SAMPLE_CLIP, clip);
+
+    let sidecarAtSpawn: string | false | null = null;
+
+    spawnHook.onSpawn = () => {
+      sidecarAtSpawn = existsSync(sidecarPath) ? readFileSync(sidecarPath, "utf-8") : false;
+    };
+
+    await processVoiceTree({ srcDir, destDir, cacheDir });
+
+    expect(sidecarAtSpawn).toBe(originalSidecar);
+  }, 60_000);
+
+  /**
+   * The other half of the publish-order fix: a run that FAILS after the
+   * snapshot was taken must leave the previously-published pair — cached
+   * audio and its sidecar — exactly as they were. Corrupting the throwaway
+   * ffmpeg-input snapshot (never `sourcePath`, never `cachedPath`) the moment
+   * ffmpeg is launched is a deterministic way to fail the encode without
+   * touching anything the fix is supposed to protect.
+   */
+  it("leaves the old cached file and sidecar untouched when a later run's ffmpeg fails (#1143)", async () => {
+    const { srcDir, destDir, cacheDir, clip } = oneClipTree("ird-cache-ffmpeg-failure-");
+
+    await processVoiceTree({ srcDir, destDir, cacheDir });
+
+    const cachedClip = path.join(cacheDir, "flags/blue-01.mp3");
+    const sidecarPath = `${cachedClip}.src.sha256`;
+    const originalCached = readFileSync(cachedClip);
+    const originalSidecar = readFileSync(sidecarPath, "utf-8");
+
+    // A source swap so the second run is a cache MISS.
+    copyFileSync(OTHER_SAMPLE_CLIP, clip);
+
+    spawnHook.onSpawn = (args) => {
+      const iIndex = args.indexOf("-i");
+
+      if (iIndex === -1) return;
+
+      // Corrupt the snapshot ffmpeg is about to decode, so the encode fails.
+      writeFileSync(args[iIndex + 1]!, "not an mp3");
+    };
+
+    await expect(processVoiceTree({ srcDir, destDir, cacheDir })).rejects.toThrow();
+
+    // Nothing published: the old audio and its sidecar are exactly what they
+    // were, still paired, and no temp file survives the failure.
+    expect(readFileSync(cachedClip).equals(originalCached)).toBe(true);
+    expect(readFileSync(sidecarPath, "utf-8")).toBe(originalSidecar);
+    expect(listFiles(cacheDir).filter((f) => f.endsWith(".tmp"))).toEqual([]);
+  }, 60_000);
 });
 
 /**
@@ -217,9 +476,13 @@ describe("processAndCopyAudioAssets — what reaches the plugin's assets/audio",
     // scanner would then find and report on.
     if (bundled.length === 0) expect(existsSync(path.join(destRoot, "voice"))).toBe(false);
 
-    // The radio cache holds processed clips and nothing else, and only for what
-    // was actually walked.
-    expect(listFilesIfAny(cacheDir)).toEqual(bundled.map((voice) => `voice/${voice}/flags/blue-01.mp3`));
+    // The radio cache holds processed clips (each with its source-digest
+    // sidecar, #1143) and nothing else, and only for what was actually walked.
+    expect(listFilesIfAny(cacheDir)).toEqual(
+      bundled
+        .flatMap((voice) => [`voice/${voice}/flags/blue-01.mp3`, `voice/${voice}/flags/blue-01.mp3.src.sha256`])
+        .sort(),
+    );
   }, 30_000);
 
   it('copies every authored voice when asked for voices: "all" — the harness auditions what is authored, not what ships', async () => {

@@ -119,6 +119,7 @@ import {
   focusIRacingIfEnabled,
   frameOptionsFromSettings,
   getController,
+  getDevVoicePacksRoot,
   getGlobalSettings,
   getPluginPlatform,
   getPluginVersion,
@@ -464,11 +465,15 @@ const voicePacksLogger = adapter.createLogger("VoicePacks");
 // "Open folder" button reveals it, and those must be the same place. The page
 // supplies no path for either (#1100).
 const voicePacksRoot = resolveVoicePacksPath({ env: process.env });
+// A development build carries a second root (#1143): the packer's staged
+// output, scanned ahead of the AppData folder and never installed over.
+const devVoicePacksRoot = getDevVoicePacksRoot();
 // One scanner port for the scan AND the installer (#1100): the installer reads
 // `.install.json`, a staged manifest and the bundled clip tree through it.
 const voicePackFs = createVoicePackFileSystem(voicePacksLogger);
 const voicePacks = createVoicePackService({
   root: voicePacksRoot,
+  ...(devVoicePacksRoot === undefined ? {} : { devRoot: devVoicePacksRoot }),
   fs: voicePackFs,
   logger: voicePacksLogger,
   pluginAudioDir: audioRootDir,
@@ -543,6 +548,12 @@ const voicePackCatalog = createVoicePackCatalogService({
   // whether pressing it downloads anything; two implementations would
   // eventually disagree silently.
   getInstalledSha: (id) => readInstalledVoicePackSha(voicePackFs, voicePackStorage.packDir(id), id),
+  // A pack the development root provides reads as installed (#1143), the way a
+  // bundled one does: the scanner shadows the packs-root copy whole, so an
+  // Install here would download megabytes the next scan ignores while the
+  // staged pack goes on playing. Read live off the last scan, so emptying the
+  // dev root and pressing Rescan brings the offer back.
+  isProvidedByDevRoot: (id) => voicePacks.isProvidedByDevRoot(id),
   // The development override (#1100), read fresh on every fetch rather than
   // captured at construction, so there is no second copy of the value to go
   // stale. That is a SHAPE, not a live reload: the settings file is read once
@@ -667,6 +678,10 @@ const voicePackLaunch = createVoicePackLaunchStep({
   // result listing the pack with a voice. A managed pack whose record
   // survived but whose clips did not is reinstalled by force off this.
   isPackUsable: (id) => voicePacks.installed().some((pack) => pack.id === id && pack.voices.length > 0),
+  // The development root provides `id` right now, so the launch step must
+  // never install or update it over that root's own copy (#1143).
+  isProvidedByDevRoot: (id) => voicePacks.isProvidedByDevRoot(id),
+  ...(devVoicePacksRoot === undefined ? {} : { devRoot: devVoicePacksRoot }),
   isRaceEngineerEnabled: () => (getGlobalSettings() as Record<string, unknown>).pitCrewRaceEngineerEnabled === true,
   // The step watches the Race Engineer gate itself and re-runs the ensure on
   // the false→true edge — the moment a missing or stale voice starts to matter.
@@ -1005,13 +1020,18 @@ function pushVoicePackListIfChanged(): void {
       // renders — and it would ride this run-scoped key into every Property
       // Inspector on every push.
       voices: pack.voices.map(({ id, label }) => ({ id, label })),
+      // Only on a development row (#1143), which is the only row that renders
+      // it — the same rule the `voices` comment above states, for the same
+      // reason: this key rides a run-scoped global into every Property
+      // Inspector and the deck-host mirror on every push, so an absolute path
+      // nothing displays is payload with no reader.
+      ...(pack.provenance === "development" ? { dir: pack.dir } : {}),
       // Where it came from, for the settings window's provenance badge
       // (#1100). Displayed, never enforced.
       provenance: pack.provenance,
-      // The pack iRaceDeck keeps current itself (#1034 stage 3): the settings
-      // window shows it without a Remove button. Keyed by id, never by
-      // provenance, so a forged provenance record buys nothing.
-      managed: isManagedVoicePack(pack.id),
+      // The managed pack is the one the launch step keeps current — which it does
+      // not while the development root provides it, so the row must not claim so.
+      managed: isManagedVoicePack(pack.id) && pack.provenance !== "development",
     })),
     problems: voicePacks.problems().map((problem) => ({ pack: problem.pack, reason: problem.reason })),
   });

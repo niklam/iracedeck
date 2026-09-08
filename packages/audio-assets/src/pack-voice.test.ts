@@ -34,6 +34,7 @@ import {
   createArchive,
   MANIFEST_FILE,
   packVoice,
+  parseArgs,
   serializeSortedJson,
 } from "../scripts/pack-voice.mjs";
 import { VOICE_PACKS } from "./build/voice-packs.mjs";
@@ -408,7 +409,11 @@ describe("packVoice", () => {
   });
 
   it("writes a catalog entry the real VoicePackCatalogEntrySchema accepts, matching the archive", () => {
-    const raw = readFileSync(first.catalogPath, "utf-8");
+    // `catalogPath` is optional since `--no-catalog` (#1143); this run wrote
+    // one, and the assertion below says so before the read asserts it away.
+    expect(first.catalogPath).toBeDefined();
+
+    const raw = readFileSync(first.catalogPath!, "utf-8");
     const entry = VoicePackCatalogEntrySchema.parse(JSON.parse(raw));
     const archive = readFileSync(first.archivePath);
 
@@ -427,6 +432,49 @@ describe("packVoice", () => {
     expect(raw.endsWith("\n")).toBe(true);
     expect(first.archivePath).toBe(path.join(root, "out-1", "testvoice-1.2.3.zip"));
   });
+
+  it("with writeCatalog false stages and zips but leaves the catalog directory untouched", async () => {
+    // The dev loop's `--no-catalog` (#1143). The committed entry is the
+    // release contract — its `sha256` is what the installer compares against
+    // an installed pack — so a run that only wants a staged pack to point the
+    // dev root at must not rewrite it.
+    //
+    // The catalog directory EXISTS and is empty here, so "no file in it" is
+    // the packer declining to write rather than a directory it never created:
+    // the assertion would hold for the wrong reason against a bare path.
+    const catalogDir = mkdtempSync(path.join(tmpdir(), "ird-pack-no-catalog-"));
+    const outDir = path.join(root, "out-no-catalog");
+
+    try {
+      const result = await packVoice({
+        pack,
+        srcRoot,
+        configsDir,
+        outDir,
+        catalogDir,
+        // The first run's cache: this case is about the catalog, not the
+        // encode, and a cold cache would re-run ffmpeg to prove nothing.
+        cacheDir: path.join(root, "cache-1"),
+        writeCatalog: false,
+      });
+
+      expect(existsSync(path.join(catalogDir, `${pack.id}.json`))).toBe(false);
+      expect(readdirSync(catalogDir)).toEqual([]);
+      expect(result.catalogPath).toBeUndefined();
+
+      // Everything the dev loop needs still happened: the stage, its manifest
+      // and the archive.
+      expect(existsSync(result.archivePath)).toBe(true);
+      expect(existsSync(path.join(outDir, pack.id, MANIFEST_FILE))).toBe(true);
+      expect(listFiles(result.stageDir)).toEqual(listFiles(first.stageDir));
+
+      // Only the FILE is withheld: the entry itself is still computed, and it
+      // is the same one the catalog-writing run produced.
+      expect(result.entry).toEqual(first.entry);
+    } finally {
+      rmSync(catalogDir, { recursive: true, force: true });
+    }
+  }, 60_000);
 
   it("refuses a clip the scanner would refuse rather than packing a mute voice", async () => {
     const loose = path.join(srcRoot, "testvoice", "loose.mp3");
@@ -634,6 +682,22 @@ describe("packVoice", () => {
     await expect(attempt({ version: "1.2" })).rejects.toThrow(/semver/);
     await expect(attempt({ label: "x".repeat(61) })).rejects.toThrow(/1-60 characters/);
     await expect(attempt({ voices: [] })).rejects.toThrow(/at least one voice/);
+  });
+});
+
+describe("parseArgs", () => {
+  it("treats bare words as pack ids and --no-catalog as the switch", () => {
+    expect(parseArgs(["default", "--no-catalog"])).toEqual({ ids: ["default"], writeCatalog: false });
+  });
+
+  it("defaults to writing the catalog", () => {
+    expect(parseArgs([])).toEqual({ ids: [], writeCatalog: true });
+  });
+
+  it("refuses an unknown flag rather than taking it for a pack id or ignoring it", () => {
+    // A typo silently swallowed would either pack nothing (the id is unknown)
+    // or, worse, write the committed entry the author meant to spare.
+    expect(() => parseArgs(["--nocatalog"])).toThrow(/unknown option "--nocatalog"/);
   });
 });
 

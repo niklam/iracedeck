@@ -126,6 +126,12 @@ Open `http://127.0.0.1:5750/`. Under **Global Settings**, pick your voice in the
 
 The harness terminal logs at debug level, so among the boot lines you will find `Voice "my-voice": 3 of 149 callouts scripted` — the count of entries that compiled — and a warning for any entry that did not, naming what it could not resolve. After editing `callouts.json`, press **Reload audio** in the harness and the packs are rescanned without a restart; a script that no longer parses is reported in the terminal and that voice is left out until it parses again, exactly as the plugin would treat it.
 
+## Working from a clone
+
+Everything above works on your own pack as it sits in the voices folder, and nothing overwrites it there — a pack you installed by hand is yours, and iRaceDeck leaves it alone.
+
+One case is different, and only if you cloned the repo: editing **iRaceDeck's own `default` voice**. The plugin keeps that pack matching the published catalog and will replace your edits, so a repo checkout has a development mode that points the plugin at the packer's staged output instead — `pnpm dev:voices on` once per worktree, then edit, re-stage with `pnpm --filter @iracedeck/audio-assets pack:voice default --no-catalog`, and press **Rescan voices**. It is described in full under [Auditioning a voice change](/docs/development/setup/#auditioning-a-voice-change). You do not need it for a pack of your own.
+
 ## Lint the pack
 
 From the repo root, after `pnpm build`, run `pnpm lint:pack <path to the pack folder>`:
