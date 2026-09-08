@@ -111,6 +111,21 @@ export interface VoicePackLaunchStepDeps {
    * by force.
    */
   isPackUsable: (id: string) => boolean;
+  /**
+   * The development voice root this build carries (#1143); the step only
+   * announces it. Absent in a release build, which is what makes every path
+   * below inert there.
+   */
+  devRoot?: string;
+  /**
+   * True when the scanner's last result serves `id` from the development root
+   * (#1143). Such a pack is never a target: the developer is editing it, and
+   * an install would put the catalog's bytes over the copy under test — the
+   * `isPackUsable` sibling, deciding "leave it" where that one decides "fix it".
+   * Optional, so a caller with no development root (a release build, and the
+   * tests) need not fake one.
+   */
+  isProvidedByDevRoot?: (id: string) => boolean;
   /** Live read of `pitCrewRaceEngineerEnabled`. */
   isRaceEngineerEnabled: () => boolean;
   /**
@@ -183,9 +198,19 @@ export function createVoicePackLaunchStep(deps: VoicePackLaunchStepDeps): VoiceP
     // `installed` is a record at the catalog's digest — and for the managed pack, only if the
     // scanner agrees a usable copy is there: a record whose clips are gone is reinstalled by
     // force, since nothing else in the app can (see `isPackUsable`).
+    //
+    // A pack the development root provides is dropped before any of that (#1143), the force
+    // path included: the copy in play is the one the developer is editing, and every rule
+    // here would put the catalog's bytes over it. Only that pack — a second catalog pack
+    // still updates, which is what a developer testing an update path wants to see.
     const found: Target[] = [];
 
     for (const pack of packs) {
+      if (deps.isProvidedByDevRoot?.(pack.id) === true) {
+        deps.logger.debug(`Voice pack "${pack.id}": provided by the development root, not ensured`);
+        continue;
+      }
+
       if (pack.verdict === "update" || (isManagedVoicePack(pack.id) && pack.verdict === "install")) {
         found.push({ id: pack.id, force: false });
       } else if (isManagedVoicePack(pack.id) && pack.verdict === "installed" && !deps.isPackUsable(pack.id)) {
@@ -381,6 +406,15 @@ export function createVoicePackLaunchStep(deps: VoicePackLaunchStepDeps): VoiceP
       // seed write to pack storage, and the shutdown contract is that nothing
       // is touched after `stop()`.
       if (stopped) return last ?? { state: "given-up", reason: "stopped" };
+
+      // Said before anything else the run does, so a developer who forgot the
+      // mode is on reads it above every voice-pack line rather than hunting for
+      // an absence (#1143). Once per start; a release build carries no root and
+      // says nothing at all.
+      if (deps.devRoot !== undefined) {
+        deps.logger.info("Voice packs: development root active");
+        deps.logger.debug(`Voice packs: development root ${deps.devRoot}`);
+      }
 
       // Every step is written never to reject; the guards keep a disk fault on
       // the startup path out of Node's unhandled-rejection handler. Each step

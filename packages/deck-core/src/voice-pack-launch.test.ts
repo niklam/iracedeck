@@ -44,6 +44,17 @@ function fakeInstaller(
   } satisfies Pick<VoicePackInstaller, "sweep" | "seed" | "refreshCatalog" | "install" | "republishStatus">;
 }
 
+/** The deps every test needs, so a test can spread them and name only what it is about. */
+function baseDeps(installer: ReturnType<typeof fakeInstaller>) {
+  return {
+    installer,
+    settled: () => Promise.resolve(),
+    isPackUsable: () => true,
+    isRaceEngineerEnabled: () => true,
+    logger,
+  };
+}
+
 describe("voice-pack launch step", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -715,5 +726,61 @@ describe("voice-pack launch step", () => {
     step.stop();
     await vi.advanceTimersByTimeAsync(VOICE_PACK_RETRY_STEADY_MS.engineerOn * 2);
     expect(installer.refreshCatalog).toHaveBeenCalledTimes(1);
+  });
+
+  describe("development root (#1143)", () => {
+    it("does not install a pack the development root provides, even a missing managed one", async () => {
+      const installer = fakeInstaller(ok([offer({ id: "default", verdict: "install" })]));
+      const step = createVoicePackLaunchStep({
+        ...baseDeps(installer),
+        isProvidedByDevRoot: (id) => id === "default",
+      });
+      await expect(step.start()).resolves.toEqual({ state: "current" });
+      expect(installer.install).not.toHaveBeenCalled();
+      expect(logger.debug).toHaveBeenCalledWith('Voice pack "default": provided by the development root, not ensured');
+    });
+
+    it("still updates a catalog pack the development root does not provide", async () => {
+      const installer = fakeInstaller(
+        ok([offer({ id: "default", verdict: "update" }), offer({ id: "nina", verdict: "update" })]),
+      );
+      const step = createVoicePackLaunchStep({
+        ...baseDeps(installer),
+        isProvidedByDevRoot: (id) => id === "default",
+      });
+      await expect(step.start()).resolves.toEqual({ state: "current" });
+      expect(installer.install).toHaveBeenCalledTimes(1);
+      expect(installer.install).toHaveBeenCalledWith("nina");
+    });
+
+    it("never force-reinstalls a dev-provided managed pack that the AppData copy would call unusable", async () => {
+      const installer = fakeInstaller(ok([offer({ id: "default", verdict: "installed" })]));
+      const step = createVoicePackLaunchStep({
+        ...baseDeps(installer),
+        isPackUsable: () => false,
+        isProvidedByDevRoot: () => true,
+      });
+      await expect(step.start()).resolves.toEqual({ state: "current" });
+      expect(installer.install).not.toHaveBeenCalled();
+      expect(logger.warn).not.toHaveBeenCalled();
+    });
+
+    it("says a development root is active once per start, path at debug", async () => {
+      const devRoot = "C:\\repo\\dist\\voice-packs";
+      const installer = fakeInstaller(ok([offer({ id: "default", verdict: "installed" })]));
+      const step = createVoicePackLaunchStep({ ...baseDeps(installer), devRoot });
+      await step.start();
+      expect(logger.info).toHaveBeenCalledWith("Voice packs: development root active");
+      expect(vi.mocked(logger.info).mock.calls.filter(([line]) => line.includes("development root"))).toHaveLength(1);
+      expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining(devRoot));
+    });
+
+    it("says nothing about a development root in a release build", async () => {
+      const installer = fakeInstaller(ok([offer({ id: "default", verdict: "installed" })]));
+      const step = createVoicePackLaunchStep(baseDeps(installer));
+      await step.start();
+      expect(vi.mocked(logger.info).mock.calls.some(([line]) => line.includes("development root"))).toBe(false);
+      expect(vi.mocked(logger.debug).mock.calls.some(([line]) => line.includes("development root"))).toBe(false);
+    });
   });
 });
