@@ -550,6 +550,12 @@ const voicePackCatalog = createVoicePackCatalogService({
   // whether pressing it downloads anything; two implementations would
   // eventually disagree silently.
   getInstalledSha: (id) => readInstalledVoicePackSha(voicePackFs, voicePackStorage.packDir(id), id),
+  // A pack the development root provides reads as installed (#1143), the way a
+  // bundled one does: the scanner shadows the packs-root copy whole, so an
+  // Install here would download megabytes the next scan ignores while the
+  // staged pack goes on playing. Read live off the last scan, so emptying the
+  // dev root and pressing Rescan brings the offer back.
+  isProvidedByDevRoot: (id) => voicePacks.isProvidedByDevRoot(id),
   // The development override (#1100), read fresh on every fetch rather than
   // captured at construction, so there is no second copy of the value to go
   // stale. That is a SHAPE, not a live reload: the settings file is read once

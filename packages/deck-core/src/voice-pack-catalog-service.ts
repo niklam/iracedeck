@@ -85,6 +85,19 @@ export interface VoicePackCatalogServiceDeps {
    * and this rule goes inert on its own, with no edit to make.
    */
   bundledVoices: readonly string[];
+  /**
+   * Does the plugin's development voice root provide this PACK (#1143)?
+   *
+   * Read live at verdict time, like {@link getInstalledSha} — the dev root is
+   * rescanned by the same button that refreshes this catalog, so a captured
+   * answer would offer the pack again the moment it was emptied, or keep
+   * withholding it after it was.
+   *
+   * Absent in every release build, where no build carries a development root
+   * at all; the wiring is one line in each plugin's `plugin.ts` and it goes
+   * inert on its own, exactly as {@link bundledVoices} does with an empty list.
+   */
+  isProvidedByDevRoot?: (packId: string) => boolean;
   /** Override the artifact URL. Tests only; never taken from a request. */
   url?: string;
   /**
@@ -152,6 +165,7 @@ export function createVoicePackCatalogService(deps: VoicePackCatalogServiceDeps)
     getPluginVersion,
     getInstalledSha,
     bundledVoices,
+    isProvidedByDevRoot,
     url,
     getDevBaseUrl,
     fetchImpl,
@@ -284,7 +298,7 @@ export function createVoicePackCatalogService(deps: VoicePackCatalogServiceDeps)
 
         const pluginVersion = getPluginVersion();
         const packs: VoicePackOffer[] = catalog.entries.map((entry) =>
-          buildOffer(entry, pluginVersion, getInstalledSha, bundledVoices),
+          buildOffer(entry, pluginVersion, getInstalledSha, bundledVoices, isProvidedByDevRoot),
         );
 
         return {
@@ -357,6 +371,7 @@ function buildOffer(
   pluginVersion: string,
   getInstalledSha: (packId: string) => string | undefined,
   bundledVoices: readonly string[],
+  isProvidedByDevRoot: ((packId: string) => boolean) | undefined,
 ): VoicePackOffer {
   const base = {
     id: entry.id,
@@ -381,6 +396,16 @@ function buildOffer(
   // the plugin telling the same story; once nothing is bundled the injected
   // list is empty and no entry ever takes this branch.
   if (isProvidedByBundle(entry, bundledVoices)) return { ...base, verdict: "installed" };
+
+  // A pack the DEVELOPMENT root provides (#1143) is the same situation one root
+  // along, and takes the same verdict for the same reasons as the bundle branch
+  // above: the voice is on this machine, it plays, and nothing the catalog says
+  // about its archive can change that. What it adds is a cost — the scanner
+  // shadows the packs-root copy whole, so `install` or `update` would spend
+  // megabytes of download on a folder the very next scan ignores, while the
+  // developer's staged pack goes on playing and the button appears to have done
+  // nothing. Asked per PACK, not per voice: the dev root shadows by pack id.
+  if (isProvidedByDevRoot?.(entry.id) === true) return { ...base, verdict: "installed" };
 
   // Unsupported is decided next and wins outright: a pack that needs a newer
   // plugin is shown as unsupported even where a hash comparison alone would
