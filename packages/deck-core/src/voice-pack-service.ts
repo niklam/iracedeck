@@ -12,6 +12,19 @@ import {
 export interface VoicePackServiceDeps {
   /** The packs directory — see {@link resolveVoicePacksPath}. */
   root: string;
+  /**
+   * The development voice root this build carries (#1143), scanned BEFORE
+   * {@link root} so a staged pack claims its voice ids ahead of everything in
+   * AppData — see `devRoot` on `ScanVoicePacksOptions` for the ordering rule
+   * and why `development` provenance is decided by where a pack was found.
+   *
+   * `undefined` in every release build: the path comes from a gitignored file
+   * the plugin's Rollup config bakes into `bin/config.json`. A path that does
+   * not exist is NOT an error — it is warned about once and scanned as empty,
+   * because a developer who has not staged a pack yet is the ordinary case and
+   * everything else about the plugin must still work.
+   */
+  devRoot?: string;
   fs: VoicePackFileSystem;
   logger: ILogger;
   /** The plugin's own `assets/audio` — always the first, highest-precedence root. */
@@ -90,6 +103,25 @@ export interface VoicePackService {
    * map from the last, and never reads a map the engine was not handed.
    */
   scripts(): ReadonlyMap<string, CalloutScript>;
+  /**
+   * Does the development root provide this pack? Takes a PACK id, not a voice
+   * id — it answers about the thing an install targets.
+   *
+   * The launch step asks before installing a catalog pack (#1143): a pack the
+   * developer has staged under the dev root must not be replaced by the copy
+   * the catalog would fetch. It drops that one target rather than skipping the
+   * whole ensure, so a second catalog pack still updates — which is what a
+   * developer testing an update path wants to see. `false` before the first
+   * refresh, and for every pack the packs root provides.
+   *
+   * "Provides" means the pack contributed at least one voice, not merely that
+   * a folder was listed. The two conditions cannot come apart today — the only
+   * pack the scanner lists with no voices is a bundled seed, and the dev root
+   * never reads a provenance record, so nothing found there can be one — so the
+   * voice count states what the answer MEANS rather than guarding a live case:
+   * a pack that provides nothing is not a reason to withhold the real one.
+   */
+  isProvidedByDevRoot(id: string): boolean;
 }
 
 /**
@@ -104,6 +136,8 @@ export function createVoicePackService(deps: VoicePackServiceDeps): VoicePackSer
   let packs: readonly InstalledVoicePack[] = [];
   let problems: readonly VoicePackProblem[] = [];
   let scripts: ReadonlyMap<string, CalloutScript> = new Map();
+  /** {@link VoicePackServiceDeps.devRoot} — the empty-root warning is once per run, see `refresh`. */
+  let devRootWarned = false;
 
   /**
    * Every bundled voice's script, read from the plugin's own audio root through
@@ -146,8 +180,26 @@ export function createVoicePackService(deps: VoicePackServiceDeps): VoicePackSer
     // synchronously to every `onGlobalSettingsChange` subscriber in the plugin.
     refresh() {
       try {
+        // A development root with nothing under it (#1143) — the path is gone,
+        // or the developer has not staged a pack into it yet. Said ONCE per
+        // run, not per scan: **Rescan voices** is the main loop of that
+        // workflow, and a root that is still empty on the fifth press is not
+        // five pieces of news. Missing and empty share one message because
+        // `listDirectories` answers both with `[]` — the port has no existence
+        // check by design — and because the remedy is the same either way.
+        // Warn rather than error: the scan continues, the packs root is read as
+        // normal, and the plugin is fully usable with an absent dev root.
+        if (deps.devRoot !== undefined && !devRootWarned && deps.fs.listDirectories(deps.devRoot).length === 0) {
+          devRootWarned = true;
+          deps.logger.warn("Voice packs: the development root is missing or empty");
+          deps.logger.debug(
+            `Voice packs: development root ${deps.devRoot} — run pack:voice --no-catalog to stage a pack`,
+          );
+        }
+
         const { packs: scanned, problems: found } = scanVoicePacks({
           root: deps.root,
+          ...(deps.devRoot === undefined ? {} : { devRoot: deps.devRoot }),
           fs: deps.fs,
           reservedVoices: deps.reservedVoices,
           ...(deps.priorityPacks === undefined ? {} : { priorityPacks: deps.priorityPacks }),
@@ -220,6 +272,13 @@ export function createVoicePackService(deps: VoicePackServiceDeps): VoicePackSer
 
     scripts() {
       return scripts;
+    },
+
+    isProvidedByDevRoot(id) {
+      // Read off the last scan rather than off `deps.devRoot`, so the answer is
+      // about a pack that is actually THERE — a configured dev root the
+      // developer emptied provides nothing, and the ensure must resume.
+      return packs.some((pack) => pack.id === id && pack.provenance === "development" && pack.voices.length > 0);
     },
   };
 }

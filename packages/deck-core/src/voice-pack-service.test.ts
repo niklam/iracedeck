@@ -8,14 +8,24 @@ const logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), e
 
 const PLUGIN_AUDIO = "/plugin/assets/audio";
 const PACKS_ROOT = "/packs";
+const DEV_ROOT = "/dev";
 
 /** A planted file the fake refuses to open — locked, permission-denied — as opposed to one that is not there. */
 const UNREADABLE = Symbol("unreadable");
 
 type PlantedFiles = Record<string, string | typeof UNREADABLE>;
 
+function posix(dir: string): string {
+  return dir.replace(/\\/g, "/").replace(/\/+$/, "");
+}
+
 function folderOf(dir: string): string {
-  return dir.replace(/\\/g, "/").replace(/\/+$/, "").split("/").at(-1) ?? "";
+  return posix(dir).split("/").at(-1) ?? "";
+}
+
+/** The root a pack folder sits under — `/dev/default` → `/dev`. */
+function rootOf(packDir: string): string {
+  return posix(packDir).split("/").slice(0, -1).join("/");
 }
 
 /**
@@ -23,10 +33,20 @@ function folderOf(dir: string): string {
  * POSIX absolute path (`/plugin/assets/audio/voice/default/callouts.json`,
  * `/packs/luca/voice/luca/callouts.json`) for the reads the scan and the
  * bundled-script read make beyond the manifest.
+ *
+ * `devPacks` is the same for the development root (#1143). It is keyed by root
+ * rather than merged, so a test can put the same folder under BOTH and see
+ * which copy claims the voice — the whole point of that root.
  */
-function fakeFs(packs: Record<string, string[]>, files: PlantedFiles = {}): VoicePackFileSystem {
+function fakeFs(
+  packs: Record<string, string[]>,
+  files: PlantedFiles = {},
+  devPacks: Record<string, string[]> = {},
+): VoicePackFileSystem {
+  const under = (root: string) => (root === DEV_ROOT ? devPacks : packs);
+
   return {
-    listDirectories: () => Object.keys(packs),
+    listDirectories: (dir) => Object.keys(under(posix(dir))),
     readTextFile: (file) => {
       const path = file.replace(/\\/g, "/");
       const planted = files[path];
@@ -50,7 +70,7 @@ function fakeFs(packs: Record<string, string[]>, files: PlantedFiles = {}): Voic
         text: JSON.stringify({ schema: 1, id, label: id, version: "1.0.0", voices: [{ id, label: id }] }),
       };
     },
-    listMp3Files: (packDir) => packs[folderOf(packDir)] ?? [],
+    listMp3Files: (packDir) => under(rootOf(packDir))[folderOf(packDir)] ?? [],
   };
 }
 
@@ -58,6 +78,7 @@ function make(
   packs: Record<string, string[]>,
   overrides: Partial<VoicePackServiceDeps> = {},
   files: PlantedFiles = {},
+  devPacks: Record<string, string[]> = {},
 ) {
   const applyRoots = vi.fn();
   const applyManifest = vi.fn();
@@ -65,7 +86,7 @@ function make(
   const onPacksChanged = vi.fn();
   const service = createVoicePackService({
     root: PACKS_ROOT,
-    fs: fakeFs(packs, files),
+    fs: fakeFs(packs, files, devPacks),
     logger: logger as never,
     pluginAudioDir: PLUGIN_AUDIO,
     reservedVoices: [],
@@ -475,5 +496,65 @@ describe("createVoicePackService hands the engine every voice's callout script (
     service.refresh();
 
     expect(applyScripts).toHaveBeenCalledWith(new Map());
+  });
+});
+
+describe("createVoicePackService and the development voice root (#1143)", () => {
+  it("scans the development root ahead of the packs root, and says which packs it provides", () => {
+    // The same pack id under both roots: the dev copy wins the voice, and the
+    // AppData copy is reported with the reason that names the development
+    // build — otherwise "already provided by pack default" would be a sentence
+    // about the user's own folder.
+    const { service } = make(
+      { default: ["voice/default/flags/green-01.mp3"] },
+      { devRoot: DEV_ROOT },
+      {},
+      { default: ["voice/default/flags/green-01.mp3"] },
+    );
+
+    const installed = service.refresh();
+
+    expect(installed.map((pack) => pack.id)).toEqual(["default"]);
+    expect(installed[0]?.provenance).toBe("development");
+    expect(posix(installed[0]?.dir ?? "")).toBe(`${DEV_ROOT}/default`);
+    expect(service.problems()).toEqual([
+      { pack: "default", reason: 'voice "default" is already provided by the development build of pack "default"' },
+    ]);
+    expect(service.isProvidedByDevRoot("default")).toBe(true);
+    expect(service.isProvidedByDevRoot("nina")).toBe(false);
+  });
+
+  it("answers false for a pack the packs root provides, and before any scan", () => {
+    const { service } = make({ luca: ["voice/luca/flags/a.mp3"] });
+
+    expect(service.isProvidedByDevRoot("luca")).toBe(false);
+
+    service.refresh();
+
+    expect(service.installed()[0]?.provenance).toBe("sideload");
+    expect(service.isProvidedByDevRoot("luca")).toBe(false);
+  });
+
+  it("warns once per run when the development root is missing or empty, with the path at debug", () => {
+    // A developer who staged nothing gets told why the pack they expected is
+    // not there — once, not on every Rescan, and with the path (a parameter)
+    // at debug per the logging rules.
+    logger.warn.mockClear();
+    logger.debug.mockClear();
+    const { service } = make({}, { devRoot: "/nowhere" });
+    service.refresh();
+    service.refresh();
+
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+    expect(logger.warn).toHaveBeenCalledWith("Voice packs: the development root is missing or empty");
+    expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining("/nowhere"));
+  });
+
+  it("says nothing about a development root when the build carries none", () => {
+    logger.warn.mockClear();
+    const { service } = make({ luca: ["voice/luca/flags/a.mp3"] });
+    service.refresh();
+
+    expect(logger.warn).not.toHaveBeenCalled();
   });
 });
