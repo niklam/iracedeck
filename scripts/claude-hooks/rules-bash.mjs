@@ -25,19 +25,33 @@ export function segments(command) {
     .filter(Boolean);
 }
 
+const QUOTED_ARG = String.raw`("([^"]+)"|'([^']+)'|(\S+))`;
+const CD_RE = new RegExp(String.raw`^(?:\w+=\S*\s+)*cd\s+${QUOTED_ARG}\s*$`);
+const GIT_C_RE = new RegExp(String.raw`\bgit\s+-C\s+${QUOTED_ARG}`);
+const argOf = (m) => m?.[2] ?? m?.[3] ?? m?.[4];
+
 /**
- * The working directory of the git command a rule matched: `git -C <dir>`
- * when THAT command carries one, else the session cwd. Pass the rule's own
- * `cmd(...)` regex as `re` so the `-C` is read off the segment it matched and
- * never off a later command in the chain — `git worktree add ../ir-5 … && git
- * -C ../ir-5 log` used to resolve the new tree against itself, fail the
- * repo-root lookup there, and deny the add as "inside the repo".
+ * The working directory of the git command a rule matched: the session cwd,
+ * moved by every `cd <dir>` chained AHEAD of that command, then by the
+ * command's own `git -C <dir>`. Pass the rule's own `cmd(...)` regex as `re`
+ * so the `-C` is read off the segment it matched and never off a later
+ * command in the chain — `git worktree add ../ir-5 … && git -C ../ir-5 log`
+ * used to resolve the new tree against itself, fail the repo-root lookup
+ * there, and deny the add as "inside the repo". The `cd` walk is what lets a
+ * session whose cwd is `master` be judged on the tree it pushes from:
+ * `cd ../ir-1143 && git push` used to ask with "branch master".
  */
 export function gitCwd(command, cwd, re) {
-  const scope = re ? (segments(command).find((s) => re.test(s)) ?? command) : command;
-  const m = scope.match(/\bgit\s+-C\s+("([^"]+)"|'([^']+)'|(\S+))/);
-  const dir = m?.[2] ?? m?.[3] ?? m?.[4];
-  return dir ? path.resolve(cwd, dir) : cwd;
+  const segs = segments(command);
+  const at = re ? segs.findIndex((s) => re.test(s)) : -1;
+  const scope = at >= 0 ? segs[at] : command;
+  let base = cwd;
+  for (const s of segs.slice(0, at >= 0 ? at : segs.length)) {
+    const dir = argOf(s.match(CD_RE));
+    if (dir && dir !== "-") base = path.resolve(base, dir);
+  }
+  const dir = argOf(scope.match(GIT_C_RE));
+  return dir ? path.resolve(base, dir) : base;
 }
 
 /** Splits a command into rough words, respecting simple quotes. */

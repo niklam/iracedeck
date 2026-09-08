@@ -51,6 +51,15 @@ describe("helpers", () => {
     const status = cmd(/git\s+(?:-C\s+\S+\s+)?status\b/);
     expect(gitCwd("git -C ../ir-5 status | cat", MASTER, status)).toBe(tree("ir-5"));
   });
+  it("gitCwd walks the `cd`s chained ahead of the matched command", () => {
+    const status = cmd(/git\s+(?:-C\s+\S+\s+)?status\b/);
+    expect(gitCwd("cd ../ir-5 && git status", MASTER, status)).toBe(tree("ir-5"));
+    expect(gitCwd(`cd "${tree("ir-5")}" && git status`, MASTER, status)).toBe(tree("ir-5"));
+    expect(gitCwd("cd ../ir-5 && cd ../ir-6 && git status", MASTER, status)).toBe(tree("ir-6"));
+    expect(gitCwd("cd ../ir-5 && git -C ../ir-6 status", MASTER, status)).toBe(tree("ir-6"));
+    expect(gitCwd("git status && cd ../ir-5", MASTER, status)).toBe(MASTER); // a later cd moves nothing
+    expect(gitCwd("cd - && git status", MASTER, status)).toBe(MASTER); // unknowable, stays put
+  });
   it("words respects quotes", () => {
     expect(words(`a "b c" 'd e' f`)).toEqual(["a", "b c", "d e", "f"]);
   });
@@ -130,6 +139,19 @@ describe("git push", () => {
       expect(asks("git add . && git commit -m x && git push origin master")).toMatch(/0 non-spec/));
     it("still asks from a feature branch", () =>
       asks(`git commit -m x -- ${SPEC} && git push`, ctx({ branch: () => "ir-1" })));
+  });
+
+  describe("judged on the tree a chained `cd` lands in", () => {
+    const byTree = (d) => (d === MASTER ? "master" : path.basename(d));
+    it("names the branch of the tree pushed from, not the session's master", () =>
+      expect(
+        asks("cd ../ir-1143 && git push -u origin ir-1143:ir-1143 2>&1 | tail -2", ctx({ branch: byTree })),
+      ).toMatch(/branch ir-1143/));
+    it("passes the spec workflow run from another tree's cwd", () =>
+      passes(
+        `cd ${MASTER} && git commit -m x -- docs/superpowers/specs/a.md && git push origin HEAD:master`,
+        ctx({ cwd: tree("ir-1"), branch: byTree }),
+      ));
   });
 });
 
