@@ -14,9 +14,11 @@
  *   - A fire that can't take the bus (equal/lower weight, or below an
  *     exclusive-focus floor) is deferred for idle-replay when
  *     `queueable: true`, else dropped. The deferred fire replays
- *     unconditionally — `where:` is NOT re-run (a side-effecting predicate
- *     would mis-fire); freshness comes from var resolvers at speak time. This
- *     preserves the former `low`-priority deferred-replay behaviour.
+ *     unconditionally — `where:` is NOT re-run, since it decided at event
+ *     time; what must hold at speak time is the contract's `speakGate`
+ *     (issue #1138), asked again on replay; freshness of the words comes
+ *     from var resolvers at speak time. This preserves the former
+ *     `low`-priority deferred-replay behaviour.
  *   - Same-`family` fires replace each other wholesale regardless of weight.
  *   - `acquireFocus`/`releaseFocus` raise a per-bus weight floor: while held,
  *     only fires at or above it (or the owner's own) play.
@@ -72,7 +74,14 @@ import type { IEventBus, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import type { ILogger } from "@iracedeck/logger";
 import { silentLogger } from "@iracedeck/logger";
 
-import type { ResolvedStep, Scenario, ScenarioContext, ScenarioContract, VocabularyResolver } from "./dsl.js";
+import type {
+  ResolvedStep,
+  Scenario,
+  ScenarioContext,
+  ScenarioContract,
+  SpeakGate,
+  VocabularyResolver,
+} from "./dsl.js";
 import { applyBase, DEFAULT_FRAME, DEFAULT_WEIGHT, NO_FRAME, resolveStep } from "./dsl.js";
 // Manifest types + helpers live in `./manifest.js` to break a circular
 // import with `./validation.js`, which also needs `referenceVoice`.
@@ -126,6 +135,14 @@ export type ContractReport = {
   weight: number;
   queueable: boolean;
   interrupt: boolean;
+  /**
+   * The speak-time gate's one-sentence description (issue #1138) — what is
+   * re-checked after the script expands and before the bus take — or `null`
+   * when the contract carries none. The reference renders it beside the
+   * trigger so a pack author reading a silent callout knows the second gate
+   * exists and what it asks.
+   */
+  speakGate: string | null;
   /**
    * The contract's `base` as registered (`"voice/{voice}"`, `"pit-crew"`),
    * `null` when it has none: what a bare literal clip path in a script entry
@@ -793,6 +810,7 @@ class ScenarioEngine implements IScenarioEngine {
         weight: raw.weight ?? DEFAULT_WEIGHT,
         queueable: raw.queueable ?? false,
         interrupt: raw.interrupt ?? false,
+        speakGate: raw.speakGate?.description ?? null,
         base: raw.base ?? null,
       }))
       .sort((a, b) => codePointOrder(a.id, b.id));
@@ -1133,7 +1151,7 @@ class ScenarioEngine implements IScenarioEngine {
         // This fire would silence the in-flight one — expand FIRST (issue
         // #835), so a fire that aborts (or expands empty) never cancels
         // what's playing.
-        const expanded = this.prepareOps(entry, event);
+        const expanded = this.prepareOps(entry, event, resume);
 
         if (expanded === null) return;
 
@@ -1166,7 +1184,7 @@ class ScenarioEngine implements IScenarioEngine {
       return;
     }
 
-    const expanded = this.prepareOps(entry, event);
+    const expanded = this.prepareOps(entry, event, resume);
 
     if (expanded === null) return;
 
@@ -1245,8 +1263,25 @@ class ScenarioEngine implements IScenarioEngine {
    * that can never hold a clip (`canProducePlay`) has no frame expanded at
    * all — nothing can be due for it, so nothing can abort it or warn about
    * it. The rule and its one accepted cost are stated on `applyFrame`.
+   *
+   * The speak-time gate (issue #1138) runs LAST, once the body has expanded
+   * to something to play: the contract's `speakGate.admit` is asked with the
+   * fire's context — the resolved vars included — and `false` returns `null`
+   * exactly like a required-step abort, so the fire stamps no cooldown,
+   * takes no bus and cancels nothing in flight. It runs after expansion so
+   * that a claim committed inside it (#1137) is committed for a callout that
+   * will play, and so a body that aborts never reaches it. A deferred fire
+   * re-enters here at idle-replay and is asked again; a `resume` (#758)
+   * continues a fire that already passed the gate, so it is not asked — a
+   * gate that committed a claim on the way in must not be asked to claim
+   * the same fire twice, and one that reads live state must not drop the
+   * tail of a line the engineer has already begun.
    */
-  private prepareOps(entry: CompiledScenario, event: SimEventOf<SimEventName> | null): ExecOp[] | null {
+  private prepareOps(
+    entry: CompiledScenario,
+    event: SimEventOf<SimEventName> | null,
+    resume?: ResumeState,
+  ): ExecOp[] | null {
     this.ensureCompiled();
 
     const ctx: ScenarioContext = {
@@ -1304,7 +1339,38 @@ class ScenarioEngine implements IScenarioEngine {
       return null;
     }
 
+    // The speak-time gate (issue #1138): the contract's second look, in code,
+    // after the body expanded and before the ops take the bus — so it holds
+    // for every voice, whatever its script says. A resume continues a fire
+    // that already passed it (and may have committed its claim there), so it
+    // is not asked again; a deferred replay re-enters here and is.
+    const gate = entry.raw.speakGate;
+
+    if (gate !== undefined && resume === undefined && !this.admits(gate, entry.raw.id, ctx)) {
+      this.logger.debug(`Scenario "${entry.raw.id}" skipped — speak-time gate: ${gate.description}`);
+
+      return null;
+    }
+
     return expanded;
+  }
+
+  /**
+   * Ask a speak-time gate (issue #1138). A gate that throws is logged at
+   * error and treated as a refusal: the fire it was asked about is dropped
+   * like any other refused one, never played on the strength of a check
+   * that did not complete.
+   */
+  private admits(gate: SpeakGate, scenarioId: string, ctx: ScenarioContext): boolean {
+    try {
+      return gate.admit(ctx);
+    } catch (err) {
+      this.logger.error(
+        `Scenario "${scenarioId}" speak-time gate failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+
+      return false;
+    }
   }
 
   /**
@@ -1596,13 +1662,12 @@ class ScenarioEngine implements IScenarioEngine {
 
   /**
    * Play the pending fire (if any) now that the bus is idle. The fire replays
-   * unconditionally — its `where:` is NOT re-evaluated. Some `where:`
-   * predicates commit a side effect as their last gate (e.g. the position
-   * readout claims a shared cooldown via `tryClaimPositionAnnouncement()`,
-   * issues #574/#555); re-running them on replay would fail the already-made
-   * claim and silently drop the callout. Freshness is preserved instead by the
-   * var resolvers, which read live state at `executeFire` time rather than from
-   * the frozen event payload.
+   * unconditionally — `where:` is NOT re-evaluated: it decided at event
+   * time; what must hold at speak time is the contract's `speakGate` (issue
+   * #1138), which the replay's `prepareOps` asks again, and a claim belongs
+   * there rather than in `where:` (issue #1137). Freshness of the words is
+   * preserved by the var resolvers, which read live state at replay
+   * expansion rather than from the frozen event payload.
    */
   private drainPending(state: BusState): void {
     this.clearPendingHold(state);

@@ -2,7 +2,7 @@ import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { NO_FRAME as GRAMMAR_NO_FRAME, parseStringStep, POOL_NAME_PATTERN } from "@iracedeck/callout-script";
 import { describe, expect, expectTypeOf, it } from "vitest";
 
-import type { ResolvedStep, Scenario, ScenarioContract } from "./dsl.js";
+import type { ResolvedStep, Scenario, ScenarioContract, SpeakGate } from "./dsl.js";
 import { applyBase, DEFAULT_FRAME, NO_FRAME, parseStepShorthand, resolveStep, WEIGHT } from "./dsl.js";
 
 describe("WEIGHT bands", () => {
@@ -215,6 +215,14 @@ describe("applyBase", () => {
 // ─── Contracts and frames (issue #1064) ─────────────────────────────────────
 
 describe("Scenario / ScenarioContract", () => {
+  it("a ScenarioContract may carry a speakGate with a description and an admit resolver (issue #1138)", () => {
+    const gate: SpeakGate = { description: "Still due.", admit: (ctx) => ctx.now > 0 };
+    const c: ScenarioContract = { id: "x", channel: AudioChannel.Voice, bus: AudioBus.Voice, speakGate: gate };
+
+    expectTypeOf(c.speakGate).toEqualTypeOf<SpeakGate | undefined>();
+    expect(c.speakGate?.admit({ event: null, telemetry: null, data: null, now: 1, vars: {} })).toBe(true);
+  });
+
   it("keeps the legacy Scenario shape assignable — a literal with a sequence still compiles", () => {
     // Type-level: this literal is exactly what every un-migrated catalog file
     // writes today. If `Scenario` stops accepting it, tsc (not vitest) fails

@@ -128,6 +128,38 @@ export type Step =
   | { ambient: "start" | "stop" | "seek" };
 
 /**
+ * A contract's speak-time gate (issue #1138): a second look, in code, at
+ * whether the callout should speak at all, taken AFTER the active voice's
+ * script has expanded and immediately BEFORE the ops take the bus. `where:`
+ * decides at event arrival; a fire can then wait behind a busier line for
+ * seconds, and the world can move on — the car corrected in the pit box,
+ * the limiter switched on, the furled flag withdrawn. `admit` returning
+ * `false` drops the fire like a required-step abort: debug level, no
+ * cooldown stamp, no bus take, and it never cancels an in-flight callout.
+ * It runs once per fire that plays — again when a deferred fire replays at
+ * idle, exactly as expansion re-runs there, and NOT on a resume (#758),
+ * which continues a fire that already passed it.
+ *
+ * Code-owned on purpose: pacing is withheld from voice packs (#1064), and a
+ * gate written as a script `if` holds only for a pack that keeps the `if`.
+ * A pack may still write the belt-and-braces `if` over the same registered
+ * condition — which is why a registered condition must stay PURE.
+ *
+ * `admit` is also the ONE place a cooldown claim may be committed (issue
+ * #1137): a claim made in `where:` is burned when the expansion then aborts.
+ * The `where:` keeps the pure half of the check so a fire outside the
+ * cadence is still dropped cheaply at event time.
+ *
+ * `description` is one sentence for the pack reference ("Re-checked at
+ * speak time: …"), in the sim's terms, held to the same rules as
+ * `ScenarioContract.description`.
+ */
+export type SpeakGate = {
+  description: string;
+  admit: VocabularyResolver<boolean>;
+};
+
+/**
  * The code-owned half of a scenario (issue #1064): WHETHER and WHEN the
  * engineer speaks, and how the fire is scheduled. What he says — the
  * `sequence` — is the voice pack's half, paired to the contract by `id` in
@@ -146,6 +178,8 @@ export type ScenarioContract = {
     event: SimEventName;
     where?: (e: SimEventOf<SimEventName>) => boolean;
   };
+  /** The speak-time gate (issue #1138); see {@link SpeakGate}. */
+  speakGate?: SpeakGate;
   /**
    * One sentence for a pack author on WHEN the callout fires, in the sim's
    * terms rather than the code's — "The pace car pulls away on a rolling-start
@@ -177,9 +211,11 @@ export type ScenarioContract = {
    * fire is playing, or it is below an exclusive-focus floor), defer it and
    * replay when the bus next idles (`true`) instead of dropping it outright
    * (`false`, the default). The deferred fire replays unconditionally — its
-   * `where:` is NOT re-evaluated (a `where:` that commits a side effect, like
-   * the position-readout cooldown claim, would fail on a second call);
-   * freshness comes from var resolvers reading live state at speak time.
+   * `where:` is NOT re-evaluated, because it decided at event time; what
+   * must still hold at speak time is the contract's `speakGate` (issue
+   * #1138), which the replay asks again after re-expanding, and a cooldown
+   * claim belongs there rather than in `where:` (issue #1137). Freshness of
+   * the words comes from var resolvers reading live state at speak time.
    */
   queueable?: boolean;
   /**

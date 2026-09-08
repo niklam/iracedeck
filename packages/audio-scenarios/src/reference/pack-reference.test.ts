@@ -29,6 +29,7 @@ function contract(overrides: Partial<ContractReport> & { id: string }): Contract
     weight: WEIGHT.CRITICAL,
     queueable: false,
     interrupt: false,
+    speakGate: null,
     base: null,
     ...overrides,
   };
