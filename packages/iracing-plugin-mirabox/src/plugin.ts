@@ -119,6 +119,7 @@ import {
   focusIRacingIfEnabled,
   frameOptionsFromSettings,
   getController,
+  getDevVoicePacksRoot,
   getGlobalSettings,
   getPluginPlatform,
   getPluginVersion,
@@ -464,11 +465,15 @@ const voicePacksLogger = adapter.createLogger("VoicePacks");
 // "Open folder" button reveals it, and those must be the same place. The page
 // supplies no path for either (#1100).
 const voicePacksRoot = resolveVoicePacksPath({ env: process.env });
+// A development build carries a second root (#1143): the packer's staged
+// output, scanned ahead of the AppData folder and never installed over.
+const devVoicePacksRoot = getDevVoicePacksRoot();
 // One scanner port for the scan AND the installer (#1100): the installer reads
 // `.install.json`, a staged manifest and the bundled clip tree through it.
 const voicePackFs = createVoicePackFileSystem(voicePacksLogger);
 const voicePacks = createVoicePackService({
   root: voicePacksRoot,
+  ...(devVoicePacksRoot === undefined ? {} : { devRoot: devVoicePacksRoot }),
   fs: voicePackFs,
   logger: voicePacksLogger,
   pluginAudioDir: audioRootDir,
@@ -667,6 +672,10 @@ const voicePackLaunch = createVoicePackLaunchStep({
   // result listing the pack with a voice. A managed pack whose record
   // survived but whose clips did not is reinstalled by force off this.
   isPackUsable: (id) => voicePacks.installed().some((pack) => pack.id === id && pack.voices.length > 0),
+  // The development root provides `id` right now, so the launch step must
+  // never install or update it over that root's own copy (#1143).
+  isProvidedByDevRoot: (id) => voicePacks.isProvidedByDevRoot(id),
+  ...(devVoicePacksRoot === undefined ? {} : { devRoot: devVoicePacksRoot }),
   isRaceEngineerEnabled: () => (getGlobalSettings() as Record<string, unknown>).pitCrewRaceEngineerEnabled === true,
   // The step watches the Race Engineer gate itself and re-runs the ensure on
   // the false→true edge — the moment a missing or stale voice starts to matter.
@@ -1005,13 +1014,13 @@ function pushVoicePackListIfChanged(): void {
       // renders — and it would ride this run-scoped key into every Property
       // Inspector on every push.
       voices: pack.voices.map(({ id, label }) => ({ id, label })),
+      dir: pack.dir,
       // Where it came from, for the settings window's provenance badge
       // (#1100). Displayed, never enforced.
       provenance: pack.provenance,
-      // The pack iRaceDeck keeps current itself (#1034 stage 3): the settings
-      // window shows it without a Remove button. Keyed by id, never by
-      // provenance, so a forged provenance record buys nothing.
-      managed: isManagedVoicePack(pack.id),
+      // The managed pack is the one the launch step keeps current — which it does
+      // not while the development root provides it, so the row must not claim so.
+      managed: isManagedVoicePack(pack.id) && pack.provenance !== "development",
     })),
     problems: voicePacks.problems().map((problem) => ({ pack: problem.pack, reason: problem.reason })),
   });
