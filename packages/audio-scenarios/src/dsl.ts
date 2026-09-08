@@ -137,8 +137,14 @@ export type Step =
  * `false` drops the fire like a required-step abort: debug level, no
  * cooldown stamp, no bus take, and it never cancels an in-flight callout.
  * It runs once per fire that plays — again when a deferred fire replays at
- * idle, exactly as expansion re-runs there, and NOT on a resume (#758),
- * which continues a fire that already passed it.
+ * idle, exactly as expansion re-runs there, and NOT on a resume (#758). A
+ * resume is the SAME fire either way: continued from the interrupted clip
+ * when the fresh expansion matches the stashed one, and replayed whole from
+ * the top when it changed (the #481 freshness fallback). Both carry the
+ * resume and neither is asked again — the fire passed the gate on its way
+ * in and may have committed its claim there — so a contract that is both
+ * `resumable` and gated must tolerate its whole body being replayed on the
+ * strength of that one answer.
  *
  * Code-owned on purpose: pacing is withheld from voice packs (#1064), and a
  * gate written as a script `if` holds only for a pack that keeps the `if`.

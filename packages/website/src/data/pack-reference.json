@@ -315,9 +315,9 @@
       "weightBand": "SAFETY",
       "queueable": true,
       "interrupt": false,
-      "speakGate": null,
+      "speakGate": "The furled black flag is still being shown when the call comes to speak; speaking it marks the warning as announced.",
       "base": "voice/{voice}",
-      "comment": "The furled black flag — the driver gained time and must give it back. Spoken only while the flag is still shown at speak time, so a warning withdrawn while this waited behind a longer line stays silent.",
+      "comment": "The furled black flag — the driver gained time and must give it back.",
       "test": "Harness → Flags → Furled. In-sim: cut a corner and gain time; the furled flag shows until the time is given back.",
       "skip": false,
       "references": {
@@ -325,9 +325,7 @@
           "flags/furled"
         ],
         "vars": [],
-        "conds": [
-          "flag.furledStillShown"
-        ],
+        "conds": [],
         "cases": [],
         "includes": [],
         "frames": []
@@ -343,9 +341,9 @@
       "weightBand": "SAFETY",
       "queueable": true,
       "interrupt": false,
-      "speakGate": null,
+      "speakGate": "The announced furled flag is still down when the call comes to speak, with no black flag or disqualification in its place; speaking it consumes the announcement.",
       "base": "voice/{voice}",
-      "comment": "The furled warning has been withdrawn after the driver gave the time back. Only follows a furled line that was actually spoken, and never plays when the warning escalated to a real black flag instead.",
+      "comment": "The furled warning has been withdrawn after the driver gave the time back.",
       "test": "Harness → Flags → Furled, then Harness → Flags → Furled Cleared. In-sim: give the time back after a furled black flag.",
       "skip": false,
       "references": {
@@ -353,9 +351,7 @@
           "flags/furled-cleared"
         ],
         "vars": [],
-        "conds": [
-          "flag.furledWithdrawn"
-        ],
+        "conds": [],
         "cases": [],
         "includes": [],
         "frames": []
@@ -1043,7 +1039,7 @@
       "weightBand": "NORMAL",
       "queueable": true,
       "interrupt": false,
-      "speakGate": null,
+      "speakGate": "No other gap callout has spoken inside the gap cooldown when this one comes to speak; speaking it starts that window.",
       "base": "voice/{voice}",
       "comment": "The gap to a standings neighbor first dropped under the driver's alert threshold — we have caught the car ahead, or the car behind is right with us — then the live gap through the same gap-readout fragment. Shares the trend line's cooldown.",
       "test": "Harness → Gaps → Caught the car ahead (threshold) or Car behind within threshold, with a live gap for the seconds clause. In-sim: close to within the configured gap threshold of the car ahead.",
@@ -1074,7 +1070,7 @@
       "weightBand": "CHATTER",
       "queueable": true,
       "interrupt": false,
-      "speakGate": null,
+      "speakGate": "No other gap callout has spoken inside the gap cooldown when this one comes to speak; speaking it starts that window.",
       "base": "voice/{voice}",
       "comment": "The gap to a standings neighbor has turned: we are gaining on the car ahead, it is pulling away, the car behind is gaining, or we are dropping it. The line is chosen by side and direction; the live gap readout follows through the gap-readout fragment. Both gap lines share one cooldown (30 s by default), so a second one inside it stays silent.",
       "test": "Harness → Gaps → Trend: closing on car ahead, Trend: car ahead pulling away, Trend: car behind gaining or Trend: dropping the car behind — the seconds clause needs a live gap, so drive the harness session with cars around you. In-sim: race with a car a few seconds ahead and close on it lap after lap.",
@@ -1326,9 +1322,9 @@
       "weightBand": "NORMAL",
       "queueable": true,
       "interrupt": false,
-      "speakGate": null,
+      "speakGate": "The pit limiter is still off on pit road when the warning comes to speak, in a car that has one.",
       "base": "pit-crew",
-      "comment": "The car is on pit road without its limiter engaged, a couple of seconds after the pit-entry reminder went unheeded — an escalation, not a duplicate. The whole body is behind limiter.stillMissingOnPitRoad, so a driver who engaged the limiter in the meantime hears nothing.",
+      "comment": "The car is on pit road without its limiter engaged, a couple of seconds after the pit-entry reminder went unheeded — an escalation, not a duplicate.",
       "test": "Harness → Pit Limiter → Limiter off on pit road (fires about 2.5 s later). In-sim: on a car with a pit limiter, enter pit road without engaging it and keep it off.",
       "skip": false,
       "references": {
@@ -1336,9 +1332,7 @@
           "pit-limiter/missing"
         ],
         "vars": [],
-        "conds": [
-          "limiter.stillMissingOnPitRoad"
-        ],
+        "conds": [],
         "cases": [],
         "includes": [],
         "frames": []
@@ -1354,9 +1348,9 @@
       "weightBand": "NORMAL",
       "queueable": true,
       "interrupt": false,
-      "speakGate": null,
+      "speakGate": "The pit limiter is still engaged out on the track when the warning comes to speak, in a car that has one.",
       "base": "pit-crew",
-      "comment": "The pit limiter is still on about a second and a half after the car left pit road — the driver forgot to switch it off. The whole body is behind limiter.stillEngagedOffPitRoad: the line waits behind busier traffic rather than being dropped, so it re-checks live telemetry when it comes to speak and says nothing (no radio frame either) once the limiter is off.",
+      "comment": "The pit limiter is still on about a second and a half after the car left pit road — the driver forgot to switch it off.",
       "test": "Harness → Pit Limiter → Limiter on out on track (fires about 1.5 s later). In-sim: on a car with a pit limiter, leave pit road with the limiter still engaged.",
       "skip": false,
       "references": {
@@ -1364,9 +1358,7 @@
           "pit-limiter/on-track"
         ],
         "vars": [],
-        "conds": [
-          "limiter.stillEngagedOffPitRoad"
-        ],
+        "conds": [],
         "cases": [],
         "includes": [],
         "frames": []
@@ -1992,7 +1984,7 @@
       "weightBand": "CHATTER",
       "queueable": true,
       "interrupt": false,
-      "speakGate": null,
+      "speakGate": "No other position readout has spoken in the last twenty seconds when this one comes to speak; speaking it starts that window.",
       "base": "voice/{voice}",
       "comment": "The position readout after a gained overtake — \"We're currently\", then the live position — played once the reaction line has finished. It is skipped for a podium gain, whose reaction line already states the place, and never doubles a position announced by another line in the last 20 seconds. The lead-in is an optional clause: a second readout within 30 seconds that moved at most one place says the bare number (\"P four\"), which is a complete, true statement on its own; a script that always wants the lead-in drops the optional.",
       "test": "Harness: mute — the Overtakes buttons fire the reaction but the harness has no live position, so this readout has nothing to say there. In-sim: pass a car in a race outside the top three; the reaction (when it rolls) is followed by the current position, and a second pass within half a minute reads the bare number.",
@@ -2047,7 +2039,7 @@
       "weightBand": "CHATTER",
       "queueable": true,
       "interrupt": false,
-      "speakGate": null,
+      "speakGate": "No other position readout has spoken in the last twenty seconds when this one comes to speak; speaking it starts that window.",
       "base": "voice/{voice}",
       "comment": "The position readout after a lost place — the same lead-in and live number as the gained readout, under the same 20-second no-double rule and the same optional lead-in.",
       "test": "Harness: mute — the Overtakes → Lost — now P5 button fires the reaction but the harness has no live position for this readout. In-sim: get passed in a race; the come-on line (when it rolls) is followed by the current position.",
@@ -2423,9 +2415,9 @@
       "weightBand": null,
       "queueable": false,
       "interrupt": false,
-      "speakGate": null,
+      "speakGate": "The car is still at a bad angle in the pit box when the nag comes to speak, or telemetry is unavailable.",
       "base": "voice/{voice}",
-      "comment": "The repeat nag for a bad angle — the whole body behind its live re-check, as for too far left.",
+      "comment": "The repeat nag for a bad angle, as for too far left.",
       "test": "Harness → Pit Status → Still Bad Angle, after Bad Angle. In-sim: park across the box and stay put.",
       "skip": false,
       "references": {
@@ -2433,9 +2425,7 @@
           "pit-status/bad-angle-repeat"
         ],
         "vars": [],
-        "conds": [
-          "pitStatus.stillBadAngle"
-        ],
+        "conds": [],
         "cases": [],
         "includes": [],
         "frames": []
@@ -2555,9 +2545,9 @@
       "weightBand": null,
       "queueable": false,
       "interrupt": false,
-      "speakGate": null,
+      "speakGate": "The car is still too far back in the pit box when the nag comes to speak, or telemetry is unavailable.",
       "base": "voice/{voice}",
-      "comment": "The repeat nag for too far back — the whole body behind its live re-check, as for too far left.",
+      "comment": "The repeat nag for too far back, as for too far left.",
       "test": "Harness → Pit Status → Still Too Far Back, after Too Far Back. In-sim: stop short of the box and stay put.",
       "skip": false,
       "references": {
@@ -2565,9 +2555,7 @@
           "pit-status/too-far-back-repeat"
         ],
         "vars": [],
-        "conds": [
-          "pitStatus.stillTooFarBack"
-        ],
+        "conds": [],
         "cases": [],
         "includes": [],
         "frames": []
@@ -2609,9 +2597,9 @@
       "weightBand": null,
       "queueable": false,
       "interrupt": false,
-      "speakGate": null,
+      "speakGate": "The car is still too far forward in the pit box when the nag comes to speak, or telemetry is unavailable.",
       "base": "voice/{voice}",
-      "comment": "The repeat nag for too far forward — the whole body behind its live re-check, as for too far left.",
+      "comment": "The repeat nag for too far forward, as for too far left.",
       "test": "Harness → Pit Status → Still Too Far Forward, after Too Far Forward. In-sim: overshoot the box and stay put.",
       "skip": false,
       "references": {
@@ -2619,9 +2607,7 @@
           "pit-status/too-far-forward-repeat"
         ],
         "vars": [],
-        "conds": [
-          "pitStatus.stillTooFarForward"
-        ],
+        "conds": [],
         "cases": [],
         "includes": [],
         "frames": []
@@ -2663,9 +2649,9 @@
       "weightBand": null,
       "queueable": false,
       "interrupt": false,
-      "speakGate": null,
+      "speakGate": "The car is still too far left in the pit box when the nag comes to speak, or telemetry is unavailable.",
       "base": "voice/{voice}",
-      "comment": "The terse nag that repeats every couple of seconds while the car sits too far left after the full correction. The whole body is behind pitStatus.stillTooFarLeft: a nag that waited behind a longer line re-checks the live status when it comes to speak and says nothing once the driver has corrected — and nothing means no radio frame either, which is the intended silence rather than a bare beep.",
+      "comment": "The terse nag that repeats every couple of seconds while the car sits too far left after the full correction.",
       "test": "Harness → Pit Status → Still Too Far Left, after Too Far Left. In-sim: stop left of the box and stay put; the nag repeats about every two seconds.",
       "skip": false,
       "references": {
@@ -2673,9 +2659,7 @@
           "pit-status/too-far-left-repeat"
         ],
         "vars": [],
-        "conds": [
-          "pitStatus.stillTooFarLeft"
-        ],
+        "conds": [],
         "cases": [],
         "includes": [],
         "frames": []
@@ -2717,9 +2701,9 @@
       "weightBand": null,
       "queueable": false,
       "interrupt": false,
-      "speakGate": null,
+      "speakGate": "The car is still too far right in the pit box when the nag comes to speak, or telemetry is unavailable.",
       "base": "voice/{voice}",
-      "comment": "The repeat nag for too far right — the whole body behind its live re-check, as for too far left.",
+      "comment": "The repeat nag for too far right, as for too far left.",
       "test": "Harness → Pit Status → Still Too Far Right, after Too Far Right. In-sim: stop right of the box and stay put.",
       "skip": false,
       "references": {
@@ -2727,9 +2711,7 @@
           "pit-status/too-far-right-repeat"
         ],
         "vars": [],
-        "conds": [
-          "pitStatus.stillTooFarRight"
-        ],
+        "conds": [],
         "cases": [],
         "includes": [],
         "frames": []
@@ -2797,7 +2779,7 @@
       "weightBand": "CHATTER",
       "queueable": true,
       "interrupt": false,
-      "speakGate": null,
+      "speakGate": "In a race, no other position readout has spoken in the last twenty seconds when this one comes to speak; speaking it starts that window.",
       "base": "voice/{voice}",
       "comment": "The driver's position after a completed lap, in one of three shapes: an invalidated qualifying lap says \"That lap didn't count\", then \"We're currently\" and the position; a lap that put the driver on pole says the pole line alone; every other lap says the intro (\"That puts us to\" for a gain in qualifying, \"We're currently\" otherwise, and always in a race) and the position, read live in a race. Practice stays silent, and a race hold is left to the race-status update.",
       "test": "Harness → Position → Improved 5 → 3, Worsened 3 → 5, First Valid Lap P1, Qualifying P1 (pole), Holding P1 (qualifying, slow lap), Unchanged P5 (non-PB lap) or the Invalid lap, … buttons (all qualifying). The race branch is mute in the harness (no live position) — In-sim: complete a race lap having gained or lost a place.",
@@ -2837,7 +2819,7 @@
       "weightBand": "NORMAL",
       "queueable": false,
       "interrupt": false,
-      "speakGate": null,
+      "speakGate": "This is still the first incident of the flying lap when the call comes to speak; speaking it latches the lap.",
       "base": null,
       "comment": "An incident on a counted qualifying lap: the invalidated line always, then — only in lap-limited qualifying, where a count means something — a tail for how many counted laps remain: out of laps, one to five by count (each a whole sentence with its own encouragement), or plenty above five. The tail is a whole clause, so an if with no else is right for it; a count the case has no key for says nothing. One callout per lap however many incidents; silent on out-laps and beyond the counted attempts.",
       "test": "Harness → Scenario Shortcuts → Qualifying Invalidation → Off-Track — 3 laps left (Contact-Car — 1 lap left, Off-Track — out of laps, Off-Track — plenty of laps, Off-Track — time-limited for the other tails; the four (silent) buttons and Same Lap Again (latch) for the suppressions). In-sim: go off track on a flying lap of a lap-limited qualifying session.",
@@ -2975,7 +2957,7 @@
       "weightBand": "CHATTER",
       "queueable": true,
       "interrupt": false,
-      "speakGate": null,
+      "speakGate": "No other position readout has spoken in the last twenty seconds when this one comes to speak; speaking it starts that window.",
       "base": "voice/{voice}",
       "comment": "The every-three-laps status update while the driver holds position in a race: the leader hears the whole still-leading line (still leading our class in a multi-class race), everyone else hears \"we're currently\" and the live position. Both branches are read at speak time, so a deferred update is never stale. The number is part of the sentence and stays required.",
       "test": "Harness → Scenario Shortcuts → Race → Status update (P5 on lap 7) or Leader status (P1 on lap 6) — both are MUTE in the harness, which has no live position for the readout to speak, so only the fire attempt shows in the log. In-sim: hold the same race position for three consecutive laps after the green; the update comes as you cross the line on the third.",
@@ -4571,17 +4553,13 @@
     "conds": [
       {
         "name": "flag.furledStillShown",
-        "description": "The furled black flag is still being shown at speak time; speaking it marks the raise as announced.",
-        "usedBy": [
-          "pit-crew.flag-furled"
-        ]
+        "description": "The furled black flag is still being shown (a pure read — the engine already asks this at speak time and marks the raise as announced when the call plays).",
+        "usedBy": []
       },
       {
         "name": "flag.furledWithdrawn",
-        "description": "An announced furled flag has been withdrawn; speaking it consumes the announcement.",
-        "usedBy": [
-          "pit-crew.flag-furled-cleared"
-        ]
+        "description": "An announced furled flag has been withdrawn and nothing worse took its place (a pure read — the engine already asks this at speak time and consumes the announcement when the call plays).",
+        "usedBy": []
       },
       {
         "name": "lapTime.hasMinuteComponent",
@@ -4592,52 +4570,38 @@
       },
       {
         "name": "limiter.stillEngagedOffPitRoad",
-        "description": "The car has a pit limiter and it is still engaged out on the track, according to live telemetry when the line comes to speak — about a second and a half after leaving pit road. Wrap the on-track warning's whole body in it so a driver who has already switched the limiter off hears nothing. False on a car without a limiter or when telemetry is unavailable.",
-        "usedBy": [
-          "pit-crew.limiter-on-track"
-        ]
+        "description": "The car has a pit limiter and it is still engaged out on the track, according to live telemetry when the line comes to speak — about a second and a half after leaving pit road. The engine already asks this at speak time (it is the warning's own gate), so wrapping the body in it changes nothing; it is here for a pack that wants the warning silent on its own terms. False on a car without a limiter or when telemetry is unavailable.",
+        "usedBy": []
       },
       {
         "name": "limiter.stillMissingOnPitRoad",
-        "description": "The car has a pit limiter and it is still NOT engaged on pit road, according to live telemetry when the line comes to speak — a couple of seconds after the pit-entry reminder. Wrap the missing-limiter warning's whole body in it so a driver who engaged the limiter in the meantime hears nothing. False on a car without a limiter or when telemetry is unavailable.",
-        "usedBy": [
-          "pit-crew.limiter-missing"
-        ]
+        "description": "The car has a pit limiter and it is still NOT engaged on pit road, according to live telemetry when the line comes to speak — a couple of seconds after the pit-entry reminder. The engine already asks this at speak time (it is the warning's own gate), so wrapping the body in it changes nothing; it is here for a pack that wants the warning silent on its own terms. False on a car without a limiter or when telemetry is unavailable.",
+        "usedBy": []
       },
       {
         "name": "pitStatus.stillBadAngle",
-        "description": "The car is still at a bad angle in the pit box according to live telemetry, or telemetry is unavailable. Wrap a repeat nag's whole body in it so a nag that waited behind a longer line stays silent once the driver has corrected; unknown telemetry counts as still wrong, never as fixed.",
-        "usedBy": [
-          "pit-crew.pit-status-bad-angle-repeat"
-        ]
+        "description": "The car is still at a bad angle in the pit box according to live telemetry, or telemetry is unavailable. The engine already asks this at speak time — it is the nag's own gate — so wrapping a nag's body in it changes nothing; it is here for a pack that wants a nag silent on its own terms. Unknown telemetry counts as still wrong, never as fixed.",
+        "usedBy": []
       },
       {
         "name": "pitStatus.stillTooFarBack",
-        "description": "The car is still too far back in the pit box according to live telemetry, or telemetry is unavailable. Wrap a repeat nag's whole body in it so a nag that waited behind a longer line stays silent once the driver has corrected; unknown telemetry counts as still wrong, never as fixed.",
-        "usedBy": [
-          "pit-crew.pit-status-too-far-back-repeat"
-        ]
+        "description": "The car is still too far back in the pit box according to live telemetry, or telemetry is unavailable. The engine already asks this at speak time — it is the nag's own gate — so wrapping a nag's body in it changes nothing; it is here for a pack that wants a nag silent on its own terms. Unknown telemetry counts as still wrong, never as fixed.",
+        "usedBy": []
       },
       {
         "name": "pitStatus.stillTooFarForward",
-        "description": "The car is still too far forward in the pit box according to live telemetry, or telemetry is unavailable. Wrap a repeat nag's whole body in it so a nag that waited behind a longer line stays silent once the driver has corrected; unknown telemetry counts as still wrong, never as fixed.",
-        "usedBy": [
-          "pit-crew.pit-status-too-far-forward-repeat"
-        ]
+        "description": "The car is still too far forward in the pit box according to live telemetry, or telemetry is unavailable. The engine already asks this at speak time — it is the nag's own gate — so wrapping a nag's body in it changes nothing; it is here for a pack that wants a nag silent on its own terms. Unknown telemetry counts as still wrong, never as fixed.",
+        "usedBy": []
       },
       {
         "name": "pitStatus.stillTooFarLeft",
-        "description": "The car is still too far left in the pit box according to live telemetry, or telemetry is unavailable. Wrap a repeat nag's whole body in it so a nag that waited behind a longer line stays silent once the driver has corrected; unknown telemetry counts as still wrong, never as fixed.",
-        "usedBy": [
-          "pit-crew.pit-status-too-far-left-repeat"
-        ]
+        "description": "The car is still too far left in the pit box according to live telemetry, or telemetry is unavailable. The engine already asks this at speak time — it is the nag's own gate — so wrapping a nag's body in it changes nothing; it is here for a pack that wants a nag silent on its own terms. Unknown telemetry counts as still wrong, never as fixed.",
+        "usedBy": []
       },
       {
         "name": "pitStatus.stillTooFarRight",
-        "description": "The car is still too far right in the pit box according to live telemetry, or telemetry is unavailable. Wrap a repeat nag's whole body in it so a nag that waited behind a longer line stays silent once the driver has corrected; unknown telemetry counts as still wrong, never as fixed.",
-        "usedBy": [
-          "pit-crew.pit-status-too-far-right-repeat"
-        ]
+        "description": "The car is still too far right in the pit box according to live telemetry, or telemetry is unavailable. The engine already asks this at speak time — it is the nag's own gate — so wrapping a nag's body in it changes nothing; it is here for a pack that wants a nag silent on its own terms. Unknown telemetry counts as still wrong, never as fixed.",
+        "usedBy": []
       },
       {
         "name": "qualifying.tailIsSpeakable",

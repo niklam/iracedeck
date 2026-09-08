@@ -1277,11 +1277,16 @@ class ScenarioEngine implements IScenarioEngine {
    * takes no bus and cancels nothing in flight. It runs after expansion so
    * that a claim committed inside it (#1137) is committed for a callout that
    * will play, and so a body that aborts never reaches it. A deferred fire
-   * re-enters here at idle-replay and is asked again; a `resume` (#758)
-   * continues a fire that already passed the gate, so it is not asked — a
-   * gate that committed a claim on the way in must not be asked to claim
-   * the same fire twice, and one that reads live state must not drop the
-   * tail of a line the engineer has already begun.
+   * re-enters here at idle-replay and is asked again; a `resume` (#758) is
+   * not — a gate that committed a claim on the way in must not be asked to
+   * claim the same fire twice, and one that reads live state must not drop
+   * the tail of a line the engineer has already begun. Note what that
+   * covers: `executeFire` continues from the interrupted clip only when the
+   * fresh expansion still matches the stashed one and otherwise replays the
+   * whole body from the top (the #481 freshness fallback), and BOTH carry
+   * the `resume`, so the replayed-from-the-top branch is not asked either.
+   * It is the same fire, which passed the gate once; a contract that is both
+   * `resumable` and gated must be able to tolerate that.
    */
   private prepareOps(
     entry: CompiledScenario,
@@ -1347,9 +1352,10 @@ class ScenarioEngine implements IScenarioEngine {
 
     // The speak-time gate (issue #1138): the contract's second look, in code,
     // after the body expanded and before the ops take the bus — so it holds
-    // for every voice, whatever its script says. A resume continues a fire
-    // that already passed it (and may have committed its claim there), so it
-    // is not asked again; a deferred replay re-enters here and is.
+    // for every voice, whatever its script says. A resume is the same fire —
+    // continued from the cut, or replayed whole when its expansion changed —
+    // which already passed the gate (and may have committed its claim there),
+    // so it is not asked again; a deferred replay re-enters here and is.
     const gate = entry.raw.speakGate;
 
     if (gate !== undefined && resume === undefined && !this.admits(gate, entry.raw.id, ctx)) {
