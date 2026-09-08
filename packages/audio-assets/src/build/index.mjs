@@ -7,7 +7,7 @@
 import { CALLOUT_SCRIPT_FILE } from "@iracedeck/callout-script";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
+import { copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
@@ -127,16 +127,61 @@ async function runWithConcurrency(tasks, limit) {
   if (failed) throw failed;
 }
 
+// Suffix of the sidecar written beside every cached clip, holding the sha-256
+// of the SOURCE bytes that produced it. It is what makes a cache entry
+// verifiable rather than merely present.
+const SOURCE_DIGEST_SUFFIX = ".src.sha256";
+
+function sourceDigestPath(cachedPath) {
+  return `${cachedPath}${SOURCE_DIGEST_SUFFIX}`;
+}
+
+function sourceDigest(sourcePath) {
+  return createHash("sha256").update(readFileSync(sourcePath)).digest("hex");
+}
+
+/**
+ * Is `cachedPath` the processed form of the bytes currently at `sourcePath`?
+ *
+ * By CONTENT, not by mtime (#1143). The check used to be
+ * `cached.mtimeMs > source.mtimeMs`, which is wrong on the most ordinary way a
+ * clip gets replaced here: a Windows copy — an Explorer paste, `cp -p`, an
+ * archive extraction — gives the new file the mtime of the file it came FROM,
+ * so a clip replaced with different audio routinely looks OLDER than the output
+ * built from the audio it replaced. Both the plugin build and `pack:voice` then
+ * kept serving the old clip, silently, with nothing in any log to say so.
+ *
+ * A cache entry with no sidecar is stale, which makes every cache written
+ * before this change rebuild once. That one-time re-encode is the intended
+ * cost: there is no way to tell what an undigested cache file was built from.
+ *
+ * Hashing is cheap next to the ffmpeg run it guards — ~1500 clips of ~25 KB.
+ */
 function cacheIsFresh(sourcePath, cachedPath) {
   if (!existsSync(cachedPath)) return false;
 
-  // Strict `>` rather than `>=`: when generate writes the source MP3 and
-  // the build helper runs in the same wall-clock second (or even the same
-  // millisecond, on filesystems with finer resolution), an `>=` check
-  // accepts a cache file that was actually built from the *previous*
-  // source revision. Strict `>` forces the rebuild in that ambiguous
-  // case — slightly more ffmpeg work, but never stale audio.
-  return statSync(cachedPath).mtimeMs > statSync(sourcePath).mtimeMs;
+  const digestPath = sourceDigestPath(cachedPath);
+
+  if (!existsSync(digestPath)) return false;
+
+  return readFileSync(digestPath, "utf-8").trim() === sourceDigest(sourcePath);
+}
+
+/**
+ * The ONE place a cached clip is produced: ffmpeg's output and the sidecar that
+ * makes it verifiable are written together, so no call site can leave a cache
+ * file behind without the digest of what it was built from.
+ *
+ * The digest is taken BEFORE ffmpeg reads the source and written only after it
+ * succeeded. The other order would record the digest of a source that changed
+ * mid-run against output built from what it replaced — a cache entry that then
+ * looks fresh forever, which is precisely the failure this replaced.
+ */
+async function processClipIntoCache(ffmpegPath, sourcePath, cachedPath, filterChain) {
+  const digest = sourceDigest(sourcePath);
+
+  await runFfmpeg(ffmpegPath, sourcePath, cachedPath, filterChain);
+  writeFileSync(sourceDigestPath(cachedPath), digest, "utf-8");
 }
 
 /**
@@ -159,11 +204,13 @@ export function wipeProcessedCache() {
 // to `cacheDir`), the per-plugin copy pass and the voice-pack packer (which
 // also write to `destDir`).
 //
-// `onFresh(cachedPath, destDir, fileName)` is invoked when the cache file
-// is newer than the source. `onMiss(srcPath, cachedPath, destDir, fileName)`
-// is invoked when the cache is stale or missing — the ffmpeg call has not
-// been made yet, the callback decides whether to run it and whether to
-// follow it with a copy.
+// `onFresh(cachedPath, destDir, fileName)` is invoked when the cache file was
+// built from the source's current bytes (`cacheIsFresh`).
+// `onMiss(srcPath, cachedPath, destDir, fileName)` is invoked when the cache is
+// stale or missing — the ffmpeg call has not been made yet, the callback
+// decides whether to run it (through `processClipIntoCache`, never `runFfmpeg`
+// directly, so the cache entry gets its digest) and whether to follow it with a
+// copy.
 //
 // `onScript(srcPath, destDir, fileName)`, when given, is invoked for the
 // voice's `callouts.json` (#1064) — the script sitting DIRECTLY under
@@ -300,7 +347,7 @@ async function runProcessVoiceTree({ srcDir, destDir, cacheDir, hash, logger }) 
       cached++;
     },
     onMiss: async (srcPath, cachedPath, currentDest, fileName) => {
-      await runFfmpeg(ffmpegPath, srcPath, cachedPath, RADIO_ENGINEER_FILTER);
+      await processClipIntoCache(ffmpegPath, srcPath, cachedPath, RADIO_ENGINEER_FILTER);
       copyFileSync(cachedPath, path.join(currentDest, fileName));
       files.push(relativeTo(currentDest, fileName));
       processed++;
@@ -334,7 +381,7 @@ async function runProcessVoiceTree({ srcDir, destDir, cacheDir, hash, logger }) 
  * cache and only ever read from it — no two processes contend over the same
  * `.cache/.../68.mp3` write.
  *
- * Per-file mtime check (`cacheIsFresh`) makes a warm cache a no-op, so this
+ * Per-file content check (`cacheIsFresh`) makes a warm cache a no-op, so this
  * is cheap to run on every build.
  *
  * `logger` is an optional `(msg: string) => void` for build-summary output.
@@ -364,7 +411,7 @@ async function runPrebuildCache({ logger }) {
       cached++;
     },
     onMiss: async (srcPath, cachedPath) => {
-      await runFfmpeg(ffmpegPath, srcPath, cachedPath, RADIO_ENGINEER_FILTER);
+      await processClipIntoCache(ffmpegPath, srcPath, cachedPath, RADIO_ENGINEER_FILTER);
       processed++;
     },
   });
@@ -382,10 +429,11 @@ async function runPrebuildCache({ logger }) {
  *
  * Processed outputs are cached at `packages/audio-assets/.cache/<pipeline-hash>/`
  * keyed on the filter chain + ffmpeg encode args, so changing either
- * invalidates the cache automatically. Per-file invalidation is mtime-based
- * (rebuild if the source MP3 is newer than its cached counterpart). The
- * Rollup plugin and the scenario harness both call this — the cache is
- * shared across them.
+ * invalidates the cache automatically. Per-file invalidation is content-based
+ * (rebuild unless the `<clip>.src.sha256` sidecar matches the source's current
+ * bytes — never the mtime, which a Windows copy carries over from the file it
+ * came from, #1143). The Rollup plugin and the scenario harness both call
+ * this — the cache is shared across them.
  *
  * `logger` is an optional `(msg: string) => void` for build-summary output.
  *
@@ -518,7 +566,7 @@ async function runProcessAndCopy({ srcRoot, destRoot, cacheRoot, hash, logger, w
                 cached++;
               },
               onMiss: async (srcPath, cachedPath, currentDest, fileName) => {
-                await runFfmpeg(ffmpegPath, srcPath, cachedPath, RADIO_ENGINEER_FILTER);
+                await processClipIntoCache(ffmpegPath, srcPath, cachedPath, RADIO_ENGINEER_FILTER);
                 copyFileSync(cachedPath, path.join(currentDest, fileName));
                 processed++;
               },

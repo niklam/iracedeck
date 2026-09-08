@@ -7,6 +7,8 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  statSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -17,6 +19,13 @@ import { audioAssetsPath, BUNDLED_VOICE_IDS, processAndCopyAudioAssets, processV
 
 /** The repository's smallest real clip, so ffmpeg has genuine audio to process. */
 const SAMPLE_CLIP = path.join(audioAssetsPath, "voice/default/lap-time-second/1.mp3");
+
+/**
+ * A DIFFERENT real clip, for the cache-freshness tests below: replacing a
+ * source with this one changes the bytes ffmpeg sees, so a stale cache shows up
+ * as audio, not merely as a counter.
+ */
+const OTHER_SAMPLE_CLIP = path.join(audioAssetsPath, "voice/default/lap-time-second/2.mp3");
 
 /**
  * A script whose bytes are NOT what any serializer here would emit — CRLF
@@ -102,7 +111,9 @@ describe("processVoiceTree — the voice's callouts.json", () => {
     // The clip went through the pipeline — the copy is the cached, processed
     // one — while the cache holds clips only.
     expect(readFileSync(path.join(destDir, "flags/blue-01.mp3")).equals(readFileSync(SAMPLE_CLIP))).toBe(false);
-    expect(listFiles(cacheDir)).toEqual(["flags/blue-01.mp3"]);
+    // The cache holds clips and the sidecar digest of the source each was built
+    // from (#1143) — no script, and nothing else.
+    expect(listFiles(cacheDir)).toEqual(["flags/blue-01.mp3", "flags/blue-01.mp3.src.sha256"]);
   }, 30_000);
 
   it("ignores a callouts.json deeper in the tree, like any other non-mp3 file", async () => {
@@ -135,6 +146,76 @@ describe("processVoiceTree — the voice's callouts.json", () => {
     expect(result.script).toBeNull();
     expect(listFiles(destDir)).toEqual(["flags/blue-01.mp3"]);
   }, 30_000);
+});
+
+/**
+ * What makes a cached, ffmpeg-processed clip current (#1143). It is the SOURCE
+ * BYTES, not the source's mtime: on Windows a copy carries the mtime of the file
+ * it was copied FROM, so replacing a clip via an Explorer paste (or `cp -p`)
+ * routinely leaves the new source looking OLDER than the output built from the
+ * old one — which is how a stale clip shipped in a voice pack.
+ */
+describe("processVoiceTree — cache freshness", () => {
+  /** A voice tree of exactly one clip, plus the paths the tests assert on. */
+  function oneClipTree(prefix: string): { srcDir: string; destDir: string; cacheDir: string; clip: string } {
+    const root = tempDir(prefix);
+    const srcDir = path.join(root, "src");
+
+    mkdirSync(path.join(srcDir, "flags"), { recursive: true });
+
+    const clip = path.join(srcDir, "flags", "blue-01.mp3");
+
+    copyFileSync(SAMPLE_CLIP, clip);
+
+    return { srcDir, destDir: path.join(root, "dest"), cacheDir: path.join(root, "cache"), clip };
+  }
+
+  it("rebuilds a clip whose bytes changed but whose mtime went BACKWARDS — the Windows copy case (#1143)", async () => {
+    const { srcDir, destDir, cacheDir, clip } = oneClipTree("ird-cache-older-source-");
+
+    const first = await processVoiceTree({ srcDir, destDir, cacheDir });
+
+    expect(first.processed).toBe(1);
+
+    const firstOutput = readFileSync(path.join(destDir, "flags/blue-01.mp3"));
+
+    // Exactly what a paste over an existing clip produces: different audio,
+    // carrying the mtime of the file it came from — here forced a day behind
+    // the cached output, so no mtime comparison can call the cache stale.
+    copyFileSync(OTHER_SAMPLE_CLIP, clip);
+
+    const behind = new Date(statSync(path.join(cacheDir, "flags/blue-01.mp3")).mtimeMs - 24 * 60 * 60 * 1000);
+
+    utimesSync(clip, behind, behind);
+    expect(statSync(clip).mtimeMs).toBeLessThan(statSync(path.join(cacheDir, "flags/blue-01.mp3")).mtimeMs);
+
+    const second = await processVoiceTree({ srcDir, destDir, cacheDir });
+
+    expect(second).toMatchObject({ processed: 1, cached: 0 });
+    // The claim that matters is the audio, not the counter: what was copied out
+    // is built from the clip that is on disk now.
+    expect(readFileSync(path.join(destDir, "flags/blue-01.mp3")).equals(firstOutput)).toBe(false);
+  }, 60_000);
+
+  it("re-runs nothing for a source that was merely re-touched — same bytes, newer mtime", async () => {
+    const { srcDir, destDir, cacheDir, clip } = oneClipTree("ird-cache-touched-source-");
+
+    const first = await processVoiceTree({ srcDir, destDir, cacheDir });
+
+    expect(first.processed).toBe(1);
+
+    const cachedOutput = readFileSync(path.join(cacheDir, "flags/blue-01.mp3"));
+    const ahead = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    utimesSync(clip, ahead, ahead);
+
+    const second = await processVoiceTree({ srcDir, destDir, cacheDir });
+
+    // The content check is not merely safer than the mtime one — it also spares
+    // the ffmpeg run a checkout or a `touch` used to spend.
+    expect(second).toMatchObject({ processed: 0, cached: 1 });
+    expect(readFileSync(path.join(cacheDir, "flags/blue-01.mp3")).equals(cachedOutput)).toBe(true);
+  }, 60_000);
 });
 
 /**
@@ -217,9 +298,13 @@ describe("processAndCopyAudioAssets — what reaches the plugin's assets/audio",
     // scanner would then find and report on.
     if (bundled.length === 0) expect(existsSync(path.join(destRoot, "voice"))).toBe(false);
 
-    // The radio cache holds processed clips and nothing else, and only for what
-    // was actually walked.
-    expect(listFilesIfAny(cacheDir)).toEqual(bundled.map((voice) => `voice/${voice}/flags/blue-01.mp3`));
+    // The radio cache holds processed clips (each with its source-digest
+    // sidecar, #1143) and nothing else, and only for what was actually walked.
+    expect(listFilesIfAny(cacheDir)).toEqual(
+      bundled
+        .flatMap((voice) => [`voice/${voice}/flags/blue-01.mp3`, `voice/${voice}/flags/blue-01.mp3.src.sha256`])
+        .sort(),
+    );
   }, 30_000);
 
   it('copies every authored voice when asked for voices: "all" — the harness auditions what is authored, not what ships', async () => {
