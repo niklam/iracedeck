@@ -75,12 +75,35 @@ const BUILD_ARGS = [
 const USAGE = "Usage: pnpm dev:voices <on|off>";
 
 /**
- * `pnpm` is a `.cmd` shim on Windows and needs a shell there; on other
- * platforms spawning it directly keeps the arguments intact. Same rule as
- * `scripts/claude-hooks/lib.mjs` `run`.
+ * Joins a command and its arguments into ONE shell command line, quoting any
+ * argument that contains whitespace or a double quote (escaping an inner `"`
+ * as `\"`). Pure — exported so the quoting can be tested without spawning
+ * anything.
  */
-function spawnSyncShell(cmd, args, options) {
-  return spawnSync(cmd, args, { shell: process.platform === "win32", stdio: "inherit", ...options });
+export function shellCommandLine(cmd, args) {
+  return [cmd, ...args].map((arg) => quoteShellArg(String(arg))).join(" ");
+}
+
+function quoteShellArg(arg) {
+  return /[\s"]/.test(arg) ? `"${arg.replace(/"/g, '\\"')}"` : arg;
+}
+
+/**
+ * `pnpm` is a `.cmd` shim on Windows and needs a shell there — Node refuses to
+ * spawn a `.cmd` without one (the CVE-2024-27980 hardening) — but Node 24
+ * deprecates (DEP0190) passing an args ARRAY alongside `shell: true`, and that
+ * deprecation is slated to become a hard error. So on Windows the shell stays
+ * and the args array goes: `cmd`/`args` are joined into one string via
+ * {@link shellCommandLine} and handed to `spawnSync` with no `args` array.
+ * Every argument this module passes through here is a fixed literal ("exec",
+ * "turbo", "run", "build", "--filter=…", "relink:…") — nothing user-supplied
+ * ever reaches the shell, so the join is safe. On other platforms spawning
+ * `cmd`/`args` directly (no shell) keeps the arguments intact.
+ */
+export function spawnSyncShell(cmd, args, options) {
+  return process.platform === "win32"
+    ? spawnSync(shellCommandLine(cmd, args), { shell: true, stdio: "inherit", ...options })
+    : spawnSync(cmd, args, { stdio: "inherit", ...options });
 }
 
 /**
