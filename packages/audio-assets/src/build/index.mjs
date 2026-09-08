@@ -7,7 +7,17 @@
 import { CALLOUT_SCRIPT_FILE } from "@iracedeck/callout-script";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
@@ -95,7 +105,25 @@ function pipelineHash(chain, encodeArgs) {
 
 function runFfmpeg(ffmpegPath, inputPath, outputPath, filterChain) {
   return new Promise((resolve, reject) => {
-    const args = ["-y", "-hide_banner", "-loglevel", "error", "-i", inputPath, "-af", filterChain, ...ENCODE_ARGS, outputPath];
+    // `-f mp3` forces the output muxer explicitly rather than leaving ffmpeg to
+    // infer it from `outputPath`'s extension. `processClipIntoCache` (#1143)
+    // writes its output to a `<cachedPath>.tmp` path so a failed encode can
+    // never leave a partial file at `cachedPath` — a name ffmpeg's own
+    // extension-sniffing can't place a muxer for.
+    const args = [
+      "-y",
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-i",
+      inputPath,
+      "-af",
+      filterChain,
+      ...ENCODE_ARGS,
+      "-f",
+      "mp3",
+      outputPath,
+    ];
     const proc = spawn(ffmpegPath, args);
     let stderr = "";
     proc.stderr.on("data", (chunk) => {
@@ -136,8 +164,16 @@ function sourceDigestPath(cachedPath) {
   return `${cachedPath}${SOURCE_DIGEST_SUFFIX}`;
 }
 
+// One hashing primitive so a digest taken from bytes already in memory (the
+// clip snapshot `processClipIntoCache` encodes from) and a digest taken by
+// re-reading a file off disk (`cacheIsFresh`, checking what's there NOW) can
+// never drift apart through two different hashing call sites.
+function hashBytes(bytes) {
+  return createHash("sha256").update(bytes).digest("hex");
+}
+
 function sourceDigest(sourcePath) {
-  return createHash("sha256").update(readFileSync(sourcePath)).digest("hex");
+  return hashBytes(readFileSync(sourcePath));
 }
 
 /**
@@ -172,16 +208,40 @@ function cacheIsFresh(sourcePath, cachedPath) {
  * makes it verifiable are written together, so no call site can leave a cache
  * file behind without the digest of what it was built from.
  *
- * The digest is taken BEFORE ffmpeg reads the source and written only after it
- * succeeded. The other order would record the digest of a source that changed
- * mid-run against output built from what it replaced — a cache entry that then
- * looks fresh forever, which is precisely the failure this replaced.
+ * `sourcePath` is read into memory ONCE, hashed, and written to a snapshot file
+ * that ffmpeg encodes from — never `sourcePath` itself. That is what makes the
+ * sidecar trustworthy: the bytes hashed are the exact bytes handed to ffmpeg,
+ * so the digest can never describe a different clip than the cached output,
+ * whatever happens to `sourcePath` between this call starting and ffmpeg
+ * finishing (a replace, a second concurrent run, …). Taking the digest first
+ * and then pointing ffmpeg AT `sourcePath` — the previous shape — left exactly
+ * that window open: a source swapped mid-run was hashed as the old bytes but
+ * could be encoded as the new ones, and the sidecar would then vouch for audio
+ * it never produced.
+ *
+ * ffmpeg's own output is written to a `.tmp` file and only `renameSync`'d onto
+ * `cachedPath` once it succeeds, so a failed or killed encode can never leave a
+ * partial file at the path `cacheIsFresh` trusts. Both temp files are cleaned
+ * up unconditionally.
  */
 async function processClipIntoCache(ffmpegPath, sourcePath, cachedPath, filterChain) {
-  const digest = sourceDigest(sourcePath);
+  const bytes = readFileSync(sourcePath);
+  const digest = hashBytes(bytes);
 
-  await runFfmpeg(ffmpegPath, sourcePath, cachedPath, filterChain);
-  writeFileSync(sourceDigestPath(cachedPath), digest, "utf-8");
+  const snapshotPath = `${cachedPath}.src.tmp`;
+  const outputTmpPath = `${cachedPath}.tmp`;
+
+  try {
+    writeFileSync(snapshotPath, bytes);
+    await runFfmpeg(ffmpegPath, snapshotPath, outputTmpPath, filterChain);
+    renameSync(outputTmpPath, cachedPath);
+    writeFileSync(sourceDigestPath(cachedPath), digest, "utf-8");
+  } catch (err) {
+    rmSync(outputTmpPath, { force: true });
+    throw err;
+  } finally {
+    rmSync(snapshotPath, { force: true });
+  }
 }
 
 /**
