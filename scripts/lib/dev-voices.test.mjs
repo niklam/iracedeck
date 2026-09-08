@@ -184,6 +184,21 @@ describe("runDevVoices('on')", () => {
     expect(runDevVoices("on", options({ log }))).toBe(0);
     expect(output(log)).not.toContain("No staged pack under");
   });
+
+  // The scanner lists DIRECTORIES, so the hint has to count the same things it
+  // does. `pack:voice` leaves an `<id>-<version>.zip` beside the staged folder,
+  // and a leftover zip from a run whose tree was since deleted used to suppress
+  // the hint while the plugin still warned that the root was empty — the switch
+  // and the plugin disagreeing about the same directory.
+  it("still names the staging command when the dev root holds only a stray zip", () => {
+    const voiceRoot = join(root, ...DEFAULT_DEV_VOICE_PACKS_ROOT.split("/"));
+    mkdirSync(voiceRoot, { recursive: true });
+    writeFileSync(join(voiceRoot, "default-1.2.3.zip"), "not a pack");
+    const log = fakeLog();
+
+    expect(runDevVoices("on", options({ log }))).toBe(0);
+    expect(output(log)).toContain("No staged pack under");
+  });
 });
 
 describe("runDevVoices('off')", () => {

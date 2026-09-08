@@ -279,11 +279,18 @@ function turnOff(root, log) {
   return { code: 0 };
 }
 
-/** Says how to stage a pack when the dev root has nothing in it yet. */
+/**
+ * Says how to stage a pack when the dev root has nothing in it yet.
+ *
+ * DIRECTORIES only, because that is what the scanner lists: `pack:voice` leaves
+ * an `<id>-<version>.zip` beside the staged folder, so counting files let a
+ * leftover zip suppress this hint while the plugin still warned the root was
+ * empty — the switch and the plugin disagreeing about the same directory.
+ */
 function reportStaging(voiceRoot, log) {
   let entries;
   try {
-    entries = readdirSync(voiceRoot);
+    entries = readdirSync(voiceRoot, { withFileTypes: true }).filter((entry) => entry.isDirectory());
   } catch {
     entries = [];
   }
