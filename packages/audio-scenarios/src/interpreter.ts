@@ -1257,12 +1257,18 @@ class ScenarioEngine implements IScenarioEngine {
    * around nothing. The frame is part of the callout, so a frame step that
    * resolves to nothing aborts the fire like any other required step — and
    * for a body that could hold a clip the frame is expanded BEFORE the body,
-   * because a body condition may commit a side effect as it is evaluated
-   * (the furled-flag gate marks the flag spoken), and a frame that then
-   * aborted would have let it commit for a fire that never plays. A body
-   * that can never hold a clip (`canProducePlay`) has no frame expanded at
-   * all — nothing can be due for it, so nothing can abort it or warn about
-   * it. The rule and its one accepted cost are stated on `applyFrame`.
+   * so that if a body step ever did commit a side effect as it was
+   * evaluated, a frame aborting afterwards could not leave that commit
+   * standing for a fire that never plays. No body step commits anything
+   * today: the one that did — the furled-flag `if` that marked the flag
+   * spoken — moved to the contract's `speakGate` in #1138, and a registered
+   * condition is required to stay a pure read precisely because a pack may
+   * write it into a body. The ordering stays anyway: it costs nothing, and
+   * it is what makes that requirement safe to state rather than to rely on.
+   * A body that can never hold a clip (`canProducePlay`) has no frame
+   * expanded at all — nothing can be due for it, so nothing can abort it or
+   * warn about it. The rule and its one accepted cost are stated on
+   * `applyFrame`.
    *
    * The speak-time gate (issue #1138) runs LAST, once the body has expanded
    * to something to play: the contract's `speakGate.admit` is asked with the
@@ -2100,13 +2106,18 @@ export function poolMemberPattern(group: string, base: string): RegExp {
  * hold a clip — ambience or pauses alone, at every nesting — never has its
  * frame expanded at all, so a broken frame cannot kill it and earns no warn
  * for it; a body that can hold one has its frame expanded FIRST, so a frame
- * that aborts commits none of the body's side effects. Between the two sits
- * the one accepted cost: a body that could speak but expands to nothing this
- * time (a gate that said no) is dropped by a broken frame rather than
- * played bare — it would have played nothing anyway — and the frame's warn
- * fires, because the frame is due for that callout whenever its gate says
- * yes. Knowing the dynamic answer before the body runs would mean running
- * it, and running it is what commits the side effect the order protects.
+ * that aborts can commit none of the body's side effects. That case is
+ * hypothetical rather than actual since #1138 — a body step commits nothing
+ * now that the furled marking is the contract's `speakGate`, and a
+ * registered condition must stay a pure read — and the order is kept
+ * because it costs nothing and holds whatever a body is later asked to do.
+ * Between the two sits the one accepted cost: a body that could speak but
+ * expands to nothing this time (a script `if` that said no) is dropped by a
+ * broken frame rather than played bare — it would have played nothing
+ * anyway — and the frame's warn fires, because the frame is due for that
+ * callout whenever its body speaks. Knowing the dynamic answer before the
+ * body runs would mean running it, which is exactly what the order avoids
+ * committing to.
  */
 function applyFrame(body: ExecOp[], frame: ExpandedFrame | null): ExecOp[] {
   if (frame === null || !body.some((op) => op.kind === "play")) return body;

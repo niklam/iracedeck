@@ -14,9 +14,10 @@
  * scheduled; WHAT is said lives in the active voice's `callouts.json` under
  * the same ids (`scenarios["pit-crew.limiter-on-track"]`, …), where the
  * bundled script addresses each line as `pool:pit-limiter/<base>`. The two
- * DELAYED warnings additionally register their speak-time re-check as a
- * condition ({@link registerPitLimiterVocabulary}) that the script wraps
- * its whole body in — see the note on the two delayed conditions below.
+ * DELAYED warnings additionally carry their speak-time re-check as the
+ * contract's `speakGate` (issue #1138), and publish the same read as a
+ * condition ({@link registerPitLimiterVocabulary}) — see the note on the two
+ * delayed conditions below.
  *
  * All four use the default weight (`WEIGHT.NORMAL`) — informational callouts
  * that yield to higher-weight in-flight pit-lane messages.
@@ -57,12 +58,14 @@ function liveTelemetry(): TelemetryData | null {
 }
 
 /**
- * The two delayed conditions, each written ONCE and used twice — as the
- * `where:` fire decision and again, through the vocabulary, as the script's
- * speak-time gate. Sharing the definition is deliberate: the flag-alerts
- * precedent (#846) notes that two layers with their own copy of "is this
- * still true" can drift apart, and here a drift would mean announcing a
- * limiter state the driver already fixed.
+ * The two delayed re-checks, each written ONCE and used three times: as the
+ * `where:` fire decision, as the contract's `speakGate` (issue #1138) when
+ * the line comes to speak, and — through the vocabulary — as a condition a
+ * pack may write its own `if` on. Sharing the definition is deliberate: the
+ * flag-alerts precedent (#846) notes that two layers with their own copy of
+ * "is this still true" can drift apart, and here a drift would mean
+ * announcing a limiter state the driver already fixed. Both are pure reads,
+ * which is what lets the same function be a published condition.
  */
 function limiterStillEngagedOffPitRoad(): boolean {
   const telemetry = liveTelemetry();
@@ -83,24 +86,26 @@ function limiterStillMissingOnPitRoad(): boolean {
 }
 
 /**
- * Register the vocabulary the pit-limiter scripts reference (issue #1065):
- * the two delayed warnings' speak-time re-checks, as conditions. Queueing
- * (below) reintroduces staleness — a fire that waited behind a busier line
- * can speak after the driver fixed the problem — so the bundled script wraps
- * each warning's whole body in its condition: the expansion is then SILENCE
- * rather than a radio click with nothing after it (the FURLED shape, #669).
+ * Register the vocabulary the pit-limiter family publishes (issue #1065):
+ * the two delayed warnings' re-checks, as conditions. Queueing (below)
+ * reintroduces the staleness the delay removed — a fire that waited behind a
+ * busier line can speak after the driver fixed the problem — and since #1138
+ * the engine asks the question itself through each contract's `speakGate`, so
+ * the bundled entries are the clip alone and reference neither name. They
+ * stay published for a pack that wants its own `if`: harmless where it says
+ * the same thing, and the pack's own choice where it says less.
  * Descriptions feed the generated reference (#1066).
  */
 export function registerPitLimiterVocabulary(engine: Pick<IScenarioEngine, "defineCond">): void {
   engine.defineCond(
     "limiter.stillEngagedOffPitRoad",
     limiterStillEngagedOffPitRoad,
-    "The car has a pit limiter and it is still engaged out on the track, according to live telemetry when the line comes to speak — about a second and a half after leaving pit road. Wrap the on-track warning's whole body in it so a driver who has already switched the limiter off hears nothing. False on a car without a limiter or when telemetry is unavailable.",
+    "The car has a pit limiter and it is still engaged out on the track, according to live telemetry when the line comes to speak — about a second and a half after leaving pit road. The engine already asks this at speak time (it is the warning's own gate), so wrapping the body in it changes nothing; it is here for a pack that wants the warning silent on its own terms. False on a car without a limiter or when telemetry is unavailable.",
   );
   engine.defineCond(
     "limiter.stillMissingOnPitRoad",
     limiterStillMissingOnPitRoad,
-    "The car has a pit limiter and it is still NOT engaged on pit road, according to live telemetry when the line comes to speak — a couple of seconds after the pit-entry reminder. Wrap the missing-limiter warning's whole body in it so a driver who engaged the limiter in the meantime hears nothing. False on a car without a limiter or when telemetry is unavailable.",
+    "The car has a pit limiter and it is still NOT engaged on pit road, according to live telemetry when the line comes to speak — a couple of seconds after the pit-entry reminder. The engine already asks this at speak time (it is the warning's own gate), so wrapping the body in it changes nothing; it is here for a pack that wants the warning silent on its own terms. False on a car without a limiter or when telemetry is unavailable.",
   );
 }
 
@@ -129,10 +134,14 @@ export const LIMITER_ON_TRACK: ScenarioContract = {
   // Without this the callout would be dropped nearly every time in real
   // driving while passing every test that lets the bus idle first.
   queueable: true,
-  // ...and the script's speak-time gate (`limiter.stillEngagedOffPitRoad`),
-  // because queueing reintroduces staleness: the whole body sits inside the
-  // condition, so a driver who switched the limiter off while this waited
-  // expands to SILENCE rather than a radio click with nothing after it.
+  // ...and the re-check below, because `queueable` reintroduces the staleness
+  // the delay existed to remove: the gate is what removes it again, for every
+  // voice (issue #1138).
+  speakGate: {
+    description:
+      "The pit limiter is still engaged out on the track when the warning comes to speak, in a car that has one.",
+    admit: limiterStillEngagedOffPitRoad,
+  },
 };
 
 export const LIMITER_MISSING: ScenarioContract = {
@@ -155,9 +164,13 @@ export const LIMITER_MISSING: ScenarioContract = {
   triggerDelay: LIMITER_MISSING_DELAY_MS,
   // Same pair as LIMITER_ON_TRACK: queue rather than be dropped behind the
   // pit-entry traffic this deliberately follows, and re-check at speak time
-  // (`limiter.stillMissingOnPitRoad` in the script) so a driver who engaged
-  // the limiter while this waited hears nothing.
+  // so a driver who engaged the limiter while this waited hears nothing
+  // (issue #1138 — the gate is the contract's, so it holds for every voice).
   queueable: true,
+  speakGate: {
+    description: "The pit limiter is still off on pit road when the warning comes to speak, in a car that has one.",
+    admit: limiterStillMissingOnPitRoad,
+  },
 };
 
 export const LIMITER_DROPPED: ScenarioContract = {

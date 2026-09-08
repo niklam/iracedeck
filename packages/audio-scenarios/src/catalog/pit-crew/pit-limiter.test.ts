@@ -441,12 +441,15 @@ describe("pit-limiter through the engine and the bundled script (issue #1065)", 
     });
   });
 
-  // The script's gate is the SAME predicate as `where:`, read again when the
-  // fire comes to speak. Observable here by flipping the live snapshot between
-  // the fire decision and the expansion: a fire that was allowed and then
-  // queued behind a busier line would otherwise speak a stale warning.
-  describe("the speak-time gate in the script", () => {
-    it("the on-track body expands to silence — no tick either — once the limiter is off by the time it speaks", () => {
+  // The contract's `speakGate` (issue #1138) is the SAME predicate as `where:`,
+  // asked again when the fire comes to speak. Observable here by flipping the
+  // live snapshot between the fire decision and the expansion: a fire that was
+  // allowed and then queued behind a busier line would otherwise speak a stale
+  // warning. It was a script `if` until #1138, which meant it held only for a
+  // pack that kept the `if`; the entries the bundled voice ships now are the
+  // clip alone, so these two tests exercise the contract gate and nothing else.
+  describe("the speak-time gate on the contract", () => {
+    it("the on-track warning is dropped — no tick either — once the limiter is off by the time it speaks", () => {
       // A busy bus: a HEAVIER, family-less line on an unrelated event holds
       // the Voice channel when the on-track window closes, so the delayed
       // fire is deferred (`queueable: true`) rather than played or dropped,
@@ -539,18 +542,23 @@ describe("pit-limiter through the engine and the bundled script (issue #1065)", 
       }
     });
 
-    it("wraps the two delayed warnings' whole bodies in their re-check, and plays the other two plain", () => {
-      expect(SCRIPT.scenarios["pit-crew.limiter-on-track"].sequence).toEqual([
-        { if: "limiter.stillEngagedOffPitRoad", then: ["pool:pit-limiter/on-track"] },
-      ]);
-      expect(SCRIPT.scenarios["pit-crew.limiter-missing"].sequence).toEqual([
-        { if: "limiter.stillMissingOnPitRoad", then: ["pool:pit-limiter/missing"] },
-      ]);
+    it("plays all four plain — the two delayed warnings' re-check is their contract's gate (issue #1138)", () => {
+      // Both halves together: the entry says only what is SAID, and the
+      // re-check is on the contract. Asserting the bare sequence alone would
+      // also pass for a warning whose gate had been dropped entirely.
+      expect(SCRIPT.scenarios["pit-crew.limiter-on-track"].sequence).toEqual(["pool:pit-limiter/on-track"]);
+      expect(SCRIPT.scenarios["pit-crew.limiter-missing"].sequence).toEqual(["pool:pit-limiter/missing"]);
       expect(SCRIPT.scenarios["pit-crew.limiter-dropped"].sequence).toEqual(["pool:pit-limiter/dropped"]);
       expect(SCRIPT.scenarios["pit-crew.limiter-speeding"].sequence).toEqual(["pool:pit-limiter/speeding"]);
+
+      expect(LIMITER_ON_TRACK.speakGate?.description).toBeTruthy();
+      expect(LIMITER_MISSING.speakGate?.description).toBeTruthy();
+      // …and only those two: the immediate pair decides everything at `where:`.
+      expect(LIMITER_DROPPED.speakGate).toBeUndefined();
+      expect(LIMITER_SPEEDING.speakGate).toBeUndefined();
     });
 
-    it("references only the two conditions the family registers — no var, case, fragment or frame", () => {
+    it("references no condition at all — the two the family registers are published, not used (issue #1138)", () => {
       const refs = collectScriptReferences(PIT_LIMITER_SCRIPT);
       const vocabulary = engine.vocabulary();
 
@@ -558,11 +566,13 @@ describe("pit-limiter through the engine and the bundled script (issue #1065)", 
       expect(refs.cases).toEqual([]);
       expect(refs.includes).toEqual([]);
       expect(refs.frames).toEqual([]);
-      expect(refs.conds).toEqual(["limiter.stillEngagedOffPitRoad", "limiter.stillMissingOnPitRoad"]);
+      expect(refs.conds).toEqual([]);
 
-      for (const cond of refs.conds) {
-        expect(vocabulary.conds.map((c) => c.name)).toContain(cond);
-      }
+      // Still published, so a pack CAN write the belt-and-braces `if`.
+      expect(vocabulary.conds.map((c) => c.name)).toEqual([
+        "limiter.stillEngagedOffPitRoad",
+        "limiter.stillMissingOnPitRoad",
+      ]);
     });
 
     it("addresses exactly the published clip sources — the slashed form, no named pool — and every one has a clip in the bundled voice", () => {

@@ -8809,24 +8809,14 @@
       "sequence": ["pool:flags/disqualify"]
     },
     "pit-crew.flag-furled": {
-      "comment": "The furled black flag — the driver gained time and must give it back. Spoken only while the flag is still shown at speak time, so a warning withdrawn while this waited behind a longer line stays silent.",
+      "comment": "The furled black flag — the driver gained time and must give it back.",
       "test": "Harness → Flags → Furled. In-sim: cut a corner and gain time; the furled flag shows until the time is given back.",
-      "sequence": [
-        {
-          "if": "flag.furledStillShown",
-          "then": ["pool:flags/furled"]
-        }
-      ]
+      "sequence": ["pool:flags/furled"]
     },
     "pit-crew.flag-furled-cleared": {
-      "comment": "The furled warning has been withdrawn after the driver gave the time back. Only follows a furled line that was actually spoken, and never plays when the warning escalated to a real black flag instead.",
+      "comment": "The furled warning has been withdrawn after the driver gave the time back.",
       "test": "Harness → Flags → Furled, then Harness → Flags → Furled Cleared. In-sim: give the time back after a furled black flag.",
-      "sequence": [
-        {
-          "if": "flag.furledWithdrawn",
-          "then": ["pool:flags/furled-cleared"]
-        }
-      ]
+      "sequence": ["pool:flags/furled-cleared"]
     },
     "pit-crew.flag-dq-scoring-invalid": {
       "comment": "The driver has been disqualified and their scoring invalidated — DQ, scoring's off.",
@@ -9137,54 +9127,29 @@
       "sequence": ["pool:pit-status/cant-fix-that"]
     },
     "pit-crew.pit-status-too-far-left-repeat": {
-      "comment": "The terse nag that repeats every couple of seconds while the car sits too far left after the full correction. The whole body is behind pitStatus.stillTooFarLeft: a nag that waited behind a longer line re-checks the live status when it comes to speak and says nothing once the driver has corrected — and nothing means no radio frame either, which is the intended silence rather than a bare beep.",
+      "comment": "The terse nag that repeats every couple of seconds while the car sits too far left after the full correction.",
       "test": "Harness → Pit Status → Still Too Far Left, after Too Far Left. In-sim: stop left of the box and stay put; the nag repeats about every two seconds.",
-      "sequence": [
-        {
-          "if": "pitStatus.stillTooFarLeft",
-          "then": ["pool:pit-status/too-far-left-repeat"]
-        }
-      ]
+      "sequence": ["pool:pit-status/too-far-left-repeat"]
     },
     "pit-crew.pit-status-too-far-right-repeat": {
-      "comment": "The repeat nag for too far right — the whole body behind its live re-check, as for too far left.",
+      "comment": "The repeat nag for too far right, as for too far left.",
       "test": "Harness → Pit Status → Still Too Far Right, after Too Far Right. In-sim: stop right of the box and stay put.",
-      "sequence": [
-        {
-          "if": "pitStatus.stillTooFarRight",
-          "then": ["pool:pit-status/too-far-right-repeat"]
-        }
-      ]
+      "sequence": ["pool:pit-status/too-far-right-repeat"]
     },
     "pit-crew.pit-status-too-far-forward-repeat": {
-      "comment": "The repeat nag for too far forward — the whole body behind its live re-check, as for too far left.",
+      "comment": "The repeat nag for too far forward, as for too far left.",
       "test": "Harness → Pit Status → Still Too Far Forward, after Too Far Forward. In-sim: overshoot the box and stay put.",
-      "sequence": [
-        {
-          "if": "pitStatus.stillTooFarForward",
-          "then": ["pool:pit-status/too-far-forward-repeat"]
-        }
-      ]
+      "sequence": ["pool:pit-status/too-far-forward-repeat"]
     },
     "pit-crew.pit-status-too-far-back-repeat": {
-      "comment": "The repeat nag for too far back — the whole body behind its live re-check, as for too far left.",
+      "comment": "The repeat nag for too far back, as for too far left.",
       "test": "Harness → Pit Status → Still Too Far Back, after Too Far Back. In-sim: stop short of the box and stay put.",
-      "sequence": [
-        {
-          "if": "pitStatus.stillTooFarBack",
-          "then": ["pool:pit-status/too-far-back-repeat"]
-        }
-      ]
+      "sequence": ["pool:pit-status/too-far-back-repeat"]
     },
     "pit-crew.pit-status-bad-angle-repeat": {
-      "comment": "The repeat nag for a bad angle — the whole body behind its live re-check, as for too far left.",
+      "comment": "The repeat nag for a bad angle, as for too far left.",
       "test": "Harness → Pit Status → Still Bad Angle, after Bad Angle. In-sim: park across the box and stay put.",
-      "sequence": [
-        {
-          "if": "pitStatus.stillBadAngle",
-          "then": ["pool:pit-status/bad-angle-repeat"]
-        }
-      ]
+      "sequence": ["pool:pit-status/bad-angle-repeat"]
     },
     "pit-crew.rolling-start-pace-car": {
       "comment": "The pace car has started moving the field onto the formation lap of a rolling start — get up to pace and close the gap. Race-only and live in the car; one of five takes.",
@@ -9257,24 +9222,14 @@
       "sequence": ["pool:opponent-flags/others"]
     },
     "pit-crew.limiter-on-track": {
-      "comment": "The pit limiter is still on about a second and a half after the car left pit road — the driver forgot to switch it off. The whole body is behind limiter.stillEngagedOffPitRoad: the line waits behind busier traffic rather than being dropped, so it re-checks live telemetry when it comes to speak and says nothing (no radio frame either) once the limiter is off.",
+      "comment": "The pit limiter is still on about a second and a half after the car left pit road — the driver forgot to switch it off.",
       "test": "Harness → Pit Limiter → Limiter on out on track (fires about 1.5 s later). In-sim: on a car with a pit limiter, leave pit road with the limiter still engaged.",
-      "sequence": [
-        {
-          "if": "limiter.stillEngagedOffPitRoad",
-          "then": ["pool:pit-limiter/on-track"]
-        }
-      ]
+      "sequence": ["pool:pit-limiter/on-track"]
     },
     "pit-crew.limiter-missing": {
-      "comment": "The car is on pit road without its limiter engaged, a couple of seconds after the pit-entry reminder went unheeded — an escalation, not a duplicate. The whole body is behind limiter.stillMissingOnPitRoad, so a driver who engaged the limiter in the meantime hears nothing.",
+      "comment": "The car is on pit road without its limiter engaged, a couple of seconds after the pit-entry reminder went unheeded — an escalation, not a duplicate.",
       "test": "Harness → Pit Limiter → Limiter off on pit road (fires about 2.5 s later). In-sim: on a car with a pit limiter, enter pit road without engaging it and keep it off.",
-      "sequence": [
-        {
-          "if": "limiter.stillMissingOnPitRoad",
-          "then": ["pool:pit-limiter/missing"]
-        }
-      ]
+      "sequence": ["pool:pit-limiter/missing"]
     },
     "pit-crew.limiter-dropped": {
       "comment": "The limiter was switched off while the car is still between the pit cones — turn it back on.",

@@ -2061,9 +2061,9 @@ describe("pit-limiter / no-limiter family registration (issue #1051)", () => {
     });
   });
 
-  // The speak-time `if:` gate — the third distinct silence case in this feature
-  // and the least obvious, because reaching it needs a busy bus AND a change
-  // while the fire waits, so nothing arrives here by accident.
+  // The speak-time gate — the third distinct silence case in this feature and
+  // the least obvious, because reaching it needs a busy bus AND a change while
+  // the fire waits, so nothing arrives here by accident.
   //
   // An equal-or-higher-weight line (a flag call, a toggle confirmation, the
   // spotter) is often in flight when the limiter's window closes, so the bus is
@@ -2071,16 +2071,19 @@ describe("pit-limiter / no-limiter family registration (issue #1051)", () => {
   // callout being dropped there — but queueing puts back the staleness the delay existed to
   // remove: the fire decision is taken when the timer elapses, the line can then
   // sit behind a longer call, and by the time it speaks the driver may have
-  // fixed the limiter. The `if:` gate wrapping the WHOLE framed sequence is what
-  // makes that expand to silence rather than a radio click with nothing after it.
+  // fixed the limiter. The contract's `speakGate` (issue #1138 — a script `if`
+  // around the whole body until then) is what drops the fire whole there,
+  // leaving no radio click with nothing after it.
   //
-  // DO NOT DELETE THE SILENCE TESTS HERE. Remove the `if:` gate and `where:`,
-  // `triggerDelay` and `queueable` all still work — the callout fires, queues and
-  // plays, so every other test in this file stays green, including the two
-  // silence tests above (they never let the bus get busy, so nothing queues).
-  // Only a test that holds the bus, flips the live snapshot while the fire
-  // waits, and then expects silence goes red. The positive counterparts are here
-  // so the silence cannot instead be queueing broken outright.
+  // DO NOT DELETE THE SILENCE TESTS HERE. Take the `speakGate` off the contract
+  // and `where:`, `triggerDelay` and `queueable` all still work — the callout
+  // fires, queues and plays, so every other test in this file stays green,
+  // including the two silence tests above (they never let the bus get busy, so
+  // nothing queues). Only a test that holds the bus, flips the live snapshot
+  // while the fire waits, and then expects silence goes red — which is also
+  // what would notice the gate no longer being asked on a deferred replay. The
+  // positive counterparts are here so the silence cannot instead be queueing
+  // broken outright.
   describe("the speak-time gate re-checks again when a queued fire drains", () => {
     // Stands in for an equal-or-higher-weight line (a flag call, a toggle
     // confirmation, the spotter): above the limiter callouts' NORMAL, with no
@@ -2106,8 +2109,8 @@ describe("pit-limiter / no-limiter family registration (issue #1051)", () => {
      * Publish the trigger with the bus already busy, close the delay window so
      * the fire is QUEUED rather than played, then change the live snapshot
      * before letting the bus idle. By that point `where:` has already said yes,
-     * so the only thing left that can stop the callout is the `if:` gate
-     * re-running as the queued fire expands.
+     * so the only thing left that can stop the callout is the contract's
+     * `speakGate`, asked again as the queued fire re-expands.
      */
     function queueThenDrain(
       event: SimEventName,
@@ -2133,9 +2136,9 @@ describe("pit-limiter / no-limiter family registration (issue #1051)", () => {
 
     /**
      * Proof the fire actually took the QUEUE rather than the play-immediately
-     * path, which is what puts the `if:` gate on the critical path at all.
+     * path, which is what puts the REPLAY's gate on the critical path at all.
      * Without this the block could quietly degrade into the previous block's
-     * scenario — an idle bus, the gate evaluated at fire time — and still pass,
+     * scenario — an idle bus, the gate asked at fire time — and still pass,
      * since the silence would then come from `where:` instead.
      */
     function expectQueuedThenDrained(id: string): void {
@@ -2180,6 +2183,67 @@ describe("pit-limiter / no-limiter family registration (issue #1051)", () => {
       expectQueuedThenDrained("pit-crew.limiter-missing");
       expect(voiceClipsPlayed()).toContain(OCCUPIER_CLIP);
       expect(played("pit-limiter/missing")).toBe(false);
+    });
+
+    // The four tests above run the bundled voice's script, so they cannot tell
+    // a contract gate from a script `if` — either shape produces the same
+    // silence. Since #1138 the gate is the CONTRACT's, and that is a claim
+    // about every OTHER pack: one that writes the wording and no `if`. These
+    // install exactly that — the entry stripped to its clip — and re-run the
+    // pair. The silence tests are the load-bearing ones; their positive twins
+    // are here so the silence cannot instead be a bare-clip script that is
+    // simply mute.
+    describe("the gate is the contract's, not the script's (issue #1138)", () => {
+      /** One scenario's entry, replaced by the pool step alone. */
+      function installBareClip(id: string, pool: string): void {
+        getScenarioEngine().setScripts(
+          new Map([[VOICE, { ...SCRIPT, scenarios: { ...SCRIPT.scenarios, [id]: { sequence: [`pool:${pool}`] } } }]]),
+        );
+      }
+
+      it("limiter-on-track stays silent when the driver switches the limiter off while it is queued", () => {
+        installBareClip("pit-crew.limiter-on-track", "pit-limiter/on-track");
+        queueThenDrain("pitLane.exited", STILL_ENGAGED_ON_TRACK, LIMITER_OFF_ON_TRACK, LIMITER_ON_TRACK_DELAY_MS);
+
+        expectQueuedThenDrained("pit-crew.limiter-on-track");
+        expect(voiceClipsPlayed()).toContain(OCCUPIER_CLIP);
+        expect(played("pit-limiter/on-track")).toBe(false);
+      });
+
+      it("limiter-on-track speaks, late, on that same script when the limiter is still engaged", () => {
+        installBareClip("pit-crew.limiter-on-track", "pit-limiter/on-track");
+        queueThenDrain("pitLane.exited", STILL_ENGAGED_ON_TRACK, STILL_ENGAGED_ON_TRACK, LIMITER_ON_TRACK_DELAY_MS);
+
+        expectQueuedThenDrained("pit-crew.limiter-on-track");
+        expect(played("pit-limiter/on-track")).toBe(true);
+      });
+
+      it("limiter-missing stays silent when the driver engages the limiter while it is queued", () => {
+        installBareClip("pit-crew.limiter-missing", "pit-limiter/missing");
+        queueThenDrain(
+          "limiter.missing",
+          STILL_MISSING_ON_PIT_ROAD,
+          LIMITER_ENGAGED_ON_PIT_ROAD,
+          LIMITER_MISSING_DELAY_MS,
+        );
+
+        expectQueuedThenDrained("pit-crew.limiter-missing");
+        expect(voiceClipsPlayed()).toContain(OCCUPIER_CLIP);
+        expect(played("pit-limiter/missing")).toBe(false);
+      });
+
+      it("limiter-missing speaks, late, on that same script when the limiter is still off", () => {
+        installBareClip("pit-crew.limiter-missing", "pit-limiter/missing");
+        queueThenDrain(
+          "limiter.missing",
+          STILL_MISSING_ON_PIT_ROAD,
+          STILL_MISSING_ON_PIT_ROAD,
+          LIMITER_MISSING_DELAY_MS,
+        );
+
+        expectQueuedThenDrained("pit-crew.limiter-missing");
+        expect(played("pit-limiter/missing")).toBe(true);
+      });
     });
   });
 });
