@@ -1,3 +1,4 @@
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { generatorsFor, issueFromWorktreePath, missingWorkflows, prRefFrom, remindersFor } from "./rules-post.mjs";
@@ -17,7 +18,7 @@ describe("checkSkill (/code-review)", () => {
   it("requires the worktree when the cwd is master", () =>
     expect(checkSkill({ skill: "code-review", args: "high" }, MASTER)).toMatch(/worktree/));
   it("accepts a cwd that is itself an ir-<issue> tree", () =>
-    expect(checkSkill({ skill: "code-review", args: "high" }, "C:\\x\\ir-1100")).toBeNull());
+    expect(checkSkill({ skill: "code-review", args: "high" }, path.resolve("/x/ir-1100"))).toBeNull());
   it("accepts level + path + scope block", () =>
     expect(checkSkill({ skill: "code-review", args: `high ${TREE}\n\nSCOPE:\n- x` }, MASTER)).toBeNull());
   it("leaves the cloud review alone", () =>

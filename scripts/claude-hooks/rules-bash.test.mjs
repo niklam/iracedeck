@@ -1,8 +1,13 @@
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { checkBash, classifyCheck, cmd, gitCwd, words } from "./rules-bash.mjs";
 
-const MASTER = "C:\\repo\\master";
+// Built through `path`, not written as Windows literals: CI runs on Linux, where
+// `C:\repo\master` is a RELATIVE path and every resolve lands under the runner's cwd.
+const REPO = path.resolve("/repo");
+const MASTER = path.join(REPO, "master");
+const tree = (...parts) => path.join(REPO, ...parts);
 
 /** A context where every git/gh fact is injectable; defaults describe a clean master checkout. */
 function ctx(overrides = {}) {
@@ -16,7 +21,7 @@ function ctx(overrides = {}) {
     originFresh: () => ({ fresh: true, local: "aaaaaaaaa", remote: "aaaaaaaaa" }),
     linkTargets: () => [],
     packages: () => ({ "@iracedeck/logger": { dir: "x", scripts: ["build", "typecheck"] } }),
-    isInside: (c, p) => c.toLowerCase() === p.toLowerCase() || c.toLowerCase().startsWith(p.toLowerCase() + "\\"),
+    isInside: (c, p) => c.toLowerCase() === p.toLowerCase() || c.toLowerCase().startsWith(p.toLowerCase() + path.sep),
     prView: () => undefined,
     ...overrides,
   };
@@ -36,15 +41,15 @@ const passes = (cmd, c = ctx()) => expect(checkBash(cmd, c), `expected a pass fo
 
 describe("helpers", () => {
   it("gitCwd honours -C", () => {
-    expect(gitCwd("git -C ../ir-5 status", MASTER)).toBe("C:\\repo\\ir-5");
+    expect(gitCwd("git -C ../ir-5 status", MASTER)).toBe(tree("ir-5"));
     expect(gitCwd("git status", MASTER)).toBe(MASTER);
   });
   it("gitCwd scopes -C to the segment the rule matched, not to a later chained git", () => {
     const add = cmd(/git\s+(?:-C\s+\S+\s+)?worktree\s+add\b/);
     expect(gitCwd("git worktree add ../ir-5 -b ir-5 && git -C ../ir-5 log -1", MASTER, add)).toBe(MASTER);
-    expect(gitCwd("git fetch origin; git -C ../ir-5 worktree add ../ir-6", MASTER, add)).toBe("C:\\repo\\ir-5");
+    expect(gitCwd("git fetch origin; git -C ../ir-5 worktree add ../ir-6", MASTER, add)).toBe(tree("ir-5"));
     const status = cmd(/git\s+(?:-C\s+\S+\s+)?status\b/);
-    expect(gitCwd("git -C ../ir-5 status | cat", MASTER, status)).toBe("C:\\repo\\ir-5");
+    expect(gitCwd("git -C ../ir-5 status | cat", MASTER, status)).toBe(tree("ir-5"));
   });
   it("words respects quotes", () => {
     expect(words(`a "b c" 'd e' f`)).toEqual(["a", "b c", "d e", "f"]);
@@ -265,13 +270,13 @@ describe("git worktree remove", () => {
     expect(
       deny(
         "git worktree remove ../ir-1",
-        ctx({ linkTargets: () => [{ host: "Stream Deck", target: "C:\\repo\\ir-1\\packages\\x\\plugin" }] }),
+        ctx({ linkTargets: () => [{ host: "Stream Deck", target: tree("ir-1", "packages", "x", "plugin") }] }),
       ),
     ).toMatch(/Stream Deck plugin link/));
   it("passes when the links point elsewhere", () =>
     passes(
       "git -c core.longpaths=true worktree remove --force ../ir-1",
-      ctx({ linkTargets: () => [{ host: "Stream Deck", target: "C:\\repo\\master\\p" }] }),
+      ctx({ linkTargets: () => [{ host: "Stream Deck", target: tree("master", "p") }] }),
     ));
 });
 
