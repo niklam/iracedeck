@@ -37,6 +37,13 @@ export interface PluginConfig {
    * and for symmetry with version/platform.
    */
   featureFlags?: PlatformFeatures;
+  /**
+   * Absolute path of a development voice root (#1143). Only a development
+   * build carries it: the three Rollup configs write it from the gitignored
+   * `dev.local.json`, so a release build cannot. The plugin scans it ahead of
+   * the AppData packs root and never installs over what it provides.
+   */
+  devVoicePacksRoot?: string;
 }
 
 let config: PluginConfig | null = null;
@@ -101,6 +108,19 @@ export function getPlatformFeatures(): PlatformFeatures | undefined {
   }
 
   return config.featureFlags;
+}
+
+/**
+ * Get the development voice root this build carries, if any (#1143).
+ *
+ * @throws Error if initPluginConfig() has not been called
+ */
+export function getDevVoicePacksRoot(): string | undefined {
+  if (!config) {
+    throw new Error("Plugin config not initialized. Call initPluginConfig() first.");
+  }
+
+  return config.devVoicePacksRoot;
 }
 
 /**

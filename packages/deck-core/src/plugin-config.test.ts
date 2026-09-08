@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   _resetPluginConfig,
+  getDevVoicePacksRoot,
   getFeatureFlag,
   getPlatformFeatures,
   getPluginPlatform,
@@ -123,6 +124,26 @@ describe("plugin-config", () => {
     it("should return false when flag is disabled", () => {
       initPluginConfig({ version: "1.0.0", platform: "mirabox", featureFlags: ALL_FALSE_FEATURES });
       expect(getFeatureFlag("dialFeedback")).toBe(false);
+    });
+  });
+
+  describe("getDevVoicePacksRoot", () => {
+    it("returns undefined when the build carried no development voice root", () => {
+      initPluginConfig({ version: "3.3.0", platform: "stream-deck" });
+      expect(getDevVoicePacksRoot()).toBeUndefined();
+    });
+
+    it("returns the absolute path a development build carries", () => {
+      initPluginConfig({
+        version: "3.3.0",
+        platform: "stream-deck",
+        devVoicePacksRoot: "C:\\repo\\packages\\audio-assets\\dist\\voice-packs",
+      });
+      expect(getDevVoicePacksRoot()).toBe("C:\\repo\\packages\\audio-assets\\dist\\voice-packs");
+    });
+
+    it("throws before initPluginConfig, like the other readers", () => {
+      expect(() => getDevVoicePacksRoot()).toThrow(/not initialized/);
     });
   });
 });
