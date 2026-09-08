@@ -1,5 +1,6 @@
 import { CALLOUT_SCRIPT_FILE, type CalloutScript } from "@iracedeck/callout-script";
 import type { ILogger } from "@iracedeck/logger";
+import { resolve } from "node:path";
 
 import {
   type InstalledVoicePack,
@@ -23,6 +24,14 @@ export interface VoicePackServiceDeps {
    * not exist is NOT an error — it is warned about once and scanned as empty,
    * because a developer who has not staged a pack yet is the ordinary case and
    * everything else about the plugin must still work.
+   *
+   * Two shapes are reported rather than obeyed, both because their failure is
+   * otherwise silent (#1143): a value resolving to {@link root} itself is
+   * REFUSED (see `effectiveDevRoot` — scanning one directory twice makes every
+   * row a development row and drops the whole packs folder out of the launch
+   * ensure), and a root with folders in it that yields no listed development
+   * pack is warned about on every scan, because the AppData copy then wins in
+   * silence and looks exactly like an edit that did nothing.
    */
   devRoot?: string;
   fs: VoicePackFileSystem;
@@ -138,6 +147,45 @@ export function createVoicePackService(deps: VoicePackServiceDeps): VoicePackSer
   let scripts: ReadonlyMap<string, CalloutScript> = new Map();
   /** {@link VoicePackServiceDeps.devRoot} — the empty-root warning is once per run, see `refresh`. */
   let devRootWarned = false;
+  /** The same, for the development root that IS the packs root — see {@link effectiveDevRoot}. */
+  let devRootIsPacksRootWarned = false;
+
+  /**
+   * The development root this scan should actually use (#1143), or `undefined`.
+   *
+   * A `devRoot` that resolves to the packs folder itself is refused. Nothing
+   * else rejects it, and the damage is quiet and total: every pack is scanned
+   * twice, the second copy loses every voice to the first, so each row reads
+   * `development`, loses its Remove button and drops out of the launch step's
+   * ensure — `default` included, which stops being kept current. A developer
+   * would read that as the dev root working.
+   *
+   * Compared lower-cased, unconditionally. The plugin ships Windows-only
+   * (#994), where the filesystem is case-insensitive and `resolve` already
+   * applies Windows semantics; the only thing lower-casing costs on a POSIX
+   * dev machine is refusing a dev root that differs from the packs root by
+   * case alone, which is the safe direction to be wrong in — ignoring a dev
+   * root leaves the plugin fully working, while scanning one root twice does
+   * not.
+   */
+  function effectiveDevRoot(): string | undefined {
+    if (deps.devRoot === undefined) return undefined;
+
+    if (resolve(deps.devRoot).toLowerCase() === resolve(deps.root).toLowerCase()) {
+      // Once per run, like the empty-root warning below and for the same
+      // reason: Rescan is the loop, and this is a build-time value that cannot
+      // change between two presses.
+      if (!devRootIsPacksRootWarned) {
+        devRootIsPacksRootWarned = true;
+        deps.logger.warn("Voice packs: the development root is the packs folder itself; ignoring it");
+        deps.logger.debug(`Voice packs: development root ${deps.devRoot} resolves to the packs root ${deps.root}`);
+      }
+
+      return undefined;
+    }
+
+    return deps.devRoot;
+  }
 
   /**
    * Every bundled voice's script, read from the plugin's own audio root through
@@ -189,17 +237,21 @@ export function createVoicePackService(deps: VoicePackServiceDeps): VoicePackSer
         // check by design — and because the remedy is the same either way.
         // Warn rather than error: the scan continues, the packs root is read as
         // normal, and the plugin is fully usable with an absent dev root.
-        if (deps.devRoot !== undefined && !devRootWarned && deps.fs.listDirectories(deps.devRoot).length === 0) {
+        const devRoot = effectiveDevRoot();
+        // Listed once and reused below: the same answer decides the empty-root
+        // warning before the scan and, after it, which problems belong to the
+        // development root.
+        const devFolders = devRoot === undefined ? [] : deps.fs.listDirectories(devRoot);
+
+        if (devRoot !== undefined && !devRootWarned && devFolders.length === 0) {
           devRootWarned = true;
           deps.logger.warn("Voice packs: the development root is missing or empty");
-          deps.logger.debug(
-            `Voice packs: development root ${deps.devRoot} — run pack:voice --no-catalog to stage a pack`,
-          );
+          deps.logger.debug(`Voice packs: development root ${devRoot} — run pack:voice --no-catalog to stage a pack`);
         }
 
         const { packs: scanned, problems: found } = scanVoicePacks({
           root: deps.root,
-          ...(deps.devRoot === undefined ? {} : { devRoot: deps.devRoot }),
+          ...(devRoot === undefined ? {} : { devRoot }),
           fs: deps.fs,
           reservedVoices: deps.reservedVoices,
           ...(deps.priorityPacks === undefined ? {} : { priorityPacks: deps.priorityPacks }),
@@ -252,6 +304,31 @@ export function createVoicePackService(deps: VoicePackServiceDeps): VoicePackSer
         // and the reason is the answer to it.
         for (const problem of found) {
           deps.logger.warn(`Voice pack "${problem.pack}" ignored: ${problem.reason}`);
+        }
+
+        // The development root has folders in it and not one of them became a
+        // pack (#1143) — a `callouts.json` that no longer parses after a
+        // regeneration is the likely cause. The AppData copy then wins in
+        // silence and the Installed Voices row flips back to Downloaded, which
+        // is indistinguishable from the edit having had no effect. Every reason
+        // is already a `problems` row, but a developer reading a settings
+        // window looks at the row, not at the reasons underneath it.
+        //
+        // Deliberately NOT once-guarded, unlike the two warnings above: those
+        // report a build-time value that cannot change between two presses,
+        // while this reports what is on disk right now — and a Rescan is
+        // precisely the moment the developer is looking.
+        if (devRoot !== undefined && devFolders.length > 0 && !scanned.some((p) => p.provenance === "development")) {
+          deps.logger.warn("Voice packs: the development root provides no usable pack");
+          // Attributed by folder name, which is what a `problem.pack` is. A
+          // packs-root folder of the same name could be caught by this too —
+          // but only when the dev copy was NOT listed, which is exactly the
+          // case being reported, so the extra line is about the same pack.
+          const blamed = found.filter((problem) => devFolders.includes(problem.pack));
+          deps.logger.debug(
+            `Voice packs: development root ${devRoot} — ` +
+              `${blamed.map((problem) => `${problem.pack} (${problem.reason})`).join(", ") || "(no reason recorded)"}`,
+          );
         }
 
         return scanned;

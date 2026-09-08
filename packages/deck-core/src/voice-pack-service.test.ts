@@ -518,7 +518,10 @@ describe("createVoicePackService and the development voice root (#1143)", () => 
     expect(installed[0]?.provenance).toBe("development");
     expect(posix(installed[0]?.dir ?? "")).toBe(`${DEV_ROOT}/default`);
     expect(service.problems()).toEqual([
-      { pack: "default", reason: 'voice "default" is already provided by the development build of pack "default"' },
+      {
+        pack: "default",
+        reason: 'pack "default" is provided by the development build; the copy under the packs root is ignored',
+      },
     ]);
     expect(service.isProvidedByDevRoot("default")).toBe(true);
     expect(service.isProvidedByDevRoot("nina")).toBe(false);
@@ -556,5 +559,107 @@ describe("createVoicePackService and the development voice root (#1143)", () => 
     service.refresh();
 
     expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  describe("a development root that is the packs folder itself (#1143)", () => {
+    it("is ignored, with one warning and the path at debug", () => {
+      logger.warn.mockClear();
+      logger.debug.mockClear();
+      const { service } = make({ luca: ["voice/luca/flags/a.mp3"] }, { devRoot: PACKS_ROOT });
+
+      const installed = service.refresh();
+
+      // Scanned ONCE, as the packs root. Scanning the same directory twice
+      // would list every pack a second time, and the second copy would lose
+      // every voice to the first — so every row would read `development`,
+      // lose its Remove button and drop out of the launch step's ensure.
+      expect(installed.map((pack) => pack.id)).toEqual(["luca"]);
+      expect(installed[0]?.provenance).toBe("sideload");
+      expect(service.problems()).toEqual([]);
+      expect(service.isProvidedByDevRoot("luca")).toBe(false);
+      expect(logger.warn).toHaveBeenCalledWith(
+        "Voice packs: the development root is the packs folder itself; ignoring it",
+      );
+      expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining(PACKS_ROOT));
+    });
+
+    it("warns once per run, not once per scan", () => {
+      logger.warn.mockClear();
+      const { service } = make({}, { devRoot: PACKS_ROOT });
+      service.refresh();
+      service.refresh();
+
+      expect(logger.warn).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not also claim the root is missing or empty", () => {
+      logger.warn.mockClear();
+      const { service } = make({}, { devRoot: PACKS_ROOT });
+      service.refresh();
+
+      expect(logger.warn).not.toHaveBeenCalledWith("Voice packs: the development root is missing or empty");
+    });
+
+    it("compares the two paths without caring about case or a trailing separator", () => {
+      logger.warn.mockClear();
+      const { service } = make({}, { devRoot: `${PACKS_ROOT.toUpperCase()}/` });
+      service.refresh();
+
+      expect(logger.warn).toHaveBeenCalledWith(
+        "Voice packs: the development root is the packs folder itself; ignoring it",
+      );
+    });
+  });
+
+  describe("a development root that yields no usable pack (#1143)", () => {
+    it("warns and names the folders it could not use", () => {
+      // A regenerated `callouts.json` that no longer parses: the folder is
+      // there, the developer just staged it, and every voice in it is dropped.
+      // The AppData copy then wins silently and the row flips back to
+      // Downloaded — the one outcome that looks like the edit had no effect.
+      logger.warn.mockClear();
+      logger.debug.mockClear();
+      const { service } = make(
+        { default: ["voice/default/flags/green-01.mp3"] },
+        { devRoot: DEV_ROOT },
+        { "/dev/default/voice/default/callouts.json": "{ not json" },
+        { default: ["voice/default/flags/green-01.mp3"] },
+      );
+
+      const installed = service.refresh();
+
+      expect(installed.map((pack) => pack.provenance)).toEqual(["sideload"]);
+      expect(logger.warn).toHaveBeenCalledWith("Voice packs: the development root provides no usable pack");
+      expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining("default"));
+    });
+
+    it("says it again on every scan — a Rescan is when the developer is looking", () => {
+      logger.warn.mockClear();
+      const { service } = make({}, { devRoot: DEV_ROOT }, {}, { default: [] });
+      service.refresh();
+      service.refresh();
+
+      const said = logger.warn.mock.calls.filter(
+        ([line]) => line === "Voice packs: the development root provides no usable pack",
+      );
+      expect(said).toHaveLength(2);
+    });
+
+    it("says nothing when the development root does provide a pack", () => {
+      logger.warn.mockClear();
+      const { service } = make({}, { devRoot: DEV_ROOT }, {}, { default: ["voice/default/flags/green-01.mp3"] });
+      service.refresh();
+
+      expect(logger.warn).not.toHaveBeenCalledWith("Voice packs: the development root provides no usable pack");
+    });
+
+    it("says nothing when the development root is empty — that has its own message", () => {
+      logger.warn.mockClear();
+      const { service } = make({}, { devRoot: DEV_ROOT });
+      service.refresh();
+
+      expect(logger.warn).not.toHaveBeenCalledWith("Voice packs: the development root provides no usable pack");
+      expect(logger.warn).toHaveBeenCalledWith("Voice packs: the development root is missing or empty");
+    });
   });
 });
