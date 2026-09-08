@@ -25,7 +25,7 @@
  * other `scripts/lib` helpers use.
  */
 import { spawnSync } from "node:child_process";
-import { existsSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import { DEFAULT_DEV_VOICE_PACKS_ROOT, DEV_LOCAL_FILE, readDevLocal } from "./dev-local.mjs";
@@ -114,8 +114,29 @@ export function runDevVoices(
     return 2;
   }
 
+  // Captured BEFORE anything is written, so a failed build can put the file
+  // back exactly as it was — see `restoreMarker`.
+  const previous = readMarker(root);
+
   const marker = mode === "on" ? turnOn(root, log) : turnOff(root, log);
   if (marker.code !== 0) return marker.code;
+
+  // Read once and shared by the hint and the relink step: both ask the same
+  // question of the same junctions, and a second `readlinkSync` sweep between
+  // them could answer differently.
+  const targets = links(env);
+  const ours = hostsLinkedHere(targets, { root, platform });
+
+  // Ahead of the build, because the build is what these hosts break. A running
+  // host holds `iracing_native.node` open and the build dies with EPERM —
+  // which is the failure the transaction below exists for, and the one line
+  // that lets a developer avoid it entirely.
+  if (ours.length > 0) {
+    log.log(
+      `Linked to this worktree: ${ours.map(({ host }) => host).join(", ")} — they must not be RUNNING during the ` +
+        "build (a running deck host locks the native addon and the build fails with EPERM).",
+    );
+  }
 
   // Both directions rebuild: `on` puts devVoicePacksRoot into each plugin's
   // bin/config.json, `off` is what takes it back out.
@@ -125,18 +146,64 @@ export function runDevVoices(
       : "Rebuilding the three plugins so devVoicePacksRoot leaves every bin/config.json …",
   );
   if (exec("pnpm", BUILD_ARGS, { cwd: root }).status !== 0) {
-    log.error("Error: the plugin build failed — nothing was relinked.");
+    // The marker goes back. It is the build that carries the marker into every
+    // `bin/config.json`, so a marker left changed after a failed build claims a
+    // mode none of the three plugin folders is in — and nothing in the plugin,
+    // the settings window or the log can report that disagreement, because
+    // every one of them reads the BUILT config. Restoring is the only way the
+    // two can still be saying the same thing when the command exits non-zero.
+    restoreMarker(root, previous);
+    log.error(
+      `Error: the plugin build failed — ${DEV_LOCAL_FILE} restored to its previous state; nothing was relinked. ` +
+        "Stop the deck hosts linked to this worktree (pnpm stop:mirabox / stop:ulanzi, quit Stream Deck) and run " +
+        "the command again.",
+    );
 
     return 1;
   }
 
-  const code = relinkHosts({ root, env, log, exec, platform, links });
+  const code = relinkHosts({ root, log, exec, targets, ours });
 
   // Printed last on purpose: it is the one thing left for the developer to do,
   // and anything printed before a build scrolls past unread.
   if (mode === "on" && marker.stagingHintFor) reportStaging(marker.stagingHintFor, log);
 
   return code;
+}
+
+/**
+ * The marker's exact current bytes, or `undefined` when there is no file.
+ *
+ * A Buffer rather than text: the transaction promises the file comes back as it
+ * was, and a hand-written marker may carry a BOM, CRLF line endings or a
+ * trailing blank line that a decode-and-re-encode round trip would quietly
+ * normalise away.
+ */
+function readMarker(root) {
+  const file = path.join(root, DEV_LOCAL_FILE);
+
+  try {
+    return readFileSync(file);
+  } catch {
+    // Absent is the ordinary case, and an unreadable marker is treated the same
+    // way on purpose: this value is only ever used to UNDO a change, and a file
+    // we could not read is one `turnOn` will refuse a moment later anyway.
+    return undefined;
+  }
+}
+
+/** Puts the marker back the way {@link readMarker} found it. Never throws. */
+function restoreMarker(root, previous) {
+  const file = path.join(root, DEV_LOCAL_FILE);
+
+  try {
+    if (previous === undefined) rmSync(file, { force: true });
+    else writeFileSync(file, previous);
+  } catch {
+    // Nothing useful to do: the caller is already reporting a failed build, and
+    // a throw here would replace that message with a stack trace about the
+    // cleanup rather than about the thing that actually went wrong.
+  }
 }
 
 /**
@@ -227,19 +294,37 @@ function reportStaging(voiceRoot, log) {
   );
 }
 
-/** Relinks the hosts pointing at this worktree; reports every other host. */
-function relinkHosts({ root, env, log, exec, platform, links }) {
+/**
+ * Which of {@link HOST_RELINKS} currently point at THIS worktree's plugin
+ * folder — the hosts whose link the switch may relink, and the hosts that must
+ * not be running during the build. One answer, used by both.
+ */
+function hostsLinkedHere(targets, { root, platform }) {
   const norm = (p) => {
     const s = path.resolve(p).replace(/[\\/]+$/, "");
 
     return platform === "win32" ? s.toLowerCase() : s;
   };
 
-  const targets = links(env);
+  return HOST_RELINKS.filter(({ host, pluginDir }) => {
+    const entry = targets.find((t) => t.host === host);
+
+    // `REAL_DIRECTORY` is deliberately not a path, so it can never normalise
+    // into a match — it is a packaged build the host installed itself.
+    if (!entry || entry.target === undefined || entry.target === REAL_DIRECTORY) return false;
+
+    return norm(entry.target) === norm(path.join(root, pluginDir));
+  });
+}
+
+/** Relinks the hosts pointing at this worktree; reports every other host. */
+function relinkHosts({ root, log, exec, targets, ours }) {
   let code = 0;
 
-  for (const { host, pluginDir, script, restart } of HOST_RELINKS) {
+  for (const descriptor of HOST_RELINKS) {
+    const { host, script, restart } = descriptor;
     const entry = targets.find((t) => t.host === host);
+
     if (!entry || entry.target === undefined) {
       log.log(`${host}: not linked — nothing to relink.`);
       continue;
@@ -250,7 +335,7 @@ function relinkHosts({ root, env, log, exec, platform, links }) {
       continue;
     }
 
-    if (norm(entry.target) !== norm(path.join(root, pluginDir))) {
+    if (!ours.includes(descriptor)) {
       log.log(
         `${host}: linked elsewhere (${entry.target}) — left alone. Relinking it would switch that test environment.`,
       );

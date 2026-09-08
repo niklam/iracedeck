@@ -232,6 +232,92 @@ describe("the build step", () => {
     expect(relinkCalls(exec)).toHaveLength(0);
     expect(output(log)).toMatch(/build failed/i);
   });
+
+  // The marker and the built config.json must never disagree. The build is the
+  // step that carries the marker INTO every bin/config.json, and it is exactly
+  // the step that fails while a deck host linked to this worktree is running
+  // (EPERM on the native addon) — so a marker changed before it and left there
+  // afterwards says development mode is on while all three plugin folders say
+  // it is off, a state nothing in the plugin can report.
+  it("restores an absent marker when the build fails during 'on'", () => {
+    const exec = fakeExec({ [BUILD_ARGS.join(" ")]: 1 });
+    const log = fakeLog();
+
+    expect(runDevVoices("on", options({ exec, log }))).toBe(1);
+    expect(existsSync(marker)).toBe(false);
+    expect(output(log)).toMatch(/restored to its previous state/);
+    expect(output(log)).toMatch(/nothing was relinked/i);
+  });
+
+  it("restores the exact previous bytes when the build fails during 'off'", () => {
+    const before = `${JSON.stringify({ voicePacksRoot: "local/my-packs" }, null, 2)}\n`;
+    writeFileSync(marker, before);
+    const exec = fakeExec({ [BUILD_ARGS.join(" ")]: 1 });
+    const log = fakeLog();
+
+    expect(runDevVoices("off", options({ exec, log }))).toBe(1);
+    expect(readFileSync(marker, "utf-8")).toBe(before);
+    expect(output(log)).toMatch(/restored to its previous state/);
+  });
+
+  it("restores the exact previous bytes when the build fails over a kept marker", () => {
+    const before = `${JSON.stringify({ voicePacksRoot: "local/my-packs" }, null, 2)}\n`;
+    writeFileSync(marker, before);
+    const exec = fakeExec({ [BUILD_ARGS.join(" ")]: 1 });
+
+    expect(runDevVoices("on", options({ exec }))).toBe(1);
+    expect(readFileSync(marker, "utf-8")).toBe(before);
+  });
+
+  it("names the hosts to stop in the failure message", () => {
+    const exec = fakeExec({ [BUILD_ARGS.join(" ")]: 1 });
+    const log = fakeLog();
+
+    expect(runDevVoices("on", options({ exec, log }))).toBe(1);
+    expect(output(log)).toContain("pnpm stop:mirabox");
+    expect(output(log)).toContain("stop:ulanzi");
+  });
+});
+
+describe("the pre-build hint", () => {
+  it("names only the hosts linked to this worktree", () => {
+    const log = fakeLog();
+
+    expect(runDevVoices("on", options({ log, links: mixedLinks }))).toBe(0);
+    const hint = [...log.log.mock.calls]
+      .map((args) => args.join(" "))
+      .find((line) => /must not be RUNNING/i.test(line));
+    expect(hint, "the build locks the native addon — the hosts holding it must be named").toBeDefined();
+    expect(hint).toContain("Stream Deck");
+    // Mirabox points at another worktree and Ulanzi is not linked at all —
+    // neither can be holding THIS tree's addon open.
+    expect(hint).not.toContain("Mirabox");
+    expect(hint).not.toContain("Ulanzi");
+  });
+
+  it("says nothing when no host points at this worktree", () => {
+    const log = fakeLog();
+
+    expect(runDevVoices("on", options({ log, links: () => mixedLinks().slice(1) }))).toBe(0);
+    expect(output(log)).not.toMatch(/must not be RUNNING/i);
+  });
+
+  it("is printed before the build runs", () => {
+    const order = [];
+    const log = { log: vi.fn((line) => order.push(String(line))), error: vi.fn() };
+    const exec = vi.fn((_cmd, args) => {
+      order.push(`EXEC ${args.join(" ")}`);
+
+      return { status: 0 };
+    });
+
+    expect(runDevVoices("on", options({ log, exec, links: mixedLinks }))).toBe(0);
+    const hintAt = order.findIndex((line) => /must not be RUNNING/i.test(line));
+    const buildAt = order.findIndex((line) => line.startsWith("EXEC exec turbo"));
+    expect(hintAt).toBeGreaterThanOrEqual(0);
+    expect(buildAt).toBeGreaterThanOrEqual(0);
+    expect(hintAt).toBeLessThan(buildAt);
+  });
 });
 
 describe("relinking", () => {
