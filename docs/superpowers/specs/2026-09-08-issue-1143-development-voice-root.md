@@ -48,8 +48,8 @@ Each plugin's Rollup config reads it the way it reads `feature-flags.local.json`
 | Situation | Behaviour |
 |---|---|
 | Dev root path does not exist | Logged at warn once; scanned as empty; the launch ensure runs as normal. |
-| Dev root provides `default`, AppData holds one too | The dev copy claims the voice; the AppData pack is listed under problems with the existing "already provided by" reason. Nothing is deleted. |
-| Release build | No key in `config.json`; every path above is inert. `scripts/manifest-platform.test.mjs`'s sibling guards that a packed plugin carries no `devVoicePacksRoot`. |
+| Dev root provides `default`, AppData holds one too | The dev copy is the pack: the AppData folder with the same id is skipped whole and listed under problems as provided by the development build — per-voice claiming would let a copy with an extra voice survive as a second row under one id, and every consumer is keyed by id. Nothing is deleted. The catalog card reads it as installed, like a bundled voice, so a press cannot download over it. |
+| Release build | No key in `config.json`; every path above is inert. `scripts/dev-voice-root-guard.test.mjs` pins the mechanism (the marker is gitignored, the key is emitted only conditionally), and `scripts/assert-release-build.mjs` runs first in every `pack:plugin` script so a local pack from a worktree with `dev:voices on` is refused rather than shipped. |
 | Developer forgets dev mode is on | The start-of-run info line and the badge in the window say so. |
 
 ## Testing
