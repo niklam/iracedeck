@@ -14,7 +14,6 @@ function ctx(overrides = {}) {
   return {
     cwd: MASTER,
     branch: () => "master",
-    branchFiles: () => [],
     staged: () => [],
     modified: () => [],
     mainRoot: () => MASTER,
@@ -101,62 +100,32 @@ describe("code review", () => {
 });
 
 describe("git push", () => {
-  it("lets a spec-only push to master through", () =>
-    passes("git push origin master", ctx({ branchFiles: () => ["docs/superpowers/specs/2026-09-08-issue-1-x.md"] })));
-  it("asks for anything else on master", () =>
-    expect(asks("git push", ctx({ branchFiles: () => ["docs/superpowers/specs/a.md", "src/x.ts"] }))).toMatch(
-      /1 non-spec/,
+  // The plain-push ask was dropped on 2026-09-08 (see hooks.md): the hook
+  // cannot see whether the maintainer asked for the push, so it prompted
+  // regardless. Only a tag push asks.
+  it("lets a plain push through", () => {
+    passes("git push origin master");
+    passes("git push -u origin ir-1:ir-1 2>&1 | tail -2", ctx({ branch: () => "ir-1" }));
+    passes("cd ../ir-1143 && git push -u origin ir-1143:ir-1143", ctx({ branch: () => "ir-1143" }));
+  });
+  it("lets the spec workflow's add + commit -- <spec> + push through", () =>
+    passes(
+      [
+        `cd ${MASTER} && git add docs/superpowers/specs/a.md && git commit -q -m "docs(specs): title (#1147)`,
+        "",
+        `Claude-Session: https://claude.ai/code/session_x" -- docs/superpowers/specs/a.md && git push origin HEAD:master 2>&1 | tail -1`,
+      ].join("\n"),
     ));
-  it("asks from a feature branch even when spec-only", () =>
-    asks("git push", ctx({ branch: () => "ir-1", branchFiles: () => ["docs/superpowers/specs/a.md"] })));
-  it("asks when the diff is unavailable", () =>
-    expect(asks("git push", ctx({ branchFiles: () => undefined }))).toMatch(/diff unavailable/));
-  it("asks on a tag push", () => expect(asks("git push origin v3.2.0")).toMatch(/release/));
-  it("ignores --dry-run", () => passes("git push --dry-run"));
-
-  // The hook runs before the command, so a commit chained ahead of the push is
-  // not in origin/master...HEAD yet; the spec workflow's one-liner asked every time.
-  describe("with the commit chained ahead of the push", () => {
-    const SPEC = "docs/superpowers/specs/2026-09-08-issue-1147-x.md";
-    const specWorkflow = [
-      `cd ${MASTER} && git add ${SPEC} && git commit -q -m "docs(specs): title (#1147)`,
-      "",
-      `Claude-Session: https://claude.ai/code/session_x" -- ${SPEC} && git diff --name-only origin/master...HEAD && git push origin HEAD:master 2>&1 | tail -1 && SHA=$(git rev-parse HEAD) && echo "$SHA"`,
-    ].join("\n");
-    it("lets the spec workflow's add + commit -- <spec> + push through with an empty diff", () =>
-      passes(specWorkflow, ctx({ branchFiles: () => [], staged: () => [] })));
-    it("reads the paths a chained `git add` stages when the commit names no pathspec", () =>
-      passes(`git add ${SPEC} && git commit -m x && git push origin master`));
-    it("asks when the chained commit carries a non-spec file", () =>
-      expect(asks("git commit -m x -- src/x.ts && git push origin master")).toMatch(/1 non-spec/));
-    it("asks when the chained commit adds a non-spec file beside the spec", () =>
-      expect(asks(`git add ${SPEC} src/x.ts && git commit -m x && git push origin master`)).toMatch(/1 non-spec/));
-    it("asks when the branch already carries a non-spec file", () =>
-      expect(
-        asks(`git commit -m x -- ${SPEC} && git push origin master`, ctx({ branchFiles: () => ["src/x.ts"] })),
-      ).toMatch(/1 non-spec/));
-    it("asks on `git add .`, whose contents it cannot know", () =>
-      expect(asks("git add . && git commit -m x && git push origin master")).toMatch(/0 non-spec/));
-    it("still asks from a feature branch", () =>
-      asks(`git commit -m x -- ${SPEC} && git push`, ctx({ branch: () => "ir-1" })));
+  it("asks on a tag push", () => {
+    expect(asks("git push origin v3.2.0")).toMatch(/release/);
+    expect(asks("git push --tags")).toMatch(/release/);
   });
-
-  describe("judged on the tree a chained `cd` lands in", () => {
-    const byTree = (d) => (d === MASTER ? "master" : path.basename(d));
-    it("names the branch of the tree pushed from, not the session's master", () =>
-      expect(
-        asks("cd ../ir-1143 && git push -u origin ir-1143:ir-1143 2>&1 | tail -2", ctx({ branch: byTree })),
-      ).toMatch(/branch ir-1143/));
-    it("passes the spec workflow run from another tree's cwd", () =>
-      passes(
-        `cd ${MASTER} && git commit -m x -- docs/superpowers/specs/a.md && git push origin HEAD:master`,
-        ctx({ cwd: tree("ir-1"), branch: byTree }),
-      ));
-  });
+  it("ignores --dry-run", () => passes("git push --dry-run origin v3.2.0"));
 });
 
 describe("gh pr create", () => {
-  it("asks with a well-formed title", () => asks(`gh pr create --title "feat(x): thing (#12)" --body-file -`));
+  it("passes with a well-formed title", () => passes(`gh pr create --title "feat(x): thing (#12)" --body-file -`));
+  it("passes with no title (gh prompts for one)", () => passes("gh pr create --fill"));
   it("denies a title without the issue number", () =>
     expect(deny(`gh pr create --title "feat(x): thing"`)).toMatch(/#<issue>/));
   it("denies a title without a type", () => deny(`gh pr create -t "thing (#12)"`));
@@ -288,6 +257,13 @@ describe("git commit", () => {
     ));
   it("counts a spec staged by a `git add` earlier in the same command", () =>
     deny("git add docs/superpowers/specs/a.md && git commit -m x", ctx({ branch: () => "ir-1" })));
+  it("judges the tree a chained `cd` lands in", () =>
+    expect(
+      deny(
+        "cd ../ir-1 && git commit -m x -- docs/superpowers/specs/a.md",
+        ctx({ branch: (d) => (d.endsWith("ir-1") ? "ir-1" : "master") }),
+      ),
+    ).toMatch(/on ir-1/));
   it("honours -C for the branch", () =>
     deny(
       "git -C ../ir-1 commit -m x",

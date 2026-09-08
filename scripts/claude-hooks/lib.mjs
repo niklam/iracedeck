@@ -150,12 +150,6 @@ export function dirtyCount(dir) {
   return r.ok ? r.out.split(/\r?\n/).filter(Boolean).length : -1;
 }
 
-/** Files the branch would push: merge-base diff against origin/master (three dots, never two). */
-export function branchFiles(dir) {
-  const r = git(["diff", "--name-only", `origin/${MAIN_BRANCH}...HEAD`], dir);
-  return r.ok ? r.out.split(/\r?\n/).filter(Boolean) : undefined;
-}
-
 /** True when the local `origin/master` ref matches the remote's `master`. `undefined` when offline. */
 export function originMasterFresh(dir) {
   const local = git(["rev-parse", `origin/${MAIN_BRANCH}`], dir);

@@ -4,7 +4,6 @@
  */
 import {
   applyVerdict,
-  branchFiles,
   currentBranch,
   ghJson,
   git,
@@ -33,7 +32,6 @@ if (typeof command === "string" && command.trim()) {
   const ctx = {
     cwd,
     branch: memo(currentBranch),
-    branchFiles: memo(branchFiles),
     staged: memo((dir) => lines(git(["diff", "--cached", "--name-only"], dir))),
     modified: memo((dir) => lines(git(["diff", "--name-only"], dir))),
     // A dir git cannot answer for (not a repo, or not on disk yet) falls back to the
