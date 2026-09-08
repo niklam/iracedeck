@@ -95,6 +95,34 @@ Both Stream Deck and Mirabox host apps cache plugin metadata aggressively. If yo
 
 For pure action-code edits, the watch process plus the host's built-in refresh usually suffices, but when in doubt, run the full stop–build–start cycle.
 
+## Auditioning a voice change
+
+The plugin ships no voice clips. It plays the Race Engineer voice pack it downloaded into `%LOCALAPPDATA%\iRaceDeck\Race Engineer\Voices\default`, and it keeps that folder matching the published catalog — reinstalling it when it is missing, replacing a folder it does not recognise, refreshing one whose clips have gone. That is right for a user and unhelpful when you are the one editing the voice, so a development build can be pointed at the packer's staged output instead.
+
+Turn it on once per worktree:
+
+```bash
+pnpm dev:voices on
+```
+
+That writes a gitignored `dev.local.json` at the repo root (`dev.local.json.example` shows the shape), rebuilds the three plugins, and relinks the hosts that are linked to **this** worktree — a host linked to another worktree is reported and left alone, since relinking it would switch that test environment underneath you. Mirabox and UlanziStudio read their plugins directory only at start, so restart whichever of them was relinked; the script prints the commands. The marker names a directory, which each plugin's build carries into its `bin/config.json` as `devVoicePacksRoot`; a release build has no such file to read, so the mechanism cannot ship.
+
+Then the loop is: edit clips, or the wording in `packages/audio-assets/configs/<voice-id>.voice.json`, re-stage the pack, and press **Rescan voices** in iRaceDeck Settings.
+
+```bash
+pnpm --filter @iracedeck/audio-assets pack:voice default --no-catalog
+```
+
+`--no-catalog` is what makes this safe to run twenty times an afternoon: the packer stages and zips as usual but does not rewrite the committed `catalog/default.json`, which is the release contract the download path is verified against. It is a per-run flag — a change destined for a release is still packed without it, and its regenerated catalog entry committed.
+
+What plays is the bytes the packer stages, radio-filtered exactly as a downloaded pack is, never the raw source tree. The plugin scans that directory ahead of the downloaded packs and never installs over what it finds there, so `default` stops being replaced under you. Two things say the mode is on: the plugin log's `Voice packs: development root active`, once per start, and the **Installed Voices** list, where the pack is badged *Development build* and shows its directory in place of a Remove button — iRaceDeck never deletes from a directory it did not create.
+
+```bash
+pnpm dev:voices off
+```
+
+Turn it off before testing the real download path — `switch-test-env` and the `relink:*` scripts deliberately leave the marker alone, so nothing else will.
+
 ## Useful Commands
 
 | Command | Description |
@@ -119,4 +147,5 @@ For pure action-code edits, the watch process plus the host's built-in refresh u
 | `pnpm switch-test-env:stream-deck` | Install + build + relink only Stream Deck |
 | `pnpm switch-test-env:mirabox` | Install + build + relink only Mirabox |
 | `pnpm switch-test-env:ulanzi` | Install + build + relink only Ulanzi |
+| `pnpm dev:voices on` / `pnpm dev:voices off` | Point this worktree's plugins at the packer's staged voice packs, or stop — see [Auditioning a voice change](#auditioning-a-voice-change) |
 | `pnpm test` | Run all tests |

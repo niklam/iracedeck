@@ -9,6 +9,8 @@ Per-plugin build-time flags that gate platform-specific features and temporary k
 - `packages/iracing-plugin-ulanzi/platform-features.json` — committed Ulanzi flags, identical shape to Mirabox today (`dialFeedback` and `profiles` off, `pngRasterization` on) — widen `dialFeedback`/`profiles` only once dial/profile support is verified on Ulanzi hardware.
 - `feature-flags.local.json` — **optional, gitignored** developer override at repo root. Deep-merges over every plugin's committed flags at build time.
 - `feature-flags.local.json.example` — committed example showing the file shape.
+- `dev.local.json` — **optional, gitignored** developer marker at repo root, holding the single key `voicePacksRoot` (#1143). Not a feature flag: it names a development voice root the plugin scans ahead of the user's packs folder, and it lands in `bin/config.json` as `devVoicePacksRoot` rather than anywhere under `features`. It is documented in this file because it is the same *kind* of thing — a gitignored root-level marker the same three Rollup configs read at the same point, hashed by turbo the same way, and impossible for a release build to carry. See *`dev.local.json` — the development voice root* below.
+- `dev.local.json.example` — committed example showing the file shape.
 
 ## Flag categories
 
@@ -147,11 +149,48 @@ rm feature-flags.local.json
 pnpm build
 ```
 
+## `dev.local.json` — the development voice root (#1143)
+
+Since #1034 stage 3 no plugin bundles a voice: the Race Engineer plays the copy under `%LOCALAPPDATA%\iRaceDeck\Race Engineer\Voices\default`, and the launch step keeps that folder matching the published catalog — installing it when it is missing, replacing a folder whose provenance is absent or foreign, force-reinstalling one whose record survived while its clips did not. Every one of those rules exists so a user's engineer works, and every one of them fights the person editing the voice. So a repo developer points the plugin at the packer's staged output instead, with a gitignored `dev.local.json` at the repo root holding exactly one key:
+
+```json
+{ "voicePacksRoot": "packages/audio-assets/dist/voice-packs" }
+```
+
+`scripts/lib/dev-local.mjs` reads it — the sibling of the `feature-flags.local.json` read, and deliberately stricter: an unknown key **throws** instead of being warned about and ignored, because a typo that silently leaves development mode off is a failure a developer chases in the sim rather than in the build log. A relative `voicePacksRoot` resolves against the repo root. Each plugin's `rollup.config.mjs` writes the resolved absolute path into `bin/config.json` as `devVoicePacksRoot`, through a **conditional spread** so the key is absent rather than `undefined` when there is no file, and `getDevVoicePacksRoot()` (`packages/deck-core/src/plugin-config.ts`) is how the plugin reads it back. **A release build cannot carry the mechanism** — the file is never in git, so a tag has nothing to read — and the marker dies with the worktree that wrote it.
+
+What the plugin does with it, gathered here so it need not be pieced back together from four modules:
+
+- **The scanner reads that root first.** `scanVoicePacks({ root, devRoot })` visits `devRoot` before the packs root and shares one `claimedVoices` map across both, so a pack found there claims its voice ids ahead of every pack in AppData — the `priorityPacks` rule of #1034 stage 3 generalised from one pack first to one root first. A pack under the packs root that loses gets a `problems` row naming the development pack that took its voice; nothing is deleted.
+- **`development` is a provenance no folder can claim.** It is assigned from the root a pack was found under, never read from a record — the on-disk source enum in `voice-pack-provenance.ts` has no such value to write — and the scanner does not read a provenance record under the dev root at all.
+- **The launch step leaves those packs alone.** `isProvidedByDevRoot(id)` (answered off the last scan, so an emptied dev root resumes the ensure) drops a dev-provided pack from the targets, the force-reinstall path included; every other pack still updates, which is what testing an update path needs. The step logs the parameter-free `Voice packs: development root active` once per start, path at debug, ahead of every other voice-pack line — that is what a developer who forgot the mode is on reads instead of hunting for an absence.
+- **The settings window says so too.** The Installed Voices row badges *Development build* and shows the pack's directory in place of a Remove button: the plugin never deletes from a directory it did not create, and the directory is what tells two clones of the repo apart. `_voicePacks` rows carry `dir`, and `managed` is false for such a pack — see `@.claude/rules/settings-window.md` item 6.
+- **A missing or empty development root warns once per run**, not once per scan — **Rescan voices** is the loop, and a root still empty on the fifth press is not five pieces of news — and the scan continues against the packs root as normal, so the plugin stays fully usable.
+
+Turbo hashes the marker: `$TURBO_ROOT$/dev.local.json` and `$TURBO_ROOT$/scripts/lib/dev-local.mjs` are `inputs` on all three plugin `#build` tasks, so toggling development mode is never served a stale plugin folder from the cache and needs no `--force`. The watch-mode caveat above applies unchanged — a Rollup config module is loaded once per watcher session, so restart the watcher after writing or removing the file.
+
+### The loop
+
+```bash
+pnpm dev:voices on     # once per worktree: writes dev.local.json, rebuilds the three plugins, relinks the hosts linked to THIS worktree
+# edit clips, or configs/<voice-id>.voice.json
+pnpm --filter @iracedeck/audio-assets pack:voice default --no-catalog
+# press "Rescan voices" in iRaceDeck Settings, then drive
+pnpm dev:voices off    # before testing the real download path
+```
+
+`--no-catalog` stages and zips without rewriting the committed `catalog/<id>.json`. That entry is the release contract — its `sha256` is what the installer compares an installed pack against — so a run whose only purpose is a staged tree must not touch it. The flag is per run, not a mode: the release workflow keeps calling `pack:voice` without it.
+
+`pnpm dev:voices off` removes the marker and rebuilds and relinks the same way — the rebuild is not optional in either direction, since the key lives in built output and nothing changes in-game until the plugin folder is rewritten. Two things the switch deliberately will not do: it never **overwrites** an existing `dev.local.json` (a `voicePacksRoot` you pointed somewhere by hand is kept and reported — picking a root yourself is what the file is for — and any other content fails the run rather than being replaced), and it never relinks a host whose link points at **another** worktree, which it reports and leaves alone, because relinking would switch somebody else's test environment underneath them. Mirabox and Ulanzi read their plugins directory at start only, so the script prints the `stop:` / `start:` pair for whichever of them it relinked. `switch-test-env` and the `relink:*` scripts never read or write the marker at all, so testing the real download path stays an explicit choice rather than something a relink switches off by accident. `scripts/dev-voice-root-guard.test.mjs` is what holds the three build-time properties up — the marker is gitignored, every plugin emits the key only through the conditional spread, and every plugin build task hashes the marker — discovering the plugin list from the committed manifests, so a fourth deck ecosystem is covered the day its package appears.
+
 ## Related files
 
 - `@.claude/rules/svg-platform-compatibility.md` — resvg's SVG support baseline and the `pngRasterization` kill-switch caveat.
 - `packages/rasterizer/src/index.ts` — `createSvgRasterizer()`, the `@resvg/resvg-js` wrapper injected by each plugin.
 - `packages/deck-core/src/rasterizer-service.ts` — `initializeRasterizer()`, `isRasterizerInitialized()`, `toDeviceImage()` (LRU cache, supersede guard, SVG fallback on render error).
-- `packages/deck-core/src/plugin-config.ts` — `PluginConfig`, `PlatformFeatureFlags`, `getFeatureFlag`, `getPlatformFeatures`.
+- `packages/deck-core/src/plugin-config.ts` — `PluginConfig`, `PlatformFeatureFlags`, `getFeatureFlag`, `getPlatformFeatures`, `getDevVoicePacksRoot`.
 - `.claude/rules/plugin-structure.md` — the `initializeRasterizer` step in the `plugin.ts` init order.
 - `.claude/rules/profiles-and-devices.md` — the `profiles` flag's PI accordion and Elgato-only rationale in full.
+- `scripts/lib/dev-local.mjs` — `readDevLocal()`, the strict reader for `dev.local.json`; `scripts/dev-voice-root-guard.test.mjs` is the guard that keeps the marker build-time only.
+- `packages/deck-core/src/voice-pack-scanner.ts` / `voice-pack-service.ts` / `voice-pack-launch.ts` — the `devRoot` scan order, the `development` provenance, and the ensure skip.
+- `@.claude/rules/race-engineer-callouts.md` §11 — the same loop stated where a callout change is verified.
