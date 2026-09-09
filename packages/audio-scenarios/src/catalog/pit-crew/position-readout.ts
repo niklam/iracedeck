@@ -53,12 +53,24 @@
  * to a number that is a true, complete statement without it ("P four" is
  * the designed terse form), so it may be optional under the #1064 rule —
  * and a pack that wants the intro every time simply drops the `optional`.
+ *
+ * **The intro's own trackers commit at speak time too** (issue #1138). The
+ * `positionReadout.intro` var DECIDES during expansion — that is what keeps
+ * the choice measured against the readout the driver last actually heard —
+ * but it only stashes that decision ({@link IntroDecision}); the contract's
+ * `speakGate` commits it with {@link commitIntroDecision} once the readout is
+ * admitted. Recording it at expansion had the same shape of bug the cooldown
+ * claim did before #1137: a readout deferred behind a busier line, then
+ * refused at its gate because another trigger took the shared window, still
+ * stamped `lastIntroAt` / `lastSpokenPosition` — so the next accepted readout,
+ * inside the 30 s window and one place away, dropped its lead-in and spoke a
+ * bare "P4" that no "We're currently" had introduced.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { SimEventOf } from "@iracedeck/event-bus";
 
 import { poolRef, WEIGHT } from "../../dsl.js";
-import type { ScenarioContract, SpeakGate } from "../../dsl.js";
+import type { ScenarioContext, ScenarioContract, SpeakGate } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
 import { overtakeContextAllows, type OvertakeGateResolver } from "./overtake-gate.js";
 
@@ -113,6 +125,29 @@ let lastSpokenPosition = 0;
 let reactionRandom: () => number = Math.random;
 
 /**
+ * What one expansion decided about the intro, and the readout it decided it
+ * for: the lead-in it would say, the position it resolved, and the moment it
+ * resolved it. Committed to the trackers by that fire's speak-time gate, and
+ * by nothing else (issue #1138).
+ */
+export type IntroDecision = { spokeIntro: boolean; position: number; at: number };
+
+/**
+ * The intro decision the CURRENT expansion made, waiting for that fire's
+ * speak-time gate (issue #1138). The `where:`-may-stash rule's shape, one
+ * step later: a var resolver may stash what the gate will read, because the
+ * gate follows the very expansion that wrote it — and only a fire that goes
+ * on to play commits anything.
+ *
+ * Keyed by the fire's own {@link ScenarioContext}, which the engine creates
+ * once per expansion and hands to both the var resolvers and the gate. An
+ * expansion that then aborts (a missing number clip, issue #835) leaves its
+ * decision here unclaimed, and the next gate — a different fire, a different
+ * context — refuses to take it.
+ */
+let pendingIntro: (IntroDecision & { ctx: ScenarioContext }) | null = null;
+
+/**
  * Read-only check of whether the position cooldown window has elapsed — the
  * half every position readout's `where:` runs, so a fire outside the cadence
  * is dropped cheaply at event arrival without touching the window.
@@ -161,7 +196,18 @@ export const POSITION_READOUT_SPEAK_GATE_DESCRIPTION =
  */
 export const positionReadoutSpeakGate: SpeakGate = {
   description: POSITION_READOUT_SPEAK_GATE_DESCRIPTION,
-  admit: () => tryClaimPositionAnnouncement(),
+  admit: (ctx) => {
+    // Take this fire's intro decision whatever happens next — a refused fire
+    // must leave nothing behind for the next one to inherit — and commit it
+    // only once the window is ours (issue #1138).
+    const intro = takeIntroDecision(ctx);
+
+    if (!tryClaimPositionAnnouncement()) return false;
+
+    commitIntroDecision(intro);
+
+    return true;
+  },
 };
 
 /**
@@ -180,25 +226,70 @@ export function shouldReactToOvertake(effectivePosition: number): boolean {
 
 /**
  * Decide whether a position readout should speak the full "We're currently"
- * intro or just the bare "P[n]" (issue #603), and record this readout as the
- * latest. The intro plays when: nothing has been spoken yet, the last intro was
- * more than {@link INTRO_COOLDOWN_MS} ago, or the position changed by more than
- * one since the last readout (a multi-position jump always gets the full intro,
- * even inside the window). Otherwise the intro is dropped for the bare number.
- * Has the side effect of advancing the intro/last-position trackers, so call it
- * exactly once per readout (from the `positionReadout.intro` var).
+ * intro or just the bare "P[n]" (issue #603). The intro plays when: nothing
+ * has been spoken yet, the last intro was more than {@link INTRO_COOLDOWN_MS}
+ * ago, or the position changed by more than one since the last readout (a
+ * multi-position jump always gets the full intro, even inside the window).
+ * Otherwise the intro is dropped for the bare number.
+ *
+ * PURE (issue #1138), like {@link canAnnouncePosition} and the qualifying
+ * latch's read half before it: this runs during expansion, and a
+ * readout can still be REFUSED afterwards — by its own speak-time gate, when
+ * another trigger claimed the shared window while this one waited behind a
+ * busier line, or by an abort further down the sequence. Advancing the
+ * trackers here recorded a readout nobody heard, and the next accepted one
+ * then dropped its lead-in and spoke a bare number. {@link commitIntroDecision}
+ * is the write half, committed by the contract's gate.
  */
 export function shouldSpeakIntro(currentPosition: number, now: number = Date.now()): boolean {
-  const useIntro =
+  return (
     lastSpokenPosition <= 0 ||
     now - lastIntroAt >= INTRO_COOLDOWN_MS ||
-    Math.abs(currentPosition - lastSpokenPosition) > 1;
+    Math.abs(currentPosition - lastSpokenPosition) > 1
+  );
+}
 
-  if (useIntro) lastIntroAt = now;
+/**
+ * Stash the intro decision this expansion made, for the fire's own speak-time
+ * gate to commit. Private: the `positionReadout.intro` var is the one writer,
+ * and it writes exactly once per expansion.
+ */
+function stashIntroDecision(ctx: ScenarioContext, decision: IntroDecision): void {
+  pendingIntro = { ...decision, ctx };
+}
 
-  lastSpokenPosition = currentPosition;
+/**
+ * Take the intro decision THIS fire's expansion stashed, and clear the slot
+ * whatever the caller then does with it — a decision serves one gate, and a
+ * refused fire must leave nothing for the next one. Returns `null` for a fire
+ * whose expansion stashed nothing: an imperative `fire(id)`, a voice whose
+ * script never names `positionReadout.intro`, or a fire whose own decision was
+ * orphaned by an abort (the stash belongs to another context by then).
+ *
+ * @internal Exported for `position.ts`'s gate and for tests.
+ */
+export function takeIntroDecision(ctx: ScenarioContext): IntroDecision | null {
+  const pending = pendingIntro;
+  pendingIntro = null;
 
-  return useIntro;
+  return pending !== null && pending.ctx === ctx ? pending : null;
+}
+
+/**
+ * Record a readout the driver is about to hear as the latest one, so the next
+ * readout's bare/full decision measures from it (issue #603). The write half
+ * of {@link shouldSpeakIntro}, committed by a contract's `speakGate` once the
+ * fire is admitted — never during expansion (issue #1138). A `null` decision
+ * is a no-op, so a gate can hand its take straight through.
+ *
+ * @internal Exported for `position.ts`'s gate and for tests.
+ */
+export function commitIntroDecision(decision: IntroDecision | null): void {
+  if (decision === null) return;
+
+  if (decision.spokeIntro) lastIntroAt = decision.at;
+
+  lastSpokenPosition = decision.position;
 }
 
 /**
@@ -209,11 +300,15 @@ export function _setReactionRandom(rng: () => number): void {
   reactionRandom = rng;
 }
 
-/** Reset all position-readout cooldowns + reaction RNG. @internal test isolation only. */
+/**
+ * Reset all position-readout cooldowns, the uncommitted intro decision and
+ * the reaction RNG. @internal test isolation only.
+ */
 export function _resetPositionReadoutCooldown(): void {
   lastPositionAnnouncedAt = 0;
   lastIntroAt = 0;
   lastSpokenPosition = 0;
+  pendingIntro = null;
   reactionRandom = Math.random;
 }
 
@@ -263,11 +358,13 @@ export function isOvertakeEffectiveLeader(data: {
  * Register the vocabulary the position-readout scripts reference (issue
  * #1065): the intro and the live-position number. Both read the live resolver
  * at expansion time; a `null` number is a defensive guard — the contract's
- * `where:` already gates on the live position being readable. The cooldown
- * is NOT marked here — it's claimed by the contract's `speakGate` via
- * {@link tryClaimPositionAnnouncement}, which runs after this expansion.
- * Must run before the contracts are defined so the first `setScripts`
- * compile sees the vars.
+ * `where:` already gates on the live position being readable. NOTHING is
+ * recorded here (issue #1138): the cooldown is claimed by the contract's
+ * `speakGate` via {@link tryClaimPositionAnnouncement}, and the intro's own
+ * decision is only STASHED, for that same gate to commit with
+ * {@link commitIntroDecision} — both run after this expansion, and only for a
+ * fire that goes on to play. Must run before the contracts are defined so the
+ * first `setScripts` compile sees the vars.
  */
 export function registerPositionReadoutVocabulary(
   engine: Pick<IScenarioEngine, "defineVar">,
@@ -275,17 +372,25 @@ export function registerPositionReadoutVocabulary(
 ): void {
   // "We're currently" intro — resolves to the intro clip when due, or to
   // nothing (leaving a bare "P[n]" under the script's optional clause) inside
-  // the 30 s window for a ≤1-position move (issue #603). Runs before the
-  // number var in the sequence so it reads the previous spoken position for
-  // the delta and records this one.
+  // the 30 s window for a ≤1-position move (issue #603). It reads the last
+  // readout the driver actually heard for the delta, and proposes this one —
+  // the gate records it (issue #1138).
   engine.defineVar(
     "positionReadout.intro",
-    () => {
+    (ctx) => {
       const n = selectLivePosition(getLivePosition());
 
       if (n === null) return null;
 
-      return shouldSpeakIntro(n) ? poolRef(POSITION_GROUP_INTRO_WORSE, "currently") : null;
+      // Decide, and stash the decision for this fire's speak-time gate to
+      // commit (issue #1138). Deciding here is what keeps the words fresh;
+      // recording here recorded readouts that were then refused or aborted,
+      // and the next accepted one lost its lead-in to them.
+      const spokeIntro = shouldSpeakIntro(n, ctx.now);
+
+      stashIntroDecision(ctx, { spokeIntro, position: n, at: ctx.now });
+
+      return spokeIntro ? poolRef(POSITION_GROUP_INTRO_WORSE, "currently") : null;
     },
     "The \"We're currently\" lead-in of a position readout, from position-intro-worse/currently. Resolves to nothing for a second readout within 30 seconds of the last one that moved at most one place — the number is then spoken bare — so the bundled script wraps it in an optional clause; a script that wants the lead-in every time drops the optional. Resolving it also records this readout for the next one's decision, so name it at most once per entry.",
   );

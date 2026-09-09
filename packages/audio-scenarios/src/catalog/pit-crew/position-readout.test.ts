@@ -24,6 +24,7 @@ import {
   buildOvertakeGainedPositionContract,
   buildOvertakeLostPositionContract,
   canAnnouncePosition,
+  commitIntroDecision,
   INTRO_COOLDOWN_MS,
   type LivePosition,
   OVERTAKE_POSITION_SCENARIO_IDS,
@@ -67,24 +68,55 @@ describe("shouldSpeakIntro — bare vs full intro (#603)", () => {
 
   const T0 = 1_000_000;
 
+  /**
+   * The production pair since #1138: the pure decision runs during expansion,
+   * the record is committed by the contract's speak-time gate for a readout
+   * that goes on to play. Composed here so one assertion still reads as "does
+   * this readout speak its lead-in, and does it become the one the next
+   * readout measures from".
+   */
+  function speakIntro(position: number, now: number): boolean {
+    const spokeIntro = shouldSpeakIntro(position, now);
+
+    commitIntroDecision({ spokeIntro, position, at: now });
+
+    return spokeIntro;
+  }
+
   it("speaks the full intro on the first readout", () => {
+    expect(speakIntro(5, T0)).toBe(true);
+  });
+
+  it("is pure: deciding twice does not record the readout (issue #1138)", () => {
+    // The `where:`-never-claims rule one step later. A readout that decides
+    // and is then refused at its gate — or aborted at expansion — must leave
+    // the next one's decision exactly as it found it.
     expect(shouldSpeakIntro(5, T0)).toBe(true);
+    expect(shouldSpeakIntro(4, T0 + 1000)).toBe(true); // still nothing recorded → still the first
   });
 
   it("drops the intro for a ≤1-position move within the cooldown window", () => {
-    expect(shouldSpeakIntro(5, T0)).toBe(true);
-    expect(shouldSpeakIntro(4, T0 + 1000)).toBe(false); // delta 1, inside 30 s → bare
-    expect(shouldSpeakIntro(4, T0 + 2000)).toBe(false); // same position → bare
+    expect(speakIntro(5, T0)).toBe(true);
+    expect(speakIntro(4, T0 + 1000)).toBe(false); // delta 1, inside 30 s → bare
+    expect(speakIntro(4, T0 + 2000)).toBe(false); // same position → bare
   });
 
   it("restores the full intro once the cooldown elapses", () => {
-    expect(shouldSpeakIntro(5, T0)).toBe(true);
-    expect(shouldSpeakIntro(4, T0 + INTRO_COOLDOWN_MS)).toBe(true);
+    expect(speakIntro(5, T0)).toBe(true);
+    expect(speakIntro(4, T0 + INTRO_COOLDOWN_MS)).toBe(true);
   });
 
   it("always uses the full intro for a move of more than one position, even inside the window", () => {
-    expect(shouldSpeakIntro(5, T0)).toBe(true);
-    expect(shouldSpeakIntro(2, T0 + 1000)).toBe(true); // delta 3 > 1 → full
+    expect(speakIntro(5, T0)).toBe(true);
+    expect(speakIntro(2, T0 + 1000)).toBe(true); // delta 3 > 1 → full
+  });
+
+  it("a bare readout still becomes the position the next one measures from", () => {
+    // A committed decision records the position whether or not the lead-in
+    // was spoken — the 30 s window is only re-armed by an intro.
+    expect(speakIntro(5, T0)).toBe(true);
+    expect(speakIntro(4, T0 + 1000)).toBe(false); // bare, records P4
+    expect(speakIntro(2, T0 + 2000)).toBe(true); // |2 - 4| > 1 → full again
   });
 });
 
@@ -432,6 +464,55 @@ describe("the overtake position readouts through the real script (issue #1065)",
     // the position is never spoken twice (issue #651) — while the line that
     // was in flight played through untouched.
     expect(voicePaths()).toEqual(["test/blocker.mp3"]);
+  });
+
+  it("a readout refused at its gate stamps no intro tracker — the next accepted one still speaks the lead-in (issue #1138)", () => {
+    // The refused readout's expansion resolved the intro var and DECIDED to
+    // speak the lead-in; it must not record that, because nobody heard it.
+    // Recording it made the next accepted readout — within the 30 s intro
+    // window, one place away — speak a bare number with no "We're currently".
+    startBlocker();
+    publishGained(5);
+    expect(tryClaimPositionAnnouncement()).toBe(true); // another trigger takes the window
+    flush(audio);
+
+    expect(voicePaths()).toEqual(["test/blocker.mp3"]);
+
+    // The shared window frees up; the intro window has NOT, and the move is
+    // one place — exactly the conditions under which a stamped tracker would
+    // drop the lead-in.
+    audio._played.length = 0;
+    vi.advanceTimersByTime(POSITION_READOUT_COOLDOWN_MS);
+    live = { position: 4, classPosition: 4, isMultiClass: false };
+    fireGained(4);
+
+    expect(voicePaths()).toEqual([
+      `voice/${VOICE}/position-intro-worse/currently-01.mp3`,
+      `voice/${VOICE}/position-number/4.mp3`,
+    ]);
+  });
+
+  it("a readout whose expansion aborts stamps no intro tracker either (issues #835/#1138)", () => {
+    // The intro var resolves (and decides) before the number var aborts the
+    // whole callout — P65 is past the clips this voice ships. Nothing was
+    // heard, so nothing is recorded: the same rule as the refused gate,
+    // reached one step earlier.
+    live = { position: 65, classPosition: 65, isMultiClass: false };
+    fireGained(65);
+
+    expect(voicePaths()).toEqual([]);
+
+    // One place away, inside the intro window: a tracker left by the aborted
+    // expansion would drop this readout's lead-in.
+    audio._played.length = 0;
+    vi.advanceTimersByTime(POSITION_READOUT_COOLDOWN_MS);
+    live = { position: 64, classPosition: 64, isMultiClass: false };
+    fireGained(64);
+
+    expect(voicePaths()).toEqual([
+      `voice/${VOICE}/position-intro-worse/currently-01.mp3`,
+      `voice/${VOICE}/position-number/64.mp3`,
+    ]);
   });
 
   it("a second readout inside the window that jumped more than one place keeps the full intro", () => {

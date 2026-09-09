@@ -37,8 +37,9 @@
  * a snapshot of `{ sessionType, sessionNum, lapsRemaining, lapLimited,
  * lapCompleted, lapStartedFromPits, lapCounted }` from the most recent
  * telemetry tick. The `where:` predicate reads the snapshot to gate on
- * qualifying + per-lap latch and stashes the one it approved for the
- * `speakGate` (issue #1138); the vocabulary reads it again at
+ * qualifying + per-lap latch and stashes the one it approved against the
+ * event envelope it approved, for that fire's own `speakGate` (issue #1138);
+ * the vocabulary reads the resolver again at
  * sequence-expansion time. A deferred replay therefore speaks the live
  * snapshot when it actually fires — not whatever was current when the event
  * was emitted. That is why both the contract builder and the vocabulary take
@@ -73,7 +74,7 @@
  * resolve through the manifest regardless of a base, so nothing is missing.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
-import type { QualifyingInvalidationSnapshot } from "@iracedeck/event-bus";
+import type { QualifyingInvalidationSnapshot, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 
 import type { ScenarioContract } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
@@ -102,28 +103,37 @@ export const QUALIFYING_LAP_COUNT_MAX = 5;
 let lastAnnounced: { sessionNum: number | undefined; lap: number } | null = null;
 
 /**
- * The snapshot the `where:` last approved, stashed for the speak-time gate
- * (issue #1138). The gate must latch the lap the fire was APPROVED on, not
- * the lap the driver is on by the time the fire speaks: a fire parked behind
- * a longer line can replay after the driver crossed S/F, and re-reading the
- * live snapshot there would latch lap N+1 — silencing its genuine first
- * incident — while leaving lap N open. A stash in `where:` is the allowed
- * shape (a var resolver's stash, read during the very expansion the gate
- * follows); the claim itself stays in the gate.
+ * The snapshot each `where:` approved, keyed by the event envelope it was
+ * approving — the object the engine hands the predicate, keeps on a parked
+ * fire, and hands back to the gate as `ctx.event` (issue #1138). The gate must
+ * latch the lap ITS OWN fire was approved on, not the lap the driver is on by
+ * the time it speaks: a fire parked behind a longer line can replay after the
+ * driver crossed S/F, and re-reading the live snapshot there would latch lap
+ * N+1 — silencing its genuine first incident — while leaving lap N open.
+ *
+ * A stash in `where:` is the allowed shape (read by the gate during the very
+ * fire the `where:` approved); the claim itself stays in the gate. It is keyed
+ * PER FIRE rather than held in one slot because approvals and speak-time gates
+ * do not alternate: a fire parked as pending (the "higher weight, no
+ * interrupt" path parks it whether or not the contract is queueable) can be
+ * overtaken by a later incident that its `where:` approves and the engine then
+ * DROPS on a busy bus — this contract is not queueable — and one shared slot
+ * handed that dropped fire's lap to the parked one. A `WeakMap` also needs no
+ * cleanup for the approvals that are dropped: they go with their envelope.
  */
-let pendingQualifyingSnapshot: QualifyingInvalidationSnapshot | null = null;
+let pendingQualifyingSnapshots = new WeakMap<SimEventOf<SimEventName>, QualifyingInvalidationSnapshot>();
 
 /**
- * Reset the per-lap latch and the stashed snapshot. Used by tests to isolate
+ * Reset the per-lap latch and every stashed snapshot. Used by tests to isolate
  * one fire from the next; production code has no reason to call this — the
  * latch composite naturally advances as the driver crosses S/F or changes
- * sessions.
+ * sessions, and a stash dies with the event envelope that keyed it.
  *
  * @internal
  */
 export function resetQualifyingInvalidationLatch(): void {
   lastAnnounced = null;
-  pendingQualifyingSnapshot = null;
+  pendingQualifyingSnapshots = new WeakMap();
 }
 
 /**
@@ -269,9 +279,10 @@ export function registerQualifyingInvalidationVocabulary(
 /**
  * Build the contract bound to a snapshot resolver. Stays a builder because
  * the `where:` reads the resolver: it asks whether this lap is still
- * unlatched and stashes the snapshot it approved; the `speakGate` takes
- * THAT snapshot, re-checks it and latches it once the callout has expanded
- * to something to say (issues #1137, #1138). The tail is the vocabulary's
+ * unlatched and stashes the snapshot it approved against that fire's event
+ * envelope; the `speakGate` looks THAT snapshot up by the same envelope,
+ * re-checks it and latches it once the callout has expanded to something to
+ * say (issues #1137, #1138). The tail is the vocabulary's
  * ({@link registerQualifyingInvalidationVocabulary}), which reads the
  * resolver live at expansion. The literal names no `base` — see the header.
  */
@@ -282,7 +293,7 @@ export function buildQualifyingInvalidationContract(
     id: "pit-crew.qualifying-invalidation-lap-invalidated",
     when: {
       event: "incident.occurred",
-      where: () => {
+      where: (ev) => {
         const snapshot = getSnapshot();
 
         if (snapshot === null) return false;
@@ -290,11 +301,13 @@ export function buildQualifyingInvalidationContract(
         // Pure check only — the latch is claimed by the gate below (issue
         // #1137), so an incident the script cannot expand never spends the
         // lap's one callout. The approved snapshot is stashed for that gate
-        // (issue #1138): it must latch THIS lap, whatever lap the driver is
-        // on by the time the fire reaches the speaker.
+        // (issue #1138), against the envelope being approved: it must latch
+        // THIS fire's lap, whatever lap the driver is on by the time it
+        // reaches the speaker, and whatever a later incident approved in the
+        // meantime.
         if (!qualifyingLatchAllows(snapshot)) return false;
 
-        pendingQualifyingSnapshot = snapshot;
+        pendingQualifyingSnapshots.set(ev, snapshot);
 
         return true;
       },
@@ -302,16 +315,23 @@ export function buildQualifyingInvalidationContract(
     speakGate: {
       description:
         "This is still the first incident of the flying lap when the call comes to speak; speaking it latches the lap.",
-      admit: () => {
-        // Stash, then check-and-claim: the snapshot the `where:` approved,
-        // consumed here so it serves one fire. No stash — an imperative
-        // `fire(id)` never ran the `where:` — admits nothing. The re-check
-        // refuses a same-lap fire that raced in behind one that already
-        // latched the lap, so the callout stays the FIRST incident of it.
-        const snapshot = pendingQualifyingSnapshot;
-        pendingQualifyingSnapshot = null;
+      admit: (ctx) => {
+        // Stash, then check-and-claim: the snapshot THIS fire's `where:`
+        // approved, found by the envelope the engine carried through the
+        // pending slot and consumed here so it serves one fire. No stash —
+        // an imperative `fire(id)`, which carries no event and never ran the
+        // `where:` — admits nothing. The re-check refuses a same-lap fire that
+        // raced in behind one that already latched the lap, so the callout
+        // stays the FIRST incident of it.
+        const event = ctx.event;
 
-        if (snapshot === null || !qualifyingLatchAllows(snapshot)) return false;
+        if (event === null) return false;
+
+        const snapshot = pendingQualifyingSnapshots.get(event);
+
+        pendingQualifyingSnapshots.delete(event);
+
+        if (snapshot === undefined || !qualifyingLatchAllows(snapshot)) return false;
 
         claimQualifyingLatch(snapshot);
 

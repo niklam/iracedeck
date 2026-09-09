@@ -542,6 +542,48 @@ describe("qualifying-invalidation scenario — per-lap latch", () => {
 
     expect(hasClip("/qualifying-invalidation/invalidated-01.mp3")).toBe(true);
   });
+
+  it("a parked fire keeps its own snapshot when a later incident is approved and then dropped (issue #1138)", () => {
+    // A CHATTER line holds the bus, so incident A (lap 4) wins it on weight
+    // and waits. A NORMAL-weight line then cuts in, so incident B (lap 5) —
+    // the same weight, and this contract is not queueable — is DROPPED on the
+    // busy bus, after its `where:` had already approved and stashed it. One
+    // shared stash slot hands B's lap to A when A finally drains: lap 5 is
+    // latched, silencing its own first incident, and lap 4 is left open.
+    const engine = getScenarioEngine();
+
+    engine.defineScenario({
+      id: "test.chatter",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      weight: WEIGHT.CHATTER,
+      sequence: [`voice/${VOICE}/qualifying-invalidation/plenty-of-laps-01.mp3`],
+    });
+    engine.defineScenario({
+      id: "test.loud",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      weight: WEIGHT.NORMAL,
+      interrupt: true,
+      sequence: [`voice/${VOICE}/qualifying-invalidation/out-of-laps-01.mp3`],
+    });
+
+    engine.fire("test.chatter"); // in flight, not flushed
+
+    lastSnapshot = snap({ lapCompleted: 4, lapsRemaining: 2 });
+    bus.publishEvent("incident.occurred", { delta: 1, points: 1, type: "off-track" }); // A parked
+
+    engine.fire("test.loud"); // cuts the chatter; the bus now runs at NORMAL
+
+    lastSnapshot = snap({ lapCompleted: 5, lapsRemaining: 1 }); // S/F crossed
+    bus.publishEvent("incident.occurred", { delta: 1, points: 1, type: "off-track" }); // B approved, then dropped
+
+    flush(audio); // test.loud finishes; A drains
+
+    expect(hasClip("/qualifying-invalidation/invalidated-01.mp3")).toBe(true);
+    expect(qualifyingLatchAllows(snap({ lapCompleted: 4 }))).toBe(false);
+    expect(qualifyingLatchAllows(snap({ lapCompleted: 5 }))).toBe(true);
+  });
 });
 
 describe("qualifying-invalidation scenario — opt-in gate", () => {
@@ -613,8 +655,18 @@ describe("buildQualifyingInvalidationContract (issue #1065)", () => {
   });
 
   describe("the speak-time gate takes the snapshot the where: approved (issue #1138)", () => {
-    const ctx: ScenarioContext = { event: null, telemetry: null, data: null, now: 0, vars: {} };
-    const incident = { event: "incident.occurred", timestamp: 0, telemetry: null, data: {} } as never;
+    /** A fresh event envelope — the object the stash is keyed by. */
+    function envelope(): SimEventOf<SimEventName> {
+      return { event: "incident.occurred", timestamp: 0, telemetry: null, data: {} } as never;
+    }
+
+    /** The context the engine hands the gate: the very envelope `where:` saw. */
+    function ctxFor(event: SimEventOf<SimEventName> | null): ScenarioContext {
+      return { event, telemetry: null, data: null, now: 0, vars: {} };
+    }
+
+    const incident = envelope();
+    const ctx = ctxFor(incident);
 
     beforeEach(() => resetQualifyingInvalidationLatch());
 
@@ -643,7 +695,18 @@ describe("buildQualifyingInvalidationContract (issue #1065)", () => {
     it("refuses when no where: stashed a snapshot — an imperative fire latches nothing", () => {
       const c = buildQualifyingInvalidationContract(() => snap({ lapCompleted: 4 }));
 
-      expect(c.speakGate?.admit(ctx)).toBe(false);
+      expect(c.speakGate?.admit(ctxFor(null))).toBe(false);
+      expect(qualifyingLatchAllows(snap({ lapCompleted: 4 }))).toBe(true);
+    });
+
+    it("refuses a fire whose own envelope no where: approved", () => {
+      const c = buildQualifyingInvalidationContract(() => snap({ lapCompleted: 4 }));
+
+      expect(c.when?.where?.(incident)).toBe(true);
+
+      // Another fire's envelope: the stash belongs to `incident`, not to this
+      // one, so this fire admits nothing and latches nothing.
+      expect(c.speakGate?.admit(ctxFor(envelope()))).toBe(false);
       expect(qualifyingLatchAllows(snap({ lapCompleted: 4 }))).toBe(true);
     });
 
@@ -653,6 +716,23 @@ describe("buildQualifyingInvalidationContract (issue #1065)", () => {
       expect(c.when?.where?.(incident)).toBe(true);
       expect(c.speakGate?.admit(ctx)).toBe(true);
       expect(c.speakGate?.admit(ctx)).toBe(false);
+    });
+
+    it("keeps each fire's own snapshot: a later fire's where: does not overwrite a parked one's", () => {
+      let live = snap({ lapCompleted: 4 });
+      const c = buildQualifyingInvalidationContract(() => live);
+      const parked = envelope();
+      const dropped = envelope();
+
+      expect(c.when?.where?.(parked)).toBe(true); // approved, then parked behind a busier line
+      live = snap({ lapCompleted: 5 });
+      expect(c.when?.where?.(dropped)).toBe(true); // approved, then dropped on the busy bus
+
+      // The parked fire drains: its gate sees ITS envelope, so it latches lap
+      // 4 and leaves lap 5's own first incident free to speak.
+      expect(c.speakGate?.admit(ctxFor(parked))).toBe(true);
+      expect(qualifyingLatchAllows(snap({ lapCompleted: 4 }))).toBe(false);
+      expect(qualifyingLatchAllows(snap({ lapCompleted: 5 }))).toBe(true);
     });
   });
 });

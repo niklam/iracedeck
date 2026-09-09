@@ -96,10 +96,12 @@ import type { ScenarioContext, ScenarioContract } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
 import {
   canAnnouncePosition,
+  commitIntroDecision,
   liveCurrentlyAnnounceable,
   type LivePositionResolver,
   POSITION_READOUT_SPEAK_GATE_DESCRIPTION,
   selectLivePosition,
+  takeIntroDecision,
   tryClaimPositionAnnouncement,
 } from "./position-readout.js";
 
@@ -439,10 +441,23 @@ export function buildPositionContract(
       // and the readout there. Read from the fire's own event, the same field
       // (and the same type) the `where:` reads; an imperative `fire(id)`
       // carries no event and so claims nothing, exactly as it never did.
+      //
+      // Whichever branch it takes, an admitted readout commits the intro
+      // decision its expansion stashed, and a refused one leaves nothing
+      // behind (issue #1138). The bundled script speaks through
+      // `position.intro`, which decides from the frozen lap payload and
+      // records nothing — but a pack may name `positionReadout.intro` here
+      // instead, and its decision must then be committed by whichever branch
+      // admits, the qualifying one that consults no window included.
       admit: (ctx) => {
+        const intro = takeIntroDecision(ctx);
         const data = ctx.data as SimEventOf<"lap.completed">["data"] | null;
 
-        return data?.sessionType !== "race" || tryClaimPositionAnnouncement();
+        if (data?.sessionType === "race" && !tryClaimPositionAnnouncement()) return false;
+
+        commitIntroDecision(intro);
+
+        return true;
       },
     },
     channel: AudioChannel.Voice,

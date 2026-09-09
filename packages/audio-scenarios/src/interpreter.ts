@@ -1311,10 +1311,13 @@ class ScenarioEngine implements IScenarioEngine {
    * commits anything: a registered condition must be pure since #1138 — the
    * one that did, the furled-flag `if` that marked the flag spoken, moved to
    * the contract's `speakGate` — precisely because a pack may write it into
-   * a body. A var RESOLVER may still keep a tracker (the position readout's
-   * intro records the readout it decided, for the next one's delta), which
-   * is why the frame is expanded first: it costs nothing, and it is what
-   * keeps such a tracker from being moved by a frame that then aborts.
+   * a body. A var RESOLVER may still keep a tracker, which is why the frame
+   * is expanded first: it costs nothing, and it is what keeps such a tracker
+   * from being moved by a frame that then aborts. The position readout's
+   * intro was that example until #1138 — it still DECIDES its lead-in during
+   * expansion, but only stashes the decision for its contract's `speakGate`
+   * to commit, so a readout refused there (or aborted further down) records
+   * nothing for the next one's delta.
    * A body that can never hold a clip (`canProducePlay`) has no frame
    * expanded at all — nothing can be due for it, so nothing can abort it or
    * warn about it. The rule and its one accepted cost are stated on
