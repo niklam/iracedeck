@@ -127,14 +127,15 @@ export const GlobalSettingsSchema = z
      * `focus-iracing-mode.ts` for the three modes. The two paragraphs below are
      * #930's record, written while this was a boolean; #977's is last.
      *
-     * Default: true (issue #930). Keystrokes go to whatever window has focus,
-     * so every keybind- and chat-driven action silently does nothing when
-     * iRacing is in the background — no error, nothing on screen, a recurring
-     * support pattern. Focusing costs nothing when iRacing is already in front
-     * (`FocusResult.AlreadyFocused`), so on-by-default makes those actions work
-     * out of the box. Note this does NOT apply to pure SDK broadcasts, which
-     * reach iRacing regardless of focus (`SendNotifyMessage(HWND_BROADCAST, …)`);
-     * those fail only on an integrity-level mismatch, which focusing can't fix.
+     * Default: `"always"` (#977; on since #930). Keystrokes go to whatever
+     * window has focus, so every keybind- and chat-driven action silently does
+     * nothing when iRacing is in the background — no error, nothing on screen,
+     * a recurring support pattern. Focusing costs nothing when iRacing is
+     * already in front (`FocusResult.AlreadyFocused`), so on-by-default makes
+     * those actions work out of the box. Note this does NOT apply to pure SDK
+     * broadcasts, which reach iRacing regardless of focus
+     * (`SendNotifyMessage(HWND_BROADCAST, …)`); those fail only on an
+     * integrity-level mismatch, which focusing can't fix.
      *
      * Existing installs are unaffected: writes persist the whole parsed cache,
      * so their stored `false` predates this flip and keeps winning. Only fresh

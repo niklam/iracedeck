@@ -21,7 +21,7 @@ describe("parseFocusIRacingMode (issue #977)", () => {
     expect(parseFocusIRacingMode(undefined)).toBe("always");
     expect(parseFocusIRacingMode(null)).toBe("always");
     expect(parseFocusIRacingMode("sometimes")).toBe("always");
-    expect(parseFocusIRacingMode("ALWAYS")).toBe("always"); // exact match only; the select writes lowercase
+    expect(parseFocusIRacingMode("NEVER")).toBe("always"); // exact match only — a wrong case must not read as an opt-out
     expect(parseFocusIRacingMode(0)).toBe("always");
     expect(parseFocusIRacingMode(42)).toBe("always");
   });
