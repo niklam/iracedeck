@@ -85,6 +85,22 @@ describe("global-common-* group partials", () => {
       for (const key of keys) expect(html, `${partial} → ${key}`).toContain(`setting="${key}"`);
     }
   });
+
+  // `focusIRacingWindow` stopped being a boolean in #977 — a checkbox here would
+  // write `true`/`false` back over a mode the plugin can no longer distinguish
+  // from "always".
+  it("renders Focus iRacing as a three-way mode select (#977)", () => {
+    const html = render("<%- include('global-common-window-focus') %>");
+
+    expect(html).toContain('<sdpi-select setting="focusIRacingWindow"');
+    expect(html).toContain('<option value="always">Always</option>');
+    expect(html).toContain('<option value="required">When required</option>');
+    expect(html).toContain('<option value="never">Never</option>');
+    // A regex, not a literal: the checkbox this replaced spread its attributes
+    // over several lines, so a single-line literal would pass vacuously against
+    // the very markup it exists to forbid.
+    expect(html).not.toMatch(/<sdpi-checkbox[^>]*setting="focusIRacingWindow"/);
+  });
 });
 
 describe("global-common-diagnostics.ejs storage row (#993)", () => {
