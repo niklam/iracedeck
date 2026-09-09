@@ -17,6 +17,7 @@ const {
   mockGetGlobalSettings,
   mockIsSimHubInitialized,
   mockIsSimHubReachable,
+  mockFocusBeforeInput,
 } = vi.hoisted(() => ({
   mockSendKeyCombination: vi.fn().mockResolvedValue(true),
   mockPressKeyCombination: vi.fn().mockResolvedValue(true),
@@ -27,6 +28,7 @@ const {
   mockGetGlobalSettings: vi.fn<() => Record<string, unknown>>(() => ({})),
   mockIsSimHubInitialized: vi.fn(() => true),
   mockIsSimHubReachable: vi.fn(() => true),
+  mockFocusBeforeInput: vi.fn(),
 }));
 
 vi.mock("./keyboard-service.js", () => ({
@@ -45,6 +47,10 @@ vi.mock("./simhub-service.js", () => ({
     startRole: mockStartRole,
     stopRole: mockStopRole,
   }),
+}));
+
+vi.mock("./window-focus-service.js", () => ({
+  focusIRacingBeforeInput: mockFocusBeforeInput,
 }));
 
 vi.mock("./global-settings.js", async (importOriginal) => {
@@ -660,6 +666,87 @@ describe("BindingDispatcher", () => {
       const result = await getBindingDispatcher().tapSequence(["blackBoxFuel"]);
 
       expect(result).toBe(false);
+    });
+  });
+
+  // --- Focus before keystrokes (#977) ---
+
+  describe("focus before keystrokes (issue #977)", () => {
+    const keyboardBinding = JSON.stringify({ type: "keyboard", key: "f1", modifiers: [], code: "F1" });
+    const simHubBinding = JSON.stringify({ type: "simhub", role: "Role" });
+
+    it("tap focuses immediately before the keyboard send", async () => {
+      mockGetGlobalSettings.mockReturnValue({ k: keyboardBinding });
+      initializeBindingDispatcher(mockLogger);
+
+      await getBindingDispatcher().tap("k");
+
+      expect(mockFocusBeforeInput).toHaveBeenCalledOnce();
+      expect(mockFocusBeforeInput.mock.invocationCallOrder[0]).toBeLessThan(
+        mockSendKeyCombination.mock.invocationCallOrder[0],
+      );
+    });
+
+    it("tap does not focus for a SimHub role — that goes out over TCP", async () => {
+      mockGetGlobalSettings.mockReturnValue({ k: simHubBinding });
+      initializeBindingDispatcher(mockLogger);
+
+      await getBindingDispatcher().tap("k");
+
+      expect(mockFocusBeforeInput).not.toHaveBeenCalled();
+    });
+
+    it("tap does not focus when the binding is unset — nothing is about to be typed", async () => {
+      mockGetGlobalSettings.mockReturnValue({});
+      initializeBindingDispatcher(mockLogger);
+
+      await getBindingDispatcher().tap("k");
+
+      expect(mockFocusBeforeInput).not.toHaveBeenCalled();
+    });
+
+    it("hold focuses before the key press and not again on release", async () => {
+      mockGetGlobalSettings.mockReturnValue({ k: keyboardBinding });
+      initializeBindingDispatcher(mockLogger);
+
+      await getBindingDispatcher().hold("ctx", "k");
+      await getBindingDispatcher().release("ctx");
+
+      expect(mockFocusBeforeInput).toHaveBeenCalledOnce();
+      expect(mockFocusBeforeInput.mock.invocationCallOrder[0]).toBeLessThan(
+        mockPressKeyCombination.mock.invocationCallOrder[0],
+      );
+    });
+
+    it("hold does not focus for a SimHub role", async () => {
+      mockGetGlobalSettings.mockReturnValue({ k: simHubBinding });
+      initializeBindingDispatcher(mockLogger);
+
+      await getBindingDispatcher().hold("ctx", "k");
+
+      expect(mockFocusBeforeInput).not.toHaveBeenCalled();
+    });
+
+    it("tapSequence focuses once, after every binding resolved and before the batch", async () => {
+      mockGetGlobalSettings.mockReturnValue({ a: keyboardBinding, b: keyboardBinding });
+      initializeBindingDispatcher(mockLogger);
+
+      await getBindingDispatcher().tapSequence(["a", "b"]);
+
+      expect(mockFocusBeforeInput).toHaveBeenCalledOnce();
+      expect(mockFocusBeforeInput.mock.invocationCallOrder[0]).toBeLessThan(
+        mockSendKeySequence.mock.invocationCallOrder[0],
+      );
+    });
+
+    it("tapSequence does not focus when it is going to skip — a SimHub role in the list", async () => {
+      mockGetGlobalSettings.mockReturnValue({ a: keyboardBinding, b: simHubBinding });
+      initializeBindingDispatcher(mockLogger);
+
+      const sent = await getBindingDispatcher().tapSequence(["a", "b"]);
+
+      expect(sent).toBe(false);
+      expect(mockFocusBeforeInput).not.toHaveBeenCalled();
     });
   });
 });

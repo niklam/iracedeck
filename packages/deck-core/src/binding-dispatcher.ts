@@ -30,6 +30,7 @@ import { formatKeyBinding, parseBinding } from "./key-binding-utils.js";
 import { getKeyboard } from "./keyboard-service.js";
 import type { KeyboardKey, KeyboardModifier, KeyCombination } from "./keyboard-types.js";
 import { getSimHub, isSimHubInitialized, isSimHubReachable } from "./simhub-service.js";
+import { focusIRacingBeforeInput } from "./window-focus-service.js";
 
 /**
  * Discriminated union for tracking held bindings across all binding types.
@@ -129,6 +130,11 @@ class BindingDispatcher implements IBindingDispatcher {
       combinations.push(this.toKeyCombination(binding));
     }
 
+    // Every binding resolved to a keyboard chord, so keystrokes are about to
+    // go out — the one moment the foreground matters (#977). Placed after the
+    // loop so a sequence that is going to be skipped never yanks the window.
+    focusIRacingBeforeInput();
+
     const sent = await getKeyboard().sendKeySequence(combinations, holdMs);
 
     if (sent) {
@@ -179,6 +185,9 @@ class BindingDispatcher implements IBindingDispatcher {
     }
 
     const combination = this.toKeyCombination(binding);
+
+    focusIRacingBeforeInput();
+
     const success = await getKeyboard().pressKeyCombination(combination);
 
     if (success) {
@@ -330,6 +339,10 @@ class BindingDispatcher implements IBindingDispatcher {
 
   private async tapKeyboard(binding: KeyBindingValue): Promise<void> {
     const combination = this.toKeyCombination(binding);
+
+    // Immediately before the send, not at the top of tap(): a SimHub role never
+    // needs the foreground (#977).
+    focusIRacingBeforeInput();
 
     const success = await getKeyboard().sendKeyCombination(combination);
 
