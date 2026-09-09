@@ -102,7 +102,7 @@ Since #1070 every CI workflow also runs on pushes to `master` and `release/*` �
 
 **Niklas owns a red master.** The agent that merged is the instrument that watches and reports; it does not own the outcome and does not decide what to do about one.
 
-- **Whoever merges watches all four runs to completion.** `ci-format`, `ci-lint`, `ci-test` and `ci-typecheck` are four separate workflows on the same push, so one green run answers for one of them and nothing else — and the first thing to check is that all four appeared at all (the post-merge hook lists them). Pressing the merge button does not end the step.
+- **Whoever merges watches all four runs to completion.** Start the watch from the `master` checkout, not from the worktree — a `gh run list` loop whose cwd is the tree you remove in step 13 dies with "not a git repository" and the watch ends unnoticed. `ci-format`, `ci-lint`, `ci-test` and `ci-typecheck` are four separate workflows on the same push, so one green run answers for one of them and nothing else — and the first thing to check is that all four appeared at all (the post-merge hook lists them). Pressing the merge button does not end the step.
 - **A red result goes to the coordinator immediately, and the coordinator takes it to Niklas.** No agent decides on its own to fix it, revert it, or let it stand.
 - **If the merging session ends before the run finishes, the watch passes to the coordinator** — the one party that outlives a worker session.
 
