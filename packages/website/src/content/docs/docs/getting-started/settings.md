@@ -37,7 +37,7 @@ Three of its steps do something rather than only explain it: one press turns on 
 
 Behaviour that affects every key you press.
 
-**Focus iRacing** brings iRacing to the foreground before iRaceDeck sends input, so a press isn't lost to whatever window happened to have focus. **Always** (the default) does it before every press; **When required** does it only before a keyboard binding, a chat command or a touch-strip gesture that taps a binding — actions that talk to iRacing over its own API, and SimHub roles, arrive regardless of focus and leave your window alone; **Never** turns it off. See [Focus iRacing Window](/docs/features/focus-iracing-window/).
+**Focus iRacing** brings iRacing to the foreground before iRaceDeck sends input, so a press isn't lost to whatever window happened to have focus. **Always** (the default) does it before every press; **When required** does it only before a keyboard binding, a chat command or a touch-strip gesture that taps a binding — a key that talks to iRacing over its own API arrives whatever has focus, and a binding set to a SimHub role is handed to SimHub rather than pressed here, so neither pulls the sim over your window; **Never** turns it off. See [Focus iRacing Window](/docs/features/focus-iracing-window/).
 
 **Disable buttons when iRacing is not connected** greys out your keys and ignores presses while iRacing isn't running, so a stray press can't fire keystrokes into whatever else is in the foreground.
 
