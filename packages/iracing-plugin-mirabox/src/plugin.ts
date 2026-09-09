@@ -1471,7 +1471,10 @@ initWindowFocus(adapter.createLogger("WindowFocus"), () => native.focusIRacingWi
 // Initialize the mouse pointer service for the Mouse to Sim mode (#926)
 initMousePointer(adapter.createLogger("MousePointer"), (x, y) => native.moveMouseToIRacingWindow(x, y));
 
-// Focus iRacing window before any action executes (when enabled in global settings)
+// The Always-mode focus site (#977): before every key press, dial press and dial
+// rotation. Under When required the focus happens inside the keystroke paths
+// instead (binding dispatcher, chat send) — the gate lives in the service, so
+// these registrations are the same in every mode.
 // MUST be registered BEFORE actions so the listener fires first.
 adapter.onKeyDown(() => focusIRacingIfEnabled());
 adapter.onDialDown(() => focusIRacingIfEnabled());
