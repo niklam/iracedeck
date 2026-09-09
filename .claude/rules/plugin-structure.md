@@ -253,7 +253,7 @@ initWindowFocus(adapter.createLogger("WindowFocus"), () => native.focusIRacingWi
 // 9b. Mouse pointer placement for the Mouse to Sim mode (#926)
 initMousePointer(adapter.createLogger("MousePointer"), (x, y) => native.moveMouseToIRacingWindow(x, y));
 
-// 10. Register the Always-mode focus listeners (BEFORE registering actions; the keystroke-side site runs inside the dispatcher and chat send — #977)
+// 10. Register the Always-mode focus listeners (BEFORE registering actions; the keystroke-side site runs inside the keyboard service and the chat send — #977)
 adapter.onKeyDown(() => focusIRacingIfEnabled());
 adapter.onDialDown(() => focusIRacingIfEnabled());
 adapter.onDialRotate(() => focusIRacingIfEnabled());
