@@ -14,7 +14,7 @@ export { SDKController, TELEMETRY_INTERVAL_MS, TelemetryCallback } from "./SDKCo
 export type { ChatSendTiming, INativeSDK } from "./interfaces.js";
 
 // Factory functions for easy SDK creation
-export { createSDK, createCommands, type SDKBundle, type Commands } from "./factory.js";
+export { createSDK, createCommands, type SDKBundle, type Commands, type SDKFactoryOptions } from "./factory.js";
 
 // Re-export logger types for convenience
 export { ILogger, consoleLogger, silentLogger, LogLevel } from "@iracedeck/logger";

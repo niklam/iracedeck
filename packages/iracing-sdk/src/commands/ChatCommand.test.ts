@@ -1,3 +1,4 @@
+import type { ILogger } from "@iracedeck/logger";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { INativeSDK } from "../interfaces.js";
@@ -18,6 +19,20 @@ function createMockNative(): INativeSDK {
     broadcastMsg: vi.fn(),
     sendChatMessage: vi.fn(),
   };
+}
+
+function createMockLogger(): ILogger {
+  const logger: ILogger = {
+    trace: vi.fn(),
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    withLevel: vi.fn(() => logger),
+    createScope: vi.fn(() => logger),
+  };
+
+  return logger;
 }
 
 describe("ChatCommand", () => {
@@ -194,6 +209,59 @@ describe("ChatCommand", () => {
       expect(chatCommand.beginChat()).toBe(true);
       expect(chatCommand.reply()).toBe(true);
       expect(chatCommand.cancel()).toBe(true);
+    });
+  });
+
+  describe("beforeKeystrokes hook (issue #977)", () => {
+    it("sendMessage calls the hook before the native send", async () => {
+      const hook = vi.fn();
+      const native = createMockNative();
+      vi.mocked(native.sendChatMessage).mockResolvedValue(true);
+      const command = new ChatCommand(native, undefined, hook);
+
+      await command.sendMessage("hello");
+
+      expect(hook).toHaveBeenCalledOnce();
+      expect(hook.mock.invocationCallOrder[0]).toBeLessThan(
+        vi.mocked(native.sendChatMessage).mock.invocationCallOrder[0],
+      );
+    });
+
+    it("sendMessage does not call the hook for an empty message — nothing is typed", async () => {
+      const hook = vi.fn();
+      const command = new ChatCommand(createMockNative(), undefined, hook);
+
+      await command.sendMessage("   ");
+
+      expect(hook).not.toHaveBeenCalled();
+    });
+
+    it("a throwing hook is logged and the message still sends", async () => {
+      const native = createMockNative();
+      vi.mocked(native.sendChatMessage).mockResolvedValue(true);
+      const logger = createMockLogger();
+      const command = new ChatCommand(native, logger, () => {
+        throw new Error("boom");
+      });
+
+      await expect(command.sendMessage("hello")).resolves.toBe(true);
+      expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("beforeKeystrokes"));
+    });
+
+    it("macro is a broadcast and never calls the hook", () => {
+      const hook = vi.fn();
+      const command = new ChatCommand(createMockNative(), undefined, hook);
+
+      command.macro(3);
+
+      expect(hook).not.toHaveBeenCalled();
+    });
+
+    it("works without a hook", async () => {
+      const native = createMockNative();
+      vi.mocked(native.sendChatMessage).mockResolvedValue(true);
+
+      await expect(new ChatCommand(native).sendMessage("hello")).resolves.toBe(true);
     });
   });
 });
