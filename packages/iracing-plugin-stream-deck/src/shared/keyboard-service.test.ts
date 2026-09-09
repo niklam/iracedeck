@@ -24,6 +24,18 @@ vi.mock("@iracedeck/logger", () => ({
   },
 }));
 
+// The focus call the keyboard service makes before every emitted keystroke
+// (#977). The vitest alias maps `@iracedeck/deck-core` to that package's SOURCE,
+// so the module the service imports as `./window-focus-service.js` is mocked
+// here by its path relative to this file; the rest of the module stays real
+// because the deck-core barrel re-exports it.
+const { mockFocusBeforeInput } = vi.hoisted(() => ({ mockFocusBeforeInput: vi.fn() }));
+
+vi.mock("../../../deck-core/src/window-focus-service.js", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  focusIRacingBeforeInput: mockFocusBeforeInput,
+}));
+
 describe("Keyboard Service", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -496,6 +508,138 @@ describe("Keyboard Service", () => {
       expect(result).toBe(false);
       expect(mockSequenceSender).not.toHaveBeenCalled();
       expect(mockSendKey).not.toHaveBeenCalled();
+    });
+  });
+
+  // --- Focus before keystrokes (#977) ---
+  //
+  // The keyboard service is the one layer every deck-core keystroke passes, so
+  // it is where the iRacing window is focused: once per emitted keystroke,
+  // immediately before the native send, never on a release, and never on a
+  // path that sends nothing.
+
+  describe("focus before keystrokes (issue #977)", () => {
+    const orderOf = (fn: { mock: { invocationCallOrder: number[] } }): number => fn.mock.invocationCallOrder[0];
+
+    it("sendKeyCombination via scan codes focuses once, before the native tap", async () => {
+      const mockScanSender = vi.fn();
+      const keyboard = initializeKeyboard(undefined, mockScanSender);
+
+      await keyboard.sendKeyCombination({ key: "a", code: "KeyA" });
+
+      expect(mockFocusBeforeInput).toHaveBeenCalledOnce();
+      expect(mockScanSender).toHaveBeenCalledOnce();
+      expect(orderOf(mockFocusBeforeInput)).toBeLessThan(orderOf(mockScanSender));
+    });
+
+    it("sendKeyCombination via keysender (no event.code) focuses once, before the fallback send", async () => {
+      const keyboard = initializeKeyboard();
+
+      await keyboard.sendKeyCombination({ key: "f1" });
+
+      expect(mockFocusBeforeInput).toHaveBeenCalledOnce();
+      expect(mockSendKey).toHaveBeenCalledOnce();
+      expect(orderOf(mockFocusBeforeInput)).toBeLessThan(orderOf(mockSendKey));
+    });
+
+    it("an unmapped event.code focuses exactly once — on the keysender fallback that actually sends", async () => {
+      const mockScanSender = vi.fn();
+      const keyboard = initializeKeyboard(undefined, mockScanSender);
+
+      await keyboard.sendKeyCombination({ key: "a", code: "UnknownCode" });
+
+      // The fallback is fire-and-forget from the scan-code path.
+      await vi.waitFor(() => expect(mockSendKey).toHaveBeenCalledOnce());
+
+      expect(mockScanSender).not.toHaveBeenCalled();
+      expect(mockFocusBeforeInput).toHaveBeenCalledOnce();
+      expect(orderOf(mockFocusBeforeInput)).toBeLessThan(orderOf(mockSendKey));
+    });
+
+    it("sendKey focuses once, before its sender", async () => {
+      const keyboard = initializeKeyboard();
+
+      await keyboard.sendKey("f3");
+
+      expect(mockFocusBeforeInput).toHaveBeenCalledOnce();
+      expect(orderOf(mockFocusBeforeInput)).toBeLessThan(orderOf(mockSendKey));
+    });
+
+    it("pressKeyCombination via scan codes focuses once, before the press; the release never focuses", async () => {
+      const mockPresser = vi.fn();
+      const mockReleaser = vi.fn();
+      const keyboard = initializeKeyboard(undefined, undefined, mockPresser, mockReleaser);
+
+      await keyboard.pressKeyCombination({ key: "a", code: "KeyA" });
+
+      expect(mockFocusBeforeInput).toHaveBeenCalledOnce();
+      expect(orderOf(mockFocusBeforeInput)).toBeLessThan(orderOf(mockPresser));
+
+      await keyboard.releaseKeyCombination({ key: "a", code: "KeyA" });
+
+      expect(mockReleaser).toHaveBeenCalledOnce();
+      expect(mockFocusBeforeInput).toHaveBeenCalledOnce();
+    });
+
+    it("pressKeyCombination via keysender focuses once, before toggleKey(true); the release never focuses", async () => {
+      const keyboard = initializeKeyboard();
+
+      await keyboard.pressKeyCombination({ key: "f1" });
+
+      expect(mockFocusBeforeInput).toHaveBeenCalledOnce();
+      expect(orderOf(mockFocusBeforeInput)).toBeLessThan(orderOf(mockToggleKey));
+
+      await keyboard.releaseKeyCombination({ key: "f1" });
+
+      expect(mockToggleKey).toHaveBeenLastCalledWith("f1", false);
+      expect(mockFocusBeforeInput).toHaveBeenCalledOnce();
+    });
+
+    it("sendKeySequence focuses once, before the batch", async () => {
+      const mockSequenceSender = vi.fn();
+      const keyboard = initializeKeyboard(undefined, undefined, undefined, undefined, mockSequenceSender);
+
+      const sent = await keyboard.sendKeySequence([
+        { key: "f1", code: "F1" },
+        { key: "f4", code: "F4" },
+      ]);
+
+      expect(sent).toBe(true);
+      expect(mockFocusBeforeInput).toHaveBeenCalledOnce();
+      expect(orderOf(mockFocusBeforeInput)).toBeLessThan(orderOf(mockSequenceSender));
+    });
+
+    it("sendKeySequence does not focus when no sequence sender is configured", async () => {
+      const keyboard = initializeKeyboard();
+
+      expect(await keyboard.sendKeySequence([{ key: "f1", code: "F1" }])).toBe(false);
+      expect(mockFocusBeforeInput).not.toHaveBeenCalled();
+    });
+
+    it("sendKeySequence does not focus for an empty sequence", async () => {
+      const mockSequenceSender = vi.fn();
+      const keyboard = initializeKeyboard(undefined, undefined, undefined, undefined, mockSequenceSender);
+
+      expect(await keyboard.sendKeySequence([])).toBe(false);
+      expect(mockFocusBeforeInput).not.toHaveBeenCalled();
+    });
+
+    it("sendKeySequence does not focus when a chord has no event.code", async () => {
+      const mockSequenceSender = vi.fn();
+      const keyboard = initializeKeyboard(undefined, undefined, undefined, undefined, mockSequenceSender);
+
+      expect(await keyboard.sendKeySequence([{ key: "f1", code: "F1" }, { key: "f4" }])).toBe(false);
+      expect(mockSequenceSender).not.toHaveBeenCalled();
+      expect(mockFocusBeforeInput).not.toHaveBeenCalled();
+    });
+
+    it("sendKeySequence does not focus when a chord's event.code has no scan code", async () => {
+      const mockSequenceSender = vi.fn();
+      const keyboard = initializeKeyboard(undefined, undefined, undefined, undefined, mockSequenceSender);
+
+      expect(await keyboard.sendKeySequence([{ key: "f1", code: "TotallyNotAKey" }])).toBe(false);
+      expect(mockSequenceSender).not.toHaveBeenCalled();
+      expect(mockFocusBeforeInput).not.toHaveBeenCalled();
     });
   });
 

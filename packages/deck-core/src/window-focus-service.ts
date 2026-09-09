@@ -4,7 +4,7 @@
  * Focuses the iRacing window before inputs are sent. Two call sites, one mode
  * (issue #977): plugins call `focusIRacingIfEnabled()` from their platform-level
  * key/dial handlers, which runs under the `always` mode only; the keystroke
- * paths — the binding dispatcher's keyboard branches and the chat command's
+ * paths — the keyboard service's press-emitting methods and the chat command's
  * text send — call `focusIRacingBeforeInput()`, which runs under `always` and
  * `required`. Under `always` a keybind press therefore asks twice; the second
  * ask returns `AlreadyFocused` and costs one foreground-window compare, and it
@@ -111,11 +111,13 @@ export function focusIRacingIfEnabled(): void {
 }
 
 /**
- * The keystroke call site (issue #977): immediately before a keyboard binding
- * is sent and before chat text is typed. Runs under `always` and `required`.
+ * The keystroke call site (issue #977): called by the keyboard service's
+ * press-emitting methods immediately before each native send (never on a
+ * release), and by the chat command before it types. Runs under `always` and
+ * `required`.
  *
  * Deliberately NOT keyed on the comms catalog (#612): everything that reaches
- * the dispatcher's keyboard branches or the chat text send is a keystroke by
+ * the keyboard service's send path or the chat text send is a keystroke by
  * definition, and the catalog would be a second source of truth for a fact
  * the call site already knows. SimHub roles go out over TCP and never come
  * here; SDK broadcasts arrive whatever has focus and never come here either.
