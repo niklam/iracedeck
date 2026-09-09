@@ -1220,6 +1220,8 @@ const settingsWindow = createSettingsWindowController({
     parseSettingsWindowBounds((getGlobalSettings() as Record<string, unknown>)[SETTINGS_WINDOW_BOUNDS_KEY]),
   onSendToPlugin: createSettingsWindowCommandHandler({
     writeSettings: (partial) => updateGlobalSettings(partial),
+    // The Getting Started focus opt-in refuses to escalate a mode already on (#977).
+    readSettings: () => getGlobalSettings() as Record<string, unknown>,
     // The window's Race Engineer Test buttons — same runner as the Pit Crew action.
     previewAudio: (kind) => {
       if (isAudioPreviewKind(kind)) runAudioPreview(kind, adapter.createLogger("AudioPreview"));

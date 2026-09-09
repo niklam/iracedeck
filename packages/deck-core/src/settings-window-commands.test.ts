@@ -322,6 +322,61 @@ describe("the enableFeature command", () => {
     expect(writeSettings).toHaveBeenCalledTimes(1);
   });
 
+  // The fake host never echoes a write back to the socket that made it, so the
+  // Getting Started offer stays on screen after the user picks "When required"
+  // on the General tab; pressing the stale offer must not escalate that to
+  // `always` (#977). The plugin holds the truth, so the guard reads it there.
+  describe("focus-iracing-window does not escalate a mode already on", () => {
+    const press = (current: unknown, readSettings = true): ReturnType<typeof vi.fn> => {
+      const writeSettings = vi.fn();
+      const deps = readSettings
+        ? { writeSettings, readSettings: () => ({ focusIRacingWindow: current }) }
+        : { writeSettings };
+
+      createSettingsWindowCommandHandler(deps)({ event: "enableFeature", feature: "focus-iracing-window" });
+
+      return writeSettings;
+    };
+
+    it("writes nothing over `required`", () => {
+      expect(press("required")).not.toHaveBeenCalled();
+    });
+
+    it("writes nothing over `always`", () => {
+      expect(press("always")).not.toHaveBeenCalled();
+    });
+
+    it("writes `always` over `never`", () => {
+      expect(press("never")).toHaveBeenCalledWith({ focusIRacingWindow: "always" });
+    });
+
+    it("writes `always` over the legacy `false`", () => {
+      expect(press(false)).toHaveBeenCalledWith({ focusIRacingWindow: "always" });
+    });
+
+    it("writes `always` when the key is absent — the offer is honest about a fresh file", () => {
+      expect(press(undefined)).toHaveBeenCalledWith({ focusIRacingWindow: "always" });
+    });
+
+    it("writes as before when no readSettings dep is wired", () => {
+      expect(press("required", false)).toHaveBeenCalledWith({ focusIRacingWindow: "always" });
+    });
+
+    it("does not guard the other features", () => {
+      const writeSettings = vi.fn();
+
+      createSettingsWindowCommandHandler({
+        writeSettings,
+        readSettings: () => ({ changelogNotification: "features" }),
+      })({
+        event: "enableFeature",
+        feature: "changelog-updates",
+      });
+
+      expect(writeSettings).toHaveBeenCalledWith({ changelogNotification: "features" });
+    });
+  });
+
   it("writes nothing for a feature it does not know", () => {
     const writeSettings = vi.fn();
 
