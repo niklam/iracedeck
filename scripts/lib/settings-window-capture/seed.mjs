@@ -120,7 +120,9 @@ export function buildSeedSettings() {
     // No dual-press ENABLE here on purpose: that one is a per-action setting
     // (the setup actions own it), not a plugin-global, so the General tab shows
     // only the threshold and the direction.
-    focusIRacingWindow: true,
+    // A mode since #977; the plugin pushes the PARSED cache, so the page never
+    // sees the legacy boolean and neither does the shot.
+    focusIRacingWindow: "always",
     disableWhenDisconnected: true,
     // The Mouse to Sim pointer target (#1029), seeded at its shipped defaults on
     // purpose: the shot then shows what a fresh install shows, and it shows it
