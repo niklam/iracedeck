@@ -152,7 +152,7 @@ To park the pointer in the bottom-right corner, choose **Right** and **Bottom** 
 #### Notes
 
 - **It moves the pointer, it never clicks.** Clicks still come from your physical mouse, so pressing this key can never trigger anything in the sim by itself — which makes it safe to hit blind.
-- **It always focuses iRacing**, even if you have the plugin-wide *Focus iRacing window* setting turned off. Pressing this key is an explicit request to go to the sim.
+- **It always focuses iRacing**, even if the plugin-wide *Focus iRacing* setting is on *Never*. Pressing this key is an explicit request to go to the sim.
 - **If iRacing isn't running**, nothing happens — the plugin logs a warning and the pointer stays where it is.
 - **Running iRacing as Administrator?** If iRacing runs elevated and your deck software does not, Windows blocks the plugin from reaching it. Run both at the same level. The plugin detects this mismatch and shows a warning in the Property Inspector.
 

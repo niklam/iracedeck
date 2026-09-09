@@ -16,6 +16,12 @@
           ]
         },
         {
+          "title": "Improvements",
+          "items": [
+            "<strong>Focus iRacing</strong> on the General tab is now a three-way choice. <strong>Always</strong> is the default and what it did before; <strong>When required</strong> brings iRacing forward only before a keyboard binding, a chat command or a touch-strip gesture that taps a binding, so a key that talks to iRacing over its API, a SimHub role or a plugin-only key no longer pulls the sim over whatever you were doing; <strong>Never</strong> turns it off. Stream Deck+ touch-strip gestures that tap a binding now focus iRacing too. Your existing choice is kept: on becomes Always, off becomes Never. See <a href=\"https://iracedeck.com/docs/features/focus-iracing-window/\" target=\"_blank\" rel=\"noopener noreferrer\">Focus iRacing Window</a>."
+          ]
+        },
+        {
           "title": "Bug Fixes",
           "items": [
             "The Race Engineer no longer falls silent on a position or gap readout for the length of the cooldown after an earlier readout was dropped before it could play.",

@@ -29,7 +29,7 @@ It opens by itself once, the first time you run iRaceDeck, and then never again.
 
 The tab stays here afterwards, so you can come back to it whenever you like.
 
-Three of its steps do something rather than only explain it: one press turns on the **Race Engineer** (and plays a line so you know your audio works), one opts you in to seeing what changed after an update, and one turns on **Focus iRacing window** if you happen to have it off. The first two show what they will do while the setting is off and confirm it once it is on; the Focus iRacing window suggestion appears only if that setting is off, so on a fresh installation — where it is already on — you will not see it at all.
+Three of its steps do something rather than only explain it: one press turns on the **Race Engineer** (and plays a line so you know your audio works), one opts you in to seeing what changed after an update, and one turns on **Focus iRacing** if you happen to have it set to Never. The first two show what they will do while the setting is off and confirm it once it is on; the Focus iRacing suggestion appears only if that setting is Never, so on a fresh installation — where it is already on — you will not see it at all.
 
 ### General
 
@@ -37,7 +37,7 @@ Three of its steps do something rather than only explain it: one press turns on 
 
 Behaviour that affects every key you press.
 
-**Focus iRacing window before sending keys** brings iRacing to the foreground before iRaceDeck sends any input, so a press isn't lost to whatever window happened to have focus. Leave it on unless you specifically don't want iRaceDeck changing which window is active. It only matters for actions that send keystrokes — actions that talk to iRacing over its own API arrive regardless of focus.
+**Focus iRacing** brings iRacing to the foreground before iRaceDeck sends input, so a press isn't lost to whatever window happened to have focus. **Always** (the default) does it before every press; **When required** does it only before a keyboard binding, a chat command or a touch-strip gesture that taps a binding — actions that talk to iRacing over its own API, and SimHub roles, arrive regardless of focus and leave your window alone; **Never** turns it off. See [Focus iRacing Window](/docs/features/focus-iracing-window/).
 
 **Disable buttons when iRacing is not connected** greys out your keys and ignores presses while iRacing isn't running, so a stray press can't fire keystrokes into whatever else is in the foreground.
 
