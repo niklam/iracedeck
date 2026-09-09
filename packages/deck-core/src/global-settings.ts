@@ -123,7 +123,9 @@ export const GlobalSettingsSchema = z
       .default(false)
       .catch(false),
     /**
-     * When true, focus the iRacing window before sending inputs.
+     * When the iRacing window is focused before inputs are sent — see
+     * `focus-iracing-mode.ts` for the three modes. The two paragraphs below are
+     * #930's record, written while this was a boolean; #977's is last.
      *
      * Default: true (issue #930). Keystrokes go to whatever window has focus,
      * so every keybind- and chat-driven action silently does nothing when
