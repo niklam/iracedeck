@@ -1503,7 +1503,7 @@ initMousePointer(adapter.createLogger("MousePointer"), (x, y) => native.moveMous
 
 // The Always-mode focus site (#977): before every key press, dial press and dial
 // rotation. Under When required the focus happens inside the keystroke paths
-// instead (binding dispatcher, chat send) — the gate lives in the service, so
+// instead (keyboard service, chat send) — the gate lives in the service, so
 // these registrations are the same in every mode.
 // MUST be registered BEFORE actions so the listener fires first in the EventEmitter chain.
 adapter.onKeyDown(() => focusIRacingIfEnabled());
