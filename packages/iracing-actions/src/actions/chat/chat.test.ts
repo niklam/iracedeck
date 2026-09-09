@@ -21,6 +21,7 @@ const {
   mockParseKeyBinding,
   mockGetGlobalSettings,
   mockTapBinding,
+  mockFocusBeforeInput,
 } = vi.hoisted(() => ({
   mockBeginChat: vi.fn(() => true),
   mockReply: vi.fn(() => true),
@@ -40,6 +41,7 @@ const {
   mockParseKeyBinding: vi.fn(),
   mockGetGlobalSettings: vi.fn(() => ({})),
   mockTapBinding: vi.fn().mockResolvedValue(undefined),
+  mockFocusBeforeInput: vi.fn(),
 }));
 
 vi.mock("@iracedeck/icons/chat/open-chat.svg", () => ({
@@ -106,6 +108,7 @@ vi.mock("@iracedeck/deck-core", () => ({
     ({ text, fontSize }: { text: string; fontSize: number }) => `<text font-size="${fontSize}">${text}</text>`,
   ),
   getCommands: mockGetCommands,
+  focusIRacingBeforeInput: mockFocusBeforeInput,
   generateBorderParts: vi.fn(() => ({ defs: "", rects: "" })),
   getGlobalBorderSettings: vi.fn(() => ({})),
   getGlobalColors: vi.fn(() => ({})),
@@ -589,6 +592,46 @@ describe("Chat", () => {
       expect(mockBeginChat).not.toHaveBeenCalled();
       expect(mockReply).not.toHaveBeenCalled();
       expect(mockCancel).not.toHaveBeenCalled();
+    });
+  });
+
+  // Open Chat and Reply open iRacing's text prompt for the DRIVER to type
+  // into. The broadcast that opens it needs no focus; the typing about to
+  // happen does — under `required`, an unfocused prompt opens behind whatever
+  // is in front and every character goes to that app instead (#977).
+  describe("focus before the driver types (issue #977)", () => {
+    let action: Chat;
+
+    beforeEach(() => {
+      action = new Chat();
+    });
+
+    it("Open Chat focuses once, before the beginChat broadcast", async () => {
+      await action.onKeyDown(fakeEvent("action-1", { mode: "open-chat" }) as any);
+
+      expect(mockFocusBeforeInput).toHaveBeenCalledOnce();
+      expect(mockFocusBeforeInput.mock.invocationCallOrder[0]).toBeLessThan(mockBeginChat.mock.invocationCallOrder[0]);
+    });
+
+    it("Reply focuses once, before the reply broadcast", async () => {
+      await action.onKeyDown(fakeEvent("action-1", { mode: "reply" }) as any);
+
+      expect(mockFocusBeforeInput).toHaveBeenCalledOnce();
+      expect(mockFocusBeforeInput.mock.invocationCallOrder[0]).toBeLessThan(mockReply.mock.invocationCallOrder[0]);
+    });
+
+    it("Cancel does not focus — nothing is typed", async () => {
+      await action.onKeyDown(fakeEvent("action-1", { mode: "cancel" }) as any);
+
+      expect(mockCancel).toHaveBeenCalledOnce();
+      expect(mockFocusBeforeInput).not.toHaveBeenCalled();
+    });
+
+    it("a macro does not focus — it is a broadcast", async () => {
+      await action.onKeyDown(fakeEvent("action-1", { mode: "macro", macroNumber: 5 }) as any);
+
+      expect(mockMacro).toHaveBeenCalledWith(5);
+      expect(mockFocusBeforeInput).not.toHaveBeenCalled();
     });
   });
 

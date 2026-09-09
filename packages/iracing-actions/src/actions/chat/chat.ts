@@ -2,6 +2,7 @@ import {
   assembleIcon,
   CommonSettings,
   ConnectionStateAwareAction,
+  focusIRacingBeforeInput,
   generateIconText,
   getCommands,
   getGlobalBorderSettings,
@@ -406,6 +407,11 @@ export class Chat extends ConnectionStateAwareAction<ChatSettings> {
 
   private executeSdkBeginChat(): void {
     const chat = getCommands().chat;
+    // The broadcast itself needs no focus; the typing the driver is about to
+    // do into the prompt it opens does (#977). Under `required` nothing else
+    // focuses first, so the prompt would open behind the foreground app and
+    // every character typed would go to that app instead.
+    focusIRacingBeforeInput();
     const success = chat.beginChat();
     this.logger.info("Open chat executed");
     this.logger.debug(`Result: ${success}`);
@@ -413,6 +419,8 @@ export class Chat extends ConnectionStateAwareAction<ChatSettings> {
 
   private executeSdkReply(): void {
     const chat = getCommands().chat;
+    // Same as Open Chat: the reply prompt is typed into by the driver (#977).
+    focusIRacingBeforeInput();
     const success = chat.reply();
     this.logger.info("Reply executed");
     this.logger.debug(`Result: ${success}`);
