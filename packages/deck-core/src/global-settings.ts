@@ -30,6 +30,7 @@ import { gt, valid } from "semver";
 import { z } from "zod";
 
 import { DEFAULT_FEATURE_STARTUP_POLICY, FEATURE_STARTUP_POLICIES } from "./feature-startup-policy.js";
+import { DEFAULT_FOCUS_IRACING_MODE, parseFocusIRacingMode } from "./focus-iracing-mode.js";
 import { hasOnlyRunScopedKeys, stripRunScopedKeys } from "./run-scoped-settings.js";
 import type { SettingsStore } from "./settings-store.js";
 import {
@@ -136,12 +137,20 @@ export const GlobalSettingsSchema = z
      * Existing installs are unaffected: writes persist the whole parsed cache,
      * so their stored `false` predates this flip and keeps winning. Only fresh
      * installs (and any settings blob without the key) see the new default.
+     *
+     * Since #977 the value is a MODE — `always` / `required` / `never` — and the
+     * transform folds the pre-#977 boolean (and its string form) into it:
+     * `true` → `always`, `false` → `never`. That is the whole migration; there is
+     * no marker, because the transform holds for every future read of an old
+     * file. Recorded cost: a downgraded build reads `"always"` through its
+     * boolean transform as not-`true` and turns focusing OFF — accepted, the old
+     * build's checkbox restores it in one click.
      */
     focusIRacingWindow: z
       .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true)
-      .catch(true),
+      .transform(parseFocusIRacingMode)
+      .default(DEFAULT_FOCUS_IRACING_MODE)
+      .catch(DEFAULT_FOCUS_IRACING_MODE),
     /**
      * Where the Mouse to Sim key parks the pointer inside the iRacing window
      * (issue #1029) — an anchor per axis plus an offset in percent of the client

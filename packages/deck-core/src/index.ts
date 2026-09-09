@@ -422,6 +422,14 @@ export {
   type ScanKeyReleaser,
 } from "./keyboard-service.js";
 
+// Focus iRacing Window mode (issue #977)
+export {
+  DEFAULT_FOCUS_IRACING_MODE,
+  FOCUS_IRACING_MODES,
+  type FocusIRacingMode,
+  parseFocusIRacingMode,
+} from "./focus-iracing-mode.js";
+
 // Window focus service singleton
 export {
   _resetWindowFocus,
