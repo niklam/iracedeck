@@ -362,6 +362,16 @@ type ResumeState = {
   ops: ExecOp[];
   /** Index of the op that was in flight when the fire was cut. */
   index: number;
+  /**
+   * The active voice, and the engine's expansion `generation`, at the moment
+   * of the cut (issue #1136). Both must still hold at idle-replay or the fire
+   * replays whole: since a pool-drawn op compares by its POOL key, and that
+   * key is voice-independent and survives a redefinition of what the pool
+   * holds, `opsEqual` alone would let an all-pool body resume its tail in a
+   * different voice than its head, or against a pack that changed under it.
+   */
+  voice: string | null;
+  generation: number;
 };
 
 /**
@@ -433,9 +443,16 @@ type FrameSide = "open" | "close";
  * expansions are equal only if their tags agree. Never by clip path — a
  * pack's frame plays whatever clips the pack put there, and a body is free
  * to play the built-in tick as an ordinary clip.
+ *
+ * `pool` names the pool a play op's clip was DRAWN from — the registered
+ * name, or the `pool:<group>/<base>` reference for a slashed pool step or a
+ * var resolver's reference — and is absent on a clip step or a var resolving
+ * to a path. `opsEqual` compares such an op by that key rather than by the
+ * take drawn, since which recording of a slot came up is not part of what a
+ * body says (issue #1136).
  */
 type ExecOp =
-  | { kind: "play"; channel: AudioChannel; path: string; frame?: FrameSide }
+  | { kind: "play"; channel: AudioChannel; path: string; pool?: string; frame?: FrameSide }
   | { kind: "ambient"; action: "start" | "stop" | "seek"; frame?: FrameSide }
   | { kind: "pause"; ms: number; frame?: FrameSide };
 
@@ -503,6 +520,17 @@ class ScenarioEngine implements IScenarioEngine {
    * looks anything up.
    */
   private scriptsDirty = false;
+  /**
+   * Bumped whenever anything an expansion is a function of changes — the
+   * manifest, the scripts, or any registration that feeds the compile. A
+   * stashed resume records the generation it was expanded under, and a
+   * resume across a bump replays whole (issue #1136): the ops it would
+   * continue into are compared by POOL now, and a pool key is stable across
+   * a redefinition that changed what the pool holds, so the comparison alone
+   * can no longer see that kind of change. Before #1136 a path mismatch
+   * happened to force the same coherent full replay.
+   */
+  private generation = 0;
   /**
    * Per-voice state of the pools a script defines — the no-repeat tracker
    * and the manifest-derived members — keyed `(voice, pool name)`. Built
@@ -579,6 +607,17 @@ class ScenarioEngine implements IScenarioEngine {
     return path.replace(/\{voice\}/g, voice);
   }
 
+  /**
+   * A registration that feeds the compile: the next `prepareOps` recompiles,
+   * and every stashed resume is invalidated (issue #1136 — see `generation`).
+   * The two go together, so they are set together rather than at six call
+   * sites that must each remember the second half.
+   */
+  private markScriptsDirty(): void {
+    this.scriptsDirty = true;
+    this.generation++;
+  }
+
   // ── Definition API ──
 
   defineScenario(s: Scenario): void {
@@ -630,7 +669,7 @@ class ScenarioEngine implements IScenarioEngine {
     };
 
     this.scenarios.set(s.id, entry);
-    this.scriptsDirty = true;
+    this.markScriptsDirty();
 
     const { errors, warnings } = validateScenario(
       s,
@@ -696,7 +735,7 @@ class ScenarioEngine implements IScenarioEngine {
     }
 
     this.pools.set(name, { kind: "static", clips: [...clips], lastIndex: -1 });
-    this.scriptsDirty = true;
+    this.markScriptsDirty();
   }
 
   definePoolFromManifest(name: string, group: string, base: string): void {
@@ -720,12 +759,15 @@ class ScenarioEngine implements IScenarioEngine {
     }
 
     this.pools.set(name, pool);
-    this.scriptsDirty = true;
+    this.markScriptsDirty();
   }
 
   setManifest(manifest: AudioAssetsManifest): void {
     this.manifest = manifest;
     this.clipSet = new Set(manifest.clips);
+    // Every pool's membership is re-derived below, so a stashed resume was
+    // expanded against clip lists that no longer exist (issue #1136).
+    this.generation++;
 
     // Script-defined pools are derived per voice from the manifest too (issue
     // #1064); drop every cached member list so the next pick rebuilds it.
@@ -792,12 +834,12 @@ class ScenarioEngine implements IScenarioEngine {
   defineVar(name: string, resolver: VocabularyResolver<string | null>, description = ""): void {
     this.vars.set(name, resolver);
     this.varDescriptions.set(name, description);
-    this.scriptsDirty = true;
+    this.markScriptsDirty();
   }
 
   defineCond(name: string, predicate: VocabularyResolver<boolean>, description: string): void {
     this.conds.set(name, { predicate, description });
-    this.scriptsDirty = true;
+    this.markScriptsDirty();
   }
 
   defineCase(
@@ -807,7 +849,7 @@ class ScenarioEngine implements IScenarioEngine {
     description: string,
   ): void {
     this.cases.set(name, { resolve: resolver, keys: { ...keys }, description });
-    this.scriptsDirty = true;
+    this.markScriptsDirty();
   }
 
   vocabulary(): VocabularyReport {
@@ -857,6 +899,9 @@ class ScenarioEngine implements IScenarioEngine {
 
   setScripts(scripts: ReadonlyMap<string, CalloutScript>): void {
     this.scripts = new Map(scripts);
+    // A new script map redefines bodies, frames and what a pool name holds;
+    // a resume stashed under the old one replays whole (issue #1136).
+    this.generation++;
     this.warnedSkips.clear();
     this.warnedFragments.clear();
     this.warnedCaseKeys.clear();
@@ -1284,7 +1329,8 @@ class ScenarioEngine implements IScenarioEngine {
 
     if (!active || !running || running.raw.queueable !== true) return;
 
-    const resume = running.raw.resumable === true ? buildResumeState(active) : undefined;
+    const resume =
+      running.raw.resumable === true ? buildResumeState(active, this.getActiveVoice(), this.generation) : undefined;
     this.setPending(active.id, active.event, active.weight, state, "stashed (preempted)", resume, true);
   }
 
@@ -1567,11 +1613,21 @@ class ScenarioEngine implements IScenarioEngine {
     let sourceStart = 0;
     let prerollCount = 0;
 
-    if (resume && resume.index > 0 && resume.index < expanded.length && opsEqual(expanded, resume.ops)) {
-      const preroll = this.reopenPreroll(expanded, resume.index, entry.resolvedSequence !== null);
-      ops = [...preroll, ...expanded.slice(resume.index)];
-      sourceStart = resume.index;
-      prerollCount = preroll.length;
+    if (resume && resume.index > 0 && resume.index < expanded.length) {
+      const blocked = this.resumeBlocker(resume, expanded);
+
+      if (blocked === null) {
+        const preroll = this.reopenPreroll(expanded, resume.index, entry.resolvedSequence !== null);
+        ops = [...preroll, ...expanded.slice(resume.index)];
+        // `ops` is everything still to be heard — the re-key included — so
+        // the pools it does NOT draw are the ones whose fresh commit is
+        // about to be sliced away unheard (issue #1136).
+        this.restoreHeadPoolIndices(resume.ops.slice(0, resume.index), ops);
+        sourceStart = resume.index;
+        prerollCount = preroll.length;
+      } else {
+        this.logger.debug(`Scenario "${entry.raw.id}" replays whole — ${blocked}`);
+      }
     }
 
     const bus = entry.raw.bus;
@@ -1642,6 +1698,86 @@ class ScenarioEngine implements IScenarioEngine {
     if (!frameWasOpened || resumesWithTick) return [];
 
     return [{ kind: "play", channel: AudioChannel.SFX, path: openTick }];
+  }
+
+  /**
+   * Why a stashed resume may not continue into this fresh expansion, or
+   * `null` when it may. Three things must hold, and only the first is the
+   * #758 rule: the ops must match (`opsEqual`), the ACTIVE VOICE must be the
+   * one the head was spoken in, and the engine's expansion `generation` must
+   * be the one the head was expanded under (issue #1136).
+   *
+   * The last two used to be implied. `opsEqual` compared clip paths, and a
+   * voice's paths name that voice, so a voice change failed the comparison
+   * and replayed whole; a pack redefinition that changed a pool's members
+   * usually changed a path too. Comparing a pool-drawn op by its POOL key
+   * removes both accidents — the key is voice-independent and survives a
+   * redefinition — so an all-pool body (which is every scripted readback)
+   * would otherwise resume its tail in a voice the driver never heard the
+   * head in. They are checked explicitly rather than folded into `opsEqual`
+   * because they are facts about the WORLD between the two expansions, not
+   * about the ops.
+   */
+  private resumeBlocker(resume: ResumeState, expanded: readonly ExecOp[]): string | null {
+    if (resume.voice !== this.getActiveVoice()) return "voice changed while stashed";
+
+    if (resume.generation !== this.generation) return "scripts changed while stashed";
+
+    if (!opsEqual(expanded, resume.ops)) return "the expansion changed while stashed";
+
+    return null;
+  }
+
+  /**
+   * Put back the no-repeat tracker of every pool drawn ONLY in the part of
+   * the body the driver already heard (issue #1136).
+   *
+   * `prepareOps` commits the fresh expansion's picks before `executeFire`
+   * decides to resume, and the resume then slices the head off — so a head
+   * slot's pool is left recording a take that will never be played, while
+   * `PoolState.lastIndex` is documented as the last take the driver HEARD.
+   * The next fire's no-repeat guard would then steer away from that unheard
+   * take and could serve the very one the driver did hear. So each such pool
+   * is set back to the take the STASHED head played, which is what was heard.
+   * A pool that `remaining` still draws keeps its fresh commit: that take is
+   * the one that will have been heard last. Newly reachable, because before
+   * #1136 a multi-take body never resumed at all.
+   *
+   * A pool or a path it cannot account for is skipped in silence — there is
+   * nothing to restore and nothing to report. The clips are compared through
+   * `substituteVoice` so a `{voice}`-templated static pool is matched by the
+   * path the op actually carries.
+   */
+  private restoreHeadPoolIndices(head: readonly ExecOp[], remaining: readonly ExecOp[]): void {
+    const stillToBeHeard = new Set<string>();
+
+    for (const op of remaining) {
+      if (op.kind === "play" && op.pool !== undefined) stillToBeHeard.add(op.pool);
+    }
+
+    const voice = this.getActiveVoice();
+
+    for (const op of head) {
+      if (op.kind !== "play" || op.pool === undefined || stillToBeHeard.has(op.pool)) continue;
+
+      const pool = this.scriptPool(op.pool) ?? this.pools.get(op.pool);
+
+      if (!pool) continue;
+
+      let clips: string[];
+
+      if (pool.kind === "manifest") {
+        if (voice === null) continue;
+
+        clips = pool.byVoice.get(voice) ?? [];
+      } else {
+        clips = pool.clips;
+      }
+
+      const index = clips.findIndex((clip) => this.substituteVoice(clip) === op.path);
+
+      if (index >= 0) pool.lastIndex = index;
+    }
   }
 
   /** Advance to the next op in the given bus's active fire. */
@@ -1838,7 +1974,7 @@ class ScenarioEngine implements IScenarioEngine {
               throw new ExpansionAbort(`var {{${step.name}}} → "${value}" is empty for the active voice`);
             }
 
-            this.pushClip(out, pick, defaultChannel);
+            this.pushClip(out, pick, defaultChannel, value);
 
             break;
           }
@@ -1854,15 +1990,15 @@ class ScenarioEngine implements IScenarioEngine {
           // A slashed name addresses the voice's own clip groups directly
           // (`group/base`, issue #1064) — the same reference form a var
           // resolver returns. Registered names never carry a slash.
-          const pick = step.name.includes("/")
-            ? this.pickFromPoolRef(`pool:${step.name}`, step.noRepeat)
-            : this.pickFromPool(step.name, step.noRepeat);
+          const slashed = step.name.includes("/");
+          const key = slashed ? `pool:${step.name}` : step.name;
+          const pick = slashed ? this.pickFromPoolRef(key, step.noRepeat) : this.pickFromPool(step.name, step.noRepeat);
 
           if (!pick) throw new ExpansionAbort(`pool "${step.name}" resolved to nothing for the active voice`);
 
           const path = this.substituteVoice(pick);
           this.assertClipAvailable(path, `pool "${step.name}"`);
-          this.pushClip(out, path, defaultChannel);
+          this.pushClip(out, path, defaultChannel, key);
 
           break;
         }
@@ -1874,7 +2010,7 @@ class ScenarioEngine implements IScenarioEngine {
 
           const path = this.substituteVoice(pick);
           this.assertClipAvailable(path, `connector`);
-          this.pushClip(out, path, defaultChannel);
+          this.pushClip(out, path, defaultChannel, CONNECTOR_POOL);
 
           break;
         }
@@ -1970,10 +2106,15 @@ class ScenarioEngine implements IScenarioEngine {
     throw new ExpansionAbort(`${what} → "${path}" is not in the manifest for the active voice`);
   }
 
-  /** Push a clip op, routing walkie-talkie ticks to SFX and everything else to the default channel. */
-  private pushClip(out: ExecOp[], path: string, defaultChannel: AudioChannel): void {
+  /**
+   * Push a clip op, routing walkie-talkie ticks to SFX and everything else to
+   * the default channel. `pool` is the key the clip was drawn from, given only
+   * for a pool-drawn pick — see `ExecOp` and `opsEqual` (issue #1136).
+   */
+  private pushClip(out: ExecOp[], path: string, defaultChannel: AudioChannel, pool?: string): void {
     const channel = this.channelForPath(path, defaultChannel);
-    out.push({ kind: "play", channel, path });
+
+    out.push({ kind: "play", channel, path, pool });
   }
 
   private channelForPath(path: string, defaultChannel: AudioChannel): AudioChannel {
@@ -2149,14 +2290,17 @@ class ScenarioEngine implements IScenarioEngine {
  * again still stashes an absolute position, not one relative to its tail
  * (issue #758). `active.index` points one past the op in flight; the resume
  * replays that op from its start.
+ *
+ * `voice` and `generation` stamp the state of the world the ops were expanded
+ * under, which `executeFire` re-checks before it continues (issue #1136).
  */
-function buildResumeState(active: ActiveFire): ResumeState | undefined {
+function buildResumeState(active: ActiveFire, voice: string | null, generation: number): ResumeState | undefined {
   const playIndex = Math.max(0, active.index - 1);
   const sourceIndex = active.sourceStart + Math.max(0, playIndex - active.prerollCount);
 
   if (sourceIndex >= active.sourceOps.length) return undefined;
 
-  return { ops: active.sourceOps, index: sourceIndex };
+  return { ops: active.sourceOps, index: sourceIndex, voice, generation };
 }
 
 /** Escape a literal string for embedding in a RegExp source. */
@@ -2294,6 +2438,23 @@ function filterFrameSteps(steps: readonly ResolvedStep[], options: FrameOptions)
  * The frame tag is part of an op's identity: the same clip played as a frame
  * and as body are two different ops, and a resume must not mistake one for
  * the other.
+ *
+ * A play op that came out of a pool is compared by that POOL and its channel,
+ * never by the take drawn (issue #1136): `noRepeat` plus the take committed on
+ * acceptance make a re-expansion of a two-take pool draw the other take every
+ * time, and which recording of a slot came up is not part of what the body
+ * says — so a path comparison would fail every resume of a scripted readback.
+ * A path-drawn op is compared by path and channel as before, and a pool-drawn
+ * op is never equal to a path-drawn one. What the comparison still catches: a
+ * var resolving to a different value is a different reference
+ * (`pool:numbers/12` against `pool:numbers/13`), and a slot that appears,
+ * disappears or reorders changes the shape.
+ *
+ * What it deliberately no longer catches, because a pool key is voice-
+ * independent and survives a redefinition of what the pool holds: a change of
+ * ACTIVE VOICE or of the scripts/manifest while the fire was stashed. Those
+ * are facts about the world rather than about the ops, and `resumeBlocker`
+ * checks them beside this — do not read a `true` from here as "nothing moved".
  */
 function opsEqual(a: readonly ExecOp[], b: readonly ExecOp[]): boolean {
   if (a.length !== b.length) return false;
@@ -2304,7 +2465,13 @@ function opsEqual(a: readonly ExecOp[], b: readonly ExecOp[]): boolean {
 
     if (x.kind !== y.kind || x.frame !== y.frame) return false;
 
-    if (x.kind === "play" && y.kind === "play" && (x.path !== y.path || x.channel !== y.channel)) return false;
+    if (x.kind === "play" && y.kind === "play") {
+      if (x.channel !== y.channel) return false;
+
+      if (x.pool !== undefined || y.pool !== undefined) {
+        if (x.pool !== y.pool) return false;
+      } else if (x.path !== y.path) return false;
+    }
 
     if (x.kind === "ambient" && y.kind === "ambient" && x.action !== y.action) return false;
 
@@ -2317,7 +2484,9 @@ function opsEqual(a: readonly ExecOp[], b: readonly ExecOp[]): boolean {
 function opLabel(op: ExecOp): string {
   const tag = op.frame === undefined ? "" : `${op.frame}:`;
 
-  if (op.kind === "play") return `${tag}play[${op.channel}] ${op.path}`;
+  // The pool a take came from is what the resume compares (issue #1136), so a
+  // debug line that shows the ops shows it beside the take it drew.
+  if (op.kind === "play") return `${tag}play[${op.channel}] ${op.path}${op.pool === undefined ? "" : ` (${op.pool})`}`;
 
   if (op.kind === "ambient") return `${tag}ambient:${op.action}`;
 
