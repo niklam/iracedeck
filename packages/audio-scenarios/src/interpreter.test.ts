@@ -2066,49 +2066,53 @@ describe("resume from interruption (issue #758)", () => {
 
   describe("pool-drawn ops compare by their pool, not by the take drawn (issue #1136)", () => {
     /**
-     * One readback line recorded twice, a value group a var can point into,
-     * and the cutter's own clip. Two takes is the whole point: `noRepeat`
-     * defaults on for a pool step and the take the driver heard is committed
-     * to the pool when the fire is accepted (#1138), so a re-expansion draws
-     * the OTHER take every time — which a path comparison read as "the state
-     * moved on" and turned every resume of a two-take line into a full replay.
+     * Two voices carrying the same readback line, one slot of it recorded
+     * twice. Two takes is the whole point: `noRepeat` defaults on for a pool
+     * step and the take the driver heard is committed to the pool when the
+     * fire is accepted (#1138), so a re-expansion draws the OTHER take every
+     * time — which a path comparison read as "the state moved on" and turned
+     * every resume of a two-take line into a full replay. The cutter's clip
+     * is the enclosing describe's, so `defineCutter()` works here unchanged.
      */
     const pooledManifest: AudioAssetsManifest = {
       clips: [
         "sfx/IRD-tick-open.mp3",
         "sfx/IRD-tick-close.mp3",
         "sfx/IRD-ambient-pit.mp3",
+        "pit-crew/reminder/fuel.mp3",
+        "voice/default/readback/opener.mp3",
         "voice/default/readback/fuel-on-01.mp3",
         "voice/default/readback/fuel-on-02.mp3",
-        "voice/default/readback/opener.mp3",
+        "voice/default/readback/middle.mp3",
         "voice/default/readback/done.mp3",
+        "voice/default/connector/and.mp3",
+        "voice/default/connector/also.mp3",
         "voice/default/numbers/12.mp3",
         "voice/default/numbers/13.mp3",
-        "voice/default/urgent/stop.mp3",
+        "voice/laconic/readback/opener.mp3",
+        "voice/laconic/readback/fuel-on-01.mp3",
+        "voice/laconic/readback/fuel-on-02.mp3",
+        "voice/laconic/readback/done.mp3",
       ],
       ambientLoop: "sfx/IRD-ambient-pit.mp3",
       ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
     };
 
+    let activeVoice: string | null;
+
     beforeEach(() => {
       _resetAudioScenarios();
+      activeVoice = "default";
       bus = createMockBus();
       audio = createFakeAudio();
-      engine = initializeAudioScenarios(bus, audio, pooledManifest, mockLogger as never, () => "default");
+      engine = initializeAudioScenarios(bus, audio, pooledManifest, mockLogger as never, () => activeVoice);
       // Pinned: every draw starts at index 0 and only the no-repeat guard moves it.
       vi.spyOn(Math, "random").mockReturnValue(0);
-      engine.defineScenario({
-        id: "test.cutter",
-        channel: AudioChannel.Voice,
-        bus: AudioBus.Voice,
-        weight: WEIGHT.NORMAL,
-        interrupt: true,
-        sequence: ["voice/default/urgent/stop.mp3"],
-      });
+      defineCutter();
     });
 
-    /** The line under test: opener, the pooled slot, tail. */
-    function definePooledLine(slot: string): void {
+    /** The line under test: a literal opener, the slot under test, a literal tail. */
+    function definePooledLine(slot: string | { connector: true }): void {
       engine.defineScenario({
         id: "test.line",
         channel: AudioChannel.Voice,
@@ -2120,19 +2124,53 @@ describe("resume from interruption (issue #758)", () => {
       });
     }
 
+    /**
+     * The same line, but pack-owned. Needed wherever a SLASHED pool step is
+     * involved: `validation.ts` rejects a slashed name on a legacy sequence,
+     * while the compiler's `checkPool` deliberately lets one through, so that
+     * form only ever reaches the engine from a script. Returns the script so
+     * a test can hand the engine the same one again mid-stash.
+     */
+    function defineScriptedLine(body: string[], voices: string[] = ["default"]): CalloutScript {
+      engine.defineContract({
+        id: "test.line",
+        channel: AudioChannel.Voice,
+        bus: AudioBus.Voice,
+        weight: WEIGHT.CHATTER,
+        queueable: true,
+        resumable: true,
+        frame: NO_FRAME,
+      });
+
+      const script: CalloutScript = {
+        schema: 1,
+        scenarios: { "test.line": { sequence: body } },
+        frames: {},
+        pools: {},
+      };
+      engine.setScripts(new Map(voices.map((voice) => [voice, script])));
+
+      return script;
+    }
+
+    /** Fire, let the opener finish, and cut whatever the slot expanded to. */
+    function cutOnTheSlot(): void {
+      engine.fire("test.line"); // opener in flight
+      audio._triggerChannelEnd(AudioChannel.Voice); // opener done → the slot in flight
+      engine.fire("test.cutter"); // cuts the slot
+    }
+
     it("resumes from the interrupted step when the re-expansion drew a different take of the same pool", () => {
       engine.definePoolFromManifest("readback-fuel", "readback", "fuel-on");
       definePooledLine("pool:readback-fuel");
 
-      engine.fire("test.line"); // opener in flight
-      audio._triggerChannelEnd(AudioChannel.Voice); // opener done → take 01 in flight
-      engine.fire("test.cutter"); // cuts take 01
+      cutOnTheSlot();
       flushVoiceAndSfx(audio);
 
       expect(voicePaths()).toEqual([
         "voice/default/readback/opener.mp3",
         "voice/default/readback/fuel-on-01.mp3",
-        "voice/default/urgent/stop.mp3",
+        "pit-crew/reminder/fuel.mp3",
         // The re-expansion drew take 02 (no-repeat, take 01 committed on
         // acceptance) — the same pool op, so the opener is NOT replayed. The
         // cut clip restarts on the fresh take and the tail follows.
@@ -2140,6 +2178,88 @@ describe("resume from interruption (issue #758)", () => {
         "voice/default/readback/done.mp3",
       ]);
       expect(mockLogger.info).toHaveBeenCalledWith('Resuming scenario "test.line"');
+    });
+
+    it("resumes through a SLASHED pool step, whose key is the `pool:<group>/<base>` reference", () => {
+      // The form every scripted readback slot takes. Its key is built at a
+      // different call site from the registered name's, so it gets its own
+      // resume: an omitted key there is silent, `pool` being optional.
+      defineScriptedLine([
+        "voice/default/readback/opener.mp3",
+        "pool:readback/fuel-on",
+        "voice/default/readback/done.mp3",
+      ]);
+
+      cutOnTheSlot();
+      flushVoiceAndSfx(audio);
+
+      expect(voicePaths()).toEqual([
+        "voice/default/readback/opener.mp3",
+        "voice/default/readback/fuel-on-01.mp3",
+        "pit-crew/reminder/fuel.mp3",
+        "voice/default/readback/fuel-on-02.mp3",
+        "voice/default/readback/done.mp3",
+      ]);
+      expect(mockLogger.info).toHaveBeenCalledWith('Resuming scenario "test.line"');
+    });
+
+    it("resumes through a connector step, whose key is the connector pool's own name", () => {
+      engine.definePool("connector", ["voice/default/connector/and.mp3", "voice/default/connector/also.mp3"]);
+      definePooledLine({ connector: true });
+
+      cutOnTheSlot();
+      flushVoiceAndSfx(audio);
+
+      expect(voicePaths()).toEqual([
+        "voice/default/readback/opener.mp3",
+        "voice/default/connector/and.mp3",
+        "pit-crew/reminder/fuel.mp3",
+        // A connector always draws with no-repeat, so the re-expansion takes
+        // the other one — the same pool op.
+        "voice/default/connector/also.mp3",
+        "voice/default/readback/done.mp3",
+      ]);
+      expect(mockLogger.info).toHaveBeenCalledWith('Resuming scenario "test.line"');
+    });
+
+    it("leaves a HEAD slot's pool on the take the driver actually heard, not on the one sliced away", () => {
+      // `prepareOps` commits the fresh expansion's picks before `executeFire`
+      // slices off the delivered head, so without the restore the pool would
+      // record take 02 — which nobody heard — and the next fire's no-repeat
+      // guard would steer away from it and serve take 01 again, straight
+      // after the driver heard it.
+      engine.definePoolFromManifest("readback-fuel", "readback", "fuel-on");
+      engine.defineScenario({
+        id: "test.line",
+        channel: AudioChannel.Voice,
+        bus: AudioBus.Voice,
+        weight: WEIGHT.CHATTER,
+        queueable: true,
+        resumable: true,
+        sequence: ["pool:readback-fuel", "voice/default/readback/middle.mp3", "voice/default/readback/done.mp3"],
+      });
+
+      engine.fire("test.line"); // take 01 in flight
+      audio._triggerChannelEnd(AudioChannel.Voice); // take 01 done → middle in flight
+      engine.fire("test.cutter"); // cuts middle, past the pooled slot
+      flushVoiceAndSfx(audio);
+
+      expect(mockLogger.info).toHaveBeenCalledWith('Resuming scenario "test.line"');
+      // The resume never replayed the pooled slot, so take 02 was drawn and
+      // discarded unheard.
+      expect(voicePaths()).toEqual([
+        "voice/default/readback/fuel-on-01.mp3",
+        "voice/default/readback/middle.mp3",
+        "pit-crew/reminder/fuel.mp3",
+        "voice/default/readback/middle.mp3",
+        "voice/default/readback/done.mp3",
+      ]);
+
+      engine.fire("test.line");
+      flushVoiceAndSfx(audio);
+
+      // The next fire avoids take 01 — the one the driver last heard.
+      expect(voicePaths().at(-3)).toBe("voice/default/readback/fuel-on-02.mp3");
     });
 
     it("still replays the whole body when a var resolves to a DIFFERENT pool reference", () => {
@@ -2150,22 +2270,95 @@ describe("resume from interruption (issue #758)", () => {
       engine.defineVar("laps", () => poolRef("numbers", laps));
       definePooledLine("{{laps}}");
 
-      engine.fire("test.line"); // opener in flight
-      audio._triggerChannelEnd(AudioChannel.Voice); // opener done → "12" in flight
-      engine.fire("test.cutter"); // cuts it
+      cutOnTheSlot();
       laps = "13"; // the state moves on while stashed
       flushVoiceAndSfx(audio);
 
       expect(voicePaths()).toEqual([
         "voice/default/readback/opener.mp3",
         "voice/default/numbers/12.mp3",
-        "voice/default/urgent/stop.mp3",
+        "pit-crew/reminder/fuel.mp3",
         // Full fresh replay, from the top — a new value is a new reference.
         "voice/default/readback/opener.mp3",
         "voice/default/numbers/13.mp3",
         "voice/default/readback/done.mp3",
       ]);
       expect(mockLogger.info).not.toHaveBeenCalledWith('Resuming scenario "test.line"');
+    });
+
+    /**
+     * An all-pool body — which is what every scripted readback is. Comparing
+     * pool keys makes its expansions equal across a voice change and across a
+     * pack redefinition, since a key is voice-independent and survives one, so
+     * the two facts the comparison can no longer see are checked beside it.
+     */
+    const ALL_POOL_BODY = ["pool:readback/opener", "pool:readback/fuel-on", "pool:readback/done"];
+
+    it("replays the whole body when the ACTIVE VOICE changed while stashed", () => {
+      defineScriptedLine(ALL_POOL_BODY, ["default", "laconic"]);
+
+      cutOnTheSlot();
+      activeVoice = "laconic"; // the driver switched engineer while it was stashed
+      flushVoiceAndSfx(audio);
+
+      expect(voicePaths()).toEqual([
+        "voice/default/readback/opener.mp3",
+        "voice/default/readback/fuel-on-01.mp3",
+        "pit-crew/reminder/fuel.mp3",
+        // Every op still compares equal — same pools, same channels — so only
+        // the voice check keeps the tail from being spoken by an engineer the
+        // driver never heard the head from.
+        "voice/laconic/readback/opener.mp3",
+        "voice/laconic/readback/fuel-on-01.mp3",
+        "voice/laconic/readback/done.mp3",
+      ]);
+      expect(mockLogger.info).not.toHaveBeenCalledWith('Resuming scenario "test.line"');
+      expect(mockLogger.debug).toHaveBeenCalledWith('Scenario "test.line" replays whole — voice changed while stashed');
+    });
+
+    it("replays the whole body when setScripts landed while stashed", () => {
+      const script = defineScriptedLine(ALL_POOL_BODY);
+
+      cutOnTheSlot();
+      // A Rescan handing back the very same pack: the body is identical, so
+      // nothing about the OPS says anything moved — only the generation does.
+      engine.setScripts(new Map([["default", script]]));
+      flushVoiceAndSfx(audio);
+
+      expect(voicePaths()).toEqual([
+        "voice/default/readback/opener.mp3",
+        "voice/default/readback/fuel-on-01.mp3",
+        "pit-crew/reminder/fuel.mp3",
+        "voice/default/readback/opener.mp3",
+        "voice/default/readback/fuel-on-02.mp3",
+        "voice/default/readback/done.mp3",
+      ]);
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        'Scenario "test.line" replays whole — scripts changed while stashed',
+      );
+    });
+
+    it("replays the whole body when a pool was re-registered while stashed", () => {
+      // The registration path, rather than `setScripts`: what the pool name
+      // MEANS changed, and the key it is compared by did not.
+      engine.definePoolFromManifest("readback-fuel", "readback", "fuel-on");
+      definePooledLine("pool:readback-fuel");
+
+      cutOnTheSlot();
+      engine.definePool("readback-fuel", ["voice/default/readback/middle.mp3"]);
+      flushVoiceAndSfx(audio);
+
+      expect(voicePaths()).toEqual([
+        "voice/default/readback/opener.mp3",
+        "voice/default/readback/fuel-on-01.mp3",
+        "pit-crew/reminder/fuel.mp3",
+        "voice/default/readback/opener.mp3",
+        "voice/default/readback/middle.mp3",
+        "voice/default/readback/done.mp3",
+      ]);
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        'Scenario "test.line" replays whole — scripts changed while stashed',
+      );
     });
   });
 });
