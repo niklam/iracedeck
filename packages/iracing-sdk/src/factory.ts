@@ -50,8 +50,13 @@ export interface SDKBundle {
 export interface SDKFactoryOptions {
   /**
    * Runs synchronously immediately before a command types keystrokes into
-   * iRacing — today that is `ChatCommand.sendMessage` alone. deck-core passes
-   * its focus-before-input function here; this package cannot import it.
+   * iRacing. `ChatCommand.sendMessage` is the ONLY typing route in this
+   * package — the hook-free `IRacingSDK.sendChatMessage` /
+   * `SDKController.sendChatMessage` pair was removed in #977 for exactly that
+   * reason — so a new route that reaches `INativeSDK.sendChatMessage` (or any
+   * other keystroke) must take this hook, or under the `required` focus mode
+   * it types into whatever window is in front. deck-core passes its
+   * focus-before-input function here; this package cannot import it.
    */
   beforeKeystrokes?: () => void;
 }
