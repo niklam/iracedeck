@@ -28,11 +28,15 @@ Existing installs keep what they had: a stored `true` reads as Always, `false` a
 
 ### 1. Two call sites, one mode
 
-The adapter-level hooks stay where they are and run under **Always** only. A second call site, `focusIRacingBeforeInput()` in the window-focus service, runs under **Always** and **When required** — from the binding dispatcher immediately before a keyboard send (`tap`, `hold`, `tapSequence`; not before a SimHub role, which goes out over TCP), and from the chat command before it types. **Never** runs neither.
+The adapter-level hooks stay where they are and run under **Always** only. A second call site, `focusIRacingBeforeInput()` in the window-focus service, runs under **Always** and **When required** — from the keyboard service's press-emitting methods (`sendKey`, `sendKeyCombination`, `pressKeyCombination`, `sendKeySequence`) immediately before the native send and after each method's own "nothing to send" early returns, and from the chat command before it types. `releaseKeyCombination` never focuses: a keyup must not pull the window forward, and `SendInput` keyups update the global key state whatever is in front. SimHub roles never reach the keyboard service (the dispatcher sends them over TCP), so they never focus. **Never** runs neither.
+
+*Amended 2026-09-09 during implementation.* The first cut placed the call in the binding dispatcher's three keyboard branches. The code review found two actions that call `getKeyboard()` directly and were therefore missed — Race Admin's type-in-chat Ctrl+V paste (the default target of eleven modes) and Car Control's Escape — and that the dispatcher's `tapSequence` focused before `sendKeySequence`'s own skips, pulling the window for a sequence that sent nothing. The keyboard service is the one layer every deck-core keystroke passes, so it owns the call; a direct `getKeyboard()` caller is covered without knowing it and must not add its own.
+
+Two more things the review settled. The Chat action's **Open Chat** and **Reply** modes call `focusIRacingBeforeInput()` before their broadcast: the broadcast itself needs no focus, but the prompt it opens is for the driver to type into, and under **When required** it would otherwise open behind the foreground window. And after a `FocusTimedOut` both entry points skip the native ask for `FOCUS_TIMEOUT_COOLDOWN_MS` (2000 ms): the "second ask is free" argument below holds only when the first ask succeeded, and on an elevation mismatch (#976) each ask blocks the JS thread ~1 s, so without the cooldown **Always** would double that freeze on every keybind press and a held setup key repeating every 150 ms would block on every tick.
 
 Running the second site under Always as well is deliberate: it is what covers touch gestures (#978) without adding `onTouchTap` to `IDeckPlatformAdapter` — an interface change that would touch every typed mock adapter for one consumer — and it is free, because the native focuser returns `AlreadyFocused` on a window it has just focused. Under Always a keyboard press therefore asks twice; the second ask is a foreground-window compare.
 
-The comms catalog (`action-comms.json`, #612) is **not** consulted. Everything that passes through the dispatcher's keyboard branch or the chat send is by definition a keystroke; the catalog would be a second source of truth for a fact the call site already knows.
+The comms catalog (`action-comms.json`, #612) is **not** consulted. Everything that passes through the keyboard service's press-emitting methods or the chat send is by definition a keystroke; the catalog would be a second source of truth for a fact the call site already knows.
 
 ### 2. The chat command takes a pre-send hook; the SDK stays deck-core-agnostic
 
@@ -40,11 +44,13 @@ The comms catalog (`action-comms.json`, #612) is **not** consulted. Everything t
 
 The ordering guarantee chat has today — focus lands before the chat window opens — is preserved by construction: the hook runs synchronously before the native call, exactly where the adapter-level hook ran relative to the key handler.
 
+`IRacingSDK.sendChatMessage` and `SDKController.sendChatMessage` were two further, hook-free routes to the same native typer with no caller in the repo; they are deleted rather than hooked (amended 2026-09-09), so `ChatCommand.sendMessage` is the package's only typing route and a new one must take the hook.
+
 ### 3. Same key, wider schema, no migration marker
 
 The key stays `focusIRacingWindow`. The schema accepts the legacy boolean or its string form and the three mode strings in one transform: `true` / `"true"` → `"always"`, `false` / `"false"` → `"never"`, an unknown value → the default through `.catch("always")` per `global-settings.md`. The next write persists the mode string. No one-shot migration and no marker: the transform *is* the migration, and it holds for every future read of an old file.
 
-The cost, recorded so it is not rediscovered: an older build reads `"always"` through its boolean transform as not-`true` and turns focusing **off** after a downgrade. Accepted — the settings file is the plugin's own, a downgrade is rare, and the old build's checkbox restores it in one click.
+The cost, recorded so it is not rediscovered: an older build reads `"always"` through its boolean transform as not-`true` and turns focusing **off** after a downgrade. Its scope is wider than "users who chose a mode" (amended 2026-09-09): a file load re-saves the parsed cache and every start makes writes, so every upgraded install's file holds `"always"` after its first start whether or not the setting was ever opened, and any later rollback to a pre-#977 build silently turns focusing off for all of them. Accepted all the same — the settings file is the plugin's own, a downgrade is rare, and the old build's checkbox restores it in one click. The alternative (persist `true`/`false` for Always/Never and the string only for When required, down-converting at the persist boundary) was declined: it makes the file disagree with the cache for one key and complicates the diff-before-write, for a case a checkbox fixes.
 
 ### 4. Mouse to Sim is untouched
 
@@ -57,7 +63,7 @@ When the elevation probe has reported a mismatch, both call sites skip the nativ
 ### 6. Surfaces
 
 - **Settings window, General tab** (`global-common-window-focus.ejs`): the checkbox becomes an `sdpi-select` with the three modes, labelled **Always**, **When required**, **Never**, supporting text naming what "required" means. Nothing in an action PI (`settings-window.md` rule 1).
-- **Getting Started** (#1061): the one-press "Turn on Focus iRacing Window" writes `"always"`; `ird-enable-feature` reads `"always"` and `"required"` (and the legacy `true` / `"true"` / absent) as on, so the offer renders only for **Never**.
+- **Getting Started** (#1061): the one-press "Turn on Focus iRacing Window" writes `"always"`; `ird-enable-feature` reads `"always"` and `"required"` (and the legacy `true` / `"true"` / absent) as on, so the offer renders only for **Never**. Because the fake host never echoes a write back to the socket that made it, the offer can stay on screen after the user picks **When required** on the General tab of the same window; the plugin therefore skips the write when the live mode is already on (amended 2026-09-09), so a stale press can never escalate a chosen `required` to `always`.
 - **Website**: `docs/features/focus-iracing-window.md` describes the three modes, drops the "touch strip is not covered" paragraph, and keeps the upgrading section true (an existing choice is kept). Changelog line under **Improvements**.
 - **Rules**: `keyboard-shortcuts.md` (the focus paragraph), `global-settings.md` (the schema excerpt), `plugin-structure.md` (the init-order comment on the hooks).
 
@@ -71,7 +77,7 @@ When the elevation probe has reported a mismatch, both call sites skip the nativ
 
 ## Affected artifacts
 
-- `deck-core`: `window-focus-service.ts` (mode + `focusIRacingBeforeInput`), `binding-dispatcher.ts` (keyboard branches), `global-settings.ts` (schema), `sdk-singleton.ts` (passes the chat hook), `settings-window-commands.ts` (`enableFeatureWrites`), tests for each.
+- `deck-core`: `focus-iracing-mode.ts` (the vocabulary), `window-focus-service.ts` (mode + `focusIRacingBeforeInput` + the timeout cooldown), `keyboard-service.ts` (the keystroke-side call), `global-settings.ts` (schema), `sdk-singleton.ts` (passes the chat hook), `settings-window-commands.ts` (`enableFeatureWrites`, and the live-mode guard on the press), tests for each.
 - `iracing-sdk`: `factory.ts` (`createSDK` / `createCommands`) and `ChatCommand` pre-send hook, tests.
 - `pi-components`: `global-common-window-focus.ejs`, `enable-feature.ts`, tests.
 - All three `plugin.ts`: no change to the hook registrations — the gate moves inside the service.
