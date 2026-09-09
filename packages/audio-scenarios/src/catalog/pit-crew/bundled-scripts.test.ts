@@ -282,6 +282,57 @@ describe("the bundled script is complete for every contract the catalog register
 
     expect(problems, "contracts whose `description` is not one sentence on when the callout fires").toEqual([]);
   });
+
+  it("every speak-time gate carries the one-sentence description the reference renders (issue #1138)", () => {
+    // A gate's description is published beside the trigger, so a pack author
+    // reading a callout that sometimes says nothing can see the second gate
+    // exists and what it asks. Same one-sentence bar as `description` above,
+    // for the same reason: it is a table cell in the generated reference.
+    const problems: string[] = [];
+
+    for (const [id, { speakGate }] of contracts) {
+      // `ContractReport` reports the gate as its description, `null` for a
+      // contract that carries none — most of the catalog.
+      if (speakGate === null) continue;
+
+      const text = speakGate.trim();
+
+      if (text.length === 0) problems.push(`${id}: empty gate description`);
+      else if (!text.endsWith(".")) problems.push(`${id}: gate description does not end with a full stop`);
+      else if (text.length > DESCRIPTION_MAX_LENGTH)
+        problems.push(`${id}: gate description longer than ${DESCRIPTION_MAX_LENGTH} chars`);
+      else if (text.startsWith(id)) problems.push(`${id}: gate description starts with its own id`);
+    }
+
+    expect(problems, "speak-time gates whose description is not one sentence on what is re-checked").toEqual([]);
+  });
+
+  it("the nine gated callouts are scripted as the clip alone — the gate moved out of the script (issue #1138)", () => {
+    // The pacing re-check is the contract's `speakGate` now, so the bundled
+    // entry says only what is SAID. Both halves are asserted together on
+    // purpose: a gate with the `if` still in the script would pass a check of
+    // either one alone while leaving the bundled voice as the only pack the
+    // promise holds for.
+    const gated = [
+      "pit-crew.pit-status-too-far-left-repeat",
+      "pit-crew.pit-status-too-far-right-repeat",
+      "pit-crew.pit-status-too-far-forward-repeat",
+      "pit-crew.pit-status-too-far-back-repeat",
+      "pit-crew.pit-status-bad-angle-repeat",
+      "pit-crew.limiter-on-track",
+      "pit-crew.limiter-missing",
+      "pit-crew.flag-furled",
+      "pit-crew.flag-furled-cleared",
+    ];
+
+    for (const id of gated) {
+      expect(contracts.get(id)?.speakGate, id).toEqual(expect.any(String));
+
+      const entry = SCRIPT.scenarios[id];
+
+      expect(entry?.sequence, id).toEqual([expect.stringMatching(/^pool:/)]);
+    }
+  });
 });
 
 /**

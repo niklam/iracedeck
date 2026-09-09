@@ -296,21 +296,38 @@ const DISQUALIFY: ScenarioContract = {
 // ── Furled raised/cleared pairing state (issue #669) ──
 // The queueable FURLED fire can sit behind a longer call (incident points,
 // readbacks) and replay only when the bus idles — by which time the warning
-// may already be withdrawn. A deferred fire's `where:` is NOT re-run, but a
-// script's `if:` expands at speak time, so the raised script names the
-// `flag.furledStillShown` condition (registered below) to re-check the LIVE
-// `Furled` bit just before speaking and expand to nothing (no line, and the
-// engine adds no frame around an empty body) when the flag is already down.
+// may already be withdrawn. A deferred fire's `where:` is NOT re-run, so the
+// re-check is the contract's `speakGate` (issue #1138): the engine asks it
+// after the active voice's script has expanded and before the ops take the
+// bus, on the first fire and on every replay, and a `false` drops the fire
+// whole (no line, and no frame around a body that never plays).
 // `furledRaisedSpoken` records that the raised line actually reached the
-// speaker; the cleared script's `flag.furledWithdrawn` consumes it so "Black
-// flag cleared." never plays for a warning the driver was never told about.
-// The translator's own `furledAnnounced` gate can't cover this — it tracks
-// event emission, not audio playback.
+// speaker; the cleared line's gate consumes it so "Black flag cleared." never
+// plays for a warning the driver was never told about. The translator's own
+// `furledAnnounced` gate can't cover this — it tracks event emission, not
+// audio playback.
+//
+// Both markings live in the GATES, which is what makes the pairing hold for
+// every voice pack rather than only for one that keeps a script `if` — it was
+// the script's `flag.furledStillShown` / `flag.furledWithdrawn` until #1138,
+// and a pack that dropped those announced a stale flag and then never got the
+// cleared line. The two conditions stay published as PURE reads (below), so a
+// pack that writes the belt-and-braces `if` cannot mark or consume anything.
 let furledRaisedSpoken = false;
 
 /** @internal Test seam — seed/reset the raised-spoken pairing state. */
 export function _setFurledRaisedSpoken(value: boolean): void {
   furledRaisedSpoken = value;
+}
+
+/**
+ * @internal Test seam — read the raised-spoken marker without moving it. What
+ * the purity tests (#1138) assert against: a registered condition a pack
+ * wrapped its body in must leave the marker exactly where it was, and only
+ * the contract's gate may move it.
+ */
+export function _getFurledRaisedSpoken(): boolean {
+  return furledRaisedSpoken;
 }
 
 // Live `Furled`-bit read for the speak-time gates. `fallbackWhenUnknown`
@@ -344,28 +361,54 @@ function penaltyBitUp(): boolean {
   return isPenaltyFlagActive(getLatestTelemetry() as TelemetryData | null);
 }
 
-// The speak-time gate of the raised line (`flag.furledStillShown`): true while
-// the warning is still up — and speaking it is what marks the raise as
-// announced, so the side effect lives in the predicate on purpose.
+// The two published conditions (issue #1138) — the questions the gates below
+// ask, as PURE reads, and the very predicates those gates call before they
+// commit anything. A pack may wrap either line's body in its condition
+// belt-and-braces, and evaluating one must then move nothing: the marking
+// and the consuming belong to the gate, which runs once, only for a fire
+// that goes on to play. An `if` is also expanded on the resume path (#758),
+// where a marker moved a second time would be a bug of its own.
+function furledStillUp(): boolean {
+  return furledBitUp(true);
+}
+
+// The sub-predicate the cleared pair shares: the warning is down and the
+// raise was actually told to the driver. The escalation check (#846) is kept
+// OUT of it on purpose — the gate consumes the marker on an escalation, the
+// pure read merely reports one.
+function furledClearedAfterSpoken(): boolean {
+  return !furledBitUp(false) && furledRaisedSpoken;
+}
+
+function furledWithdrawnUnspoken(): boolean {
+  return furledClearedAfterSpoken() && !penaltyBitUp();
+}
+
+// The raised line's speak-time gate (issue #1138): the pure read, and then —
+// admitting the call is what marks the raise as announced, so the side effect
+// lives in the gate on purpose. `admit` is the one place a fire may commit
+// something, because it runs only for a fire that then plays.
 function furledStillShown(): boolean {
-  if (!furledBitUp(true)) return false;
+  if (!furledStillUp()) return false;
 
   furledRaisedSpoken = true;
 
   return true;
 }
 
-// The speak-time gate of the cleared line (`flag.furledWithdrawn`), the mirror
-// of the raised one: a queued clear is stale when the warning is already BACK
-// UP by the time the bus idles (the re-raise is debounced upstream, so a fresh
-// raised fire may not have displaced this one from the pending slot yet), or
-// when a fresh raised fire reset the spoken marker while this clear sat in the
-// queue. A clear meeting Black/Disqualify is the escalation (issue #846) — the
-// episode is over for good (no further cleared event is coming: the diff
-// consumed its announce), so the marker is consumed WITHOUT playing. Otherwise
-// only a clear that actually plays consumes the marker.
+// The cleared line's speak-time gate, the mirror of the raised one: a queued
+// clear is stale when the warning is already BACK UP by the time the bus idles
+// (the re-raise is debounced upstream, so a fresh raised fire may not have
+// displaced this one from the pending slot yet), or when a fresh raised fire
+// reset the spoken marker while this clear sat in the queue. A clear meeting
+// Black/Disqualify is the escalation (issue #846) — the episode is over for
+// good (no further cleared event is coming: the diff consumed its announce),
+// so the marker is consumed WITHOUT playing — which is why this is NOT
+// `furledWithdrawnUnspoken()` followed by the write: that read folds the
+// escalation in, and a refusal on it must still consume. Otherwise only a
+// clear that actually plays consumes the marker.
 function furledWithdrawn(): boolean {
-  if (furledBitUp(false) || !furledRaisedSpoken) return false;
+  if (!furledClearedAfterSpoken()) return false;
 
   furledRaisedSpoken = false;
 
@@ -376,10 +419,11 @@ function furledWithdrawn(): boolean {
 // safety-level line (another flag / spotter focus) replays when the bus next
 // idles instead of being dropped — it carries a give-the-time-back instruction
 // the driver needs to hear, and the furled state is sustained so a slightly
-// late call is still correct. The script's speak-time `if` on
-// `flag.furledStillShown` covers the case where the state ISN'T sustained: a
-// warning withdrawn while the call sat in the queue expands to silence instead
-// of announcing a flag that's already gone.
+// late call is still correct. The `speakGate` covers the case where the state
+// ISN'T sustained: a warning withdrawn while the call sat in the queue is
+// dropped instead of announcing a flag that's already gone — and admitting it
+// is what marks the raise as announced, so the cleared line below can only
+// follow a raised line the driver actually heard.
 const FURLED: ScenarioContract = {
   ...flagContract("furled"),
   queueable: true,
@@ -396,6 +440,11 @@ const FURLED: ScenarioContract = {
       return true;
     },
   },
+  speakGate: {
+    description:
+      "The furled black flag is still being shown when the call comes to speak; speaking it marks the warning as announced.",
+    admit: furledStillShown,
+  },
 };
 
 // Fires when an announced furled warning is withdrawn (issue #669) — the
@@ -405,8 +454,8 @@ const FURLED: ScenarioContract = {
 // at speak time (flag already down) must not be followed by a stray "Black
 // flag cleared.". `queueable: true` like YELLOW_CLEARED: the all-clear is a
 // sustained state, so a fire deferred behind an equal-weight line replays when
-// the bus next idles instead of being dropped. The script's speak-time `if`
-// on `flag.furledWithdrawn` is what consumes the marker.
+// the bus next idles instead of being dropped. The `speakGate` is what
+// consumes the marker.
 const FURLED_CLEARED: ScenarioContract = {
   ...flagContract("furled-cleared"),
   queueable: true,
@@ -414,10 +463,14 @@ const FURLED_CLEARED: ScenarioContract = {
     "The furled black flag comes down off your car after it was called, in any session, with no black flag or disqualification taking its place at that moment.",
   when: {
     event: "flag.furled.cleared",
-    // Passive read — consumption happens at speak time in the script's
-    // condition, so the marker pairs with the line actually reaching the
-    // speaker on both sides.
+    // Passive read — consumption happens at speak time in the gate, so the
+    // marker pairs with the line actually reaching the speaker on both sides.
     where: () => furledRaisedSpoken,
+  },
+  speakGate: {
+    description:
+      "The announced furled flag is still down when the call comes to speak, with no black flag or disqualification in its place; speaking it consumes the announcement.",
+    admit: furledWithdrawn,
   },
 };
 
@@ -587,13 +640,20 @@ function classifySession(): SessionKind | null {
 }
 
 /**
- * Register the vocabulary the flag scripts reference (issue #1064): the
+ * Register the vocabulary the flag family publishes (issue #1064): the
  * `session.type` case var the green/white/checkered scripts branch on, the
- * two speak-time furled gates, and — published generously, the spec's own
- * smallest illustration — the three `session.is*` conditions so a pack can
- * write a binary `if` on the session instead of a three-way `case`. Names
- * and descriptions are the public API of the format; the descriptions feed
- * the generated reference (#1066).
+ * two furled reads, and — published generously, the spec's own smallest
+ * illustration — the three `session.is*` conditions so a pack can write a
+ * binary `if` on the session instead of a three-way `case`. Names and
+ * descriptions are the public API of the format; the descriptions feed the
+ * generated reference (#1066).
+ *
+ * The two furled conditions are PURE reads of the same questions the furled
+ * contracts' `speakGate`s ask (issue #1138), and are referenced by no bundled
+ * entry: the engine asks them itself now, so a pack that writes the `if` is
+ * belt and braces, and one that does not is held to the same pacing anyway.
+ * Purity is what makes that safe — the marking and the consuming happen in
+ * the gate, once, only for a call that goes on to play.
  */
 export function registerFlagVocabulary(engine: Pick<IScenarioEngine, "defineCond" | "defineCase">): void {
   engine.defineCase(
@@ -609,13 +669,13 @@ export function registerFlagVocabulary(engine: Pick<IScenarioEngine, "defineCond
 
   engine.defineCond(
     "flag.furledStillShown",
-    furledStillShown,
-    "The furled black flag is still being shown at speak time; speaking it marks the raise as announced.",
+    furledStillUp,
+    "The furled black flag is still being shown (a pure read — the engine already asks this at speak time and marks the raise as announced when the call plays).",
   );
   engine.defineCond(
     "flag.furledWithdrawn",
-    furledWithdrawn,
-    "An announced furled flag has been withdrawn; speaking it consumes the announcement.",
+    furledWithdrawnUnspoken,
+    "An announced furled flag has been withdrawn and nothing worse took its place (a pure read — the engine already asks this at speak time and consumes the announcement when the call plays).",
   );
 
   engine.defineCond(

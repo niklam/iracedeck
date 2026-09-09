@@ -12,8 +12,9 @@
  * (`scenarios["pit-crew.pit-status-in-progress"]`, …), where the bundled
  * script addresses each line directly as `pool:pit-status/<id>`. The only
  * vocabulary this family registers is the five `pitStatus.still*` conditions
- * the repeat nags hang on ({@link registerPitStatusVocabulary}); the eight
- * transition lines branch on nothing.
+ * ({@link registerPitStatusVocabulary}), published for packs since the nags'
+ * own gate moved onto the contracts (#1138); no bundled entry branches on
+ * anything.
  *
  * **Family preemption.** All eight share `family: "pit-status"` so a rapid
  * positioning correction (`TooFarLeft → TooFarRight`) supersedes the
@@ -49,11 +50,16 @@
  *   #1064 the engine applies the frame itself, so it is the nag's
  *   `frame: NO_FRAME` (`"none"`) that enforces this now.
  *
- * The bundled script wraps each nag's whole body in its `pitStatus.still*`
- * condition (`{ "if": "pitStatus.stillTooFarLeft", "then": [...] }`): the
- * body IS the whole callout, so an expansion to nothing is the intended
- * silence — the frame is not played around an empty body, and a pack keeps
- * that speak-time gate by keeping the `if`.
+ * **The re-check is the contract's, not the script's** (issue #1138). Each
+ * nag carries a `speakGate` the engine asks after the active voice's script
+ * has expanded and before the ops take the bus, so a nag that waited behind a
+ * longer line is dropped once the driver has corrected — in EVERY voice,
+ * whatever its script says. It was a `{ "if": "pitStatus.stillTooFarLeft",
+ * … }` around the whole body until #1138, which held only for a pack that
+ * kept the `if`; the bundled entry is the clip alone now. The condition stays
+ * registered ({@link registerPitStatusVocabulary}) so a pack MAY still write
+ * that `if` — belt and braces, changing nothing here — which is why it has to
+ * stay a pure read.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { SimEventOf } from "@iracedeck/event-bus";
@@ -79,10 +85,11 @@ export const PIT_STATUS_REPEAT_WEIGHT = 40;
  * The statuses that describe an uncorrected parking error — the ones the
  * translator repeats. Single-sourced here so the transition contracts, their
  * repeat siblings and the `pitStatus.still*` conditions can never disagree
- * about which subjects those are. `cond` is the condition name the repeat
- * script wraps its body in; `still` is the phrase its description uses;
- * `description` and `repeatDescription` are the reference's (#1066) one
- * sentence on when the transition line and its nag fire.
+ * about which subjects those are. `cond` is the name the condition is
+ * published under; `still` is the phrase both it and the nag's `speakGate`
+ * describe themselves with; `description` and `repeatDescription` are the
+ * reference's (#1066) one sentence on when the transition line and its nag
+ * fire.
  *
  * @internal Exported for testing — the test enumerates the conditions from it.
  */
@@ -167,11 +174,15 @@ function pitStatusContract(id: string, target: PitSvStatus, description: string)
  * could therefore speak seconds later, after the driver had already corrected
  * — telling them to back up when they are sitting perfectly in the box.
  *
- * Script `if` conditions expand at speak time, deferred replays included, so
- * wrapping the whole sequence in one re-checks the LIVE status just before the
- * clip plays. Unknown telemetry means play: a callout is never suppressed by
- * absent data (#574), which also keeps the scenario harness able to audition
- * every nag without iRacing running.
+ * The contract's `speakGate` (issue #1138) is where that is asked: after the
+ * script expands, before the bus take, on the first fire and on every
+ * deferred replay. Read live, so it answers about the status NOW rather than
+ * the one the event carried. Unknown telemetry means play: a callout is never
+ * suppressed by absent data (#574), which also keeps the scenario harness
+ * able to audition every nag without iRacing running.
+ *
+ * A pure read, used twice — as the gate and as the registered condition a
+ * pack may wrap its own body in.
  */
 function stillMisalignedAs(target: PitSvStatus): boolean {
   const telemetry = getLatestTelemetry() as TelemetryData | null;
@@ -183,7 +194,12 @@ function stillMisalignedAs(target: PitSvStatus): boolean {
   return status === undefined || status === target;
 }
 
-function pitStatusRepeatContract(id: string, target: PitSvStatus, description: string): ScenarioContract {
+function pitStatusRepeatContract(
+  id: string,
+  target: PitSvStatus,
+  description: string,
+  still: string,
+): ScenarioContract {
   return {
     id: `pit-crew.pit-status-${id}-repeat`,
     description,
@@ -197,15 +213,25 @@ function pitStatusRepeatContract(id: string, target: PitSvStatus, description: s
       event: "pitService.positioningRepeat",
       where: (e) => (e as SimEventOf<"pitService.positioningRepeat">).data.status === target,
     },
+    speakGate: {
+      description: `The car is still ${still} in the pit box when the nag comes to speak, or telemetry is unavailable.`,
+      admit: () => stillMisalignedAs(target),
+    },
   };
 }
 
 /**
- * Register the vocabulary the pit-status scripts reference (issue #1065):
- * one `pitStatus.still<Error>` condition per positioning error, each the
- * speak-time gate its repeat nag wraps its whole body in. Five conditions
- * rather than one case, because each nag asks a different question — "is the
- * car still in MY error" — and a pack keeps or drops each gate on its own.
+ * Register the vocabulary the pit-status family publishes (issue #1065):
+ * one `pitStatus.still<Error>` condition per positioning error — the same
+ * pure read each nag's `speakGate` asks. Five conditions rather than one
+ * case, because each asks a different question ("is the car still in MY
+ * error"), and a pack may write an `if` on one without touching the others.
+ *
+ * Since #1138 the bundled voice references none of them: the engine already
+ * asks the question at speak time, so a pack that wraps a nag's body in its
+ * condition changes nothing about the bundled behaviour, and one that does
+ * not is held to the same pacing anyway. They stay published so a pack CAN
+ * go silent on its own terms — say, only nagging about the left/right pair.
  * Descriptions feed the generated reference (#1066).
  */
 export function registerPitStatusVocabulary(engine: Pick<IScenarioEngine, "defineCond">): void {
@@ -213,7 +239,7 @@ export function registerPitStatusVocabulary(engine: Pick<IScenarioEngine, "defin
     engine.defineCond(
       cond,
       () => stillMisalignedAs(target),
-      `The car is still ${still} in the pit box according to live telemetry, or telemetry is unavailable. Wrap a repeat nag's whole body in it so a nag that waited behind a longer line stays silent once the driver has corrected; unknown telemetry counts as still wrong, never as fixed.`,
+      `The car is still ${still} in the pit box according to live telemetry, or telemetry is unavailable. The engine already asks this at speak time — it is the nag's own gate — so wrapping a nag's body in it changes nothing; it is here for a pack that wants a nag silent on its own terms. Unknown telemetry counts as still wrong, never as fixed.`,
     );
   }
 }
@@ -239,7 +265,7 @@ export const PIT_STATUS_CONTRACTS: readonly ScenarioContract[] = [
 
 /** The terse "still uncorrected" nags (issue #951) — one per positioning error. */
 export const PIT_STATUS_REPEAT_CONTRACTS: readonly ScenarioContract[] = POSITIONING_SUBJECTS.map(
-  ({ id, target, repeatDescription }) => pitStatusRepeatContract(id, target, repeatDescription),
+  ({ id, target, repeatDescription, still }) => pitStatusRepeatContract(id, target, repeatDescription, still),
 );
 
 /** Contract ids exported for tests so a typo here surfaces as a test failure. */

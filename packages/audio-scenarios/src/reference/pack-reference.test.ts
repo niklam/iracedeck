@@ -29,6 +29,7 @@ function contract(overrides: Partial<ContractReport> & { id: string }): Contract
     weight: WEIGHT.CRITICAL,
     queueable: false,
     interrupt: false,
+    speakGate: null,
     base: null,
     ...overrides,
   };
@@ -222,6 +223,7 @@ describe("buildPackReference", () => {
       weightBand: "CRITICAL",
       queueable: true,
       interrupt: true,
+      speakGate: null,
       base: null,
       comment: "An incident and what it cost.",
       test: "Harness → Incidents → Contact.",
@@ -235,6 +237,23 @@ describe("buildPackReference", () => {
         frames: [],
       },
     });
+  });
+
+  it("carries each contract's speak-time gate description, null when it has none (issue #1138)", () => {
+    const ref = buildPackReference(
+      input({
+        contracts: [
+          contract({ id: "gate.none" }),
+          contract({ id: "gate.some", speakGate: "The car is still too far left when the nag comes to speak." }),
+        ],
+        script: { ...SCRIPT, scenarios: { "gate.none": { skip: true }, "gate.some": { skip: true } } },
+      }),
+    );
+
+    expect(ref.callouts.map((c) => [c.id, c.speakGate])).toEqual([
+      ["gate.none", null],
+      ["gate.some", "The car is still too far left when the nag comes to speak."],
+    ]);
   });
 
   it("sorts callouts by id, vocabulary by name, groups and lines by name, and every reference list — in code-point order", () => {
@@ -319,6 +338,7 @@ describe("buildPackReference", () => {
       weightBand: "CRITICAL",
       queueable: false,
       interrupt: false,
+      speakGate: null,
       base: null,
       comment: "Not spoken in this voice.",
       test: null,

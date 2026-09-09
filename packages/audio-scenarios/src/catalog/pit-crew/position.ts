@@ -95,9 +95,13 @@ import { poolRef, WEIGHT } from "../../dsl.js";
 import type { ScenarioContext, ScenarioContract } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
 import {
+  canAnnouncePosition,
+  commitIntroDecision,
   liveCurrentlyAnnounceable,
   type LivePositionResolver,
+  POSITION_READOUT_SPEAK_GATE_DESCRIPTION,
   selectLivePosition,
+  takeIntroDecision,
   tryClaimPositionAnnouncement,
 } from "./position-readout.js";
 
@@ -227,6 +231,11 @@ function isPoleAchievement(snapshot: SimEventOf<"lap.completed">["data"]): boole
  */
 function isAnnounceableSessionType(snapshot: SimEventOf<"lap.completed">["data"]): boolean {
   return snapshot.sessionType === "qualifying" || snapshot.sessionType === "race";
+}
+
+/** "No other…" → "no other…", for composing the shared gate sentence onto a qualifier. */
+function lowerFirst(sentence: string): string {
+  return sentence.charAt(0).toLowerCase() + sentence.slice(1);
 }
 
 /**
@@ -417,8 +426,38 @@ export function buildPositionContract(
 
         if (!liveCurrentlyAnnounceable(getLivePosition())) return false;
 
-        // LAST gate: claim the shared position cooldown only when committing.
-        return tryClaimPositionAnnouncement();
+        // LAST gate, and a pure cadence check only — the claim is the gate's
+        // (issue #1137), so a fire the script cannot expand never burns the
+        // window.
+        return canAnnouncePosition();
+      },
+    },
+    speakGate: {
+      // The shared sentence, qualified: this contract alone also fires in
+      // qualifying, where the window is not consulted.
+      description: `In a race, ${lowerFirst(POSITION_READOUT_SPEAK_GATE_DESCRIPTION)}`,
+      // The race branch alone shares the position cooldown — the qualifying
+      // path never consulted it, because the snapshot drives both the decision
+      // and the readout there. Read from the fire's own event, the same field
+      // (and the same type) the `where:` reads; an imperative `fire(id)`
+      // carries no event and so claims nothing, exactly as it never did.
+      //
+      // Whichever branch it takes, an admitted readout commits the intro
+      // decision its expansion stashed, and a refused one leaves nothing
+      // behind (issue #1138). The bundled script speaks through
+      // `position.intro`, which decides from the frozen lap payload and
+      // records nothing — but a pack may name `positionReadout.intro` here
+      // instead, and its decision must then be committed by whichever branch
+      // admits, the qualifying one that consults no window included.
+      admit: (ctx) => {
+        const intro = takeIntroDecision(ctx);
+        const data = ctx.data as SimEventOf<"lap.completed">["data"] | null;
+
+        if (data?.sessionType === "race" && !tryClaimPositionAnnouncement()) return false;
+
+        commitIntroDecision(intro);
+
+        return true;
       },
     },
     channel: AudioChannel.Voice,

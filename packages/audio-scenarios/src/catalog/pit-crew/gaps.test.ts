@@ -29,6 +29,7 @@ import {
   _resetGapCalloutCooldown,
   buildGapThresholdContract,
   buildGapTrendContract,
+  canClaimGapCallout,
   GAP_CALLOUT_DEFAULT_COOLDOWN_MS,
   GAP_CALLOUT_SETTING_KEYS,
   GAP_CLIP_SOURCES,
@@ -228,6 +229,18 @@ function whereOf(c: ScenarioContract): (ev: SimEventOf<never>) => boolean {
   return c.when!.where! as never;
 }
 
+/**
+ * The fire context the engine hands a speak-time gate (issue #1138): the
+ * fire's own event, at the moment the expanded ops are about to take the bus.
+ */
+function gateCtx(event: SimEventOf<"gap.trendChanged"> | SimEventOf<"gap.thresholdCrossed">): ScenarioContext {
+  return { ...fireOf(event), now: Date.now() };
+}
+
+function admitOf(c: ScenarioContract): (ctx: ScenarioContext) => boolean {
+  return c.speakGate!.admit;
+}
+
 describe("resolveGapCooldownMs", () => {
   it("converts seconds to ms and clamps to 1–360 s", () => {
     expect(resolveGapCooldownMs(30)).toBe(30_000);
@@ -254,6 +267,22 @@ describe("tryClaimGapCallout", () => {
     expect(tryClaimGapCallout(1000, 30_000)).toBe(true);
     expect(tryClaimGapCallout(15_000, 30_000)).toBe(false);
     expect(tryClaimGapCallout(31_500, 30_000)).toBe(true);
+  });
+});
+
+describe("canClaimGapCallout", () => {
+  it("answers the same question as the claim, and asking never moves the window (issue #1137)", () => {
+    // The `where:` half: a pure cadence read, so a fire the script then fails
+    // to expand leaves the window where it was.
+    expect(canClaimGapCallout(1000, 30_000)).toBe(true);
+    expect(canClaimGapCallout(1000, 30_000)).toBe(true);
+    expect(canClaimGapCallout(31_500, 30_000)).toBe(true);
+
+    expect(tryClaimGapCallout(1000, 30_000)).toBe(true);
+
+    expect(canClaimGapCallout(15_000, 30_000)).toBe(false);
+    expect(canClaimGapCallout(15_000, 30_000)).toBe(false);
+    expect(canClaimGapCallout(31_000, 30_000)).toBe(true);
   });
 });
 
@@ -319,7 +348,7 @@ describe("gap var resolvers", () => {
 });
 
 describe("gap contract gating", () => {
-  it("fires the trend contract through the permissive gate and claims the cooldown", () => {
+  it("fires the trend contract through the permissive gate and claims nothing — the claim is the gate's (issue #1137)", () => {
     const c = buildGapTrendContract(
       () => false,
       () => PERMISSIVE_OVERTAKE_GATE,
@@ -327,8 +356,25 @@ describe("gap contract gating", () => {
     );
 
     expect(whereOf(c)(trendEvent("ahead", "closing") as never)).toBe(true);
-    // Second event inside the shared cooldown — suppressed.
+    // `where:` is the pure cadence half now, so a second event passes it too —
+    // and neither has moved the shared window, so an expansion that aborts
+    // after this point burns nothing.
+    expect(whereOf(c)(trendEvent("behind", "opening") as never)).toBe(true);
+    expect(canClaimGapCallout(Date.now(), 30_000)).toBe(true);
+  });
+
+  it("the speak-time gate claims the shared window, and the where: then drops the next event cheaply", () => {
+    const c = buildGapTrendContract(
+      () => false,
+      () => PERMISSIVE_OVERTAKE_GATE,
+      () => 30_000,
+    );
+
+    expect(admitOf(c)(gateCtx(trendEvent("ahead", "closing")))).toBe(true);
     expect(whereOf(c)(trendEvent("behind", "opening") as never)).toBe(false);
+    // And a fire already past `where:` (deferred before the claim) is refused
+    // at its own gate rather than doubling the callout up.
+    expect(admitOf(c)(gateCtx(trendEvent("behind", "opening")))).toBe(false);
   });
 
   it("shares the cooldown across trend and threshold contracts", () => {
@@ -344,7 +390,9 @@ describe("gap contract gating", () => {
     );
 
     expect(whereOf(threshold)(thresholdEvent("ahead") as never)).toBe(true);
+    expect(admitOf(threshold)(gateCtx(thresholdEvent("ahead")))).toBe(true);
     expect(whereOf(trend)(trendEvent("ahead", "closing") as never)).toBe(false);
+    expect(admitOf(trend)(gateCtx(trendEvent("ahead", "closing")))).toBe(false);
   });
 
   it("suppresses on the race-finished latch and on a failing overtake gate without claiming", () => {
@@ -364,7 +412,8 @@ describe("gap contract gating", () => {
 
     expect(whereOf(gated)(thresholdEvent("behind") as never)).toBe(false);
 
-    // Neither suppression claimed the cooldown — a clean fire still passes.
+    // Neither suppression claimed the cooldown — a clean fire still passes,
+    // and the shared window is untouched for the gate that will claim it.
     const clean = buildGapTrendContract(
       () => false,
       () => PERMISSIVE_OVERTAKE_GATE,
@@ -372,6 +421,7 @@ describe("gap contract gating", () => {
     );
 
     expect(whereOf(clean)(trendEvent("ahead", "closing") as never)).toBe(true);
+    expect(canClaimGapCallout(Date.now(), 30_000)).toBe(true);
   });
 
   it("a suppressed event changes nothing about what an accepted fire will say — the vars read the fire's own payload", () => {
@@ -393,7 +443,10 @@ describe("gap contract gating", () => {
     const accepted = trendEvent("ahead", "closing");
 
     expect(whereOf(trend)(accepted as never)).toBe(true);
-    // Rejected on the shared cooldown — and on the race-finished latch.
+    // The accepted fire claims the shared window at its speak-time gate
+    // (issue #1137); the next event is then rejected in `where:` on that
+    // window — and another on the race-finished latch.
+    expect(admitOf(trend)(gateCtx(accepted))).toBe(true);
     expect(whereOf(threshold)(thresholdEvent("behind") as never)).toBe(false);
     expect(
       whereOf(
@@ -428,6 +481,9 @@ describe("gap contract gating", () => {
       expect(c.queueable).toBe(true);
       expect(c.family).toBe("gap");
       expect(c.frame).toBeUndefined();
+      // The shared-cooldown claim is a speak-time gate since #1137, described
+      // for the pack author reading a callout that sometimes says nothing.
+      expect(c.speakGate?.description).toContain("gap cooldown");
     }
   });
 });
@@ -543,6 +599,64 @@ describe("the gap lines through the real script", () => {
       `voice/${VOICE}/lap-time-second/0.mp3`,
       `voice/${VOICE}/lap-time-decimal/9.mp3`,
     ]);
+  });
+
+  it("an aborted expansion leaves the shared cooldown unclaimed — the next genuine callout still speaks (issue #1137)", () => {
+    // A script whose only step is a required readout var that resolves to
+    // nothing: `where:` passes, the expansion then aborts. Before #1137 the
+    // `where:` had already claimed the shared window and the next gap event
+    // went unsaid for the whole cooldown.
+    engine.setScripts(
+      new Map([[VOICE, { ...GAP_SCRIPT, scenarios: { "pit-crew.gap-trend": { sequence: ["{{gap.second}}"] } } }]]),
+    );
+    currentGaps = null;
+    bus.publishEvent("gap.trendChanged", trendEvent("ahead", "closing").data);
+    flush(audio);
+
+    expect(voicePaths()).toEqual([]);
+    expect(canClaimGapCallout(Date.now(), cooldownMs)).toBe(true);
+
+    // The callout a burned window would have silenced.
+    engine.setScripts(new Map([[VOICE, GAP_SCRIPT]]));
+    currentGaps = liveGaps(1.55, null);
+    bus.publishEvent("gap.trendChanged", trendEvent("ahead", "closing").data);
+    flush(audio);
+
+    expect(voicePaths()).toEqual([
+      `voice/${VOICE}/gap/ahead-closing-01.mp3`,
+      `voice/${VOICE}/gap/readout-intro-01.mp3`,
+      `voice/${VOICE}/lap-time-second/1.mp3`,
+      `voice/${VOICE}/lap-time-decimal/6.mp3`,
+    ]);
+  });
+
+  it("a deferred gap callout claims the shared window only when it finally speaks (issue #1137)", () => {
+    currentGaps = liveGaps(1.55, null);
+    engine.defineScenario({
+      id: "test.blocker",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      weight: WEIGHT.NORMAL,
+      frame: NO_FRAME,
+      sequence: ["test/blocker.mp3"],
+    });
+    engine.fire("test.blocker");
+
+    // CHATTER behind a NORMAL line: `where:` passed, the fire waits — and the
+    // window is still free, because only a fire that speaks claims it.
+    bus.publishEvent("gap.trendChanged", trendEvent("ahead", "closing").data);
+    expect(canClaimGapCallout(Date.now(), cooldownMs)).toBe(true);
+
+    flush(audio);
+
+    expect(voicePaths()).toEqual([
+      "test/blocker.mp3",
+      `voice/${VOICE}/gap/ahead-closing-01.mp3`,
+      `voice/${VOICE}/gap/readout-intro-01.mp3`,
+      `voice/${VOICE}/lap-time-second/1.mp3`,
+      `voice/${VOICE}/lap-time-decimal/6.mp3`,
+    ]);
+    expect(canClaimGapCallout(Date.now(), cooldownMs)).toBe(false);
   });
 
   it("plays inside the radio frame", () => {

@@ -14,9 +14,11 @@
  *   - A fire that can't take the bus (equal/lower weight, or below an
  *     exclusive-focus floor) is deferred for idle-replay when
  *     `queueable: true`, else dropped. The deferred fire replays
- *     unconditionally — `where:` is NOT re-run (a side-effecting predicate
- *     would mis-fire); freshness comes from var resolvers at speak time. This
- *     preserves the former `low`-priority deferred-replay behaviour.
+ *     unconditionally — `where:` is NOT re-run, since it decided at event
+ *     time; what must hold at speak time is the contract's `speakGate`
+ *     (issue #1138), asked again on replay; freshness of the words comes
+ *     from var resolvers at speak time. This preserves the former
+ *     `low`-priority deferred-replay behaviour.
  *   - Same-`family` fires replace each other wholesale regardless of weight.
  *   - `acquireFocus`/`releaseFocus` raise a per-bus weight floor: while held,
  *     only fires at or above it (or the owner's own) play.
@@ -72,7 +74,14 @@ import type { IEventBus, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import type { ILogger } from "@iracedeck/logger";
 import { silentLogger } from "@iracedeck/logger";
 
-import type { ResolvedStep, Scenario, ScenarioContext, ScenarioContract, VocabularyResolver } from "./dsl.js";
+import type {
+  ResolvedStep,
+  Scenario,
+  ScenarioContext,
+  ScenarioContract,
+  SpeakGate,
+  VocabularyResolver,
+} from "./dsl.js";
 import { applyBase, DEFAULT_FRAME, DEFAULT_WEIGHT, NO_FRAME, resolveStep } from "./dsl.js";
 // Manifest types + helpers live in `./manifest.js` to break a circular
 // import with `./validation.js`, which also needs `referenceVoice`.
@@ -126,6 +135,14 @@ export type ContractReport = {
   weight: number;
   queueable: boolean;
   interrupt: boolean;
+  /**
+   * The speak-time gate's one-sentence description (issue #1138) — what is
+   * re-checked after the script expands and before the bus take — or `null`
+   * when the contract carries none. The reference renders it beside the
+   * trigger so a pack author reading a silent callout knows the second gate
+   * exists and what it asks.
+   */
+  speakGate: string | null;
   /**
    * The contract's `base` as registered (`"voice/{voice}"`, `"pit-crew"`),
    * `null` when it has none: what a bare literal clip path in a script entry
@@ -263,7 +280,11 @@ export interface IScenarioEngine {
  * A pool is either an explicit clip list (`static`) or derived from the
  * manifest per voice at fire time (`manifest`, issue #664). Both share the
  * no-immediate-repeat `lastIndex`; manifest pools also track the voice the
- * index belongs to, since variant counts differ across voices.
+ * index belongs to, since variant counts differ across voices. `lastIndex`
+ * is the last take the driver HEARD: a pick made during expansion is
+ * recorded on the expansion (`ExpansionPicks`) and written here only once
+ * `prepareOps` accepts the fire (issue #1138) — a fire the gate refuses, or
+ * that aborts after the pick, commits nothing.
  */
 type PoolState =
   | { kind: "static"; clips: string[]; lastIndex: number }
@@ -275,6 +296,9 @@ type PoolState =
       lastIndex: number;
       lastVoice: string | null;
     };
+
+/** Picks made during one expansion, keyed by the pool they were drawn from — see `PoolState.lastIndex`. */
+type ExpansionPicks = Map<PoolState, number>;
 
 type CompiledScenario = {
   raw: ScenarioContract;
@@ -317,6 +341,19 @@ type PendingFire = {
    * clip instead of re-firing from the top (issue #758).
    */
   resume?: ResumeState;
+  /**
+   * Whether this fire had already passed its contract's `speakGate` (issue
+   * #1138) when it was parked: `true` for a fire an interrupt cut out of
+   * playback (whether or not it carries a `resume`), and carried along by
+   * every re-park of such a fire; `false` for a fire deferred before it ever
+   * expanded (a `queueable` fire behind a busier line), which is asked at
+   * replay. The replay's `prepareOps` skips the gate iff this is set — a
+   * fire that already passed the gate, cut and stashed, resumed, or replayed
+   * whole, is not asked again, and a claiming gate is never asked to refuse
+   * its own claim. An explicit flag rather than `resume !== undefined`:
+   * a non-`resumable` fire is stashed without a resume and replays whole.
+   */
+  admitted: boolean;
 };
 
 /** Where an interrupted resumable fire left off, for continuation at idle-replay. */
@@ -472,6 +509,13 @@ class ScenarioEngine implements IScenarioEngine {
    * lazily on first pick; cleared by `setManifest` and by every compile.
    */
   private readonly scriptPoolState = new Map<string, Map<string, PoolState>>();
+  /**
+   * The pool picks of the expansion in progress, keyed by pool (issue #1138):
+   * consulted FIRST by `pickFromPool`, so two picks from one pool inside one
+   * body still avoid each other, and committed into the pools' `lastIndex`
+   * only when `prepareOps` accepts the fire. `null` outside an expansion.
+   */
+  private expansionPicks: ExpansionPicks | null = null;
   /**
    * The five once-per warn sets. Every one is cleared by `setScripts`: a new
    * script map is a new state of affairs — a rescan, a Rescan press, a pack
@@ -793,6 +837,7 @@ class ScenarioEngine implements IScenarioEngine {
         weight: raw.weight ?? DEFAULT_WEIGHT,
         queueable: raw.queueable ?? false,
         interrupt: raw.interrupt ?? false,
+        speakGate: raw.speakGate?.description ?? null,
         base: raw.base ?? null,
       }))
       .sort((a, b) => codePointOrder(a.id, b.id));
@@ -1091,7 +1136,12 @@ class ScenarioEngine implements IScenarioEngine {
 
   // ── Firing pipeline ──
 
-  private attemptFire(entry: CompiledScenario, event: SimEventOf<SimEventName> | null, resume?: ResumeState): void {
+  private attemptFire(
+    entry: CompiledScenario,
+    event: SimEventOf<SimEventName> | null,
+    resume?: ResumeState,
+    admitted = false,
+  ): void {
     const now = Date.now();
 
     // A resume is a continuation of a fire that already passed (and stamped)
@@ -1111,7 +1161,7 @@ class ScenarioEngine implements IScenarioEngine {
     const focus = state.focus;
 
     if (focus !== null && entry.raw.focusOwner !== focus.ownerId && weight < focus.floor) {
-      this.queueOrDrop(entry, event, weight, state, `below focus floor (${focus.ownerId})`, resume);
+      this.queueOrDrop(entry, event, weight, state, `below focus floor (${focus.ownerId})`, resume, admitted);
 
       return;
     }
@@ -1133,7 +1183,7 @@ class ScenarioEngine implements IScenarioEngine {
         // This fire would silence the in-flight one — expand FIRST (issue
         // #835), so a fire that aborts (or expands empty) never cancels
         // what's playing.
-        const expanded = this.prepareOps(entry, event);
+        const expanded = this.prepareOps(entry, event, admitted);
 
         if (expanded === null) return;
 
@@ -1155,18 +1205,26 @@ class ScenarioEngine implements IScenarioEngine {
       if (weight > runningWeight) {
         // Higher weight, no interrupt: win the bus but let the current line
         // finish — wait as the pending next fire.
-        this.setPending(entry.raw.id, event, weight, state, "waiting for bus (higher weight, no interrupt)");
+        this.setPending(
+          entry.raw.id,
+          event,
+          weight,
+          state,
+          "waiting for bus (higher weight, no interrupt)",
+          resume,
+          admitted,
+        );
 
         return;
       }
 
       // Equal or lower weight: can't take the bus now.
-      this.queueOrDrop(entry, event, weight, state, "bus busy", resume);
+      this.queueOrDrop(entry, event, weight, state, "bus busy", resume, admitted);
 
       return;
     }
 
-    const expanded = this.prepareOps(entry, event);
+    const expanded = this.prepareOps(entry, event, admitted);
 
     if (expanded === null) return;
 
@@ -1183,9 +1241,10 @@ class ScenarioEngine implements IScenarioEngine {
     state: BusState,
     reason: string,
     resume?: ResumeState,
+    admitted = false,
   ): void {
     if (entry.raw.queueable === true) {
-      this.setPending(entry.raw.id, event, weight, state, `deferred (${reason})`, resume);
+      this.setPending(entry.raw.id, event, weight, state, `deferred (${reason})`, resume, admitted);
     } else {
       this.logger.debug(`Scenario "${entry.raw.id}" dropped (${reason})`);
     }
@@ -1194,6 +1253,8 @@ class ScenarioEngine implements IScenarioEngine {
   /**
    * Record the highest-weight fire waiting for the bus to idle. Ties go to the
    * newest fire (matching the former "most-recent low wins" semantic).
+   * `admitted` travels with the fire (see `PendingFire.admitted`): a re-park
+   * of a fire that already passed its gate keeps that fact for the next replay.
    */
   private setPending(
     id: string,
@@ -1202,23 +1263,29 @@ class ScenarioEngine implements IScenarioEngine {
     state: BusState,
     reason: string,
     resume?: ResumeState,
+    admitted = false,
   ): void {
     if (state.pending === null || weight >= state.pending.weight) {
-      state.pending = { id, event, weight, resume };
+      state.pending = { id, event, weight, resume, admitted };
       this.logger.debug(`Scenario "${id}" pending — ${reason}`);
     } else {
       this.logger.debug(`Scenario "${id}" dropped — lower weight than queued "${state.pending.id}"`);
     }
   }
 
-  /** When an interrupt cut a queueable fire, keep it for idle-replay. */
+  /**
+   * When an interrupt cut a queueable fire, keep it for idle-replay. It was
+   * playing, so it had passed its gate: the stash is marked `admitted`
+   * whether it resumes from the cut (`resumable`) or replays whole, and the
+   * replay is not asked again (issue #1138).
+   */
   private stashRunningIfQueueable(state: BusState, running: CompiledScenario | undefined): void {
     const active = state.activeFire;
 
     if (!active || !running || running.raw.queueable !== true) return;
 
     const resume = running.raw.resumable === true ? buildResumeState(active) : undefined;
-    this.setPending(active.id, active.event, active.weight, state, "stashed (preempted)", resume);
+    this.setPending(active.id, active.event, active.weight, state, "stashed (preempted)", resume, true);
   }
 
   /**
@@ -1239,14 +1306,49 @@ class ScenarioEngine implements IScenarioEngine {
    * around nothing. The frame is part of the callout, so a frame step that
    * resolves to nothing aborts the fire like any other required step — and
    * for a body that could hold a clip the frame is expanded BEFORE the body,
-   * because a body condition may commit a side effect as it is evaluated
-   * (the furled-flag gate marks the flag spoken), and a frame that then
-   * aborted would have let it commit for a fire that never plays. A body
-   * that can never hold a clip (`canProducePlay`) has no frame expanded at
-   * all — nothing can be due for it, so nothing can abort it or warn about
-   * it. The rule and its one accepted cost are stated on `applyFrame`.
+   * so that a body step's side effect cannot be left standing by a frame
+   * aborting afterwards, for a fire that never plays. No body CONDITION
+   * commits anything: a registered condition must be pure since #1138 — the
+   * one that did, the furled-flag `if` that marked the flag spoken, moved to
+   * the contract's `speakGate` — precisely because a pack may write it into
+   * a body. A var RESOLVER may still keep a tracker, which is why the frame
+   * is expanded first: it costs nothing, and it is what keeps such a tracker
+   * from being moved by a frame that then aborts. The position readout's
+   * intro was that example until #1138 — it still DECIDES its lead-in during
+   * expansion, but only stashes the decision for its contract's `speakGate`
+   * to commit, so a readout refused there (or aborted further down) records
+   * nothing for the next one's delta.
+   * A body that can never hold a clip (`canProducePlay`) has no frame
+   * expanded at all — nothing can be due for it, so nothing can abort it or
+   * warn about it. The rule and its one accepted cost are stated on
+   * `applyFrame`.
+   *
+   * The speak-time gate (issue #1138) runs LAST, once the body has expanded
+   * to something to play: the contract's `speakGate.admit` is asked with the
+   * fire's context — the resolved vars included — and `false` returns `null`
+   * exactly like a required-step abort, so the fire stamps no cooldown,
+   * takes no bus and cancels nothing in flight. It runs after expansion so
+   * that a claim committed inside it (#1137) is committed for a callout that
+   * will play, and so a body that aborts never reaches it. A fire deferred
+   * before it ever expanded re-enters here at idle-replay and is asked
+   * then, for the first time; a fire that already passed the gate — cut and
+   * stashed, resumed, or replayed whole — is not asked again, which is what
+   * `admitted` says (see `PendingFire.admitted`): a gate that committed a
+   * claim on the way in must not be asked to claim the same fire twice, and
+   * one that reads live state must not drop the tail of a line the engineer
+   * has already begun. Note what that covers: `executeFire` continues from
+   * the interrupted clip only when the fresh expansion still matches the
+   * stashed one and otherwise replays the whole body from the top (the #481
+   * freshness fallback), and a non-`resumable` fire the cut stashed replays
+   * whole with no resume at all — every one of those is the same fire, which
+   * passed the gate once, so none is asked again. A contract that is both
+   * `queueable` and gated must be able to tolerate that.
    */
-  private prepareOps(entry: CompiledScenario, event: SimEventOf<SimEventName> | null): ExecOp[] | null {
+  private prepareOps(
+    entry: CompiledScenario,
+    event: SimEventOf<SimEventName> | null,
+    admitted = false,
+  ): ExecOp[] | null {
     this.ensureCompiled();
 
     const ctx: ScenarioContext = {
@@ -1279,6 +1381,12 @@ class ScenarioEngine implements IScenarioEngine {
     }
 
     let expanded: ExecOp[];
+    // The pool picks this expansion makes are recorded here and committed
+    // into the pools only once the fire is accepted (issue #1138): a fire
+    // that aborts, expands empty or is refused by the gate consumed no take,
+    // so the next fire still avoids the take the driver last heard.
+    const picks: ExpansionPicks = new Map();
+    this.expansionPicks = picks;
 
     try {
       const frame = canProducePlay(body) ? this.expandFrame(frameName, voice, script, entry, ctx) : null;
@@ -1296,6 +1404,8 @@ class ScenarioEngine implements IScenarioEngine {
       );
 
       return null;
+    } finally {
+      this.expansionPicks = null;
     }
 
     if (expanded.length === 0) {
@@ -1304,7 +1414,42 @@ class ScenarioEngine implements IScenarioEngine {
       return null;
     }
 
+    // The speak-time gate (issue #1138): the contract's second look, in code,
+    // after the body expanded and before the ops take the bus — so it holds
+    // for every voice, whatever its script says. A fire that already passed
+    // the gate — cut and stashed, resumed, or replayed whole — is the same
+    // fire (and may have committed its claim there), so it is not asked
+    // again; a fire deferred before it expanded re-enters here and is.
+    const gate = entry.raw.speakGate;
+
+    if (gate !== undefined && !admitted && !this.admits(gate, entry.raw.id, ctx)) {
+      this.logger.debug(`Scenario "${entry.raw.id}" skipped — speak-time gate: ${gate.description}`);
+
+      return null;
+    }
+
+    // Accepted: the takes this fire drew are now the ones the driver hears.
+    for (const [pool, idx] of picks) pool.lastIndex = idx;
+
     return expanded;
+  }
+
+  /**
+   * Ask a speak-time gate (issue #1138). A gate that throws is logged at
+   * error and treated as a refusal: the fire it was asked about is dropped
+   * like any other refused one, never played on the strength of a check
+   * that did not complete.
+   */
+  private admits(gate: SpeakGate, scenarioId: string, ctx: ScenarioContext): boolean {
+    try {
+      return gate.admit(ctx);
+    } catch (err) {
+      this.logger.error(
+        `Scenario "${scenarioId}" speak-time gate failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+
+      return false;
+    }
   }
 
   /**
@@ -1596,13 +1741,14 @@ class ScenarioEngine implements IScenarioEngine {
 
   /**
    * Play the pending fire (if any) now that the bus is idle. The fire replays
-   * unconditionally — its `where:` is NOT re-evaluated. Some `where:`
-   * predicates commit a side effect as their last gate (e.g. the position
-   * readout claims a shared cooldown via `tryClaimPositionAnnouncement()`,
-   * issues #574/#555); re-running them on replay would fail the already-made
-   * claim and silently drop the callout. Freshness is preserved instead by the
-   * var resolvers, which read live state at `executeFire` time rather than from
-   * the frozen event payload.
+   * unconditionally — `where:` is NOT re-evaluated: it decided at event
+   * time; what must hold at speak time is the contract's `speakGate` (issue
+   * #1138), which the replay's `prepareOps` asks of a fire deferred before
+   * it ever expanded — and never again of one that already passed it (see
+   * `PendingFire.admitted`) — and a claim belongs there rather than in
+   * `where:` (issue #1137). Freshness of the words is
+   * preserved by the var resolvers, which read live state at replay
+   * expansion rather than from the frozen event payload.
    */
   private drainPending(state: BusState): void {
     this.clearPendingHold(state);
@@ -1617,7 +1763,7 @@ class ScenarioEngine implements IScenarioEngine {
     if (!entry?.enabled) return;
 
     this.logger.debug(`Replaying pending scenario "${pending.id}"`);
-    this.attemptFire(entry, pending.event, pending.resume);
+    this.attemptFire(entry, pending.event, pending.resume, pending.admitted);
   }
 
   /**
@@ -1979,12 +2125,19 @@ class ScenarioEngine implements IScenarioEngine {
     }
 
     let idx = Math.floor(Math.random() * clips.length);
+    // A pick already made from this pool by the expansion in progress comes
+    // first, so two draws inside one body avoid each other; otherwise the
+    // last take that actually played (issue #1138).
+    const last = this.expansionPicks?.get(pool) ?? pool.lastIndex;
 
-    if (noRepeat && clips.length > 1 && idx === pool.lastIndex) {
+    if (noRepeat && clips.length > 1 && idx === last) {
       idx = (idx + 1) % clips.length;
     }
 
-    pool.lastIndex = idx;
+    // Recorded on the expansion and committed by `prepareOps` on acceptance;
+    // a pick outside an expansion (none today) commits directly.
+    if (this.expansionPicks !== null) this.expansionPicks.set(pool, idx);
+    else pool.lastIndex = idx;
 
     return clips[idx];
   }
@@ -2035,13 +2188,18 @@ export function poolMemberPattern(group: string, base: string): RegExp {
  * hold a clip — ambience or pauses alone, at every nesting — never has its
  * frame expanded at all, so a broken frame cannot kill it and earns no warn
  * for it; a body that can hold one has its frame expanded FIRST, so a frame
- * that aborts commits none of the body's side effects. Between the two sits
- * the one accepted cost: a body that could speak but expands to nothing this
- * time (a gate that said no) is dropped by a broken frame rather than
- * played bare — it would have played nothing anyway — and the frame's warn
- * fires, because the frame is due for that callout whenever its gate says
- * yes. Knowing the dynamic answer before the body runs would mean running
- * it, and running it is what commits the side effect the order protects.
+ * that aborts can commit none of the body's side effects. That case is
+ * hypothetical rather than actual since #1138 — a body step commits nothing
+ * now that the furled marking is the contract's `speakGate`, and a
+ * registered condition must stay a pure read — and the order is kept
+ * because it costs nothing and holds whatever a body is later asked to do.
+ * Between the two sits the one accepted cost: a body that could speak but
+ * expands to nothing this time (a script `if` that said no) is dropped by a
+ * broken frame rather than played bare — it would have played nothing
+ * anyway — and the frame's warn fires, because the frame is due for that
+ * callout whenever its body speaks. Knowing the dynamic answer before the
+ * body runs would mean running it, which is exactly what the order avoids
+ * committing to.
  */
 function applyFrame(body: ExecOp[], frame: ExpandedFrame | null): ExecOp[] {
   if (frame === null || !body.some((op) => op.kind === "play")) return body;

@@ -19,6 +19,7 @@ import { WEIGHT } from "../../dsl.js";
 import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios, poolMemberPattern } from "../../interpreter.js";
 import {
+  _getFurledRaisedSpoken,
   _setFurledRaisedSpoken,
   FLAG_CLIP_SOURCES,
   FLAG_CONTRACTS,
@@ -1069,7 +1070,11 @@ describe("the bundled script's flag entries (issue #1064)", () => {
     expect(refs.vars).toEqual([]);
     expect(refs.includes).toEqual([]);
     expect(refs.frames).toEqual([]);
-    expect(refs.conds).toEqual(["flag.furledStillShown", "flag.furledWithdrawn"]);
+    // No condition at all since #1138: the two furled `if`s were the only ones
+    // the flag family ever wrote, and both moved onto the contracts as their
+    // `speakGate`. The conditions stay published (the vocabulary test below)
+    // for a pack that wants its own — this asserts OURS asks for none.
+    expect(refs.conds).toEqual([]);
     expect(refs.cases).toEqual([{ name: "session.type", keys: ["practice", "qualifying", "race"] }]);
 
     for (const cond of refs.conds) {
@@ -1131,7 +1136,7 @@ describe("the shared session rule (issue #1064)", () => {
 });
 
 describe("registerFlagVocabulary (issue #1064)", () => {
-  it("publishes the session case and the furled gates with their descriptions, verbatim", () => {
+  it("publishes the session case and the two furled reads with their descriptions, verbatim", () => {
     const { conds, cases } = engine.vocabulary();
 
     expect(cases).toEqual([
@@ -1149,11 +1154,12 @@ describe("registerFlagVocabulary (issue #1064)", () => {
       {
         name: "flag.furledStillShown",
         description:
-          "The furled black flag is still being shown at speak time; speaking it marks the raise as announced.",
+          "The furled black flag is still being shown (a pure read — the engine already asks this at speak time and marks the raise as announced when the call plays).",
       },
       {
         name: "flag.furledWithdrawn",
-        description: "An announced furled flag has been withdrawn; speaking it consumes the announcement.",
+        description:
+          "An announced furled flag has been withdrawn and nothing worse took its place (a pure read — the engine already asks this at speak time and consumes the announcement when the call plays).",
       },
       { name: "session.isPractice", description: "The current session is a practice session." },
       {
@@ -1346,8 +1352,10 @@ describe("FLAG_CONTRACTS race-only gating", () => {
 // Issue #669 follow-up: the queueable FURLED fire can replay only after a
 // longer call (incident points, readback) finishes — by which time the warning
 // may already be withdrawn. The raised line re-checks the LIVE Furled bit at
-// speak time and expands to nothing when the flag is down, and FURLED_CLEARED
-// only plays when the raised line actually reached the speaker.
+// speak time and is dropped when the flag is down, and FURLED_CLEARED only
+// plays when the raised line actually reached the speaker. Both re-checks are
+// the contracts' `speakGate` since #1138 (a script `if` until then), which is
+// what the block below this one holds them to for a pack that writes no `if`.
 describe("furled speak-time validity + cleared pairing (issue #669)", () => {
   const FURLED_UP = { SessionFlags: Flags.Furled };
   const FURLED_DOWN = { SessionFlags: 0 };
@@ -1473,6 +1481,124 @@ describe("furled speak-time validity + cleared pairing (issue #669)", () => {
     expect(voiceClipsPlayed().filter((p) => p.includes("furled-cleared"))).toEqual([
       "voice/luca/flags/furled-cleared-01.mp3",
     ]);
+  });
+});
+
+// Everything above runs the bundled voice's script, so it cannot tell a
+// contract gate from a script `if` — either shape produces the same silence
+// and the same pairing. Since #1138 the gate is the CONTRACT's, which is a
+// claim about every OTHER pack: one that writes the wording and no `if`.
+// These install exactly that — each entry stripped to its clip — and re-run
+// the pair, plus the purity check the move rests on: the registered
+// conditions stay published so a pack MAY write the belt-and-braces `if`, and
+// a pack that does must not be the thing that marks the flag spoken.
+//
+// DO NOT DELETE THE SILENCE TESTS. Take the gates off the two contracts and
+// nothing else in this file goes red — with the bundled script the `if` is
+// gone too, so the stale line simply speaks and every "it plays" test passes.
+describe("the gate is the contract's, not the script's (issue #1138)", () => {
+  const FURLED_UP = { SessionFlags: Flags.Furled };
+  const FURLED_DOWN = { SessionFlags: 0 };
+
+  /** One flag entry, replaced by the pool step alone — a pack that wrote no gate. */
+  function installBareClip(id: string, pool: string): void {
+    engine.setScripts(
+      new Map([
+        ["luca", { ...FLAG_SCRIPT, scenarios: { ...FLAG_SCRIPT.scenarios, [id]: { sequence: [`pool:${pool}`] } } }],
+      ]),
+    );
+  }
+
+  it("a raised line whose flag is already down says nothing, with a script that has no `if` at all", () => {
+    installBareClip("pit-crew.flag-furled", "flags/furled");
+    mockLatestTelemetry.mockReturnValue(FURLED_DOWN);
+    bus.publishEvent("flag.furled.raised", {});
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([]);
+    // …and nothing was marked as announced either, so no cleared line can follow.
+    expect(_getFurledRaisedSpoken()).toBe(false);
+  });
+
+  it("…and speaks on that same script while the flag is still shown, marking the raise announced", () => {
+    installBareClip("pit-crew.flag-furled", "flags/furled");
+    mockLatestTelemetry.mockReturnValue(FURLED_UP);
+    bus.publishEvent("flag.furled.raised", {});
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual(["voice/luca/flags/furled-01.mp3"]);
+    expect(_getFurledRaisedSpoken()).toBe(true);
+  });
+
+  it("a cleared line meeting the black flag says nothing, with a script that has no `if` at all", () => {
+    installBareClip("pit-crew.flag-furled-cleared", "flags/furled-cleared");
+    _setFurledRaisedSpoken(true);
+    mockLatestTelemetry.mockReturnValue({ SessionFlags: Flags.Black }); // the escalation (#846)
+    bus.publishEvent("flag.furled.cleared", {});
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([]);
+    // The episode is over for good, so the marker is consumed WITHOUT playing.
+    expect(_getFurledRaisedSpoken()).toBe(false);
+  });
+
+  it("…and speaks on that same script on a genuine withdrawal, consuming the announcement", () => {
+    installBareClip("pit-crew.flag-furled-cleared", "flags/furled-cleared");
+    _setFurledRaisedSpoken(true);
+    mockLatestTelemetry.mockReturnValue(FURLED_DOWN);
+    bus.publishEvent("flag.furled.cleared", {});
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual(["voice/luca/flags/furled-cleared-01.mp3"]);
+    expect(_getFurledRaisedSpoken()).toBe(false);
+  });
+
+  /**
+   * A pack's belt-and-braces `if` on one of the two published conditions,
+   * written over an UNRELATED callout so the fire says nothing about the
+   * furled contracts' own gates. The red line is the probe: it plays iff the
+   * condition answered true, which is the positive control the purity
+   * assertion needs — a condition stuck on `false` would move no marker
+   * either.
+   */
+  function condProbe(cond: string): void {
+    engine.setScripts(
+      new Map([
+        [
+          "luca",
+          {
+            ...FLAG_SCRIPT,
+            scenarios: {
+              ...FLAG_SCRIPT.scenarios,
+              "pit-crew.flag-red": { sequence: [{ if: cond, then: ["flags/red-01.mp3"] }] },
+            },
+          },
+        ],
+      ]),
+    );
+    bus.publishEvent("flag.red.raised", {});
+    flush(audio);
+  }
+
+  it("the registered furled conditions are pure: evaluating them never moves the spoken marker", () => {
+    _setFurledRaisedSpoken(false);
+    mockLatestTelemetry.mockReturnValue(FURLED_UP);
+
+    condProbe("flag.furledStillShown");
+
+    expect(voiceClipsPlayed()).toContain("voice/luca/flags/red-01.mp3");
+    expect(_getFurledRaisedSpoken()).toBe(false);
+  });
+
+  it("the withdrawn condition is pure too: a pack's `if` never consumes the announcement", () => {
+    _setFurledRaisedSpoken(true);
+    mockLatestTelemetry.mockReturnValue(FURLED_DOWN);
+
+    condProbe("flag.furledWithdrawn");
+
+    expect(voiceClipsPlayed()).toContain("voice/luca/flags/red-01.mp3");
+    // Still armed: only the cleared line actually playing may consume it.
+    expect(_getFurledRaisedSpoken()).toBe(true);
   });
 });
 

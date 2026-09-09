@@ -106,6 +106,11 @@ export function describeTrigger(callout: Pick<Callout, "event">): string {
   return callout.event ?? "fired by the plugin directly, not by a bus event";
 }
 
+/** The speak-time gate in words — what the contract re-checks just before the callout takes the radio — or `null`. */
+export function describeSpeakGate(callout: Pick<Callout, "speakGate">): string | null {
+  return callout.speakGate;
+}
+
 // ─── Vocabulary ──────────────────────────────────────────────────────────────
 
 /** Look a var up by name; `undefined` when the vocabulary does not carry it. */

@@ -20,8 +20,9 @@
  *     cutting the full transition call, a fresh error still speaks in full
  *     after an in-flight nag, and nags replace each other
  *   - the repeats ride their transition sibling's opt-in (no new setting)
- *   - the speak-time gate is the script's `pitStatus.still*` condition, read
- *     from live telemetry when the nag comes to speak
+ *   - the speak-time gate is the CONTRACT's `speakGate` (#1138), reading the
+ *     same live telemetry when the nag comes to speak — so it holds for a
+ *     voice pack that writes no `if`, which the bundled script no longer does
  *   - the bundled script's entries, vocabulary and clip sources (#1065)
  */
 import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "json" };
@@ -163,6 +164,14 @@ function createFakeAudio(): FakeAudio {
 const VOICE = "luca";
 
 /**
+ * The test-only line the #1138 block holds the Voice bus with, as the step a
+ * legacy scenario names (resolved against `base: "voice/{voice}"`) and as the
+ * played path the assertions read.
+ */
+const OCCUPIER_CLIP_STEP = "blocker/line-01.mp3";
+const OCCUPIER_CLIP = `voice/${VOICE}/${OCCUPIER_CLIP_STEP}`;
+
+/**
  * One clip per source for the test voice, so pool draws stay deterministic
  * and a played path names its pool; the shipped voice config carries several
  * per nag.
@@ -173,6 +182,9 @@ const manifest: AudioAssetsManifest = {
     "sfx/IRD-tick-close.mp3",
     "sfx/IRD-ambient-pit.mp3",
     ...PIT_STATUS_CLIP_SOURCES.map(({ group, base }) => `voice/${VOICE}/${group}/${base}-01.mp3`),
+    // The test-only line the #1138 block holds the bus with; it belongs to no
+    // pool the family publishes, so it can never be mistaken for a nag.
+    OCCUPIER_CLIP,
   ],
   ambientLoop: "sfx/IRD-ambient-pit.mp3",
   ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
@@ -483,10 +495,10 @@ describe("PIT_STATUS_REPEAT_CONTRACTS speak-time validity gate (#951)", () => {
   // engine sets it as the pending fire whenever `weight > runningWeight` and
   // `interrupt !== true`, and a pending fire replays WITHOUT re-running
   // `where:`. So a nag queued behind the (CHATTER-weight, long) pit-service
-  // readback could speak after the driver had already corrected. The bundled
-  // script wraps each nag's whole body in its `pitStatus.still*` condition —
-  // script conditions expand at speak time, including on a deferred replay —
-  // which re-checks the live status.
+  // readback could speak after the driver had already corrected. Each nag's
+  // contract carries a `speakGate` (issue #1138 — a script `if` until then)
+  // that the engine asks after the script expands and before the bus take,
+  // deferred replays included, which re-checks the live status.
   beforeEach(registerFamilyAlone);
 
   afterEach(() => {
@@ -540,6 +552,106 @@ describe("PIT_STATUS_REPEAT_CONTRACTS speak-time validity gate (#951)", () => {
     flush(audio);
 
     expect(voiceClipsPlayed(audio)).toEqual([`voice/${VOICE}/pit-status/too-far-left-repeat-01.mp3`]);
+  });
+});
+
+// The gate is the CONTRACT's since #1138, so it must hold for a voice pack
+// that writes no `if` at all — which is every pack that ever gets the wording
+// right and the pacing wrong. The tests above install the bundled script and
+// so cannot tell a contract gate from a script one; these install a bare-clip
+// entry (`["pool:pit-status/too-far-left-repeat"]`) and drive the case the
+// gate exists for: the nag waits behind a LOWER-weight line, the driver
+// corrects while it waits, and the drain must expand to silence.
+//
+// DO NOT DELETE THE SILENCE TEST. Take the `speakGate` off the contract and
+// nothing else in this file goes red: with the bundled script the `if` is
+// gone too, so the nag simply speaks, and every "it fires" test still passes.
+// The positive twin is here so the silence cannot instead be the bare-clip
+// script, the occupier, or the queue being broken outright.
+describe("the gate is the contract's, not the script's (issue #1138)", () => {
+  beforeEach(registerFamilyAlone);
+
+  afterEach(() => {
+    simMocks.latestTelemetry = null;
+    _resetAudioScenarios();
+    vi.clearAllMocks();
+  });
+
+  const NAG_ID = "pit-crew.pit-status-too-far-left-repeat";
+  const NAG_CLIP = `voice/${VOICE}/pit-status/too-far-left-repeat-01.mp3`;
+
+  /** The nag's entry, stripped to the clip alone — a pack that wrote no gate. */
+  function installBareClipNag(): void {
+    engine.setScripts(
+      new Map([
+        [
+          VOICE,
+          {
+            ...PIT_STATUS_SCRIPT,
+            scenarios: {
+              ...PIT_STATUS_SCRIPT.scenarios,
+              [NAG_ID]: { sequence: ["pool:pit-status/too-far-left-repeat"] },
+            },
+          },
+        ],
+      ]),
+    );
+  }
+
+  /**
+   * Hold the bus with a line the nag OUTRANKS but may not cut: `queueable:
+   * false` does not drop a nag behind a lower-weight line — the engine parks
+   * it as the bus's pending fire (`weight > runningWeight && interrupt !==
+   * true`) — which is the pit-service readback's shape and the only way a nag
+   * reaches the drain at all.
+   */
+  function occupyVoiceBus(): void {
+    engine.defineScenario({
+      id: "test.bus-occupier",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      base: "voice/{voice}",
+      weight: WEIGHT.CHATTER,
+      sequence: [OCCUPIER_CLIP_STEP],
+    });
+    engine.fire("test.bus-occupier");
+  }
+
+  /** Publish the nag while the bus is busy, move the world on, then let it drain. */
+  function queueThenDrain(live: number | undefined): void {
+    occupyVoiceBus();
+
+    simMocks.latestTelemetry = { PlayerCarPitSvStatus: PitSvStatus.TooFarLeft };
+    bus.publishEvent("pitService.positioningRepeat", { status: PitSvStatus.TooFarLeft });
+
+    // Proof it took the PENDING path rather than playing straight away —
+    // without it this block could quietly degrade into the one above, where
+    // the gate is asked at fire time and the silence proves much less.
+    expect(mockLogger.debug).toHaveBeenCalledWith(
+      `Scenario "${NAG_ID}" pending — waiting for bus (higher weight, no interrupt)`,
+    );
+
+    simMocks.latestTelemetry = { PlayerCarPitSvStatus: live };
+    flush(audio);
+  }
+
+  it("stays silent when the driver corrects while the nag waits — with a script that has no `if` at all", () => {
+    installBareClipNag();
+    queueThenDrain(PitSvStatus.None);
+
+    expect(mockLogger.debug).toHaveBeenCalledWith(`Replaying pending scenario "${NAG_ID}"`);
+    // The line that held the bus is unaffected; only the stale nag is dropped.
+    expect(voiceClipsPlayed(audio)).toContain(OCCUPIER_CLIP);
+    expect(voiceClipsPlayed(audio)).not.toContain(NAG_CLIP);
+  });
+
+  it("speaks, late, with that same script when the car is still too far left at the drain", () => {
+    installBareClipNag();
+    queueThenDrain(PitSvStatus.TooFarLeft);
+
+    expect(mockLogger.debug).toHaveBeenCalledWith(`Replaying pending scenario "${NAG_ID}"`);
+    expect(voiceClipsPlayed(audio)).toContain(OCCUPIER_CLIP);
+    expect(voiceClipsPlayed(audio)).toContain(NAG_CLIP);
   });
 });
 
@@ -608,8 +720,12 @@ describe("the bundled script's pit-status entries (issue #1065)", () => {
     }
   });
 
-  it("scripts every repeat nag as its whole body behind its own still-misaligned condition — the intended silence when it no longer holds", () => {
-    for (const { id, cond } of POSITIONING_SUBJECTS) {
+  it("scripts every repeat nag as the clip alone — the re-check is the contract's gate (issue #1138)", () => {
+    // Both halves together: the entry says only what is SAID, and the
+    // still-misaligned re-check is on the contract. Asserting the bare
+    // sequence alone would also pass for a nag whose gate had been dropped
+    // entirely, which is the regression that would let it nag a corrected car.
+    for (const { id } of POSITIONING_SUBJECTS) {
       const scenarioId = `pit-crew.pit-status-${id}-repeat`;
       const entry = SCRIPT.scenarios[scenarioId];
 
@@ -619,11 +735,18 @@ describe("the bundled script's pit-status entries (issue #1065)", () => {
       expect(entry.skip).toBeUndefined();
       // The opt-out is the contract's; an entry naming a frame would put the ticks back.
       expect(entry.frame).toBeUndefined();
-      expect(entry.sequence).toEqual([{ if: cond, then: [`pool:pit-status/${id}-repeat`] }]);
+      expect(entry.sequence).toEqual([`pool:pit-status/${id}-repeat`]);
     }
+
+    for (const c of PIT_STATUS_REPEAT_CONTRACTS) {
+      expect(c.speakGate?.description, c.id).toBeTruthy();
+    }
+
+    // …and only the nags: a transition line decides everything at `where:`.
+    for (const c of PIT_STATUS_CONTRACTS) expect(c.speakGate, c.id).toBeUndefined();
   });
 
-  it("references only the five conditions the family registers — no var, case, fragment or frame", () => {
+  it("references no condition at all — the five the family registers are published, not used (issue #1138)", () => {
     const refs = collectScriptReferences(PIT_STATUS_SCRIPT);
     const vocabulary = engine.vocabulary();
 
@@ -631,17 +754,10 @@ describe("the bundled script's pit-status entries (issue #1065)", () => {
     expect(refs.cases).toEqual([]);
     expect(refs.includes).toEqual([]);
     expect(refs.frames).toEqual([]);
-    expect(refs.conds).toEqual([
-      "pitStatus.stillBadAngle",
-      "pitStatus.stillTooFarBack",
-      "pitStatus.stillTooFarForward",
-      "pitStatus.stillTooFarLeft",
-      "pitStatus.stillTooFarRight",
-    ]);
+    expect(refs.conds).toEqual([]);
 
-    for (const cond of refs.conds) {
-      expect(vocabulary.conds.map((c) => c.name)).toContain(cond);
-    }
+    // Still published, so a pack CAN write the belt-and-braces `if`.
+    expect(vocabulary.conds.map((c) => c.name).sort()).toEqual(POSITIONING_SUBJECTS.map((s) => s.cond).sort());
   });
 
   it("addresses exactly the published clip sources — the slashed form, no named pool — and every one has a clip in the bundled voice", () => {

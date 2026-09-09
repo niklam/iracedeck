@@ -89,6 +89,8 @@ export type Callout = {
   weightBand: string | null;
   queueable: boolean;
   interrupt: boolean;
+  /** The contract's speak-time gate (#1138) — what it re-checks after the script expands — or `null` when it has none. */
+  speakGate: string | null;
   /**
    * The contract's `base` as registered — what a bare literal clip path in
    * the entry resolves against (`"voice/{voice}"` puts `flags/green-01.mp3`
@@ -262,6 +264,7 @@ export function buildPackReference(input: PackReferenceInput): PackReference {
         weightBand: weightBandOf(contract.weight),
         queueable: contract.queueable,
         interrupt: contract.interrupt,
+        speakGate: contract.speakGate,
         base: contract.base,
         comment: entry.comment ?? null,
         test: entry.test ?? null,

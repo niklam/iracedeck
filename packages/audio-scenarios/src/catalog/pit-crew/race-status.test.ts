@@ -21,7 +21,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WEIGHT } from "../../dsl.js";
 import type { AudioAssetsManifest } from "../../interpreter.js";
 import { _resetAudioScenarios, getScenarioEngine, initializeAudioScenarios } from "../../interpreter.js";
-import { _resetPositionReadoutCooldown, registerPitCrew } from "./index.js";
+import { _resetPositionReadoutCooldown, canAnnouncePosition, registerPitCrew } from "./index.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import {
   buildRaceStatusContract,
@@ -301,6 +301,32 @@ describe("race-status gating", () => {
     expect(voicePaths()).toEqual([]);
   });
 
+  it("an aborted expansion leaves the shared position cooldown unclaimed (issue #1137)", () => {
+    // `where:` passes — P99 is a readable live position — but the voice has no
+    // number clip for it, so the update aborts at expansion. The claim is the
+    // speak-time gate's since #1137, which an aborting expansion never reaches.
+    currentLive = { position: 99, classPosition: 99, isMultiClass: false };
+    fireStatus();
+
+    expect(voicePaths()).toEqual([]);
+    expect(canAnnouncePosition()).toBe(true);
+
+    // The readout a burned window would have silenced.
+    currentLive = { position: 5, classPosition: 5, isMultiClass: false };
+    fireStatus();
+
+    expect(voicePaths().some((p) => p.endsWith(`/position-number/5.mp3`))).toBe(true);
+  });
+
+  it("a status update that plays claims the shared cooldown at speak time (issue #1137)", () => {
+    expect(canAnnouncePosition()).toBe(true);
+
+    fireStatus();
+
+    expect(voicePaths()).toEqual([`voice/${VOICE}/race-status/still-leading-01.mp3`]);
+    expect(canAnnouncePosition()).toBe(false);
+  });
+
   it("a voice with no script plays no status update at all — no line, no frame (issue #1065)", () => {
     getScenarioEngine().setScripts(new Map([["titan", RACE_STATUS_SCRIPT]]));
     fireStatus();
@@ -327,6 +353,8 @@ describe("buildRaceStatusContract (issue #1065)", () => {
     expect(c.cooldown).toBeUndefined();
     expect(c.triggerDelay).toBeUndefined();
     expect(c.frame).toBeUndefined();
+    // The shared-cooldown claim is a speak-time gate since #1137.
+    expect(c.speakGate?.description).toContain("twenty seconds");
   });
 });
 
