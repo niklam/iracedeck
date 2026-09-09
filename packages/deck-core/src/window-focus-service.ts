@@ -60,10 +60,28 @@ export type FocusResult = (typeof FocusResult)[keyof typeof FocusResult];
  */
 export type WindowFocuser = () => FocusResult;
 
+/**
+ * How long after a `FocusTimedOut` the two gated entry points skip the native
+ * ask (#977). A timed-out ask blocks the JS thread for the focuser's full
+ * ~1000 ms wait, and under `always` a keybind press asks twice — the adapter
+ * hook and then the keystroke site — so without this an elevation mismatch
+ * (the usual cause, #976) would cost ~2 s per press, and a held setup key
+ * repeating every 150 ms ~1 s per tick. `focusIRacingNow()` is exempt: there
+ * the press is the focus.
+ */
+export const FOCUS_TIMEOUT_COOLDOWN_MS = 2000;
+
 let focuser: WindowFocuser | null = null;
 let logger: ILogger = silentLogger;
-/** True once a timeout has been reported; reset by the next successful focus. */
-let timeoutReported = false;
+/**
+ * When the last `FocusTimedOut` happened (`Date.now()`), or `null` outside a
+ * timeout episode. One record serves two purposes with the same lifecycle:
+ * it is what the cooldown measures from, and its being set is what drops the
+ * repeat-timeout log line to debug. A success (`AlreadyFocused` / `Focused`)
+ * or a vanished window (`WindowNotFound`) ends the episode — the condition
+ * behind the timeouts, a window present but unfocusable, is gone.
+ */
+let lastTimedOutAt: number | null = null;
 
 /**
  * Initialize the window focus service.
@@ -107,6 +125,8 @@ function currentMode(): FocusIRacingMode | null {
 export function focusIRacingIfEnabled(): void {
   if (currentMode() !== "always") return;
 
+  if (inTimeoutCooldown()) return;
+
   runFocuser();
 }
 
@@ -127,7 +147,26 @@ export function focusIRacingBeforeInput(): void {
 
   if (mode !== "always" && mode !== "required") return;
 
+  if (inTimeoutCooldown()) return;
+
   runFocuser();
+}
+
+/**
+ * Whether a recent timeout means the gated entry points should not ask the
+ * native focuser right now (see {@link FOCUS_TIMEOUT_COOLDOWN_MS}). Logs the
+ * skip at debug, with how long ago the timeout was.
+ */
+function inTimeoutCooldown(): boolean {
+  if (lastTimedOutAt === null) return false;
+
+  const elapsed = Date.now() - lastTimedOutAt;
+
+  if (elapsed >= FOCUS_TIMEOUT_COOLDOWN_MS) return false;
+
+  logger.debug(`iRacing focus skipped: a focus timed out ${elapsed} ms ago`);
+
+  return true;
 }
 
 /**
@@ -136,10 +175,11 @@ export function focusIRacingBeforeInput(): void {
  *
  * For action code where focusing IS the thing the user pressed the key for — the
  * View Adjustment *Mouse to Sim* mode is the only consumer today. That is an
- * explicit request to go to the sim, so neither the opt-out setting nor the
- * `isSettingsStoreReady()` startup gate applies: both exist to keep the
- * *implicit* before-every-action focus from surprising someone, and there is
- * nothing implicit about pressing this key.
+ * explicit request to go to the sim, so neither the mode, the
+ * `isSettingsStoreReady()` startup gate nor the post-timeout cooldown applies:
+ * all three exist to keep the *implicit* before-every-action focus from
+ * surprising someone or stalling the plugin, and there is nothing implicit
+ * about pressing this key.
  *
  * Shares {@link focusIRacingIfEnabled}'s result handling and logging exactly.
  *
@@ -171,11 +211,11 @@ function runFocuser(): FocusResult | null {
 
   switch (result) {
     case FocusResult.AlreadyFocused:
-      timeoutReported = false;
+      lastTimedOutAt = null;
       logger.debug("iRacing window already focused");
       break;
     case FocusResult.Focused:
-      timeoutReported = false;
+      lastTimedOutAt = null;
       logger.debug("iRacing window focused successfully");
       break;
     case FocusResult.WindowNotFound:
@@ -183,7 +223,7 @@ function runFocuser(): FocusResult | null {
       // condition that caused the timeouts (a window present but unfocusable)
       // is gone. A timeout after this is a new episode and must warn again, or
       // a relaunch-as-Administrator would never surface the elevation hint.
-      timeoutReported = false;
+      lastTimedOutAt = null;
 
       // The setting is on by default (#930), so this runs before every key and
       // dial press — including every press made while iRacing is closed, where
@@ -205,15 +245,18 @@ function runFocuser(): FocusResult | null {
       // plugin not), which makes EVERY press time out. Warn once per episode and
       // drop to debug until a focus succeeds, so one persistent condition can't
       // bury the rest of the log — including the elevation warning that explains
-      // it. Each of these also costs the native focuser's full 1000 ms wait.
-      if (timeoutReported) {
+      // it. Each of these also costs the native focuser's full 1000 ms wait,
+      // which is why the timestamp also arms the cooldown the gated entry
+      // points check (#977).
+      if (lastTimedOutAt !== null) {
         logger.debug("iRacing window found but focus timed out (1000ms)");
       } else {
-        timeoutReported = true;
         logger.warn(
           "iRacing window found but focus timed out (1000ms) — if iRacing runs as Administrator, run the deck app elevated too",
         );
       }
+
+      lastTimedOutAt = Date.now();
 
       break;
     default:
@@ -232,5 +275,5 @@ function runFocuser(): FocusResult | null {
 export function _resetWindowFocus(): void {
   focuser = null;
   logger = silentLogger;
-  timeoutReported = false;
+  lastTimedOutAt = null;
 }

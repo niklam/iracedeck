@@ -433,6 +433,7 @@ export {
 // Window focus service singleton
 export {
   _resetWindowFocus,
+  FOCUS_TIMEOUT_COOLDOWN_MS,
   FocusResult,
   focusIRacingBeforeInput,
   focusIRacingIfEnabled,

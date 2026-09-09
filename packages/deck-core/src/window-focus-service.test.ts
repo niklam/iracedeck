@@ -1,8 +1,9 @@
 import type { ILogger } from "@iracedeck/logger";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   _resetWindowFocus,
+  FOCUS_TIMEOUT_COOLDOWN_MS,
   focusIRacingBeforeInput,
   focusIRacingIfEnabled,
   focusIRacingNow,
@@ -55,10 +56,17 @@ function arrange(result: number): { logger: ILogger; focuser: WindowFocuser } {
 
 describe("window focus service", () => {
   beforeEach(() => {
+    // The service reads the clock for the post-timeout cooldown (#977); the
+    // tests below step it explicitly wherever a repeat ask must go through.
+    vi.useFakeTimers();
     _resetWindowFocus();
     state.settings = { focusIRacingWindow: "always" };
     state.storeReady = true;
     state.iRacingActive = false;
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   describe("gating", () => {
@@ -191,11 +199,14 @@ describe("window focus service", () => {
     // The usual cause (an elevation mismatch) makes every single press time out,
     // so an unthrottled warn would bury the rest of the log.
     it("drops to debug on repeat timeouts instead of warning every press", () => {
-      const { logger } = arrange(FocusResult.FocusTimedOut);
+      const { logger, focuser } = arrange(FocusResult.FocusTimedOut);
       focusIRacingIfEnabled();
+      vi.advanceTimersByTime(FOCUS_TIMEOUT_COOLDOWN_MS);
       focusIRacingIfEnabled();
+      vi.advanceTimersByTime(FOCUS_TIMEOUT_COOLDOWN_MS);
       focusIRacingIfEnabled();
 
+      expect(focuser).toHaveBeenCalledTimes(3);
       expect(logger.warn).toHaveBeenCalledTimes(1);
       expect(logger.debug).toHaveBeenCalledTimes(2);
     });
@@ -208,6 +219,7 @@ describe("window focus service", () => {
       initWindowFocus(logger, () => result as FocusResult);
 
       focusIRacingIfEnabled();
+      vi.advanceTimersByTime(FOCUS_TIMEOUT_COOLDOWN_MS);
       result = FocusResult.WindowNotFound;
       focusIRacingIfEnabled();
       result = FocusResult.FocusTimedOut;
@@ -222,6 +234,7 @@ describe("window focus service", () => {
       initWindowFocus(logger, () => result as FocusResult);
 
       focusIRacingIfEnabled();
+      vi.advanceTimersByTime(FOCUS_TIMEOUT_COOLDOWN_MS);
       result = FocusResult.Focused;
       focusIRacingIfEnabled();
       result = FocusResult.FocusTimedOut;
@@ -234,6 +247,133 @@ describe("window focus service", () => {
       const { logger } = arrange(99);
       focusIRacingIfEnabled();
       expect(logger.warn).toHaveBeenCalledWith("Unexpected focus result: 99");
+    });
+  });
+
+  // A timed-out ask blocks the JS thread for the native focuser's full wait
+  // (~1000 ms), and under `always` a keybind press asks twice (adapter hook,
+  // then the keystroke site) — so the elevation-mismatch case would cost two
+  // seconds per press, and a held key repeating every 150 ms a second per tick.
+  // After a timeout both gated entry points skip the native ask for a while.
+  describe("timeout cooldown (issue #977)", () => {
+    it("exports a 2000 ms cooldown", () => {
+      expect(FOCUS_TIMEOUT_COOLDOWN_MS).toBe(2000);
+    });
+
+    it("skips the adapter-hook ask within the cooldown after a timeout, saying how long ago", () => {
+      const { logger, focuser } = arrange(FocusResult.FocusTimedOut);
+      focusIRacingIfEnabled();
+      vi.advanceTimersByTime(500);
+      focusIRacingIfEnabled();
+
+      expect(focuser).toHaveBeenCalledOnce();
+      expect(logger.debug).toHaveBeenCalledWith("iRacing focus skipped: a focus timed out 500 ms ago");
+    });
+
+    it("skips the keystroke-site ask within the cooldown too", () => {
+      state.settings = { focusIRacingWindow: "required" };
+      const { focuser } = arrange(FocusResult.FocusTimedOut);
+      focusIRacingBeforeInput();
+      vi.advanceTimersByTime(FOCUS_TIMEOUT_COOLDOWN_MS - 1);
+      focusIRacingBeforeInput();
+
+      expect(focuser).toHaveBeenCalledOnce();
+    });
+
+    it("asks again once the cooldown has elapsed", () => {
+      const { focuser } = arrange(FocusResult.FocusTimedOut);
+      focusIRacingIfEnabled();
+      vi.advanceTimersByTime(FOCUS_TIMEOUT_COOLDOWN_MS);
+      focusIRacingBeforeInput();
+
+      expect(focuser).toHaveBeenCalledTimes(2);
+    });
+
+    it("re-arms on every timeout, so a persistent condition costs one ask per cooldown", () => {
+      const { focuser } = arrange(FocusResult.FocusTimedOut);
+      focusIRacingIfEnabled();
+      vi.advanceTimersByTime(FOCUS_TIMEOUT_COOLDOWN_MS);
+      focusIRacingIfEnabled();
+      vi.advanceTimersByTime(FOCUS_TIMEOUT_COOLDOWN_MS - 1);
+      focusIRacingIfEnabled();
+
+      expect(focuser).toHaveBeenCalledTimes(2);
+    });
+
+    it("does not change behaviour when nothing has timed out", () => {
+      const { focuser } = arrange(FocusResult.Focused);
+      focusIRacingIfEnabled();
+      focusIRacingBeforeInput();
+      focusIRacingIfEnabled();
+
+      expect(focuser).toHaveBeenCalledTimes(3);
+    });
+
+    it("focusIRacingNow (Mouse to Sim) is not subject to the cooldown — the press IS the focus", () => {
+      const { focuser } = arrange(FocusResult.FocusTimedOut);
+      focusIRacingIfEnabled();
+      vi.advanceTimersByTime(100);
+
+      expect(focusIRacingNow()).toBe(FocusResult.FocusTimedOut);
+      expect(focuser).toHaveBeenCalledTimes(2);
+    });
+
+    it("a success ends the cooldown — a Mouse to Sim focus inside it lets the next gated ask through", () => {
+      const logger = createLogger();
+      let result: number = FocusResult.FocusTimedOut;
+      const focuser = vi.fn(() => result as FocusResult);
+      initWindowFocus(logger, focuser);
+
+      focusIRacingIfEnabled();
+      vi.advanceTimersByTime(100);
+      result = FocusResult.Focused;
+      focusIRacingNow();
+      vi.advanceTimersByTime(100);
+      focusIRacingIfEnabled();
+
+      expect(focuser).toHaveBeenCalledTimes(3);
+    });
+
+    it("a vanished window ends the cooldown — a timeout after it is a new episode", () => {
+      const logger = createLogger();
+      let result: number = FocusResult.FocusTimedOut;
+      const focuser = vi.fn(() => result as FocusResult);
+      initWindowFocus(logger, focuser);
+
+      focusIRacingIfEnabled();
+      vi.advanceTimersByTime(100);
+      result = FocusResult.WindowNotFound;
+      focusIRacingNow();
+      vi.advanceTimersByTime(100);
+      focusIRacingIfEnabled();
+
+      expect(focuser).toHaveBeenCalledTimes(3);
+    });
+
+    it("an already-focused window ends the cooldown", () => {
+      const logger = createLogger();
+      let result: number = FocusResult.FocusTimedOut;
+      const focuser = vi.fn(() => result as FocusResult);
+      initWindowFocus(logger, focuser);
+
+      focusIRacingIfEnabled();
+      vi.advanceTimersByTime(100);
+      result = FocusResult.AlreadyFocused;
+      focusIRacingNow();
+      vi.advanceTimersByTime(100);
+      focusIRacingIfEnabled();
+
+      expect(focuser).toHaveBeenCalledTimes(3);
+    });
+
+    it("_resetWindowFocus clears the cooldown", () => {
+      arrange(FocusResult.FocusTimedOut);
+      focusIRacingIfEnabled();
+      _resetWindowFocus();
+      const { focuser } = arrange(FocusResult.Focused);
+      focusIRacingIfEnabled();
+
+      expect(focuser).toHaveBeenCalledOnce();
     });
   });
 
