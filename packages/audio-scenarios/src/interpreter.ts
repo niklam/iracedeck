@@ -433,9 +433,16 @@ type FrameSide = "open" | "close";
  * expansions are equal only if their tags agree. Never by clip path — a
  * pack's frame plays whatever clips the pack put there, and a body is free
  * to play the built-in tick as an ordinary clip.
+ *
+ * `pool` names the pool a play op's clip was DRAWN from — the registered
+ * name, or the `pool:<group>/<base>` reference for a slashed pool step or a
+ * var resolver's reference — and is absent on a clip step or a var resolving
+ * to a path. `opsEqual` compares such an op by that key rather than by the
+ * take drawn, since which recording of a slot came up is not part of what a
+ * body says (issue #1136).
  */
 type ExecOp =
-  | { kind: "play"; channel: AudioChannel; path: string; frame?: FrameSide }
+  | { kind: "play"; channel: AudioChannel; path: string; pool?: string; frame?: FrameSide }
   | { kind: "ambient"; action: "start" | "stop" | "seek"; frame?: FrameSide }
   | { kind: "pause"; ms: number; frame?: FrameSide };
 
@@ -1838,7 +1845,7 @@ class ScenarioEngine implements IScenarioEngine {
               throw new ExpansionAbort(`var {{${step.name}}} → "${value}" is empty for the active voice`);
             }
 
-            this.pushClip(out, pick, defaultChannel);
+            this.pushClip(out, pick, defaultChannel, value);
 
             break;
           }
@@ -1854,15 +1861,15 @@ class ScenarioEngine implements IScenarioEngine {
           // A slashed name addresses the voice's own clip groups directly
           // (`group/base`, issue #1064) — the same reference form a var
           // resolver returns. Registered names never carry a slash.
-          const pick = step.name.includes("/")
-            ? this.pickFromPoolRef(`pool:${step.name}`, step.noRepeat)
-            : this.pickFromPool(step.name, step.noRepeat);
+          const slashed = step.name.includes("/");
+          const key = slashed ? `pool:${step.name}` : step.name;
+          const pick = slashed ? this.pickFromPoolRef(key, step.noRepeat) : this.pickFromPool(step.name, step.noRepeat);
 
           if (!pick) throw new ExpansionAbort(`pool "${step.name}" resolved to nothing for the active voice`);
 
           const path = this.substituteVoice(pick);
           this.assertClipAvailable(path, `pool "${step.name}"`);
-          this.pushClip(out, path, defaultChannel);
+          this.pushClip(out, path, defaultChannel, key);
 
           break;
         }
@@ -1874,7 +1881,7 @@ class ScenarioEngine implements IScenarioEngine {
 
           const path = this.substituteVoice(pick);
           this.assertClipAvailable(path, `connector`);
-          this.pushClip(out, path, defaultChannel);
+          this.pushClip(out, path, defaultChannel, CONNECTOR_POOL);
 
           break;
         }
@@ -1970,10 +1977,15 @@ class ScenarioEngine implements IScenarioEngine {
     throw new ExpansionAbort(`${what} → "${path}" is not in the manifest for the active voice`);
   }
 
-  /** Push a clip op, routing walkie-talkie ticks to SFX and everything else to the default channel. */
-  private pushClip(out: ExecOp[], path: string, defaultChannel: AudioChannel): void {
+  /**
+   * Push a clip op, routing walkie-talkie ticks to SFX and everything else to
+   * the default channel. `pool` is the key the clip was drawn from, given only
+   * for a pool-drawn pick — see `ExecOp` and `opsEqual` (issue #1136).
+   */
+  private pushClip(out: ExecOp[], path: string, defaultChannel: AudioChannel, pool?: string): void {
     const channel = this.channelForPath(path, defaultChannel);
-    out.push({ kind: "play", channel, path });
+
+    out.push(pool === undefined ? { kind: "play", channel, path } : { kind: "play", channel, path, pool });
   }
 
   private channelForPath(path: string, defaultChannel: AudioChannel): AudioChannel {
@@ -2294,6 +2306,17 @@ function filterFrameSteps(steps: readonly ResolvedStep[], options: FrameOptions)
  * The frame tag is part of an op's identity: the same clip played as a frame
  * and as body are two different ops, and a resume must not mistake one for
  * the other.
+ *
+ * A play op that came out of a pool is compared by that POOL and its channel,
+ * never by the take drawn (issue #1136): `noRepeat` plus the take committed on
+ * acceptance make a re-expansion of a two-take pool draw the other take every
+ * time, and which recording of a slot came up is not part of what the body
+ * says — so a path comparison would fail every resume of a scripted readback.
+ * A path-drawn op is compared by path and channel as before, and a pool-drawn
+ * op is never equal to a path-drawn one. Everything the freshness fallback
+ * exists for still moves the comparison: a var resolving to a different value
+ * is a different reference (`pool:numbers/12` against `pool:numbers/13`), and
+ * a slot that appears, disappears or reorders changes the shape.
  */
 function opsEqual(a: readonly ExecOp[], b: readonly ExecOp[]): boolean {
   if (a.length !== b.length) return false;
@@ -2304,7 +2327,13 @@ function opsEqual(a: readonly ExecOp[], b: readonly ExecOp[]): boolean {
 
     if (x.kind !== y.kind || x.frame !== y.frame) return false;
 
-    if (x.kind === "play" && y.kind === "play" && (x.path !== y.path || x.channel !== y.channel)) return false;
+    if (x.kind === "play" && y.kind === "play") {
+      if (x.channel !== y.channel) return false;
+
+      if (x.pool !== undefined || y.pool !== undefined) {
+        if (x.pool !== y.pool) return false;
+      } else if (x.path !== y.path) return false;
+    }
 
     if (x.kind === "ambient" && y.kind === "ambient" && x.action !== y.action) return false;
 
@@ -2317,7 +2346,9 @@ function opsEqual(a: readonly ExecOp[], b: readonly ExecOp[]): boolean {
 function opLabel(op: ExecOp): string {
   const tag = op.frame === undefined ? "" : `${op.frame}:`;
 
-  if (op.kind === "play") return `${tag}play[${op.channel}] ${op.path}`;
+  // The pool a take came from is what the resume compares (issue #1136), so a
+  // debug line that shows the ops shows it beside the take it drew.
+  if (op.kind === "play") return `${tag}play[${op.channel}] ${op.path}${op.pool === undefined ? "" : ` (${op.pool})`}`;
 
   if (op.kind === "ambient") return `${tag}ambient:${op.action}`;
 

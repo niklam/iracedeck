@@ -2063,6 +2063,111 @@ describe("resume from interruption (issue #758)", () => {
       "pit-crew/reminder/tires.mp3",
     ]);
   });
+
+  describe("pool-drawn ops compare by their pool, not by the take drawn (issue #1136)", () => {
+    /**
+     * One readback line recorded twice, a value group a var can point into,
+     * and the cutter's own clip. Two takes is the whole point: `noRepeat`
+     * defaults on for a pool step and the take the driver heard is committed
+     * to the pool when the fire is accepted (#1138), so a re-expansion draws
+     * the OTHER take every time — which a path comparison read as "the state
+     * moved on" and turned every resume of a two-take line into a full replay.
+     */
+    const pooledManifest: AudioAssetsManifest = {
+      clips: [
+        "sfx/IRD-tick-open.mp3",
+        "sfx/IRD-tick-close.mp3",
+        "sfx/IRD-ambient-pit.mp3",
+        "voice/default/readback/fuel-on-01.mp3",
+        "voice/default/readback/fuel-on-02.mp3",
+        "voice/default/readback/opener.mp3",
+        "voice/default/readback/done.mp3",
+        "voice/default/numbers/12.mp3",
+        "voice/default/numbers/13.mp3",
+        "voice/default/urgent/stop.mp3",
+      ],
+      ambientLoop: "sfx/IRD-ambient-pit.mp3",
+      ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
+    };
+
+    beforeEach(() => {
+      _resetAudioScenarios();
+      bus = createMockBus();
+      audio = createFakeAudio();
+      engine = initializeAudioScenarios(bus, audio, pooledManifest, mockLogger as never, () => "default");
+      // Pinned: every draw starts at index 0 and only the no-repeat guard moves it.
+      vi.spyOn(Math, "random").mockReturnValue(0);
+      engine.defineScenario({
+        id: "test.cutter",
+        channel: AudioChannel.Voice,
+        bus: AudioBus.Voice,
+        weight: WEIGHT.NORMAL,
+        interrupt: true,
+        sequence: ["voice/default/urgent/stop.mp3"],
+      });
+    });
+
+    /** The line under test: opener, the pooled slot, tail. */
+    function definePooledLine(slot: string): void {
+      engine.defineScenario({
+        id: "test.line",
+        channel: AudioChannel.Voice,
+        bus: AudioBus.Voice,
+        weight: WEIGHT.CHATTER,
+        queueable: true,
+        resumable: true,
+        sequence: ["voice/default/readback/opener.mp3", slot, "voice/default/readback/done.mp3"],
+      });
+    }
+
+    it("resumes from the interrupted step when the re-expansion drew a different take of the same pool", () => {
+      engine.definePoolFromManifest("readback-fuel", "readback", "fuel-on");
+      definePooledLine("pool:readback-fuel");
+
+      engine.fire("test.line"); // opener in flight
+      audio._triggerChannelEnd(AudioChannel.Voice); // opener done → take 01 in flight
+      engine.fire("test.cutter"); // cuts take 01
+      flushVoiceAndSfx(audio);
+
+      expect(voicePaths()).toEqual([
+        "voice/default/readback/opener.mp3",
+        "voice/default/readback/fuel-on-01.mp3",
+        "voice/default/urgent/stop.mp3",
+        // The re-expansion drew take 02 (no-repeat, take 01 committed on
+        // acceptance) — the same pool op, so the opener is NOT replayed. The
+        // cut clip restarts on the fresh take and the tail follows.
+        "voice/default/readback/fuel-on-02.mp3",
+        "voice/default/readback/done.mp3",
+      ]);
+      expect(mockLogger.info).toHaveBeenCalledWith('Resuming scenario "test.line"');
+    });
+
+    it("still replays the whole body when a var resolves to a DIFFERENT pool reference", () => {
+      // The freshness fallback is untouched: a resolver whose value moved on
+      // while the fire was stashed produces a different reference, which is a
+      // different op however the take inside it was drawn.
+      let laps = "12";
+      engine.defineVar("laps", () => poolRef("numbers", laps));
+      definePooledLine("{{laps}}");
+
+      engine.fire("test.line"); // opener in flight
+      audio._triggerChannelEnd(AudioChannel.Voice); // opener done → "12" in flight
+      engine.fire("test.cutter"); // cuts it
+      laps = "13"; // the state moves on while stashed
+      flushVoiceAndSfx(audio);
+
+      expect(voicePaths()).toEqual([
+        "voice/default/readback/opener.mp3",
+        "voice/default/numbers/12.mp3",
+        "voice/default/urgent/stop.mp3",
+        // Full fresh replay, from the top — a new value is a new reference.
+        "voice/default/readback/opener.mp3",
+        "voice/default/numbers/13.mp3",
+        "voice/default/readback/done.mp3",
+      ]);
+      expect(mockLogger.info).not.toHaveBeenCalledWith('Resuming scenario "test.line"');
+    });
+  });
 });
 
 describe("pending hold (issue #758)", () => {
