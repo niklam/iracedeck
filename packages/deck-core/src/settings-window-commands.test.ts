@@ -268,8 +268,8 @@ describe("enableFeatureWrites", () => {
     expect(enableFeatureWrites("changelog-updates")).toEqual({ changelogNotification: "features" });
   });
 
-  it("turns on window focus with the single key it needs", () => {
-    expect(enableFeatureWrites("focus-iracing-window")).toEqual({ focusIRacingWindow: true });
+  it("turns on window focus by writing the Always mode (#977)", () => {
+    expect(enableFeatureWrites("focus-iracing-window")).toEqual({ focusIRacingWindow: "always" });
   });
 
   it("knows nothing about a feature it was not taught", () => {

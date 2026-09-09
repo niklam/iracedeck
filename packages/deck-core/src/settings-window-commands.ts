@@ -10,6 +10,7 @@
 import { z } from "zod";
 
 import { FEATURE_STARTUP_GATES } from "./feature-startup-policy.js";
+import { DEFAULT_FOCUS_IRACING_MODE } from "./focus-iracing-mode.js";
 import type { SettingsWindowBounds } from "./settings-window-launcher.js";
 import { packId } from "./voice-pack-manifest.js";
 
@@ -142,8 +143,9 @@ export function enableFeatureWrites(feature: unknown): Record<string, unknown> |
     case "changelog-updates":
       return { changelogNotification: "features" };
 
+    // The page offers this only under Never (#977); "on" is the default mode.
     case "focus-iracing-window":
-      return { focusIRacingWindow: true };
+      return { focusIRacingWindow: DEFAULT_FOCUS_IRACING_MODE };
 
     default:
       return undefined;
