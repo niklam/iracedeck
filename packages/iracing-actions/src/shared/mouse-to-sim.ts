@@ -15,8 +15,8 @@
  * arithmetic and `GlobalSettingsSchema` owns the persistence, while knowing that
  * this feature is what those two describe stays here.
  * `focusIRacingNow()` rather than `focusIRacingIfEnabled()` because pressing this
- * key is explicit user intent, so it ignores the `focusIRacingWindow` opt-out that
- * gates the implicit before-every-action focus.
+ * key is explicit user intent, so it ignores the `focusIRacingWindow` mode that
+ * gates the implicit before-every-action focus (it focuses even under `never`, #977).
  *
  * Best-effort throughout: every failure is logged and swallowed. Moving a pointer
  * has no effect on the car, so degrading to a no-op is always safe.
