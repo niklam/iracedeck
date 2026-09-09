@@ -88,8 +88,14 @@ export const ENABLE_FEATURE_COPY: Readonly<Record<string, FeatureCopy>> = Object
   "focus-iracing-window": {
     key: "focusIRacingWindow",
     // Absent means the schema default, which is ON since #930 — so on a fresh
-    // install this suggestion correctly renders nothing at all.
-    isOn: (value) => value === undefined || value === true || value === "true",
+    // install this suggestion correctly renders nothing at all. Since #977 the
+    // value is a mode: `always` and `required` are both on (`required` is on,
+    // just narrower); only `never` — and the legacy `false` a pre-#977 host copy
+    // may still hold on the fallback path — gets the offer. The literals are
+    // repeated here rather than imported: this bundle runs in a PI page and
+    // must not pull deck-core in.
+    isOn: (value) =>
+      value === undefined || value === true || value === "true" || value === "always" || value === "required",
     action: "Turn on Focus iRacing Window",
     done: "",
     hideWhenOn: true,

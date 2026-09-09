@@ -146,6 +146,34 @@ describe("ird-enable-feature", () => {
 
       expect(el.textContent).toBe("");
     });
+
+    it("offers under Never — the mode the old false became (#977)", async () => {
+      settings = { focusIRacingWindow: "never" };
+
+      expect(button(await mount("focus-iracing-window"))?.textContent).toBe("Turn on Focus iRacing Window");
+    });
+
+    it("says nothing under Always", async () => {
+      settings = { focusIRacingWindow: "always" };
+
+      expect((await mount("focus-iracing-window")).textContent).toBe("");
+    });
+
+    it("says nothing under When required — that is on, just narrower", async () => {
+      settings = { focusIRacingWindow: "required" };
+
+      expect((await mount("focus-iracing-window")).textContent).toBe("");
+    });
+
+    it("goes quiet once the press lands as the always mode", async () => {
+      settings = { focusIRacingWindow: "never" };
+
+      const el = await mount("focus-iracing-window");
+
+      push({ focusIRacingWindow: "always" });
+
+      expect(el.textContent).toBe("");
+    });
   });
 
   it("renders nothing before the settings have arrived", async () => {
