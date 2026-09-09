@@ -25,6 +25,8 @@
 import { type Commands, createSDK, type SDKBundle, SDKController } from "@iracedeck/iracing-sdk";
 import { type ILogger, silentLogger } from "@iracedeck/logger";
 
+import { focusIRacingBeforeInput } from "./window-focus-service.js";
+
 let sdkBundle: SDKBundle | null = null;
 
 /**
@@ -40,7 +42,10 @@ export function initializeSDK(logger: ILogger = silentLogger): SDKBundle {
     throw new Error("SDK already initialized. initializeSDK() should only be called once.");
   }
 
-  sdkBundle = createSDK(logger);
+  // The chat command types text; every other command broadcasts. Focus before
+  // the paste, under the user's focus mode (#977). This package owns the focus
+  // service and the SDK package cannot import it, hence the injection.
+  sdkBundle = createSDK(logger, { beforeKeystrokes: focusIRacingBeforeInput });
 
   return sdkBundle;
 }
