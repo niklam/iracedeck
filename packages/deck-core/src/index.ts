@@ -434,6 +434,7 @@ export {
 export {
   _resetWindowFocus,
   FocusResult,
+  focusIRacingBeforeInput,
   focusIRacingIfEnabled,
   focusIRacingNow,
   initWindowFocus,

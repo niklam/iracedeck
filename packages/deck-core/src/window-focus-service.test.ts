@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   _resetWindowFocus,
+  focusIRacingBeforeInput,
   focusIRacingIfEnabled,
   focusIRacingNow,
   FocusResult,
@@ -12,7 +13,7 @@ import {
 
 const { state } = vi.hoisted(() => ({
   state: {
-    settings: { focusIRacingWindow: false } as Record<string, unknown>,
+    settings: { focusIRacingWindow: "never" } as Record<string, unknown>,
     storeReady: true,
     iRacingActive: false,
   },
@@ -55,7 +56,7 @@ function arrange(result: number): { logger: ILogger; focuser: WindowFocuser } {
 describe("window focus service", () => {
   beforeEach(() => {
     _resetWindowFocus();
-    state.settings = { focusIRacingWindow: true };
+    state.settings = { focusIRacingWindow: "always" };
     state.storeReady = true;
     state.iRacingActive = false;
   });
@@ -71,8 +72,15 @@ describe("window focus service", () => {
       expect(focuser).toHaveBeenCalledOnce();
     });
 
-    it("does not focus when the setting is disabled", () => {
-      state.settings = { focusIRacingWindow: false };
+    it("does not focus under never", () => {
+      state.settings = { focusIRacingWindow: "never" };
+      const { focuser } = arrange(FocusResult.AlreadyFocused);
+      focusIRacingIfEnabled();
+      expect(focuser).not.toHaveBeenCalled();
+    });
+
+    it("does not focus under required — the adapter hook is the Always-only site (#977)", () => {
+      state.settings = { focusIRacingWindow: "required" };
       const { focuser } = arrange(FocusResult.AlreadyFocused);
       focusIRacingIfEnabled();
       expect(focuser).not.toHaveBeenCalled();
@@ -90,7 +98,7 @@ describe("window focus service", () => {
 
     it("does not focus a user who opted out, even while the cache still holds defaults", () => {
       state.storeReady = false;
-      state.settings = { focusIRacingWindow: true }; // schema default, not the user's value
+      state.settings = { focusIRacingWindow: "always" }; // schema default, not the user's value
       const { focuser } = arrange(FocusResult.AlreadyFocused);
       focusIRacingIfEnabled();
       expect(focuser).not.toHaveBeenCalled();
@@ -110,6 +118,51 @@ describe("window focus service", () => {
       });
 
       expect(() => focusIRacingIfEnabled()).not.toThrow();
+      expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("Failed to focus iRacing window"));
+    });
+  });
+
+  describe("focusIRacingBeforeInput (issue #977)", () => {
+    it("does nothing when the service was never initialized", () => {
+      expect(() => focusIRacingBeforeInput()).not.toThrow();
+    });
+
+    it("focuses under always", () => {
+      state.settings = { focusIRacingWindow: "always" };
+      const { focuser } = arrange(FocusResult.Focused);
+      focusIRacingBeforeInput();
+      expect(focuser).toHaveBeenCalledOnce();
+    });
+
+    it("focuses under required — this is the site a keystroke reaches", () => {
+      state.settings = { focusIRacingWindow: "required" };
+      const { focuser } = arrange(FocusResult.Focused);
+      focusIRacingBeforeInput();
+      expect(focuser).toHaveBeenCalledOnce();
+    });
+
+    it("does not focus under never", () => {
+      state.settings = { focusIRacingWindow: "never" };
+      const { focuser } = arrange(FocusResult.Focused);
+      focusIRacingBeforeInput();
+      expect(focuser).not.toHaveBeenCalled();
+    });
+
+    it("waits for the settings store like the adapter hook does", () => {
+      // Before the store is read the cache is schema defaults, which say
+      // `always` — acting on it would override an explicit `never`.
+      state.storeReady = false;
+      const { focuser } = arrange(FocusResult.Focused);
+      focusIRacingBeforeInput();
+      expect(focuser).not.toHaveBeenCalled();
+    });
+
+    it("shares the result handling — a thrown focuser is logged, never rethrown", () => {
+      const logger = createLogger();
+      initWindowFocus(logger, () => {
+        throw new Error("boom");
+      });
+      expect(() => focusIRacingBeforeInput()).not.toThrow();
       expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("Failed to focus iRacing window"));
     });
   });
@@ -210,7 +263,7 @@ describe("window focus service", () => {
 describe("focusIRacingNow (issue #926)", () => {
   beforeEach(() => {
     _resetWindowFocus();
-    state.settings = { focusIRacingWindow: true };
+    state.settings = { focusIRacingWindow: "always" };
     state.storeReady = true;
     state.iRacingActive = false;
   });
@@ -218,7 +271,7 @@ describe("focusIRacingNow (issue #926)", () => {
   it("focuses even when the setting is disabled", () => {
     // The opt-out governs the IMPLICIT before-every-action focus. This entry point
     // only ever runs from an explicit press, so it deliberately ignores it (#926).
-    state.settings = { focusIRacingWindow: false };
+    state.settings = { focusIRacingWindow: "never" };
     const { focuser } = arrange(FocusResult.Focused);
 
     expect(focusIRacingNow()).toBe(FocusResult.Focused);

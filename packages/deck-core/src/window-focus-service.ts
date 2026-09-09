@@ -1,9 +1,15 @@
 /**
  * Window Focus Service
  *
- * Focuses the iRacing window before inputs are sent. Plugins call
- * `focusIRacingIfEnabled()` from their platform-level key/dial handlers, so it
- * runs before every action.
+ * Focuses the iRacing window before inputs are sent. Two call sites, one mode
+ * (issue #977): plugins call `focusIRacingIfEnabled()` from their platform-level
+ * key/dial handlers, which runs under the `always` mode only; the keystroke
+ * paths — the binding dispatcher's keyboard branches and the chat command's
+ * text send — call `focusIRacingBeforeInput()`, which runs under `always` and
+ * `required`. Under `always` a keybind press therefore asks twice; the second
+ * ask returns `AlreadyFocused` and costs one foreground-window compare, and it
+ * is what covers touch-strip gestures (#978) without an adapter-level touch
+ * hook. `never` runs neither.
  *
  * What actually needs the foreground: **keystrokes** (`SendInput` goes to the
  * focused window) and therefore every keybind- and chat-driven action. Pure SDK
@@ -21,6 +27,7 @@ import type { ILogger } from "@iracedeck/logger";
 import { silentLogger } from "@iracedeck/logger";
 
 import { isIRacingActive } from "./app-monitor.js";
+import type { FocusIRacingMode } from "./focus-iracing-mode.js";
 import { getGlobalSettings, isSettingsStoreReady } from "./global-settings.js";
 
 /**
@@ -75,24 +82,48 @@ export function initWindowFocus(log: ILogger, windowFocuser: WindowFocuser): voi
 }
 
 /**
- * Focus the iRacing window if the `focusIRacingWindow` global setting is
- * enabled. Best-effort: logs on failure but never throws, so a focus problem
- * can't stop the action the user actually pressed.
+ * The focus mode the cache holds, or `null` when nothing may act yet.
  */
-export function focusIRacingIfEnabled(): void {
-  if (!focuser) return;
+function currentMode(): FocusIRacingMode | null {
+  if (!focuser) return null;
 
   // Gate on the stored settings having loaded, NOT on `isGlobalSettingsInitialized()`:
   // that flag flips true before the settings store has been read, while the
   // cache is still pure schema defaults — and since #930 the default says focus
-  // is ON. Acting on it would yank iRacing forward for a user who explicitly
-  // opted out, every time the deck host restarts or auto-updates the plugin
-  // mid-session. Fail closed until the real value is in.
-  if (!isSettingsStoreReady()) return;
+  // is ON (`always` since #977). Acting on it would yank iRacing forward for a
+  // user who explicitly opted out, every time the deck host restarts or
+  // auto-updates the plugin mid-session. Fail closed until the real value is in.
+  if (!isSettingsStoreReady()) return null;
 
-  const settings = getGlobalSettings();
+  return getGlobalSettings().focusIRacingWindow;
+}
 
-  if (!settings.focusIRacingWindow) return;
+/**
+ * The adapter-level call site: before every key press, dial press and dial
+ * rotation. Runs under the `always` mode only. Best-effort: logs on failure but
+ * never throws, so a focus problem can't stop the action the user actually
+ * pressed.
+ */
+export function focusIRacingIfEnabled(): void {
+  if (currentMode() !== "always") return;
+
+  runFocuser();
+}
+
+/**
+ * The keystroke call site (issue #977): immediately before a keyboard binding
+ * is sent and before chat text is typed. Runs under `always` and `required`.
+ *
+ * Deliberately NOT keyed on the comms catalog (#612): everything that reaches
+ * the dispatcher's keyboard branches or the chat text send is a keystroke by
+ * definition, and the catalog would be a second source of truth for a fact
+ * the call site already knows. SimHub roles go out over TCP and never come
+ * here; SDK broadcasts arrive whatever has focus and never come here either.
+ */
+export function focusIRacingBeforeInput(): void {
+  const mode = currentMode();
+
+  if (mode !== "always" && mode !== "required") return;
 
   runFocuser();
 }
