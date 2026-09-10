@@ -91,11 +91,13 @@ export const ENABLE_FEATURE_COPY: Readonly<Record<string, FeatureCopy>> = Object
     // install this suggestion correctly renders nothing at all. Since #977 the
     // value is a mode: `always` and `required` are both on (`required` is on,
     // just narrower); only `never` — and the legacy `false` a pre-#977 host copy
-    // may still hold on the fallback path — gets the offer. The literals are
+    // may still hold on the fallback path — gets the offer. Written as "off
+    // only for the explicit off values" so it folds the same way the plugin's
+    // parser does: an unknown value reads as the default there (`always`), so
+    // offering to turn it on would offer what is already on. The literals are
     // repeated here rather than imported: this bundle runs in a PI page and
     // must not pull deck-core in.
-    isOn: (value) =>
-      value === undefined || value === true || value === "true" || value === "always" || value === "required",
+    isOn: (value) => value !== false && value !== "false" && value !== "never",
     action: "Turn on Focus iRacing Window",
     done: "",
     hideWhenOn: true,

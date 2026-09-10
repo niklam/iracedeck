@@ -159,6 +159,12 @@ describe("ird-enable-feature", () => {
       expect((await mount("focus-iracing-window")).textContent).toBe("");
     });
 
+    it("says nothing for an unknown value — the plugin's parser reads that as always", async () => {
+      settings = { focusIRacingWindow: "sometimes" };
+
+      expect((await mount("focus-iracing-window")).textContent).toBe("");
+    });
+
     it("says nothing under When required — that is on, just narrower", async () => {
       settings = { focusIRacingWindow: "required" };
 
