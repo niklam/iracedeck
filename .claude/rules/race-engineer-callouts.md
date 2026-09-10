@@ -237,6 +237,8 @@ For QA convenience, add a button to `packages/scenario-harness/src/scenario-shor
 
 If the bus event itself is **new**, also add an entry to `packages/scenario-harness/src/event-names.ts`. The compile-time completeness check forces this — `pnpm build` will fail otherwise.
 
+**Bypassing the diff is what makes that button one click, and it is also its limit.** A published event reaches the scenario whatever the translator would have decided, so such a shortcut can audition a callout's *content* but never the translator's decision to emit it at all. When that decision is the thing under test, give the shortcut a `telemetrySequence` instead of an `event`: an ordered list of `{ patch, holdMs }` steps the UI applies through `/api/telemetry`, holding between them, with no `bus.publish` anywhere. The two shapes are a union (`BusEventShortcut | TelemetrySequenceShortcut`), so a shortcut carries one or the other and never neither — a button that drives nothing looks like a broken scenario rather than a broken button. `flag-caution-restart` (#1127) is the reference: caution out, then green, then flags cleared, and what it exists to demonstrate is the SILENCE where "Yellow cleared." used to land three seconds into the restart. Two obligations come with the shape — the sequence must end by restoring a sane `SessionFlags` so the harness is not left stuck under a flag, and its `description` must say the mock SDK has to be CONNECTED, since a disconnected translator sees no ticks and the button is then silent for the wrong reason.
+
 ### 11. Verify
 
 ```bash

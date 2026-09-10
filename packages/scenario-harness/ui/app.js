@@ -336,6 +336,13 @@ function renderShortcuts() {
       btn.textContent = s.label;
       if (s.description) btn.title = s.description;
       btn.addEventListener("click", async () => {
+        // A `telemetrySequence` runs for seconds with waits between its steps
+        // (issue #1127), so a second click would interleave two sequences
+        // writing the same field and neither would be the one described on the
+        // button. Disabling for the duration costs the instant shortcuts an
+        // invisible blink and makes that impossible.
+        btn.disabled = true;
+
         try {
           // Issue #567 — qualifying-invalidation shortcuts carry an embedded
           // snapshot the scenario reads at fire time. Push it first so the
@@ -360,9 +367,25 @@ function renderShortcuts() {
           if (s.telemetryPatch) {
             await post("/api/telemetry", { patch: s.telemetryPatch });
           }
-          await post("/api/bus/publish", { event: s.event, data: s.data });
+          // Issue #1127 — a shortcut that drives the TRANSLATOR rather than
+          // the bus: telemetry patches in order, holding between them, and no
+          // publish at all. It is the only way to audition what the translator
+          // DECIDES (whether a caution's end reports a cleared yellow), since
+          // publishing the event steps over the decision.
+          if (s.telemetrySequence) {
+            for (const step of s.telemetrySequence) {
+              await post("/api/telemetry", { patch: step.patch });
+
+              if (step.holdMs) await new Promise((resolve) => setTimeout(resolve, step.holdMs));
+            }
+          }
+          if (s.event) {
+            await post("/api/bus/publish", { event: s.event, data: s.data });
+          }
         } catch (e) {
           alert(`Shortcut "${s.label}" failed: ${e.message}`);
+        } finally {
+          btn.disabled = false;
         }
       });
       buttons.appendChild(btn);

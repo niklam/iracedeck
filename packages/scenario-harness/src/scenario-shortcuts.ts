@@ -20,14 +20,38 @@ import {
   TrackWetness,
 } from "@iracedeck/event-bus";
 import { Flags, PitSvStatus } from "@iracedeck/iracing-sdk";
+import { YELLOW_CLEARED_HOLD_MS } from "@iracedeck/sim-events-iracing";
 
-export type ScenarioShortcut = {
+/** Fields every shortcut carries, whatever it drives. */
+type ScenarioShortcutBase = {
   id: string;
   category: string;
   label: string;
   description?: string;
+};
+
+/**
+ * One step of a `telemetrySequence` (issue #1127): a telemetry patch, then a
+ * wait before the next step.
+ *
+ * `patch` is wire-level, not `TelemetryData` — `null` DELETES a key, the
+ * sentinel `mutateTelemetry` reads. `holdMs` is the pause AFTER the patch has
+ * been applied; omit it on the last step, which has nothing to wait for.
+ */
+export type TelemetryStep = {
+  patch: Record<string, unknown>;
+  holdMs?: number;
+};
+
+/**
+ * A shortcut that publishes ONE bus event — the original and still the common
+ * shape. It injects past the translator, which is what makes it a one-click
+ * audition of a scenario: no telemetry has to be arranged to reach the event.
+ */
+export type BusEventShortcut = ScenarioShortcutBase & {
   event: SimEventName;
   data: Record<string, unknown>;
+  telemetrySequence?: never;
   /**
    * Optional snapshot for the qualifying lap-invalidation scenario (issue #567).
    * When present, the UI POSTs `/api/qualifying-invalidation/snapshot` with this
@@ -64,9 +88,39 @@ export type ScenarioShortcut = {
   telemetryPatch?: Record<string, unknown>;
 };
 
+/**
+ * A shortcut that drives the TRANSLATOR instead of the bus (issue #1127): a
+ * sequence of telemetry patches with waits between them, and NO `bus.publish`
+ * at all. The UI applies each step in order and holds for `holdMs` before the
+ * next.
+ *
+ * Exists because a bus-event shortcut cannot audition a translator DECISION.
+ * `flag.yellow.cleared` is now emitted only for a yellow episode that stayed
+ * LOCAL — a full-course caution ends with the green, which already announces
+ * itself — and the thing to hear is the SILENCE where the all-clear used to
+ * land. Publishing `flag.yellow.cleared` proves the opposite of the question:
+ * it speaks the line unconditionally, because the translator that decides
+ * whether to emit it has been stepped over. Only telemetry can ask.
+ *
+ * The two shapes are a union rather than one type with both fields optional so
+ * a shortcut driving NOTHING cannot be written: an event-less, sequence-less
+ * button renders and does nothing when pressed, which reads as a broken
+ * scenario rather than as a broken shortcut.
+ */
+export type TelemetrySequenceShortcut = ScenarioShortcutBase & {
+  telemetrySequence: readonly TelemetryStep[];
+  event?: never;
+  data?: never;
+  telemetryPatch?: never;
+  qualifyingInvalidationSnapshot?: never;
+  raceStartSnapshot?: never;
+};
+
+export type ScenarioShortcut = BusEventShortcut | TelemetrySequenceShortcut;
+
 const ALL_FOUR_TIRES = ["LF", "RF", "LR", "RR"] as const;
 
-function tireSet(name: string, label: string, tires: readonly string[]): ScenarioShortcut {
+function tireSet(name: string, label: string, tires: readonly string[]): BusEventShortcut {
   return {
     id: `tire-${name}`,
     category: "Tire Service",
@@ -80,15 +134,15 @@ function tireSet(name: string, label: string, tires: readonly string[]): Scenari
   };
 }
 
-function flag(label: string, event: SimEventName, data: Record<string, unknown> = {}): ScenarioShortcut {
+function flag(label: string, event: SimEventName, data: Record<string, unknown> = {}): BusEventShortcut {
   return { id: `flag-${label.toLowerCase().replace(/\s+/g, "-")}`, category: "Flags", label, event, data };
 }
 
-function startLight(id: string, label: string, event: SimEventName, description?: string): ScenarioShortcut {
+function startLight(id: string, label: string, event: SimEventName, description?: string): BusEventShortcut {
   return { id: `start-${id}`, category: "Start", label, description, event, data: {} };
 }
 
-function startCountdown(seconds: StartCountdownSeconds): ScenarioShortcut {
+function startCountdown(seconds: StartCountdownSeconds): BusEventShortcut {
   return {
     id: `start-countdown-${seconds}`,
     category: "Start",
@@ -99,11 +153,11 @@ function startCountdown(seconds: StartCountdownSeconds): ScenarioShortcut {
   };
 }
 
-function rollingStart(id: string, label: string, event: SimEventName, description?: string): ScenarioShortcut {
+function rollingStart(id: string, label: string, event: SimEventName, description?: string): BusEventShortcut {
   return { id: `rolling-start-${id}`, category: "Rolling Start", label, description, event, data: {} };
 }
 
-function radar(label: string, from: string, to: string): ScenarioShortcut {
+function radar(label: string, from: string, to: string): BusEventShortcut {
   return {
     id: `radar-${to.replace(/\s+/g, "-")}`,
     category: "Radar",
@@ -113,7 +167,7 @@ function radar(label: string, from: string, to: string): ScenarioShortcut {
   };
 }
 
-function pitStatus(id: string, label: string, target: PitSvStatus, description?: string): ScenarioShortcut {
+function pitStatus(id: string, label: string, target: PitSvStatus, description?: string): BusEventShortcut {
   return {
     id: `pit-status-${id}`,
     category: "Pit Status",
@@ -136,7 +190,7 @@ function pitStatus(id: string, label: string, target: PitSvStatus, description?:
  * auditioned without driving `PlayerCarPitSvStatus` through `/api/telemetry`.
  * Fire the matching `pitStatus` shortcut first to hear the full sequence.
  */
-function pitStatusRepeat(id: string, label: string, target: PitSvStatus): ScenarioShortcut {
+function pitStatusRepeat(id: string, label: string, target: PitSvStatus): BusEventShortcut {
   return {
     id: `pit-status-repeat-${id}`,
     category: "Pit Status",
@@ -171,7 +225,7 @@ function qualifyingInvalidation(
     lapCounted?: boolean;
   },
   options: { description?: string; incidentType?: string; delta?: number; points?: number } = {},
-): ScenarioShortcut {
+): BusEventShortcut {
   const incidentType = options.incidentType ?? "off-track";
 
   return {
@@ -205,7 +259,7 @@ function raceStart(
   playerCarPosition: number | undefined,
   description: string,
   from = 0,
-): ScenarioShortcut {
+): BusEventShortcut {
   return {
     id: `race-start-${id}`,
     category: "Race Start",
@@ -229,7 +283,7 @@ function trackConditions(
   id: string,
   label: string,
   target: TrackWetness,
-): ScenarioShortcut {
+): BusEventShortcut {
   // Pick a `from` one step away from `to` in the chosen direction so the
   // scenario predicate (`to > from` for worsening, `to < from` for drying)
   // resolves naturally without having to compute exhaustively.
@@ -244,6 +298,47 @@ function trackConditions(
     data: { from, to: target },
   };
 }
+
+/**
+ * How long the caution stays out in `CAUTION_RESTART_SHORTCUT` before the
+ * green — long enough for the full-course yellow line and its radio frame to
+ * play out, so the green is heard as a separate call rather than as the tail
+ * of one that got preempted.
+ */
+const CAUTION_HOLD_MS = 6000;
+
+/**
+ * How long the green is held afterwards. Derived from the translator's own
+ * validated-clear window so the wait is provably PAST the moment a cleared
+ * line would have landed, whatever that constant becomes — the whole point of
+ * the button is what is not heard in this gap.
+ */
+const RESTART_LISTEN_MS = YELLOW_CLEARED_HOLD_MS + 3000;
+
+/**
+ * A full-course caution and its restart, driven through the TRANSLATOR
+ * (issue #1127).
+ *
+ * `Caution` up, held; then the caution bits down and `Green` up on the same
+ * tick, as iRacing does it; then back to no flags so the button can be pressed
+ * again and the harness is not left stuck under a green. What should be heard
+ * is the full-course yellow, then the green — and then nothing. Before #1127
+ * the third thing was "Yellow cleared." three seconds into the restart, and no
+ * bus-event shortcut can show that: `flag.yellow.cleared` published by hand
+ * speaks the line whatever the translator decided.
+ */
+const CAUTION_RESTART_SHORTCUT: TelemetrySequenceShortcut = {
+  id: "flag-caution-restart",
+  category: "Flags",
+  label: "Caution → restart (green)",
+  description:
+    "Drives the TRANSLATOR through a full-course caution and its restart, about 12 s end to end: caution out, then green, then flags cleared. Expect the full-course yellow line, then the green line, then SILENCE — an all-clear behind the green is issue #1127 back. Needs the mock SDK CONNECTED; with it disconnected the translator sees no ticks and the button is silent for the wrong reason.",
+  telemetrySequence: [
+    { patch: { SessionFlags: Flags.Caution }, holdMs: CAUTION_HOLD_MS },
+    { patch: { SessionFlags: Flags.Green }, holdMs: RESTART_LISTEN_MS },
+    { patch: { SessionFlags: 0 } },
+  ],
+};
 
 export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   // ── Pit Service ──
@@ -461,6 +556,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   flag("Yellow (full)", "flag.yellow.raised", { scope: "full" }),
   flag("Yellow Cleared", "flag.yellow.cleared"),
   flag("Green", "flag.green.raised"),
+  CAUTION_RESTART_SHORTCUT,
   flag("White", "flag.white.raised"),
   flag("White — Last Lap Started", "flag.white-last-lap.raised"),
   flag("Checkered", "flag.checkered.raised"),

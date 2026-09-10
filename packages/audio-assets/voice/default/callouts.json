@@ -16,8 +16,8 @@
       ]
     },
     "pit-crew.flag-yellow-cleared": {
-      "comment": "The yellow has been withdrawn — a short all-clear, replayed after a busier line finishes rather than dropped.",
-      "test": "Harness → Flags → Yellow Cleared. In-sim: clear the local yellow sector, or the caution ends and racing resumes.",
+      "comment": "A LOCAL yellow has been withdrawn — a short all-clear, replayed after a busier line finishes rather than dropped. It is spoken only for an episode that stayed local, because a local yellow ends with no flag shown at all and this line is the only way the driver learns the sector is clear. A full-course caution ends with the green instead, and the green callout is what announces it, so no all-clear lands on top of the restart.",
+      "test": "Harness → Flags → Yellow Cleared plays the line on its own. In-sim: clear a local yellow sector. The other half of this line is the SILENCE after a caution — Harness → Flags → Caution → restart (green) drives the translator through a full-course caution and its restart, and must play the full-course yellow and then the green with no all-clear behind it.",
       "sequence": [
         "pool:flags/yellow-cleared"
       ]
