@@ -13,8 +13,20 @@ import { BroadcastMsg, ChatCommandMode } from "./constants.js";
  * Chat commands
  */
 export class ChatCommand extends BroadcastCommand {
-  constructor(native: INativeSDK, logger?: ILogger) {
+  /**
+   * Runs synchronously immediately before chat text is typed (issue #977).
+   *
+   * `sendMessage` types through the native layer — open chat by broadcast,
+   * paste, enter, close — so the paste needs the foreground. This package
+   * cannot import deck-core, so the focus service is injected here; deck-core's
+   * `initializeSDK` passes `focusIRacingBeforeInput`. The broadcasts (`macro`,
+   * `beginChat`, …) never call it: a broadcast arrives whatever has focus.
+   */
+  private readonly beforeKeystrokes: (() => void) | undefined;
+
+  constructor(native: INativeSDK, logger?: ILogger, beforeKeystrokes?: () => void) {
     super(native, logger);
+    this.beforeKeystrokes = beforeKeystrokes;
   }
 
   /**
@@ -90,6 +102,16 @@ export class ChatCommand extends BroadcastCommand {
       this.logger.warn("Cannot send empty message");
 
       return false;
+    }
+
+    // Focus lands before the chat window opens, exactly where the adapter-level
+    // hook ran relative to the key handler. A throwing hook must not cost the
+    // message: the focus service never throws, but the contract here is "best
+    // effort", the same as everywhere else focusing runs.
+    try {
+      this.beforeKeystrokes?.();
+    } catch (error) {
+      this.logger.warn(`beforeKeystrokes hook failed: ${error}`);
     }
 
     try {

@@ -30,6 +30,7 @@ import { gt, valid } from "semver";
 import { z } from "zod";
 
 import { DEFAULT_FEATURE_STARTUP_POLICY, FEATURE_STARTUP_POLICIES } from "./feature-startup-policy.js";
+import { DEFAULT_FOCUS_IRACING_MODE, parseFocusIRacingMode } from "./focus-iracing-mode.js";
 import { hasOnlyRunScopedKeys, stripRunScopedKeys } from "./run-scoped-settings.js";
 import type { SettingsStore } from "./settings-store.js";
 import {
@@ -122,26 +123,37 @@ export const GlobalSettingsSchema = z
       .default(false)
       .catch(false),
     /**
-     * When true, focus the iRacing window before sending inputs.
+     * When the iRacing window is focused before inputs are sent — see
+     * `focus-iracing-mode.ts` for the three modes. The two paragraphs below are
+     * #930's record, written while this was a boolean; #977's is last.
      *
-     * Default: true (issue #930). Keystrokes go to whatever window has focus,
-     * so every keybind- and chat-driven action silently does nothing when
-     * iRacing is in the background — no error, nothing on screen, a recurring
-     * support pattern. Focusing costs nothing when iRacing is already in front
-     * (`FocusResult.AlreadyFocused`), so on-by-default makes those actions work
-     * out of the box. Note this does NOT apply to pure SDK broadcasts, which
-     * reach iRacing regardless of focus (`SendNotifyMessage(HWND_BROADCAST, …)`);
-     * those fail only on an integrity-level mismatch, which focusing can't fix.
+     * Default: `"always"` (#977; on since #930). Keystrokes go to whatever
+     * window has focus, so every keybind- and chat-driven action silently does
+     * nothing when iRacing is in the background — no error, nothing on screen,
+     * a recurring support pattern. Focusing costs nothing when iRacing is
+     * already in front (`FocusResult.AlreadyFocused`), so on-by-default makes
+     * those actions work out of the box. Note this does NOT apply to pure SDK
+     * broadcasts, which reach iRacing regardless of focus
+     * (`SendNotifyMessage(HWND_BROADCAST, …)`); those fail only on an
+     * integrity-level mismatch, which focusing can't fix.
      *
      * Existing installs are unaffected: writes persist the whole parsed cache,
      * so their stored `false` predates this flip and keeps winning. Only fresh
      * installs (and any settings blob without the key) see the new default.
+     *
+     * Since #977 the value is a MODE — `always` / `required` / `never` — and the
+     * transform folds the pre-#977 boolean (and its string form) into it:
+     * `true` → `always`, `false` → `never`. That is the whole migration; there is
+     * no marker, because the transform holds for every future read of an old
+     * file. Recorded cost: a downgraded build reads `"always"` through its
+     * boolean transform as not-`true` and turns focusing OFF — accepted, the old
+     * build's checkbox restores it in one click.
      */
     focusIRacingWindow: z
       .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true)
-      .catch(true),
+      .transform(parseFocusIRacingMode)
+      .default(DEFAULT_FOCUS_IRACING_MODE)
+      .catch(DEFAULT_FOCUS_IRACING_MODE),
     /**
      * Where the Mouse to Sim key parks the pointer inside the iRacing window
      * (issue #1029) — an anchor per axis plus an offset in percent of the client

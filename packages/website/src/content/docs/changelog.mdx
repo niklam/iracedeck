@@ -17,6 +17,10 @@ _Unreleased_
 
 - The plugin no longer carries the **Default** Race Engineer voice inside its own folder — every download is about 8 MB smaller. Instead iRaceDeck installs Default from its catalog the first time the plugin starts, keeps it up to date afterwards, and also updates any other voice you installed from the catalog when a newer version is published. All of it runs quietly in the background — a failed download is retried on its own, more often while the Race Engineer is on — and Default now shows *Kept up to date by iRaceDeck* in place of a Remove button. If you upgraded from 3.2.0 you already have the voice and nothing is downloaded. See [Race Engineer Voices](/docs/features/race-engineer-voices/).
 
+**Improvements**
+
+- **Focus iRacing** on the General tab is now a three-way choice. **Always** is the default and what it did before; **When required** brings iRacing forward only before a keyboard binding, a chat command or a touch-strip gesture that taps a binding, so a key that talks to iRacing over its API, a SimHub role or a plugin-only key no longer pulls the sim over whatever you were doing; **Never** turns it off. Stream Deck+ touch-strip gestures that tap a binding now focus iRacing too. Your existing choice is kept: on becomes Always, off becomes Never. See [Focus iRacing Window](/docs/features/focus-iracing-window/).
+
 **Bug Fixes**
 
 - The Race Engineer no longer falls silent on a position or gap readout for the length of the cooldown after an earlier readout was dropped before it could play.

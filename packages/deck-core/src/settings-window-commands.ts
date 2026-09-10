@@ -10,6 +10,7 @@
 import { z } from "zod";
 
 import { FEATURE_STARTUP_GATES } from "./feature-startup-policy.js";
+import { DEFAULT_FOCUS_IRACING_MODE, parseFocusIRacingMode } from "./focus-iracing-mode.js";
 import type { SettingsWindowBounds } from "./settings-window-launcher.js";
 import { packId } from "./voice-pack-manifest.js";
 
@@ -64,6 +65,14 @@ export function parseSettingsWindowBounds(value: unknown): SettingsWindowBounds 
 export interface SettingsWindowCommandDeps {
   /** Writes a partial into global settings — the plugin binds `updateGlobalSettings`. */
   writeSettings: (partial: Record<string, unknown>) => void;
+  /**
+   * Reads the live global-settings cache — the plugin binds `getGlobalSettings`.
+   * Lets an opt-in refuse to overwrite a choice the user already made (#977):
+   * the page cannot be trusted to know, because the fake host never echoes a
+   * write back to the socket that made it, so a Getting Started offer stays on
+   * screen after the same setting was changed on another tab.
+   */
+  readSettings?: () => Record<string, unknown>;
   /** Elgato only: switch `deviceId` to `profile` (page optional). Omit where profiles don't exist. */
   switchProfile?: (deviceId: string, profile: string, page?: number) => void;
   /**
@@ -142,8 +151,9 @@ export function enableFeatureWrites(feature: unknown): Record<string, unknown> |
     case "changelog-updates":
       return { changelogNotification: "features" };
 
+    // The page offers this only under Never (#977); "on" is the default mode.
     case "focus-iracing-window":
-      return { focusIRacingWindow: true };
+      return { focusIRacingWindow: DEFAULT_FOCUS_IRACING_MODE };
 
     default:
       return undefined;
@@ -196,6 +206,19 @@ export function createSettingsWindowCommandHandler(
         const writes = enableFeatureWrites(payload.feature);
 
         if (!writes) break;
+
+        // A stale focus offer must not escalate `required` to `always` (#977):
+        // the offer is for `never` only, and the plugin's cache — not the
+        // page — knows what the mode is right now. Only a RECORDED choice can
+        // be escalated: legacy `false` reads as `never` through the one parser
+        // and is written over; an absent key has no choice to protect and is
+        // written as before (unreachable through `getGlobalSettings`, whose
+        // parsed cache always carries the key, but honest for any reader).
+        if (payload.feature === "focus-iracing-window" && deps.readSettings) {
+          const current = deps.readSettings().focusIRacingWindow;
+
+          if (current !== undefined && parseFocusIRacingMode(current) !== "never") break;
+        }
 
         deps.writeSettings(writes);
 

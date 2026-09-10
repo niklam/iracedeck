@@ -47,6 +47,17 @@ describe("SDK Singleton", () => {
 
       expect(() => initializeSDK()).toThrow("SDK already initialized");
     });
+
+    it("hands the focus-before-input hook to the SDK so chat text focuses first (#977)", async () => {
+      const { createSDK } = await import("@iracedeck/iracing-sdk");
+
+      initializeSDK();
+
+      expect(createSDK).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ beforeKeystrokes: expect.any(Function) }),
+      );
+    });
   });
 
   describe("getSDK", () => {

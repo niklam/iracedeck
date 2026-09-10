@@ -45,12 +45,37 @@ export interface SDKBundle {
 }
 
 /**
- * Create command instances with shared native SDK and scoped loggers
+ * Hooks the host may inject into the commands (issue #977).
  */
-export function createCommands(native: INativeSDK, logger: ILogger = silentLogger): Commands {
+export interface SDKFactoryOptions {
+  /**
+   * Runs synchronously immediately before a command types keystrokes into
+   * iRacing. `ChatCommand.sendMessage` is the ONLY typing route in this
+   * package — the hook-free `IRacingSDK.sendChatMessage` /
+   * `SDKController.sendChatMessage` pair was removed in #977 for exactly that
+   * reason — so a new route that reaches `INativeSDK.sendChatMessage` (or any
+   * other keystroke) must take this hook, or under the `required` focus mode
+   * it types into whatever window is in front. deck-core passes its
+   * focus-before-input function here; this package cannot import it.
+   */
+  beforeKeystrokes?: () => void;
+}
+
+/**
+ * Create command instances with shared native SDK and scoped loggers
+ *
+ * @param native Native SDK shared by every command
+ * @param logger Optional logger (defaults to silentLogger)
+ * @param options Optional host-injected hooks (see {@link SDKFactoryOptions})
+ */
+export function createCommands(
+  native: INativeSDK,
+  logger: ILogger = silentLogger,
+  options: SDKFactoryOptions = {},
+): Commands {
   return {
     camera: new CameraCommand(native, logger.createScope("CameraCommand")),
-    chat: new ChatCommand(native, logger.createScope("ChatCommand")),
+    chat: new ChatCommand(native, logger.createScope("ChatCommand"), options.beforeKeystrokes),
     ffb: new FFBCommand(native, logger.createScope("FFBCommand")),
     pit: new PitCommand(native, logger.createScope("PitCommand")),
     replay: new ReplayCommand(native, logger.createScope("ReplayCommand")),
@@ -64,6 +89,7 @@ export function createCommands(native: INativeSDK, logger: ILogger = silentLogge
  * Create a complete SDK bundle with all components wired together
  *
  * @param logger Optional logger (defaults to silentLogger)
+ * @param options Optional host-injected hooks (see {@link SDKFactoryOptions})
  * @returns SDKBundle with sdk, controller, and all commands
  *
  * @example
@@ -76,11 +102,11 @@ export function createCommands(native: INativeSDK, logger: ILogger = silentLogge
  * // With logging
  * const { sdk, controller, commands } = createSDK(myLogger);
  */
-export function createSDK(logger: ILogger = silentLogger): SDKBundle {
+export function createSDK(logger: ILogger = silentLogger, options: SDKFactoryOptions = {}): SDKBundle {
   const native = new IRacingNative();
   const sdk = new IRacingSDK(native, logger.createScope("IRacingSDK"));
   const controller = new SDKController(sdk, logger.createScope("SDKController"));
-  const commands = createCommands(native, logger);
+  const commands = createCommands(native, logger, options);
 
   return { sdk, controller, commands };
 }

@@ -9,6 +9,17 @@
  * 2. keysender fallback: Uses keysender's Hardware class for string-based key sending.
  *    Used for old bindings without event.code.
  *
+ * This is also where the iRacing window is focused before a keystroke (#977):
+ * every deck-core keystroke passes this layer, so `focusIRacingBeforeInput()`
+ * runs here, immediately before each native send — once per emitted keystroke,
+ * after every path that would send nothing has returned (an empty or unmappable
+ * sequence, a missing sequence sender). Placing it here rather than in the
+ * binding dispatcher covers the direct `getKeyboard()` callers too, without
+ * them knowing it: Race Admin's Ctrl+V paste into the chat prompt and Car
+ * Control's Escape press reach the sim through the same methods a binding
+ * does. Releases never focus — a keyup must not pull the window forward, and
+ * `SendInput` keyups update the global key state whatever is in front.
+ *
  * Usage:
  * 1. Call initializeKeyboard() once at plugin startup
  * 2. Use getKeyboard() in your actions to send key combinations
@@ -33,6 +44,7 @@ import { silentLogger } from "@iracedeck/logger";
 
 import type { KeyboardKey, KeyboardModifier, KeyCombination } from "./keyboard-types.js";
 import { getModifierScanCode, getScanCode } from "./scan-code-map.js";
+import { focusIRacingBeforeInput } from "./window-focus-service.js";
 
 /**
  * Local type definitions matching keysender's API surface.
@@ -233,6 +245,7 @@ class KeyboardService implements IKeyboardService {
       const hw = await this.ensureInitialized();
       const mappedKey = toKeysenderKey(key);
       this.logger.debug(`Sending key: ${mappedKey}`);
+      focusIRacingBeforeInput();
       await hw.keyboard.sendKey(mappedKey);
 
       return true;
@@ -271,6 +284,7 @@ class KeyboardService implements IKeyboardService {
         `Sending scan codes: [${scanCodes.map((sc) => `0x${sc.toString(16)}`).join(", ")}] (code="${combination.code}", key="${combination.key}")`,
       );
 
+      focusIRacingBeforeInput();
       this.scanKeySender!(scanCodes);
 
       return true;
@@ -301,6 +315,8 @@ class KeyboardService implements IKeyboardService {
       keys.push(mainKey);
 
       this.logger.debug(`Sending via keysender: ${keys.join("+")} (key="${combination.key}", no event.code available)`);
+
+      focusIRacingBeforeInput();
 
       if (keys.length === 1) {
         await hw.keyboard.sendKey(keys[0]);
@@ -372,6 +388,8 @@ class KeyboardService implements IKeyboardService {
       const rendered = chords.map((chord) => `[${chord.map((sc) => `0x${sc.toString(16)}`).join(", ")}]`).join(" -> ");
       this.logger.debug(`Sending scan code sequence: ${rendered} (holdMs=${holdMs})`);
 
+      // After the loop above, so a sequence that is skipped never focuses.
+      focusIRacingBeforeInput();
       this.scanKeySequenceSender(chords, holdMs);
 
       return true;
@@ -399,6 +417,7 @@ class KeyboardService implements IKeyboardService {
         `Pressing scan codes: [${scanCodes.map((sc) => `0x${sc.toString(16)}`).join(", ")}] (code="${combination.code}", key="${combination.key}")`,
       );
 
+      focusIRacingBeforeInput();
       this.scanKeyPresser!(scanCodes);
 
       return true;
@@ -426,6 +445,7 @@ class KeyboardService implements IKeyboardService {
         `Releasing scan codes: [${scanCodes.map((sc) => `0x${sc.toString(16)}`).join(", ")}] (code="${combination.code}", key="${combination.key}")`,
       );
 
+      // No focus on a release (#977): a keyup must never pull the window forward.
       this.scanKeyReleaser!(scanCodes);
 
       return true;
@@ -491,6 +511,9 @@ class KeyboardService implements IKeyboardService {
 
       const action = state ? "Pressing" : "Releasing";
       this.logger.debug(`${action} via keysender toggleKey: ${keys.join("+")} (key="${combination.key}")`);
+
+      // Only a press focuses (#977); a release never pulls the window forward.
+      if (state) focusIRacingBeforeInput();
 
       if (keys.length === 1) {
         await hw.keyboard.toggleKey(keys[0], state);

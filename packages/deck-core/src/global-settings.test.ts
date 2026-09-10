@@ -267,7 +267,7 @@ describe("global-settings cache (synchronous update on local writes)", () => {
       radarVolume: 50,
       backgroundVolume: 25,
       disableWhenDisconnected: true,
-      focusIRacingWindow: true,
+      focusIRacingWindow: "always",
       enableFuelingOnChange: true,
       simHubHost: "127.0.0.1",
       simHubPort: 8888,
@@ -978,22 +978,43 @@ describe("schema hardening (issue #896)", () => {
   });
 });
 
-describe("focus iRacing window default (issue #930)", () => {
-  it("defaults focusIRacingWindow to true", () => {
+describe("focus iRacing window mode (issues #930, #977)", () => {
+  it("defaults focusIRacingWindow to always", () => {
     const parsed = GlobalSettingsSchema.parse({}) as Record<string, unknown>;
-    expect(parsed.focusIRacingWindow).toBe(true);
+    expect(parsed.focusIRacingWindow).toBe("always");
   });
 
-  it("keeps an explicitly persisted false, so upgrades don't flip existing installs", () => {
+  it("accepts the three mode strings as themselves", () => {
+    for (const mode of ["always", "required", "never"]) {
+      const parsed = GlobalSettingsSchema.parse({ focusIRacingWindow: mode }) as Record<string, unknown>;
+      expect(parsed.focusIRacingWindow).toBe(mode);
+    }
+  });
+
+  it("reads a legacy true as always, so upgrades keep focusing", () => {
+    const parsedBoolean = GlobalSettingsSchema.parse({ focusIRacingWindow: true }) as Record<string, unknown>;
+    expect(parsedBoolean.focusIRacingWindow).toBe("always");
+    const parsedString = GlobalSettingsSchema.parse({ focusIRacingWindow: "true" }) as Record<string, unknown>;
+    expect(parsedString.focusIRacingWindow).toBe("always");
+  });
+
+  it("reads a legacy false as never, so an explicit opt-out survives the upgrade", () => {
     const parsedBoolean = GlobalSettingsSchema.parse({ focusIRacingWindow: false }) as Record<string, unknown>;
-    expect(parsedBoolean.focusIRacingWindow).toBe(false);
+    expect(parsedBoolean.focusIRacingWindow).toBe("never");
     const parsedString = GlobalSettingsSchema.parse({ focusIRacingWindow: "false" }) as Record<string, unknown>;
-    expect(parsedString.focusIRacingWindow).toBe(false);
+    expect(parsedString.focusIRacingWindow).toBe("never");
   });
 
-  it("falls back to true on an unparseable value rather than aborting the parse", () => {
+  it("falls back to always on an unparseable value rather than aborting the parse", () => {
     const parsed = GlobalSettingsSchema.parse({ focusIRacingWindow: 42 }) as Record<string, unknown>;
-    expect(parsed.focusIRacingWindow).toBe(true);
+    expect(parsed.focusIRacingWindow).toBe("always");
+  });
+
+  it("falls back to always on an unknown string too", () => {
+    // The union admits any string, so this is the transform's fallback rather
+    // than `.catch`; both must land on the default.
+    const parsed = GlobalSettingsSchema.parse({ focusIRacingWindow: "sometimes" }) as Record<string, unknown>;
+    expect(parsed.focusIRacingWindow).toBe("always");
   });
 
   // `.catch(<default>)` is the repo-wide rule (#896), so an unreadable value
@@ -1001,9 +1022,9 @@ describe("focus iRacing window default (issue #930)", () => {
   // falsy non-boolean is the case where that reads counter-intuitively: nothing
   // in the stack persists numbers for this flag, but if something ever did, `0`
   // would resolve to ON rather than OFF.
-  it("resolves a falsy non-boolean to the default too, not to off", () => {
+  it("resolves a falsy non-boolean to the default too, not to never", () => {
     const parsed = GlobalSettingsSchema.parse({ focusIRacingWindow: 0 }) as Record<string, unknown>;
-    expect(parsed.focusIRacingWindow).toBe(true);
+    expect(parsed.focusIRacingWindow).toBe("always");
   });
 });
 
@@ -1231,7 +1252,7 @@ describe("single-writer store (issue #993)", () => {
     const settings = getGlobalSettings() as unknown as Record<string, unknown>;
     expect(settings.driverName).toBe("typed-in-the-fresh-session"); // the file's non-default value wins
     expect(settings.blackBoxLapTiming).toBe(binding); // a binding the file never had comes from the host
-    expect(settings.focusIRacingWindow).toBe(false); // a key still at its default in the file takes the host's value
+    expect(settings.focusIRacingWindow).toBe("never"); // a key still at its default in the file takes the host's value
     expect(settings._settingsStorePath).toBe("C:/x/global-settings.json"); // passthrough keys the file added survive
     expect(settings[MIGRATION_PENDING_KEY]).toBeUndefined();
     expect(store.saved.at(-1)).not.toHaveProperty(MIGRATION_PENDING_KEY);
@@ -1451,7 +1472,10 @@ describe("single-writer store (issue #993)", () => {
       start.mock.echo?.({ focusIRacingWindow: false, blackBoxLapTiming: "only-on-host" });
       await start.store.flush();
 
-      expect(getGlobalSettings().focusIRacingWindow).toBe(true);
+      // The file was written by 3.1.0, so it holds the pre-#977 boolean; the
+      // host's `false` loses to it and the fold reads the file's `true` as
+      // `always` — which is also the schema default, hence the test's name.
+      expect(getGlobalSettings().focusIRacingWindow).toBe("always");
       // The host still fills a key the file has never held.
       expect((getGlobalSettings() as unknown as Record<string, unknown>).blackBoxLapTiming).toBe("only-on-host");
     });
@@ -1997,14 +2021,14 @@ describe("Mouse to Sim pointer target (#1029)", () => {
     ["an out-of-range offset", { mouseToSimOffsetX: 5000, mouseToSimOffsetY: -5000 }],
     ["a non-numeric offset", { mouseToSimOffsetX: "left-ish", mouseToSimOffsetY: {} }],
   ])("falls back to the defaults for %s without failing the parse", (_case, patch) => {
-    const parsed = GlobalSettingsSchema.parse({ focusIRacingWindow: false, ...patch });
+    const parsed = GlobalSettingsSchema.parse({ focusIRacingWindow: "never", ...patch });
 
     expect(parsed.mouseToSimAnchorX).toBe("center");
     expect(parsed.mouseToSimAnchorY).toBe("top");
     expect(parsed.mouseToSimOffsetX).toBe(0);
     expect(parsed.mouseToSimOffsetY).toBe(12.5);
     // The parse as a whole must survive — one throwing field stalls every setting (#896).
-    expect(parsed.focusIRacingWindow).toBe(false);
+    expect(parsed.focusIRacingWindow).toBe("never");
   });
 });
 

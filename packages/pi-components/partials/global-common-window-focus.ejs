@@ -1,20 +1,23 @@
 <%#
   Common settings — Window Focus + Connection (issue #992 split). One group of the
   PI's "Common Settings" accordion; also a card on the settings window's General
-  tab. Emits items only — the includer supplies the heading.
+  tab. Focus iRacing is a three-way mode since #977. Emits items only — the
+  includer supplies the heading.
 %>
 <sdpi-item label="Focus iRacing">
-  <sdpi-checkbox
-    setting="focusIRacingWindow"
-    label="Focus iRacing window before sending keys"
-    global
-    default="true"
-  ></sdpi-checkbox>
+  <sdpi-select setting="focusIRacingWindow" global default="always">
+    <option value="always">Always</option>
+    <option value="required">When required</option>
+    <option value="never">Never</option>
+  </sdpi-select>
 </sdpi-item>
 <div class="ird-supporting-text">
-  Brings iRacing to the foreground before sending inputs, so button presses aren't
-  lost to whichever window happens to be active. Turn this off if you'd rather
-  iRaceDeck never changed which window has focus.
+  Brings iRacing to the foreground so a press isn't lost to whichever window happens
+  to be active. <strong>Always</strong> does it before every key press, dial press and
+  dial turn. <strong>When required</strong> does it only before something that needs the
+  foreground: a keyboard binding, a chat command, or a touch-strip gesture that taps a
+  binding — keys that talk to iRacing over its API, SimHub roles and plugin-only keys
+  leave your window alone. <strong>Never</strong> leaves focus alone entirely.
 </div>
 <sdpi-item label="Connection">
   <sdpi-checkbox

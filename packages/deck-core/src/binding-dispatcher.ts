@@ -179,6 +179,7 @@ class BindingDispatcher implements IBindingDispatcher {
     }
 
     const combination = this.toKeyCombination(binding);
+
     const success = await getKeyboard().pressKeyCombination(combination);
 
     if (success) {

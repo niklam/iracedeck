@@ -1,6 +1,6 @@
 ---
 title: Focus iRacing Window
-description: iRaceDeck can bring iRacing to the foreground before sending keystrokes, to keep keyboard-driven actions from being lost to another window.
+description: iRaceDeck can bring iRacing to the foreground before sending keystrokes, to keep keyboard-driven actions from being lost to another window — always, only when a keystroke needs it, or never.
 ---
 
 Focus iRacing Window brings the iRacing window to the foreground before iRaceDeck sends a command. Windows delivers keystrokes only to the window that has focus, so without it a button press can simply do nothing — with no error, and nothing on screen to explain why.
@@ -9,24 +9,28 @@ Focus iRacing Window brings the iRacing window to the foreground before iRaceDec
 
 ## Why It Matters
 
-It matters for any action that works by pressing keys — anything driven by a key binding, and anything that sends a chat message or pit macro. Those reach iRacing as keystrokes, and Windows hands keystrokes to whichever window is in front. Actions that talk to iRacing directly through its own command interface (most pit service, camera, and replay controls) are unaffected: those arrive whatever has focus.
+It matters for any action that works by pressing keys — anything driven by a key binding, and anything that sends a chat message or pit macro. Those reach iRacing as keystrokes, and Windows hands keystrokes to whichever window is in front. Actions that talk to iRacing directly through its own command interface (most pit service, camera, and replay controls) are unaffected: those arrive whatever has focus. A binding you have set to a **SimHub role** is a third case: iRaceDeck hands the role to SimHub over the network instead of pressing a key itself, so it never focuses iRacing for one — how the role reaches the sim from there is SimHub's business, and depends on how you set it up in Control Mapper.
 
 It matters most if you run iRacing in **windowed mode**, where another application can easily hold focus when you reach for the deck. It also covers the moments you might not think about: you tabbed out to check a message, clicked something on a second monitor, or a notification popped up and took focus.
 
 When iRacing is already the active window — which is most of the time while you're driving — focusing costs nothing and changes nothing. It only does something when focus was somewhere else.
 
-One gap worth knowing: gestures on the Stream Deck+ **touch strip** are not covered yet, so a touch gesture bound to a key still needs iRacing in front on its own. Buttons and dial rotation and presses are all covered.
-
 Focusing is best-effort, not a guarantee — it can't help if iRacing isn't running, and it can't take the foreground away from an application Windows won't let it. If your actions still don't reach iRacing with this on, the usual cause is iRaceDeck and iRacing running at different Windows privilege levels; iRaceDeck detects that and shows a warning at the top of the Property Inspector. See [Troubleshooting](/docs/getting-started/troubleshooting/).
 
-## Turning It Off
+## The Three Modes
 
-Focus iRacing Window is a **global setting**: one switch that applies to all of iRaceDeck, not per button. You'll find it in the [Settings window](/docs/getting-started/settings/#general), on the **General** tab, as **Focus iRacing window before sending keys**.
+Focus iRacing Window is a **global setting**: one choice that applies to all of iRaceDeck, not per button. You'll find it in the [Settings window](/docs/getting-started/settings/#general), on the **General** tab, as **Focus iRacing**.
 
-Turn it off if you'd rather iRaceDeck never changed which window has focus — for example if you regularly press deck buttons while working in another application on a second monitor and don't want iRacing pulled to the front each time.
+- **Always** (the default) — iRacing is brought forward before every key press, dial press and dial turn, whatever the key does. Pressing a deck key means "I'm going to the sim".
+- **When required** — iRacing is brought forward only before something that actually needs the foreground: a keyboard binding, a chat command (the Chat action, the tire-service `#t` macros), or a touch-strip gesture that taps a binding. Keys that talk to iRacing over its API, bindings routed through a SimHub role, and keys that never touch iRacing at all — Switch Profile, the Race Engineer toggles, the display keys — leave your window alone. What decides it is the individual key's binding rather than the action it belongs to: bound to a keyboard shortcut, it focuses; set to a SimHub role or driven over iRacing's API, it does not. Audio Controls is the mixed case — its push-to-talk, voice chat and master volume keys are keyboard bindings and do focus, while its Race Engineer and radar volumes only turn iRaceDeck's own audio up and down and leave your window where it is. Choose this if you press deck keys while working in another application and only want iRacing pulled over it when a keystroke is about to go there.
+- **Never** — iRaceDeck never changes which window has focus. Keyboard-driven actions then need iRacing in front on their own.
+
+Gestures on the Stream Deck+ **touch strip** are covered in both **Always** and **When required**: a tap or long touch that fires a key binding focuses iRacing first.
+
+One key ignores this setting on purpose: the View Adjustment action's **Mouse to Sim** mode focuses iRacing even under **Never**, because pressing that key is an explicit request to go to the sim.
 
 ## Upgrading From an Earlier Version
 
-If you already had iRaceDeck installed, **your existing setting is kept as-is** — the new on-by-default behavior applies to fresh installations. Since the setting used to be off unless you switched it on, that most likely means it is still off for you. Check the box to be sure: if it is ticked, focusing is active.
+If you already had iRaceDeck installed, **your existing choice is kept**: the old switch becomes **Always** if it was on and **Never** if it was off. Nothing changes on its own. Since the setting was off by default before 3.0, a long-standing installation that never touched it is most likely on **Never** — open the [Settings window](/docs/getting-started/settings/#general) and check the **General** tab to be sure.
 
-To switch it on, open the [Settings window](/docs/getting-started/settings/#general) and tick **Focus iRacing window before sending keys** on the **General** tab. The change takes effect immediately — no restart needed.
+The change takes effect immediately — no restart needed.

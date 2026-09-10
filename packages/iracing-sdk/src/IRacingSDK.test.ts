@@ -188,35 +188,6 @@ describe("IRacingSDK", () => {
     });
   });
 
-  describe("sendChatMessage", () => {
-    it("should resolve to false when not connected", async () => {
-      await expect(sdk.sendChatMessage("test")).resolves.toBe(false);
-    });
-
-    it("should call native sendChatMessage when connected", async () => {
-      vi.mocked(mockNative.getVarHeaderEntry).mockReturnValue(null);
-      sdk.connect();
-
-      const result = await sdk.sendChatMessage("Hello");
-
-      expect(mockNative.sendChatMessage).toHaveBeenCalledWith("Hello", undefined, undefined, undefined);
-      expect(result).toBe(true);
-    });
-
-    it("should forward timing delays to native when connected", async () => {
-      vi.mocked(mockNative.getVarHeaderEntry).mockReturnValue(null);
-      sdk.connect();
-
-      await sdk.sendChatMessage("Hello", {
-        openToPasteDelayMs: 300,
-        pasteToEnterDelayMs: 450,
-        enterToCloseDelayMs: 600,
-      });
-
-      expect(mockNative.sendChatMessage).toHaveBeenCalledWith("Hello", 300, 450, 600);
-    });
-  });
-
   describe("getVarNames", () => {
     it("should return empty array when no vars", () => {
       vi.mocked(mockNative.getVarHeaderEntry).mockReturnValue(null);

@@ -6,7 +6,7 @@
  * desktop it has to be hunted blind before anything in the sim can be clicked.
  *
  * Sibling of `window-focus-service.ts`, deliberately kept separate: that module
- * owns getting iRacing to the FOREGROUND (and the `focusIRacingWindow` opt-out
+ * owns getting iRacing to the FOREGROUND (and the `focusIRacingWindow` mode
  * gating around it), this one owns where the POINTER goes. Neither needs the
  * other to work, and the composition of the two — focus, then move — is feature
  * policy that lives with the feature, in `@iracedeck/iracing-actions`.
@@ -87,8 +87,9 @@ export function initMousePointer(log: ILogger, pointerMover: SimPointerMover): v
  *
  * Best-effort: logs on failure but never throws, so a pointer problem can't stop
  * the action the user actually pressed. Deliberately NOT gated on the
- * `focusIRacingWindow` setting — that setting governs the implicit
- * before-every-action focus, while this only ever runs from an explicit press.
+ * `focusIRacingWindow` mode — none of its three values applies here: the mode
+ * governs the implicit before-input focus, while this only ever runs from an
+ * explicit press.
  *
  * @param xFraction - horizontal position, defaults to {@link DEFAULT_POINTER_X_FRACTION}
  * @param yFraction - vertical position, defaults to {@link DEFAULT_POINTER_Y_FRACTION}
