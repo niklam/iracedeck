@@ -150,7 +150,7 @@ const YELLOW_CLEARED: ScenarioContract = {
   ...flagContract("yellow-cleared"),
   queueable: true,
   description:
-    "Every yellow and caution flag has been down for three seconds straight after a yellow, so the all-clear is confirmed rather than a gap between zones.",
+    "A LOCAL yellow has been withdrawn and every yellow and caution flag has stayed down for three seconds straight; an episode that went full-course is silent here, since a caution ends with the green.",
   when: { event: "flag.yellow.cleared" },
 };
 

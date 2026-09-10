@@ -617,7 +617,7 @@
       "id": "pit-crew.flag-yellow-cleared",
       "family": "flag",
       "event": "flag.yellow.cleared",
-      "description": "Every yellow and caution flag has been down for three seconds straight after a yellow, so the all-clear is confirmed rather than a gap between zones.",
+      "description": "A LOCAL yellow has been withdrawn and every yellow and caution flag has stayed down for three seconds straight; an episode that went full-course is silent here, since a caution ends with the green.",
       "frame": "radio",
       "weight": 70,
       "weightBand": "SAFETY",
