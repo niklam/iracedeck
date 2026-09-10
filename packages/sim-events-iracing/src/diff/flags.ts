@@ -28,6 +28,17 @@
  * yellow-ish re-raise meanwhile cancels the pending clear (CrewChief's
  * validated-clear approach).
  *
+ * Local-only clear (issue #1127): the validated clear is ANNOUNCED only for
+ * an episode that stayed LOCAL. A local yellow ends with no flag shown at
+ * all, so the callout is the only way the driver learns the sector is clear;
+ * a full-course caution instead ends with the GREEN, already announced by
+ * `flag.green.raised`, so its cleared line would land on top of the restart.
+ * `state.yellowEpisodeFullCourse` records whether a caution bit was seen at
+ * any point in the episode and suppresses the announcement for it. A green
+ * rising edge additionally CANCELS a pending clear (the caution bits
+ * routinely drop a beat before the green waves) and ends the episode, so a
+ * separate local yellow raised seconds into the restart still gets its line.
+ *
  * Blue is suppressed when Green is active (race-start sets both). Green is
  * suppressed when `StartGo` is set — a standing/rolling race-start go is owned
  * by the start-light family (issue #480); restarts (no `StartGo`) still fire.
@@ -147,6 +158,7 @@ function resolveActiveFlags(sessionFlags: number): {
   flags: Set<FlagKey>;
   yellowScope: FlagScope | null;
   anyYellow: boolean;
+  fullCourseYellow: boolean;
 } {
   const flags = new Set<FlagKey>();
   let yellowScope: FlagScope | null = null;
@@ -175,6 +187,12 @@ function resolveActiveFlags(sessionFlags: number): {
   // (which leaves `activeFlags` on a static→waving escalation). Derived from
   // the four locals (localStatic || yellowWaving === Yellow || yellowWaving).
   const anyYellow = localStatic || yellowWaving || fullStatic || cautionWaving;
+
+  // Is the field under a FULL-COURSE caution this tick — `Caution ||
+  // CautionWaving` (`fullStatic` is `Caution && !cautionWaving`, so the pair
+  // is exactly those two bits). Feeds the per-episode marker that decides
+  // whether `flag.yellow.cleared` is announced at all (issue #1127).
+  const fullCourseYellow = fullStatic || cautionWaving;
 
   if (hasFlag(sessionFlags, Flags.Blue)) flags.add("blue");
 
@@ -215,7 +233,7 @@ function resolveActiveFlags(sessionFlags: number): {
   // Race-start sets both green and blue bits — suppress blue.
   if (flags.has("green") && flags.has("blue")) flags.delete("blue");
 
-  return { flags, yellowScope, anyYellow };
+  return { flags, yellowScope, anyYellow, fullCourseYellow };
 }
 
 export function diffFlags(
@@ -228,7 +246,7 @@ export function diffFlags(
   isPracticeSession = false,
 ): void {
   const sessionFlags = telemetry.SessionFlags ?? 0;
-  const { flags: current, yellowScope, anyYellow } = resolveActiveFlags(sessionFlags);
+  const { flags: current, yellowScope, anyYellow, fullCourseYellow } = resolveActiveFlags(sessionFlags);
 
   // Player S/F crossing tracking (issue #771). A scored `LapCompleted`
   // increment is the player taking the line — the signal the checkered
@@ -251,6 +269,11 @@ export function diffFlags(
     state.lastYellowScope = yellowScope;
     state.lastAnyYellow = anyYellow;
     state.yellowClearPendingSince = null;
+    // Seed the episode marker from the bits that are actually flying (issue
+    // #1127) — a plugin started mid-caution must still know the episode is
+    // full-course, or the caution's eventual end would speak a cleared line
+    // right over the restart.
+    state.yellowEpisodeFullCourse = fullCourseYellow;
     state.furledPendingAt = 0;
     state.furledAnnounced = false;
     state.flagLastLapCompleted = lapCompleted;
@@ -284,6 +307,15 @@ export function diffFlags(
   // the flag and is scored for one more lap).
   let checkeredPendingSetThisTick = false;
 
+  // Set when a GREEN rising edge lands on this tick (issue #1127). The
+  // yellow-cleared block runs BELOW this switch, so the cancel a green owes a
+  // pending clear cannot be written into the state from the `case "green"`
+  // arm: the block's own `else if (state.lastAnyYellow)` re-arm would undo it
+  // on the very tick that matters most (the caution bits dropping as the
+  // green waves). Carry the edge down in a local instead, and honour it there
+  // ahead of the re-arm.
+  let greenRaisedThisTick = false;
+
   // New "raised" transitions
   for (const flag of current) {
     if (!state.activeFlags.has(flag)) {
@@ -292,6 +324,14 @@ export function diffFlags(
           emit({ event: "flag.yellow.raised", data: { scope: yellowScope ?? "local" } });
           break;
         case "green":
+          // The field is going green — the caution is over and the green
+          // itself is the news (issue #1127). Noted here, honoured in the
+          // yellow-cleared block below. Like the sticky-marker resets that
+          // follow, this sits BEFORE the start-suppression guard: it records
+          // what the flags say, not what was announced, and a full restart's
+          // green arrives with the start bits set.
+          greenRaisedThisTick = true;
+
           // A green rising edge while the sticky final-lap marker is set
           // means the race was EXTENDED or RESTARTED past the lap that
           // latched it (oval overtime, a caution-interrupted final lap that
@@ -485,13 +525,32 @@ export function diffFlags(
   // static→waving escalation) only ARMS the hold window; the event fires
   // once the all-clear has been sustained for YELLOW_CLEARED_HOLD_MS, and
   // any yellow-ish re-raise meanwhile cancels the pending clear.
+  //
+  // Whether it is ANNOUNCED at the end of that window is issue #1127: the
+  // callout exists for a LOCAL yellow, which ends with no flag shown, so it
+  // is the only way the driver learns the sector is clear. A full-course
+  // caution ends with the GREEN instead — already announced — so a cleared
+  // line there talks over the restart. A caution bit at ANY point in the
+  // episode marks it, and the marker is what the fire consults.
+  if (fullCourseYellow) state.yellowEpisodeFullCourse = true;
+
   if (anyYellow) {
     state.yellowClearPendingSince = null;
+  } else if (greenRaisedThisTick) {
+    // The green is out: the caution is over, and the green callout says so.
+    // Cancel any clear pending from a drop inside the hold window (the bits
+    // routinely go down a beat before the green waves) and END the episode
+    // here — that is what stops a caution's marker leaking onto a SEPARATE
+    // local yellow raised seconds into the restart, which must still clear.
+    state.yellowClearPendingSince = null;
+    state.yellowEpisodeFullCourse = false;
   } else if (state.lastAnyYellow) {
     state.yellowClearPendingSince = now;
   } else if (state.yellowClearPendingSince !== null && now - state.yellowClearPendingSince >= YELLOW_CLEARED_HOLD_MS) {
-    emit({ event: "flag.yellow.cleared", data: {} });
+    if (!state.yellowEpisodeFullCourse) emit({ event: "flag.yellow.cleared", data: {} });
+
     state.yellowClearPendingSince = null;
+    state.yellowEpisodeFullCourse = false;
   }
 
   // Furled debounce + paired cleared (issue #669). The rising edge only ARMS

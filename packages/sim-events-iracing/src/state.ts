@@ -125,6 +125,28 @@ export type TranslatorState = {
    */
   yellowClearPendingSince: number | null;
   /**
+   * Whether the CURRENT yellow episode has been full-course at any point —
+   * i.e. whether `Caution` or `CautionWaving` has been observed since it
+   * began (issue #1127). Decides whether the validated clear above is
+   * ANNOUNCED at all.
+   *
+   * `flag.yellow.cleared` was designed for a LOCAL yellow, which ends with
+   * no flag shown: the callout is the only way the driver learns the sector
+   * is clear. A full-course caution never ends that way — in every
+   * discipline it ends with the GREEN, which `flag.green.raised` already
+   * announces — so its cleared line would land on top of the restart
+   * ("Green flag, green flag. Push now." … "Yellow cleared.") at the busiest
+   * moment of the race.
+   *
+   * Set on any tick a caution bit is present, and seeded from the current
+   * bits on the first tick so a plugin started mid-caution still knows the
+   * episode is full-course. Cleared when the pending clear RESOLVES (fired
+   * or suppressed) and on a GREEN rising edge — the latter is what keeps a
+   * caution's marker from leaking onto a SEPARATE local yellow raised
+   * seconds after the restart, which must still get its line.
+   */
+  yellowEpisodeFullCourse: boolean;
+  /**
    * Timestamp (ms) when the `Furled` bit's rising edge was observed, while a
    * `flag.furled.raised` emission is pending its debounce window (issue
    * #669). Running briefly off track flashes the bit for ~0.5 s without a
@@ -922,6 +944,7 @@ export function createInitialState(): TranslatorState {
     lastYellowScope: null,
     lastAnyYellow: false,
     yellowClearPendingSince: null,
+    yellowEpisodeFullCourse: false,
     furledPendingAt: 0,
     furledAnnounced: false,
     flagLastLapCompleted: null,

@@ -369,6 +369,207 @@ describe("diffFlags — yellow.cleared hold window (issue #671)", () => {
   });
 });
 
+describe("diffFlags — full-course episodes end with the green, not a cleared line (issue #1127)", () => {
+  const cleared = (e: PendingEvent) => e.event === "flag.yellow.cleared";
+  const green = (e: PendingEvent) => e.event === "flag.green.raised";
+
+  it("a static full-course caution never announces cleared, even well past the hold window", () => {
+    const state = createInitialState();
+    state.flagStateInitialized = true;
+    diffFlags(state, tick(Flags.Caution), T0, () => {}); // full-course caution out
+    diffFlags(state, tick(0), T0 + 100, () => {}); // bits drop — hold starts
+
+    const { events, emit } = collect();
+    diffFlags(state, tick(0), T0 + 100 + YELLOW_CLEARED_HOLD_MS, emit);
+    expect(events.filter(cleared)).toHaveLength(0);
+
+    // ...and not later either — the pending clear resolved silently.
+    const later = collect();
+    diffFlags(state, tick(0), T0 + 100 + YELLOW_CLEARED_HOLD_MS + 10_000, later.emit);
+    expect(later.events.filter(cleared)).toHaveLength(0);
+  });
+
+  it("a waving full-course caution never announces cleared either", () => {
+    const state = createInitialState();
+    state.flagStateInitialized = true;
+    diffFlags(state, tick(Flags.CautionWaving), T0, () => {});
+    diffFlags(state, tick(0), T0 + 100, () => {});
+
+    const { events, emit } = collect();
+    diffFlags(state, tick(0), T0 + 100 + YELLOW_CLEARED_HOLD_MS, emit);
+    expect(events.filter(cleared)).toHaveLength(0);
+
+    const later = collect();
+    diffFlags(state, tick(0), T0 + 100 + YELLOW_CLEARED_HOLD_MS + 10_000, later.emit);
+    expect(later.events.filter(cleared)).toHaveLength(0);
+  });
+
+  it("an episode that starts local and is JOINED by a caution bit is full-course from then on", () => {
+    const state = createInitialState();
+    state.flagStateInitialized = true;
+    diffFlags(state, tick(Flags.Yellow), T0, () => {}); // local yellow first…
+    diffFlags(state, tick(Flags.Yellow | Flags.Caution), T0 + 1000, () => {}); // …the incident goes full-course
+    diffFlags(state, tick(0), T0 + 2000, () => {}); // bits drop — hold starts
+
+    const { events, emit } = collect();
+    diffFlags(state, tick(0), T0 + 2000 + YELLOW_CLEARED_HOLD_MS, emit);
+    expect(events.filter(cleared)).toHaveLength(0);
+  });
+
+  it("a LOCAL-only static yellow still announces cleared at the hold boundary (issue #671 guard)", () => {
+    const state = createInitialState();
+    state.flagStateInitialized = true;
+    diffFlags(state, tick(Flags.Yellow), T0, () => {});
+    diffFlags(state, tick(0), T0 + 100, () => {});
+
+    const { events, emit } = collect();
+    diffFlags(state, tick(0), T0 + 100 + YELLOW_CLEARED_HOLD_MS, emit);
+    expect(events.filter(cleared)).toHaveLength(1);
+  });
+
+  it("a LOCAL-only WAVING yellow still announces cleared at the hold boundary (issue #671 guard)", () => {
+    const state = createInitialState();
+    state.flagStateInitialized = true;
+    diffFlags(state, tick(Flags.YellowWaving), T0, () => {});
+    diffFlags(state, tick(0), T0 + 100, () => {});
+
+    const { events, emit } = collect();
+    diffFlags(state, tick(0), T0 + 100 + YELLOW_CLEARED_HOLD_MS, emit);
+    expect(events.filter(cleared)).toHaveLength(1);
+  });
+
+  it("a green landing on the very tick the yellow bits drop cancels the pending clear (ordering guard)", () => {
+    // The flag-key switch (where the green case lives) runs BEFORE the
+    // yellow block, so a cancel written straight into the state from the
+    // switch is undone by the block's own `lastAnyYellow` re-arm. This is
+    // the case that proves the cancel survives that ordering.
+    const state = createInitialState();
+    state.flagStateInitialized = true;
+    diffFlags(state, tick(Flags.Yellow), T0, () => {}); // LOCAL-only episode
+
+    const edge = collect();
+    diffFlags(state, tick(Flags.Green), T0 + 100, edge.emit); // bits drop AND the green waves on one tick
+    expect(edge.events.filter(green)).toHaveLength(1);
+    expect(edge.events.filter(cleared)).toHaveLength(0);
+    expect(state.yellowClearPendingSince).toBeNull();
+
+    // Well past the hold window — still nothing.
+    const later = collect();
+    diffFlags(state, tick(Flags.Green), T0 + 100 + 10_000, later.emit);
+    expect(later.events.filter(cleared)).toHaveLength(0);
+  });
+
+  it("a green a second after the drop, inside the hold window, cancels the pending clear", () => {
+    const state = createInitialState();
+    state.flagStateInitialized = true;
+    diffFlags(state, tick(Flags.Yellow), T0, () => {}); // LOCAL-only episode
+    diffFlags(state, tick(0), T0 + 100, () => {}); // drop edge — hold armed
+
+    const edge = collect();
+    diffFlags(state, tick(Flags.Green), T0 + 1100, edge.emit); // green inside the 3 s window
+    expect(edge.events.filter(green)).toHaveLength(1);
+    expect(edge.events.filter(cleared)).toHaveLength(0);
+
+    const later = collect();
+    diffFlags(state, tick(Flags.Green), T0 + 100 + YELLOW_CLEARED_HOLD_MS + 5000, later.emit);
+    expect(later.events.filter(cleared)).toHaveLength(0);
+  });
+
+  it("a green arriving with the start bits set cancels the pending clear too — the field is green either way", () => {
+    const state = createInitialState();
+    state.flagStateInitialized = true;
+    diffFlags(state, tick(Flags.Yellow), T0, () => {}); // local yellow during the formation
+
+    const go = collect();
+    diffFlags(state, tick(Flags.Green | Flags.StartGo), T0 + 100, go.emit);
+    expect(go.events.filter(green)).toHaveLength(0); // the start-light family owns the "go"
+    expect(go.events.filter(cleared)).toHaveLength(0);
+
+    const later = collect();
+    diffFlags(state, tick(Flags.Green | Flags.StartGo), T0 + 100 + YELLOW_CLEARED_HOLD_MS + 5000, later.emit);
+    expect(later.events.filter(cleared)).toHaveLength(0);
+  });
+
+  it("the marker is scoped to its own episode — a NEW local yellow after the restart still clears", () => {
+    const state = createInitialState();
+    state.flagStateInitialized = true;
+    diffFlags(state, tick(Flags.Caution), T0, () => {}); // full-course caution
+    diffFlags(state, tick(0), T0 + 30_000, () => {}); // bits drop
+
+    const restart = collect();
+    diffFlags(state, tick(Flags.Green), T0 + 31_000, restart.emit); // green — the restart
+    expect(restart.events.filter(green)).toHaveLength(1);
+    expect(restart.events.filter(cleared)).toHaveLength(0);
+
+    // A separate LOCAL yellow two seconds into the restart…
+    diffFlags(state, tick(Flags.Green | Flags.Yellow), T0 + 33_000, () => {});
+    diffFlags(state, tick(Flags.Green), T0 + 40_000, () => {}); // …drops again
+
+    // …and THAT one is the driver's only news that the sector is clear.
+    const { events, emit } = collect();
+    diffFlags(state, tick(Flags.Green), T0 + 40_000 + YELLOW_CLEARED_HOLD_MS, emit);
+    expect(events.filter(cleared)).toHaveLength(1);
+  });
+
+  it("the marker also ends with the pending clear it suppressed — a later local yellow clears with no green in between", () => {
+    // The green path is the normal one, but a full-course caution CAN end
+    // without one (the session ends, a red flag intervenes). The marker has
+    // to end with the pending clear it just suppressed, or the next local
+    // yellow inherits it and goes silent too.
+    const state = createInitialState();
+    state.flagStateInitialized = true;
+    diffFlags(state, tick(Flags.Caution), T0, () => {});
+    diffFlags(state, tick(0), T0 + 100, () => {}); // bits drop — hold starts
+
+    const suppressed = collect();
+    diffFlags(state, tick(0), T0 + 100 + YELLOW_CLEARED_HOLD_MS, suppressed.emit); // resolves silently
+    expect(suppressed.events.filter(cleared)).toHaveLength(0);
+    expect(state.yellowEpisodeFullCourse).toBe(false);
+
+    // A fresh LOCAL episode, no green anywhere in between.
+    diffFlags(state, tick(Flags.Yellow), T0 + 60_000, () => {});
+    diffFlags(state, tick(0), T0 + 70_000, () => {});
+
+    const { events, emit } = collect();
+    diffFlags(state, tick(0), T0 + 70_000 + YELLOW_CLEARED_HOLD_MS, emit);
+    expect(events.filter(cleared)).toHaveLength(1);
+  });
+
+  it("first-tick seeding mid-caution knows the episode is full-course — no phantom cleared when it ends", () => {
+    const state = createInitialState();
+    expect(state.flagStateInitialized).toBe(false);
+
+    const seed = collect();
+    diffFlags(state, tick(Flags.CautionWaving), T0, seed.emit); // connect mid-caution
+    expect(seed.events).toEqual([]);
+    expect(state.yellowEpisodeFullCourse).toBe(true);
+
+    diffFlags(state, tick(0), T0 + 100, () => {}); // bits drop — hold starts
+
+    const { events, emit } = collect();
+    diffFlags(state, tick(0), T0 + 100 + YELLOW_CLEARED_HOLD_MS, emit);
+    expect(events.filter(cleared)).toHaveLength(0);
+  });
+
+  it("leaves flag.green.raised itself alone — fires at a restart, stays suppressed at a race start", () => {
+    const afterCaution = createInitialState();
+    afterCaution.flagStateInitialized = true;
+    diffFlags(afterCaution, tick(Flags.Caution), T0, () => {});
+
+    const restart = collect();
+    diffFlags(afterCaution, tick(Flags.Green), T0 + 30_000, restart.emit);
+    expect(restart.events.filter(green)).toHaveLength(1);
+
+    const atStart = createInitialState();
+    atStart.flagStateInitialized = true;
+    diffFlags(atStart, tick(Flags.Caution), T0, () => {});
+
+    const start = collect();
+    diffFlags(atStart, tick(Flags.Green | Flags.StartSet), T0 + 30_000, start.emit);
+    expect(start.events.filter(green)).toHaveLength(0);
+  });
+});
+
 describe("diffFlags — checkered deferral (issue #771)", () => {
   const checkered = (e: PendingEvent) => e.event === "flag.checkered.raised";
 
