@@ -25114,12 +25114,12 @@
       "requestId": "FdOOb28UBAZ7JrsLTfNy"
     },
     "voice/terse/opponent-pit/car-in-01.mp3": {
-      "hash": "00e3cb298773bcbd",
+      "hash": "9350fe94dd62c7e0",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "The car in",
-      "generatedAt": "2026-09-11T09:41:01.586Z",
-      "requestId": "NOLN5ItG05DbL3YNsj3B"
+      "textPreview": "the car in",
+      "generatedAt": "2026-09-13T09:12:45.940Z",
+      "requestId": "h9LPO9lgNDtsKkppKPjF"
     },
     "voice/terse/opponent-pit/is-pitting-01.mp3": {
       "hash": "1c11fd57903cd12c",
