@@ -271,8 +271,7 @@
       },
       {
         "name": "car-in-01",
-        "text": "The car in",
-        "seed": 20,
+        "text": "the car in",
         "next_request_ids": [
           "position-number/4"
         ]
