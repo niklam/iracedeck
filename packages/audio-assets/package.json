@@ -31,7 +31,7 @@
     "ffmpeg-static": "5.3.0",
     "tsx": "4.23.13",
     "typescript": "5.9.3",
-    "vitest": "4.1.11",
+    "vitest": "5.0.0",
     "zod": "4.5.4"
   }
 }
