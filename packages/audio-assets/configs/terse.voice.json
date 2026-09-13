@@ -39,7 +39,7 @@
       },
       {
         "name": "litres",
-        "text": "litres"
+        "text": "leeters"
       },
       {
         "name": "seconds",
@@ -455,7 +455,7 @@
       },
       {
         "name": "tires-compound-dry",
-        "text": "Switching to dries.",
+        "text": "Switching to drys.",
         "previous_request_ids": [
           "pit-actions/acknowledgment-01"
         ]
@@ -587,7 +587,7 @@
       },
       {
         "name": "compound-dry",
-        "text": "changing to dries,"
+        "text": "changing to drys,"
       },
       {
         "name": "compound-wet",
@@ -1379,7 +1379,7 @@
       {
         "name": "wetness-mostly-dry",
         "text": "mostly dry.",
-        "seed": 3,
+        "seed": 4,
         "previous_request_ids": [
           "session-start/wetness-intro"
         ]

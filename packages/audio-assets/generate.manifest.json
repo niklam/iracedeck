@@ -13122,12 +13122,12 @@
       "requestId": "Dj6ugmBFMXYWQ1231uyj"
     },
     "voice/terse/units/litres.mp3": {
-      "hash": "f94a6446604fe6a7",
+      "hash": "a4f2cd686eb94e40",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "litres",
-      "generatedAt": "2026-09-11T07:59:58.823Z",
-      "requestId": "bzog5sQaPWUUx65tVryH"
+      "textPreview": "leeters",
+      "generatedAt": "2026-09-13T09:49:03.310Z",
+      "requestId": "huUyZxk1P7tNVJ7XW7wR"
     },
     "voice/terse/units/seconds.mp3": {
       "hash": "de24ba160d832256",
@@ -13730,12 +13730,12 @@
       "requestId": "JnEykjvtLLDbhILJM3cT"
     },
     "voice/terse/pit-actions/tires-compound-dry.mp3": {
-      "hash": "b25a5d2fd469a668",
+      "hash": "04623106c4c4cee2",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "Switching to dries.",
-      "generatedAt": "2026-09-11T08:00:15.262Z",
-      "requestId": "e9Pi5J8FNX4AJ1T79HVt"
+      "textPreview": "Switching to drys.",
+      "generatedAt": "2026-09-13T09:29:54.581Z",
+      "requestId": "BfSj607fvBweaaIgXu3Q"
     },
     "voice/terse/pit-actions/tires-compound-wet.mp3": {
       "hash": "c6859bbdd0819660",
@@ -13954,12 +13954,12 @@
       "requestId": "dQHy1DKYlYnzb4HWSQUA"
     },
     "voice/terse/pit-readback/compound-dry.mp3": {
-      "hash": "167c76c03896954f",
+      "hash": "c1fccac95b606849",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "changing to dries,",
-      "generatedAt": "2026-09-11T08:00:21.369Z",
-      "requestId": "BsT1UOzBB6yMQZ2hr7QY"
+      "textPreview": "changing to drys,",
+      "generatedAt": "2026-09-13T09:30:30.699Z",
+      "requestId": "jRl7NfhtozYGuhkAHVmw"
     },
     "voice/terse/pit-readback/compound-wet.mp3": {
       "hash": "ebb030ce094327b8",
@@ -25170,12 +25170,12 @@
       "requestId": "lzc8CxsyegyE9h14Couv"
     },
     "voice/terse/session-start/wetness-mostly-dry.mp3": {
-      "hash": "cc02b7bf09e7279e",
+      "hash": "fdb37f000062fcc8",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "mostly dry.",
-      "generatedAt": "2026-09-11T08:10:14.324Z",
-      "requestId": "J8Bl6Kjl0tUyR6Mew66l"
+      "generatedAt": "2026-09-13T09:40:38.480Z",
+      "requestId": "7FyliSAY1wO8laZ8Yj8l"
     },
     "voice/terse/session-start/wetness-very-lightly-wet.mp3": {
       "hash": "cb79322ddb947e0e",
