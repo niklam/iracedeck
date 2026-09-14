@@ -842,7 +842,8 @@
     "incidents": [
       {
         "name": "off-track-01",
-        "text": "Off track."
+        "text": "Off track.",
+        "seed": 2
       },
       {
         "name": "out-of-control-01",
@@ -6373,7 +6374,8 @@
       },
       {
         "name": "1er-ralentisseur-01",
-        "text": "Premier Ralentisseur."
+        "text": "Premier Ralentisseur.",
+        "voice_settings": { "language_code": "fr" }
       },
       {
         "name": "200r-01",
@@ -6381,7 +6383,8 @@
       },
       {
         "name": "2e-ralentisseur-01",
-        "text": "Deuxième Ralentisseur."
+        "text": "Deuxième Ralentisseur.",
+        "voice_settings": { "language_code": "fr" }
       },
       {
         "name": "abbey-01",
@@ -6389,7 +6392,8 @@
       },
       {
         "name": "acque-minerali-01",
-        "text": "Acque Minerali."
+        "text": "Acque Minerali.",
+        "voice_settings": { "language_code": "it" }
       },
       {
         "name": "adelaide-01",
@@ -6397,11 +6401,13 @@
       },
       {
         "name": "adenauer-forst-01",
-        "text": "Adenauer Forst."
+        "text": "Adenauer Forst.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "advan-bogen-01",
-        "text": "ADVAN-Bogen."
+        "text": "ADVAN-Bogen.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "advanced-petroleum-corner-01",
@@ -6409,7 +6415,8 @@
       },
       {
         "name": "agostini-01",
-        "text": "Agostini."
+        "text": "Agostini.",
+        "voice_settings": { "language_code": "it" }
       },
       {
         "name": "aintree-01",
@@ -6417,11 +6424,13 @@
       },
       {
         "name": "alex-criville-01",
-        "text": "Alex Criville."
+        "text": "Alex Criville.",
+        "voice_settings": { "language_code": "es" }
       },
       {
         "name": "amman-kurve-01",
-        "text": "Amman Kurve."
+        "text": "Amman Kurve.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "andretti-hairpin-01",
@@ -6429,7 +6438,8 @@
       },
       {
         "name": "angel-nieto-01",
-        "text": "Angel Nieto."
+        "text": "Angel Nieto.",
+        "voice_settings": { "language_code": "es" }
       },
       {
         "name": "anti-banked-curve-01",
@@ -6437,23 +6447,28 @@
       },
       {
         "name": "antoniusbuche-01",
-        "text": "Antoniusbuche."
+        "text": "Antoniusbuche.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "aremberg-01",
-        "text": "Aremberg."
+        "text": "Aremberg.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "arie-luyendijk-bocht-01",
-        "text": "Arie Luyendijk Bocht."
+        "text": "Arie Luyendijk Bocht.",
+        "voice_settings": { "language_code": "nl" }
       },
       {
         "name": "arrabbiata-1-01",
-        "text": "Arrabbiata one."
+        "text": "Arrabbiata 1.",
+        "voice_settings": { "language_code": "it" }
       },
       {
         "name": "arrabbiata-2-01",
-        "text": "Arrabbiata two."
+        "text": "Arrabbiata 2.",
+        "voice_settings": { "language_code": "it" }
       },
       {
         "name": "aspar-01",
@@ -6465,7 +6480,8 @@
       },
       {
         "name": "auto-motor-und-sport-kurve-01",
-        "text": "auto motor und sport-Kurve."
+        "text": "auto motor und sport-Kurve.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "ayrton-senna-chicane-01",
@@ -6473,11 +6489,13 @@
       },
       {
         "name": "banc-sabadell-01",
-        "text": "Banc Sabadell."
+        "text": "Banc Sabadell.",
+        "voice_settings": { "language_code": "es" }
       },
       {
         "name": "bauer-kurve-01",
-        "text": "Bauer Kurve."
+        "text": "Bauer Kurve.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "becketts-01",
@@ -6485,11 +6503,13 @@
       },
       {
         "name": "bergwerk-01",
-        "text": "Bergwerk."
+        "text": "Bergwerk.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "bico-de-pato-01",
-        "text": "Bico de Pato."
+        "text": "Bico de Pato.",
+        "voice_settings": { "language_code": "pt" }
       },
       {
         "name": "big-bend-01",
@@ -6501,11 +6521,13 @@
       },
       {
         "name": "biondetti-1-01",
-        "text": "Biondetti one."
+        "text": "Biondetti 1.",
+        "voice_settings": { "language_code": "it" }
       },
       {
         "name": "biondetti-2-01",
-        "text": "Biondetti two."
+        "text": "Biondetti 2.",
+        "voice_settings": { "language_code": "it" }
       },
       {
         "name": "bishop-bend-01",
@@ -6517,19 +6539,23 @@
       },
       {
         "name": "blanchimont-01",
-        "text": "Blanchimont."
+        "text": "Blanchimont.",
+        "voice_settings": { "language_code": "fr" }
       },
       {
         "name": "bocht-10-01",
-        "text": "Bocht ten."
+        "text": "Bocht 10.",
+        "voice_settings": { "language_code": "nl" }
       },
       {
         "name": "bocht-9-01",
-        "text": "Bocht nine."
+        "text": "Bocht 9.",
+        "voice_settings": { "language_code": "nl" }
       },
       {
         "name": "bolderbergbocht-01",
-        "text": "Bolderbergbocht."
+        "text": "Bolderberg bocht.",
+        "voice_settings": { "language_code": "nl" }
       },
       {
         "name": "bomb-hole-01",
@@ -6537,7 +6563,8 @@
       },
       {
         "name": "borgo-san-lorenzo-01",
-        "text": "Borgo San Lorenzo."
+        "text": "Borgo San Lorenzo.",
+        "voice_settings": { "language_code": "it" }
       },
       {
         "name": "britten-s-01",
@@ -6549,7 +6576,8 @@
       },
       {
         "name": "bruennchen-01",
-        "text": "Bruennchen."
+        "text": "Brünnchen.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "brundle-01",
@@ -6557,19 +6585,23 @@
       },
       {
         "name": "bruxelles-01",
-        "text": "Bruxelles."
+        "text": "Bruxelles.",
+        "voice_settings": { "language_code": "fr" }
       },
       {
         "name": "bucine-01",
-        "text": "Bucine."
+        "text": "Bucine.",
+        "voice_settings": { "language_code": "it" }
       },
       {
         "name": "butte-01",
-        "text": "Butte."
+        "text": "Butte.",
+        "voice_settings": { "language_code": "nl" }
       },
       {
         "name": "campsa-01",
-        "text": "Campsa."
+        "text": "Campsa.",
+        "voice_settings": { "language_code": "es" }
       },
       {
         "name": "campus-01",
@@ -6581,7 +6613,8 @@
       },
       {
         "name": "caracciola-karussell-01",
-        "text": "Caracciola-Karussell."
+        "text": "Caracciola-Karussell.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "carousel-01",
@@ -6589,7 +6622,8 @@
       },
       {
         "name": "casanova-01",
-        "text": "Casanova."
+        "text": "Casanova.",
+        "voice_settings": { "language_code": "it" }
       },
       {
         "name": "cascades-01",
@@ -6609,7 +6643,8 @@
       },
       {
         "name": "chateaou-d-eau-01",
-        "text": "Chateaou d'Eau."
+        "text": "Château d'Eau.",
+        "voice_settings": { "language_code": "fr" }
       },
       {
         "name": "chicane-01",
@@ -6641,7 +6676,8 @@
       },
       {
         "name": "complexe-du-lycee-01",
-        "text": "Complexe du Lycee."
+        "text": "Complexe du Lycee.",
+        "voice_settings": { "language_code": "fr" }
       },
       {
         "name": "coppice-01",
@@ -6657,31 +6693,38 @@
       },
       {
         "name": "correntaio-01",
-        "text": "Correntaio."
+        "text": "Correntaio.",
+        "voice_settings": { "language_code": "it" }
       },
       {
         "name": "courbe-d-antares-01",
-        "text": "Courbe d'Antares."
+        "text": "Courbe d'Antarès.",
+        "voice_settings": { "language_code": "fr" }
       },
       {
         "name": "courbe-des-hunaudieres-01",
-        "text": "Courbe des Hunaudieres."
+        "text": "Courbe des Hunaudieres.",
+        "voice_settings": { "language_code": "fr" }
       },
       {
         "name": "courbe-du-buisson-01",
-        "text": "Courbe du Buisson."
+        "text": "Courbe du Buisson.",
+        "voice_settings": { "language_code": "fr" }
       },
       {
         "name": "courbe-du-golf-01",
-        "text": "Courbe du Golf."
+        "text": "Courbe du Golf.",
+        "voice_settings": { "language_code": "fr" }
       },
       {
         "name": "courbe-dunlop-01",
-        "text": "Courbe Dunlop."
+        "text": "Courbe Dunlop.",
+        "voice_settings": { "language_code": "fr" }
       },
       {
         "name": "courbe-paul-frere-01",
-        "text": "Courbe Paul Frere."
+        "text": "Courbe Paul Frere.",
+        "voice_settings": { "language_code": "fr" }
       },
       {
         "name": "craner-curves-01",
@@ -6693,43 +6736,53 @@
       },
       {
         "name": "curva-biassono-01",
-        "text": "Curva Biassono."
+        "text": "Curva Biassono.",
+        "voice_settings": { "language_code": "it" }
       },
       {
         "name": "curva-del-carro-01",
-        "text": "Curva del Carro."
+        "text": "Curva del Carro.",
+        "voice_settings": { "language_code": "it" }
       },
       {
         "name": "curva-del-rio-01",
-        "text": "Curva del Rio."
+        "text": "Curva del Rio.",
+        "voice_settings": { "language_code": "it" }
       },
       {
         "name": "curva-del-serraglio-01",
-        "text": "Curva del Serraglio."
+        "text": "Curva del Serraglio.",
+        "voice_settings": { "language_code": "it" }
       },
       {
         "name": "curva-do-sol-01",
-        "text": "Curva do Sol."
+        "text": "Curva do Sol.",
+        "voice_settings": { "language_code": "pt" }
       },
       {
         "name": "curva-misano-01",
-        "text": "Curva Misano."
+        "text": "Curva Misano.",
+        "voice_settings": { "language_code": "it" }
       },
       {
         "name": "curva-parabolica-01",
-        "text": "Curva Parabolica."
+        "text": "Curva Parabolica.",
+        "voice_settings": { "language_code": "it" }
       },
       {
         "name": "curva-quericia-01",
-        "text": "Curva Quericia."
+        "text": "Curva Quericia.",
+        "voice_settings": { "language_code": "it" }
       },
       {
         "name": "curva-tramonto-01",
-        "text": "Curva Tramonto."
+        "text": "Curva Tramonto.",
+        "voice_settings": { "language_code": "it" }
       },
       {
         "name": "curvone-01",
-        "text": "Curvone."
+        "text": "Curvone.",
+        "voice_settings": { "language_code": "it" }
       },
       {
         "name": "deer-leap-01",
@@ -6745,11 +6798,13 @@
       },
       {
         "name": "descente-de-la-chapelle-01",
-        "text": "Descente de la Chapelle."
+        "text": "Descente de la Chapelle.",
+        "voice_settings": { "language_code": "fr" }
       },
       {
         "name": "descida-do-lago-01",
-        "text": "Descida do Lago."
+        "text": "Descida do Lago.",
+        "voice_settings": { "language_code": "pt" }
       },
       {
         "name": "dingle-dell-01",
@@ -6761,15 +6816,18 @@
       },
       {
         "name": "doettinger-hoehe-01",
-        "text": "Doettinger Hoehe."
+        "text": "döttinger höhe.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "double-gauche-01",
-        "text": "Double Gauche."
+        "text": "Double Gauche.",
+        "voice_settings": { "language_code": "fr" }
       },
       {
         "name": "dreifach-rechts-01",
-        "text": "Dreifach-Rechts."
+        "text": "Dreifach-Rechts.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "druids-01",
@@ -6789,7 +6847,8 @@
       },
       {
         "name": "dunlop-kehre-01",
-        "text": "Dunlop-Kehre."
+        "text": "Dunlop-Kehre.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "earste-01",
@@ -6797,19 +6856,23 @@
       },
       {
         "name": "eau-rouge-01",
-        "text": "Eau Rouge."
+        "text": "Eau Rouge.",
+        "voice_settings": { "language_code": "fr" }
       },
       {
         "name": "einfahrt-parabolika-01",
-        "text": "Einfahrt Parabolika."
+        "text": "Einfahrt Parabolika.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "elf-01",
-        "text": "Elf."
+        "text": "Elf.",
+        "voice_settings": { "language_code": "es" }
       },
       {
         "name": "eschbach-01",
-        "text": "Eschbach."
+        "text": "Eschbach.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "esse-01",
@@ -6821,23 +6884,28 @@
       },
       {
         "name": "esses-d-indianapolis-01",
-        "text": "Esses d'Indianapolis."
+        "text": "Esses d'Indianapolis.",
+        "voice_settings": { "language_code": "fr" }
       },
       {
         "name": "esses-du-karting-01",
-        "text": "Esses du Karting."
+        "text": "Esses du Karting.",
+        "voice_settings": { "language_code": "fr" }
       },
       {
         "name": "estoril-01",
-        "text": "Estoril."
+        "text": "Estoril.",
+        "voice_settings": { "language_code": "pt" }
       },
       {
         "name": "europcar-01",
-        "text": "Europcar."
+        "text": "Europcar.",
+        "voice_settings": { "language_code": "es" }
       },
       {
         "name": "exmuehle-01",
-        "text": "ExMuehle."
+        "text": "ExMuehle.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "expo-92-01",
@@ -6853,7 +6921,8 @@
       },
       {
         "name": "ferradura-01",
-        "text": "Ferradura."
+        "text": "Ferradura.",
+        "voice_settings": { "language_code": "pt" }
       },
       {
         "name": "ferrari-01",
@@ -6869,7 +6938,8 @@
       },
       {
         "name": "flugplatz-01",
-        "text": "Flugplatz."
+        "text": "Flugplatz.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "fogarty-esses-01",
@@ -6877,7 +6947,8 @@
       },
       {
         "name": "ford-kurve-01",
-        "text": "Ford-Kurve."
+        "text": "Ford-Kurve.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "forest-s-elbow-01",
@@ -6889,15 +6960,18 @@
       },
       {
         "name": "fuchsroehre-01",
-        "text": "Fuchsroehre."
+        "text": "fuchsröhre.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "galgenkopf-01",
-        "text": "Galgenkopf."
+        "text": "Galgenkopf.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "galp-01",
-        "text": "Galp."
+        "text": "Galp.",
+        "voice_settings": { "language_code": "pt" }
       },
       {
         "name": "gendebien-bend-01",
@@ -6905,7 +6979,8 @@
       },
       {
         "name": "gerlachbocht-01",
-        "text": "Gerlachbocht."
+        "text": "Gerlachbocht.",
+        "voice_settings": { "language_code": "nl" }
       },
       {
         "name": "goddards-01",
@@ -6921,11 +6996,13 @@
       },
       {
         "name": "grande-courbe-01",
-        "text": "Grande Courbe."
+        "text": "Grande Courbe.",
+        "voice_settings": { "language_code": "fr" }
       },
       {
         "name": "gresini-01",
-        "text": "GRESINI."
+        "text": "GRESINI.",
+        "voice_settings": { "language_code": "it" }
       },
       {
         "name": "griffin-s-mount-01",
@@ -6933,7 +7010,8 @@
       },
       {
         "name": "grosse-kuppe-kurve-01",
-        "text": "Grosse Kuppe-Kurve."
+        "text": "Große Kuppe.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "gurney-bend-01",
@@ -6957,19 +7035,23 @@
       },
       {
         "name": "hans-ernst-bocht-01",
-        "text": "Hans Ernst Bocht."
+        "text": "Hans Ernst Bocht.",
+        "voice_settings": { "language_code": "nl" }
       },
       {
         "name": "hasseroder-01",
-        "text": "Hasseröder."
+        "text": "Hasseröder.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "hasseroeder-01",
-        "text": "Hasseroeder."
+        "text": "Hasseroeder.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "hatzenbach-01",
-        "text": "Hatzenbach."
+        "text": "Hatzenbach.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "hawthorn-bend-01",
@@ -6977,7 +7059,8 @@
       },
       {
         "name": "hedwigshoehe-01",
-        "text": "Hedwigshoehe."
+        "text": "Hedwigshöhe.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "heel-01",
@@ -7001,15 +7084,18 @@
       },
       {
         "name": "hohe-acht-01",
-        "text": "Hohe Acht."
+        "text": "Hohe Acht.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "hoheneichen-01",
-        "text": "Hoheneichen."
+        "text": "Hoheneichen.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "hohenrain-01",
-        "text": "Hohenrain."
+        "text": "Hohenrain.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "hollywood-01",
@@ -7029,11 +7115,13 @@
       },
       {
         "name": "hugenholzbocht-01",
-        "text": "Hugenholzbocht."
+        "text": "Hugenholzbocht.",
+        "voice_settings": { "language_code": "nl" }
       },
       {
         "name": "imola-01",
-        "text": "Imola."
+        "text": "Imola.",
+        "voice_settings": { "language_code": "it" }
       },
       {
         "name": "inner-loop-01",
@@ -7045,35 +7133,43 @@
       },
       {
         "name": "jacky-ickxbocht-01",
-        "text": "Jacky Ickxbocht."
+        "text": "Jacky Ickxbocht.",
+        "voice_settings": { "language_code": "nl" }
       },
       {
         "name": "jochen-rindtbocht-01",
-        "text": "Jochen Rindtbocht."
+        "text": "Jochen Rindtbocht.",
+        "voice_settings": { "language_code": "nl" }
       },
       {
         "name": "juncao-01",
-        "text": "Juncao."
+        "text": "Juncao.",
+        "voice_settings": { "language_code": "pt" }
       },
       {
         "name": "kallenhard-01",
-        "text": "Kallenhard."
+        "text": "Kallenhard.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "kanaalbocht-01",
-        "text": "Kanaalbocht."
+        "text": "Kanaalbocht.",
+        "voice_settings": { "language_code": "nl" }
       },
       {
         "name": "karthallen-kurve-01",
-        "text": "Karthallen-Kurve."
+        "text": "Karthallen-Kurve.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "kemmel-01",
-        "text": "Kemmel."
+        "text": "Kemmel.",
+        "voice_settings": { "language_code": "fr" }
       },
       {
         "name": "kesselchen-01",
-        "text": "Kesselchen."
+        "text": "Kesselchen.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "kettle-bottoms-01",
@@ -7085,15 +7181,18 @@
       },
       {
         "name": "kleine-chicane-01",
-        "text": "Kleine Chicane."
+        "text": "Kleine Chicane.",
+        "voice_settings": { "language_code": "nl" }
       },
       {
         "name": "kleine-kuppe-kurve-01",
-        "text": "Kleine Kuppe-Kurve."
+        "text": "Kleine Kuppe-Kurve.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "klostertal-01",
-        "text": "Klostertal."
+        "text": "Klostertal.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "knickerbrook-01",
@@ -7101,31 +7200,38 @@
       },
       {
         "name": "kumho-01",
-        "text": "Kumho."
+        "text": "Kumho.",
+        "voice_settings": { "language_code": "nl" }
       },
       {
         "name": "l-epingle-01",
-        "text": "L'Epingle."
+        "text": "L'Epingle.",
+        "voice_settings": { "language_code": "fr" }
       },
       {
         "name": "la-caixa-01",
-        "text": "La Caixa."
+        "text": "La Caixa.",
+        "voice_settings": { "language_code": "es" }
       },
       {
         "name": "la-carrierasse-01",
-        "text": "La Carrierasse."
+        "text": "La Carrierasse.",
+        "voice_settings": { "language_code": "fr" }
       },
       {
         "name": "la-courmelle-01",
-        "text": "La Courmelle."
+        "text": "La Courmelle.",
+        "voice_settings": { "language_code": "fr" }
       },
       {
         "name": "la-cuvette-01",
-        "text": "La cuvette."
+        "text": "La cuvette.",
+        "voice_settings": { "language_code": "fr" }
       },
       {
         "name": "la-servie-01",
-        "text": "La servie."
+        "text": "La servie.",
+        "voice_settings": { "language_code": "fr" }
       },
       {
         "name": "la-source-01",
@@ -7133,11 +7239,13 @@
       },
       {
         "name": "lagos-01",
-        "text": "Lagos."
+        "text": "Lagos.",
+        "voice_settings": { "language_code": "pt" }
       },
       {
         "name": "laranjinha-01",
-        "text": "Laranjinha."
+        "text": "Laranjinha.",
+        "voice_settings": { "language_code": "pt" }
       },
       {
         "name": "last-corner-01",
@@ -7149,7 +7257,8 @@
       },
       {
         "name": "le-cavalet-01",
-        "text": "Le Cavalet."
+        "text": "Le Cavalet.",
+        "voice_settings": { "language_code": "fr" }
       },
       {
         "name": "le-mans-curve-01",
@@ -7161,11 +7270,14 @@
       },
       {
         "name": "les-combes-01",
-        "text": "Les Combes."
+        "text": "Les Combes.",
+        "voice_settings": { "language_code": "fr" }
       },
       {
         "name": "les-fagnes-01",
-        "text": "Les Fagnes."
+        "text": "Les Fagnes.",
+        "voice_settings": { "language_code": "fr" },
+        "seed": 2
       },
       {
         "name": "lodge-corner-01",
@@ -7173,15 +7285,18 @@
       },
       {
         "name": "lorenzo-01",
-        "text": "Lorenzo."
+        "text": "Lorenzo.",
+        "voice_settings": { "language_code": "es" }
       },
       {
         "name": "lucien-bianchbocht-01",
-        "text": "Lucien Bianchbocht."
+        "text": "Lucien Bianchbocht.",
+        "voice_settings": { "language_code": "nl" }
       },
       {
         "name": "luco-01",
-        "text": "Luco."
+        "text": "Luco.",
+        "voice_settings": { "language_code": "it" }
       },
       {
         "name": "luffield-01",
@@ -7193,19 +7308,23 @@
       },
       {
         "name": "maison-blanche-01",
-        "text": "Maison Blanche."
+        "text": "Maison Blanche.",
+        "voice_settings": { "language_code": "fr" }
       },
       {
         "name": "malmedy-01",
-        "text": "Malmedy."
+        "text": "Malmedy.",
+        "voice_settings": { "language_code": "fr" }
       },
       {
         "name": "mastersbocht-01",
-        "text": "Mastersbocht."
+        "text": "Mastersbocht.",
+        "voice_settings": { "language_code": "nl" }
       },
       {
         "name": "materassi-01",
-        "text": "Materassi."
+        "text": "Materassi.",
+        "voice_settings": { "language_code": "it" }
       },
       {
         "name": "mcdonald-s-01",
@@ -7229,15 +7348,18 @@
       },
       {
         "name": "mergulho-01",
-        "text": "Mergulho."
+        "text": "Mergulho.",
+        "voice_settings": { "language_code": "pt" }
       },
       {
         "name": "metzgesfeld-01",
-        "text": "Metzgesfeld."
+        "text": "Metzgesfeld.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "michael-schumacher-s-01",
-        "text": "Michael-Schumacher-S."
+        "text": "Michael-Schumacher ess.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "michelin-01",
@@ -7245,7 +7367,8 @@
       },
       {
         "name": "michelin-kurve-01",
-        "text": "Michelin-Kurve."
+        "text": "Michelin-Kurve.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "mike-knight-corner-01",
@@ -7253,7 +7376,8 @@
       },
       {
         "name": "mobil-1-kurve-01",
-        "text": "Mobil one Kurve."
+        "text": "Mobil one Kurve.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "momo-corner-01",
@@ -7281,7 +7405,8 @@
       },
       {
         "name": "mutkurve-01",
-        "text": "Mutkurve."
+        "text": "Mutkurve.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "nascar-bend-01",
@@ -7293,11 +7418,13 @@
       },
       {
         "name": "ngk-schikane-01",
-        "text": "NGK-Schikane."
+        "text": "NGK-Schikane.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "niki-lauda-kurve-01",
-        "text": "Niki Lauda Kurve."
+        "text": "Niki Lauda Kurve.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "nissan-corner-01",
@@ -7305,7 +7432,8 @@
       },
       {
         "name": "nordkurve-01",
-        "text": "Nordkurve."
+        "text": "Nordkurve.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "northern-bm-corner-01",
@@ -7313,7 +7441,8 @@
       },
       {
         "name": "nuerburgring-01",
-        "text": "Nuerburgring."
+        "text": "Nürburgring.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "o-brien-aluminium-dogleg-01",
@@ -7337,7 +7466,8 @@
       },
       {
         "name": "omega-kurve-01",
-        "text": "Omega-Kurve."
+        "text": "Omega-Kurve.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "outer-loop-01",
@@ -7353,7 +7483,8 @@
       },
       {
         "name": "palagio-01",
-        "text": "Palagio."
+        "text": "Palagio.",
+        "voice_settings": { "language_code": "it" }
       },
       {
         "name": "palmer-01",
@@ -7361,11 +7492,13 @@
       },
       {
         "name": "parabolika-01",
-        "text": "Parabolika."
+        "text": "Parabolica.",
+        "voice_settings": { "language_code": "it" }
       },
       {
         "name": "peluqui-01",
-        "text": "Peluqui."
+        "text": "Peluqui.",
+        "voice_settings": { "language_code": "es" }
       },
       {
         "name": "penrite-corner-01",
@@ -7373,11 +7506,13 @@
       },
       {
         "name": "pflanzgarten-01",
-        "text": "Pflanzgarten."
+        "text": "Pflanzgarten.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "pinheirinho-01",
-        "text": "Pinheirinho."
+        "text": "Pinheirinho.",
+        "voice_settings": { "language_code": "pt" }
       },
       {
         "name": "piper-corner-01",
@@ -7385,27 +7520,33 @@
       },
       {
         "name": "piratella-01",
-        "text": "Piratella."
+        "text": "Piratella.",
+        "voice_settings": { "language_code": "it" }
       },
       {
         "name": "poggiosecco-01",
-        "text": "Poggiosecco."
+        "text": "Poggiosecco.",
+        "voice_settings": { "language_code": "it" }
       },
       {
         "name": "portimao-01",
-        "text": "Portimao."
+        "text": "Portimao.",
+        "voice_settings": { "language_code": "pt" }
       },
       {
         "name": "prima-curva-di-lesmo-01",
-        "text": "Prima Curva di Lesmo."
+        "text": "Prima Curva di Lesmo.",
+        "voice_settings": { "language_code": "it" }
       },
       {
         "name": "prima-variante-01",
-        "text": "Prima Variante."
+        "text": "Prima Variante.",
+        "voice_settings": { "language_code": "it" }
       },
       {
         "name": "primeira-01",
-        "text": "Primeira."
+        "text": "Primeira.",
+        "voice_settings": { "language_code": "it" }
       },
       {
         "name": "quarry-bend-01",
@@ -7413,27 +7554,33 @@
       },
       {
         "name": "queckenberg-kurve-01",
-        "text": "Queckenberg Kurve."
+        "text": "Queckenberg Kurve.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "quiddelbacher-hoehe-01",
-        "text": "Quiddelbacher Hoehe."
+        "text": "Quiddelbacher Höhe.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "raidillon-01",
-        "text": "Raidillon."
+        "text": "Raidillon.",
+        "voice_settings": { "language_code": "fr" }
       },
       {
         "name": "ralentisseur-dunlop-01",
-        "text": "Ralentisseur Dunlop."
+        "text": "Ralentisseur Dunlop.",
+        "voice_settings": { "language_code": "fr" }
       },
       {
         "name": "ralf-waldmann-kurve-01",
-        "text": "Ralf-Waldmann-Kurve."
+        "text": "Ralf-Waldmann-Kurve.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "rauch-01",
-        "text": "Rauch."
+        "text": "Rauch.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "recaro-corner-01",
@@ -7457,15 +7604,18 @@
       },
       {
         "name": "remus-01",
-        "text": "Remus."
+        "text": "Remus.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "renault-01",
-        "text": "Renault."
+        "text": "Renault.",
+        "voice_settings": { "language_code": "fr" }
       },
       {
         "name": "repsol-01",
-        "text": "Repsol."
+        "text": "Repsol.",
+        "voice_settings": { "language_code": "es" }
       },
       {
         "name": "revolver-corner-01",
@@ -7477,15 +7627,18 @@
       },
       {
         "name": "rindt-01",
-        "text": "Rindt."
+        "text": "Rindt.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "rivazza-01",
-        "text": "Rivazza."
+        "text": "Rivazza.",
+        "voice_settings": { "language_code": "it" }
       },
       {
         "name": "rob-slotemakerbocht-01",
-        "text": "Rob Slotemakerbocht."
+        "text": "Rob Slotemakerbocht.",
+        "voice_settings": { "language_code": "nl" }
       },
       {
         "name": "roberts-01",
@@ -7501,27 +7654,33 @@
       },
       {
         "name": "s-do-senna-01",
-        "text": "S do Senna."
+        "text": "S do Senna.",
+        "voice_settings": { "language_code": "pt" }
       },
       {
         "name": "s-du-tetre-rouge-01",
-        "text": "S du Tetre Rouge."
+        "text": "S du Tetre Rouge.",
+        "voice_settings": { "language_code": "fr" }
       },
       {
         "name": "sachs-kurve-01",
-        "text": "Sachs-Kurve."
+        "text": "Sachs-Kurve.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "sachsen-kurve-01",
-        "text": "Sachsen Kurve."
+        "text": "Sachsen Kurve.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "sacramentshelling-01",
-        "text": "Sacramentshelling."
+        "text": "Sacramentshelling.",
+        "voice_settings": { "language_code": "nl" }
       },
       {
         "name": "sagres-01",
-        "text": "Sagres."
+        "text": "Sagres.",
+        "voice_settings": { "language_code": "pt" }
       },
       {
         "name": "samsung-01",
@@ -7529,31 +7688,38 @@
       },
       {
         "name": "san-donato-01",
-        "text": "San Donato."
+        "text": "San Donato.",
+        "voice_settings": { "language_code": "it" }
       },
       {
         "name": "savelli-01",
-        "text": "Savelli."
+        "text": "Savelli.",
+        "voice_settings": { "language_code": "it" }
       },
       {
         "name": "scarperia-01",
-        "text": "Scarperia."
+        "text": "Scarperia.",
+        "voice_settings": { "language_code": "it" }
       },
       {
         "name": "scheivlak-01",
-        "text": "Scheivlak."
+        "text": "Scheivlak.",
+        "voice_settings": { "language_code": "nl" }
       },
       {
         "name": "schikane-01",
-        "text": "Schikane."
+        "text": "Schikane.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "schlossgold-01",
-        "text": "Schlossgold."
+        "text": "Schlossgold.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "schwalbenschwanz-01",
-        "text": "Schwalbenschwanz."
+        "text": "Schwalbenschwanz.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "schwantz-curve-01",
@@ -7561,19 +7727,23 @@
       },
       {
         "name": "schwedenkreuz-01",
-        "text": "Schwedenkreuz."
+        "text": "Schwedenkreuz.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "seat-01",
-        "text": "Seat."
+        "text": "Seat.",
+        "voice_settings": { "language_code": "es" }
       },
       {
         "name": "seconda-curva-di-lesmo-01",
-        "text": "Seconda Curva di Lesmo."
+        "text": "Seconda Curva di Lesmo.",
+        "voice_settings": { "language_code": "it" }
       },
       {
         "name": "seconda-variante-01",
-        "text": "Seconda Variante."
+        "text": "Seconda Variante.",
+        "voice_settings": { "language_code": "it" }
       },
       {
         "name": "sheene-s-01",
@@ -7585,7 +7755,8 @@
       },
       {
         "name": "shell-kurve-01",
-        "text": "Shell Kurve."
+        "text": "Shell Kurve.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "shell-oils-corner-01",
@@ -7593,7 +7764,8 @@
       },
       {
         "name": "sito-pons-01",
-        "text": "Sito Pons."
+        "text": "Sito Pons.",
+        "voice_settings": { "language_code": "es" }
       },
       {
         "name": "skyline-01",
@@ -7613,7 +7785,8 @@
       },
       {
         "name": "spiegelkurve-01",
-        "text": "Spiegelkurve."
+        "text": "Spiegelkurve.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "spiral-01",
@@ -7621,7 +7794,8 @@
       },
       {
         "name": "spitzkehre-01",
-        "text": "Spitzkehre."
+        "text": "Spitzkehre.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "spoon-curve-01",
@@ -7633,15 +7807,18 @@
       },
       {
         "name": "stavelot-01",
-        "text": "Stavelot."
+        "text": "Stavelot.",
+        "voice_settings": { "language_code": "fr" }
       },
       {
         "name": "stefan-bellof-s-01",
-        "text": "Stefan-Bellof-S."
+        "text": "Stefan-Bellof-S.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "sterrenwachtbocht-01",
-        "text": "Sterrenwachtbocht."
+        "text": "Sterrenwachtbocht.",
+        "voice_settings": { "language_code": "nl" }
       },
       {
         "name": "stirling-s-01",
@@ -7653,7 +7830,8 @@
       },
       {
         "name": "suedkurve-01",
-        "text": "Suedkurve."
+        "text": "Südkurve.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "sulman-park-01",
@@ -7757,11 +7935,13 @@
       },
       {
         "name": "tarzanbocht-01",
-        "text": "Tarzanbocht."
+        "text": "Tarzanbocht.",
+        "voice_settings": { "language_code": "nl" }
       },
       {
         "name": "terlamenbocht-01",
-        "text": "Terlamenbocht."
+        "text": "Terlamenbocht.",
+        "voice_settings": { "language_code": "nl" }
       },
       {
         "name": "the-90-01",
@@ -7809,7 +7989,8 @@
       },
       {
         "name": "tiergarten-01",
-        "text": "Tiergarten."
+        "text": "Tiergarten.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "toe-01",
@@ -7817,7 +7998,8 @@
       },
       {
         "name": "tosa-01",
-        "text": "Tosa."
+        "text": "Tosa.",
+        "voice_settings": { "language_code": "it" }
       },
       {
         "name": "tower-turn-01",
@@ -7829,7 +8011,8 @@
       },
       {
         "name": "triple-gauche-01",
-        "text": "Triple Gauche."
+        "text": "Triple Gauche.",
+        "voice_settings": { "language_code": "fr" }
       },
       {
         "name": "turn-1-01",
@@ -7989,27 +8172,33 @@
       },
       {
         "name": "vale-01",
-        "text": "Vale."
+        "text": "Vale.",
+        "seed": 3
       },
       {
         "name": "valvoline-kurve-01",
-        "text": "Valvoline Kurve."
+        "text": "Valvoline Kurve.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "variante-ascari-01",
-        "text": "Variante Ascari."
+        "text": "Variante Ascari.",
+        "voice_settings": { "language_code": "it" }
       },
       {
         "name": "variante-del-parco-01",
-        "text": "Variante del Parco."
+        "text": "Variante del Parco.",
+        "voice_settings": { "language_code": "it" }
       },
       {
         "name": "variante-tamburello-01",
-        "text": "Variante Tamburello."
+        "text": "Variante Tamburello.",
+        "voice_settings": { "language_code": "it" }
       },
       {
         "name": "variante-villeneuve-01",
-        "text": "Variante Villeneuve."
+        "text": "Variante Villeneuve.",
+        "voice_settings": { "language_code": "it" }
       },
       {
         "name": "village-01",
@@ -8021,47 +8210,58 @@
       },
       {
         "name": "virage-corvette-01",
-        "text": "Virage Corvette."
+        "text": "Virage Corvette.",
+        "voice_settings": { "language_code": "fr" }
       },
       {
         "name": "virage-d-arnage-01",
-        "text": "Virage d'Arnage."
+        "text": "Virage d'Arnage.",
+        "voice_settings": { "language_code": "fr" }
       },
       {
         "name": "virage-de-mulsanne-01",
-        "text": "Virage de Mulsanne."
+        "text": "Virage de Mulsanne.",
+        "voice_settings": { "language_code": "fr" }
       },
       {
         "name": "virage-du-camion-01",
-        "text": "Virage du Camion."
+        "text": "Virage du Camion.",
+        "voice_settings": { "language_code": "fr" }
       },
       {
         "name": "virage-du-pont-01",
-        "text": "Virage du Pont."
+        "text": "Virage du Pont.",
+        "voice_settings": { "language_code": "fr" }
       },
       {
         "name": "virage-du-raccordement-01",
-        "text": "Virage du Raccordement."
+        "text": "Virage du Raccordement.",
+        "voice_settings": { "language_code": "fr" }
       },
       {
         "name": "virage-du-tertre-rouge-01",
-        "text": "Virage du Tertre Rouge."
+        "text": "Virage du Tertre Rouge.",
+        "voice_settings": { "language_code": "fr" }
       },
       {
         "name": "virage-ford-01",
-        "text": "Virage Ford."
+        "text": "Virage Ford.",
+        "voice_settings": { "language_code": "fr" }
       },
       {
         "name": "virage-porsche-01",
-        "text": "Virage Porsche."
+        "text": "Virage Porsche.",
+        "voice_settings": { "language_code": "fr" }
       },
       {
         "name": "virage-senna-01",
-        "text": "Virage Senna."
+        "text": "Virage Senna.",
+        "voice_settings": { "language_code": "fr" }
       },
       {
         "name": "volkswagen-kurve-01",
-        "text": "Volkswagen-Kurve."
+        "text": "Volkswagen-Kurve.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "wagon-bend-01",
@@ -8069,7 +8269,8 @@
       },
       {
         "name": "warsteiner-kurve-01",
-        "text": "Warsteiner-Kurve."
+        "text": "Warsteiner-Kurve.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "water-tower-01",
@@ -8077,7 +8278,8 @@
       },
       {
         "name": "wehrseifen-01",
-        "text": "Wehrseifen."
+        "text": "Wehrseifen.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "west-bend-01",
@@ -8097,7 +8299,8 @@
       },
       {
         "name": "wippermann-01",
-        "text": "Wippermann."
+        "text": "Wippermann.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "woodcote-01",
@@ -8105,7 +8308,8 @@
       },
       {
         "name": "wuerth-01",
-        "text": "Wuerth."
+        "text": "Wuerth.",
+        "voice_settings": { "language_code": "es" }
       },
       {
         "name": "yokohama-bridge-01",
@@ -8117,7 +8321,8 @@
       },
       {
         "name": "zeppelin-kurve-01",
-        "text": "Zeppelin Kurve."
+        "text": "Zeppelin Kurve.",
+        "voice_settings": { "language_code": "de" }
       }
     ]
   },
