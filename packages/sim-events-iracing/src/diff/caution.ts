@@ -58,8 +58,9 @@
  * every edge it spans, and glancing at the replay to see the incident is
  * ordinary driver behaviour under a yellow. A phase left standing would call
  * every green-flag leader crossing for the rest of the session an extra lap
- * under caution, so the extra-lap branch additionally states the `Caution` bit
- * as its own precondition.
+ * under caution. The expiry is therefore the SOLE guarantee that a `"caught"`
+ * phase means the caution is still out, and the extra-lap branch rests on it
+ * rather than re-testing the bit.
  *
  * **The pickup consumes the crossing it landed on.** The static flag precedes
  * the leader's `CarIdxLapCompleted` increment by about half a second in both
@@ -241,9 +242,15 @@ function diffCautionEpisode(
 
     emit({ event: "caution.oneLapToGreen", data: { file } });
     state.cautionPhase = "one-to-go";
+    // Reaching the branch below means the caution is still out, and the expiry
+    // above is what guarantees it: with neither bit set the phase has already
+    // returned to "none", and a tick carrying only `CautionWaving` has moved it
+    // to "waving" — so `"caught"` implies `Caution`. Stated rather than
+    // re-tested, because a term no test can fail is one the next reader either
+    // trusts (and relaxes the expiry behind) or deletes without knowing what it
+    // stood for.
   } else if (
     state.cautionPhase === "caught" &&
-    caution &&
     !oneToGo &&
     leaderLap !== null &&
     crossingBaseline !== null &&
