@@ -373,7 +373,7 @@ describe("diffFlags — a full-course episode ends with no cleared line (issue #
   const cleared = (e: PendingEvent) => e.event === "flag.yellow.cleared";
   const green = (e: PendingEvent) => e.event === "flag.green.raised";
 
-  it("a measured oval caution and restart, replayed tick by tick, reports no green and no cleared line", () => {
+  it("a measured oval caution and restart, replayed tick by tick, reports no pickup, no green and no cleared line", () => {
     // `local/telemetry-watch-20260917-191825-092.jsonl`: an offline AI race at
     // Homestead-Miami (paved oval), a full-course caution thrown with the
     // `!yellow` admin command, ending in a double-file restart. Session times
@@ -416,12 +416,17 @@ describe("diffFlags — a full-course episode ends with no cleared line (issue #
 
     expect(fired).toEqual([
       { at: 239.88, event: "flag.caution-waving.raised", data: {} },
-      { at: 333.57, event: "flag.yellow.raised", data: { scope: "full" } },
       { at: 477.77, event: "flag.green-held.raised", data: {} },
     ]);
-    // Stated separately, since these two are what the capture disproved.
+    // Stated separately, since these three are what the capture disproved.
     expect(fired.filter((e) => e.event === "flag.green.raised")).toEqual([]);
     expect(fired.filter((e) => e.event === "flag.yellow.cleared")).toEqual([]);
+    // 333.57 is the pickup — CautionWaving giving way to Caution as the pace
+    // car collects the field, ninety seconds after the flag was thrown. It
+    // raised `flag.yellow.raised {full}` here until #1127, which is what put
+    // "Full course yellow, pace car will be deployed" on the radio with the
+    // pace car already leading. `caution.fieldCaught` owns that tick now.
+    expect(fired.filter((e) => e.event === "flag.yellow.raised")).toEqual([]);
   });
 
   it("a static full-course caution never announces cleared, even well past the hold window", () => {
@@ -618,6 +623,93 @@ describe("diffFlags — a full-course episode ends with no cleared line (issue #
     const start = collect();
     diffFlags(atStart, tick(Flags.Green | Flags.StartSet), T0 + 30_000, start.emit);
     expect(start.events.filter(green)).toHaveLength(0);
+  });
+});
+
+describe("diffFlags — the pickup is not a fresh full-course yellow (issue #1127)", () => {
+  const raised = (e: PendingEvent) => e.event === "flag.yellow.raised";
+
+  it("a waving caution giving way to the static bit raises nothing — that is the field being CAUGHT", () => {
+    // Measured about 90 s into each captured caution (333.57 s and 630.95 s):
+    // `CautionWaving` drops and `Caution` rises on the same tick. That is the
+    // pace car picking the field up — a flag DE-escalation — and reporting it
+    // as a raise put "Full course yellow, pace car will be deployed" on the
+    // radio a minute and a half late, with the pace car already leading the
+    // field. `caution.fieldCaught` owns the moment now.
+    const state = createInitialState();
+    state.flagStateInitialized = true;
+    diffFlags(state, tick(Flags.CautionWaving), T0, () => {}); // thrown, waving
+
+    const { events, emit } = collect();
+    diffFlags(state, tick(Flags.Caution), T0 + 90_000, emit); // the pickup
+
+    expect(events.filter(raised)).toHaveLength(0);
+  });
+
+  it("and stays silent for the rest of the caution, not just on the pickup tick", () => {
+    const state = createInitialState();
+    state.flagStateInitialized = true;
+    diffFlags(state, tick(Flags.CautionWaving), T0, () => {});
+    diffFlags(state, tick(Flags.Caution), T0 + 90_000, () => {}); // the pickup
+
+    const { events, emit } = collect();
+    diffFlags(state, tick(Flags.Caution), T0 + 91_000, emit);
+    diffFlags(state, tick(Flags.Caution | Flags.OneLapToGreen), T0 + 170_000, emit);
+    diffFlags(state, tick(Flags.Caution | Flags.OneLapToGreen | Flags.GreenHeld), T0 + 230_000, emit);
+
+    expect(events.filter(raised)).toHaveLength(0);
+  });
+
+  it("a caution that BEGINS static still raises {full} — nothing else has told the driver", () => {
+    // Not every discipline waves first, and iRacing can throw the static bit
+    // on its own. The driver has had no word of that caution at all, so the
+    // line the pickup no longer speaks is exactly the line this case needs.
+    const state = createInitialState();
+    state.flagStateInitialized = true;
+
+    const { events, emit } = collect();
+    diffFlags(state, tick(Flags.Caution), T0, emit);
+
+    expect(events.filter(raised)).toEqual([{ event: "flag.yellow.raised", data: { scope: "full" } }]);
+  });
+
+  it("the suppression is scoped to its own episode — a later caution thrown static raises again", () => {
+    const state = createInitialState();
+    state.flagStateInitialized = true;
+    diffFlags(state, tick(Flags.CautionWaving), T0, () => {});
+    diffFlags(state, tick(Flags.Caution), T0 + 90_000, () => {}); // suppressed pickup
+    diffFlags(state, tick(Flags.Green), T0 + 250_000, () => {}); // the restart ends the episode
+
+    const { events, emit } = collect();
+    diffFlags(state, tick(Flags.Green | Flags.Caution), T0 + 600_000, emit); // a fresh one, thrown static
+
+    expect(events.filter(raised)).toEqual([{ event: "flag.yellow.raised", data: { scope: "full" } }]);
+  });
+
+  it("leaves the LOCAL path alone — a waving local yellow settling to static still raises {local}", () => {
+    // The gate is on the full-course path only. A local yellow has no pace car
+    // and no pickup: its static bit is the flag the driver is being shown.
+    const state = createInitialState();
+    state.flagStateInitialized = true;
+    diffFlags(state, tick(Flags.YellowWaving), T0, () => {});
+
+    const { events, emit } = collect();
+    diffFlags(state, tick(Flags.Yellow), T0 + 5_000, emit);
+
+    expect(events.filter(raised)).toEqual([{ event: "flag.yellow.raised", data: { scope: "local" } }]);
+  });
+
+  it("a connect mid-caution, already static, never raises — the seed knows the episode is full-course", () => {
+    const state = createInitialState(); // NOT pre-seeded: the first tick seeds, as a real connect does
+
+    const seed = collect();
+    diffFlags(state, tick(Flags.Caution), T0, seed.emit);
+    expect(seed.events).toEqual([]);
+
+    const { events, emit } = collect();
+    diffFlags(state, tick(Flags.Caution | Flags.OneLapToGreen), T0 + 60_000, emit);
+
+    expect(events.filter(raised)).toHaveLength(0);
   });
 });
 

@@ -10,11 +10,17 @@
  * compressed window, and reset on window exit. Two validated capture replays
  * (standing AI 2056, rolling AI 2112) plus a synthetic numeric countdown.
  * Marks are 90/60/30/10 (90 added — #673).
+ *
+ * Also the caution-restart suppression (issue #1127): a restart carries
+ * `StartGo` exactly as a race start does, so the go line is gated on
+ * `state.cautionPhase` — including the ordering that gate depends on, since
+ * `diffCaution` ends the episode on the same tick the green waves.
  */
 import { Flags, SessionState, type TelemetryData } from "@iracedeck/iracing-sdk";
 import { describe, expect, it } from "vitest";
 
-import { createInitialState } from "../state.js";
+import { createInitialState, type TranslatorState } from "../state.js";
+import { diffCaution } from "./caution.js";
 import { diffStartCountdown, diffStartLights } from "./start-lights.js";
 import type { PendingEvent } from "./types.js";
 
@@ -103,6 +109,105 @@ describe("diffStartLights — gantry rising edges", () => {
     diffStartLights(state, tick(0, SessionState.GetInCar, 58), STANDING_SESSION, emit);
 
     expect(events.some((e) => e.event === "startLight.countdown.raised")).toBe(false);
+  });
+});
+
+describe("diffStartLights — a restart is not a race start (issue #1127)", () => {
+  const go = (e: PendingEvent) => e.event === "startLight.start-go.raised";
+
+  /** Seeds the gantry baseline with the start bits clear, so StartGo can rise. */
+  function seeded(phase: TranslatorState["cautionPhase"]): TranslatorState {
+    const state = createInitialState();
+
+    diffStartLights(state, tick(Servicible | StartHidden, SessionState.Racing, 600), STANDING_SESSION, () => {});
+    state.cautionPhase = phase;
+
+    return state;
+  }
+
+  it.each(["waving", "caught", "one-to-go"] as const)(
+    "suppresses the go line while the caution phase is %s — caution.restarted owns the moment",
+    (phase) => {
+      // A restart carries StartGo exactly as a race start does: the measured
+      // restart tick is `Green | Servicible | StartGo` (0x80040004), the same
+      // bit the lights-out "Go, go, go!" fires on. The bit alone therefore
+      // cannot tell the two apart, and the restart borrowed the race start's
+      // line. The caution phase is what separates them.
+      const state = seeded(phase);
+
+      const { events, emit } = collect();
+      diffStartLights(state, tick(StartGo | Green | Servicible, SessionState.Racing, 580), STANDING_SESSION, emit);
+
+      expect(events.filter(go)).toHaveLength(0);
+    },
+  );
+
+  it("still fires at a race start, where no caution has ever been out", () => {
+    const state = seeded("none");
+
+    const { events, emit } = collect();
+    diffStartLights(state, tick(StartGo | Green | Servicible, SessionState.Racing, 86399), STANDING_SESSION, emit);
+
+    expect(events.filter(go)).toHaveLength(1);
+  });
+
+  it("fires again at the NEXT race start after a caution — the phase, not a latch, is what suppressed it", () => {
+    const state = seeded("one-to-go");
+
+    diffStartLights(state, tick(StartGo | Green | Servicible, SessionState.Racing, 580), STANDING_SESSION, () => {});
+
+    // The caution ends, the phase expires, the bits go down…
+    state.cautionPhase = "none";
+    diffStartLights(
+      state,
+      tick(Green | Servicible | StartHidden, SessionState.Racing, 400),
+      STANDING_SESSION,
+      () => {},
+    );
+
+    // …and a later standing start (a new session, same state) is announced.
+    const { events, emit } = collect();
+    diffStartLights(state, tick(StartGo | Green | Servicible, SessionState.Racing, 86399), STANDING_SESSION, emit);
+
+    expect(events.filter(go)).toHaveLength(1);
+  });
+
+  it("leaves start-ready alone — it is the standing procedure's heads-up, not the go", () => {
+    const state = seeded("caught");
+
+    const { events, emit } = collect();
+    diffStartLights(state, tick(StartReady | Servicible, SessionState.Warmup, 4), STANDING_SESSION, emit);
+
+    expect(events.map((e) => e.event)).toEqual(["startLight.start-ready.raised"]);
+  });
+
+  it("diffCaution must run AFTER diffStartLights: run first, it clears the phase and the go line leaks", () => {
+    // The measured restart raises Green and StartGo on the SAME tick, and
+    // `diffCautionEpisode` ends the episode on that green — `caution.restarted`
+    // then `cautionPhase = "none"`. So the phase only survives long enough to
+    // judge the go edge if the gantry diff reads it first. Both halves of the
+    // restart are asserted here, in that order, which is the order the
+    // translator has to wire.
+    const RESTART = 0x80040004 | 0; // Green | Servicible | StartGo — verbatim from the capture
+    const BEFORE = 0x10044600 | 0; // Caution | OneLapToGreen | GreenHeld | Servicible | StartHidden
+
+    const state = createInitialState();
+    const before = tick(BEFORE, SessionState.Racing, 600);
+
+    diffStartLights(state, before, STANDING_SESSION, () => {}); // seed the gantry baseline
+    diffCaution(state, before, null, null, () => {}); // seed the caution baselines
+    diffCaution(state, before, null, null, () => {}); // …and take the phase to "caught"
+    expect(state.cautionPhase).toBe("caught");
+
+    const { events, emit } = collect();
+    const restart = tick(RESTART, SessionState.Racing, 580);
+
+    diffStartLights(state, restart, STANDING_SESSION, emit);
+    diffCaution(state, restart, null, null, emit);
+
+    expect(events.map((e) => e.event)).toEqual(["caution.restarted"]);
+    expect(events.filter(go)).toHaveLength(0);
+    expect(state.cautionPhase).toBe("none");
   });
 });
 

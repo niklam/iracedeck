@@ -135,7 +135,11 @@ export type TranslatorState = {
    * Whether the CURRENT yellow episode has been full-course at any point —
    * i.e. whether `Caution` or `CautionWaving` has been observed since it
    * began (issue #1127). Decides whether the validated clear above is
-   * ANNOUNCED at all.
+   * ANNOUNCED at all, and — its second reader — whether a static `Caution`
+   * RISING raises `flag.yellow.raised {full}` or is the pace car picking the
+   * field up, which `caution.fieldCaught` reports instead. `diffFlags` reads it
+   * for that before the tick can set it, so the first tick of an episode still
+   * raises and only the ones after it are the pickup.
    *
    * `flag.yellow.cleared` was designed for a LOCAL yellow, which ends with
    * no flag shown: the callout is the only way the driver learns the sector
@@ -234,6 +238,14 @@ export type TranslatorState = {
    * survives, and so a fresh connect reports only the transitions it actually
    * watched (a caution already static when the plugin starts moves to
    * `"caught"` on the next tick, silently).
+   *
+   * Read outside `diffCaution` by exactly one thing: `diffStartLights`
+   * suppresses `startLight.start-go.raised` while it is anything but `"none"`,
+   * because a restart carries `StartGo` exactly as a race start does and would
+   * otherwise borrow its line. That reader is why the translator must run
+   * `diffCaution` AFTER `diffStartLights` — the green's rising edge ends the
+   * episode on the very tick the go bit rises, so running it first would leave
+   * nothing for the gate to see.
    */
   cautionPhase: CautionPhase;
   /** Previous-tick `SessionFlags`, for the caution edges. */

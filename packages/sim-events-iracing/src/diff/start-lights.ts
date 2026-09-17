@@ -14,7 +14,10 @@
  *      too late to be useful, so nothing is emitted for it). `StartReady` is
  *      standing-only: rolling starts hold the bit through Warmup→ParadeLaps
  *      too (rolling AI capture 2112), where the rolling-start family (#660)
- *      owns the lead-in.
+ *      owns the lead-in. `StartGo` is suppressed while a caution episode is
+ *      running (issue #1127): a restart raises the very same bit, so without
+ *      that gate every restart borrowed the race start's line — see the
+ *      comment at the emit for the ordering it depends on.
  *
  *   2. **Numeric countdown** (`diffStartCountdown`, PRE-guard — issue #829:
  *      the countdown is the "get in the car" reminder, so it must keep
@@ -84,7 +87,18 @@ export function diffStartLights(
     emit({ event: "startLight.start-ready.raised", data: {} });
   }
 
-  if (rising(Flags.StartGo)) {
+  // A caution restart carries `StartGo` exactly as a race start does — the
+  // measured restart tick is `Green | Servicible | StartGo` (issue #1127) — so
+  // the bit alone cannot tell the two apart and every restart borrowed the race
+  // start's line. `state.cautionPhase` is what separates them: a race start
+  // finds no caution episode running, while a restart is the end of one and
+  // `caution.restarted` speaks for it.
+  //
+  // ORDERING: `diffCaution` ends the episode on the green's own rising edge —
+  // the same tick this bit rises — so it must run AFTER this diff, or the phase
+  // is already back to `"none"` when the go edge is judged. The translator
+  // wires that order and `start-lights.test.ts` pins it.
+  if (rising(Flags.StartGo) && state.cautionPhase === "none") {
     emit({ event: "startLight.start-go.raised", data: {} });
   }
 

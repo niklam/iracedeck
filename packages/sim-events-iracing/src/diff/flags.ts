@@ -20,6 +20,20 @@
  * `flag.yellow.cleared` fires only when EVERY yellow-ish bit goes clear (so a
  * static→waving escalation never mis-clears) — tracked via `state.lastAnyYellow`.
  *
+ * The pickup is not a fresh yellow (issue #1127): a static `Caution` rising in
+ * an episode that has ALREADY been full-course is the waving bit giving way as
+ * the pace car picks the field up — measured about 90 s into each captured
+ * caution (333.57 s and 630.95 s) — so it raises nothing and
+ * `caution.fieldCaught` speaks for it. Announcing it here put "Full course
+ * yellow, pace car will be deployed" on the radio a minute and a half late,
+ * with the pace car already leading the field. `state.yellowEpisodeFullCourse`
+ * (the same marker the local-only clear below consults) is what tells the two
+ * apart, read before this tick can set it: a caution that BEGINS static finds
+ * the marker false and still raises `{scope: "full"}`, because nothing else has
+ * told the driver. The gate is deliberately narrow — `anyYellow` and
+ * `fullCourseYellow` are unchanged, so the validated clear is untouched, and a
+ * LOCAL static yellow always raises since it has no pace car and no pickup.
+ *
  * Validated clear (issue #671): the yellow bits mirror the flag SHOWN to the
  * player and are transient per zone — `YellowWaving` drops the moment the
  * player passes out of the affected zone and re-raises next lap. So the
@@ -168,7 +182,10 @@ type FlagKey =
   | "yellow-waving"
   | "caution-waving";
 
-function resolveActiveFlags(sessionFlags: number): {
+function resolveActiveFlags(
+  sessionFlags: number,
+  episodeAlreadyFullCourse: boolean,
+): {
   flags: Set<FlagKey>;
   yellowScope: FlagScope | null;
   anyYellow: boolean;
@@ -187,9 +204,23 @@ function resolveActiveFlags(sessionFlags: number): {
   const localStatic = hasFlag(sessionFlags, Flags.Yellow) && !yellowWaving;
   const fullStatic = hasFlag(sessionFlags, Flags.Caution) && !cautionWaving;
 
-  if (localStatic || fullStatic) {
+  // The static caution bit RISING is not always a new full-course yellow
+  // (issue #1127). When the episode has already been full-course — the marker
+  // `state.yellowEpisodeFullCourse`, passed in — the waving bit giving way to
+  // the static one is the pace car picking the field up, measured about 90 s
+  // into each captured caution (333.57 s and 630.95 s). That is a flag
+  // DE-escalation, and `caution.fieldCaught` owns it; reporting it here put
+  // "Full course yellow, pace car will be deployed" on the radio a minute and
+  // a half late, with the pace car already leading the field. A caution that
+  // BEGINS static still raises: the marker is false on its first tick, and the
+  // driver has had no other word of it. The gate is on the full-course path
+  // only — a local yellow has no pace car and no pickup, so its static bit is
+  // simply the flag being shown.
+  const fullStaticRaises = fullStatic && !episodeAlreadyFullCourse;
+
+  if (localStatic || fullStaticRaises) {
     flags.add("yellow");
-    yellowScope = fullStatic ? "full" : "local";
+    yellowScope = fullStaticRaises ? "full" : "local";
   }
 
   if (yellowWaving) flags.add("yellow-waving");
@@ -260,7 +291,16 @@ export function diffFlags(
   isPracticeSession = false,
 ): void {
   const sessionFlags = telemetry.SessionFlags ?? 0;
-  const { flags: current, yellowScope, anyYellow, fullCourseYellow } = resolveActiveFlags(sessionFlags);
+  // The episode marker is read BEFORE this tick can set it, so the tick that
+  // first flies a caution bit still raises its line and only the ticks after it
+  // are the pickup (issue #1127). It is set further down, in the yellow-cleared
+  // block, from `fullCourseYellow` — which this gate deliberately leaves alone.
+  const {
+    flags: current,
+    yellowScope,
+    anyYellow,
+    fullCourseYellow,
+  } = resolveActiveFlags(sessionFlags, state.yellowEpisodeFullCourse);
 
   // Player S/F crossing tracking (issue #771). A scored `LapCompleted`
   // increment is the player taking the line — the signal the checkered
