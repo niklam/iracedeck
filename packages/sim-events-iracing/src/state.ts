@@ -239,17 +239,26 @@ export type TranslatorState = {
   /** Previous-tick `SessionFlags`, for the caution edges. */
   cautionLastFlags: number;
   /**
-   * Previous-tick `CarIdxLapCompleted` for the car leading the pace order, for
-   * crossing detection. `null` until seeded.
+   * Previous-tick `CarIdxLapCompleted` for the race leader, for crossing
+   * detection. `null` until seeded.
    *
    * It is a HIGH-WATER baseline rather than a plain previous value, which is
    * what lets the pickup consume the crossing it landed on: at the pickup the
-   * value is moved one past the leader's pre-pickup lap, so the increment that
+   * value is moved one past the leader's PRE-pickup lap, so the increment that
    * arrives about half a second later (the static flag precedes it — measured
-   * at both pickups) is not reported as an extra lap. Never lowered, so a
-   * mid-caution reorder that puts a car with a smaller lap count on row 1 goes
-   * quiet rather than manufacturing an extra lap; that reorder is designed for
-   * but unobserved (see `diff/caution.ts`).
+   * at both pickups) is not reported as an extra lap. Reading the pre-pickup
+   * lap rather than the current one is strictly the better of the two — equal
+   * on the measured ordering, and still exact if the counter were ever scored
+   * on the same tick as the flag — but it is not ordering-proof: a counter
+   * scored on an EARLIER tick than the flag would cost the next genuine
+   * crossing too.
+   *
+   * Never lowered, so a leader swap to a car with fewer laps scored goes quiet
+   * rather than manufacturing an extra lap. That swap is not hypothetical: the
+   * double-file re-form at one to go changes which car holds each row, twice in
+   * the committed fixture, both times between cars whose lap counts agree. What
+   * remains unobserved is a reorder from PITTING under caution (see
+   * `diff/caution.ts`).
    */
   cautionLeaderLapCompleted: number | null;
 

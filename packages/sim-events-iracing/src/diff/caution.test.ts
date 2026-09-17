@@ -13,6 +13,7 @@ const ticks = JSON.parse(
   SessionFlags: number;
   SessionState: number;
   PaceMode: number;
+  CarIdxPaceLine: number[];
   CarIdxPaceRow: number[];
   CarIdxLapCompleted: number[];
   CarIdxTrackSurface: number[];
@@ -43,16 +44,19 @@ function paceTick(surface: number): TelemetryData {
  */
 function replayTick(tick: (typeof ticks)[number]): TelemetryData {
   const surfaces = new Array(72).fill(3);
+  const lines = new Array(72).fill(-1);
   const rows = new Array(72).fill(-1);
   const laps = new Array(72).fill(-1);
 
   tick.CarIdxTrackSurface.forEach((v, i) => (surfaces[i === 20 ? PACE : i] = v));
+  tick.CarIdxPaceLine.forEach((v, i) => (lines[i === 20 ? PACE : i] = v));
   tick.CarIdxPaceRow.forEach((v, i) => (rows[i === 20 ? PACE : i] = v));
   tick.CarIdxLapCompleted.forEach((v, i) => (laps[i === 20 ? PACE : i] = v));
 
   return {
     ...tick,
     CarIdxTrackSurface: surfaces,
+    CarIdxPaceLine: lines,
     CarIdxPaceRow: rows,
     CarIdxLapCompleted: laps,
   } as unknown as TelemetryData;
@@ -76,15 +80,39 @@ function flagTick(flags: number, extra: Record<string, unknown> = {}): Telemetry
   } as unknown as TelemetryData;
 }
 
-/** Puts the car leading the pace order on row 1, with `lapCompleted` laps scored. */
-function leader(carIdx: number, lapCompleted: number): Record<string, unknown> {
+/**
+ * A caution lineup: each car's pace row, pace line and scored laps. Rows are
+ * numbered PER LINE, so two cars share a row number once the field re-forms
+ * double file — which is why the line belongs in every entry.
+ */
+function lineup(
+  ...cars: Array<[carIdx: number, row: number, line: number, lapCompleted: number]>
+): Record<string, unknown> {
   const rows = new Array(72).fill(-1);
+  const lines = new Array(72).fill(-1);
   const laps = new Array(72).fill(-1);
 
-  rows[carIdx] = 1;
-  laps[carIdx] = lapCompleted;
+  for (const [carIdx, row, line, lapCompleted] of cars) {
+    rows[carIdx] = row;
+    lines[carIdx] = line;
+    laps[carIdx] = lapCompleted;
+  }
 
-  return { CarIdxPaceRow: rows, CarIdxLapCompleted: laps };
+  return { CarIdxPaceRow: rows, CarIdxPaceLine: lines, CarIdxLapCompleted: laps };
+}
+
+/** The single-file shorthand: one car at the front of the lineup, on the inside line. */
+function leader(carIdx: number, lapCompleted: number): Record<string, unknown> {
+  return lineup([carIdx, 1, 0, lapCompleted]);
+}
+
+/** A canonical race order (position per carIdx, 0 = unranked) naming `carIdx` the leader. */
+function canonicalLeader(carIdx: number): number[] {
+  const positions = new Array(72).fill(0);
+
+  positions[carIdx] = 1;
+
+  return positions;
 }
 
 describe("pace car edges", () => {
@@ -92,8 +120,8 @@ describe("pace car edges", () => {
     const state = createInitialState();
     const { events, emit } = collect();
 
-    diffCaution(state, paceTick(1), sessionInfo, emit); // seed: in its stall
-    diffCaution(state, paceTick(3), sessionInfo, emit);
+    diffCaution(state, paceTick(1), sessionInfo, null, emit); // seed: in its stall
+    diffCaution(state, paceTick(3), sessionInfo, null, emit);
 
     expect(events).toEqual([{ event: "paceCar.deployed", data: {} }]);
   });
@@ -102,8 +130,8 @@ describe("pace car edges", () => {
     const state = createInitialState();
     const { events, emit } = collect();
 
-    diffCaution(state, paceTick(3), sessionInfo, emit); // seed: on track
-    diffCaution(state, paceTick(2), sessionInfo, emit);
+    diffCaution(state, paceTick(3), sessionInfo, null, emit); // seed: on track
+    diffCaution(state, paceTick(2), sessionInfo, null, emit);
 
     expect(events).toEqual([{ event: "paceCar.off", data: {} }]);
   });
@@ -112,7 +140,7 @@ describe("pace car edges", () => {
     const state = createInitialState();
     const { events, emit } = collect();
 
-    diffCaution(state, paceTick(3), sessionInfo, emit);
+    diffCaution(state, paceTick(3), sessionInfo, null, emit);
 
     expect(events).toEqual([]);
   });
@@ -122,7 +150,7 @@ describe("pace car edges", () => {
     const { events, emit } = collect();
 
     for (const tick of ticks) {
-      diffCaution(state, replayTick(tick), sessionInfo, emit);
+      diffCaution(state, replayTick(tick), sessionInfo, null, emit);
     }
 
     // The fixture window starts at t=218.88, AFTER the rolling start's own pace-car
@@ -138,9 +166,9 @@ describe("the caution episode", () => {
     const state = createInitialState();
     const { events, emit } = collect();
 
-    diffCaution(state, flagTick(RACING), sessionInfo, emit); // seed
-    diffCaution(state, flagTick(WAVING), sessionInfo, emit);
-    diffCaution(state, flagTick(STATIC), sessionInfo, emit);
+    diffCaution(state, flagTick(RACING), sessionInfo, null, emit); // seed
+    diffCaution(state, flagTick(WAVING), sessionInfo, null, emit);
+    diffCaution(state, flagTick(STATIC), sessionInfo, null, emit);
 
     expect(events).toEqual([{ event: "caution.fieldCaught", data: { restartPosition: null } }]);
   });
@@ -149,8 +177,8 @@ describe("the caution episode", () => {
     const state = createInitialState();
     const { events, emit } = collect();
 
-    diffCaution(state, flagTick(RACING), sessionInfo, emit); // seed
-    diffCaution(state, flagTick(STATIC), sessionInfo, emit);
+    diffCaution(state, flagTick(RACING), sessionInfo, null, emit); // seed
+    diffCaution(state, flagTick(STATIC), sessionInfo, null, emit);
 
     // The phase assertion is the positive control: with nothing emitted either
     // way, an empty `events` alone would pass against a diff that does nothing.
@@ -162,10 +190,10 @@ describe("the caution episode", () => {
     const state = createInitialState();
     const { events, emit } = collect();
 
-    diffCaution(state, flagTick(RACING), sessionInfo, emit); // seed
-    diffCaution(state, flagTick(WAVING), sessionInfo, emit);
-    diffCaution(state, flagTick(STATIC), sessionInfo, emit);
-    diffCaution(state, flagTick(ONE_TO_GO, { PaceMode: 3 }), sessionInfo, emit);
+    diffCaution(state, flagTick(RACING), sessionInfo, null, emit); // seed
+    diffCaution(state, flagTick(WAVING), sessionInfo, null, emit);
+    diffCaution(state, flagTick(STATIC), sessionInfo, null, emit);
+    diffCaution(state, flagTick(ONE_TO_GO, { PaceMode: 3 }), sessionInfo, null, emit);
 
     expect(events).toEqual([
       { event: "caution.fieldCaught", data: { restartPosition: null } },
@@ -177,10 +205,10 @@ describe("the caution episode", () => {
     const state = createInitialState();
     const { events, emit } = collect();
 
-    diffCaution(state, flagTick(RACING), sessionInfo, emit); // seed
-    diffCaution(state, flagTick(WAVING), sessionInfo, emit);
-    diffCaution(state, flagTick(STATIC), sessionInfo, emit);
-    diffCaution(state, flagTick(ONE_TO_GO, { PaceMode: 2 }), sessionInfo, emit);
+    diffCaution(state, flagTick(RACING), sessionInfo, null, emit); // seed
+    diffCaution(state, flagTick(WAVING), sessionInfo, null, emit);
+    diffCaution(state, flagTick(STATIC), sessionInfo, null, emit);
+    diffCaution(state, flagTick(ONE_TO_GO, { PaceMode: 2 }), sessionInfo, null, emit);
 
     expect(events.at(-1)).toEqual({ event: "caution.oneLapToGreen", data: { file: "single" } });
   });
@@ -189,10 +217,10 @@ describe("the caution episode", () => {
     const state = createInitialState();
     const { events, emit } = collect();
 
-    diffCaution(state, flagTick(RACING), sessionInfo, emit); // seed
-    diffCaution(state, flagTick(WAVING, leader(3, 10)), sessionInfo, emit);
-    diffCaution(state, flagTick(STATIC, leader(3, 10)), sessionInfo, emit); // the pickup
-    diffCaution(state, flagTick(STATIC, leader(3, 11)), sessionInfo, emit); // its own crossing, scored
+    diffCaution(state, flagTick(RACING), sessionInfo, null, emit); // seed
+    diffCaution(state, flagTick(WAVING, leader(3, 10)), sessionInfo, null, emit);
+    diffCaution(state, flagTick(STATIC, leader(3, 10)), sessionInfo, null, emit); // the pickup
+    diffCaution(state, flagTick(STATIC, leader(3, 11)), sessionInfo, null, emit); // its own crossing, scored
 
     expect(events).toEqual([{ event: "caution.fieldCaught", data: { restartPosition: null } }]);
   });
@@ -201,11 +229,11 @@ describe("the caution episode", () => {
     const state = createInitialState();
     const { events, emit } = collect();
 
-    diffCaution(state, flagTick(RACING), sessionInfo, emit); // seed
-    diffCaution(state, flagTick(WAVING, leader(3, 10)), sessionInfo, emit);
-    diffCaution(state, flagTick(STATIC, leader(3, 10)), sessionInfo, emit); // the pickup
-    diffCaution(state, flagTick(STATIC, leader(3, 11)), sessionInfo, emit); // its own crossing, scored
-    diffCaution(state, flagTick(STATIC, leader(3, 12)), sessionInfo, emit); // a lap the caution did not need
+    diffCaution(state, flagTick(RACING), sessionInfo, null, emit); // seed
+    diffCaution(state, flagTick(WAVING, leader(3, 10)), sessionInfo, null, emit);
+    diffCaution(state, flagTick(STATIC, leader(3, 10)), sessionInfo, null, emit); // the pickup
+    diffCaution(state, flagTick(STATIC, leader(3, 11)), sessionInfo, null, emit); // its own crossing, scored
+    diffCaution(state, flagTick(STATIC, leader(3, 12)), sessionInfo, null, emit); // a lap the caution did not need
 
     expect(events).toEqual([
       { event: "caution.fieldCaught", data: { restartPosition: null } },
@@ -213,15 +241,77 @@ describe("the caution episode", () => {
     ]);
   });
 
+  it("counts the canonical race leader's crossings, not the front of the pace lineup", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    const order = canonicalLeader(5);
+    // Car 3 sits at the front of the lineup; car 5 leads the race. Only car 5's
+    // crossings may count — the lineup is the RESTART order, and the capture
+    // shows the two disagreeing for most of a lap.
+    const tick = (flags: number, three: number, five: number) =>
+      flagTick(flags, lineup([3, 1, 0, three], [5, 4, 0, five]));
+
+    diffCaution(state, tick(RACING, 10, 20), sessionInfo, order, emit); // seed
+    diffCaution(state, tick(WAVING, 10, 20), sessionInfo, order, emit);
+    diffCaution(state, tick(STATIC, 10, 20), sessionInfo, order, emit); // the pickup
+    diffCaution(state, tick(STATIC, 11, 20), sessionInfo, order, emit); // car 3 crosses three times
+    diffCaution(state, tick(STATIC, 12, 20), sessionInfo, order, emit);
+    diffCaution(state, tick(STATIC, 13, 20), sessionInfo, order, emit);
+    diffCaution(state, tick(STATIC, 13, 21), sessionInfo, order, emit); // the pickup's own crossing
+    diffCaution(state, tick(STATIC, 13, 22), sessionInfo, order, emit); // the leader's extra lap
+
+    // Exactly one extra lap. Counting car 3 instead would report two — which is
+    // what makes this assertion tell the two sources apart at all.
+    expect(events).toEqual([
+      { event: "caution.fieldCaught", data: { restartPosition: null } },
+      { event: "caution.extraLap", data: {} },
+    ]);
+  });
+
+  it("falls back to the front of the lineup — line 0, row 1 — with no canonical order", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    // The double-file re-form the capture shows: row 1 holds TWO cars, the
+    // leader on line 0 and car 11 outside it. Picking the lower car index would
+    // count the wrong car's laps.
+    const tick = (flags: number, eleven: number, seventeen: number) =>
+      flagTick(flags, lineup([11, 1, 1, eleven], [17, 1, 0, seventeen]));
+
+    diffCaution(state, tick(RACING, 10, 10), sessionInfo, null, emit); // seed
+    diffCaution(state, tick(WAVING, 10, 10), sessionInfo, null, emit);
+    diffCaution(state, tick(STATIC, 10, 10), sessionInfo, null, emit); // the pickup
+    diffCaution(state, tick(STATIC, 11, 10), sessionInfo, null, emit); // car 11 crosses twice
+    diffCaution(state, tick(STATIC, 12, 10), sessionInfo, null, emit);
+
+    expect(events).toEqual([{ event: "caution.fieldCaught", data: { restartPosition: null } }]);
+  });
+
+  it("stops counting laps once the caution bits are gone", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+
+    diffCaution(state, flagTick(RACING), sessionInfo, null, emit); // seed
+    diffCaution(state, flagTick(WAVING, leader(3, 10)), sessionInfo, null, emit);
+    diffCaution(state, flagTick(STATIC, leader(3, 10)), sessionInfo, null, emit); // the pickup
+    // The caution is gone with no green edge to end it — a re-seed tick can
+    // swallow that edge, and a phase left standing would call every green-flag
+    // lap of the rest of the session an extra lap under caution.
+    diffCaution(state, flagTick(RACING, leader(3, 11)), sessionInfo, null, emit);
+    diffCaution(state, flagTick(RACING, leader(3, 12)), sessionInfo, null, emit);
+
+    expect(events).toEqual([{ event: "caution.fieldCaught", data: { restartPosition: null } }]);
+    expect(state.cautionPhase).toBe("none");
+  });
+
   it("reports the restart on the green, even though it carries the start signal", () => {
     const state = createInitialState();
     const { events, emit } = collect();
 
-    diffCaution(state, flagTick(RACING), sessionInfo, emit); // seed
-    diffCaution(state, flagTick(WAVING), sessionInfo, emit);
-    diffCaution(state, flagTick(STATIC), sessionInfo, emit);
-    diffCaution(state, flagTick(GREEN_HELD), sessionInfo, emit);
-    diffCaution(state, flagTick(RESTART), sessionInfo, emit);
+    diffCaution(state, flagTick(RACING), sessionInfo, null, emit); // seed
+    diffCaution(state, flagTick(WAVING), sessionInfo, null, emit);
+    diffCaution(state, flagTick(STATIC), sessionInfo, null, emit);
+    diffCaution(state, flagTick(GREEN_HELD), sessionInfo, null, emit);
+    diffCaution(state, flagTick(RESTART), sessionInfo, null, emit);
 
     // GreenHeld arrives with OneLapToGreen already set — the capture never
     // holds the green without it — so one to go lands on that tick.
@@ -237,8 +327,8 @@ describe("the caution episode", () => {
     const state = createInitialState();
     const { events, emit } = collect();
 
-    diffCaution(state, flagTick(STATIC), sessionInfo, emit); // seed, mid-caution
-    diffCaution(state, flagTick(STATIC), sessionInfo, emit);
+    diffCaution(state, flagTick(STATIC), sessionInfo, null, emit); // seed, mid-caution
+    diffCaution(state, flagTick(STATIC), sessionInfo, null, emit);
 
     expect(events).toEqual([]);
     expect(state.cautionPhase).toBe("caught");
@@ -252,7 +342,7 @@ describe("the caution episode", () => {
     for (const tick of ticks) {
       const before = events.length;
 
-      diffCaution(state, replayTick(tick), sessionInfo, emit);
+      diffCaution(state, replayTick(tick), sessionInfo, null, emit);
 
       for (const e of events.slice(before)) fired.push({ t: tick.t, event: e.event });
     }

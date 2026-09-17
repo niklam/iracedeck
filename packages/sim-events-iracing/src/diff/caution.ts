@@ -2,6 +2,11 @@
  * The full-course caution sequence (issue #1127): the pace car's comings and
  * goings, the pickup, the laps behind it, one to go, and the restart.
  *
+ * Two unrelated jobs against two unrelated signals, so two functions behind one
+ * entry point — {@link diffPaceCar} reads the pace car's track surface,
+ * {@link diffCautionEpisode} reads the flags and the leader's crossings, and
+ * each seeds its own baselines on the diff's first tick.
+ *
  * Every rule here was measured, not assumed — see
  * `docs/superpowers/specs/2026-09-17-issue-1127-oval-caution-restart.md` and the
  * committed fixture in `__fixtures__/caution-restart-20260917.json`.
@@ -18,6 +23,13 @@
  * generic — nothing about "the pace car reached the track" is caution-specific,
  * and whether the engineer speaks at a given occurrence is the callout's
  * business.
+ *
+ * **The two halves are independent, and a consumer must not assume otherwise.**
+ * The pace-car half needs the pace car's index out of the session YAML; a tick
+ * where that cannot be resolved emits neither edge while the episode half
+ * narrates on from the flags alone. So an episode can run with one pace-car
+ * event, or none — nothing here guarantees a `deployed` / `off` pair brackets a
+ * caution.
  *
  * **The episode** is one state machine per caution, driven by `SessionFlags`
  * edges and the leader's scored crossings:
@@ -40,13 +52,26 @@
  *   callout has never spoken at one), but nothing here needs to tell a restart
  *   apart from a race start — a race start finds no caution phase to end.
  *
+ * **The phase also EXPIRES**, the moment neither caution bit is set, and that
+ * is a safety property rather than a tidy-up. A green rising edge is not a
+ * reliable end marker: the tick that re-seeds after a replay glance swallows
+ * every edge it spans, and glancing at the replay to see the incident is
+ * ordinary driver behaviour under a yellow. A phase left standing would call
+ * every green-flag leader crossing for the rest of the session an extra lap
+ * under caution, so the extra-lap branch additionally states the `Caution` bit
+ * as its own precondition.
+ *
  * **The pickup consumes the crossing it landed on.** The static flag precedes
  * the leader's `CarIdxLapCompleted` increment by about half a second in both
  * captured cautions (333.57 → 334.07, 630.95 → 631.43), so counting that
- * increment would report an extra lap at every single pickup. The baseline is
- * therefore moved one past the leader's PRE-pickup lap — pre-pickup rather than
- * current, so the swallow still lands on the right crossing were iRacing ever
- * to score the counter before flipping the flag.
+ * increment would report an extra lap at every single pickup. The baseline used
+ * is the leader's PRE-pickup lap rather than the current one, which is strictly
+ * the better of the two — identical on the measured ordering, and still exact
+ * if the counter were ever scored on the same tick as the flag. It does NOT
+ * make the rule ordering-proof: were the counter scored on an EARLIER tick than
+ * the flag, the pickup would swallow its own crossing and the next genuine one.
+ * Nothing measured does that. A leader whose identity changes across the pickup
+ * tick can swallow two crossings the same way.
  *
  * **An extra lap is the ABSENCE of a signal.** Any later leader crossing that
  * arrives while still caught, with `OneLapToGreen` clear, is a lap the caution
@@ -57,11 +82,15 @@
  * not, and its absence is the extension — no knowledge of who pressed
  * `!pacelaps` is needed, or available.
  *
- * **The leader is the car on pace row 1** — row 0 is the pace car — with the
- * official `CarIdxPosition` leader as the fallback for when no row is assigned.
- * Under a caution the pace rows are the authority, a deliberate exception to
- * `@.claude/rules/race-positions.md`: they ARE the restart order, and the
- * capture shows them leading the official positions by up to a lap.
+ * **The leader comes from the canonical race order**, like every other position
+ * in this package (`@.claude/rules/race-positions.md`). The pace lineup is the
+ * fallback for a tick with no canonical order, and reading it takes care: pace
+ * rows are numbered PER LINE, so once the field re-forms double file row 1
+ * holds TWO cars — the leader on line 0 and the car alongside on line 1 — and
+ * row 0 on line 1 is a racing car rather than the pace car. The front of the
+ * lineup is therefore line 0, row 1. (That the lineup, not the official
+ * positions, is the authority for the RESTART order is a separate documented
+ * exception, and belongs to the reader answering who to follow.)
  */
 import { Flags, hasFlag, PaceMode, type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
 
@@ -75,25 +104,25 @@ function onTrack(surface: number | undefined): boolean {
 }
 
 /**
- * The car at the front of the field's own pace order — row 1, since row 0 is
- * the pace car — falling back to the official leader, which is all there is
- * outside a caution (the pace arrays read −1 for every car).
+ * The car leading the race, whose start/finish crossings the caution's laps are
+ * counted in: the canonical order first, then the front of the pace lineup —
+ * line 0, row 1. `null` when neither can be read, which costs silence rather
+ * than some other car's laps.
  */
-function resolveLeaderIdx(telemetry: TelemetryData): number | null {
-  const rows = telemetry.CarIdxPaceRow;
+function resolveLeaderIdx(telemetry: TelemetryData, canonicalPositions: number[] | null): number | null {
+  if (canonicalPositions) {
+    const leader = canonicalPositions.findIndex((position) => position === 1);
 
-  if (Array.isArray(rows)) {
-    const byRow = rows.indexOf(1);
-
-    if (byRow >= 0) return byRow;
+    if (leader >= 0) return leader;
   }
 
-  const positions = telemetry.CarIdxPosition;
+  const rows = telemetry.CarIdxPaceRow;
+  const lines = telemetry.CarIdxPaceLine;
 
-  if (Array.isArray(positions)) {
-    const byPosition = positions.indexOf(1);
+  if (Array.isArray(rows) && Array.isArray(lines)) {
+    const front = rows.findIndex((row, idx) => row === 1 && lines[idx] === 0);
 
-    if (byPosition >= 0) return byPosition;
+    if (front >= 0) return front;
   }
 
   return null;
@@ -104,8 +133,8 @@ function resolveLeaderIdx(telemetry: TelemetryData): number | null {
  * −1 sentinel included, since a baseline taken from it would report the first
  * real value as a crossing.
  */
-function resolveLeaderLapCompleted(telemetry: TelemetryData): number | null {
-  const idx = resolveLeaderIdx(telemetry);
+function resolveLeaderLapCompleted(telemetry: TelemetryData, canonicalPositions: number[] | null): number | null {
+  const idx = resolveLeaderIdx(telemetry, canonicalPositions);
   const laps = telemetry.CarIdxLapCompleted;
 
   if (idx === null || !Array.isArray(laps)) return null;
@@ -115,50 +144,78 @@ function resolveLeaderLapCompleted(telemetry: TelemetryData): number | null {
   return typeof lap === "number" && lap >= 0 ? lap : null;
 }
 
-export function diffCaution(
+/**
+ * The pace car reaching the track and leaving it. Seeds its surface baseline
+ * silently, so a plugin started with the pace car already out says nothing.
+ */
+function diffPaceCar(
   state: TranslatorState,
   telemetry: TelemetryData,
   sessionInfo: Record<string, unknown> | null,
+  seeding: boolean,
   emit: EmitFn,
 ): void {
   const paceCarIdx = resolvePaceCarIdx(sessionInfo);
   const surfaces = telemetry.CarIdxTrackSurface;
   const surface = paceCarIdx !== null && Array.isArray(surfaces) ? surfaces[paceCarIdx] : undefined;
 
-  const flags = telemetry.SessionFlags ?? 0;
-  const waving = hasFlag(flags, Flags.CautionWaving);
-  const caution = hasFlag(flags, Flags.Caution);
-  const oneToGo = hasFlag(flags, Flags.OneLapToGreen);
-  const leaderLap = resolveLeaderLapCompleted(telemetry);
-
-  if (!state.cautionInitialized) {
-    state.cautionInitialized = true;
+  if (seeding) {
     state.cautionPaceCarSurface = surface ?? null;
-    state.cautionLastFlags = flags;
-    state.cautionLeaderLapCompleted = leaderLap;
-    // `cautionPhase` is deliberately left alone: a phase preserved across a
-    // replay wipe must survive the re-seed, and a phase derived from the bits
-    // here would claim knowledge of an episode this run never watched begin.
 
     return;
   }
 
-  const wasSurface = state.cautionPaceCarSurface;
+  const was = state.cautionPaceCarSurface;
+
+  state.cautionPaceCarSurface = surface ?? null;
+
+  if (surface === undefined || was === null) return;
+
+  if (!onTrack(was) && onTrack(surface)) emit({ event: "paceCar.deployed", data: {} });
+  else if (onTrack(was) && !onTrack(surface)) emit({ event: "paceCar.off", data: {} });
+}
+
+/**
+ * The caution's own phases: the pickup, the laps behind the pace car, one to
+ * go, and the restart. Seeds the flag and crossing baselines silently — but
+ * deliberately NOT the phase, which is left at whatever it holds, so the value
+ * preserved across a replay wipe survives the re-seed and a fresh connect
+ * reports only the transitions it actually watched.
+ */
+function diffCautionEpisode(
+  state: TranslatorState,
+  telemetry: TelemetryData,
+  canonicalPositions: number[] | null,
+  seeding: boolean,
+  emit: EmitFn,
+): void {
+  const flags = telemetry.SessionFlags ?? 0;
+  const waving = hasFlag(flags, Flags.CautionWaving);
+  const caution = hasFlag(flags, Flags.Caution);
+  const oneToGo = hasFlag(flags, Flags.OneLapToGreen);
+  const leaderLap = resolveLeaderLapCompleted(telemetry, canonicalPositions);
+
+  if (seeding) {
+    state.cautionLastFlags = flags;
+    state.cautionLeaderLapCompleted = leaderLap;
+
+    return;
+  }
+
   const wasFlags = state.cautionLastFlags;
   const wasLeaderLap = state.cautionLeaderLapCompleted;
 
-  state.cautionPaceCarSurface = surface ?? null;
   state.cautionLastFlags = flags;
-
-  if (surface !== undefined && wasSurface !== null) {
-    if (!onTrack(wasSurface) && onTrack(surface)) emit({ event: "paceCar.deployed", data: {} });
-    else if (onTrack(wasSurface) && !onTrack(surface)) emit({ event: "paceCar.off", data: {} });
-  }
 
   // The crossing baseline for THIS tick — the pickup below may move it past the
   // leader's own counter, so the extra-lap test reads this rather than state.
   let crossingBaseline = wasLeaderLap;
 
+  // The precedence below is load-bearing: a green rising edge ends the episode
+  // before anything else can read it, a waving caution outranks a static one
+  // (both bits can be set), a static caution the diff watched wave is the
+  // pickup, one it did not is caught silently, and with neither bit set the
+  // phase expires.
   if (hasFlag(flags, Flags.Green) && !hasFlag(wasFlags, Flags.Green) && state.cautionPhase !== "none") {
     emit({ event: "caution.restarted", data: {} });
     state.cautionPhase = "none";
@@ -169,13 +226,14 @@ export function diffCaution(
     state.cautionPhase = "caught";
 
     // Consume the leader crossing the pickup itself landed on; see the module
-    // comment. `wasLeaderLap` is the pre-pickup reading, so this points at the
-    // crossing being scored whichever side of the flag the counter lands on.
+    // comment for what the pre-pickup reading does and does not buy.
     const pickupLap = wasLeaderLap ?? leaderLap;
 
     if (pickupLap !== null) crossingBaseline = pickupLap + 1;
   } else if (caution && state.cautionPhase === "none") {
     state.cautionPhase = "caught";
+  } else if (!caution && !waving) {
+    state.cautionPhase = "none";
   }
 
   if (oneToGo && !hasFlag(wasFlags, Flags.OneLapToGreen) && state.cautionPhase === "caught") {
@@ -185,6 +243,7 @@ export function diffCaution(
     state.cautionPhase = "one-to-go";
   } else if (
     state.cautionPhase === "caught" &&
+    caution &&
     !oneToGo &&
     leaderLap !== null &&
     crossingBaseline !== null &&
@@ -198,4 +257,19 @@ export function diffCaution(
   // then goes quiet rather than manufacturing an extra lap.
   state.cautionLeaderLapCompleted =
     leaderLap === null || (crossingBaseline !== null && crossingBaseline > leaderLap) ? crossingBaseline : leaderLap;
+}
+
+export function diffCaution(
+  state: TranslatorState,
+  telemetry: TelemetryData,
+  sessionInfo: Record<string, unknown> | null,
+  canonicalPositions: number[] | null,
+  emit: EmitFn,
+): void {
+  const seeding = !state.cautionInitialized;
+
+  state.cautionInitialized = true;
+
+  diffPaceCar(state, telemetry, sessionInfo, seeding, emit);
+  diffCautionEpisode(state, telemetry, canonicalPositions, seeding, emit);
 }
