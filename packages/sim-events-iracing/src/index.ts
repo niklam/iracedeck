@@ -8,6 +8,7 @@
  */
 export {
   _resetSimEventsIracing,
+  getCautionLineup,
   getDriverSetupName,
   getFuelStats,
   getLatestTelemetry,
@@ -31,6 +32,7 @@ export {
   isPitActionsAllowed,
   isRaceFinished,
   isSimEventsIracingInitialized,
+  isUnderFullCourseCaution,
   type GapNeighbor,
   type LivePosition,
   type LiveGaps,
@@ -58,6 +60,10 @@ export {
   CORNER_CALLOUT_LEAD_MIN_SECONDS,
   sanitizeCornerCalloutLeadSeconds,
 } from "./diff/corner-name.js";
+// The lineup shape `getCautionLineup()` returns (issue #1127). Exported from
+// the module that defines it rather than re-exported through the translator —
+// the `FuelStats` precedent directly below.
+export { type CautionLineup } from "./diff/caution-lineup.js";
 export { DAMAGE_DEBOUNCE_MS } from "./diff/damage.js";
 export { YELLOW_CLEARED_HOLD_MS } from "./diff/flags.js";
 export {

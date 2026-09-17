@@ -46,6 +46,8 @@ import {
 import { type ILogger, silentLogger } from "@iracedeck/logger";
 import { type CornerMarker, resolveCornerMarkers } from "@iracedeck/track-data";
 
+import { type CautionLineup, resolveCautionLineup } from "./diff/caution-lineup.js";
+import { diffCaution } from "./diff/caution.js";
 import { CORNER_CALLOUT_DEFAULT_LEAD_SECONDS, diffCornerName } from "./diff/corner-name.js";
 import { diffDamage } from "./diff/damage.js";
 import { diffFlags } from "./diff/flags.js";
@@ -87,7 +89,7 @@ import type { PendingEvent } from "./diff/types.js";
 import { calculateCanonicalRacePositions } from "./race-order.js";
 import { resolveStandingStart } from "./start-lights.js";
 import { createInitialState, type GapNeighborState, type TranslatorState } from "./state.js";
-import { resolveTrackDirection, resolveTrackType, type TrackDirection } from "./track-type.js";
+import { isOvalTrack, resolveTrackDirection, resolveTrackType, type TrackDirection } from "./track-type.js";
 
 const SUBSCRIPTION_ID = "__sim-events-iracing__";
 
@@ -974,6 +976,54 @@ export function getLiveOpponentFlags(): LiveOpponentFlags | null {
 }
 
 /**
+ * Whether a full-course caution is currently out (issue #1127) — the caution
+ * episode's phase reduced to the one question a callout's `where:` asks.
+ * `true` from the moment `CautionWaving` is first seen through to the green
+ * that ends it, covering every phase in between (waving, caught, one to go).
+ *
+ * `false` when the translator isn't initialized, and equally when the episode
+ * has expired: the phase returns to `"none"` the moment neither caution bit is
+ * set, which is what makes this a reading of the CURRENT flags rather than a
+ * latch that can be left standing by a swallowed green (see `diff/caution.ts`).
+ *
+ * This is the caution's own state, NOT a re-derivation of `SessionFlags`: it is
+ * the same value `diffStartLights` reads to tell a restart from a race start,
+ * so a consumer and that gate can never disagree about whether a caution is
+ * running. Never re-read the caution bits to answer this question.
+ */
+export function isUnderFullCourseCaution(): boolean {
+  if (!instance) return false;
+
+  return instance.state.cautionPhase !== "none";
+}
+
+/**
+ * The player's place in the caution lineup as of the latest tick (issue #1127)
+ * — who to follow, which lane, and where they would restart. `null` when the
+ * translator isn't initialized, no telemetry has arrived, or the field carries
+ * no readable lineup (no pace arrays, no player index, or a player the re-form
+ * has not placed — a car in the pits holds no row).
+ *
+ * Read at fire time rather than frozen into an event payload (the
+ * {@link getReadbackSnapshot} rationale): the lineup keeps moving while the
+ * field re-forms, so a callout that plays seconds after its trigger must name
+ * the car that is ahead NOW. `caution.fieldCaught` carries a `restartPosition`
+ * for the moment of the pickup; everything spoken later comes from here.
+ *
+ * Deliberately NOT gated on {@link isUnderFullCourseCaution}: the pace arrays
+ * are the source of truth for what they describe, and a caller that wants "the
+ * lineup, but only under caution" composes the two rather than having the
+ * narrower answer forced on it.
+ */
+export function getCautionLineup(): CautionLineup | null {
+  if (!instance || !instance.latestTelemetry) return null;
+
+  const sessionInfo = instance.controller.getSessionInfo() as Record<string, unknown> | null;
+
+  return resolveCautionLineup(instance.latestTelemetry, sessionInfo, isOvalTrack(sessionInfo));
+}
+
+/**
  * Crossing-time gap in seconds between any two cars (issue #933): how long
  * ago `aheadCarIdx` crossed `behindCarIdx`'s current track position. The
  * reusable primitive behind future consumers ("we're N seconds behind the
@@ -1775,6 +1825,26 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // order falls back to the qualifying grid there — issue #974, see
   // `race-order.ts`. Everywhere else this IS `calculateFrozenRacePositions`.
   const canonicalPositions = resolveCanonicalOrder(self.state, telemetry, sessionInfo, isRaceSession);
+
+  // The full-course caution sequence (issue #1127). MUST run AFTER
+  // `diffStartLights`: a restart carries `StartGo`, and the start-light diff
+  // tells it from a race start by reading `state.cautionPhase` — which this
+  // diff CLEARS on the green's own rising edge, the very tick that bit rises.
+  // Run first and the phase is already `"none"` when the go edge is judged, so
+  // the suppression is dead code and every restart speaks the race-start line
+  // too. `diff/start-lights.test.ts` pins both orders, and the translator-level
+  // pair in `translator.test.ts` pins this wiring.
+  //
+  // It sits HERE rather than directly under `diffStartLights` because it needs
+  // the tick's canonical order and must never be handed `null` — that would run
+  // the leader lookup permanently on the pace-lineup fallback, which the capture
+  // showed disagreeing with the running order for a whole lap. Hoisting the
+  // order's computation up to the gantry diff would mean hoisting
+  // `updatePositionTracking` with it (the order is read FROM what that writes),
+  // moving a state-mutating call across nine diffs to buy a proximity the
+  // comments and the two tests already buy. Any diff added between the two must
+  // not read or write `cautionPhase`; today only these two touch it.
+  diffCaution(self.state, telemetry, sessionInfo, canonicalPositions, emit);
 
   // Opponent pit entries (issue #622) — consumes the same canonical frozen
   // order as diffOvertakes on the same tick. Race-only + replay-only gating
