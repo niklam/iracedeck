@@ -286,6 +286,41 @@ describe("the caution episode", () => {
     expect(events).toEqual([{ event: "caution.fieldCaught", data: { restartPosition: null } }]);
   });
 
+  it("re-anchors on a caution it never saw begin, rather than counting a stale baseline", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+
+    // With no canonical order the leader is readable only while a lineup
+    // exists, so the baseline freezes through a green stretch. A caution that
+    // arrives already static must re-anchor on it: the laps run since are not
+    // laps this episode spent behind the pace car.
+    diffCaution(state, flagTick(RACING, leader(3, 4)), sessionInfo, null, emit); // seed
+    diffCaution(state, flagTick(RACING), sessionInfo, null, emit); // lineup gone, baseline frozen at 4
+    diffCaution(state, flagTick(STATIC, leader(3, 24)), sessionInfo, null, emit); // twenty green laps later
+
+    expect(events).toEqual([]);
+    expect(state.cautionPhase).toBe("caught");
+  });
+
+  it("re-anchors at a pickup whose lineup only appears on the pickup tick", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+
+    // The same stale baseline reaching the pickup branch, where it would read
+    // as twenty laps run under a caution the field has only just been caught by.
+    diffCaution(state, flagTick(RACING, leader(3, 4)), sessionInfo, null, emit); // seed
+    diffCaution(state, flagTick(RACING), sessionInfo, null, emit); // lineup gone, baseline frozen at 4
+    diffCaution(state, flagTick(WAVING), sessionInfo, null, emit); // still no lineup
+    diffCaution(state, flagTick(STATIC, leader(3, 24)), sessionInfo, null, emit); // the pickup
+
+    expect(events).toEqual([{ event: "caution.fieldCaught", data: { restartPosition: null } }]);
+
+    // And the next genuine crossing still counts.
+    diffCaution(state, flagTick(STATIC, leader(3, 25)), sessionInfo, null, emit);
+
+    expect(events.at(-1)).toEqual({ event: "caution.extraLap", data: {} });
+  });
+
   it("stops counting laps once the caution bits are gone", () => {
     const state = createInitialState();
     const { events, emit } = collect();

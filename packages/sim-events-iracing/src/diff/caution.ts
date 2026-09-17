@@ -74,6 +74,15 @@
  * Nothing measured does that. A leader whose identity changes across the pickup
  * tick can swallow two crossings the same way.
  *
+ * **Neither way into `caught` may leave the baseline behind the leader.** The
+ * pre-pickup reading is only as fresh as the last tick that could read a leader
+ * at all, which with no canonical order means the last tick carrying a lineup —
+ * so a green stretch freezes it, and it can reach a later caution reading laps
+ * out of date. That would land as a caution that had already run every green
+ * lap since. The pickup therefore clamps to what the leader has scored, and a
+ * caution that arrives already static re-anchors on it outright: an episode the
+ * diff never watched begin has no laps of its own behind it yet.
+ *
  * **An extra lap is the ABSENCE of a signal.** Any later leader crossing that
  * arrives while still caught, with `OneLapToGreen` clear, is a lap the caution
  * did not need: the default at the pickup is two laps, iRacing accepts an
@@ -227,12 +236,24 @@ function diffCautionEpisode(
     state.cautionPhase = "caught";
 
     // Consume the leader crossing the pickup itself landed on; see the module
-    // comment for what the pre-pickup reading does and does not buy.
+    // comment for what the pre-pickup reading does and does not buy. Never
+    // below what the leader has already scored, though: with no canonical
+    // order the pre-pickup reading is only as fresh as the last tick that
+    // carried a lineup, and a stale one would read as a caution that had
+    // already run every green lap since.
     const pickupLap = wasLeaderLap ?? leaderLap;
 
-    if (pickupLap !== null) crossingBaseline = pickupLap + 1;
+    if (pickupLap !== null) {
+      crossingBaseline = leaderLap === null ? pickupLap + 1 : Math.max(pickupLap + 1, leaderLap);
+    }
   } else if (caution && state.cautionPhase === "none") {
     state.cautionPhase = "caught";
+
+    // Re-anchor rather than carry the baseline in: this is an episode the diff
+    // never watched begin, so whatever the leader last scored under a lineup —
+    // possibly the previous caution's — says nothing about laps run behind
+    // this pace car.
+    crossingBaseline = leaderLap;
   } else if (!caution && !waving) {
     state.cautionPhase = "none";
   }
