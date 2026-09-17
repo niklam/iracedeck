@@ -475,15 +475,21 @@ export type SimEventMap = {
   // ── Full-course caution (issue #1127) ──────────────────────────────────
   /** The pace car reached the track (`CarIdxTrackSurface` → OnTrack). Not caution-specific: it fires at a rolling start too. */
   "paceCar.deployed": SimEvent<"paceCar.deployed", EmptySimEventPayload>;
-  /** The pace car left the track for pit road. Measured ~5 s before every green. */
+  /** The pace car left the track for pit road (`CarIdxTrackSurface` → AproachingPits or InPitStall). Measured ~5 s before every green. */
   "paceCar.off": SimEvent<"paceCar.off", EmptySimEventPayload>;
   /** The pace car has picked up the field: `Caution` rising as `CautionWaving` falls. */
-  "caution.fieldCaught": SimEvent<"caution.fieldCaught", { restartPosition: number | null }>;
+  "caution.fieldCaught": SimEvent<
+    "caution.fieldCaught",
+    {
+      /** Restart lineup position, or `null` when the field is not lined up yet — no pace row can be read. */
+      restartPosition: number | null;
+    }
+  >;
   /** A leader start/finish crossing after the pickup that did not bring `OneLapToGreen` — the caution ran longer than the default two laps. */
   "caution.extraLap": SimEvent<"caution.extraLap", EmptySimEventPayload>;
   /** `OneLapToGreen` rose while racing under caution. */
   "caution.oneLapToGreen": SimEvent<"caution.oneLapToGreen", { file: PaceFile }>;
-  /** The car to follow changed. Payload is a fallback; consumers read the lineup live. */
+  /** The car to follow changed, derived from `CarIdxPaceRow` / `CarIdxPaceLine`. Payload is a fallback; consumers read the lineup live. */
   "caution.lineup.changed": SimEvent<
     "caution.lineup.changed",
     { followCarIdx: number | null; followCarNumber: string | null; line: CautionLine | null; isLeader: boolean }
