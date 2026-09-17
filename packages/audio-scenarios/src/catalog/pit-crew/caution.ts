@@ -23,6 +23,28 @@
  * car, not past the checkered — so the events stay publishable and
  * harness-firable while only a driver in a race hears them.
  *
+ * **Seven of the eight also re-check the caution at SPEAK time**, and that is
+ * the price of being queueable rather than a belt on a brace. A pending fire
+ * replays WITHOUT its `where:` being re-evaluated, and the pending slot has no
+ * TTL: a call parked behind a busy bus waits for the bus to idle, however long
+ * that takes. So every line here could otherwise drain onto a green-flag track
+ * — "we've caught up with the pace car" seconds after the restart, which is
+ * the shape #1127 was filed about. `family: "flag"` does not close it, because
+ * same-family preemption replaces the IN-FLIGHT fire and never touches a
+ * pending one; nor does `triggerDelay`, which moves the fire decision rather
+ * than the moment of speaking. `speakGate` is the code-owned second look
+ * (#1138), asked after the script expands and before the ops take the bus, on
+ * the first attempt and on every replay. `restart` is the exception and must
+ * be: it speaks as the caution ENDS, so a gate would silence it.
+ *
+ * One residual the gate cannot reach: a fire that has already passed it and is
+ * then cut by the CRITICAL `restart` is stashed with `admitted: true` and is
+ * never asked again, so a `follow` line still PLAYING at the green replays
+ * whole once the restart call finishes. Only `queueable: false` would stop
+ * that, and this family is queueable by standing ruling — nothing in a caution
+ * sequence is dropped for a busy bus. The gate restores most of what leaving
+ * that ruling in place costs, not all of it.
+ *
  * Three behaviours below are measured rather than assumed, from the
  * 2026-09-17 Homestead capture the spec is built on:
  *
@@ -102,10 +124,16 @@ export type CautionCalloutId =
 /**
  * Reader the plugins wire to `getCautionLineup()` from
  * `@iracedeck/sim-events-iracing`: the player's place in the caution lineup as
- * of the latest tick, or `null` when there is none to read. Injected rather
- * than imported so this package keeps no runtime dependency on the translator
- * — the shape `registerOpponentFlagVocabulary` takes its live-position reader
- * in.
+ * of the latest tick, or `null` when there is none to read.
+ *
+ * Injected rather than imported — the shape `registerOpponentFlagVocabulary`
+ * takes its live-position reader in. Not because it keeps the package free of
+ * the translator: this very file imports `getLatestTelemetry` from it, and
+ * `package.json` has depended on it since the catalog was written. The reasons
+ * are the ones injection actually buys: a test or the harness can hand over a
+ * lineup without standing up the translator's module singleton, the harness
+ * can substitute its own, and the contract layer holds no reference to live
+ * global state that a second consumer would have to reset.
  */
 export type CautionLineupResolver = () => CautionLineup | null;
 
@@ -123,12 +151,18 @@ const CAR_NUMBER_GROUP = "car-number";
 const POSITION_NUMBER_GROUP = "position-number";
 
 /**
- * How long the follow call holds before deciding and expanding. The pace rows
- * land ~50 ms after the caution flag in the capture (239.88 → 239.93), so the
- * lineup is unreadable on the flag's own tick; a second is generous against a
- * slower assignment and invisible to a driver who has just seen a yellow.
+ * How long the follow call holds before deciding and expanding. Two reasons,
+ * and the longer one sets the value. The pace rows land ~50 ms after the
+ * caution flag in the capture (239.88 → 239.93), so the lineup is unreadable
+ * on the flag's own tick — that alone would want a fraction of a second. The
+ * binding reason is the single pending slot: this call and the caution
+ * announcement ride the same event, and while the bus is held they compete for
+ * that one slot. The lower weight above decides who loses; this delay makes
+ * the contest rarer, by giving the announcement time to take the bus and drain
+ * before the follow fire is even attempted. Two and a half seconds is about
+ * the length of the bundled announcement plus its frame.
  */
-export const CAUTION_FOLLOW_DELAY_MS = 1000;
+export const CAUTION_FOLLOW_DELAY_MS = 2500;
 
 /**
  * How long a lineup change holds before deciding. The measured gap between
@@ -144,6 +178,17 @@ export const CAUTION_LINEUP_CHANGE_DELAY_MS = 1500;
  * held lineup-change decision, which is why it cannot read the event's own
  * (by then stale) telemetry. Missing telemetry reads as "not out" so a
  * missing signal never silences a call (the #574 precedent).
+ *
+ * **Reading the raw bit is safe HERE and is not safe in general.** `OneLapToGreen`
+ * means "formation in progress", not "one lap to go": `diff/pace-laps.ts` opens
+ * with that finding, because the bit is asserted from `GetInCar`, held through
+ * an entire rolling parade, and re-rises in cool-down — which is why the
+ * rolling-start cue is a crossing heuristic rather than an edge on it. This
+ * read escapes all three of those cases because it is only ever consulted from
+ * a contract already gated on a live full-course caution, and inside one the
+ * bit does genuinely rise at one to go: Task 4 measured the rise at 415.12 and
+ * 793.93, on the leader's crossing, with `SessionState` Racing. Do not lift
+ * this predicate out to a caller that is not under a caution.
  */
 function oneLapToGreenShown(): boolean {
   const telemetry = getLatestTelemetry() as TelemetryData | null;
@@ -154,7 +199,10 @@ function oneLapToGreenShown(): boolean {
 }
 
 /** The fields every contract in the family shares. */
-function cautionContract(id: CautionCalloutId): Omit<ScenarioContract, "description" | "when"> {
+function cautionContract(
+  id: CautionCalloutId,
+  getUnderFullCourseCaution: UnderCautionResolver,
+): Omit<ScenarioContract, "description" | "when"> {
   return {
     id: `pit-crew.caution-${id}`,
     channel: AudioChannel.Voice,
@@ -168,14 +216,23 @@ function cautionContract(id: CautionCalloutId): Omit<ScenarioContract, "descript
     // spotter held the bus, which is the "no audio when the caution is
     // thrown" report #1127 was filed with.
     queueable: true,
+    // …and being queueable is exactly why every one of them needs the
+    // speak-time re-check below. See the module header: a pending fire's
+    // `where:` is never re-evaluated and the pending slot has no TTL, so
+    // without this a caution line can drain onto a green-flag track.
+    speakGate: {
+      description: "Re-checked at speak time: the full-course caution is still out.",
+      admit: () => getUnderFullCourseCaution(),
+    },
   };
 }
 
 /**
  * The family, built against the plugin's caution reader. A builder rather
- * than a constant because the two pace-car contracts must ask whether a
- * caution is out at all — see the module header — and this package takes no
- * runtime dependency on the translator.
+ * than a constant because the contracts need that reader twice over: the two
+ * pace-car ones ask it at event time (their event fires at a rolling start
+ * too) and seven of the eight ask it again at speak time — see the module
+ * header for both.
  */
 export function buildCautionContracts(getUnderFullCourseCaution: UnderCautionResolver): readonly ScenarioContract[] {
   /** The shared gate, plus "a caution is actually out" for an event that also fires elsewhere. */
@@ -183,8 +240,18 @@ export function buildCautionContracts(getUnderFullCourseCaution: UnderCautionRes
 
   return [
     {
-      ...cautionContract("follow"),
+      ...cautionContract("follow", getUnderFullCourseCaution),
       family: undefined,
+      // One notch BELOW the rest of the family, and deliberately not the
+      // family default — do not "tidy" it back. `BusState.pending` is a single
+      // slot and `setPending` replaces on `weight >= pending.weight`, silently.
+      // This call and `pit-crew.flag-caution-waving` ride the same event, so
+      // with the bus held (measured: the spotter held it at +0.8 s) the
+      // announcement is sitting in that slot when this one arrives. A tie would
+      // evict it. Between "Caution! Caution! Yellow flag is out." and a
+      // navigational detail, the announcement is the one that must never be
+      // lost — which is the whole point of having made it queueable.
+      weight: WEIGHT.SAFETY - 1,
       triggerDelay: CAUTION_FOLLOW_DELAY_MS,
       // The `CautionWaving` bit re-raises on every re-approach of the incident
       // zone, exactly as the yellow one does, so this rides its sibling's
@@ -195,31 +262,31 @@ export function buildCautionContracts(getUnderFullCourseCaution: UnderCautionRes
       when: { event: "flag.caution-waving.raised", where: liveRaceCar },
     },
     {
-      ...cautionContract("pace-car-out"),
+      ...cautionContract("pace-car-out", getUnderFullCourseCaution),
       description:
         "The pace car reaches the track during a full-course caution in a race, about twenty seconds after the flag; the pace car leading a rolling start belongs to the start and stays silent here.",
       when: { event: "paceCar.deployed", where: underCautionCar },
     },
     {
-      ...cautionContract("field-caught"),
+      ...cautionContract("field-caught", getUnderFullCourseCaution),
       description:
         "The pace car has picked up the field — the waving caution goes static at the leader's crossing, about ninety seconds in — while you are live in the car in a race.",
       when: { event: "caution.fieldCaught", where: liveRaceCar },
     },
     {
-      ...cautionContract("extra-lap"),
+      ...cautionContract("extra-lap", getUnderFullCourseCaution),
       description:
         "The race leader crosses the line under caution and the one-to-go flag does not come with it, so the caution has been extended past the two laps it defaults to.",
       when: { event: "caution.extraLap", where: liveRaceCar },
     },
     {
-      ...cautionContract("one-to-go"),
+      ...cautionContract("one-to-go", getUnderFullCourseCaution),
       description:
         "iRacing raises the one-lap-to-green flag under a full-course caution and the field forms up for the restart, single or double file.",
       when: { event: "caution.oneLapToGreen", where: liveRaceCar },
     },
     {
-      ...cautionContract("lineup-changed"),
+      ...cautionContract("lineup-changed", getUnderFullCourseCaution),
       triggerDelay: CAUTION_LINEUP_CHANGE_DELAY_MS,
       description:
         "The car you line up behind under caution changes — a car pitted, or the field re-formed — and a second and a half later the caution is still running with the one-to-go flag not yet out.",
@@ -232,15 +299,20 @@ export function buildCautionContracts(getUnderFullCourseCaution: UnderCautionRes
       },
     },
     {
-      ...cautionContract("pace-car-off"),
+      ...cautionContract("pace-car-off", getUnderFullCourseCaution),
       description:
         "The pace car peels off to pit road during a full-course caution, about five seconds before the green.",
       when: { event: "paceCar.off", where: underCautionCar },
     },
     {
-      ...cautionContract("restart"),
-      // The green lands on the driver's launch — nothing that is still
-      // playing may delay it, so this one cuts.
+      ...cautionContract("restart", getUnderFullCourseCaution),
+      // The one contract with NO speak-time caution gate, and it cannot have
+      // one: it speaks at the exact moment the caution ends, so the phase has
+      // already returned to "none" by the time the gate would be asked and the
+      // call would silence itself. Its own freshness comes from CRITICAL +
+      // `interrupt` — the green lands on the driver's launch, so nothing still
+      // playing may delay it, and nothing it displaces matters more.
+      speakGate: undefined,
       weight: WEIGHT.CRITICAL,
       interrupt: true,
       description: "The green flag ends a full-course caution and the field is released in a race.",
@@ -314,7 +386,7 @@ export function registerCautionVocabulary(
 
       return number !== null && number !== "" ? poolRef(CAR_NUMBER_GROUP, number) : null;
     },
-    'The car number you line up behind under caution, spoken from the car-number group exactly as the sim spells it — "09" and "9" are different clips. Null while the pace car is the only thing ahead of you, and while the field carries no readable lineup, so branch on caution.followsPaceCar before naming it.',
+    'The car number you line up behind under caution, spoken from the car-number group exactly as the sim spells it — "09" and "9" are different clips. Null while the pace car is the only thing ahead of you, and while the field carries no readable lineup, so branch on caution.followsPaceCar before naming it. Nothing to say is common rather than exceptional here, so keep the number in an optional clause with the words that introduce it: a null var in a required step aborts the whole callout, silently and at debug level, and the driver hears nothing at all.',
   );
 
   engine.defineVar(
@@ -326,7 +398,7 @@ export function registerCautionVocabulary(
         ? poolRef(POSITION_NUMBER_GROUP, String(position))
         : null;
     },
-    "The position you would restart in, spoken from the position-number group. Read from the pace rows rather than the running order — that is what iRacing lines the field up by — and null whenever the rows carry no absolute position, so a line naming it should survive its absence.",
+    "The position you would restart in, spoken from the position-number group. Read from the pace rows rather than the running order — that is what iRacing lines the field up by — and null whenever the rows carry no absolute position, which happens whenever session info cannot name the pace car. Keep it in an optional clause with the words that introduce it: a null var in a required step aborts the whole callout, silently and at debug level, so the pickup call would go unsaid rather than merely losing its number.",
   );
 
   engine.defineCond(

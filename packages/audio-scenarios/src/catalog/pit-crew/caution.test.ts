@@ -317,8 +317,36 @@ describe("the caution contracts", () => {
         expect(contract(id).weight).toBe(WEIGHT.CRITICAL);
       } else {
         expect(contract(id).interrupt).toBeUndefined();
-        expect(contract(id).weight).toBe(WEIGHT.SAFETY);
       }
+    }
+  });
+
+  it("weighs the follow call one notch below the rest, so a tie in the pending slot costs it and not the caution announcement", () => {
+    expect(contract("follow").weight).toBe(WEIGHT.SAFETY - 1);
+
+    for (const id of IDS.filter((x) => x !== "follow" && x !== "restart")) {
+      expect(contract(id).weight).toBe(WEIGHT.SAFETY);
+    }
+  });
+
+  it("re-checks at speak time that the caution is still out — every call but the restart, which speaks as it ends", () => {
+    for (const id of IDS) {
+      if (id === "restart") {
+        expect(contract(id).speakGate).toBeUndefined();
+        continue;
+      }
+
+      expect(contract(id).speakGate?.description.length ?? 0).toBeGreaterThan(20);
+
+      underCaution = true;
+      expect(contract(id).speakGate?.admit({} as never)).toBe(true);
+
+      // The case the gate exists for: a queueable fire parked behind a busy bus
+      // replays without re-running `where:`, and the pending slot has no TTL,
+      // so by the time it drains the caution can be long over.
+      underCaution = false;
+      expect(contract(id).speakGate?.admit({} as never)).toBe(false);
+      underCaution = true;
     }
   });
 
@@ -366,9 +394,15 @@ describe("the caution contracts", () => {
     for (const id of PACE_CAR_IDS) expect(fires(id)).toBe(true);
   });
 
-  it("holds the follow call for a second, because the pace rows land after the flag", () => {
+  it("holds the follow call, because the pace rows land after the flag and the announcement needs the bus first", () => {
     expect(contract("follow").triggerDelay).toBe(CAUTION_FOLLOW_DELAY_MS);
-    expect(CAUTION_FOLLOW_DELAY_MS).toBeGreaterThan(0);
+    // The rows land 50 ms after the flag, so that half of the reason would be
+    // satisfied by a fraction of a second. The binding half is the single
+    // pending slot: the hold has to outlast the caution announcement (the
+    // bundled clip is 2.95 s plus its frame) so the two rarely contend at all.
+    // It is a rarity knob, not the correctness one — the weight above is what
+    // decides a contest that does happen.
+    expect(CAUTION_FOLLOW_DELAY_MS).toBeGreaterThanOrEqual(2500);
   });
 
   it("gives the follow call the caution flag's own cooldown — the bit re-raises on every re-approach", () => {
@@ -432,8 +466,26 @@ describe("the follow call beside the caution flag's own line", () => {
   const CAUTION_CLIP = `voice/${VOICE}/flags/caution-waving-01.mp3`;
   const FOLLOW_CLIP = `voice/${VOICE}/caution/follow-01.mp3`;
 
+  /** Stands in for the spotter holding the Voice bus when the caution comes out. */
+  const HOG_CLIP = `voice/${VOICE}/flags/debris-01.mp3`;
+  const HOG: ScenarioContract = {
+    id: "pit-crew.flag-debris",
+    channel: AudioChannel.Voice,
+    bus: AudioBus.Voice,
+    base: "voice/{voice}",
+    weight: WEIGHT.PROXIMITY,
+    when: { event: "flag.debris.raised" },
+  };
+
   const manifest: AudioAssetsManifest = {
-    clips: ["sfx/IRD-tick-open.mp3", "sfx/IRD-tick-close.mp3", "sfx/IRD-ambient-pit.mp3", CAUTION_CLIP, FOLLOW_CLIP],
+    clips: [
+      "sfx/IRD-tick-open.mp3",
+      "sfx/IRD-tick-close.mp3",
+      "sfx/IRD-ambient-pit.mp3",
+      CAUTION_CLIP,
+      FOLLOW_CLIP,
+      HOG_CLIP,
+    ],
     ambientLoop: "sfx/IRD-ambient-pit.mp3",
     ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
   };
@@ -443,6 +495,7 @@ describe("the follow call beside the caution flag's own line", () => {
     scenarios: {
       "pit-crew.flag-caution-waving": { comment: "c", test: "t", sequence: ["pool:flags/caution-waving"] },
       "pit-crew.caution-follow": { comment: "c", test: "t", sequence: ["pool:caution/follow"] },
+      "pit-crew.flag-debris": { comment: "c", test: "t", sequence: ["pool:flags/debris"] },
     },
     // The engine wraps every body in the frame the contract names, and the
     // default is "radio" — a script without it has every entry skipped.
@@ -457,7 +510,7 @@ describe("the follow call beside the caution flag's own line", () => {
     fragments: {},
   } as unknown as CalloutScript;
 
-  function run(followFamily: string | undefined): {
+  function run(opts: { followFamily?: string; followWeight?: number; hogBus?: boolean } = {}): {
     played: () => string[];
     cutVoice: () => boolean;
     flush: () => void;
@@ -470,8 +523,28 @@ describe("the follow call beside the caution flag's own line", () => {
     if (!cautionWaving) throw new Error("the caution-waving flag contract is gone");
 
     engine.defineContract(cautionWaving);
-    engine.defineContract({ ...contract("follow"), family: followFamily });
+    engine.defineContract({
+      ...contract("follow"),
+      family: "followFamily" in opts ? opts.followFamily : contract("follow").family,
+      weight: opts.followWeight ?? contract("follow").weight,
+    });
+
+    if (opts.hogBus) engine.defineContract(HOG);
+
     engine.setScripts(new Map([[VOICE, script]]));
+
+    if (opts.hogBus) {
+      // Stands in for the spotter, which the capture measured holding the bus
+      // when the caution came out. PROXIMITY outranks everything here, so both
+      // caution lines can only queue behind it.
+      bus.publish({
+        event: "flag.debris.raised",
+        timestamp: 0,
+        telemetry: IN_CAR,
+        data: {},
+      } as unknown as SimEventOf<SimEventName>);
+      audio._triggerChannelEnd(AudioChannel.SFX);
+    }
 
     bus.publish({
       event: "flag.caution-waving.raised",
@@ -481,8 +554,9 @@ describe("the follow call beside the caution flag's own line", () => {
     } as unknown as SimEventOf<SimEventName>);
 
     // The radio frame's open tick plays on SFX first; the body reaches the
-    // Voice channel only once that tick completes.
-    audio._triggerChannelEnd(AudioChannel.SFX);
+    // Voice channel only once that tick completes. Skipped when the hog holds
+    // the Voice bus — nothing new is starting there.
+    if (!opts.hogBus) audio._triggerChannelEnd(AudioChannel.SFX);
 
     return {
       played: () => audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path),
@@ -509,7 +583,7 @@ describe("the follow call beside the caution flag's own line", () => {
   });
 
   it("waits for the caution line to finish and then speaks — both calls, in order", () => {
-    const { played, cutVoice, flush } = run(contract("follow").family);
+    const { played, cutVoice, flush } = run();
 
     expect(played()).toEqual([CAUTION_CLIP]);
 
@@ -526,8 +600,31 @@ describe("the follow call beside the caution flag's own line", () => {
     expect(played()).toEqual([CAUTION_CLIP, FOLLOW_CLIP]);
   });
 
+  // `BusState.pending` is ONE slot and `setPending` replaces on
+  // `weight >= pending.weight`, silently. Both calls ride the same event, so
+  // with the bus held — the capture measured the spotter holding it when the
+  // caution came out — they compete for that slot, and a tie would discard the
+  // safety announcement in favour of a navigational detail.
+  it("never evicts the caution announcement from the pending slot when the bus is held", () => {
+    const { played, flush } = run({ hogBus: true });
+
+    vi.advanceTimersByTime(CAUTION_FOLLOW_DELAY_MS + 1);
+    flush();
+
+    expect(played()).toEqual([HOG_CLIP, CAUTION_CLIP]);
+  });
+
+  it("would evict it at the family's own weight — the positive control", () => {
+    const { played, flush } = run({ hogBus: true, followWeight: WEIGHT.SAFETY });
+
+    vi.advanceTimersByTime(CAUTION_FOLLOW_DELAY_MS + 1);
+    flush();
+
+    expect(played()).toEqual([HOG_CLIP, FOLLOW_CLIP]);
+  });
+
   it("would cut that line mid-word if it shared the flag family — the positive control", () => {
-    const { cutVoice } = run("flag");
+    const { cutVoice } = run({ followFamily: "flag" });
 
     expect(cutVoice()).toBe(false);
 
@@ -607,6 +704,38 @@ describe("registerCautionVocabulary", () => {
     expect(conds.get("caution.followsPaceCar")?.()).toBe(false);
     expect(conds.get("caution.isDoubleFile")?.()).toBe(false);
     expect(cases.get("caution.line")?.()).toBeNull();
+  });
+
+  // The two conditions answer different questions and every other fixture here
+  // has them equal, so swapping the two resolver bodies would survive the whole
+  // suite — while telling the outside front car it is leading at every
+  // double-file restart, which is the case Task 5's redefinition of `isLeader`
+  // exists for. This fixture is the one that pulls them apart.
+  it("keeps leading and following-the-pace-car apart — the outside front car follows the pace car and is NOT leading", () => {
+    const { engine, conds } = makeVocabEngine();
+
+    registerCautionVocabulary(engine, () => ({ ...LINEUP, isLeader: false, followsPaceCar: true }));
+
+    expect(conds.get("caution.isLeader")?.()).toBe(false);
+    expect(conds.get("caution.followsPaceCar")?.()).toBe(true);
+  });
+
+  it("and the leader is both — first on the road, with only the pace car ahead", () => {
+    const { engine, conds } = makeVocabEngine();
+
+    registerCautionVocabulary(engine, () => ({ ...LINEUP, isLeader: true, followsPaceCar: true }));
+
+    expect(conds.get("caution.isLeader")?.()).toBe(true);
+    expect(conds.get("caution.followsPaceCar")?.()).toBe(true);
+  });
+
+  it("and a car mid-pack is neither", () => {
+    const { engine, conds } = makeVocabEngine();
+
+    registerCautionVocabulary(engine, () => ({ ...LINEUP, isLeader: false, followsPaceCar: false }));
+
+    expect(conds.get("caution.isLeader")?.()).toBe(false);
+    expect(conds.get("caution.followsPaceCar")?.()).toBe(false);
   });
 
   it("reports the lineup's own answers for the two conditions and the lane", () => {

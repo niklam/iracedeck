@@ -57,7 +57,9 @@ import { isRaceSession } from "./race-start.js";
 // and the countdown on a standing start (the countdown on the GetInCar/Warmup
 // pre-start window too); the go line it does not gate on the start type,
 // since iRacing raises `StartGo` at rolling starts and — measured on an oval —
-// at caution restarts as well. iRacing can also raise the grid bits while
+// at caution restarts as well. (The SIM bit, not this event: since #1127 the
+// translator routes a caution restart to `caution.restarted` instead, so the
+// go line no longer speaks there.) iRacing can also raise the grid bits while
 // forming the race grid at the END of a qualifying session, so gate on the
 // race session too. The GANTRY lines additionally gate on
 // `isLiveOnTrack` so they stay silent while the user is out of the car at the
@@ -91,8 +93,15 @@ const START_GO: ScenarioContract = {
   queueable: true,
   family: "start-light",
   when: { event: "startLight.start-go.raised", where: liveRaceCar },
+  // The sentence used to end "…or the green at a caution restart (measured on
+  // an oval)". Issue #1127 made that impossible: a restart now emits
+  // `caution.restarted` rather than `startLight.start-go.raised`, so this
+  // contract can no longer see one, and the caution family's own restart call
+  // owns that moment with its own opt-in. The description ships in the
+  // published pack reference, so it is corrected here rather than left for a
+  // pack author to disprove.
   description:
-    "iRacing signals the go while you are live in the car in a race: the lights out at a standing start, the green at a rolling start, or the green at a caution restart (measured on an oval).",
+    "iRacing signals the go while you are live in the car in a race: the lights out at a standing start, or the green at a rolling start. A caution restart has its own call and stays silent here.",
 };
 
 /**
