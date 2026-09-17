@@ -245,11 +245,14 @@ export type TranslatorState = {
   cautionPaceCarSurface: number | null;
   /**
    * Where the current caution has got to. `"none"` when no full-course caution
-   * is out. Deliberately NOT seeded on the diff's first tick — the seed leaves
-   * it alone so the value {@link TranslatorState} carries through a replay wipe
-   * survives, and so a fresh connect reports only the transitions it actually
-   * watched (a caution already static when the plugin starts moves to
-   * `"caught"` on the next tick, silently).
+   * is out. Deliberately NOT seeded from nothing on the diff's first tick — the
+   * seed leaves a LIVE caution's phase alone so the value {@link TranslatorState}
+   * carries through a replay wipe survives, and so a fresh connect reports only
+   * the transitions it actually watched (a caution already static when the
+   * plugin starts moves to `"caught"` on the next tick, silently). The seed does
+   * EXPIRE a phase the flags contradict, so a caution that ended while the
+   * driver glanced at the replay cannot survive as a latch into the tick where
+   * `diffStartLights` reads it — see `diff/caution.ts`.
    *
    * Read outside `diffCaution` by exactly one thing: `diffStartLights`
    * suppresses `startLight.start-go.raised` while it is anything but `"none"`,

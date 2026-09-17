@@ -19,6 +19,7 @@ import {
   EngineWarnings,
   Flags,
   IncidentFlags,
+  PaceMode,
   PitSvFlags,
   type SDKController,
   SessionState,
@@ -3846,12 +3847,14 @@ describe("sim-events-iracing translator", () => {
       controller.__tick(cautionTick({ flags: WAVING, paceCarSurface: TrkLoc.InPitStall }));
       controller.__tick(cautionTick({ flags: WAVING }));
       controller.__tick(cautionTick({ flags: STATIC }));
-      controller.__tick(cautionTick({ flags: ONE_TO_GO, paceMode: 3 }));
+      controller.__tick(cautionTick({ flags: ONE_TO_GO, paceMode: PaceMode.DoubleFileRestart }));
       // The capture has the pace car heading for the pits about five seconds
       // BEFORE the green, so its departure is its own tick rather than the
       // restart's. Keeping the two apart is what stops this asserting the
       // arbitrary within-tick order of `diffPaceCar` and `diffCautionEpisode`.
-      controller.__tick(cautionTick({ flags: ONE_TO_GO, paceMode: 3, paceCarSurface: TrkLoc.AproachingPits }));
+      controller.__tick(
+        cautionTick({ flags: ONE_TO_GO, paceMode: PaceMode.DoubleFileRestart, paceCarSurface: TrkLoc.AproachingPits }),
+      );
       controller.__tick(cautionTick({ flags: RESTART, paceCarSurface: TrkLoc.AproachingPits }));
     }
 
@@ -4006,55 +4009,92 @@ describe("sim-events-iracing translator", () => {
         expect(getCautionLineup()?.line).toBeNull();
         expect(getCautionLineup()?.doubleFile).toBe(true);
       });
+
+      it("report no lineup at all for a player the re-form has not placed", () => {
+        // A car in the pits during the re-form holds no row, so there is no
+        // place in the lineup to report. `null` here is what makes a `null`
+        // elsewhere mean "the field is not lined up" rather than "we forgot".
+        const controller = createMockController();
+        controller.__setSessionInfo(ovalRace());
+        initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+        // The first tick only seeds the diff, so the episode needs a second one
+        // to reach a phase at all.
+        controller.__tick(cautionTick({ flags: RACING }));
+        controller.__tick(
+          cautionTick({
+            flags: STATIC,
+            pace: [
+              [-1, -1], // the player, still in the pits
+              [1, 0],
+              [0, 0],
+            ],
+          }),
+        );
+
+        expect(getCautionLineup()).toBeNull();
+        // …while the episode itself carries on regardless.
+        expect(isUnderFullCourseCaution()).toBe(true);
+      });
     });
 
-    describe("the replay edge (issue #1127 follow-up)", () => {
-      /** Park the translator mid-caution, then glance at the replay and come back. */
-      function glanceAtReplayUnderCaution(controller: MockController): void {
+    // `wipeStateForReplay` preserves `cautionPhase` but not
+    // `cautionInitialized`, so the first tick back always re-SEEDS the caution
+    // diff. What that seed does with the preserved phase decides both tests
+    // below, and they want opposite things of it — hence the pair.
+    describe("a replay glance", () => {
+      /** Park the translator mid-caution, then glance at the replay. */
+      function glanceAtReplay(controller: MockController): void {
         controller.__tick(cautionTick({ flags: RACING }));
         controller.__tick(cautionTick({ flags: WAVING }));
         controller.__tick(cautionTick({ flags: STATIC }));
         controller.__tick(cautionTick({ flags: STATIC, replay: true }));
       }
 
-      it("holds a stale caution phase for exactly one tick after the wipe, and it eats a start-go edge", () => {
-        // `wipeStateForReplay` preserves `cautionPhase` but not
-        // `cautionInitialized`, so the first tick back SEEDS the caution diff
-        // and cannot expire the phase. On the tick after that the gantry diff
-        // reads the stale phase BEFORE `diffCaution` clears it — so a `StartGo`
-        // rising exactly there is suppressed as if it were a restart.
+      it("does not swallow a start-go edge when the caution ended during the glance", () => {
+        // The seed expires a phase the flags contradict, so the phase is gone
+        // on the FIRST tick back rather than the second. Without that, the
+        // gantry diff reads the stale phase on the very next tick — it runs
+        // before `diffCaution` — and suppresses a legitimate race start as if
+        // it were a restart, losing the line for good.
         const controller = createMockController();
         controller.__setSessionInfo(ovalRace());
         const seen = recordStream();
         initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
 
-        glanceAtReplayUnderCaution(controller);
+        glanceAtReplay(controller);
 
         // Back in the car, and the caution is gone — an admin re-grid, say.
         controller.__tick(cautionTick({ flags: RACING }));
-        expect(isUnderFullCourseCaution()).toBe(true); // stale: the seed could not expire it
-
-        controller.__tick(cautionTick({ flags: RESTART }));
-
-        expect(seen).not.toContain("startLight.start-go.raised");
-        expect(isUnderFullCourseCaution()).toBe(false); // …and now it is gone
-      });
-
-      it("one more tick back in the car and the edge survives — the window is one tick wide", () => {
-        const controller = createMockController();
-        controller.__setSessionInfo(ovalRace());
-        const seen = recordStream();
-        initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
-
-        glanceAtReplayUnderCaution(controller);
-
-        controller.__tick(cautionTick({ flags: RACING }));
-        controller.__tick(cautionTick({ flags: RACING })); // the expiry lands here
         expect(isUnderFullCourseCaution()).toBe(false);
 
         controller.__tick(cautionTick({ flags: RESTART }));
 
         expect(seen).toContain("startLight.start-go.raised");
+      });
+
+      it("keeps the phase when the caution is still out, so the restart is still a restart", () => {
+        // The positive control for the expiry above, and the reason the phase
+        // is preserved across the wipe at all: come back to a caution that is
+        // STILL running and the episode must survive intact — the restart that
+        // ends it is announced as one, and the `StartGo` it carries stays
+        // suppressed. An expiry that fired unconditionally would pass the test
+        // above and fail this one.
+        const controller = createMockController();
+        controller.__setSessionInfo(ovalRace());
+        const seen = recordStream();
+        initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+        glanceAtReplay(controller);
+
+        controller.__tick(cautionTick({ flags: STATIC }));
+        expect(isUnderFullCourseCaution()).toBe(true);
+
+        controller.__tick(cautionTick({ flags: RESTART }));
+
+        expect(seen).toContain("caution.restarted");
+        expect(seen).not.toContain("startLight.start-go.raised");
+        expect(isUnderFullCourseCaution()).toBe(false);
       });
     });
   });

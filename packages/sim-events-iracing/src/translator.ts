@@ -977,14 +977,28 @@ export function getLiveOpponentFlags(): LiveOpponentFlags | null {
 
 /**
  * Whether a full-course caution is currently out (issue #1127) — the caution
- * episode's phase reduced to the one question a callout's `where:` asks.
- * `true` from the moment `CautionWaving` is first seen through to the green
- * that ends it, covering every phase in between (waving, caught, one to go).
+ * episode's phase reduced to the one question a callout's `where:` asks. `true`
+ * through every phase of an episode (waving, caught, one to go), until the
+ * green that ends it.
  *
- * `false` when the translator isn't initialized, and equally when the episode
- * has expired: the phase returns to `"none"` the moment neither caution bit is
- * set, which is what makes this a reading of the CURRENT flags rather than a
- * latch that can be left standing by a swallowed green (see `diff/caution.ts`).
+ * It does NOT require the caution to have been watched from the start. An
+ * episode normally begins at `CautionWaving`, but a `Caution` bit the diff never
+ * saw wave moves silently to `"caught"` — a plugin started mid-caution, or a
+ * discipline whose cautions do not wave first — and this reads `true` there too.
+ * That is the point: it answers "is a caution out", not "did we narrate one".
+ * What it costs is that `true` alone does not imply a `caution.fieldCaught` was
+ * ever published; a consumer that needs the transition subscribes to the event.
+ *
+ * `false` when the translator isn't initialized, and equally once the episode
+ * expires — the phase returns to `"none"` on the first tick where neither
+ * caution bit is set, seed included, so a green swallowed by a replay re-seed
+ * cannot leave it standing (see `diff/caution.ts`).
+ *
+ * Note: during replay, `handleTick` returns at the replay guard before any diff
+ * runs, so the phase is not advanced at all and this keeps reporting whatever
+ * the last live tick left — a held value rather than a live reading, for as long
+ * as the user is in the replay. The first live tick back re-seeds, and that seed
+ * is what expires a caution the flags say is over.
  *
  * This is the caution's own state, NOT a re-derivation of `SessionFlags`: it is
  * the same value `diffStartLights` reads to tell a restart from a race start,
@@ -1368,7 +1382,10 @@ function wipeStateForReplay(self: TranslatorInstance): void {
     // must not make the next tick re-report a moment the episode is already
     // past — most visibly the pickup, which would repeat the whole "we've
     // caught the pace car, you're restarting Nth" call. The caution diff's own
-    // seed deliberately leaves this field alone for the same reason. Its two
+    // seed leaves this field alone for the same reason — with one exception it
+    // owns: a phase the flags CONTRADICT is expired there, so a caution that
+    // ended during the glance can't survive as a latch into the tick where
+    // `diffStartLights` reads it (see `diff/caution.ts`). Its two
     // baselines (`cautionLastFlags` / `cautionLeaderLapCompleted`) are
     // pointedly NOT preserved — replay-timeline flag bits and lap counters are
     // as meaningless as the opponent-flag bits baseline above, and both
@@ -1763,6 +1780,11 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // already-resolved `sessionInfo` for the standing-start gate. The numeric
   // pre-start countdown runs PRE-guard instead (`diffStartCountdown` above,
   // issue #829) so it reaches a driver who's still in the garage.
+  //
+  // MUST stay ABOVE `diffCaution` (issue #1127) — this diff reads a caution
+  // phase that one clears on the very tick it would be read. Moving this call
+  // below it breaks the restart gate SILENTLY, with no type or lint signal;
+  // the full reasoning is at the `diffCaution` call further down.
   diffStartLights(self.state, telemetry, sessionInfo, emit);
   // Rolling-start "one pace lap to go" (issue #657) — a start/finish-crossing
   // heuristic, NOT iRacing's `OneLapToGreen` edge. Reads `sessionInfo` for the
@@ -1844,6 +1866,16 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // moving a state-mutating call across nine diffs to buy a proximity the
   // comments and the two tests already buy. Any diff added between the two must
   // not read or write `cautionPhase`; today only these two touch it.
+  //
+  // It takes neither `isRaceSession` nor `replayOnlySession`, unlike most of its
+  // neighbours, and that is deliberate rather than an omission. The #480
+  // precedent recorded in `.claude/rules/race-engineer-callout-examples.md` puts
+  // this gate on the SCENARIO instead: the event still emits — so the scenario
+  // harness can fire the whole caution sequence without pretending to be in a
+  // race — while the callout family's own `liveRaceCar` predicate is what keeps
+  // the engineer quiet outside one. Adding the parameters here would move a
+  // decision the audio layer owns into the diff, and take the sequence out of
+  // reach of the harness. Don't.
   diffCaution(self.state, telemetry, sessionInfo, canonicalPositions, emit);
 
   // Opponent pit entries (issue #622) — consumes the same canonical frozen

@@ -63,7 +63,9 @@
  * every green-flag leader crossing for the rest of the session an extra lap
  * under caution. The expiry is therefore the SOLE guarantee that a `"caught"`
  * phase means the caution is still out, and the extra-lap branch rests on it
- * rather than re-testing the bit.
+ * rather than re-testing the bit. The SEED applies it too, which is what makes
+ * that guarantee hold on every tick rather than on every tick but the first one
+ * back from a replay — see {@link diffCautionEpisode}.
  *
  * **The pickup consumes the crossing it landed on.** The static flag precedes
  * the leader's `CarIdxLapCompleted` increment by about half a second in both
@@ -193,10 +195,20 @@ function diffPaceCar(
 
 /**
  * The caution's own phases: the pickup, the laps behind the pace car, one to
- * go, and the restart. Seeds the flag and crossing baselines silently — but
- * deliberately NOT the phase, which is left at whatever it holds, so the value
- * preserved across a replay wipe survives the re-seed and a fresh connect
- * reports only the transitions it actually watched.
+ * go, and the restart. Seeds the flag and crossing baselines silently — and the
+ * phase is deliberately NOT re-seeded from nothing, so the value preserved
+ * across a replay wipe survives and a fresh connect reports only the
+ * transitions it actually watched.
+ *
+ * The seed does apply ONE rule to the phase, though: it expires a phase the
+ * flags contradict. A glance at the replay is preserved-phase's whole reason —
+ * coming back mid-caution must not re-report the pickup — but a caution that
+ * ENDED during the glance is not that case, and a phase left standing there is
+ * a latch nothing can clear until the tick AFTER this one. `diffStartLights`
+ * reads the phase before this diff runs, so that one tick is enough to swallow
+ * a legitimate `StartGo` rising edge and lose the race-start line for good.
+ * Expiring here emits nothing and can therefore re-report nothing; it only
+ * declines to carry a caution the flags say is over.
  */
 function diffCautionEpisode(
   state: TranslatorState,
@@ -215,6 +227,12 @@ function diffCautionEpisode(
   if (seeding) {
     state.cautionLastFlags = flags;
     state.cautionLeaderLapCompleted = leaderLap;
+
+    // The one thing the seed says about the phase — see the expiry paragraph
+    // above. Same test as the live expiry below, so "no caution bits means no
+    // caution phase" holds on every tick rather than on every tick but the
+    // first one back from a replay.
+    if (!caution && !waving) state.cautionPhase = "none";
 
     return;
   }
