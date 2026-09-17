@@ -60,6 +60,12 @@ export type PitBoxMark = "five" | "four" | "three" | "two" | "one" | "pit-now";
 /** Flag scope — "local" is a sector/area yellow, "full" is a full-course yellow. */
 export type FlagScope = "local" | "full";
 
+/** Which lane a car lines up in on a double-file restart. `inside` is pace line 0 (measured on an oval; see the #1127 spec). */
+export type CautionLine = "inside" | "outside";
+
+/** How the field lines up for a restart — single file, or two columns. */
+export type PaceFile = "single" | "double";
+
 /** Which standings neighbor a gap event refers to (issue #933). */
 export type GapSide = "ahead" | "behind";
 
@@ -465,6 +471,25 @@ export type SimEventMap = {
   "flag.dq-scoring-invalid.raised": SimEvent<"flag.dq-scoring-invalid.raised", EmptySimEventPayload>;
   "flag.yellow-waving.raised": SimEvent<"flag.yellow-waving.raised", EmptySimEventPayload>;
   "flag.caution-waving.raised": SimEvent<"flag.caution-waving.raised", EmptySimEventPayload>;
+
+  // ── Full-course caution (issue #1127) ──────────────────────────────────
+  /** The pace car reached the track (`CarIdxTrackSurface` → OnTrack). Not caution-specific: it fires at a rolling start too. */
+  "paceCar.deployed": SimEvent<"paceCar.deployed", EmptySimEventPayload>;
+  /** The pace car left the track for pit road. Measured ~5 s before every green. */
+  "paceCar.off": SimEvent<"paceCar.off", EmptySimEventPayload>;
+  /** The pace car has picked up the field: `Caution` rising as `CautionWaving` falls. */
+  "caution.fieldCaught": SimEvent<"caution.fieldCaught", { restartPosition: number | null }>;
+  /** A leader start/finish crossing after the pickup that did not bring `OneLapToGreen` — the caution ran longer than the default two laps. */
+  "caution.extraLap": SimEvent<"caution.extraLap", EmptySimEventPayload>;
+  /** `OneLapToGreen` rose while racing under caution. */
+  "caution.oneLapToGreen": SimEvent<"caution.oneLapToGreen", { file: PaceFile }>;
+  /** The car to follow changed. Payload is a fallback; consumers read the lineup live. */
+  "caution.lineup.changed": SimEvent<
+    "caution.lineup.changed",
+    { followCarIdx: number | null; followCarNumber: string | null; line: CautionLine | null; isLeader: boolean }
+  >;
+  /** The green that ends a full-course caution. Carries `StartGo`, which is why the green-flag callout stays silent. */
+  "caution.restarted": SimEvent<"caution.restarted", EmptySimEventPayload>;
 
   /**
    * Start-light family (issue #480). The race-start gantry lights and the
