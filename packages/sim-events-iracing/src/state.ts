@@ -215,6 +215,12 @@ export type TranslatorState = {
    */
   whiteRaisedAt: number;
 
+  // ── Full-course caution (issue #1127) ───────────────────────────────────
+  /** Whether the caution diff has seeded its baselines. The first tick never emits. */
+  cautionInitialized: boolean;
+  /** Previous-tick pace-car track surface, for the deployed/off edges. `null` until seeded. */
+  cautionPaceCarSurface: number | null;
+
   // ── Rolling-start pace laps (issue #657) ────────────────────────────────
   /**
    * Whether the pace-lap diff has seeded its baseline on the first tick. Seeds
@@ -955,6 +961,9 @@ export function createInitialState(): TranslatorState {
     whiteLastLapFired: false,
     playerFinalLapStarted: false,
     whiteRaisedAt: 0,
+
+    cautionInitialized: false,
+    cautionPaceCarSurface: null,
 
     paceLapInitialized: false,
     lastTickInParadeLaps: false,
