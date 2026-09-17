@@ -41,12 +41,12 @@ Flag transitions are also voiced — every flag the iRacing translator publishes
 
 - **Yellow** — scope-aware: full-course yellow ("pace car deployed") and local sector yellow ("mind the slow cars") play different lines.
 - **Yellow cleared** — engineer announces when the yellow drops.
-- **Green** — race-restart / race-on callout.
+- **Green** — the green-flag call for practice and qualifying. It stays quiet at a race start and, as measured on an oval, at the restart after a caution: iRacing gives the start signal with both, and the Start Lights go line announces them.
 - **Blue** — alternates between two recorded variants ("faster car approaching" / "check your mirrors").
 - **White** — final-lap alert.
 - **Red / Black / Debris** — single dedicated callout each.
 - **Checkered** — session-aware: practice, qualifying, and race finishes get distinct lines.
-- **Meatball** — the only flag callout marked **urgent + preempt**: it cancels in-flight engineer chatter mid-message, since failing to pit on a meatball costs a black-flag penalty. All non-meatball flag callouts share a `flag` family so a newer flag preempts an older one (no "yellow's clear" + "green flag" double-talk on race restart).
+- **Meatball** — the only flag callout marked **urgent + preempt**: it cancels in-flight engineer chatter mid-message, since failing to pit on a meatball costs a black-flag penalty. All non-meatball flag callouts share a `flag` family so a newer flag preempts an older one.
 
 The engineer also reads a **session-start brief** around 3 seconds after a **practice or qualifying** session starts — even if you're still in the garage: a greeting by name, the session type, the pit speed limit, track and air temperature, and track wetness. It also fires when the plugin connects into a practice/qualifying session already in progress. Units follow iRacing's display setting; the pit speed limit is rounded to the nearest whole unit and is read out only when it matches a known iRacing pit limit the engineer has a clip for (otherwise that part is skipped). It can be toggled off independently in the **Race Engineer Callouts → Session Start** Property Inspector section.
 

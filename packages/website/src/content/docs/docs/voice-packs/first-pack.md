@@ -13,7 +13,7 @@ Start with callouts that fire on a plain event and say one line, so nothing abou
 
 | Callout                        | When it fires                                                                                          | Harness button                |
 | ------------------------------ | ------------------------------------------------------------------------------------------------------ | ----------------------------- |
-| `pit-crew.flag-green`          | The green flag at the start of a practice or qualifying session, or at a race restart — the initial race start belongs to the start lights. | **Flags → Green**             |
+| `pit-crew.flag-green`          | The green flag when it comes without a start signal, as when practice or qualifying goes green — a race start and a caution restart belong to the start lights. | **Flags → Green**             |
 | `pit-crew.pit-window-opened`   | Pit road switches from closed to open while you are in a race.                                        | **Pit Window → Pits opened**  |
 | `pit-crew.damage-repair-needed`| Your car takes damage that keeps the repair indicator lit for three seconds, and again only after a repair has cleared it. | **Damage → Damage Detected**  |
 
