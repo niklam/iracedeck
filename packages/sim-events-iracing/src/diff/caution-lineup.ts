@@ -50,9 +50,13 @@
  * empty, or holds the pace car, it is the pace car you are following.** That
  * rule is right for both shapes — the outside front car sits at line 1 row 0,
  * has no row −1, and follows the pace car, which is what happens on track.
+ * Note what that does NOT make it: leading. Following the pace car and running
+ * first are two different questions double file, and they get two fields —
+ * `followsPaceCar` and `isLeader` — because each becomes a script condition a
+ * pack author can only write or negate.
  */
 import type { CautionLine } from "@iracedeck/event-bus";
-import type { TelemetryData } from "@iracedeck/iracing-sdk";
+import { getCarNumberFromSessionInfo, type TelemetryData } from "@iracedeck/iracing-sdk";
 
 import { resolvePaceCarIdx } from "./pace-laps.js";
 
@@ -64,15 +68,29 @@ export type CautionLineup = {
   /** Which lane you line up in. `null` when single file or the track is not an oval. */
   line: CautionLine | null;
   /**
-   * There is nobody ahead of you in your own line, so the only car in front is
-   * the pace car.
+   * You are restarting FIRST — `restartPosition === 1`, and nothing looser.
    *
-   * Read it as exactly that, and NOT as "you are P1": running double file BOTH
-   * front cars satisfy it — the leader at line 0 row 1 and the outside front
-   * car at line 1 row 0, who is P2. A caller that wants the race leader tests
-   * `restartPosition === 1`.
+   * It is not "nobody is ahead of you in your line", which running double file
+   * is true of BOTH front cars: the leader at line 0 row 1 and the outside
+   * front car at line 1 row 0, who is P2. That reading shipped briefly and
+   * would have told P2 it was leading at every double-file restart, because
+   * this value becomes a SCRIPT CONDITION and the script grammar's only
+   * operator is `!` — a pack author can write `isLeader` or `!isLeader` and has
+   * no way to narrow it further, so the narrowing has to be here. Use
+   * {@link CautionLineup.followsPaceCar} for the looser question.
+   *
+   * False when the position cannot be read at all: claiming the lead is not
+   * something to do on a guess.
    */
   isLeader: boolean;
+  /**
+   * There is nobody ahead of you in your own line, so the only car in front of
+   * you is the pace car. True for the leader AND for the outside front car on a
+   * double-file restart — it is what a line naming the pace car instead of a
+   * car number should be conditioned on, which is why it survives beside
+   * {@link CautionLineup.isLeader} rather than being folded into it.
+   */
+  followsPaceCar: boolean;
   /** The field is in two columns. */
   doubleFile: boolean;
   /**
@@ -101,57 +119,15 @@ function resolvePlayerCarIdx(sessionInfo: Record<string, unknown> | null): numbe
 }
 
 /**
- * A car's number as the sim spells it. Strings only, deliberately: `"09"` and
- * `"9"` are different cars, and a driver list that handed back the number 9
- * could not tell us which one it meant — so an unusable entry is reported as
- * unknown rather than guessed at, and the sentence drops to its numberless
- * wording.
+ * The follow car's number as the sim spells it, through the SDK's own reader
+ * rather than a private one. That reader is what knows the shapes session YAML
+ * actually emits: a quoted `"09"`, an UNQUOTED `42` that arrives as a number
+ * (issue #869), or a blank that arrives as `null`. A hand-rolled string-only
+ * read would hand back nothing for the unquoted shape, and every caution line
+ * in such a session would quietly drop to its numberless wording.
  */
-function resolveCarNumber(sessionInfo: Record<string, unknown> | null, carIdx: number | null): string | null {
-  if (carIdx === null) return null;
-
-  const driverInfo = sessionInfo?.DriverInfo as Record<string, unknown> | undefined;
-  const drivers = driverInfo?.Drivers;
-
-  if (!Array.isArray(drivers)) return null;
-
-  for (const driver of drivers as Array<Record<string, unknown> | null>) {
-    if (driver?.CarIdx !== carIdx) continue;
-
-    const number = driver.CarNumber;
-
-    return typeof number === "string" && number !== "" ? number : null;
-  }
-
-  return null;
-}
-
-/**
- * Whether the session runs on an oval, which is the only discipline whose
- * restart lines are named inside and outside (the #1127 spec gates the wording
- * on it; line 0 is taken to be the inside, accepted on the grounds that no
- * right-handed oval is known).
- *
- * Measured once: Homestead-Miami reported `TrackType: "medium oval"` (with
- * `Category: "Oval"` beside it). The other readings come from iRacing's own
- * `TrackType` vocabulary rather than from a capture — `"short oval"` and
- * `"dirt oval"` say oval outright, `"superspeedway"` never does, which is why
- * the substring test carries both words. `Category` is deliberately NOT read as
- * a second signal: every value it would rescue is one `TrackType` already
- * names, so the branch could not be made to fail a test, and a term no test can
- * fail is one the next reader either trusts too far or deletes blind. Getting
- * this wrong costs a side name, not a car: everything else in the lineup is
- * discipline-agnostic.
- */
-export function isOvalTrack(sessionInfo: Record<string, unknown> | null): boolean {
-  const weekendInfo = sessionInfo?.WeekendInfo as Record<string, unknown> | undefined;
-  const trackType = weekendInfo?.TrackType;
-
-  if (typeof trackType !== "string") return false;
-
-  const normalized = trackType.toLowerCase();
-
-  return normalized.includes("oval") || normalized.includes("speedway");
+function resolveFollowCarNumber(sessionInfo: Record<string, unknown> | null, carIdx: number | null): string | null {
+  return carIdx === null ? null : getCarNumberFromSessionInfo(sessionInfo, carIdx);
 }
 
 /**
@@ -207,16 +183,18 @@ export function resolveCautionLineup(
     }
   }
 
-  const isLeader = aheadCarIdx === null || aheadCarIdx === paceCarIdx;
+  const followsPaceCar = aheadCarIdx === null || aheadCarIdx === paceCarIdx;
   const followCarIdx = aheadCarIdx ?? paceCarIdx;
+  const restartPosition = resolveRestartPosition(lines, rows, paceCarIdx, myLine, myRow, doubleFile);
 
   return {
     followCarIdx,
-    followCarNumber: resolveCarNumber(sessionInfo, followCarIdx),
+    followCarNumber: resolveFollowCarNumber(sessionInfo, followCarIdx),
     line: resolveLine(myLine, doubleFile, isOval),
-    isLeader,
+    isLeader: restartPosition === 1,
+    followsPaceCar,
     doubleFile,
-    restartPosition: resolveRestartPosition(lines, rows, paceCarIdx, myLine, myRow, doubleFile),
+    restartPosition,
   };
 }
 

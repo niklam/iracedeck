@@ -62,6 +62,58 @@ export function isDirtTrack(sessionInfo: Record<string, unknown> | null): boolea
   return typeof raw === "string" && raw.toLowerCase().includes("dirt");
 }
 
+/**
+ * `WeekendInfo.Category` values that settle the oval question outright, in
+ * BOTH directions. Lower-cased with whitespace stripped, so `"Dirt Oval"` and
+ * `"DirtOval"` are the same answer.
+ */
+const OVAL_CATEGORIES = new Set(["oval", "dirtoval"]);
+const NON_OVAL_CATEGORIES = new Set(["road", "dirtroad"]);
+
+/**
+ * Whether the session runs on an oval — the only discipline whose caution
+ * restart lines are named inside and outside (issue #1127; the spec gates that
+ * wording on it, and takes pace line 0 to be the inside on the grounds that no
+ * right-handed oval is known).
+ *
+ * `Category` is the primary test because it is an ENUMERATION and therefore
+ * answers both ways: a value it recognizes is final, and the substring fallback
+ * below never runs. `TrackType` is a fallback rather than the rule because a
+ * substring can be wrong in both directions — `"superspeedway"` never says
+ * oval, and `"roval"` contains it while being a road course. An unrecognized
+ * `Category` falls through rather than reading false, so a value iRacing adds
+ * later degrades to the substring instead of silently turning every oval into a
+ * road course.
+ *
+ * Measured once, at one track, on one discipline: Homestead-Miami reported
+ * `Category: "Oval"` with `TrackType: "medium oval"` (2026-09-17, see the #1127
+ * spec). Every other value here comes from iRacing's own vocabulary rather than
+ * from a capture, which is why both signals are kept: the claim that either one
+ * alone suffices is not something this repo has measured. Getting it wrong
+ * costs a side name, not a car — everything else in the caution lineup is
+ * discipline-agnostic.
+ */
+export function isOvalTrack(sessionInfo: Record<string, unknown> | null): boolean {
+  const weekendInfo = sessionInfo?.WeekendInfo as Record<string, unknown> | undefined;
+  const category = weekendInfo?.Category;
+
+  if (typeof category === "string") {
+    const normalized = category.trim().toLowerCase().replace(/\s+/g, "");
+
+    if (OVAL_CATEGORIES.has(normalized)) return true;
+
+    if (NON_OVAL_CATEGORIES.has(normalized)) return false;
+  }
+
+  const trackType = weekendInfo?.TrackType;
+
+  if (typeof trackType !== "string") return false;
+
+  const normalized = trackType.toLowerCase();
+
+  return normalized.includes("oval") || normalized.includes("speedway");
+}
+
 /** Track rotation direction. Unknown/neutral tracks (road courses) map to `Neutral`. */
 export enum TrackDirection {
   Neutral = "neutral",

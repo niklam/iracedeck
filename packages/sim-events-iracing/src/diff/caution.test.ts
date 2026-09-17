@@ -587,6 +587,7 @@ describe("the caution lineup", () => {
     const { events, emit } = collect();
     const info = playerSessionInfo(0);
     const fired: Array<{ t: number; followCarIdx: number | null }> = [];
+    const caught: Array<{ t: number; restartPosition: number | null }> = [];
 
     for (const tick of ticks) {
       const before = events.length;
@@ -595,8 +596,18 @@ describe("the caution lineup", () => {
 
       for (const e of events.slice(before)) {
         if (e.event === "caution.lineup.changed") fired.push({ t: tick.t, followCarIdx: e.data.followCarIdx });
+
+        if (e.event === "caution.fieldCaught") caught.push({ t: tick.t, restartPosition: e.data.restartPosition });
       }
     }
+
+    // The positions the player really restarts in, off the capture's own pace
+    // rows: 9th at the first pickup, 3rd at the second. Both pickups are single
+    // file with the pace car at the head of the lineup, so both are anchored.
+    expect(caught).toEqual([
+      { t: 333.57, restartPosition: 9 },
+      { t: 630.95, restartPosition: 3 },
+    ]);
 
     // Car 0 ran 9th. It followed car 4 single file and car 1 once the field
     // re-formed double file, then car 7 and car 16 in the second caution. Both

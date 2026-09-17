@@ -109,7 +109,8 @@
 import { Flags, hasFlag, PaceMode, type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
 
 import type { TranslatorState } from "../state.js";
-import { type CautionLineup, isOvalTrack, resolveCautionLineup } from "./caution-lineup.js";
+import { isOvalTrack } from "../track-type.js";
+import { type CautionLineup, resolveCautionLineup } from "./caution-lineup.js";
 import { resolvePaceCarIdx } from "./pace-laps.js";
 import type { EmitFn } from "./types.js";
 

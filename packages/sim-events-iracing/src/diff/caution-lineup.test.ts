@@ -2,7 +2,7 @@ import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import { isOvalTrack, resolveCautionLineup } from "./caution-lineup.js";
+import { resolveCautionLineup } from "./caution-lineup.js";
 
 const ticks = JSON.parse(
   readFileSync(new URL("./__fixtures__/caution-restart-20260917.json", import.meta.url), "utf-8"),
@@ -71,13 +71,13 @@ describe("resolveCautionLineup — who to follow", () => {
   it("follows the car one row lower in single file", () => {
     const lineup = resolveCautionLineup(paceArrays(SINGLE_FILE), session(3), false);
 
-    expect(lineup).toMatchObject({ followCarIdx: 2, isLeader: false, doubleFile: false });
+    expect(lineup).toMatchObject({ followCarIdx: 2, followsPaceCar: false, isLeader: false, doubleFile: false });
   });
 
   it("makes the front car follow the pace car", () => {
     const lineup = resolveCautionLineup(paceArrays(SINGLE_FILE), session(1), false);
 
-    expect(lineup).toMatchObject({ followCarIdx: PACE, isLeader: true });
+    expect(lineup).toMatchObject({ followCarIdx: PACE, followsPaceCar: true, isLeader: true, restartPosition: 1 });
   });
 
   it("follows the car one row lower in the SAME line when double file", () => {
@@ -85,7 +85,7 @@ describe("resolveCautionLineup — who to follow", () => {
     // 2 (line 1 row 0) — NOT car 3, which holds row 1 on the other line.
     const lineup = resolveCautionLineup(paceArrays(DOUBLE_FILE), session(4), false);
 
-    expect(lineup).toMatchObject({ followCarIdx: 2, isLeader: false, doubleFile: true });
+    expect(lineup).toMatchObject({ followCarIdx: 2, followsPaceCar: false, isLeader: false, doubleFile: true });
   });
 
   it("makes the outside front car follow the pace car", () => {
@@ -93,7 +93,29 @@ describe("resolveCautionLineup — who to follow", () => {
     // front of it is the pace car.
     const lineup = resolveCautionLineup(paceArrays(DOUBLE_FILE), session(2), false);
 
-    expect(lineup).toMatchObject({ followCarIdx: PACE, isLeader: true });
+    // Following the pace car, and NOT leading: car 2 restarts second. The two
+    // questions are the same single file and different double file, and each
+    // becomes a script condition a pack author can only write or negate.
+    expect(lineup).toMatchObject({
+      followCarIdx: PACE,
+      followsPaceCar: true,
+      isLeader: false,
+      restartPosition: 2,
+    });
+  });
+
+  it("calls the inside front car the leader, and only that car", () => {
+    const leader = resolveCautionLineup(paceArrays(DOUBLE_FILE), session(1), false);
+
+    expect(leader).toMatchObject({ followsPaceCar: true, isLeader: true, restartPosition: 1 });
+  });
+
+  it("claims no lead when the restart position cannot be read at all", () => {
+    // No pace car to anchor the rows, so there is no position — and a lead is
+    // not something to claim on a guess.
+    const lineup = resolveCautionLineup(paceArrays(SINGLE_FILE), session(1, { paceCarIdx: null }), false);
+
+    expect(lineup).toMatchObject({ followsPaceCar: false, isLeader: false, restartPosition: null });
   });
 
   it("never mistakes a car out of the lineup for the car in front of a front-row car", () => {
@@ -103,7 +125,7 @@ describe("resolveCautionLineup — who to follow", () => {
     const withStrayCar: Array<[number, number, number]> = [...DOUBLE_FILE, [9, 1, -1]];
     const lineup = resolveCautionLineup(paceArrays(withStrayCar), session(2), false);
 
-    expect(lineup).toMatchObject({ followCarIdx: PACE, isLeader: true });
+    expect(lineup).toMatchObject({ followCarIdx: PACE, followsPaceCar: true });
   });
 
   it("reads the follow car's number from DriverInfo.Drivers as a string, so a leading zero survives", () => {
@@ -113,13 +135,14 @@ describe("resolveCautionLineup — who to follow", () => {
     expect(lineup?.followCarNumber).toBe("09");
   });
 
-  it("withholds a car number the driver list spells as a number rather than a string", () => {
-    // A number cannot say "09", so stringifying one would silently invent a
-    // different car number for every leading-zero entry.
-    const drivers = [{ CarIdx: 2, CarNumber: 9 }];
+  it("reads a car number the session YAML left unquoted, which arrives as a number", () => {
+    // Issue #869: an unquoted CarNumber reaches us as 42, not "42". Reading
+    // strings only would drop every car number in such a session, and every
+    // caution line would quietly fall back to its numberless wording.
+    const drivers = [{ CarIdx: 2, CarNumber: 42 }];
     const lineup = resolveCautionLineup(paceArrays(SINGLE_FILE), session(3, { drivers }), false);
 
-    expect(lineup?.followCarNumber).toBeNull();
+    expect(lineup?.followCarNumber).toBe("42");
   });
 
   it("withholds a car number for a follow car the driver list does not carry", () => {
@@ -230,17 +253,43 @@ describe("resolveCautionLineup — against the committed capture", () => {
     return replayTick(tick);
   }
 
-  /** The 20 cars in the capture, in the order they hold at a given tick. */
-  function positionsAt(telemetry: TelemetryData): number[] {
-    const order: number[] = [];
+  /**
+   * Every restart position the 20 captured cars resolve to at a given tick, as
+   * `position → carIdx`. A Map rather than an array indexed by position: a
+   * sparse array's holes are SKIPPED by `every`/`forEach`, so an assertion over
+   * one passes however few cars actually placed — which is how the first
+   * version of the sweep below covered two ticks while claiming 193.
+   */
+  function positionsAt(telemetry: TelemetryData): Map<number, number> {
+    const order = new Map<number, number>();
 
     for (let carIdx = 0; carIdx < 20; carIdx++) {
       const position = resolveCautionLineup(telemetry, session(carIdx), true)?.restartPosition;
 
-      if (position !== null && position !== undefined) order[position - 1] = carIdx;
+      if (typeof position === "number") order.set(position, carIdx);
     }
 
     return order;
+  }
+
+  /** The cars the tick puts in the lineup at all, pace car excluded. */
+  function linedUpCount(telemetry: TelemetryData): number {
+    const rows = telemetry.CarIdxPaceRow as number[];
+
+    let count = 0;
+
+    for (let carIdx = 0; carIdx < 20; carIdx++) {
+      if (rows[carIdx] >= 0) count++;
+    }
+
+    return count;
+  }
+
+  /** The running order a tick yields, read off by ascending restart position. */
+  function orderAt(telemetry: TelemetryData): number[] {
+    const positions = positionsAt(telemetry);
+
+    return [...positions.keys()].sort((a, b) => a - b).map((position) => positions.get(position) as number);
   }
 
   it("reproduces the single-file order from the double-file re-form", () => {
@@ -248,8 +297,8 @@ describe("resolveCautionLineup — against the committed capture", () => {
     // is the double-file re-form at one to go. Nobody pitted between them (spec
     // finding 7), so the two orders must be identical — which is the whole
     // proof of the interleave.
-    const single = positionsAt(tickAt(239.93));
-    const double = positionsAt(tickAt(415.1));
+    const single = orderAt(tickAt(239.93));
+    const double = orderAt(tickAt(415.1));
 
     expect(single).toHaveLength(20);
     expect(double).toEqual(single);
@@ -267,38 +316,18 @@ describe("resolveCautionLineup — against the committed capture", () => {
 
       anchored++;
 
-      const order = positionsAt(telemetry);
+      const expected = linedUpCount(telemetry);
+      const positions = positionsAt(telemetry);
 
-      // No gaps and no collisions: a position claimed twice would leave a hole.
-      expect(order.every((carIdx) => typeof carIdx === "number")).toBe(true);
+      // Every lined-up car placed (so nothing was skipped), and no two claimed
+      // the same position (which the Map would have collapsed into one entry),
+      // and the positions run 1..N with no gap.
+      expect({ t: tick.t, placed: positions.size }).toEqual({ t: tick.t, placed: expected });
+      expect([...positions.keys()].sort((a, b) => a - b)).toEqual(Array.from({ length: expected }, (_, at) => at + 1));
     }
 
     // 193 of the fixture's 284 ticks carry a pace-car-led lineup; the rest are
     // the pre-caution green run and the post-green unwind.
     expect(anchored).toBe(193);
-  });
-});
-
-describe("isOvalTrack", () => {
-  it("reads the captured oval", () => {
-    // Measured 2026-09-17 at Homestead-Miami — see the #1127 spec.
-    expect(isOvalTrack({ WeekendInfo: { Category: "Oval", TrackType: "medium oval" } })).toBe(true);
-  });
-
-  it("reads a dirt oval", () => {
-    expect(isOvalTrack({ WeekendInfo: { Category: "DirtOval", TrackType: "dirt oval" } })).toBe(true);
-  });
-
-  it("reads a superspeedway, whose track type never says oval", () => {
-    expect(isOvalTrack({ WeekendInfo: { TrackType: "superspeedway" } })).toBe(true);
-  });
-
-  it("does not call a road course an oval", () => {
-    expect(isOvalTrack({ WeekendInfo: { Category: "Road", TrackType: "road course" } })).toBe(false);
-  });
-
-  it("does not guess without session info", () => {
-    expect(isOvalTrack(null)).toBe(false);
-    expect(isOvalTrack({})).toBe(false);
   });
 });
