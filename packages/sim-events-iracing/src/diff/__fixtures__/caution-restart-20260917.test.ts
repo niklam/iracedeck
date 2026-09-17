@@ -39,4 +39,14 @@ describe("the 2026-09-17 caution capture fixture", () => {
     expect(i).toBeGreaterThan(0);
     expect(ticks[i + 1].CarIdxPaceRow.filter((r) => r >= 0).length).toBeGreaterThan(19);
   });
+
+  it("keeps the pace car — slot 20 — with the surfaces and row the caution diff reads", () => {
+    // A [:21] slice would keep car index 20 (absent from this session) and drop the
+    // pace car at index 64, leaving every pace-car assertion vacuous.
+    const surfaces = [...new Set(ticks.map((tick) => tick.CarIdxTrackSurface[20]))].sort();
+    const rows = [...new Set(ticks.map((tick) => tick.CarIdxPaceRow[20]))].sort();
+
+    expect(surfaces).toEqual([2, 3]); // AproachingPits and OnTrack
+    expect(rows).toEqual([-1, 0]); // unlined, then leading the field
+  });
 });
