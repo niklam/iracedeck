@@ -261,6 +261,19 @@ export type TranslatorState = {
    * `diff/caution.ts`).
    */
   cautionLeaderLapCompleted: number | null;
+  /**
+   * The car the player was last told to follow in the caution lineup, so a
+   * change of it can be reported. `null` means "not known during this episode"
+   * rather than "nobody": the first lineup an episode produces SEEDS this
+   * silently, and the phase returning to `"none"` clears it again — so every
+   * caution reports its own changes, and none of them reports its start as one.
+   *
+   * Pointedly NOT preserved across a replay wipe, unlike `cautionPhase`. It is
+   * re-derived from the very next tick's pace arrays, so carrying a
+   * replay-timeline value across would at best be overwritten immediately and
+   * at worst announce a change between two different timelines' lineups.
+   */
+  cautionFollowCarIdx: number | null;
 
   // ── Rolling-start pace laps (issue #657) ────────────────────────────────
   /**
@@ -1008,6 +1021,7 @@ export function createInitialState(): TranslatorState {
     cautionPhase: "none",
     cautionLastFlags: 0,
     cautionLeaderLapCompleted: null,
+    cautionFollowCarIdx: null,
 
     paceLapInitialized: false,
     lastTickInParadeLaps: false,

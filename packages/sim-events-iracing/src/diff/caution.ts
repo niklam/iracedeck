@@ -5,7 +5,10 @@
  * Two unrelated jobs against two unrelated signals, so two functions behind one
  * entry point — {@link diffPaceCar} reads the pace car's track surface,
  * {@link diffCautionEpisode} reads the flags and the leader's crossings, and
- * each seeds its own baselines on the diff's first tick.
+ * each seeds its own baselines on the diff's first tick. The lineup is a third
+ * reading, of the pace arrays, and lives in `caution-lineup.ts` as a pure
+ * function: this module only holds the car it last reported and says when a
+ * change is worth reporting ({@link diffLineup}).
  *
  * Every rule here was measured, not assumed — see
  * `docs/superpowers/specs/2026-09-17-issue-1127-oval-caution-restart.md` and the
@@ -100,11 +103,13 @@
  * row 0 on line 1 is a racing car rather than the pace car. The front of the
  * lineup is therefore line 0, row 1. (That the lineup, not the official
  * positions, is the authority for the RESTART order is a separate documented
- * exception, and belongs to the reader answering who to follow.)
+ * exception, and belongs to `caution-lineup.ts`, which also carries the
+ * interleave the two lines restart in and why the pace car anchors it.)
  */
 import { Flags, hasFlag, PaceMode, type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
 
 import type { TranslatorState } from "../state.js";
+import { type CautionLineup, isOvalTrack, resolveCautionLineup } from "./caution-lineup.js";
 import { resolvePaceCarIdx } from "./pace-laps.js";
 import type { EmitFn } from "./types.js";
 
@@ -195,6 +200,7 @@ function diffPaceCar(
 function diffCautionEpisode(
   state: TranslatorState,
   telemetry: TelemetryData,
+  lineup: CautionLineup | null,
   canonicalPositions: number[] | null,
   seeding: boolean,
   emit: EmitFn,
@@ -232,7 +238,7 @@ function diffCautionEpisode(
   } else if (waving) {
     state.cautionPhase = "waving";
   } else if (caution && state.cautionPhase === "waving") {
-    emit({ event: "caution.fieldCaught", data: { restartPosition: null } });
+    emit({ event: "caution.fieldCaught", data: { restartPosition: lineup?.restartPosition ?? null } });
     state.cautionPhase = "caught";
 
     // Consume the leader crossing the pickup itself landed on; see the module
@@ -285,6 +291,58 @@ function diffCautionEpisode(
   // then goes quiet rather than manufacturing an extra lap.
   state.cautionLeaderLapCompleted =
     leaderLap === null || (crossingBaseline !== null && crossingBaseline > leaderLap) ? crossingBaseline : leaderLap;
+
+  // Last, so it reads the phase this tick actually settled on.
+  diffLineup(state, flags, lineup, emit);
+}
+
+/**
+ * The car to follow changing. Held rather than diffed against the previous
+ * tick's telemetry, because the lineup can go briefly unreadable — a tick
+ * without session info, a player the re-form has not placed yet — and a gap
+ * is an absence of news rather than a change.
+ *
+ * Three things it deliberately does not report:
+ *
+ * - **the first lineup of an episode**, which is the answer to "who do I
+ *   follow" rather than a change to it. The `null` held between episodes is
+ *   what distinguishes the two, so the phase returning to `"none"` clears it;
+ * - **a follow car it cannot name** (`followCarIdx === null`), which happens
+ *   only when session info names no pace car for a front-row player;
+ * - **anything under green.** The phase alone would nearly always do — a green
+ *   rising edge ends the episode — but the two are not the same test at a
+ *   yellow-checkered finish, where the caution bits stay set past the green and
+ *   the phase is therefore `"caught"`. The lineup UNWINDS under green: the
+ *   pace car pulls off, line 0 shifts down a row, and cars drop out of the
+ *   arrays one by one as they accelerate away, so the car ahead changes on
+ *   almost every tick. Sixty ticks of the committed fixture are exactly that,
+ *   and reporting them would be a burst of changes to a lineup nobody is in
+ *   any more.
+ */
+function diffLineup(state: TranslatorState, flags: number, lineup: CautionLineup | null, emit: EmitFn): void {
+  if (state.cautionPhase === "none" || hasFlag(flags, Flags.Green)) {
+    state.cautionFollowCarIdx = null;
+
+    return;
+  }
+
+  if (lineup === null || lineup.followCarIdx === null) return;
+
+  const was = state.cautionFollowCarIdx;
+
+  state.cautionFollowCarIdx = lineup.followCarIdx;
+
+  if (was === null || was === lineup.followCarIdx) return;
+
+  emit({
+    event: "caution.lineup.changed",
+    data: {
+      followCarIdx: lineup.followCarIdx,
+      followCarNumber: lineup.followCarNumber,
+      line: lineup.line,
+      isLeader: lineup.isLeader,
+    },
+  });
 }
 
 export function diffCaution(
@@ -298,6 +356,11 @@ export function diffCaution(
 
   state.cautionInitialized = true;
 
+  // Read once and shared: the pickup's restart position and the follow-car
+  // change are two readings of the same lineup, and resolving it twice is how
+  // an event pair that must agree starts disagreeing.
+  const lineup = resolveCautionLineup(telemetry, sessionInfo, isOvalTrack(sessionInfo));
+
   diffPaceCar(state, telemetry, sessionInfo, seeding, emit);
-  diffCautionEpisode(state, telemetry, canonicalPositions, seeding, emit);
+  diffCautionEpisode(state, telemetry, lineup, canonicalPositions, seeding, emit);
 }

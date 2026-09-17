@@ -106,6 +106,28 @@ function leader(carIdx: number, lapCompleted: number): Record<string, unknown> {
   return lineup([carIdx, 1, 0, lapCompleted]);
 }
 
+/**
+ * Session info that also names the PLAYER, which the lineup half needs and the
+ * episode half does not — hence the default `sessionInfo` above naming no
+ * driver, so every test that predates the lineup keeps reading no lineup at all.
+ */
+function playerSessionInfo(
+  playerCarIdx: number,
+  options: { drivers?: Array<Record<string, unknown>>; oval?: boolean; paceCar?: boolean } = {},
+): Record<string, unknown> {
+  const driverInfo: Record<string, unknown> = {
+    DriverCarIdx: playerCarIdx,
+    Drivers: options.drivers ?? [],
+  };
+
+  if (options.paceCar !== false) driverInfo.PaceCarIdx = PACE;
+
+  return {
+    WeekendInfo: { TrackType: options.oval === false ? "road course" : "medium oval" },
+    DriverInfo: driverInfo,
+  };
+}
+
 /** A canonical race order (position per carIdx, 0 = unranked) naming `carIdx` the leader. */
 function canonicalLeader(carIdx: number): number[] {
   const positions = new Array(72).fill(0);
@@ -415,6 +437,175 @@ describe("the caution episode", () => {
       { t: 793.93, event: "caution.oneLapToGreen" },
       { t: 866.98, event: "paceCar.off" },
       { t: 872.45, event: "caution.restarted" },
+    ]);
+  });
+});
+
+describe("the caution lineup", () => {
+  /**
+   * The field behind the pace car, single file: `front` leads, then the cars
+   * named after it. Every car carries the same scored lap, so the episode
+   * half's crossing detection stays quiet and only the lineup moves.
+   */
+  function singleFile(...order: number[]): Record<string, unknown> {
+    return lineup(
+      [PACE, 0, 0, 5],
+      ...order.map((carIdx, at): [number, number, number, number] => [
+        carIdx,
+        at + 1,
+        0,
+        5,
+      ]),
+    );
+  }
+
+  it("carries the player's restart position into the pickup", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+
+    diffCaution(state, flagTick(RACING), sessionInfo, null, emit); // seed
+    diffCaution(state, flagTick(WAVING, singleFile(1, 2, 3)), playerSessionInfo(3), null, emit);
+    diffCaution(state, flagTick(STATIC, singleFile(1, 2, 3)), playerSessionInfo(3), null, emit);
+
+    expect(events).toEqual([{ event: "caution.fieldCaught", data: { restartPosition: 3 } }]);
+  });
+
+  it("says nothing about the first lineup it reads — that is the answer, not a change", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+
+    diffCaution(state, flagTick(RACING), sessionInfo, null, emit); // seed
+    diffCaution(state, flagTick(WAVING, singleFile(1, 2, 3)), playerSessionInfo(3), null, emit);
+
+    expect(events.filter((e) => e.event === "caution.lineup.changed")).toEqual([]);
+  });
+
+  it("reports a mid-caution reorder once, naming the new car", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    const drivers = [{ CarIdx: 1, CarNumber: "09" }];
+    const info = playerSessionInfo(3, { drivers });
+
+    diffCaution(state, flagTick(RACING), sessionInfo, null, emit); // seed
+    diffCaution(state, flagTick(WAVING, singleFile(1, 2, 3)), info, null, emit);
+    diffCaution(state, flagTick(STATIC, singleFile(1, 2, 3)), info, null, emit);
+    // Car 2 pits under caution, so the player now follows car 1 — the case the
+    // capture could not produce, because nobody pitted in either caution.
+    diffCaution(state, flagTick(STATIC, singleFile(1, 3)), info, null, emit);
+    diffCaution(state, flagTick(STATIC, singleFile(1, 3)), info, null, emit);
+
+    expect(events.filter((e) => e.event === "caution.lineup.changed")).toEqual([
+      {
+        event: "caution.lineup.changed",
+        data: { followCarIdx: 1, followCarNumber: "09", line: null, isLeader: false },
+      },
+    ]);
+  });
+
+  it("names the line the player re-formed into on an oval", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    const info = playerSessionInfo(4);
+    const single = singleFile(1, 2, 3, 4);
+    // The double-file re-form: P1/P3 on line 0, P2/P4 on line 1. Car 4 is P4,
+    // so it lines up outside behind car 2 rather than behind car 3.
+    const double = lineup([PACE, 0, 0, 5], [1, 1, 0, 5], [2, 0, 1, 5], [3, 2, 0, 5], [4, 1, 1, 5]);
+
+    diffCaution(state, flagTick(RACING), sessionInfo, null, emit); // seed
+    diffCaution(state, flagTick(WAVING, single), info, null, emit);
+    diffCaution(state, flagTick(STATIC, single), info, null, emit);
+    diffCaution(state, flagTick(STATIC, double), info, null, emit);
+
+    expect(events.filter((e) => e.event === "caution.lineup.changed")).toEqual([
+      {
+        event: "caution.lineup.changed",
+        data: { followCarIdx: 2, followCarNumber: null, line: "outside", isLeader: false },
+      },
+    ]);
+  });
+
+  it("says nothing when the car to follow becomes one it cannot name", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    // Session info names no pace car, so nothing can be put in front of a
+    // player who inherits the front of the OUTSIDE line — that slot's "one row
+    // lower" does not exist, and the pace car has no index to fall back to.
+    // Silence beats "follow nobody": the consumer re-reads the lineup at speak
+    // time and would find the same nothing.
+    const info = playerSessionInfo(4, { paceCar: false });
+    const before = lineup([PACE, 0, 0, 5], [1, 1, 0, 5], [2, 0, 1, 5], [3, 2, 0, 5], [4, 1, 1, 5]);
+    // Car 2 pits, so the player moves up to line 1 row 0.
+    const after = lineup([PACE, 0, 0, 5], [1, 1, 0, 5], [3, 2, 0, 5], [4, 0, 1, 5]);
+
+    diffCaution(state, flagTick(RACING), sessionInfo, null, emit); // seed
+    diffCaution(state, flagTick(WAVING, before), info, null, emit);
+    diffCaution(state, flagTick(STATIC, before), info, null, emit);
+    diffCaution(state, flagTick(STATIC, after), info, null, emit);
+
+    expect(events.filter((e) => e.event === "caution.lineup.changed")).toEqual([]);
+  });
+
+  it("forgets the car to follow between cautions, so the next one never opens with a change", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    const info = playerSessionInfo(3);
+
+    diffCaution(state, flagTick(RACING), sessionInfo, null, emit); // seed
+    diffCaution(state, flagTick(WAVING, singleFile(1, 2, 3)), info, null, emit);
+    diffCaution(state, flagTick(STATIC, singleFile(1, 2, 3)), info, null, emit);
+    diffCaution(state, flagTick(RESTART, singleFile(1, 2, 3)), info, null, emit);
+    diffCaution(state, flagTick(RACING), info, null, emit);
+    // A second caution whose lineup puts a different car in front of the player.
+    diffCaution(state, flagTick(WAVING, singleFile(2, 1, 3)), info, null, emit);
+    diffCaution(state, flagTick(STATIC, singleFile(2, 1, 3)), info, null, emit);
+
+    expect(events.filter((e) => e.event === "caution.lineup.changed")).toEqual([]);
+  });
+
+  it("says nothing while the lineup unwinds under a green that the caution bits outlived", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    const info = playerSessionInfo(3);
+    // A yellow-checkered finish leaves `Caution` set past the green, so the
+    // phase is "caught" while the field is already racing away and the pace
+    // arrays are collapsing car by car. Only the green test catches this — the
+    // phase does not.
+    const green = STATIC | 0x4;
+
+    diffCaution(state, flagTick(RACING), sessionInfo, null, emit); // seed
+    diffCaution(state, flagTick(STATIC, singleFile(1, 2, 3)), info, null, emit);
+    diffCaution(state, flagTick(green, singleFile(1, 2, 3)), info, null, emit); // green rises
+    diffCaution(state, flagTick(green, singleFile(1, 2, 3)), info, null, emit);
+    diffCaution(state, flagTick(green, singleFile(2, 1, 3)), info, null, emit);
+    diffCaution(state, flagTick(green, singleFile(1, 3)), info, null, emit);
+
+    expect(events.filter((e) => e.event === "caution.lineup.changed")).toEqual([]);
+  });
+
+  it("replays the capture: one change per caution, at the double-file re-form, and none after a restart", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    const info = playerSessionInfo(0);
+    const fired: Array<{ t: number; followCarIdx: number | null }> = [];
+
+    for (const tick of ticks) {
+      const before = events.length;
+
+      diffCaution(state, replayTick(tick), info, null, emit);
+
+      for (const e of events.slice(before)) {
+        if (e.event === "caution.lineup.changed") fired.push({ t: tick.t, followCarIdx: e.data.followCarIdx });
+      }
+    }
+
+    // Car 0 ran 9th. It followed car 4 single file and car 1 once the field
+    // re-formed double file, then car 7 and car 16 in the second caution. Both
+    // changes land one tick before their `caution.oneLapToGreen` (415.12 /
+    // 793.93) — the field re-forms, then the flag follows. The capture's 60
+    // post-green ticks, where the lineup collapses car by car, add none.
+    expect(fired).toEqual([
+      { t: 415.1, followCarIdx: 1 },
+      { t: 793.92, followCarIdx: 16 },
     ]);
   });
 });
