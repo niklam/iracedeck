@@ -110,6 +110,18 @@ export type TranslatorState = {
 
   // ── Flags ───────────────────────────────────────────────────────────────
   flagStateInitialized: boolean;
+  /**
+   * The flag keys `diffFlags` edge-detects against, as of last tick. NOT a
+   * reading of which flags are flying: it is the narrower "flags flying that we
+   * would ANNOUNCE", and the `"yellow"` key is absent in two cases where a
+   * yellow-ish bit is very much set. A static yellow ESCALATING to its waving
+   * variant drops the key (see {@link lastAnyYellow}, which exists because that
+   * once misled someone into clearing a caution that was still out), and since
+   * issue #1127 a full-course caution DE-escalating to its static bit never
+   * adds the key at all — that is the pace car picking the field up, which
+   * `caution.fieldCaught` reports. So never read this set to answer "is a
+   * yellow out"; `lastAnyYellow` and the live `SessionFlags` bits answer that.
+   */
   activeFlags: Set<string>;
   lastYellowScope: "local" | "full" | null;
   /**

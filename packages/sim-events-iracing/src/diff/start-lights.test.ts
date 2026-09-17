@@ -181,16 +181,17 @@ describe("diffStartLights — a restart is not a race start (issue #1127)", () =
     expect(events.map((e) => e.event)).toEqual(["startLight.start-ready.raised"]);
   });
 
-  it("diffCaution must run AFTER diffStartLights: run first, it clears the phase and the go line leaks", () => {
-    // The measured restart raises Green and StartGo on the SAME tick, and
-    // `diffCautionEpisode` ends the episode on that green — `caution.restarted`
-    // then `cautionPhase = "none"`. So the phase only survives long enough to
-    // judge the go edge if the gantry diff reads it first. Both halves of the
-    // restart are asserted here, in that order, which is the order the
-    // translator has to wire.
-    const RESTART = 0x80040004 | 0; // Green | Servicible | StartGo — verbatim from the capture
-    const BEFORE = 0x10044600 | 0; // Caution | OneLapToGreen | GreenHeld | Servicible | StartHidden
+  // The measured restart raises Green and StartGo on the SAME tick, and
+  // `diffCautionEpisode` ends the episode on that green — `caution.restarted`,
+  // then `cautionPhase = "none"`. So the phase survives long enough to judge the
+  // go edge only if the gantry diff reads it FIRST. Both orders are exercised
+  // below, because a requirement a reader has to reason about is one the next
+  // brief gets backwards (this one did).
+  const RESTART = 0x80040004 | 0; // Green | Servicible | StartGo — verbatim from the capture
+  const BEFORE = 0x10044600 | 0; // Caution | OneLapToGreen | GreenHeld | Servicible | StartHidden
 
+  /** A state parked one tick before the measured restart, phase `"caught"`. */
+  function atOneToGo(): { state: TranslatorState; restart: TelemetryData } {
     const state = createInitialState();
     const before = tick(BEFORE, SessionState.Racing, 600);
 
@@ -199,8 +200,12 @@ describe("diffStartLights — a restart is not a race start (issue #1127)", () =
     diffCaution(state, before, null, null, () => {}); // …and take the phase to "caught"
     expect(state.cautionPhase).toBe("caught");
 
+    return { state, restart: tick(RESTART, SessionState.Racing, 580) };
+  }
+
+  it("diffStartLights BEFORE diffCaution: the go line is suppressed and the restart is announced", () => {
+    const { state, restart } = atOneToGo();
     const { events, emit } = collect();
-    const restart = tick(RESTART, SessionState.Racing, 580);
 
     diffStartLights(state, restart, STANDING_SESSION, emit);
     diffCaution(state, restart, null, null, emit);
@@ -208,6 +213,19 @@ describe("diffStartLights — a restart is not a race start (issue #1127)", () =
     expect(events.map((e) => e.event)).toEqual(["caution.restarted"]);
     expect(events.filter(go)).toHaveLength(0);
     expect(state.cautionPhase).toBe("none");
+  });
+
+  it("diffCaution FIRST leaks the go line — it clears the phase on the very tick the gate needs it", () => {
+    // Pins the failure the correct order exists to prevent: the suppression is
+    // not wrong here, it is starved. `caution.restarted` still fires, so the
+    // restart is narrated TWICE — once as itself and once as a race start.
+    const { state, restart } = atOneToGo();
+    const { events, emit } = collect();
+
+    diffCaution(state, restart, null, null, emit);
+    diffStartLights(state, restart, STANDING_SESSION, emit);
+
+    expect(events.map((e) => e.event)).toEqual(["caution.restarted", "startLight.start-go.raised"]);
   });
 });
 

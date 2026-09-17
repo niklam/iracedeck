@@ -647,6 +647,11 @@ describe("diffFlags — the pickup is not a fresh full-course yellow (issue #112
   });
 
   it("and stays silent for the rest of the caution, not just on the pickup tick", () => {
+    // A REGRESSION GUARD, not a proof of the gate: it passes with the gate
+    // removed too, because a `"yellow"` key the pickup tick put into
+    // `activeFlags` leaves no rising edge for the later ticks to re-raise. It
+    // is here to catch a future change that re-adds one (a scope flip, a set
+    // that is rebuilt rather than carried), which would stutter the line.
     const state = createInitialState();
     state.flagStateInitialized = true;
     diffFlags(state, tick(Flags.CautionWaving), T0, () => {});
@@ -700,6 +705,11 @@ describe("diffFlags — the pickup is not a fresh full-course yellow (issue #112
   });
 
   it("a connect mid-caution, already static, never raises — the seed knows the episode is full-course", () => {
+    // The second REGRESSION GUARD rather than proof in this block: it passes
+    // with the gate removed too, because the seed tick puts the `"yellow"` key
+    // into `activeFlags` either way and there is no rising edge left to
+    // suppress. What it defends is the seed's own shape — that `diffFlags` is
+    // silent on its first tick and leaves no pending raise behind it.
     const state = createInitialState(); // NOT pre-seeded: the first tick seeds, as a real connect does
 
     const seed = collect();
