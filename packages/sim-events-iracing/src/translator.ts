@@ -1314,6 +1314,16 @@ function wipeStateForReplay(self: TranslatorInstance): void {
     // field's JSDoc in state.ts).
     leaderWhiteFired: self.state.leaderWhiteFired,
     leaderWhitePostExpiryCrossed: self.state.leaderWhitePostExpiryCrossed,
+    // The caution episode's phase (issue #1127): a replay glance mid-caution
+    // must not make the next tick re-report a moment the episode is already
+    // past — most visibly the pickup, which would repeat the whole "we've
+    // caught the pace car, you're restarting Nth" call. The caution diff's own
+    // seed deliberately leaves this field alone for the same reason. Its two
+    // baselines (`cautionLastFlags` / `cautionLeaderLapCompleted`) are
+    // pointedly NOT preserved — replay-timeline flag bits and lap counters are
+    // as meaningless as the opponent-flag bits baseline above, and both
+    // re-seed from the first tick back, which is exactly right.
+    cautionPhase: self.state.cautionPhase,
   };
 
   self.state = createInitialState();

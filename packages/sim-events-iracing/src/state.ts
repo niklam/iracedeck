@@ -10,6 +10,13 @@ import { type IncidentType, type PitBoxMark, type RadarState, TrackWetness } fro
 import type { GapTrendDirection, ProgressTrace } from "@iracedeck/iracing-sdk";
 import type { CornerMarker } from "@iracedeck/track-data";
 
+/**
+ * How far the current full-course caution has got (issue #1127): thrown and
+ * waving, static with the field caught behind the pace car, or running its last
+ * lap. `"none"` when no full-course caution is out.
+ */
+export type CautionPhase = "none" | "waving" | "caught" | "one-to-go";
+
 /** Live gap snapshot for one class-standings neighbor (issue #933). */
 export type GapNeighborState = {
   /** The neighbor's car index. */
@@ -220,6 +227,31 @@ export type TranslatorState = {
   cautionInitialized: boolean;
   /** Previous-tick pace-car track surface, for the deployed/off edges. `null` until seeded. */
   cautionPaceCarSurface: number | null;
+  /**
+   * Where the current caution has got to. `"none"` when no full-course caution
+   * is out. Deliberately NOT seeded on the diff's first tick — the seed leaves
+   * it alone so the value {@link TranslatorState} carries through a replay wipe
+   * survives, and so a fresh connect reports only the transitions it actually
+   * watched (a caution already static when the plugin starts moves to
+   * `"caught"` on the next tick, silently).
+   */
+  cautionPhase: CautionPhase;
+  /** Previous-tick `SessionFlags`, for the caution edges. */
+  cautionLastFlags: number;
+  /**
+   * Previous-tick `CarIdxLapCompleted` for the car leading the pace order, for
+   * crossing detection. `null` until seeded.
+   *
+   * It is a HIGH-WATER baseline rather than a plain previous value, which is
+   * what lets the pickup consume the crossing it landed on: at the pickup the
+   * value is moved one past the leader's pre-pickup lap, so the increment that
+   * arrives about half a second later (the static flag precedes it — measured
+   * at both pickups) is not reported as an extra lap. Never lowered, so a
+   * mid-caution reorder that puts a car with a smaller lap count on row 1 goes
+   * quiet rather than manufacturing an extra lap; that reorder is designed for
+   * but unobserved (see `diff/caution.ts`).
+   */
+  cautionLeaderLapCompleted: number | null;
 
   // ── Rolling-start pace laps (issue #657) ────────────────────────────────
   /**
@@ -964,6 +996,9 @@ export function createInitialState(): TranslatorState {
 
     cautionInitialized: false,
     cautionPaceCarSurface: null,
+    cautionPhase: "none",
+    cautionLastFlags: 0,
+    cautionLeaderLapCompleted: null,
 
     paceLapInitialized: false,
     lastTickInParadeLaps: false,
