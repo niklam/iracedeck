@@ -24,8 +24,8 @@
  *
  * **Family preemption.** All non-meatball flag contracts share
  * `family: "flag"` so a newer flag callout supersedes the in-flight one
- * (yellow → green at restart no longer plays both back-to-back; whichever
- * flag fires last wins). Meatball is intentionally excluded from the
+ * (a flag replaced by another moments later no longer plays both
+ * back-to-back; whichever flag fires last wins). Meatball is intentionally excluded from the
  * family — we want it to preempt anything in flight (handled by
  * `weight: WEIGHT.CRITICAL` + `interrupt: true`), but we do NOT want a routine
  * yellow to cancel a still-playing meatball.
@@ -150,14 +150,14 @@ const YELLOW_CLEARED: ScenarioContract = {
   ...flagContract("yellow-cleared"),
   queueable: true,
   description:
-    "A LOCAL yellow has been withdrawn and every yellow and caution flag has stayed down for three seconds straight; an episode that went full-course is silent here, since a caution ends with the green.",
+    "A LOCAL yellow has been withdrawn and every yellow and caution flag has stayed down for three seconds straight; a full-course episode stays silent, since its restart is already announced.",
   when: { event: "flag.yellow.cleared" },
 };
 
 const GREEN: ScenarioContract = {
   ...flagContract("green"),
   description:
-    "The green flag comes out at the start of a practice or qualifying session or at a race restart; the initial race start belongs to the start lights and stays silent here.",
+    "The green flag comes out with no start signal from iRacing, as when a practice or qualifying session goes green; a race start and an oval caution restart carry that signal and stay silent here.",
   when: { event: "flag.green.raised" },
 };
 

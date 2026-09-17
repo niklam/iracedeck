@@ -8719,13 +8719,13 @@
       "sequence": ["pool:flags/yellow-full"]
     },
     "pit-crew.flag-yellow-cleared": {
-      "comment": "A LOCAL yellow has been withdrawn — a short all-clear, replayed after a busier line finishes rather than dropped. It is spoken only for an episode that stayed local, because a local yellow ends with no flag shown at all and this line is the only way the driver learns the sector is clear. A full-course caution ends with the green instead, and the green callout is what announces it, so no all-clear lands on top of the restart.",
-      "test": "Harness → Flags → Yellow Cleared plays the line on its own. In-sim: clear a local yellow sector. The other half of this line is the SILENCE after a caution — Harness → Flags → Caution → restart (green) drives the translator through a full-course caution and its restart, and must play the full-course yellow and then the green with no all-clear behind it.",
+      "comment": "A LOCAL yellow has been withdrawn — a short all-clear, replayed after a busier line finishes rather than dropped. It is spoken only for an episode that stayed local, because a local yellow ends with no flag shown at all and this line is the only way the driver learns the sector is clear. A full-course caution ends with a restart instead, and the restart is already announced — measured on an oval, it plays the start lights' go line — so no all-clear lands on top of it.",
+      "test": "Harness → Flags → Yellow Cleared plays the line on its own. In-sim: clear a local yellow sector. The other half of this line is the SILENCE after a caution — Harness → Flags → Caution → restart replays a full-course caution and restart captured at an oval through the translator; with the race session and hot-lap presets applied it must play the caution-waving, full-course yellow and green-held lines and then \"Go, go, go!\", with no all-clear behind them.",
       "sequence": ["pool:flags/yellow-cleared"]
     },
     "pit-crew.flag-green": {
-      "comment": "The green flag at the start of a session or a restart. The wording differs per session type (practice, qualifying, race), so it branches on session.type; an unknown session type takes the race line.",
-      "test": "Harness → Flags → Green, after choosing a session preset (practice, qualifying or race). In-sim: the green at the start of any session, or at a race restart.",
+      "comment": "The green flag, when iRacing shows it without its start signal — as at the start of a practice or qualifying session. A race start, and a caution restart measured on an oval, carry that signal and play the start lights' go line instead. The wording differs per session type (practice, qualifying, race), so it branches on session.type; an unknown session type takes the race line.",
+      "test": "Harness → Flags → Green, after choosing a session preset (practice, qualifying or race). In-sim: the green at the start of a practice or qualifying session. Not at a race start, nor at a caution restart on an oval — both play \"Go, go, go!\" instead.",
       "sequence": [
         {
           "case": "session.type",
@@ -9247,8 +9247,8 @@
       "sequence": ["pool:start-lights/start-ready"]
     },
     "pit-crew.start-light-go": {
-      "comment": "Lights out — go, go, go. Critical and interrupting: it cuts anything in flight, including a ready line still playing.",
-      "test": "Harness → Scenario Shortcuts → Start → Go, with the race session preset and the on-grid telemetry preset (live in the car). In-sim: the lights go out at a standing start.",
+      "comment": "Go, go, go — the moment iRacing releases the field: lights out at a standing start, the green at a rolling start, and the green at a caution restart (measured on an oval). Critical and interrupting: it cuts anything in flight, including a ready line still playing.",
+      "test": "Harness → Scenario Shortcuts → Start → Go, with the race session preset and the on-grid telemetry preset (live in the car); Harness → Flags → Caution → restart plays it at a restart. In-sim: the lights go out at a standing start, the field is released at a rolling start, or the green comes out at a caution restart on an oval.",
       "sequence": ["pool:start-lights/start-go"]
     },
     "pit-crew.start-light-countdown-90": {

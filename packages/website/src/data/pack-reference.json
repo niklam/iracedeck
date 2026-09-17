@@ -361,7 +361,7 @@
       "id": "pit-crew.flag-green",
       "family": "flag",
       "event": "flag.green.raised",
-      "description": "The green flag comes out at the start of a practice or qualifying session or at a race restart; the initial race start belongs to the start lights and stays silent here.",
+      "description": "The green flag comes out with no start signal from iRacing, as when a practice or qualifying session goes green; a race start and an oval caution restart carry that signal and stay silent here.",
       "frame": "radio",
       "weight": 70,
       "weightBand": "SAFETY",
@@ -369,8 +369,8 @@
       "interrupt": false,
       "speakGate": null,
       "base": "voice/{voice}",
-      "comment": "The green flag at the start of a session or a restart. The wording differs per session type (practice, qualifying, race), so it branches on session.type; an unknown session type takes the race line.",
-      "test": "Harness → Flags → Green, after choosing a session preset (practice, qualifying or race). In-sim: the green at the start of any session, or at a race restart.",
+      "comment": "The green flag, when iRacing shows it without its start signal — as at the start of a practice or qualifying session. A race start, and a caution restart measured on an oval, carry that signal and play the start lights' go line instead. The wording differs per session type (practice, qualifying, race), so it branches on session.type; an unknown session type takes the race line.",
+      "test": "Harness → Flags → Green, after choosing a session preset (practice, qualifying or race). In-sim: the green at the start of a practice or qualifying session. Not at a race start, nor at a caution restart on an oval — both play \"Go, go, go!\" instead.",
       "skip": false,
       "references": {
         "pools": [
@@ -617,7 +617,7 @@
       "id": "pit-crew.flag-yellow-cleared",
       "family": "flag",
       "event": "flag.yellow.cleared",
-      "description": "A LOCAL yellow has been withdrawn and every yellow and caution flag has stayed down for three seconds straight; an episode that went full-course is silent here, since a caution ends with the green.",
+      "description": "A LOCAL yellow has been withdrawn and every yellow and caution flag has stayed down for three seconds straight; a full-course episode stays silent, since its restart is already announced.",
       "frame": "radio",
       "weight": 70,
       "weightBand": "SAFETY",
@@ -625,8 +625,8 @@
       "interrupt": false,
       "speakGate": null,
       "base": "voice/{voice}",
-      "comment": "A LOCAL yellow has been withdrawn — a short all-clear, replayed after a busier line finishes rather than dropped. It is spoken only for an episode that stayed local, because a local yellow ends with no flag shown at all and this line is the only way the driver learns the sector is clear. A full-course caution ends with the green instead, and the green callout is what announces it, so no all-clear lands on top of the restart.",
-      "test": "Harness → Flags → Yellow Cleared plays the line on its own. In-sim: clear a local yellow sector. The other half of this line is the SILENCE after a caution — Harness → Flags → Caution → restart (green) drives the translator through a full-course caution and its restart, and must play the full-course yellow and then the green with no all-clear behind it.",
+      "comment": "A LOCAL yellow has been withdrawn — a short all-clear, replayed after a busier line finishes rather than dropped. It is spoken only for an episode that stayed local, because a local yellow ends with no flag shown at all and this line is the only way the driver learns the sector is clear. A full-course caution ends with a restart instead, and the restart is already announced — measured on an oval, it plays the start lights' go line — so no all-clear lands on top of it.",
+      "test": "Harness → Flags → Yellow Cleared plays the line on its own. In-sim: clear a local yellow sector. The other half of this line is the SILENCE after a caution — Harness → Flags → Caution → restart replays a full-course caution and restart captured at an oval through the translator; with the race session and hot-lap presets applied it must play the caution-waving, full-course yellow and green-held lines and then \"Go, go, go!\", with no all-clear behind them.",
       "skip": false,
       "references": {
         "pools": [
@@ -3204,7 +3204,7 @@
       "id": "pit-crew.start-light-go",
       "family": "start-light",
       "event": "startLight.start-go.raised",
-      "description": "The start lights go out at a standing-start race and the field is released, with you live in the car.",
+      "description": "iRacing signals the go while you are live in the car in a race: the lights out at a standing start, the green at a rolling start, or the green at a caution restart (measured on an oval).",
       "frame": "radio",
       "weight": 100,
       "weightBand": "CRITICAL",
@@ -3212,8 +3212,8 @@
       "interrupt": true,
       "speakGate": null,
       "base": "voice/{voice}",
-      "comment": "Lights out — go, go, go. Critical and interrupting: it cuts anything in flight, including a ready line still playing.",
-      "test": "Harness → Scenario Shortcuts → Start → Go, with the race session preset and the on-grid telemetry preset (live in the car). In-sim: the lights go out at a standing start.",
+      "comment": "Go, go, go — the moment iRacing releases the field: lights out at a standing start, the green at a rolling start, and the green at a caution restart (measured on an oval). Critical and interrupting: it cuts anything in flight, including a ready line still playing.",
+      "test": "Harness → Scenario Shortcuts → Start → Go, with the race session preset and the on-grid telemetry preset (live in the car); Harness → Flags → Caution → restart plays it at a restart. In-sim: the lights go out at a standing start, the field is released at a rolling start, or the green comes out at a caution restart on an oval.",
       "skip": false,
       "references": {
         "pools": [

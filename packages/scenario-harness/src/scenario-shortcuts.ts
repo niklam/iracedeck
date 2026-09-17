@@ -96,9 +96,9 @@ export type BusEventShortcut = ScenarioShortcutBase & {
  *
  * Exists because a bus-event shortcut cannot audition a translator DECISION.
  * `flag.yellow.cleared` is now emitted only for a yellow episode that stayed
- * LOCAL — a full-course caution ends with the green, which already announces
- * itself — and the thing to hear is the SILENCE where the all-clear used to
- * land. Publishing `flag.yellow.cleared` proves the opposite of the question:
+ * LOCAL — a full-course caution ends with a restart, which is announced
+ * already (on the oval measured, by the start lights' go line) — and the thing
+ * to hear is the SILENCE where the all-clear used to land. Publishing `flag.yellow.cleared` proves the opposite of the question:
  * it speaks the line unconditionally, because the translator that decides
  * whether to emit it has been stepped over. Only telemetry can ask.
  *
@@ -300,16 +300,35 @@ function trackConditions(
 }
 
 /**
- * How long the caution stays out in `CAUTION_RESTART_SHORTCUT` before the
- * green — long enough for the full-course yellow line and its radio frame to
- * play out, so the green is heard as a separate call rather than as the tail
- * of one that got preempted.
+ * What `SessionFlags` held on the measured oval while racing with no flag
+ * shown: pit service open, start lights hidden. Every step of
+ * `CAUTION_RESTART_SHORTCUT` except the restart itself carries it.
  */
-const CAUTION_HOLD_MS = 6000;
+const RACING_NO_FLAG = Flags.Servicible | Flags.StartHidden;
 
 /**
- * How long the green is held afterwards. Derived from the translator's own
- * validated-clear window so the wait is provably PAST the moment a cleared
+ * Step holds for `CAUTION_RESTART_SHORTCUT`. The capture it is modelled on
+ * spent minutes in each caution phase; the button compresses them to keep the
+ * whole run under half a minute, while leaving each phase long enough for its
+ * line and radio frame to finish — every flag callout shares one family, so a
+ * newer one would otherwise cut the older one off and the tester would hear
+ * neither cleanly.
+ */
+const CAUTION_WAVING_MS = 4000;
+const CAUTION_HOLD_MS = 6000;
+const ONE_TO_GO_MS = 2000;
+const GREEN_HELD_MS = 4000;
+
+/**
+ * How long the restart tick's `StartGo` stays up — the measured value: it gave
+ * way to `StartHidden` 5.0 s after the restart.
+ */
+const START_GO_MS = 5000;
+
+/**
+ * How long the green is held once `StartGo` has gone. Derived from the
+ * translator's own validated-clear window, so the time listened through after
+ * the restart (`START_GO_MS` plus this) is provably PAST the moment a cleared
  * line would have landed, whatever that constant becomes — the whole point of
  * the button is what is not heard in this gap.
  */
@@ -317,26 +336,43 @@ const RESTART_LISTEN_MS = YELLOW_CLEARED_HOLD_MS + 3000;
 
 /**
  * A full-course caution and its restart, driven through the TRANSLATOR
- * (issue #1127).
+ * (issue #1127) and modelled on one captured at an oval
+ * (`local/telemetry-watch-20260917-191825-092.jsonl`: Homestead-Miami, an AI
+ * race, the caution thrown with `!yellow`, a double-file restart).
  *
- * `Caution` up, held; then the caution bits down and `Green` up on the same
- * tick, as iRacing does it; then back to no flags so the button can be pressed
- * again and the harness is not left stuck under a green. What should be heard
- * is the full-course yellow, then the green — and then nothing. Before #1127
- * the third thing was "Yellow cleared." three seconds into the restart, and no
- * bus-event shortcut can show that: `flag.yellow.cleared` published by hand
- * speaks the line whatever the translator decided.
+ * The `SessionFlags` values are the captured ones, in order: caution waving,
+ * static caution, one lap to green, green held; then the restart —
+ * `Green | Servicible | StartGo`, every caution bit dropping on that same tick;
+ * then `StartGo` giving way to `StartHidden`; then no flag shown, which also
+ * leaves the harness where the button can be pressed again. Only the hold
+ * times are compressed.
+ *
+ * What should be heard, with the race session and hot-lap presets applied: the
+ * caution-waving line, the full-course yellow, the green-held heads-up and the
+ * start lights' "Go, go, go!" — then nothing. The green-flag line stays silent
+ * because the restart carries iRacing's start signal, which suppresses it the
+ * same way it does at a race start. Before #1127 "Yellow cleared." followed
+ * three seconds into the restart, and no bus-event shortcut can show that:
+ * `flag.yellow.cleared` published by hand speaks the line whatever the
+ * translator decided.
  */
 const CAUTION_RESTART_SHORTCUT: TelemetrySequenceShortcut = {
   id: "flag-caution-restart",
   category: "Flags",
-  label: "Caution → restart (green)",
+  label: "Caution → restart",
   description:
-    "Drives the TRANSLATOR through a full-course caution and its restart, about 12 s end to end: caution out, then green, then flags cleared. Expect the full-course yellow line, then the green line, then SILENCE — an all-clear behind the green is issue #1127 back. Needs the mock SDK CONNECTED; with it disconnected the translator sees no ticks and the button is silent for the wrong reason.",
+    'Drives the TRANSLATOR through a full-course caution and its restart, replaying the flag states of one captured at an oval, about 27 s end to end: caution waving, static caution, one to green, green held, then the restart (sent with iRacing\'s start signal), then racing with no flag. Apply the race session preset and the hot-lap telemetry preset first. Expect the caution-waving line, the full-course yellow line, the green-held line and "Go, go, go!" — then SILENCE: no green-flag line (the start signal suppresses it) and no "Yellow cleared." (hearing one is issue #1127 back). Needs the mock SDK CONNECTED; with it disconnected the translator sees no ticks and the button is silent for the wrong reason.',
   telemetrySequence: [
-    { patch: { SessionFlags: Flags.Caution }, holdMs: CAUTION_HOLD_MS },
-    { patch: { SessionFlags: Flags.Green }, holdMs: RESTART_LISTEN_MS },
-    { patch: { SessionFlags: 0 } },
+    { patch: { SessionFlags: RACING_NO_FLAG | Flags.CautionWaving }, holdMs: CAUTION_WAVING_MS },
+    { patch: { SessionFlags: RACING_NO_FLAG | Flags.Caution }, holdMs: CAUTION_HOLD_MS },
+    { patch: { SessionFlags: RACING_NO_FLAG | Flags.Caution | Flags.OneLapToGreen }, holdMs: ONE_TO_GO_MS },
+    {
+      patch: { SessionFlags: RACING_NO_FLAG | Flags.Caution | Flags.OneLapToGreen | Flags.GreenHeld },
+      holdMs: GREEN_HELD_MS,
+    },
+    { patch: { SessionFlags: Flags.Green | Flags.Servicible | Flags.StartGo }, holdMs: START_GO_MS },
+    { patch: { SessionFlags: RACING_NO_FLAG | Flags.Green }, holdMs: RESTART_LISTEN_MS },
+    { patch: { SessionFlags: RACING_NO_FLAG } },
   ],
 };
 

@@ -132,11 +132,13 @@ export type TranslatorState = {
    *
    * `flag.yellow.cleared` was designed for a LOCAL yellow, which ends with
    * no flag shown: the callout is the only way the driver learns the sector
-   * is clear. A full-course caution never ends that way — in every
-   * discipline it ends with the GREEN, which `flag.green.raised` already
-   * announces — so its cleared line would land on top of the restart
-   * ("Green flag, green flag. Push now." … "Yellow cleared.") at the busiest
-   * moment of the race.
+   * is clear. A full-course caution ends with a restart instead, and the
+   * restart is announced already: on the one track measured, a paved oval
+   * (`local/telemetry-watch-20260917-191825-092.jsonl`), each restart
+   * carried `StartGo`, so the start-light family's "Go, go, go!" played and
+   * `flag.green.raised` stayed suppressed. The cleared line landed about
+   * three seconds after each of those restarts — on top of the restart, at
+   * the busiest moment of the race.
    *
    * Set on any tick a caution bit is present, and seeded from the current
    * bits on the first tick so a plugin started mid-caution still knows the

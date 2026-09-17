@@ -30,18 +30,32 @@
  *
  * Local-only clear (issue #1127): the validated clear is ANNOUNCED only for
  * an episode that stayed LOCAL. A local yellow ends with no flag shown at
- * all, so the callout is the only way the driver learns the sector is clear;
- * a full-course caution instead ends with the GREEN, already announced by
- * `flag.green.raised`, so its cleared line would land on top of the restart.
+ * all, so the callout is the only way the driver learns the sector is clear.
+ * A full-course caution ends with a restart instead, and the restart is
+ * announced already. Measured on a paved oval (capture
+ * `local/telemetry-watch-20260917-191825-092.jsonl`: Homestead-Miami, an AI
+ * race, two cautions thrown with `!yellow`, each ending in a double-file
+ * restart), the restart tick is `Green | Servicible | StartGo` with every
+ * caution bit dropping on that same tick — so the start-light family's go
+ * line speaks, `flag.green.raised` stays suppressed (below), and the cleared
+ * line this issue removes landed about three seconds into each restart.
  * `state.yellowEpisodeFullCourse` records whether a caution bit was seen at
  * any point in the episode and suppresses the announcement for it. A green
- * rising edge additionally CANCELS a pending clear (the caution bits
- * routinely drop a beat before the green waves) and ends the episode, so a
- * separate local yellow raised seconds into the restart still gets its line.
+ * rising edge, with or without the start bits, additionally CANCELS a
+ * pending clear and ends the episode, so a separate local yellow raised
+ * seconds into the restart still gets its line. The measured restarts
+ * dropped the caution bits on the green's own tick (the ordering case the
+ * yellow-cleared block is written around); a drop that leads the green
+ * inside the hold window was not observed there, and is cancelled the same
+ * way.
  *
  * Blue is suppressed when Green is active (race-start sets both). Green is
- * suppressed when `StartGo` is set — a standing/rolling race-start go is owned
- * by the start-light family (issue #480); restarts (no `StartGo`) still fire.
+ * suppressed while `StartGo` or `StartSet` is set — that "go" is owned by the
+ * start-light family (issue #480). It is not only the race start: in the
+ * oval capture above the rolling start and both caution restarts all arrived
+ * with `StartGo`, so none of them raised `flag.green.raised` and the go line
+ * spoke each time. Road-course restarts have not been measured. A green that
+ * rises with neither bit set still fires.
  *
  * Checkered deferral (issue #771) — qualifying and race only: iRacing raises
  * the `Checkered` bit for the entire field the moment the session ends
@@ -324,12 +338,12 @@ export function diffFlags(
           emit({ event: "flag.yellow.raised", data: { scope: yellowScope ?? "local" } });
           break;
         case "green":
-          // The field is going green — the caution is over and the green
-          // itself is the news (issue #1127). Noted here, honoured in the
-          // yellow-cleared block below. Like the sticky-marker resets that
-          // follow, this sits BEFORE the start-suppression guard: it records
-          // what the flags say, not what was announced, and a full restart's
-          // green arrives with the start bits set.
+          // The field is going green — any caution is over (issue #1127).
+          // Noted here, honoured in the yellow-cleared block below. Like the
+          // sticky-marker resets that follow, this sits BEFORE the
+          // start-suppression guard: it records what the flags say, not what
+          // was announced, and a caution restart's green arrives with
+          // `StartGo` set (measured on an oval — see the module doc).
           greenRaisedThisTick = true;
 
           // A green rising edge while the sticky final-lap marker is set
@@ -354,10 +368,12 @@ export function diffFlags(
           state.leaderWhiteFired = false;
           state.leaderWhitePostExpiryCrossed = false;
 
-          // Suppress green at a race start — the start-light family owns the
-          // "go" (issue #480). Guard on StartGo OR StartSet so a green that
-          // leads StartGo by a tick (still in the red-lights phase) is also
-          // suppressed. Restarts have neither bit set, so green still fires.
+          // Suppress green while the start signal is up — the start-light
+          // family owns the "go" (issue #480). Guard on StartGo OR StartSet so
+          // a green that leads StartGo by a tick (still in the red-lights
+          // phase) is also suppressed. Not only a race start lands here: the
+          // caution restarts measured on an oval carried StartGo too (module
+          // doc), so they are suppressed and the go line announces them.
           if (!hasFlag(sessionFlags, Flags.StartGo) && !hasFlag(sessionFlags, Flags.StartSet)) {
             emit({ event: "flag.green.raised", data: {} });
           }
@@ -529,17 +545,21 @@ export function diffFlags(
   // Whether it is ANNOUNCED at the end of that window is issue #1127: the
   // callout exists for a LOCAL yellow, which ends with no flag shown, so it
   // is the only way the driver learns the sector is clear. A full-course
-  // caution ends with the GREEN instead — already announced — so a cleared
-  // line there talks over the restart. A caution bit at ANY point in the
-  // episode marks it, and the marker is what the fire consults.
+  // caution ends with a restart instead, which is already announced (the
+  // measured oval restarts carried StartGo, so the start-light go line spoke
+  // — module doc), so a cleared line there talks over the restart. A caution
+  // bit at ANY point in the episode marks it, and the marker is what the fire
+  // consults.
   if (fullCourseYellow) state.yellowEpisodeFullCourse = true;
 
   if (anyYellow) {
     state.yellowClearPendingSince = null;
   } else if (greenRaisedThisTick) {
-    // The green is out: the caution is over, and the green callout says so.
-    // Cancel any clear pending from a drop inside the hold window (the bits
-    // routinely go down a beat before the green waves) and END the episode
+    // The green is out: any caution is over, and the restart is announced
+    // elsewhere (the go line while StartGo is up, the green line when no start
+    // bit is). Cancel any clear pending from a drop inside the hold window,
+    // and keep one from being armed on this very tick when the bits drop WITH
+    // the green, as they did on every measured restart. Then END the episode
     // here — that is what stops a caution's marker leaking onto a SEPARATE
     // local yellow raised seconds into the restart, which must still clear.
     state.yellowClearPendingSince = null;

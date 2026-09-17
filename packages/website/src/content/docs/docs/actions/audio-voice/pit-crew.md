@@ -75,8 +75,8 @@ When the engineer is enabled, the Pit Crew catalog calls out every flag transiti
 - **Yellow** — scope-aware: full-course yellow ("pace car deployed") and local sector yellow ("mind the slow cars") play different lines.
 - **Yellow waving (local)** — a separate, more urgent line ("Local yellow waving — slow, hazard ahead!") for a waving local yellow, distinct from the static local yellow above.
 - **Caution waving** — a separate, more urgent line ("Caution coming out!") for a waving full-course caution, distinct from the static full-course yellow above.
-- **Yellow cleared** — engineer announces when a **local** yellow drops. It waits until every yellow-ish flag (static and waving, local and full) has stayed down for three seconds, so escalating a static yellow to its waving variant never triggers a false "all clear". It is deliberately local-only: a local yellow ends with no flag shown at all, so this line is the only way you learn the sector is clear. A full-course caution never ends that way — it ends with the green, which the **Green** callout already announces — so the end of a caution plays the green and nothing behind it, instead of an all-clear landing on top of the restart.
-- **Green** — race-restart / race-on callout. Suppressed at the race start itself (the Start Lights family below owns the start); it still fires on restarts (caution → green).
+- **Yellow cleared** — engineer announces when a **local** yellow drops. It waits until every yellow-ish flag (static and waving, local and full) has stayed down for three seconds, so escalating a static yellow to its waving variant never triggers a false "all clear". It is deliberately local-only: a local yellow ends with no flag shown at all, so this line is the only way you learn the sector is clear. A full-course caution never ends that way — it ends with a restart, and the restart has its own call (on the oval we tested, *"Go, go, go!"* — see [Start Lights](#start-lights)) — so no all-clear lands on top of the restart.
+- **Green** — the green-flag call, with its own line for practice, qualifying and races. It stays quiet when iRacing gives the start signal together with the green: at the race start itself, and — on the oval we tested — at the restart after a caution. The [Start Lights](#start-lights) family's *"Go, go, go!"* covers both of those moments.
 - **Blue** — alternates between two recorded variants ("faster car approaching" / "check your mirrors").
 - **White** — a two-stage final-lap alert in races: a heads-up when the white flag comes out (iRacing shows it while the leader is closing on the line to start the final lap — *"White flag. We're about to start the final lap."*), then *"This is the last lap."* as you cross start/finish and begin yours — leader included. If you cross while the heads-up is still playing, you keep just the heads-up (the two lines never talk over each other). Practice and qualifying keep their single raise-time line. A third stage covers everyone else in the field: when the OVERALL race leader starts their final lap — detected from lap counting, or in a timed race from the leader's first start/finish crossing after the clock expires — the engineer announces *"The leader is about to start their final lap."*, so you have advance notice even while your own white flag is still a lap or more away. It fires once per race (a new green flag — overtime, a restart — re-arms it) and stays silent if you ARE the leader or your own white flag is already up, since you'll hear your own heads-up instead. All three stages share the White callout toggle.
 - **Crossed** — "Crossed flags." (leaders and tail-enders sharing the track at the halfway point).
@@ -107,11 +107,13 @@ On a **standing start** the Race Engineer walks you through the gantry sequence 
 
 During the pre-start countdown the engineer also speaks the numeric marks — *"Ninety seconds to race start."*, *"Sixty seconds to race start."*, *"Thirty seconds to race start."*, *"Ten seconds to race start."* — as the clock crosses each threshold. The countdown plays **even while you're out of the car** — in the garage, the session screen, or the in-session replay view — since it's exactly the "get in the car" reminder (watching a saved standalone replay stays silent). The gantry lines above stay in-car only: if you're not in the car when the lights come up, you've missed the start. The countdown is **standing-start only** and announces only the marks that genuinely fall inside the live countdown window, so a compressed procedure (a short pre-start, an AI race) that starts below a mark simply skips the higher numbers rather than blurting a stale burst.
 
-On a **rolling start** there's no light gantry and no numeric countdown — the lead-in comes from the race-progression flags instead: **One pace lap to go**, spoken once when one pace lap remains (the engineer assumes at most two pace laps, so it lands as the pace car begins the final pace lap), then **Green held** as the field bunches up, followed by the green flag.
+On a **rolling start** there's no light gantry and no numeric countdown — the lead-in comes from the race-progression flags instead: **One pace lap to go**, spoken once when one pace lap remains (the engineer assumes at most two pace laps, so it lands as the pace car begins the final pace lap), then **Green held** as the field bunches up, and *"Go, go, go!"* the moment the field is released.
+
+*"Go, go, go!"* isn't only for the start of the race. On the oval we tested, iRacing signals the **restart after a full-course caution** the same way it signals a start, so the engineer calls *"Go, go, go!"* there too — after the **Green held** heads-up — and the **Green** flag callout stays quiet.
 
 Two opt-ins live under **Race Engineer Callouts → Start Lights** in the Settings window, both on by default:
 
-- **Start lights** — the two gantry lines (get ready / go).
+- **Start lights** — the get-ready line (standing starts) and the go line (every race start, and restarts after a caution).
 - **Start countdown** — the four numeric marks (ninety / sixty / thirty / ten).
 
 ## Rolling Start
@@ -436,10 +438,10 @@ Disabling a flag also disables its preemption — a disabled callout can't inter
 
 Under **Start Lights**, two callouts are toggleable independently, both enabled by default (see [Start Lights](#start-lights) above for the full behavior):
 
-- **Start lights** — the two standing-start gantry lines (get ready / go). Disabling silences the gantry calls without affecting the numeric countdown.
+- **Start lights** — the get-ready line (standing starts) and the go line (every race start, and restarts after a caution). Disabling silences both without affecting the numeric countdown.
 - **Start countdown** — the four numeric marks (ninety / sixty / thirty / ten) spoken during the standing-start countdown window. Disabling silences the numbers without affecting the gantry lines.
 
-Disabling either does not affect the other. Both are moot on rolling starts, where the lead-in comes from the **One pace lap to go** / **Green held** flag callouts instead.
+Disabling either does not affect the other. On a rolling start only the go line applies; the rest of the lead-in comes from the **One pace lap to go** / **Green held** flag callouts.
 
 Under **Opponent Pits**, two callouts are toggleable, both enabled by default (see [Opponent pit entries (races)](#opponent-pit-entries-races) above for the full behavior):
 

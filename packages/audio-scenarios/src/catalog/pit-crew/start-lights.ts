@@ -53,10 +53,13 @@ import type { ScenarioContract } from "../../dsl.js";
 import { WEIGHT } from "../../dsl.js";
 import { isRaceSession } from "./race-start.js";
 
-// Start lights are a race-only concept. The diff already gates on
-// standing-start + the GetInCar/Warmup pre-start window, but iRacing can raise
-// the grid bits while forming the race grid at the END of a qualifying session
-// — so gate on the race session too. The GANTRY lines additionally gate on
+// Start lights are a race-only concept. The diff already gates the ready line
+// and the countdown on a standing start (the countdown on the GetInCar/Warmup
+// pre-start window too); the go line it does not gate on the start type,
+// since iRacing raises `StartGo` at rolling starts and — measured on an oval —
+// at caution restarts as well. iRacing can also raise the grid bits while
+// forming the race grid at the END of a qualifying session, so gate on the
+// race session too. The GANTRY lines additionally gate on
 // `isLiveOnTrack` so they stay silent while the user is out of the car at the
 // grid or in a replay (issue #480 follow-up); the countdown marks use the bare
 // race gate instead (issue #829 — see the header). Live-read at fire time.
@@ -88,7 +91,8 @@ const START_GO: ScenarioContract = {
   queueable: true,
   family: "start-light",
   when: { event: "startLight.start-go.raised", where: liveRaceCar },
-  description: "The start lights go out at a standing-start race and the field is released, with you live in the car.",
+  description:
+    "iRacing signals the go while you are live in the car in a race: the lights out at a standing start, the green at a rolling start, or the green at a caution restart (measured on an oval).",
 };
 
 /**
