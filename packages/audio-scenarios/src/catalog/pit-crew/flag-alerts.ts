@@ -98,7 +98,12 @@ const raceOnly = () => isRaceSession(getSessionType());
 // checkered — the #657 post-race misfire. (`one-pace-lap-to-go` is additionally
 // ParadeLaps-gated in its own diff, so it can't reach post-race regardless.)
 // Read from the event's telemetry at fire time.
-const liveRaceCar = (e: SimEventOf<SimEventName>): boolean =>
+// Exported since #1127: the caution family's eight contracts carry the same
+// gate, and it is the same question there — a caution sequence is race-only,
+// means nothing out of the car, and must not re-fire on the grid bits iRacing
+// re-asserts after the checkered. One definition, so the two families cannot
+// drift apart on what "live in a race" means.
+export const liveRaceCar = (e: SimEventOf<SimEventName>): boolean =>
   raceOnly() && isLiveOnTrack(e.telemetry as TelemetryData | null) && !isPostRace(e.telemetry as TelemetryData | null);
 
 // Rolling-only formation cue (green-held). A standing start has no pace lap, yet
@@ -547,8 +552,18 @@ const YELLOW_WAVING: ScenarioContract = {
   when: { event: "flag.yellow-waving.raised" },
 };
 
+// `queueable: true` (issue #1127) — measured, not inferred. In the first
+// session of the 2026-09-17 capture this call fired 0.8 s after the `!yellow`
+// and was DROPPED because the spotter held the Voice bus with "car outside";
+// without the flag an equal-weight fire that cannot take the bus is discarded
+// rather than deferred, so the driver got no audio at all for the caution
+// coming out — the report #1127 was filed with. The caution is a sustained
+// state that lasts minutes, so a replay a second or two late is always still
+// correct (the YELLOW_CLEARED / FURLED reasoning), and the 30 s cooldown below
+// still collapses the bit's re-raises.
 const CAUTION_WAVING: ScenarioContract = {
   ...flagContract("caution-waving"),
+  queueable: true,
   cooldown: WAVING_FLAG_COOLDOWN_MS,
   description:
     "The full-course caution is shown waving to the field, in any session; a repeat inside thirty seconds stays silent.",

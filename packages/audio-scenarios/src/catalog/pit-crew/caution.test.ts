@@ -1,0 +1,634 @@
+/**
+ * The full-course caution family (issue #1127).
+ *
+ * Eight contracts over the translator's caution events plus the caution flag
+ * itself. The assertions here are about WHEN each one fires and how it is
+ * scheduled — what it says is the bundled voice's script, which does not exist
+ * yet, so the cases are structural but for one: the follow call's scheduling
+ * beside the existing caution-flag line is driven through the real engine
+ * against a two-entry synthetic script, because no structural assertion can
+ * tell deferring apart from cutting.
+ *
+ * Three behaviours are load-bearing enough to get their own cases, because
+ * each was measured rather than assumed (the 2026-09-17 Homestead capture):
+ *
+ * - the two pace-car events are DELIBERATELY generic — the same pair of
+ *   transitions fires at a rolling start (deployed 132.35, off 196.53, both
+ *   with `SessionState` ParadeLaps) as under a caution — so the two pace-car
+ *   contracts gate on the translator's caution state;
+ * - `caution.lineup.changed` lands ONE TICK BEFORE `caution.oneLapToGreen`
+ *   in both captured cautions (415.10 / 415.12 and 793.92 / 793.93), because
+ *   the field re-forms double file on the tick before the flag, so the
+ *   lineup-change call holds its decision and then finds the one-to-go call
+ *   already owns the moment;
+ * - the pace rows are assigned ~50 ms AFTER the caution flag (239.88 →
+ *   239.93), so the follow call cannot read the lineup on the flag's own tick.
+ */
+import type { IAudioService } from "@iracedeck/audio-service";
+import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
+import type { CalloutScript } from "@iracedeck/callout-script";
+import type { IEventBus, SimEventName, SimEventOf } from "@iracedeck/event-bus";
+import { Flags, SessionState } from "@iracedeck/iracing-sdk";
+import type { CautionLineup } from "@iracedeck/sim-events-iracing";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import type { ScenarioContract } from "../../dsl.js";
+import { poolRef, WEIGHT } from "../../dsl.js";
+import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js";
+import { _resetAudioScenarios, initializeAudioScenarios } from "../../interpreter.js";
+import {
+  buildCautionContracts,
+  CAUTION_CALLOUT_SETTING_KEYS,
+  CAUTION_FOLLOW_DELAY_MS,
+  CAUTION_LINEUP_CHANGE_DELAY_MS,
+  CAUTION_SCENARIO_IDS,
+  type CautionCalloutId,
+  registerCautionVocabulary,
+  SCENARIO_ID_TO_CAUTION_ID,
+} from "./caution.js";
+import { FLAG_CONTRACTS, WAVING_FLAG_COOLDOWN_MS } from "./flag-alerts.js";
+
+const mockSessionType = vi.fn(() => "Race");
+const mockStandingStart = vi.fn(() => false);
+const mockLatestTelemetry = vi.fn((): unknown => null);
+
+vi.mock("@iracedeck/sim-events-iracing", () => ({
+  getSessionType: () => mockSessionType(),
+  getStandingStart: () => mockStandingStart(),
+  getLatestTelemetry: () => mockLatestTelemetry(),
+}));
+
+/** Driver live in their own car, racing — what every contract's shared gate needs. */
+const IN_CAR = { IsOnTrack: true, IsReplayPlaying: false, SessionState: SessionState.Racing };
+
+const IDS: readonly CautionCalloutId[] = [
+  "follow",
+  "pace-car-out",
+  "field-caught",
+  "extra-lap",
+  "one-to-go",
+  "lineup-changed",
+  "pace-car-off",
+  "restart",
+];
+
+/** Which event each callout rides — the whole point of the family. */
+const EVENT_OF: Record<CautionCalloutId, SimEventName> = {
+  follow: "flag.caution-waving.raised",
+  "pace-car-out": "paceCar.deployed",
+  "field-caught": "caution.fieldCaught",
+  "extra-lap": "caution.extraLap",
+  "one-to-go": "caution.oneLapToGreen",
+  "lineup-changed": "caution.lineup.changed",
+  "pace-car-off": "paceCar.off",
+  restart: "caution.restarted",
+};
+
+/** The two contracts whose event also fires outside a caution. */
+const PACE_CAR_IDS: readonly CautionCalloutId[] = ["pace-car-out", "pace-car-off"];
+
+let underCaution: boolean;
+
+function contracts(): readonly ScenarioContract[] {
+  return buildCautionContracts(() => underCaution);
+}
+
+function contract(id: CautionCalloutId): ScenarioContract {
+  const found = contracts().find((c) => c.id === `pit-crew.caution-${id}`);
+
+  if (!found) throw new Error(`contract not found: ${id}`);
+
+  return found;
+}
+
+function event(id: CautionCalloutId, telemetry: unknown = IN_CAR): SimEventOf<SimEventName> {
+  return {
+    event: EVENT_OF[id],
+    timestamp: 0,
+    telemetry,
+    data: {},
+  } as unknown as SimEventOf<SimEventName>;
+}
+
+function fires(id: CautionCalloutId, telemetry: unknown = IN_CAR): boolean {
+  return contract(id).when?.where?.(event(id, telemetry)) !== false;
+}
+
+const LINEUP: CautionLineup = {
+  followCarIdx: 7,
+  followCarNumber: "09",
+  line: "inside",
+  isLeader: false,
+  followsPaceCar: false,
+  doubleFile: true,
+  restartPosition: 14,
+};
+
+const mockLogger = {
+  trace: vi.fn(),
+  debug: vi.fn(),
+  info: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn(),
+  createScope: vi.fn(),
+  withLevel: vi.fn(),
+};
+
+function createMockBus(): IEventBus {
+  const handlers = new Map<SimEventName, Set<(e: SimEventOf<SimEventName>) => void>>();
+
+  return {
+    subscribe: <T extends SimEventName>(name: T, handler: (e: SimEventOf<T>) => void) => {
+      let set = handlers.get(name);
+
+      if (!set) {
+        set = new Set();
+        handlers.set(name, set);
+      }
+
+      set.add(handler as (e: SimEventOf<SimEventName>) => void);
+
+      return () => {
+        handlers.get(name)?.delete(handler as (e: SimEventOf<SimEventName>) => void);
+      };
+    },
+    unsubscribe: <T extends SimEventName>(name: T, handler: (e: SimEventOf<T>) => void) => {
+      handlers.get(name)?.delete(handler as (e: SimEventOf<SimEventName>) => void);
+    },
+    publish: (e: SimEventOf<SimEventName>) => {
+      for (const handler of Array.from(handlers.get(e.event as SimEventName) ?? [])) handler(e);
+    },
+  } as unknown as IEventBus;
+}
+
+type FakeAudio = IAudioService & {
+  _triggerChannelEnd: (channel: AudioChannel) => void;
+  _played: { channel: AudioChannel; path: string }[];
+};
+
+function createFakeAudio(): FakeAudio {
+  const callbacks: Record<AudioChannel, (() => void) | null> = {
+    [AudioChannel.Ambient]: null,
+    [AudioChannel.SFX]: null,
+    [AudioChannel.Voice]: null,
+    [AudioChannel.Radar]: null,
+  };
+  const played: { channel: AudioChannel; path: string }[] = [];
+
+  return {
+    init: vi.fn(() => true),
+    destroy: vi.fn(),
+    playOnChannel: vi.fn((channel: AudioChannel, path: string) => {
+      played.push({ channel, path });
+
+      return true;
+    }),
+    stopChannel: vi.fn((channel: AudioChannel) => {
+      callbacks[channel] = null;
+    }),
+    stopAllChannels: vi.fn(),
+    setChannelVolume: vi.fn(),
+    setBusVolume: vi.fn(),
+    getBusVolume: vi.fn(() => 1.0),
+    isChannelPlaying: vi.fn(() => false),
+    onChannelComplete: vi.fn((channel: AudioChannel, cb: () => void) => {
+      callbacks[channel] = cb;
+    }),
+    playVoiceSequence: vi.fn(),
+    cancelVoiceSequence: vi.fn(),
+    onVoiceSequenceComplete: vi.fn(),
+    seekChannelRandom: vi.fn(),
+    getAudioDevices: vi.fn(() => []),
+    setAudioDevice: vi.fn(() => true),
+    _triggerChannelEnd: (channel: AudioChannel) => {
+      const cb = callbacks[channel];
+      callbacks[channel] = null;
+      cb?.();
+    },
+    _played: played,
+  } as unknown as FakeAudio;
+}
+
+function makeVocabEngine(): {
+  engine: IScenarioEngine;
+  vars: Map<string, () => unknown>;
+  conds: Map<string, () => unknown>;
+  cases: Map<string, () => unknown>;
+  keys: Map<string, Readonly<Record<string, string>>>;
+  descriptions: Map<string, string>;
+} {
+  const vars = new Map<string, () => unknown>();
+  const conds = new Map<string, () => unknown>();
+  const cases = new Map<string, () => unknown>();
+  const keys = new Map<string, Readonly<Record<string, string>>>();
+  const descriptions = new Map<string, string>();
+  const stub = {
+    defineVar: vi.fn((name: string, fn: () => unknown, description = "") => {
+      vars.set(name, fn);
+      descriptions.set(name, description);
+    }),
+    defineCond: vi.fn((name: string, fn: () => unknown, description: string) => {
+      conds.set(name, fn);
+      descriptions.set(name, description);
+    }),
+    defineCase: vi.fn((name: string, fn: () => unknown, k: Record<string, string>, description: string) => {
+      cases.set(name, fn);
+      keys.set(name, k);
+      descriptions.set(name, description);
+    }),
+  } as unknown as IScenarioEngine;
+
+  return { engine: stub, vars, conds, cases, keys, descriptions };
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  underCaution = true;
+  mockSessionType.mockReturnValue("Race");
+  mockStandingStart.mockReturnValue(false);
+  mockLatestTelemetry.mockReturnValue(null);
+});
+
+describe("the caution contracts", () => {
+  it("exports the eight scenario ids, in the order the caution runs", () => {
+    expect(CAUTION_SCENARIO_IDS).toEqual([
+      "pit-crew.caution-follow",
+      "pit-crew.caution-pace-car-out",
+      "pit-crew.caution-field-caught",
+      "pit-crew.caution-extra-lap",
+      "pit-crew.caution-one-to-go",
+      "pit-crew.caution-lineup-changed",
+      "pit-crew.caution-pace-car-off",
+      "pit-crew.caution-restart",
+    ]);
+  });
+
+  it("maps every scenario id to its callout id and every callout id to its setting key", () => {
+    expect(SCENARIO_ID_TO_CAUTION_ID).toEqual({
+      "pit-crew.caution-follow": "follow",
+      "pit-crew.caution-pace-car-out": "pace-car-out",
+      "pit-crew.caution-field-caught": "field-caught",
+      "pit-crew.caution-extra-lap": "extra-lap",
+      "pit-crew.caution-one-to-go": "one-to-go",
+      "pit-crew.caution-lineup-changed": "lineup-changed",
+      "pit-crew.caution-pace-car-off": "pace-car-off",
+      "pit-crew.caution-restart": "restart",
+    });
+
+    expect(CAUTION_CALLOUT_SETTING_KEYS).toEqual({
+      follow: "calloutEnabledCautionFollow",
+      "pace-car-out": "calloutEnabledCautionPaceCarOut",
+      "field-caught": "calloutEnabledCautionFieldCaught",
+      "extra-lap": "calloutEnabledCautionExtraLap",
+      "one-to-go": "calloutEnabledCautionOneToGo",
+      "lineup-changed": "calloutEnabledCautionLineupChanged",
+      "pace-car-off": "calloutEnabledCautionPaceCarOff",
+      restart: "calloutEnabledCautionRestart",
+    });
+  });
+
+  it("rides one event each — the caution flag for the follow call, a translator caution event for the rest", () => {
+    for (const id of IDS) expect(contract(id).when?.event).toBe(EVENT_OF[id]);
+  });
+
+  it("carries no sequence and takes the engine's default frame — what it says is the voice script's", () => {
+    for (const id of IDS) {
+      expect("sequence" in contract(id)).toBe(false);
+      expect(contract(id).frame).toBeUndefined();
+    }
+  });
+
+  it("speaks on the Voice channel and bus, under the active voice's base path", () => {
+    for (const id of IDS) {
+      expect(contract(id).channel).toBe(AudioChannel.Voice);
+      expect(contract(id).bus).toBe(AudioBus.Voice);
+      expect(contract(id).base).toBe("voice/{voice}");
+    }
+  });
+
+  it("is queueable throughout — nothing in a caution sequence is ever dropped for a busy bus", () => {
+    for (const id of IDS) expect(contract(id).queueable).toBe(true);
+  });
+
+  it("interrupts only for the restart, which lands on the driver's launch", () => {
+    for (const id of IDS) {
+      if (id === "restart") {
+        expect(contract(id).interrupt).toBe(true);
+        expect(contract(id).weight).toBe(WEIGHT.CRITICAL);
+      } else {
+        expect(contract(id).interrupt).toBeUndefined();
+        expect(contract(id).weight).toBe(WEIGHT.SAFETY);
+      }
+    }
+  });
+
+  it("shares the flag family so a newer caution call supersedes a stale one — except the follow call, which pairs with the caution flag's own line", () => {
+    for (const id of IDS) {
+      if (id === "follow") {
+        expect(contract(id).family).toBeUndefined();
+      } else {
+        expect(contract(id).family).toBe("flag");
+      }
+    }
+  });
+
+  it("carries a description sentence for every one — the pack-author reference publishes them", () => {
+    for (const id of IDS) {
+      expect(contract(id).description?.length ?? 0).toBeGreaterThan(20);
+    }
+  });
+
+  it("stays silent out of the car, outside a race, and after the checkered", () => {
+    for (const id of IDS) {
+      expect(fires(id)).toBe(true);
+
+      expect(fires(id, { ...IN_CAR, IsOnTrack: false })).toBe(false);
+      expect(fires(id, { ...IN_CAR, IsReplayPlaying: true })).toBe(false);
+      expect(fires(id, { ...IN_CAR, SessionState: SessionState.Checkered })).toBe(false);
+
+      mockSessionType.mockReturnValue("Practice");
+      expect(fires(id)).toBe(false);
+      mockSessionType.mockReturnValue("Race");
+    }
+  });
+
+  it("speaks about the pace car only under a caution — the rolling start's pace car belongs to the start", () => {
+    underCaution = false;
+
+    for (const id of PACE_CAR_IDS) expect(fires(id)).toBe(false);
+
+    for (const id of IDS.filter((x) => !PACE_CAR_IDS.includes(x) && x !== "lineup-changed")) {
+      expect(fires(id)).toBe(true);
+    }
+
+    underCaution = true;
+
+    for (const id of PACE_CAR_IDS) expect(fires(id)).toBe(true);
+  });
+
+  it("holds the follow call for a second, because the pace rows land after the flag", () => {
+    expect(contract("follow").triggerDelay).toBe(CAUTION_FOLLOW_DELAY_MS);
+    expect(CAUTION_FOLLOW_DELAY_MS).toBeGreaterThan(0);
+  });
+
+  it("gives the follow call the caution flag's own cooldown — the bit re-raises on every re-approach", () => {
+    expect(contract("follow").cooldown).toBe(WAVING_FLAG_COOLDOWN_MS);
+  });
+});
+
+describe("the lineup-change call and the one-to-go flag", () => {
+  it("holds its decision long enough for the one-to-go flag to land", () => {
+    expect(contract("lineup-changed").triggerDelay).toBe(CAUTION_LINEUP_CHANGE_DELAY_MS);
+    // The measured gap between the re-form and the flag is one tick (20 ms);
+    // the hold has to clear it with room for a slower tick.
+    expect(CAUTION_LINEUP_CHANGE_DELAY_MS).toBeGreaterThan(100);
+  });
+
+  it("stays quiet once the one-to-go flag is out — that call names the car and the line itself", () => {
+    mockLatestTelemetry.mockReturnValue({ SessionFlags: Flags.Caution | Flags.OneLapToGreen });
+
+    expect(fires("lineup-changed")).toBe(false);
+  });
+
+  it("speaks a mid-caution reorder, with the one-to-go flag not yet out", () => {
+    mockLatestTelemetry.mockReturnValue({ SessionFlags: Flags.Caution });
+
+    expect(fires("lineup-changed")).toBe(true);
+  });
+
+  it("speaks when there is no live telemetry to read — a missing signal never silences a call", () => {
+    mockLatestTelemetry.mockReturnValue(null);
+
+    expect(fires("lineup-changed")).toBe(true);
+  });
+
+  it("stays quiet once the caution is over, so a change held over the green cannot be spoken into the restart", () => {
+    underCaution = false;
+    mockLatestTelemetry.mockReturnValue({ SessionFlags: 0 });
+
+    expect(fires("lineup-changed")).toBe(false);
+  });
+
+  it("leaves the one-to-go flag alone for every other call — only the held one consults it", () => {
+    mockLatestTelemetry.mockReturnValue({ SessionFlags: Flags.Caution | Flags.OneLapToGreen });
+
+    for (const id of IDS.filter((x) => x !== "lineup-changed" && !PACE_CAR_IDS.includes(x))) {
+      expect(fires(id)).toBe(true);
+    }
+  });
+});
+
+/**
+ * The follow call's missing `family` is the one scheduling choice here that no
+ * structural assertion can justify on its own, so it is driven through the real
+ * engine against a two-entry script: the existing caution-flag line, and the
+ * follow line that rides the same event. The case carries its own positive
+ * control — the same pair with `family: "flag"` restored, which is what the
+ * rest of the family carries — so a run where neither ordering could be
+ * distinguished would fail rather than pass twice.
+ */
+describe("the follow call beside the caution flag's own line", () => {
+  const VOICE = "test";
+  const CAUTION_CLIP = `voice/${VOICE}/flags/caution-waving-01.mp3`;
+  const FOLLOW_CLIP = `voice/${VOICE}/caution/follow-01.mp3`;
+
+  const manifest: AudioAssetsManifest = {
+    clips: ["sfx/IRD-tick-open.mp3", "sfx/IRD-tick-close.mp3", "sfx/IRD-ambient-pit.mp3", CAUTION_CLIP, FOLLOW_CLIP],
+    ambientLoop: "sfx/IRD-ambient-pit.mp3",
+    ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
+  };
+
+  const script = {
+    schema: 1,
+    scenarios: {
+      "pit-crew.flag-caution-waving": { comment: "c", test: "t", sequence: ["pool:flags/caution-waving"] },
+      "pit-crew.caution-follow": { comment: "c", test: "t", sequence: ["pool:caution/follow"] },
+    },
+    // The engine wraps every body in the frame the contract names, and the
+    // default is "radio" — a script without it has every entry skipped.
+    frames: {
+      radio: {
+        comment: "f",
+        open: [{ clip: "sfx/IRD-tick-open.mp3" }],
+        close: [{ clip: "sfx/IRD-tick-close.mp3" }],
+      },
+    },
+    pools: {},
+    fragments: {},
+  } as unknown as CalloutScript;
+
+  function run(followFamily: string | undefined): {
+    played: () => string[];
+    cutVoice: () => boolean;
+    flush: () => void;
+  } {
+    const bus = createMockBus();
+    const audio = createFakeAudio();
+    const engine = initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
+    const cautionWaving = FLAG_CONTRACTS.find((c) => c.id === "pit-crew.flag-caution-waving");
+
+    if (!cautionWaving) throw new Error("the caution-waving flag contract is gone");
+
+    engine.defineContract(cautionWaving);
+    engine.defineContract({ ...contract("follow"), family: followFamily });
+    engine.setScripts(new Map([[VOICE, script]]));
+
+    bus.publish({
+      event: "flag.caution-waving.raised",
+      timestamp: 0,
+      telemetry: IN_CAR,
+      data: {},
+    } as unknown as SimEventOf<SimEventName>);
+
+    // The radio frame's open tick plays on SFX first; the body reaches the
+    // Voice channel only once that tick completes.
+    audio._triggerChannelEnd(AudioChannel.SFX);
+
+    return {
+      played: () => audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path),
+      cutVoice: () =>
+        (audio.stopChannel as unknown as { mock: { calls: unknown[][] } }).mock.calls.some(
+          (call) => call[0] === AudioChannel.Voice,
+        ),
+      flush: () => {
+        for (let i = 0; i < 20; i++) {
+          audio._triggerChannelEnd(AudioChannel.Voice);
+          audio._triggerChannelEnd(AudioChannel.SFX);
+        }
+      },
+    };
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    _resetAudioScenarios();
+  });
+
+  it("waits for the caution line to finish and then speaks — both calls, in order", () => {
+    const { played, cutVoice, flush } = run(contract("follow").family);
+
+    expect(played()).toEqual([CAUTION_CLIP]);
+
+    vi.advanceTimersByTime(CAUTION_FOLLOW_DELAY_MS + 1);
+
+    // The follow fire found the bus busy and deferred: the caution line is
+    // still the only thing that has reached the Voice channel, and nothing
+    // stopped it.
+    expect(cutVoice()).toBe(false);
+    expect(played()).toEqual([CAUTION_CLIP]);
+
+    flush();
+
+    expect(played()).toEqual([CAUTION_CLIP, FOLLOW_CLIP]);
+  });
+
+  it("would cut that line mid-word if it shared the flag family — the positive control", () => {
+    const { cutVoice } = run("flag");
+
+    expect(cutVoice()).toBe(false);
+
+    vi.advanceTimersByTime(CAUTION_FOLLOW_DELAY_MS + 1);
+
+    // Same-family preemption replaces the in-flight fire wholesale, regardless
+    // of weight and of `interrupt` — the caution announcement is stopped
+    // mid-sentence to make room for this line.
+    expect(cutVoice()).toBe(true);
+  });
+});
+
+describe("registerCautionVocabulary", () => {
+  it("registers the vars, conditions and case the caution scripts name, each with a description", () => {
+    const { engine, vars, conds, cases, descriptions } = makeVocabEngine();
+
+    registerCautionVocabulary(engine, () => LINEUP);
+
+    expect([...vars.keys()]).toEqual(["caution.followCarNumber", "caution.restartPosition"]);
+    expect([...conds.keys()]).toEqual(["caution.isLeader", "caution.followsPaceCar", "caution.isDoubleFile"]);
+    expect([...cases.keys()]).toEqual(["caution.line"]);
+
+    for (const name of [...vars.keys(), ...conds.keys(), ...cases.keys()]) {
+      expect((descriptions.get(name) ?? "").length).toBeGreaterThan(20);
+    }
+  });
+
+  it("declares the two lane keys the line case can return", () => {
+    const { engine, keys } = makeVocabEngine();
+
+    registerCautionVocabulary(engine, () => LINEUP);
+
+    expect(Object.keys(keys.get("caution.line") ?? {}).sort()).toEqual(["inside", "outside"]);
+  });
+
+  it("draws the follow car's number from the car-number group, exactly as the sim spells it", () => {
+    const { engine, vars } = makeVocabEngine();
+
+    registerCautionVocabulary(engine, () => LINEUP);
+
+    expect(vars.get("caution.followCarNumber")?.()).toBe(poolRef("car-number", "09"));
+  });
+
+  it("draws the restart position from the position-number group", () => {
+    const { engine, vars } = makeVocabEngine();
+
+    registerCautionVocabulary(engine, () => LINEUP);
+
+    expect(vars.get("caution.restartPosition")?.()).toBe(poolRef("position-number", "14"));
+  });
+
+  it("names no car when the car ahead is the pace car — its number is not what a follow line means", () => {
+    const { engine, vars } = makeVocabEngine();
+
+    registerCautionVocabulary(engine, () => ({ ...LINEUP, followsPaceCar: true, followCarNumber: "0" }));
+
+    expect(vars.get("caution.followCarNumber")?.()).toBeNull();
+  });
+
+  it("names no number when the lineup carries none, and no position when it carries none", () => {
+    const { engine, vars } = makeVocabEngine();
+
+    registerCautionVocabulary(engine, () => ({ ...LINEUP, followCarNumber: null, restartPosition: null }));
+
+    expect(vars.get("caution.followCarNumber")?.()).toBeNull();
+    expect(vars.get("caution.restartPosition")?.()).toBeNull();
+  });
+
+  it("names nothing at all when there is no lineup to read", () => {
+    const { engine, vars, conds, cases } = makeVocabEngine();
+
+    registerCautionVocabulary(engine, () => null);
+
+    expect(vars.get("caution.followCarNumber")?.()).toBeNull();
+    expect(vars.get("caution.restartPosition")?.()).toBeNull();
+    expect(conds.get("caution.isLeader")?.()).toBe(false);
+    expect(conds.get("caution.followsPaceCar")?.()).toBe(false);
+    expect(conds.get("caution.isDoubleFile")?.()).toBe(false);
+    expect(cases.get("caution.line")?.()).toBeNull();
+  });
+
+  it("reports the lineup's own answers for the two conditions and the lane", () => {
+    const { engine, conds, cases } = makeVocabEngine();
+
+    registerCautionVocabulary(engine, () => ({ ...LINEUP, isLeader: true, followsPaceCar: true, line: "outside" }));
+
+    expect(conds.get("caution.isLeader")?.()).toBe(true);
+    expect(conds.get("caution.followsPaceCar")?.()).toBe(true);
+    expect(conds.get("caution.isDoubleFile")?.()).toBe(true);
+    expect(cases.get("caution.line")?.()).toBe("outside");
+  });
+
+  it("reads the lineup afresh on every resolution — the field keeps moving while a call waits", () => {
+    const { engine, vars } = makeVocabEngine();
+    const reads = vi.fn(() => LINEUP);
+
+    registerCautionVocabulary(engine, reads);
+
+    vars.get("caution.followCarNumber")?.();
+    vars.get("caution.followCarNumber")?.();
+
+    expect(reads).toHaveBeenCalledTimes(2);
+  });
+});
