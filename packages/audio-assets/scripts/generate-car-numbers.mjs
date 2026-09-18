@@ -37,6 +37,10 @@
  * interjection rather than a digit, the fix belongs in the `text` here
  * (e.g. a punctuation or spelling hint), not in the reading rules above.
  *
+ * Every entry is conditioned on the caution lead-in it is spliced onto — see
+ * `CAR_NUMBER_LEAD_IN_REF` below for what that buys and why it is a
+ * `previous_request_ids` reference and nothing else.
+ *
  * NOTE on editing the config: this file writes the `car-number` group by
  * splicing its JSON text directly into `groups` (`spliceGroupIntoConfig`)
  * rather than `JSON.parse`-ing the whole document, mutating it, and
@@ -167,12 +171,39 @@ export function allCarNumbers() {
   return numbers;
 }
 
-/** The full `car-number` group: one `{ name, text, seed }` entry per number. */
+/**
+ * The clip every car number is conditioned on: a caution lead-in that ends
+ * exactly where a number begins ("One to go. Take the outside line, behind
+ * car number"). A number is only ever spliced onto the END of a lead-in like
+ * that, and generated standalone it opens like a fresh sentence — so each
+ * entry names this clip in `previous_request_ids`, which the generator
+ * resolves per voice to the real preceding audio (see the "Request-id
+ * chains" block in `src/generate/generate.ts`). The tail "behind car number"
+ * is common to almost every lead-in, so one reference serves them all.
+ *
+ * Only the request-id, deliberately no `previous_text`: the request-id
+ * carries the actual preceding audio, and a text approximation beside it is
+ * redundant (maintainer, 2026-09-18). The lead-in itself carries `next_text`
+ * rather than `next_request_ids` back to a number, because that pair would
+ * be a reference CYCLE and `detectReferenceCycles` refuses the config.
+ *
+ * Generation order follows from the reference: the `caution` group must be
+ * generated BEFORE this one, so the target's request-id is in
+ * `generate.manifest.json` when the numbers are cut.
+ */
+export const CAR_NUMBER_LEAD_IN_REF = "caution/one-to-go-outside-01";
+
+/** The full `car-number` group: one `{ name, text, seed, previous_request_ids }` entry per number. */
 export function buildCarNumberGroup() {
   // A uniform seed across all 1,110 short, similar clips — same approach as
   // the existing `position-number` group (also seed 1 throughout) — keeps
   // delivery style consistent rather than letting it drift entry to entry.
-  return allCarNumbers().map((name) => ({ name, text: readCarNumber(name), seed: 1 }));
+  return allCarNumbers().map((name) => ({
+    name,
+    text: readCarNumber(name),
+    seed: 1,
+    previous_request_ids: [CAR_NUMBER_LEAD_IN_REF],
+  }));
 }
 
 // The indent of a key that is a direct child of `"groups": {` — this file's

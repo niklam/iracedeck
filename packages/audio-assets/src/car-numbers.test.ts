@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   allCarNumbers,
   buildCarNumberGroup,
+  CAR_NUMBER_LEAD_IN_REF,
   readCarNumber,
   spliceGroupIntoConfig,
 } from "../scripts/generate-car-numbers.mjs";
@@ -88,6 +89,24 @@ describe("buildCarNumberGroup", () => {
     for (const entry of group) {
       expect(entry.text).not.toMatch(/\bcar\b/i);
       expect(entry.text).not.toMatch(/\bnumber\b/i);
+    }
+  });
+
+  // A number is only ever spliced onto the end of a caution lead-in, so every
+  // entry is conditioned on that lead-in through its request-id — and ONLY
+  // the request-id: no `previous_text` beside it (redundant with the real
+  // preceding audio), and the lead-in must not point back with a
+  // `next_request_ids`, which would close a reference cycle the generator
+  // refuses. The reference is the `<group>/<entry-name>` form the generator
+  // resolves per voice.
+  it("conditions every entry on the caution lead-in by request-id reference, and nothing else", () => {
+    expect(CAR_NUMBER_LEAD_IN_REF).toBe("caution/one-to-go-outside-01");
+
+    for (const entry of group) {
+      expect(entry.previous_request_ids).toEqual([CAR_NUMBER_LEAD_IN_REF]);
+      expect(entry).not.toHaveProperty("previous_text");
+      expect(entry).not.toHaveProperty("next_request_ids");
+      expect(entry).not.toHaveProperty("next_text");
     }
   });
 });
