@@ -151,8 +151,8 @@
       "interrupt": false,
       "speakGate": "Re-checked at speak time: the full-course caution is still out.",
       "base": "voice/{voice}",
-      "comment": "One to go, with the restart lineup. Leading: \"One to go. You're leading them away.\" On the front row with only the pace car ahead but not the leader — the outside car of a double-file restart — a plain \"One to go.\", since telling P2 it leads would be wrong. Otherwise the lane and the car ahead, read from the pace rows at speak time: inside or outside on an oval running double file, and \"Line up behind\" with no lane anywhere else or single file. Each numbered line is one optional clause with its number, so a car the session cannot name says nothing rather than a broken sentence.",
-      "test": "Harness → Flags → Caution → restart, with the race session and hot-lap presets — a double-file lineup, so expect \"One to go. … behind car eight\", with the lane when the preset's track is an oval; Caution → lineup change re-forms single file and hears the plain wording. In-sim: the one-to-go flag on the last caution lap.",
+      "comment": "One to go, with the restart lineup. Leading: \"One to go. You're leading them away.\" On the front row with only the pace car ahead but not the leader — the outside car of a double-file restart — a plain \"One to go.\", since telling P2 it leads would be wrong. Otherwise the lane and the car ahead, read from the pace rows at speak time: inside or outside on an oval running double file, and \"Line up behind\" with no lane anywhere else or single file. A car ahead the session cannot name gets the plain \"One to go.\" too — this is the one call that must never come out as nothing, so it asks caution.hasFollowCarNumber before choosing a numbered wording rather than leaving the number to an optional clause alone, which expands to silence when there is no number to say. The numbered wordings already contain the words \"One to go\", which is why the fallback replaces them rather than preceding them.",
+      "test": "Harness → Flags → Caution → restart, with the race session and hot-lap presets — a double-file lineup, so expect \"One to go. … behind car eight\", with the lane when the preset's track is an oval; Caution → lineup change re-forms single file and hears the plain wording. With no session preset the run is refused, and with the practice preset (a player car but an empty driver list) the car ahead cannot be named, so expect the bare \"One to go.\" In-sim: the one-to-go flag on the last caution lap.",
       "skip": false,
       "references": {
         "pools": [
@@ -167,6 +167,7 @@
         ],
         "conds": [
           "caution.followsPaceCar",
+          "caution.hasFollowCarNumber",
           "caution.isLeader"
         ],
         "cases": [
@@ -4469,7 +4470,7 @@
     "vars": [
       {
         "name": "caution.followCarNumber",
-        "description": "The car number you line up behind under caution, spoken from the car-number group exactly as the sim spells it — \"09\" and \"9\" are different clips. Null while the pace car is the only thing ahead of you, and while the field carries no readable lineup, so branch on caution.followsPaceCar before naming it. Nothing to say is common rather than exceptional here, so keep the number in an optional clause with the words that introduce it: a null var in a required step aborts the whole callout, silently and at debug level, and the driver hears nothing at all.",
+        "description": "The car number you line up behind under caution, spoken from the car-number group exactly as the sim spells it — \"09\" and \"9\" are different clips. Null while the pace car is the only thing ahead of you, and while the field carries no readable lineup, so branch on caution.followsPaceCar before naming it. Nothing to say is common rather than exceptional here, so keep the number in an optional clause with the words that introduce it: a null var in a required step aborts the whole callout, silently and at debug level, and the driver hears nothing at all. Where the callout must still say SOMETHING without the number — one to go, above all — branch on caution.hasFollowCarNumber and give the other branch a numberless wording.",
         "usedBy": [
           "pit-crew.caution-field-caught",
           "pit-crew.caution-follow",
@@ -4479,7 +4480,7 @@
       },
       {
         "name": "caution.restartPosition",
-        "description": "The position you would restart in, spoken from the position-number group. Read from the pace rows rather than the running order — that is what iRacing lines the field up by — and null whenever the rows carry no absolute position, which happens whenever session info cannot name the pace car. Keep it in an optional clause with the words that introduce it: a null var in a required step aborts the whole callout, silently and at debug level, so the pickup call would go unsaid rather than merely losing its number.",
+        "description": "The position you would restart in, spoken from the position-number group, which stops at 64 — a position past that is null, since there is no clip to say it with. Read from the pace rows rather than the running order — that is what iRacing lines the field up by — and null whenever the rows carry no absolute position, which happens whenever session info cannot name the pace car. Keep it in an optional clause with the words that introduce it: a null var in a required step aborts the whole callout, silently and at debug level, so the pickup call would go unsaid rather than merely losing its number.",
         "usedBy": [
           "pit-crew.caution-field-caught"
         ]
@@ -4827,6 +4828,13 @@
           "pit-crew.caution-field-caught",
           "pit-crew.caution-follow",
           "pit-crew.caution-lineup-changed",
+          "pit-crew.caution-one-to-go"
+        ]
+      },
+      {
+        "name": "caution.hasFollowCarNumber",
+        "description": "The car ahead of you in your line can be named — caution.followCarNumber would resolve. False while the pace car is the only thing ahead (ask caution.followsPaceCar for that), while the field carries no readable lineup, and when the session cannot spell the car's number. The condition to branch on when a callout must still speak without the number: the one-to-go call says a plain \"One to go.\" in the other branch rather than nothing, because an optional clause alone expands to an empty callout and the driver hears no warning at all.",
+        "usedBy": [
           "pit-crew.caution-one-to-go"
         ]
       },
