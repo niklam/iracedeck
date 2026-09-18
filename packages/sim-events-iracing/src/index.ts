@@ -62,8 +62,10 @@ export {
 } from "./diff/corner-name.js";
 // The lineup shape `getCautionLineup()` returns (issue #1127). Exported from
 // the module that defines it rather than re-exported through the translator —
-// the `FuelStats` precedent directly below.
-export { type CautionLineup } from "./diff/caution-lineup.js";
+// the `FuelStats` precedent directly below. `resolvePlayerCarIdx` rides with
+// it for the scenario harness, whose caution-shortcut precondition asks THIS
+// reader whether a session names the player rather than restating its rule.
+export { type CautionLineup, resolvePlayerCarIdx } from "./diff/caution-lineup.js";
 export { DAMAGE_DEBOUNCE_MS } from "./diff/damage.js";
 export { YELLOW_CLEARED_HOLD_MS } from "./diff/flags.js";
 export {

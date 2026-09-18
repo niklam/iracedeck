@@ -2,17 +2,27 @@ import type { IAudioService } from "@iracedeck/audio-service";
 import { _resetEventBus, getEventBus, initializeEventBus } from "@iracedeck/event-bus";
 import type { SessionInfo } from "@iracedeck/iracing-sdk";
 import { silentLogger } from "@iracedeck/logger";
+import { resolvePlayerCarIdx } from "@iracedeck/sim-events-iracing";
 import type { FastifyInstance } from "fastify";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { MockPlatformAdapter } from "./mock-platform-adapter.js";
 import { MockSDKController } from "./mock-sdk-controller.js";
 import { SCENARIO_SHORTCUTS } from "./scenario-shortcuts.js";
 import { createServer } from "./server.js";
 import { checkShortcutPreconditions, type ShortcutPrecondition } from "./shortcut-preconditions.js";
+
+// A pass-through spy on the translator's own reader (issue #1127 review): the
+// precondition must ASK it rather than restate its rule, and only a spy can
+// tell the two apart — a restatement answers every table below identically.
+vi.mock("@iracedeck/sim-events-iracing", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@iracedeck/sim-events-iracing")>();
+
+  return { ...actual, resolvePlayerCarIdx: vi.fn(actual.resolvePlayerCarIdx) };
+});
 
 const PACKAGE_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -52,25 +62,25 @@ describe("checkShortcutPreconditions", () => {
     }
   });
 
-  it("reads the player's car index exactly as the lineup resolver does", () => {
-    // Mirrors `resolvePlayerCarIdx` in `diff/caution-lineup.ts`: a value that
-    // resolver rejects has to be refused here too, or the run proceeds into
-    // the half-silent case anyway.
-    const permitted = [{ DriverInfo: { DriverCarIdx: 0 } }, { DriverInfo: { DriverCarIdx: 7 } }];
-    const refused = [
-      {},
-      { DriverInfo: {} },
-      { DriverInfo: { DriverCarIdx: -1 } },
-      { DriverInfo: { DriverCarIdx: 1.5 } },
-      { DriverInfo: { DriverCarIdx: "7" } },
-    ];
+  it("asks the lineup resolver itself whether the session names the player — never a restated rule", () => {
+    // The read this precondition gets ahead of is `resolvePlayerCarIdx` in the
+    // translator's `diff/caution-lineup.ts`. A copy of its rule here would drift
+    // the moment that one tightened and admit the half-silent run anyway, so
+    // the check has to BE that function: called with the session, and obeyed.
+    const sessionInfo = { DriverInfo: { DriverCarIdx: 7 } };
 
-    for (const sessionInfo of permitted) {
-      expect(checkShortcutPreconditions(["player-car-index"], sessionInfo), JSON.stringify(sessionInfo)).toBeNull();
-    }
+    vi.mocked(resolvePlayerCarIdx).mockClear();
+    expect(checkShortcutPreconditions(["player-car-index"], sessionInfo)).toBeNull();
+    expect(vi.mocked(resolvePlayerCarIdx)).toHaveBeenCalledWith(sessionInfo);
 
-    for (const sessionInfo of refused) {
-      expect(checkShortcutPreconditions(["player-car-index"], sessionInfo), JSON.stringify(sessionInfo)).not.toBeNull();
+    // A session the resolver rejects is refused here too, whatever it holds —
+    // the resolver's verdict is the rule, not the shape of `DriverCarIdx`.
+    vi.mocked(resolvePlayerCarIdx).mockReturnValueOnce(null);
+    expect(checkShortcutPreconditions(["player-car-index"], sessionInfo)).not.toBeNull();
+
+    // And the real resolver's own refusals hold through it.
+    for (const refused of [{}, { DriverInfo: { DriverCarIdx: -1 } }, { DriverInfo: { DriverCarIdx: "7" } }]) {
+      expect(checkShortcutPreconditions(["player-car-index"], refused), JSON.stringify(refused)).not.toBeNull();
     }
   });
 

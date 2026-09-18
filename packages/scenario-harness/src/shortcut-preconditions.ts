@@ -21,6 +21,7 @@
  * The reason text lives on the rule rather than on each shortcut, so the three
  * caution buttons cannot drift from each other's wording.
  */
+import { resolvePlayerCarIdx } from "@iracedeck/sim-events-iracing";
 
 /**
  * What a shortcut can require of the harness before it will run.
@@ -38,20 +39,15 @@ type PreconditionRule = {
 };
 
 /**
- * Whether session info names the player's car.
- *
- * Mirrors `resolvePlayerCarIdx` in `sim-events-iracing`'s
- * `diff/caution-lineup.ts` — the read this precondition exists to get ahead of
- * — rather than approximating it: a check that admitted a value that resolver
- * rejects would let the half-silent run through anyway, which is the whole
- * failure it is here to prevent. That function is module-local there, so the
- * rule is restated here and has to be kept in step with it.
+ * Whether session info names the player's car — asked of the translator's own
+ * `resolvePlayerCarIdx`, the read this precondition exists to get ahead of,
+ * rather than of a restatement of it. A restated rule drifts the moment the
+ * resolver tightens, and a check that admits a value the resolver rejects lets
+ * the half-silent run through anyway, which is the whole failure it is here to
+ * prevent.
  */
 function namesPlayerCar(sessionInfo: Record<string, unknown> | null): boolean {
-  const driverInfo = sessionInfo?.DriverInfo as Record<string, unknown> | undefined;
-  const idx = driverInfo?.DriverCarIdx;
-
-  return typeof idx === "number" && Number.isInteger(idx) && idx >= 0;
+  return resolvePlayerCarIdx(sessionInfo) !== null;
 }
 
 const PRECONDITION_RULES: Record<ShortcutPrecondition, PreconditionRule> = {

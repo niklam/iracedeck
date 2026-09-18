@@ -110,8 +110,59 @@ function isLinedUp(line: unknown, row: unknown): line is number {
   return typeof line === "number" && line >= 0 && typeof row === "number" && row >= 0;
 }
 
-/** The player's own car index from session YAML, or `null` when it cannot be read. */
-function resolvePlayerCarIdx(sessionInfo: Record<string, unknown> | null): number | null {
+/**
+ * How many lined-up cars a pace line must hold before it counts as a column
+ * of the field rather than a stray value. See {@link isDoubleFile}.
+ */
+export const MIN_LINE_POPULATION = 2;
+
+/**
+ * Whether the field is in two columns: at least two pace lines each hold
+ * {@link MIN_LINE_POPULATION} lined-up cars.
+ *
+ * The bare "more than one distinct line value" reading is not robust, and
+ * the cost of getting it wrong is the whole field's arithmetic: `doubleFile`
+ * switches every restart position from `row` to the interleave, so ONE car
+ * carrying a stray or mid-transition line value would tell a driver sitting
+ * seventh in a single-file queue that they restart thirteenth, and would move
+ * `isLeader` off the real leader. A column is a population, not a value. The
+ * committed fixture supports the bar: iRacing re-forms the field in a single
+ * tick (415.10 and 793.92), and on all 52 anchored double-file ticks line 1
+ * holds at least ten cars — a lone car on a second line never occurs while
+ * the pace car leads. Where it does occur is the post-green unwind, which is
+ * exactly a place no lineup should be read from.
+ *
+ * What the bar costs is a two-car field, whose genuine double-file re-form
+ * puts one car on line 1 and therefore reads single file here: the leader's
+ * position is still right (line 0 row 1 → 1), and P2's is withheld rather
+ * than wrong — `null` is the documented "cannot read", never a guess.
+ */
+function isDoubleFile(lines: unknown[], rows: unknown[]): boolean {
+  const population = new Map<number, number>();
+
+  for (let carIdx = 0; carIdx < rows.length; carIdx++) {
+    const line = lines[carIdx];
+
+    if (isLinedUp(line, rows[carIdx])) population.set(line, (population.get(line) ?? 0) + 1);
+  }
+
+  let columns = 0;
+
+  for (const count of population.values()) {
+    if (count >= MIN_LINE_POPULATION) columns++;
+  }
+
+  return columns > 1;
+}
+
+/**
+ * The player's own car index from session YAML, or `null` when it cannot be
+ * read. Exported (via the package index) because the scenario harness refuses
+ * to start a caution shortcut against a session THIS reader would reject — a
+ * restated rule there would drift the moment this one tightened, and admit
+ * the half-silent run the precondition exists to prevent.
+ */
+export function resolvePlayerCarIdx(sessionInfo: Record<string, unknown> | null): number | null {
   const driverInfo = sessionInfo?.DriverInfo as Record<string, unknown> | undefined;
   const idx = driverInfo?.DriverCarIdx;
 
@@ -157,16 +208,7 @@ export function resolveCautionLineup(
   if (!isLinedUp(myLine, myRow)) return null;
 
   const paceCarIdx = resolvePaceCarIdx(sessionInfo);
-
-  const distinctLines = new Set<number>();
-
-  for (let carIdx = 0; carIdx < rows.length; carIdx++) {
-    const line = lines[carIdx];
-
-    if (isLinedUp(line, rows[carIdx])) distinctLines.add(line);
-  }
-
-  const doubleFile = distinctLines.size > 1;
+  const doubleFile = isDoubleFile(lines, rows);
 
   // Only a car that is ITSELF in the lineup can be the one ahead. The filter is
   // load-bearing rather than tidy: a car sitting the re-form out carries −1, and

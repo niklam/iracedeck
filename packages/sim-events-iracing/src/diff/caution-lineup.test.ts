@@ -2,7 +2,7 @@ import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import { resolveCautionLineup } from "./caution-lineup.js";
+import { MIN_LINE_POPULATION, resolveCautionLineup } from "./caution-lineup.js";
 
 const ticks = JSON.parse(
   readFileSync(new URL("./__fixtures__/caution-restart-20260917.json", import.meta.url), "utf-8"),
@@ -108,6 +108,38 @@ describe("resolveCautionLineup — who to follow", () => {
     const leader = resolveCautionLineup(paceArrays(DOUBLE_FILE), session(1), false);
 
     expect(leader).toMatchObject({ followsPaceCar: true, isLeader: true, restartPosition: 1 });
+  });
+
+  it("does not read a single stray car on a second line as a double-file field", () => {
+    // One car carrying a line value of its own — a stray, or a mid-transition
+    // reading — must not flip the whole field onto the interleave: single file,
+    // car 3 restarts THIRD (row 3), and the interleave would call it fifth
+    // (2 × 3 − 1) and move `isLeader` off car 1. A column is a population.
+    const stray: Array<[number, number, number]> = [...SINGLE_FILE, [7, 1, 6]];
+
+    expect(resolveCautionLineup(paceArrays(stray), session(3), true)).toMatchObject({
+      doubleFile: false,
+      restartPosition: 3,
+      line: null,
+      isLeader: false,
+    });
+    expect(resolveCautionLineup(paceArrays(stray), session(1), true)).toMatchObject({
+      isLeader: true,
+      restartPosition: 1,
+    });
+  });
+
+  it("reads two cars on the second line as a column — the positive control for the stray-car rule", () => {
+    // The bar is a population of MIN_LINE_POPULATION, so the smallest genuine
+    // second column flips the field: car 3 is now line 0 row 3 → 2 × 3 − 1 = 5.
+    const column: Array<[number, number, number]> = [...SINGLE_FILE, [7, 1, 0], [8, 1, 1]];
+
+    expect(MIN_LINE_POPULATION).toBe(2);
+    expect(resolveCautionLineup(paceArrays(column), session(3), true)).toMatchObject({
+      doubleFile: true,
+      restartPosition: 5,
+      line: "inside",
+    });
   });
 
   it("claims no lead when the restart position cannot be read at all", () => {
