@@ -50,9 +50,15 @@ function runSequence(controller: MockSDKController, steps: readonly TelemetrySte
 /**
  * Starts the translator the way a tester sets the harness up before pressing
  * the button — the race session preset and the hot-lap telemetry preset, as
- * the shortcut's description asks — then records every flag and start-light
- * event from that point on. Whatever the presets themselves produce on the
- * seeding tick is not the button's doing, so it is not recorded.
+ * the shortcut's description asks — then records every flag, start-light and
+ * caution event from that point on. `caution.` and `paceCar.` are included
+ * alongside `flag.`/`startLight.` because issue #1127 moved the caution
+ * sequence's own reporting onto that namespace — `flag.yellow.raised` and
+ * `startLight.start-go.raised` no longer speak for a caution pickup or a
+ * restart, `caution.fieldCaught` and `caution.restarted` do, and a recorder
+ * that only watched the first two would show a caution running SILENT.
+ * Whatever the presets themselves produce on the seeding tick is not the
+ * button's doing, so it is not recorded.
  */
 function startTranslator(): { controller: MockSDKController; events: Published[] } {
   const controller = new MockSDKController();
@@ -67,7 +73,14 @@ function startTranslator(): { controller: MockSDKController; events: Published[]
   const events: Published[] = [];
 
   for (const name of ALL_EVENT_NAMES) {
-    if (!name.startsWith("flag.") && !name.startsWith("startLight.")) continue;
+    if (
+      !name.startsWith("flag.") &&
+      !name.startsWith("startLight.") &&
+      !name.startsWith("caution.") &&
+      !name.startsWith("paceCar.")
+    ) {
+      continue;
+    }
 
     getEventBus().subscribe(name, (ev) => events.push({ event: ev.event, data: ev.data }));
   }
@@ -125,7 +138,16 @@ describe('the "Caution → restart" shortcut (issue #1127)', () => {
       0x10040004, // Green
       0x10040000, // no flag shown
     ]);
-    expect(steps.every((s) => Object.keys(s.patch).length === 1)).toBe(true);
+  });
+
+  it("patches only the fields the caution sequence is documented to drive", () => {
+    // Grown from a bare `SessionFlags` replay (issue #1127): the first step
+    // also carries the pace lineup and pace mode so the follow-car lines have
+    // something to read — nothing here permits a fifth, undocumented key to
+    // creep in unnoticed.
+    const ALLOWED_PATCH_KEYS = new Set(["SessionFlags", "CarIdxPaceLine", "CarIdxPaceRow", "PaceMode"]);
+
+    expect(steps.every((s) => Object.keys(s.patch).every((key) => ALLOWED_PATCH_KEYS.has(key)))).toBe(true);
   });
 
   it("stays under half a minute, and listens past the validated-clear window after the restart", () => {
@@ -139,7 +161,7 @@ describe('the "Caution → restart" shortcut (issue #1127)', () => {
     expect(holdOf(steps.slice(restartAt))).toBeGreaterThan(YELLOW_CLEARED_HOLD_MS);
   });
 
-  it("reports the caution, the full-course yellow, the green-held and the start signal's go — and nothing after the restart", () => {
+  it("reports the caution-waving, the pickup, one-to-go, green-held and the restart — never the yellow scope or the start-go line", () => {
     const { controller, events } = startTranslator();
 
     runSequence(controller, steps);
@@ -147,14 +169,24 @@ describe('the "Caution → restart" shortcut (issue #1127)', () => {
     // cleared line arriving late is the same bug a beat later.
     runSequence(controller, [{ patch: {}, holdMs: 10_000 }]);
 
-    // No `flag.green.raised`: the restart carries iRacing's start signal, so
-    // the green is suppressed like a race start's and the start lights' go
-    // line is what plays. No `flag.yellow.cleared`: that is issue #1127.
+    // `flag.yellow.raised {scope:"full"}` does NOT fire for the pickup: the
+    // static caution rising here is the pace car catching the field it
+    // already waved at, not a fresh yellow — `caution.fieldCaught` is what
+    // reports it (`diff/flags.ts`'s `episodeAlreadyFullCourse` gate).
+    // `startLight.start-go.raised` does NOT fire at the restart either: the
+    // tick carries `StartGo` same as a race start would, but
+    // `state.cautionPhase` is still an active caution phase when
+    // `diffStartLights` reads it (it runs before `diffCaution` ends the
+    // episode on the very same tick), so the gantry line stands down and
+    // `caution.restarted` speaks for the restart instead. No
+    // `flag.green.raised` either: the restart carries iRacing's start
+    // signal, suppressing it like a race start's.
     expect(events).toEqual([
       { event: "flag.caution-waving.raised", data: {} },
-      { event: "flag.yellow.raised", data: { scope: "full" } },
+      { event: "caution.fieldCaught", data: { restartPosition: 7 } },
+      { event: "caution.oneLapToGreen", data: { file: "double" } },
       { event: "flag.green-held.raised", data: {} },
-      { event: "startLight.start-go.raised", data: {} },
+      { event: "caution.restarted", data: {} },
     ]);
   });
 

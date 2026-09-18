@@ -36,10 +36,12 @@ import { initializeEventBus } from "@iracedeck/event-bus";
 import type { SDKController } from "@iracedeck/iracing-sdk";
 import { createConsoleLogger, LogLevel } from "@iracedeck/logger";
 import {
+  getCautionLineup,
   getLiveGaps,
   getReadbackSnapshot,
   initializeSimEventsIracing,
   isPitActionsAllowed,
+  isUnderFullCourseCaution,
 } from "@iracedeck/sim-events-iracing";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -177,6 +179,16 @@ async function main(): Promise<void> {
     // ones — wiring them here is what lets the spoken "gap is N seconds"
     // readout clause be auditioned at all (issue #933).
     getLiveGaps: () => getLiveGaps(),
+    // The full-course caution family (issue #1127) reads the lineup and the
+    // caution phase straight off the same real translator, exactly as every
+    // plugin's `plugin.ts` wires them. Without these two the family's
+    // `speakGate` (`getUnderFullCourseCaution`) never admits a single caution
+    // line, and every `caution.*` script variable (`getCautionLineup`)
+    // resolves to nothing — the "Caution → …" shortcuts would look wired but
+    // play no follow/field-caught/lineup-changed/extra-lap/restart lines at
+    // all.
+    getCautionLineup: () => getCautionLineup(),
+    getUnderFullCourseCaution: () => isUnderFullCourseCaution(),
   });
 
   // ── Callout scripts (#1064) ──────────────────────────────────────────────

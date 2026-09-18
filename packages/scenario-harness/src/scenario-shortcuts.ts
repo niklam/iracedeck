@@ -11,7 +11,10 @@
  * stable `category` string and add at least one entry under it. Order in
  * the array drives display order in the UI.
  */
-import type { QualifyingInvalidationSnapshot } from "@iracedeck/audio-scenarios/pit-crew";
+import {
+  CAUTION_LINEUP_CHANGE_DELAY_MS,
+  type QualifyingInvalidationSnapshot,
+} from "@iracedeck/audio-scenarios/pit-crew";
 import {
   OpponentPenaltyFlag,
   type RaceStartSnapshot,
@@ -19,7 +22,7 @@ import {
   type StartCountdownSeconds,
   TrackWetness,
 } from "@iracedeck/event-bus";
-import { Flags, PitSvStatus } from "@iracedeck/iracing-sdk";
+import { Flags, PaceMode, PitSvStatus } from "@iracedeck/iracing-sdk";
 import { YELLOW_CLEARED_HOLD_MS } from "@iracedeck/sim-events-iracing";
 
 /** Fields every shortcut carries, whatever it drives. */
@@ -335,6 +338,28 @@ const START_GO_MS = 5000;
 const RESTART_LISTEN_MS = YELLOW_CLEARED_HOLD_MS + 3000;
 
 /**
+ * The double-file caution lineup the three shortcuts below drive
+ * `resolveCautionLineup()` with (issue #1127): the pace car anchored at line
+ * 0, row 0 — the ONE thing `resolveCautionLineup` needs to answer a restart
+ * position at all — and the rest of an 18-car field interleaved two-wide
+ * behind it. Indexed against the race session preset's own roster (pace car
+ * at index 0, the player at index 7, car number "42"), so a shortcut that
+ * applies that preset first gets a lineup where the follow-car lines have a
+ * real car number to name rather than resolving to nothing.
+ *
+ * Not measured — the capture this file is otherwise modelled on ran a
+ * 21-car field, and its own pace arrays live in
+ * `packages/sim-events-iracing/src/diff/__fixtures__/caution-restart-20260917.json`
+ * against a roster this harness does not share. The interleave itself
+ * follows the documented formula in `diff/caution-lineup.ts` (line 0 row R →
+ * position `2R − 1`, line 1 row R → position `2R + 2`), so the player
+ * (index 7, line 0, row 4) restarts 7th, one row behind car number 8 (index
+ * 5, line 0, row 3).
+ */
+const CAUTION_RESTART_PACE_LINE = [0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0];
+const CAUTION_RESTART_PACE_ROW = [0, 1, 0, 2, 1, 3, 2, 4, 3, 5, 4, 6, 5, 7, 6, 8, 7, 9];
+
+/**
  * A full-course caution and its restart, driven through the TRANSLATOR
  * (issue #1127) and modelled on one captured at an oval
  * (`local/telemetry-watch-20260917-191825-092.jsonl`: Homestead-Miami, an AI
@@ -347,29 +372,166 @@ const RESTART_LISTEN_MS = YELLOW_CLEARED_HOLD_MS + 3000;
  * leaves the harness where the button can be pressed again. Only the hold
  * times are compressed.
  *
- * What should be heard, with the race session and hot-lap presets applied: the
- * caution-waving line, the full-course yellow, the green-held heads-up and the
- * start lights' "Go, go, go!" — then nothing. The green-flag line stays silent
- * because the restart carries iRacing's start signal, which suppresses it the
- * same way it does at a race start. Before #1127 "Yellow cleared." followed
- * three seconds into the restart, and no bus-event shortcut can show that:
- * `flag.yellow.cleared` published by hand speaks the line whatever the
- * translator decided.
+ * Alongside the captured flags, the first step also patches
+ * `CarIdxPaceLine` / `CarIdxPaceRow` ({@link CAUTION_RESTART_PACE_LINE} /
+ * {@link CAUTION_RESTART_PACE_ROW}) and `PaceMode` — nothing the capture
+ * measured, but nothing the follow-car lines can speak without: every
+ * `caution.*` script variable (`caution.followCarNumber`,
+ * `caution.restartPosition`, `caution.isDoubleFile`, …) reads the pace
+ * arrays through `getCautionLineup()`, which returns `null` outright without
+ * them — a shortcut driving only `SessionFlags` leaves those lines with
+ * nothing to say. The patch persists across the later steps (each one only
+ * touches `SessionFlags`), so it needs setting once.
+ *
+ * What should be heard, with the race session and hot-lap presets applied:
+ * the caution-waving line, the follow line naming car number 8, the
+ * field-caught line with the restart position, the one-to-go line, the
+ * green-held heads-up — then SILENCE through the restart: no green-flag line
+ * (the start signal suppresses it, same as a race start), no "Go, go, go!"
+ * (the restart's own `caution.restarted` line owns this moment now — the
+ * start-light family stands down for the whole episode so a caution restart
+ * is never told apart from a race start by ear), and no "Yellow cleared."
+ * (hearing one is issue #1127 back). No bus-event shortcut can show any of
+ * that: publishing an event by hand speaks whatever line it names regardless
+ * of what the translator actually decided.
  */
 const CAUTION_RESTART_SHORTCUT: TelemetrySequenceShortcut = {
   id: "flag-caution-restart",
   category: "Flags",
   label: "Caution → restart",
   description:
-    'Drives the TRANSLATOR through a full-course caution and its restart, replaying the flag states of one captured at an oval, about 27 s end to end: caution waving, static caution, one to green, green held, then the restart (sent with iRacing\'s start signal), then racing with no flag. Apply the race session preset and the hot-lap telemetry preset first. Expect the caution-waving line, the full-course yellow line, the green-held line and "Go, go, go!" — then SILENCE: no green-flag line (the start signal suppresses it) and no "Yellow cleared." (hearing one is issue #1127 back). Needs the mock SDK CONNECTED; with it disconnected the translator sees no ticks and the button is silent for the wrong reason.',
+    'Drives the TRANSLATOR through a full-course caution and its restart, replaying the flag states of one captured at an oval, about 27 s end to end, plus a double-file pace lineup (car "42" restarting 7th, behind car number 8) so the follow-car lines have something to say. Apply the race session preset (its 18-car roster supplies the pace car and every car number) and the hot-lap telemetry preset first. Expect the caution-waving line, the follow line ("...behind car number eight"), the field-caught line with the restart position, the one-to-go line, the green-held line — then SILENCE: no green-flag line (the start signal suppresses it), no "Go, go, go!" (the restart\'s own line owns this moment — issue #1127), and no "Yellow cleared." (hearing one is issue #1127 back). Needs the mock SDK CONNECTED; with it disconnected the translator sees no ticks and the button is silent for the wrong reason.',
   telemetrySequence: [
-    { patch: { SessionFlags: RACING_NO_FLAG | Flags.CautionWaving }, holdMs: CAUTION_WAVING_MS },
+    {
+      patch: {
+        SessionFlags: RACING_NO_FLAG | Flags.CautionWaving,
+        CarIdxPaceLine: CAUTION_RESTART_PACE_LINE,
+        CarIdxPaceRow: CAUTION_RESTART_PACE_ROW,
+        PaceMode: PaceMode.DoubleFileRestart,
+      },
+      holdMs: CAUTION_WAVING_MS,
+    },
     { patch: { SessionFlags: RACING_NO_FLAG | Flags.Caution }, holdMs: CAUTION_HOLD_MS },
     { patch: { SessionFlags: RACING_NO_FLAG | Flags.Caution | Flags.OneLapToGreen }, holdMs: ONE_TO_GO_MS },
     {
       patch: { SessionFlags: RACING_NO_FLAG | Flags.Caution | Flags.OneLapToGreen | Flags.GreenHeld },
       holdMs: GREEN_HELD_MS,
     },
+    { patch: { SessionFlags: Flags.Green | Flags.Servicible | Flags.StartGo }, holdMs: START_GO_MS },
+    { patch: { SessionFlags: RACING_NO_FLAG | Flags.Green }, holdMs: RESTART_LISTEN_MS },
+    { patch: { SessionFlags: RACING_NO_FLAG } },
+  ],
+};
+
+/**
+ * Single-file pace lineup shared by the two shortcuts below — the pace car
+ * at row 0, everyone else in arrival order (row = `CarIdx`, so the player at
+ * index 7 restarts 7th, one row behind car number 11 at index 6). Simpler
+ * than {@link CAUTION_RESTART_PACE_LINE} / {@link CAUTION_RESTART_PACE_ROW}
+ * on purpose: single file needs no line-0/line-1 interleave to reason about,
+ * and neither shortcut below is auditioning the double-file restart — that's
+ * what `CAUTION_RESTART_SHORTCUT` is for.
+ */
+const CAUTION_SINGLE_FILE_LINE = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+const CAUTION_SINGLE_FILE_ROW = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17];
+
+/**
+ * The lineup after car 11 (index 6) and car 7 (index 9) swap rows — a car
+ * pitted and the field re-formed. Only the player's line of sight changes:
+ * nobody's OWN row moves, but the car directly ahead of the player (index 7,
+ * row 7) is now whoever holds row 6, which used to be car 11 and is now car
+ * 7.
+ */
+const CAUTION_LINEUP_CHANGED_ROW = [0, 1, 2, 3, 4, 5, 9, 7, 8, 6, 10, 11, 12, 13, 14, 15, 16, 17];
+
+/**
+ * How long "Caution → lineup change" holds after swapping the pace rows,
+ * before moving the caution on — long enough for the engine's own
+ * {@link CAUTION_LINEUP_CHANGE_DELAY_MS} decision delay plus the changed-car
+ * line and its radio frame.
+ */
+const LINEUP_CHANGE_LISTEN_MS = CAUTION_LINEUP_CHANGE_DELAY_MS + 3500;
+
+/**
+ * The car ahead changing mid-caution (issue #1127) — a case the 2026-09-17
+ * oval capture never produced (its own field re-form landed on the SAME tick
+ * as one-to-go, which is why `diff/caution.ts` holds the decision behind
+ * `CAUTION_LINEUP_CHANGE_DELAY_MS` in the first place — see the module doc on
+ * `buildCautionContracts` in `@iracedeck/audio-scenarios/pit-crew`), so this
+ * shortcut drives it directly: the pace rows change while the flags stay
+ * static, well before one-to-go ever shows.
+ *
+ * Single file throughout ({@link CAUTION_SINGLE_FILE_LINE} /
+ * {@link CAUTION_SINGLE_FILE_ROW}), because the double-file interleave is
+ * `CAUTION_RESTART_SHORTCUT`'s job, not this one's. Ends with the same
+ * one-to-go → restart tail as that shortcut, so a caution driven off this
+ * button doesn't leave the harness stuck under a flag.
+ */
+const CAUTION_LINEUP_CHANGE_SHORTCUT: TelemetrySequenceShortcut = {
+  id: "flag-caution-lineup-change",
+  category: "Flags",
+  label: "Caution → lineup change",
+  description:
+    'Drives the TRANSLATOR through a full-course caution where the car ahead changes mid-caution — a car pitted and the field re-formed, single file. Apply the race session preset (its 18-car roster supplies the pace car and every car number) and the hot-lap telemetry preset first. Expect the caution-waving line, the follow line ("...behind car number eleven"), the field-caught line — then, a few seconds later, the lineup-changed line ("...now behind car number seven"), followed by the one-to-go line and the restart (silent, same as "Caution → restart"). Needs the mock SDK CONNECTED; with it disconnected the translator sees no ticks and the button is silent for the wrong reason.',
+  telemetrySequence: [
+    {
+      patch: {
+        SessionFlags: RACING_NO_FLAG | Flags.CautionWaving,
+        CarIdxPaceLine: CAUTION_SINGLE_FILE_LINE,
+        CarIdxPaceRow: CAUTION_SINGLE_FILE_ROW,
+      },
+      holdMs: CAUTION_WAVING_MS,
+    },
+    { patch: { SessionFlags: RACING_NO_FLAG | Flags.Caution }, holdMs: CAUTION_HOLD_MS },
+    { patch: { CarIdxPaceRow: CAUTION_LINEUP_CHANGED_ROW }, holdMs: LINEUP_CHANGE_LISTEN_MS },
+    { patch: { SessionFlags: RACING_NO_FLAG | Flags.Caution | Flags.OneLapToGreen }, holdMs: ONE_TO_GO_MS },
+    { patch: { SessionFlags: Flags.Green | Flags.Servicible | Flags.StartGo }, holdMs: START_GO_MS },
+    { patch: { SessionFlags: RACING_NO_FLAG | Flags.Green }, holdMs: RESTART_LISTEN_MS },
+    { patch: { SessionFlags: RACING_NO_FLAG } },
+  ],
+};
+
+/**
+ * Leader (index 1 — single file, row 1, so the pace-lineup fallback in
+ * `diff/caution.ts` reads it as the car whose crossings the caution's laps
+ * are counted in) `CarIdxLapCompleted` readings for "Caution → extra lap":
+ * picked up at lap 5, then advanced to 7 with no one-to-go flag raised in
+ * between. `diff/caution.ts` reads that absence — a second crossing past the
+ * pickup with the flag still down — as the caution running past the two laps
+ * it defaults to, and reports `caution.extraLap`.
+ */
+const CAUTION_EXTRA_LAP_BASELINE = [5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5];
+const CAUTION_EXTRA_LAP_ADVANCED = [5, 7, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5];
+
+/**
+ * A caution extended past its default two laps (issue #1127) — the other
+ * case the oval capture never produced (both its cautions took the flag at
+ * their first opportunity). Single file throughout, and shares
+ * {@link CAUTION_SINGLE_FILE_LINE} / {@link CAUTION_SINGLE_FILE_ROW} with
+ * `CAUTION_LINEUP_CHANGE_SHORTCUT` above, plus the leader's lap-completed
+ * count so the pickup and the extra crossing have something to count from.
+ * Ends with the same one-to-go → restart tail as the other two caution
+ * shortcuts.
+ */
+const CAUTION_EXTRA_LAP_SHORTCUT: TelemetrySequenceShortcut = {
+  id: "flag-caution-extra-lap",
+  category: "Flags",
+  label: "Caution → extra lap",
+  description:
+    'Drives the TRANSLATOR through a full-course caution that runs past its default two laps — the leader crosses the line under caution a second time with the one-to-go flag still down. Apply the race session preset (its 18-car roster supplies the pace car and every car number) and the hot-lap telemetry preset first. Expect the caution-waving line, the follow line, the field-caught line, then — after the leader\'s extra crossing — the extra-lap line, followed by the one-to-go line and the restart (silent, same as "Caution → restart"). Needs the mock SDK CONNECTED; with it disconnected the translator sees no ticks and the button is silent for the wrong reason.',
+  telemetrySequence: [
+    {
+      patch: {
+        SessionFlags: RACING_NO_FLAG | Flags.CautionWaving,
+        CarIdxPaceLine: CAUTION_SINGLE_FILE_LINE,
+        CarIdxPaceRow: CAUTION_SINGLE_FILE_ROW,
+        CarIdxLapCompleted: CAUTION_EXTRA_LAP_BASELINE,
+      },
+      holdMs: CAUTION_WAVING_MS,
+    },
+    { patch: { SessionFlags: RACING_NO_FLAG | Flags.Caution }, holdMs: CAUTION_HOLD_MS },
+    { patch: { CarIdxLapCompleted: CAUTION_EXTRA_LAP_ADVANCED }, holdMs: CAUTION_WAVING_MS },
+    { patch: { SessionFlags: RACING_NO_FLAG | Flags.Caution | Flags.OneLapToGreen }, holdMs: ONE_TO_GO_MS },
     { patch: { SessionFlags: Flags.Green | Flags.Servicible | Flags.StartGo }, holdMs: START_GO_MS },
     { patch: { SessionFlags: RACING_NO_FLAG | Flags.Green }, holdMs: RESTART_LISTEN_MS },
     { patch: { SessionFlags: RACING_NO_FLAG } },
@@ -593,6 +755,8 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   flag("Yellow Cleared", "flag.yellow.cleared"),
   flag("Green", "flag.green.raised"),
   CAUTION_RESTART_SHORTCUT,
+  CAUTION_LINEUP_CHANGE_SHORTCUT,
+  CAUTION_EXTRA_LAP_SHORTCUT,
   flag("White", "flag.white.raised"),
   flag("White — Last Lap Started", "flag.white-last-lap.raised"),
   flag("Checkered", "flag.checkered.raised"),
