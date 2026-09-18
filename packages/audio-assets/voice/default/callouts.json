@@ -218,8 +218,8 @@
       ]
     },
     "pit-crew.caution-follow": {
-      "comment": "Who to line up behind, a couple of seconds after the caution announcement, read from the pace rows at the moment it is spoken. With nobody ahead in your own line it is the pace car — \"You're leading them — it's just you and the pace car.\" — and otherwise \"Line up behind\" and the number — a clip of its own that says \"car\" and the number, spoken the way the sim spells it. The lead-in and the number are one optional clause, so a car the session cannot name says nothing rather than a sentence with a hole in it.",
-      "test": "Harness → Flags → Caution → restart (or Caution → lineup change, Caution → extra lap), with the race session and hot-lap presets — expect \"…behind car eight\" about two and a half seconds after the caution line. In-sim: a full-course caution in a race, from anywhere but the lead.",
+      "comment": "Who to line up behind, a couple of seconds after the caution announcement, read from the pace rows at the moment it is spoken. With nobody ahead in your own line it is the pace car — \"You're leading them — it's just you and the pace car.\" — and otherwise \"Line up behind\" and the number — a clip of its own that says \"car\" and the number, spoken the way the sim spells it. A car ahead the session cannot name gets \"Line up behind the car ahead.\" instead: the lead-in and the number are one optional clause, and an optional clause alone expands to nothing, so the call asks caution.hasFollowCarNumber first rather than leave the driver with no instruction at all.",
+      "test": "Harness → Flags → Caution → restart (or Caution → lineup change, Caution → extra lap), with the race session and hot-lap presets — expect \"…behind car eight\" about two and a half seconds after the caution line; with the practice preset (a player car but an empty driver list) the car ahead cannot be named, so expect \"Line up behind the car ahead.\" In-sim: a full-course caution in a race, from anywhere but the lead.",
       "sequence": [
         {
           "if": "caution.followsPaceCar",
@@ -228,9 +228,17 @@
           ],
           "else": [
             {
-              "optional": [
-                "pool:caution/follow-behind",
-                "{{caution.followCarNumber}}"
+              "if": "caution.hasFollowCarNumber",
+              "then": [
+                {
+                  "optional": [
+                    "pool:caution/follow-behind",
+                    "{{caution.followCarNumber}}"
+                  ]
+                }
+              ],
+              "else": [
+                "pool:caution/follow-noname"
               ]
             }
           ]
@@ -335,8 +343,8 @@
       ]
     },
     "pit-crew.caution-lineup-changed": {
-      "comment": "The car you line up behind changed mid-caution — someone pitted, or the field re-formed. \"Change —\" then, with only the pace car ahead now, \"you're at the front now, just the pace car ahead\"; otherwise the lane and the new car ahead, in the same three shapes as the one-to-go line (inside, outside, or no lane), each an optional clause with its number.",
-      "test": "Harness → Flags → Caution → lineup change, with the race session and hot-lap presets — expect \"Change — you're behind car seven\" a second and a half after the reorder. In-sim: pit under caution, or a car ahead of you pitting, before the one-to-go flag.",
+      "comment": "The car you line up behind changed mid-caution — someone pitted, or the field re-formed. \"Change —\" then, with only the pace car ahead now, \"you're at the front now, just the pace car ahead\"; otherwise the lane and the new car ahead, in the same three shapes as the one-to-go line (inside, outside, or no lane), each an optional clause with its number. A new car ahead the session cannot name gets \"The car ahead of you has changed.\" — asked through caution.hasFollowCarNumber before the lane is chosen, because an optional clause alone expands to nothing. That fallback deliberately drops the lane even where caution.line would answer: four more clips to keep it on a rare path is not proportionate.",
+      "test": "Harness → Flags → Caution → lineup change, with the race session and hot-lap presets — expect \"Change — you're behind car seven\" a second and a half after the reorder; with the practice preset (a player car but an empty driver list) the new car ahead cannot be named, so expect \"The car ahead of you has changed.\" In-sim: pit under caution, or a car ahead of you pitting, before the one-to-go flag.",
       "sequence": [
         {
           "if": "caution.followsPaceCar",
@@ -345,33 +353,41 @@
           ],
           "else": [
             {
-              "case": "caution.line",
-              "of": {
-                "inside": [
-                  {
-                    "optional": [
-                      "pool:caution/lineup-changed-inside",
-                      "{{caution.followCarNumber}}"
+              "if": "caution.hasFollowCarNumber",
+              "then": [
+                {
+                  "case": "caution.line",
+                  "of": {
+                    "inside": [
+                      {
+                        "optional": [
+                          "pool:caution/lineup-changed-inside",
+                          "{{caution.followCarNumber}}"
+                        ]
+                      }
+                    ],
+                    "outside": [
+                      {
+                        "optional": [
+                          "pool:caution/lineup-changed-outside",
+                          "{{caution.followCarNumber}}"
+                        ]
+                      }
+                    ],
+                    "default": [
+                      {
+                        "optional": [
+                          "pool:caution/lineup-changed-plain",
+                          "{{caution.followCarNumber}}"
+                        ]
+                      }
                     ]
                   }
-                ],
-                "outside": [
-                  {
-                    "optional": [
-                      "pool:caution/lineup-changed-outside",
-                      "{{caution.followCarNumber}}"
-                    ]
-                  }
-                ],
-                "default": [
-                  {
-                    "optional": [
-                      "pool:caution/lineup-changed-plain",
-                      "{{caution.followCarNumber}}"
-                    ]
-                  }
-                ]
-              }
+                }
+              ],
+              "else": [
+                "pool:caution/lineup-changed-noname"
+              ]
             }
           ]
         }

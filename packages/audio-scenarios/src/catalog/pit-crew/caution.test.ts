@@ -899,3 +899,92 @@ describe("the one-to-go call in the bundled voice, when the car ahead cannot be 
     expect(spoken({ ...LINEUP, followsPaceCar: true, isLeader: false, followCarNumber: null })).toEqual([ONE_TO_GO]);
   });
 });
+
+describe("the follow and lineup-change calls in the bundled voice, when the car ahead cannot be named", () => {
+  // The same defect as the one-to-go call's, in the two calls that had no
+  // numberless wording in the reference voice until the `*-noname` clips were
+  // cut: an `else` branch holding nothing but an optional clause expands to
+  // NOTHING when the number in it resolves to null. The rule the fix rests
+  // on: an optional clause is safe only when something outside it still
+  // speaks. Driven through the real engine against the bundled script and
+  // manifest, because only the expansion can show "a numberless wording"
+  // apart from "no callout at all".
+  const VOICE = "default";
+  const CAR_09 = `voice/${VOICE}/car-number/09.mp3`;
+
+  /** Everything the Voice channel plays for one fire of the contract, with the lineup given. */
+  function spoken(id: "follow" | "lineup-changed", lineup: CautionLineup | null): string[] {
+    const bus = createMockBus();
+    const audio = createFakeAudio();
+    const engine = initializeAudioScenarios(bus, audio, BUNDLED_MANIFEST, mockLogger as never, () => VOICE);
+
+    registerCautionVocabulary(engine, () => lineup);
+    engine.defineContract(contract(id));
+    engine.setScripts(new Map([[VOICE, BUNDLED_SCRIPT]]));
+
+    bus.publish(event(id));
+
+    // Both contracts hold before deciding; the lineup is read when the hold
+    // ends, not at the event.
+    vi.advanceTimersByTime(Math.max(CAUTION_FOLLOW_DELAY_MS, CAUTION_LINEUP_CHANGE_DELAY_MS) + 1);
+
+    // The radio frame's open tick plays on SFX first; each Voice clip plays
+    // once the one before it completes.
+    for (let i = 0; i < 10; i++) {
+      audio._triggerChannelEnd(AudioChannel.SFX);
+      audio._triggerChannelEnd(AudioChannel.Voice);
+    }
+
+    return audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path);
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    // Every pool here has more than one take; pin the draw to the first so
+    // the expectations can name the clip rather than match a pattern.
+    vi.spyOn(Math, "random").mockReturnValue(0);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+    _resetAudioScenarios();
+  });
+
+  describe("the follow call", () => {
+    it("still says who to line up behind with a car ahead the session cannot name — never nothing", () => {
+      expect(spoken("follow", { ...LINEUP, followsPaceCar: false, followCarNumber: null })).toEqual([
+        `voice/${VOICE}/caution/follow-noname-01.mp3`,
+      ]);
+    });
+
+    it("names the car when it can — the positive control, the number-bearing branch unchanged", () => {
+      expect(spoken("follow", { ...LINEUP, followsPaceCar: false, followCarNumber: "09" })).toEqual([
+        `voice/${VOICE}/caution/follow-behind-01.mp3`,
+        CAR_09,
+      ]);
+    });
+  });
+
+  describe("the lineup-change call", () => {
+    it("still says the car ahead changed with a car ahead the session cannot name — never nothing, and without the lane", () => {
+      // The lane is deliberately dropped on this path even though
+      // `caution.line` would answer: the fallback sits outside the case, and
+      // four more clips to keep the lane on a rare path is not proportionate.
+      expect(
+        spoken("lineup-changed", { ...LINEUP, followsPaceCar: false, followCarNumber: null, line: "inside" }),
+      ).toEqual([
+        `voice/${VOICE}/caution/lineup-changed-noname-01.mp3`,
+      ]);
+    });
+
+    it("names the lane and the car when it can — the positive control, the number-bearing branch unchanged", () => {
+      expect(
+        spoken("lineup-changed", { ...LINEUP, followsPaceCar: false, followCarNumber: "09", line: "inside" }),
+      ).toEqual([
+        `voice/${VOICE}/caution/lineup-changed-inside-01.mp3`,
+        CAR_09,
+      ]);
+    });
+  });
+});
