@@ -8771,25 +8771,14 @@
         "seed": 1
       },
       {
-        "name": "field-caught-01",
-        "text": "We've caught up with the pace car. <break time=\"0.3s\" /> This'll take a couple of laps.",
+        "name": "two-to-green-01",
+        "text": "Two to green.",
         "seed": 1
       },
       {
-        "name": "field-caught-02",
-        "text": "Field's all together behind the pace car. <break time=\"0.3s\" /> Couple of laps, probably.",
+        "name": "two-to-green-02",
+        "text": "Two laps to green.",
         "seed": 1
-      },
-      {
-        "name": "field-caught-03",
-        "text": "We're all packed up now. <break time=\"0.3s\" /> Expect a lap or two of this.",
-        "seed": 2
-      },
-      {
-        "name": "restart-position-01",
-        "text": "You'll restart",
-        "seed": 1,
-        "next_text": "fourteen"
       },
       {
         "name": "restart-behind-01",
@@ -17966,13 +17955,10 @@
       "sequence": ["pool:caution/pace-car-out"]
     },
     "pit-crew.caution-field-caught": {
-      "comment": "The pace car has picked up the field: the line itself, with its \"couple of laps\" hedge, then two optional clauses — the position you would restart in (\"You'll restart\" and the position, read from the pace rows) and the car ahead of you (\"Lining up behind\" and the number, only when there is one — with the pace car the only thing ahead the clause is left out). Each clause is a whole sentence, so a value the session cannot supply drops that clause alone.",
-      "test": "Harness → Flags → Caution → restart, with the race session and hot-lap presets — expect the pickup line, \"You'll restart seven\" and \"behind car eight\". In-sim: the waving caution goes static as the pace car gathers the field, about a lap and a half in.",
+      "comment": "Two to green — the pace car has finished its pickup lap, which on an oval is one leader crossing before the one-to-go flag. \"Two to green.\" always speaks; then, only with a car ahead in your own line, an optional clause naming it (\"Make sure to follow\" and the number — with the pace car the only thing ahead the clause is left out). No position here: that moved to pit-crew.caution-position, on the last lap. The optional clause is safe because the sentence outside it always speaks — the rule an optional clause has to meet. On a road course the contract keeps this silent (one to green rises on the same tick there), so the pack never chooses.",
+      "test": "Harness → Flags → Caution → restart, with the race session and hot-lap presets — expect \"Two to green.\" and \"…follow car eight\" a few seconds after the pace-car line. In-sim: the waving caution goes static as the pace car gathers the field, about a lap and a half in, on an oval.",
       "sequence": [
-        "pool:caution/field-caught",
-        {
-          "optional": ["pool:caution/restart-position", "{{caution.restartPosition}}"]
-        },
+        "pool:caution/two-to-green",
         {
           "if": "!caution.followsPaceCar",
           "then": [
@@ -18067,6 +18053,15 @@
               "else": ["pool:caution/lineup-changed-noname"]
             }
           ]
+        }
+      ]
+    },
+    "pit-crew.caution-position": {
+      "comment": "The position you would restart in, about a third of the way into the last caution lap — the normal position wording (\"We're currently\" and the number, read from the pace rows at speak time). The WHOLE call is one optional clause, and here that is correct rather than the empty-sequence defect the other caution entries guard against: a position call with no position — no pace row for the player, or a field past the spoken range — has nothing true to say, so saying nothing IS the right sentence. Do not add a fallback wording outside the clause.",
+      "test": "Harness → Flags → Caution → restart, with the race session and hot-lap presets — expect \"We're currently seven\" a couple of seconds after the one-to-go line; with the practice preset (no pace car in session info) the pace rows carry no position and the call is silent. In-sim: about 35% into the one-to-go lap.",
+      "sequence": [
+        {
+          "optional": ["pool:position-intro-worse/currently", "{{caution.restartPosition}}"]
         }
       ]
     },
