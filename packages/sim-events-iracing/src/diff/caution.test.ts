@@ -167,6 +167,20 @@ describe("pace car edges", () => {
     expect(events).toEqual([]);
   });
 
+  it("keeps its baseline through a tick that cannot read the pace car, so an edge straddling the gap still reports", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+
+    diffCaution(state, paceTick(3), sessionInfo, null, emit); // seed: on track
+    // Session info drops out for a tick — nothing names the pace car, so the
+    // surface is unreadable. That is a gap, not a reading: a baseline written
+    // to null here would make the next tick a fresh seed and swallow the edge.
+    diffCaution(state, paceTick(3), null, null, emit);
+    diffCaution(state, paceTick(2), sessionInfo, null, emit); // heads for the pits
+
+    expect(events).toEqual([{ event: "paceCar.off", data: {} }]);
+  });
+
   it("matches the captured pace-car edges: deployed twice, off twice", () => {
     const state = createInitialState();
     const { events, emit } = collect();
@@ -208,7 +222,7 @@ describe("the caution episode", () => {
     expect(state.cautionPhase).toBe("caught");
   });
 
-  it("reports one to go, carrying the file", () => {
+  it("reports one to go when the flag rises on a caught field", () => {
     const state = createInitialState();
     const { events, emit } = collect();
 
@@ -219,20 +233,61 @@ describe("the caution episode", () => {
 
     expect(events).toEqual([
       { event: "caution.fieldCaught", data: { restartPosition: null } },
-      { event: "caution.oneLapToGreen", data: { file: "double" } },
+      { event: "caution.oneLapToGreen", data: {} },
     ]);
+    expect(state.cautionPhase).toBe("one-to-go");
   });
 
-  it("reports a single-file restart as single file", () => {
+  it("returns to caught when one to go is withdrawn with the caution still out, and reports the real one to go later", () => {
     const state = createInitialState();
     const { events, emit } = collect();
 
     diffCaution(state, flagTick(RACING), sessionInfo, null, emit); // seed
-    diffCaution(state, flagTick(WAVING), sessionInfo, null, emit);
-    diffCaution(state, flagTick(STATIC), sessionInfo, null, emit);
-    diffCaution(state, flagTick(ONE_TO_GO, { PaceMode: 2 }), sessionInfo, null, emit);
+    diffCaution(state, flagTick(WAVING, leader(3, 10)), sessionInfo, null, emit);
+    diffCaution(state, flagTick(STATIC, leader(3, 10)), sessionInfo, null, emit); // the pickup
+    diffCaution(state, flagTick(STATIC, leader(3, 11)), sessionInfo, null, emit); // its own crossing
+    diffCaution(state, flagTick(ONE_TO_GO, leader(3, 12)), sessionInfo, null, emit); // one to go, at the crossing
+    // A waved-off restart: the flag comes down, the caution stays. The phase
+    // must not latch at "one-to-go" — every later branch needs "caught".
+    diffCaution(state, flagTick(STATIC, leader(3, 12)), sessionInfo, null, emit);
 
-    expect(events.at(-1)).toEqual({ event: "caution.oneLapToGreen", data: { file: "single" } });
+    expect(state.cautionPhase).toBe("caught");
+
+    // The field goes around again — a lap the caution did not need…
+    diffCaution(state, flagTick(STATIC, leader(3, 13)), sessionInfo, null, emit);
+    // …and the flag that comes with the NEXT crossing is the real one to go.
+    diffCaution(state, flagTick(ONE_TO_GO, leader(3, 14)), sessionInfo, null, emit);
+
+    expect(events).toEqual([
+      { event: "caution.fieldCaught", data: { restartPosition: null } },
+      { event: "caution.oneLapToGreen", data: {} },
+      { event: "caution.extraLap", data: {} },
+      { event: "caution.oneLapToGreen", data: {} },
+    ]);
+    expect(state.cautionPhase).toBe("one-to-go");
+  });
+
+  it("reports the pickup once per caution, even when the waving bit re-raises after it", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+
+    diffCaution(state, flagTick(RACING), sessionInfo, null, emit); // seed
+    diffCaution(state, flagTick(WAVING, leader(3, 10)), sessionInfo, null, emit);
+    diffCaution(state, flagTick(STATIC, leader(3, 10)), sessionInfo, null, emit); // the pickup
+    diffCaution(state, flagTick(STATIC, leader(3, 11)), sessionInfo, null, emit); // its own crossing, consumed
+    // The waving bit re-raises mid-caution (per-zone, like the yellow one) and
+    // settles again. Neither tick is a new caution: no second pickup, and the
+    // crossing baseline must stay where the first pickup left it — a
+    // re-anchored one would swallow the genuine crossing below.
+    diffCaution(state, flagTick(WAVING, leader(3, 11)), sessionInfo, null, emit);
+    diffCaution(state, flagTick(STATIC, leader(3, 11)), sessionInfo, null, emit);
+    diffCaution(state, flagTick(STATIC, leader(3, 12)), sessionInfo, null, emit); // a lap the caution did not need
+
+    expect(events).toEqual([
+      { event: "caution.fieldCaught", data: { restartPosition: null } },
+      { event: "caution.extraLap", data: {} },
+    ]);
+    expect(state.cautionPhase).toBe("caught");
   });
 
   it("does not count the leader crossing the pickup itself landed on", () => {
@@ -374,7 +429,7 @@ describe("the caution episode", () => {
     // holds the green without it — so one to go lands on that tick.
     expect(events).toEqual([
       { event: "caution.fieldCaught", data: { restartPosition: null } },
-      { event: "caution.oneLapToGreen", data: { file: "single" } },
+      { event: "caution.oneLapToGreen", data: {} },
       { event: "caution.restarted", data: {} },
     ]);
     expect(state.cautionPhase).toBe("none");
@@ -416,11 +471,6 @@ describe("the caution episode", () => {
       "caution.oneLapToGreen",
       "paceCar.off",
       "caution.restarted",
-    ]);
-    // Both restarts re-formed the field double file (`PaceMode` 3 at each rise).
-    expect(events.filter((e) => e.event === "caution.oneLapToGreen")).toEqual([
-      { event: "caution.oneLapToGreen", data: { file: "double" } },
-      { event: "caution.oneLapToGreen", data: { file: "double" } },
     ]);
     // And each one at the `SessionTime` the capture puts it at — the first
     // caution runs its default two laps, the second takes the `!pacelaps +1`

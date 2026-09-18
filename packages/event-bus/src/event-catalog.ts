@@ -63,9 +63,6 @@ export type FlagScope = "local" | "full";
 /** Which lane a car lines up in on a double-file restart. `inside` is pace line 0 (measured on an oval; see the #1127 spec). */
 export type CautionLine = "inside" | "outside";
 
-/** How the field lines up for a restart — single file, or two columns. */
-export type PaceFile = "single" | "double";
-
 /** Which standings neighbor a gap event refers to (issue #933). */
 export type GapSide = "ahead" | "behind";
 
@@ -487,8 +484,8 @@ export type SimEventMap = {
   >;
   /** A leader start/finish crossing after the pickup that did not bring `OneLapToGreen` — the caution ran longer than the default two laps. */
   "caution.extraLap": SimEvent<"caution.extraLap", EmptySimEventPayload>;
-  /** `OneLapToGreen` rose while racing under caution. */
-  "caution.oneLapToGreen": SimEvent<"caution.oneLapToGreen", { file: PaceFile }>;
+  /** `OneLapToGreen` rose while racing under caution. Single or double file is not carried: the callout reads the lineup live (`getCautionLineup().doubleFile`). */
+  "caution.oneLapToGreen": SimEvent<"caution.oneLapToGreen", EmptySimEventPayload>;
   /** The car to follow changed, derived from `CarIdxPaceRow` / `CarIdxPaceLine`. Payload is a fallback; consumers read the lineup live. */
   "caution.lineup.changed": SimEvent<
     "caution.lineup.changed",

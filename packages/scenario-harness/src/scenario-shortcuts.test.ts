@@ -185,12 +185,12 @@ describe('the "Caution → restart" shortcut (issue #1127)', () => {
     // `diffStartLights` reads it (it runs before `diffCaution` ends the
     // episode on the very same tick), so the gantry line stands down and
     // `caution.restarted` speaks for the restart instead. No
-    // `flag.green.raised` either: the restart carries iRacing's start
-    // signal, suppressing it like a race start's.
+    // `flag.green.raised` either: a green that ends a caution episode is the
+    // restart's to announce, start signal or not.
     expect(events).toEqual([
       { event: "flag.caution-waving.raised", data: {} },
       { event: "caution.fieldCaught", data: { restartPosition: 7 } },
-      { event: "caution.oneLapToGreen", data: { file: "double" } },
+      { event: "caution.oneLapToGreen", data: {} },
       { event: "flag.green-held.raised", data: {} },
       { event: "caution.restarted", data: {} },
     ]);

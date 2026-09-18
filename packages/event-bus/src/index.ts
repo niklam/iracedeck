@@ -15,7 +15,6 @@ export type {
   IncidentType,
   OpponentFlagRelation,
   OpponentPitRelation,
-  PaceFile,
   PitBoxMark,
   PitReadbackSnapshot,
   PitServiceKind,

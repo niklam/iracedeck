@@ -38,7 +38,13 @@
  * edges and the leader's scored crossings:
  *
  * - **Waving** — `CautionWaving` is set: the caution is out and the field is
- *   still spread around the track.
+ *   still spread around the track. The bit only ever STARTS an episode: a
+ *   re-raise once the field is caught (it is a per-zone bit, like the yellow
+ *   one — the follow contract carries a cooldown for that) leaves the phase
+ *   where it is, so the pickup below fires at most once per caution and the
+ *   crossing baseline it set is never re-anchored. Whether the bit re-raises
+ *   at all is unmeasured — it never did in the capture — which is exactly why
+ *   the machine must be right under both readings.
  * - **Caught** — `Caution` is set and `CautionWaving` has gone. The pickup is a
  *   flag DE-ESCALATION, not a new yellow, and it lands on the leader's
  *   start/finish crossing about 90 s after the throw (measured at 333.57 and
@@ -47,9 +53,15 @@
  *   have seen to report, so a plugin started mid-caution — and a discipline
  *   whose cautions may not wave first — is never told the field has just been
  *   caught.
- * - **One to go** — `OneLapToGreen` rises while caught. By then `PaceMode` is a
- *   RESTART mode (2 or 3 in the capture, never a start mode), so
- *   `DoubleFileRestart` is the double-file reading and everything else single.
+ * - **One to go** — `OneLapToGreen` rises while caught. It is not a terminal
+ *   phase: the flag WITHDRAWN while the caution is still out — a waved-off
+ *   restart, or a caution extended after one to go was shown — returns the
+ *   episode to caught, so the next leader crossing without the flag is an
+ *   extra lap and the next rise is reported as the real one to go. Left
+ *   latched, the driver would be released with no warning at all. Whether the
+ *   field forms up single or double file is not carried in the event: the
+ *   callout reads the lineup at speak time, where `doubleFile` and the lane
+ *   already live.
  * - **Restarted** — `Green` rises while a caution is out. Deliberately not
  *   gated on `StartGo`: a restart does carry it (which is why the green-flag
  *   callout has never spoken at one), but nothing here needs to tell a restart
@@ -108,7 +120,7 @@
  * exception, and belongs to `caution-lineup.ts`, which also carries the
  * interleave the two lines restart in and why the pace car anchors it.)
  */
-import { Flags, hasFlag, PaceMode, type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
+import { Flags, hasFlag, type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
 
 import type { TranslatorState } from "../state.js";
 import { isOvalTrack } from "../track-type.js";
@@ -183,11 +195,18 @@ function diffPaceCar(
     return;
   }
 
+  // A tick that cannot read the pace car — session info naming none, or no
+  // surface array — is a gap in the reading, not a reading. The baseline is
+  // kept through it, so a transition that straddles the gap is still an edge
+  // on the next tick that can read; writing `null` here instead would turn
+  // that tick into a fresh seed and swallow "Pace car's out" for good.
+  if (surface === undefined) return;
+
   const was = state.cautionPaceCarSurface;
 
-  state.cautionPaceCarSurface = surface ?? null;
+  state.cautionPaceCarSurface = surface;
 
-  if (surface === undefined || was === null) return;
+  if (was === null) return;
 
   if (!onTrack(was) && onTrack(surface)) emit({ event: "paceCar.deployed", data: {} });
   else if (onTrack(was) && !onTrack(surface)) emit({ event: "paceCar.off", data: {} });
@@ -248,13 +267,22 @@ function diffCautionEpisode(
 
   // The precedence below is load-bearing: a green rising edge ends the episode
   // before anything else can read it, a waving caution outranks a static one
-  // (both bits can be set), a static caution the diff watched wave is the
-  // pickup, one it did not is caught silently, and with neither bit set the
-  // phase expires.
+  // (both bits can be set) but only until the pickup, a static caution the diff
+  // watched wave is the pickup, one it did not is caught silently, with neither
+  // bit set the phase expires, and a one-to-go flag withdrawn while the caution
+  // stays out returns the episode to caught.
   if (hasFlag(flags, Flags.Green) && !hasFlag(wasFlags, Flags.Green) && state.cautionPhase !== "none") {
     emit({ event: "caution.restarted", data: {} });
     state.cautionPhase = "none";
-  } else if (waving) {
+  } else if (waving && (state.cautionPhase === "none" || state.cautionPhase === "waving")) {
+    // The waving bit starts an episode; it never rewinds one. Once the field
+    // is caught a re-raise of `CautionWaving` — the bit is per-zone like the
+    // yellow one, and the follow contract carries a cooldown for exactly that
+    // — is the same caution still out, not a new one: rewinding to "waving"
+    // here would report the pickup AGAIN at the next static tick and re-anchor
+    // the crossing baseline on it, swallowing the next genuine leader crossing
+    // and with it an `extraLap`. The pickup therefore fires at most once per
+    // episode, and only the green edge or the both-bits-clear expiry ends one.
     state.cautionPhase = "waving";
   } else if (caution && state.cautionPhase === "waving") {
     emit({ event: "caution.fieldCaught", data: { restartPosition: lineup?.restartPosition ?? null } });
@@ -281,12 +309,19 @@ function diffCautionEpisode(
     crossingBaseline = leaderLap;
   } else if (!caution && !waving) {
     state.cautionPhase = "none";
+  } else if (state.cautionPhase === "one-to-go" && !oneToGo) {
+    // The one-to-go flag withdrawn with the caution still out — a waved-off
+    // restart, or a caution extended after one to go was shown. The field is
+    // back to running laps behind the pace car, so the phase returns to caught:
+    // the next leader crossing without the flag is an extra lap, and the next
+    // rise of the flag is the REAL one to go, reported again. Left latched at
+    // "one-to-go", neither branch below could ever match, and the driver would
+    // be released into the green with no warning at all.
+    state.cautionPhase = "caught";
   }
 
   if (oneToGo && !hasFlag(wasFlags, Flags.OneLapToGreen) && state.cautionPhase === "caught") {
-    const file = telemetry.PaceMode === PaceMode.DoubleFileRestart ? "double" : "single";
-
-    emit({ event: "caution.oneLapToGreen", data: { file } });
+    emit({ event: "caution.oneLapToGreen", data: {} });
     state.cautionPhase = "one-to-go";
     // Reaching the branch below means the caution is still out, and the expiry
     // above is what guarantees it: with neither bit set the phase has already
