@@ -52,18 +52,29 @@ The first session additionally explained the reported symptom "no audio when the
 | Caution out | "Caution! Caution! Yellow flag is out." — the existing call, retexted, no longer promising the pace car |
 | Caution out | "Single file. Line up behind car number oh nine." — or, leading, "You're leading them — you'll be behind the pace car." |
 | Pace car reaches the track | "Pace car's out." |
-| Pickup | "We've caught up with the pace car. This'll take a couple of laps. You're restarting fourteenth, behind the oh nine." |
+| Two to green (ovals) | "Two to green. Make sure to follow car oh nine." |
 | A lap that is not one to go | "Another lap under caution." / "We're going around again." |
-| One to go | "One to go. Take the inside line behind the oh nine." |
+| One to green | "One to green. Take the inside line behind car oh nine." |
+| ~35% into the one-to-green lap | "We're currently P fourteen." |
 | The car ahead changes | "Change — you're on the inside behind car number twelve now." |
-| Pace car leaves | "Pace car's off." |
+| Pace car leaves, once one to green is up | "Pace car's off." |
 | Restart | "Green, green, green! Go, go, go!" |
 
 Several wordings each, as everywhere else in the catalog. The final text is settled at clip-generation time, from a dry run reviewed before anything is recorded.
 
 The inside/outside wording appears **only on ovals** and only while double file — on any other discipline, and before one to go, the line names the car without claiming a side. Every call that names a car number does so at the END of the sentence, matching how race positions are already spoken.
 
-No lap count is ever spoken as a number beyond "one to go". The pickup call says "a couple of laps" deliberately: the default is two, an extension is undetectable in advance and possible from any admin in the session, so the engineer hedges once and then reports each extra lap as it happens. That reporting needs no knowledge of who pressed the button — at each leader crossing after the pickup, the one-to-go flag either comes or it does not, and its absence *is* the extension.
+No lap count is spoken beyond "two to green" and "one to green", and each is spoken only where a flag says it. "Two to green" rides the waving-to-static transition, which on an oval is the pace car finishing its pickup lap — one leader crossing before one to green. An extension is still undetectable in advance and possible from any admin in the session, so the engineer never promises a count past that: at each leader crossing after the pickup the one-to-green flag either comes or it does not, and its absence *is* the extension, reported as it happens.
+
+**Amended 2026-09-18, after the maintainer heard it and after the first road-course caution was captured** (`local/telemetry-watch-20260918-185032-545.jsonl`). What changed and why:
+
+- **The pickup call no longer announces a position, and no longer says we caught the pace car.** Announcing the position there sounded bad and added little. And the moment it rides is not "we caught up": `Caution` rising as `CautionWaving` falls marks the pace car finishing its pickup lap, however far from it any given car is. On an oval that is exactly one leader crossing before one to green, so the call is **"Two to green."**, followed by the car to follow.
+- **The position moved to its own call, at about 35% into the one-to-green lap** — the normal position wording ("We're currently P fourteen"), read from the pace-row restart order for the reason the carve-out below gives. A new event, `caution.lastLapCheckpoint`, marks the moment: the player's lap distance rises through 35% for the first time after `caution.oneLapToGreen`, while still under caution. The whole call sits in one `optional` clause, and here that is correct rather than the empty-sequence defect: a position call with no position has nothing true to say.
+- **"One to go" becomes "One to green"**, pairing with "Two to green".
+- **On a road course "Two to green" has no moment, so it is not spoken there.** The road capture never shows a waving caution going static on its own: at 309.33 s it drops straight from `CautionWaving` to `Caution | OneLapToGreen` on one tick, which as first built would have said "Two to green" and "One to green" back to back. The pickup call therefore stays silent whenever one to green rises on the same tick. On an oval the two are a lap apart and nothing changes. Timing-wise the road course's two-to-go moment is the leader's first crossing during waving (160.05 s there), but no flag marks it, and one capture is not enough to infer from.
+- **"Pace car's off" speaks only once one to green is up.** Mid-caution on the road course the pace car shows `AproachingPits` for about three seconds and comes back on track (152→155 s, and again at 562→565 s in the second caution) — its route out through pit exit. Read literally, that said "Pace car's off" then "Pace car's out" three seconds apart. The real exit, on both tracks, comes after one to green (461.22 s there, 5.7 s before the green), so gating on one to green removes both blips and delays nothing. A debounce was rejected: waiting five seconds for a return would push the real call to half a second before the green.
+- **The road capture also confirms things the design assumed from the oval alone**: the restart carries `StartGo` there too, so standing the start-lights "go" down for a restart holds off ovals; the pace car is car index 64 there as well; every car gets a pace row at the throw; and a leader crossing during waving raised no false extra lap.
+- `caution.fieldCaught` keeps its name, since the signal (the pace car has picked the field up) is unchanged and only what the engineer says about it moved. Its `restartPosition` payload goes, because nothing reads it any more; the fallback value now rides `caution.lastLapCheckpoint`.
 
 ## The events
 
@@ -73,10 +84,11 @@ A new module, `packages/sim-events-iracing/src/diff/caution.ts`, owns one state 
 | --- | --- |
 | `paceCar.deployed` | the pace car's track surface becomes on-track — caution, rolling start, or any other reason |
 | `paceCar.off` | it becomes `ApproachPits` / pit road |
-| `caution.fieldCaught` | `Caution` rises as `CautionWaving` falls: the pickup |
+| `caution.fieldCaught` | `Caution` rises as `CautionWaving` falls: the pace car has finished its pickup lap |
 | `caution.extraLap` | a leader crossing after the pickup that is not one to go |
 | `caution.oneLapToGreen` | `OneLapToGreen` rises while racing under caution |
 | `caution.lineup.changed` | the car to follow changes |
+| `caution.lastLapCheckpoint` | the player's lap distance rises through 35% for the first time after `caution.oneLapToGreen`, while still under caution |
 | `caution.restarted` | the green that ends a full-course caution |
 
 The two pace-car events are **deliberately generic**: nothing about "the pace car reached the track" is caution-specific, and the capture shows the identical pair of transitions at a rolling start. Whether the engineer speaks at a given occurrence is the callout's business — under a caution it says "Pace car's out"; at a rolling start the existing "green held" call already owns that moment, so the new calls stay quiet there.
