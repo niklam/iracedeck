@@ -29,6 +29,7 @@ import {
 import { setHarnessRaceStartSnapshot, validateRaceStartSnapshot } from "./race-start-snapshot.js";
 import { SCENARIO_SHORTCUTS } from "./scenario-shortcuts.js";
 import { setHarnessSessionStartSnapshot, validateSessionStartSnapshot } from "./session-start-snapshot.js";
+import { checkShortcutPreconditions } from "./shortcut-preconditions.js";
 
 export const DEFAULT_HOST = "127.0.0.1";
 export const DEFAULT_PORT = 5750;
@@ -488,6 +489,39 @@ export async function createServer(ctx: HarnessContext): Promise<FastifyInstance
       telemetry: ctx.controller.getState().telemetry,
       data: body.data as Record<string, unknown>,
     } as SimEventOf<SimEventName>);
+
+    return reply.code(204).send();
+  });
+
+  /**
+   * The one call that means "a shortcut is starting" (issue #1127). The UI
+   * makes it for EVERY shortcut, before any setup push, sequence step or
+   * publish, so a shortcut's declared preconditions are checked against live
+   * session state on the way in rather than against the browser's copy of it —
+   * and a shortcut that grows a precondition later needs no change here or in
+   * the UI.
+   *
+   * A refusal is a 409 carrying the rule's reason, which the UI shows. The
+   * failure it replaces is a run that half-plays and leaves nothing on screen,
+   * so it must never degrade into a silent no-op. Nothing is set up for the
+   * tester either: the session state is theirs, and overwriting it would be a
+   * worse surprise than being told what is missing.
+   */
+  app.post("/api/shortcut/start", async (req, reply) => {
+    const body = req.body as { id?: unknown };
+
+    if (typeof body.id !== "string") return reply.code(400).send({ error: "id must be a string" });
+
+    const shortcut = SCENARIO_SHORTCUTS.find((s) => s.id === body.id);
+
+    if (!shortcut) return reply.code(400).send({ error: `unknown shortcut id "${body.id}"` });
+
+    const refusal = checkShortcutPreconditions(
+      shortcut.requires,
+      ctx.controller.getState().sessionInfo as Record<string, unknown> | null,
+    );
+
+    if (refusal !== null) return reply.code(409).send({ error: refusal });
 
     return reply.code(204).send();
   });

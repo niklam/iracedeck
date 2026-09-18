@@ -25,12 +25,22 @@ import {
 import { Flags, PaceMode, PitSvStatus } from "@iracedeck/iracing-sdk";
 import { YELLOW_CLEARED_HOLD_MS } from "@iracedeck/sim-events-iracing";
 
+import type { ShortcutPrecondition } from "./shortcut-preconditions.js";
+
 /** Fields every shortcut carries, whatever it drives. */
 type ScenarioShortcutBase = {
   id: string;
   category: string;
   label: string;
   description?: string;
+  /**
+   * Harness state this shortcut needs before it will run (issue #1127).
+   * Checked by `POST /api/shortcut/start`, which REFUSES the run and hands the
+   * UI the rule's reason rather than letting the button proceed into a
+   * half-silent sequence. Optional — a shortcut that sets up everything it
+   * needs declares none, which is all of them but the caution three.
+   */
+  requires?: readonly ShortcutPrecondition[];
 };
 
 /**
@@ -345,7 +355,9 @@ const RESTART_LISTEN_MS = YELLOW_CLEARED_HOLD_MS + 3000;
  * behind it. Indexed against the race session preset's own roster (pace car
  * at index 0, the player at index 7, car number "42"), so a shortcut that
  * applies that preset first gets a lineup where the follow-car lines have a
- * real car number to name rather than resolving to nothing.
+ * real car number to name rather than resolving to nothing. `race-oval` is
+ * that same roster on an oval and is indexed identically — it changes
+ * `WeekendInfo` and nothing else, so these arrays serve both.
  *
  * Not measured — the capture this file is otherwise modelled on ran a
  * 21-car field, and its own pace arrays live in
@@ -383,8 +395,15 @@ const CAUTION_RESTART_PACE_ROW = [0, 1, 0, 2, 1, 3, 2, 4, 3, 5, 4, 6, 5, 7, 6, 8
  * nothing to say. The patch persists across the later steps (each one only
  * touches `SessionFlags`), so it needs setting once.
  *
- * What should be heard, with the race session and hot-lap presets applied:
- * the caution-waving line, the follow line naming car number 8, the
+ * The lane a double-file field forms up in is named only on an OVAL
+ * (`resolveCautionLineup` answers `line` behind `isOvalTrack`), which is why
+ * `presets/session/race-oval.json` exists: the same roster and the same pace
+ * arrays, with `WeekendInfo.Category: "Oval"`. On `race` the run is identical
+ * bar that one clause, so the preset is the difference between hearing "take
+ * the inside line, behind..." and hearing the follow line without it.
+ *
+ * What should be heard, with a session and the hot-lap telemetry preset
+ * applied: the caution-waving line, the follow line naming car number 8, the
  * field-caught line with the restart position, the one-to-go line, the
  * green-held heads-up — then SILENCE through the restart: no green-flag line
  * (the start signal suppresses it, same as a race start), no "Go, go, go!"
@@ -399,8 +418,9 @@ const CAUTION_RESTART_SHORTCUT: TelemetrySequenceShortcut = {
   id: "flag-caution-restart",
   category: "Flags",
   label: "Caution → restart",
+  requires: ["player-car-index"],
   description:
-    'Drives the TRANSLATOR through a full-course caution and its restart, replaying the flag states of one captured at an oval, about 27 s end to end, plus a double-file pace lineup (car "42" restarting 7th, behind car number 8) so the follow-car lines have something to say. Apply the race session preset (its 18-car roster supplies the pace car and every car number) and the hot-lap telemetry preset first. Expect the caution-waving line, the follow line ("...behind car eight"), the field-caught line with the restart position, the one-to-go line, the green-held line — then SILENCE: no green-flag line (the start signal suppresses it), no "Go, go, go!" (the restart\'s own line owns this moment — issue #1127), and no "Yellow cleared." (hearing one is issue #1127 back). Needs the mock SDK CONNECTED; with it disconnected the translator sees no ticks and the button is silent for the wrong reason.',
+    'Drives the TRANSLATOR through a full-course caution and its restart, replaying the flag states of one captured at an oval, about 27 s end to end, plus a double-file pace lineup (car "42" restarting 7th, behind car number 8) so the follow-car lines have something to say. Apply a session preset and the hot-lap telemetry preset first — the run is refused without a session preset, since the caution lines read the driver list to know which car is yours. The LANE wording is oval-only: on "race-oval" the follow line names the line you form up in ("take the inside line, behind... car eight"), and on "race" — the same 18-car roster, on a road course — that clause is silent while everything else is identical. Expect the caution-waving line, the follow line, the field-caught line with the restart position, the one-to-go line, the green-held line — then SILENCE: no green-flag line (the start signal suppresses it), no "Go, go, go!" (the restart\'s own line owns this moment — issue #1127), and no "Yellow cleared." (hearing one is issue #1127 back). Needs the mock SDK CONNECTED; with it disconnected the translator sees no ticks and the button is silent for the wrong reason.',
   telemetrySequence: [
     {
       patch: {
@@ -471,8 +491,9 @@ const CAUTION_LINEUP_CHANGE_SHORTCUT: TelemetrySequenceShortcut = {
   id: "flag-caution-lineup-change",
   category: "Flags",
   label: "Caution → lineup change",
+  requires: ["player-car-index"],
   description:
-    'Drives the TRANSLATOR through a full-course caution where the car ahead changes mid-caution — a car pitted and the field re-formed, single file. Apply the race session preset (its 18-car roster supplies the pace car and every car number) and the hot-lap telemetry preset first. Expect the caution-waving line, the follow line ("...behind car eleven"), the field-caught line — then, a few seconds later, the lineup-changed line ("...you\'re behind car seven"), followed by the one-to-go line and the restart (silent, same as "Caution → restart"). Needs the mock SDK CONNECTED; with it disconnected the translator sees no ticks and the button is silent for the wrong reason.',
+    'Drives the TRANSLATOR through a full-course caution where the car ahead changes mid-caution — a car pitted and the field re-formed, single file. Apply the race session preset (its 18-car roster supplies the pace car and every car number) and the hot-lap telemetry preset first; the run is refused without a session preset, since the caution lines read the driver list to know which car is yours. Single file throughout, so NO lane is named here on any preset — the oval preset changes nothing about this button. Expect the caution-waving line, the follow line ("...behind car eleven"), the field-caught line — then, a few seconds later, the lineup-changed line ("...you\'re behind car seven"), followed by the one-to-go line and the restart (silent, same as "Caution → restart"). Needs the mock SDK CONNECTED; with it disconnected the translator sees no ticks and the button is silent for the wrong reason.',
   telemetrySequence: [
     {
       patch: {
@@ -517,6 +538,7 @@ const CAUTION_EXTRA_LAP_SHORTCUT: TelemetrySequenceShortcut = {
   id: "flag-caution-extra-lap",
   category: "Flags",
   label: "Caution → extra lap",
+  requires: ["player-car-index"],
   description:
     'Drives the TRANSLATOR through a full-course caution that runs past its default two laps — the leader crosses the line under caution a second time with the one-to-go flag still down. Apply the race session preset (its 18-car roster supplies the pace car and every car number) and the hot-lap telemetry preset first. Expect the caution-waving line, the follow line, the field-caught line, then — after the leader\'s extra crossing — the extra-lap line, followed by the one-to-go line and the restart (silent, same as "Caution → restart"). Needs the mock SDK CONNECTED; with it disconnected the translator sees no ticks and the button is silent for the wrong reason.',
   telemetrySequence: [

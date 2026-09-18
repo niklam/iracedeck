@@ -344,6 +344,32 @@ function renderShortcuts() {
         btn.disabled = true;
 
         try {
+          // Issue #1127 — every shortcut announces itself here first, and the
+          // server refuses the ones whose declared preconditions the harness
+          // does not meet. The failure this replaces is a caution sequence
+          // pressed with no session preset applied: the flag lines play, the
+          // lineup lines silently do not, and nothing on screen says why. A
+          // refusal (409) carries the reason and is SHOWN — a button that
+          // quietly does nothing would be the same bug wearing a different hat.
+          const start = await fetch("/api/shortcut/start", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: s.id }),
+          });
+
+          if (start.status === 409) {
+            const refusal = await start.json().catch(() => ({}));
+
+            alert(`Shortcut "${s.label}" was not run.\n\n${refusal.error || "A precondition is not met."}`);
+            return;
+          }
+
+          if (!start.ok) {
+            const err = await start.json().catch(() => ({ error: start.statusText }));
+
+            throw new Error(err.error || `POST /api/shortcut/start failed: ${start.status}`);
+          }
+
           // Issue #567 — qualifying-invalidation shortcuts carry an embedded
           // snapshot the scenario reads at fire time. Push it first so the
           // resolver returns the intended snapshot when the trigger event

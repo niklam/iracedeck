@@ -3,6 +3,8 @@ import { Flags, type SDKController, type SessionInfo, type TelemetryData } from 
 import { silentLogger } from "@iracedeck/logger";
 import {
   _resetSimEventsIracing,
+  type CautionLineup,
+  getCautionLineup,
   initializeSimEventsIracing,
   YELLOW_CLEARED_HOLD_MS,
 } from "@iracedeck/sim-events-iracing";
@@ -49,8 +51,8 @@ function runSequence(controller: MockSDKController, steps: readonly TelemetrySte
 
 /**
  * Starts the translator the way a tester sets the harness up before pressing
- * the button — the race session preset and the hot-lap telemetry preset, as
- * the shortcut's description asks — then records every flag, start-light and
+ * the button — a session preset and the hot-lap telemetry preset, as the
+ * shortcut's description asks — then records every flag, start-light and
  * caution event from that point on. `caution.` and `paceCar.` are included
  * alongside `flag.`/`startLight.` because issue #1127 moved the caution
  * sequence's own reporting onto that namespace — `flag.yellow.raised` and
@@ -59,10 +61,14 @@ function runSequence(controller: MockSDKController, steps: readonly TelemetrySte
  * that only watched the first two would show a caution running SILENT.
  * Whatever the presets themselves produce on the seeding tick is not the
  * button's doing, so it is not recorded.
+ *
+ * The session preset is a parameter because the caution lineup's inside/outside
+ * lane is answered only on an oval, and `race` is a road course — see the
+ * `race-oval` describe block below.
  */
-function startTranslator(): { controller: MockSDKController; events: Published[] } {
+function startTranslator(sessionPreset = "race"): { controller: MockSDKController; events: Published[] } {
   const controller = new MockSDKController();
-  controller.setSessionInfo(readPreset("session", "race") as SessionInfo);
+  controller.setSessionInfo(readPreset("session", sessionPreset) as SessionInfo);
   controller.mutateTelemetry(readPreset("telemetry", "hot-lap") as Partial<TelemetryData>);
   controller.setConnected(true);
   initializeSimEventsIracing(getEventBus(), controller as unknown as SDKController, silentLogger);
@@ -217,5 +223,77 @@ describe('the "Caution → restart" shortcut (issue #1127)', () => {
       { event: "flag.yellow.raised", data: { scope: "local" } },
       { event: "flag.yellow.cleared", data: {} },
     ]);
+  });
+});
+
+describe('the "race-oval" session preset (issue #1127)', () => {
+  beforeEach(() => {
+    initializeEventBus(silentLogger);
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    _resetSimEventsIracing();
+    _resetEventBus();
+  });
+
+  const shortcut = SCENARIO_SHORTCUTS.find((s) => s.id === "flag-caution-restart");
+
+  /**
+   * The step that lines the field up: the only one carrying `CarIdxPaceLine` /
+   * `CarIdxPaceRow` / `PaceMode`, which is everything `getCautionLineup()`
+   * needs. Taken from the shortcut rather than written out, so a lineup the
+   * button stops driving can never keep passing here.
+   */
+  const lineupStep = shortcut?.telemetrySequence?.slice(0, 1) ?? [];
+
+  /**
+   * The caution lineup the harness's own button produces, read at the same
+   * moment a callout would read it. Everything but the lane is a property of
+   * the roster and the pace arrays, which both presets share — `race-oval`
+   * changes only `WeekendInfo`.
+   */
+  function lineupAfterFirstStep(sessionPreset: string): CautionLineup | null {
+    // Self-contained, so one test can read BOTH presets: the translator is a
+    // singleton that throws on a second `initializeSimEventsIracing`.
+    _resetSimEventsIracing();
+    _resetEventBus();
+    initializeEventBus(silentLogger);
+
+    const { controller } = startTranslator(sessionPreset);
+
+    expect(lineupStep, '"flag-caution-restart" has no first step to drive').toHaveLength(1);
+    runSequence(controller, lineupStep);
+
+    return getCautionLineup();
+  }
+
+  it("names the lane the double-file restart forms up in", () => {
+    // The whole reason this preset exists: `resolveCautionLineup` answers
+    // `line` only when the field is double file AND `isOvalTrack(sessionInfo)`
+    // is true, which reads `WeekendInfo.Category` first — so on a road-course
+    // preset the "take the inside/outside line" wording cannot be auditioned
+    // at all, whatever the pace arrays say. Flip this preset's `Category` back
+    // to "Road" and this assertion goes from "inside" to null.
+    const lineup = lineupAfterFirstStep("race-oval");
+
+    expect(lineup?.line).toBe("inside");
+  });
+
+  it("changes nothing about the lineup except the lane the road preset leaves unnamed", () => {
+    // The contrast is the point. Both presets carry the same 18-car roster and
+    // the same player index, and the button patches the same pace arrays into
+    // both, so a lineup that differed anywhere else would mean the new preset
+    // had drifted from `race.json` — and an assertion on the lane alone would
+    // not catch it.
+    const onOval = lineupAfterFirstStep("race-oval");
+    const onRoad = lineupAfterFirstStep("race");
+
+    expect(onRoad).toEqual({ ...onOval, line: null });
+    // `line` is named here as well as in the test above, so this one also goes
+    // red if the preset stops reading as an oval — without it, "the same except
+    // the lane" is satisfied by two lineups that both name no lane at all.
+    expect(onOval).toMatchObject({ line: "inside", followCarNumber: "8", restartPosition: 7, doubleFile: true });
   });
 });
