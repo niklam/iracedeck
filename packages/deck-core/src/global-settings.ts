@@ -1065,6 +1065,48 @@ export const GlobalSettingsSchema = z
       .transform((val) => val === true || val === "true")
       .default(true),
     /**
+     * Per-callout opt-ins for the narrated full-course caution sequence
+     * (issue #1127): who to follow, the pace car coming out, it picking up
+     * the field, an extra caution lap, the one-to-go warning, the car ahead
+     * changing during the lineup, the pace car peeling off, and the restart
+     * itself. The canonical id↔key mapping lives in `@iracedeck/audio-scenarios`
+     * (`CAUTION_CALLOUT_SETTING_KEYS`). All default true — new Race Engineer
+     * functionality ships on — and, like every other `calloutEnabled*` field,
+     * carry no `.catch`: the union-plus-transform chain has no throw path.
+     */
+    calloutEnabledCautionFollow: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    calloutEnabledCautionPaceCarOut: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    calloutEnabledCautionFieldCaught: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    calloutEnabledCautionExtraLap: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    calloutEnabledCautionOneToGo: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    calloutEnabledCautionLineupChanged: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    calloutEnabledCautionPaceCarOff: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    calloutEnabledCautionRestart: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    /**
      * Case-insensitive regex applied during **qualifying** sessions to flag a
      * race-looking setup name (issue #625). Empty (or any non-string, e.g. a
      * corrupted `null`) falls back to the default rather than throwing, so a bad
