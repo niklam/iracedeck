@@ -68,17 +68,26 @@
  *   --voice <key>[,<key>...]        Only iterate the named voices. Repeatable;
  *                                   --voice default --voice titan == --voice default,titan.
  *   --group <name>[,<name>...]      Only iterate the named groups. Repeatable.
+ *   --entry <name>[,<name>...]      Only iterate entries with these names, in
+ *                                   whichever groups are iterated. Repeatable.
+ *                                   The way to cut a SLICE of one large group
+ *                                   (#1127: 21 of the 1,110 car numbers).
  *
- * Voice and group filters compose as an intersection: --voice default --group
- * numbers only touches voice/default/numbers/. Manifest entries outside the
- * filter are left untouched, so a subsequent unscoped run still sees them
- * as cache hits. Unknown names exit non-zero with the list of valid choices.
+ * The three filters compose as an intersection: --voice default --group
+ * numbers only touches voice/default/numbers/, and --group car-number --entry
+ * 0,9,09 touches three clips of it. Manifest entries outside the filter are
+ * left untouched, so a subsequent unscoped run still sees them as cache hits
+ * — or, after a config change that reaches them, still reports them as out of
+ * date. Unknown names exit non-zero with the list of valid choices; an entry
+ * name is validated against the groups the scope iterates, so a slice that
+ * would match nothing is refused rather than reported as a full cache hit.
  *
  * Usage (from repo root):
  *   pnpm --filter @iracedeck/audio-assets generate
  *   pnpm --filter @iracedeck/audio-assets generate:dry-run
  *   pnpm --filter @iracedeck/audio-assets generate --group acknowledgment
  *   pnpm --filter @iracedeck/audio-assets generate --voice default --group numbers
+ *   pnpm --filter @iracedeck/audio-assets generate --voice default --group car-number --entry 0,1,2
  */
 import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -220,6 +229,8 @@ async function main(): Promise<void> {
       if (scope.groups && !scope.groups.includes(groupName)) continue;
 
       for (const entry of entries) {
+        if (scope.entries && !scope.entries.includes(entry.name)) continue;
+
         const relPath = path.posix.join("voice", voiceName, groupName, `${entry.name}.mp3`);
         const absPath = path.join(packageRoot, relPath);
 

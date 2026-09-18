@@ -8,9 +8,19 @@
  * of them (0-9, 00-99, 000-999) rather than reusing `position-number`'s
  * 1-64 range.
  *
- * The clip text is the number ALONE — no "car", no "number" — because the
- * surrounding callout line supplies those words and always places the
- * number last (see `caution.followCarNumber` in
+ * The clip text is "car" plus the reading — `car ninety-five` — and the
+ * caution lead-in it follows ends on the word before it ("…you'll be
+ * behind"). The seam was moved here on 2026-09-18 after the maintainer
+ * heard the first cut: the lead-ins used to end "…behind car number" and
+ * carry `next_text: "oh nine"` to keep the phrase open, and ElevenLabs
+ * BLED that conditioning text into the audio — every one of those clips
+ * ended with an audible "oh". Putting "car" inside the number clip does two
+ * things at once: whatever bleeds from the lead-in's `next_text` (now "car
+ * ninety five") is a word that belongs at that seam, and a bare "nine" —
+ * about as short as a TTS clip gets, which the model handles badly — becomes
+ * the two-word "car nine". Only "car", not "car number": the maintainer
+ * asked for the shorter form. The callout line still places the number last
+ * (see `caution.followCarNumber` in
  * `packages/audio-scenarios/src/catalog/pit-crew/caution.ts`).
  *
  * Reading rules (ruled by the maintainer, 2026-09-17 — use verbatim):
@@ -27,7 +37,10 @@
  *   | Double zero + digit | 009 -> "double oh nine", 000 -> "triple oh"       |
  *
  * `readCarNumber` is exported for `src/car-numbers.test.ts` to drive
- * directly, so the reading rules are tested without touching the config.
+ * directly, so the reading rules are tested without touching the config. It
+ * returns the READING alone; the "car" prefix is `carNumberText`'s, one
+ * level up, so the table above stays what the function asserts and the seam
+ * word is pinned by its own test rather than folded into every row.
  *
  * NOTE on TTS input: several readings speak the word "oh" as a digit
  * ("oh nine", "double oh", "one oh five", …). ElevenLabs may read a bare
@@ -156,6 +169,17 @@ export function readCarNumber(numStr) {
 }
 
 /**
+ * The TEXT of a car-number clip: "car" and the reading. "car" lives here,
+ * outside `readCarNumber`, so the reading table stays a pure function of
+ * the maintainer's rules and this one word is the whole of the seam decision
+ * (module doc above). Keep the reading and the prefix separated by a plain
+ * space — the readings' own hyphens ("ninety-five") are inside the reading.
+ */
+export function carNumberText(numStr) {
+  return `car ${readCarNumber(numStr)}`;
+}
+
+/**
  * Every number iRacing can put on a car, as the sim would spell it:
  * 0-9, then 00-99 (zero-padded to two digits), then 000-999 (zero-padded to
  * three digits) — 1,110 total, each a distinct string ("9", "09" and "009"
@@ -173,13 +197,13 @@ export function allCarNumbers() {
 
 /**
  * The clip every car number is conditioned on: a caution lead-in that ends
- * exactly where a number begins ("One to go. Take the outside line, behind
- * car number"). A number is only ever spliced onto the END of a lead-in like
+ * exactly where a number clip begins ("One to go. Take the outside line,
+ * behind"). A number is only ever spliced onto the END of a lead-in like
  * that, and generated standalone it opens like a fresh sentence — so each
  * entry names this clip in `previous_request_ids`, which the generator
  * resolves per voice to the real preceding audio (see the "Request-id
- * chains" block in `src/generate/generate.ts`). The tail "behind car number"
- * is common to almost every lead-in, so one reference serves them all.
+ * chains" block in `src/generate/generate.ts`). The tail "behind" is common
+ * to every lead-in, so one reference serves them all.
  *
  * Only the request-id, deliberately no `previous_text`: the request-id
  * carries the actual preceding audio, and a text approximation beside it is
@@ -200,7 +224,7 @@ export function buildCarNumberGroup() {
   // delivery style consistent rather than letting it drift entry to entry.
   return allCarNumbers().map((name) => ({
     name,
-    text: readCarNumber(name),
+    text: carNumberText(name),
     seed: 1,
     previous_request_ids: [CAR_NUMBER_LEAD_IN_REF],
   }));

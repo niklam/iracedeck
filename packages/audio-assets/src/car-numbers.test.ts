@@ -4,6 +4,7 @@ import {
   allCarNumbers,
   buildCarNumberGroup,
   CAR_NUMBER_LEAD_IN_REF,
+  carNumberText,
   readCarNumber,
   spliceGroupIntoConfig,
 } from "../scripts/generate-car-numbers.mjs";
@@ -11,7 +12,9 @@ import {
 // The reading rules are the maintainer's ruling for issue #1127 (2026-09-17),
 // one case per row of the spec's table — every number iRacing can put on a
 // car is read exactly as the sim spells it, so "09" and "9" (and "009") are
-// different clips with different readings.
+// different clips with different readings. These are the BARE readings: the
+// "car" that opens every clip since 2026-09-18 is `carNumberText`'s, tested
+// below, so a change to the seam word never has to touch this table.
 describe("readCarNumber", () => {
   it.each([
     // One digit
@@ -42,6 +45,30 @@ describe("readCarNumber", () => {
   it("throws on a number string of the wrong width", () => {
     expect(() => readCarNumber("1234")).toThrow(/unsupported/);
     expect(() => readCarNumber("")).toThrow(/unsupported/);
+  });
+});
+
+// The seam (issue #1127, 2026-09-18): the caution lead-in ends on "behind"
+// and the number clip opens with "car", so the clip text is "car" + the
+// reading — "car ninety-five", not "ninety-five" and not "car number
+// ninety-five". The first cut put "car number" at the end of the lead-in
+// with `next_text: "oh nine"`, and ElevenLabs bled the conditioning into the
+// audio; moving "car" here makes whatever bleeds a word that belongs at the
+// seam, and lengthens the shortest clips ("nine" → "car nine").
+describe("carNumberText", () => {
+  it.each([
+    ["5", "car five"],
+    ["09", "car oh nine"],
+    ["95", "car ninety-five"],
+    ["000", "car triple oh"],
+  ])("prefixes the reading of %s with car: %s", (numStr, expected) => {
+    expect(carNumberText(numStr)).toBe(expected);
+  });
+
+  it("is exactly the bare reading behind a single 'car '", () => {
+    for (const numStr of allCarNumbers()) {
+      expect(carNumberText(numStr)).toBe(`car ${readCarNumber(numStr)}`);
+    }
   });
 });
 
@@ -85,9 +112,10 @@ describe("buildCarNumberGroup", () => {
     expect(new Set(names).size).toBe(names.length);
   });
 
-  it("carries no leftover 'car'/'number' wording — the number alone", () => {
+  it("opens every entry with one 'car' and never says 'number' — the lead-in ends on 'behind'", () => {
     for (const entry of group) {
-      expect(entry.text).not.toMatch(/\bcar\b/i);
+      expect(entry.text).toBe(carNumberText(entry.name));
+      expect(entry.text.match(/\bcar\b/gi)).toHaveLength(1);
       expect(entry.text).not.toMatch(/\bnumber\b/i);
     }
   });
@@ -141,8 +169,8 @@ describe("spliceGroupIntoConfig", () => {
   ].join("\n");
 
   const carNumberEntries = [
-    { name: "0", text: "zero", seed: 1 },
-    { name: "1", text: "one", seed: 1 },
+    { name: "0", text: "car zero", seed: 1 },
+    { name: "1", text: "car one", seed: 1 },
   ];
 
   it("inserts a new group as valid JSON with exactly the given entries", () => {
