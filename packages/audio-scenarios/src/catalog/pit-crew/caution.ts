@@ -64,8 +64,8 @@
  * **2. The lineup change lands one tick BEFORE one to go**, so it holds its
  * decision and then stands down. The field re-forms double file on the tick
  * before the flag — 415.10 vs 415.12, and 793.92 vs 793.93 — so without a
- * hold the "you're behind car number twelve now" line would start playing
- * 20 ms before "One to go. Take the inside line behind the oh nine." and be
+ * hold the "Change — you're behind car twelve" line would start playing
+ * 20 ms before "One to go. Take the inside line, behind car oh nine." and be
  * cut mid-beep by it (same `family`, so preemption is wholesale and
  * weight-independent). `triggerDelay` is the engine's own answer to "the data
  * this scenario needs takes a moment to settle": the fire DECISION waits
@@ -376,7 +376,7 @@ export function registerCautionVocabulary(
 
       // Following the pace car is not a car number. The lineup names the pace
       // car's own number there, and a script that spoke it would say "line up
-      // behind car number zero" — so the number is withheld and the answer to
+      // behind car zero" — so the number is withheld and the answer to
       // "who is ahead" is the `caution.followsPaceCar` condition below. A pack
       // that names the number without asking that first gets a callout that
       // drops rather than a wrong one, which is the safe way round.

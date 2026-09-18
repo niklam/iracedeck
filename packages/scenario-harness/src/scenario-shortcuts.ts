@@ -400,7 +400,7 @@ const CAUTION_RESTART_SHORTCUT: TelemetrySequenceShortcut = {
   category: "Flags",
   label: "Caution → restart",
   description:
-    'Drives the TRANSLATOR through a full-course caution and its restart, replaying the flag states of one captured at an oval, about 27 s end to end, plus a double-file pace lineup (car "42" restarting 7th, behind car number 8) so the follow-car lines have something to say. Apply the race session preset (its 18-car roster supplies the pace car and every car number) and the hot-lap telemetry preset first. Expect the caution-waving line, the follow line ("...behind car number eight"), the field-caught line with the restart position, the one-to-go line, the green-held line — then SILENCE: no green-flag line (the start signal suppresses it), no "Go, go, go!" (the restart\'s own line owns this moment — issue #1127), and no "Yellow cleared." (hearing one is issue #1127 back). Needs the mock SDK CONNECTED; with it disconnected the translator sees no ticks and the button is silent for the wrong reason.',
+    'Drives the TRANSLATOR through a full-course caution and its restart, replaying the flag states of one captured at an oval, about 27 s end to end, plus a double-file pace lineup (car "42" restarting 7th, behind car number 8) so the follow-car lines have something to say. Apply the race session preset (its 18-car roster supplies the pace car and every car number) and the hot-lap telemetry preset first. Expect the caution-waving line, the follow line ("...behind car eight"), the field-caught line with the restart position, the one-to-go line, the green-held line — then SILENCE: no green-flag line (the start signal suppresses it), no "Go, go, go!" (the restart\'s own line owns this moment — issue #1127), and no "Yellow cleared." (hearing one is issue #1127 back). Needs the mock SDK CONNECTED; with it disconnected the translator sees no ticks and the button is silent for the wrong reason.',
   telemetrySequence: [
     {
       patch: {
@@ -472,7 +472,7 @@ const CAUTION_LINEUP_CHANGE_SHORTCUT: TelemetrySequenceShortcut = {
   category: "Flags",
   label: "Caution → lineup change",
   description:
-    'Drives the TRANSLATOR through a full-course caution where the car ahead changes mid-caution — a car pitted and the field re-formed, single file. Apply the race session preset (its 18-car roster supplies the pace car and every car number) and the hot-lap telemetry preset first. Expect the caution-waving line, the follow line ("...behind car number eleven"), the field-caught line — then, a few seconds later, the lineup-changed line ("...now behind car number seven"), followed by the one-to-go line and the restart (silent, same as "Caution → restart"). Needs the mock SDK CONNECTED; with it disconnected the translator sees no ticks and the button is silent for the wrong reason.',
+    'Drives the TRANSLATOR through a full-course caution where the car ahead changes mid-caution — a car pitted and the field re-formed, single file. Apply the race session preset (its 18-car roster supplies the pace car and every car number) and the hot-lap telemetry preset first. Expect the caution-waving line, the follow line ("...behind car eleven"), the field-caught line — then, a few seconds later, the lineup-changed line ("...you\'re behind car seven"), followed by the one-to-go line and the restart (silent, same as "Caution → restart"). Needs the mock SDK CONNECTED; with it disconnected the translator sees no ticks and the button is silent for the wrong reason.',
   telemetrySequence: [
     {
       patch: {
