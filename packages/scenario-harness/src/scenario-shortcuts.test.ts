@@ -135,7 +135,12 @@ describe('the "Caution → restart" shortcut (issue #1127)', () => {
     // race, `!yellow`, double-file restart). `>>> 0` reads the patch back as
     // the unsigned value the capture's hex is written in — StartGo is the sign
     // bit, so the restart patch is a negative number on the wire.
-    expect(steps.map((s) => (s.patch.SessionFlags as number) >>> 0)).toEqual([
+    // The checkpoint step moves only the player's lap distance, so it carries
+    // no flags and is not a flag state of the capture.
+    const flagSteps = steps.filter((s) => s.patch.SessionFlags !== undefined);
+
+    expect(flagSteps).toHaveLength(steps.length - 1);
+    expect(flagSteps.map((s) => (s.patch.SessionFlags as number) >>> 0)).toEqual([
       0x10048000, // CautionWaving
       0x10044000, // Caution
       0x10044200, // Caution + OneLapToGreen
@@ -151,7 +156,7 @@ describe('the "Caution → restart" shortcut (issue #1127)', () => {
     // also carries the pace lineup and pace mode so the follow-car lines have
     // something to read — nothing here permits a fifth, undocumented key to
     // creep in unnoticed.
-    const ALLOWED_PATCH_KEYS = new Set(["SessionFlags", "CarIdxPaceLine", "CarIdxPaceRow", "PaceMode"]);
+    const ALLOWED_PATCH_KEYS = new Set(["SessionFlags", "CarIdxPaceLine", "CarIdxPaceRow", "PaceMode", "LapDistPct"]);
 
     expect(steps.every((s) => Object.keys(s.patch).every((key) => ALLOWED_PATCH_KEYS.has(key)))).toBe(true);
   });
@@ -189,11 +194,43 @@ describe('the "Caution → restart" shortcut (issue #1127)', () => {
     // restart's to announce, start signal or not.
     expect(events).toEqual([
       { event: "flag.caution-waving.raised", data: {} },
-      { event: "caution.fieldCaught", data: { restartPosition: 7 } },
+      { event: "caution.fieldCaught", data: {} },
       { event: "caution.oneLapToGreen", data: {} },
+      { event: "caution.lastLapCheckpoint", data: { restartPosition: 7 } },
       { event: "flag.green-held.raised", data: {} },
       { event: "caution.restarted", data: {} },
     ]);
+  });
+
+  it("drives the player's lap distance through the last lap's checkpoint, so the position line has its moment", () => {
+    // The hot-lap preset parks the car at 0.42 — past the 35% checkpoint — so
+    // the button has to take it back below and carry it through after one to
+    // go. The control run strips those patches: the same flags, no distance,
+    // and the checkpoint must then NOT fire, or this test would pass against
+    // a translator that fired it on the flag alone.
+    const withDistance = startTranslator();
+
+    runSequence(withDistance.controller, steps);
+
+    expect(withDistance.events.filter((e) => e.event === "caution.lastLapCheckpoint")).toEqual([
+      { event: "caution.lastLapCheckpoint", data: { restartPosition: 7 } },
+    ]);
+
+    _resetSimEventsIracing();
+    _resetEventBus();
+    initializeEventBus(silentLogger);
+
+    const flagsOnly = startTranslator();
+    const stripped = steps.map((s) => {
+      const { LapDistPct: _dropped, ...patch } = s.patch;
+
+      return { ...s, patch };
+    });
+
+    expect(stripped.some((s, i) => Object.keys(s.patch).length !== Object.keys(steps[i].patch).length)).toBe(true);
+    runSequence(flagsOnly.controller, stripped);
+
+    expect(flagsOnly.events.filter((e) => e.event === "caution.lastLapCheckpoint")).toEqual([]);
   });
 
   it("ends with no flag shown, so a second press plays the same sequence again", () => {
@@ -340,6 +377,7 @@ describe("the two follow-on caution shortcuts (issue #1127)", () => {
       "caution.fieldCaught",
       "caution.extraLap",
       "caution.oneLapToGreen",
+      "caution.lastLapCheckpoint",
       "caution.restarted",
     ]);
   });
@@ -354,6 +392,7 @@ describe("the two follow-on caution shortcuts (issue #1127)", () => {
       "caution.fieldCaught",
       "caution.lineup.changed",
       "caution.oneLapToGreen",
+      "caution.lastLapCheckpoint",
       "caution.restarted",
     ]);
     // Index 6 (car 11) and index 9 (car 7) swap rows, so the player at row 7

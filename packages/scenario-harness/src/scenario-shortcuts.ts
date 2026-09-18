@@ -333,6 +333,23 @@ const ONE_TO_GO_MS = 2000;
 const GREEN_HELD_MS = 4000;
 
 /**
+ * How long the last lap's checkpoint step holds — the position line and its
+ * radio frame — before the step after it follows.
+ */
+const CHECKPOINT_MS = 3000;
+
+/**
+ * The player's lap distance on the two steps that drive the last lap's
+ * checkpoint (`caution.lastLapCheckpoint`: the first upward crossing of
+ * `LAST_LAP_CHECKPOINT_PCT` after one to go). The hot-lap preset parks the
+ * car at 0.42, PAST the checkpoint, so a sequence that never moved it would
+ * leave the position line with no moment to ride: the one-to-go step first
+ * takes the car back to early in its lap, the next step carries it through.
+ */
+const CHECKPOINT_BEFORE_PCT = 0.1;
+const CHECKPOINT_AFTER_PCT = 0.4;
+
+/**
  * How long the restart tick's `StartGo` stays up — the measured value: it gave
  * way to `StartHidden` 5.0 s after the restart.
  */
@@ -378,7 +395,9 @@ const CAUTION_RESTART_PACE_ROW = [0, 1, 0, 2, 1, 3, 2, 4, 3, 5, 4, 6, 5, 7, 6, 8
  * race, the caution thrown with `!yellow`, a double-file restart).
  *
  * The `SessionFlags` values are the captured ones, in order: caution waving,
- * static caution, one lap to green, green held; then the restart —
+ * static caution, one lap to green (with the player's lap distance driven
+ * through the last lap's 35% checkpoint, so the position line has its
+ * moment — see {@link CHECKPOINT_BEFORE_PCT}), green held; then the restart —
  * `Green | Servicible | StartGo`, every caution bit dropping on that same tick;
  * then `StartGo` giving way to `StartHidden`; then no flag shown, which also
  * leaves the harness where the button can be pressed again. Only the hold
@@ -404,8 +423,9 @@ const CAUTION_RESTART_PACE_ROW = [0, 1, 0, 2, 1, 3, 2, 4, 3, 5, 4, 6, 5, 7, 6, 8
  *
  * What should be heard, with a session and the hot-lap telemetry preset
  * applied: the caution-waving line, the follow line naming car number 8, the
- * field-caught line with the restart position, the one-to-go line, the
- * green-held heads-up — then SILENCE through the restart: no green-flag line
+ * two-to-green line with the car to follow, the one-to-go line, the position
+ * line at the checkpoint, the green-held heads-up — then SILENCE through the
+ * restart: no green-flag line
  * (the start signal suppresses it, same as a race start), no "Go, go, go!"
  * (the restart's own `caution.restarted` line owns this moment now — the
  * start-light family stands down for the whole episode so a caution restart
@@ -420,7 +440,7 @@ const CAUTION_RESTART_SHORTCUT: TelemetrySequenceShortcut = {
   label: "Caution → restart",
   requires: ["player-car-index"],
   description:
-    'Drives the TRANSLATOR through a full-course caution and its restart, replaying the flag states of one captured at an oval, about 27 s end to end, plus a double-file pace lineup (car "42" restarting 7th, behind car number 8) so the follow-car lines have something to say. Apply a session preset and the hot-lap telemetry preset first — the run is refused without a session preset, since the caution lines read the driver list to know which car is yours. The LANE wording is oval-only: on "race-oval" the follow line names the line you form up in ("take the inside line, behind... car eight"), and on "race" — the same 18-car roster, on a road course — that clause is silent while everything else is identical. Expect the caution-waving line, the follow line, the field-caught line with the restart position, the one-to-go line, the green-held line — then SILENCE: no green-flag line (the start signal suppresses it), no "Go, go, go!" (the restart\'s own line owns this moment — issue #1127), and no "Yellow cleared." (hearing one is issue #1127 back). Needs the mock SDK CONNECTED; with it disconnected the translator sees no ticks and the button is silent for the wrong reason.',
+    'Drives the TRANSLATOR through a full-course caution and its restart, replaying the flag states of one captured at an oval, about 30 s end to end, plus a double-file pace lineup (car "42" restarting 7th, behind car number 8) so the follow-car lines have something to say. Apply a session preset and the hot-lap telemetry preset first — the run is refused without a session preset, since the caution lines read the driver list to know which car is yours. The LANE wording is oval-only: on "race-oval" the follow line names the line you form up in ("take the inside line, behind... car eight"), and on "race" — the same 18-car roster, on a road course — that clause is silent while everything else is identical. Expect the caution-waving line, the follow line, the two-to-green line with the car to follow, the one-to-go line, the position line ("We\'re currently seven" — the player\'s lap distance is driven through 35% of the last lap), the green-held line — then SILENCE: no green-flag line (the start signal suppresses it), no "Go, go, go!" (the restart\'s own line owns this moment — issue #1127), and no "Yellow cleared." (hearing one is issue #1127 back). Needs the mock SDK CONNECTED; with it disconnected the translator sees no ticks and the button is silent for the wrong reason.',
   telemetrySequence: [
     {
       patch: {
@@ -432,7 +452,11 @@ const CAUTION_RESTART_SHORTCUT: TelemetrySequenceShortcut = {
       holdMs: CAUTION_WAVING_MS,
     },
     { patch: { SessionFlags: RACING_NO_FLAG | Flags.Caution }, holdMs: CAUTION_HOLD_MS },
-    { patch: { SessionFlags: RACING_NO_FLAG | Flags.Caution | Flags.OneLapToGreen }, holdMs: ONE_TO_GO_MS },
+    {
+      patch: { SessionFlags: RACING_NO_FLAG | Flags.Caution | Flags.OneLapToGreen, LapDistPct: CHECKPOINT_BEFORE_PCT },
+      holdMs: ONE_TO_GO_MS,
+    },
+    { patch: { LapDistPct: CHECKPOINT_AFTER_PCT }, holdMs: CHECKPOINT_MS },
     {
       patch: { SessionFlags: RACING_NO_FLAG | Flags.Caution | Flags.OneLapToGreen | Flags.GreenHeld },
       holdMs: GREEN_HELD_MS,
@@ -493,7 +517,7 @@ const CAUTION_LINEUP_CHANGE_SHORTCUT: TelemetrySequenceShortcut = {
   label: "Caution → lineup change",
   requires: ["player-car-index"],
   description:
-    'Drives the TRANSLATOR through a full-course caution where the car ahead changes mid-caution — a car pitted and the field re-formed, single file. Apply the race session preset (its 18-car roster supplies the pace car and every car number) and the hot-lap telemetry preset first; the run is refused without a session preset, since the caution lines read the driver list to know which car is yours. Single file throughout, so NO lane is named here on any preset — the oval preset changes nothing about this button. Expect the caution-waving line, the follow line ("...behind car eleven"), the field-caught line — then, a few seconds later, the lineup-changed line ("...you\'re behind car seven"), followed by the one-to-go line and the restart (silent, same as "Caution → restart"). Needs the mock SDK CONNECTED; with it disconnected the translator sees no ticks and the button is silent for the wrong reason.',
+    'Drives the TRANSLATOR through a full-course caution where the car ahead changes mid-caution — a car pitted and the field re-formed, single file. Apply the race session preset (its 18-car roster supplies the pace car and every car number) and the hot-lap telemetry preset first; the run is refused without a session preset, since the caution lines read the driver list to know which car is yours. Single file throughout, so NO lane is named here on any preset — the oval preset changes nothing about this button. Expect the caution-waving line, the follow line ("...behind car eleven"), the two-to-green line — then, a few seconds later, the lineup-changed line ("...you\'re behind car seven"), followed by the one-to-go line, the position line ("We\'re currently seven") and the restart (silent, same as "Caution → restart"). Needs the mock SDK CONNECTED; with it disconnected the translator sees no ticks and the button is silent for the wrong reason.',
   telemetrySequence: [
     {
       patch: {
@@ -505,7 +529,11 @@ const CAUTION_LINEUP_CHANGE_SHORTCUT: TelemetrySequenceShortcut = {
     },
     { patch: { SessionFlags: RACING_NO_FLAG | Flags.Caution }, holdMs: CAUTION_HOLD_MS },
     { patch: { CarIdxPaceRow: CAUTION_LINEUP_CHANGED_ROW }, holdMs: LINEUP_CHANGE_LISTEN_MS },
-    { patch: { SessionFlags: RACING_NO_FLAG | Flags.Caution | Flags.OneLapToGreen }, holdMs: ONE_TO_GO_MS },
+    {
+      patch: { SessionFlags: RACING_NO_FLAG | Flags.Caution | Flags.OneLapToGreen, LapDistPct: CHECKPOINT_BEFORE_PCT },
+      holdMs: ONE_TO_GO_MS,
+    },
+    { patch: { LapDistPct: CHECKPOINT_AFTER_PCT }, holdMs: CHECKPOINT_MS },
     { patch: { SessionFlags: Flags.Green | Flags.Servicible | Flags.StartGo }, holdMs: START_GO_MS },
     { patch: { SessionFlags: RACING_NO_FLAG | Flags.Green }, holdMs: RESTART_LISTEN_MS },
     { patch: { SessionFlags: RACING_NO_FLAG } },
@@ -550,7 +578,7 @@ const CAUTION_EXTRA_LAP_SHORTCUT: TelemetrySequenceShortcut = {
   label: "Caution → extra lap",
   requires: ["player-car-index"],
   description:
-    'Drives the TRANSLATOR through a full-course caution that runs past its default two laps — the leader crosses the line under caution a second time with the one-to-go flag still down. Apply the race session preset (its 18-car roster supplies the pace car and every car number) and the hot-lap telemetry preset first. Expect the caution-waving line, the follow line, the field-caught line, then — after the leader\'s extra crossing — the extra-lap line, followed by the one-to-go line and the restart (silent, same as "Caution → restart"). Needs the mock SDK CONNECTED; with it disconnected the translator sees no ticks and the button is silent for the wrong reason.',
+    'Drives the TRANSLATOR through a full-course caution that runs past its default two laps — the leader crosses the line under caution a second time with the one-to-go flag still down. Apply the race session preset (its 18-car roster supplies the pace car and every car number) and the hot-lap telemetry preset first. Expect the caution-waving line, the follow line, the two-to-green line, then — after the leader\'s extra crossing — the extra-lap line, followed by the one-to-go line, the position line ("We\'re currently seven") and the restart (silent, same as "Caution → restart"). Needs the mock SDK CONNECTED; with it disconnected the translator sees no ticks and the button is silent for the wrong reason.',
   telemetrySequence: [
     {
       patch: {
@@ -563,7 +591,11 @@ const CAUTION_EXTRA_LAP_SHORTCUT: TelemetrySequenceShortcut = {
     },
     { patch: { SessionFlags: RACING_NO_FLAG | Flags.Caution }, holdMs: CAUTION_HOLD_MS },
     { patch: { CarIdxLapCompleted: CAUTION_EXTRA_LAP_ADVANCED }, holdMs: CAUTION_WAVING_MS },
-    { patch: { SessionFlags: RACING_NO_FLAG | Flags.Caution | Flags.OneLapToGreen }, holdMs: ONE_TO_GO_MS },
+    {
+      patch: { SessionFlags: RACING_NO_FLAG | Flags.Caution | Flags.OneLapToGreen, LapDistPct: CHECKPOINT_BEFORE_PCT },
+      holdMs: ONE_TO_GO_MS,
+    },
+    { patch: { LapDistPct: CHECKPOINT_AFTER_PCT }, holdMs: CHECKPOINT_MS },
     { patch: { SessionFlags: Flags.Green | Flags.Servicible | Flags.StartGo }, holdMs: START_GO_MS },
     { patch: { SessionFlags: RACING_NO_FLAG | Flags.Green }, holdMs: RESTART_LISTEN_MS },
     { patch: { SessionFlags: RACING_NO_FLAG } },
