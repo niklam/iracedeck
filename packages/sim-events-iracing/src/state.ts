@@ -254,13 +254,16 @@ export type TranslatorState = {
    * driver glanced at the replay cannot survive as a latch into the tick where
    * `diffStartLights` reads it — see `diff/caution.ts`.
    *
-   * Read outside `diffCaution` by exactly one thing: `diffStartLights`
-   * suppresses `startLight.start-go.raised` while it is anything but `"none"`,
-   * because a restart carries `StartGo` exactly as a race start does and would
-   * otherwise borrow its line. That reader is why the translator must run
-   * `diffCaution` AFTER `diffStartLights` — the green's rising edge ends the
-   * episode on the very tick the go bit rises, so running it first would leave
-   * nothing for the gate to see.
+   * Read outside `diffCaution` by exactly two things, both of which stand down
+   * for the restart while it is anything but `"none"`: `diffStartLights`
+   * suppresses `startLight.start-go.raised`, because a restart carries
+   * `StartGo` exactly as a race start does and would otherwise borrow its
+   * line; and `diffFlags` suppresses `flag.green.raised` on the green's rising
+   * edge, because `caution.restarted` speaks for that green whether or not a
+   * start bit came with it. Those readers are why the translator must run
+   * `diffCaution` AFTER both — the green's rising edge ends the episode on the
+   * very tick they judge it, so running it first would leave nothing for
+   * either gate to see.
    */
   cautionPhase: CautionPhase;
   /** Previous-tick `SessionFlags`, for the caution edges. */

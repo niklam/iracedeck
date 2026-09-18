@@ -3905,6 +3905,44 @@ describe("sim-events-iracing translator", () => {
       expect(seen).toEqual(["startLight.start-go.raised"]);
     });
 
+    it("a restart with NO start bit is announced once — diffFlags stands its green line down for caution.restarted", () => {
+      // Unmeasured ordering (the oval restarts all carried `StartGo`), and the
+      // one where the two families used to double up: `flag.green.raised` AND
+      // `caution.restarted` on one tick, both `family: "flag"`, the CRITICAL
+      // restart line cutting the green line mid-word. `diffFlags` reads the
+      // caution phase ahead of `diffCaution` clearing it, so this pins the
+      // wiring order for that reader as the start-go test does for its own.
+      const controller = createMockController();
+      controller.__setSessionInfo(ovalRace());
+      const seen = recordStream();
+      const greens: string[] = [];
+      getEventBus().subscribe("flag.green.raised", () => greens.push("flag.green.raised"));
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(cautionTick({ flags: RACING }));
+      controller.__tick(cautionTick({ flags: WAVING }));
+      controller.__tick(cautionTick({ flags: STATIC }));
+      controller.__tick(cautionTick({ flags: RACING | Flags.Green })); // green, no start bit
+
+      expect(seen).toEqual(["caution.fieldCaught", "caution.restarted"]);
+      expect(greens).toEqual([]);
+    });
+
+    it("but a green with no caution behind it still raises the green line — the positive control", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(ovalRace());
+      const seen = recordStream();
+      const greens: string[] = [];
+      getEventBus().subscribe("flag.green.raised", () => greens.push("flag.green.raised"));
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(cautionTick({ flags: RACING }));
+      controller.__tick(cautionTick({ flags: RACING | Flags.Green }));
+
+      expect(seen).toEqual([]);
+      expect(greens).toEqual(["flag.green.raised"]);
+    });
+
     it("counts the caution's laps in the CANONICAL leader, not the front of the lineup", () => {
       // The lineup's front car (the player, line 0 row 1) and the canonical
       // leader (the rival, one lap further round) are deliberately different

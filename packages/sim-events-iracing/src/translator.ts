@@ -1849,13 +1849,15 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   const canonicalPositions = resolveCanonicalOrder(self.state, telemetry, sessionInfo, isRaceSession);
 
   // The full-course caution sequence (issue #1127). MUST run AFTER
-  // `diffStartLights`: a restart carries `StartGo`, and the start-light diff
-  // tells it from a race start by reading `state.cautionPhase` — which this
-  // diff CLEARS on the green's own rising edge, the very tick that bit rises.
-  // Run first and the phase is already `"none"` when the go edge is judged, so
-  // the suppression is dead code and every restart speaks the race-start line
-  // too. `diff/start-lights.test.ts` pins both orders, and the translator-level
-  // pair in `translator.test.ts` pins this wiring.
+  // `diffStartLights` AND `diffFlags`: a restart carries `StartGo`, and the
+  // start-light diff tells it from a race start by reading `state.cautionPhase`
+  // — which this diff CLEARS on the green's own rising edge, the very tick that
+  // bit rises. The flag diff reads the same phase on the same edge to stand its
+  // green line down for `caution.restarted`. Run first and the phase is already
+  // `"none"` when either edge is judged, so both suppressions are dead code and
+  // every restart speaks the race-start line too. `diff/start-lights.test.ts`
+  // pins both orders, and the translator-level tests in `translator.test.ts`
+  // pin this wiring for both readers.
   //
   // It sits HERE rather than directly under `diffStartLights` because it needs
   // the tick's canonical order and must never be handed `null` — that would run
@@ -1864,8 +1866,9 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // order's computation up to the gantry diff would mean hoisting
   // `updatePositionTracking` with it (the order is read FROM what that writes),
   // moving a state-mutating call across nine diffs to buy a proximity the
-  // comments and the two tests already buy. Any diff added between the two must
-  // not read or write `cautionPhase`; today only these two touch it.
+  // comments and the tests already buy. Any diff added between `diffFlags` and
+  // this one must not read or write `cautionPhase`; today only `diffFlags`,
+  // `diffStartLights` and this diff touch it.
   //
   // It takes neither `isRaceSession` nor `replayOnlySession`, unlike most of its
   // neighbours, and that is deliberate rather than an omission. The #480

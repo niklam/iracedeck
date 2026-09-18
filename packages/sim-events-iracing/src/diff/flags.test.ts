@@ -607,22 +607,82 @@ describe("diffFlags — a full-course episode ends with no cleared line (issue #
     expect(events.filter(cleared)).toHaveLength(0);
   });
 
-  it("leaves flag.green.raised itself alone — fires after a caution with no start bit set, stays suppressed with one", () => {
-    const afterCaution = createInitialState();
-    afterCaution.flagStateInitialized = true;
-    diffFlags(afterCaution, tick(Flags.Caution), T0, () => {});
+  it("stands down for the restart — a green that ends a caution EPISODE raises no green line, start bit or not", () => {
+    // `diffCaution` runs after this diff and emits `caution.restarted` on this
+    // same rising edge whenever the phase it finds is live, so the phase read
+    // here is that decision read a moment early. A green line here too would
+    // be the double-talk: the CRITICAL restart line cutting it mid-word.
+    const noStartBit = createInitialState();
+    noStartBit.flagStateInitialized = true;
+    diffFlags(noStartBit, tick(Flags.Caution), T0, () => {});
+    noStartBit.cautionPhase = "caught"; // what `diffCaution` holds on the tick before the green
 
-    const noStartBit = collect();
-    diffFlags(afterCaution, tick(Flags.Green), T0 + 30_000, noStartBit.emit);
-    expect(noStartBit.events.filter(green)).toHaveLength(1);
+    const restart = collect();
+    diffFlags(noStartBit, tick(Flags.Green), T0 + 30_000, restart.emit);
+    expect(restart.events.filter(green)).toHaveLength(0);
 
-    const atStart = createInitialState();
-    atStart.flagStateInitialized = true;
-    diffFlags(atStart, tick(Flags.Caution), T0, () => {});
+    const withStartBit = createInitialState();
+    withStartBit.flagStateInitialized = true;
+    diffFlags(withStartBit, tick(Flags.Caution), T0, () => {});
+    withStartBit.cautionPhase = "one-to-go";
 
     const start = collect();
-    diffFlags(atStart, tick(Flags.Green | Flags.StartSet), T0 + 30_000, start.emit);
+    diffFlags(withStartBit, tick(Flags.Green | Flags.StartSet), T0 + 30_000, start.emit);
     expect(start.events.filter(green)).toHaveLength(0);
+  });
+
+  it("but a green with no caution phase behind it still fires — the suppression is the episode, not the yellow bits", () => {
+    // The positive control: the same bits, the caution already expired from
+    // the phase machine (it ends the episode the moment neither caution bit
+    // is set), and the green is the green line's to announce.
+    const state = createInitialState();
+    state.flagStateInitialized = true;
+    diffFlags(state, tick(Flags.Caution), T0, () => {});
+    expect(state.cautionPhase).toBe("none");
+
+    const { events, emit } = collect();
+    diffFlags(state, tick(Flags.Green), T0 + 30_000, emit);
+    expect(events.filter(green)).toHaveLength(1);
+  });
+
+  it("the marker ends with the caution bits dropping UNDER a green already flying — a local yellow inside the hold window still clears", () => {
+    // The yellow-checkered ordering: the green rises while the caution bits
+    // are still set (the `anyYellow` arm takes that edge, so the marker stays),
+    // and the bits drop a moment later with no green edge to ride. A local
+    // yellow raised inside the hold window after that drop is a NEW episode,
+    // and its all-clear is the only word the driver gets that the sector is
+    // clear — a marker carried over from the caution silenced it.
+    const state = createInitialState();
+    state.flagStateInitialized = true;
+    diffFlags(state, tick(Flags.Caution), T0, () => {}); // full-course caution
+    diffFlags(state, tick(Flags.Caution | Flags.Green), T0 + 30_000, () => {}); // green rises UNDER the caution
+
+    const drop = collect();
+    diffFlags(state, tick(Flags.Green), T0 + 31_000, drop.emit); // the bits drop, green already flying
+    expect(drop.events.filter(cleared)).toHaveLength(0);
+    expect(state.yellowEpisodeFullCourse).toBe(false);
+
+    diffFlags(state, tick(Flags.Green | Flags.Yellow), T0 + 32_000, () => {}); // a LOCAL yellow, inside the hold
+    diffFlags(state, tick(Flags.Green), T0 + 40_000, () => {}); // …drops again
+
+    const { events, emit } = collect();
+    diffFlags(state, tick(Flags.Green), T0 + 40_000 + YELLOW_CLEARED_HOLD_MS, emit);
+    expect(events.filter(cleared)).toHaveLength(1);
+  });
+
+  it("and that drop under green arms no clear of its own — nothing is announced three seconds into the restart", () => {
+    // The companion guard: ending the episode at the drop must CANCEL the
+    // all-clear, not merely lift the suppression — a cleared line after a
+    // caution that ended under green is the very thing #1127 removed.
+    const state = createInitialState();
+    state.flagStateInitialized = true;
+    diffFlags(state, tick(Flags.Caution), T0, () => {});
+    diffFlags(state, tick(Flags.Caution | Flags.Green), T0 + 30_000, () => {});
+    diffFlags(state, tick(Flags.Green), T0 + 31_000, () => {}); // the drop
+
+    const { events, emit } = collect();
+    diffFlags(state, tick(Flags.Green), T0 + 31_000 + YELLOW_CLEARED_HOLD_MS + 5000, emit);
+    expect(events.filter(cleared)).toHaveLength(0);
   });
 });
 
