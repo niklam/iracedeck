@@ -297,3 +297,70 @@ describe('the "race-oval" session preset (issue #1127)', () => {
     expect(onOval).toMatchObject({ line: "inside", followCarNumber: "8", restartPosition: 7, doubleFile: true });
   });
 });
+
+describe("the two follow-on caution shortcuts (issue #1127)", () => {
+  // Pinned after the code review asked whether "Caution → extra lap" could
+  // fire at all: its fixture gives every car lap 5, and had the canonical order
+  // ranked some car other than the leader first, the baseline would have come
+  // from that car and the leader's advance gone unseen. Driven through the
+  // real translator with the presets the buttons ask for, the way the UI does
+  // it — so the answer is observed rather than argued.
+  beforeEach(() => {
+    initializeEventBus(silentLogger);
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    _resetSimEventsIracing();
+    _resetEventBus();
+  });
+
+  function stepsOf(id: string): readonly TelemetryStep[] {
+    const steps = SCENARIO_SHORTCUTS.find((s) => s.id === id)?.telemetrySequence;
+
+    expect(steps, `"${id}" drives no telemetry`).toBeDefined();
+
+    return steps ?? [];
+  }
+
+  it('"Caution → extra lap" reports the extra lap — the leader\'s crossing is seen through the lineup fallback', () => {
+    // The hot-lap preset carries no per-car lap progress, so the canonical
+    // order ranks nobody and `diff/caution.ts` counts crossings in the front of
+    // the pace lineup — line 0 row 1, which the fixture makes index 1. The
+    // shortcut's JSDoc says exactly that; this is what holds it to it. Give
+    // the telemetry preset a `CarIdxLapDistPct` one day and this goes red,
+    // because the canonical order would then pick the leader instead.
+    const { controller, events } = startTranslator();
+
+    runSequence(controller, stepsOf("flag-caution-extra-lap"));
+
+    expect(events.map((e) => e.event)).toEqual([
+      "flag.caution-waving.raised",
+      "caution.fieldCaught",
+      "caution.extraLap",
+      "caution.oneLapToGreen",
+      "caution.restarted",
+    ]);
+  });
+
+  it('"Caution → lineup change" reports the car ahead changing, once, naming the new car', () => {
+    const { controller, events } = startTranslator();
+
+    runSequence(controller, stepsOf("flag-caution-lineup-change"));
+
+    expect(events.map((e) => e.event)).toEqual([
+      "flag.caution-waving.raised",
+      "caution.fieldCaught",
+      "caution.lineup.changed",
+      "caution.oneLapToGreen",
+      "caution.restarted",
+    ]);
+    // Index 6 (car 11) and index 9 (car 7) swap rows, so the player at row 7
+    // is now behind car 7 — the description promises "...behind car seven".
+    expect(events.find((e) => e.event === "caution.lineup.changed")?.data).toMatchObject({
+      followCarIdx: 9,
+      followCarNumber: "7",
+    });
+  });
+});

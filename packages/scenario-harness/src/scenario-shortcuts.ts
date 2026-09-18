@@ -520,6 +520,16 @@ const CAUTION_LINEUP_CHANGE_SHORTCUT: TelemetrySequenceShortcut = {
  * between. `diff/caution.ts` reads that absence — a second crossing past the
  * pickup with the flag still down — as the caution running past the two laps
  * it defaults to, and reports `caution.extraLap`.
+ *
+ * The fallback is reached only because the canonical race order ranks
+ * NOBODY here: the hot-lap preset carries no `CarIdxLapDistPct`, and every
+ * car in these arrays shares the same lap, so the lap-progress ranking has
+ * nothing to score. That is a property of the presets, not of the diff — with
+ * per-car progress in the telemetry the canonical order would name the
+ * leader itself, and this fixture would have to advance whichever car it
+ * ranked first. `scenario-shortcuts.test.ts` drives the button through the
+ * real translator and pins the extra lap, so the assumption cannot rot
+ * silently.
  */
 const CAUTION_EXTRA_LAP_BASELINE = [5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5];
 const CAUTION_EXTRA_LAP_ADVANCED = [5, 7, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5];
