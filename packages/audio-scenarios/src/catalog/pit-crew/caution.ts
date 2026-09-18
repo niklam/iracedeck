@@ -103,6 +103,7 @@
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { Flags, hasFlag, type TelemetryData } from "@iracedeck/iracing-sdk";
+import type { ILogger } from "@iracedeck/logger";
 import { type CautionLineup, getLatestTelemetry } from "@iracedeck/sim-events-iracing";
 
 import type { ScenarioContract } from "../../dsl.js";
@@ -198,13 +199,18 @@ function oneLapToGreenShown(): boolean {
   return hasFlag(telemetry.SessionFlags ?? 0, Flags.OneLapToGreen);
 }
 
+/** The one spelling of a caution callout's scenario id — the contracts and {@link SCENARIO_ID_TO_CAUTION_ID} both come from it. */
+export function cautionScenarioId(id: CautionCalloutId): string {
+  return `pit-crew.caution-${id}`;
+}
+
 /** The fields every contract in the family shares. */
 function cautionContract(
   id: CautionCalloutId,
   getUnderFullCourseCaution: UnderCautionResolver,
 ): Omit<ScenarioContract, "description" | "when"> {
   return {
-    id: `pit-crew.caution-${id}`,
+    id: cautionScenarioId(id),
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
     base: "voice/{voice}",
@@ -344,17 +350,28 @@ export const CAUTION_CALLOUT_SETTING_KEYS: Record<CautionCalloutId, string> = {
   restart: "calloutEnabledCautionRestart",
 };
 
-/** Scenario id → callout id, the map `registerPitCrew`'s opt-in wrapper is given. */
-export const SCENARIO_ID_TO_CAUTION_ID: Record<string, CautionCalloutId> = {
-  "pit-crew.caution-follow": "follow",
-  "pit-crew.caution-pace-car-out": "pace-car-out",
-  "pit-crew.caution-field-caught": "field-caught",
-  "pit-crew.caution-extra-lap": "extra-lap",
-  "pit-crew.caution-one-to-go": "one-to-go",
-  "pit-crew.caution-lineup-changed": "lineup-changed",
-  "pit-crew.caution-pace-car-off": "pace-car-off",
-  "pit-crew.caution-restart": "restart",
-};
+/**
+ * Scenario id → callout id, the map `registerPitCrew`'s opt-in wrapper is
+ * given. DERIVED from the setting-key map through {@link cautionScenarioId}
+ * rather than written out, because the wrapper THROWS on a scenario id it
+ * cannot map — at plugin startup, taking every Race Engineer callout down with
+ * it, not just this family. A hand-written copy had exactly that failure
+ * waiting in it for the next id added to the family.
+ */
+export const SCENARIO_ID_TO_CAUTION_ID: Record<string, CautionCalloutId> = Object.fromEntries(
+  (Object.keys(CAUTION_CALLOUT_SETTING_KEYS) as CautionCalloutId[]).map((id) => [cautionScenarioId(id), id]),
+);
+
+/**
+ * Where the position-number group ends: the bundled voice ships one clip per
+ * position from 1 to this. iRacing fields CAN exceed it — the pace car counts,
+ * and the 64-slot `IRSDK_MAX_CARS` is stale — so a restart position past the
+ * end resolves to no clip here and is dropped from the pickup call by the
+ * script's optional clause, the position spoken as nothing rather than as a
+ * wrong number. Made visible rather than left to the empty pool so the gap is
+ * a logged decision and not a silent one.
+ */
+export const POSITION_NUMBER_MAX = 64;
 
 /**
  * Register the vocabulary the caution scripts name (issue #1127). Must run
@@ -368,25 +385,35 @@ export const SCENARIO_ID_TO_CAUTION_ID: Record<string, CautionCalloutId> = {
 export function registerCautionVocabulary(
   engine: Pick<IScenarioEngine, "defineVar" | "defineCond" | "defineCase">,
   getCautionLineup: CautionLineupResolver,
+  logger?: ILogger,
 ): void {
+  /**
+   * The car number the follow lines would name, as a pool reference, or
+   * `null` when there is none to name — the pace car is what is ahead, the
+   * field carries no readable lineup, or the session cannot spell the car.
+   * One function behind both the var and the `caution.hasFollowCarNumber`
+   * condition, so the two can never answer differently about the same tick.
+   */
+  const followCarNumberRef = (): string | null => {
+    const lineup = getCautionLineup();
+
+    // Following the pace car is not a car number. The lineup names the pace
+    // car's own number there, and a script that spoke it would say "line up
+    // behind car zero" — so the number is withheld and the answer to
+    // "who is ahead" is the `caution.followsPaceCar` condition below. A pack
+    // that names the number without asking that first gets a callout that
+    // drops rather than a wrong one, which is the safe way round.
+    if (lineup === null || lineup.followsPaceCar) return null;
+
+    const number = lineup.followCarNumber;
+
+    return number !== null && number !== "" ? poolRef(CAR_NUMBER_GROUP, number) : null;
+  };
+
   engine.defineVar(
     "caution.followCarNumber",
-    () => {
-      const lineup = getCautionLineup();
-
-      // Following the pace car is not a car number. The lineup names the pace
-      // car's own number there, and a script that spoke it would say "line up
-      // behind car zero" — so the number is withheld and the answer to
-      // "who is ahead" is the `caution.followsPaceCar` condition below. A pack
-      // that names the number without asking that first gets a callout that
-      // drops rather than a wrong one, which is the safe way round.
-      if (lineup === null || lineup.followsPaceCar) return null;
-
-      const number = lineup.followCarNumber;
-
-      return number !== null && number !== "" ? poolRef(CAR_NUMBER_GROUP, number) : null;
-    },
-    'The car number you line up behind under caution, spoken from the car-number group exactly as the sim spells it — "09" and "9" are different clips. Null while the pace car is the only thing ahead of you, and while the field carries no readable lineup, so branch on caution.followsPaceCar before naming it. Nothing to say is common rather than exceptional here, so keep the number in an optional clause with the words that introduce it: a null var in a required step aborts the whole callout, silently and at debug level, and the driver hears nothing at all.',
+    followCarNumberRef,
+    'The car number you line up behind under caution, spoken from the car-number group exactly as the sim spells it — "09" and "9" are different clips. Null while the pace car is the only thing ahead of you, and while the field carries no readable lineup, so branch on caution.followsPaceCar before naming it. Nothing to say is common rather than exceptional here, so keep the number in an optional clause with the words that introduce it: a null var in a required step aborts the whole callout, silently and at debug level, and the driver hears nothing at all. Where the callout must still say SOMETHING without the number — one to go, above all — branch on caution.hasFollowCarNumber and give the other branch a numberless wording.',
   );
 
   engine.defineVar(
@@ -394,11 +421,29 @@ export function registerCautionVocabulary(
     () => {
       const position = getCautionLineup()?.restartPosition ?? null;
 
-      return position !== null && Number.isInteger(position) && position > 0
-        ? poolRef(POSITION_NUMBER_GROUP, String(position))
-        : null;
+      if (position === null || !Number.isInteger(position) || position < 1) return null;
+
+      // The spoken positions stop at POSITION_NUMBER_MAX and a field can run
+      // past it (the pace car counts). The clause is dropped rather than
+      // handed a pool reference that resolves to nothing, and the drop is
+      // logged so a driver's missing position is a decision on record.
+      if (position > POSITION_NUMBER_MAX) {
+        logger?.debug(
+          `caution.restartPosition ${position} is past the spoken range (1–${POSITION_NUMBER_MAX}); the position clause is dropped`,
+        );
+
+        return null;
+      }
+
+      return poolRef(POSITION_NUMBER_GROUP, String(position));
     },
-    "The position you would restart in, spoken from the position-number group. Read from the pace rows rather than the running order — that is what iRacing lines the field up by — and null whenever the rows carry no absolute position, which happens whenever session info cannot name the pace car. Keep it in an optional clause with the words that introduce it: a null var in a required step aborts the whole callout, silently and at debug level, so the pickup call would go unsaid rather than merely losing its number.",
+    `The position you would restart in, spoken from the position-number group, which stops at ${POSITION_NUMBER_MAX} — a position past that is null, since there is no clip to say it with. Read from the pace rows rather than the running order — that is what iRacing lines the field up by — and null whenever the rows carry no absolute position, which happens whenever session info cannot name the pace car. Keep it in an optional clause with the words that introduce it: a null var in a required step aborts the whole callout, silently and at debug level, so the pickup call would go unsaid rather than merely losing its number.`,
+  );
+
+  engine.defineCond(
+    "caution.hasFollowCarNumber",
+    () => followCarNumberRef() !== null,
+    'The car ahead of you in your line can be named — caution.followCarNumber would resolve. False while the pace car is the only thing ahead (ask caution.followsPaceCar for that), while the field carries no readable lineup, and when the session cannot spell the car\'s number. The condition to branch on when a callout must still speak without the number: the one-to-go call says a plain "One to go." in the other branch rather than nothing, because an optional clause alone expands to an empty callout and the driver hears no warning at all.',
   );
 
   engine.defineCond(

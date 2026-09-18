@@ -24,6 +24,8 @@
  * - the pace rows are assigned ~50 ms AFTER the caution flag (239.88 →
  *   239.93), so the follow call cannot read the lineup on the flag's own tick.
  */
+import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "json" };
+import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { CalloutScript } from "@iracedeck/callout-script";
@@ -43,6 +45,8 @@ import {
   CAUTION_LINEUP_CHANGE_DELAY_MS,
   CAUTION_SCENARIO_IDS,
   type CautionCalloutId,
+  cautionScenarioId,
+  POSITION_NUMBER_MAX,
   registerCautionVocabulary,
   SCENARIO_ID_TO_CAUTION_ID,
 } from "./caution.js";
@@ -60,6 +64,10 @@ vi.mock("@iracedeck/sim-events-iracing", () => ({
 
 /** Driver live in their own car, racing — what every contract's shared gate needs. */
 const IN_CAR = { IsOnTrack: true, IsReplayPlaying: false, SessionState: SessionState.Racing };
+
+/** The bundled voice's real script and manifest, for the expansion cases at the end — the `bundled-scripts.test.ts` casts. */
+const BUNDLED_SCRIPT = defaultScript as CalloutScript;
+const BUNDLED_MANIFEST: AudioAssetsManifest = manifestJson;
 
 const IDS: readonly CautionCalloutId[] = [
   "follow",
@@ -285,6 +293,24 @@ describe("the caution contracts", () => {
       "pace-car-off": "calloutEnabledCautionPaceCarOff",
       restart: "calloutEnabledCautionRestart",
     });
+  });
+
+  it("maps every contract the family builds — an unmapped id makes registerPitCrew throw at plugin startup", () => {
+    // The map is derived from the setting keys through the same id spelling
+    // the contracts use, so a callout added to the family can never reach the
+    // opt-in wrapper without a mapping. That wrapper's throw takes EVERY Race
+    // Engineer callout down, not just this family's.
+    const built = contracts();
+
+    expect(built.length).toBe(IDS.length);
+
+    for (const c of built) {
+      const calloutId = SCENARIO_ID_TO_CAUTION_ID[c.id];
+
+      expect(calloutId, `${c.id} has no callout id`).toBeDefined();
+      expect(cautionScenarioId(calloutId)).toBe(c.id);
+      expect(CAUTION_CALLOUT_SETTING_KEYS[calloutId], `${calloutId} has no setting key`).toBeDefined();
+    }
   });
 
   it("rides one event each — the caution flag for the follow call, a translator caution event for the rest", () => {
@@ -644,12 +670,60 @@ describe("registerCautionVocabulary", () => {
     registerCautionVocabulary(engine, () => LINEUP);
 
     expect([...vars.keys()]).toEqual(["caution.followCarNumber", "caution.restartPosition"]);
-    expect([...conds.keys()]).toEqual(["caution.isLeader", "caution.followsPaceCar", "caution.isDoubleFile"]);
+    expect([...conds.keys()]).toEqual([
+      "caution.hasFollowCarNumber",
+      "caution.isLeader",
+      "caution.followsPaceCar",
+      "caution.isDoubleFile",
+    ]);
     expect([...cases.keys()]).toEqual(["caution.line"]);
 
     for (const name of [...vars.keys(), ...conds.keys(), ...cases.keys()]) {
       expect((descriptions.get(name) ?? "").length).toBeGreaterThan(20);
     }
+  });
+
+  it("answers caution.hasFollowCarNumber exactly when caution.followCarNumber would resolve", () => {
+    // The condition exists so a script can give the numberless case a wording
+    // of its own instead of an empty callout (the one-to-go call, above all).
+    // It must agree with the var in every case, or a script that branches on
+    // it would name a number the var then refuses.
+    const cases: Array<[label: string, lineup: CautionLineup | null, named: boolean]> = [
+      ["a car ahead with a number", LINEUP, true],
+      ["the pace car ahead", { ...LINEUP, followsPaceCar: true, followCarNumber: "0" }, false],
+      ["a car ahead the session cannot spell", { ...LINEUP, followCarNumber: null }, false],
+      ["a car ahead spelled as nothing", { ...LINEUP, followCarNumber: "" }, false],
+      ["no lineup at all", null, false],
+    ];
+
+    for (const [label, lineup, named] of cases) {
+      const { engine, vars, conds } = makeVocabEngine();
+
+      registerCautionVocabulary(engine, () => lineup);
+
+      expect(conds.get("caution.hasFollowCarNumber")?.(), label).toBe(named);
+      expect(vars.get("caution.followCarNumber")?.() !== null, `${label} — the var disagrees`).toBe(named);
+    }
+  });
+
+  it("stops the restart position at the last spoken number, and says so at debug level", () => {
+    // The position-number group ends at POSITION_NUMBER_MAX and a field can run
+    // past it. A reference to a clip nobody ships would be dropped by the
+    // script's optional clause anyway — but silently; the bound makes it a
+    // logged decision.
+    const logger = { ...mockLogger, debug: vi.fn() };
+    const { engine, vars } = makeVocabEngine();
+    const position = { value: POSITION_NUMBER_MAX };
+
+    registerCautionVocabulary(engine, () => ({ ...LINEUP, restartPosition: position.value }), logger as never);
+
+    expect(vars.get("caution.restartPosition")?.()).toBe(poolRef("position-number", String(POSITION_NUMBER_MAX)));
+    expect(logger.debug).not.toHaveBeenCalled();
+
+    position.value = POSITION_NUMBER_MAX + 1;
+
+    expect(vars.get("caution.restartPosition")?.()).toBeNull();
+    expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining(String(POSITION_NUMBER_MAX + 1)));
   });
 
   it("declares the two lane keys the line case can return", () => {
@@ -759,5 +833,69 @@ describe("registerCautionVocabulary", () => {
     vars.get("caution.followCarNumber")?.();
 
     expect(reads).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("the one-to-go call in the bundled voice, when the car ahead cannot be named", () => {
+  // The review finding the maintainer hit in the harness: an `else` branch
+  // holding nothing but an optional clause expands to NOTHING when the number
+  // in it resolves to null, and the most time-critical call in the sequence
+  // goes silent. Driven through the real engine against the bundled script
+  // and manifest, because only the expansion can show the difference between
+  // "a numberless wording" and "no callout at all".
+  const VOICE = "default";
+  const ONE_TO_GO = `voice/${VOICE}/caution/one-to-go-01.mp3`;
+
+  /** Everything the Voice channel plays for one `caution.oneLapToGreen`, with the lineup given. */
+  function spoken(lineup: CautionLineup | null): string[] {
+    const bus = createMockBus();
+    const audio = createFakeAudio();
+    const engine = initializeAudioScenarios(bus, audio, BUNDLED_MANIFEST, mockLogger as never, () => VOICE);
+
+    registerCautionVocabulary(engine, () => lineup);
+    engine.defineContract(contract("one-to-go"));
+    engine.setScripts(new Map([[VOICE, BUNDLED_SCRIPT]]));
+
+    bus.publish({
+      event: "caution.oneLapToGreen",
+      timestamp: 0,
+      telemetry: IN_CAR,
+      data: {},
+    } as unknown as SimEventOf<SimEventName>);
+
+    // The radio frame's open tick plays on SFX first; each Voice clip plays
+    // once the one before it completes.
+    for (let i = 0; i < 10; i++) {
+      audio._triggerChannelEnd(AudioChannel.SFX);
+      audio._triggerChannelEnd(AudioChannel.Voice);
+    }
+
+    return audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path);
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    _resetAudioScenarios();
+  });
+
+  it('still says "One to go." with a car ahead the session cannot name — never nothing', () => {
+    expect(spoken({ ...LINEUP, followsPaceCar: false, followCarNumber: null })).toEqual([ONE_TO_GO]);
+  });
+
+  it("names the lane and the car when it can — the positive control, and the reason the fallback replaces rather than precedes", () => {
+    // The numbered wording already says "One to go", so the fallback is the
+    // other branch of a condition, not a clip in front of the clause.
+    expect(spoken({ ...LINEUP, followsPaceCar: false, followCarNumber: "09", line: "inside" })).toEqual([
+      `voice/${VOICE}/caution/one-to-go-inside-01.mp3`,
+      `voice/${VOICE}/car-number/09.mp3`,
+    ]);
+  });
+
+  it("keeps the plain wording for the outside front car, which follows the pace car without leading", () => {
+    expect(spoken({ ...LINEUP, followsPaceCar: true, isLeader: false, followCarNumber: null })).toEqual([ONE_TO_GO]);
   });
 });

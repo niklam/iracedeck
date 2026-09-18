@@ -1404,7 +1404,7 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   // The vocabulary goes first, as every family's does; it carries the lineup
   // resolver because every `caution.*` entry reads it at SPEAK time — the
   // lineup is never frozen into an event payload.
-  registerCautionVocabulary(engine, getCautionLineup);
+  registerCautionVocabulary(engine, getCautionLineup, logger);
 
   for (const c of buildCautionContracts(getUnderFullCourseCaution)) {
     engine.defineContract(
