@@ -474,18 +474,20 @@ export type SimEventMap = {
   "paceCar.deployed": SimEvent<"paceCar.deployed", EmptySimEventPayload>;
   /** The pace car left the track for pit road (`CarIdxTrackSurface` → AproachingPits or InPitStall). Measured ~5 s before every green. */
   "paceCar.off": SimEvent<"paceCar.off", EmptySimEventPayload>;
-  /** The pace car has picked up the field: `Caution` rising as `CautionWaving` falls. */
-  "caution.fieldCaught": SimEvent<
-    "caution.fieldCaught",
-    {
-      /** Restart lineup position, or `null` when the field is not lined up yet — no pace row can be read. */
-      restartPosition: number | null;
-    }
-  >;
+  /** The pace car has picked up the field: `Caution` rising as `CautionWaving` falls. On an oval this is one leader crossing before `caution.oneLapToGreen` — "two to green". */
+  "caution.fieldCaught": SimEvent<"caution.fieldCaught", EmptySimEventPayload>;
   /** A leader start/finish crossing after the pickup that did not bring `OneLapToGreen` — the caution ran longer than the default two laps. */
   "caution.extraLap": SimEvent<"caution.extraLap", EmptySimEventPayload>;
   /** `OneLapToGreen` rose while racing under caution. Single or double file is not carried: the callout reads the lineup live (`getCautionLineup().doubleFile`). */
   "caution.oneLapToGreen": SimEvent<"caution.oneLapToGreen", EmptySimEventPayload>;
+  /** The player's `LapDistPct` rose through 35% for the first time after `caution.oneLapToGreen`, with the caution still out — the moment the restart position is read out. At most once per one-to-green lap; nothing if the green comes first. */
+  "caution.lastLapCheckpoint": SimEvent<
+    "caution.lastLapCheckpoint",
+    {
+      /** Restart lineup position at the checkpoint, or `null` when no pace row can be read. A fallback: consumers read the lineup live. */
+      restartPosition: number | null;
+    }
+  >;
   /** The car to follow changed, derived from `CarIdxPaceRow` / `CarIdxPaceLine`. Payload is a fallback; consumers read the lineup live. */
   "caution.lineup.changed": SimEvent<
     "caution.lineup.changed",

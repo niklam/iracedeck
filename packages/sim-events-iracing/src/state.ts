@@ -304,6 +304,29 @@ export type TranslatorState = {
    * at worst announce a change between two different timelines' lineups.
    */
   cautionFollowCarIdx: number | null;
+  /**
+   * Previous-tick player `LapDistPct`, for the one-to-green lap's checkpoint
+   * (`caution.lastLapCheckpoint`: the first upward crossing of
+   * `LAST_LAP_CHECKPOINT_PCT` after `caution.oneLapToGreen`). `null` until
+   * seeded, and a tick whose value cannot be read keeps the last one rather
+   * than writing `null` — a gap is not a reading (the pace-car surface rule).
+   *
+   * Re-seeds after a replay wipe, like every other baseline here: a
+   * replay-timeline lap distance says nothing about where the live car is.
+   */
+  cautionLastLapDistPct: number | null;
+  /**
+   * Whether the one-to-green lap's checkpoint is still owed. Armed by
+   * `caution.oneLapToGreen`, disarmed by the checkpoint firing and by the
+   * phase leaving `"one-to-go"` — so a one-to-go withdrawn and later re-raised
+   * (the F2 path) re-arms for the new final lap, and a green that arrives
+   * before the checkpoint leaves nothing to fire.
+   *
+   * PRESERVED across a replay wipe, with `cautionPhase` and for the same
+   * reason: a glance at the replay on the last caution lap must neither lose
+   * the position call (had it not fired yet) nor repeat it (had it).
+   */
+  cautionCheckpointArmed: boolean;
 
   // ── Rolling-start pace laps (issue #657) ────────────────────────────────
   /**
@@ -1052,6 +1075,8 @@ export function createInitialState(): TranslatorState {
     cautionLastFlags: 0,
     cautionLeaderLapCompleted: null,
     cautionFollowCarIdx: null,
+    cautionLastLapDistPct: null,
+    cautionCheckpointArmed: false,
 
     paceLapInitialized: false,
     lastTickInParadeLaps: false,

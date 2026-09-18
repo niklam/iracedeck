@@ -100,6 +100,22 @@
  * caution that arrives already static re-anchors on it outright: an episode the
  * diff never watched begin has no laps of its own behind it yet.
  *
+ * **The one-to-green lap has a checkpoint of its own, at 35% of the PLAYER's
+ * lap** — `caution.lastLapCheckpoint`, the moment the restart position is read
+ * out. It is the first upward crossing of {@link LAST_LAP_CHECKPOINT_PCT} in
+ * the player's `LapDistPct` after `caution.oneLapToGreen`, while the phase is
+ * still `"one-to-go"`. Why that lands on the right lap for everyone: the field
+ * is packed behind the pace car, and the one-to-go flag rises at the LEADER's
+ * crossing, so a mid-pack player is usually at ~0.9–1.0 of the lap before when
+ * it does — their own start/finish crossing comes a few seconds later, and the
+ * first time their distance RISES through 0.35 after the flag is therefore on
+ * the one-to-green lap itself. For the leader, whose distance is ~0 at the
+ * flag, it is the same lap. Fired at most once per one-to-green lap: the flag
+ * withdrawn and re-raised (the waved-off restart below) re-arms it for the new
+ * final lap, and a green that arrives first leaves nothing to fire. The
+ * position spoken is read live by the callout; the payload's value is the
+ * fallback, following every other caution event.
+ *
  * **An extra lap is the ABSENCE of a signal.** Any later leader crossing that
  * arrives while still caught, with `OneLapToGreen` clear, is a lap the caution
  * did not need: the default at the pickup is two laps, iRacing accepts an
@@ -127,6 +143,16 @@ import { isOvalTrack } from "../track-type.js";
 import { type CautionLineup, resolveCautionLineup } from "./caution-lineup.js";
 import { resolvePaceCarIdx } from "./pace-laps.js";
 import type { EmitFn } from "./types.js";
+
+/**
+ * How far into the one-to-green lap the player's `LapDistPct` must rise for
+ * `caution.lastLapCheckpoint` to fire. Far enough past the start/finish line
+ * that the double-file re-form (on the tick before the flag) and the
+ * one-to-go call itself are behind the driver; well short of the pace car
+ * peeling off (~5 s before the green), so the position lands with time to
+ * take in.
+ */
+export const LAST_LAP_CHECKPOINT_PCT = 0.35;
 
 /** The pace car is on the road when its surface is a track surface rather than a pit one. */
 function onTrack(surface: number | undefined): boolean {
@@ -242,16 +268,26 @@ function diffCautionEpisode(
   const caution = hasFlag(flags, Flags.Caution);
   const oneToGo = hasFlag(flags, Flags.OneLapToGreen);
   const leaderLap = resolveLeaderLapCompleted(telemetry, canonicalPositions);
+  // The player's own lap distance, read the way the rest of the translator
+  // reads it (`LapDistPct`, the player-car field). A tick that cannot read it
+  // keeps the last baseline rather than writing `null` — a gap is not a
+  // reading, and a `null` here would swallow a crossing that straddled it.
+  const lapDistPct =
+    typeof telemetry.LapDistPct === "number" && telemetry.LapDistPct >= 0 ? telemetry.LapDistPct : null;
 
   if (seeding) {
     state.cautionLastFlags = flags;
     state.cautionLeaderLapCompleted = leaderLap;
+    state.cautionLastLapDistPct = lapDistPct;
 
     // The one thing the seed says about the phase — see the expiry paragraph
     // above. Same test as the live expiry below, so "no caution bits means no
     // caution phase" holds on every tick rather than on every tick but the
     // first one back from a replay.
-    if (!caution && !waving) state.cautionPhase = "none";
+    if (!caution && !waving) {
+      state.cautionPhase = "none";
+      state.cautionCheckpointArmed = false;
+    }
 
     return;
   }
@@ -285,7 +321,7 @@ function diffCautionEpisode(
     // episode, and only the green edge or the both-bits-clear expiry ends one.
     state.cautionPhase = "waving";
   } else if (caution && state.cautionPhase === "waving") {
-    emit({ event: "caution.fieldCaught", data: { restartPosition: lineup?.restartPosition ?? null } });
+    emit({ event: "caution.fieldCaught", data: {} });
     state.cautionPhase = "caught";
 
     // Consume the leader crossing the pickup itself landed on; see the module
@@ -323,6 +359,11 @@ function diffCautionEpisode(
   if (oneToGo && !hasFlag(wasFlags, Flags.OneLapToGreen) && state.cautionPhase === "caught") {
     emit({ event: "caution.oneLapToGreen", data: {} });
     state.cautionPhase = "one-to-go";
+    // Arm the last lap's checkpoint. Armed HERE rather than on the phase
+    // alone, so a phase that merely survived (a replay glance preserves it)
+    // owes nothing it has not been told to owe — and re-armed on every rise,
+    // so a re-raised one-to-go gets its own position call.
+    state.cautionCheckpointArmed = true;
     // Reaching the branch below means the caution is still out, and the expiry
     // above is what guarantees it: with neither bit set the phase has already
     // returned to "none", and a tick carrying only `CautionWaving` has moved it
@@ -346,8 +387,42 @@ function diffCautionEpisode(
   state.cautionLeaderLapCompleted =
     leaderLap === null || (crossingBaseline !== null && crossingBaseline > leaderLap) ? crossingBaseline : leaderLap;
 
+  diffLastLapCheckpoint(state, lineup, lapDistPct, emit);
+
   // Last, so it reads the phase this tick actually settled on.
   diffLineup(state, flags, lineup, emit);
+}
+
+/**
+ * The one-to-green lap's checkpoint — see the module comment for why 35% of
+ * the PLAYER's lap is the right moment for every car in the field. Reads the
+ * phase this tick settled on: anything but `"one-to-go"` disarms, which is
+ * what makes a green arriving first fire nothing, and a one-to-go withdrawn
+ * wait for the re-raise to re-arm it.
+ */
+function diffLastLapCheckpoint(
+  state: TranslatorState,
+  lineup: CautionLineup | null,
+  lapDistPct: number | null,
+  emit: EmitFn,
+): void {
+  if (state.cautionPhase !== "one-to-go") state.cautionCheckpointArmed = false;
+
+  if (lapDistPct === null) return;
+
+  const was = state.cautionLastLapDistPct;
+
+  state.cautionLastLapDistPct = lapDistPct;
+
+  if (!state.cautionCheckpointArmed || was === null) return;
+
+  // An UPWARD crossing only: the wrap at start/finish (~1.0 → ~0.0) passes
+  // through nothing, and a car sitting past 0.35 when the flag rises — every
+  // mid-pack car, at ~0.9–1.0 — waits for its own lap to bring it back round.
+  if (was < LAST_LAP_CHECKPOINT_PCT && lapDistPct >= LAST_LAP_CHECKPOINT_PCT) {
+    emit({ event: "caution.lastLapCheckpoint", data: { restartPosition: lineup?.restartPosition ?? null } });
+    state.cautionCheckpointArmed = false;
+  }
 }
 
 /**
@@ -410,7 +485,7 @@ export function diffCaution(
 
   state.cautionInitialized = true;
 
-  // Read once and shared: the pickup's restart position and the follow-car
+  // Read once and shared: the checkpoint's restart position and the follow-car
   // change are two readings of the same lineup, and resolving it twice is how
   // an event pair that must agree starts disagreeing.
   const lineup = resolveCautionLineup(telemetry, sessionInfo, isOvalTrack(sessionInfo));

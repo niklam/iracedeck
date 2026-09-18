@@ -3,7 +3,8 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import { createInitialState } from "../state.js";
-import { diffCaution } from "./caution.js";
+import { resolveCautionLineup } from "./caution-lineup.js";
+import { diffCaution, LAST_LAP_CHECKPOINT_PCT } from "./caution.js";
 import type { PendingEvent } from "./types.js";
 
 const ticks = JSON.parse(
@@ -18,6 +19,11 @@ const ticks = JSON.parse(
   CarIdxLapCompleted: number[];
   CarIdxTrackSurface: number[];
 }>;
+
+/** The road-course capture, cut the same way — see `__fixtures__/README.md`. */
+const roadTicks = JSON.parse(
+  readFileSync(new URL("./__fixtures__/caution-road-20260918.json", import.meta.url), "utf-8"),
+) as typeof ticks;
 
 const PACE = 64;
 const sessionInfo = { DriverInfo: { PaceCarIdx: PACE, Drivers: [] } } as Record<string, unknown>;
@@ -206,7 +212,7 @@ describe("the caution episode", () => {
     diffCaution(state, flagTick(WAVING), sessionInfo, null, emit);
     diffCaution(state, flagTick(STATIC), sessionInfo, null, emit);
 
-    expect(events).toEqual([{ event: "caution.fieldCaught", data: { restartPosition: null } }]);
+    expect(events).toEqual([{ event: "caution.fieldCaught", data: {} }]);
   });
 
   it("does not report a pickup for a caution that begins static", () => {
@@ -232,7 +238,7 @@ describe("the caution episode", () => {
     diffCaution(state, flagTick(ONE_TO_GO, { PaceMode: 3 }), sessionInfo, null, emit);
 
     expect(events).toEqual([
-      { event: "caution.fieldCaught", data: { restartPosition: null } },
+      { event: "caution.fieldCaught", data: {} },
       { event: "caution.oneLapToGreen", data: {} },
     ]);
     expect(state.cautionPhase).toBe("one-to-go");
@@ -259,7 +265,7 @@ describe("the caution episode", () => {
     diffCaution(state, flagTick(ONE_TO_GO, leader(3, 14)), sessionInfo, null, emit);
 
     expect(events).toEqual([
-      { event: "caution.fieldCaught", data: { restartPosition: null } },
+      { event: "caution.fieldCaught", data: {} },
       { event: "caution.oneLapToGreen", data: {} },
       { event: "caution.extraLap", data: {} },
       { event: "caution.oneLapToGreen", data: {} },
@@ -284,7 +290,7 @@ describe("the caution episode", () => {
     diffCaution(state, flagTick(STATIC, leader(3, 12)), sessionInfo, null, emit); // a lap the caution did not need
 
     expect(events).toEqual([
-      { event: "caution.fieldCaught", data: { restartPosition: null } },
+      { event: "caution.fieldCaught", data: {} },
       { event: "caution.extraLap", data: {} },
     ]);
     expect(state.cautionPhase).toBe("caught");
@@ -299,7 +305,7 @@ describe("the caution episode", () => {
     diffCaution(state, flagTick(STATIC, leader(3, 10)), sessionInfo, null, emit); // the pickup
     diffCaution(state, flagTick(STATIC, leader(3, 11)), sessionInfo, null, emit); // its own crossing, scored
 
-    expect(events).toEqual([{ event: "caution.fieldCaught", data: { restartPosition: null } }]);
+    expect(events).toEqual([{ event: "caution.fieldCaught", data: {} }]);
   });
 
   it("reports an extra lap when the leader crosses again without the one-to-go flag", () => {
@@ -313,7 +319,7 @@ describe("the caution episode", () => {
     diffCaution(state, flagTick(STATIC, leader(3, 12)), sessionInfo, null, emit); // a lap the caution did not need
 
     expect(events).toEqual([
-      { event: "caution.fieldCaught", data: { restartPosition: null } },
+      { event: "caution.fieldCaught", data: {} },
       { event: "caution.extraLap", data: {} },
     ]);
   });
@@ -340,7 +346,7 @@ describe("the caution episode", () => {
     // Exactly one extra lap. Counting car 3 instead would report two — which is
     // what makes this assertion tell the two sources apart at all.
     expect(events).toEqual([
-      { event: "caution.fieldCaught", data: { restartPosition: null } },
+      { event: "caution.fieldCaught", data: {} },
       { event: "caution.extraLap", data: {} },
     ]);
   });
@@ -360,7 +366,7 @@ describe("the caution episode", () => {
     diffCaution(state, tick(STATIC, 11, 10), sessionInfo, null, emit); // car 11 crosses twice
     diffCaution(state, tick(STATIC, 12, 10), sessionInfo, null, emit);
 
-    expect(events).toEqual([{ event: "caution.fieldCaught", data: { restartPosition: null } }]);
+    expect(events).toEqual([{ event: "caution.fieldCaught", data: {} }]);
   });
 
   it("re-anchors on a caution it never saw begin, rather than counting a stale baseline", () => {
@@ -390,7 +396,7 @@ describe("the caution episode", () => {
     diffCaution(state, flagTick(WAVING), sessionInfo, null, emit); // still no lineup
     diffCaution(state, flagTick(STATIC, leader(3, 24)), sessionInfo, null, emit); // the pickup
 
-    expect(events).toEqual([{ event: "caution.fieldCaught", data: { restartPosition: null } }]);
+    expect(events).toEqual([{ event: "caution.fieldCaught", data: {} }]);
 
     // And the next genuine crossing still counts.
     diffCaution(state, flagTick(STATIC, leader(3, 25)), sessionInfo, null, emit);
@@ -411,7 +417,7 @@ describe("the caution episode", () => {
     diffCaution(state, flagTick(RACING, leader(3, 11)), sessionInfo, null, emit);
     diffCaution(state, flagTick(RACING, leader(3, 12)), sessionInfo, null, emit);
 
-    expect(events).toEqual([{ event: "caution.fieldCaught", data: { restartPosition: null } }]);
+    expect(events).toEqual([{ event: "caution.fieldCaught", data: {} }]);
     expect(state.cautionPhase).toBe("none");
   });
 
@@ -428,7 +434,7 @@ describe("the caution episode", () => {
     // GreenHeld arrives with OneLapToGreen already set — the capture never
     // holds the green without it — so one to go lands on that tick.
     expect(events).toEqual([
-      { event: "caution.fieldCaught", data: { restartPosition: null } },
+      { event: "caution.fieldCaught", data: {} },
       { event: "caution.oneLapToGreen", data: {} },
       { event: "caution.restarted", data: {} },
     ]);
@@ -489,6 +495,43 @@ describe("the caution episode", () => {
       { t: 872.45, event: "caution.restarted" },
     ]);
   });
+
+  it("replays the captured ROAD-COURSE cautions: the pickup and one to go on one tick, the pace car's two blips, no checkpoint", () => {
+    // `__fixtures__/caution-road-20260918.json` — the first road caution
+    // captured, cut like the oval one (the pace car at slot 20, PaceCarIdx 64
+    // supplied here since the capture has no session YAML). What it shows:
+    // the waving caution never goes static on its own — at 309.33 it drops
+    // straight to Caution|OneLapToGreen, so the pickup and one to go land on
+    // ONE tick, in that order (the contract layer keeps "Two to green" silent
+    // there); the pace car blips to AproachingPits and back mid-caution
+    // (152.23 → 155.37, 562.07 → 565.22) before its real exit at 461.22; and
+    // no `caution.lastLapCheckpoint`, because the capture recorded no
+    // `LapDistPct` — the checkpoint is proved by the synthetic ticks above,
+    // not by this replay.
+    const state = createInitialState();
+    const { events, emit } = collect();
+    const fired: Array<{ t: number; event: string }> = [];
+
+    for (const tick of roadTicks) {
+      const before = events.length;
+
+      diffCaution(state, replayTick(tick), sessionInfo, null, emit);
+
+      for (const e of events.slice(before)) fired.push({ t: tick.t, event: e.event });
+    }
+
+    expect(fired).toEqual([
+      { t: 152.23, event: "paceCar.off" },
+      { t: 155.37, event: "paceCar.deployed" },
+      { t: 309.33, event: "caution.fieldCaught" },
+      { t: 309.33, event: "caution.oneLapToGreen" },
+      { t: 461.22, event: "paceCar.off" },
+      { t: 466.95, event: "caution.restarted" },
+      { t: 494.18, event: "paceCar.deployed" },
+      { t: 562.07, event: "paceCar.off" },
+      { t: 565.22, event: "paceCar.deployed" },
+    ]);
+  });
 });
 
 describe("the caution lineup", () => {
@@ -509,7 +552,7 @@ describe("the caution lineup", () => {
     );
   }
 
-  it("carries the player's restart position into the pickup", () => {
+  it("carries nothing into the pickup — the position moved to the last lap's checkpoint", () => {
     const state = createInitialState();
     const { events, emit } = collect();
 
@@ -517,7 +560,146 @@ describe("the caution lineup", () => {
     diffCaution(state, flagTick(WAVING, singleFile(1, 2, 3)), playerSessionInfo(3), null, emit);
     diffCaution(state, flagTick(STATIC, singleFile(1, 2, 3)), playerSessionInfo(3), null, emit);
 
-    expect(events).toEqual([{ event: "caution.fieldCaught", data: { restartPosition: 3 } }]);
+    expect(events).toEqual([{ event: "caution.fieldCaught", data: {} }]);
+  });
+
+  /**
+   * The one-to-green lap's checkpoint: the player's `LapDistPct` rising through
+   * `LAST_LAP_CHECKPOINT_PCT` for the first time after one to go. Every case
+   * below drives the SAME single-file lineup (the player 3rd) so the payload's
+   * fallback position is readable, and moves only the flags and the distance.
+   */
+  describe("the last lap's checkpoint", () => {
+    type Rig = {
+      state: ReturnType<typeof createInitialState>;
+      events: PendingEvent[];
+      emit: (e: PendingEvent) => void;
+    };
+    const info = playerSessionInfo(3);
+    const field = singleFile(1, 2, 3);
+
+    function tick(rig: Rig, flags: number, at: number | undefined): void {
+      diffCaution(rig.state, flagTick(flags, { ...field, LapDistPct: at }), info, null, rig.emit);
+    }
+
+    /** A caught field, one to go just raised, the player at `at` of the lap. */
+    function throughOneToGo(at: number): Rig {
+      const rig: Rig = { state: createInitialState(), ...collect() };
+
+      tick(rig, RACING, 0.5); // seed
+      tick(rig, WAVING, 0.6);
+      tick(rig, STATIC, 0.7);
+      tick(rig, ONE_TO_GO, at);
+
+      return rig;
+    }
+
+    function checkpoints(rig: Rig): PendingEvent[] {
+      return rig.events.filter((e) => e.event === "caution.lastLapCheckpoint");
+    }
+
+    it("fires once, the first time the player's distance rises through 35% after one to go, with the restart position", () => {
+      // A mid-pack car: the flag rises at the LEADER's crossing, with this car
+      // still at 0.95 of the previous lap. Its own crossing comes next, and the
+      // checkpoint is the first upward crossing of 0.35 after that.
+      const rig = throughOneToGo(0.95);
+
+      tick(rig, ONE_TO_GO, 0.99);
+      tick(rig, ONE_TO_GO, 0.02); // the wrap: 0.99 → 0.02 is not a rise through 0.35
+      tick(rig, ONE_TO_GO, 0.2);
+      tick(rig, ONE_TO_GO, 0.34);
+
+      expect(checkpoints(rig)).toEqual([]);
+
+      tick(rig, ONE_TO_GO, 0.36);
+      tick(rig, ONE_TO_GO, 0.5);
+      tick(rig, ONE_TO_GO, 0.9);
+      // A second rise through 0.35 with the flag still up — the field going
+      // round again under a one-to-go that is slow to turn green — is NOT a
+      // second checkpoint. Without these two ticks a diff that never disarmed
+      // after firing would pass the assertion below.
+      tick(rig, ONE_TO_GO, 0.2);
+      tick(rig, ONE_TO_GO, 0.4);
+
+      expect(checkpoints(rig)).toEqual([{ event: "caution.lastLapCheckpoint", data: { restartPosition: 3 } }]);
+      expect(LAST_LAP_CHECKPOINT_PCT).toBe(0.35);
+    });
+
+    it("lands on the same lap for the leader, whose distance is near zero when the flag rises", () => {
+      const rig = throughOneToGo(0.01);
+
+      tick(rig, ONE_TO_GO, 0.2);
+      tick(rig, ONE_TO_GO, 0.4);
+
+      expect(checkpoints(rig)).toHaveLength(1);
+    });
+
+    it("fires nothing when the green arrives before the checkpoint", () => {
+      const rig = throughOneToGo(0.95);
+
+      tick(rig, ONE_TO_GO, 0.99);
+      tick(rig, RESTART, 0.05);
+      tick(rig, RACING, 0.3);
+      tick(rig, RACING, 0.4); // the crossing, under green
+
+      expect(rig.events.map((e) => e.event)).toEqual([
+        "caution.fieldCaught",
+        "caution.oneLapToGreen",
+        "caution.restarted",
+      ]);
+    });
+
+    it("fires nothing before one to go — a crossing on an ordinary caution lap is not the checkpoint", () => {
+      const rig: Rig = { state: createInitialState(), ...collect() };
+
+      tick(rig, RACING, 0.5); // seed
+      tick(rig, WAVING, 0.9);
+      tick(rig, STATIC, 0.1);
+      tick(rig, STATIC, 0.3);
+      tick(rig, STATIC, 0.4);
+
+      expect(rig.events.map((e) => e.event)).toEqual(["caution.fieldCaught"]);
+    });
+
+    it("re-arms when one to go is withdrawn and raised again, so the new final lap gets its own call", () => {
+      const rig = throughOneToGo(0.1);
+
+      tick(rig, ONE_TO_GO, 0.4); // the first final lap's checkpoint
+      tick(rig, STATIC, 0.6); // a waved-off restart: the flag comes down, the caution stays
+      tick(rig, STATIC, 0.99);
+      tick(rig, STATIC, 0.1);
+      tick(rig, STATIC, 0.4); // a crossing on the extra lap — not a checkpoint
+      tick(rig, ONE_TO_GO, 0.99); // the real one to go
+      tick(rig, ONE_TO_GO, 0.1);
+      tick(rig, ONE_TO_GO, 0.4); // and its checkpoint
+
+      expect(rig.events.map((e) => e.event)).toEqual([
+        "caution.fieldCaught",
+        "caution.oneLapToGreen",
+        "caution.lastLapCheckpoint",
+        "caution.oneLapToGreen",
+        "caution.lastLapCheckpoint",
+      ]);
+    });
+
+    it("owes nothing to a one to go withdrawn before the checkpoint, until the flag comes back", () => {
+      const rig = throughOneToGo(0.95);
+
+      tick(rig, STATIC, 0.99); // withdrawn before this car ever reached 0.35
+      tick(rig, STATIC, 0.1);
+      tick(rig, STATIC, 0.4);
+
+      expect(rig.events.map((e) => e.event)).toEqual(["caution.fieldCaught", "caution.oneLapToGreen"]);
+    });
+
+    it("keeps its baseline through a tick that cannot read the distance, so a crossing straddling the gap still fires", () => {
+      const rig = throughOneToGo(0.3);
+
+      tick(rig, ONE_TO_GO, undefined);
+      tick(rig, ONE_TO_GO, 0.4);
+
+      expect(checkpoints(rig)).toHaveLength(1);
+    });
   });
 
   it("says nothing about the first lineup it reads — that is the answer, not a change", () => {
@@ -641,13 +823,22 @@ describe("the caution lineup", () => {
 
     for (const tick of ticks) {
       const before = events.length;
+      const telemetry = replayTick(tick);
 
-      diffCaution(state, replayTick(tick), info, null, emit);
+      diffCaution(state, telemetry, info, null, emit);
 
       for (const e of events.slice(before)) {
         if (e.event === "caution.lineup.changed") fired.push({ t: tick.t, followCarIdx: e.data.followCarIdx });
 
-        if (e.event === "caution.fieldCaught") caught.push({ t: tick.t, restartPosition: e.data.restartPosition });
+        // The pickup carries no position any more (the checkpoint does); the
+        // lineup at that tick is what a callout reading live would have seen.
+        if (e.event === "caution.fieldCaught") {
+          expect(e.data).toEqual({});
+          caught.push({
+            t: tick.t,
+            restartPosition: resolveCautionLineup(telemetry, info, true)?.restartPosition ?? null,
+          });
+        }
       }
     }
 

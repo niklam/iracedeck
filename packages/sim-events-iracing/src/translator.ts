@@ -1021,8 +1021,9 @@ export function isUnderFullCourseCaution(): boolean {
  * Read at fire time rather than frozen into an event payload (the
  * {@link getReadbackSnapshot} rationale): the lineup keeps moving while the
  * field re-forms, so a callout that plays seconds after its trigger must name
- * the car that is ahead NOW. `caution.fieldCaught` carries a `restartPosition`
- * for the moment of the pickup; everything spoken later comes from here.
+ * the car that is ahead NOW. `caution.lastLapCheckpoint` carries a
+ * `restartPosition` as a fallback for the moment it fires; everything spoken
+ * comes from here.
  *
  * Deliberately NOT gated on {@link isUnderFullCourseCaution}: the pace arrays
  * are the source of truth for what they describe, and a caller that wants "the
@@ -1391,6 +1392,10 @@ function wipeStateForReplay(self: TranslatorInstance): void {
     // as meaningless as the opponent-flag bits baseline above, and both
     // re-seed from the first tick back, which is exactly right.
     cautionPhase: self.state.cautionPhase,
+    // …and whether the one-to-green lap's position call is still owed, for
+    // the same reason: a glance on the last caution lap must neither lose that
+    // call nor repeat it. Its baseline (`cautionLastLapDistPct`) re-seeds.
+    cautionCheckpointArmed: self.state.cautionCheckpointArmed,
   };
 
   self.state = createInitialState();
