@@ -3734,10 +3734,11 @@ describe("sim-events-iracing translator", () => {
   });
 
   describe("full-course caution wiring (issue #1127)", () => {
-    /** car0 is the player, car1 the rival, car2 the pace car. */
+    /** car0 is the player, car1 the rival, car2 the pace car, car3 the car behind the rival on the outside line. */
     const PLAYER = 0;
     const RIVAL = 1;
     const PACE = 2;
+    const OUTSIDE = 3;
 
     /** `SessionFlags` values lifted from the 2026-09-17 capture (see `diff/caution.test.ts`). */
     const RACING = 0x10040000; // Servicible | StartHidden — green-flag running
@@ -3756,6 +3757,7 @@ describe("sim-events-iracing translator", () => {
             { CarIdx: PLAYER, CarNumber: "7" },
             { CarIdx: RIVAL, CarNumber: "11" },
             { CarIdx: PACE, CarNumber: "0", CarIsPaceCar: 1 },
+            { CarIdx: OUTSIDE, CarNumber: "4" },
           ],
         },
         SessionInfo: { Sessions: [{ SessionNum: 0, SessionType: "Race" }] },
@@ -3779,12 +3781,16 @@ describe("sim-events-iracing translator", () => {
      * PLAYER holds line 0 row 1, and the RIVAL line 1 row 0 — so the lineup's
      * own front car is the player while the canonical order (below) names the
      * rival as the leader. That is the disagreement the 2026-09-17 capture
-     * showed and the reason the canonical order is the authority here.
+     * showed and the reason the canonical order is the authority here. The
+     * OUTSIDE car behind the rival is what makes line 1 a COLUMN: the lineup
+     * reader counts a line only when it holds two cars, so a lone car on line
+     * 1 would read as a stray and the field as single file.
      */
     const FRONT_ROW: Array<[number, number]> = [
       [1, 0],
       [0, 1],
       [0, 0],
+      [1, 1],
     ];
 
     function cautionTick({
@@ -3793,13 +3799,14 @@ describe("sim-events-iracing translator", () => {
         [10, 0.5],
         [11, 0.5],
         [5, 0.5],
+        [10, 0.5],
       ],
       pace = FRONT_ROW,
       paceCarSurface = TrkLoc.OnTrack,
       paceMode,
       replay,
     }: CautionTick): TelemetryData {
-      const surfaces = [TrkLoc.OnTrack, TrkLoc.OnTrack, TrkLoc.OnTrack];
+      const surfaces = [TrkLoc.OnTrack, TrkLoc.OnTrack, TrkLoc.OnTrack, TrkLoc.OnTrack];
       surfaces[PACE] = paceCarSurface;
 
       return telemetry({
@@ -3809,7 +3816,7 @@ describe("sim-events-iracing translator", () => {
         CarIdxLapCompleted: progress.map(([lap]) => lap),
         CarIdxLapDistPct: progress.map(([, pct]) => pct),
         CarIdxTrackSurface: surfaces,
-        CarIdxClass: [0, 0, 0],
+        CarIdxClass: [0, 0, 0, 0],
         CarIdxPaceRow: pace.map(([row]) => row),
         CarIdxPaceLine: pace.map(([, line]) => line),
         ...(paceMode === undefined ? {} : { PaceMode: paceMode }),
@@ -3965,6 +3972,7 @@ describe("sim-events-iracing translator", () => {
             [10, 0.5],
             [11, 0.99],
             [5, 0.5],
+            [10, 0.5],
           ],
         }),
       );
@@ -3975,6 +3983,7 @@ describe("sim-events-iracing translator", () => {
             [10, 0.52],
             [12, 0.01],
             [5, 0.52],
+            [10, 0.52],
           ],
         }),
       );
@@ -4066,6 +4075,7 @@ describe("sim-events-iracing translator", () => {
               [-1, -1], // the player, still in the pits
               [1, 0],
               [0, 0],
+              [1, 1],
             ],
           }),
         );
