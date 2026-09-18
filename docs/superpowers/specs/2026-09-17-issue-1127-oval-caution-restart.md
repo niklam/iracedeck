@@ -75,7 +75,7 @@ A new module, `packages/sim-events-iracing/src/diff/caution.ts`, owns one state 
 | `paceCar.off` | it becomes `ApproachPits` / pit road |
 | `caution.fieldCaught` | `Caution` rises as `CautionWaving` falls: the pickup |
 | `caution.extraLap` | a leader crossing after the pickup that is not one to go |
-| `caution.oneLapToGreen` | `OneLapToGreen` rises while racing under caution; payload carries single- or double-file |
+| `caution.oneLapToGreen` | `OneLapToGreen` rises while racing under caution |
 | `caution.lineup.changed` | the car to follow changes |
 | `caution.restarted` | the green that ends a full-course caution |
 
@@ -95,8 +95,13 @@ Registered with descriptions, as every vocabulary entry must be:
 
 - `caution.followCarNumber` — the car number to follow, drawn from a new `car-number` clip group. Part of the sentence, so a number a pack cannot resolve drops to a numberless wording rather than leaving a gap.
 - `caution.restartPosition` — from the existing `position-number` group.
-- `caution.isLeader`, `caution.isDoubleFile` — conditions.
+- `caution.isLeader`, `caution.isDoubleFile`, `caution.followsPaceCar`, `caution.hasFollowCarNumber` — conditions.
 - `caution.line` — a case: `inside` / `outside` / absent.
+
+**Amended during implementation (2026-09-18), as the policy allows while the work is unshipped.** Two changes the code review forced, recorded here so the spec does not describe something that was built differently:
+
+- The `caution.oneLapToGreen` payload **carries no single-/double-file field**. One was specified and built, and nothing ever read it: the one-to-go script branches on the live lineup (`caution.isDoubleFile`, `caution.line`) rather than on the event, because the lineup is read at speak time and the payload would be a second, staler answer to the same question. A published catalog field with no consumer has to be maintained forever and a pack author cannot reach it, so it and its `PaceFile` type were removed rather than left as a trap.
+- `caution.hasFollowCarNumber` is a **new condition**, and it exists because of a defect this spec's design made easy to write. Every line that names the car ahead sat inside an `optional` clause, so when the number could not be resolved the whole callout expanded to nothing — and "One to go", the most time-critical call in the sequence, played silence. A condition lets the script take a numberless branch instead of losing the sentence. The lesson generalises past this issue: an `optional` clause is safe only when something outside it still speaks.
 
 ## Changes to behaviour that already ships
 
