@@ -43,7 +43,7 @@ Anything gated by a master or a per-callout opt-in — including which getter a 
 
 `presets/telemetry/*.json` and `presets/session/*.json`; the filename (minus `.json`) is the preset name. Applied via `/api/telemetry/preset` and `/api/session/preset`. Dropping a valid JSON file in is the whole of the registration — `loadPresets` scans the directory at boot and names the preset after the file. Malformed preset files are silently skipped at load (`src/server.ts`).
 
-`session/race-oval.json` is `session/race.json` with an oval's `WeekendInfo` and nothing else changed — same 18-car roster, same `DriverCarIdx: 7`, same `PaceCarIdx: 0` — because the caution shortcuts' pace arrays are indexed for exactly that roster. What it unlocks is in the caution-shortcut section below.
+`session/race-oval.json` is `session/race.json` with an oval's `WeekendInfo` and nothing else changed — same 18-car roster, same `DriverCarIdx: 7`, same `PaceCarIdx: 0` — because the caution shortcuts' pace arrays are indexed for exactly that roster. What it unlocks is in the caution-shortcut section below. **Its `TrackID` deliberately differs from `race.json`'s**, which is not cosmetic: the translator caches resolved corner markers and track length under `${TrackID}|${SessionNum}`, so two presets sharing an id would leave a tester who switched between them holding the previous track's geometry while the harness claimed to be somewhere else. A session preset that clones another must change the id along with the name.
 
 ## Deleting a telemetry field (capability gates)
 
