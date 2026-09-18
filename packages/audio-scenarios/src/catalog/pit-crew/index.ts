@@ -1719,15 +1719,17 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   // Lap-time best-lap contract (issue #555; scripted since #1065). The
   // readout's four components and the minute gate are the `lapTime.*`
   // vocabulary, reading the snapshot at expansion time; the contract keeps
-  // only the race-finished gate its `where:` reads.
+  // only the race-finished gate and the full-course-caution gate its
+  // `where:` reads.
   registerLapTimeVocabulary(engine, getLapCompletedSnapshot);
   engine.defineContract(
     wrapWithMaster(
       wrapCalloutScenario(
         // Pass the race-finished resolver so the best-lap callout is
         // suppressed on the final lap of a race (issue #569) — race-end
-        // takes the floor.
-        buildLapTimeContract(getRaceFinishedFired),
+        // takes the floor — and the caution resolver so a pace lap under a
+        // full-course caution never registers as a best lap (issue #1127).
+        buildLapTimeContract(getRaceFinishedFired, getUnderFullCourseCaution),
         SCENARIO_ID_TO_LAP_TIME_ID,
         getLapTimeCalloutEnabled,
         "lap-time callout",
@@ -1771,8 +1773,12 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
         // Pass the race-finished resolver so position-change is suppressed on
         // the final lap of a race (issue #569) — race-end takes the floor, and
         // without the gate position-change would queue "We're currently P[n]"
-        // behind race-end and play it after the result speech.
-        buildPositionContract(getRaceFinishedFired, getLivePosition),
+        // behind race-end and play it after the result speech. The caution
+        // resolver silences the callout while a full-course caution is out
+        // (issue #1127) — the frozen order catching up to official positions
+        // is not a position change, and the caution sequence's own `restart`
+        // call states the restart position.
+        buildPositionContract(getRaceFinishedFired, getLivePosition, getUnderFullCourseCaution),
         SCENARIO_ID_TO_POSITION_ID,
         getPositionCalloutEnabled,
         "position callout",

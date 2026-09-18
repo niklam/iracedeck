@@ -94,6 +94,7 @@ import type { SimEventOf } from "@iracedeck/event-bus";
 import { poolRef, WEIGHT } from "../../dsl.js";
 import type { ScenarioContext, ScenarioContract } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
+import type { UnderCautionResolver } from "./caution.js";
 import {
   canAnnouncePosition,
   commitIntroDecision,
@@ -391,19 +392,37 @@ export function registerPositionVocabulary(
  * snapshot resolver is NOT a contract dep any more: the `where:` decides from
  * the event payload, and every shape decision the closures made from the
  * snapshot is the vocabulary's ({@link registerPositionVocabulary}).
+ *
+ * `getUnderFullCourseCaution` silences the ordinary status readout while a
+ * full-course caution is out (issue #1127). Under caution the running order
+ * freezes and the OFFICIAL positions merely catch up to it as the pace car
+ * picks up the field — the driver lost no places, but this callout has no way
+ * to say that, only "We're currently P14" as if fourteen positions had just
+ * changed hands. The restart position is instead stated deliberately by the
+ * caution sequence's own `restart` call. Read at EVENT time: this is a
+ * `lap.completed` reaction, not a queueable fire whose replay could land after
+ * the caution has cleared, so there is no speak-time re-check to add. Default
+ * `() => false` preserves legacy behavior for tests / the harness that don't
+ * supply a closure.
  */
 export function buildPositionContract(
   getRaceFinishedFired: () => boolean = () => false,
   getLivePosition: LivePositionResolver = () => null,
+  getUnderFullCourseCaution: UnderCautionResolver = () => false,
 ): ScenarioContract {
   return {
     id: "pit-crew.position-change",
     description:
-      "You finish a qualifying or race lap in a new position, or your first timed lap; a held place counts only on a non-best qualifying lap; in a race, no position readout in the past twenty seconds.",
+      "You finish a qualifying or race lap in a new position, a held place on a non-best qualifying lap, or your first timed lap — not under a caution, and at most once per twenty seconds in a race.",
     when: {
       event: "lap.completed",
       where: (ev) => {
         if (ev.event !== "lap.completed") return false;
+
+        // Full-course caution — the frozen running order catching up to the
+        // official positions is not a position change (issue #1127); the
+        // caution sequence's `restart` call states the restart position.
+        if (getUnderFullCourseCaution()) return false;
 
         const data = ev.data as SimEventOf<"lap.completed">["data"];
 

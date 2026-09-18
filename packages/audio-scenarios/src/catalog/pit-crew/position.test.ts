@@ -203,6 +203,7 @@ let audio: FakeAudio;
 let engine: IScenarioEngine;
 let lastSnapshot: LapPayload | null;
 let raceFinished: boolean;
+let underCaution: boolean;
 
 function fire(data: LapPayload | null): void {
   lastSnapshot = data;
@@ -240,6 +241,7 @@ function liveFromSnapshot(): { position: number; classPosition: number; isMultiC
 beforeEach(() => {
   lastSnapshot = null;
   raceFinished = false;
+  underCaution = false;
   _resetPositionReadoutCooldown();
   bus = createMockBus();
   audio = createFakeAudio();
@@ -248,7 +250,13 @@ beforeEach(() => {
   // script. The family is registered ALONE, so only its own compile
   // diagnostics can appear.
   registerPositionVocabulary(engine, () => lastSnapshot, liveFromSnapshot);
-  engine.defineContract(buildPositionContract(() => raceFinished, liveFromSnapshot));
+  engine.defineContract(
+    buildPositionContract(
+      () => raceFinished,
+      liveFromSnapshot,
+      () => underCaution,
+    ),
+  );
   engine.setScripts(new Map([[VOICE, POSITION_SCRIPT]]));
 });
 
@@ -432,6 +440,20 @@ describe("position-change contract", () => {
     expect(voicePaths()).toEqual([]);
   });
 
+  it("stays silent while a full-course caution is out (issue #1127) — the caution sequence states the restart position itself", () => {
+    underCaution = true;
+    fire(snap({ position: 14, previousPosition: 3, sessionType: "race" }));
+
+    expect(voicePaths()).toEqual([]);
+  });
+
+  it("fires normally once the caution has cleared", () => {
+    underCaution = false;
+    fire(snap({ position: 3, previousPosition: 5, sessionType: "race" }));
+
+    expect(hasClip("/position-number/3.mp3")).toBe(true);
+  });
+
   it("an aborted expansion in a race leaves the shared position cooldown unclaimed (issue #1137)", () => {
     // `where:` passes — the live position is readable — but the voice has no
     // clip for P65, so the expansion aborts (issue #836). The claim is the
@@ -559,6 +581,7 @@ describe("position-change contract — the catalog's opt-in wrapper", () => {
       getPositionCalloutEnabled: () => positionEnabled,
       getRaceFinishedFired: () => raceFinished,
       getLivePosition: liveFromSnapshot,
+      getUnderFullCourseCaution: () => underCaution,
     });
     engine.setScripts(new Map([[VOICE, SCRIPT]]));
   });

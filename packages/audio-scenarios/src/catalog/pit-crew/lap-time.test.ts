@@ -193,6 +193,7 @@ let audio: FakeAudio;
 let lastSnapshot: LapCompletedSnapshot | null;
 let lapTimeEnabled: boolean;
 let raceFinished: boolean;
+let underCaution: boolean;
 
 function fire(data: LapCompletedSnapshot | null): void {
   lastSnapshot = data;
@@ -217,6 +218,7 @@ beforeEach(() => {
   lastSnapshot = null;
   lapTimeEnabled = true;
   raceFinished = false;
+  underCaution = false;
   bus = createMockBus();
   audio = createFakeAudio();
   initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
@@ -225,6 +227,7 @@ beforeEach(() => {
     getLapTimeCalloutEnabled: () => lapTimeEnabled,
     getLapCompletedSnapshot: () => lastSnapshot,
     getRaceFinishedFired: () => raceFinished,
+    getUnderFullCourseCaution: () => underCaution,
   });
   // After the registration, as the plugins do: the readout's body is looked
   // up in the active voice's compiled script at fire time (issue #1065).
@@ -368,6 +371,20 @@ describe("lap-time scenario", () => {
     // remain unaffected because the race-end callout doesn't exist there.
     raceFinished = true;
     fire(snap({ lapTime: 63.4, sessionType: "qualifying" }));
+
+    expect(hasClip("/lap-time-intro/best-lap-yet.mp3")).toBe(true);
+  });
+
+  it("stays silent while a full-course caution is out (issue #1127) — a pace lap is not a lap time", () => {
+    underCaution = true;
+    fire(snap({ lapTime: 44.0 }));
+
+    expect(voicePaths()).toEqual([]);
+  });
+
+  it("fires normally once the caution has cleared", () => {
+    underCaution = false;
+    fire(snap({ lapTime: 63.4 }));
 
     expect(hasClip("/lap-time-intro/best-lap-yet.mp3")).toBe(true);
   });

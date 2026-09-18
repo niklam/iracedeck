@@ -52,6 +52,7 @@ import type { SimEventOf } from "@iracedeck/event-bus";
 import type { ScenarioContract } from "../../dsl.js";
 import { poolRef } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
+import type { UnderCautionResolver } from "./caution.js";
 
 /**
  * Resolver for the most recent `lap.completed` payload. Returns `null` when no
@@ -182,17 +183,34 @@ export function registerLapTimeVocabulary(
  * two would queue head-to-tail. Default `() => false` (race never ends)
  * preserves legacy behavior for tests that don't supply a closure.
  *
+ * `getUnderFullCourseCaution` silences the callout while a full-course
+ * caution is out (issue #1127): a pace lap under caution can register as a
+ * new "best" lap time by virtue of being timed at all, and "That was your
+ * best lap yet" over a 44-second pace lap is nonsense — the caution sequence
+ * (`caution.ts`) owns everything the engineer says while the yellow is out.
+ * Read at EVENT time, same as the race-finished gate, because `lap.completed`
+ * itself never replays: unlike the caution family's queueable calls, there is
+ * no pending fire whose speak-time state could have moved on. Default
+ * `() => false` preserves legacy behavior for tests and the harness that
+ * don't supply a closure.
+ *
  * Holds the fixed `id`, the full `when` block, and the channel/bus/base/family
  * defaults (weight is left at the default `WEIGHT.NORMAL`); the readout's
  * components are the vocabulary's ({@link registerLapTimeVocabulary}).
  */
-export function buildLapTimeContract(getRaceFinishedFired: () => boolean = () => false): ScenarioContract {
+export function buildLapTimeContract(
+  getRaceFinishedFired: () => boolean = () => false,
+  getUnderFullCourseCaution: UnderCautionResolver = () => false,
+): ScenarioContract {
   return {
     id: "pit-crew.lap-time-best",
     when: {
       event: "lap.completed",
       where: (ev) => {
         if (ev.event !== "lap.completed") return false;
+
+        // Full-course caution — a pace lap is not a lap time (issue #1127).
+        if (getUnderFullCourseCaution()) return false;
 
         const data = ev.data as LapCompletedSnapshot;
 
@@ -214,7 +232,7 @@ export function buildLapTimeContract(getRaceFinishedFired: () => boolean = () =>
     base: "voice/{voice}",
     family: "lap-time",
     description:
-      "You cross the line with a new session-best lap, or your first valid lap of the session, in any session — except on the final lap of a race, where the result speaks instead.",
+      "You cross the line with a new session-best lap, or your first valid lap of the session — except on the final lap of a race (race-end speaks) or under a caution (a pace lap is not a lap time).",
   };
 }
 
