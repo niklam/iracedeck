@@ -599,14 +599,14 @@ Under **Spotter**, two callouts are toggleable, both enabled by default (see [Sp
 
 Under **Caution**, eight callouts are toggleable, all enabled by default (see [Full-course caution](#full-course-caution) above for the full behavior). They only ever fire in a race, while you are live in the car, and only as part of a full-course caution:
 
-- **Who to follow** — the car you line up behind, named a couple of seconds after the caution comes out.
-- **Pace car out** — the pace car reaching the track.
-- **Pace car has the field** — the pickup: the field is gathered up, this will take a couple of laps, and here is the position you would restart in.
-- **Another caution lap** — one per extra lap when the caution runs past the two it defaults to.
-- **One to go** — the last lap under caution, with the car ahead and (on a double-file oval restart) the lane you form up in.
-- **Car ahead changed** — the car you line up behind has changed mid-caution.
-- **Pace car off** — the pace car peeling off to pit road, a few seconds before the green.
-- **Restart** — the green that releases the field. This is the switch for the restart call; **Start lights** above no longer covers it.
+- **Who to follow** (`calloutEnabledCautionFollow`) — the car you line up behind, named a couple of seconds after the caution comes out.
+- **Pace car out** (`calloutEnabledCautionPaceCarOut`) — the pace car reaching the track.
+- **Pace car has the field** (`calloutEnabledCautionFieldCaught`) — the pickup: the field is gathered up, this will take a couple of laps, and here is the position you would restart in.
+- **Another caution lap** (`calloutEnabledCautionExtraLap`) — one per extra lap when the caution runs past the two it defaults to.
+- **One to go** (`calloutEnabledCautionOneToGo`) — the last lap under caution, with the car ahead and (on a double-file oval restart) the lane you form up in.
+- **Car ahead changed** (`calloutEnabledCautionLineupChanged`) — the car you line up behind has changed mid-caution.
+- **Pace car off** (`calloutEnabledCautionPaceCarOff`) — the pace car peeling off to pit road, a few seconds before the green.
+- **Restart** (`calloutEnabledCautionRestart`) — the green that releases the field. This is the switch for the restart call; **Start lights** above no longer covers it.
 
 The caution announcement that opens the sequence is not in this group — it keeps its existing **Caution waving** switch under **Flags**.
 
