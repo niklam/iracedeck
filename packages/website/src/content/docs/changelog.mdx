@@ -16,6 +16,7 @@ _Unreleased_
 **Features**
 
 - The plugin no longer carries the **Default** Race Engineer voice inside its own folder — every download is about 8 MB smaller. Instead iRaceDeck installs Default from its catalog the first time the plugin starts, keeps it up to date afterwards, and also updates any other voice you installed from the catalog when a newer version is published. All of it runs quietly in the background — a failed download is retried on its own, more often while the Race Engineer is on — and Default now shows *Kept up to date by iRaceDeck* in place of a Remove button. If you upgraded from 3.2.0 you already have the voice and nothing is downloaded. See [Race Engineer Voices](/docs/features/race-engineer-voices/).
+- The Race Engineer now talks you through a full-course caution, from the flag to the green. As soon as iRacing settles the order behind the pace car he names the car you line up behind — by its number, spoken the way the sim spells it, so `09` and `9` are never confused. He calls the pace car onto the track; tells you when the field has been picked up, how long that is likely to take, and the position you would restart in; reports each extra lap if the caution is extended; calls one to go with the car ahead of you and, on an oval forming up double file, the lane you take; calls the pace car peeling off; and calls the restart itself. If the car ahead of you changes mid-caution — somebody pits, or the field re-forms — he tells you that too. Two calls that made no sense under yellow now stay quiet: a lap behind the pace car announced as your best yet, and the frozen running order read out as though you had lost places. Pit open and pit closed calls are unchanged, because that is exactly what you need to hear under a caution. And *"Yellow cleared."* no longer lands a few seconds into the restart — that line is for a local yellow, which ends with no flag shown at all, while a caution now ends with a restart call of its own. All eight new calls are individually switchable under **Race Engineer Callouts → Caution**. See [Pit Crew](/docs/actions/audio-voice/pit-crew/#full-course-caution).
 
 **Improvements**
 
@@ -25,7 +26,6 @@ _Unreleased_
 
 - The Race Engineer no longer falls silent on a position or gap readout for the length of the cooldown after an earlier readout was dropped before it could play.
 - A pit-service readback that a more urgent call cut off now picks up where it left off in a voice pack that records more than one take of a readback line, instead of starting the readback over. The bundled Default voice records one take per line, so it was never affected.
-- The restart after a full-course caution is no longer followed by *"Yellow cleared."* a few seconds in. That line exists for a local yellow, which ends with no flag shown at all and so is the only way you learn the sector is clear; a caution ends with the restart itself, which the engineer already calls. The all-clear is now spoken only for a yellow that stayed local — including one raised moments after a restart.
 
 ## 3.2.0
 
