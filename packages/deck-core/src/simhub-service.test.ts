@@ -64,6 +64,7 @@ describe("SimHub Service", () => {
       calloutEnabledCautionLineupChanged: true,
       calloutEnabledCautionPaceCarOff: true,
       calloutEnabledCautionRestart: true,
+      calloutEnabledCautionPosition: true,
 
       calloutEnabledSpotterStillThere: true,
       spotterStillThereSeconds: 3,
@@ -286,6 +287,7 @@ describe("SimHub Service", () => {
         calloutEnabledCautionLineupChanged: true,
         calloutEnabledCautionPaceCarOff: true,
         calloutEnabledCautionRestart: true,
+        calloutEnabledCautionPosition: true,
 
         calloutEnabledSpotterStillThere: true,
         spotterStillThereSeconds: 3,

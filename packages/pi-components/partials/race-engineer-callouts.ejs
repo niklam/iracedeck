@@ -397,19 +397,21 @@ var setupWarningCheckboxes = setupWarningCallouts.map(function (c) {
 
 // Caution callouts (issue #1127). The narrated full-course caution
 // sequence: who to follow behind the pace car, it coming out, it
-// picking up the field, an extra caution lap, the one-to-go warning,
-// the car ahead changing during the lineup, the pace car peeling off,
-// and the restart itself. Same 2-column auto-balancing grid as the
+// picking up the field (two to green), an extra caution lap, the
+// one-to-go warning, the car ahead changing during the lineup, the pace
+// car peeling off, the restart itself, and the restart position read out
+// on the last caution lap. Same 2-column auto-balancing grid as the
 // families above.
 var cautionCallouts = [
 	{ setting: "calloutEnabledCautionFollow",         label: "Who to follow" },
 	{ setting: "calloutEnabledCautionPaceCarOut",     label: "Pace car out" },
-	{ setting: "calloutEnabledCautionFieldCaught",    label: "Pace car has the field" },
+	{ setting: "calloutEnabledCautionFieldCaught",    label: "Two to green" },
 	{ setting: "calloutEnabledCautionExtraLap",       label: "Another caution lap" },
 	{ setting: "calloutEnabledCautionOneToGo",        label: "One to go" },
 	{ setting: "calloutEnabledCautionLineupChanged",  label: "Car ahead changed" },
 	{ setting: "calloutEnabledCautionPaceCarOff",     label: "Pace car off" },
 	{ setting: "calloutEnabledCautionRestart",        label: "Restart" },
+	{ setting: "calloutEnabledCautionPosition",       label: "Position on the last lap" },
 ];
 var cautionRowCount = Math.ceil(cautionCallouts.length / 2);
 var cautionCheckboxes = cautionCallouts.map(function (c) {

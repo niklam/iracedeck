@@ -1139,7 +1139,7 @@ export type PitCrewDeps = {
   // Default `() => null` falls back to the emit-time payload position — a
   // safe stub for tests and the harness.
   getOpponentFlagLivePosition?: OpponentFlagLivePositionResolver;
-  // User opt-ins for the full-course caution callouts (issue #1127). Eight
+  // User opt-ins for the full-course caution callouts (issue #1127). Nine
   // subjects, one per moment of the sequence. Same gate-at-event-arrival shape
   // as the other callout families. Default `() => true` preserves legacy
   // behavior for tests that don't supply a closure.
@@ -1393,11 +1393,12 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   }
 
   // Full-course caution family (issue #1127) — the narrated sequence around a
-  // caution: who to follow, the pace car out and off, the pickup, each extra
-  // lap, one to go, a change to the car ahead, and the green. Registered right
-  // after the flags because it is part of the same conversation: seven of the
-  // eight share `family: "flag"` so a newer caution call supersedes a stale
-  // one, and the eighth (the follow call) deliberately does not, because it
+  // caution: who to follow, the pace car out and off, the pickup (two to
+  // green), each extra lap, one to go, a change to the car ahead, the restart
+  // position on the last lap, and the green. Registered right after the flags
+  // because it is part of the same conversation: eight of the nine share
+  // `family: "flag"` so a newer caution call supersedes a stale one, and the
+  // ninth (the follow call) deliberately does not, because it
   // rides the very event that fires `pit-crew.flag-caution-waving` and must
   // queue behind that line rather than cut it (see `caution.ts`).
   //

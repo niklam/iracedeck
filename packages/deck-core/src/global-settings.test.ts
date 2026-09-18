@@ -507,6 +507,7 @@ describe("caution callout defaults (issue #1127)", () => {
     "calloutEnabledCautionLineupChanged",
     "calloutEnabledCautionPaceCarOff",
     "calloutEnabledCautionRestart",
+    "calloutEnabledCautionPosition",
   ] as const;
 
   it.each(CAUTION_CALLOUT_KEYS)("%s defaults to true", (key) => {

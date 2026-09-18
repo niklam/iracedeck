@@ -1106,6 +1106,10 @@ export const GlobalSettingsSchema = z
       .union([z.boolean(), z.string()])
       .transform((val) => val === true || val === "true")
       .default(true),
+    calloutEnabledCautionPosition: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
     /**
      * Case-insensitive regex applied during **qualifying** sessions to flag a
      * race-looking setup name (issue #625). Empty (or any non-string, e.g. a

@@ -30,8 +30,9 @@ import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { CalloutScript } from "@iracedeck/callout-script";
 import type { IEventBus, SimEventName, SimEventOf } from "@iracedeck/event-bus";
-import { Flags, SessionState } from "@iracedeck/iracing-sdk";
+import { Flags, hasFlag, SessionState } from "@iracedeck/iracing-sdk";
 import type { CautionLineup } from "@iracedeck/sim-events-iracing";
+import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ScenarioContract } from "../../dsl.js";
@@ -76,6 +77,7 @@ const IDS: readonly CautionCalloutId[] = [
   "extra-lap",
   "one-to-go",
   "lineup-changed",
+  "position",
   "pace-car-off",
   "restart",
 ];
@@ -88,6 +90,7 @@ const EVENT_OF: Record<CautionCalloutId, SimEventName> = {
   "extra-lap": "caution.extraLap",
   "one-to-go": "caution.oneLapToGreen",
   "lineup-changed": "caution.lineup.changed",
+  position: "caution.lastLapCheckpoint",
   "pace-car-off": "paceCar.off",
   restart: "caution.restarted",
 };
@@ -258,7 +261,7 @@ beforeEach(() => {
 });
 
 describe("the caution contracts", () => {
-  it("exports the eight scenario ids, in the order the caution runs", () => {
+  it("exports the nine scenario ids, in the order the caution runs", () => {
     expect(CAUTION_SCENARIO_IDS).toEqual([
       "pit-crew.caution-follow",
       "pit-crew.caution-pace-car-out",
@@ -266,6 +269,7 @@ describe("the caution contracts", () => {
       "pit-crew.caution-extra-lap",
       "pit-crew.caution-one-to-go",
       "pit-crew.caution-lineup-changed",
+      "pit-crew.caution-position",
       "pit-crew.caution-pace-car-off",
       "pit-crew.caution-restart",
     ]);
@@ -279,6 +283,7 @@ describe("the caution contracts", () => {
       "pit-crew.caution-extra-lap": "extra-lap",
       "pit-crew.caution-one-to-go": "one-to-go",
       "pit-crew.caution-lineup-changed": "lineup-changed",
+      "pit-crew.caution-position": "position",
       "pit-crew.caution-pace-car-off": "pace-car-off",
       "pit-crew.caution-restart": "restart",
     });
@@ -290,6 +295,7 @@ describe("the caution contracts", () => {
       "extra-lap": "calloutEnabledCautionExtraLap",
       "one-to-go": "calloutEnabledCautionOneToGo",
       "lineup-changed": "calloutEnabledCautionLineupChanged",
+      position: "calloutEnabledCautionPosition",
       "pace-car-off": "calloutEnabledCautionPaceCarOff",
       restart: "calloutEnabledCautionRestart",
     });
@@ -469,12 +475,104 @@ describe("the lineup-change call and the one-to-go flag", () => {
     expect(fires("lineup-changed")).toBe(false);
   });
 
-  it("leaves the one-to-go flag alone for every other call — only the held one consults it", () => {
+  it("leaves the one-to-go flag alone for every call but the three that consult it", () => {
     mockLatestTelemetry.mockReturnValue({ SessionFlags: Flags.Caution | Flags.OneLapToGreen });
 
-    for (const id of IDS.filter((x) => x !== "lineup-changed" && !PACE_CAR_IDS.includes(x))) {
-      expect(fires(id)).toBe(true);
+    for (const id of IDS.filter((x) => !FLAG_READERS.includes(x))) {
+      expect(fires(id), id).toBe(true);
     }
+
+    mockLatestTelemetry.mockReturnValue({ SessionFlags: Flags.Caution });
+
+    for (const id of IDS.filter((x) => !FLAG_READERS.includes(x))) {
+      expect(fires(id), id).toBe(true);
+    }
+  });
+});
+
+/** The three calls that read the one-to-go flag off live telemetry at decision time. */
+const FLAG_READERS: readonly CautionCalloutId[] = ["lineup-changed", "field-caught", "pace-car-off"];
+
+/**
+ * The two road-course rules (the module header's findings 4 and 5), pinned
+ * against the capture they came from: the committed cut of
+ * `local/telemetry-watch-20260918-185032-545.jsonl`. The flags are looked up
+ * by `SessionTime` in the fixture rather than written out, so a fixture that
+ * stops carrying those ticks fails here instead of passing on a copied value.
+ */
+describe("the pickup and pace-car-off calls on a road course (2026-09-18 capture)", () => {
+  type RoadTick = { t: number; SessionFlags: number; CarIdxTrackSurface: number[] };
+  const ROAD_FIXTURE = new URL(
+    "../../../../sim-events-iracing/src/diff/__fixtures__/caution-road-20260918.json",
+    import.meta.url,
+  );
+  const road = JSON.parse(readFileSync(ROAD_FIXTURE, "utf-8")) as RoadTick[];
+
+  /** The capture's flags at `t`, as the telemetry both events of that tick carry. */
+  function flagsAt(t: number): number {
+    const tick = road.find((x) => x.t === t);
+
+    if (!tick) throw new Error(`no fixture tick at ${t}`);
+
+    return tick.SessionFlags;
+  }
+
+  it('keeps "Two to green" silent when the static caution and one to green rise on the same tick (309.33 s)', () => {
+    const flags = flagsAt(309.33);
+
+    expect(hasFlag(flags, Flags.Caution) && hasFlag(flags, Flags.OneLapToGreen)).toBe(true);
+    mockLatestTelemetry.mockReturnValue({ SessionFlags: flags });
+
+    expect(fires("field-caught")).toBe(false);
+  });
+
+  it('speaks "Two to green" at an oval pickup, where the one-to-go flag is a lap away', () => {
+    // 333.57 s on the oval capture: Caution|Servicible|StartHidden, no one-to-go.
+    mockLatestTelemetry.mockReturnValue({ SessionFlags: 0x10044000 });
+
+    expect(fires("field-caught")).toBe(true);
+  });
+
+  it('speaks "Two to green" with no telemetry to read — a missing signal never silences a call', () => {
+    mockLatestTelemetry.mockReturnValue(null);
+
+    expect(fires("field-caught")).toBe(true);
+  });
+
+  it('keeps "Pace car\'s off" silent for the mid-caution pit-exit blips (152.23 s and 562.07 s)', () => {
+    for (const t of [152.23, 562.07]) {
+      const tick = road.find((x) => x.t === t);
+
+      // The blip: the pace car (slot 20 in the cut) reads AproachingPits with
+      // the caution still waving and no one-to-go flag.
+      expect(tick?.CarIdxTrackSurface[20], `${t}`).toBe(2);
+      expect(hasFlag(tick?.SessionFlags ?? 0, Flags.OneLapToGreen), `${t}`).toBe(false);
+      mockLatestTelemetry.mockReturnValue({ SessionFlags: tick?.SessionFlags });
+
+      expect(fires("pace-car-off"), `${t}`).toBe(false);
+    }
+  });
+
+  it('speaks "Pace car\'s off" for the real exit after one to green (461.22 s)', () => {
+    const tick = road.find((x) => x.t === 461.22);
+
+    expect(tick?.CarIdxTrackSurface[20]).toBe(2);
+    expect(hasFlag(tick?.SessionFlags ?? 0, Flags.OneLapToGreen)).toBe(true);
+    mockLatestTelemetry.mockReturnValue({ SessionFlags: tick?.SessionFlags });
+
+    expect(fires("pace-car-off")).toBe(true);
+  });
+
+  it('speaks "Pace car\'s off" with no telemetry to read — a missing signal never silences a call', () => {
+    mockLatestTelemetry.mockReturnValue(null);
+
+    expect(fires("pace-car-off")).toBe(true);
+  });
+
+  it("never asks the flag for the position call — its event already says the flag is up", () => {
+    mockLatestTelemetry.mockReturnValue({ SessionFlags: Flags.Caution });
+
+    expect(fires("position")).toBe(true);
   });
 });
 

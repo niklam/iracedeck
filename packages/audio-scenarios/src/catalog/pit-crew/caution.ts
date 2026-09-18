@@ -1,8 +1,9 @@
 /**
- * The full-course caution, narrated (issue #1127) — eight contracts over the
+ * The full-course caution, narrated (issue #1127) — nine contracts over the
  * translator's caution events: the caution out and who to follow, the pace
- * car reaching the track, the pickup, each extra lap, one to go, a change to
- * the car ahead, the pace car peeling off, and the green.
+ * car reaching the track, the pickup ("two to green"), each extra lap, one to
+ * go, a change to the car ahead, the restart position on the last lap, the
+ * pace car peeling off, and the green.
  *
  * As everywhere since #1064, the code here decides WHETHER and WHEN the
  * engineer speaks and how the fire is scheduled; WHAT he says lives in the
@@ -23,7 +24,7 @@
  * car, not past the checkered — so the events stay publishable and
  * harness-firable while only a driver in a race hears them.
  *
- * **Seven of the eight also re-check the caution at SPEAK time**, and that is
+ * **Eight of the nine also re-check the caution at SPEAK time**, and that is
  * the price of being queueable rather than a belt on a brace. A pending fire
  * replays WITHOUT its `where:` being re-evaluated, and the pending slot has no
  * TTL: a call parked behind a busy bus waits for the bus to idle, however long
@@ -86,6 +87,30 @@
  * 239.93), so the follow call cannot read the lineup on the flag's own tick;
  * it holds for {@link CAUTION_FOLLOW_DELAY_MS} first.
  *
+ * Two more come from the first ROAD-COURSE caution, captured on 2026-09-18
+ * (`local/telemetry-watch-20260918-185032-545.jsonl`, the committed cut in
+ * `sim-events-iracing`'s `__fixtures__/caution-road-20260918.json`):
+ *
+ * **4. "Two to green" has no moment on a road course, so the pickup call
+ * stays silent when one to green rises on the same tick.** The road capture
+ * never shows a waving caution going static on its own: at 309.33 it drops
+ * straight from `CautionWaving` to `Caution | OneLapToGreen`, one tick, which
+ * as first built said "Two to green" and "One to go" back to back. On an oval
+ * the two are a leader crossing apart and nothing changes. The gate reads the
+ * flag off live telemetry ({@link oneLapToGreenShown}) at event time — the
+ * translator emits the two events in that order on the one tick, and the
+ * telemetry both ride carries the one-to-go bit already.
+ *
+ * **5. "Pace car's off" speaks only once one to green is up.** Mid-caution on
+ * the road course the pace car reads `AproachingPits` for about three seconds
+ * and comes back on track (152.23 → 155.37, and 562.07 → 565.22 in the second
+ * caution) — its route out through pit exit. Read literally that was "Pace
+ * car's off" then "Pace car's out" three seconds apart. The real exit on both
+ * tracks comes after one to green (461.22 there, 5.7 s before the green;
+ * 488.07 / 866.98 on the oval), so gating on the flag removes both blips and
+ * delays nothing. A debounce was rejected: waiting five seconds for a return
+ * would push the real call to half a second before the green.
+ *
  * **The follow call deliberately carries no `family`.** Every other contract
  * here shares `family: "flag"` so a newer caution call supersedes a stale
  * older one. The follow call cannot: it rides the very event that fires the
@@ -119,6 +144,7 @@ export type CautionCalloutId =
   | "extra-lap"
   | "one-to-go"
   | "lineup-changed"
+  | "position"
   | "pace-car-off"
   | "restart";
 
@@ -175,10 +201,14 @@ export const CAUTION_FOLLOW_DELAY_MS = 2500;
 export const CAUTION_LINEUP_CHANGE_DELAY_MS = 1500;
 
 /**
- * The one-to-go flag as live telemetry reports it right now — asked by the
- * held lineup-change decision, which is why it cannot read the event's own
- * (by then stale) telemetry. Missing telemetry reads as "not out" so a
- * missing signal never silences a call (the #574 precedent).
+ * The one-to-go flag as live telemetry reports it right now, or `null` when
+ * there is no telemetry to read. Three contracts ask: the held lineup-change
+ * decision (which is why it cannot read the event's own, by then stale,
+ * telemetry), the pickup call (silent when the flag rose on the same tick —
+ * the road course, finding 4 above) and the pace-car-off call (silent until
+ * it has — finding 5). Tri-state so that missing telemetry silences NONE of
+ * them (the #574 precedent): each caller says which reading it needs and
+ * treats `null` as "no reason to stay quiet".
  *
  * **Reading the raw bit is safe HERE and is not safe in general.** `OneLapToGreen`
  * means "formation in progress", not "one lap to go": `diff/pace-laps.ts` opens
@@ -186,17 +216,28 @@ export const CAUTION_LINEUP_CHANGE_DELAY_MS = 1500;
  * an entire rolling parade, and re-rises in cool-down — which is why the
  * rolling-start cue is a crossing heuristic rather than an edge on it. This
  * read escapes all three of those cases because it is only ever consulted from
- * a contract already gated on a live full-course caution, and inside one the
- * bit does genuinely rise at one to go: Task 4 measured the rise at 415.12 and
- * 793.93, on the leader's crossing, with `SessionState` Racing. Do not lift
- * this predicate out to a caller that is not under a caution.
+ * a contract already gated on a live full-course caution (the pickup's event
+ * cannot fire outside one), and inside one the bit does genuinely rise at one
+ * to go: Task 4 measured the rise at 415.12 and 793.93, on the leader's
+ * crossing, with `SessionState` Racing. Do not lift this predicate out to a
+ * caller that is not under a caution.
  */
-function oneLapToGreenShown(): boolean {
+function oneLapToGreenFlag(): boolean | null {
   const telemetry = getLatestTelemetry() as TelemetryData | null;
 
-  if (telemetry === null) return false;
+  if (telemetry === null) return null;
 
   return hasFlag(telemetry.SessionFlags ?? 0, Flags.OneLapToGreen);
+}
+
+/** The flag is up — for the calls that stand down once it is (the lineup change, the pickup). */
+function oneLapToGreenShown(): boolean {
+  return oneLapToGreenFlag() === true;
+}
+
+/** The flag is known to be DOWN — for the one call that waits for it (the pace car peeling off). */
+function oneLapToGreenNotYet(): boolean {
+  return oneLapToGreenFlag() === false;
 }
 
 /** The one spelling of a caution callout's scenario id — the contracts and {@link SCENARIO_ID_TO_CAUTION_ID} both come from it. */
@@ -276,8 +317,14 @@ export function buildCautionContracts(getUnderFullCourseCaution: UnderCautionRes
     {
       ...cautionContract("field-caught", getUnderFullCourseCaution),
       description:
-        "The pace car has picked up the field — the waving caution goes static at the leader's crossing, about ninety seconds in — while you are live in the car in a race.",
-      when: { event: "caution.fieldCaught", where: liveRaceCar },
+        "Two to green: the waving caution goes static at the leader's crossing, a lap before the one-to-go flag, in a race with you live in the car; silent where both flags land on one tick (road courses).",
+      when: {
+        event: "caution.fieldCaught",
+        // Finding 4 in the module header: the road course raises the static
+        // caution and one to green together, and "Two to green" a breath
+        // before "One to go" is wrong twice over.
+        where: (e) => liveRaceCar(e) && !oneLapToGreenShown(),
+      },
     },
     {
       ...cautionContract("extra-lap", getUnderFullCourseCaution),
@@ -305,10 +352,24 @@ export function buildCautionContracts(getUnderFullCourseCaution: UnderCautionRes
       },
     },
     {
+      ...cautionContract("position", getUnderFullCourseCaution),
+      description:
+        "About a third of the way into the last caution lap — the one-to-go flag is up and your lap distance passes 35% — the position you would restart in, read from the pace rows.",
+      when: { event: "caution.lastLapCheckpoint", where: liveRaceCar },
+    },
+    {
       ...cautionContract("pace-car-off", getUnderFullCourseCaution),
       description:
-        "The pace car peels off to pit road during a full-course caution, about five seconds before the green.",
-      when: { event: "paceCar.off", where: underCautionCar },
+        "The pace car peels off to pit road on the last caution lap, about five seconds before the green — once the one-to-go flag is up, so its mid-caution pit-exit blips on a road course stay silent.",
+      when: {
+        event: "paceCar.off",
+        // Finding 5 in the module header: on a road course the pace car
+        // shows AproachingPits for three seconds mid-caution and comes back.
+        // The real exit is always after one to go, so waiting for the flag
+        // costs nothing. `oneLapToGreenNotYet` rather than `!Shown`, so a
+        // tick with no telemetry to read silences nothing.
+        where: (e) => underCautionCar(e) && !oneLapToGreenNotYet(),
+      },
     },
     {
       ...cautionContract("restart", getUnderFullCourseCaution),
@@ -346,6 +407,7 @@ export const CAUTION_CALLOUT_SETTING_KEYS: Record<CautionCalloutId, string> = {
   "extra-lap": "calloutEnabledCautionExtraLap",
   "one-to-go": "calloutEnabledCautionOneToGo",
   "lineup-changed": "calloutEnabledCautionLineupChanged",
+  position: "calloutEnabledCautionPosition",
   "pace-car-off": "calloutEnabledCautionPaceCarOff",
   restart: "calloutEnabledCautionRestart",
 };
@@ -366,7 +428,7 @@ export const SCENARIO_ID_TO_CAUTION_ID: Record<string, CautionCalloutId> = Objec
  * Where the position-number group ends: the bundled voice ships one clip per
  * position from 1 to this. iRacing fields CAN exceed it — the pace car counts,
  * and the 64-slot `IRSDK_MAX_CARS` is stale — so a restart position past the
- * end resolves to no clip here and is dropped from the pickup call by the
+ * end resolves to no clip here and the position call drops whole through the
  * script's optional clause, the position spoken as nothing rather than as a
  * wrong number. Made visible rather than left to the empty pool so the gap is
  * a logged decision and not a silent one.
@@ -437,7 +499,7 @@ export function registerCautionVocabulary(
 
       return poolRef(POSITION_NUMBER_GROUP, String(position));
     },
-    `The position you would restart in, spoken from the position-number group, which stops at ${POSITION_NUMBER_MAX} — a position past that is null, since there is no clip to say it with. Read from the pace rows rather than the running order — that is what iRacing lines the field up by — and null whenever the rows carry no absolute position, which happens whenever session info cannot name the pace car. Keep it in an optional clause with the words that introduce it: a null var in a required step aborts the whole callout, silently and at debug level, so the pickup call would go unsaid rather than merely losing its number.`,
+    `The position you would restart in, spoken from the position-number group, which stops at ${POSITION_NUMBER_MAX} — a position past that is null, since there is no clip to say it with. Read from the pace rows rather than the running order — that is what iRacing lines the field up by — and null whenever the rows carry no absolute position, which happens whenever session info cannot name the pace car. Keep it in an optional clause with the words that introduce it: a null var in a required step aborts the whole callout, silently and at debug level. In the position call that clause IS the whole callout, and there that is right — a position call with no position has nothing true to say.`,
   );
 
   engine.defineCond(
