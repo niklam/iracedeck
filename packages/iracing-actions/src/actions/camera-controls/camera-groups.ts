@@ -295,23 +295,20 @@ export interface SubCameraCarousel {
  * Build the dial sub-camera carousel from the current sub-camera number and the
  * group's camera list (session YAML `CameraInfo.Groups[].Cameras[]`, via
  * `getCamerasInGroup`). The cameras are ordered by ascending `cameraNum`; `prev`
- * / `next` are the neighbours one detent away, wrapping at the ends. This is the
- * SINGLE source both the dial preview and the keypad/dial sub-camera dispatch
- * step through — the dispatch focuses `next.cameraNum` / `prev.cameraNum`, so
- * the previewed camera and the switched-to camera can never diverge (mirrors how
- * `computeCameraCarousel` + `getNextSelectedGroupEntry` back the camera mode).
+ * / `next` are the neighbours either side, wrapping at the ends.
+ *
+ * It feeds the dial PREVIEW only. Since #852 the sub-camera step itself is
+ * iRacing's own Next / Previous Sub Camera binding — the switch broadcasts never
+ * select a sub-camera — so the sim, not this list, decides which camera a detent
+ * lands on, and the side names are a guide to the group's cameras rather than a
+ * promise of the next one.
  *
  * A single-camera group can't cycle, so `prev` / `next` are `null` (current
  * only). When the current camera number isn't found in the list (the Scenic
  * reality — a large multi-camera group whose active `CamCameraNumber` the
  * carousel can't anchor on, issue #803), `current` is `null` but `prev` / `next`
- * RECOVER to the list ends (next → first, previous → last) so a detent still
- * steps onto a REAL camera of the group. Without this the dispatch fell back to a
- * synthetic `cameraNum ± 1` that isn't a member of the group's `Cameras[]`, which
- * iRacing rejects — the sub-camera "does nothing" no-op. This mirrors
- * `computeRacePositionTarget`'s pace-car recovery (re-enter the order at its
- * natural end) and, being the SAME helper the dial preview reads, keeps preview
- * and execution in step.
+ * still name the list ends (next → first, previous → last), so the strip shows
+ * real cameras of the group rather than nothing.
  */
 export function computeSubCameraCarousel(currentCameraNum: number | null, cameras: CameraInGroup[]): SubCameraCarousel {
   if (cameras.length === 0) return { current: null, prev: null, next: null };

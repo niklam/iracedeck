@@ -2077,6 +2077,29 @@ describe("Cycle Camera key icon: next or current group (#959)", () => {
     expect(shownIcons(action).at(-1)).toContain("spotter-artwork");
   });
 
+  it("keeps the newest group registered when an older icon push finishes last", async () => {
+    const action = await appear({ cycleIconMode: "current" }, { CamGroupNumber: 11 });
+    let finishFirst: () => void = () => {};
+    let finishSecond: () => void = () => {};
+    vi.mocked(action["updateKeyImage"])
+      .mockImplementationOnce(() => new Promise((resolve) => (finishFirst = () => resolve(true))))
+      .mockImplementationOnce(() => new Promise((resolve) => (finishSecond = () => resolve(true))));
+
+    sdkOf(action).getCurrentTelemetry.mockReturnValue({ CamGroupNumber: 12 }); // TV1
+    subscriber?.();
+    sdkOf(action).getCurrentTelemetry.mockReturnValue({ CamGroupNumber: 17 }); // TV Mixed
+    subscriber?.();
+
+    finishSecond();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    finishFirst();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const registrations = vi.mocked(action["setRegenerateCallback"]).mock.calls;
+    const latest = registrations[registrations.length - 1][1] as () => string;
+    expect(decodeURIComponent(latest())).toContain("tv-mixed-artwork");
+  });
+
   it("shows only the grid while there is no telemetry", async () => {
     const action = await appear({ cycleIconMode: "current" }, undefined);
 

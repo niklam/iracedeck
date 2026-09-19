@@ -723,6 +723,9 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
   /** Last displayed group name per context to avoid redundant re-renders */
   private lastDisplayedGroup = new Map<string, string>();
 
+  /** Per context, the newest cycle-icon render started (`showCycleIcon`) */
+  private cycleIconGeneration = new Map<string, number>();
+
   /**
    * The dial half of the action (#803); all IDeck dial events route here.
    * Rotation reuses the keypad's own `executeCycle` / focus dispatch — the dial
@@ -803,6 +806,7 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
     this.dialSurface.willDisappear(ev.action.id);
     this.activeContexts.delete(ev.action.id);
     this.lastDisplayedGroup.delete(ev.action.id);
+    this.cycleIconGeneration.delete(ev.action.id);
   }
 
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<CameraControlsSettings>): Promise<void> {
@@ -1361,8 +1365,7 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
       // Connection lost — restore grid icon if we were showing a telemetry-driven icon
       if (this.lastDisplayedGroup.has(contextId)) {
         this.lastDisplayedGroup.delete(contextId);
-        await this.updateKeyImage(contextId, generateCameraControlsSvg(settings));
-        this.setRegenerateCallback(contextId, () => generateCameraControlsSvg(settings));
+        await this.showCycleIcon(contextId, () => generateCameraControlsSvg(settings));
       }
 
       return;
@@ -1396,8 +1399,25 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
     if (this.lastDisplayedGroup.get(contextId) === shownGroupName) return;
 
     this.lastDisplayedGroup.set(contextId, shownGroupName);
-    await this.updateKeyImage(contextId, generateCameraSelectSvg(shownGroupName, settings));
-    this.setRegenerateCallback(contextId, () => generateCameraSelectSvg(shownGroupName, settings));
+    await this.showCycleIcon(contextId, () => generateCameraSelectSvg(shownGroupName, settings));
+  }
+
+  /**
+   * Push a Cycle Camera key's telemetry-driven icon and register it for
+   * regeneration — unless a newer render for the same key started while this
+   * one's image was in flight. `setRegenerateCallback` reconciles on
+   * registration, so a late, older registration would put its older image back
+   * on the key while the dedupe records the newer group, and the key would stay
+   * wrong until the group next changed.
+   */
+  private async showCycleIcon(contextId: string, render: () => string): Promise<void> {
+    const generation = (this.cycleIconGeneration.get(contextId) ?? 0) + 1;
+    this.cycleIconGeneration.set(contextId, generation);
+    await this.updateKeyImage(contextId, render());
+
+    if (this.cycleIconGeneration.get(contextId) !== generation) return;
+
+    this.setRegenerateCallback(contextId, render);
   }
 
   private async updateDisplay(
