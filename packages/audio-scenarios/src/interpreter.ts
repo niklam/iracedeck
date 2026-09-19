@@ -30,6 +30,11 @@
  *   - A finishing fire with `pendingHoldMs` delays the pending drain by that
  *     window, so a train of fires (count-in marks) doesn't let the displaced
  *     line stutter back into its gaps (issue #758).
+ *   - A fire whose contract names the waiting fire in `queueBehind` attaches
+ *     BEHIND it instead of taking its slot, and the two replay in order —
+ *     the single slot holds a pair, never a queue (issue #1108). The pair
+ *     is displaced together, and a leader that fails to take the bus at
+ *     replay leaves its follower to play next.
  *
  * Channel routing for clip steps:
  *   - Every clip a FRAME plays goes on the SFX channel, whatever it is (#1064).
@@ -330,7 +335,7 @@ type CompiledScenario = {
  * payload the original fire would have used — critical for scenarios whose
  * vars or conditions read the event's payload or telemetry snapshot.
  */
-type PendingFire = {
+type WaitingFire = {
   id: string;
   event: SimEventOf<SimEventName> | null;
   weight: number;
@@ -355,6 +360,19 @@ type PendingFire = {
    */
   admitted: boolean;
 };
+
+/**
+ * The bus's one pending fire, and the fire waiting behind it, if any (issue
+ * #1108): a fire whose contract names the pending fire's id in `queueBehind`
+ * attaches here instead of competing for the slot. The follower shares the
+ * slot's fate — whatever replaces or clears `BusState.pending` takes it too,
+ * which is why it lives INSIDE the pending fire rather than beside it — and
+ * is replayed by `drainPending` right after its leader, as an ordinary fire
+ * arriving then: it parks behind the leader the leader plays, and plays
+ * itself when the leader does not take the bus. One level only: a follower
+ * is a `WaitingFire`, so it can never carry a follower of its own.
+ */
+type PendingFire = WaitingFire & { follower?: WaitingFire };
 
 /** Where an interrupted resumable fire left off, for continuation at idle-replay. */
 type ResumeState = {
@@ -1041,6 +1059,11 @@ class ScenarioEngine implements IScenarioEngine {
 
         if (wasActive) this.cancelActiveFire(state);
 
+        // A fire waiting behind the pending one (issue #1108) is dropped on
+        // its own, leaving its leader in the slot; a disabled leader takes
+        // its follower with it below, as everything that clears the slot does.
+        if (state.pending?.follower?.id === scenarioId) state.pending.follower = undefined;
+
         if (state.pending?.id === scenarioId) {
           state.pending = null;
         } else if (wasActive && state.playingId === null) {
@@ -1300,6 +1323,16 @@ class ScenarioEngine implements IScenarioEngine {
    * newest fire (matching the former "most-recent low wins" semantic).
    * `admitted` travels with the fire (see `PendingFire.admitted`): a re-park
    * of a fire that already passed its gate keeps that fact for the next replay.
+   *
+   * One relation sits ahead of the weight rule (issue #1108): a fire whose
+   * contract names the waiting fire in `queueBehind` attaches BEHIND it
+   * rather than taking its slot — a newer follower replacing an older one —
+   * and, the other way round, a waiting fire whose contract names the
+   * ARRIVING fire is moved behind it (the readback stashed by an interrupt
+   * while its report already holds the slot). Either way both survive,
+   * whatever their weights, and the pair then lives and dies with the slot:
+   * a fire that takes the slot by weight drops the leader and its follower
+   * together, exactly as the leader alone was dropped before.
    */
   private setPending(
     id: string,
@@ -1310,12 +1343,49 @@ class ScenarioEngine implements IScenarioEngine {
     resume?: ResumeState,
     admitted = false,
   ): void {
-    if (state.pending === null || weight >= state.pending.weight) {
-      state.pending = { id, event, weight, resume, admitted };
+    const arriving: WaitingFire = { id, event, weight, resume, admitted };
+    const current = state.pending;
+
+    if (current !== null && this.waitsBehind(id, current.id)) {
+      if (current.follower !== undefined) {
+        this.logger.debug(`Scenario "${current.follower.id}" dropped — replaced behind "${current.id}" by "${id}"`);
+      }
+
+      current.follower = arriving;
+      this.logger.debug(`Scenario "${id}" pending behind "${current.id}" — ${reason}`);
+
+      return;
+    }
+
+    if (current !== null && this.waitsBehind(current.id, id)) {
+      if (current.follower !== undefined) {
+        this.logger.debug(`Scenario "${current.follower.id}" dropped — replaced behind "${current.id}" by "${id}"`);
+      }
+
+      const { follower: _replaced, ...leader } = current;
+      state.pending = { ...arriving, follower: leader };
+      this.logger.debug(`Scenario "${id}" pending — ${reason}; "${current.id}" now waits behind it`);
+
+      return;
+    }
+
+    if (current === null || weight >= current.weight) {
+      if (current?.follower !== undefined) {
+        this.logger.debug(
+          `Scenario "${current.follower.id}" dropped — waited behind "${current.id}", displaced by "${id}"`,
+        );
+      }
+
+      state.pending = arriving;
       this.logger.debug(`Scenario "${id}" pending — ${reason}`);
     } else {
-      this.logger.debug(`Scenario "${id}" dropped — lower weight than queued "${state.pending.id}"`);
+      this.logger.debug(`Scenario "${id}" dropped — lower weight than queued "${current.id}"`);
     }
+  }
+
+  /** Whether the contract `followerId` declares that it waits behind `leaderId` (issue #1108). */
+  private waitsBehind(followerId: string, leaderId: string): boolean {
+    return this.scenarios.get(followerId)?.raw.queueBehind?.includes(leaderId) ?? false;
   }
 
   /**
@@ -1885,6 +1955,19 @@ class ScenarioEngine implements IScenarioEngine {
    * `where:` (issue #1137). Freshness of the words is
    * preserved by the var resolvers, which read live state at replay
    * expansion rather than from the frozen event payload.
+   *
+   * A fire waiting behind the pending one (issue #1108) is replayed right
+   * after it, through the same `attemptFire` and with its own event,
+   * resume and admission — as if it had arrived the moment its leader was
+   * replayed. That one call covers every outcome without a case for each:
+   * a leader that took the bus leaves the follower to park in the slot the
+   * drain just emptied (a higher-weight fire waiting its turn, or a
+   * queueable one deferred), and plays it when the leader finishes; a
+   * leader that did not — its expansion aborted, its gate refused, the
+   * voice has no script for it, it was found disabled — leaves the bus
+   * idle and the follower takes it; and a leader re-parked below a focus
+   * floor is found waiting again by the follower, which attaches behind it
+   * once more rather than competing.
    */
   private drainPending(state: BusState): void {
     this.clearPendingHold(state);
@@ -1894,12 +1977,19 @@ class ScenarioEngine implements IScenarioEngine {
 
     if (!pending) return;
 
-    const entry = this.scenarios.get(pending.id);
+    this.replayWaiting(pending);
+
+    if (pending.follower !== undefined) this.replayWaiting(pending.follower);
+  }
+
+  /** Replay one parked fire, unless its scenario has been disabled meanwhile. */
+  private replayWaiting(waiting: WaitingFire): void {
+    const entry = this.scenarios.get(waiting.id);
 
     if (!entry?.enabled) return;
 
-    this.logger.debug(`Replaying pending scenario "${pending.id}"`);
-    this.attemptFire(entry, pending.event, pending.resume, pending.admitted);
+    this.logger.debug(`Replaying pending scenario "${waiting.id}"`);
+    this.attemptFire(entry, waiting.event, waiting.resume, waiting.admitted);
   }
 
   /**

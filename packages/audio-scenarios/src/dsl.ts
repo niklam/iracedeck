@@ -244,6 +244,29 @@ export type ScenarioContract = {
    */
   resumable?: boolean;
   /**
+   * Contract ids this fire waits BEHIND rather than competes with (issue
+   * #1108). The bus keeps one pending fire, and an arriving queueable fire
+   * either takes that slot by weight or is dropped — so when two callouts
+   * are published back to back and the bus is busy, the second displaces
+   * the first. Naming the first here changes that one relation: while a
+   * named contract is the bus's waiting fire, this fire attaches behind it
+   * instead of taking its slot, and the two play in order once the bus
+   * idles — whatever their weights, and neither is dropped. The relation
+   * holds the other way round too: a named contract that arrives to wait
+   * (stashed by an interrupt, say) while this fire holds the slot goes
+   * ahead of it rather than losing to it. It is a pair, not a queue: a
+   * heavier fire that takes the slot drops the leader and its follower
+   * together, and a second follower replaces the first. A follower is never
+   * stranded — a leader that does not take the bus when it replays (its
+   * expansion aborted, its `speakGate` refused, the voice has no script for
+   * it) leaves the follower to play next. With nothing pending, or an
+   * unrelated fire pending, this fire schedules by the normal rules.
+   * Requires `queueable: true` and must not name the contract itself
+   * (validated at load time); an id that is not registered simply never
+   * matches. The tire-wear report waits behind the exit readback this way.
+   */
+  queueBehind?: readonly string[];
+  /**
    * After this fire finishes, hold the bus's pending replay for N ms instead
    * of draining it immediately (issue #758). A scenario that arrives in a
    * train of related fires (e.g. the pit-box count-in marks, ~1 s apart)

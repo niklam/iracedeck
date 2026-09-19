@@ -37,15 +37,23 @@
  * voice define what is speakable.
  *
  * **Scheduling.** Default weight, `queueable: true`, the default radio frame,
- * `family: "tire-wear"`. The exit readback sits at `WEIGHT.CHATTER` and is
- * published first, so on an idle bus the report waits behind it as the
- * pending fire (higher weight, no interrupt) and plays when it finishes; on a
- * busy bus it defers for idle-replay rather than being dropped, since losing
- * the stint's summary to a passing flag would be wrong. Its own family, not
- * the readback's, so neither preempts the other. One limit worth knowing: the
- * engine keeps ONE pending fire per bus, so when the readback itself had to
- * defer behind a busier line, the report — the heavier of the two — takes
- * that slot and the readback is dropped.
+ * `family: "tire-wear"`, and `queueBehind` naming the exit readback. The
+ * readback sits at `WEIGHT.CHATTER` and is published first, so on an idle
+ * bus the report waits behind it as the pending fire (higher weight, no
+ * interrupt) and plays when it finishes; on a busy bus it defers for
+ * idle-replay rather than being dropped, since losing the stint's summary
+ * to a passing flag would be wrong. Its own family, not the readback's, so
+ * neither preempts the other. The engine keeps ONE pending fire per bus,
+ * and the two are published in the same tick — so when the readback itself
+ * had to wait (the spotter shares the Voice bus, and rejoining traffic makes
+ * that common), the report, the heavier of the two, would have taken its
+ * slot and silently dropped the pit-exit confirmation. `queueBehind` is the
+ * one relation that prevents it: while the readback is the waiting fire the
+ * report attaches behind it, both play in order once the bus idles, and a
+ * readback that fails to take the bus at replay leaves the report to play
+ * next. The pair still shares the slot's fate — a heavier fire that takes
+ * it drops both — and a readback cut mid-line by an interrupt while the
+ * report already waits is put back ahead of it.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { TireCorner, TireCornerWear, TireWearReport, TireZone } from "@iracedeck/event-bus";
@@ -314,6 +322,9 @@ const TIRE_WEAR_REPORT: ScenarioContract = {
   bus: AudioBus.Voice,
   base: "voice/{voice}",
   queueable: true,
+  // Published right after the exit readback from the same settle timer: on a
+  // busy bus, wait behind it rather than take its slot (see the header).
+  queueBehind: ["pit-crew.pit-readback-exit"],
   family: "tire-wear",
 };
 

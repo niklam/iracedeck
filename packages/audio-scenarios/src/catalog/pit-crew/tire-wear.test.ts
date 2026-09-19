@@ -25,10 +25,11 @@ import type {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ScenarioContext } from "../../dsl.js";
+import { NO_FRAME, WEIGHT } from "../../dsl.js";
 import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios, poolMemberPattern } from "../../interpreter.js";
 import { descriptionNamesGroup } from "../../reference/pack-reference.js";
-import { PIT_READBACK_CONTRACTS, registerReadbackVocabulary } from "./readback.js";
+import { PIT_READBACK_CONTRACTS, PIT_READBACK_SCENARIO_IDS, registerReadbackVocabulary } from "./readback.js";
 import {
   hasSpeakableTreads,
   registerTireWearVocabulary,
@@ -161,6 +162,9 @@ const READBACK_CLIPS = [
   `voice/${VOICE}/pit-readback/empty-fallback-01.mp3`,
 ];
 
+/** A spotter call's clip, for the busy-bus scheduling case: the line that holds the Voice bus as the car rejoins. */
+const SPOTTER_CLIP = `voice/${VOICE}/spotter/car-left-01.mp3`;
+
 /** One clip per source for the test voice, so a pool draw is deterministic and a played path names its pool. */
 const manifest: AudioAssetsManifest = {
   clips: [
@@ -170,6 +174,7 @@ const manifest: AudioAssetsManifest = {
     ...TIRE_WEAR_CLIP_SOURCES.map(({ group, base }) => `voice/${VOICE}/${group}/${base}-01.mp3`),
     ...NUMBER_CLIPS,
     ...READBACK_CLIPS,
+    SPOTTER_CLIP,
   ],
   ambientLoop: "sfx/IRD-ambient-pit.mp3",
   ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
@@ -300,6 +305,13 @@ describe("TIRE_WEAR_CONTRACTS structure", () => {
     expect(c.frame).toBeUndefined();
     expect(c.speakGate).toBeUndefined();
     expect("sequence" in c).toBe(false);
+  });
+
+  it("waits behind the exit readback — a registered readback contract — rather than competing with it for the pending slot (issue #1108)", () => {
+    const [c] = TIRE_WEAR_CONTRACTS;
+
+    expect(c.queueBehind).toEqual(["pit-crew.pit-readback-exit"]);
+    expect(PIT_READBACK_SCENARIO_IDS).toContain("pit-crew.pit-readback-exit");
   });
 
   it("describes when it fires in one sentence for a pack author", () => {
@@ -552,6 +564,46 @@ describe("the tire wear report fires through the bundled script (issue #1108)", 
     flush(audio);
 
     expect(voiceClipsPlayed()).toEqual([
+      `voice/${VOICE}/pit-readback/opener-exit-01.mp3`,
+      `voice/${VOICE}/pit-readback/empty-fallback-01.mp3`,
+      tw("left-front"),
+      num(89),
+      tw("percent"),
+      tw("right-front"),
+      num(91),
+      tw("left-rear"),
+      num(87),
+      tw("right-rear"),
+      num(85),
+      tw("heaviest-rr-inside"),
+    ]);
+  });
+
+  it("waits behind the exit readback when the bus is busy, instead of displacing it — the readback plays, then the report (issue #1108)", () => {
+    // The spotter shares the Voice bus, and a car alongside as the car
+    // rejoins holds it above both lines: the readback has to wait, and the
+    // report — published right after it in the same tick, and the heavier of
+    // the two — would take its slot without `queueBehind`. A legacy scenario
+    // stands in for the spotter call: the engine primitive the interpreter's
+    // own tests use, with the spotter's weight, interrupt and bare frame.
+    engine.defineScenario({
+      id: "test.spotter-call",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      base: "voice/{voice}",
+      weight: WEIGHT.PROXIMITY,
+      interrupt: true,
+      frame: NO_FRAME,
+      sequence: ["spotter/car-left-01.mp3"],
+    });
+
+    engine.fire("test.spotter-call"); // holds the bus
+    bus.publishEvent("pitService.readbackRequested", { reason: "exit" });
+    bus.publishEvent("tireWear.reported", DISTINCT);
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([
+      SPOTTER_CLIP,
       `voice/${VOICE}/pit-readback/opener-exit-01.mp3`,
       `voice/${VOICE}/pit-readback/empty-fallback-01.mp3`,
       tw("left-front"),
