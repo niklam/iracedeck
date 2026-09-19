@@ -137,7 +137,7 @@ What you hear, in the order it happens:
 5. **Another caution lap.** If the caution runs longer than the two laps it defaults to, you are told each time the field goes around again.
 6. **One lap to green.** The last lap under caution, with the car ahead of you named again. On an **oval running double file** the engineer also tells you which lane you form up in, inside or outside. Anywhere else — and any time the field is single file — there is no lane to name, so he just names the car.
 7. **Your position on the last lap.** About a third of the way around the last caution lap, your race position — *"We're currently P fourteen."* It is the number your display shows, not your place in the queue behind the pace car: a lapped car lined up ahead of you is still behind you in the race.
-8. **The pace car peels off.** About five seconds before the green, once one to go is up. On a road course the pace car waits parked until the caution needs it and then rolls out through pit exit to deploy — that moment is announced as the pace car reaching the track, never as it leaving.
+8. **The pace car peels off.** About five seconds before the green, once *"One lap to green"* has been called. On a road course the pace car waits parked until the caution needs it and then rolls out through pit exit to deploy — that moment is announced as the pace car reaching the track, never as it leaving.
 9. **The restart.** The green, called in its own right rather than borrowing the race start's line.
 
 If the car ahead of you changes while the caution is still running — somebody pits, or the field re-forms for a double-file restart — the engineer tells you, so you are never left following a car that has gone.
