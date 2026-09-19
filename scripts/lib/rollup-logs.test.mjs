@@ -134,6 +134,26 @@ describe("pluginBuildOnLog", () => {
       }
     });
 
+    it("keeps a cycle that only passes through zod or semver, rather than dropping it as theirs", () => {
+      for (const pkg of ["zod", "semver"]) {
+        const log = {
+          code: "CIRCULAR_DEPENDENCY",
+          ids: [workspaceCycle[0], `/r/node_modules/${pkg}/a.js`, workspaceCycle[0]],
+          message: "m",
+        };
+        expect(route("warn", log)).toEqual([["warn", log]]);
+      }
+    });
+
+    it("keeps a cycle spanning zod AND semver, since neither package owns it", () => {
+      const log = {
+        code: "CIRCULAR_DEPENDENCY",
+        ids: ["/r/node_modules/zod/a.js", "/r/node_modules/semver/b.js", "/r/node_modules/zod/a.js"],
+        message: "m",
+      };
+      expect(route("warn", log)).toEqual([["warn", log]]);
+    });
+
     it("keeps a malformed log with no ids as a warning rather than failing on it", () => {
       const log = { code: "CIRCULAR_DEPENDENCY", message: "m" };
       expect(route("warn", log)).toEqual([["warn", log]]);

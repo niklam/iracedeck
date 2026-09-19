@@ -14,8 +14,10 @@
  *    The same code from our own sources or any other dependency still prints,
  *    and `rollup-logs.test.mjs` fails once zod stops carrying the comments, so
  *    this rule is removed rather than outliving its reason.
- * 2. **Drop `CIRCULAR_DEPENDENCY` that runs through zod or semver** — their
- *    internal cycles, which the configs have always silenced.
+ * 2. **Drop `CIRCULAR_DEPENDENCY` wholly inside zod or semver** — their
+ *    internal cycles, which the configs have always silenced. A cycle that
+ *    only passes through one of them is not theirs and falls to rule 3 or the
+ *    default handler.
  * 3. **Fail the build on `CIRCULAR_DEPENDENCY` among workspace sources only.**
  *    A cycle whose every module is ours is ours to break, and a warning nobody
  *    reads is how the deck-core `sdk-singleton` → `window-focus-service` →
@@ -91,7 +93,10 @@ export function pluginBuildOnLog(level, log, handler) {
 
   if (level === "warn" && log.code === "CIRCULAR_DEPENDENCY") {
     const ids = Array.isArray(log.ids) ? log.ids : [];
-    if (ids.some((id) => CYCLE_NOISE_PACKAGES.some((pkg) => isInsidePackage(id, pkg)))) return;
+    // Only a cycle wholly inside ONE of those packages is theirs. The configs
+    // used to drop any cycle that merely touched one, which would also have
+    // hidden a workspace → zod → workspace cycle (PR #1178 review).
+    if (ids.length > 0 && CYCLE_NOISE_PACKAGES.some((pkg) => ids.every((id) => isInsidePackage(id, pkg)))) return;
     if (ids.length > 0 && ids.every((id) => isWorkspaceSource(id))) {
       handler("error", { ...log, message: `${log.message}\n${WORKSPACE_CYCLE_HINT}` });
       return;
