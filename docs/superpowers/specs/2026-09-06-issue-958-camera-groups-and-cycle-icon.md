@@ -62,7 +62,7 @@ In `current` mode `updateCycleIcon` renders the group from `CamGroupNumber` reso
 
 ### 9. The fallback, and the dial
 
-An unmapped active group falls back to the generic cycle-camera icon, exactly as `generateCameraSelectSvg` does today — with the key's own direction and appearance overrides passed in rather than the hard-coded `next` and none it uses now, a two-line fix in the shared helper that `current` mode would otherwise hit far more often. No telemetry still means the grid icon, unchanged. Rejected: falling back to the *next* group in `current` mode, which shows a lie rather than a placeholder.
+An unmapped active group falls back to the key's grid icon, the same one it shows with no telemetry. That is what `generateCameraSelectSvg` did already, since its fallback call renders the Cycle Camera grid rather than a generic arrow. It drew that grid from the global subset, with the hard-coded `next` and no overrides, and the fix is to pass in the key's own subset, direction and appearance overrides: a small change to the shared helper that `current` mode would otherwise hit far more often. No telemetry still means the grid icon, unchanged. *(Amended during implementation: this paragraph first said "the generic cycle-camera icon", which misdescribed the code it pointed to.)* Rejected: falling back to the *next* group in `current` mode, which shows a lie rather than a placeholder.
 
 The dial is untouched: `computeCameraCarousel` already centres the current group with the neighbours at the sides, so a mode switch there would only take the neighbours away. Rotation stays clockwise = next — camera is a list rotation, not number-primary (`encoders-and-touchscreen.md`).
 
