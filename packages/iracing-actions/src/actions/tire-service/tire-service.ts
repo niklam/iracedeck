@@ -31,7 +31,13 @@ import {
 import changeAllTiresIconSvg from "@iracedeck/icons/tire-service/change-all-tires.svg";
 import clearTiresIconSvg from "@iracedeck/icons/tire-service/clear-tires.svg";
 import toggleTiresCarSvg from "@iracedeck/icons/tire-service/toggle-tires.svg";
-import { hasFlag, PitSvFlags, TelemetryData } from "@iracedeck/iracing-sdk";
+import {
+  getTireChangeGranularity,
+  hasFlag,
+  PitSvFlags,
+  TelemetryData,
+  type TireChangeGranularity,
+} from "@iracedeck/iracing-sdk";
 import { lt } from "semver";
 import z from "zod";
 
@@ -58,6 +64,17 @@ const DEFAULT_TIRES: DriverTire[] = [{ TireIndex: 0, TireCompoundType: "Dry" }];
 type DriverTire = { TireIndex: number; TireCompoundType: string };
 
 const TireCode = z.enum(["lf", "rf", "lr", "rr"]);
+
+/**
+ * @internal Exported for testing
+ */
+export type TireCorner = z.infer<typeof TireCode>;
+
+/** All four corners, in the canonical order coerced tire sets come out in. */
+const ALL_TIRES: readonly TireCorner[] = ["lf", "rf", "lr", "rr"];
+
+/** The other corner on the same side of the car. */
+const SIDE_PAIR: Record<TireCorner, TireCorner> = { lf: "lr", lr: "lf", rf: "rr", rr: "rf" };
 
 /** Version threshold: instances added before this default to "toggle" mode */
 const TOGGLE_MODE_INTRODUCED = "1.13.0";
@@ -143,8 +160,51 @@ export function migrateTireSettings(raw: unknown): TireServiceSettings {
  *
  * Returns whether a tire position is selected in the tires array.
  */
-export function isTireSelected(settings: TireServiceSettings, tire: "lf" | "rf" | "lr" | "rr"): boolean {
+export function isTireSelected(settings: Pick<TireServiceSettings, "tires">, tire: "lf" | "rf" | "lr" | "rr"): boolean {
   return settings.tires.includes(tire);
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * Expands a requested tire set to what the car's pit crew can change (#954).
+ *
+ * - `"corner"` or `null` (unknown): the set is left as requested — the finest
+ *   level wins, and when the telemetry says nothing the request goes out as it
+ *   always did.
+ * - `"side"`: every requested corner brings its side pair (LF↔LR, RF↔RR).
+ * - `"all"`: any non-empty set becomes all four.
+ *
+ * An empty set stays empty. A coerced set comes out in the canonical LF, RF,
+ * LR, RR order, so on a coarse car it is always all four, left or right, and
+ * the macro built from it is always one of the `#!t` / `#!l` / `#!r` shorthands.
+ */
+export function coerceTireRequest(
+  tires: readonly TireCorner[],
+  granularity: TireChangeGranularity | null,
+): TireCorner[] {
+  if (tires.length === 0 || granularity === null || granularity === "corner") return [...tires];
+
+  if (granularity === "all") return [...ALL_TIRES];
+
+  const expanded = new Set<TireCorner>();
+
+  for (const tire of tires) {
+    expanded.add(tire);
+    expanded.add(SIDE_PAIR[tire]);
+  }
+
+  return ALL_TIRES.filter((t) => expanded.has(t));
+}
+
+/**
+ * Whether two tire sets hold the same corners, ignoring order and duplicates.
+ */
+function sameTireSet(a: readonly TireCorner[], b: readonly TireCorner[]): boolean {
+  const setA = new Set(a);
+  const setB = new Set(b);
+
+  return setA.size === setB.size && [...setA].every((t) => setB.has(t));
 }
 
 /**
@@ -355,15 +415,20 @@ const TOGGLE_TIRES_BOUNDS = { x: 35, y: 1, width: 74, height: 138 };
  *
  * Generates dynamic tire indicator SVG rectangles for the toggle-tires action.
  * Uses native 144x144 coordinates matching the pre-rotated car body graphic.
+ * "Configured" is the requested set expanded to the car's tire-change
+ * granularity (#954), so the key never promises a change the car cannot make;
+ * "on" stays the raw `PitSvFlags` readback.
  */
 export function generateToggleTiresIconContent(
   settings: TireServiceSettings,
   currentState: { lf: boolean; rf: boolean; lr: boolean; rr: boolean },
+  granularity: TireChangeGranularity | null = null,
 ): string {
-  const lfColor = getTireColor(isTireSelected(settings, "lf"), currentState.lf);
-  const rfColor = getTireColor(isTireSelected(settings, "rf"), currentState.rf);
-  const lrColor = getTireColor(isTireSelected(settings, "lr"), currentState.lr);
-  const rrColor = getTireColor(isTireSelected(settings, "rr"), currentState.rr);
+  const configured = { tires: coerceTireRequest(settings.tires, granularity) };
+  const lfColor = getTireColor(isTireSelected(configured, "lf"), currentState.lf);
+  const rfColor = getTireColor(isTireSelected(configured, "rf"), currentState.rf);
+  const lrColor = getTireColor(isTireSelected(configured, "lr"), currentState.lr);
+  const rrColor = getTireColor(isTireSelected(configured, "rr"), currentState.rr);
 
   return [
     `<rect x="40.57" y="30.94" width="14.88" height="18.13" rx="2" fill="${lfColor}" stroke="${GRAY}" stroke-width="1"/>`,
@@ -382,6 +447,7 @@ export function generateTireServiceSvg(
   settings: TireServiceSettings,
   currentState: { lf: boolean; rf: boolean; lr: boolean; rr: boolean },
   compoundState: { player: number; pitSv: number } = { player: 0, pitSv: 0 },
+  granularity: TireChangeGranularity | null = null,
 ): string {
   switch (settings.mode) {
     case "change-all-tires": {
@@ -461,7 +527,7 @@ export function generateTireServiceSvg(
       return assembleIcon({ graphicSvg: clearTiresIconSvg, colors, title, border, graphic });
     }
     default: {
-      const tireElements = generateToggleTiresIconContent(settings, currentState);
+      const tireElements = generateToggleTiresIconContent(settings, currentState, granularity);
 
       const colors = resolveIconColors(toggleTiresCarSvg, getGlobalColors(), settings.colorOverrides);
       const title = resolveTitleSettings(toggleTiresCarSvg, getGlobalTitleSettings(), settings.titleOverrides, "TIRES");
@@ -513,6 +579,8 @@ export function generateTireServiceSvg(
  * Manages tire pit service: toggle tire changes, change compound, or clear tire selections.
  * Toggle mode: dynamic icon shows car with tire colors based on current iRacing state.
  * Green = will be changed, Red = configured but not active, Black = not configured.
+ * The configured set is expanded to the car's tire-change granularity (a side, or
+ * all four) before the macro is sent and the icon is drawn (#954).
  */
 export const TIRE_SERVICE_UUID = "com.iracedeck.sd.core.tire-service" as const;
 
@@ -580,13 +648,14 @@ export class TireService extends ConnectionStateAwareAction<TireServiceSettings>
     const telemetry = this.sdkController.getCurrentTelemetry();
     const tireState = getTireState(telemetry);
     const compound = getCompoundState(telemetry);
+    const granularity = getTireChangeGranularity(telemetry);
 
-    const svgDataUri = generateTireServiceSvg(settings, tireState, compound);
+    const svgDataUri = generateTireServiceSvg(settings, tireState, compound, granularity);
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
-    this.setRegenerateCallback(ev.action.id, () => generateTireServiceSvg(settings, tireState, compound));
+    this.setRegenerateCallback(ev.action.id, () => generateTireServiceSvg(settings, tireState, compound, granularity));
 
-    const stateKey = this.buildStateKey(settings, tireState, compound);
+    const stateKey = this.buildStateKey(settings, tireState, compound, granularity);
     this.lastState.set(ev.action.id, stateKey);
   }
 
@@ -611,13 +680,14 @@ export class TireService extends ConnectionStateAwareAction<TireServiceSettings>
     const telemetry = this.sdkController.getCurrentTelemetry();
     const tireState = getTireState(telemetry);
     const compound = getCompoundState(telemetry);
+    const granularity = getTireChangeGranularity(telemetry);
 
-    const svgDataUri = generateTireServiceSvg(settings, tireState, compound);
+    const svgDataUri = generateTireServiceSvg(settings, tireState, compound, granularity);
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
-    this.setRegenerateCallback(ev.action.id, () => generateTireServiceSvg(settings, tireState, compound));
+    this.setRegenerateCallback(ev.action.id, () => generateTireServiceSvg(settings, tireState, compound, granularity));
 
-    const stateKey = this.buildStateKey(settings, tireState, compound);
+    const stateKey = this.buildStateKey(settings, tireState, compound, granularity);
     this.lastState.set(ev.action.id, stateKey);
   }
 
@@ -628,14 +698,15 @@ export class TireService extends ConnectionStateAwareAction<TireServiceSettings>
   ): Promise<void> {
     const tireState = getTireState(telemetry);
     const compound = getCompoundState(telemetry);
-    const stateKey = this.buildStateKey(settings, tireState, compound);
+    const granularity = getTireChangeGranularity(telemetry);
+    const stateKey = this.buildStateKey(settings, tireState, compound, granularity);
     const lastStateKey = this.lastState.get(contextId);
 
     if (lastStateKey !== stateKey) {
       this.lastState.set(contextId, stateKey);
-      const svgDataUri = generateTireServiceSvg(settings, tireState, compound);
+      const svgDataUri = generateTireServiceSvg(settings, tireState, compound, granularity);
       await this.updateKeyImage(contextId, svgDataUri);
-      this.setRegenerateCallback(contextId, () => generateTireServiceSvg(settings, tireState, compound));
+      this.setRegenerateCallback(contextId, () => generateTireServiceSvg(settings, tireState, compound, granularity));
     }
   }
 
@@ -643,6 +714,7 @@ export class TireService extends ConnectionStateAwareAction<TireServiceSettings>
     settings: TireServiceSettings,
     tireState: { lf: boolean; rf: boolean; lr: boolean; rr: boolean },
     compound: { player: number; pitSv: number },
+    granularity: TireChangeGranularity | null,
   ): string {
     // Static-icon modes don't depend on telemetry — avoid unnecessary re-renders
     if (settings.mode === "change-all-tires" || settings.mode === "clear-tires") {
@@ -654,7 +726,7 @@ export class TireService extends ConnectionStateAwareAction<TireServiceSettings>
     const bo = settings.borderOverrides;
     const borderKey = `${bo?.enabled ?? ""}|${bo?.borderWidth ?? ""}|${bo?.borderColor ?? ""}|${bo?.glowEnabled ?? ""}|${bo?.glowWidth ?? ""}`;
 
-    return `${settings.mode}|${settings.tires.join(",")}|${tireState.lf}|${tireState.rf}|${tireState.lr}|${tireState.rr}|${compound.player}|${compound.pitSv}|${tires.length}|${compoundType}|${borderKey}`;
+    return `${settings.mode}|${settings.tires.join(",")}|${tireState.lf}|${tireState.rf}|${tireState.lr}|${tireState.rr}|${compound.player}|${compound.pitSv}|${tires.length}|${compoundType}|${borderKey}|${granularity ?? "none"}`;
   }
 
   private async executeAction(rawSettings: unknown): Promise<void> {
@@ -711,7 +783,13 @@ export class TireService extends ConnectionStateAwareAction<TireServiceSettings>
         break;
       }
       default: {
-        const macro = buildTireToggleMacro(settings);
+        const telemetry = this.sdkController.getCurrentTelemetry();
+        const granularity = getTireChangeGranularity(telemetry);
+        // The request expanded to what the car can change (#954); the macro AND
+        // the select-mode match check both use it, so a coarse car's key doesn't
+        // clear and re-send on every press.
+        const effective = { ...settings, tires: coerceTireRequest(settings.tires, granularity) };
+        const macro = buildTireToggleMacro(effective);
 
         if (!macro) {
           this.logger.warn("No tires configured");
@@ -719,13 +797,19 @@ export class TireService extends ConnectionStateAwareAction<TireServiceSettings>
           return;
         }
 
+        if (!sameTireSet(settings.tires, effective.tires)) {
+          this.logger.info("Tire request expanded to the car's tire-change granularity");
+          this.logger.debug(
+            `Tire request expanded (granularity=${granularity}): requested [${settings.tires.join(",")}] -> sent [${effective.tires.join(",")}]`,
+          );
+        }
+
         const toggleMode = resolveToggleMode(settings);
 
         if (toggleMode === "select") {
-          const telemetry = this.sdkController.getCurrentTelemetry();
           const tireState = getTireState(telemetry);
 
-          if (!doCurrentTiresMatch(settings, tireState)) {
+          if (!doCurrentTiresMatch(effective, tireState)) {
             this.logger.debug("Current tires don't match configured — clearing first");
             const cleared = getCommands().pit.clearTires();
 
