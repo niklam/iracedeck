@@ -8809,31 +8809,31 @@
       },
       {
         "name": "one-to-go-01",
-        "text": "One to go.",
+        "text": "One lap to green.",
         "seed": 1
       },
       {
         "name": "one-to-go-inside-01",
-        "text": "One to go. <break time=\"0.3s\" /> Take the inside line behind",
-        "seed": 10,
+        "text": "One lap to green. <break time=\"0.3s\" /> Take the inside line behind",
+        "seed": 14,
         "next_text": "car ninety five"
       },
       {
         "name": "one-to-go-outside-01",
-        "text": "One to go. <break time=\"0.3s\" /> Take the outside line behind",
-        "seed": 10,
+        "text": "One lap to green. <break time=\"0.3s\" /> Take the outside line behind",
+        "seed": 11,
         "next_text": "car ninety five"
       },
       {
         "name": "one-to-go-plain-01",
-        "text": "One to go. <break time=\"0.3s\" /> Line up behind",
+        "text": "One lap to green. <break time=\"0.3s\" /> Line up behind",
         "seed": 1,
         "next_text": "car ninety five"
       },
       {
         "name": "one-to-go-leader-01",
-        "text": "One to go. <break time=\"0.3s\" /> You're leading them away.",
-        "seed": 1
+        "text": "One lap to green. <break time=\"0.3s\" /> You're leading them away.",
+        "seed": 2
       },
       {
         "name": "lineup-changed-inside-01",
@@ -8938,7 +8938,7 @@
       {
         "name": "5",
         "text": "car five",
-        "seed": 1,
+        "seed": 14,
         "previous_request_ids": [
           "caution/one-to-go-outside-01"
         ]
@@ -8978,7 +8978,7 @@
       {
         "name": "00",
         "text": "car double oh",
-        "seed": 1,
+        "seed": 39,
         "previous_request_ids": [
           "caution/one-to-go-outside-01"
         ]
@@ -9314,7 +9314,7 @@
       {
         "name": "42",
         "text": "car forty-two",
-        "seed": 1,
+        "seed": 8,
         "previous_request_ids": [
           "caution/one-to-go-outside-01"
         ]

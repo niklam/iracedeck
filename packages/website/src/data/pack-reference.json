@@ -18624,7 +18624,7 @@
         {
           "base": "one-to-go",
           "texts": [
-            "One to go."
+            "One lap to green."
           ],
           "takes": 1,
           "usedBy": [
@@ -18636,7 +18636,7 @@
         {
           "base": "one-to-go-inside",
           "texts": [
-            "One to go. <break time=\"0.3s\" /> Take the inside line behind"
+            "One lap to green. <break time=\"0.3s\" /> Take the inside line behind"
           ],
           "takes": 1,
           "usedBy": [
@@ -18648,7 +18648,7 @@
         {
           "base": "one-to-go-leader",
           "texts": [
-            "One to go. <break time=\"0.3s\" /> You're leading them away."
+            "One lap to green. <break time=\"0.3s\" /> You're leading them away."
           ],
           "takes": 1,
           "usedBy": [
@@ -18660,7 +18660,7 @@
         {
           "base": "one-to-go-outside",
           "texts": [
-            "One to go. <break time=\"0.3s\" /> Take the outside line behind"
+            "One lap to green. <break time=\"0.3s\" /> Take the outside line behind"
           ],
           "takes": 1,
           "usedBy": [
@@ -18672,7 +18672,7 @@
         {
           "base": "one-to-go-plain",
           "texts": [
-            "One to go. <break time=\"0.3s\" /> Line up behind"
+            "One lap to green. <break time=\"0.3s\" /> Line up behind"
           ],
           "takes": 1,
           "usedBy": [
