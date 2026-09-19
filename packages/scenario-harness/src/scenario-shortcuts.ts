@@ -25,6 +25,7 @@ import {
 import { EngineWarnings, Flags, PaceMode, PitSvStatus, TrkLoc } from "@iracedeck/iracing-sdk";
 import { PIT_READBACK_EXIT_DELAY_MS, YELLOW_CLEARED_HOLD_MS } from "@iracedeck/sim-events-iracing";
 
+import { TIRE_WEAR_REPORT_EXAMPLE } from "./event-names.js";
 import type { ShortcutPrecondition } from "./shortcut-preconditions.js";
 
 /** Fields every shortcut carries, whatever it drives. */
@@ -671,23 +672,6 @@ const CAUTION_EXTRA_LAP_SHORTCUT: TelemetrySequenceShortcut = {
     { patch: { SessionFlags: RACING_NO_FLAG | Flags.Green }, holdMs: RESTART_LISTEN_MS },
     { patch: { SessionFlags: RACING_NO_FLAG, ...CAUTION_RACE_ORDER_CLEAR } },
   ],
-};
-
-/**
- * A tire-wear report, as `tireWear.reported` carries it (issue #1108): each
- * zone in percent, the lowest zone as the tire's tread, and the most-worn
- * tire and zone. The values of the event template in `event-names.ts` — a
- * longer stint than the captured stop below, so every number differs and the
- * heaviest spot is not the tie-break's first pick.
- */
-const TIRE_WEAR_REPORT_EXAMPLE = {
-  corners: {
-    lf: { inside: 89.2, middle: 90.4, outside: 91.1, tread: 89.2, zone: "inside" },
-    rf: { inside: 90.6, middle: 91.3, outside: 92.8, tread: 90.6, zone: "inside" },
-    lr: { inside: 87.9, middle: 87.4, outside: 88.6, tread: 87.4, zone: "middle" },
-    rr: { inside: 85.3, middle: 86.1, outside: 88.0, tread: 85.3, zone: "inside" },
-  },
-  heaviest: { corner: "rr", zone: "inside" },
 };
 
 /**
