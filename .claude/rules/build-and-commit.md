@@ -19,6 +19,16 @@ pnpm unlink:stream-deck     # Unregister plugin from Stream Deck
 pnpm relink:stream-deck     # Unlink + link (useful when switching worktrees)
 ```
 
+### Dependency build scripts
+
+pnpm 10 runs no dependency's `preinstall` / `install` / `postinstall` unless the package is named, so every dependency that has one is an explicit decision in the root `package.json`'s `pnpm` block — `pnpm install` names any that are not, and that notice is a question to answer, not noise (#1176). `onlyBuiltDependencies` is for a script something here needs: `ffmpeg-static`, whose install downloads the ffmpeg binary the voice-clip radio pipeline runs. (`keysender` is listed there too, but no workspace package installs it today — the plugins get their runtime copy from the `npm install` in each plugin's `postbuild`.) `ignoredBuiltDependencies` declines the rest silently, and each entry has a reason:
+
+- `esbuild` (via `tsx`, `vite`): the script only re-fetches the platform binary when the optional `@esbuild/<platform>` package is missing, which pnpm installs, and swaps the JS shim for the binary off Windows, a speed-up nothing relies on.
+- `protobufjs` (via `firebase-tools`): the script only prints a version-scheme advisory.
+- `re2` (via `firebase-tools` → `superstatic`, an optional dependency): a native `node-gyp` build. `superstatic` falls back to `RegExp` without it, it is only used by `firebase serve` / the emulators, and `firebase.json` has no `regex` rules.
+
+`ignoredBuiltDependencies` needs pnpm 10.1 or later (10.0.0 ignores the key and keeps asking), which is why #1176 moved every pin off 10.0.0 at once: `packageManager` in the root and the five packages that carry one, and `version` in the seven workflows that run `pnpm/action-setup`. Move them together — the action refuses a `version` that differs from the root `packageManager`.
+
 ### Build verification
 
 **Always review the full build output.** Since #987 all four rollup configs set `noEmitOnError`, so a TypeScript diagnostic in a rollup-built package is a hard build failure rather than a warning on a green build — that is what the flag is for. Reading the output still matters, because a build can fail or misbehave for reasons that are not type errors.

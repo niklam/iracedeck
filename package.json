@@ -2,7 +2,7 @@
   "name": "iracedeck",
   "version": "3.3.0-dev.0",
   "private": true,
-  "packageManager": "pnpm@10.0.0",
+  "packageManager": "pnpm@10.34.5",
   "engines": {
     "node": ">=24"
   },
@@ -11,6 +11,11 @@
     "onlyBuiltDependencies": [
       "ffmpeg-static",
       "keysender"
+    ],
+    "ignoredBuiltDependencies": [
+      "esbuild",
+      "protobufjs",
+      "re2"
     ]
   },
   "scripts": {
