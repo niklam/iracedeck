@@ -65,6 +65,14 @@
  * car holds line 0 row 0. The 60 fixture ticks that fail the anchor are all
  * under green with no caution bit set, so nothing is withheld during a caution.
  *
+ * **A single stray line value is protected against twice, because it can sit
+ * on either side of the question.** On another car's slot it must not flip
+ * the field's arithmetic — a column is a population, not a value
+ * ({@link isDoubleFile}). On the PLAYER'S slot it must not answer "you
+ * restart first, behind the pace car": every "in my line" question is then
+ * asked of a line holding nobody else ({@link isOffTheField}), so the
+ * answers that rest on the player's line are withheld for that tick.
+ *
  * **The car to follow is the nearest IN-WORLD car in your line with a lower
  * row; if there is none, or it is the pace car, it is the pace car you are
  * following.** That rule is right for both shapes — the outside front car
@@ -151,6 +159,22 @@ function isLinedUp(line: unknown, row: unknown): line is number {
 export const MIN_LINE_POPULATION = 2;
 
 /**
+ * How many lined-up cars each pace line holds, keyed by line. One pass over
+ * the slots that both {@link isDoubleFile} and {@link isOffTheField} read.
+ */
+function linePopulation(lines: unknown[], rows: unknown[]): Map<number, number> {
+  const population = new Map<number, number>();
+
+  for (let carIdx = 0; carIdx < rows.length; carIdx++) {
+    const line = lines[carIdx];
+
+    if (isLinedUp(line, rows[carIdx])) population.set(line, (population.get(line) ?? 0) + 1);
+  }
+
+  return population;
+}
+
+/**
  * Whether the field is in two columns: at least two pace lines each hold
  * {@link MIN_LINE_POPULATION} lined-up cars.
  *
@@ -169,17 +193,12 @@ export const MIN_LINE_POPULATION = 2;
  * What the bar costs is a two-car field, whose genuine double-file re-form
  * puts one car on line 1 and therefore reads single file here: the leader's
  * position is still right (line 0 row 1 → 1), and P2's is withheld rather
- * than wrong — `null` is the documented "cannot read", never a guess.
+ * than wrong — `null` is the documented "cannot read", never a guess. Since
+ * the stray-player rule ({@link isOffTheField}) P2's follow answer is withheld
+ * too: with one car on line 1 and two on line 0, P2 IS the shape of a stray
+ * reading, and the data cannot tell the two apart.
  */
-function isDoubleFile(lines: unknown[], rows: unknown[]): boolean {
-  const population = new Map<number, number>();
-
-  for (let carIdx = 0; carIdx < rows.length; carIdx++) {
-    const line = lines[carIdx];
-
-    if (isLinedUp(line, rows[carIdx])) population.set(line, (population.get(line) ?? 0) + 1);
-  }
-
+function isDoubleFile(population: Map<number, number>): boolean {
   let columns = 0;
 
   for (const count of population.values()) {
@@ -188,6 +207,53 @@ function isDoubleFile(lines: unknown[], rows: unknown[]): boolean {
 
   return columns > 1;
 }
+
+/**
+ * Single file, and the PLAYER is the stray: some other pace line holds more
+ * lined-up cars than the player's own.
+ *
+ * {@link isDoubleFile} protects the FIELD from one stray or mid-transition
+ * line value, and it does — but not the driver whose own slot carries it.
+ * With the field on line 0 and the player alone on line 1, every "in my
+ * line" question below is asked of a line holding nobody else: no car ahead,
+ * so the follow call would say it is just him and the pace car; nobody with
+ * a lower row, so `restartPosition` would be 1 and `isLeader` TRUE — the
+ * lineup telling a mid-pack driver he restarts first, on a reading the field
+ * itself says is wrong. Single file, the field's line is the line the field
+ * is on, and a player off it is the stray value, not the field. What his row
+ * MEANS on that line cannot be known either (a row in the old numbering, or
+ * the first row of a re-form the rest of the field has not joined yet), so
+ * counting him onto the field's line would be a guess wearing a number.
+ * {@link resolveCautionLineup} therefore withholds every answer that rests
+ * on the player's line — the car to follow, the position, the lead — and
+ * `caution.lineup.changed` treats the tick as no news (`diff/caution.ts`
+ * ignores a follow car it cannot name), so the next real reading is judged
+ * against the last real one.
+ *
+ * Strictly MORE, never at-least-as-many: with every line holding one car
+ * nothing marks the player's as the stray one, so a pace car alone on line 0
+ * and a lone driver on line 1 still reads as before.
+ */
+function isOffTheField(population: Map<number, number>, myLine: number): boolean {
+  const mine = population.get(myLine) ?? 0;
+
+  for (const count of population.values()) {
+    if (count > mine) return true;
+  }
+
+  return false;
+}
+
+/** Every answer withheld: the shape of "this cannot be read", never a guess. */
+const WITHHELD: CautionLineup = {
+  followCarIdx: null,
+  followCarNumber: null,
+  line: null,
+  isLeader: false,
+  followsPaceCar: false,
+  doubleFile: false,
+  restartPosition: null,
+};
 
 /**
  * The player's own car index from session YAML, or `null` when it cannot be
@@ -242,7 +308,14 @@ export function resolveCautionLineup(
   if (!isLinedUp(myLine, myRow)) return null;
 
   const paceCarIdx = resolvePaceCarIdx(sessionInfo);
-  const doubleFile = isDoubleFile(lines, rows);
+  const population = linePopulation(lines, rows);
+  const doubleFile = isDoubleFile(population);
+
+  // The player's own slot carrying the stray line value (see `isOffTheField`):
+  // every question below is asked of the player's line, and his is not the
+  // field's. Withhold rather than answer "first".
+  if (!doubleFile && isOffTheField(population, myLine)) return { ...WITHHELD };
+
   const inWorld = carInWorld(telemetry);
 
   // Only a car that is ITSELF in the lineup can be the one ahead. The filter is

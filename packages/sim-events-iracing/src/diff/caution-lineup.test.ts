@@ -181,6 +181,55 @@ describe("resolveCautionLineup — who to follow", () => {
     });
   });
 
+  it("withholds every answer when the PLAYER is the stray car — never 'you restart first' on a mid-transition line value", () => {
+    // The same [7, 1, 6] reading, with car 7 as the player. `isDoubleFile`
+    // protects the FIELD from the stray value, but every "in my line" question
+    // is then asked of line 1, which holds nobody else: no car ahead, so the
+    // follow call would say it is just him and the pace car; nobody with a
+    // lower row, so he would restart FIRST and `isLeader` would be true. What
+    // his row means on a line the field is not on cannot be known, so nothing
+    // is claimed — the follow call drops to "behind the car ahead", the
+    // one-to-go call to its plain wording, and the lineup-changed diff reads
+    // the tick as no news.
+    const stray: Array<[number, number, number]> = [...SINGLE_FILE, [7, 1, 6]];
+
+    expect(resolveCautionLineup(paceArrays(stray), session(7), true)).toEqual({
+      followCarIdx: null,
+      followCarNumber: null,
+      line: null,
+      isLeader: false,
+      followsPaceCar: false,
+      doubleFile: false,
+      restartPosition: null,
+    });
+  });
+
+  it("reads the same car normally once its line is the field's — the positive control for the stray-player rule", () => {
+    const onField: Array<[number, number, number]> = [...SINGLE_FILE, [7, 0, 4]];
+
+    expect(resolveCautionLineup(paceArrays(onField), session(7), true)).toMatchObject({
+      followCarIdx: 3,
+      followsPaceCar: false,
+      isLeader: false,
+      restartPosition: 4,
+    });
+  });
+
+  it("does not mark a lone driver behind a lone pace car as the stray — every line holding one car names no stray", () => {
+    // The smallest field there is: the pace car on line 0, the only driver on
+    // line 1. Nothing says which of two singletons is the stray one, so the
+    // driver keeps the pace-car answer he had before the rule existed.
+    const two: Array<[number, number, number]> = [
+      [PACE, 0, 0],
+      [1, 1, 0],
+    ];
+
+    expect(resolveCautionLineup(paceArrays(two), session(1), false)).toMatchObject({
+      followCarIdx: PACE,
+      followsPaceCar: true,
+    });
+  });
+
   it("reads two cars on the second line as a column — the positive control for the stray-car rule", () => {
     // The bar is a population of MIN_LINE_POPULATION, so the smallest genuine
     // second column flips the field: car 3 is now line 0 row 3 → 2 × 3 − 1 = 5.
