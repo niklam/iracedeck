@@ -168,6 +168,24 @@ When nothing is queued, the engineer plays a dedicated *"Not changing tires, not
 
 The fast-repair line in both readbacks is **damage-aware**: the engineer stays silent about repairs on a clean car (regardless of whether you happened to queue fast-repair). When iRacing reports damage on the car, the readback speaks the appropriate line — *"We're doing fast repairs to any damage you might have."* if fast-repair is queued, or *"We're not doing fast repair."* as a heads-up if it isn't. This stops the engineer blurting fast-repair status during routine green-flag stops while still flagging when you've forgotten to queue a repair on a damaged car.
 
+## Tire wear report
+
+A pit stop is the one moment iRacing tells you how your tires held up, and it tells you on a screen you are not looking at while you merge back into traffic. So after a stop the Race Engineer reads it out: once you have left pit road and the *"To confirm: …"* [exit readback](#pit-service-readback) has played, he gives you the tread left on all four tires, front to rear, and then where the wear is heaviest:
+
+*"Left front ninety-eight percent. Right front ninety-nine. Left rear ninety-nine. Right rear ninety-nine. Wear is heaviest on the left front, inside shoulder."*
+
+iRacing measures each tire's tread in three zones across its width — the inside shoulder, the middle and the outside shoulder — and the number you hear for a tire is the lowest of its three, rounded to a whole percent, because the most-worn zone is the one that ends the tire's life. The closing sentence names the tire and zone with the least tread left on the whole car; when that is the middle, it says so in its own words (*"Wear is heaviest in the middle of the right rear."*). Inside and outside are named from the middle of the car, so the inside shoulder is always the edge nearer the car's centerline, whichever side the tire is on. When every tire still reads one hundred there is no wear to point at, and the closing sentence is left out.
+
+iRacing only updates tire wear while the car is in its pit box: the readings are taken as you arrive and do not change again until your next stop. So **after a tire change the numbers describe the set that came off** — a summary of the stint you just drove, which is what tells you whether the next stop needs tires at all, or only two. Without a tire change they describe the tires still on the car.
+
+The report only follows a stop you drove into. Leaving the garage at the start of a session, or driving out after a tow or a reset into your box, says nothing — those tires have not run a stint. It works in every session type, practice included, where stint length is being judged, and stays silent while you are watching a replay or when iRacing gives no tire-wear figures for your car. If you drive back onto pit road before the exit readback comes due, that stop's report is dropped along with it.
+
+The report waits its turn behind the exit readback rather than talking over it, and if something more urgent is on the radio it waits for that too instead of being lost. It has its own switch: turning off **Pit exit readback** does not silence it — the report then plays on its own, about four and a half seconds after you leave pit road. One limit worth knowing: when the exit readback itself has to wait behind a more urgent call, only one of the two can wait, and the tire report takes that place — the readback is skipped for that stop.
+
+One opt-in lives under **Race Engineer Callouts → Pit Service** in the Settings window, on by default:
+
+- **Tire wear report** — the four tread figures and the heaviest-wear sentence after a stop. Turning the Race Engineer master off silences it too.
+
 ## Damage Heads-Up
 
 Drivers focused on the racing line can miss small impacts — a tap on the wall, an inside-line bump. The Race Engineer fires a spoken heads-up the first time iRacing reports damage that requires repair, so you know to consider a pit stop without having to look away from the track. The callout fires once on each clean → damaged transition (after a short debounce window that filters frame-rate flicker), and re-fires after a repair if you pick up new damage later.
@@ -488,13 +506,14 @@ Under **Opponent Flags**, four callouts are toggleable, all enabled by default (
 - **Meatball (repairs)** (`calloutEnabledOpponentFlagMeatball`) — a meatball (mandatory repair) flag on a car that matters to you.
 - **Disqualified** (`calloutEnabledOpponentFlagDisqualify`) — a disqualification on a car that matters to you.
 
-Under **Pit Service**, three callouts are toggleable independently:
+Under **Pit Service**, four callouts are toggleable independently:
 
 - **Pit entry readback** — the "Don't forget your limiter. We're taking fuel, …" recap that fires as you roll onto pit road (and refires on any toggle while you're still on pit road).
 - **Pit exit readback** — the "To confirm: …" recap that plays after a short delay once you've left pit road.
+- **Tire wear report** — the tread left on all four tires and where the wear is heaviest, read after a stop you drove into, right behind the exit readback (see [Tire wear report](#tire-wear-report) above). Enabled by default.
 - **Pit service requests** — every per-toggle confirmation (fuel on/off, tire-set selection, compound switch, windshield-tearoff on/off, fast-repair on/off). Switching this off silences the engineer on every Stream Deck pit-service press while leaving the readbacks intact.
 
-Disabling any one of the three does not affect the others.
+Disabling any one of the four does not affect the others.
 
 Under **Pit Service Status**, eight callouts are toggleable independently — one per non-idle `PlayerCarPitSvStatus` value, all enabled by default:
 
