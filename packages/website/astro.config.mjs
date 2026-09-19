@@ -45,6 +45,8 @@ export default defineConfig({
         replacesTitle: true,
       },
       customCss: ["./src/styles/custom.css"],
+      // The 404 page is src/pages/404.astro — see that file for why (#1176).
+      disable404Route: true,
       // Injects the icon-gallery's component-rendered class/family headings
       // into the page's right-side TOC (see src/routeData.ts, item 3).
       routeMiddleware: "./src/routeData.ts",
