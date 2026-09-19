@@ -1,7 +1,7 @@
-import { readFileSync } from "fs";
-import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
 import mermaid from "astro-mermaid";
+import { defineConfig } from "astro/config";
+import { readFileSync } from "fs";
 
 // Fallback: read version from root package.json if env var not set
 if (!process.env.PUBLIC_IRACEDECK_VERSION) {
