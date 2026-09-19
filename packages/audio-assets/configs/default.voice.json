@@ -684,6 +684,14 @@
         ]
       },
       {
+        "name": "auto-fuel-on-01",
+        "text": "Auto fuel has us taking fuel at the next stop."
+      },
+      {
+        "name": "auto-fuel-off-01",
+        "text": "Auto fuel says we don't need fuel next stop."
+      },
+      {
         "name": "tires-off-01",
         "text": "We're skipping tires at the next pit stop.",
         "previous_request_ids": [
@@ -18596,6 +18604,16 @@
       "comment": "The driver removed fuel from the next stop — acknowledgment, then the confirmation.",
       "test": "Harness → Pit Service → Fuel OFF, outside the pit-action cooldown. In-sim: clear the fuel toggle in the pit black box.",
       "sequence": ["pool:pit-actions/acknowledgment", "pool:pit-actions/fuel-off"]
+    },
+    "pit-crew.auto-fuel-on": {
+      "comment": "iRacing's autofuel put fuel on the next stop by itself — the bare line, with no acknowledgment in front: nobody asked, and the missing \"Got it.\" is what tells the driver this was the sim rather than their own press. A press made while autofuel is armed is announced this way too, since telemetry cannot tell the two apart. It shares the manual fuel toggle's family, so a press straight after replaces it, and like the toggle confirmations it stays silent for a few seconds after leaving the pit lane.",
+      "test": "Harness → Pit Service → Auto Fuel ON, not within about 4.5 s of Exited Pit Lane (the pit-action cooldown). In-sim: arm autofuel in the pit black box (or with a Fuel Service key) and drive; the sim flips the fuel-fill checkbox on its own.",
+      "sequence": ["pool:pit-actions/auto-fuel-on"]
+    },
+    "pit-crew.auto-fuel-off": {
+      "comment": "iRacing's autofuel took fuel off the next stop by itself — the bare line, no acknowledgment, for the same reason as the refuel direction.",
+      "test": "Harness → Pit Service → Auto Fuel OFF, outside the pit-action cooldown. In-sim: as for Auto Fuel ON — arm autofuel and drive until the sim clears the fuel-fill checkbox itself.",
+      "sequence": ["pool:pit-actions/auto-fuel-off"]
     },
     "pit-crew.tire-set-on-all": {
       "comment": "All four tires queued — acknowledgment, then the confirmation. Each tire line answers the RESULTING set, whichever buttons got the driver there.",

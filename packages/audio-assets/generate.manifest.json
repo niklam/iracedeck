@@ -22264,6 +22264,22 @@
       "textPreview": "Two laps to green.",
       "generatedAt": "2026-09-18T16:36:25.032Z",
       "requestId": "hIV4ZKT3WTI9GgtdzJgz"
+    },
+    "voice/default/pit-actions/auto-fuel-on-01.mp3": {
+      "hash": "b0880ace9d723ee0",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Auto fuel has us taking fuel at the next stop.",
+      "generatedAt": "2026-09-19T16:30:53.046Z",
+      "requestId": "vtl2U3eioDg2pOiXKUna"
+    },
+    "voice/default/pit-actions/auto-fuel-off-01.mp3": {
+      "hash": "67192baac5192fdf",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Auto fuel says we don't need fuel next stop.",
+      "generatedAt": "2026-09-19T16:30:53.303Z",
+      "requestId": "d5Q4XFEPF14qtjgxQsKq"
     }
   }
 }

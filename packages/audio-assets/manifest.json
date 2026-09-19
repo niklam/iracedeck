@@ -1899,6 +1899,8 @@
     "voice/default/pit-actions/acknowledgment-01.mp3",
     "voice/default/pit-actions/acknowledgment-02.mp3",
     "voice/default/pit-actions/acknowledgment-03.mp3",
+    "voice/default/pit-actions/auto-fuel-off-01.mp3",
+    "voice/default/pit-actions/auto-fuel-on-01.mp3",
     "voice/default/pit-actions/fast-repair-off.mp3",
     "voice/default/pit-actions/fast-repair-on.mp3",
     "voice/default/pit-actions/fuel-off-01.mp3",
