@@ -583,6 +583,18 @@ export const GlobalSettingsSchema = z
       .transform((val) => val === true || val === "true")
       .default(true),
     /**
+     * Auto-fuel changed callout opt-in (issue #474). The sim's own
+     * fuel-fill flip while auto-fuel is armed, announced without the
+     * acknowledgment prefix a driver's own toggle gets — independent of
+     * `calloutEnabledPitServiceRequests`, since the two preferences are
+     * independent in both directions. Default `true` per the callout
+     * baseline.
+     */
+    calloutEnabledPitServiceAutoFuel: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    /**
      * Pit-service status callout opt-ins (issue #479). One boolean per
      * non-`None` `PlayerCarPitSvStatus` target — the silent idle state
      * has no opt-out because it never reaches the bus.

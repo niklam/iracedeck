@@ -134,14 +134,17 @@ var opponentFlagCheckboxes = opponentFlagCallouts.map(function (c) {
 	return '<sdpi-checkbox setting="' + c.setting + '" label="' + c.label + '" global default="true"></sdpi-checkbox>';
 }).join('');
 
-// Pit-service callouts (readback entry/exit from issue #476, plus
-// the family-wide pit-service-requests toggle from issue #468).
+// Pit-service callouts (readback entry/exit from issue #476, the
+// family-wide pit-service-requests toggle from issue #468, and the
+// auto-fuel-changed opt-in from issue #474, independent of the
+// family-wide toggle above).
 // Same source-of-truth 2-column grid as flag callouts — adding a
 // row here is the only place to extend.
 var pitServiceCallouts = [
 	{ setting: "calloutEnabledPitReadbackEntry",   label: "Pit entry readback" },
 	{ setting: "calloutEnabledPitReadbackExit",    label: "Pit exit readback" },
 	{ setting: "calloutEnabledPitServiceRequests", label: "Pit service requests" },
+	{ setting: "calloutEnabledPitServiceAutoFuel", label: "Auto fuel changes" },
 ];
 var pitServiceRowCount = Math.ceil(pitServiceCallouts.length / 2);
 var pitServiceCheckboxes = pitServiceCallouts.map(function (c) {
