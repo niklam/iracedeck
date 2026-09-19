@@ -691,6 +691,24 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     event: "pitService.toggled",
     data: { service: "fuel", on: false },
   },
+  // Issue #474 — the sim's own fuel-fill flip, spoken without the
+  // acknowledgment a driver's press gets.
+  {
+    id: "auto-fuel-on",
+    category: "Pit Service",
+    label: "Auto Fuel ON",
+    description: "Autofuel adds fuel to the next stop on its own",
+    event: "pitService.autoFuelChanged",
+    data: { refuel: true },
+  },
+  {
+    id: "auto-fuel-off",
+    category: "Pit Service",
+    label: "Auto Fuel OFF",
+    description: "Autofuel takes fuel off the next stop on its own",
+    event: "pitService.autoFuelChanged",
+    data: { refuel: false },
+  },
   {
     id: "windshield-on",
     category: "Pit Service",
