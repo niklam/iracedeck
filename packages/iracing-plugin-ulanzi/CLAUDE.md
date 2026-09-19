@@ -68,4 +68,4 @@ Still to verify in the UlanziStudio host (no device needed): the #845 fixes — 
 
 ## Window Focus
 
-Window focusing lives in `@iracedeck/deck-core` (`initWindowFocus` / `focusIRacingIfEnabled`); `plugin.ts` injects the native focuser. It was previously duplicated per plugin as `src/shared/window-focus.ts` — extracted in #930, which is why this package no longer has a `src/shared/` folder. `plugin.ts` also injects the native pointer mover via `initMousePointer` (#926), for the View Adjustment **Mouse to Sim** mode.
+Window focusing lives in `@iracedeck/deck-core` (`initWindowFocus` / `focusIRacingIfEnabled`); `plugin.ts` injects the native focuser, and the app monitor's `isIRacingActive` for the missing-window log level (#1176). It was previously duplicated per plugin as `src/shared/window-focus.ts` — extracted in #930, which is why this package no longer has a `src/shared/` folder. `plugin.ts` also injects the native pointer mover via `initMousePointer` (#926), for the View Adjustment **Mouse to Sim** mode.

@@ -25,9 +25,12 @@ vi.mock("./global-settings.js", () => ({
   isSettingsStoreReady: () => state.storeReady,
 }));
 
-vi.mock("./app-monitor.js", () => ({
-  isIRacingActive: () => state.iRacingActive,
-}));
+/**
+ * The injected "is iRacing running?" check (#1176) — what the plugins bind to
+ * the app monitor's `isIRacingActive`. Read through `state` so a test can flip
+ * it after initialization, which is how the plugins' predicate behaves too.
+ */
+const simRunning = (): boolean => state.iRacingActive;
 
 function createLogger(): ILogger {
   return {
@@ -49,7 +52,7 @@ function createLogger(): ILogger {
 function arrange(result: number): { logger: ILogger; focuser: WindowFocuser } {
   const logger = createLogger();
   const focuser = vi.fn(() => result as FocusResult);
-  initWindowFocus(logger, focuser);
+  initWindowFocus(logger, focuser, simRunning);
 
   return { logger, focuser };
 }
@@ -116,14 +119,20 @@ describe("window focus service", () => {
     // a second call is a wiring bug, not a silent swap of focuser and logger.
     it("throws when initialized twice", () => {
       arrange(FocusResult.AlreadyFocused);
-      expect(() => initWindowFocus(createLogger(), () => FocusResult.AlreadyFocused)).toThrow(/already initialized/i);
+      expect(() => initWindowFocus(createLogger(), () => FocusResult.AlreadyFocused, simRunning)).toThrow(
+        /already initialized/i,
+      );
     });
 
     it("logs a warning and does not throw when the focuser throws", () => {
       const logger = createLogger();
-      initWindowFocus(logger, () => {
-        throw new Error("boom");
-      });
+      initWindowFocus(
+        logger,
+        () => {
+          throw new Error("boom");
+        },
+        simRunning,
+      );
 
       expect(() => focusIRacingIfEnabled()).not.toThrow();
       expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("Failed to focus iRacing window"));
@@ -167,9 +176,13 @@ describe("window focus service", () => {
 
     it("shares the result handling — a thrown focuser is logged, never rethrown", () => {
       const logger = createLogger();
-      initWindowFocus(logger, () => {
-        throw new Error("boom");
-      });
+      initWindowFocus(
+        logger,
+        () => {
+          throw new Error("boom");
+        },
+        simRunning,
+      );
       expect(() => focusIRacingBeforeInput()).not.toThrow();
       expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("Failed to focus iRacing window"));
     });
@@ -216,7 +229,7 @@ describe("window focus service", () => {
     it("warns again after the window disappears in between", () => {
       const logger = createLogger();
       let result: number = FocusResult.FocusTimedOut;
-      initWindowFocus(logger, () => result as FocusResult);
+      initWindowFocus(logger, () => result as FocusResult, simRunning);
 
       focusIRacingIfEnabled();
       vi.advanceTimersByTime(FOCUS_TIMEOUT_COOLDOWN_MS);
@@ -231,7 +244,7 @@ describe("window focus service", () => {
     it("warns again after a focus succeeds in between", () => {
       const logger = createLogger();
       let result: number = FocusResult.FocusTimedOut;
-      initWindowFocus(logger, () => result as FocusResult);
+      initWindowFocus(logger, () => result as FocusResult, simRunning);
 
       focusIRacingIfEnabled();
       vi.advanceTimersByTime(FOCUS_TIMEOUT_COOLDOWN_MS);
@@ -322,7 +335,7 @@ describe("window focus service", () => {
       const logger = createLogger();
       let result: number = FocusResult.FocusTimedOut;
       const focuser = vi.fn(() => result as FocusResult);
-      initWindowFocus(logger, focuser);
+      initWindowFocus(logger, focuser, simRunning);
 
       focusIRacingIfEnabled();
       vi.advanceTimersByTime(100);
@@ -338,7 +351,7 @@ describe("window focus service", () => {
       const logger = createLogger();
       let result: number = FocusResult.FocusTimedOut;
       const focuser = vi.fn(() => result as FocusResult);
-      initWindowFocus(logger, focuser);
+      initWindowFocus(logger, focuser, simRunning);
 
       focusIRacingIfEnabled();
       vi.advanceTimersByTime(100);
@@ -354,7 +367,7 @@ describe("window focus service", () => {
       const logger = createLogger();
       let result: number = FocusResult.FocusTimedOut;
       const focuser = vi.fn(() => result as FocusResult);
-      initWindowFocus(logger, focuser);
+      initWindowFocus(logger, focuser, simRunning);
 
       focusIRacingIfEnabled();
       vi.advanceTimersByTime(100);
@@ -397,6 +410,32 @@ describe("window focus service", () => {
 
       expect(logger.warn).toHaveBeenCalledWith("iRacing window not found — is iRacing running?");
     });
+
+    // The check is injected (#1176) but must stay as live as the import it
+    // replaced: iRacing starts and stops long after the plugin initialized.
+    it("asks the injected check when the window is missing, not when the service starts", () => {
+      state.iRacingActive = false;
+      const { logger } = arrange(FocusResult.WindowNotFound);
+      state.iRacingActive = true;
+      focusIRacingIfEnabled();
+
+      expect(logger.warn).toHaveBeenCalledWith("iRacing window not found — is iRacing running?");
+    });
+
+    it("reads a throwing check as not running, and never throws into the press", () => {
+      const logger = createLogger();
+      initWindowFocus(
+        logger,
+        () => FocusResult.WindowNotFound,
+        () => {
+          throw new Error("boom");
+        },
+      );
+
+      expect(() => focusIRacingIfEnabled()).not.toThrow();
+      expect(logger.warn).not.toHaveBeenCalled();
+      expect(logger.debug).toHaveBeenCalledWith("iRacing window not found (iRacing is not running)");
+    });
   });
 });
 
@@ -437,9 +476,13 @@ describe("focusIRacingNow (issue #926)", () => {
 
   it("returns null when the focuser throws", () => {
     const logger = createLogger();
-    initWindowFocus(logger, () => {
-      throw new Error("boom");
-    });
+    initWindowFocus(
+      logger,
+      () => {
+        throw new Error("boom");
+      },
+      simRunning,
+    );
 
     expect(focusIRacingNow()).toBeNull();
     expect(logger.warn).toHaveBeenCalled();

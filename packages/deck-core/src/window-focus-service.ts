@@ -22,11 +22,17 @@
  * `keyboard-service`): the actual window handling lives in the native addon,
  * and deck-core must stay platform-agnostic, so this module never imports
  * `@iracedeck/iracing-native`.
+ *
+ * So is the "is iRacing running?" check that picks the log level for a missing
+ * window (#1176). Importing it from `app-monitor` closed an import cycle —
+ * `sdk-singleton` imports this module for the chat `beforeKeystrokes` hook, and
+ * `app-monitor` imports `sdk-singleton` for the controller — so the plugins
+ * hand in `isIRacingActive` the way they hand it to `runVersionCheck` as
+ * `isSimRunning`.
  */
 import type { ILogger } from "@iracedeck/logger";
 import { silentLogger } from "@iracedeck/logger";
 
-import { isIRacingActive } from "./app-monitor.js";
 import type { FocusIRacingMode } from "./focus-iracing-mode.js";
 import { getGlobalSettings, isSettingsStoreReady } from "./global-settings.js";
 
@@ -61,6 +67,14 @@ export type FocusResult = (typeof FocusResult)[keyof typeof FocusResult];
 export type WindowFocuser = () => FocusResult;
 
 /**
+ * Whether anything says iRacing is running — the plugins pass the app
+ * monitor's `isIRacingActive`. Asked only when the window was not found, to
+ * choose between a debug line (expected: iRacing is closed) and a warning
+ * (the window should have been there).
+ */
+export type SimRunningCheck = () => boolean;
+
+/**
  * How long after a `FocusTimedOut` the two gated entry points skip the native
  * ask (#977). A timed-out ask blocks the JS thread for the focuser's full
  * ~1000 ms wait, and under `always` a keybind press asks twice — the adapter
@@ -72,6 +86,7 @@ export type WindowFocuser = () => FocusResult;
 export const FOCUS_TIMEOUT_COOLDOWN_MS = 2000;
 
 let focuser: WindowFocuser | null = null;
+let isSimRunning: SimRunningCheck = () => false;
 let logger: ILogger = silentLogger;
 /**
  * When the last `FocusTimedOut` happened (`Date.now()`), or `null` outside a
@@ -89,14 +104,31 @@ let lastTimedOutAt: number | null = null;
  *
  * @param log - Logger instance
  * @param windowFocuser - Function that focuses the iRacing window
+ * @param simRunning - Whether iRacing is running; plugins pass `isIRacingActive`.
+ *   Required, and set together with the focuser, so there is no moment in which
+ *   a focus result can be logged without it.
  */
-export function initWindowFocus(log: ILogger, windowFocuser: WindowFocuser): void {
+export function initWindowFocus(log: ILogger, windowFocuser: WindowFocuser, simRunning: SimRunningCheck): void {
   if (focuser) {
     throw new Error("Window focus service already initialized. initWindowFocus() should only be called once.");
   }
 
   logger = log;
   focuser = windowFocuser;
+  isSimRunning = simRunning;
+}
+
+/**
+ * The injected {@link SimRunningCheck}, read as `false` if it throws: the
+ * answer only picks a log level, and this service never throws into the action
+ * the user pressed.
+ */
+function simRunningNow(): boolean {
+  try {
+    return isSimRunning();
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -229,10 +261,11 @@ function runFocuser(): FocusResult | null {
       // dial press — including every press made while iRacing is closed, where
       // a missing window is the expected outcome rather than a fault. Log by
       // expectation: debug when nothing says iRacing is running, warn when the
-      // app monitor or a live SDK connection says it IS, because then the
-      // window really should have been found and the log line is a genuine
-      // diagnostic worth having in a support log.
-      if (isIRacingActive()) {
+      // app monitor or a live SDK connection says it IS (the injected
+      // `isIRacingActive`), because then the window really should have been
+      // found and the log line is a genuine diagnostic worth having in a
+      // support log.
+      if (simRunningNow()) {
         logger.warn("iRacing window not found — is iRacing running?");
       } else {
         logger.debug("iRacing window not found (iRacing is not running)");
@@ -274,6 +307,7 @@ function runFocuser(): FocusResult | null {
  */
 export function _resetWindowFocus(): void {
   focuser = null;
+  isSimRunning = () => false;
   logger = silentLogger;
   lastTimedOutAt = null;
 }
