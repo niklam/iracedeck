@@ -17775,6 +17775,81 @@
           "caution/one-to-go-outside-01"
         ]
       }
+    ],
+    "tire-wear": [
+      {
+        "name": "left-front-01",
+        "text": "Left front",
+        "next_text": " ninety two percent."
+      },
+      {
+        "name": "right-front-01",
+        "text": "Right front",
+        "next_text": " ninety one."
+      },
+      {
+        "name": "left-rear-01",
+        "text": "Left rear",
+        "next_text": " eighty seven."
+      },
+      {
+        "name": "right-rear-01",
+        "text": "Right rear",
+        "next_text": " eighty five."
+      },
+      {
+        "name": "percent-01",
+        "text": "percent.",
+        "previous_text": "Left front, ninety two"
+      },
+      {
+        "name": "heaviest-lf-inside-01",
+        "text": "Wear is heaviest on the left front, inside shoulder."
+      },
+      {
+        "name": "heaviest-lf-middle-01",
+        "text": "Wear is heaviest in the middle of the left front."
+      },
+      {
+        "name": "heaviest-lf-outside-01",
+        "text": "Wear is heaviest on the left front, outside shoulder."
+      },
+      {
+        "name": "heaviest-rf-inside-01",
+        "text": "Wear is heaviest on the right front, inside shoulder."
+      },
+      {
+        "name": "heaviest-rf-middle-01",
+        "text": "Wear is heaviest in the middle of the right front."
+      },
+      {
+        "name": "heaviest-rf-outside-01",
+        "text": "Wear is heaviest on the right front, outside shoulder."
+      },
+      {
+        "name": "heaviest-lr-inside-01",
+        "text": "Wear is heaviest on the left rear, inside shoulder."
+      },
+      {
+        "name": "heaviest-lr-middle-01",
+        "text": "Wear is heaviest in the middle of the left rear."
+      },
+      {
+        "name": "heaviest-lr-outside-01",
+        "text": "Wear is heaviest on the left rear, outside shoulder."
+      },
+      {
+        "name": "heaviest-rr-inside-01",
+        "text": "Wear is heaviest on the right rear, inside shoulder."
+      },
+      {
+        "name": "heaviest-rr-middle-01",
+        "text": "Wear is heaviest in the middle of the right rear."
+      },
+      {
+        "name": "heaviest-rr-outside-01",
+        "text": "Wear is heaviest on the right rear, outside shoulder."
+      }
     ]
   },
   "scenarios": {
@@ -18105,6 +18180,42 @@
           "if": "!readback.hasAnyService",
           "then": ["pool:pit-readback/empty-fallback"],
           "else": ["@readback-body"]
+        }
+      ]
+    },
+    "pit-crew.tire-wear-report": {
+      "comment": "After a pit stop, once the exit readback has played: the remaining tread of all four tires, front to rear, each as the lowest of its three zones in whole percent, then where the wear is heaviest. After a tire change the numbers describe the set that came off.",
+      "test": "Harness → Tire Wear → Report after a stop. In-sim: drive into your box, stop, and leave pit road; the report follows the exit readback.",
+      "sequence": [
+        "pool:tire-wear/left-front",
+        "{{tireWear.leftFrontTread}}",
+        "pool:tire-wear/percent",
+        "pool:tire-wear/right-front",
+        "{{tireWear.rightFrontTread}}",
+        "pool:tire-wear/left-rear",
+        "{{tireWear.leftRearTread}}",
+        "pool:tire-wear/right-rear",
+        "{{tireWear.rightRearTread}}",
+        {
+          "optional": [
+            {
+              "case": "tireWear.heaviestSpot",
+              "of": {
+                "lf-inside": ["pool:tire-wear/heaviest-lf-inside"],
+                "lf-middle": ["pool:tire-wear/heaviest-lf-middle"],
+                "lf-outside": ["pool:tire-wear/heaviest-lf-outside"],
+                "rf-inside": ["pool:tire-wear/heaviest-rf-inside"],
+                "rf-middle": ["pool:tire-wear/heaviest-rf-middle"],
+                "rf-outside": ["pool:tire-wear/heaviest-rf-outside"],
+                "lr-inside": ["pool:tire-wear/heaviest-lr-inside"],
+                "lr-middle": ["pool:tire-wear/heaviest-lr-middle"],
+                "lr-outside": ["pool:tire-wear/heaviest-lr-outside"],
+                "rr-inside": ["pool:tire-wear/heaviest-rr-inside"],
+                "rr-middle": ["pool:tire-wear/heaviest-rr-middle"],
+                "rr-outside": ["pool:tire-wear/heaviest-rr-outside"]
+              }
+            }
+          ]
         }
       ]
     },
