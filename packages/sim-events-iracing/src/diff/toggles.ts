@@ -3,7 +3,13 @@
  *
  * Emits:
  *   - pitService.toggled { service, on } — when Fuel / WindshieldTearoff /
- *     FastRepair bits in PitSvFlags flip.
+ *     FastRepair bits in PitSvFlags flip. For fuel, only a flip made while
+ *     auto-fuel is NOT armed; see the next line.
+ *   - pitService.autoFuelChanged { refuel } — INSTEAD of the fuel toggle, for
+ *     a settled FuelFill flip made while auto-fuel is armed
+ *     (`dpFuelAutoFillActive`, issue #474). Exactly one of the two per
+ *     settled fuel flip, never both. Arming or disarming auto-fuel with the
+ *     fuel bit unchanged emits nothing.
  *   - tireService.changed { added, removed, current } — when tire service
  *     bits flip. `current` is the post-change set so consumers can decide
  *     based on the resulting state (vs. trying to reconstruct it from the
@@ -23,7 +29,7 @@
 import type { PitServiceKind } from "@iracedeck/event-bus";
 import { EngineWarnings, PitSvFlags, type TelemetryData } from "@iracedeck/iracing-sdk";
 
-import type { ServiceDebounceState, TranslatorState } from "../state.js";
+import type { FuelDebounceState, ServiceDebounceState, TranslatorState } from "../state.js";
 import type { EmitFn } from "./types.js";
 
 // Tire flag → human-readable name (matches pit-crew's TIRE_SHORT domain)
@@ -63,9 +69,66 @@ export const TIRE_DEBOUNCE_MS = 500;
 export const PIT_SERVICE_DEBOUNCE_MS = 300;
 
 /**
- * Debounce a single pit-service bit. Returns the new baseline value (true
- * if set, false if cleared) — caller folds it back into the persisted
- * baseline-flags integer. Mutates the per-service debounce state in place.
+ * What one tick did to a single pit-service bit's debounce. The debounce
+ * itself names no event: each caller decides what a settled flip is called,
+ * which is what lets the fuel bit attribute its flips (issue #474) without
+ * the windshield and fast-repair bits carrying any of that.
+ */
+type DebounceStep = {
+  /**
+   * `stable` — the bit sits at its baseline (anything pending was reverted
+   * and cleared); `pending` — a flip is inside the window; `settled` — a
+   * flip held for the whole window and the baseline advanced to it.
+   */
+  phase: "stable" | "pending" | "settled";
+  /** This tick (re)started the pending window. Never true when `stable`. */
+  armed: boolean;
+  /** The baseline after this tick: the settled value on a settle, unchanged otherwise. */
+  baseline: boolean;
+};
+
+/**
+ * Debounce a single pit-service bit. Mutates the per-service debounce state
+ * in place; the returned `baseline` is what the caller folds back into the
+ * persisted baseline-flags integer.
+ */
+function stepServiceDebounce(
+  flagMask: number,
+  pitSvFlags: number,
+  baselineFlags: number,
+  debounce: ServiceDebounceState,
+  now: number,
+): DebounceStep {
+  const current = (pitSvFlags & flagMask) !== 0;
+  const baseline = (baselineFlags & flagMask) !== 0;
+
+  if (current === baseline) {
+    debounce.pendingAt = 0;
+    debounce.lastSeen = current;
+
+    return { phase: "stable", armed: false, baseline };
+  }
+
+  let armed = false;
+
+  if (debounce.pendingAt === 0 || current !== debounce.lastSeen) {
+    debounce.pendingAt = now;
+    debounce.lastSeen = current;
+    armed = true;
+  }
+
+  if (now - debounce.pendingAt >= PIT_SERVICE_DEBOUNCE_MS) {
+    debounce.pendingAt = 0;
+
+    return { phase: "settled", armed, baseline: current };
+  }
+
+  return { phase: "pending", armed, baseline };
+}
+
+/**
+ * Debounce a single pit-service bit and announce a settled flip as the
+ * driver's toggle. Returns the new baseline value.
  */
 function diffPitServiceBit(
   service: PitServiceKind,
@@ -76,29 +139,73 @@ function diffPitServiceBit(
   now: number,
   emit: EmitFn,
 ): boolean {
-  const current = (pitSvFlags & flagMask) !== 0;
-  const baseline = (baselineFlags & flagMask) !== 0;
+  const step = stepServiceDebounce(flagMask, pitSvFlags, baselineFlags, debounce, now);
 
-  if (current === baseline) {
-    debounce.pendingAt = 0;
-    debounce.lastSeen = current;
-
-    return baseline;
+  if (step.phase === "settled") {
+    emit({ event: "pitService.toggled", data: { service, on: step.baseline } });
   }
 
-  if (debounce.pendingAt === 0 || current !== debounce.lastSeen) {
-    debounce.pendingAt = now;
-    debounce.lastSeen = current;
+  return step.baseline;
+}
+
+/**
+ * Whether auto-fuel is armed for the next stop (`dpFuelAutoFillActive`,
+ * "pitstop auto fill fuel next stop flag"). deck-core's `isAutofuelActive`
+ * rule, inlined because this package does not depend on deck-core: an absent
+ * field reads as not active, any non-zero value as active.
+ */
+function isAutoFuelActive(telemetry: TelemetryData): boolean {
+  return (telemetry.dpFuelAutoFillActive ?? 0) !== 0;
+}
+
+/**
+ * The fuel bit: the same debounce, plus attribution (issue #474). iRacing's
+ * auto-fuel owns the `FuelFill` bit and flips it on its own; telemetry
+ * carries no source for a flip, only whether auto-fuel is armed, so a flip is
+ * the sim's when `dpFuelAutoFillActive` read active on the tick the pending
+ * flip was armed (latched in `debounce.autoFuelArmed`, OR-ed across re-arms)
+ * OR on the tick it settles. Either one is enough: a false "auto" on a manual
+ * press only changes the wording of a line the driver expected, while a
+ * false "manual" on a sim flip is the repeated phantom confirmation #474 was
+ * filed about — so ties fail towards auto. That also makes a press made while
+ * auto-fuel is armed an auto flip: the two cannot be told apart.
+ *
+ * Exactly one event per settled flip — `pitService.autoFuelChanged` or
+ * `pitService.toggled { service: "fuel" }` — and the baseline advances the
+ * same way for both. Returns the new baseline value.
+ */
+function diffFuelBit(
+  pitSvFlags: number,
+  baselineFlags: number,
+  debounce: FuelDebounceState,
+  autoFuelActive: boolean,
+  now: number,
+  emit: EmitFn,
+): boolean {
+  const step = stepServiceDebounce(PitSvFlags.FuelFill, pitSvFlags, baselineFlags, debounce, now);
+
+  if (step.phase === "stable") {
+    // Nothing pending (or the pending flip reverted): the latch belonged to
+    // that episode and must not attribute the next one.
+    debounce.autoFuelArmed = false;
+
+    return step.baseline;
   }
 
-  if (now - debounce.pendingAt >= PIT_SERVICE_DEBOUNCE_MS) {
-    emit({ event: "pitService.toggled", data: { service, on: current } });
-    debounce.pendingAt = 0;
+  if (step.armed && autoFuelActive) debounce.autoFuelArmed = true;
 
-    return current;
+  if (step.phase === "settled") {
+    const auto = debounce.autoFuelArmed || autoFuelActive;
+    debounce.autoFuelArmed = false;
+
+    if (auto) {
+      emit({ event: "pitService.autoFuelChanged", data: { refuel: step.baseline } });
+    } else {
+      emit({ event: "pitService.toggled", data: { service: "fuel", on: step.baseline } });
+    }
   }
 
-  return baseline;
+  return step.baseline;
 }
 
 function tireSet(flags: number): Set<string> {
@@ -137,7 +244,12 @@ export function diffToggles(state: TranslatorState, telemetry: TelemetryData, no
     state.lastDrsActive = drs;
     state.lastSeenTireFlags = currTireBits;
     state.lastTireChangeAt = 0;
-    state.fuelDebounce = { pendingAt: 0, lastSeen: (pitSvFlags & PitSvFlags.FuelFill) !== 0 };
+    // Seeding clears any pending flip, so the auto-fuel latch goes with it.
+    state.fuelDebounce = {
+      pendingAt: 0,
+      lastSeen: (pitSvFlags & PitSvFlags.FuelFill) !== 0,
+      autoFuelArmed: false,
+    };
     state.windshieldDebounce = {
       pendingAt: 0,
       lastSeen: (pitSvFlags & PitSvFlags.WindshieldTearoff) !== 0,
@@ -148,12 +260,13 @@ export function diffToggles(state: TranslatorState, telemetry: TelemetryData, no
   }
 
   // ── Pit service (fuel / windshield / fast-repair, debounced) ───────────
-  const nextBaselineFuel = diffPitServiceBit(
-    "fuel",
-    PitSvFlags.FuelFill,
+  // Fuel alone is attributed: a flip made while auto-fuel is armed is the
+  // sim's (issue #474, see `diffFuelBit`).
+  const nextBaselineFuel = diffFuelBit(
     pitSvFlags,
     state.lastPitSvFlags,
     state.fuelDebounce,
+    isAutoFuelActive(telemetry),
     now,
     emit,
   );

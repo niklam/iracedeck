@@ -1136,6 +1136,27 @@ describe("sim-events-iracing translator", () => {
       expect(handler).not.toHaveBeenCalled();
     });
 
+    it("publishes a fuel flip made while auto-fuel is armed as pitService.autoFuelChanged, not a toggle (issue #474)", () => {
+      const controller = createMockController();
+      const bus = getEventBus();
+      const toggled = vi.fn();
+      const autoFuel = vi.fn();
+      bus.subscribe("pitService.toggled", toggled);
+      bus.subscribe("pitService.autoFuelChanged", autoFuel);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      controller.__tick(telemetry({ PitSvFlags: 0, dpFuelAutoFillActive: 1 }));
+      controller.__tick(telemetry({ PitSvFlags: PitSvFlags.FuelFill, dpFuelAutoFillActive: 1 }));
+      vi.useFakeTimers();
+      vi.setSystemTime(Date.now() + 400);
+      controller.__tick(telemetry({ PitSvFlags: PitSvFlags.FuelFill, dpFuelAutoFillActive: 1 }));
+      vi.useRealTimers();
+
+      expect(toggled).not.toHaveBeenCalled();
+      expect(autoFuel).toHaveBeenCalledTimes(1);
+      expect((autoFuel.mock.calls[0]![0] as SimEventOf<"pitService.autoFuelChanged">).data).toEqual({ refuel: true });
+    });
+
     it("emits carControl.drsToggled { on: true } on activation", () => {
       const controller = createMockController();
       const bus = getEventBus();

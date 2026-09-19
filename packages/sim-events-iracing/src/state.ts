@@ -40,6 +40,24 @@ export type ServiceDebounceState = {
   lastSeen: boolean; // most recent observed bit value
 };
 
+/**
+ * The fuel bit's debounce tracker: the shared single-bit one plus the
+ * auto-fuel attribution latch (issue #474). Only fuel carries the latch —
+ * iRacing's auto-fuel owns the `FuelFill` bit and nothing else — so it is a
+ * widening of this one field's type rather than a member every service would
+ * carry and two of three would never read.
+ */
+export type FuelDebounceState = ServiceDebounceState & {
+  /**
+   * `dpFuelAutoFillActive` read active on a tick that (re)armed the pending
+   * flip. It belongs to that pending episode: cleared whenever the pending
+   * is — the bit back at its baseline, after the settled emit, and on every
+   * silent seed — so `false` whenever nothing is pending, and an episode that
+   * was cancelled can never attribute the next one.
+   */
+  autoFuelArmed: boolean;
+};
+
 export type TranslatorState = {
   // ── Pit lane / stall ────────────────────────────────────────────────────
   pitLaneInitialized: boolean;
@@ -454,8 +472,9 @@ export type TranslatorState = {
   // the user's rapid intent oscillations (e.g. accidental tap-tap on a
   // button). Each service tracks its own last-seen value and the
   // timestamp of the most recent flip; an event emits only after the bit
-  // has been stable for the debounce window.
-  fuelDebounce: ServiceDebounceState;
+  // has been stable for the debounce window. Fuel's also latches whether
+  // auto-fuel was armed when its flip began (issue #474, `FuelDebounceState`).
+  fuelDebounce: FuelDebounceState;
   windshieldDebounce: ServiceDebounceState;
   fastRepairDebounce: ServiceDebounceState;
   // Tire debounce — same model but over a 4-bit set rather than a single bit.
@@ -1141,7 +1160,7 @@ export function createInitialState(): TranslatorState {
     lastLimiterActive: false,
     lastP2PActive: false,
     lastDrsActive: false,
-    fuelDebounce: { pendingAt: 0, lastSeen: false },
+    fuelDebounce: { pendingAt: 0, lastSeen: false, autoFuelArmed: false },
     windshieldDebounce: { pendingAt: 0, lastSeen: false },
     fastRepairDebounce: { pendingAt: 0, lastSeen: false },
     lastSeenTireFlags: 0,
