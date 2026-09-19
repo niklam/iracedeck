@@ -304,6 +304,19 @@ function renderInjector() {
   syncInjectorPayload();
 }
 
+// The id of the shortcut currently running, or null. ONE shortcut at a time,
+// page-wide: a `telemetrySequence` runs for seconds with waits between its
+// steps (issue #1127), and two sequences interleaving would write the same
+// telemetry field from both, so neither would be the one described on either
+// button. Disabling only the clicked button left every OTHER button live for
+// the whole run, which is exactly the second sequence that note forbids.
+let shortcutInFlight = null;
+
+/** Every shortcut button follows the lock, including ones rendered mid-run. */
+function setShortcutButtonsDisabled(disabled) {
+  for (const btn of $("shortcuts").querySelectorAll("button")) btn.disabled = disabled;
+}
+
 function renderShortcuts() {
   const container = $("shortcuts");
   container.innerHTML = "";
@@ -335,13 +348,18 @@ function renderShortcuts() {
       const btn = document.createElement("button");
       btn.textContent = s.label;
       if (s.description) btn.title = s.description;
+      // A re-render while a sequence runs must not hand the tester a fresh,
+      // enabled set of buttons.
+      btn.disabled = shortcutInFlight !== null;
       btn.addEventListener("click", async () => {
-        // A `telemetrySequence` runs for seconds with waits between its steps
-        // (issue #1127), so a second click would interleave two sequences
-        // writing the same field and neither would be the one described on the
-        // button. Disabling for the duration costs the instant shortcuts an
-        // invisible blink and makes that impossible.
-        btn.disabled = true;
+        // The page-wide lock (see `shortcutInFlight`): every shortcut button is
+        // disabled for the duration, not just this one, and a click that
+        // reaches here anyway (a keyboard-activated button, a stale render)
+        // is refused. Costs the instant shortcuts an invisible blink.
+        if (shortcutInFlight !== null) return;
+
+        shortcutInFlight = s.id;
+        setShortcutButtonsDisabled(true);
 
         try {
           // Issue #1127 — every shortcut announces itself here first, and the
@@ -411,7 +429,8 @@ function renderShortcuts() {
         } catch (e) {
           alert(`Shortcut "${s.label}" failed: ${e.message}`);
         } finally {
-          btn.disabled = false;
+          shortcutInFlight = null;
+          setShortcutButtonsDisabled(false);
         }
       });
       buttons.appendChild(btn);
