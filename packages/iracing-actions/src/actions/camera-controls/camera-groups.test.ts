@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   computeCameraCarousel,
   computeSubCameraCarousel,
+  findSessionGroupByName,
   getNextSelectedGroup,
+  normalizeGroupName,
   parseGroupSubset,
 } from "./camera-groups.js";
 
@@ -160,5 +162,33 @@ describe("computeSubCameraCarousel", () => {
     expect(carousel.current).toBeNull();
     expect(carousel.next?.cameraName).toBe("Only");
     expect(carousel.prev?.cameraName).toBe("Only");
+  });
+});
+
+describe("camera group name normalisation (#958)", () => {
+  // One capture of 75 reports "Pit Lane2"; every other says "Pit Lane 2".
+  const PIT_LANE2_SESSION = [
+    { groupNum: 19, groupName: "Pit Lane" },
+    { groupNum: 20, groupName: "Pit Lane2" },
+    { groupNum: 24, groupName: "Spotter" },
+  ];
+
+  it("maps the known variant to its canonical name and leaves every other name alone", () => {
+    expect(normalizeGroupName("Pit Lane2")).toBe("Pit Lane 2");
+    expect(normalizeGroupName("Pit Lane 2")).toBe("Pit Lane 2");
+    expect(normalizeGroupName("TV Static")).toBe("TV Static");
+  });
+
+  it("finds a session group by name in either spelling", () => {
+    expect(findSessionGroupByName(PIT_LANE2_SESSION, "Pit Lane 2")?.groupNum).toBe(20);
+    expect(findSessionGroupByName(PIT_LANE2_SESSION, "Spotter")?.groupNum).toBe(24);
+  });
+
+  it("returns undefined for a group the session does not have", () => {
+    expect(findSessionGroupByName(PIT_LANE2_SESSION, "TV4")).toBeUndefined();
+  });
+
+  it("cycles into a session group spelled differently from the enabled name", () => {
+    expect(getNextSelectedGroup(19, ["Pit Lane 2"], PIT_LANE2_SESSION, 1)).toBe(20);
   });
 });

@@ -25,7 +25,9 @@ export const CAMERA_GROUPS_SETTING_KEY = "cameraGroupSubset";
 /**
  * @internal Exported for testing
  *
- * All known iRacing camera group names.
+ * All known iRacing camera group names. The last five (#958) exist only on some
+ * content — TV Static and TV Mixed on most, TV4 / Spotter / Spectator on the oval
+ * and dirt captures — so they are listed but never enabled by default.
  */
 export const DEFAULT_CAMERA_GROUPS = [
   "Nose",
@@ -48,6 +50,11 @@ export const DEFAULT_CAMERA_GROUPS = [
   "Chase",
   "Far Chase",
   "Rear Chase",
+  "TV Static",
+  "TV Mixed",
+  "TV4",
+  "Spotter",
+  "Spectator",
 ];
 
 /**
@@ -56,6 +63,39 @@ export const DEFAULT_CAMERA_GROUPS = [
  * Default enabled camera groups (used when no per-action or legacy global setting is saved).
  */
 export const DEFAULT_ENABLED_GROUPS = ["Nose", "Cockpit", "Chase", "TV1", "TV2", "TV3"];
+
+/**
+ * Name variants the sim (or an older saved subset) spells differently from the
+ * canonical names above. One capture reports `Pit Lane2` where every other one
+ * says `Pit Lane 2` (#958).
+ */
+const LEGACY_NAMES: Record<string, string> = { "Pit Lane2": "Pit Lane 2" };
+
+/**
+ * @internal Exported for testing
+ *
+ * Canonical spelling of a camera group name — the ONE normalisation shared by
+ * saved subsets (`parseGroupSubset`), the session's own group list
+ * (`findSessionGroupByName`, `getNextSelectedGroupEntry`) and the icon lookup,
+ * so a variant spelling on either side still matches.
+ */
+export function normalizeGroupName(name: string): string {
+  return LEGACY_NAMES[name] ?? name;
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * The session's camera group carrying `name`, compared by canonical spelling on
+ * both sides. Undefined when the session has no such group — the caller must
+ * then NOT fall back to a plugin-side number, since the sim numbers its groups
+ * per content and ours would pick an unrelated camera (#958).
+ */
+export function findSessionGroupByName(sessionGroups: CameraGroup[], name: string): CameraGroup | undefined {
+  const target = normalizeGroupName(name);
+
+  return sessionGroups.find((g) => normalizeGroupName(g.groupName) === target);
+}
 
 /**
  * @internal Exported for testing
@@ -88,12 +128,9 @@ export function parseGroupSubset(raw: string | Record<string, unknown> | undefin
 
   const groups = rawGroups as Record<string, unknown>;
 
-  // Normalize legacy name variants to canonical names
-  const LEGACY_NAMES: Record<string, string> = { "Pit Lane2": "Pit Lane 2" };
-
   return Object.entries(groups)
     .filter(([, isEnabled]) => isEnabled === true)
-    .map(([name]) => LEGACY_NAMES[name] ?? name);
+    .map(([name]) => normalizeGroupName(name));
 }
 
 /**
@@ -123,7 +160,7 @@ export function getNextSelectedGroupEntry(
   direction: 1 | -1,
 ): CameraGroup | null {
   const enabled = sessionGroups
-    .filter((g) => enabledGroupNames.includes(g.groupName))
+    .filter((g) => enabledGroupNames.includes(normalizeGroupName(g.groupName)))
     .sort((a, b) => a.groupNum - b.groupNum);
 
   if (enabled.length === 0) return null;
