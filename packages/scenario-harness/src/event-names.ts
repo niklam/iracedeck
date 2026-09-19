@@ -60,6 +60,19 @@ export const EVENT_TEMPLATES = [
       limiterEngaged: false,
     },
   },
+  {
+    name: "tireWear.reported",
+    description: "Tire wear after a pit stop (issue #1108) — tread per zone in percent, lowest zone per tire",
+    data: {
+      corners: {
+        lf: { inside: 89.2, middle: 90.4, outside: 91.1, tread: 89.2, zone: "inside" },
+        rf: { inside: 90.6, middle: 91.3, outside: 92.8, tread: 90.6, zone: "inside" },
+        lr: { inside: 87.9, middle: 87.4, outside: 88.6, tread: 87.4, zone: "middle" },
+        rr: { inside: 85.3, middle: 86.1, outside: 88.0, tread: 85.3, zone: "inside" },
+      },
+      heaviest: { corner: "rr", zone: "inside" },
+    },
+  },
 
   // ── Flags ──
   { name: "flag.yellow.raised", description: "Yellow flag raised", data: { scope: "local" } },
