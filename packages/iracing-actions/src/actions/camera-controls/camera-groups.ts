@@ -25,7 +25,9 @@ export const CAMERA_GROUPS_SETTING_KEY = "cameraGroupSubset";
 /**
  * @internal Exported for testing
  *
- * All known iRacing camera group names.
+ * All known iRacing camera group names. The last five (#958) exist only on some
+ * content — TV Static and TV Mixed on most, TV4 / Spotter / Spectator on the oval
+ * and dirt captures — so they are listed but never enabled by default.
  */
 export const DEFAULT_CAMERA_GROUPS = [
   "Nose",
@@ -48,6 +50,11 @@ export const DEFAULT_CAMERA_GROUPS = [
   "Chase",
   "Far Chase",
   "Rear Chase",
+  "TV Static",
+  "TV Mixed",
+  "TV4",
+  "Spotter",
+  "Spectator",
 ];
 
 /**
@@ -56,6 +63,96 @@ export const DEFAULT_CAMERA_GROUPS = [
  * Default enabled camera groups (used when no per-action or legacy global setting is saved).
  */
 export const DEFAULT_ENABLED_GROUPS = ["Nose", "Cockpit", "Chase", "TV1", "TV2", "TV3"];
+
+/**
+ * @internal Exported for testing
+ *
+ * Change Camera's stored value → group name. The numbers are this plugin's own
+ * enumeration (the PI dropdown's values), never the sim's — the sim renumbers
+ * its groups per content, so a press resolves the NAME against the session. New
+ * groups only ever go on the end (#958): inserting one would repoint every saved
+ * Change Camera key.
+ */
+export const CHANGE_CAMERA_GROUPS: Readonly<Record<number, string>> = {
+  1: "Nose",
+  2: "Gearbox",
+  3: "Roll Bar",
+  4: "LF Susp",
+  5: "LR Susp",
+  6: "Gyro",
+  7: "RF Susp",
+  8: "RR Susp",
+  9: "Cockpit",
+  10: "Blimp",
+  11: "Chopper",
+  12: "Chase",
+  13: "Far Chase",
+  14: "Rear Chase",
+  15: "Pit Lane",
+  16: "Pit Lane 2",
+  17: "TV1",
+  18: "TV2",
+  19: "TV3",
+  20: "Scenic",
+  21: "TV Static",
+  22: "TV Mixed",
+  23: "TV4",
+  24: "Spotter",
+  25: "Spectator",
+};
+
+/**
+ * Name variants the sim (or an older saved subset) spells differently from the
+ * canonical names above. One capture reports `Pit Lane2` where every other one
+ * says `Pit Lane 2` (#958). The PI keeps a copy for the subsets it saves.
+ */
+const LEGACY_NAMES: Record<string, string> = { "Pit Lane2": "Pit Lane 2" };
+
+/**
+ * @internal Exported for testing
+ *
+ * Canonical spelling of a camera group name — the ONE normalisation, applied to
+ * saved subsets (`parseGroupSubset`), to the session's group list where it is
+ * read (`normalizeSessionGroups`), and to a name looked up by a caller.
+ */
+export function normalizeGroupName(name: string): string {
+  return LEGACY_NAMES[name] ?? name;
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * The session's camera groups with canonical names. Every reader of
+ * `CameraInfo.Groups` goes through this once, so no consumer downstream — the
+ * subset walk, the name lookup, an icon, a dial label — sees a variant spelling.
+ */
+export function normalizeSessionGroups(sessionGroups: CameraGroup[]): CameraGroup[] {
+  return sessionGroups.map((g) => ({ ...g, groupName: normalizeGroupName(g.groupName) }));
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * The session's camera group carrying `name` (in any spelling). Undefined when
+ * the session has no such group — the caller must then NOT fall back to a
+ * plugin-side number, since the sim numbers its groups per content and ours
+ * would pick an unrelated camera (#958). Expects `normalizeSessionGroups` output.
+ */
+export function findSessionGroupByName(sessionGroups: CameraGroup[], name: string): CameraGroup | undefined {
+  const target = normalizeGroupName(name);
+
+  return sessionGroups.find((g) => g.groupName === target);
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * The session's camera group numbered `groupNum` (the sim's own number, as
+ * telemetry's `CamGroupNumber` reports it), or null when the session lists none.
+ */
+export function findSessionGroupByNum(sessionGroups: CameraGroup[], groupNum: number): CameraGroup | null {
+  return sessionGroups.find((g) => g.groupNum === groupNum) ?? null;
+}
 
 /**
  * @internal Exported for testing
@@ -88,12 +185,9 @@ export function parseGroupSubset(raw: string | Record<string, unknown> | undefin
 
   const groups = rawGroups as Record<string, unknown>;
 
-  // Normalize legacy name variants to canonical names
-  const LEGACY_NAMES: Record<string, string> = { "Pit Lane2": "Pit Lane 2" };
-
   return Object.entries(groups)
     .filter(([, isEnabled]) => isEnabled === true)
-    .map(([name]) => LEGACY_NAMES[name] ?? name);
+    .map(([name]) => normalizeGroupName(name));
 }
 
 /**
@@ -171,7 +265,7 @@ export function computeCameraCarousel(
   enabledGroupNames: string[],
   sessionGroups: CameraGroup[],
 ): CameraCarousel {
-  const current = currentGroupNum !== null ? (sessionGroups.find((g) => g.groupNum === currentGroupNum) ?? null) : null;
+  const current = currentGroupNum !== null ? findSessionGroupByNum(sessionGroups, currentGroupNum) : null;
   const base = currentGroupNum ?? 0;
 
   return {
@@ -201,23 +295,20 @@ export interface SubCameraCarousel {
  * Build the dial sub-camera carousel from the current sub-camera number and the
  * group's camera list (session YAML `CameraInfo.Groups[].Cameras[]`, via
  * `getCamerasInGroup`). The cameras are ordered by ascending `cameraNum`; `prev`
- * / `next` are the neighbours one detent away, wrapping at the ends. This is the
- * SINGLE source both the dial preview and the keypad/dial sub-camera dispatch
- * step through — the dispatch focuses `next.cameraNum` / `prev.cameraNum`, so
- * the previewed camera and the switched-to camera can never diverge (mirrors how
- * `computeCameraCarousel` + `getNextSelectedGroupEntry` back the camera mode).
+ * / `next` are the neighbours either side, wrapping at the ends.
+ *
+ * It feeds the dial PREVIEW only. Since #852 the sub-camera step itself is
+ * iRacing's own Next / Previous Sub Camera binding — the switch broadcasts never
+ * select a sub-camera — so the sim, not this list, decides which camera a detent
+ * lands on, and the side names are a guide to the group's cameras rather than a
+ * promise of the next one.
  *
  * A single-camera group can't cycle, so `prev` / `next` are `null` (current
  * only). When the current camera number isn't found in the list (the Scenic
  * reality — a large multi-camera group whose active `CamCameraNumber` the
  * carousel can't anchor on, issue #803), `current` is `null` but `prev` / `next`
- * RECOVER to the list ends (next → first, previous → last) so a detent still
- * steps onto a REAL camera of the group. Without this the dispatch fell back to a
- * synthetic `cameraNum ± 1` that isn't a member of the group's `Cameras[]`, which
- * iRacing rejects — the sub-camera "does nothing" no-op. This mirrors
- * `computeRacePositionTarget`'s pace-car recovery (re-enter the order at its
- * natural end) and, being the SAME helper the dial preview reads, keeps preview
- * and execution in step.
+ * still name the list ends (next → first, previous → last), so the strip shows
+ * real cameras of the group rather than nothing.
  */
 export function computeSubCameraCarousel(currentCameraNum: number | null, cameras: CameraInGroup[]): SubCameraCarousel {
   if (cameras.length === 0) return { current: null, prev: null, next: null };

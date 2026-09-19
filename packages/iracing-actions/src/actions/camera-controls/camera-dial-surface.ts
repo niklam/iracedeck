@@ -115,7 +115,12 @@ import {
 } from "../../shared/car-cycling.js";
 import { dialAppearanceFields, type DialBoxColors, resolveDialBoxColors } from "../../shared/dial-box.js";
 import { renderDialNameIcon } from "../../shared/dial-name-icon.js";
-import { computeCameraCarousel, computeSubCameraCarousel } from "./camera-groups.js";
+import {
+  computeCameraCarousel,
+  computeSubCameraCarousel,
+  findSessionGroupByNum,
+  normalizeSessionGroups,
+} from "./camera-groups.js";
 import { SUB_CAMERA_BINDING_KEY_LIST } from "./sub-camera-bindings.js";
 
 /**
@@ -1177,7 +1182,7 @@ export class CameraDialSurface {
     right: CarouselSlot | null;
   } {
     const enabled = this.host.getEnabledCameraGroups();
-    const sessionGroups = getCameraGroupsFromSessionInfo(this.host.getSessionInfo());
+    const sessionGroups = normalizeSessionGroups(getCameraGroupsFromSessionInfo(this.host.getSessionInfo()));
     const camGroup = typeof telemetry?.CamGroupNumber === "number" ? telemetry.CamGroupNumber : null;
     const carousel = computeCameraCarousel(camGroup, enabled, sessionGroups);
 
@@ -1345,7 +1350,10 @@ export class CameraDialSurface {
 
     if (typeof camGroup !== "number") return null;
 
-    const group = getCameraGroupsFromSessionInfo(this.host.getSessionInfo()).find((g) => g.groupNum === camGroup);
+    const group = findSessionGroupByNum(
+      normalizeSessionGroups(getCameraGroupsFromSessionInfo(this.host.getSessionInfo())),
+      camGroup,
+    );
 
     return group ? { name: group.groupName, glyph: this.host.getGroupGlyph(group.groupName) } : null;
   }

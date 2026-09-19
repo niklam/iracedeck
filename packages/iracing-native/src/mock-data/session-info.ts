@@ -3,6 +3,11 @@
  *
  * Simulates a practice session at Spa with 3 drivers.
  * This is placeholder data — replace with real telemetry captures later.
+ *
+ * `CameraInfo` is the exception: a real 25-group list from a Lakeland capture
+ * (#958), in the sim's own numbering, so a mock session carries every camera
+ * group Camera Controls knows — TV4, Spotter and Spectator included, which a
+ * real Spa session would not.
  */
 export const MOCK_SESSION_INFO_YAML = `---
 WeekendInfo:
@@ -132,30 +137,198 @@ CameraInfo:
    - CameraNum: 1
      CameraName: CamLR Susp
  - GroupNum: 6
+   GroupName: Gyro
+   Cameras:
+   - CameraNum: 1
+     CameraName: CamGyro
+ - GroupNum: 7
+   GroupName: RF Susp
+   Cameras:
+   - CameraNum: 1
+     CameraName: CamRF Susp
+ - GroupNum: 8
+   GroupName: RR Susp
+   Cameras:
+   - CameraNum: 1
+     CameraName: CamRR Susp
+ - GroupNum: 9
    GroupName: Cockpit
    Cameras:
    - CameraNum: 1
      CameraName: CamCockpit
- - GroupNum: 7
+ - GroupNum: 10
+   GroupName: Scenic
+   IsScenic: true
+   Cameras:
+   - CameraNum: 1
+     CameraName: Scenic_03
+   - CameraNum: 2
+     CameraName: Scenic_04
+   - CameraNum: 3
+     CameraName: Scenic_05
+   - CameraNum: 4
+     CameraName: Scenic_06
+   - CameraNum: 5
+     CameraName: Scenic_07
+   - CameraNum: 6
+     CameraName: Scenic_01
+   - CameraNum: 7
+     CameraName: Scenic_02
+ - GroupNum: 11
+   GroupName: Spotter
+   Cameras:
+   - CameraNum: 1
+     CameraName: CamSpotter
+ - GroupNum: 12
    GroupName: TV1
    Cameras:
    - CameraNum: 1
-     CameraName: CamTV1
- - GroupNum: 8
+     CameraName: CamTV1_00
+   - CameraNum: 2
+     CameraName: CamTV1_01
+   - CameraNum: 3
+     CameraName: CamTV1_02
+   - CameraNum: 4
+     CameraName: CamTV1_02b
+   - CameraNum: 5
+     CameraName: CamTV1_03
+ - GroupNum: 13
    GroupName: TV2
    Cameras:
    - CameraNum: 1
-     CameraName: CamTV2
- - GroupNum: 9
+     CameraName: CamTV2_00b
+   - CameraNum: 2
+     CameraName: CamTV2_09
+   - CameraNum: 3
+     CameraName: CamTV2_10
+   - CameraNum: 4
+     CameraName: CamTV2_00
+   - CameraNum: 5
+     CameraName: CamTV2_02
+   - CameraNum: 6
+     CameraName: CamTV2_01
+   - CameraNum: 7
+     CameraName: CamTV2_06
+   - CameraNum: 8
+     CameraName: CamTV2_08
+ - GroupNum: 14
    GroupName: TV3
    Cameras:
    - CameraNum: 1
-     CameraName: CamTV3
- - GroupNum: 10
+     CameraName: CamTV3_00
+   - CameraNum: 2
+     CameraName: CamTV3_01
+ - GroupNum: 15
+   GroupName: TV4
+   Cameras:
+   - CameraNum: 1
+     CameraName: CamTV5_01
+ - GroupNum: 16
+   GroupName: TV Static
+   Cameras:
+   - CameraNum: 1
+     CameraName: CamTV4_00
+   - CameraNum: 2
+     CameraName: CamTV4_04
+   - CameraNum: 3
+     CameraName: CamTV4_01
+   - CameraNum: 4
+     CameraName: CamTV4_02
+   - CameraNum: 5
+     CameraName: CamTV4_03
+   - CameraNum: 6
+     CameraName: CamTV4_05
+   - CameraNum: 7
+     CameraName: CamTV4_06
+ - GroupNum: 17
+   GroupName: TV Mixed
+   Cameras:
+   - CameraNum: 1
+     CameraName: CamTV1_00
+   - CameraNum: 2
+     CameraName: CamTV1_01
+   - CameraNum: 3
+     CameraName: CamTV1_02
+   - CameraNum: 4
+     CameraName: CamTV1_02b
+   - CameraNum: 5
+     CameraName: CamTV1_03
+   - CameraNum: 6
+     CameraName: CamTV2_00
+   - CameraNum: 7
+     CameraName: CamTV2_00b
+   - CameraNum: 8
+     CameraName: CamTV2_01
+   - CameraNum: 9
+     CameraName: CamTV2_02
+   - CameraNum: 10
+     CameraName: CamTV2_06
+   - CameraNum: 11
+     CameraName: CamTV2_08
+   - CameraNum: 12
+     CameraName: CamTV2_09
+   - CameraNum: 13
+     CameraName: CamTV2_10
+   - CameraNum: 14
+     CameraName: CamTV3_00
+   - CameraNum: 15
+     CameraName: CamTV3_01
+   - CameraNum: 16
+     CameraName: CamTV4_00
+   - CameraNum: 17
+     CameraName: CamTV4_01
+   - CameraNum: 18
+     CameraName: CamTV4_02
+   - CameraNum: 19
+     CameraName: CamTV4_03
+   - CameraNum: 20
+     CameraName: CamTV4_04
+   - CameraNum: 21
+     CameraName: CamTV4_05
+   - CameraNum: 22
+     CameraName: CamTV4_06
+   - CameraNum: 23
+     CameraName: CamRoll Bar
+ - GroupNum: 18
+   GroupName: Spectator
+   Cameras:
+   - CameraNum: 1
+     CameraName: CamSpectator
+ - GroupNum: 19
    GroupName: Pit Lane
    Cameras:
    - CameraNum: 1
      CameraName: CamPit Lane
+ - GroupNum: 20
+   GroupName: Pit Lane 2
+   Cameras:
+   - CameraNum: 1
+     CameraName: CamPit Lane 2
+ - GroupNum: 21
+   GroupName: Blimp
+   Cameras:
+   - CameraNum: 1
+     CameraName: CamBlimp
+ - GroupNum: 22
+   GroupName: Chopper
+   Cameras:
+   - CameraNum: 1
+     CameraName: CamChopper
+ - GroupNum: 23
+   GroupName: Chase
+   Cameras:
+   - CameraNum: 1
+     CameraName: CamChase
+ - GroupNum: 24
+   GroupName: Far Chase
+   Cameras:
+   - CameraNum: 1
+     CameraName: CamFar Chase
+ - GroupNum: 25
+   GroupName: Rear Chase
+   Cameras:
+   - CameraNum: 1
+     CameraName: CamRear Chase
 
 RadioInfo:
  SelectedRadioNum: 0

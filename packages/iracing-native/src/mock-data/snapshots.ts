@@ -106,9 +106,9 @@ export const SNAPSHOT_MID_STRAIGHT: MockSnapshotValues = {
   LatAccel: 0.5,
   LongAccel: 2.1,
 
-  // Camera
+  // Camera — Cockpit in the mock session's CameraInfo (#958)
   CamCarIdx: 0,
-  CamGroupNumber: 6,
+  CamGroupNumber: 9,
 
   // Car index arrays
   CarIdxLap: carArray(-1, { 0: 3, 1: 3, 2: 2 }),

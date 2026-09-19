@@ -112,6 +112,13 @@
 		</sdpi-item>
 
 		<div id="camera-groups-section" class="hidden">
+			<%# #959 — per key: the group the next press selects, or the group the sim is on now. Keypad only; the dial strip already centres the current group. %>
+			<sdpi-item label="Icon Shows">
+				<sdpi-select setting="cycleIconMode" default="next">
+					<option value="next">Next camera</option>
+					<option value="current">Current camera</option>
+				</sdpi-select>
+			</sdpi-item>
 			<div class="ird-section-heading">Camera Groups</div>
 			<div id="camera-groups-grid" class="camera-groups-grid"></div>
 			<div class="camera-groups-buttons">
@@ -161,11 +168,19 @@
 					<option value="13">Far Chase</option>
 					<option value="14">Rear Chase</option>
 				</optgroup>
+				<%# Values are the plugin's own list (CAMERA_GROUP_MAP), resolved by
+				    NAME against the session at press time — new groups are appended
+				    (21-25, #958) so no saved value ever changes meaning. %>
 				<optgroup label="Track">
 					<option value="17">TV1</option>
 					<option value="18">TV2</option>
 					<option value="19">TV3</option>
+					<option value="23">TV4</option>
+					<option value="21">TV Static</option>
+					<option value="22">TV Mixed</option>
 					<option value="20">Scenic</option>
+					<option value="24">Spotter</option>
+					<option value="25">Spectator</option>
 					<option value="15">Pit Lane</option>
 					<option value="16">Pit Lane 2</option>
 				</optgroup>
@@ -175,6 +190,9 @@
 				</optgroup>
 			</sdpi-select>
 		</sdpi-item>
+		<div class="ird-supporting-text hidden" id="camera-group-note">
+			Not every track has every camera group — TV4, Spotter and Spectator in particular exist only on some. On a track without the chosen group, the key does nothing.
+		</div>
 		</div>
 		<%# end #keypad-settings %>
 
@@ -294,18 +312,20 @@
 
 		<script>
 			(function () {
-				// Camera group subset constants — duplicated from camera-controls.ts
+				// Camera group subset constants — duplicated from camera-groups.ts
 				// (DEFAULT_CAMERA_GROUPS and DEFAULT_ENABLED_GROUPS). PI runs in a
-				// separate browser context and cannot import action code.
+				// separate browser context and cannot import action code;
+				// camera-focus-pi.test.ts holds this copy and GROUP_SECTIONS to it.
 				var ALL_GROUPS = [
 					// Car cameras (0-8)
 					"Nose", "Gearbox", "Cockpit", "Roll Bar",
 					"LF Susp", "RF Susp", "LR Susp", "RR Susp", "Gyro",
 					// Chase cameras (9-11)
 					"Chase", "Far Chase", "Rear Chase",
-					// Track cameras (12-17)
-					"TV1", "TV2", "TV3", "Scenic", "Pit Lane", "Pit Lane 2",
-					// Aerial cameras (18-19)
+					// Track cameras (12-22)
+					"TV1", "TV2", "TV3", "TV4", "TV Static", "TV Mixed",
+					"Scenic", "Spotter", "Spectator", "Pit Lane", "Pit Lane 2",
+					// Aerial cameras (23-24)
 					"Chopper", "Blimp"
 				];
 				var DISPLAY_NAMES = {
@@ -315,6 +335,11 @@
 					"RR Susp": "Suspension RR"
 				};
 				var DEFAULT_ENABLED = ["Nose", "Cockpit", "Chase", "TV1", "TV2", "TV3"];
+				// Legacy spellings an older PI saved (camera-groups.ts LEGACY_NAMES).
+				// The action reads a legacy key as its canonical group, so the grid
+				// folds it in too — otherwise it shows the group off while the key
+				// cycles into it, and no checkbox could clear it.
+				var LEGACY_NAMES = { "Pit Lane2": "Pit Lane 2" };
 				var SETTING_KEY = "cameraGroupSubset";
 				var CYCLE_TARGETS = ["cycle-camera", "cycle-sub-camera", "cycle-car", "cycle-track-order", "cycle-driving"];
 
@@ -330,8 +355,8 @@
 				var GROUP_SECTIONS = [
 					{ heading: "Car", start: 0, end: 9 },
 					{ heading: "Chase", start: 9, end: 12 },
-					{ heading: "Track", start: 12, end: 18 },
-					{ heading: "Aerial", start: 18, end: 20 }
+					{ heading: "Track", start: 12, end: 23 },
+					{ heading: "Aerial", start: 23, end: 25 }
 				];
 
 				var initialized = false;
@@ -345,6 +370,20 @@
 						return state[name] === true;
 					}
 					return DEFAULT_ENABLED.indexOf(name) !== -1;
+				}
+
+				// A legacy key enables its canonical group when either is on (the
+				// action's own reading), then drops out, so the next save stores only
+				// the canonical name.
+				function foldLegacyNames(state) {
+					var folded = {};
+					var names = Object.keys(state);
+					for (var i = 0; i < names.length; i++) {
+						var name = names[i];
+						var canonical = LEGACY_NAMES[name] || name;
+						folded[canonical] = folded[canonical] === true || state[name] === true;
+					}
+					return folded;
 				}
 
 				// Ensure the state has entries for ALL visible groups so saving
@@ -417,7 +456,7 @@
 					}
 
 					return {
-						setState: function (groups) { state = groups || {}; render(); },
+						setState: function (groups) { state = foldLegacyNames(groups || {}); render(); },
 						setSave: function (fn) { save = fn; },
 						render: render,
 						wireButtons: function () {
@@ -471,6 +510,10 @@
 					var cameraGroupItem = document.getElementById("camera-group-item");
 					if (cameraGroupItem) {
 						cameraGroupItem.classList.toggle("hidden", target !== "change-camera");
+					}
+					var cameraGroupNote = document.getElementById("camera-group-note");
+					if (cameraGroupNote) {
+						cameraGroupNote.classList.toggle("hidden", target !== "change-camera");
 					}
 				}
 

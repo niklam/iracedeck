@@ -1,7 +1,12 @@
 import { getCommands, requestProfileSwitch, resolveProfileNameForDevice } from "@iracedeck/deck-core";
 import * as deckCore from "@iracedeck/deck-core";
-import { getAllCarNumbers, getCarNumberRawFromSessionInfo } from "@iracedeck/iracing-sdk";
+import {
+  getAllCarNumbers,
+  getCameraGroupsFromSessionInfo,
+  getCarNumberRawFromSessionInfo,
+} from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import z from "zod";
 
 import { _resetSelectIntents, getSelectIntent } from "../../shared/car-select-intent.js";
 import keyBindings from "../data/key-bindings.json" with { type: "json" };
@@ -9,14 +14,19 @@ import {
   CAMERA_GROUP_MAP,
   CAMERA_GROUPS_SETTING_KEY,
   CameraControls,
+  CameraControlsSettingsFields,
+  CameraGroupField,
   computeGridPositions,
+  CycleIconModeField,
   DEFAULT_CAMERA_GROUPS,
   DEFAULT_ENABLED_GROUPS,
   extractIconArtwork,
   generateCameraControlsSvg,
+  generateCameraSelectSvg,
   generateCycleCameraGridSvg,
   getEnabledGroupNames,
   getNextSelectedGroup,
+  MAX_CAMERA_GROUP,
   parseGroupSubset,
   resolveBindingKey,
   SUB_CAMERA_BINDING_KEYS,
@@ -73,6 +83,11 @@ vi.mock("@iracedeck/icons/camera-select/scenic.svg", () => ({ default: mockCamer
 vi.mock("@iracedeck/icons/camera-select/tv1.svg", () => ({ default: mockCameraSelectSvg("tv1") }));
 vi.mock("@iracedeck/icons/camera-select/tv2.svg", () => ({ default: mockCameraSelectSvg("tv2") }));
 vi.mock("@iracedeck/icons/camera-select/tv3.svg", () => ({ default: mockCameraSelectSvg("tv3") }));
+vi.mock("@iracedeck/icons/camera-select/tv4.svg", () => ({ default: mockCameraSelectSvg("tv4") }));
+vi.mock("@iracedeck/icons/camera-select/tv-static.svg", () => ({ default: mockCameraSelectSvg("tv-static") }));
+vi.mock("@iracedeck/icons/camera-select/tv-mixed.svg", () => ({ default: mockCameraSelectSvg("tv-mixed") }));
+vi.mock("@iracedeck/icons/camera-select/spotter.svg", () => ({ default: mockCameraSelectSvg("spotter") }));
+vi.mock("@iracedeck/icons/camera-select/spectator.svg", () => ({ default: mockCameraSelectSvg("spectator") }));
 
 // Focus icon mocks
 vi.mock("@iracedeck/icons/camera-focus/focus-your-car.svg", () => ({
@@ -294,8 +309,27 @@ describe("CameraControls", () => {
       }
     });
 
-    it("should have all 20 camera groups in CAMERA_GROUP_MAP", () => {
-      expect(Object.keys(CAMERA_GROUP_MAP)).toHaveLength(20);
+    it("maps every camera group exactly once, numbered 1 to the group count", () => {
+      expect(Object.keys(CAMERA_GROUP_MAP).map(Number)).toEqual(
+        Array.from({ length: DEFAULT_CAMERA_GROUPS.length }, (_, i) => i + 1),
+      );
+      expect(new Set(Object.values(CAMERA_GROUP_MAP).map((g) => g.name))).toEqual(new Set(DEFAULT_CAMERA_GROUPS));
+    });
+
+    it("appends the five groups added in #958 at 21-25 without renumbering the first twenty", () => {
+      expect(CAMERA_GROUP_MAP[21].name).toBe("TV Static");
+      expect(CAMERA_GROUP_MAP[22].name).toBe("TV Mixed");
+      expect(CAMERA_GROUP_MAP[23].name).toBe("TV4");
+      expect(CAMERA_GROUP_MAP[24].name).toBe("Spotter");
+      expect(CAMERA_GROUP_MAP[25].name).toBe("Spectator");
+      expect(CAMERA_GROUP_MAP[16].name).toBe("Pit Lane 2");
+    });
+
+    it("leaves the five groups added in #958 out of the default cycle subset", () => {
+      for (const name of ["TV Static", "TV Mixed", "TV4", "Spotter", "Spectator"]) {
+        expect(DEFAULT_CAMERA_GROUPS).toContain(name);
+        expect(DEFAULT_ENABLED_GROUPS).not.toContain(name);
+      }
     });
 
     it("should have correct names for known groups", () => {
@@ -571,6 +605,18 @@ describe("CameraControls", () => {
       it("should fall back to Cockpit for invalid cameraGroup", () => {
         const decoded = decodeURIComponent(generateCameraControlsSvg({ target: "change-camera", cameraGroup: 99 }));
         expect(decoded).toContain("cockpit");
+      });
+
+      it.each([
+        [21, "tv-static", "TV STATIC"],
+        [22, "tv-mixed", "TV MIXED"],
+        [23, "tv4", "TV4"],
+        [24, "spotter", "SPOTTER"],
+        [25, "spectator", "SPECTATOR"],
+      ])("uses the %s group's own icon and title (#958)", (cameraGroup, artwork, title) => {
+        const decoded = decodeURIComponent(generateCameraControlsSvg({ target: "change-camera", cameraGroup }));
+        expect(decoded).toContain(`${artwork}-artwork`);
+        expect(decoded).toContain(`CAMERA\n${title}`);
       });
 
       it("should produce different icons for different camera groups", () => {
@@ -1707,5 +1753,395 @@ describe("cycle-track-order focuses the car ahead / behind on the road (#960)", 
 
     expect(mockCamera.switchNum).not.toHaveBeenCalled();
     expect(mockCamera.cycleCar).not.toHaveBeenCalled();
+  });
+});
+
+// A real 25-group CameraInfo.Groups list (#958): a Lakeland capture's, in the
+// sim's own numbering — which is NOT the plugin's CAMERA_GROUP_MAP numbering
+// (Scenic is 10 here and 20 there, TV1 12 here and 17 there).
+const LAKELAND_GROUPS = [
+  "Nose",
+  "Gearbox",
+  "Roll Bar",
+  "LF Susp",
+  "LR Susp",
+  "Gyro",
+  "RF Susp",
+  "RR Susp",
+  "Cockpit",
+  "Scenic",
+  "Spotter",
+  "TV1",
+  "TV2",
+  "TV3",
+  "TV4",
+  "TV Static",
+  "TV Mixed",
+  "Spectator",
+  "Pit Lane",
+  "Pit Lane 2",
+  "Blimp",
+  "Chopper",
+  "Chase",
+  "Far Chase",
+  "Rear Chase",
+].map((groupName, i) => ({ groupNum: i + 1, groupName }));
+
+// Road content: the classic twenty, none of the five #958 adds except the two
+// TV groups most content carries — here none at all, the strictest case.
+const ROAD_GROUPS = LAKELAND_GROUPS.filter(
+  (g) => !["Spotter", "TV4", "TV Static", "TV Mixed", "Spectator"].includes(g.groupName),
+).map((g, i) => ({ groupNum: i + 1, groupName: g.groupName }));
+
+function sdkOf(action: CameraControls) {
+  return (
+    action as unknown as {
+      sdkController: {
+        subscribe: ReturnType<typeof vi.fn>;
+        getCurrentTelemetry: ReturnType<typeof vi.fn>;
+        getSessionInfo: ReturnType<typeof vi.fn>;
+      };
+    }
+  ).sdkController;
+}
+
+describe("camera-group settings fields (#958, #959)", () => {
+  it("bounds Change Camera by the map, so every mapped group is storable", () => {
+    expect(MAX_CAMERA_GROUP).toBe(25);
+
+    for (let group = 1; group <= 25; group++) {
+      expect(CameraGroupField.parse(group)).toBe(group);
+    }
+
+    expect(CameraGroupField.parse("23")).toBe(23);
+  });
+
+  it("degrades an unknown Change Camera value to Cockpit instead of failing the parse", () => {
+    for (const junk of [0, 26, 99, "abc", 2.5, null]) {
+      expect(CameraGroupField.parse(junk)).toBe(9);
+    }
+
+    expect(CameraGroupField.parse(undefined)).toBe(9);
+  });
+
+  it("defaults Icon Shows to the next camera and degrades junk to it", () => {
+    expect(CycleIconModeField.parse(undefined)).toBe("next");
+    expect(CycleIconModeField.parse("current")).toBe("current");
+    expect(CycleIconModeField.parse("name-only")).toBe("next");
+  });
+
+  // Through the action's REAL fields — the test file's CommonSettings mock
+  // parses by identity, so only this proves the fields are wired in.
+  const ActionFields = z.object(CameraControlsSettingsFields);
+
+  it("keeps a key's mode, direction and subset when its Change Camera value is unknown", () => {
+    const subset = JSON.stringify({ groups: { Spotter: true } });
+    const parsed = ActionFields.parse({
+      target: "cycle-camera",
+      direction: "previous",
+      cameraGroupSubset: subset,
+      cameraGroup: 99,
+    });
+
+    expect(parsed).toMatchObject({
+      target: "cycle-camera",
+      direction: "previous",
+      cameraGroupSubset: subset,
+      cameraGroup: 9,
+    });
+  });
+
+  it("parses Icon Shows through the action's fields: next by default, current kept, junk degraded", () => {
+    expect(ActionFields.parse({}).cycleIconMode).toBe("next");
+    expect(ActionFields.parse({ cycleIconMode: "current" }).cycleIconMode).toBe("current");
+    expect(ActionFields.parse({ target: "cycle-camera", cycleIconMode: 7 })).toMatchObject({
+      target: "cycle-camera",
+      cycleIconMode: "next",
+    });
+  });
+});
+
+describe("Change Camera resolves the group by name in the session (#958)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.mocked(getCameraGroupsFromSessionInfo).mockReturnValue([]);
+    vi.mocked(getCarNumberRawFromSessionInfo).mockReturnValue(null);
+  });
+
+  async function press(action: CameraControls, cameraGroup: number): Promise<void> {
+    await action.onKeyDown({
+      action: { id: "k1" },
+      payload: { settings: { target: "change-camera", cameraGroup } },
+    } as never);
+  }
+
+  function setup(groups: { groupNum: number; groupName: string }[]): CameraControls {
+    const action = new CameraControls();
+    sdkOf(action).getCurrentTelemetry.mockReturnValue({ CamCarIdx: 4, CamGroupNumber: 9 });
+    sdkOf(action).getSessionInfo.mockReturnValue({});
+    vi.mocked(getCameraGroupsFromSessionInfo).mockReturnValue(groups);
+    vi.mocked(getCarNumberRawFromSessionInfo).mockReturnValue(42);
+
+    return action;
+  }
+
+  it.each([
+    [21, "TV Static", 16],
+    [22, "TV Mixed", 17],
+    [23, "TV4", 15],
+    [24, "Spotter", 11],
+    [25, "Spectator", 18],
+    [20, "Scenic", 10],
+  ])("switches to the session's own number for group %i (%s)", async (cameraGroup, _name, sessionNum) => {
+    const action = setup(LAKELAND_GROUPS);
+
+    await press(action, cameraGroup);
+
+    expect(mockCamera.switchNum).toHaveBeenCalledWith(42, sessionNum, 0);
+  });
+
+  it("does nothing, and says so, when the session has no such group", async () => {
+    const action = setup(ROAD_GROUPS);
+
+    await press(action, 24); // Spotter — absent on road content
+
+    expect(mockCamera.switchNum).not.toHaveBeenCalled();
+    expect(action["logger"].info).toHaveBeenCalledWith("Camera change skipped: group not in this session");
+  });
+
+  it("matches a session that spells Pit Lane 2 without the space", async () => {
+    const groups = LAKELAND_GROUPS.map((g) => (g.groupName === "Pit Lane 2" ? { ...g, groupName: "Pit Lane2" } : g));
+    const action = setup(groups);
+
+    await press(action, 16); // Pit Lane 2
+
+    expect(mockCamera.switchNum).toHaveBeenCalledWith(42, 20, 0);
+  });
+
+  it("keeps the raw stored number only when the session's groups cannot be read", async () => {
+    const action = setup([]);
+
+    await press(action, 24);
+
+    expect(mockCamera.switchNum).toHaveBeenCalledWith(42, 24, 0);
+  });
+});
+
+describe("Cycle Camera key icon: next or current group (#959)", () => {
+  let subscriber: (() => void) | undefined;
+
+  function keyContext() {
+    return {
+      id: "key-1",
+      deviceId: "dev-1",
+      deviceType: 0,
+      isKey: () => true,
+      isDial: () => false,
+      setTitle: vi.fn(async () => {}),
+      setSettings: vi.fn(async () => {}),
+      setImage: vi.fn(async () => {}),
+    };
+  }
+
+  async function appear(
+    settings: Record<string, unknown>,
+    telemetry: Record<string, unknown> | undefined,
+    groups = LAKELAND_GROUPS,
+  ): Promise<CameraControls> {
+    const action = new CameraControls();
+    sdkOf(action).getCurrentTelemetry.mockReturnValue(telemetry);
+    sdkOf(action).getSessionInfo.mockReturnValue({});
+    sdkOf(action).subscribe.mockImplementation((_id: string, cb: () => void) => {
+      subscriber = cb;
+    });
+    vi.mocked(getCameraGroupsFromSessionInfo).mockReturnValue(groups);
+
+    await action.onWillAppear({
+      action: keyContext(),
+      payload: { settings: { target: "cycle-camera", direction: "next", ...settings } },
+    } as never);
+
+    return action;
+  }
+
+  function shownIcons(action: CameraControls): string[] {
+    return vi.mocked(action["updateKeyImage"]).mock.calls.map((call) => decodeURIComponent(String(call[1])));
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    subscriber = undefined;
+  });
+
+  afterEach(() => {
+    vi.mocked(getCameraGroupsFromSessionInfo).mockReturnValue([]);
+  });
+
+  it("shows the group the next press selects by default", async () => {
+    // Sim on TV1 (12); the default subset's next group after it is TV2 (13).
+    const action = await appear({}, { CamGroupNumber: 12 });
+
+    const icons = shownIcons(action);
+    expect(icons).toHaveLength(1);
+    expect(icons[0]).toContain("tv2-artwork");
+    expect(icons[0]).toContain("CAMERA\nTV2");
+  });
+
+  it("shows the group the sim is on in Current camera mode, even outside the key's subset", async () => {
+    // Spotter (11) is not in the default subset — it is still what is on screen.
+    const action = await appear({ cycleIconMode: "current" }, { CamGroupNumber: 11 });
+
+    const icons = shownIcons(action);
+    expect(icons).toHaveLength(1);
+    expect(icons[0]).toContain("spotter-artwork");
+    expect(icons[0]).toContain("CAMERA\nSPOTTER");
+  });
+
+  it("names a session's Pit Lane2 by its canonical icon and title", async () => {
+    const groups = LAKELAND_GROUPS.map((g) => (g.groupName === "Pit Lane 2" ? { ...g, groupName: "Pit Lane2" } : g));
+    const action = await appear({ cycleIconMode: "current" }, { CamGroupNumber: 20 }, groups);
+
+    expect(shownIcons(action)[0]).toContain("pit-lane-2-artwork");
+    expect(shownIcons(action)[0]).toContain("CAMERA\nPIT LANE 2");
+  });
+
+  it("falls back to the key's OWN grid for a current group the session does not list", async () => {
+    const action = await appear(
+      { cycleIconMode: "current", cameraGroupSubset: JSON.stringify({ groups: { Spectator: true } }) },
+      { CamGroupNumber: 99 },
+    );
+
+    const icons = shownIcons(action);
+    expect(icons).toHaveLength(1);
+    expect(icons[0]).toContain("CYCLE CAM");
+    expect(icons[0]).toContain("spectator-artwork");
+    expect(icons[0]).not.toContain("nose-artwork");
+  });
+
+  it("re-renders only when the shown group changes", async () => {
+    const action = await appear({ cycleIconMode: "current" }, { CamGroupNumber: 11 });
+
+    subscriber?.();
+    expect(shownIcons(action)).toHaveLength(1);
+
+    sdkOf(action).getCurrentTelemetry.mockReturnValue({ CamGroupNumber: 17 }); // TV Mixed
+    subscriber?.();
+
+    const icons = shownIcons(action);
+    expect(icons).toHaveLength(2);
+    expect(icons[1]).toContain("tv-mixed-artwork");
+  });
+
+  it("restores the grid when telemetry goes away", async () => {
+    const action = await appear({ cycleIconMode: "current" }, { CamGroupNumber: 11 });
+
+    sdkOf(action).getCurrentTelemetry.mockReturnValue(undefined);
+    subscriber?.();
+
+    const icons = shownIcons(action);
+    expect(icons).toHaveLength(2);
+    expect(icons[1]).toContain("CYCLE CAM");
+  });
+
+  it("shows the key's placeholder, not group 1, when telemetry reports no camera group", async () => {
+    const action = await appear(
+      { cycleIconMode: "current", cameraGroupSubset: JSON.stringify({ groups: { Spectator: true } }) },
+      { CamCarIdx: 0 },
+    );
+
+    const icons = shownIcons(action);
+    expect(icons).toHaveLength(1);
+    expect(icons[0]).toContain("CYCLE CAM");
+    expect(icons[0]).not.toContain("nose-artwork");
+  });
+
+  it("ends on the camera icon when a telemetry tick lands while new settings are applied", async () => {
+    const action = await appear({ cycleIconMode: "current" }, { CamGroupNumber: 11 });
+    const context = keyContext();
+    // The tick arrives during updateDisplay's awaits, before it paints the grid.
+    context.setTitle.mockImplementation(async () => {
+      subscriber?.();
+    });
+
+    await action.onDidReceiveSettings({
+      action: context,
+      payload: { settings: { target: "cycle-camera", direction: "next", cycleIconMode: "current" } },
+    } as never);
+
+    const lastCamera = Math.max(...vi.mocked(action["updateKeyImage"]).mock.invocationCallOrder);
+    const lastGrid = Math.max(...vi.mocked(action["setKeyImage"]).mock.invocationCallOrder);
+    expect(lastCamera).toBeGreaterThan(lastGrid);
+    expect(shownIcons(action).at(-1)).toContain("spotter-artwork");
+  });
+
+  it("keeps the newest group registered when an older icon push finishes last", async () => {
+    const action = await appear({ cycleIconMode: "current" }, { CamGroupNumber: 11 });
+    let finishFirst: () => void = () => {};
+    let finishSecond: () => void = () => {};
+    vi.mocked(action["updateKeyImage"])
+      .mockImplementationOnce(() => new Promise((resolve) => (finishFirst = () => resolve(true))))
+      .mockImplementationOnce(() => new Promise((resolve) => (finishSecond = () => resolve(true))));
+
+    sdkOf(action).getCurrentTelemetry.mockReturnValue({ CamGroupNumber: 12 }); // TV1
+    subscriber?.();
+    sdkOf(action).getCurrentTelemetry.mockReturnValue({ CamGroupNumber: 17 }); // TV Mixed
+    subscriber?.();
+
+    finishSecond();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    finishFirst();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const registrations = vi.mocked(action["setRegenerateCallback"]).mock.calls;
+    const latest = registrations[registrations.length - 1][1] as () => string;
+    expect(decodeURIComponent(latest())).toContain("tv-mixed-artwork");
+  });
+
+  it("shows only the grid while there is no telemetry", async () => {
+    const action = await appear({ cycleIconMode: "current" }, undefined);
+
+    expect(shownIcons(action)).toHaveLength(0);
+    expect(action["setKeyImage"]).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-renders at once when Icon Shows is flipped", async () => {
+    const action = await appear({}, { CamGroupNumber: 12 });
+
+    await action.onDidReceiveSettings({
+      action: keyContext(),
+      payload: { settings: { target: "cycle-camera", direction: "next", cycleIconMode: "current" } },
+    } as never);
+
+    const icons = shownIcons(action);
+    expect(icons).toHaveLength(2);
+    expect(icons[0]).toContain("tv2-artwork");
+    expect(icons[1]).toContain("tv1-artwork");
+  });
+});
+
+describe("generateCameraSelectSvg (#959)", () => {
+  it("draws a group's own icon with the key's title override", () => {
+    const decoded = decodeURIComponent(
+      generateCameraSelectSvg("TV Static", { titleOverrides: { titleText: "MY CAM" } }),
+    );
+
+    expect(decoded).toContain("tv-static-artwork");
+    expect(decoded).toContain("MY CAM");
+  });
+
+  it("falls back to the key's grid, honouring its title override, for a group without an icon", () => {
+    const decoded = decodeURIComponent(
+      generateCameraSelectSvg("Something New", {
+        direction: "previous",
+        cameraGroupSubset: JSON.stringify({ groups: { TV4: true } }),
+        titleOverrides: { titleText: "MY CAM" },
+      }),
+    );
+
+    expect(decoded).toContain("tv4-artwork");
+    expect(decoded).toContain("MY CAM");
   });
 });
