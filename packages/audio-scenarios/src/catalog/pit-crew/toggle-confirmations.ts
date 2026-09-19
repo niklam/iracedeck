@@ -37,9 +37,11 @@
  *
  * Those five groups are the twenty-four `TOGGLE_CONFIRMATION_CONTRACTS`.
  * Registered apart from them, with a clip-source list of their own:
- *   - `AUTO_FUEL_CONTRACTS` — refuel yes/no via `pitService.autoFuelChanged`,
- *     which the translator publishes INSTEAD of the fuel `pitService.toggled`
- *     when the flip was autofuel's. The bundled script speaks the bare line
+ *   - `AUTO_FUEL_CONTRACTS` — the fuel-fill bit flipping while autofuel is
+ *     armed, via `pitService.autoFuelChanged`, which the translator publishes
+ *     INSTEAD of the fuel `pitService.toggled` when the flip was autofuel's.
+ *     `refuel: false` is autofuel taking a manual fuel request over — never
+ *     "no fuel needed" (see `autoFuelContract`). The bundled script speaks the bare line
  *     with no acknowledgment: nobody asked, and the missing "Got it." is how
  *     the driver tells the sim's change from their own press. They answer to
  *     their own opt-in, not the pit-service requests one, which is why they
@@ -87,10 +89,18 @@ export const FUEL_TOGGLE_CONTRACTS: readonly ScenarioContract[] = [fuelContract(
  * above can never both answer the same change — nothing here has to filter
  * the other out.
  *
+ * What the two directions mean is not symmetric. `refuel: false` is autofuel
+ * TAKING OVER the next stop's fuel, not deciding none is needed: with the
+ * autofuel system on, the sim re-arms autofuel on pit approach and, in that
+ * same tick, clears the driver's manual request (fuel-fill bit, fill flag and
+ * amount all to zero); autofuel then adds whatever the car needs at the stop.
+ * That is the one sim-made flip the #474 capture recorded. `refuel: true` —
+ * the bit turning on while autofuel is armed — has not been captured yet.
+ *
  * `family: "pit-service.fuel"` is shared with the manual pair on purpose: a
  * burst of flips replaces its in-flight family-mate instead of stacking, and
  * a press right after an auto flip replaces the auto line. Not queueable — a
- * stale "we need fuel" replayed half a minute later is worse than silence.
+ * stale autofuel line replayed half a minute later is worse than silence.
  */
 function autoFuelContract(refuel: boolean): ScenarioContract {
   return {
@@ -100,8 +110,8 @@ function autoFuelContract(refuel: boolean): ScenarioContract {
       where: (e) => (e as SimEventOf<"pitService.autoFuelChanged">).data.refuel === refuel,
     },
     description: refuel
-      ? "Fuel is added to the service for your next pit stop while iRacing's autofuel is armed — usually the sim's own decision, not a press of yours."
-      : "Fuel is taken off the service for your next pit stop while iRacing's autofuel is armed — usually the sim's own decision, not a press of yours.",
+      ? "Fuel is added to the service for your next pit stop while iRacing's autofuel is armed — by the sim or by your own press, which telemetry cannot tell apart."
+      : "iRacing's autofuel clears your manual fuel request for the next pit stop and takes the fuel over, as it does when it re-arms on pit approach.",
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
     base: "voice/{voice}",

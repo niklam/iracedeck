@@ -705,7 +705,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     id: "auto-fuel-off",
     category: "Pit Service",
     label: "Auto Fuel OFF",
-    description: "Autofuel takes fuel off the next stop on its own",
+    description: "Autofuel clears a manual fuel request and takes the next stop's fuel over (as on pit approach)",
     event: "pitService.autoFuelChanged",
     data: { refuel: false },
   },

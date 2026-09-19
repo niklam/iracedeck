@@ -22274,12 +22274,12 @@
       "requestId": "vtl2U3eioDg2pOiXKUna"
     },
     "voice/default/pit-actions/auto-fuel-off-01.mp3": {
-      "hash": "67192baac5192fdf",
+      "hash": "5d5e002aa84c571a",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "Auto fuel says we don't need fuel next stop.",
-      "generatedAt": "2026-09-19T16:30:53.303Z",
-      "requestId": "d5Q4XFEPF14qtjgxQsKq"
+      "textPreview": "Auto fuel is handling the fuel at the next stop.",
+      "generatedAt": "2026-09-19T16:59:28.201Z",
+      "requestId": "H8iXcAWGGBum0h36vaN2"
     }
   }
 }

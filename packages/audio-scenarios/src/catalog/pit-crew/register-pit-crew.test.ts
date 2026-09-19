@@ -1145,7 +1145,7 @@ describe("autofuel callout live gating (issue #474)", () => {
     );
   });
 
-  it("the pit-action cooldown silences it — pit exit is where the sim re-arms the queue on its own", () => {
+  it("the pit-action cooldown silences it — the post-stop queue reset at pit exit stays quiet, as for a press", () => {
     pitActionsAllowed = false;
     bus.publishEvent("pitService.autoFuelChanged", { refuel: true });
     flush(audio);

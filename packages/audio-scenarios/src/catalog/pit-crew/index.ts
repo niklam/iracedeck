@@ -1435,9 +1435,11 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   // outermost, then the autofuel opt-in (`calloutEnabledPitServiceAutoFuel`,
   // via `SCENARIO_ID_TO_AUTO_FUEL_ID`) — never the pit-service requests gate,
   // since the two preferences are independent — then the pit-action cooldown
-  // innermost. That last layer matters more here than for a press: pit exit
-  // is where the sim re-arms the queue on its own, and the 4.5 s
-  // `pitLane.exited` / pre-grid cooldown is what keeps it quiet.
+  // innermost, so the sim's post-stop reset of the service queue at pit exit
+  // (and the pre-grid window) stays as quiet here as it does for a press.
+  // The cooldown does NOT reach the pit approach, where the sim re-arms
+  // autofuel and clears the driver's manual request in one tick — the
+  // `refuel: false` take-over this callout exists to announce.
   for (const c of AUTO_FUEL_CONTRACTS) {
     engine.defineContract(
       wrapWithMaster(
