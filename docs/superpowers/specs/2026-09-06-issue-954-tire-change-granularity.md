@@ -54,6 +54,12 @@ The coercion rests on three things nobody has measured, so the first task of the
 
 If (1) shows the sim already coerces the request, the change is still worth shipping — the icon telling the truth, and Select mode not issuing a clear on every press, are the remaining value — and the decisions above stand. If (2) shows the bits are not per-corner on coarse cars, what changes is the readback mapping in `getTireState`, not the coercion rule. ARCA's per-side classification is confirmed by (2) or the per-side test car changes; the code does not.
 
+**What the maintainer found in the sim (2026-09-19, during implementation).** None of it moves a decision above.
+
+- **Super Formula Lights (all four).** `#!l` / `#!r` switch all four tires ON and never off, and `#!t` toggles both ways. That answers (3) against the website: the shorthands do not "work" on an all-or-nothing car. Since the coercion turns every request there into all four, the key only ever sends `#!t`, and the page's claim was corrected. Question (1) — what `#!lf` alone does there — was not captured and no longer matters, because the key never sends it.
+- **ARCA (per side, confirmed).** `#!l` / `#!r` toggle their side both ways, and a single-corner macro (`#!lr`, `#!rr`, the fronts alike) toggles that corner's whole side, so for (1) the sim already coerces a single corner on a side car. The coarse-car cost that the capture turned up was the fronts or rears key in Select mode: it clears and then sends `#!lf !rf`, which switches both sides on with every press and never off. The coercion fixes that as a side effect. The pair becomes all four, so the key sends `#!t`, and the match check compares against all four, so a second press toggles the tires off.
+- **Question (2)** — how `PitSvFlags` reports a side or all-four selection — was not captured separately. The manual test answers it on both cars: the key's colours must match the pit black box, and a second press on a coerced key must switch the tires off. Only `getTireState` would change if either fails.
+
 ### 6. No comms change
 
 Both `#t` modes stay `chat` in `comms-catalog.ts`; `action-comms.json` and the `#612` binding-status line are untouched, as are every manifest and `plugin.ts`. The website's Toggle Tires section gains a paragraph naming the three granularities and what a coarse car does with a partial request, and its existing shorthand-macro sentence is checked against capture (3).
