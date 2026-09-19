@@ -1008,6 +1008,30 @@ export type TranslatorState = {
    */
   lastEmittedLapTime: number;
   /**
+   * The `LapCompleted` value the caution latch below is accumulating for —
+   * the lap IN PROGRESS (issue #1127, second review R16). When the counter
+   * moves, the accumulated latch becomes {@link lapCompletedWasCaution} and a
+   * fresh one starts. `null` until the first tick.
+   */
+  lapCautionLatchLap: number | null;
+  /**
+   * Whether a full-course caution — the translator's own phase, never the raw
+   * bits — has been out on ANY tick of the lap in progress. The same idea
+   * `fuel-laps.ts` keeps as its `wasCaution`, kept separately because that
+   * tracker segments laps its own way (pit and tow partials), lives outside
+   * this state, and reads the caution bits rather than the phase.
+   */
+  lapCautionSeen: boolean;
+  /**
+   * The latch for the lap the counter last moved past — what `lap.completed`
+   * publishes as `wasCaution`. The lap that ENDS a caution is completed
+   * seconds after the green (2.2–11.6 s across both captures, the player
+   * 2.3–6.7 s), so a gate that only asks "is a caution out now" at that
+   * event lets a best-lap or position-change call land as the driver heads
+   * into turn one; this is what stops it.
+   */
+  lapCompletedWasCaution: boolean;
+  /**
    * Position baselines captured at the previous `lap.completed` emission
    * (issue #566). `0` is the sentinel for "no baseline yet" — mirroring how
    * `lastLapBestLapTime` uses `0` to mean "no prior best". Cleared by the
@@ -1250,6 +1274,9 @@ export function createInitialState(): TranslatorState {
 
     lapCompletedInitialized: false,
     lastLapCompletedCounter: -1,
+    lapCautionLatchLap: null,
+    lapCautionSeen: false,
+    lapCompletedWasCaution: false,
     lastLapBestLapTime: 0,
     lastLapSessionNum: null,
     lastEmittedLapTime: 0,

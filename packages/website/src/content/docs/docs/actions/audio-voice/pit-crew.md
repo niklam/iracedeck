@@ -149,7 +149,7 @@ Who you line up behind, and which lane, come from iRacing's own caution order �
 ### What changes while a caution is out
 
 - **"Yellow cleared." no longer plays after a full-course caution.** That line exists for a local yellow, which ends with no flag shown at all and so is the only way you learn the sector is clear. A caution ends with the restart instead, which is now called in its own right — so the all-clear no longer lands a few seconds into the green. A yellow that stayed local still gets it, including one raised moments after a restart.
-- **Your best-lap and position-change callouts stay quiet.** A pace lap is not a lap time, and the running order freezing while the official positions catch up to it is not a position lost — both used to be announced as though they were. The position call on the last caution lap gives you your race position instead, once the order has settled.
+- **Your best-lap and position-change callouts stay quiet.** A pace lap is not a lap time, and the running order freezing while the official positions catch up to it is not a position lost — both used to be announced as though they were. That covers the lap that ends the caution too, which you complete a few seconds after the green. The position call on the last caution lap gives you your race position instead, once the order has settled.
 - **Pit open and pit closed calls are untouched.** Every change is still announced: whether the pits are open is exactly what you need to know under a caution.
 - **The start lights' *"Go, go, go!"* no longer speaks at a restart.** The restart has its own call now, and its own switch.
 
@@ -248,7 +248,7 @@ A couple of seconds after you cross the start/finish line, the Race Engineer ann
 
 Sub-1-minute laps skip the minute clip — *"That was your best lap yet. Thirty-four point eight seconds."* The lap time is announced to one decimal place (rounded to the nearest tenth). Lap times of 11 minutes or longer stay silent — the engineer never speaks a partial readout, and the minute-clip range stops at 10 for now. The minute coverage will expand in follow-up releases.
 
-On the final lap of a race the best-lap callout is suppressed — the race-end result takes the floor instead. It is also silent while a [full-course caution](#full-course-caution) is out: a lap behind the pace car is timed like any other, so without that it could be announced as your best yet at forty-odd seconds.
+On the final lap of a race the best-lap callout is suppressed — the race-end result takes the floor instead. It is also silent while a [full-course caution](#full-course-caution) is out, and for the lap that ends one, which you complete a few seconds after the green: a lap behind the pace car is timed like any other, so without that it could be announced as your best yet at forty-odd seconds.
 
 ## Qualifying Lap Invalidation
 
@@ -274,7 +274,7 @@ In race the wording is always *"We're currently pee N."* regardless of direction
 
 When iRacing flags the just-completed lap as invalid (track-limits cut, pit-lane violation, etc.) the engineer prefixes the readout with *"That lap didn't count."* and always uses the "currently" framing — *"That lap didn't count. We're currently pee five."* — so you know the time was thrown out. The invalid-lap prefix overrides the pole and "puts us to" branches even if standings shifted on paper from other drivers' laps.
 
-The callout is silent while a [full-course caution](#full-course-caution) is out. The running order freezes under yellow and iRacing's official positions then catch up to it, which used to read as a handful of places changing hands on a lap where nobody passed anybody. The caution's own position call, on the last lap before the green, gives you your race position instead, by which time the order has settled.
+The callout is silent while a [full-course caution](#full-course-caution) is out, and for the lap that ends one, which you complete a few seconds after the green. The running order freezes under yellow and iRacing's official positions then catch up to it, which used to read as a handful of places changing hands on a lap where nobody passed anybody. The caution's own position call, on the last lap before the green, gives you your race position instead, by which time the order has settled.
 
 ## Race Position Status (every 3 laps)
 

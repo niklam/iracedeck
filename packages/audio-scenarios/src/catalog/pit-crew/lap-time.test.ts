@@ -389,6 +389,24 @@ describe("lap-time scenario", () => {
     expect(hasClip("/lap-time-intro/best-lap-yet.mp3")).toBe(true);
   });
 
+  it("stays silent for the lap that ENDS a caution — completed after the green, with the gate above open (R16)", () => {
+    // The translator's fixture replay (`translator.test.ts`, "the lap that
+    // ends a caution") is what produces this shape: the player's first
+    // `lap.completed` after the 492.82 s restart carries `wasCaution: true`,
+    // 3.3 s into the green with the caution gone.
+    underCaution = false;
+    fire(snap({ lapTime: 44.0, wasCaution: true }));
+
+    expect(voicePaths()).toEqual([]);
+  });
+
+  it("fires on the next lap, run wholly under green, which carries no flag", () => {
+    underCaution = false;
+    fire(snap({ lapTime: 63.4 }));
+
+    expect(hasClip("/lap-time-intro/best-lap-yet.mp3")).toBe(true);
+  });
+
   it("plays the readout immediately on lap.completed (no leading pause)", () => {
     // The 2-second leading pause was dropped when the diff moved from
     // counter-driven to LapLastLapTime-driven emission (issue #555 — the

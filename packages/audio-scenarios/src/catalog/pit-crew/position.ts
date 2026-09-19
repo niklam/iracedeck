@@ -398,8 +398,10 @@ export function registerPositionVocabulary(
  * freezes and the OFFICIAL positions merely catch up to it as the pace car
  * picks up the field — the driver lost no places, but this callout has no way
  * to say that, only "We're currently P14" as if fourteen positions had just
- * changed hands. The restart position is instead stated deliberately by the
- * caution sequence's own `restart` call. Read at EVENT time: this is a
+ * changed hands. The race position is instead read out deliberately by the
+ * caution sequence's own position call, a third of the way into the last
+ * caution lap (the restart call itself says only "Green, green, green!").
+ * Read at EVENT time: this is a
  * `lap.completed` reaction, not a queueable fire whose replay could land after
  * the caution has cleared, so there is no speak-time re-check to add. Default
  * `() => false` preserves legacy behavior for tests / the harness that don't
@@ -421,10 +423,17 @@ export function buildPositionContract(
 
         // Full-course caution — the frozen running order catching up to the
         // official positions is not a position change (issue #1127); the
-        // caution sequence's `restart` call states the restart position.
+        // caution sequence's own position call reads the race position out on
+        // the last caution lap.
         if (getUnderFullCourseCaution()) return false;
 
         const data = ev.data as SimEventOf<"lap.completed">["data"];
+
+        // …nor is the lap that ENDS one, completed seconds after the green
+        // with the gate above already open (second review, R16): the order is
+        // still settling out of the restart, and the number read here would
+        // land as the driver heads into turn one.
+        if (data.wasCaution === true) return false;
 
         if (!isAnnounceableSessionType(data)) return false;
 

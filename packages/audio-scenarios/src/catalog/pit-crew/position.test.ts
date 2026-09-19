@@ -454,6 +454,23 @@ describe("position-change contract", () => {
     expect(hasClip("/position-number/3.mp3")).toBe(true);
   });
 
+  it("stays silent for the lap that ENDS a caution — completed after the green, with the gate above open (R16)", () => {
+    // The translator's fixture replay (`translator.test.ts`, "the lap that
+    // ends a caution") produces this shape at every restart: the player's
+    // first `lap.completed` after the green carries `wasCaution: true`.
+    underCaution = false;
+    fire(snap({ position: 14, previousPosition: 3, sessionType: "race", wasCaution: true }));
+
+    expect(voicePaths()).toEqual([]);
+  });
+
+  it("fires on the next lap, run wholly under green, which carries no flag", () => {
+    underCaution = false;
+    fire(snap({ position: 3, previousPosition: 5, sessionType: "race" }));
+
+    expect(hasClip("/position-number/3.mp3")).toBe(true);
+  });
+
   it("an aborted expansion in a race leaves the shared position cooldown unclaimed (issue #1137)", () => {
     // `where:` passes — the live position is readable — but the voice has no
     // clip for P65, so the expansion aborts (issue #836). The claim is the

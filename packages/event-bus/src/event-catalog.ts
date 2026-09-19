@@ -470,9 +470,27 @@ export type SimEventMap = {
   "flag.caution-waving.raised": SimEvent<"flag.caution-waving.raised", EmptySimEventPayload>;
 
   // ── Full-course caution (issue #1127) ──────────────────────────────────
-  /** The pace car reached the track (`CarIdxTrackSurface` → OnTrack). Not caution-specific: it fires at a rolling start too. */
+  /**
+   * The pace car's track surface became on-track (`CarIdxTrackSurface` →
+   * OnTrack / OffTrack). Not caution-specific, and not always a deployment:
+   * it fires at a rolling start; on an oval about 20 s after the caution is
+   * thrown; and on a road course also when a pace car PARKS again under
+   * green, since iRacing reports a pace car waiting in its spot as OnTrack
+   * (494.18 s in the 2026-09-18 road capture). Whether an occurrence is news
+   * is the consumer's decision — the caution callouts speak only while the
+   * translator's caution phase is live.
+   */
   "paceCar.deployed": SimEvent<"paceCar.deployed", EmptySimEventPayload>;
-  /** The pace car left the track for pit road (`CarIdxTrackSurface` → AproachingPits or InPitStall). Measured ~5 s before every green. */
+  /**
+   * The pace car's track surface left on-track (`CarIdxTrackSurface` →
+   * AproachingPits / InPitStall). On an oval that is the pace car peeling off
+   * about 5 s before every green. On a road course it ALSO fires when a
+   * parked pace car rolls out through pit exit to deploy — its surface reads
+   * AproachingPits for about three seconds on the way (152.23 s and 562.07 s
+   * in the 2026-09-18 capture) before OnTrack again — so the event alone does
+   * not mean "leaving": the caution callouts wait for the phase to be one to
+   * go, which the real exit always follows.
+   */
   "paceCar.off": SimEvent<"paceCar.off", EmptySimEventPayload>;
   /** The pace car has picked up the field: `Caution` rising as `CautionWaving` falls. On an oval this is one leader crossing before `caution.oneLapToGreen` — "two to green". */
   "caution.fieldCaught": SimEvent<"caution.fieldCaught", EmptySimEventPayload>;
@@ -487,7 +505,16 @@ export type SimEventMap = {
     "caution.lineup.changed",
     { followCarIdx: number | null; followCarNumber: string | null; line: CautionLine | null; isLeader: boolean }
   >;
-  /** The green that ends a full-course caution. Carries `StartGo`, which is why the green-flag callout stays silent. */
+  /**
+   * The green that ends a full-course caution: `Green` rising with neither
+   * caution bit set on that tick (both captures drop every caution bit on the
+   * restart tick). A green rising with `Caution` still set — a yellow-checkered
+   * tick — is not this event. `flag.green.raised` stays silent for it because
+   * the flag diff reads the live caution phase on that edge, start bit or not;
+   * the measured restarts also carry `StartGo`, which the start-light diff
+   * likewise stands down for while the phase is live and for a grace window
+   * after it.
+   */
   "caution.restarted": SimEvent<"caution.restarted", EmptySimEventPayload>;
 
   /**
@@ -787,6 +814,19 @@ export type SimEventMap = {
        * lap is invalid.
        */
       lapIsValid?: boolean;
+      /**
+       * True when a full-course caution was out at ANY point during this lap
+       * (issue #1127). Optional, and only ever present as `true`: a lap run
+       * wholly under green omits it, so every consumer that predates the
+       * field reads exactly what it always did. Derived from the translator's
+       * own caution phase, not from the raw caution bits. It exists because
+       * the lap that ENDS a caution is completed AFTER the green — 2.2–11.6 s
+       * after it across the committed captures — so a consumer that only asks
+       * "is a caution out now" when this event arrives would treat the last
+       * caution lap as a green one. The lap-time and position-change callouts
+       * refuse a lap carrying it.
+       */
+      wasCaution?: boolean;
     }
   >;
   /**

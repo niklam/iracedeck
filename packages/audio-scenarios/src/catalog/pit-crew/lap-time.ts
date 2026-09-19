@@ -214,6 +214,10 @@ export function buildLapTimeContract(
 
         const data = ev.data as LapCompletedSnapshot;
 
+        // …and neither is the lap that ENDS one, which completes seconds after
+        // the green with the gate above already open (second review, R16).
+        if (data.wasCaution === true) return false;
+
         // Race finished — defer to race-end (issue #569). The diff sets the
         // latch synchronously before publishing `lap.completed`, so by the
         // time this where: runs the latch reads true on the final lap.

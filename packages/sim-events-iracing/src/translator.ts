@@ -1448,6 +1448,14 @@ function wipeStateForReplay(self: TranslatorInstance): void {
     // the same reason: a glance on the last caution lap must neither lose that
     // call nor repeat it. Its baseline (`cautionLastLapDistPct`) re-seeds.
     cautionCheckpointArmed: self.state.cautionCheckpointArmed,
+    // The per-lap caution latch (issue #1127, R16) rides with the phase: the
+    // lap that ends a caution completes seconds after the green, and a glance
+    // at the replay in that window must not turn it back into a clean lap —
+    // the whole point of the latch is that lap. The lap diff re-seeds its
+    // counters on the way back and picks the latch up where it was.
+    lapCautionLatchLap: self.state.lapCautionLatchLap,
+    lapCautionSeen: self.state.lapCautionSeen,
+    lapCompletedWasCaution: self.state.lapCompletedWasCaution,
   };
 
   self.state = createInitialState();

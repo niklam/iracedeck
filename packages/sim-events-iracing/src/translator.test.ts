@@ -28,6 +28,7 @@ import {
   TrkLoc,
 } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
+import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { YELLOW_CLEARED_HOLD_MS } from "./diff/flags.js";
@@ -4127,6 +4128,100 @@ describe("sim-events-iracing translator", () => {
         expect(getCautionLineup()).toBeNull();
         // …while the episode itself carries on regardless.
         expect(isUnderFullCourseCaution()).toBe(true);
+      });
+    });
+
+    // The lap that ENDS a caution is completed AFTER the green (issue #1127,
+    // second review R16) — 2.2–5.1 s after each oval restart, the player at
+    // 3.3 s and 2.3 s — so its `lap.completed` arrives with the caution gone
+    // and the "is a caution out now" gates open. Driven through the committed
+    // oval fixture rather than a synthetic lap, with the player's own lap
+    // fields synthesised from car 0's scored laps (the capture recorded no
+    // `LapLastLapTime`), and the clock following the capture so the lap
+    // diff's standings wait times out the way it does with no results.
+    describe("the lap that ends a caution", () => {
+      type OvalTick = {
+        t: number;
+        SessionFlags: number;
+        SessionState: number;
+        CarIdxLapCompleted: number[];
+        CarIdxTrackSurface: number[];
+        CarIdxPaceLine: number[];
+        CarIdxPaceRow: number[];
+      };
+      const oval = JSON.parse(
+        readFileSync(new URL("./diff/__fixtures__/caution-restart-20260917.json", import.meta.url), "utf-8"),
+      ) as OvalTick[];
+      const FIXTURE_PACE_SLOT = 20;
+      const FIXTURE_PACE = 64;
+
+      /** A fixture tick as the player (car 0) would see it, per-car arrays widened to 72 slots. */
+      function ovalTick(tick: OvalTick): TelemetryData {
+        const widen = (values: number[], fill: number): number[] => {
+          const out = new Array(72).fill(fill);
+
+          values.forEach((v, i) => (out[i === FIXTURE_PACE_SLOT ? FIXTURE_PACE : i] = v));
+
+          return out;
+        };
+        const lap = tick.CarIdxLapCompleted[0] ?? -1;
+
+        return telemetry({
+          SessionState: tick.SessionState,
+          SessionFlags: tick.SessionFlags,
+          SessionTime: tick.t,
+          LapCompleted: lap,
+          // Changes with every scored lap, which is what the lap diff waits
+          // for; the value itself is never asserted on.
+          LapLastLapTime: 30 + lap,
+          CarIdxLapCompleted: widen(tick.CarIdxLapCompleted, -1),
+          CarIdxTrackSurface: widen(tick.CarIdxTrackSurface, TrkLoc.OnTrack),
+          CarIdxPaceLine: widen(tick.CarIdxPaceLine, -1),
+          CarIdxPaceRow: widen(tick.CarIdxPaceRow, -1),
+        });
+      }
+
+      it("marks the player's first lap after the green as a caution lap, and the next one — wholly under green — as clean", () => {
+        vi.useFakeTimers();
+
+        const controller = createMockController();
+        controller.__setSessionInfo({
+          WeekendInfo: { Category: "Oval", TrackType: "medium oval" },
+          DriverInfo: { DriverCarIdx: 0, PaceCarIdx: FIXTURE_PACE, Drivers: [] },
+          SessionInfo: { Sessions: [{ SessionNum: 0, SessionType: "Race" }] },
+        });
+        const laps: Array<{ t: number; lap: number; wasCaution: boolean | undefined }> = [];
+        const restarts: number[] = [];
+        let now = 0;
+
+        getEventBus().subscribe("lap.completed", (ev) =>
+          laps.push({ t: now, lap: ev.data.lap, wasCaution: ev.data.wasCaution }),
+        );
+        getEventBus().subscribe("caution.restarted", () => restarts.push(now));
+        initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+        for (const tick of oval) {
+          now = tick.t;
+          vi.setSystemTime(1_700_000_000_000 + tick.t * 1000);
+          controller.__tick(ovalTick(tick));
+        }
+
+        expect(restarts).toEqual([492.82, 872.45]);
+
+        // Car 0 scores lap 5 at 496.08 — 3.3 s after the first restart — and
+        // lap 6 at 533.30, before the second caution waves at 542.75. Lap 7
+        // (574.40) is under that caution again. The events themselves land a
+        // few seconds after each crossing, once the standings wait times out.
+        const byLap = new Map(laps.map((l) => [l.lap, l]));
+
+        expect(byLap.get(5)?.wasCaution).toBe(true);
+        expect(byLap.get(5)?.t).toBeGreaterThan(492.82);
+        expect(byLap.get(6)?.wasCaution).toBeUndefined();
+        expect(byLap.get(7)?.wasCaution).toBe(true);
+        // …and the lap that ends the second caution, scored 2.3 s after its
+        // restart, carries it too.
+        expect(byLap.get(11)?.wasCaution).toBe(true);
+        expect(byLap.get(11)?.t).toBeGreaterThan(872.45);
       });
     });
 
