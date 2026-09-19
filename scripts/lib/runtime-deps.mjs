@@ -125,7 +125,9 @@ export function runtimePackageJson({ root, binDir, external }) {
  * It reads `external` from the input options rather than taking a second list,
  * so what is left out of the bundle and what the bin installs cannot drift
  * apart, and it resolves `file:` links from the output file's folder, which is
- * where the asset lands.
+ * where the asset lands. Every workspace manifest it reads is a watch file, so
+ * `rollup -w` re-emits the file when a declared version changes — the watch
+ * counterpart of the turbo inputs that make a normal build re-run.
  *
  * @param {{ root: string }} options Repo root.
  * @returns {import("rollup").Plugin}
@@ -139,6 +141,11 @@ export function runtimePackageJsonPlugin({ root }) {
       external = inputOptions.external;
 
       return null;
+    },
+    buildStart() {
+      for (const { dir } of readWorkspaceManifests(root)) {
+        this.addWatchFile(path.join(dir, "package.json"));
+      }
     },
     generateBundle(outputOptions) {
       if (typeof outputOptions.file !== "string") {

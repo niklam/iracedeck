@@ -242,6 +242,18 @@ describe("runtimePackageJsonPlugin", () => {
     });
   });
 
+  it("watches every workspace manifest it reads, so rollup -w re-emits on a version change", () => {
+    writeManifest("packages/sdk/package.json", { name: "@iracedeck/sdk", dependencies: { yaml: "2.9.1" } });
+    mkdirSync(path.join(root, "packages", "no-manifest"), { recursive: true });
+    const ctx = { addWatchFile: vi.fn() };
+
+    runtimePackageJsonPlugin({ root }).buildStart.call(ctx);
+
+    expect(
+      ctx.addWatchFile.mock.calls.map(([file]) => path.relative(root, file).split(path.sep).join("/")).sort(),
+    ).toEqual(["package.json", "packages/plugin-x/package.json", "packages/sdk/package.json"]);
+  });
+
   it("keeps the name of the step it replaced", () => {
     expect(runtimePackageJsonPlugin({ root }).name).toBe("emit-module-package-file");
   });
