@@ -105,3 +105,15 @@ The capture in task 1 (the `telemetry-snapshot` CLI across a tyre-change stop). 
 **The event carries all three zones per tyre**, not only the lowest (decision 8, updated above), because a future consumer that shows the report on a key wants the whole tyre.
 
 **Found along the way, filed separately:** on the empty stop iRacing went InProgress → None in one tick without ever reporting Complete, so "Done. Go." never played (#1180).
+
+## Amendment, 2026-09-19: decision 4 needed an engine seam
+
+Implementation proved decision 4 incomplete. Publishing the report right after the readback request fixes the order on an idle bus, and only there. The engine keeps **one** pending fire per bus, where the newest fire of at least equal weight wins and the other is dropped. So when the exit readback had to wait, because the spotter shares the Voice bus and rejoining traffic makes that common, the report (`WEIGHT.NORMAL`), arriving right behind it, took the waiting readback's (`WEIGHT.CHATTER`) place, and the pit-exit confirmation was silently lost. The same loss had a mirror route: the readback takes an idle bus, the report parks in the slot, and an interrupt then cuts and stashes the readback.
+
+Three options went to the maintainer: let the report win the slot, let the readback win it (and lose the report exactly when a race needs it), or teach the engine a narrow relation. He chose the relation. It is a new optional `ScenarioContract` field, `queueBehind: readonly string[]`, set on the report as `["pit-crew.pit-readback-exit"]`. A contract field is code-owned scheduling, so no pack can set it.
+
+- While a named contract is the bus's waiting fire, the arriving fire **attaches behind it** instead of competing for the slot, and the two play in order once the bus idles. A named contract that arrives to wait while the follower holds the slot is put back ahead of it. A follower never overtakes its waiting leader, even on an idle bus held by a `pendingHoldMs` hold or a focus floor between the two.
+- **Each member keeps the fate it would have had alone.** A later fire at least as heavy as both takes the slot and drops the pair. A fire heavier than the leader but lighter than the follower replaces the leader, as it would have alone, and the follower stays behind it. A lighter fire is dropped.
+- **Never stranded:** a leader that fails to take the bus at replay leaves the follower to play next. Everything that clears the slot clears the pair; disabling the follower's own opt-in drops only it. It is a pair, not a queue: a second follower replaces the first.
+
+One limit remains, and it belongs to the engine rather than to this feature. While the readback is *playing*, the report waits alone in the single slot, and a fire of at least its weight arriving then replaces it, as it would any queueable callout. Removing that means a bounded queue behind the slot, which is a separate decision.
