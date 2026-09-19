@@ -335,6 +335,11 @@
 					"RR Susp": "Suspension RR"
 				};
 				var DEFAULT_ENABLED = ["Nose", "Cockpit", "Chase", "TV1", "TV2", "TV3"];
+				// Legacy spellings an older PI saved (camera-groups.ts LEGACY_NAMES).
+				// The action reads a legacy key as its canonical group, so the grid
+				// folds it in too — otherwise it shows the group off while the key
+				// cycles into it, and no checkbox could clear it.
+				var LEGACY_NAMES = { "Pit Lane2": "Pit Lane 2" };
 				var SETTING_KEY = "cameraGroupSubset";
 				var CYCLE_TARGETS = ["cycle-camera", "cycle-sub-camera", "cycle-car", "cycle-track-order", "cycle-driving"];
 
@@ -365,6 +370,20 @@
 						return state[name] === true;
 					}
 					return DEFAULT_ENABLED.indexOf(name) !== -1;
+				}
+
+				// A legacy key enables its canonical group when either is on (the
+				// action's own reading), then drops out, so the next save stores only
+				// the canonical name.
+				function foldLegacyNames(state) {
+					var folded = {};
+					var names = Object.keys(state);
+					for (var i = 0; i < names.length; i++) {
+						var name = names[i];
+						var canonical = LEGACY_NAMES[name] || name;
+						folded[canonical] = folded[canonical] === true || state[name] === true;
+					}
+					return folded;
 				}
 
 				// Ensure the state has entries for ALL visible groups so saving
@@ -437,7 +456,7 @@
 					}
 
 					return {
-						setState: function (groups) { state = groups || {}; render(); },
+						setState: function (groups) { state = foldLegacyNames(groups || {}); render(); },
 						setSave: function (fn) { save = fn; },
 						render: render,
 						wireButtons: function () {

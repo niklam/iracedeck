@@ -65,19 +65,55 @@ export const DEFAULT_CAMERA_GROUPS = [
 export const DEFAULT_ENABLED_GROUPS = ["Nose", "Cockpit", "Chase", "TV1", "TV2", "TV3"];
 
 /**
+ * @internal Exported for testing
+ *
+ * Change Camera's stored value → group name. The numbers are this plugin's own
+ * enumeration (the PI dropdown's values), never the sim's — the sim renumbers
+ * its groups per content, so a press resolves the NAME against the session. New
+ * groups only ever go on the end (#958): inserting one would repoint every saved
+ * Change Camera key.
+ */
+export const CHANGE_CAMERA_GROUPS: Readonly<Record<number, string>> = {
+  1: "Nose",
+  2: "Gearbox",
+  3: "Roll Bar",
+  4: "LF Susp",
+  5: "LR Susp",
+  6: "Gyro",
+  7: "RF Susp",
+  8: "RR Susp",
+  9: "Cockpit",
+  10: "Blimp",
+  11: "Chopper",
+  12: "Chase",
+  13: "Far Chase",
+  14: "Rear Chase",
+  15: "Pit Lane",
+  16: "Pit Lane 2",
+  17: "TV1",
+  18: "TV2",
+  19: "TV3",
+  20: "Scenic",
+  21: "TV Static",
+  22: "TV Mixed",
+  23: "TV4",
+  24: "Spotter",
+  25: "Spectator",
+};
+
+/**
  * Name variants the sim (or an older saved subset) spells differently from the
  * canonical names above. One capture reports `Pit Lane2` where every other one
- * says `Pit Lane 2` (#958).
+ * says `Pit Lane 2` (#958). The PI keeps a copy for the subsets it saves.
  */
 const LEGACY_NAMES: Record<string, string> = { "Pit Lane2": "Pit Lane 2" };
 
 /**
  * @internal Exported for testing
  *
- * Canonical spelling of a camera group name — the ONE normalisation shared by
- * saved subsets (`parseGroupSubset`), the session's own group list
- * (`findSessionGroupByName`, `getNextSelectedGroupEntry`) and the icon lookup,
- * so a variant spelling on either side still matches.
+ * Canonical spelling of a camera group name — the ONE normalisation, applied to
+ * saved subsets (`parseGroupSubset`), to the session's group list where it is
+ * read (`normalizeSessionGroups`), and to a name looked up by a caller.
  */
 export function normalizeGroupName(name: string): string {
   return LEGACY_NAMES[name] ?? name;
@@ -86,15 +122,36 @@ export function normalizeGroupName(name: string): string {
 /**
  * @internal Exported for testing
  *
- * The session's camera group carrying `name`, compared by canonical spelling on
- * both sides. Undefined when the session has no such group — the caller must
- * then NOT fall back to a plugin-side number, since the sim numbers its groups
- * per content and ours would pick an unrelated camera (#958).
+ * The session's camera groups with canonical names. Every reader of
+ * `CameraInfo.Groups` goes through this once, so no consumer downstream — the
+ * subset walk, the name lookup, an icon, a dial label — sees a variant spelling.
+ */
+export function normalizeSessionGroups(sessionGroups: CameraGroup[]): CameraGroup[] {
+  return sessionGroups.map((g) => ({ ...g, groupName: normalizeGroupName(g.groupName) }));
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * The session's camera group carrying `name` (in any spelling). Undefined when
+ * the session has no such group — the caller must then NOT fall back to a
+ * plugin-side number, since the sim numbers its groups per content and ours
+ * would pick an unrelated camera (#958). Expects `normalizeSessionGroups` output.
  */
 export function findSessionGroupByName(sessionGroups: CameraGroup[], name: string): CameraGroup | undefined {
   const target = normalizeGroupName(name);
 
-  return sessionGroups.find((g) => normalizeGroupName(g.groupName) === target);
+  return sessionGroups.find((g) => g.groupName === target);
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * The session's camera group numbered `groupNum` (the sim's own number, as
+ * telemetry's `CamGroupNumber` reports it), or null when the session lists none.
+ */
+export function findSessionGroupByNum(sessionGroups: CameraGroup[], groupNum: number): CameraGroup | null {
+  return sessionGroups.find((g) => g.groupNum === groupNum) ?? null;
 }
 
 /**
@@ -160,7 +217,7 @@ export function getNextSelectedGroupEntry(
   direction: 1 | -1,
 ): CameraGroup | null {
   const enabled = sessionGroups
-    .filter((g) => enabledGroupNames.includes(normalizeGroupName(g.groupName)))
+    .filter((g) => enabledGroupNames.includes(g.groupName))
     .sort((a, b) => a.groupNum - b.groupNum);
 
   if (enabled.length === 0) return null;
@@ -208,7 +265,7 @@ export function computeCameraCarousel(
   enabledGroupNames: string[],
   sessionGroups: CameraGroup[],
 ): CameraCarousel {
-  const current = currentGroupNum !== null ? (sessionGroups.find((g) => g.groupNum === currentGroupNum) ?? null) : null;
+  const current = currentGroupNum !== null ? findSessionGroupByNum(sessionGroups, currentGroupNum) : null;
   const base = currentGroupNum ?? 0;
 
   return {

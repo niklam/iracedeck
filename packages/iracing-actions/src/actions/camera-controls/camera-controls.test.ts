@@ -6,6 +6,7 @@ import {
   getCarNumberRawFromSessionInfo,
 } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import z from "zod";
 
 import { _resetSelectIntents, getSelectIntent } from "../../shared/car-select-intent.js";
 import keyBindings from "../data/key-bindings.json" with { type: "json" };
@@ -13,6 +14,7 @@ import {
   CAMERA_GROUP_MAP,
   CAMERA_GROUPS_SETTING_KEY,
   CameraControls,
+  CameraControlsSettingsFields,
   CameraGroupField,
   computeGridPositions,
   CycleIconModeField,
@@ -1827,6 +1829,36 @@ describe("camera-group settings fields (#958, #959)", () => {
     expect(CycleIconModeField.parse("current")).toBe("current");
     expect(CycleIconModeField.parse("name-only")).toBe("next");
   });
+
+  // Through the action's REAL fields — the test file's CommonSettings mock
+  // parses by identity, so only this proves the fields are wired in.
+  const ActionFields = z.object(CameraControlsSettingsFields);
+
+  it("keeps a key's mode, direction and subset when its Change Camera value is unknown", () => {
+    const subset = JSON.stringify({ groups: { Spotter: true } });
+    const parsed = ActionFields.parse({
+      target: "cycle-camera",
+      direction: "previous",
+      cameraGroupSubset: subset,
+      cameraGroup: 99,
+    });
+
+    expect(parsed).toMatchObject({
+      target: "cycle-camera",
+      direction: "previous",
+      cameraGroupSubset: subset,
+      cameraGroup: 9,
+    });
+  });
+
+  it("parses Icon Shows through the action's fields: next by default, current kept, junk degraded", () => {
+    expect(ActionFields.parse({}).cycleIconMode).toBe("next");
+    expect(ActionFields.parse({ cycleIconMode: "current" }).cycleIconMode).toBe("current");
+    expect(ActionFields.parse({ target: "cycle-camera", cycleIconMode: 7 })).toMatchObject({
+      target: "cycle-camera",
+      cycleIconMode: "next",
+    });
+  });
 });
 
 describe("Change Camera resolves the group by name in the session (#958)", () => {
@@ -2012,6 +2044,37 @@ describe("Cycle Camera key icon: next or current group (#959)", () => {
     const icons = shownIcons(action);
     expect(icons).toHaveLength(2);
     expect(icons[1]).toContain("CYCLE CAM");
+  });
+
+  it("shows the key's placeholder, not group 1, when telemetry reports no camera group", async () => {
+    const action = await appear(
+      { cycleIconMode: "current", cameraGroupSubset: JSON.stringify({ groups: { Spectator: true } }) },
+      { CamCarIdx: 0 },
+    );
+
+    const icons = shownIcons(action);
+    expect(icons).toHaveLength(1);
+    expect(icons[0]).toContain("CYCLE CAM");
+    expect(icons[0]).not.toContain("nose-artwork");
+  });
+
+  it("ends on the camera icon when a telemetry tick lands while new settings are applied", async () => {
+    const action = await appear({ cycleIconMode: "current" }, { CamGroupNumber: 11 });
+    const context = keyContext();
+    // The tick arrives during updateDisplay's awaits, before it paints the grid.
+    context.setTitle.mockImplementation(async () => {
+      subscriber?.();
+    });
+
+    await action.onDidReceiveSettings({
+      action: context,
+      payload: { settings: { target: "cycle-camera", direction: "next", cycleIconMode: "current" } },
+    } as never);
+
+    const lastCamera = Math.max(...vi.mocked(action["updateKeyImage"]).mock.invocationCallOrder);
+    const lastGrid = Math.max(...vi.mocked(action["setKeyImage"]).mock.invocationCallOrder);
+    expect(lastCamera).toBeGreaterThan(lastGrid);
+    expect(shownIcons(action).at(-1)).toContain("spotter-artwork");
   });
 
   it("shows only the grid while there is no telemetry", async () => {

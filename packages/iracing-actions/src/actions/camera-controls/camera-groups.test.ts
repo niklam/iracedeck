@@ -4,8 +4,10 @@ import {
   computeCameraCarousel,
   computeSubCameraCarousel,
   findSessionGroupByName,
+  findSessionGroupByNum,
   getNextSelectedGroup,
   normalizeGroupName,
+  normalizeSessionGroups,
   parseGroupSubset,
 } from "./camera-groups.js";
 
@@ -179,16 +181,32 @@ describe("camera group name normalisation (#958)", () => {
     expect(normalizeGroupName("TV Static")).toBe("TV Static");
   });
 
-  it("finds a session group by name in either spelling", () => {
-    expect(findSessionGroupByName(PIT_LANE2_SESSION, "Pit Lane 2")?.groupNum).toBe(20);
-    expect(findSessionGroupByName(PIT_LANE2_SESSION, "Spotter")?.groupNum).toBe(24);
+  it("canonicalises the session's group names once, keeping the sim's numbers", () => {
+    expect(normalizeSessionGroups(PIT_LANE2_SESSION)).toEqual([
+      { groupNum: 19, groupName: "Pit Lane" },
+      { groupNum: 20, groupName: "Pit Lane 2" },
+      { groupNum: 24, groupName: "Spotter" },
+    ]);
+  });
+
+  it("finds a normalised session group by name, whichever spelling is asked for", () => {
+    const session = normalizeSessionGroups(PIT_LANE2_SESSION);
+
+    expect(findSessionGroupByName(session, "Pit Lane 2")?.groupNum).toBe(20);
+    expect(findSessionGroupByName(session, "Pit Lane2")?.groupNum).toBe(20);
+    expect(findSessionGroupByName(session, "Spotter")?.groupNum).toBe(24);
   });
 
   it("returns undefined for a group the session does not have", () => {
-    expect(findSessionGroupByName(PIT_LANE2_SESSION, "TV4")).toBeUndefined();
+    expect(findSessionGroupByName(normalizeSessionGroups(PIT_LANE2_SESSION), "TV4")).toBeUndefined();
   });
 
-  it("cycles into a session group spelled differently from the enabled name", () => {
-    expect(getNextSelectedGroup(19, ["Pit Lane 2"], PIT_LANE2_SESSION, 1)).toBe(20);
+  it("finds a session group by the sim's number, or null", () => {
+    expect(findSessionGroupByNum(PIT_LANE2_SESSION, 24)?.groupName).toBe("Spotter");
+    expect(findSessionGroupByNum(PIT_LANE2_SESSION, 7)).toBeNull();
+  });
+
+  it("cycles into a session group the sim spells differently from the enabled name", () => {
+    expect(getNextSelectedGroup(19, ["Pit Lane 2"], normalizeSessionGroups(PIT_LANE2_SESSION), 1)).toBe(20);
   });
 });

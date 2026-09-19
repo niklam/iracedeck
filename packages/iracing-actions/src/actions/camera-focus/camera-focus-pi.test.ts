@@ -2,7 +2,12 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-import { DEFAULT_CAMERA_GROUPS, DEFAULT_ENABLED_GROUPS } from "../camera-controls/camera-groups.js";
+import {
+  CHANGE_CAMERA_GROUPS,
+  DEFAULT_CAMERA_GROUPS,
+  DEFAULT_ENABLED_GROUPS,
+  normalizeGroupName,
+} from "../camera-controls/camera-groups.js";
 
 /**
  * The PI runs in a browser context and cannot import action code, so it keeps
@@ -68,16 +73,51 @@ describe("camera-focus PI camera-group lists", () => {
     }
   });
 
-  it("offers every Change Camera value from 1 to the number of groups, each once", () => {
+  // The dropdown's suspension labels spell the group out; every other label is the group name.
+  const CHANGE_CAMERA_LABELS: Record<string, string> = {
+    "Suspension - Left Front": "LF Susp",
+    "Suspension - Right Front": "RF Susp",
+    "Suspension - Left Rear": "LR Susp",
+    "Suspension - Right Rear": "RR Susp",
+  };
+
+  function changeCameraOptions(): { value: number; label: string }[] {
     const select = template.match(/<sdpi-select setting="cameraGroup"[\s\S]*?<\/sdpi-select>/);
 
-    expect(select).not.toBeNull();
+    if (!select) throw new Error("the cameraGroup select was not found in camera-focus.ejs");
 
-    const values = [...(select?.[0] ?? "").matchAll(/<option value="(\d+)">/g)].map((m) => Number(m[1]));
+    return [...select[0].matchAll(/<option value="(\d+)">([^<]+)<\/option>/g)].map((m) => ({
+      value: Number(m[1]),
+      label: m[2],
+    }));
+  }
+
+  it("offers every Change Camera value from 1 to the number of groups, each once", () => {
+    const values = changeCameraOptions().map((o) => o.value);
 
     expect([...values].sort((a, b) => a - b)).toEqual(
       Array.from({ length: DEFAULT_CAMERA_GROUPS.length }, (_, i) => i + 1),
     );
+  });
+
+  it("labels every Change Camera value with the group the action switches to", () => {
+    for (const { value, label } of changeCameraOptions()) {
+      expect(CHANGE_CAMERA_LABELS[label] ?? label, `option ${value}`).toBe(CHANGE_CAMERA_GROUPS[value]);
+    }
+  });
+
+  it("folds the same legacy group spellings as the action", () => {
+    const match = template.match(/var LEGACY_NAMES = (\{[^}]*\});/);
+
+    expect(match).not.toBeNull();
+
+    const legacy = JSON.parse(match?.[1] ?? "{}") as Record<string, string>;
+
+    expect(Object.keys(legacy).length).toBeGreaterThan(0);
+
+    for (const [variant, canonical] of Object.entries(legacy)) {
+      expect(normalizeGroupName(variant)).toBe(canonical);
+    }
   });
 
   it("offers Icon Shows for Cycle Camera keys, defaulting to the next camera", () => {

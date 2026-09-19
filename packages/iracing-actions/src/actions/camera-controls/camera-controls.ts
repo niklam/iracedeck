@@ -92,10 +92,13 @@ import { availableProfilesForDevice, deviceProfileEntries } from "../race-admin/
 import { CameraDialSurface, type CarouselGlyph, DialSettings } from "./camera-dial-surface.js";
 import {
   CAMERA_GROUPS_SETTING_KEY,
+  CHANGE_CAMERA_GROUPS,
   DEFAULT_ENABLED_GROUPS,
   findSessionGroupByName,
+  findSessionGroupByNum,
   getNextSelectedGroupEntry,
   normalizeGroupName,
+  normalizeSessionGroups,
   parseGroupSubset,
 } from "./camera-groups.js";
 import { migrateFocusOnExitingToMostExciting } from "./migrate-focus-on-exiting.js";
@@ -247,38 +250,12 @@ function cameraSelectIcon(groupName: string): string | undefined {
 /**
  * @internal Exported for testing
  *
- * Camera group number → name and icon SVG for change-camera target
+ * Change Camera's stored value → name and icon SVG, built from the shared
+ * `CHANGE_CAMERA_GROUPS` list (camera-groups.ts), which the PI test also reads.
  */
-export const CAMERA_GROUP_MAP: Record<number, { name: string; icon: string }> = {
-  1: { name: "Nose", icon: noseSvg },
-  2: { name: "Gearbox", icon: gearboxSvg },
-  3: { name: "Roll Bar", icon: rollBarSvg },
-  4: { name: "LF Susp", icon: lfSuspSvg },
-  5: { name: "LR Susp", icon: lrSuspSvg },
-  6: { name: "Gyro", icon: gyroSvg },
-  7: { name: "RF Susp", icon: rfSuspSvg },
-  8: { name: "RR Susp", icon: rrSuspSvg },
-  9: { name: "Cockpit", icon: cockpitSvg },
-  10: { name: "Blimp", icon: blimpSvg },
-  11: { name: "Chopper", icon: chopperSvg },
-  12: { name: "Chase", icon: chaseSvg },
-  13: { name: "Far Chase", icon: farChaseSvg },
-  14: { name: "Rear Chase", icon: rearChaseSvg },
-  15: { name: "Pit Lane", icon: pitLaneSvg },
-  16: { name: "Pit Lane 2", icon: pitLane2Svg },
-  17: { name: "TV1", icon: tv1Svg },
-  18: { name: "TV2", icon: tv2Svg },
-  19: { name: "TV3", icon: tv3Svg },
-  20: { name: "Scenic", icon: scenicSvg },
-  // Appended (#958): the numbers are this plugin's own enumeration, never the
-  // sim's (which renumbers its groups per content), so new groups only ever go
-  // on the end — inserting one would repoint every saved Change Camera key.
-  21: { name: "TV Static", icon: tvStaticSvg },
-  22: { name: "TV Mixed", icon: tvMixedSvg },
-  23: { name: "TV4", icon: tv4Svg },
-  24: { name: "Spotter", icon: spotterSvg },
-  25: { name: "Spectator", icon: spectatorSvg },
-};
+export const CAMERA_GROUP_MAP: Record<number, { name: string; icon: string }> = Object.fromEntries(
+  Object.entries(CHANGE_CAMERA_GROUPS).map(([num, name]) => [num, { name, icon: CAMERA_SELECT_ICONS[name] }]),
+);
 
 const FOCUS_ICONS: Record<string, string> = {
   "focus-your-car": focusYourCarSvg,
@@ -331,7 +308,13 @@ export const CameraGroupField = z.coerce.number().int().min(1).max(MAX_CAMERA_GR
  */
 export const CycleIconModeField = z.enum(["next", "current"]).default("next").catch("next");
 
-const CameraControlsSettings = CommonSettings.extend({
+/**
+ * @internal Exported for testing
+ *
+ * The action's own settings fields, extended onto `CommonSettings` below —
+ * exported so a test can parse through the real fields rather than a mock.
+ */
+export const CameraControlsSettingsFields = {
   target: z.enum(TARGET_VALUES).default("change-camera"),
   // Cycle-specific
   direction: z.enum(["next", "previous"]).default("next"),
@@ -360,7 +343,9 @@ const CameraControlsSettings = CommonSettings.extend({
   // defaults instead of failing the whole parse — which would reset a KEYPAD
   // instance's mode via the full-defaults fallback in parseSettings.
   dial: DialSettings.catch(() => DialSettings.parse({})),
-});
+};
+
+const CameraControlsSettings = CommonSettings.extend(CameraControlsSettingsFields);
 
 type CameraControlsSettings = z.infer<typeof CameraControlsSettings>;
 
@@ -833,9 +818,13 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
     await this.persistMigratedSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
     this.activeContexts.set(ev.action.id, settings);
-    this.lastDisplayedGroup.delete(ev.action.id);
     await this.pushDeviceProfiles(ev, settings);
     await this.updateDisplay(ev, settings);
+    // Cleared only now: a telemetry tick during the awaits above can render the
+    // new settings' group and record it, and updateDisplay then paints the grid
+    // over it — clearing earlier would leave the dedupe believing the group is
+    // still on the key, and the key stuck on its grid.
+    this.lastDisplayedGroup.delete(ev.action.id);
     this.updateCycleIcon(ev.action.id);
   }
 
@@ -941,7 +930,7 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
     switch (target) {
       case "cycle-camera": {
         const sessionInfo = this.sdkController.getSessionInfo();
-        const sessionGroups = sessionInfo ? getCameraGroupsFromSessionInfo(sessionInfo) : [];
+        const sessionGroups = sessionInfo ? normalizeSessionGroups(getCameraGroupsFromSessionInfo(sessionInfo)) : [];
 
         if (sessionGroups.length === 0) {
           const success = camera.cycleCamera(carIdx, groupNum, dir);
@@ -1320,7 +1309,7 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
     const camera = getCommands().camera;
     const carIdx = telemetry.CamCarIdx ?? 0;
     const sessionInfo = this.sdkController.getSessionInfo();
-    const sessionGroups = sessionInfo ? getCameraGroupsFromSessionInfo(sessionInfo) : [];
+    const sessionGroups = sessionInfo ? normalizeSessionGroups(getCameraGroupsFromSessionInfo(sessionInfo)) : [];
 
     // Resolve the group by NAME against the session: the sim numbers its groups
     // per content, so our stored number is only an index into CAMERA_GROUP_MAP.
@@ -1372,43 +1361,28 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
       // Connection lost — restore grid icon if we were showing a telemetry-driven icon
       if (this.lastDisplayedGroup.has(contextId)) {
         this.lastDisplayedGroup.delete(contextId);
-        const svgDataUri = generateCycleCameraGridSvg(
-          getEnabledGroupNames(settings.cameraGroupSubset),
-          settings.direction,
-          settings.colorOverrides,
-          settings.titleOverrides,
-          settings.borderOverrides,
-          settings.graphicOverrides,
-        );
-        await this.updateKeyImage(contextId, svgDataUri);
-        this.setRegenerateCallback(contextId, () =>
-          generateCycleCameraGridSvg(
-            getEnabledGroupNames(settings.cameraGroupSubset),
-            settings.direction,
-            settings.colorOverrides,
-            settings.titleOverrides,
-            settings.borderOverrides,
-            settings.graphicOverrides,
-          ),
-        );
+        await this.updateKeyImage(contextId, generateCameraControlsSvg(settings));
+        this.setRegenerateCallback(contextId, () => generateCameraControlsSvg(settings));
       }
 
       return;
     }
 
     const sessionInfo = this.sdkController.getSessionInfo();
-    const sessionGroups = sessionInfo ? getCameraGroupsFromSessionInfo(sessionInfo) : [];
+    const sessionGroups = sessionInfo ? normalizeSessionGroups(getCameraGroupsFromSessionInfo(sessionInfo)) : [];
 
     if (sessionGroups.length === 0) return;
 
-    const groupNum = telemetry.CamGroupNumber ?? 1;
     let shownGroupName: string;
 
     if (settings.cycleIconMode === "current") {
-      // A group number the session does not list has no name to show; the
-      // empty name draws the key's placeholder rather than a guess.
-      shownGroupName = sessionGroups.find((g) => g.groupNum === groupNum)?.groupName ?? "";
+      // A group number the telemetry does not report, or the session does not
+      // list, has no name to show; the empty name draws the key's placeholder
+      // rather than a guess.
+      const camGroup = telemetry.CamGroupNumber;
+      shownGroupName = camGroup === undefined ? "" : (findSessionGroupByNum(sessionGroups, camGroup)?.groupName ?? "");
     } else {
+      const groupNum = telemetry.CamGroupNumber ?? 1;
       const dir = settings.direction === "next" ? 1 : -1;
       const enabledNames = getEnabledGroupNames(settings.cameraGroupSubset);
       const nextEntry = getNextSelectedGroupEntry(groupNum, enabledNames, sessionGroups, dir);
