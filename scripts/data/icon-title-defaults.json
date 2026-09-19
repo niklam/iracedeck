@@ -132,7 +132,6 @@
   "camera-select/tv3": "CAMERA\nTV3",
 
   "car-control/enter-car": "DRIVE\n",
-  "car-control/enter-exit-tow": "TOW\nENTER/EXIT",
   "car-control/escape": "ESCAPE\n",
   "car-control/exit-car": "EXIT\n",
   "car-control/headlight-flash": "FLASH\nHEADLIGHT",
@@ -146,7 +145,6 @@
   "chat/cancel": "CHAT\nCANCEL",
   "chat/open-chat": "CHAT\nOPEN",
   "chat/reply": "CHAT\nREPLY",
-  "chat/respond-pm": "LAST PM\nRESPOND",
   "chat/whisper": "CHAT\nWHISPER",
 
   "cockpit-misc/dash-page-1-decrease": "PREVIOUS\nDASH PG 1",
@@ -182,8 +180,6 @@
   "media-capture/video-timer": "VIDEO\nTIMER",
 
   "pit-quick-actions/clear-all-checkboxes": "PIT\nCLEAR ALL",
-  "pit-quick-actions/request-fast-repair": "REPAIR\nFAST",
-  "pit-quick-actions/windshield-tearoff": "TEAROFF\nWINDSHIELD",
 
   "race-admin/advance-session": "SESSION\nADVANCE",
   "race-admin/black-flag": "FLAG\nBLACK",
