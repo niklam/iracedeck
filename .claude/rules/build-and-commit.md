@@ -21,9 +21,10 @@ pnpm relink:stream-deck     # Unlink + link (useful when switching worktrees)
 
 ### Dependency build scripts
 
-pnpm 10 runs no dependency's `preinstall` / `install` / `postinstall` unless the package is named, so every dependency that has one is an explicit decision in the root `package.json`'s `pnpm` block — `pnpm install` names any that are not, and that notice is a question to answer, not noise (#1176). `onlyBuiltDependencies` is for a script something here needs: `ffmpeg-static`, whose install downloads the ffmpeg binary the voice-clip radio pipeline runs. (`keysender` is listed there too, but no workspace package installs it today — the plugins get their runtime copy from the `npm install` in each plugin's `postbuild`.) `ignoredBuiltDependencies` declines the rest silently, and each entry has a reason:
+pnpm 10 runs no dependency's `preinstall` / `install` / `postinstall` unless the package is named, so every dependency that has one is an explicit decision in the root `package.json`'s `pnpm` block — `pnpm install` names any that are not, and that notice is a question to answer, not noise (#1176). `onlyBuiltDependencies` is for a script something here needs: `ffmpeg-static`, whose install downloads the ffmpeg binary the voice-clip radio pipeline runs. `ignoredBuiltDependencies` declines the rest silently, and each entry has a reason:
 
 - `esbuild` (via `tsx`, `vite`): the script only re-fetches the platform binary when the optional `@esbuild/<platform>` package is missing, which pnpm installs, and swaps the JS shim for the binary off Windows, a speed-up nothing relies on.
+- `keysender` (declared by `deck-core`, #1177): its script is a `node-gyp rebuild` of Windows-only code, and nothing in the workspace loads it — the copy that runs is the one each plugin's `postbuild` `npm install` compiles in `bin/`. See *Native Module Dependencies* in `@.claude/rules/plugin-structure.md`.
 - `protobufjs` (via `firebase-tools`): the script only prints a version-scheme advisory.
 - `re2` (via `firebase-tools` → `superstatic`, an optional dependency): a native `node-gyp` build. `superstatic` falls back to `RegExp` without it, it is only used by `firebase serve` / the emulators, and `firebase.json` has no `regex` rules.
 
