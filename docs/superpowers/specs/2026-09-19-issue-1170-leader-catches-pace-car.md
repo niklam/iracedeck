@@ -36,7 +36,7 @@ All five 2026-09-19 Homestead snapshots were recomputed from the raw telemetry. 
 
 ### The approach, inferred from the 2026-09-17 oval recording
 
-No recording carries per-car lap distance, so the approach itself was never observed. The oval recording (`ir-1127/local/telemetry-watch-20260917-191825-092.jsonl`) still bounds it. It holds the pace car's surface and the leader's lap counter, and the pace car's `CarIdxLapCompleted` blips −1 → 0 for about five seconds each time it crosses the line.
+No recording carries per-car lap distance, so the approach itself was never observed. The oval recording (`master/local/telemetry-watch-20260917-191825-092.jsonl`, moved from the ir-1127 worktree when #1127 merged) still bounds it. It holds the pace car's surface and the leader's lap counter, and the pace car's `CarIdxLapCompleted` blips −1 → 0 for about five seconds each time it crosses the line.
 
 | `SessionTime` (s) | Caution 1 | Caution 2 |
 | --- | --- | --- |
