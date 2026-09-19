@@ -180,7 +180,7 @@ iRacing only updates tire wear while the car is in its pit box: the readings are
 
 The report only follows a stop you drove into. Leaving the garage at the start of a session, or driving out after a tow or a reset into your box, says nothing — those tires have not run a stint. It works in every session type, practice included, where stint length is being judged, and stays silent while you are watching a replay or when iRacing gives no tire-wear figures for your car. If you drive back onto pit road before the exit readback comes due, that stop's report is dropped along with it.
 
-The report waits its turn behind the exit readback rather than talking over it, and if something more urgent is on the radio it waits for that too instead of being lost. It has its own switch: turning off **Pit exit readback** does not silence it — the report then plays on its own, about four and a half seconds after you leave pit road. One limit worth knowing: when the exit readback itself has to wait behind a more urgent call, only one of the two can wait, and the tire report takes that place — the readback is skipped for that stop.
+The report waits its turn behind the exit readback rather than talking over it. If a more urgent call — the spotter, say, as you rejoin traffic — is on the radio when they come due, both wait for it and then play in order, the readback first. It has its own switch: turning off **Pit exit readback** does not silence it — the report then plays on its own, about four and a half seconds after you leave pit road.
 
 One opt-in lives under **Race Engineer Callouts → Pit Service** in the Settings window, on by default:
 
