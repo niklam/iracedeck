@@ -42,9 +42,9 @@ The four numbers are followed by a single sentence: _"Wear is heaviest on the `<
 
 ### 4. Timing: after leaving pit road, queued behind the exit readback
 
-Rafter's ask, and the right moment. Pit exit is busy, and the exit readback (`pitService.readbackRequested { reason: "exit" }`, fired 4.5 s after `pitLane.exited`) already speaks there; two callouts contesting that moment would be worse than one arriving a few seconds late. So the report is `queueable: true` at `WEIGHT.NORMAL` in its own family, `tyre-wear`, and waits its turn.
+Rafter's ask, and the right moment. Pit exit is busy, and the exit readback (`pitService.readbackRequested { reason: "exit" }`, fired 4.5 s after `pitLane.exited`) already speaks there; two callouts contesting that moment would be worse than one arriving a few seconds late. So the report is `queueable: true` at `WEIGHT.NORMAL` in its own family, `tire-wear`, and waits its turn.
 
-Ordering is made deterministic rather than hoped for: the translator publishes `tyreWear.reported` **from the same exit-settle timer as the readback request, after it**. The readback takes the bus; the report defers and replays when the bus idles. Publishing at `pitLane.exited` itself was rejected because it would beat the readback by 4.5 s.
+Ordering is made deterministic rather than hoped for: the translator publishes `tireWear.reported` **from the same exit-settle timer as the readback request, after it**. The readback takes the bus; the report defers and replays when the bus idles. Publishing at `pitLane.exited` itself was rejected because it would beat the readback by 4.5 s.
 
 Speaking the report right after `pitStall.departed`, on the limiter, was the alternative. It is earlier, but it lands inside the readback family's territory and the driver is watching for the pit-exit line.
 
@@ -59,15 +59,15 @@ Per #835, a required step that resolves to nothing aborts the whole callout. The
 ### 7. Clips
 
 - Numbers come free: `session-start-temp-numbers` holds cardinal clips 0–150, and #836's value-pool rule lets the resolver reference `poolRef("session-start-temp-numbers", String(n))` for 0–100.
-- New, in a `tyre-wear` group: four corner intros ("Left front", "Right front", "Left rear", "Right rear"), the unit "percent" (no percent clip exists anywhere yet), the closing intro "Wear is heaviest on the", and three zone words ("inside shoulder", "middle", "outside shoulder"). Generated with a scoped dry-run first.
+- New, in a `tire-wear` group: four corner intros ("Left front", "Right front", "Left rear", "Right rear"), the unit "percent" (no percent clip exists anywhere yet), and one whole closing sentence per tire and zone, twelve in all ("Wear is heaviest on the right rear, inside shoulder.", "Wear is heaviest in the middle of the right rear."). Twelve whole sentences replace the spliced intro-plus-zone-word design (see the amendment). Generated with a scoped dry-run first.
 
 ### 8. What the event carries
 
-`tyreWear.reported { corners: { lf, rf, lr, rr }: { tread: number; zone: "inside" | "middle" | "outside" }, heaviest: { corner, zone } }`. The translator does the zone mapping and the minimum, so the scenario only formats; a future consumer (a key showing the same report) reads the same shape.
+`tireWear.reported { corners: { lf, rf, lr, rr }: { inside, middle, outside, tread: number; zone: "inside" | "middle" | "outside" }, heaviest: { corner, zone } }`, in percent, unrounded. The translator does the zone mapping and the minimum, so the scenario only formats; a future consumer (a key showing the same report) reads the same shape, and gets all three zones rather than only the lowest.
 
 ### 9. Settings
 
-`calloutEnabledTyreWearReport`, default on, the `callout<Polarity><Family><Subject>` shape. No margin, no style, no timing setting.
+`calloutEnabledTireWearReport`, default on, the `callout<Polarity><Family><Subject>` shape. No margin, no style, no timing setting.
 
 ## Alternatives rejected
 
@@ -86,3 +86,22 @@ Whether a tyre that was **not** changed should be phrased differently — it is 
 ## Verification
 
 The capture in task 1 (the `telemetry-snapshot` CLI across a tyre-change stop). Then the harness shortcut, then a real stop with and without tyres, listening for the order against the exit readback.
+
+## Amendment, 2026-09-19: the capture, and two rulings
+
+**The capture** is `master/local/telemetry-watch-20260919-193233-855.jsonl` (gitignored; a `telemetry-watch` recording rather than the snapshot CLI, so the refresh could be timed). It was driven in one session together with #474's auto-fuel questions: a four-tyre stop, then a stop with nothing queued.
+
+- **The values refresh once per stop, as the car arrives in the box**, and never on track. On stop 1, `PlayerTrackSurface` reads InPitStall at 446.77 s, the twelve values change at 447.25 s, and `PlayerCarInPitStall` turns true at 447.47 s. Stop 2 shows the same order (597.55, 597.75, 598.00 s). So the refresh comes a fraction of a second *before* `PlayerCarInPitStall`. Reading at `pitStall.departed` is therefore safe.
+- **After a tyre change the values still describe the set that came off**, through departure and pit exit (stop 1: LF 0.991/0.984/0.983, RF 0.986/0.988/0.996, LR 0.990/0.986/0.986, RR 0.989/0.989/0.997, unchanged until the next stop). Without a change they describe the tyres on the car (stop 2). The ruling in *The sim model* holds as stated.
+- **The zone mapping holds.** Both fronts wear lowest on the inside (LF `R`, RF `L`), which is the negative-camber signature decision 3 predicted.
+- The `…TiresUsed` counters did not move across the four-tyre change, so nothing here depends on them.
+
+**Ruling: "tire", not "tyre", in every identifier** (maintainer, 2026-09-19). The code spells it "tire" throughout (`tireService.changed`, `readback.tirePattern`, `PitSvFlags.LFTireChange`) and had no "tyre" anywhere, and the setting key is persisted user data that cannot be renamed after it ships. The identifiers above are updated in place: `tireWear.reported`, family and clip group `tire-wear`, `calloutEnabledTireWearReport`, scenario `pit-crew.tire-wear-report`. The prose of this record and the filename keep "tyre": the filename is linked from the issue.
+
+**Ruling: a report only after a stop the driver drove into** (maintainer, 2026-09-19). The original decisions did not cover leaving the garage. When the car is placed in its stall and then drives out, the stall departure and the exit readback would have produced a report of fresh tyres ("Left front one hundred percent…") at every session start. A tow into the stall is the same case. The translator therefore reports a stall visit only when the car arrived on pit road from the circuit, with `IsOnTrack` true and the surface not NotInWorld. A visit that begins with the car appearing in the stall (garage "Drive", tow, reset) says nothing.
+
+**Clips: twelve whole closing sentences instead of an intro plus a zone word.** Splicing "Wear is heaviest on the" + a corner + a zone word breaks a sentence in two places, where a TTS voice sounds least natural. One sentence per tire and zone costs twelve short clips and never splices. The middle zone is phrased "Wear is heaviest in the middle of the `<corner>`", since "middle shoulder" is not a thing. The script selects the sentence with a declared-key `case` over `<corner>-<zone>`, so a pack may still collapse it to fewer lines.
+
+**The event carries all three zones per tyre**, not only the lowest (decision 8, updated above), because a future consumer that shows the report on a key wants the whole tyre.
+
+**Found along the way, filed separately:** on the empty stop iRacing went InProgress → None in one tick without ever reporting Complete, so "Done. Go." never played (#1180).
