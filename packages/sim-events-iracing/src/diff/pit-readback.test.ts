@@ -6,6 +6,7 @@
  *   - `pitLane.approaching` in pending emits "entry"
  *   - reset/teleport (OnPitRoad off→on with no approach event) stays silent
  *   - on-pit-road + user toggle in the same tick emits "entry-refire"
+ *   - so does an auto-fuel change on pit road (issue #474), and not off it
  *   - on→off schedules an exit fire that emits after the delay elapses
  *   - re-approach during the delay window cancels the scheduled exit
  *   - issue #481: event payload carries only `reason` (the
@@ -221,6 +222,36 @@ describe("diffPitReadback — refire", () => {
     const readbacks = readbackEvents(events);
     expect(readbacks).toHaveLength(1);
     expect(readbacks[0]?.data).toEqual({ reason: "entry-refire" });
+  });
+
+  it("emits 'entry-refire' when an auto-fuel change lands while on pit road (issue #474)", () => {
+    const state = createInitialState();
+    state.pitReadbackInitialized = true;
+    state.pitReadbackPrevOnPitRoad = true;
+    state.lastOnPitRoad = true;
+
+    const { events, emit } = collect();
+    diffPitReadback(state, tick({ PitSvFlags: 0 }), 100, emit, [
+      { event: "pitService.autoFuelChanged", data: { refuel: false } },
+    ]);
+
+    expect(readbackEvents(events)).toEqual([
+      { event: "pitService.readbackRequested", data: { reason: "entry-refire" } },
+    ]);
+  });
+
+  it("does not refire on an auto-fuel change off pit road (issue #474)", () => {
+    const state = createInitialState();
+    state.pitReadbackInitialized = true;
+    state.pitReadbackPrevOnPitRoad = false;
+    state.lastOnPitRoad = false;
+
+    const { events, emit } = collect();
+    diffPitReadback(state, tick({ PitSvFlags: 0 }), 100, emit, [
+      { event: "pitService.autoFuelChanged", data: { refuel: false } },
+    ]);
+
+    expect(readbackEvents(events)).toHaveLength(0);
   });
 
   it("does not emit when no user toggle event was queued", () => {
