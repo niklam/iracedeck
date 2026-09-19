@@ -219,6 +219,7 @@ export function stopRaceEngineerScenarios(): void {
 }
 
 export { isBackgroundTestInFlight, playBackgroundTest } from "./background-test.js";
+export { driverNameClipPath } from "./driver-name-clip.js";
 export {
   getRadarVisualState,
   playRadarTest,

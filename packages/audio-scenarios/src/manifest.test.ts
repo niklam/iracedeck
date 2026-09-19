@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { poolMemberPattern } from "./interpreter.js";
 import {
   type AudioAssetsManifest,
+  driverNameClip,
   manifestVoices,
   mergeManifests,
   referenceVoice,
@@ -142,6 +143,54 @@ describe("scanDriverNames", () => {
         expect(owners, `${clip} is reachable from exactly one listed name`).toHaveLength(1);
       }
     });
+  });
+});
+
+describe("driverNameClip (#1173)", () => {
+  // The radio check and the Test button play a name by path. Since the list
+  // offers only bases, a pack that records a name only as takes has to be
+  // found through them, or both lines go silent in that pack.
+  const clipFor = (clips: string[], voice: string, name: string): string | null =>
+    driverNameClip({ ...manifest, clips }, voice, name);
+
+  it("prefers the bare clip when the voice has one", () => {
+    expect(clipFor(["voice/luca/names/niklas-01.mp3", "voice/luca/names/niklas.mp3"], "luca", "niklas")).toBe(
+      "voice/luca/names/niklas.mp3",
+    );
+  });
+
+  it("falls back to the lowest take when the voice records the name only as takes", () => {
+    expect(clipFor(["voice/snoop/names/niklas-02.mp3", "voice/snoop/names/niklas-01.mp3"], "snoop", "niklas")).toBe(
+      "voice/snoop/names/niklas-01.mp3",
+    );
+  });
+
+  it("reads only the given voice", () => {
+    expect(clipFor(["voice/luca/names/niklas.mp3"], "snoop", "niklas")).toBeNull();
+  });
+
+  it("returns null when the voice has no clip for the name", () => {
+    expect(clipFor(["voice/luca/names/adam.mp3"], "luca", "niklas")).toBeNull();
+  });
+
+  it.each([
+    ["a longer name sharing the prefix", "voice/luca/names/niklasson-01.mp3"],
+    ["a one-digit suffix", "voice/luca/names/niklas-1.mp3"],
+    ["a three-digit suffix", "voice/luca/names/niklas-123.mp3"],
+    ["a clip in a sub-folder", "voice/luca/names/sub/niklas-01.mp3"],
+    ["another group's take", "voice/luca/welcome/niklas-01.mp3"],
+  ])("does not take %s for the name", (_case, clip) => {
+    expect(clipFor([clip], "luca", "niklas")).toBeNull();
+  });
+
+  it("returns a clip the engine's own pool rule counts as the name", () => {
+    const clips = ["voice/snoop/names/niklas-01.mp3", "voice/snoop/names/niklas-02.mp3", "voice/luca/names/niklas.mp3"];
+
+    for (const voice of ["snoop", "luca"]) {
+      const clip = clipFor(clips, voice, "niklas");
+
+      expect(poolMemberPattern("names", "niklas").exec(clip ?? "")?.[1]).toBe(voice);
+    }
   });
 });
 

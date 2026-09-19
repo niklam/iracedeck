@@ -94,6 +94,35 @@ export function scanDriverNames(manifest: AudioAssetsManifest): string[] {
 }
 
 /**
+ * The clip that speaks `name` in `voice`, for the players that address a
+ * driver name by PATH rather than as a pool — the radio check and the Race
+ * Engineer Test button (issue #1173). The bare `names/<name>.mp3` when the
+ * voice has one, otherwise its lowest take (`names/<name>-01.mp3`) — the
+ * same `stripTakeSuffix` fold {@link scanDriverNames} lists by, so every
+ * name the list offers is heard in a pack that records names only as takes.
+ * `null` when the voice has no clip for the name at all.
+ */
+export function driverNameClip(manifest: AudioAssetsManifest, voice: string, name: string): string | null {
+  const dir = `voice/${voice}/names/`;
+  const bare = `${dir}${name}.mp3`;
+  let lowestTake: string | null = null;
+
+  for (const clip of manifest.clips) {
+    if (clip === bare) return bare;
+
+    if (!clip.startsWith(dir) || !clip.endsWith(".mp3")) continue;
+
+    const file = clip.slice(dir.length, -".mp3".length);
+
+    if (file.includes("/") || stripTakeSuffix(file) !== name) continue;
+
+    if (lowestTake === null || clip < lowestTake) lowestTake = clip;
+  }
+
+  return lowestTake;
+}
+
+/**
  * Union the compiled-in manifest with clip lists contributed by installed voice
  * packs (issue #1034).
  *
