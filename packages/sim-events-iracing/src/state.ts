@@ -6,7 +6,13 @@
  * Initial state uses sentinel values (negative / null / empty sets) so the
  * first tick after connect seeds without firing spurious transition events.
  */
-import { type IncidentType, type PitBoxMark, type RadarState, TrackWetness } from "@iracedeck/event-bus";
+import {
+  type IncidentType,
+  type PitBoxMark,
+  type RadarState,
+  type TireWearReport,
+  TrackWetness,
+} from "@iracedeck/event-bus";
 import type { GapTrendDirection, ProgressTrace } from "@iracedeck/iracing-sdk";
 import type { CornerMarker } from "@iracedeck/track-data";
 
@@ -490,6 +496,25 @@ export type TranslatorState = {
    * iRacing pit-board project.
    */
   lastTickInPreStart: boolean;
+
+  // ── Tire wear of a stop (issue #1108) ──────────────────────────────────
+  /**
+   * The car was last seen driving on the circuit: set on a tick with
+   * `IsOnTrack`, off pit road, out of the stall and in the world; cleared when
+   * `IsOnTrack` is false or the car is `NotInWorld`, and when the car arrives
+   * on pit road already in its box. Pit-road ticks leave it alone, so it
+   * survives the drive down the lane — which is what tells a stop the driver
+   * drove into from a garage start or a tow.
+   */
+  tireWearDroveOnCircuit: boolean;
+  /** Whether the current stall visit is a drive-in — latched at `pitStall.entered`. */
+  tireWearStallDriveIn: boolean;
+  /**
+   * The report read at `pitStall.departed`, waiting for the exit readback that
+   * publishes it. Dropped at the next `pitLane.entered`, so a report whose exit
+   * fire was cancelled cannot ride out on a later drive-through.
+   */
+  tireWearReport: TireWearReport | null;
 
   // ── Track wetness (issue #526) ──────────────────────────────────────────
   // Tracks `TelemetryData.TrackWetness` across ticks so the diff can emit one
@@ -1153,6 +1178,10 @@ export function createInitialState(): TranslatorState {
     pitActionCooldownUntil: 0,
     pitReadbackPreStartFireAt: 0,
     lastTickInPreStart: false,
+
+    tireWearDroveOnCircuit: false,
+    tireWearStallDriveIn: false,
+    tireWearReport: null,
 
     trackWetnessInitialized: false,
     lastTrackWetness: TrackWetness.Unknown,
