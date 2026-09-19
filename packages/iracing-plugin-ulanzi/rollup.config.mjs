@@ -20,6 +20,7 @@ import path from "node:path";
 import process from "node:process";
 import url from "node:url";
 import { DEV_LOCAL_FILE, readDevLocal } from "../../scripts/lib/dev-local.mjs";
+import { pluginBuildOnLog } from "../../scripts/lib/rollup-logs.mjs";
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 const rootPackageJson = JSON.parse(readFileSync(path.resolve(__dirname, "../../package.json"), "utf-8"));
@@ -200,21 +201,10 @@ const sdPlugin = "com.ulanzi.iracedeck.ulanziPlugin";
  */
 const config = {
   input: "src/plugin.ts",
-  onwarn(warning, warn) {
-    // Suppress circular dependency warnings from zod and semver internals
-    if (
-      warning.code === "CIRCULAR_DEPENDENCY" &&
-      warning.ids?.some(
-        (id) =>
-          id.includes("node_modules\\zod\\") ||
-          id.includes("node_modules/zod/") ||
-          id.includes("node_modules\\semver\\") ||
-          id.includes("node_modules/semver/"),
-      )
-    )
-      return;
-    warn(warning);
-  },
+  // Shared log policy (#1176): drops zod's prose-comment INVALID_ANNOTATION and
+  // zod/semver internal cycles, and FAILS the build on a cycle among our own
+  // sources. Everything else prints as Rollup would. See scripts/lib/rollup-logs.mjs.
+  onLog: pluginBuildOnLog,
   output: {
     file: `${sdPlugin}/bin/plugin.js`,
     sourcemap: isWatching,

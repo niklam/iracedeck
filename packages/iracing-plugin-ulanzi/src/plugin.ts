@@ -1486,8 +1486,10 @@ adapter.onPropertyInspectorDidAppear(() => {
   voicePackInstaller.republishStatus();
 });
 
-// Initialize window focus service for focusing iRacing before any action
-initWindowFocus(adapter.createLogger("WindowFocus"), () => native.focusIRacingWindow());
+// Initialize window focus service for focusing iRacing before any action. The
+// app monitor's isIRacingActive is injected rather than imported inside
+// deck-core, which would close an import cycle through the SDK singleton (#1176).
+initWindowFocus(adapter.createLogger("WindowFocus"), () => native.focusIRacingWindow(), isIRacingActive);
 
 // Initialize the mouse pointer service for the Mouse to Sim mode (#926)
 initMousePointer(adapter.createLogger("MousePointer"), (x, y) => native.moveMouseToIRacingWindow(x, y));

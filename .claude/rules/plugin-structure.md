@@ -89,6 +89,14 @@ output: {
 },
 ```
 
+**The build's logs go through one shared policy (#1176).** Every plugin config sets `onLog: pluginBuildOnLog` from `scripts/lib/rollup-logs.mjs` and has no `onwarn` of its own; turbo hashes the helper as an input of each plugin's `#build`. The policy does three things and passes every other log through unchanged:
+
+- **A circular dependency among workspace sources fails the build.** When every module in a cycle is one of the repo's own files (inside the repo, outside every `node_modules`, not a virtual `\0` id), `CIRCULAR_DEPENDENCY` is promoted to an error. A warning nobody reads is how the deck-core `sdk-singleton` → `window-focus-service` → `app-monitor` cycle sat on `master` unnoticed. Break a cycle by injecting the function across the seam, the way the window service receives `isIRacingActive`; never widen the policy to silence one. A cycle that runs through any dependency still prints as a warning.
+- **zod's and semver's internal cycles are dropped**, as the configs always did.
+- **`INVALID_ANNOTATION` from inside zod's package is dropped.** Since 4.5.4 (still true in 4.6.x), zod has two comments that mention `@__PURE__` in prose; Rollup removes them and warns six times a build, and the bundle is unaffected. The same code from anywhere else still prints. `scripts/lib/rollup-logs.test.mjs` bundles the installed zod with the plugins' own Rollup and fails once it no longer produces that warning, naming the entry to remove.
+
+A new plugin package wires the same `onLog` and the same turbo input; the guard in `rollup-logs.test.mjs` discovers plugins from their manifests and checks both.
+
 ### Native Module Dependencies (keysender, @resvg/resvg-js)
 
 **CRITICAL**: If your plugin uses keyboard functionality (`getKeyboard()`, `initializeKeyboard()`) or PNG rasterization (`initializeRasterizer()`, `@iracedeck/rasterizer`), you MUST:
@@ -186,6 +194,7 @@ import {
   initMousePointer,
   initPluginConfig,
   initWindowFocus,
+  isIRacingActive,
   resolveSettingsStorePath,
   type PluginConfig,
 } from "@iracedeck/deck-core";
@@ -247,8 +256,10 @@ const audioNative = new AudioNative();
 initializeAudio(adapter.createLogger("Audio"), audioNative, [join(__binDir, "..", "assets", "audio")]);
 getAudio().init();
 
-// 9. Initialize the window service: focus + mouse-pointer placement (#926)
-initWindowFocus(adapter.createLogger("WindowFocus"), () => native.focusIRacingWindow());
+// 9. Initialize the window service: focus + mouse-pointer placement (#926).
+//    isIRacingActive picks warn vs debug for a missing window; it is injected
+//    rather than imported inside deck-core, which closed a cycle (#1176).
+initWindowFocus(adapter.createLogger("WindowFocus"), () => native.focusIRacingWindow(), isIRacingActive);
 
 // 9b. Mouse pointer placement for the Mouse to Sim mode (#926)
 initMousePointer(adapter.createLogger("MousePointer"), (x, y) => native.moveMouseToIRacingWindow(x, y));
@@ -316,7 +327,7 @@ adapter.connect();
 - `initializeEventBus()` must come before any publisher (e.g. `initializeSimEventsIracing`) or subscriber (actions via `getEventBus().subscribe(...)`)
 - `initializeSimEventsIracing()` must come after `initializeSDK()` (requires `getController()`) and after `initializeEventBus()`; it's the only package that reads `sdkController` ticks on behalf of action consumers
 - `initializeAudio()` creates the audio service singleton (third argument = the ordered audio roots, an ARRAY since #1034 — a bare string entry is an unrestricted root, and installed voice packs are appended later as `{ dir, clips }` roots limited to the clips the scan admitted); `getAudio().init()` starts the miniaudio engine. Both must be called before actions that use audio (e.g., Pit Engineer)
-- `initWindowFocus` / `focusIRacingIfEnabled` / `focusIRacingNow` come from `@iracedeck/deck-core` (moved there in #930; the unconditional variant added in #926). The focuser is injected, exactly like `initializeKeyboard`'s callbacks, so deck-core stays free of a native import; deck-core mirrors the native `FocusResult` codes and `focus-result.test.ts` in the Stream Deck plugin guards that mirror. Since #977 the service also exports `focusIRacingBeforeInput`, the keystroke-side site the keyboard service calls before every native key emit and (via `createSDK`'s `beforeKeystrokes` hook, injected by `initializeSDK`) the chat command calls before it types — the mode gate lives in the service, so the three hook registrations are identical in every mode.
+- `initWindowFocus` / `focusIRacingIfEnabled` / `focusIRacingNow` come from `@iracedeck/deck-core` (moved there in #930; the unconditional variant added in #926). The focuser is injected, exactly like `initializeKeyboard`'s callbacks, so deck-core stays free of a native import; so is its third argument, `isIRacingActive` (#1176), which the service imported from `app-monitor` until that closed the cycle `sdk-singleton` → `window-focus-service` → `app-monitor` → `sdk-singleton`; deck-core mirrors the native `FocusResult` codes and `focus-result.test.ts` in the Stream Deck plugin guards that mirror. Since #977 the service also exports `focusIRacingBeforeInput`, the keystroke-side site the keyboard service calls before every native key emit and (via `createSDK`'s `beforeKeystrokes` hook, injected by `initializeSDK`) the chat command calls before it types — the mode gate lives in the service, so the three hook registrations are identical in every mode.
 - `initMousePointer` / `movePointerToSim` (#926) are the sibling pointer service, injected the same way and mirrored the same way (`pointer-move-result.test.ts`). Kept separate from the focus service: one owns the foreground, the other owns where the pointer goes
 - `initializeRasterizer()` is gated by `__FEATURE_PNG_RASTERIZATION__` and must come before any code that renders a device image (it can run anywhere before `adapter.connect()`, since `toDeviceImage()` passes images through unchanged until it's called); see `@.claude/rules/platform-feature-flags.md`
 - `initializeSimHub()` must come AFTER `initGlobalSettings()` (reads host/port from settings)

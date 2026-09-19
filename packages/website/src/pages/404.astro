@@ -1,0 +1,28 @@
+---
+// Starlight's 404 page, rendered by the site instead of injected by Starlight
+// (`disable404Route: true` in astro.config.mjs, #1176).
+//
+// Why not Starlight's route: it looks up a `docs` entry with the id `404` on
+// every build and, finding none, renders a built-in fallback — which Astro 7
+// now reports as `[WARN] [content] Entry docs → 404 was not found.` Supplying
+// that entry (`src/content/docs/404.md`, the other route Starlight documents)
+// trades it for a second warning: Starlight's `[...slug]` route then also
+// generates `/404` and Astro reports the collision with the injected route.
+// A page of our own is the one documented route that warns about neither.
+//
+// The frontmatter is Starlight's fallback entry written out field for field
+// (`get404Route` in @astrojs/starlight/dist/utils/routing/data.js), and the
+// tagline is Starlight's own translated `404.text` string, so the page looks
+// exactly as it did.
+import StarlightPage from "@astrojs/starlight/components/StarlightPage.astro";
+---
+
+<StarlightPage
+  frontmatter={{
+    title: "404",
+    template: "splash",
+    editUrl: false,
+    pagefind: false,
+    hero: { tagline: Astro.locals.t("404.text"), actions: [] },
+  }}
+/>

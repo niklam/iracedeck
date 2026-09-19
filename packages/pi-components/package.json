@@ -3,7 +3,7 @@
   "version": "3.3.0-dev.0",
   "description": "Shared Property Inspector assets for iRaceDeck plugins: web components, EJS templates and partials, template data, and the Rollup EJS compile plugin",
   "type": "module",
-  "packageManager": "pnpm@10.0.0",
+  "packageManager": "pnpm@10.34.5",
   "exports": {
     "./build": "./src/build/index.mjs"
   },

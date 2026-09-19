@@ -19,13 +19,23 @@ pnpm unlink:stream-deck     # Unregister plugin from Stream Deck
 pnpm relink:stream-deck     # Unlink + link (useful when switching worktrees)
 ```
 
+### Dependency build scripts
+
+pnpm 10 runs no dependency's `preinstall` / `install` / `postinstall` unless the package is named, so every dependency that has one is an explicit decision in the root `package.json`'s `pnpm` block — `pnpm install` names any that are not, and that notice is a question to answer, not noise (#1176). `onlyBuiltDependencies` is for a script something here needs: `ffmpeg-static`, whose install downloads the ffmpeg binary the voice-clip radio pipeline runs. (`keysender` is listed there too, but no workspace package installs it today — the plugins get their runtime copy from the `npm install` in each plugin's `postbuild`.) `ignoredBuiltDependencies` declines the rest silently, and each entry has a reason:
+
+- `esbuild` (via `tsx`, `vite`): the script only re-fetches the platform binary when the optional `@esbuild/<platform>` package is missing, which pnpm installs, and swaps the JS shim for the binary off Windows, a speed-up nothing relies on.
+- `protobufjs` (via `firebase-tools`): the script only prints a version-scheme advisory.
+- `re2` (via `firebase-tools` → `superstatic`, an optional dependency): a native `node-gyp` build. `superstatic` falls back to `RegExp` without it, it is only used by `firebase serve` / the emulators, and `firebase.json` has no `regex` rules.
+
+`ignoredBuiltDependencies` needs pnpm 10.1 or later (10.0.0 ignores the key and keeps asking), which is why #1176 moved every pin off 10.0.0 at once: `packageManager` in the root and the five packages that carry one, and `version` in the seven workflows that run `pnpm/action-setup`. Move them together — the action refuses a `version` that differs from the root `packageManager`.
+
 ### Build verification
 
 **Always review the full build output.** Since #987 all four rollup configs set `noEmitOnError`, so a TypeScript diagnostic in a rollup-built package is a hard build failure rather than a warning on a green build — that is what the flag is for. Reading the output still matters, because a build can fail or misbehave for reasons that are not type errors.
 
 - Run the build and capture all output (do not just check the exit code or tail the last few lines).
 - Search the output for `TS[0-9]+:` patterns (e.g., `TS2345`, `TS2322`). Before #987 these could appear as *warnings* on a build that exited 0 and shipped broken output; they are now fatal, so finding one means the build failed.
-- Ignore `Circular dependency` warnings from `zod` internals and `npm warn Unknown env config` — these are known and harmless.
+- The plugin builds print no `(!)` line of Rollup's own: their shared log policy drops the known third-party noise (zod's and semver's internal cycles, zod's prose `@__PURE__` comments) and fails the build on a circular dependency among our own sources — see *Rollup Configuration* in `@.claude/rules/plugin-structure.md`. So a `(!)` from a plugin build is new and worth reading. `npm warn Unknown env config` is still known and harmless.
 - Common cause: `vi.fn(() => null)` in test files infers return type as `null`, making `mockReturnValue({...})` a type error. Fix by widening the return type: `vi.fn((): Record<string, unknown> | null => null)`.
 
 Branching & Worktrees

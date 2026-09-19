@@ -439,6 +439,7 @@ export {
   focusIRacingIfEnabled,
   focusIRacingNow,
   initWindowFocus,
+  type SimRunningCheck,
   type WindowFocuser,
 } from "./window-focus-service.js";
 

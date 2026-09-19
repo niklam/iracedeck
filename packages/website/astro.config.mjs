@@ -1,7 +1,7 @@
-import { readFileSync } from "fs";
-import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
 import mermaid from "astro-mermaid";
+import { defineConfig } from "astro/config";
+import { readFileSync } from "fs";
 
 // Fallback: read version from root package.json if env var not set
 if (!process.env.PUBLIC_IRACEDECK_VERSION) {
@@ -11,6 +11,24 @@ if (!process.env.PUBLIC_IRACEDECK_VERSION) {
 
 export default defineConfig({
   site: "https://iracedeck.com",
+  vite: {
+    build: {
+      // Raised from Vite's 500 kB for ONE chunk (#1176): `chunk-FOHPRMQF`,
+      // ~662 kB, which is `@mermaid-js/parser`'s pre-bundled Langium runtime
+      // (langium, chevrotain, lodash-es, vscode-jsonrpc and every Langium
+      // grammar). It ships as a single module, so Rolldown cannot split it,
+      // and it is lazily loaded: only the Langium-parsed diagram types (pie,
+      // gitGraph, info, packet, architecture, radar, treemap, …) import it,
+      // behind astro-mermaid's own `import('mermaid')`, which runs only on a
+      // page holding a diagram. The site draws flowcharts only, so no page
+      // downloads it today. The limit is set just above that chunk rather than
+      // switched off: the cost is that a new chunk between 500 and 700 kB goes
+      // unflagged (the next-largest today is cytoscape at ~435 kB, also lazy),
+      // and anything past 700 kB still warns. Drop this back to the default if
+      // mermaid ever stops shipping the parser as one chunk.
+      chunkSizeWarningLimit: 700,
+    },
+  },
   integrations: [
     // Must come BEFORE starlight so its rehype plugin transforms ```mermaid
     // code fences into rendered diagrams ahead of Expressive Code.
@@ -27,6 +45,8 @@ export default defineConfig({
         replacesTitle: true,
       },
       customCss: ["./src/styles/custom.css"],
+      // The 404 page is src/pages/404.astro — see that file for why (#1176).
+      disable404Route: true,
       // Injects the icon-gallery's component-rendered class/family headings
       // into the page's right-side TOC (see src/routeData.ts, item 3).
       routeMiddleware: "./src/routeData.ts",

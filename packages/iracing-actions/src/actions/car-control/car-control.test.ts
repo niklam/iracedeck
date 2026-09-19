@@ -47,9 +47,6 @@ vi.mock("@iracedeck/icons/car-control/starter.svg", () => ({
 vi.mock("@iracedeck/icons/car-control/ignition.svg", () => ({
   default: "<svg>ignition-icon</svg>",
 }));
-vi.mock("@iracedeck/icons/car-control/enter-exit-tow.svg", () => ({
-  default: "<svg>enter-exit-tow-icon</svg>",
-}));
 vi.mock("@iracedeck/icons/car-control/escape.svg", () => ({
   default: "<svg>escape-icon</svg>",
 }));
