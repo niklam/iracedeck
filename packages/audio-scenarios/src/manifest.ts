@@ -64,14 +64,15 @@ export function referenceVoice(manifest: AudioAssetsManifest): string | null {
  * voice has no clip for the chosen name.
  *
  * A name is a pool BASE, because that is how it is spoken: the engine plays
- * the chosen name as the `names/<name>` pool, and its pool rule
+ * the chosen name as the `<name>` pool of each greeting group
+ * (`session-start-greeting/<name>` and its siblings), and its pool rule
  * (`poolMemberPattern`) reads `<name>-NN.mp3` as a take of `<name>` (issue
  * #1173). So a take lists as its base — `niklas.mp3` and `niklas-01.mp3` are
  * one entry, and a pack that records only `adam-01.mp3` lists `adam` — and
- * listing `niklas-01` instead would offer a pool no voice's `niklas` clips
- * answer to. The fold is `@iracedeck/callout-script`'s `stripTakeSuffix`, the
- * same two-digit rule, so a name that merely ends in digits (`r2d2`, `abc-1`)
- * is left as it is.
+ * listing `niklas-01` instead would offer a base no voice's bare `niklas`
+ * clips answer to. The fold is `@iracedeck/callout-script`'s
+ * `stripTakeSuffix`, the same two-digit rule, so a name that merely ends in
+ * digits (`r2d2`, `abc-1`) is left as it is.
  */
 export function scanDriverNames(manifest: AudioAssetsManifest): string[] {
   const names = new Set<string>();

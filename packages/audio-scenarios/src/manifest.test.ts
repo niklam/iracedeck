@@ -86,9 +86,10 @@ describe("scanDriverNames", () => {
 
   describe("name takes (#1173)", () => {
     // A pack may record a name as takes (`names/niklas-01.mp3`), which the
-    // engine plays as the `niklas` pool. The list offers what is SPOKEN, so a
-    // take lists as its base — otherwise the dropdown carries `niklas-01`
-    // beside `niklas`, and picking it names a pool the bare clips never join.
+    // engine reads as takes of the base `niklas`. The list offers the base the
+    // greetings are played under, so a take lists as its base — otherwise the
+    // dropdown carries `niklas-01` beside `niklas`, and picking it names a base
+    // the bare clips never join.
     const names = (...clips: string[]): string[] => scanDriverNames({ ...manifest, clips });
 
     it("lists a bare clip as itself", () => {
@@ -118,10 +119,10 @@ describe("scanDriverNames", () => {
     });
 
     it("lists every clip under exactly one name, by the engine's own pool rule", () => {
-      // The pin: the fold is only right if each listed name, played as the
-      // `names/<name>` pool, reaches the clips it came from. Membership is the
-      // interpreter's `poolMemberPattern`, not a restatement of it — so a fold
-      // that drifted from the engine fails here rather than going quiet in-game.
+      // The pin: the fold is only right if each listed name, used as a pool
+      // base, reaches the clips it came from. Membership is the interpreter's
+      // `poolMemberPattern`, not a restatement of it — so a fold that drifted
+      // from the engine fails here rather than going quiet in-game.
       const clips = [
         "voice/default/names/niklas.mp3",
         "voice/snoop/names/niklas-01.mp3",
