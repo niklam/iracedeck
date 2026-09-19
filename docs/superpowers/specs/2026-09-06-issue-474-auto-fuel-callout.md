@@ -10,15 +10,17 @@
 
 ## The sim signal
 
-`dpFuelAutoFillEnabled` is "Pitstop auto fill fuel system enabled" — whether the car/series has the system at all. `dpFuelAutoFillActive` is "Pitstop auto fill fuel next stop flag" — auto-fuel will engage at the next stop. `Active` is the discriminator, matching deck-core's `isAutofuelActive` (absent field reads as not-active); `Enabled` only decides whether autofuel UI shows N/A. `@iracedeck/sim-events-iracing` does not depend on `@iracedeck/deck-core`, so the translator reads the field inline rather than importing that helper.
+`dpFuelAutoFillEnabled` is "Pitstop auto fill fuel system enabled". `dpFuelAutoFillActive` is "Pitstop auto fill fuel next stop flag" — auto-fuel will engage at the next stop. `Active` is the discriminator, matching deck-core's `isAutofuelActive` (absent field reads as not-active). `@iracedeck/sim-events-iracing` does not depend on `@iracedeck/deck-core`, so the translator reads the field inline rather than importing that helper.
 
-The repo holds no record of iRacing's frame sequencing between the bit and the flag, so the capture is the first implementation task — batched with #1108's tyre-change stop in the same Mustang GT3 road session.
+**Amended after the capture (2026-09-19).** The capture (`local/telemetry-watch-20260919-193233-855.jsonl` in the master checkout, a Mustang GT3 road session batched with #1108's tyre-change stop) and the maintainer's account of it corrected two readings above. `Enabled` is not "the car has the system": it went 0 → 1 mid-session when the driver switched the autofuel system on. `Active` is the "autofuel at the next stop" switch: the driver's presses moved it three times on track with the fuel bit untouched, and each stop consumed it (1 → 0 as the stop began). With the system on, the SIM re-arms it on pit approach — `Active` 0 → 1 thirty milliseconds after `PlayerTrackSurface` reached the approach — and in that same tick clears a manual fuel request: the `FuelFill` bit, `dpFuelFill` and `dpFuelAddKg` all went to 0. Autofuel then fuels only what the car needs, which at the first stop was nothing because the tank was too full. That pit-approach takeover was the only sim-made flip of the bit in the session. `dpFuelFill` mirrors the bit exactly, so it is no second discriminator.
 
 ## What ships
 
 A fuel-bit flip that iRacing made gets its own event and its own two lines, said without the acknowledgment that marks a driver's request:
 
-> "Auto fuel has us taking fuel at the next stop." / "Auto fuel says we don't need fuel next stop."
+> "Auto fuel has us taking fuel at the next stop." / "Auto fuel is handling the fuel at the next stop."
+
+The second line was first written as "Auto fuel says we don't need fuel next stop." The capture showed that a `refuel: false` flip usually means autofuel TOOK THE FUEL OVER from a manual request, then fuels whatever is needed, not that no fuel is needed, and the maintainer chose to reword it.
 
 Manual presses keep the lines they have. One new opt-in, default on, under the Race Engineer master.
 
@@ -30,7 +32,7 @@ Manual presses keep the lines they have. One new opt-in, default on, under the R
 
 **Rejected: `pitService.toggled { service, on, auto }`.** The maintainer ruled it out and #951 is why: the existing manual contracts would each need an `auto === false` guard, so a new distinction would force a filter onto consumers that never asked for it. Separation belongs in the event name.
 
-`refuel` rather than `on`, because the event is not a toggle the driver operated: it says what auto-fuel decided.
+`refuel` rather than `on`, because the event is not a toggle the driver operated. It carries the request's new state, and a `false` is usually auto-fuel taking the next stop's fuel over (see *The sim signal*).
 
 ### 2. Attribution happens at the debounce, and ties resolve to auto
 
@@ -42,13 +44,13 @@ The tie-break direction is deliberate. A false "auto" on a manual press is a wor
 
 Telemetry carries no source attribution: `dpFuelAutoFillActive` is a state, not an edge, so a press made while auto-fuel is armed is indistinguishable from the sim's own flip. Requiring the flag to have *just* turned on was rejected — that is exactly the repeated-cycling case, where the flag stays 1 across every flip, so it would restore the bug. The driver still hears a confirmation; it is phrased as auto-fuel.
 
-**What the capture must confirm before the diff is trusted:** that `dpFuelAutoFillActive` reads 1 at both the arming and the emit tick of a sim-made flip (if it does not, the OR in decision 2 is load-bearing rather than belt-and-braces); that the flips reach the on-track path at all, since `diffToggles` reseeds silently while `PlayerCarInPitStall` is true; whether a manual press while the flag is 1 sticks or is overwritten by the sim, which is what decision 3 rests on; and that `Active` is never 1 while `Enabled` is 0.
+**What the capture showed:** `dpFuelAutoFillActive` read 1 at both the arming and the emit tick of the sim-made flip — it rose on the flip's own tick and held for thirty seconds — so the OR in decision 2 is belt-and-braces there. The flip reaches the on-track path: it came on the pit approach, before `OnPitRoad`, far from the stall. `Active` was never 1 while `Enabled` was 0. Whether a manual press while the flag is 1 sticks was NOT exercised, since every press in the session came with `Active` at 0, so decision 3 stands on the reasoning above, not on a measurement. The repeated on-track cycling of the BIT that #467 reported did not reproduce: the flag moved three times on track and the bit never moved with it, and decision 8 keeps those edges silent.
 
 ### 4. No acknowledgment prefix, and two new clips
 
 Every one of the twenty-four toggle confirmations is `pool:pit-actions/acknowledgment → pool:pit-actions/<line>`; the acknowledgment is the engineer answering a request. Auto-fuel is not a request, so the script entry is the bare line. That is the audible marker the issue asks for, at no clip cost, and it halves the airtime of a line the sim may repeat.
 
-Clips join the existing `pit-actions` group and `TOGGLE_CONFIRMATION_CLIP_SOURCES` as `auto-fuel-on` / `auto-fuel-off`, beside `fuel-on` / `fuel-off`. The wording avoids "we're", which the manual lines use for the driver's decision.
+Clips join the existing `pit-actions` group as `auto-fuel-on` / `auto-fuel-off`, beside `fuel-on` / `fuel-off`. They are listed in their own `AUTO_FUEL_CLIP_SOURCES` rather than in `TOGGLE_CONFIRMATION_CLIP_SOURCES` (amended during implementation): each clip-source list is tested against exactly its own contracts' scripts, so joining the toggle list would have made that pairing false. The wording avoids "we're", which the manual lines use for the driver's decision.
 
 ### 5. Its own opt-in, independent of Pit service requests
 
@@ -60,13 +62,17 @@ Reusing `calloutEnabledPitServiceRequests` was rejected: it is precisely the cho
 
 The contracts take `family: "pit-service.fuel"` — shared with the manual pair, so a burst replaces its in-flight family-mate wholesale instead of stacking, and a manual press right after an auto flip replaces the auto line. Default `WEIGHT.NORMAL`, `interrupt: false`, `queueable: false`: a stale auto-fuel line replayed thirty seconds later is worse than silence. Wrapping is the toggles' own three layers — master gate, the new opt-in via `wrapCalloutScenario`, then `wrapPitActionScenario` — so the 4.5 s `pitLane.exited` and pre-grid cooldowns cover it. That last layer matters more here than for the manual lines: pit exit is where the sim re-arms the queue on its own.
 
-### 7. Out of scope
+### 7. The pit-road readback does not re-fire on an auto-fuel flip
+
+Amended during implementation. `diff/pit-readback.ts` re-fires the entry readback while on pit road when it sees one of its `USER_TOGGLE_EVENTS`, and `pitService.autoFuelChanged` is deliberately not added to that list: the module's rule is user intent, and the autofuel line itself carries the change. The capture shows the case this leaves: on a road course the entry readback fires the instant the car reaches the approach, one tick BEFORE autofuel clears the manual request, so the readback can still recap "taking fuel". The autofuel line (`WEIGHT.NORMAL`) outranks the readback (`WEIGHT.CHATTER`), so it waits for the readback to finish and plays straight after it, correcting it. Making the readback anticipate the takeover is a separate change.
+
+### 8. Out of scope
 
 Arming or disarming auto-fill itself (`dpFuelAutoFillActive` moving with the fuel bit unchanged) publishes nothing. It is a manual press like any other and would need its own subject, clips and opt-in. Auto-tire and auto-windshield remain the sibling analysis the issue defers.
 
 ## Verification
 
-1. **The capture**, first: the `telemetry-snapshot` CLI across a road session in the Mustang GT3 with auto-fuel armed, answering the four questions in decision 3.
+1. **The capture**, first: `telemetry-watch` across a road session in the Mustang GT3 with auto-fuel armed, answering the questions in decision 3 (done 2026-09-19; the answers are recorded there).
 2. `sim-events-iracing`: a sim flip with the flag at both frames emits `autoFuelChanged` and no `toggled`; a manual flip with the flag clear emits `toggled` and no `autoFuelChanged`; the flag set at only one of the two frames emits `autoFuelChanged`; an absent field reads as manual; stall/off-track ticks still seed silently.
 3. `audio-scenarios`: each contract fires on its direction only, the opt-in silences both without touching the manual pair, and family replacement holds on a rapid cycle. `bundled-scripts.test.ts` and `script-coverage.test.ts` cover the entries and clips.
 4. `deck-core`: the new key in both `simhub-service.test.ts` literals.
@@ -74,4 +80,4 @@ Arming or disarming auto-fill itself (`dpFuelAutoFillActive` moving with the fue
 
 ## Affected artifacts
 
-`event-bus` (`event-catalog.ts`); `sim-events-iracing` (`diff/toggles.ts`, `state.ts` for the latched flag, tests); `audio-scenarios` (`catalog/pit-crew/toggle-confirmations.ts` — contracts, ids and clip sources — plus the family wiring and dep in `catalog/pit-crew/index.ts`); `audio-assets` (`configs/default.voice.json` group entries and the two `scenarios` entries, generated clips, `generate:callout-scripts`, `pack:voice default` → `catalog/default.json`); `deck-core` (`global-settings.ts`); `pi-components` (`race-engineer-callouts.ejs` row, label "Auto fuel changes"); all three `plugin.ts`; `scenario-harness` (`event-names.ts`, `scenario-shortcuts.ts`); `pnpm generate:pack-reference`; website (`docs/actions/audio-voice/pit-crew.md`, `changelog.mdx` + `pnpm generate:changelog-data`); `.claude/rules/race-engineer-callout-examples.md` on merge.
+`event-bus` (`event-catalog.ts`); `sim-events-iracing` (`diff/toggles.ts`, `state.ts` for the latched flag, tests); `audio-scenarios` (`catalog/pit-crew/toggle-confirmations.ts` — contracts, ids and clip sources — plus the family wiring and dep in `catalog/pit-crew/index.ts`); `audio-assets` (`configs/default.voice.json` group entries and the two `scenarios` entries, generated clips, `generate:callout-scripts`, `pack:voice default` → `catalog/default.json`, at pack version 1.1.0 per the maintainer's ruling); `deck-core` (`global-settings.ts`); `pi-components` (`race-engineer-callouts.ejs` row, label "Autofuel changes", the spelling the site and settings already use); all three `plugin.ts`; `scenario-harness` (`event-names.ts`, `scenario-shortcuts.ts`); `pnpm generate:pack-reference`; website (`docs/actions/audio-voice/pit-crew.md`, `changelog.mdx` + `pnpm generate:changelog-data`); `.claude/rules/race-engineer-callout-examples.md` on merge.
