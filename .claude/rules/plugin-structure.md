@@ -103,34 +103,21 @@ A new plugin package wires the same `onLog` and the same turbo input; the guard 
 
 1. **Mark native modules as external** - Native CommonJS/N-API modules like `keysender` and `@resvg/resvg-js` cannot be bundled into ES modules. Add them to the `external` array:
 ```javascript
-external: ["@iracedeck/iracing-native", "@resvg/resvg-js", "yaml", "keysender"],
-```
-
-2. **Include them as runtime dependencies** - Add to the emitted `package.json` in the `generateBundle` hook:
-```javascript
-const pkg = {
-  type: "module",
-  dependencies: {
-    "@iracedeck/iracing-native": "file:../../../iracing-native",
-    "@resvg/resvg-js": "2.6.2",
-    "keysender": "2.4.0",
-    yaml: "2.8.2",
-  }
-};
+external: ["@iracedeck/audio-native", "@iracedeck/iracing-native", "@resvg/resvg-js", "yaml", "keysender"],
 ```
 
 **Why this matters**: Bundling `keysender` or `@resvg/resvg-js` (native modules) into an ES module output causes runtime errors like "require is not defined". They must be loaded at runtime from `node_modules`. Unlike `keysender`, `@resvg/resvg-js` ships prebuilt binaries for macOS and Linux too, so it needs no mock and no `optionalDependencies` split — it's a plain `dependencies` entry on every platform.
 
-3. **Use `optionalDependencies` for keysender only** - In the emitted `package.json`, place `keysender` under `optionalDependencies` so it installs on Windows but silently fails on macOS/Linux:
+2. **Emit the runtime `package.json` through the shared helper — never type a version** (#1177). The installed plugin's `bin/` runs `npm install` against a `package.json` the build emits beside `plugin.js`. `runtimePackageJsonPlugin` from `scripts/lib/runtime-deps.mjs` produces it, and it is the only thing that may:
 ```javascript
-const pkg = {
-  type: "module",
-  dependencies: { /* ... */ },
-  optionalDependencies: {
-    "keysender": "2.4.0",
-  }
-};
+import { runtimePackageJsonPlugin } from "../../scripts/lib/runtime-deps.mjs";
+
+// in plugins: [...]
+runtimePackageJsonPlugin({ root: repoRoot }),
 ```
+It reads the config's own `external` array, so what is left out of the bundle and what `bin/` installs are one list. Each `@iracedeck/*` external becomes a `file:` link to its workspace package (`file:../../../iracing-native`); every other external ships at the exact version the workspace `package.json` files declare for it (the root one and `packages/*`, in `dependencies` / `optionalDependencies` / `devDependencies`), under `optionalDependencies` when every declaration is optional. It **throws** — naming the package and the files — when an external is declared nowhere, at two different versions, or at a range. Version literals in the three configs were invisible to Dependabot and drifted (`yaml` and `ws` shipped behind the workspace, Mirabox's `ws` inside a published advisory); a security bump now reaches users the moment it lands in the workspace. So a new third-party external needs a declaration, at an exact version, in the workspace package whose code loads it — and nothing in the rollup config.
+
+3. **`keysender` is optional, declared by deck-core, and never built by pnpm.** No workspace source imports it statically — `deck-core/src/keyboard-service.ts` loads it at runtime through a variable module name — but `deck-core` declares it under `optionalDependencies` so Dependabot can see it and the helper has a version to ship. It is deliberately **absent from `pnpm.onlyBuiltDependencies`** and declined in `pnpm.ignoredBuiltDependencies`: its install script is `node-gyp rebuild` of Windows-only code, so a workspace `pnpm install` downloads it without compiling it and without asking about it, and Linux CI never tries to build it — the failure that removed it from the workspace in `56f9aff7d`. The copy that runs is the one `npm install` compiles in each plugin's `bin/`, where it is optional so a machine that cannot compile it still gets a working bin. `scripts/runtime-deps-guard.test.mjs` holds all of this: every plugin emits through the helper with no version literal, every shipped third-party external matches the workspace, `keysender` stays optional and out of `onlyBuiltDependencies`, and turbo hashes what the helper reads (`scripts/lib/runtime-deps.mjs`, the root `package.json` and `packages/*/package.json` are inputs of each plugin's `#build`, since a conflicting declaration can sit in a package outside the plugin's dependency graph).
 
 4. **Bundle the rasterizer's fonts** - `@iracedeck/rasterizer` ships bundled Arimo font files (`packages/rasterizer/fonts/`) that must be copied into `{sdPlugin}/assets/fonts/` at build time (a dedicated `generateBundle` copy step, same pattern as the per-action icon copy) so `createSvgRasterizer({ fontsDir })` can find them at runtime.
 

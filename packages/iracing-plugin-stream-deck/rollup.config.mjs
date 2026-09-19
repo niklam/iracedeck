@@ -22,6 +22,7 @@ import process from "node:process";
 import url from "node:url";
 import { DEV_LOCAL_FILE, readDevLocal } from "../../scripts/lib/dev-local.mjs";
 import { pluginBuildOnLog } from "../../scripts/lib/rollup-logs.mjs";
+import { runtimePackageJsonPlugin } from "../../scripts/lib/runtime-deps.mjs";
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 const rootPackageJson = JSON.parse(readFileSync(path.resolve(__dirname, "../../package.json"), "utf-8"));
@@ -161,6 +162,8 @@ const config = {
     },
     inlineDynamicImports: true,
   },
+  // Left out of the bundle and installed beside it at runtime, so this list is
+  // also exactly what bin/package.json installs (runtimePackageJsonPlugin below).
   external: ["@iracedeck/audio-native", "@iracedeck/iracing-native", "@resvg/resvg-js", "yaml", "keysender"],
   plugins: [
     // Resolve .js imports to .ts files for the raw-TypeScript actions package.
@@ -323,24 +326,10 @@ const config = {
       },
     }),
     !isWatching && terser(),
-    {
-      name: "emit-module-package-file",
-      generateBundle() {
-        const pkg = {
-          type: "module",
-          dependencies: {
-            "@iracedeck/audio-native": "file:../../../audio-native",
-            "@iracedeck/iracing-native": "file:../../../iracing-native",
-            "@resvg/resvg-js": "2.6.2",
-            yaml: "2.8.2",
-          },
-          optionalDependencies: {
-            keysender: "2.4.0",
-          },
-        };
-        this.emitFile({ fileName: "package.json", source: JSON.stringify(pkg, null, 2), type: "asset" });
-      },
-    },
+    // bin/package.json, which the installed plugin runs `npm install` against:
+    // one entry per `external` above, each at the version the workspace
+    // declares (#1177). Never a version literal here — see runtime-deps.mjs.
+    runtimePackageJsonPlugin({ root: repoRoot }),
     {
       name: "emit-plugin-config",
       generateBundle() {

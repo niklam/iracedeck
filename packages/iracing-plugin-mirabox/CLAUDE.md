@@ -24,7 +24,7 @@ The PI framework setup (templates, partials, browser assets, rollup wiring) foll
 pnpm build  # Rollup → com.iracedeck.sd.core.sdPlugin/bin/plugin.js, then npm install in bin/
 ```
 
-`pnpm build` is `rollup -c && npm run postbuild`; the `postbuild` step runs `npm install` inside `com.iracedeck.sd.core.sdPlugin/bin/` to install the runtime dependencies of the emitted `package.json`. That emitted `package.json` (the `emit-module-package-file` plugin in `rollup.config.mjs`) pins `ws` to its own version (currently `8.18.2`) independently of the workspace dependency (currently `8.21.0`) — when bumping `ws`, update both or the shipped runtime silently stays on the old version.
+`pnpm build` is `rollup -c && npm run postbuild`; the `postbuild` step runs `npm install` inside `com.iracedeck.sd.core.sdPlugin/bin/` to install the runtime dependencies of the emitted `package.json`. That emitted `package.json` is produced by `runtimePackageJsonPlugin` (`scripts/lib/runtime-deps.mjs`, #1177) from the config's `external` array: every third-party external — `ws` included — ships at the exact version the workspace `package.json` files declare, so bumping `ws` in the workspace is all a bump takes. It used to pin its own `ws` literal, which had fallen behind the workspace into a published advisory; the rollup config must never carry a version again, and `scripts/runtime-deps-guard.test.mjs` fails if it does.
 
 ## Packaging
 

@@ -43,7 +43,7 @@ The `.mock` file is gitignored. The mock rotates through telemetry snapshots (in
 
 ### Native dependencies
 
-- `keysender` is in `optionalDependencies` — silently fails to install on macOS
+- `keysender` is in `optionalDependencies` — in `deck-core` (so Dependabot sees it) and in each plugin's emitted `bin/package.json` — so a failed compile there never aborts an install. The workspace never compiles it: it is kept out of `pnpm.onlyBuiltDependencies`, so `pnpm install` only downloads it (#1177)
 - A type shim at `iracing-plugin-stream-deck/src/shared/keysender.d.ts` provides TypeScript types when keysender isn't installed
 - `node-gyp` is skipped on non-Windows via `iracing-native/scripts/build.mjs`
 

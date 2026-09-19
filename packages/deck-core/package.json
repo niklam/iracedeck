@@ -26,6 +26,9 @@
     "ws": "8.21.3",
     "zod": "4.6.1"
   },
+  "optionalDependencies": {
+    "keysender": "2.4.0"
+  },
   "devDependencies": {
     "@tsconfig/node22": "22.0.6",
     "@types/node": "26.5.1",
