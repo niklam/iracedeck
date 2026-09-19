@@ -138,7 +138,8 @@ export const EVENT_TEMPLATES = [
   },
   {
     name: "pitService.autoFuelChanged",
-    description: "The sim's auto-fuel flipped the fuel-fill bit (refuel at the next stop, or not)",
+    description:
+      "Fuel-fill request changed while the sim's autofuel is armed (refuel:false = autofuel took the next stop's fuel over, not 'no fuel')",
     data: { refuel: true },
   },
   {

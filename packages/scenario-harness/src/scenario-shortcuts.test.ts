@@ -1,5 +1,12 @@
 import { _resetEventBus, getEventBus, initializeEventBus } from "@iracedeck/event-bus";
-import { Flags, type SDKController, type SessionInfo, type TelemetryData } from "@iracedeck/iracing-sdk";
+import {
+  Flags,
+  PitSvFlags,
+  type SDKController,
+  type SessionInfo,
+  type TelemetryData,
+  TrkLoc,
+} from "@iracedeck/iracing-sdk";
 import { silentLogger } from "@iracedeck/logger";
 import {
   _resetSimEventsIracing,
@@ -7,6 +14,7 @@ import {
   getCautionLineup,
   getLivePosition,
   initializeSimEventsIracing,
+  PIT_APPROACH_COOLDOWN_MS,
   YELLOW_CLEARED_HOLD_MS,
 } from "@iracedeck/sim-events-iracing";
 import { readFileSync } from "node:fs";
@@ -462,5 +470,143 @@ describe("the two follow-on caution shortcuts (issue #1127)", () => {
       followCarIdx: 9,
       followCarNumber: "7",
     });
+  });
+});
+
+describe('the "Autofuel takeover (replay)" shortcut (issue #474)', () => {
+  beforeEach(() => {
+    initializeEventBus(silentLogger);
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    _resetSimEventsIracing();
+    _resetEventBus();
+  });
+
+  const shortcut = SCENARIO_SHORTCUTS.find((s) => s.id === "auto-fuel-takeover");
+  const steps = shortcut?.telemetrySequence ?? [];
+
+  /** The events a tester hears this button through: the fuel decisions and the approach readback. */
+  const RECORDED = [
+    "pitService.toggled",
+    "pitService.autoFuelChanged",
+    "pitLane.approaching",
+    "pitService.readbackRequested",
+  ] as const;
+
+  /** `startTranslator`'s setup (race session, hot-lap telemetry, one seeding tick), recording {@link RECORDED}. */
+  function startRecording(): { controller: MockSDKController; events: Published[] } {
+    const { controller } = startTranslator();
+    const events: Published[] = [];
+
+    for (const name of RECORDED) {
+      getEventBus().subscribe(name, (ev) => events.push({ event: ev.event, data: ev.data }));
+    }
+
+    return { controller, events };
+  }
+
+  const pressAt = steps.findIndex((s) => s.patch.PitSvFlags === PitSvFlags.FuelFill);
+  const approachAt = steps.findIndex((s) => s.patch.PlayerTrackSurface === TrkLoc.AproachingPits);
+  const takeoverAt = steps.findIndex((s) => s.patch.dpFuelAutoFillActive === 1);
+
+  it("drives the translator rather than publishing an event, in the Pit Service category", () => {
+    expect(shortcut?.event).toBeUndefined();
+    expect(shortcut?.telemetrySequence).toBeDefined();
+    expect(shortcut?.category).toBe("Pit Service");
+  });
+
+  it("replays the capture's values in its order: the press with autofuel disarmed, the approach alone, then the takeover in one step", () => {
+    // `local/telemetry-watch-20260919-193233-855.jsonl`, 557.97 → 567.73.
+    expect(pressAt).toBeGreaterThan(0);
+    expect(approachAt).toBeGreaterThan(pressAt);
+    expect(takeoverAt).toBe(approachAt + 1);
+
+    expect(steps[pressAt].patch).toEqual({ PitSvFlags: PitSvFlags.FuelFill, dpFuelFill: 1 });
+    expect(steps.slice(0, approachAt).every((s) => s.patch.dpFuelAutoFillActive !== 1)).toBe(true);
+    expect(steps[approachAt].patch).toEqual({ PlayerTrackSurface: TrkLoc.AproachingPits });
+    expect(steps[takeoverAt].patch).toEqual({
+      PitSvFlags: 0,
+      dpFuelAutoFillActive: 1,
+      dpFuelFill: 0,
+      dpFuelAddKg: 0,
+      PitSvFuel: 0,
+    });
+  });
+
+  it("puts the car on track off pit road first, and keeps `dpFuelAutoFillEnabled` at 1 throughout, as the capture had it", () => {
+    expect(steps[0].patch).toMatchObject({
+      IsOnTrack: true,
+      OnPitRoad: false,
+      PlayerCarInPitStall: false,
+      PlayerTrackSurface: TrkLoc.OnTrack,
+      PitSvFlags: 0,
+      dpFuelAutoFillEnabled: 1,
+      dpFuelAutoFillActive: 0,
+    });
+    expect(steps.slice(1).some((s) => "dpFuelAutoFillEnabled" in s.patch)).toBe(false);
+  });
+
+  it("holds the takeover past the translator's 300 ms fuel debounce, and the approach alone for less than one debounce", () => {
+    expect(steps[takeoverAt].holdMs ?? 0).toBeGreaterThan(300);
+    expect(steps[approachAt].holdMs ?? 0).toBeGreaterThan(0);
+    expect(steps[approachAt].holdMs ?? 0).toBeLessThan(300);
+  });
+
+  it("reports the press as the driver's, then the approach readback, then the takeover as autofuel's — never a second fuel toggle", () => {
+    const { controller, events } = startRecording();
+
+    runSequence(controller, steps);
+
+    expect(events).toEqual([
+      { event: "pitService.toggled", data: { service: "fuel", on: true } },
+      { event: "pitLane.approaching", data: {} },
+      { event: "pitService.readbackRequested", data: { reason: "entry" } },
+      { event: "pitService.autoFuelChanged", data: { refuel: false } },
+    ]);
+  });
+
+  it("positive control: the same takeover with autofuel left disarmed reads as the driver clearing fuel", () => {
+    // Without this the assertion above would be satisfied by a rig in which
+    // every fuel flip came out as autofuel's.
+    const { controller, events } = startRecording();
+    const disarmed = steps.map((s, i) =>
+      i === takeoverAt ? { ...s, patch: { ...s.patch, dpFuelAutoFillActive: 0 } } : s,
+    );
+
+    runSequence(controller, disarmed);
+
+    expect(
+      events.filter((e) => e.event.startsWith("pitService.") && e.event !== "pitService.readbackRequested"),
+    ).toEqual([
+      { event: "pitService.toggled", data: { service: "fuel", on: true } },
+      { event: "pitService.toggled", data: { service: "fuel", on: false } },
+    ]);
+  });
+
+  it("ends on track with autofuel disarmed and the fuel bit clear, so a second press replays it whole", () => {
+    const holdOf = (list: readonly TelemetryStep[]): number => list.reduce((sum, s) => sum + (s.holdMs ?? 0), 0);
+
+    expect(steps.at(-1)?.patch).toMatchObject({
+      PlayerTrackSurface: TrkLoc.OnTrack,
+      dpFuelAutoFillActive: 0,
+      PitSvFlags: 0,
+    });
+    // From one run's approach to the next run's is the rest of this run plus
+    // the start of the next — the whole sequence. The approach readback is
+    // cooled down for this long, and a quicker re-press would lose it.
+    expect(holdOf(steps)).toBeGreaterThan(PIT_APPROACH_COOLDOWN_MS);
+
+    const { controller, events } = startRecording();
+
+    runSequence(controller, steps);
+    const firstPress = events.splice(0);
+
+    runSequence(controller, steps);
+
+    expect(events).toEqual(firstPress);
+    expect(firstPress).toHaveLength(4);
   });
 });
