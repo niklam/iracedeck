@@ -99,7 +99,7 @@ The four race-formation / progression callouts above (Crossed, One pace lap to g
 
 Pit-service confirmations (fuel on/off, every tire-set selection, dry/wet compound switch, windshield-tearoff on/off, fast-repair on/off) continue to fire on the relevant Tire Service / Pit Service action presses.
 
-When iRacing's **auto fuel** changes the fuel for your next stop on its own, the engineer says so in its own words and without the "Got it." that confirms your requests: *"Auto fuel has us taking fuel at the next stop."* or *"Auto fuel says we don't need fuel next stop."* That way you can tell by ear whether a line answers your press or the sim's decision. While auto fuel is armed, iRacing gives no way to tell a fuel toggle you made from one it made, so the engineer announces every fuel change in that window as auto fuel. Like the other pit-service lines it stays quiet for a few seconds after you leave pit road, where the sim resets the service queue on its own.
+When iRacing's **autofuel** changes the fuel for your next stop on its own, the engineer says so in its own words and without the "Got it." that confirms your requests: *"Auto fuel has us taking fuel at the next stop."* or *"Auto fuel says we don't need fuel next stop."* That way you can tell by ear whether a line answers your press or the sim's decision. While autofuel is armed, iRacing gives no way to tell a fuel toggle you made from one it made, so the engineer announces every fuel change in that window as autofuel. Like the other pit-service lines it stays quiet for a few seconds after you leave pit road, where the sim resets the service queue on its own.
 
 The engineer also calls out every iRacing-reported pit-service status transition during the stop itself — "crew working", "all done", positioning corrections ("too far left, line it up", etc.), and "crew can't fix that this stop" — so you can keep your eyes on the windscreen and react by ear.
 
@@ -495,7 +495,7 @@ Under **Pit Service**, four callouts are toggleable independently:
 - **Pit entry readback** — the "Don't forget your limiter. We're taking fuel, …" recap that fires as you roll onto pit road (and refires on any toggle while you're still on pit road).
 - **Pit exit readback** — the "To confirm: …" recap that plays after a short delay once you've left pit road.
 - **Pit service requests** — every per-toggle confirmation (fuel on/off, tire-set selection, compound switch, windshield-tearoff on/off, fast-repair on/off). Switching this off silences the engineer on every Stream Deck pit-service press while leaving the readbacks intact.
-- **Auto fuel changes** (`calloutEnabledPitServiceAutoFuel`) — the *"Auto fuel has us taking fuel…"* / *"Auto fuel says we don't need fuel…"* lines spoken when iRacing's auto fuel changes the fuel for your next stop. Switching this off silences only those, and keeps your own fuel toggles confirmed.
+- **Autofuel changes** (`calloutEnabledPitServiceAutoFuel`) — the *"Auto fuel has us taking fuel…"* / *"Auto fuel says we don't need fuel…"* lines spoken when iRacing's autofuel changes the fuel for your next stop. Switching this off silences only those, and keeps your own fuel toggles confirmed.
 
 Disabling any one of the four does not affect the others.
 
