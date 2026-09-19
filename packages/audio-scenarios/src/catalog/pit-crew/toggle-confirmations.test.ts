@@ -1,9 +1,11 @@
 /**
- * Toggle-confirmation tests (issues #464, #468; scripted since #1065).
+ * Toggle-confirmation tests (issues #464, #468; scripted since #1065), plus
+ * the autofuel pair registered beside them (issue #474).
  *
  * Every contract fires through the bundled voice's real `callouts.json` for
  * two test voices, so what plays is the script's `acknowledgment → line` pair
- * resolved against each voice's own clips — the way the plugin runs them.
+ * — or, for autofuel, the bare line — resolved against each voice's own clips,
+ * the way the plugin runs them.
  */
 import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "json" };
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
@@ -16,6 +18,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios, poolMemberPattern } from "../../interpreter.js";
 import {
+  AUTO_FUEL_CLIP_SOURCES,
+  AUTO_FUEL_CONTRACTS,
+  AUTO_FUEL_SCENARIO_IDS,
   FAST_REPAIR_TOGGLE_CONTRACTS,
   FUEL_TOGGLE_CONTRACTS,
   TIRE_COMPOUND_CONTRACTS,
@@ -145,6 +150,10 @@ const manifest: AudioAssetsManifest = {
       `voice/${v}/pit-actions/acknowledgment-03.mp3`,
       `voice/${v}/pit-actions/fuel-on-01.mp3`,
       `voice/${v}/pit-actions/fuel-off-01.mp3`,
+      // The autofuel lines (issue #474) sit in the same group; the pool rule
+      // is anchored, so `fuel-on` never admits `auto-fuel-on-01`.
+      `voice/${v}/pit-actions/auto-fuel-on-01.mp3`,
+      `voice/${v}/pit-actions/auto-fuel-off-01.mp3`,
       `voice/${v}/pit-actions/tires-off-01.mp3`,
       ...TIRE_SET_NAMES.map((name) => `voice/${v}/pit-actions/tires-on-${name}.mp3`),
       `voice/${v}/pit-actions/tires-compound-dry.mp3`,
@@ -162,17 +171,23 @@ const manifest: AudioAssetsManifest = {
 /** The bundled voice's script, verbatim. The JSON import types `schema` as `number`, hence the cast. */
 const SCRIPT = defaultScript as CalloutScript;
 
+/** The bundled script narrowed to the given entries, and to no fragments — none of them includes one. */
+function narrowScript(ids: readonly string[]): CalloutScript {
+  return { ...SCRIPT, scenarios: Object.fromEntries(ids.map((id) => [id, SCRIPT.scenarios[id]])), fragments: {} };
+}
+
+/** The family's twenty-four entries — what `TOGGLE_CONFIRMATION_CLIP_SOURCES` is held against. */
+const TOGGLE_SCRIPT = narrowScript(TOGGLE_CONFIRMATION_SCENARIO_IDS);
+
+/** The two autofuel entries (issue #474) — what `AUTO_FUEL_CLIP_SOURCES` is held against. */
+const AUTO_FUEL_SCRIPT = narrowScript(AUTO_FUEL_SCENARIO_IDS);
+
 /**
- * The bundled script narrowed to the family's twenty-four entries (and to no
- * fragments — none of them includes one), handed to BOTH test voices. The
- * engine here registers the toggle family ALONE, and an entry for a contract
- * it does not hold would be a `no contract` warn.
+ * Both, handed to BOTH test voices. The engine here registers this file's
+ * contracts ALONE, and an entry for a contract it does not hold would be a
+ * `no contract` warn.
  */
-const TOGGLE_SCRIPT: CalloutScript = {
-  ...SCRIPT,
-  scenarios: Object.fromEntries(TOGGLE_CONFIRMATION_SCENARIO_IDS.map((id) => [id, SCRIPT.scenarios[id]])),
-  fragments: {},
-};
+const ENGINE_SCRIPT = narrowScript([...TOGGLE_CONFIRMATION_SCENARIO_IDS, ...AUTO_FUEL_SCENARIO_IDS]);
 
 /** The bundled manifest, for the clip-existence half of the sources check. */
 const MANIFEST = manifestJson as AudioAssetsManifest;
@@ -198,10 +213,12 @@ beforeEach(() => {
 
   // The production order (`registerPitCrew`): contracts, then the scripts —
   // the family registers no vocabulary and no pools; every step addresses
-  // its clip group directly, resolved against the manifest at fire time.
-  for (const c of TOGGLE_CONFIRMATION_CONTRACTS) engine.defineContract(c);
+  // its clip group directly, resolved against the manifest at fire time. The
+  // gates `registerPitCrew` wraps these in are exercised in
+  // `register-pit-crew.test.ts`; here every contract is registered bare.
+  for (const c of [...TOGGLE_CONFIRMATION_CONTRACTS, ...AUTO_FUEL_CONTRACTS]) engine.defineContract(c);
 
-  engine.setScripts(new Map(VOICE_KEYS.map((v) => [v, TOGGLE_SCRIPT])));
+  engine.setScripts(new Map(VOICE_KEYS.map((v) => [v, ENGINE_SCRIPT])));
 });
 
 afterEach(() => {
@@ -307,6 +324,143 @@ describe("FUEL_TOGGLE_CONTRACTS", () => {
     flush(audio);
 
     expect(audio._played).toEqual([]);
+  });
+});
+
+describe("AUTO_FUEL_CONTRACTS (issue #474)", () => {
+  const AUTO_ON = "voice/luca/pit-actions/auto-fuel-on-01.mp3";
+  const AUTO_OFF = "voice/luca/pit-actions/auto-fuel-off-01.mp3";
+  const MANUAL_ON = "voice/luca/pit-actions/fuel-on-01.mp3";
+  const MANUAL_OFF = "voice/luca/pit-actions/fuel-off-01.mp3";
+
+  it("is two contracts, one per direction, kept out of the twenty-four toggle confirmations", () => {
+    expect(AUTO_FUEL_SCENARIO_IDS).toEqual(["pit-crew.auto-fuel-on", "pit-crew.auto-fuel-off"]);
+
+    // `registerPitCrew` wraps the toggle array with the pit-service requests
+    // opt-in — an autofuel contract inside it would answer to that gate.
+    for (const c of AUTO_FUEL_CONTRACTS) expect(TOGGLE_CONFIRMATION_CONTRACTS).not.toContain(c);
+
+    for (const id of AUTO_FUEL_SCENARIO_IDS) expect(TOGGLE_CONFIRMATION_SCENARIO_IDS).not.toContain(id);
+  });
+
+  it("shares the manual fuel pair's family and scheduling — default weight, no interrupt, not queueable, framed", () => {
+    for (const c of AUTO_FUEL_CONTRACTS) {
+      expect(c.family).toBe("pit-service.fuel");
+      expect(c.when?.event).toBe("pitService.autoFuelChanged");
+      expect(c.channel).toBe(AudioChannel.Voice);
+      expect(c.bus).toBe(AudioBus.Voice);
+      expect(c.base).toBe("voice/{voice}");
+      expect(c.weight).toBeUndefined();
+      expect(c.interrupt).toBeUndefined();
+      expect(c.queueable).toBeUndefined();
+      expect(c.frame).toBeUndefined();
+      expect("sequence" in c).toBe(false);
+    }
+  });
+
+  it.each([
+    { refuel: true, heard: AUTO_ON, notHeard: AUTO_OFF },
+    { refuel: false, heard: AUTO_OFF, notHeard: AUTO_ON },
+  ])(
+    "refuel=$refuel speaks its own direction only, as the bare line inside the radio frame",
+    ({ refuel, heard, notHeard }) => {
+      bus.publishEvent("pitService.autoFuelChanged", { refuel });
+      flush(audio);
+
+      const played = audio._played.map((p) => p.path);
+
+      expect(played[0]).toBe("sfx/IRD-tick-open.mp3");
+      expect(played.at(-1)).toBe("sfx/IRD-tick-close.mp3");
+      // No acknowledgment in front: nobody asked (spec decision 4).
+      expect(voiceClipsPlayed()).toEqual([heard]);
+      expect(voiceClipsPlayed()).not.toContain(notHeard);
+    },
+  );
+
+  it("an autofuel flip never plays the manual lines, and a manual press never plays the autofuel lines", () => {
+    bus.publishEvent("pitService.autoFuelChanged", { refuel: true });
+    flush(audio);
+    bus.publishEvent("pitService.autoFuelChanged", { refuel: false });
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([AUTO_ON, AUTO_OFF]);
+
+    audio._played.length = 0;
+    bus.publishEvent("pitService.toggled", { service: "fuel", on: true });
+    flush(audio);
+    bus.publishEvent("pitService.toggled", { service: "fuel", on: false });
+    flush(audio);
+
+    const manual = voiceClipsPlayed();
+
+    expect(manual.filter((p) => p.includes("/auto-fuel-"))).toEqual([]);
+    expect(manual.filter((p) => !p.includes("/acknowledgment-"))).toEqual([MANUAL_ON, MANUAL_OFF]);
+  });
+
+  it("substitutes the active voice", () => {
+    activeVoice = "titan";
+    bus.publishEvent("pitService.autoFuelChanged", { refuel: true });
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual(["voice/titan/pit-actions/auto-fuel-on-01.mp3"]);
+  });
+
+  describe("family replacement on a rapid cycle", () => {
+    /** Run the frame's open tick out, so the autofuel line itself is what is on the air. */
+    function startAutoLine(refuel: boolean): void {
+      bus.publishEvent("pitService.autoFuelChanged", { refuel });
+      audio._triggerChannelEnd(AudioChannel.SFX);
+      expect(voiceClipsPlayed()).toEqual([refuel ? AUTO_ON : AUTO_OFF]);
+    }
+
+    it("a manual press straight after an autofuel flip cuts the autofuel line and speaks the confirmation", () => {
+      startAutoLine(true);
+
+      bus.publishEvent("pitService.toggled", { service: "fuel", on: false });
+
+      expect(audio.stopChannel).toHaveBeenCalledWith(AudioChannel.Voice);
+
+      flush(audio);
+
+      const voice = voiceClipsPlayed();
+
+      expect(voice[0]).toBe(AUTO_ON);
+      expect(voice.slice(1)).toHaveLength(2);
+      expect(voice[1]).toMatch(/^voice\/luca\/pit-actions\/acknowledgment-/);
+      expect(voice[2]).toBe(MANUAL_OFF);
+    });
+
+    it("a second autofuel flip replaces the first rather than stacking behind it", () => {
+      startAutoLine(true);
+
+      bus.publishEvent("pitService.autoFuelChanged", { refuel: false });
+      flush(audio);
+
+      expect(voiceClipsPlayed()).toEqual([AUTO_ON, AUTO_OFF]);
+      expect(audio.stopChannel).toHaveBeenCalledWith(AudioChannel.Voice);
+    });
+
+    it("an autofuel flip straight after a manual press replaces the confirmation", () => {
+      bus.publishEvent("pitService.toggled", { service: "fuel", on: true });
+      bus.publishEvent("pitService.autoFuelChanged", { refuel: false });
+      flush(audio);
+
+      const voice = voiceClipsPlayed();
+
+      expect(voice).not.toContain(MANUAL_ON);
+      expect(voice.at(-1)).toBe(AUTO_OFF);
+    });
+
+    it("positive control: a pit-service line OUTSIDE the fuel family is dropped, not substituted — the family is what replaces", () => {
+      startAutoLine(true);
+
+      // Same weight, different family, not queueable: `bus busy` → dropped.
+      bus.publishEvent("pitService.toggled", { service: "windshield", on: true });
+      flush(audio);
+
+      expect(voiceClipsPlayed()).toEqual([AUTO_ON]);
+      expect(audio.stopChannel).not.toHaveBeenCalledWith(AudioChannel.Voice);
+    });
   });
 });
 
@@ -578,5 +732,53 @@ describe("the bundled script's toggle-confirmation entries (issue #1065)", () =>
   it("compiles for both voices with nothing skipped — no unknown pool, condition, case key or fragment", () => {
     expect(mockLogger.warn).not.toHaveBeenCalled();
     expect(mockLogger.error).not.toHaveBeenCalled();
+  });
+});
+
+describe("the bundled script's autofuel entries (issue #474)", () => {
+  it.each([
+    { id: "pit-crew.auto-fuel-on", base: "auto-fuel-on", label: "Auto Fuel ON" },
+    { id: "pit-crew.auto-fuel-off", base: "auto-fuel-off", label: "Auto Fuel OFF" },
+  ])(
+    "scripts $id as its bare line — no acknowledgment — with a comment and the $label harness route",
+    ({ id, base, label }) => {
+      const entry = SCRIPT.scenarios[id];
+
+      expect(entry, `no script entry for ${id}`).toBeDefined();
+      expect(entry.comment?.length ?? 0, `${id}: comment`).toBeGreaterThan(0);
+      expect(entry.test, `${id}: test`).toMatch(new RegExp(`^Harness → Pit Service → ${label}[,.]`));
+      expect(entry.skip).toBeUndefined();
+      expect(entry.frame).toBeUndefined();
+      expect(entry.sequence).toEqual([`pool:pit-actions/${base}`]);
+    },
+  );
+
+  it("addresses exactly its own clip sources, none shared with the toggle confirmations, and every one has a clip in the bundled voice", () => {
+    const sources = ["pit-actions/auto-fuel-off", "pit-actions/auto-fuel-on"];
+
+    expect([...collectScriptReferences(AUTO_FUEL_SCRIPT).pools].sort()).toEqual(sources);
+    expect(AUTO_FUEL_CLIP_SOURCES.map(({ group, base }) => `${group}/${base}`).sort()).toEqual(sources);
+
+    // Disjoint lists: the acknowledgment in particular is NOT here — its
+    // absence is the audible marker (spec decision 4).
+    const toggle = new Set(TOGGLE_CONFIRMATION_CLIP_SOURCES.map(({ group, base }) => `${group}/${base}`));
+
+    for (const source of sources) expect(toggle.has(source), source).toBe(false);
+
+    for (const { group, base } of AUTO_FUEL_CLIP_SOURCES) {
+      const pattern = poolMemberPattern(group, base);
+
+      expect(
+        MANIFEST.clips.some((clip) => pattern.exec(clip)?.[1] === BUNDLED_VOICE),
+        `no voice/${BUNDLED_VOICE}/${group}/${base}(-NN).mp3 in manifest.json`,
+      ).toBe(true);
+    }
+  });
+
+  it("the manual `fuel-on` / `fuel-off` pools never admit an autofuel clip — the pool rule is anchored at the base", () => {
+    expect(poolMemberPattern("pit-actions", "fuel-on").test("voice/luca/pit-actions/auto-fuel-on-01.mp3")).toBe(false);
+    expect(poolMemberPattern("pit-actions", "fuel-off").test("voice/luca/pit-actions/auto-fuel-off-01.mp3")).toBe(
+      false,
+    );
   });
 });

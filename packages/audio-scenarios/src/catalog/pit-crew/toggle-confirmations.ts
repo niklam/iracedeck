@@ -1,7 +1,9 @@
 /**
  * Toggle-confirmation contracts — short engineer voice lines played when the
  * driver toggles a pit-service option (issues #464, #468; scripted since
- * #1065).
+ * #1065) — and, beside them, the two lines for a fuel flip iRacing's autofuel
+ * made on its own (issue #474), which are NOT confirmations and stay out of
+ * `TOGGLE_CONFIRMATION_CONTRACTS` (see `AUTO_FUEL_CONTRACTS` below).
  *
  * The code below decides WHICH toggle fired and how the confirmation is
  * scheduled; WHAT the engineer says lives in the active voice's
@@ -32,6 +34,16 @@
  *     `pitService.toggled`
  *   - `FAST_REPAIR_TOGGLE_CONTRACTS` — fast-repair on/off via
  *     `pitService.toggled`
+ *
+ * Those five groups are the twenty-four `TOGGLE_CONFIRMATION_CONTRACTS`.
+ * Registered apart from them, with a clip-source list of their own:
+ *   - `AUTO_FUEL_CONTRACTS` — refuel yes/no via `pitService.autoFuelChanged`,
+ *     which the translator publishes INSTEAD of the fuel `pitService.toggled`
+ *     when the flip was autofuel's. The bundled script speaks the bare line
+ *     with no acknowledgment: nobody asked, and the missing "Got it." is how
+ *     the driver tells the sim's change from their own press. They answer to
+ *     their own opt-in, not the pit-service requests one, which is why they
+ *     are not part of the family array `registerPitCrew` wraps with it.
  *
  * All registered contracts use the default weight (`WEIGHT.NORMAL`) so
  * higher-weight pit-lane callouts still take precedence.
@@ -65,6 +77,64 @@ function fuelContract(on: boolean): ScenarioContract {
 }
 
 export const FUEL_TOGGLE_CONTRACTS: readonly ScenarioContract[] = [fuelContract(true), fuelContract(false)];
+
+// ── Autofuel flip (registered apart, issue #474) ────────────────────────
+
+/**
+ * A fuel-fill flip iRacing's autofuel made. The translator attributes the
+ * flip at its debounce and publishes exactly one of `pitService.toggled` and
+ * `pitService.autoFuelChanged` per flip, so these two and the manual pair
+ * above can never both answer the same change — nothing here has to filter
+ * the other out.
+ *
+ * `family: "pit-service.fuel"` is shared with the manual pair on purpose: a
+ * burst of flips replaces its in-flight family-mate instead of stacking, and
+ * a press right after an auto flip replaces the auto line. Not queueable — a
+ * stale "we need fuel" replayed half a minute later is worse than silence.
+ */
+function autoFuelContract(refuel: boolean): ScenarioContract {
+  return {
+    id: `pit-crew.auto-fuel-${refuel ? "on" : "off"}`,
+    when: {
+      event: "pitService.autoFuelChanged",
+      where: (e) => (e as SimEventOf<"pitService.autoFuelChanged">).data.refuel === refuel,
+    },
+    description: refuel
+      ? "Fuel is added to the service for your next pit stop while iRacing's autofuel is armed — usually the sim's own decision, not a press of yours."
+      : "Fuel is taken off the service for your next pit stop while iRacing's autofuel is armed — usually the sim's own decision, not a press of yours.",
+    channel: AudioChannel.Voice,
+    bus: AudioBus.Voice,
+    base: "voice/{voice}",
+    family: "pit-service.fuel",
+  };
+}
+
+/**
+ * The two autofuel lines. Deliberately NOT part of
+ * {@link TOGGLE_CONFIRMATION_CONTRACTS}: `registerPitCrew` wraps that array
+ * with the pit-service requests opt-in, and these answer to their own
+ * (`calloutEnabledPitServiceAutoFuel`) — the two preferences are independent
+ * in both directions.
+ */
+export const AUTO_FUEL_CONTRACTS: readonly ScenarioContract[] = [autoFuelContract(true), autoFuelContract(false)];
+
+/** Contract ids exported for tests so a typo here surfaces as a test failure. */
+export const AUTO_FUEL_SCENARIO_IDS: readonly string[] = AUTO_FUEL_CONTRACTS.map((c) => c.id);
+
+/**
+ * The clip sources the autofuel scripts draw from — the bare line in each
+ * direction, in the same `pit-actions` group as the manual `fuel-on` /
+ * `fuel-off`. Its own list rather than an addition to
+ * {@link TOGGLE_CONFIRMATION_CLIP_SOURCES}, because each list is what the
+ * scripts of ITS contract list reference, exactly: the completeness tests
+ * pair a clip-source list with a scenario-id list, and these two ids are not
+ * among the toggle confirmations'. No acknowledgment here — that absence is
+ * the audible marker.
+ */
+export const AUTO_FUEL_CLIP_SOURCES: readonly { group: "pit-actions"; base: string }[] = [
+  "auto-fuel-on",
+  "auto-fuel-off",
+].map((base) => ({ group: "pit-actions" as const, base }));
 
 // ── Tire toggle (registered) ────────────────────────────────────────────
 

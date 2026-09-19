@@ -34,6 +34,8 @@ import { _resetGapCalloutCooldown } from "./gaps.js";
 import { _resetLastIncidentPoints } from "./incidents.js";
 import {
   _resetOpponentPitPending,
+  AUTO_FUEL_CALLOUT_SETTING_KEYS,
+  type AutoFuelCalloutId,
   type DamageCalloutId,
   type FlagCalloutId,
   type FuelCalloutId,
@@ -257,6 +259,9 @@ const TOGGLE_CLIP_PATHS = [
   "voice/luca/pit-actions/windshield-off.mp3",
   "voice/luca/pit-actions/fast-repair-on.mp3",
   "voice/luca/pit-actions/fast-repair-off.mp3",
+  // The two autofuel lines (issue #474), registered apart from the toggles.
+  "voice/luca/pit-actions/auto-fuel-on-01.mp3",
+  "voice/luca/pit-actions/auto-fuel-off-01.mp3",
 ] as const;
 
 const DAMAGE_CLIP_PATHS = [
@@ -503,6 +508,13 @@ function makeIncidentEnabledMap(initial: boolean): Map<IncidentCalloutId, boolea
 
 let enabled: Map<FlagCalloutId, boolean>;
 let pitServiceRequestsEnabled: boolean;
+// Issue #474. Spies rather than bare closures, so the autofuel describe block
+// can tell which gate was asked — and which never was — for one event.
+let pitActionsAllowed: boolean;
+let autoFuelEnabled: boolean;
+let getPitActionsAllowed: () => boolean;
+let getAutoFuelCalloutEnabled: (id: AutoFuelCalloutId) => boolean;
+let getRaceEngineerMasterEnabled: () => boolean;
 let damageEnabled: Map<DamageCalloutId, boolean>;
 let incidentEnabled: Map<IncidentCalloutId, boolean>;
 let pitStatusEnabled: Map<PitStatusCalloutId, boolean>;
@@ -525,6 +537,11 @@ let voiceMasterEnabled: boolean;
 beforeEach(() => {
   enabled = makeEnabledMap(true);
   pitServiceRequestsEnabled = true;
+  pitActionsAllowed = true;
+  autoFuelEnabled = true;
+  getPitActionsAllowed = vi.fn(() => pitActionsAllowed);
+  getAutoFuelCalloutEnabled = vi.fn((_id: AutoFuelCalloutId) => autoFuelEnabled);
+  getRaceEngineerMasterEnabled = vi.fn(() => voiceMasterEnabled);
   damageEnabled = new Map<DamageCalloutId, boolean>([["repair-needed", true]]);
   incidentEnabled = makeIncidentEnabledMap(true);
   pitStatusEnabled = new Map<PitStatusCalloutId, boolean>();
@@ -554,8 +571,9 @@ beforeEach(() => {
     getFlagCalloutEnabled: (id) => enabled.get(id) ?? true,
     logger: mockLogger as never,
     getPitReadbackEnabled: () => true,
-    getPitActionsAllowed: () => true,
+    getPitActionsAllowed,
     getPitServiceRequestsEnabled: () => pitServiceRequestsEnabled,
+    getAutoFuelCalloutEnabled,
     getReadbackSnapshot: () => null,
     getDamageCalloutEnabled: (id) => damageEnabled.get(id) ?? true,
     getPitStatusCalloutEnabled: (id) => pitStatusEnabled.get(id) ?? true,
@@ -569,7 +587,7 @@ beforeEach(() => {
     getOpponentPitLivePosition: () => opponentPitLivePosition,
     getPitLimiterCalloutEnabled: getPitLimiterEnabled,
     getNoLimiterCalloutEnabled: getNoLimiterEnabled,
-    getRaceEngineerMasterEnabled: () => voiceMasterEnabled,
+    getRaceEngineerMasterEnabled,
   });
   // After the registration, as the plugins do (issue #1064): the engine
   // wraps every framed callout in the voice's `radio` frame at fire time.
@@ -1058,6 +1076,121 @@ describe("pit-service-requests live gate (issue #468)", () => {
     flush(audio);
 
     expect(voiceClipsPlayed()).toContain(`voice/${VOICE}/pit-actions/fuel-on-01.mp3`);
+  });
+});
+
+// Issue #474: a fuel flip iRacing's autofuel made arrives as its own event and
+// is wrapped with the toggles' three layers, the middle one swapped for its own
+// opt-in. These pin that WIRING — which gates apply, in which order, and that
+// the two opt-ins are independent in both directions; the per-contract
+// behavior (direction, bare line, family replacement) is covered in
+// `toggle-confirmations.test.ts`, which registers the contracts bare.
+describe("autofuel callout live gating (issue #474)", () => {
+  const AUTO_ON = `voice/${VOICE}/pit-actions/auto-fuel-on-01.mp3`;
+  const AUTO_OFF = `voice/${VOICE}/pit-actions/auto-fuel-off-01.mp3`;
+  const MANUAL_ON = `voice/${VOICE}/pit-actions/fuel-on-01.mp3`;
+
+  it("maps its single subject to the setting the plugins read", () => {
+    expect(AUTO_FUEL_CALLOUT_SETTING_KEYS).toEqual({ changed: "calloutEnabledPitServiceAutoFuel" });
+  });
+
+  it.each([
+    { refuel: true, clip: AUTO_ON },
+    { refuel: false, clip: AUTO_OFF },
+  ])("refuel=$refuel speaks through the real registration, asking the opt-in for `changed`", ({ refuel, clip }) => {
+    bus.publishEvent("pitService.autoFuelChanged", { refuel });
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([clip]);
+    expect(getAutoFuelCalloutEnabled).toHaveBeenCalledWith("changed");
+  });
+
+  it.each([true, false])("the opt-in off silences refuel=%s", (refuel) => {
+    autoFuelEnabled = false;
+    bus.publishEvent("pitService.autoFuelChanged", { refuel });
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([]);
+  });
+
+  it("logs a debug line on suppression", () => {
+    autoFuelEnabled = false;
+    bus.publishEvent("pitService.autoFuelChanged", { refuel: true });
+
+    expect(mockLogger.debug).toHaveBeenCalledWith("auto-fuel callout suppressed: changed");
+  });
+
+  it("the opt-in off leaves the driver's own fuel toggle confirmed", () => {
+    autoFuelEnabled = false;
+    bus.publishEvent("pitService.toggled", { service: "fuel", on: true } as never);
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toContain(MANUAL_ON);
+    // A manual press never reaches the autofuel gate at all.
+    expect(getAutoFuelCalloutEnabled).not.toHaveBeenCalled();
+  });
+
+  it("pit-service requests off silences the manual pair but NOT the autofuel pair — the two opt-ins are independent", () => {
+    pitServiceRequestsEnabled = false;
+
+    bus.publishEvent("pitService.toggled", { service: "fuel", on: true } as never);
+    flush(audio);
+    expect(voiceClipsPlayed()).toEqual([]);
+
+    bus.publishEvent("pitService.autoFuelChanged", { refuel: true });
+    flush(audio);
+    expect(voiceClipsPlayed()).toEqual([AUTO_ON]);
+    expect(mockLogger.debug).not.toHaveBeenCalledWith(
+      expect.stringContaining("pit service request suppressed: pit-crew.auto-fuel-"),
+    );
+  });
+
+  it("the pit-action cooldown silences it — pit exit is where the sim re-arms the queue on its own", () => {
+    pitActionsAllowed = false;
+    bus.publishEvent("pitService.autoFuelChanged", { refuel: true });
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([]);
+    expect(mockLogger.debug).toHaveBeenCalledWith("pit-action suppressed (cooldown active): pit-crew.auto-fuel-on");
+  });
+
+  it("the master gate off silences it", () => {
+    voiceMasterEnabled = false;
+    bus.publishEvent("pitService.autoFuelChanged", { refuel: false });
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([]);
+  });
+
+  it("consults the master first, then the opt-in, then the cooldown — the toggles' order", () => {
+    voiceMasterEnabled = false;
+    bus.publishEvent("pitService.autoFuelChanged", { refuel: true });
+
+    expect(getRaceEngineerMasterEnabled).toHaveBeenCalled();
+    expect(getAutoFuelCalloutEnabled).not.toHaveBeenCalled();
+    expect(getPitActionsAllowed).not.toHaveBeenCalled();
+
+    voiceMasterEnabled = true;
+    autoFuelEnabled = false;
+    bus.publishEvent("pitService.autoFuelChanged", { refuel: true });
+
+    expect(getAutoFuelCalloutEnabled).toHaveBeenCalledWith("changed");
+    expect(getPitActionsAllowed).not.toHaveBeenCalled();
+
+    autoFuelEnabled = true;
+    bus.publishEvent("pitService.autoFuelChanged", { refuel: true });
+
+    expect(getPitActionsAllowed).toHaveBeenCalled();
+  });
+
+  it("toggling the opt-in off mid-clip does not cut the in-flight line", () => {
+    bus.publishEvent("pitService.autoFuelChanged", { refuel: true });
+    expect(audio._played.length).toBeGreaterThan(0);
+
+    autoFuelEnabled = false;
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([AUTO_ON]);
   });
 });
 
