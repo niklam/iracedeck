@@ -180,6 +180,7 @@ export { decodePenaltyFlags, PENALTY_FLAG_MASK, type CarPenaltyFlags } from "./p
 
 // Telemetry feature detection (car-capability + session-phase helpers)
 export {
+  getTireChangeGranularity,
   hasPitLimiter,
   hasVisor,
   hasWipers,
@@ -187,6 +188,7 @@ export {
   isPenaltyFlagActive,
   isPostRace,
   isPreGreen,
+  type TireChangeGranularity,
 } from "./telemetry-features.js";
 
 // Session info utilities

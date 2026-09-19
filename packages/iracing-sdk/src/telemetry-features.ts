@@ -57,6 +57,48 @@ export function hasWipers(t: TelemetryData | null): boolean {
 }
 
 /**
+ * The finest unit the current car's pit crew can change tires in:
+ * `"corner"` (any single tire), `"side"` (left or right pair) or `"all"`
+ * (all four at once).
+ */
+export type TireChangeGranularity = "corner" | "side" | "all";
+
+/**
+ * Detect the current car's tire-change granularity (#954).
+ *
+ * iRacing publishes only the `dp*TireChange` fields that match what the car's
+ * pit crew can do: the four corner fields (`dpLFTireChange` …), the two side
+ * fields (`dpLTireChange` / `dpRTireChange`) or the single `dpTireChange`. The
+ * fields' presence is the capability; their values are never read.
+ *
+ * The FINEST level any present field implies wins, so an unexpected mix (a
+ * corner field beside `dpTireChange`, say) resolves to the finer level: that
+ * way a wrong reading only fails to expand a request, which is what the sim
+ * received before, rather than changing tires the user did not ask for.
+ *
+ * @param t - The latest telemetry snapshot, or null when unavailable
+ * @returns the granularity, or null when disconnected or when the car publishes none of the fields
+ */
+export function getTireChangeGranularity(t: TelemetryData | null | undefined): TireChangeGranularity | null {
+  if (!t) return null;
+
+  if (
+    t.dpLFTireChange !== undefined ||
+    t.dpRFTireChange !== undefined ||
+    t.dpLRTireChange !== undefined ||
+    t.dpRRTireChange !== undefined
+  ) {
+    return "corner";
+  }
+
+  if (t.dpLTireChange !== undefined || t.dpRTireChange !== undefined) return "side";
+
+  if (t.dpTireChange !== undefined) return "all";
+
+  return null;
+}
+
+/**
  * Whether the session is in a PRE-GREEN phase — the grid / warmup / formation
  * (parade) lap before the green flag, plus `Invalid` (telemetry settling /
  * unknown). During these phases neither iRacing's live-standings position
