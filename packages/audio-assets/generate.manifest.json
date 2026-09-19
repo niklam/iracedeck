@@ -22264,6 +22264,142 @@
       "textPreview": "Two laps to green.",
       "generatedAt": "2026-09-18T16:36:25.032Z",
       "requestId": "hIV4ZKT3WTI9GgtdzJgz"
+    },
+    "voice/default/tire-wear/left-front-01.mp3": {
+      "hash": "7863792440513a6c",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Left front",
+      "generatedAt": "2026-09-19T17:01:31.279Z",
+      "requestId": "j104CMmNDrptyYs9LABr"
+    },
+    "voice/default/tire-wear/right-front-01.mp3": {
+      "hash": "8f9f55cc48b52f1d",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Right front",
+      "generatedAt": "2026-09-19T17:01:31.449Z",
+      "requestId": "qPVskDcTrZLFF0X1tjcd"
+    },
+    "voice/default/tire-wear/left-rear-01.mp3": {
+      "hash": "98cfd8e741fd3cdc",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Left rear",
+      "generatedAt": "2026-09-19T17:01:31.605Z",
+      "requestId": "r5Ir7UUtphFFBi0arBJ1"
+    },
+    "voice/default/tire-wear/right-rear-01.mp3": {
+      "hash": "505309f50c74668e",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Right rear",
+      "generatedAt": "2026-09-19T17:01:31.760Z",
+      "requestId": "eIOGJxTJCYLotcGHMzjB"
+    },
+    "voice/default/tire-wear/percent-01.mp3": {
+      "hash": "c35205852385f494",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "percent.",
+      "generatedAt": "2026-09-19T17:01:31.922Z",
+      "requestId": "lwNsSyAJXVHnu4DPgmvW"
+    },
+    "voice/default/tire-wear/heaviest-lf-inside-01.mp3": {
+      "hash": "c29d3e563c2e788d",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Wear is heaviest on the left front, inside shoulder.",
+      "generatedAt": "2026-09-19T17:01:32.171Z",
+      "requestId": "177UULTJI7jhlGilRaLH"
+    },
+    "voice/default/tire-wear/heaviest-lf-middle-01.mp3": {
+      "hash": "f85aa8f7b1ff0a40",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Wear is heaviest in the middle of the left front.",
+      "generatedAt": "2026-09-19T17:01:32.413Z",
+      "requestId": "B3wpg4A8tZBud3CIMGTt"
+    },
+    "voice/default/tire-wear/heaviest-lf-outside-01.mp3": {
+      "hash": "a11fcf1af750a89d",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Wear is heaviest on the left front, outside shoulder.",
+      "generatedAt": "2026-09-19T17:01:32.651Z",
+      "requestId": "fOTiwdTG5k9NbAFaQ3lN"
+    },
+    "voice/default/tire-wear/heaviest-rf-inside-01.mp3": {
+      "hash": "40dd523120065be4",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Wear is heaviest on the right front, inside shoulder.",
+      "generatedAt": "2026-09-19T17:01:32.904Z",
+      "requestId": "g5ozeIAtRQvD0QvbM1fg"
+    },
+    "voice/default/tire-wear/heaviest-rf-middle-01.mp3": {
+      "hash": "e146a224d83d467c",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Wear is heaviest in the middle of the right front.",
+      "generatedAt": "2026-09-19T17:01:33.135Z",
+      "requestId": "F3L0OiBQO3KUbHKvOOpA"
+    },
+    "voice/default/tire-wear/heaviest-rf-outside-01.mp3": {
+      "hash": "7ff8bbcbbed5d23c",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Wear is heaviest on the right front, outside shoulder.",
+      "generatedAt": "2026-09-19T17:01:33.392Z",
+      "requestId": "jdj7XWm1dAtj2SZaFRb4"
+    },
+    "voice/default/tire-wear/heaviest-lr-inside-01.mp3": {
+      "hash": "db908e0c09d5a28e",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Wear is heaviest on the left rear, inside shoulder.",
+      "generatedAt": "2026-09-19T17:01:33.627Z",
+      "requestId": "Q9eHL5BkusW3Do1BOqr3"
+    },
+    "voice/default/tire-wear/heaviest-lr-middle-01.mp3": {
+      "hash": "a5c1d313da163fac",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Wear is heaviest in the middle of the left rear.",
+      "generatedAt": "2026-09-19T17:01:33.990Z",
+      "requestId": "Scwplo2QJRkUjS1pSPLr"
+    },
+    "voice/default/tire-wear/heaviest-lr-outside-01.mp3": {
+      "hash": "70acc01709b38aa3",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Wear is heaviest on the left rear, outside shoulder.",
+      "generatedAt": "2026-09-19T17:01:34.244Z",
+      "requestId": "84qeMuMEvA2wOLHDsRcG"
+    },
+    "voice/default/tire-wear/heaviest-rr-inside-01.mp3": {
+      "hash": "881b938fb34f3f68",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Wear is heaviest on the right rear, inside shoulder.",
+      "generatedAt": "2026-09-19T17:01:34.495Z",
+      "requestId": "e0j9dXsiMLddsQGyvtRL"
+    },
+    "voice/default/tire-wear/heaviest-rr-middle-01.mp3": {
+      "hash": "407558569c8e1901",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Wear is heaviest in the middle of the right rear.",
+      "generatedAt": "2026-09-19T17:01:34.753Z",
+      "requestId": "VB4vyh0ckKtb6teVSaDl"
+    },
+    "voice/default/tire-wear/heaviest-rr-outside-01.mp3": {
+      "hash": "63cfb5411151a294",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Wear is heaviest on the right rear, outside shoulder.",
+      "generatedAt": "2026-09-19T17:01:35.036Z",
+      "requestId": "LazZVFTSk8T53LsFnfES"
     }
   }
 }
