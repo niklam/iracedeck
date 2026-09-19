@@ -66,7 +66,10 @@ export {
 // the `FuelStats` precedent directly below. `resolvePlayerCarIdx` rides with
 // it for the scenario harness, whose caution-shortcut precondition asks THIS
 // reader whether a session names the player rather than restating its rule.
-export { type CautionLineup, resolvePlayerCarIdx } from "./diff/caution-lineup.js";
+// `resolveCautionLineup` itself — the pure reader `getCautionLineup()` wraps —
+// rides for the audio-scenarios test that derives the 2026-09-19 snapshot's
+// lineup from the committed fixture rather than typing its number in.
+export { type CautionLineup, resolveCautionLineup, resolvePlayerCarIdx } from "./diff/caution-lineup.js";
 // The phase `getCautionPhase()` returns (issue #1127) — the callouts that
 // gate on a STAGE of the caution rather than on "is one out" name it.
 export { type CautionPhase } from "./state.js";

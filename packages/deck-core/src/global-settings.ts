@@ -1066,10 +1066,11 @@ export const GlobalSettingsSchema = z
       .default(true),
     /**
      * Per-callout opt-ins for the narrated full-course caution sequence
-     * (issue #1127): who to follow, the pace car coming out, it picking up
-     * the field, an extra caution lap, the one-to-go warning, the car ahead
-     * changing during the lineup, the pace car peeling off, and the restart
-     * itself. The canonical id↔key mapping lives in `@iracedeck/audio-scenarios`
+     * (issue #1127), nine subjects: who to follow, the pace car coming out,
+     * it picking up the field, an extra caution lap, the one-to-go warning,
+     * the car ahead changing during the lineup, your race position on the
+     * last caution lap, the pace car peeling off, and the restart itself.
+     * The canonical id↔key mapping lives in `@iracedeck/audio-scenarios`
      * (`CAUTION_CALLOUT_SETTING_KEYS`). All default true — new Race Engineer
      * functionality ships on — and, like every other `calloutEnabled*` field,
      * carry no `.catch`: the union-plus-transform chain has no throw path.

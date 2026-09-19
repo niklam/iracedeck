@@ -1,7 +1,7 @@
 /**
  * The full-course caution family (issue #1127).
  *
- * Eight contracts over the translator's caution events plus the caution flag
+ * Nine contracts over the translator's caution events plus the caution flag
  * itself. The assertions here are about WHEN each one fires and how it is
  * scheduled — what it says is the bundled voice's script, which does not exist
  * yet, so the cases are structural but for one: the follow call's scheduling
@@ -31,7 +31,12 @@ import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { CalloutScript } from "@iracedeck/callout-script";
 import type { IEventBus, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { calculateRacePositions, Flags, hasFlag, SessionState, type TelemetryData } from "@iracedeck/iracing-sdk";
-import type { CautionLineup, LivePosition } from "@iracedeck/sim-events-iracing";
+import {
+  type CautionLineup,
+  type CautionPhase,
+  type LivePosition,
+  resolveCautionLineup,
+} from "@iracedeck/sim-events-iracing";
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -55,12 +60,14 @@ import { FLAG_CONTRACTS, WAVING_FLAG_COOLDOWN_MS } from "./flag-alerts.js";
 
 const mockSessionType = vi.fn(() => "Race");
 const mockStandingStart = vi.fn(() => false);
-const mockLatestTelemetry = vi.fn((): unknown => null);
 
-vi.mock("@iracedeck/sim-events-iracing", () => ({
+// The translator's live readers are stubbed; its PURE lineup resolver is the
+// real one, so the snapshot cases at the end derive their lineup from the
+// committed fixture instead of typing its number in.
+vi.mock("@iracedeck/sim-events-iracing", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@iracedeck/sim-events-iracing")>()),
   getSessionType: () => mockSessionType(),
   getStandingStart: () => mockStandingStart(),
-  getLatestTelemetry: () => mockLatestTelemetry(),
 }));
 
 /** Driver live in their own car, racing — what every contract's shared gate needs. */
@@ -98,10 +105,31 @@ const EVENT_OF: Record<CautionCalloutId, SimEventName> = {
 /** The two contracts whose event also fires outside a caution. */
 const PACE_CAR_IDS: readonly CautionCalloutId[] = ["pace-car-out", "pace-car-off"];
 
-let underCaution: boolean;
+/**
+ * The phase each call naturally arrives in — what the translator's
+ * `getCautionPhase()` has settled on when the event is published. The follow
+ * call and the pace car's arrival land while the field is still waving; the
+ * pickup, an extra lap and a mid-caution reorder while it is caught; the
+ * last lap's three under one to go; and the restart's own event is published
+ * AFTER the phase has returned to none.
+ */
+const PHASE_OF: Record<CautionCalloutId, CautionPhase> = {
+  follow: "waving",
+  "pace-car-out": "waving",
+  "field-caught": "caught",
+  "extra-lap": "caught",
+  "one-to-go": "one-to-go",
+  "lineup-changed": "caught",
+  position: "one-to-go",
+  "pace-car-off": "one-to-go",
+  restart: "none",
+};
+
+let cautionPhase: CautionPhase;
+let lineupNow: CautionLineup | null;
 
 function contracts(): readonly ScenarioContract[] {
-  return buildCautionContracts(() => underCaution);
+  return buildCautionContracts({ getCautionPhase: () => cautionPhase, getCautionLineup: () => lineupNow });
 }
 
 function contract(id: CautionCalloutId): ScenarioContract {
@@ -112,16 +140,19 @@ function contract(id: CautionCalloutId): ScenarioContract {
   return found;
 }
 
-function event(id: CautionCalloutId, telemetry: unknown = IN_CAR): SimEventOf<SimEventName> {
+function event(id: CautionCalloutId, telemetry: unknown = IN_CAR, timestamp = 0): SimEventOf<SimEventName> {
   return {
     event: EVENT_OF[id],
-    timestamp: 0,
+    timestamp,
     telemetry,
     data: {},
   } as unknown as SimEventOf<SimEventName>;
 }
 
-function fires(id: CautionCalloutId, telemetry: unknown = IN_CAR): boolean {
+/** Whether the call's `where:` admits the event, with the phase it naturally arrives in unless told otherwise. */
+function fires(id: CautionCalloutId, telemetry: unknown = IN_CAR, phase: CautionPhase = PHASE_OF[id]): boolean {
+  cautionPhase = phase;
+
   return contract(id).when?.where?.(event(id, telemetry)) !== false;
 }
 
@@ -257,10 +288,10 @@ function makeVocabEngine(): {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  underCaution = true;
+  cautionPhase = "caught";
+  lineupNow = LINEUP;
   mockSessionType.mockReturnValue("Race");
   mockStandingStart.mockReturnValue(false);
-  mockLatestTelemetry.mockReturnValue(null);
 });
 
 describe("the caution contracts", () => {
@@ -356,10 +387,11 @@ describe("the caution contracts", () => {
     }
   });
 
-  it("weighs the follow call one notch below the rest, so a tie in the pending slot costs it and not the caution announcement", () => {
+  it("weighs the follow and position calls one notch below the rest, so a tie in the pending slot costs them and not the call they follow", () => {
     expect(contract("follow").weight).toBe(WEIGHT.SAFETY - 1);
+    expect(contract("position").weight).toBe(WEIGHT.SAFETY - 1);
 
-    for (const id of IDS.filter((x) => x !== "follow" && x !== "restart")) {
+    for (const id of IDS.filter((x) => x !== "follow" && x !== "position" && x !== "restart")) {
       expect(contract(id).weight).toBe(WEIGHT.SAFETY);
     }
   });
@@ -373,21 +405,39 @@ describe("the caution contracts", () => {
 
       expect(contract(id).speakGate?.description.length ?? 0).toBeGreaterThan(20);
 
-      underCaution = true;
+      cautionPhase = PHASE_OF[id];
       expect(contract(id).speakGate?.admit({} as never)).toBe(true);
 
       // The case the gate exists for: a queueable fire parked behind a busy bus
       // replays without re-running `where:`, and the pending slot has no TTL,
       // so by the time it drains the caution can be long over.
-      underCaution = false;
+      cautionPhase = "none";
       expect(contract(id).speakGate?.admit({} as never)).toBe(false);
-      underCaution = true;
+      cautionPhase = "caught";
     }
   });
 
-  it("shares the flag family so a newer caution call supersedes a stale one — except the follow call, which pairs with the caution flag's own line", () => {
+  it("re-checks at speak time that the player still holds a pace row — the follow and lineup-change calls, whose sentence is about the lineup", () => {
+    // R15: a driver towed during the hold must not hear "The car ahead of
+    // you has changed." in his stall. The one-to-go call deliberately keeps
+    // the plain gate — "One lap to green." is true for him too.
+    for (const id of ["follow", "lineup-changed"] as const) {
+      cautionPhase = PHASE_OF[id];
+      lineupNow = LINEUP;
+      expect(contract(id).speakGate?.admit({} as never)).toBe(true);
+
+      lineupNow = null;
+      expect(contract(id).speakGate?.admit({} as never)).toBe(false);
+    }
+
+    lineupNow = null;
+    cautionPhase = "one-to-go";
+    expect(contract("one-to-go").speakGate?.admit({} as never)).toBe(true);
+  });
+
+  it("shares the flag family so a newer caution call supersedes a stale one — except the follow and position calls, which must wait behind a family-mate rather than cut it", () => {
     for (const id of IDS) {
-      if (id === "follow") {
+      if (id === "follow" || id === "position") {
         expect(contract(id).family).toBeUndefined();
       } else {
         expect(contract(id).family).toBe("flag");
@@ -416,17 +466,37 @@ describe("the caution contracts", () => {
   });
 
   it("speaks about the pace car only under a caution — the rolling start's pace car belongs to the start", () => {
-    underCaution = false;
+    for (const id of PACE_CAR_IDS) expect(fires(id, IN_CAR, "none")).toBe(false);
 
-    for (const id of PACE_CAR_IDS) expect(fires(id)).toBe(false);
-
-    for (const id of IDS.filter((x) => !PACE_CAR_IDS.includes(x) && x !== "lineup-changed")) {
-      expect(fires(id)).toBe(true);
+    // With no caution phase at all, only the calls whose event cannot fire
+    // outside a caution still pass their `where:` — the rest each ask for
+    // the stage they speak at.
+    for (const id of ["extra-lap", "one-to-go", "position", "restart"] as const) {
+      expect(fires(id, IN_CAR, "none"), id).toBe(true);
     }
 
-    underCaution = true;
+    for (const id of ["follow", "field-caught", "lineup-changed"] as const) {
+      expect(fires(id, IN_CAR, "none"), id).toBe(false);
+    }
 
     for (const id of PACE_CAR_IDS) expect(fires(id)).toBe(true);
+  });
+
+  it("reads the phase and never the raw flag — a one-to-go bit in the event's own telemetry gates nothing", () => {
+    // The three raw-bit readers the first build carried are gone (R6): every
+    // stage question is asked of the translator's phase, which also folds in
+    // the F2 withdrawal and holds its value through a missing read.
+    const flagged = { ...IN_CAR, SessionFlags: Flags.Caution | Flags.OneLapToGreen };
+
+    for (const id of IDS) expect(fires(id, flagged), id).toBe(true);
+  });
+
+  it("speaks the follow call only while the field is still waving — a re-raised waving bit after the pickup repeats nothing (R4)", () => {
+    expect(fires("follow", IN_CAR, "waving")).toBe(true);
+
+    for (const phase of ["caught", "one-to-go", "none"] as const) {
+      expect(fires("follow", IN_CAR, phase), phase).toBe(false);
+    }
   });
 
   it("holds the follow call, because the pace rows land after the flag and the announcement needs the bus first", () => {
@@ -445,7 +515,37 @@ describe("the caution contracts", () => {
   });
 });
 
-describe("the lineup-change call and the one-to-go flag", () => {
+describe("the lineup-change call and the one-to-go transition (R1)", () => {
+  /**
+   * The two contracts from ONE build, because the one-to-go contract's
+   * `where:` stashes its event's timestamp for the held lineup-change
+   * decision to read — a fresh build per contract would give each its own
+   * stash and prove nothing.
+   */
+  function pair(phase: () => CautionPhase): {
+    oneToGo: (timestamp: number) => boolean;
+    change: (timestamp: number) => boolean;
+  } {
+    const built = buildCautionContracts({ getCautionPhase: phase, getCautionLineup: () => LINEUP });
+    const find = (id: CautionCalloutId): ScenarioContract => {
+      const c = built.find((x) => x.id === `pit-crew.caution-${id}`);
+
+      if (!c) throw new Error(id);
+
+      return c;
+    };
+    const admits = (c: ScenarioContract, timestamp: number): boolean =>
+      c.when?.where?.(event(SCENARIO_ID_TO_CAUTION_ID[c.id], IN_CAR, timestamp)) !== false;
+
+    return {
+      oneToGo: (timestamp) => admits(find("one-to-go"), timestamp),
+      change: (timestamp) => admits(find("lineup-changed"), timestamp),
+    };
+  }
+
+  /** The measured shape: the re-form at T, the flag one tick later, the decision after the hold. */
+  const T = 415_100;
+
   it("holds its decision long enough for the one-to-go flag to land", () => {
     expect(contract("lineup-changed").triggerDelay).toBe(CAUTION_LINEUP_CHANGE_DELAY_MS);
     // The measured gap between the re-form and the flag is one tick (20 ms);
@@ -453,48 +553,69 @@ describe("the lineup-change call and the one-to-go flag", () => {
     expect(CAUTION_LINEUP_CHANGE_DELAY_MS).toBeGreaterThan(100);
   });
 
-  it("stays quiet once the one-to-go flag is out — that call names the car and the line itself", () => {
-    mockLatestTelemetry.mockReturnValue({ SessionFlags: Flags.Caution | Flags.OneLapToGreen });
+  it("stands down for the re-form the one-to-go call names itself — the change emitted a tick BEFORE the flag", () => {
+    let phase: CautionPhase = "caught";
+    const { oneToGo, change } = pair(() => phase);
 
-    expect(fires("lineup-changed")).toBe(false);
+    // The change's handler holds its event; the one-to-go's where: runs at
+    // T + 20 while it waits, and by the decision the phase is one to go.
+    expect(oneToGo(T + 20)).toBe(true);
+    phase = "one-to-go";
+
+    expect(change(T)).toBe(false);
   });
 
-  it("speaks a mid-caution reorder, with the one-to-go flag not yet out", () => {
-    mockLatestTelemetry.mockReturnValue({ SessionFlags: Flags.Caution });
+  it("speaks a change emitted AFTER the flag — the car ahead pitting on the one-to-green lap, with pits open from that tick", () => {
+    let phase: CautionPhase = "caught";
+    const { oneToGo, change } = pair(() => phase);
 
-    expect(fires("lineup-changed")).toBe(true);
+    expect(oneToGo(T + 20)).toBe(true);
+    phase = "one-to-go";
+
+    expect(change(T + 30_000)).toBe(true);
   });
 
-  it("speaks when there is no live telemetry to read — a missing signal never silences a call", () => {
-    mockLatestTelemetry.mockReturnValue(null);
+  it("speaks a mid-caution reorder no one-to-go has followed", () => {
+    const { change } = pair(() => "caught");
 
-    expect(fires("lineup-changed")).toBe(true);
+    expect(change(T)).toBe(true);
+  });
+
+  it("is not silenced by the LAST caution's one-to-go — a stash older than the change is no reason to stand down", () => {
+    let phase: CautionPhase = "one-to-go";
+    const { oneToGo, change } = pair(() => phase);
+
+    expect(oneToGo(T + 20)).toBe(true);
+
+    // Restart, green running, the next caution: its own re-form, and its own
+    // flag a tick later.
+    phase = "caught";
+    expect(change(T + 400_000)).toBe(true);
+
+    expect(oneToGo(T + 400_020)).toBe(true);
+    phase = "one-to-go";
+    expect(change(T + 400_000)).toBe(false);
   });
 
   it("stays quiet once the caution is over, so a change held over the green cannot be spoken into the restart", () => {
-    underCaution = false;
-    mockLatestTelemetry.mockReturnValue({ SessionFlags: 0 });
+    const { change } = pair(() => "none");
 
-    expect(fires("lineup-changed")).toBe(false);
+    expect(change(T)).toBe(false);
   });
 
-  it("leaves the one-to-go flag alone for every call but the three that consult it", () => {
-    mockLatestTelemetry.mockReturnValue({ SessionFlags: Flags.Caution | Flags.OneLapToGreen });
+  it("with the one-to-go call switched off nothing is stashed, and the re-form change speaks its lane and car instead", () => {
+    // The opt-in wrapper runs ahead of a contract's `where:`, so a disabled
+    // one-to-go call never records its moment — and the driver who switched
+    // it off still hears the re-form through this call. Documented in the
+    // module header as the right way round.
+    let phase: CautionPhase = "caught";
+    const { change } = pair(() => phase);
 
-    for (const id of IDS.filter((x) => !FLAG_READERS.includes(x))) {
-      expect(fires(id), id).toBe(true);
-    }
+    phase = "one-to-go";
 
-    mockLatestTelemetry.mockReturnValue({ SessionFlags: Flags.Caution });
-
-    for (const id of IDS.filter((x) => !FLAG_READERS.includes(x))) {
-      expect(fires(id), id).toBe(true);
-    }
+    expect(change(T)).toBe(true);
   });
 });
-
-/** The three calls that read the one-to-go flag off live telemetry at decision time. */
-const FLAG_READERS: readonly CautionCalloutId[] = ["lineup-changed", "field-caught", "pace-car-off"];
 
 /**
  * The two road-course rules (the module header's findings 4 and 5), pinned
@@ -520,26 +641,31 @@ describe("the pickup and pace-car-off calls on a road course (2026-09-18 capture
     return tick.SessionFlags;
   }
 
+  /**
+   * The phase the translator SETTLED on at each tick, as
+   * `sim-events-iracing`'s road replay test pins it ("replays the captured
+   * ROAD-COURSE cautions"): the deployment ticks land while the caution is
+   * still waving, the pickup tick has already moved on to one to go, and the
+   * real exit is under one to go. The flags below are checked against the
+   * fixture too, so a fixture that stops carrying those ticks fails here.
+   */
+  const PHASE_AT: Record<number, CautionPhase> = {
+    152.23: "waving",
+    309.33: "one-to-go",
+    461.22: "one-to-go",
+    562.07: "waving",
+  };
+
   it('keeps "Two to green" silent when the static caution and one to green rise on the same tick (309.33 s)', () => {
     const flags = flagsAt(309.33);
 
     expect(hasFlag(flags, Flags.Caution) && hasFlag(flags, Flags.OneLapToGreen)).toBe(true);
-    mockLatestTelemetry.mockReturnValue({ SessionFlags: flags });
 
-    expect(fires("field-caught")).toBe(false);
+    expect(fires("field-caught", IN_CAR, PHASE_AT[309.33])).toBe(false);
   });
 
-  it('speaks "Two to green" at an oval pickup, where the one-to-go flag is a lap away', () => {
-    // 333.57 s on the oval capture: Caution|Servicible|StartHidden, no one-to-go.
-    mockLatestTelemetry.mockReturnValue({ SessionFlags: 0x10044000 });
-
-    expect(fires("field-caught")).toBe(true);
-  });
-
-  it('speaks "Two to green" with no telemetry to read — a missing signal never silences a call', () => {
-    mockLatestTelemetry.mockReturnValue(null);
-
-    expect(fires("field-caught")).toBe(true);
+  it('speaks "Two to green" at an oval pickup, where the one-to-go flag is a lap away and the phase settles on caught', () => {
+    expect(fires("field-caught", IN_CAR, "caught")).toBe(true);
   });
 
   it('keeps "Pace car\'s off" silent while the pace car rolls out through pit exit to deploy (152.23 s and 562.07 s)', () => {
@@ -551,9 +677,8 @@ describe("the pickup and pace-car-off calls on a road course (2026-09-18 capture
       // onto the circuit, with the caution still waving and no one-to-go flag.
       expect(tick?.CarIdxTrackSurface[20], `${t}`).toBe(2);
       expect(hasFlag(tick?.SessionFlags ?? 0, Flags.OneLapToGreen), `${t}`).toBe(false);
-      mockLatestTelemetry.mockReturnValue({ SessionFlags: tick?.SessionFlags });
 
-      expect(fires("pace-car-off"), `${t}`).toBe(false);
+      expect(fires("pace-car-off", IN_CAR, PHASE_AT[t]), `${t}`).toBe(false);
     }
   });
 
@@ -562,21 +687,129 @@ describe("the pickup and pace-car-off calls on a road course (2026-09-18 capture
 
     expect(tick?.CarIdxTrackSurface[20]).toBe(2);
     expect(hasFlag(tick?.SessionFlags ?? 0, Flags.OneLapToGreen)).toBe(true);
-    mockLatestTelemetry.mockReturnValue({ SessionFlags: tick?.SessionFlags });
 
-    expect(fires("pace-car-off")).toBe(true);
+    expect(fires("pace-car-off", IN_CAR, PHASE_AT[461.22])).toBe(true);
   });
 
-  it('speaks "Pace car\'s off" with no telemetry to read — a missing signal never silences a call', () => {
-    mockLatestTelemetry.mockReturnValue(null);
-
-    expect(fires("pace-car-off")).toBe(true);
+  it('keeps "Pace car\'s off" silent while the field is merely caught — the exit only ever comes after one to go', () => {
+    expect(fires("pace-car-off", IN_CAR, "caught")).toBe(false);
   });
 
-  it("never asks the flag for the position call — its event already says the flag is up", () => {
-    mockLatestTelemetry.mockReturnValue({ SessionFlags: Flags.Caution });
+  it("never asks the phase for the position call — its event already says the flag is up", () => {
+    for (const phase of ["caught", "one-to-go"] as const) expect(fires("position", IN_CAR, phase)).toBe(true);
+  });
+});
 
-    expect(fires("position")).toBe(true);
+/**
+ * The position call's scheduling beside the calls it shares its lap with
+ * (R7), driven through the real engine like the follow call's above: with the
+ * one-to-go line in flight, the position call must wait behind it, never cut
+ * it — and the positive control shows the flag family WOULD cut it.
+ */
+describe("the position call beside the one-to-go line", () => {
+  const VOICE = "test";
+  const ONE_TO_GO_CLIP = `voice/${VOICE}/caution/one-to-go-01.mp3`;
+  const POSITION_CLIP = `voice/${VOICE}/position-number/7.mp3`;
+
+  const manifest: AudioAssetsManifest = {
+    clips: [
+      "sfx/IRD-tick-open.mp3",
+      "sfx/IRD-tick-close.mp3",
+      "sfx/IRD-ambient-pit.mp3",
+      ONE_TO_GO_CLIP,
+      POSITION_CLIP,
+    ],
+    ambientLoop: "sfx/IRD-ambient-pit.mp3",
+    ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
+  };
+
+  const script = {
+    schema: 1,
+    scenarios: {
+      "pit-crew.caution-one-to-go": { comment: "c", test: "t", sequence: ["pool:caution/one-to-go"] },
+      "pit-crew.caution-position": { comment: "c", test: "t", sequence: ["pool:position-number/7"] },
+    },
+    frames: {
+      radio: {
+        comment: "f",
+        open: [{ clip: "sfx/IRD-tick-open.mp3" }],
+        close: [{ clip: "sfx/IRD-tick-close.mp3" }],
+      },
+    },
+    pools: {},
+    fragments: {},
+  } as unknown as CalloutScript;
+
+  function run(opts: { positionFamily?: string } = {}): {
+    played: () => string[];
+    cutVoice: () => boolean;
+    flush: () => void;
+  } {
+    const bus = createMockBus();
+    const audio = createFakeAudio();
+    const engine = initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
+
+    cautionPhase = "one-to-go";
+    engine.defineContract(contract("one-to-go"));
+    engine.defineContract({
+      ...contract("position"),
+      family: "positionFamily" in opts ? opts.positionFamily : contract("position").family,
+    });
+    engine.setScripts(new Map([[VOICE, script]]));
+
+    bus.publish(event("one-to-go"));
+    // The radio frame's open tick plays on SFX first; the body reaches the
+    // Voice channel only once that tick completes.
+    audio._triggerChannelEnd(AudioChannel.SFX);
+
+    bus.publish(event("position"));
+
+    return {
+      played: () => audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path),
+      cutVoice: () =>
+        (audio.stopChannel as unknown as { mock: { calls: unknown[][] } }).mock.calls.some(
+          (call) => call[0] === AudioChannel.Voice,
+        ),
+      flush: () => {
+        for (let i = 0; i < 20; i++) {
+          audio._triggerChannelEnd(AudioChannel.Voice);
+          audio._triggerChannelEnd(AudioChannel.SFX);
+        }
+      },
+    };
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    _resetAudioScenarios();
+  });
+
+  it("waits for the one-to-go line to finish and then speaks — both calls, in order", () => {
+    const { played, cutVoice, flush } = run();
+
+    expect(cutVoice()).toBe(false);
+    expect(played()).toEqual([ONE_TO_GO_CLIP]);
+
+    flush();
+
+    expect(played()).toEqual([ONE_TO_GO_CLIP, POSITION_CLIP]);
+  });
+
+  it("would cut that line mid-word if it shared the flag family — the positive control", () => {
+    const { cutVoice } = run({ positionFamily: "flag" });
+
+    expect(cutVoice()).toBe(true);
+  });
+
+  it("weighs below Green Held as well, which on a short oval lands near the 35% point", () => {
+    const greenHeld = FLAG_CONTRACTS.find((c) => c.id === "pit-crew.flag-green-held");
+
+    expect(greenHeld?.weight ?? 0).toBeGreaterThan(contract("position").weight ?? 0);
+    expect(contract("one-to-go").weight ?? 0).toBeGreaterThan(contract("position").weight ?? 0);
   });
 });
 
@@ -650,6 +883,8 @@ describe("the follow call beside the caution flag's own line", () => {
 
     if (!cautionWaving) throw new Error("the caution-waving flag contract is gone");
 
+    // The follow call speaks only while the field is still waving (R4).
+    cautionPhase = "waving";
     engine.defineContract(cautionWaving);
     engine.defineContract({
       ...contract("follow"),
@@ -1037,6 +1272,10 @@ describe("the follow and lineup-change calls in the bundled voice, when the car 
     const audio = createFakeAudio();
     const engine = initializeAudioScenarios(bus, audio, BUNDLED_MANIFEST, mockLogger as never, () => VOICE);
 
+    // Each call at the phase it naturally arrives in; the speak-time lineup
+    // gate reads the same lineup the vocabulary does.
+    cautionPhase = PHASE_OF[id];
+    lineupNow = lineup;
     registerCautionVocabulary(engine, () => lineup, NO_LIVE_POSITION);
     engine.defineContract(contract(id));
     engine.setScripts(new Map([[VOICE, BUNDLED_SCRIPT]]));
@@ -1085,6 +1324,49 @@ describe("the follow and lineup-change calls in the bundled voice, when the car 
     });
   });
 
+  describe("a player towed during the hold (R15)", () => {
+    // The road capture's second caution: the player was passed car by car
+    // while stopped off track (550.47–557.67 s), the hold coalesced the
+    // changes into one decision at ~559 s, and by then he had been towed and
+    // held no pace row. The lineup resolves to null, the numberless fallback
+    // would play — "The car ahead of you has changed." to a car in its stall.
+    function spokenToTowed(id: "follow" | "lineup-changed"): string[] {
+      const bus = createMockBus();
+      const audio = createFakeAudio();
+      const engine = initializeAudioScenarios(bus, audio, BUNDLED_MANIFEST, mockLogger as never, () => VOICE);
+      let current: CautionLineup | null = { ...LINEUP, followsPaceCar: false, followCarNumber: null };
+      const built = buildCautionContracts({ getCautionPhase: () => "caught", getCautionLineup: () => current });
+      const c = built.find((x) => x.id === cautionScenarioId(id));
+
+      if (!c) throw new Error(id);
+
+      registerCautionVocabulary(engine, () => current, NO_LIVE_POSITION);
+      engine.defineContract(c);
+      engine.setScripts(new Map([[VOICE, BUNDLED_SCRIPT]]));
+
+      bus.publish(event(id));
+
+      // Towed inside the hold: no row by the time the decision is made.
+      current = null;
+      vi.advanceTimersByTime(Math.max(CAUTION_FOLLOW_DELAY_MS, CAUTION_LINEUP_CHANGE_DELAY_MS) + 1);
+
+      for (let i = 0; i < 10; i++) {
+        audio._triggerChannelEnd(AudioChannel.SFX);
+        audio._triggerChannelEnd(AudioChannel.Voice);
+      }
+
+      return audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path);
+    }
+
+    it("hears nothing about the car ahead changing — the numberless fallback is not true of a car in its stall", () => {
+      expect(spokenToTowed("lineup-changed")).toEqual([]);
+    });
+
+    it("hears no instruction to line up behind anyone either", () => {
+      expect(spokenToTowed("follow")).toEqual([]);
+    });
+  });
+
   describe("the lineup-change call", () => {
     it("still says the car ahead changed with a car ahead the session cannot name — never nothing, and without the lane", () => {
       // The lane is deliberately dropped on this path even though
@@ -1123,7 +1405,14 @@ describe("the position call in the bundled voice, against the 2026-09-19 snapsho
     import.meta.url,
   );
   const [snapshot] = JSON.parse(readFileSync(SNAPSHOT_FIXTURE, "utf-8")) as [
-    { PlayerCarPosition: number; CarIdxLapCompleted: number[]; CarIdxLapDistPct: number[] },
+    {
+      PlayerCarPosition: number;
+      CarIdxLapCompleted: number[];
+      CarIdxLapDistPct: number[];
+      CarIdxPaceLine: number[];
+      CarIdxPaceRow: number[];
+      CarIdxTrackSurface: number[];
+    },
   ];
 
   /** The snapshot's race order, from the same lap-progress calculator the canonical order rests on. */
@@ -1132,16 +1421,34 @@ describe("the position call in the bundled voice, against the 2026-09-19 snapsho
   /** What the translator's `getLivePosition()` answered at that moment: the player (index 0), single class. */
   const SNAPSHOT_LIVE: LivePosition = { position: positions[0], classPosition: positions[0], isMultiClass: false };
 
-  /** The snapshot's lineup as `caution-lineup.test.ts` proves it: 20th, on the inside, behind the lapped car. */
-  const SNAPSHOT_LINEUP: CautionLineup = {
-    followCarIdx: 7,
-    followCarNumber: "7",
-    line: "inside",
-    isLeader: false,
-    followsPaceCar: false,
-    doubleFile: true,
-    restartPosition: 20,
+  /**
+   * The snapshot's lineup DERIVED from the fixture through the real resolver
+   * (R12), the fixture widened as `caution-lineup.test.ts` widens it — slot
+   * 20 is the pace car, index 64 in the raw telemetry. Typed in, the number
+   * "the bug was between" was a typed-in 20 and the test never derived it; a
+   * resolver drifting to 21 (the old formula) or 19 (the race position) now
+   * turns the first case below red.
+   */
+  const PACE = 64;
+  const widen = (values: number[], fill: number): number[] => {
+    const out = new Array(72).fill(fill);
+
+    values.forEach((v, i) => (out[i === 20 ? PACE : i] = v));
+
+    return out;
   };
+  const SNAPSHOT_TELEMETRY = {
+    CarIdxPaceLine: widen(snapshot.CarIdxPaceLine, -1),
+    CarIdxPaceRow: widen(snapshot.CarIdxPaceRow, -1),
+    CarIdxLapDistPct: widen(snapshot.CarIdxLapDistPct, -1),
+    CarIdxTrackSurface: widen(snapshot.CarIdxTrackSurface, -1),
+  } as unknown as TelemetryData;
+  const SNAPSHOT_SESSION = {
+    DriverInfo: { DriverCarIdx: 0, PaceCarIdx: PACE, Drivers: [{ CarIdx: 7, CarNumber: "7" }] },
+  };
+  const SNAPSHOT_LINEUP = resolveCautionLineup(SNAPSHOT_TELEMETRY, SNAPSHOT_SESSION, true);
+
+  if (SNAPSHOT_LINEUP === null) throw new Error("the snapshot fixture resolved no lineup");
 
   /** Everything the Voice channel plays for one `caution.lastLapCheckpoint`. */
   function spoken(lineup: CautionLineup | null, live: LivePosition | null): string[] {
@@ -1184,6 +1491,15 @@ describe("the position call in the bundled voice, against the 2026-09-19 snapsho
   it("the snapshot puts the player 19th in the race and 20th in the lineup — the two numbers the bug was between", () => {
     expect(SNAPSHOT_LIVE.position).toBe(19);
     expect(snapshot.PlayerCarPosition).toBe(19);
+    expect(SNAPSHOT_LINEUP).toMatchObject({
+      restartPosition: 20,
+      followCarIdx: 7,
+      followCarNumber: "7",
+      line: "inside",
+      doubleFile: true,
+      isLeader: false,
+      followsPaceCar: false,
+    });
     expect(SNAPSHOT_LINEUP.restartPosition).not.toBe(SNAPSHOT_LIVE.position);
   });
 

@@ -264,6 +264,7 @@ import { LogLevel } from "@iracedeck/logger";
 import { createSvgRasterizer } from "@iracedeck/rasterizer";
 import {
   getCautionLineup,
+  getCautionPhase,
   getDriverSetupName,
   getLiveCarPosition,
   getLiveGaps,
@@ -820,12 +821,15 @@ const resolvePendingCarLivePosition = (pending: {
 registerPitCrew(eventBus, {
   // The full-course caution sequence (issue #1127): the per-callout opt-ins,
   // the lineup the `caution.*` vocabulary reads at speak time, and the
-  // translator's own caution phase — which the two pace-car callouts need
-  // because `paceCar.deployed` / `paceCar.off` also fire at a rolling start.
+  // translator's own caution phase — the boolean for the lap-time and
+  // position-change silencings, the phase itself for the caution family,
+  // which gates on WHICH stage the caution is in (the two pace-car callouts
+  // because `paceCar.deployed` / `paceCar.off` also fire at a rolling start).
   getCautionCalloutEnabled: (id: CautionCalloutId) =>
     (getGlobalSettings() as Record<string, unknown>)[CAUTION_CALLOUT_SETTING_KEYS[id]] !== false,
   getCautionLineup: () => getCautionLineup(),
   getUnderFullCourseCaution: () => isUnderFullCourseCaution(),
+  getCautionPhase: () => getCautionPhase(),
   getFlagCalloutEnabled: (id: FlagCalloutId) =>
     (getGlobalSettings() as Record<string, unknown>)[FLAG_CALLOUT_SETTING_KEYS[id]] !== false,
   logger: adapter.createLogger("PitCrewScenarios"),
