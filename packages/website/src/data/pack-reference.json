@@ -12,7 +12,7 @@
       "id": "pit-crew.auto-fuel-off",
       "family": "pit-service.fuel",
       "event": "pitService.autoFuelChanged",
-      "description": "Fuel is taken off the service for your next pit stop while iRacing's autofuel is armed — usually the sim's own decision, not a press of yours.",
+      "description": "iRacing's autofuel clears your manual fuel request for the next pit stop and takes the fuel over, as it does when it re-arms on pit approach.",
       "frame": "radio",
       "weight": 50,
       "weightBand": "NORMAL",
@@ -20,8 +20,8 @@
       "interrupt": false,
       "speakGate": null,
       "base": "voice/{voice}",
-      "comment": "iRacing's autofuel took fuel off the next stop by itself — the bare line, no acknowledgment, for the same reason as the refuel direction.",
-      "test": "Harness → Pit Service → Auto Fuel OFF, outside the pit-action cooldown. In-sim: as for Auto Fuel ON — arm autofuel and drive until the sim clears the fuel-fill checkbox itself.",
+      "comment": "iRacing's autofuel took the next stop's fuel over from a manual request — typically when the sim re-arms it on pit approach, which clears the fuel checkbox and the amount the driver queued in the same tick; autofuel then adds whatever the car needs at the stop. It does not mean no fuel is needed. The bare line, no acknowledgment, for the same reason as the refuel direction.",
+      "test": "Harness → Pit Service → Auto Fuel OFF, outside the pit-action cooldown. In-sim: with the autofuel system on, queue fuel by hand in the pit black box, then drive into the pit approach — the sim re-arms autofuel and clears your request.",
       "skip": false,
       "references": {
         "pools": [
@@ -38,7 +38,7 @@
       "id": "pit-crew.auto-fuel-on",
       "family": "pit-service.fuel",
       "event": "pitService.autoFuelChanged",
-      "description": "Fuel is added to the service for your next pit stop while iRacing's autofuel is armed — usually the sim's own decision, not a press of yours.",
+      "description": "Fuel is added to the service for your next pit stop while iRacing's autofuel is armed — by the sim or by your own press, which telemetry cannot tell apart.",
       "frame": "radio",
       "weight": 50,
       "weightBand": "NORMAL",
@@ -47,7 +47,7 @@
       "speakGate": null,
       "base": "voice/{voice}",
       "comment": "iRacing's autofuel put fuel on the next stop by itself — the bare line, with no acknowledgment in front: nobody asked, and the missing \"Got it.\" is what tells the driver this was the sim rather than their own press. A press made while autofuel is armed is announced this way too, since telemetry cannot tell the two apart. It shares the manual fuel toggle's family, so a press straight after replaces it, and like the toggle confirmations it stays silent for a few seconds after leaving the pit lane.",
-      "test": "Harness → Pit Service → Auto Fuel ON, not within about 4.5 s of Exited Pit Lane (the pit-action cooldown). In-sim: arm autofuel in the pit black box (or with a Fuel Service key) and drive; the sim flips the fuel-fill checkbox on its own.",
+      "test": "Harness → Pit Service → Auto Fuel ON, not within about 4.5 s of Exited Pit Lane (the pit-action cooldown). In-sim: no sim-made flip in this direction has been captured yet (the one recorded is Auto Fuel OFF's); with autofuel armed, the fuel-fill checkbox turning on is announced this way.",
       "skip": false,
       "references": {
         "pools": [
@@ -27271,7 +27271,7 @@
         {
           "base": "auto-fuel-off",
           "texts": [
-            "Auto fuel says we don't need fuel next stop."
+            "Auto fuel is handling the fuel at the next stop."
           ],
           "takes": 1,
           "usedBy": [

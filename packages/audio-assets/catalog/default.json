@@ -1,7 +1,7 @@
 {
   "id": "default",
   "label": "Default",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "The Race Engineer voice iRaceDeck ships with.",
   "voices": [
     {
@@ -9,7 +9,7 @@
       "label": "Default"
     }
   ],
-  "bytes": 13994857,
-  "sha256": "79354849d549f290679b2ef21034a21259155223b664ea23ce5482b70e2554cc",
-  "url": "https://github.com/niklam/iracedeck/releases/download/voices-default-1.0.1/default-1.0.1.zip"
+  "bytes": 13995708,
+  "sha256": "82441b19a24dcce6f84948a717a87ea10a7ef548103ac3ef832aa18e7b166dcd",
+  "url": "https://github.com/niklam/iracedeck/releases/download/voices-default-1.1.0/default-1.1.0.zip"
 }
