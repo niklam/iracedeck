@@ -546,6 +546,16 @@ export type SimEventMap = {
   "tireService.compoundChanged": SimEvent<"tireService.compoundChanged", { from: number; to: number }>;
   "pitService.toggled": SimEvent<"pitService.toggled", { service: PitServiceKind; on: boolean }>;
   /**
+   * The sim's auto-fuel system changed whether fuel is added at the next
+   * stop (issue #474). Fired INSTEAD of `pitService.toggled { service:
+   * "fuel" }` for a settled fuel-fill flip made while auto-fuel is armed —
+   * exactly one of the two per flip, so a consumer of either never has to
+   * filter the other out. `refuel` is what auto-fuel decided (fuel at the
+   * next stop or not), not a toggle the driver operated. Arming or
+   * disarming auto-fuel itself publishes nothing.
+   */
+  "pitService.autoFuelChanged": SimEvent<"pitService.autoFuelChanged", { refuel: boolean }>;
+  /**
    * Pit-service status transition (issue #479). Fired by the sim translator
    * on every change to the player's pit-service status (idle / in-progress /
    * complete / positioning errors / can't-fix-that). `from`/`to` are

@@ -137,6 +137,11 @@ export const EVENT_TEMPLATES = [
     data: { service: "fuel", on: true },
   },
   {
+    name: "pitService.autoFuelChanged",
+    description: "The sim's auto-fuel flipped the fuel-fill bit (refuel at the next stop, or not)",
+    data: { refuel: true },
+  },
+  {
     name: "pitService.statusChanged",
     description:
       "Pit-service status transition (PlayerCarPitSvStatus). 0=None, 1=InProgress, 2=Complete, 100..105=positioning/cantFix",
