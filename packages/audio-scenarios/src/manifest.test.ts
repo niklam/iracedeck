@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
+import { poolMemberPattern } from "./interpreter.js";
 import {
   type AudioAssetsManifest,
+  driverNameClip,
   manifestVoices,
   mergeManifests,
   referenceVoice,
@@ -81,6 +83,114 @@ describe("scanDriverNames", () => {
       clips: ["voice/luca/names/sub/nested.mp3", "voice/luca/welcome.mp3"],
     };
     expect(scanDriverNames(m)).toEqual([]);
+  });
+
+  describe("name takes (#1173)", () => {
+    // A pack may record a name as takes (`names/niklas-01.mp3`), which the
+    // engine reads as takes of the base `niklas`. The list offers the base the
+    // greetings are played under, so a take lists as its base — otherwise the
+    // dropdown carries `niklas-01` beside `niklas`, and picking it names a base
+    // the bare clips never join.
+    const names = (...clips: string[]): string[] => scanDriverNames({ ...manifest, clips });
+
+    it("lists a bare clip as itself", () => {
+      expect(names("voice/luca/names/niklas.mp3")).toEqual(["niklas"]);
+    });
+
+    it("lists a take as its base", () => {
+      expect(names("voice/luca/names/niklas-01.mp3")).toEqual(["niklas"]);
+    });
+
+    it("folds a bare clip and its takes into one entry, across voices", () => {
+      expect(
+        names("voice/default/names/niklas.mp3", "voice/snoop/names/niklas-01.mp3", "voice/snoop/names/niklas-02.mp3"),
+      ).toEqual(["niklas"]);
+    });
+
+    it("lists a name one pack carries only as a take under its base", () => {
+      expect(names("voice/default/names/niklas.mp3", "voice/snoop/names/adam-01.mp3")).toEqual(["adam", "niklas"]);
+    });
+
+    it.each([
+      ["digits with no hyphen", "r2d2"],
+      ["a one-digit suffix", "abc-1"],
+      ["a three-digit suffix", "abc-123"],
+    ])("leaves a name ending in %s as it is (%s)", (_case, name) => {
+      expect(names(`voice/luca/names/${name}.mp3`)).toEqual([name]);
+    });
+
+    it("lists every clip under exactly one name, by the engine's own pool rule", () => {
+      // The pin: the fold is only right if each listed name, used as a pool
+      // base, reaches the clips it came from. Membership is the interpreter's
+      // `poolMemberPattern`, not a restatement of it — so a fold that drifted
+      // from the engine fails here rather than going quiet in-game.
+      const clips = [
+        "voice/default/names/niklas.mp3",
+        "voice/snoop/names/niklas-01.mp3",
+        "voice/snoop/names/adam-01.mp3",
+        "voice/snoop/names/adam-12.mp3",
+        "voice/luca/names/r2d2.mp3",
+        "voice/luca/names/abc-1.mp3",
+        "voice/luca/names/abc-123.mp3",
+      ];
+      const listed = names(...clips);
+
+      expect(listed).toEqual(["abc-1", "abc-123", "adam", "niklas", "r2d2"]);
+
+      for (const clip of clips) {
+        const owners = listed.filter((name) => poolMemberPattern("names", name).test(clip));
+
+        expect(owners, `${clip} is reachable from exactly one listed name`).toHaveLength(1);
+      }
+    });
+  });
+});
+
+describe("driverNameClip (#1173)", () => {
+  // The radio check and the Test button play a name by path. Since the list
+  // offers only bases, a pack that records a name only as takes has to be
+  // found through them, or both lines go silent in that pack.
+  const clipFor = (clips: string[], voice: string, name: string): string | null =>
+    driverNameClip({ ...manifest, clips }, voice, name);
+
+  it("prefers the bare clip when the voice has one", () => {
+    expect(clipFor(["voice/luca/names/niklas-01.mp3", "voice/luca/names/niklas.mp3"], "luca", "niklas")).toBe(
+      "voice/luca/names/niklas.mp3",
+    );
+  });
+
+  it("falls back to the lowest take when the voice records the name only as takes", () => {
+    expect(clipFor(["voice/snoop/names/niklas-02.mp3", "voice/snoop/names/niklas-01.mp3"], "snoop", "niklas")).toBe(
+      "voice/snoop/names/niklas-01.mp3",
+    );
+  });
+
+  it("reads only the given voice", () => {
+    expect(clipFor(["voice/luca/names/niklas.mp3"], "snoop", "niklas")).toBeNull();
+  });
+
+  it("returns null when the voice has no clip for the name", () => {
+    expect(clipFor(["voice/luca/names/adam.mp3"], "luca", "niklas")).toBeNull();
+  });
+
+  it.each([
+    ["a longer name sharing the prefix", "voice/luca/names/niklasson-01.mp3"],
+    ["a one-digit suffix", "voice/luca/names/niklas-1.mp3"],
+    ["a three-digit suffix", "voice/luca/names/niklas-123.mp3"],
+    ["a clip in a sub-folder", "voice/luca/names/sub/niklas-01.mp3"],
+    ["another group's take", "voice/luca/welcome/niklas-01.mp3"],
+  ])("does not take %s for the name", (_case, clip) => {
+    expect(clipFor([clip], "luca", "niklas")).toBeNull();
+  });
+
+  it("returns a clip the engine's own pool rule counts as the name", () => {
+    const clips = ["voice/snoop/names/niklas-01.mp3", "voice/snoop/names/niklas-02.mp3", "voice/luca/names/niklas.mp3"];
+
+    for (const voice of ["snoop", "luca"]) {
+      const clip = clipFor(clips, voice, "niklas");
+
+      expect(poolMemberPattern("names", "niklas").exec(clip ?? "")?.[1]).toBe(voice);
+    }
   });
 });
 

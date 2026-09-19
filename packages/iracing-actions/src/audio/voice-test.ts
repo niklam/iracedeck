@@ -12,8 +12,12 @@
  * `pnpm --filter @iracedeck/audio-assets generate` produces it per voice.
  * Until then `playVoiceSequence` silently stops at the missing step.
  *
+ * The name clip comes from `driverNameClipPath`, so a voice pack that records
+ * names only as takes (`names/<name>-01.mp3`) is heard here too (#1173).
+ *
  * Returns false only when no voice is available — callers log a warning.
  */
+import { driverNameClipPath } from "@iracedeck/audio-scenarios/pit-crew";
 import { resolveActiveDriverName, resolveActiveRaceEngineerVoice } from "@iracedeck/deck-core";
 
 import { playVoiceSequence, readJsonStringArray } from "./audio-toggles.js";
@@ -26,7 +30,7 @@ export function playRaceEngineerVoiceTest(onComplete?: () => void): boolean {
   const driverName = resolveActiveDriverName(readJsonStringArray("_driverNames"), "driver");
 
   const paths = [
-    ...(driverName ? [`voice/${voice}/names/${driverName}.mp3`] : []),
+    ...(driverName ? [driverNameClipPath(voice, driverName)] : []),
     `voice/${voice}/welcome/greeting-01.mp3`,
   ];
 

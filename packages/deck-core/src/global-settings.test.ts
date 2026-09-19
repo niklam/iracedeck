@@ -638,6 +638,52 @@ describe("resolveActiveDriverName", () => {
 
     expect(resolveActiveDriverName(["adam", "driver"], "driver")).toBe("driver");
   });
+
+  describe("a persisted name take (#1173)", () => {
+    // Before #1173 the list offered a voice pack's name takes (`adam-01`) as
+    // names of their own, so a user may have stored one. The list now carries
+    // only bases, and the choice has to survive that without a migration.
+
+    it("resolves a take-suffixed name to its listed base", async () => {
+      await initWithStore({ driverName: "adam-01" });
+
+      expect(resolveActiveDriverName(["adam", "driver", "niklas"], "driver")).toBe("adam");
+    });
+
+    it("never rewrites the stored setting", async () => {
+      const { store } = await initWithStore({ driverName: "adam-01" });
+      const saves = store.saved.length;
+
+      resolveActiveDriverName(["adam", "driver"], "driver");
+
+      expect(getGlobalSettings().driverName).toBe("adam-01");
+      expect(store.saved).toHaveLength(saves);
+    });
+
+    it("prefers an exact match over the base", async () => {
+      await initWithStore({ driverName: "adam-01" });
+
+      expect(resolveActiveDriverName(["adam", "adam-01"], "driver")).toBe("adam-01");
+    });
+
+    it("falls back to the default when neither the name nor its base is listed", async () => {
+      await initWithStore({ driverName: "adam-01" });
+
+      expect(resolveActiveDriverName(["driver", "niklas"], "driver")).toBe("driver");
+    });
+
+    it.each([
+      ["r2d2", ["driver", "r2d"]],
+      ["abc-1", ["abc", "driver"]],
+      ["abc-123", ["abc", "abc-1", "driver"]],
+    ])("does not read %s as a take", async (name, available) => {
+      // Only the engine's two-digit take shape folds. Anything else is the name
+      // itself, so a listed prefix of it is not its match.
+      await initWithStore({ driverName: name });
+
+      expect(resolveActiveDriverName(available, "driver")).toBe("driver");
+    });
+  });
 });
 
 describe("flagFlashDurationSeconds (issue #490)", () => {

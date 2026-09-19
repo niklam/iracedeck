@@ -39,6 +39,8 @@ const hoisted = vi.hoisted(() => {
   const playBackgroundTest = vi.fn();
   const isBackgroundTestInFlight = vi.fn(() => false);
   const stopRaceEngineerScenarios = vi.fn();
+  // The real function's fallback shape — what a voice with a bare clip gets.
+  const driverNameClipPath = vi.fn((voice: string, name: string) => `voice/${voice}/names/${name}.mp3`);
 
   let globalSettings: Record<string, unknown> = {};
   const updateGlobalSettings = vi.fn((partial: Record<string, unknown>) => {
@@ -82,6 +84,7 @@ const hoisted = vi.hoisted(() => {
     playBackgroundTest,
     isBackgroundTestInFlight,
     stopRaceEngineerScenarios,
+    driverNameClipPath,
     updateGlobalSettings,
     getGlobalSettings,
     globalSettingsListeners,
@@ -122,6 +125,7 @@ vi.mock("../../icons/status-bar.js", () => ({
 }));
 
 vi.mock("@iracedeck/audio-scenarios/pit-crew", () => ({
+  driverNameClipPath: hoisted.driverNameClipPath,
   isBackgroundTestInFlight: hoisted.isBackgroundTestInFlight,
   playBackgroundTest: hoisted.playBackgroundTest,
   playRadarTest: hoisted.playRadarTest,
@@ -929,6 +933,25 @@ describe("PitCrew action", () => {
       firstCompletionCb();
 
       expect(hoisted.playOnChannel).toHaveBeenCalledWith(2, "voice/default/toggle/radio-check-01.mp3");
+    });
+
+    it("opens with the name clip the voice actually has, a take included (#1173)", async () => {
+      // A pack that records names only as takes has no `names/niklas.mp3`;
+      // `driverNameClipPath` finds `names/niklas-01.mp3` in its place.
+      setVoice("snoop");
+      setName("niklas");
+      hoisted.setGlobalSettings({ pitCrewRaceEngineerEnabled: true });
+      hoisted.setSdkConnected(true);
+
+      const action = new PitCrew();
+      await action.onWillAppear(buildAppearEvent() as never);
+      vi.clearAllMocks();
+      hoisted.driverNameClipPath.mockReturnValueOnce("voice/snoop/names/niklas-01.mp3");
+
+      hoisted.fireAllSdkTicks();
+
+      expect(hoisted.driverNameClipPath).toHaveBeenCalledWith("snoop", "niklas");
+      expect(hoisted.playOnChannel).toHaveBeenCalledWith(2, "voice/snoop/names/niklas-01.mp3");
     });
 
     it("does not fire again on subsequent connected ticks (module-level dedup)", async () => {

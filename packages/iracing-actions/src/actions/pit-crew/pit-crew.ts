@@ -1,4 +1,4 @@
-import { setRadarEnabled } from "@iracedeck/audio-scenarios/pit-crew";
+import { driverNameClipPath, setRadarEnabled } from "@iracedeck/audio-scenarios/pit-crew";
 import {
   applyGraphicTransform,
   CommonSettings,
@@ -469,6 +469,10 @@ export class PitCrew extends ConnectionStateAwareAction<PitCrewSettings> {
    * change). No in-flight bypass: the Race Engineer master gate is on by
    * definition when this fires (gate-off path short-circuits earlier),
    * so `AudioBus.Voice` is already audible at the slider value.
+   *
+   * The name clip comes from `driverNameClipPath`, so a voice pack that
+   * records names only as takes (`names/<name>-01.mp3`) is heard here too
+   * (#1173).
    */
   private playRadioCheck(): void {
     const voice = resolveActiveRaceEngineerVoice(readJsonStringArray("_raceEngineerVoices"));
@@ -488,10 +492,7 @@ export class PitCrew extends ConnectionStateAwareAction<PitCrewSettings> {
     }
 
     this.logger.info("Telemetry connected — playing radio check");
-    playVoiceSequence([
-      `voice/${voice}/names/${driverName}.mp3`,
-      `voice/${voice}/toggle/radio-check-01.mp3`,
-    ]);
+    playVoiceSequence([driverNameClipPath(voice, driverName), `voice/${voice}/toggle/radio-check-01.mp3`]);
   }
 
   private toggleRadar(): void {

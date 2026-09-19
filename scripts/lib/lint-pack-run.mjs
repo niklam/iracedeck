@@ -68,7 +68,7 @@ export const PLUGIN_PLAYED_CLIPS = Object.freeze([
     group: "toggle",
     base: "radio-check",
     // packages/iracing-actions/src/actions/pit-crew/pit-crew.ts (`playRadioCheck`):
-    // `voice/${voice}/names/${driverName}.mp3`, then `voice/${voice}/toggle/radio-check-01.mp3`.
+    // `driverNameClipPath(voice, driverName)`, then `voice/${voice}/toggle/radio-check-01.mp3`.
     playedBy:
       "Played by the plugin itself, outside the script: the radio check when the sim connects, as toggle/radio-check-01 after the driver's name. The check plays names/<driver> first and stops at the first clip it cannot find, so record a names/ clip for the name the Race Engineer is set to as well.",
   },
@@ -106,7 +106,7 @@ export const PLUGIN_PLAYED_CLIPS = Object.freeze([
     group: "welcome",
     base: "greeting",
     // packages/iracing-actions/src/audio/voice-test.ts (`playRaceEngineerVoiceTest`):
-    // `voice/${voice}/names/${driverName}.mp3` (when a name resolves), then `voice/${voice}/welcome/greeting-01.mp3`.
+    // `driverNameClipPath(voice, driverName)` (when a name resolves), then `voice/${voice}/welcome/greeting-01.mp3`.
     playedBy:
       "Played by the plugin itself, outside the script: what the Race Engineer Test button in iRaceDeck Settings plays, as welcome/greeting-01 after the driver's name. The button plays names/<driver> first and stops at the first clip it cannot find, so a pack that wants the Test button voiced records a names/ clip for the name it is set to as well.",
   },
@@ -114,7 +114,8 @@ export const PLUGIN_PLAYED_CLIPS = Object.freeze([
     group: "names",
     base: ANY_BASE,
     // pit-crew.ts (`playRadioCheck`) and voice-test.ts (`playRaceEngineerVoiceTest`):
-    // `voice/${voice}/names/${driverName}.mp3`, the name from `resolveActiveDriverName`.
+    // `driverNameClipPath(voice, driverName)` (audio-scenarios' pit-crew subpath) — the bare
+    // `names/<name>.mp3`, else its lowest take (#1173) — the name from `resolveActiveDriverName`.
     playedBy:
       "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional.",
   },
