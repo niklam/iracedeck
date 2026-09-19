@@ -5,9 +5,9 @@
  * Three rules, each narrow on purpose — everything they do not name reaches
  * Rollup's default handler unchanged:
  *
- * 1. **Drop `INVALID_ANNOTATION` from inside zod.** zod 4.5.4 carries two
- *    comments that mention `@__PURE__` in prose (`v4/core/util.js`,
- *    `v4/core/regexes.js`). Rollup reads any comment containing that token as an
+ * 1. **Drop `INVALID_ANNOTATION` from inside zod.** Since 4.5.4 (still true in
+ *    4.6.x), zod carries two comments that mention `@__PURE__` in prose
+ *    (`v4/core/util.js`, `v4/core/regexes.js`). Rollup reads any comment containing that token as an
  *    annotation, finds it in a position where none can apply, removes it and
  *    logs a warning — six per build. The bundles are unaffected: the real
  *    `/*@__PURE__*\/` annotations on the following lines are separate comments.

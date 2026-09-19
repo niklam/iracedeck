@@ -93,7 +93,7 @@ output: {
 
 - **A circular dependency among workspace sources fails the build.** When every module in a cycle is one of the repo's own files (inside the repo, outside every `node_modules`, not a virtual `\0` id), `CIRCULAR_DEPENDENCY` is promoted to an error. A warning nobody reads is how the deck-core `sdk-singleton` → `window-focus-service` → `app-monitor` cycle sat on `master` unnoticed. Break a cycle by injecting the function across the seam, the way the window service receives `isIRacingActive`; never widen the policy to silence one. A cycle that runs through any dependency still prints as a warning.
 - **zod's and semver's internal cycles are dropped**, as the configs always did.
-- **`INVALID_ANNOTATION` from inside zod's package is dropped.** zod 4.5.4 has two comments that mention `@__PURE__` in prose; Rollup removes them and warns six times a build, and the bundle is unaffected. The same code from anywhere else still prints. `scripts/lib/rollup-logs.test.mjs` bundles the installed zod with the plugins' own Rollup and fails once it no longer produces that warning, naming the entry to remove.
+- **`INVALID_ANNOTATION` from inside zod's package is dropped.** Since 4.5.4 (still true in 4.6.x), zod has two comments that mention `@__PURE__` in prose; Rollup removes them and warns six times a build, and the bundle is unaffected. The same code from anywhere else still prints. `scripts/lib/rollup-logs.test.mjs` bundles the installed zod with the plugins' own Rollup and fails once it no longer produces that warning, naming the entry to remove.
 
 A new plugin package wires the same `onLog` and the same turbo input; the guard in `rollup-logs.test.mjs` discovers plugins from their manifests and checks both.
 
