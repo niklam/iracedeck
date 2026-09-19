@@ -1949,6 +1949,20 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // the engineer quiet outside one. Adding the parameters here would move a
   // decision the audio layer owns into the diff, and take the sequence out of
   // reach of the harness. Don't.
+  //
+  // Nor for the PHASE it writes, which `diffFlags` and `diffStartLights` read
+  // to stand their green and go lines down (asked at the first CodeRabbit
+  // review of #1127). The two readers take no `replayOnlySession` either: in
+  // a replay-only session they read the phase off the same ticks that set it,
+  // so the phase and the edges it suppresses share one timeline, and nothing
+  // in such a session is spoken live for a replay-derived phase to silence.
+  // The in-session replay never reaches this line at all — the guard above
+  // returns first — and the phase is carried across that wipe on purpose, the
+  // seed on the first tick back expiring one the live flags contradict while
+  // both readers re-seed silently on that same tick (the "replay glance"
+  // tests in `translator.test.ts`). Leaving a replay for a live session is a
+  // disconnect (`handleDisconnect`) or a session change
+  // (`resetPerSessionState`), and both recreate the state whole.
   diffCaution(self.state, telemetry, sessionInfo, canonicalPositions, emit, now);
 
   // Opponent pit entries (issue #622) — consumes the same canonical frozen

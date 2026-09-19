@@ -41,7 +41,7 @@ Flag transitions are also voiced — every flag the iRacing translator publishes
 
 - **Yellow** — scope-aware: full-course yellow ("pace car deployed") and local sector yellow ("mind the slow cars") play different lines.
 - **Yellow cleared** — engineer announces when the yellow drops.
-- **Green** — the green-flag call for practice and qualifying. It stays quiet at a race start and, as measured on an oval, at the restart after a caution: iRacing gives the start signal with both, and the Start Lights go line announces them.
+- **Green** — the green-flag call, with its own line for practice, qualifying and races: it fires when the green comes without a start signal, which is how practice and qualifying go green. It stays quiet at a race start (iRacing gives the start signal with the green, and the Start Lights go line announces it) and at every restart after a full-course caution, whether or not the start signal comes with it — the caution sequence calls the restart in its own words.
 - **Blue** — alternates between two recorded variants ("faster car approaching" / "check your mirrors").
 - **White** — final-lap alert.
 - **Red / Black / Debris** — single dedicated callout each.

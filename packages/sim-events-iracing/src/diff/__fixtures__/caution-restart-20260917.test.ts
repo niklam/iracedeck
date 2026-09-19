@@ -41,8 +41,12 @@ describe("the 2026-09-17 caution capture fixture", () => {
   });
 
   it("keeps the pace car — slot 20 — with the surfaces and row the caution diff reads", () => {
-    // A [:21] slice would keep car index 20 (absent from this session) and drop the
-    // pace car at index 64, leaving every pace-car assertion vacuous.
+    // The pace car is RAW car index 64. The fixture cut keeps the 20 cars at
+    // their own indices (0–19) and appends the pace car as SLOT 20 (README), so
+    // slot 20 is the pace car everywhere below and must stay included whenever
+    // these arrays are sliced. A naive `[:21]` slice of the RAW arrays would
+    // have kept raw index 20 — no car in this session — and dropped index 64,
+    // leaving every pace-car assertion vacuous.
     const surfaces = [...new Set(ticks.map((tick) => tick.CarIdxTrackSurface[20]))].sort();
     const rows = [...new Set(ticks.map((tick) => tick.CarIdxPaceRow[20]))].sort();
 
