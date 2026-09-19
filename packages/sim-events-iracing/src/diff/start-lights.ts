@@ -15,9 +15,10 @@
  *      standing-only: rolling starts hold the bit through Warmup→ParadeLaps
  *      too (rolling AI capture 2112), where the rolling-start family (#660)
  *      owns the lead-in. `StartGo` is suppressed while a caution episode is
- *      running (issue #1127): a restart raises the very same bit, so without
- *      that gate every restart borrowed the race start's line — see the
- *      comment at the emit for the ordering it depends on.
+ *      running, and for {@link RESTART_GO_GRACE_MS} after one ended (issue
+ *      #1127): a restart raises the very same bit, so without that gate every
+ *      restart borrowed the race start's line — see the comment at the emit
+ *      for the ordering it depends on.
  *
  *   2. **Numeric countdown** (`diffStartCountdown`, PRE-guard — issue #829:
  *      the countdown is the "get in the car" reminder, so it must keep
@@ -56,14 +57,33 @@ import type { EmitFn } from "./types.js";
 /** The two gantry bits we edge-detect, masked out of `SessionFlags`. */
 const START_LIGHT_MASK = Flags.StartReady | Flags.StartGo;
 
+/**
+ * How long after `caution.restarted` a rising `StartGo` is still the
+ * restart's, not a race start's (issue #1127). The measured restarts raise
+ * `Green` and `StartGo` on ONE tick, where the live caution phase already
+ * holds the line down; this window covers the ordering nobody has measured
+ * but the flag diff already guards for the race start through `StartSet` —
+ * the go bit trailing the green by a tick — which would otherwise re-speak
+ * the restart as "Go, go, go!" a tick after "Green, green, green!". A second
+ * is a tick's worth of slack fifty times over, and no race start can follow
+ * a caution restart within it.
+ */
+export const RESTART_GO_GRACE_MS = 1000;
+
 /** Countdown thresholds (seconds), descending — drives smallest-of-many emit. */
 const COUNTDOWN_THRESHOLDS = [90, 60, 30, 10] as const;
 
+/**
+ * `now` is the tick's clock (ms), measured against the restart stamp
+ * `diffCaution` leaves in `state.cautionRestartedAt`. Defaulted for the tests
+ * that drive no restart; the translator always passes its own.
+ */
 export function diffStartLights(
   state: TranslatorState,
   telemetry: TelemetryData,
   sessionInfo: Record<string, unknown> | null,
   emit: EmitFn,
+  now: number = Date.now(),
 ): void {
   const sessionFlags = telemetry.SessionFlags ?? 0;
   const standing = resolveStandingStart(sessionInfo);
@@ -98,7 +118,14 @@ export function diffStartLights(
   // the same tick this bit rises — so it must run AFTER this diff, or the phase
   // is already back to `"none"` when the go edge is judged. The translator
   // wires that order and `start-lights.test.ts` pins it.
-  if (rising(Flags.StartGo) && state.cautionPhase === "none") {
+  //
+  // The phase covers the measured same-tick ordering. A `StartGo` that TRAILS
+  // the green by a tick finds the phase already `"none"`, so the restart's
+  // stamp holds the line down for `RESTART_GO_GRACE_MS` after it — the same
+  // shape as the flag diff guarding the race-start green through `StartSet`.
+  const restartJustEnded = state.cautionRestartedAt !== null && now - state.cautionRestartedAt <= RESTART_GO_GRACE_MS;
+
+  if (rising(Flags.StartGo) && state.cautionPhase === "none" && !restartJustEnded) {
     emit({ event: "startLight.start-go.raised", data: {} });
   }
 

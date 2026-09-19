@@ -67,6 +67,58 @@ const DOUBLE_FILE: Array<[number, number, number]> = [
   [6, 1, 2], // P6
 ];
 
+describe("resolveCautionLineup — a car that has left the world (2026-09-18 road capture, 548.33 s)", () => {
+  // Car 8 read NotInWorld and still held line 0 row 6 for one tick before its
+  // row went to −1 and the rows closed up. In that capture it sat BEHIND the
+  // player; here it sits directly ahead, which is where the rule bites.
+  function withWorld(telemetry: TelemetryData, gone: number[]): TelemetryData {
+    const dist = new Array(72).fill(0.5);
+    const surface = new Array(72).fill(3);
+
+    for (const carIdx of gone) {
+      dist[carIdx] = -1;
+      surface[carIdx] = -1; // TrkLoc.NotInWorld
+    }
+
+    return { ...telemetry, CarIdxLapDistPct: dist, CarIdxTrackSurface: surface } as TelemetryData;
+  }
+
+  it("names the nearest car still in the world as the one to follow, and does not count the ghost row — single file", () => {
+    expect(resolveCautionLineup(withWorld(paceArrays(SINGLE_FILE), [2]), session(3), false)).toMatchObject({
+      followCarIdx: 1,
+      followsPaceCar: false,
+      restartPosition: 2,
+    });
+  });
+
+  it("and double file, in the player's own line", () => {
+    // Player 5 at line 0 row 3; car 3 (line 0 row 2) gone — so car 1 (line 0
+    // row 1) is the one ahead, and the combined order counts cars 1, 2 and 4.
+    expect(resolveCautionLineup(withWorld(paceArrays(DOUBLE_FILE), [3]), session(5), true)).toMatchObject({
+      followCarIdx: 1,
+      followsPaceCar: false,
+      restartPosition: 4,
+      line: "inside",
+    });
+  });
+
+  it("follows the pace car when every car ahead in the line has gone", () => {
+    expect(resolveCautionLineup(withWorld(paceArrays(SINGLE_FILE), [1, 2]), session(3), false)).toMatchObject({
+      followCarIdx: PACE,
+      followsPaceCar: true,
+      restartPosition: 1,
+      isLeader: true,
+    });
+  });
+
+  it("counts every car as present when the telemetry carries no lap progress — fixtures cut without it are unchanged", () => {
+    expect(resolveCautionLineup(paceArrays(SINGLE_FILE), session(3), false)).toMatchObject({
+      followCarIdx: 2,
+      restartPosition: 3,
+    });
+  });
+});
+
 describe("resolveCautionLineup — who to follow", () => {
   it("follows the car one row lower in single file", () => {
     const lineup = resolveCautionLineup(paceArrays(SINGLE_FILE), session(3), false);

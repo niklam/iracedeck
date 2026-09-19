@@ -21,7 +21,7 @@ import { describe, expect, it } from "vitest";
 
 import { createInitialState, type TranslatorState } from "../state.js";
 import { diffCaution } from "./caution.js";
-import { diffStartCountdown, diffStartLights } from "./start-lights.js";
+import { diffStartCountdown, diffStartLights, RESTART_GO_GRACE_MS } from "./start-lights.js";
 import type { PendingEvent } from "./types.js";
 
 // Flag bit shorthands (hex) for fixture sequences.
@@ -215,17 +215,72 @@ describe("diffStartLights — a restart is not a race start (issue #1127)", () =
     expect(state.cautionPhase).toBe("none");
   });
 
-  it("diffCaution FIRST leaks the go line — it clears the phase on the very tick the gate needs it", () => {
-    // Pins the failure the correct order exists to prevent: the suppression is
-    // not wrong here, it is starved. `caution.restarted` still fires, so the
-    // restart is narrated TWICE — once as itself and once as a race start.
+  it("diffCaution FIRST no longer leaks the go line — the restart's stamp covers the order the phase alone could not", () => {
+    // This order used to narrate the restart TWICE — once as itself and once
+    // as a race start — because the phase was cleared on the very tick the
+    // gate read it. The stamp holds the line down whatever the order, so the
+    // wiring order is belt and braces for THIS reader. It is still
+    // load-bearing for `diffFlags`, whose green suppression reads the phase
+    // alone, and `translator.test.ts` pins it there (the restart with no
+    // start bit).
     const { state, restart } = atOneToGo();
     const { events, emit } = collect();
+    const T = 1_000_000;
 
-    diffCaution(state, restart, null, null, emit);
-    diffStartLights(state, restart, STANDING_SESSION, emit);
+    diffCaution(state, restart, null, null, emit, T);
+    diffStartLights(state, restart, STANDING_SESSION, emit, T);
 
-    expect(events.map((e) => e.event)).toEqual(["caution.restarted", "startLight.start-go.raised"]);
+    expect(events.map((e) => e.event)).toEqual(["caution.restarted"]);
+  });
+
+  it("holds the go line down for a StartGo that trails the green by a tick — the restart's grace window", () => {
+    // Only the same-tick ordering has been measured. A go bit one tick later
+    // finds the phase already "none", and without the stamp the restart would
+    // be narrated twice: "Green, green, green!" and then "Go, go, go!".
+    const { state } = atOneToGo();
+    const { events, emit } = collect();
+    const T = 1_000_000;
+    const greenOnly = tick(Green | Servicible | StartHidden, SessionState.Racing, 580);
+    const goTrailing = tick(Green | Servicible | StartGo, SessionState.Racing, 580);
+
+    diffStartLights(state, greenOnly, STANDING_SESSION, emit, T);
+    diffCaution(state, greenOnly, null, null, emit, T);
+
+    expect(events.map((e) => e.event)).toEqual(["caution.restarted"]);
+    expect(state.cautionPhase).toBe("none");
+
+    diffStartLights(state, goTrailing, STANDING_SESSION, emit, T + 20);
+    diffCaution(state, goTrailing, null, null, emit, T + 20);
+
+    expect(events.filter(go)).toHaveLength(0);
+  });
+
+  it("and the window closes — a race start after the grace period is announced", () => {
+    const { state } = atOneToGo();
+    const { events, emit } = collect();
+    const T = 1_000_000;
+    const greenOnly = tick(Green | Servicible | StartHidden, SessionState.Racing, 580);
+
+    diffStartLights(state, greenOnly, STANDING_SESSION, emit, T);
+    diffCaution(state, greenOnly, null, null, emit, T);
+
+    // The green is withdrawn, the window passes…
+    const hidden = tick(Servicible | StartHidden, SessionState.Racing, 400);
+    const later = T + RESTART_GO_GRACE_MS + 1;
+
+    diffStartLights(state, hidden, STANDING_SESSION, emit, later);
+    diffCaution(state, hidden, null, null, emit, later);
+
+    // …and a standing start (a new session, same state) is announced.
+    diffStartLights(
+      state,
+      tick(StartGo | Green | Servicible, SessionState.Racing, 86399),
+      STANDING_SESSION,
+      emit,
+      later + 1,
+    );
+
+    expect(events.filter(go)).toHaveLength(1);
   });
 });
 

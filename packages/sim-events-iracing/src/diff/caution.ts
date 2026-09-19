@@ -62,10 +62,24 @@
  *   field forms up single or double file is not carried in the event: the
  *   callout reads the lineup at speak time, where `doubleFile` and the lane
  *   already live.
- * - **Restarted** — `Green` rises while a caution is out. Deliberately not
- *   gated on `StartGo`: a restart does carry it (which is why the green-flag
- *   callout has never spoken at one), but nothing here needs to tell a restart
- *   apart from a race start — a race start finds no caution phase to end.
+ * - **Restarted** — `Green` rises while a caution is out AND neither caution
+ *   bit is set on that tick. Both captures show every caution bit dropping on
+ *   the restart tick (oval `0x10044600` → `0x80040004`; the road course's
+ *   466.95 carries no `Caution` bit), and the second half of the test is what
+ *   keeps a yellow-checkered tick — `Green` rising with `Caution` still set —
+ *   from being called a restart: "Green, green, green! Go, go, go!" to a
+ *   driver who must not go is the worst thing this module can say. A green
+ *   that rises with a caution bit still set is therefore NOT the restart,
+ *   whatever else it is, and the phase carries on until the bits drop, when
+ *   it expires with no event (below). Deliberately not gated on `StartGo`: a
+ *   restart does carry it (which is why the green-flag callout has never
+ *   spoken at one), but nothing here needs to tell a restart apart from a
+ *   race start — a race start finds no caution phase to end. The tick is also
+ *   stamped (`cautionRestartedAt`), which is what lets `diffStartLights` hold
+ *   the race-start line down for a `StartGo` that trails the green by a tick.
+ *   The cost, accepted: an unmeasured ordering where the green rises a tick
+ *   BEFORE the caution bits drop announces no restart at all — the episode
+ *   expires silently on the later tick. Silence is the cheaper wrong.
  *
  * **The phase also EXPIRES**, the moment neither caution bit is set, and that
  * is a safety property rather than a tidy-up. A green rising edge is not a
@@ -73,11 +87,16 @@
  * every edge it spans, and glancing at the replay to see the incident is
  * ordinary driver behaviour under a yellow. A phase left standing would call
  * every green-flag leader crossing for the rest of the session an extra lap
- * under caution. The expiry is therefore the SOLE guarantee that a `"caught"`
- * phase means the caution is still out, and the extra-lap branch rests on it
- * rather than re-testing the bit. The SEED applies it too, which is what makes
- * that guarantee hold on every tick rather than on every tick but the first one
- * back from a replay — see {@link diffCautionEpisode}.
+ * under caution. The expiry is therefore what guarantees that a live phase
+ * means a caution bit is still set — `Caution`, or `CautionWaving` re-raised
+ * on its own after the pickup — and the SEED applies it too, which is what
+ * makes that guarantee hold on every tick rather than on every tick but the
+ * first one back from a replay — see {@link diffCautionEpisode}. What it does
+ * NOT guarantee is that no green is flying: the yellow-checkered case above
+ * keeps a caution bit set under a green, and a phase that merely survived that
+ * tick is still `"caught"`. So the extra-lap branch, and the silent entry
+ * into `"caught"`, each refuse a tick with `Green` set — a lap under a flying
+ * green is not a caution lap, whatever the caution bits say.
  *
  * **The pickup consumes the crossing it landed on.** The static flag precedes
  * the leader's `CarIdxLapCompleted` increment by about half a second in both
@@ -144,7 +163,7 @@ import { Flags, hasFlag, type TelemetryData, TrkLoc } from "@iracedeck/iracing-s
 
 import type { TranslatorState } from "../state.js";
 import { isOvalTrack } from "../track-type.js";
-import { type CautionLineup, resolveCautionLineup } from "./caution-lineup.js";
+import { resolveCautionLineup } from "./caution-lineup.js";
 import { resolvePaceCarIdx } from "./pace-laps.js";
 import type { EmitFn } from "./types.js";
 
@@ -262,14 +281,16 @@ function diffPaceCar(
 function diffCautionEpisode(
   state: TranslatorState,
   telemetry: TelemetryData,
-  lineup: CautionLineup | null,
+  sessionInfo: Record<string, unknown> | null,
   canonicalPositions: number[] | null,
   seeding: boolean,
   emit: EmitFn,
+  now: number,
 ): void {
   const flags = telemetry.SessionFlags ?? 0;
   const waving = hasFlag(flags, Flags.CautionWaving);
   const caution = hasFlag(flags, Flags.Caution);
+  const green = hasFlag(flags, Flags.Green);
   const oneToGo = hasFlag(flags, Flags.OneLapToGreen);
   const leaderLap = resolveLeaderLapCompleted(telemetry, canonicalPositions);
   // The player's own lap distance, read the way the rest of the translator
@@ -305,15 +326,22 @@ function diffCautionEpisode(
   // leader's own counter, so the extra-lap test reads this rather than state.
   let crossingBaseline = wasLeaderLap;
 
-  // The precedence below is load-bearing: a green rising edge ends the episode
-  // before anything else can read it, a waving caution outranks a static one
-  // (both bits can be set) but only until the pickup, a static caution the diff
-  // watched wave is the pickup, one it did not is caught silently, with neither
+  // The precedence below is load-bearing: a green rising edge with every
+  // caution bit gone ends the episode before anything else can read it, a
+  // waving caution outranks a static one (both bits can be set) but only until
+  // the pickup, a static caution the diff watched wave is the pickup, one it
+  // did not is caught silently — never under a flying green — with neither
   // bit set the phase expires, and a one-to-go flag withdrawn while the caution
   // stays out returns the episode to caught.
-  if (hasFlag(flags, Flags.Green) && !hasFlag(wasFlags, Flags.Green) && state.cautionPhase !== "none") {
+  if (green && !hasFlag(wasFlags, Flags.Green) && state.cautionPhase !== "none" && !caution && !waving) {
+    // The restart: the green rising AND the caution bits gone on the same
+    // tick, which is what both captures show. A green rising with `Caution`
+    // still set (a yellow-checkered tick) is deliberately not this branch —
+    // see the module comment — and falls through to leave the phase where it
+    // is, so no "Go, go, go!" reaches a driver who must not go.
     emit({ event: "caution.restarted", data: {} });
     state.cautionPhase = "none";
+    state.cautionRestartedAt = now;
   } else if (waving && (state.cautionPhase === "none" || state.cautionPhase === "waving")) {
     // The waving bit starts an episode; it never rewinds one. Once the field
     // is caught a re-raise of `CautionWaving` — the bit is per-zone like the
@@ -339,7 +367,11 @@ function diffCautionEpisode(
     if (pickupLap !== null) {
       crossingBaseline = leaderLap === null ? pickupLap + 1 : Math.max(pickupLap + 1, leaderLap);
     }
-  } else if (caution && state.cautionPhase === "none") {
+  } else if (caution && state.cautionPhase === "none" && !green) {
+    // `!green` is the other half of the yellow-checkered rule: a `Caution`
+    // bit that outlives a green (the finish under yellow) must not START an
+    // episode on a plugin that only met it there, any more than it may keep
+    // one that the green was mistaken for ending.
     state.cautionPhase = "caught";
 
     // Re-anchor rather than carry the baseline in: this is an episode the diff
@@ -360,6 +392,10 @@ function diffCautionEpisode(
     state.cautionPhase = "caught";
   }
 
+  // Whether THIS tick armed the checkpoint — the checkpoint diff must not fire
+  // on the tick that armed it (see {@link diffLastLapCheckpoint}).
+  let armedThisTick = false;
+
   if (oneToGo && !hasFlag(wasFlags, Flags.OneLapToGreen) && state.cautionPhase === "caught") {
     emit({ event: "caution.oneLapToGreen", data: {} });
     state.cautionPhase = "one-to-go";
@@ -368,16 +404,24 @@ function diffCautionEpisode(
     // owes nothing it has not been told to owe — and re-armed on every rise,
     // so a re-raised one-to-go gets its own position call.
     state.cautionCheckpointArmed = true;
-    // Reaching the branch below means the caution is still out, and the expiry
-    // above is what guarantees it: with neither bit set the phase has already
-    // returned to "none", and a tick carrying only `CautionWaving` has moved it
-    // to "waving" — so `"caught"` implies `Caution`. Stated rather than
-    // re-tested, because a term no test can fail is one the next reader either
-    // trusts (and relaxes the expiry behind) or deletes without knowing what it
-    // stood for.
+    armedThisTick = true;
+    // Reaching the branch below means a caution bit is still set, and the
+    // expiry above is what guarantees it: with neither bit set the phase has
+    // already returned to "none". It does NOT mean the `Caution` bit
+    // specifically — a tick carrying only a re-raised `CautionWaving` after
+    // the pickup leaves the phase at "caught" (the waving bit never rewinds
+    // an episode), and a leader crossing on such a tick is still a lap under
+    // caution, so the branch asks for neither bit by name. What it does ask
+    // for is no flying `Green`: at a yellow-checkered finish the `Caution`
+    // bit outlives the green, the phase survives with it, and a leader
+    // crossing there is a lap under the checkered, not "another lap under
+    // caution". Stated rather than left implicit, because the earlier form
+    // of this comment claimed `"caught"` implied `Caution`, which the
+    // re-raise rule made false.
   } else if (
     state.cautionPhase === "caught" &&
     !oneToGo &&
+    !green &&
     leaderLap !== null &&
     crossingBaseline !== null &&
     leaderLap > crossingBaseline
@@ -385,16 +429,31 @@ function diffCautionEpisode(
     emit({ event: "caution.extraLap", data: {} });
   }
 
-  // High-water, never lowered: it carries the pickup's consumed crossing until
-  // the counter catches up, and a leader swap to a car with fewer laps scored
-  // then goes quiet rather than manufacturing an extra lap.
-  state.cautionLeaderLapCompleted =
-    leaderLap === null || (crossingBaseline !== null && crossingBaseline > leaderLap) ? crossingBaseline : leaderLap;
+  if (state.cautionPhase === "none") {
+    // Between episodes the baseline simply FOLLOWS the leader (gap-tolerant:
+    // a tick that cannot read one keeps the last value). The high-water rule
+    // below is an episode's device — it carries the pickup's consumed crossing
+    // and rides out a leader swap — and outside one it would carry a lap
+    // count into the NEXT caution that the sim has since moved below: an
+    // admin `!restart` zeroes every lap counter under the same `SessionNum`
+    // (so the per-session reset never sees it), and the scenario harness
+    // replays fixed lap values on every press of a caution button. Either
+    // way the pickup would clamp its baseline to the stale count and no extra
+    // lap could be reported until the leader had climbed back past it.
+    state.cautionLeaderLapCompleted = leaderLap ?? crossingBaseline;
+  } else {
+    // High-water within an episode, never lowered: it carries the pickup's
+    // consumed crossing until the counter catches up, and a leader swap to a
+    // car with fewer laps scored then goes quiet rather than manufacturing an
+    // extra lap.
+    state.cautionLeaderLapCompleted =
+      leaderLap === null || (crossingBaseline !== null && crossingBaseline > leaderLap) ? crossingBaseline : leaderLap;
+  }
 
-  diffLastLapCheckpoint(state, lapDistPct, emit);
+  diffLastLapCheckpoint(state, lapDistPct, armedThisTick, emit);
 
   // Last, so it reads the phase this tick actually settled on.
-  diffLineup(state, flags, lineup, emit);
+  diffLineup(state, telemetry, sessionInfo, emit);
 }
 
 /**
@@ -404,8 +463,21 @@ function diffCautionEpisode(
  * what makes a green arriving first fire nothing, and a one-to-go withdrawn
  * wait for the re-raise to re-arm it. Takes no lineup: the event carries no
  * position, because the one spoken is the race position, read live.
+ *
+ * The tick that ARMS the checkpoint never fires it, even when the player's
+ * distance rises through 35% on that very tick: the one-to-go call and the
+ * position call would then be published on the same tick, and the position
+ * call would contend for the bus with the warning it is meant to follow. A
+ * player exactly there when the leader's crossing raises the flag — which the
+ * packed field makes rare, the mid-pack car being at ~0.9–1.0 of the lap —
+ * gets no position call this caution rather than one on top of the warning.
  */
-function diffLastLapCheckpoint(state: TranslatorState, lapDistPct: number | null, emit: EmitFn): void {
+function diffLastLapCheckpoint(
+  state: TranslatorState,
+  lapDistPct: number | null,
+  armedThisTick: boolean,
+  emit: EmitFn,
+): void {
   if (state.cautionPhase !== "one-to-go") state.cautionCheckpointArmed = false;
 
   if (lapDistPct === null) return;
@@ -414,7 +486,7 @@ function diffLastLapCheckpoint(state: TranslatorState, lapDistPct: number | null
 
   state.cautionLastLapDistPct = lapDistPct;
 
-  if (!state.cautionCheckpointArmed || was === null) return;
+  if (!state.cautionCheckpointArmed || armedThisTick || was === null) return;
 
   // An UPWARD crossing only: the wrap at start/finish (~1.0 → ~0.0) passes
   // through nothing, and a car sitting past 0.35 when the flag rises — every
@@ -447,13 +519,25 @@ function diffLastLapCheckpoint(state: TranslatorState, lapDistPct: number | null
  *   almost every tick. Sixty ticks of the committed fixture are exactly that,
  *   and reporting them would be a burst of changes to a lineup nobody is in
  *   any more.
+ *
+ * The lineup is resolved HERE, after those two early returns, and nowhere
+ * else in the diff: resolving it is session-info lookups plus three passes
+ * over the car slots, and this is its only reader — so on the green-flag
+ * ticks that are almost every tick of a race, nothing is resolved at all.
  */
-function diffLineup(state: TranslatorState, flags: number, lineup: CautionLineup | null, emit: EmitFn): void {
-  if (state.cautionPhase === "none" || hasFlag(flags, Flags.Green)) {
+function diffLineup(
+  state: TranslatorState,
+  telemetry: TelemetryData,
+  sessionInfo: Record<string, unknown> | null,
+  emit: EmitFn,
+): void {
+  if (state.cautionPhase === "none" || hasFlag(telemetry.SessionFlags ?? 0, Flags.Green)) {
     state.cautionFollowCarIdx = null;
 
     return;
   }
+
+  const lineup = resolveCautionLineup(telemetry, sessionInfo, isOvalTrack(sessionInfo));
 
   if (lineup === null || lineup.followCarIdx === null) return;
 
@@ -474,22 +558,24 @@ function diffLineup(state: TranslatorState, flags: number, lineup: CautionLineup
   });
 }
 
+/**
+ * `now` is the tick's clock (ms), the same value `diffFlags` takes: it stamps
+ * the restart so `diffStartLights` can hold the race-start line down for a
+ * `StartGo` trailing the green. Defaulted for the tests that never reach a
+ * restart; the translator always passes its own.
+ */
 export function diffCaution(
   state: TranslatorState,
   telemetry: TelemetryData,
   sessionInfo: Record<string, unknown> | null,
   canonicalPositions: number[] | null,
   emit: EmitFn,
+  now: number = Date.now(),
 ): void {
   const seeding = !state.cautionInitialized;
 
   state.cautionInitialized = true;
 
-  // Read once and shared: the checkpoint's restart position and the follow-car
-  // change are two readings of the same lineup, and resolving it twice is how
-  // an event pair that must agree starts disagreeing.
-  const lineup = resolveCautionLineup(telemetry, sessionInfo, isOvalTrack(sessionInfo));
-
   diffPaceCar(state, telemetry, sessionInfo, seeding, emit);
-  diffCautionEpisode(state, telemetry, lineup, canonicalPositions, seeding, emit);
+  diffCautionEpisode(state, telemetry, sessionInfo, canonicalPositions, seeding, emit, now);
 }

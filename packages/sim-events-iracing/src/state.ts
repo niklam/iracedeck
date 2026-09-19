@@ -266,6 +266,17 @@ export type TranslatorState = {
    * either gate to see.
    */
   cautionPhase: CautionPhase;
+  /**
+   * When (`now`, ms) the last `caution.restarted` was emitted, or `null` when
+   * none has been this state's lifetime. Read by `diffStartLights`, which
+   * suppresses `startLight.start-go.raised` for `RESTART_GO_GRACE_MS` after
+   * it: the phase alone covers a `StartGo` that rises ON the restart tick
+   * (the measured ordering), but a `StartGo` trailing the green by a tick
+   * finds the phase already `"none"` and would re-speak the restart as a race
+   * start. Not preserved across a replay wipe — no tick runs during the
+   * replay, and the first tick back re-seeds every edge.
+   */
+  cautionRestartedAt: number | null;
   /** Previous-tick `SessionFlags`, for the caution edges. */
   cautionLastFlags: number;
   /**
@@ -1072,6 +1083,7 @@ export function createInitialState(): TranslatorState {
     cautionInitialized: false,
     cautionPaceCarSurface: null,
     cautionPhase: "none",
+    cautionRestartedAt: null,
     cautionLastFlags: 0,
     cautionLeaderLapCompleted: null,
     cautionFollowCarIdx: null,

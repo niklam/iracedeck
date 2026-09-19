@@ -34,6 +34,7 @@ import { YELLOW_CLEARED_HOLD_MS } from "./diff/flags.js";
 import {
   _resetSimEventsIracing,
   getCautionLineup,
+  getCautionPhase,
   getDriverSetupName,
   getFuelStats,
   getLatestTelemetry,
@@ -3994,7 +3995,50 @@ describe("sim-events-iracing translator", () => {
     describe("the readers", () => {
       it("report nothing before the translator is initialized", () => {
         expect(isUnderFullCourseCaution()).toBe(false);
+        expect(getCautionPhase()).toBe("none");
         expect(getCautionLineup()).toBeNull();
+      });
+
+      it("expose the phase itself — and the boolean is that phase not being none", () => {
+        const controller = createMockController();
+        controller.__setSessionInfo(ovalRace());
+        initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+        controller.__tick(cautionTick({ flags: RACING }));
+        expect(getCautionPhase()).toBe("none");
+
+        controller.__tick(cautionTick({ flags: WAVING }));
+        expect(getCautionPhase()).toBe("waving");
+
+        controller.__tick(cautionTick({ flags: STATIC }));
+        expect(getCautionPhase()).toBe("caught");
+
+        controller.__tick(cautionTick({ flags: STATIC | Flags.OneLapToGreen }));
+        expect(getCautionPhase()).toBe("one-to-go");
+        expect(isUnderFullCourseCaution()).toBe(true);
+
+        controller.__tick(cautionTick({ flags: RESTART }));
+        expect(getCautionPhase()).toBe("none");
+        expect(isUnderFullCourseCaution()).toBe(false);
+      });
+
+      it("resolve the lineup once per tick — the same object for every reader of that tick, a fresh one for the next", () => {
+        // One expansion of a caution callout asks up to five times.
+        const controller = createMockController();
+        controller.__setSessionInfo(ovalRace());
+        initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+        controller.__tick(cautionTick({ flags: STATIC }));
+        const first = getCautionLineup();
+
+        expect(first).not.toBeNull();
+        expect(getCautionLineup()).toBe(first);
+
+        controller.__tick(cautionTick({ flags: STATIC }));
+        const second = getCautionLineup();
+
+        expect(second).not.toBe(first);
+        expect(second).toEqual(first);
       });
 
       it("report nothing before the first tick", () => {

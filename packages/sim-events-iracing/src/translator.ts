@@ -88,7 +88,7 @@ import { diffTrackWetness } from "./diff/track-wetness.js";
 import type { PendingEvent } from "./diff/types.js";
 import { calculateCanonicalRacePositions } from "./race-order.js";
 import { resolveStandingStart } from "./start-lights.js";
-import { createInitialState, type GapNeighborState, type TranslatorState } from "./state.js";
+import { type CautionPhase, createInitialState, type GapNeighborState, type TranslatorState } from "./state.js";
 import { isOvalTrack, resolveTrackDirection, resolveTrackType, type TrackDirection } from "./track-type.js";
 
 const SUBSCRIPTION_ID = "__sim-events-iracing__";
@@ -99,6 +99,22 @@ type TranslatorInstance = {
   logger: ILogger;
   state: TranslatorState;
   latestTelemetry: TelemetryData | null;
+  /**
+   * The lineup `getCautionLineup()` last resolved, keyed on the IDENTITY of
+   * the telemetry snapshot and session-info object it was resolved from
+   * (issue #1127 review). One expansion of a caution callout reads the lineup
+   * through up to five vocabulary entries, and every one of them resolved it
+   * afresh — session-info lookups and three passes over the car slots each.
+   * Identity is a sound key: the SDK builds a fresh telemetry object per read
+   * and hands back the same parsed session-info object until the YAML
+   * changes, so an unchanged pair means unchanged inputs. `null` until first
+   * asked.
+   */
+  cautionLineupMemo: {
+    telemetry: TelemetryData;
+    sessionInfo: Record<string, unknown> | null;
+    lineup: CautionLineup | null;
+  } | null;
   /** Cached pit speed limit (m/s) parsed from session YAML. 0 = not parsed. */
   pitSpeedLimitMps: number;
   pitSpeedLimitKey: string;
@@ -266,6 +282,7 @@ export function initializeSimEventsIracing(
     logger,
     state: createInitialState(),
     latestTelemetry: null,
+    cautionLineupMemo: null,
     pitSpeedLimitMps: 0,
     pitSpeedLimitKey: "",
     lastTickInReplay: false,
@@ -1006,9 +1023,32 @@ export function getLiveOpponentFlags(): LiveOpponentFlags | null {
  * running. Never re-read the caution bits to answer this question.
  */
 export function isUnderFullCourseCaution(): boolean {
-  if (!instance) return false;
+  return getCautionPhase() !== "none";
+}
 
-  return instance.state.cautionPhase !== "none";
+/**
+ * Where the current full-course caution has got to, as of the latest tick
+ * (issue #1127): `"none"`, `"waving"`, `"caught"` or `"one-to-go"`. The same
+ * value {@link isUnderFullCourseCaution} answers from — that reader is
+ * `getCautionPhase() !== "none"`, so the two can never disagree — exposed
+ * whole for the callouts that need to know WHICH stage the caution is in: the
+ * pickup call stands down once the phase is already `"one-to-go"` (the road
+ * course raises both on one tick), the pace-car-off call waits for it, the
+ * follow call speaks only while the field is still `"waving"`.
+ *
+ * This is the translator's own phase, never a re-derivation of the caution
+ * bits, and that is the point of exposing it: the raw `OneLapToGreen` bit
+ * also means "formation in progress" (`diff/pace-laps.ts`), and the phase
+ * already folds in the F2 withdrawal — a one-to-go flag taken back with the
+ * caution still out returns the phase to `"caught"`. A consumer that reads
+ * the bits instead has to know all of that again. Holds its last value while
+ * no tick can advance it (a replay, a missing telemetry read), so a consumer
+ * never has to treat "unknown" as a third answer.
+ */
+export function getCautionPhase(): CautionPhase {
+  if (!instance) return "none";
+
+  return instance.state.cautionPhase;
 }
 
 /**
@@ -1035,9 +1075,19 @@ export function isUnderFullCourseCaution(): boolean {
 export function getCautionLineup(): CautionLineup | null {
   if (!instance || !instance.latestTelemetry) return null;
 
+  const telemetry = instance.latestTelemetry;
   const sessionInfo = instance.controller.getSessionInfo() as Record<string, unknown> | null;
+  const memo = instance.cautionLineupMemo;
 
-  return resolveCautionLineup(instance.latestTelemetry, sessionInfo, isOvalTrack(sessionInfo));
+  // Memoised per tick on the identity of both inputs — see `cautionLineupMemo`
+  // for why identity is a sound key here. One expansion asks up to five times.
+  if (memo !== null && memo.telemetry === telemetry && memo.sessionInfo === sessionInfo) return memo.lineup;
+
+  const lineup = resolveCautionLineup(telemetry, sessionInfo, isOvalTrack(sessionInfo));
+
+  instance.cautionLineupMemo = { telemetry, sessionInfo, lineup };
+
+  return lineup;
 }
 
 /**
@@ -1788,11 +1838,14 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // pre-start countdown runs PRE-guard instead (`diffStartCountdown` above,
   // issue #829) so it reaches a driver who's still in the garage.
   //
-  // MUST stay ABOVE `diffCaution` (issue #1127) — this diff reads a caution
-  // phase that one clears on the very tick it would be read. Moving this call
-  // below it breaks the restart gate SILENTLY, with no type or lint signal;
-  // the full reasoning is at the `diffCaution` call further down.
-  diffStartLights(self.state, telemetry, sessionInfo, emit);
+  // Stays ABOVE `diffCaution` (issue #1127) — this diff reads a caution
+  // phase that one clears on the very tick it would be read. For THIS reader
+  // the order is belt and braces since the second review: `diffCaution`
+  // stamps the restart, and the go gate holds for `RESTART_GO_GRACE_MS`
+  // after it whatever the order. It is still load-bearing for `diffFlags`'
+  // green suppression, which reads the phase alone; the full reasoning is at
+  // the `diffCaution` call further down.
+  diffStartLights(self.state, telemetry, sessionInfo, emit, now);
   // Rolling-start "one pace lap to go" (issue #657) — a start/finish-crossing
   // heuristic, NOT iRacing's `OneLapToGreen` edge. Reads `sessionInfo` for the
   // standing-start guard, beside the other formation diffs.
@@ -1861,10 +1914,12 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // — which this diff CLEARS on the green's own rising edge, the very tick that
   // bit rises. The flag diff reads the same phase on the same edge to stand its
   // green line down for `caution.restarted`. Run first and the phase is already
-  // `"none"` when either edge is judged, so both suppressions are dead code and
-  // every restart speaks the race-start line too. `diff/start-lights.test.ts`
-  // pins both orders, and the translator-level tests in `translator.test.ts`
-  // pin this wiring for both readers.
+  // `"none"` when either edge is judged. The go line is covered either way
+  // since the second review (this diff stamps `cautionRestartedAt`, and the
+  // gantry gate holds for a grace window after it — the guard for a `StartGo`
+  // trailing the green); the green line is NOT, so the order stands.
+  // `diff/start-lights.test.ts` exercises both orders, and the translator-level
+  // tests in `translator.test.ts` pin this wiring for both readers.
   //
   // It sits HERE rather than directly under `diffStartLights` because it needs
   // the tick's canonical order and must never be handed `null` — that would run
@@ -1886,7 +1941,7 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // the engineer quiet outside one. Adding the parameters here would move a
   // decision the audio layer owns into the diff, and take the sequence out of
   // reach of the harness. Don't.
-  diffCaution(self.state, telemetry, sessionInfo, canonicalPositions, emit);
+  diffCaution(self.state, telemetry, sessionInfo, canonicalPositions, emit, now);
 
   // Opponent pit entries (issue #622) — consumes the same canonical frozen
   // order as diffOvertakes on the same tick. Race-only + replay-only gating

@@ -65,17 +65,32 @@
  * car holds line 0 row 0. The 60 fixture ticks that fail the anchor are all
  * under green with no caution bit set, so nothing is withheld during a caution.
  *
- * **The car to follow is the car in your line one row lower; if that slot is
- * empty, or holds the pace car, it is the pace car you are following.** That
- * rule is right for both shapes — the outside front car sits at line 1 row 0,
- * has no row −1, and follows the pace car, which is what happens on track.
- * Note what that does NOT make it: leading. Following the pace car and running
- * first are two different questions double file, and they get two fields —
- * `followsPaceCar` and `isLeader` — because each becomes a script condition a
- * pack author can only write or negate.
+ * **The car to follow is the nearest IN-WORLD car in your line with a lower
+ * row; if there is none, or it is the pace car, it is the pace car you are
+ * following.** That rule is right for both shapes — the outside front car
+ * sits at line 1 row 0, has no row below it, and follows the pace car, which
+ * is what happens on track. Note what that does NOT make it: leading.
+ * Following the pace car and running first are two different questions
+ * double file, and they get two fields — `followsPaceCar` and `isLeader` —
+ * because each becomes a script condition a pack author can only write or
+ * negate.
+ *
+ * "In world" is the repo's one shared predicate for it, `carInWorld` from
+ * `@iracedeck/iracing-sdk` — a valid `CarIdxLapDistPct` and a track surface
+ * other than `NotInWorld` — and it is here because a car that has left the
+ * world can HOLD ITS PACE ROW FOR A TICK. The 2026-09-18 road capture shows
+ * it at 548.33 s: car 8 reads `NotInWorld` and still holds line 0 row 6, and
+ * only at 548.37 s does it drop to −1/−1 and the rows close up. A "one row
+ * lower" rule names that car as the one to follow for that tick, and the same
+ * ghost row would count towards `restartPosition`. Narrow in that capture
+ * (car 8 was BEHIND the player), real when the departing car is directly
+ * ahead, and cheap to close: the search walks down the rows past any car that
+ * is not in the world, and the restart count skips them too. With no
+ * `CarIdxLapDistPct` at all the predicate counts every car as present, which
+ * is what the fixtures cut without it rely on.
  */
 import type { CautionLine } from "@iracedeck/event-bus";
-import { getCarNumberFromSessionInfo, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { carInWorld, getCarNumberFromSessionInfo, type TelemetryData } from "@iracedeck/iracing-sdk";
 
 import { resolvePaceCarIdx } from "./pace-laps.js";
 
@@ -228,25 +243,34 @@ export function resolveCautionLineup(
 
   const paceCarIdx = resolvePaceCarIdx(sessionInfo);
   const doubleFile = isDoubleFile(lines, rows);
+  const inWorld = carInWorld(telemetry);
 
   // Only a car that is ITSELF in the lineup can be the one ahead. The filter is
   // load-bearing rather than tidy: a car sitting the re-form out carries −1, and
   // the front row's `myRow - 1` is −1 too, so a slot that ever reported a line
   // without a row would be handed back as the car in front of the leader.
+  //
+  // And only a car that is in the WORLD: the nearest lower row in the line
+  // whose holder is still there, not the row directly below — a car that has
+  // left the world keeps its row for a tick (module comment). The player's own
+  // slot is skipped by the strict `<`.
   let aheadCarIdx: number | null = null;
+  let aheadRow = -1;
 
   for (let carIdx = 0; carIdx < rows.length; carIdx++) {
-    if (!isLinedUp(lines[carIdx], rows[carIdx])) continue;
+    const row = rows[carIdx];
 
-    if (lines[carIdx] === myLine && rows[carIdx] === myRow - 1) {
+    if (!isLinedUp(lines[carIdx], row) || lines[carIdx] !== myLine) continue;
+
+    if (row < myRow && row > aheadRow && inWorld(carIdx)) {
       aheadCarIdx = carIdx;
-      break;
+      aheadRow = row;
     }
   }
 
   const followsPaceCar = aheadCarIdx === null || aheadCarIdx === paceCarIdx;
   const followCarIdx = aheadCarIdx ?? paceCarIdx;
-  const restartPosition = resolveRestartPosition(lines, rows, paceCarIdx, myLine, myRow, doubleFile);
+  const restartPosition = resolveRestartPosition(lines, rows, paceCarIdx, myLine, myRow, doubleFile, inWorld);
 
   return {
     followCarIdx,
@@ -297,29 +321,39 @@ function resolveRestartPosition(
   myLine: number,
   myRow: number,
   doubleFile: boolean,
+  inWorld: (carIdx: number) => boolean,
 ): number | null {
   if (paceCarIdx === null || lines[paceCarIdx] !== 0 || rows[paceCarIdx] !== 0) return null;
 
-  // Below 1 is the pace car's own slot: not a restart position.
-  if (!doubleFile) return myRow >= 1 ? myRow : null;
-
-  const myKey = combinedOrderKey(myLine, myRow);
+  const myKey = doubleFile ? combinedOrderKey(myLine, myRow) : myRow;
 
   // A line the capture has never shown, or the pace car's own slot (line 0
   // row 0 — the anchor, so only the pace car ever holds it): not a position.
+  // Single file that slot is row 0 itself.
   if (myKey === null || myKey === 0) return null;
 
+  // Counted rather than read off the row, single file as well as double: a
+  // car that has left the world keeps its row for a tick (module comment),
+  // and counting who is actually there is what keeps it from inflating the
+  // position by one on that tick. Single file the count of in-world cars
+  // ahead is the row when every row is held, which is every measured tick.
   let ahead = 0;
 
   for (let carIdx = 0; carIdx < rows.length; carIdx++) {
-    if (carIdx === paceCarIdx) continue;
+    if (carIdx === paceCarIdx || !inWorld(carIdx)) continue;
 
     const line = lines[carIdx];
     const row = rows[carIdx];
 
+    // `isLinedUp` narrows the line; it checked the row is a number too.
     if (!isLinedUp(line, row)) continue;
 
-    // `isLinedUp` narrows the line; it checked the row is a number too.
+    if (!doubleFile) {
+      if (line === myLine && (row as number) < myRow) ahead++;
+
+      continue;
+    }
+
     const key = combinedOrderKey(line, row as number);
 
     if (key !== null && key < myKey) ahead++;

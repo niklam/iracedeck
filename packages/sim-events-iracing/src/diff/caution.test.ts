@@ -452,6 +452,102 @@ describe("the caution episode", () => {
     expect(state.cautionPhase).toBe("caught");
   });
 
+  it("does not call a green that rises with the caution bits still set a restart — the yellow-checkered tick", () => {
+    // The second review reproduced [fieldCaught, restarted, extraLap] against
+    // the built dist with exactly this sequence: "Green, green, green! Go, go,
+    // go!" at CRITICAL with interrupt while the caution was still out, then
+    // "Another lap under caution" under green. Both captures drop every
+    // caution bit on the restart tick, so a green rising with `Caution` still
+    // set is something else, and the phase neither ends nor re-enters caught.
+    const state = createInitialState();
+    const { events, emit } = collect();
+    const greenUnderCaution = STATIC | 0x4;
+
+    diffCaution(state, flagTick(RACING), sessionInfo, null, emit); // seed
+    diffCaution(state, flagTick(WAVING, leader(3, 10)), sessionInfo, null, emit);
+    diffCaution(state, flagTick(STATIC, leader(3, 10)), sessionInfo, null, emit); // the pickup
+    diffCaution(state, flagTick(greenUnderCaution, leader(3, 10)), sessionInfo, null, emit); // green rises, Caution stays
+
+    expect(state.cautionPhase).toBe("caught");
+    expect(state.cautionRestartedAt).toBeNull();
+
+    // A leader crossing under that green is not "another lap under caution".
+    diffCaution(state, flagTick(greenUnderCaution, leader(3, 11)), sessionInfo, null, emit);
+    diffCaution(state, flagTick(greenUnderCaution, leader(3, 12)), sessionInfo, null, emit);
+
+    expect(events).toEqual([{ event: "caution.fieldCaught", data: {} }]);
+    expect(state.cautionPhase).toBe("caught");
+
+    // The bits drop under the green that is already flying: the episode
+    // expires with no restart, since on no tick did the green rise with the
+    // caution gone.
+    diffCaution(state, flagTick(RACING | 0x4, leader(3, 12)), sessionInfo, null, emit);
+
+    expect(events).toEqual([{ event: "caution.fieldCaught", data: {} }]);
+    expect(state.cautionPhase).toBe("none");
+  });
+
+  it("never enters caught under a flying green — a Caution bit first met under green starts no episode", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+
+    diffCaution(state, flagTick(RACING), sessionInfo, null, emit); // seed
+    diffCaution(state, flagTick(STATIC | 0x4), sessionInfo, null, emit);
+    diffCaution(state, flagTick(STATIC | 0x4), sessionInfo, null, emit);
+
+    expect(events).toEqual([]);
+    expect(state.cautionPhase).toBe("none");
+  });
+
+  it("stamps the restart tick, and only the restart tick", () => {
+    const state = createInitialState();
+    const { emit } = collect();
+
+    diffCaution(state, flagTick(RACING), sessionInfo, null, emit, 1_000); // seed
+    diffCaution(state, flagTick(WAVING), sessionInfo, null, emit, 1_020);
+    diffCaution(state, flagTick(STATIC), sessionInfo, null, emit, 1_040);
+    diffCaution(state, flagTick(GREEN_HELD), sessionInfo, null, emit, 1_060);
+
+    expect(state.cautionRestartedAt).toBeNull();
+
+    diffCaution(state, flagTick(RESTART), sessionInfo, null, emit, 1_080);
+
+    expect(state.cautionRestartedAt).toBe(1_080);
+  });
+
+  it("follows the leader's lap count between episodes, so a later caution with lower counts still reports its extra lap", () => {
+    // An admin `!restart` zeroes every lap counter under the same SessionNum,
+    // and the scenario harness replays fixed lap values on every press of a
+    // caution button. A high-water baseline carried across the green would
+    // clamp the next pickup to the stale count and swallow every extra lap
+    // until the leader had climbed back past it — the second press of the
+    // harness's extra-lap button lost its extra lap exactly this way.
+    const state = createInitialState();
+    const { events, emit } = collect();
+
+    diffCaution(state, flagTick(RACING, leader(3, 10)), sessionInfo, null, emit); // seed
+    diffCaution(state, flagTick(WAVING, leader(3, 10)), sessionInfo, null, emit);
+    diffCaution(state, flagTick(STATIC, leader(3, 10)), sessionInfo, null, emit); // the pickup
+    diffCaution(state, flagTick(GREEN_HELD, leader(3, 11)), sessionInfo, null, emit); // one to go
+    diffCaution(state, flagTick(RESTART, leader(3, 12)), sessionInfo, null, emit);
+    diffCaution(state, flagTick(RACING, leader(3, 12)), sessionInfo, null, emit);
+
+    // The counters go backwards — the admin restart, or the next button press.
+    diffCaution(state, flagTick(RACING, leader(3, 5)), sessionInfo, null, emit);
+    diffCaution(state, flagTick(WAVING, leader(3, 5)), sessionInfo, null, emit);
+    diffCaution(state, flagTick(STATIC, leader(3, 5)), sessionInfo, null, emit); // the second pickup
+    diffCaution(state, flagTick(STATIC, leader(3, 6)), sessionInfo, null, emit); // consumed by the pickup
+    diffCaution(state, flagTick(STATIC, leader(3, 7)), sessionInfo, null, emit); // the extra lap
+
+    expect(events.map((e) => e.event)).toEqual([
+      "caution.fieldCaught",
+      "caution.oneLapToGreen",
+      "caution.restarted",
+      "caution.fieldCaught",
+      "caution.extraLap",
+    ]);
+  });
+
   it("replays the captured cautions and reports each moment once", () => {
     const state = createInitialState();
     const { events, emit } = collect();
@@ -513,11 +609,13 @@ describe("the caution episode", () => {
     const state = createInitialState();
     const { events, emit } = collect();
     const fired: Array<{ t: number; event: string }> = [];
+    const phaseAt = new Map<number, string>();
 
     for (const tick of roadTicks) {
       const before = events.length;
 
       diffCaution(state, replayTick(tick), sessionInfo, null, emit);
+      phaseAt.set(tick.t, state.cautionPhase);
 
       for (const e of events.slice(before)) fired.push({ t: tick.t, event: e.event });
     }
@@ -533,6 +631,18 @@ describe("the caution episode", () => {
       { t: 562.07, event: "paceCar.off" },
       { t: 565.22, event: "paceCar.deployed" },
     ]);
+
+    // The phase each of those pace-car and pickup ticks SETTLED on — what
+    // `getCautionPhase()` answers a callout asking at event time, and what the
+    // contract tests in `@iracedeck/audio-scenarios` hand their contracts for
+    // these same ticks. The pace car rolling out to deploy (152.23, 562.07)
+    // lands while the caution is still waving; the pickup tick (309.33) has
+    // already settled on one to go, which is why "Two to green" stays silent
+    // there; the real exit (461.22) is under one to go.
+    expect(phaseAt.get(152.23)).toBe("waving");
+    expect(phaseAt.get(309.33)).toBe("one-to-go");
+    expect(phaseAt.get(461.22)).toBe("one-to-go");
+    expect(phaseAt.get(562.07)).toBe("waving");
   });
 });
 
@@ -628,6 +738,33 @@ describe("the caution lineup", () => {
       expect(LAST_LAP_CHECKPOINT_PCT).toBe(0.35);
     });
 
+    it("never fires on the tick that arms it — a player rising through 35% at the flag waits for the next lap", () => {
+      // The one-to-go call and the position call would otherwise be published
+      // on one tick, the position call contending for the bus with the very
+      // warning it is meant to follow.
+      const rig: Rig = { state: createInitialState(), ...collect() };
+
+      tick(rig, RACING, 0.3); // seed
+      tick(rig, WAVING, 0.31);
+      tick(rig, STATIC, 0.33);
+      tick(rig, ONE_TO_GO, 0.36); // arms — and the distance rises through 35% on this very tick
+
+      expect(checkpoints(rig)).toEqual([]);
+      expect(rig.state.cautionCheckpointArmed).toBe(true);
+
+      tick(rig, ONE_TO_GO, 0.4);
+
+      expect(checkpoints(rig)).toEqual([]);
+
+      // Still armed: the next crossing is the one it fires on.
+      tick(rig, ONE_TO_GO, 0.99);
+      tick(rig, ONE_TO_GO, 0.02);
+      tick(rig, ONE_TO_GO, 0.34);
+      tick(rig, ONE_TO_GO, 0.36);
+
+      expect(checkpoints(rig)).toEqual([{ event: "caution.lastLapCheckpoint", data: {} }]);
+    });
+
     it("lands on the same lap for the leader, whose distance is near zero when the flag rises", () => {
       const rig = throughOneToGo(0.01);
 
@@ -703,6 +840,46 @@ describe("the caution lineup", () => {
 
       expect(checkpoints(rig)).toHaveLength(1);
     });
+  });
+
+  it("reads the pace arrays only while an episode is live with no green flying — the lineup is resolved by its one reader", () => {
+    // Resolving the lineup is session-info lookups plus three passes over the
+    // car slots, and its only reader stands down on every green-flag tick —
+    // nearly every tick of a race — so on those ticks the arrays are not even
+    // touched. The leader is handed in from the canonical order so the
+    // episode half reads no pace array of its own.
+    const state = createInitialState();
+    const { emit } = collect();
+    const info = playerSessionInfo(3);
+    let reads = 0;
+    const counted = (flags: number): TelemetryData => {
+      const t = flagTick(flags, singleFile(1, 2, 3)) as unknown as Record<string, unknown>;
+      const lines = t.CarIdxPaceLine;
+
+      Object.defineProperty(t, "CarIdxPaceLine", {
+        get: () => {
+          reads++;
+
+          return lines;
+        },
+        enumerable: true,
+      });
+
+      return t as unknown as TelemetryData;
+    };
+
+    diffCaution(state, counted(RACING), info, canonicalLeader(1), emit); // seed
+    diffCaution(state, counted(RACING), info, canonicalLeader(1), emit);
+
+    expect(reads).toBe(0);
+
+    diffCaution(state, counted(WAVING), info, canonicalLeader(1), emit);
+
+    expect(reads).toBe(1);
+
+    diffCaution(state, counted(STATIC | 0x4), info, canonicalLeader(1), emit); // a green flying: not read
+
+    expect(reads).toBe(1);
   });
 
   it("says nothing about the first lineup it reads — that is the answer, not a change", () => {
