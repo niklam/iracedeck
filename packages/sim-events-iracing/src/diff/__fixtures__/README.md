@@ -22,6 +22,22 @@ capture. It also has no `paceCar.deployed` after either throw: the pace car was 
 the caution came out (its surface reads on-track from the rolling start on), so the only deployed
 edges are the returns from the two blips.
 
+`caution-lineup-20260919.json` — ONE tick, cut from the snapshot `local/telemetry-snapshot-20260919-094304-382.json`
+(issue #1127, the 2026-09-19 correction): a 20-car ARCA race at Homestead, at one to green under a
+double-file restart, the moment the position call said **"P21"** while the display showed **P19**.
+Same trimming (cars 0–19 at their indices, the pace car — index 64 — as slot 20), but the fields are
+what the LINEUP and the RACE ORDER read rather than what `diff/caution.ts` reads: the pace arrays,
+`CarIdxPaceFlags` (the first capture with it set — the player, index 0, carries `WavedAround`),
+`CarIdxLapCompleted` / `CarIdxLapDistPct` for the canonical order, and the official
+`CarIdxPosition` / `PlayerCarPosition` as the cross-check. It is the evidence for both halves of the
+bug: the two lanes are UNEVEN — line 0 holds 11 cars (rows 1..11), line 1 holds 9 (rows 0..8) — so
+the old `2R − 1` formula gave the player (line 0, row 11) position 21 where the combined order counts
+20; and car #7 (index 7) is two laps down and lined up one row ahead of the player, so the lineup
+says 20 while the race order, and the display, say 19 — which is why the position call speaks the
+race position. Read by `caution-lineup.test.ts` (the lineup), its own `caution-lineup-20260919.test.ts`
+(the shape and the race order) and `audio-scenarios`' `caution.test.ts` (what the bundled voice speaks
+for it). The balanced 2026-09-17 fixture cannot tell the two formulas apart; this one can.
+
 The captures themselves live in the gitignored `local/`, so these files are the committed evidence.
 Regenerate one with the script in the #1127 plan only if the capture is available (the road cut uses
 the same script with the road capture as its source and `sessionTime >= 60` as its window); otherwise

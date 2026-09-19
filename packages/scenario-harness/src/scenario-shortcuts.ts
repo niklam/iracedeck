@@ -389,6 +389,57 @@ const CAUTION_RESTART_PACE_LINE = [0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 
 const CAUTION_RESTART_PACE_ROW = [0, 1, 0, 2, 1, 3, 2, 4, 3, 5, 4, 6, 5, 7, 6, 8, 7, 9];
 
 /**
+ * Per-car lap progress for the same 18-car roster, patched in at every caution
+ * shortcut's one-to-go step and removed again at its end (issue #1127, the
+ * 2026-09-19 correction). The position line on the last caution lap speaks
+ * the RACE position (`caution.racePosition`, read through `getLivePosition()`),
+ * not the lineup's, and the canonical order that answers it ranks nobody
+ * without `CarIdxLapCompleted` + `CarIdxLapDistPct` — the hot-lap preset
+ * carries neither, so without these the position line would play silence for
+ * the wrong reason. Nobody is lapped here and the running order matches the
+ * lineup (index = position, so the player at 7 is P7 in both), which keeps
+ * the three shortcuts' "We're currently seven" true. The pace car at index 0
+ * has no completed lap, which is how the calculator leaves it out.
+ *
+ * Patched at ONE TO GO and not at the throw, and deleted at the end: before
+ * one to go `diff/caution.ts` counts leader crossings, and "Caution → extra
+ * lap" rests on the canonical order ranking NOBODY there (see
+ * {@link CAUTION_EXTRA_LAP_BASELINE}). After one to go a crossing changes
+ * nothing, and the delete at the end restores the preset's premise for the
+ * next press of any caution button.
+ */
+const CAUTION_RACE_LAP_COMPLETED = [-1, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4];
+const CAUTION_RACE_LAP_DIST_PCT = [
+  0.95,
+  0.9,
+  0.88,
+  0.86,
+  0.84,
+  0.82,
+  0.8,
+  0.78,
+  0.76,
+  0.74,
+  0.72,
+  0.7,
+  0.68,
+  0.66,
+  0.64,
+  0.62,
+  0.6,
+  0.58,
+];
+
+/** The one-to-go step's patch beyond its flags: the race order the position line reads. */
+const CAUTION_RACE_ORDER_PATCH = {
+  CarIdxLapCompleted: CAUTION_RACE_LAP_COMPLETED,
+  CarIdxLapDistPct: CAUTION_RACE_LAP_DIST_PCT,
+};
+
+/** Undoes {@link CAUTION_RACE_ORDER_PATCH} — `null` deletes a key from the mock's telemetry. */
+const CAUTION_RACE_ORDER_CLEAR = { CarIdxLapCompleted: null, CarIdxLapDistPct: null };
+
+/**
  * A full-course caution and its restart, driven through the TRANSLATOR
  * (issue #1127) and modelled on one captured at an oval
  * (`local/telemetry-watch-20260917-191825-092.jsonl`: Homestead-Miami, an AI
@@ -453,7 +504,11 @@ const CAUTION_RESTART_SHORTCUT: TelemetrySequenceShortcut = {
     },
     { patch: { SessionFlags: RACING_NO_FLAG | Flags.Caution }, holdMs: CAUTION_HOLD_MS },
     {
-      patch: { SessionFlags: RACING_NO_FLAG | Flags.Caution | Flags.OneLapToGreen, LapDistPct: CHECKPOINT_BEFORE_PCT },
+      patch: {
+        SessionFlags: RACING_NO_FLAG | Flags.Caution | Flags.OneLapToGreen,
+        LapDistPct: CHECKPOINT_BEFORE_PCT,
+        ...CAUTION_RACE_ORDER_PATCH,
+      },
       holdMs: ONE_TO_GO_MS,
     },
     { patch: { LapDistPct: CHECKPOINT_AFTER_PCT }, holdMs: CHECKPOINT_MS },
@@ -463,7 +518,7 @@ const CAUTION_RESTART_SHORTCUT: TelemetrySequenceShortcut = {
     },
     { patch: { SessionFlags: Flags.Green | Flags.Servicible | Flags.StartGo }, holdMs: START_GO_MS },
     { patch: { SessionFlags: RACING_NO_FLAG | Flags.Green }, holdMs: RESTART_LISTEN_MS },
-    { patch: { SessionFlags: RACING_NO_FLAG } },
+    { patch: { SessionFlags: RACING_NO_FLAG, ...CAUTION_RACE_ORDER_CLEAR } },
   ],
 };
 
@@ -530,13 +585,17 @@ const CAUTION_LINEUP_CHANGE_SHORTCUT: TelemetrySequenceShortcut = {
     { patch: { SessionFlags: RACING_NO_FLAG | Flags.Caution }, holdMs: CAUTION_HOLD_MS },
     { patch: { CarIdxPaceRow: CAUTION_LINEUP_CHANGED_ROW }, holdMs: LINEUP_CHANGE_LISTEN_MS },
     {
-      patch: { SessionFlags: RACING_NO_FLAG | Flags.Caution | Flags.OneLapToGreen, LapDistPct: CHECKPOINT_BEFORE_PCT },
+      patch: {
+        SessionFlags: RACING_NO_FLAG | Flags.Caution | Flags.OneLapToGreen,
+        LapDistPct: CHECKPOINT_BEFORE_PCT,
+        ...CAUTION_RACE_ORDER_PATCH,
+      },
       holdMs: ONE_TO_GO_MS,
     },
     { patch: { LapDistPct: CHECKPOINT_AFTER_PCT }, holdMs: CHECKPOINT_MS },
     { patch: { SessionFlags: Flags.Green | Flags.Servicible | Flags.StartGo }, holdMs: START_GO_MS },
     { patch: { SessionFlags: RACING_NO_FLAG | Flags.Green }, holdMs: RESTART_LISTEN_MS },
-    { patch: { SessionFlags: RACING_NO_FLAG } },
+    { patch: { SessionFlags: RACING_NO_FLAG, ...CAUTION_RACE_ORDER_CLEAR } },
   ],
 };
 
@@ -592,13 +651,17 @@ const CAUTION_EXTRA_LAP_SHORTCUT: TelemetrySequenceShortcut = {
     { patch: { SessionFlags: RACING_NO_FLAG | Flags.Caution }, holdMs: CAUTION_HOLD_MS },
     { patch: { CarIdxLapCompleted: CAUTION_EXTRA_LAP_ADVANCED }, holdMs: CAUTION_WAVING_MS },
     {
-      patch: { SessionFlags: RACING_NO_FLAG | Flags.Caution | Flags.OneLapToGreen, LapDistPct: CHECKPOINT_BEFORE_PCT },
+      patch: {
+        SessionFlags: RACING_NO_FLAG | Flags.Caution | Flags.OneLapToGreen,
+        LapDistPct: CHECKPOINT_BEFORE_PCT,
+        ...CAUTION_RACE_ORDER_PATCH,
+      },
       holdMs: ONE_TO_GO_MS,
     },
     { patch: { LapDistPct: CHECKPOINT_AFTER_PCT }, holdMs: CHECKPOINT_MS },
     { patch: { SessionFlags: Flags.Green | Flags.Servicible | Flags.StartGo }, holdMs: START_GO_MS },
     { patch: { SessionFlags: RACING_NO_FLAG | Flags.Green }, holdMs: RESTART_LISTEN_MS },
-    { patch: { SessionFlags: RACING_NO_FLAG } },
+    { patch: { SessionFlags: RACING_NO_FLAG, ...CAUTION_RACE_ORDER_CLEAR } },
   ],
 };
 

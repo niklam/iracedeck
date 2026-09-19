@@ -96,11 +96,7 @@ export const EVENT_TEMPLATES = [
   { name: "caution.fieldCaught", description: "Pace car picked up the field — two to green", data: {} },
   { name: "caution.extraLap", description: "Another lap under caution", data: {} },
   { name: "caution.oneLapToGreen", description: "One lap to green", data: {} },
-  {
-    name: "caution.lastLapCheckpoint",
-    description: "35% into the one-to-green lap — the restart position",
-    data: { restartPosition: 14 },
-  },
+  { name: "caution.lastLapCheckpoint", description: "35% into the one-to-green lap — the position call", data: {} },
   {
     name: "caution.lineup.changed",
     description: "The car to follow changed",

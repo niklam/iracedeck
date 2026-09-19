@@ -1021,9 +1021,11 @@ export function isUnderFullCourseCaution(): boolean {
  * Read at fire time rather than frozen into an event payload (the
  * {@link getReadbackSnapshot} rationale): the lineup keeps moving while the
  * field re-forms, so a callout that plays seconds after its trigger must name
- * the car that is ahead NOW. `caution.lastLapCheckpoint` carries a
- * `restartPosition` as a fallback for the moment it fires; everything spoken
- * comes from here.
+ * the car that is ahead NOW. Everything spoken about the LINEUP comes from
+ * here; the position call on the last caution lap does not — it speaks the
+ * race position from {@link getLivePosition}, because a lapped car lined up
+ * ahead of you is behind you in the race (the 2026-09-19 snapshot: 20th in
+ * the lineup, 19th on the display).
  *
  * Deliberately NOT gated on {@link isUnderFullCourseCaution}: the pace arrays
  * are the source of truth for what they describe, and a caller that wants "the

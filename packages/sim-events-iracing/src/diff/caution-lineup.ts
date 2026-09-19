@@ -28,13 +28,32 @@
  * 0's. Hence:
  *
  * - **single file** — position = row (the pace car is row 0, the leader row 1);
- * - **double file** — `line 0, row R` → `2R − 1`; `line 1, row R` → `2R + 2`.
+ * - **double file** — ONE combined order: every lined-up car is keyed
+ *   `(R, 0)` on line 0 and `(R + 1, 1)` on line 1, the keys are sorted, and a
+ *   car's position is its place in that order.
  *
- * Both were checked against every tick of the fixture: on all 193 ticks where
- * the pace car holds line 0 row 0 the formula yields a contiguous 1..N with no
- * gap and no car claiming a position twice (141 single-file, 52 double-file).
- * Reading rows without their lines is not a near-miss but an arbitrary pick —
- * two cars share row 1 for 98 of the fixture's 284 ticks.
+ * The combined order reproduces `line 0, row R → 2R − 1` and
+ * `line 1, row R → 2R + 2` exactly while the two lanes pair off evenly — which
+ * is what the closed formulas were first written as, checked against every
+ * tick of the 2026-09-17 fixture: on all 193 ticks where the pace car holds
+ * line 0 row 0 they yield a contiguous 1..N with no gap and no car claiming a
+ * position twice (141 single-file, 52 double-file). What the formulas assumed,
+ * and the fixture never contradicted, is that the lanes ARE even. The
+ * 2026-09-19 snapshot (`__fixtures__/caution-lineup-20260919.json`) is the one
+ * where they are not: a lapped car and the waved-around player had gone to the
+ * tail of ONE lane, so line 0 held 11 cars (rows 1..11) and line 1 held 9
+ * (rows 0..8), and `2R − 1` handed the player, at line 0 row 11, position 21
+ * in a 20-car field. The combined order counts what is actually there and gives
+ * 20. Reading rows without their lines is not a near-miss but an arbitrary pick
+ * — two cars share row 1 for 98 of the fixture's 284 ticks.
+ *
+ * **What the restart position is NOT is the spoken race position.** The
+ * lineup is the restart ORDER — who you follow, which lane, whether you lead —
+ * and a lapped car lined up ahead of you is behind you in the race. The
+ * position call therefore speaks the canonical live position
+ * (`getLivePosition`, `@.claude/rules/race-positions.md`); the same snapshot
+ * has the player 20th in the lineup and 19th in the race, and 19 is what his
+ * display showed.
  *
  * **The pace car at line 0 row 0 is the anchor, and without it no absolute
  * position can be read.** Once it pulls off at the green the whole of line 0
@@ -251,7 +270,26 @@ function resolveLine(myLine: number, doubleFile: boolean, isOval: boolean): Caut
   return null;
 }
 
-/** The interleave, anchored on the pace car holding line 0 row 0. See the module comment. */
+/**
+ * The sort key of a lined-up car in the combined double-file order, or `null`
+ * for a line the capture has never shown. Line 1's rows sit one behind line
+ * 0's because the pace car consumes line 0's row 0; the line breaks the tie so
+ * the inside car of a row sorts first. See the module comment.
+ */
+function combinedOrderKey(line: number, row: number): number | null {
+  if (line === 0) return 2 * row;
+
+  if (line === 1) return 2 * (row + 1) + 1;
+
+  return null;
+}
+
+/**
+ * The restart position, anchored on the pace car holding line 0 row 0. Single
+ * file it is the row; double file it is the player's place in the combined
+ * order of every lined-up car — counted, not computed from the row, so two
+ * lanes of uneven length still yield 1..N. See the module comment.
+ */
 function resolveRestartPosition(
   lines: unknown[],
   rows: unknown[],
@@ -262,13 +300,30 @@ function resolveRestartPosition(
 ): number | null {
   if (paceCarIdx === null || lines[paceCarIdx] !== 0 || rows[paceCarIdx] !== 0) return null;
 
-  let position: number | null = null;
+  // Below 1 is the pace car's own slot: not a restart position.
+  if (!doubleFile) return myRow >= 1 ? myRow : null;
 
-  if (!doubleFile) position = myRow;
-  else if (myLine === 0) position = 2 * myRow - 1;
-  else if (myLine === 1) position = 2 * myRow + 2;
+  const myKey = combinedOrderKey(myLine, myRow);
 
-  // Below 1 is the pace car's own slot, or a line the capture has never shown:
-  // either way it is not a restart position.
-  return position !== null && position >= 1 ? position : null;
+  // A line the capture has never shown, or the pace car's own slot (line 0
+  // row 0 — the anchor, so only the pace car ever holds it): not a position.
+  if (myKey === null || myKey === 0) return null;
+
+  let ahead = 0;
+
+  for (let carIdx = 0; carIdx < rows.length; carIdx++) {
+    if (carIdx === paceCarIdx) continue;
+
+    const line = lines[carIdx];
+    const row = rows[carIdx];
+
+    if (!isLinedUp(line, row)) continue;
+
+    // `isLinedUp` narrows the line; it checked the row is a number too.
+    const key = combinedOrderKey(line, row as number);
+
+    if (key !== null && key < myKey) ahead++;
+  }
+
+  return ahead + 1;
 }

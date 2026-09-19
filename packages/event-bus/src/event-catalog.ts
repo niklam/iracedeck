@@ -480,14 +480,8 @@ export type SimEventMap = {
   "caution.extraLap": SimEvent<"caution.extraLap", EmptySimEventPayload>;
   /** `OneLapToGreen` rose while racing under caution. Single or double file is not carried: the callout reads the lineup live (`getCautionLineup().doubleFile`). */
   "caution.oneLapToGreen": SimEvent<"caution.oneLapToGreen", EmptySimEventPayload>;
-  /** The player's `LapDistPct` rose through 35% for the first time after `caution.oneLapToGreen`, with the caution still out — the moment the restart position is read out. At most once per one-to-green lap; nothing if the green comes first. */
-  "caution.lastLapCheckpoint": SimEvent<
-    "caution.lastLapCheckpoint",
-    {
-      /** Restart lineup position at the checkpoint, or `null` when no pace row can be read. A fallback: consumers read the lineup live. */
-      restartPosition: number | null;
-    }
-  >;
+  /** The player's `LapDistPct` rose through 35% for the first time after `caution.oneLapToGreen`, with the caution still out — the moment the position call is made. At most once per one-to-green lap; nothing if the green comes first. Carries nothing: the callout reads the race position live (`getLivePosition()`), and a payload nothing reads is a contract maintained for no one. */
+  "caution.lastLapCheckpoint": SimEvent<"caution.lastLapCheckpoint", EmptySimEventPayload>;
   /** The car to follow changed, derived from `CarIdxPaceRow` / `CarIdxPaceLine`. Payload is a fallback; consumers read the lineup live. */
   "caution.lineup.changed": SimEvent<
     "caution.lineup.changed",

@@ -566,8 +566,9 @@ describe("the caution lineup", () => {
   /**
    * The one-to-green lap's checkpoint: the player's `LapDistPct` rising through
    * `LAST_LAP_CHECKPOINT_PCT` for the first time after one to go. Every case
-   * below drives the SAME single-file lineup (the player 3rd) so the payload's
-   * fallback position is readable, and moves only the flags and the distance.
+   * below drives the SAME single-file lineup (the player 3rd) and moves only
+   * the flags and the distance. The event carries nothing: the position the
+   * call speaks is the race position, read live by the callout.
    */
   describe("the last lap's checkpoint", () => {
     type Rig = {
@@ -598,7 +599,7 @@ describe("the caution lineup", () => {
       return rig.events.filter((e) => e.event === "caution.lastLapCheckpoint");
     }
 
-    it("fires once, the first time the player's distance rises through 35% after one to go, with the restart position", () => {
+    it("fires once, the first time the player's distance rises through 35% after one to go, carrying nothing", () => {
       // A mid-pack car: the flag rises at the LEADER's crossing, with this car
       // still at 0.95 of the previous lap. Its own crossing comes next, and the
       // checkpoint is the first upward crossing of 0.35 after that.
@@ -621,7 +622,7 @@ describe("the caution lineup", () => {
       tick(rig, ONE_TO_GO, 0.2);
       tick(rig, ONE_TO_GO, 0.4);
 
-      expect(checkpoints(rig)).toEqual([{ event: "caution.lastLapCheckpoint", data: { restartPosition: 3 } }]);
+      expect(checkpoints(rig)).toEqual([{ event: "caution.lastLapCheckpoint", data: {} }]);
       expect(LAST_LAP_CHECKPOINT_PCT).toBe(0.35);
     });
 

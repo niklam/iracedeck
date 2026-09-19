@@ -30,8 +30,8 @@ import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { CalloutScript } from "@iracedeck/callout-script";
 import type { IEventBus, SimEventName, SimEventOf } from "@iracedeck/event-bus";
-import { Flags, hasFlag, SessionState } from "@iracedeck/iracing-sdk";
-import type { CautionLineup } from "@iracedeck/sim-events-iracing";
+import { calculateRacePositions, Flags, hasFlag, SessionState, type TelemetryData } from "@iracedeck/iracing-sdk";
+import type { CautionLineup, LivePosition } from "@iracedeck/sim-events-iracing";
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -134,6 +134,9 @@ const LINEUP: CautionLineup = {
   doubleFile: true,
   restartPosition: 14,
 };
+
+/** No live race position to read — what every lineup-only case hands the vocabulary. */
+const NO_LIVE_POSITION = (): LivePosition | null => null;
 
 const mockLogger = {
   trace: vi.fn(),
@@ -765,9 +768,9 @@ describe("registerCautionVocabulary", () => {
   it("registers the vars, conditions and case the caution scripts name, each with a description", () => {
     const { engine, vars, conds, cases, descriptions } = makeVocabEngine();
 
-    registerCautionVocabulary(engine, () => LINEUP);
+    registerCautionVocabulary(engine, () => LINEUP, NO_LIVE_POSITION);
 
-    expect([...vars.keys()]).toEqual(["caution.followCarNumber", "caution.restartPosition"]);
+    expect([...vars.keys()]).toEqual(["caution.followCarNumber", "caution.restartPosition", "caution.racePosition"]);
     expect([...conds.keys()]).toEqual([
       "caution.hasFollowCarNumber",
       "caution.isLeader",
@@ -797,7 +800,7 @@ describe("registerCautionVocabulary", () => {
     for (const [label, lineup, named] of cases) {
       const { engine, vars, conds } = makeVocabEngine();
 
-      registerCautionVocabulary(engine, () => lineup);
+      registerCautionVocabulary(engine, () => lineup, NO_LIVE_POSITION);
 
       expect(conds.get("caution.hasFollowCarNumber")?.(), label).toBe(named);
       expect(vars.get("caution.followCarNumber")?.() !== null, `${label} — the var disagrees`).toBe(named);
@@ -813,7 +816,12 @@ describe("registerCautionVocabulary", () => {
     const { engine, vars } = makeVocabEngine();
     const position = { value: POSITION_NUMBER_MAX };
 
-    registerCautionVocabulary(engine, () => ({ ...LINEUP, restartPosition: position.value }), logger as never);
+    registerCautionVocabulary(
+      engine,
+      () => ({ ...LINEUP, restartPosition: position.value }),
+      NO_LIVE_POSITION,
+      logger as never,
+    );
 
     expect(vars.get("caution.restartPosition")?.()).toBe(poolRef("position-number", String(POSITION_NUMBER_MAX)));
     expect(logger.debug).not.toHaveBeenCalled();
@@ -827,7 +835,7 @@ describe("registerCautionVocabulary", () => {
   it("declares the two lane keys the line case can return", () => {
     const { engine, keys } = makeVocabEngine();
 
-    registerCautionVocabulary(engine, () => LINEUP);
+    registerCautionVocabulary(engine, () => LINEUP, NO_LIVE_POSITION);
 
     expect(Object.keys(keys.get("caution.line") ?? {}).sort()).toEqual(["inside", "outside"]);
   });
@@ -835,7 +843,7 @@ describe("registerCautionVocabulary", () => {
   it("draws the follow car's number from the car-number group, exactly as the sim spells it", () => {
     const { engine, vars } = makeVocabEngine();
 
-    registerCautionVocabulary(engine, () => LINEUP);
+    registerCautionVocabulary(engine, () => LINEUP, NO_LIVE_POSITION);
 
     expect(vars.get("caution.followCarNumber")?.()).toBe(poolRef("car-number", "09"));
   });
@@ -843,7 +851,7 @@ describe("registerCautionVocabulary", () => {
   it("draws the restart position from the position-number group", () => {
     const { engine, vars } = makeVocabEngine();
 
-    registerCautionVocabulary(engine, () => LINEUP);
+    registerCautionVocabulary(engine, () => LINEUP, NO_LIVE_POSITION);
 
     expect(vars.get("caution.restartPosition")?.()).toBe(poolRef("position-number", "14"));
   });
@@ -851,7 +859,11 @@ describe("registerCautionVocabulary", () => {
   it("names no car when the car ahead is the pace car — its number is not what a follow line means", () => {
     const { engine, vars } = makeVocabEngine();
 
-    registerCautionVocabulary(engine, () => ({ ...LINEUP, followsPaceCar: true, followCarNumber: "0" }));
+    registerCautionVocabulary(
+      engine,
+      () => ({ ...LINEUP, followsPaceCar: true, followCarNumber: "0" }),
+      NO_LIVE_POSITION,
+    );
 
     expect(vars.get("caution.followCarNumber")?.()).toBeNull();
   });
@@ -859,7 +871,11 @@ describe("registerCautionVocabulary", () => {
   it("names no number when the lineup carries none, and no position when it carries none", () => {
     const { engine, vars } = makeVocabEngine();
 
-    registerCautionVocabulary(engine, () => ({ ...LINEUP, followCarNumber: null, restartPosition: null }));
+    registerCautionVocabulary(
+      engine,
+      () => ({ ...LINEUP, followCarNumber: null, restartPosition: null }),
+      NO_LIVE_POSITION,
+    );
 
     expect(vars.get("caution.followCarNumber")?.()).toBeNull();
     expect(vars.get("caution.restartPosition")?.()).toBeNull();
@@ -868,7 +884,7 @@ describe("registerCautionVocabulary", () => {
   it("names nothing at all when there is no lineup to read", () => {
     const { engine, vars, conds, cases } = makeVocabEngine();
 
-    registerCautionVocabulary(engine, () => null);
+    registerCautionVocabulary(engine, () => null, NO_LIVE_POSITION);
 
     expect(vars.get("caution.followCarNumber")?.()).toBeNull();
     expect(vars.get("caution.restartPosition")?.()).toBeNull();
@@ -886,7 +902,7 @@ describe("registerCautionVocabulary", () => {
   it("keeps leading and following-the-pace-car apart — the outside front car follows the pace car and is NOT leading", () => {
     const { engine, conds } = makeVocabEngine();
 
-    registerCautionVocabulary(engine, () => ({ ...LINEUP, isLeader: false, followsPaceCar: true }));
+    registerCautionVocabulary(engine, () => ({ ...LINEUP, isLeader: false, followsPaceCar: true }), NO_LIVE_POSITION);
 
     expect(conds.get("caution.isLeader")?.()).toBe(false);
     expect(conds.get("caution.followsPaceCar")?.()).toBe(true);
@@ -895,7 +911,7 @@ describe("registerCautionVocabulary", () => {
   it("and the leader is both — first on the road, with only the pace car ahead", () => {
     const { engine, conds } = makeVocabEngine();
 
-    registerCautionVocabulary(engine, () => ({ ...LINEUP, isLeader: true, followsPaceCar: true }));
+    registerCautionVocabulary(engine, () => ({ ...LINEUP, isLeader: true, followsPaceCar: true }), NO_LIVE_POSITION);
 
     expect(conds.get("caution.isLeader")?.()).toBe(true);
     expect(conds.get("caution.followsPaceCar")?.()).toBe(true);
@@ -904,7 +920,7 @@ describe("registerCautionVocabulary", () => {
   it("and a car mid-pack is neither", () => {
     const { engine, conds } = makeVocabEngine();
 
-    registerCautionVocabulary(engine, () => ({ ...LINEUP, isLeader: false, followsPaceCar: false }));
+    registerCautionVocabulary(engine, () => ({ ...LINEUP, isLeader: false, followsPaceCar: false }), NO_LIVE_POSITION);
 
     expect(conds.get("caution.isLeader")?.()).toBe(false);
     expect(conds.get("caution.followsPaceCar")?.()).toBe(false);
@@ -913,7 +929,11 @@ describe("registerCautionVocabulary", () => {
   it("reports the lineup's own answers for the two conditions and the lane", () => {
     const { engine, conds, cases } = makeVocabEngine();
 
-    registerCautionVocabulary(engine, () => ({ ...LINEUP, isLeader: true, followsPaceCar: true, line: "outside" }));
+    registerCautionVocabulary(
+      engine,
+      () => ({ ...LINEUP, isLeader: true, followsPaceCar: true, line: "outside" }),
+      NO_LIVE_POSITION,
+    );
 
     expect(conds.get("caution.isLeader")?.()).toBe(true);
     expect(conds.get("caution.followsPaceCar")?.()).toBe(true);
@@ -925,7 +945,7 @@ describe("registerCautionVocabulary", () => {
     const { engine, vars } = makeVocabEngine();
     const reads = vi.fn(() => LINEUP);
 
-    registerCautionVocabulary(engine, reads);
+    registerCautionVocabulary(engine, reads, NO_LIVE_POSITION);
 
     vars.get("caution.followCarNumber")?.();
     vars.get("caution.followCarNumber")?.();
@@ -950,7 +970,7 @@ describe("the one-to-go call in the bundled voice, when the car ahead cannot be 
     const audio = createFakeAudio();
     const engine = initializeAudioScenarios(bus, audio, BUNDLED_MANIFEST, mockLogger as never, () => VOICE);
 
-    registerCautionVocabulary(engine, () => lineup);
+    registerCautionVocabulary(engine, () => lineup, NO_LIVE_POSITION);
     engine.defineContract(contract("one-to-go"));
     engine.setScripts(new Map([[VOICE, BUNDLED_SCRIPT]]));
 
@@ -1016,7 +1036,7 @@ describe("the follow and lineup-change calls in the bundled voice, when the car 
     const audio = createFakeAudio();
     const engine = initializeAudioScenarios(bus, audio, BUNDLED_MANIFEST, mockLogger as never, () => VOICE);
 
-    registerCautionVocabulary(engine, () => lineup);
+    registerCautionVocabulary(engine, () => lineup, NO_LIVE_POSITION);
     engine.defineContract(contract(id));
     engine.setScripts(new Map([[VOICE, BUNDLED_SCRIPT]]));
 
@@ -1084,5 +1104,97 @@ describe("the follow and lineup-change calls in the bundled voice, when the car 
         CAR_09,
       ]);
     });
+  });
+});
+
+describe("the position call in the bundled voice, against the 2026-09-19 snapshot", () => {
+  // The maintainer heard "P21" in a 20-car field while his display showed
+  // P19. Even counted correctly the LINEUP says 20 — car #7 was two laps down
+  // and lined up ahead of him — so the call speaks the RACE position, read
+  // through the same `getLivePosition` the position-change call uses. Driven
+  // through the real engine against the bundled script, with the lineup and
+  // the race order both taken from the snapshot's fixture, so a script pointed
+  // back at the pace-row variable would speak 20 here and fail.
+  const VOICE = "default";
+  const CURRENTLY = `voice/${VOICE}/position-intro-worse/currently-01.mp3`;
+  const SNAPSHOT_FIXTURE = new URL(
+    "../../../../sim-events-iracing/src/diff/__fixtures__/caution-lineup-20260919.json",
+    import.meta.url,
+  );
+  const [snapshot] = JSON.parse(readFileSync(SNAPSHOT_FIXTURE, "utf-8")) as [
+    { PlayerCarPosition: number; CarIdxLapCompleted: number[]; CarIdxLapDistPct: number[] },
+  ];
+
+  /** The snapshot's race order, from the same lap-progress calculator the canonical order rests on. */
+  const positions = calculateRacePositions(snapshot as unknown as TelemetryData);
+
+  /** What the translator's `getLivePosition()` answered at that moment: the player (index 0), single class. */
+  const SNAPSHOT_LIVE: LivePosition = { position: positions[0], classPosition: positions[0], isMultiClass: false };
+
+  /** The snapshot's lineup as `caution-lineup.test.ts` proves it: 20th, on the inside, behind the lapped car. */
+  const SNAPSHOT_LINEUP: CautionLineup = {
+    followCarIdx: 7,
+    followCarNumber: "7",
+    line: "inside",
+    isLeader: false,
+    followsPaceCar: false,
+    doubleFile: true,
+    restartPosition: 20,
+  };
+
+  /** Everything the Voice channel plays for one `caution.lastLapCheckpoint`. */
+  function spoken(lineup: CautionLineup | null, live: LivePosition | null): string[] {
+    const bus = createMockBus();
+    const audio = createFakeAudio();
+    const engine = initializeAudioScenarios(bus, audio, BUNDLED_MANIFEST, mockLogger as never, () => VOICE);
+
+    registerCautionVocabulary(
+      engine,
+      () => lineup,
+      () => live,
+    );
+    engine.defineContract(contract("position"));
+    engine.setScripts(new Map([[VOICE, BUNDLED_SCRIPT]]));
+
+    bus.publish({
+      event: "caution.lastLapCheckpoint",
+      timestamp: 0,
+      telemetry: IN_CAR,
+      data: {},
+    } as unknown as SimEventOf<SimEventName>);
+
+    for (let i = 0; i < 10; i++) {
+      audio._triggerChannelEnd(AudioChannel.SFX);
+      audio._triggerChannelEnd(AudioChannel.Voice);
+    }
+
+    return audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path);
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    _resetAudioScenarios();
+  });
+
+  it("the snapshot puts the player 19th in the race and 20th in the lineup — the two numbers the bug was between", () => {
+    expect(SNAPSHOT_LIVE.position).toBe(19);
+    expect(snapshot.PlayerCarPosition).toBe(19);
+    expect(SNAPSHOT_LINEUP.restartPosition).not.toBe(SNAPSHOT_LIVE.position);
+  });
+
+  it("speaks \"We're currently 19\" — the race position, never the lineup's 20", () => {
+    expect(spoken(SNAPSHOT_LINEUP, SNAPSHOT_LIVE)).toEqual([CURRENTLY, `voice/${VOICE}/position-number/19.mp3`]);
+  });
+
+  it("speaks nothing with no race position to read, whatever the lineup says — the clause is the whole call", () => {
+    expect(spoken(SNAPSHOT_LINEUP, null)).toEqual([]);
+  });
+
+  it("speaks the race position with no lineup at all — the call no longer needs the pace rows", () => {
+    expect(spoken(null, SNAPSHOT_LIVE)).toEqual([CURRENTLY, `voice/${VOICE}/position-number/19.mp3`]);
   });
 });

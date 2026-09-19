@@ -1394,18 +1394,20 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
 
   // Full-course caution family (issue #1127) — the narrated sequence around a
   // caution: who to follow, the pace car out and off, the pickup (two to
-  // green), each extra lap, one to go, a change to the car ahead, the restart
-  // position on the last lap, and the green. Registered right after the flags
-  // because it is part of the same conversation: eight of the nine share
+  // green), each extra lap, one lap to green, a change to the car ahead, your
+  // race position on the last lap, and the green. Registered right after the
+  // flags because it is part of the same conversation: eight of the nine share
   // `family: "flag"` so a newer caution call supersedes a stale one, and the
   // ninth (the follow call) deliberately does not, because it
   // rides the very event that fires `pit-crew.flag-caution-waving` and must
   // queue behind that line rather than cut it (see `caution.ts`).
   //
   // The vocabulary goes first, as every family's does; it carries the lineup
-  // resolver because every `caution.*` entry reads it at SPEAK time — the
-  // lineup is never frozen into an event payload.
-  registerCautionVocabulary(engine, getCautionLineup, logger);
+  // resolver because every lineup entry reads it at SPEAK time — the lineup is
+  // never frozen into an event payload — and the SAME `getLivePosition` the
+  // position and race-status vocabularies take, because the position call on
+  // the last caution lap speaks the race position, not the lineup's.
+  registerCautionVocabulary(engine, getCautionLineup, getLivePosition, logger);
 
   for (const c of buildCautionContracts(getUnderFullCourseCaution)) {
     engine.defineContract(

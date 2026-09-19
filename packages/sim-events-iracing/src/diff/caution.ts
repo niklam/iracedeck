@@ -101,8 +101,8 @@
  * diff never watched begin has no laps of its own behind it yet.
  *
  * **The one-to-green lap has a checkpoint of its own, at 35% of the PLAYER's
- * lap** — `caution.lastLapCheckpoint`, the moment the restart position is read
- * out. It is the first upward crossing of {@link LAST_LAP_CHECKPOINT_PCT} in
+ * lap** — `caution.lastLapCheckpoint`, the moment the position call is made.
+ * It is the first upward crossing of {@link LAST_LAP_CHECKPOINT_PCT} in
  * the player's `LapDistPct` after `caution.oneLapToGreen`, while the phase is
  * still `"one-to-go"`. Why that lands on the right lap for everyone: the field
  * is packed behind the pace car, and the one-to-go flag rises at the LEADER's
@@ -112,9 +112,13 @@
  * the one-to-green lap itself. For the leader, whose distance is ~0 at the
  * flag, it is the same lap. Fired at most once per one-to-green lap: the flag
  * withdrawn and re-raised (the waved-off restart below) re-arms it for the new
- * final lap, and a green that arrives first leaves nothing to fire. The
- * position spoken is read live by the callout; the payload's value is the
- * fallback, following every other caution event.
+ * final lap, and a green that arrives first leaves nothing to fire. It
+ * carries nothing: the position spoken is the RACE position, read live by the
+ * callout from the canonical order (`getLivePosition`), not the lineup's
+ * restart position — a lapped car lined up ahead of you is behind you in the
+ * race, and the 2026-09-19 snapshot had the two a place apart (20 in the
+ * lineup, 19 in the race, 19 on the display). A payload nothing reads would be
+ * a published field maintained for no one, so there is none.
  *
  * **An extra lap is the ABSENCE of a signal.** Any later leader crossing that
  * arrives while still caught, with `OneLapToGreen` clear, is a lap the caution
@@ -148,7 +152,7 @@ import type { EmitFn } from "./types.js";
  * How far into the one-to-green lap the player's `LapDistPct` must rise for
  * `caution.lastLapCheckpoint` to fire. Far enough past the start/finish line
  * that the double-file re-form (on the tick before the flag) and the
- * one-to-go call itself are behind the driver; well short of the pace car
+ * one-lap-to-green call itself are behind the driver; well short of the pace car
  * peeling off (~5 s before the green), so the position lands with time to
  * take in.
  */
@@ -387,7 +391,7 @@ function diffCautionEpisode(
   state.cautionLeaderLapCompleted =
     leaderLap === null || (crossingBaseline !== null && crossingBaseline > leaderLap) ? crossingBaseline : leaderLap;
 
-  diffLastLapCheckpoint(state, lineup, lapDistPct, emit);
+  diffLastLapCheckpoint(state, lapDistPct, emit);
 
   // Last, so it reads the phase this tick actually settled on.
   diffLineup(state, flags, lineup, emit);
@@ -398,14 +402,10 @@ function diffCautionEpisode(
  * the PLAYER's lap is the right moment for every car in the field. Reads the
  * phase this tick settled on: anything but `"one-to-go"` disarms, which is
  * what makes a green arriving first fire nothing, and a one-to-go withdrawn
- * wait for the re-raise to re-arm it.
+ * wait for the re-raise to re-arm it. Takes no lineup: the event carries no
+ * position, because the one spoken is the race position, read live.
  */
-function diffLastLapCheckpoint(
-  state: TranslatorState,
-  lineup: CautionLineup | null,
-  lapDistPct: number | null,
-  emit: EmitFn,
-): void {
+function diffLastLapCheckpoint(state: TranslatorState, lapDistPct: number | null, emit: EmitFn): void {
   if (state.cautionPhase !== "one-to-go") state.cautionCheckpointArmed = false;
 
   if (lapDistPct === null) return;
@@ -420,7 +420,7 @@ function diffLastLapCheckpoint(
   // through nothing, and a car sitting past 0.35 when the flag rises — every
   // mid-pack car, at ~0.9–1.0 — waits for its own lap to bring it back round.
   if (was < LAST_LAP_CHECKPOINT_PCT && lapDistPct >= LAST_LAP_CHECKPOINT_PCT) {
-    emit({ event: "caution.lastLapCheckpoint", data: { restartPosition: lineup?.restartPosition ?? null } });
+    emit({ event: "caution.lastLapCheckpoint", data: {} });
     state.cautionCheckpointArmed = false;
   }
 }

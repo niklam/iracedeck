@@ -5,6 +5,7 @@ import {
   _resetSimEventsIracing,
   type CautionLineup,
   getCautionLineup,
+  getLivePosition,
   initializeSimEventsIracing,
   YELLOW_CLEARED_HOLD_MS,
 } from "@iracedeck/sim-events-iracing";
@@ -154,11 +155,36 @@ describe('the "Caution → restart" shortcut (issue #1127)', () => {
   it("patches only the fields the caution sequence is documented to drive", () => {
     // Grown from a bare `SessionFlags` replay (issue #1127): the first step
     // also carries the pace lineup and pace mode so the follow-car lines have
-    // something to read — nothing here permits a fifth, undocumented key to
-    // creep in unnoticed.
-    const ALLOWED_PATCH_KEYS = new Set(["SessionFlags", "CarIdxPaceLine", "CarIdxPaceRow", "PaceMode", "LapDistPct"]);
+    // something to read, and the one-to-go step the per-car lap progress the
+    // race position is ranked from — nothing here permits another,
+    // undocumented key to creep in unnoticed.
+    const ALLOWED_PATCH_KEYS = new Set([
+      "SessionFlags",
+      "CarIdxPaceLine",
+      "CarIdxPaceRow",
+      "PaceMode",
+      "LapDistPct",
+      "CarIdxLapCompleted",
+      "CarIdxLapDistPct",
+    ]);
 
     expect(steps.every((s) => Object.keys(s.patch).every((key) => ALLOWED_PATCH_KEYS.has(key)))).toBe(true);
+  });
+
+  it("gives the canonical order the per-car lap progress it ranks by at one to go, and takes it away at the end", () => {
+    // The position line speaks the RACE position (`getLivePosition()`), which
+    // the hot-lap preset alone cannot answer — it carries no per-car arrays.
+    // Patched at the one-to-go step, not the throw, so the crossing count
+    // before it still sees no canonical order ("Caution → extra lap" rests on
+    // that), and deleted at the end so the next press starts from the preset.
+    const oneToGo = steps.findIndex((s) => ((s.patch.SessionFlags as number) & Flags.OneLapToGreen) !== 0);
+    const last = steps.at(-1);
+
+    expect(oneToGo).toBeGreaterThan(0);
+    expect(steps.slice(0, oneToGo).some((s) => "CarIdxLapDistPct" in s.patch)).toBe(false);
+    expect(Array.isArray(steps[oneToGo].patch.CarIdxLapCompleted)).toBe(true);
+    expect(Array.isArray(steps[oneToGo].patch.CarIdxLapDistPct)).toBe(true);
+    expect(last?.patch).toMatchObject({ CarIdxLapCompleted: null, CarIdxLapDistPct: null });
   });
 
   it("stays under half a minute, and listens past the validated-clear window after the restart", () => {
@@ -196,7 +222,7 @@ describe('the "Caution → restart" shortcut (issue #1127)', () => {
       { event: "flag.caution-waving.raised", data: {} },
       { event: "caution.fieldCaught", data: {} },
       { event: "caution.oneLapToGreen", data: {} },
-      { event: "caution.lastLapCheckpoint", data: { restartPosition: 7 } },
+      { event: "caution.lastLapCheckpoint", data: {} },
       { event: "flag.green-held.raised", data: {} },
       { event: "caution.restarted", data: {} },
     ]);
@@ -213,7 +239,7 @@ describe('the "Caution → restart" shortcut (issue #1127)', () => {
     runSequence(withDistance.controller, steps);
 
     expect(withDistance.events.filter((e) => e.event === "caution.lastLapCheckpoint")).toEqual([
-      { event: "caution.lastLapCheckpoint", data: { restartPosition: 7 } },
+      { event: "caution.lastLapCheckpoint", data: {} },
     ]);
 
     _resetSimEventsIracing();
@@ -231,6 +257,27 @@ describe('the "Caution → restart" shortcut (issue #1127)', () => {
     runSequence(flagsOnly.controller, stripped);
 
     expect(flagsOnly.events.filter((e) => e.event === "caution.lastLapCheckpoint")).toEqual([]);
+  });
+
+  it("ranks the player 7th in the RACE by the time the position line fires — what it now speaks — and nobody before one to go", () => {
+    // `caution.racePosition` reads `getLivePosition()`, so this is the number
+    // the description promises ("We're currently seven"). The control half:
+    // before the one-to-go step the canonical order ranks nobody, which is the
+    // premise "Caution → extra lap" counts its crossings on.
+    const { controller } = startTranslator();
+    const oneToGo = steps.findIndex((s) => ((s.patch.SessionFlags as number) & Flags.OneLapToGreen) !== 0);
+
+    runSequence(controller, steps.slice(0, oneToGo));
+
+    expect(getLivePosition()).toBeNull();
+
+    runSequence(controller, steps.slice(oneToGo, oneToGo + 2));
+
+    expect(getLivePosition()).toMatchObject({ position: 7, isMultiClass: false });
+
+    runSequence(controller, steps.slice(oneToGo + 2));
+
+    expect(getLivePosition()).toBeNull();
   });
 
   it("ends with no flag shown, so a second press plays the same sequence again", () => {

@@ -1,9 +1,9 @@
 /**
  * The full-course caution, narrated (issue #1127) — nine contracts over the
  * translator's caution events: the caution out and who to follow, the pace
- * car reaching the track, the pickup ("two to green"), each extra lap, one to
- * go, a change to the car ahead, the restart position on the last lap, the
- * pace car peeling off, and the green.
+ * car reaching the track, the pickup ("two to green"), each extra lap, one
+ * lap to green, a change to the car ahead, your race position on the last
+ * lap, the pace car peeling off, and the green.
  *
  * As everywhere since #1064, the code here decides WHETHER and WHEN the
  * engineer speaks and how the fire is scheduled; WHAT he says lives in the
@@ -135,6 +135,7 @@ import type { ScenarioContract } from "../../dsl.js";
 import { poolRef, WEIGHT } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
 import { liveRaceCar, WAVING_FLAG_COOLDOWN_MS } from "./flag-alerts.js";
+import { type LivePositionResolver, selectLivePosition } from "./position-readout.js";
 
 /** Stable identifier for each user-toggleable caution callout (issue #1127). */
 export type CautionCalloutId =
@@ -354,7 +355,7 @@ export function buildCautionContracts(getUnderFullCourseCaution: UnderCautionRes
     {
       ...cautionContract("position", getUnderFullCourseCaution),
       description:
-        "About a third of the way into the last caution lap — the one-to-go flag is up and your lap distance passes 35% — the position you would restart in, read from the pace rows.",
+        "About a third of the way into the last caution lap — the one-to-go flag is up and your lap distance passes 35% — your race position from the live running order, the number your display shows.",
       when: { event: "caution.lastLapCheckpoint", where: liveRaceCar },
     },
     {
@@ -442,11 +443,16 @@ export const POSITION_NUMBER_MAX = 64;
  *
  * Every entry reads the lineup afresh through `getCautionLineup`, so a call
  * that waited behind a busier bus names the car that is ahead at the moment it
- * is spoken rather than the one that was ahead when it fired.
+ * is spoken rather than the one that was ahead when it fired. The one entry
+ * that does not read the lineup is `caution.racePosition`, which reads the
+ * canonical live position through `getLivePosition` — the SAME dependency the
+ * position-change and race-status vocabularies take, threaded in rather than
+ * added beside them, so two readings of "position" cannot drift apart.
  */
 export function registerCautionVocabulary(
   engine: Pick<IScenarioEngine, "defineVar" | "defineCond" | "defineCase">,
   getCautionLineup: CautionLineupResolver,
+  getLivePosition: LivePositionResolver,
   logger?: ILogger,
 ): void {
   /**
@@ -499,7 +505,36 @@ export function registerCautionVocabulary(
 
       return poolRef(POSITION_NUMBER_GROUP, String(position));
     },
-    `The position you would restart in, spoken from the position-number group, which stops at ${POSITION_NUMBER_MAX} — a position past that is null, since there is no clip to say it with. Read from the pace rows rather than the running order — that is what iRacing lines the field up by — and null whenever the rows carry no absolute position, which happens whenever session info cannot name the pace car. Keep it in an optional clause with the words that introduce it: a null var in a required step aborts the whole callout, silently and at debug level. In the position call that clause IS the whole callout, and there that is right — a position call with no position has nothing true to say.`,
+    `Your place in the restart LINEUP, spoken from the position-number group, which stops at ${POSITION_NUMBER_MAX} — a position past that is null, since there is no clip to say it with. Counted off the pace rows rather than the running order — that is what iRacing lines the field up by — and null whenever the rows carry no absolute position, which happens whenever session info cannot name the pace car. This is NOT the race position: a lapped car lined up ahead of you is behind you in the race, so a spoken "P" belongs to caution.racePosition, which is what the reference position call uses. Keep it in an optional clause with the words that introduce it: a null var in a required step aborts the whole callout, silently and at debug level.`,
+  );
+
+  engine.defineVar(
+    "caution.racePosition",
+    () => {
+      // The canonical live order (`getLivePosition`), the same reader the
+      // position-change and race-status calls speak from — in your class in a
+      // multi-class race, as they do. Not the lineup: the 2026-09-19 snapshot
+      // had the player 20th in the lineup, 19th in the race, and 19 on the
+      // display, because car #7 was two laps down and lined up ahead of him.
+      const position = selectLivePosition(getLivePosition());
+
+      if (position === null) return null;
+
+      // The spoken positions stop at POSITION_NUMBER_MAX and a field can run
+      // past it (the pace car counts). The clause is dropped rather than
+      // handed a pool reference that resolves to nothing, and the drop is
+      // logged so a driver's missing position is a decision on record.
+      if (position > POSITION_NUMBER_MAX) {
+        logger?.debug(
+          `caution.racePosition ${position} is past the spoken range (1–${POSITION_NUMBER_MAX}); the position clause is dropped`,
+        );
+
+        return null;
+      }
+
+      return poolRef(POSITION_NUMBER_GROUP, String(position));
+    },
+    `Your race position at the moment the call is spoken, from the canonical live running order — the number your display shows, in your class in a multi-class race — spoken from the position-number group, which stops at ${POSITION_NUMBER_MAX}; a position past that is null, since there is no clip to say it with. This is what the position call on the last caution lap speaks. It is not your place in the restart lineup (caution.restartPosition): a lapped car lined up ahead of you is behind you in the race, and the two differ by exactly those cars. Null while the order cannot be read. Keep it in an optional clause with the words that introduce it: a null var in a required step aborts the whole callout, silently and at debug level. In the position call that clause IS the whole callout, and there that is right — a position call with no position has nothing true to say.`,
   );
 
   engine.defineCond(

@@ -363,3 +363,88 @@ describe("resolveCautionLineup — against the committed capture", () => {
     expect(anchored).toBe(193);
   });
 });
+
+describe("resolveCautionLineup — uneven lanes (the 2026-09-19 snapshot)", () => {
+  // The maintainer heard "P21" in a 20-car field. Line 0 held 11 cars (rows
+  // 1..11) and line 1 held 9 (rows 0..8): a lapped car and the waved-around
+  // player had gone to the tail of one lane, and `line 0, row R → 2R − 1` gave
+  // the player, at line 0 row 11, a position no 20-car field can have. The
+  // balanced 2026-09-17 fixture above cannot tell the two formulas apart; this
+  // one can.
+  const [snapshot] = JSON.parse(
+    readFileSync(new URL("./__fixtures__/caution-lineup-20260919.json", import.meta.url), "utf-8"),
+  ) as Array<{ CarIdxPaceLine: number[]; CarIdxPaceRow: number[] }>;
+
+  /** The fixture tick widened back to real telemetry: slot 20 is the pace car. */
+  function snapshotTelemetry(): TelemetryData {
+    const lines = new Array(72).fill(-1);
+    const rows = new Array(72).fill(-1);
+
+    snapshot.CarIdxPaceLine.forEach((v, i) => (lines[i === 20 ? PACE : i] = v));
+    snapshot.CarIdxPaceRow.forEach((v, i) => (rows[i === 20 ? PACE : i] = v));
+
+    return { CarIdxPaceLine: lines, CarIdxPaceRow: rows } as unknown as TelemetryData;
+  }
+
+  const PLAYER = 0; // car #64, line 0 row 11
+  const LEADER = 19; // car #22, line 0 row 1
+  const LAPPED = 7; // car #7, line 0 row 10 — two laps down, ahead of the player in the lineup
+
+  it("gives the player position 20, not 21", () => {
+    const lineup = resolveCautionLineup(snapshotTelemetry(), session(PLAYER), true);
+
+    expect(lineup).toMatchObject({ restartPosition: 20, doubleFile: true, line: "inside", isLeader: false });
+    expect(lineup?.followCarIdx).toBe(LAPPED);
+  });
+
+  it("still resolves the leader as position 1, and only the leader", () => {
+    expect(resolveCautionLineup(snapshotTelemetry(), session(LEADER), true)).toMatchObject({
+      restartPosition: 1,
+      isLeader: true,
+      followsPaceCar: true,
+    });
+
+    for (let carIdx = 0; carIdx < 20; carIdx++) {
+      if (carIdx === LEADER) continue;
+
+      expect(resolveCautionLineup(snapshotTelemetry(), session(carIdx), true)?.isLeader, `car ${carIdx}`).toBe(false);
+    }
+  });
+
+  it("places all 20 cars at 1..20 with no gap and no position claimed twice", () => {
+    const positions = new Map<number, number>();
+
+    for (let carIdx = 0; carIdx < 20; carIdx++) {
+      const position = resolveCautionLineup(snapshotTelemetry(), session(carIdx), true)?.restartPosition;
+
+      if (typeof position === "number") positions.set(position, carIdx);
+    }
+
+    expect(positions.size).toBe(20);
+    expect([...positions.keys()].sort((a, b) => a - b)).toEqual(Array.from({ length: 20 }, (_, at) => at + 1));
+    // The lapped car is 19th in the LINEUP — one row ahead of the player — and
+    // 20th in the race, which is why the position call does not speak this
+    // number (`caution-lineup-20260919.test.ts` has the race order).
+    expect(positions.get(19)).toBe(LAPPED);
+    expect(positions.get(20)).toBe(PLAYER);
+  });
+
+  it("counts a short second lane without leaving holes — the rule in the abstract", () => {
+    // Line 0: rows 1..4; line 1: rows 0..1 only. The combined order is
+    // (1,0) (1,1) (2,0) (2,1) (3,0) (4,0) → positions 1..6, and the closed
+    // formula's `2R − 1` would have skipped 6 and 7 to give the last car 7.
+    const uneven: Array<[number, number, number]> = [
+      [PACE, 0, 0],
+      [1, 0, 1],
+      [2, 1, 0],
+      [3, 0, 2],
+      [4, 1, 1],
+      [5, 0, 3],
+      [6, 0, 4],
+    ];
+    const at = (player: number): number | null | undefined =>
+      resolveCautionLineup(paceArrays(uneven), session(player), false)?.restartPosition;
+
+    expect([at(1), at(2), at(3), at(4), at(5), at(6)]).toEqual([1, 2, 3, 4, 5, 6]);
+  });
+});

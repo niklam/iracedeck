@@ -38,6 +38,7 @@ import { createConsoleLogger, LogLevel } from "@iracedeck/logger";
 import {
   getCautionLineup,
   getLiveGaps,
+  getLivePosition,
   getReadbackSnapshot,
   initializeSimEventsIracing,
   isPitActionsAllowed,
@@ -189,6 +190,14 @@ async function main(): Promise<void> {
     // all.
     getCautionLineup: () => getCautionLineup(),
     getUnderFullCourseCaution: () => isUnderFullCourseCaution(),
+    // The position call on the last caution lap speaks the RACE position, not
+    // the lineup's (`caution.racePosition`, the 2026-09-19 correction), so it
+    // reads the same live position the position-change and race-status
+    // vocabularies do. Left at its `() => null` default it would play silence
+    // for the wrong reason — exactly what cost one test run already. The
+    // canonical order needs per-car lap progress to rank anybody, which the
+    // "Caution → …" shortcuts patch in at their one-to-go step.
+    getLivePosition: () => getLivePosition(),
   });
 
   // ── Callout scripts (#1064) ──────────────────────────────────────────────
