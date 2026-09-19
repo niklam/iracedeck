@@ -429,6 +429,20 @@ describe("the two follow-on caution shortcuts (issue #1127)", () => {
     ]);
   });
 
+  it('"Caution → extra lap" reports the extra lap on a SECOND press too — its fixed lap values sit below the first run\'s (R8)', () => {
+    // The translator's crossing baseline used to be a high-water mark carried
+    // across episodes: after the first press it sat at 7, the second press's
+    // pickup clamped to it, and the leader's 5 → 7 was never a crossing. The
+    // reviewer reproduced the lost extra lap against the built dist.
+    const { controller, events } = startTranslator();
+
+    runSequence(controller, stepsOf("flag-caution-extra-lap"));
+    runSequence(controller, stepsOf("flag-caution-extra-lap"));
+
+    expect(events.filter((e) => e.event === "caution.extraLap")).toHaveLength(2);
+    expect(events.filter((e) => e.event === "caution.restarted")).toHaveLength(2);
+  });
+
   it('"Caution → lineup change" reports the car ahead changing, once, naming the new car', () => {
     const { controller, events } = startTranslator();
 

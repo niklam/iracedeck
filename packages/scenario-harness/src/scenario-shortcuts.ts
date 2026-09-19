@@ -617,6 +617,14 @@ const CAUTION_LINEUP_CHANGE_SHORTCUT: TelemetrySequenceShortcut = {
  * ranked first. `scenario-shortcuts.test.ts` drives the button through the
  * real translator and pins the extra lap, so the assumption cannot rot
  * silently.
+ *
+ * The values are FIXED, and the button still works on a second press: the
+ * translator's crossing baseline follows the leader's count between caution
+ * episodes rather than holding a high-water mark across them (the second
+ * review's R8 — the first build's high-water baseline sat above these values
+ * on the second press and swallowed the extra lap). The same rule is what
+ * keeps an admin `!restart`, which zeroes every lap counter under the same
+ * SessionNum, from muting the next caution's extra laps in the sim.
  */
 const CAUTION_EXTRA_LAP_BASELINE = [5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5];
 const CAUTION_EXTRA_LAP_ADVANCED = [5, 7, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5];
