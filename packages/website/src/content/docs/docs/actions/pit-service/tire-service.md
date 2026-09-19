@@ -77,13 +77,13 @@ Common configurations:
 - **Left side** (LF + LR) — toggle left side only
 - **Right side** (RF + RR) — toggle right side only
 
-When all four, left-only, or right-only tires are selected, the action uses iRacing's shorthand macros (`#!t`, `#!l`, `#!r`) which work even with cars that only support all-or-nothing tire changes.
+When all four, left-only, or right-only tires are selected, the action uses iRacing's shorthand macros (`#!t`, `#!l`, `#!r`).
 
 Not every car's pit crew can change the tires you pick one at a time. Cars fall into three groups:
 
 - **Any single tire** — most GT cars. The button changes exactly the tires you picked.
 - **A whole side at a time** — every tire you picked brings the other tire on its side with it. Left Front becomes the left side, and one tire from each side becomes all four.
-- **All four together** — any selection becomes all four tires.
+- **All four together** — any selection becomes all four tires, a left-side or right-side button included, so the button switches all four on and off.
 
 iRaceDeck works out which group your car is in automatically, from what the car reports, so there is nothing to configure. The key's tire colors show the tires that will actually be changed, so a single-tire button on an all-four car shows all four. Your checkboxes are never changed: the same button still changes exactly the tires you picked when you drive a car that can change them one at a time.
 
