@@ -25,6 +25,7 @@
  * the deck host's copy, which this module now ignores; the settings window
  * (#992) already writes through the plugin.
  */
+import { stripTakeSuffix } from "@iracedeck/callout-script";
 import type { ILogger } from "@iracedeck/logger";
 import { gt, valid } from "semver";
 import { z } from "zod";
@@ -2457,14 +2458,26 @@ export function resolveActiveRaceEngineerVoice(
  * skip name-dependent playback). `defaultName` mirrors the `default`
  * attribute on `<ird-name-select>` so the UI dropdown and runtime
  * playback agree on the fallback even before the user opens the PI.
+ *
+ * A persisted name carrying a take suffix (`adam-01`) resolves to its base
+ * (`adam`) when the list has the base (issue #1173). Builds before that
+ * listed a voice pack's name takes as names of their own, so a user may
+ * have picked one; the list now offers only bases, and without this read
+ * the choice would fall back to `defaultName` as though it were gone. The
+ * setting itself is never rewritten — a read-time rule needs no migration
+ * and cannot delete a choice. `<ird-name-select>` applies the same rule.
  */
 export function resolveActiveDriverName(availableNames: readonly string[], defaultName?: string): string | null {
   if (availableNames.length === 0) return null;
 
   const chosen = currentSettings.driverName ?? "";
 
-  if (chosen.length > 0 && availableNames.includes(chosen)) {
-    return chosen;
+  if (chosen.length > 0) {
+    if (availableNames.includes(chosen)) return chosen;
+
+    const base = stripTakeSuffix(chosen);
+
+    if (availableNames.includes(base)) return base;
   }
 
   if (defaultName !== undefined && defaultName.length > 0 && availableNames.includes(defaultName)) {
