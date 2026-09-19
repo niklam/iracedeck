@@ -30,8 +30,11 @@
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/dev.local.json",
         "$TURBO_ROOT$/feature-flags.local.json",
+        "$TURBO_ROOT$/package.json",
+        "$TURBO_ROOT$/packages/*/package.json",
         "$TURBO_ROOT$/scripts/lib/dev-local.mjs",
-        "$TURBO_ROOT$/scripts/lib/rollup-logs.mjs"
+        "$TURBO_ROOT$/scripts/lib/rollup-logs.mjs",
+        "$TURBO_ROOT$/scripts/lib/runtime-deps.mjs"
       ],
       "outputs": ["com.iracedeck.sd.*.sdPlugin/**"]
     },
@@ -41,8 +44,11 @@
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/dev.local.json",
         "$TURBO_ROOT$/feature-flags.local.json",
+        "$TURBO_ROOT$/package.json",
+        "$TURBO_ROOT$/packages/*/package.json",
         "$TURBO_ROOT$/scripts/lib/dev-local.mjs",
-        "$TURBO_ROOT$/scripts/lib/rollup-logs.mjs"
+        "$TURBO_ROOT$/scripts/lib/rollup-logs.mjs",
+        "$TURBO_ROOT$/scripts/lib/runtime-deps.mjs"
       ],
       "outputs": ["com.iracedeck.sd.*.sdPlugin/**"]
     },
@@ -52,8 +58,11 @@
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/dev.local.json",
         "$TURBO_ROOT$/feature-flags.local.json",
+        "$TURBO_ROOT$/package.json",
+        "$TURBO_ROOT$/packages/*/package.json",
         "$TURBO_ROOT$/scripts/lib/dev-local.mjs",
-        "$TURBO_ROOT$/scripts/lib/rollup-logs.mjs"
+        "$TURBO_ROOT$/scripts/lib/rollup-logs.mjs",
+        "$TURBO_ROOT$/scripts/lib/runtime-deps.mjs"
       ],
       "outputs": ["com.ulanzi.*.ulanziPlugin/**"]
     },

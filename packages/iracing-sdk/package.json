@@ -22,7 +22,7 @@
   "dependencies": {
     "@iracedeck/iracing-native": "workspace:*",
     "@iracedeck/logger": "workspace:*",
-    "yaml": "2.9.0"
+    "yaml": "2.9.1"
   },
   "devDependencies": {
     "@types/node": "26.5.1",

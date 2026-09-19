@@ -9,11 +9,11 @@
   "type": "module",
   "pnpm": {
     "onlyBuiltDependencies": [
-      "ffmpeg-static",
-      "keysender"
+      "ffmpeg-static"
     ],
     "ignoredBuiltDependencies": [
       "esbuild",
+      "keysender",
       "protobufjs",
       "re2"
     ]
