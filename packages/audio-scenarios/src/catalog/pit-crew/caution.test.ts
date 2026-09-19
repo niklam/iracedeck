@@ -542,12 +542,13 @@ describe("the pickup and pace-car-off calls on a road course (2026-09-18 capture
     expect(fires("field-caught")).toBe(true);
   });
 
-  it('keeps "Pace car\'s off" silent for the mid-caution pit-exit blips (152.23 s and 562.07 s)', () => {
+  it('keeps "Pace car\'s off" silent while the pace car rolls out through pit exit to deploy (152.23 s and 562.07 s)', () => {
     for (const t of [152.23, 562.07]) {
       const tick = road.find((x) => x.t === t);
 
-      // The blip: the pace car (slot 20 in the cut) reads AproachingPits with
-      // the caution still waving and no one-to-go flag.
+      // The deployment: a pace car that waited parked reads OnTrack, and its
+      // three seconds of AproachingPits (slot 20 in the cut) is it rolling OUT
+      // onto the circuit, with the caution still waving and no one-to-go flag.
       expect(tick?.CarIdxTrackSurface[20], `${t}`).toBe(2);
       expect(hasFlag(tick?.SessionFlags ?? 0, Flags.OneLapToGreen), `${t}`).toBe(false);
       mockLatestTelemetry.mockReturnValue({ SessionFlags: tick?.SessionFlags });
@@ -954,7 +955,7 @@ describe("registerCautionVocabulary", () => {
   });
 });
 
-describe("the one-to-go call in the bundled voice, when the car ahead cannot be named", () => {
+describe("the one-lap-to-green call in the bundled voice, when the car ahead cannot be named", () => {
   // The review finding the maintainer hit in the harness: an `else` branch
   // holding nothing but an optional clause expands to NOTHING when the number
   // in it resolves to null, and the most time-critical call in the sequence
@@ -1000,12 +1001,12 @@ describe("the one-to-go call in the bundled voice, when the car ahead cannot be 
     _resetAudioScenarios();
   });
 
-  it('still says "One to go." with a car ahead the session cannot name — never nothing', () => {
+  it('still says "One lap to green." with a car ahead the session cannot name — never nothing', () => {
     expect(spoken({ ...LINEUP, followsPaceCar: false, followCarNumber: null })).toEqual([ONE_TO_GO]);
   });
 
   it("names the lane and the car when it can — the positive control, and the reason the fallback replaces rather than precedes", () => {
-    // The numbered wording already says "One to go", so the fallback is the
+    // The numbered wording already says "One lap to green", so the fallback is the
     // other branch of a condition, not a clip in front of the clause.
     expect(spoken({ ...LINEUP, followsPaceCar: false, followCarNumber: "09", line: "inside" })).toEqual([
       `voice/${VOICE}/caution/one-to-go-inside-01.mp3`,

@@ -496,15 +496,17 @@ describe("the caution episode", () => {
     ]);
   });
 
-  it("replays the captured ROAD-COURSE cautions: the pickup and one to go on one tick, the pace car's two blips, no checkpoint", () => {
+  it("replays the captured ROAD-COURSE cautions: the pickup and one to go on one tick, the pace car deploying from parked, no checkpoint", () => {
     // `__fixtures__/caution-road-20260918.json` — the first road caution
     // captured, cut like the oval one (the pace car at slot 20, PaceCarIdx 64
     // supplied here since the capture has no session YAML). What it shows:
     // the waving caution never goes static on its own — at 309.33 it drops
     // straight to Caution|OneLapToGreen, so the pickup and one to go land on
     // ONE tick, in that order (the contract layer keeps "Two to green" silent
-    // there); the pace car blips to AproachingPits and back mid-caution
-    // (152.23 → 155.37, 562.07 → 565.22) before its real exit at 461.22; and
+    // there); the pace car — parked for the standing start, which iRacing
+    // reports as OnTrack — reads AproachingPits for ~3 s as it rolls out
+    // through pit exit to deploy (152.23 → 155.37, 562.07 → 565.22), an
+    // arrival rather than a departure, before its real exit at 461.22; and
     // no `caution.lastLapCheckpoint`, because the capture recorded no
     // `LapDistPct` — the checkpoint is proved by the synthetic ticks above,
     // not by this replay.

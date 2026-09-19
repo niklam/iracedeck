@@ -11,16 +11,20 @@ their own indices (0–19) plus the pace car — index 64 in the raw telemetry �
 race, two cautions, one restart, the second caution still waving when the capture ends. It is the
 evidence for the two road rules: the waving caution never goes static on its own there (at 309.33 s
 it drops straight to `Caution | OneLapToGreen` on one tick, so "Two to green" has no moment and stays
-silent), and the pace car shows `AproachingPits` for about three seconds mid-caution and comes back
-(152.23 → 155.37 s, 562.07 → 565.22 s — its route out through pit exit), while the real exit comes
-after one to green (461.22 s, 5.7 s before the green). Two things this fixture does **not** carry: the
+silent), and the pace car's `AproachingPits` means two opposite things there: that start was a
+standing start, so the pace car never ran on the road — it waited **parked**, which iRacing reports as
+`OnTrack` (its surface reads `OnTrack` from the first record and its `CarIdxLapCompleted` stays −1
+throughout), and its three seconds of `AproachingPits` mid-caution (152.23 → 155.37 s, 562.07 →
+565.22 s) is it rolling **out** through pit exit onto the circuit — the deployment, not a departure
+that returns — while the real exit comes after one to green (461.22 s, 5.7 s before the green). Two things this fixture does **not** carry: the
 capture has no session YAML, so the tests that replay it supply `PaceCarIdx: 64` synthetically, as the
 oval fixture's tests do; and it recorded no `LapDistPct` (player or per-car), so it **cannot** exercise
 the one-to-green lap's checkpoint (`caution.lastLapCheckpoint`) — that rule is covered by the
 synthetic ticks in `caution.test.ts` and by the harness's "Caution → restart" button, not by this
-capture. It also has no `paceCar.deployed` after either throw: the pace car was already on track when
-the caution came out (its surface reads on-track from the rolling start on), so the only deployed
-edges are the returns from the two blips.
+capture. It also has no `paceCar.deployed` on either throw's own tick: a waiting pace car already reads
+`OnTrack` (see above), so the only deployed edges are the two deployments themselves — the return to
+`OnTrack` at 155.37 s and 565.22 s as it completes its roll out through pit exit — plus a third at
+494.18 s, under green, when it parks again after the real exit.
 
 `caution-lineup-20260919.json` — ONE tick, cut from the snapshot `local/telemetry-snapshot-20260919-094304-382.json`
 (issue #1127, the 2026-09-19 correction): a 20-car ARCA race at Homestead, at one to green under a

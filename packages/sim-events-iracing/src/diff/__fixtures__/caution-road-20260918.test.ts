@@ -45,7 +45,7 @@ describe("the 2026-09-18 road-course caution capture fixture", () => {
     expect(before.SessionFlags >>> 0).toBe(0x10048000);
   });
 
-  it("keeps the pace car — slot 20 — including its two mid-caution pit-exit blips and the real exit", () => {
+  it("keeps the pace car — slot 20 — including its two mid-caution deployments through pit exit and the real exit", () => {
     const offAt = ticks
       .filter((tick, i) => tick.CarIdxTrackSurface[20] === 2 && ticks[i - 1]?.CarIdxTrackSurface[20] === 3)
       .map((t) => t.t);
@@ -53,8 +53,10 @@ describe("the 2026-09-18 road-course caution capture fixture", () => {
       .filter((tick, i) => tick.CarIdxTrackSurface[20] === 3 && ticks[i - 1]?.CarIdxTrackSurface[20] === 2)
       .map((t) => t.t);
 
-    // AproachingPits for ~3 s and back on track, twice mid-caution; then the
-    // real exit 5.7 s before the green (466.95), returning under green.
+    // A pace car parked for the standing start reads OnTrack; its ~3 s of
+    // AproachingPits mid-caution, twice, is it rolling OUT through pit exit
+    // to deploy — an arrival. Then the real exit 5.7 s before the green
+    // (466.95), returning to its parking spot (OnTrack again) under green.
     expect(offAt).toEqual([152.23, 461.22, 562.07]);
     expect(backAt).toEqual([155.37, 494.18, 565.22]);
   });

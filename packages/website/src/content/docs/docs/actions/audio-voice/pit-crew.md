@@ -135,21 +135,21 @@ What you hear, in the order it happens:
 3. **The pace car reaches the track.** A short heads-up, roughly twenty seconds after the flag.
 4. **Two to green.** About a minute and a half in, as the pace car finishes gathering the field, the engineer calls *"Two to green."* and names the car to follow. On a road course there is no such moment — iRacing shows one to go the instant the field is gathered — so this call is not made there.
 5. **Another caution lap.** If the caution runs longer than the two laps it defaults to, you are told each time the field goes around again.
-6. **One to go.** The last lap under caution, with the car ahead of you named again. On an **oval running double file** the engineer also tells you which lane you form up in, inside or outside. Anywhere else — and any time the field is single file — there is no lane to name, so he just names the car.
-7. **Your position on the last lap.** About a third of the way around the last caution lap, the position you would restart in — *"We're currently P fourteen."*
-8. **The pace car peels off.** About five seconds before the green, once one to go is up — on a road course the pace car dips toward pit exit mid-caution and comes straight back, and that is not announced.
+6. **One lap to green.** The last lap under caution, with the car ahead of you named again. On an **oval running double file** the engineer also tells you which lane you form up in, inside or outside. Anywhere else — and any time the field is single file — there is no lane to name, so he just names the car.
+7. **Your position on the last lap.** About a third of the way around the last caution lap, your race position — *"We're currently P fourteen."* It is the number your display shows, not your place in the queue behind the pace car: a lapped car lined up ahead of you is still behind you in the race.
+8. **The pace car peels off.** About five seconds before the green, once one to go is up. On a road course the pace car waits parked until the caution needs it and then rolls out through pit exit to deploy — that moment is announced as the pace car reaching the track, never as it leaving.
 9. **The restart.** The green, called in its own right rather than borrowing the race start's line.
 
 If the car ahead of you changes while the caution is still running — somebody pits, or the field re-forms for a double-file restart — the engineer tells you, so you are never left following a car that has gone.
 
-**No lap count is ever spoken beyond "two to green" and "one to go", and each only where iRacing shows a flag for it.** iRacing gives no warning that a caution has been extended: any admin in the session can add a pace lap, and nothing says so until the lap you expected to be the last one simply is not. So the engineer never promises a count past the flag in front of him, and reports each extra lap as it happens, which is the only honest thing he can tell you.
+**No lap count is ever spoken beyond "two to green" and "one lap to green", and each only where iRacing shows a flag for it.** iRacing gives no warning that a caution has been extended: any admin in the session can add a pace lap, and nothing says so until the lap you expected to be the last one simply is not. So the engineer never promises a count past the flag in front of him, and reports each extra lap as it happens, which is the only honest thing he can tell you.
 
-Who you line up behind, and the position you are given, come from iRacing's own caution order — the order the sim actually forms the field up in — rather than from the live race positions. The two can disagree for a lap or so after the caution comes out, and the caution order is the one that matches what you see out of the window.
+Who you line up behind, and which lane, come from iRacing's own caution order — the order the sim actually forms the field up in — rather than from the live race positions. The two can disagree for a lap or so after the caution comes out, and the caution order is the one that matches what you see out of the window. The position you are given on the last lap is the other way round: it is your race position, the same number your display shows, because the queue behind the pace car can put a lapped car ahead of you without it being ahead of you in the race.
 
 ### What changes while a caution is out
 
 - **"Yellow cleared." no longer plays after a full-course caution.** That line exists for a local yellow, which ends with no flag shown at all and so is the only way you learn the sector is clear. A caution ends with the restart instead, which is now called in its own right — so the all-clear no longer lands a few seconds into the green. A yellow that stayed local still gets it, including one raised moments after a restart.
-- **Your best-lap and position-change callouts stay quiet.** A pace lap is not a lap time, and the running order freezing while the official positions catch up to it is not a position lost — both used to be announced as though they were. The position call on the last caution lap gives you your restart position instead.
+- **Your best-lap and position-change callouts stay quiet.** A pace lap is not a lap time, and the running order freezing while the official positions catch up to it is not a position lost — both used to be announced as though they were. The position call on the last caution lap gives you your race position instead, once the order has settled.
 - **Pit open and pit closed calls are untouched.** Every change is still announced: whether the pits are open is exactly what you need to know under a caution.
 - **The start lights' *"Go, go, go!"* no longer speaks at a restart.** The restart has its own call now, and its own switch.
 
@@ -274,7 +274,7 @@ In race the wording is always *"We're currently pee N."* regardless of direction
 
 When iRacing flags the just-completed lap as invalid (track-limits cut, pit-lane violation, etc.) the engineer prefixes the readout with *"That lap didn't count."* and always uses the "currently" framing — *"That lap didn't count. We're currently pee five."* — so you know the time was thrown out. The invalid-lap prefix overrides the pole and "puts us to" branches even if standings shifted on paper from other drivers' laps.
 
-The callout is silent while a [full-course caution](#full-course-caution) is out. The running order freezes under yellow and iRacing's official positions then catch up to it, which used to read as a handful of places changing hands on a lap where nobody passed anybody. The caution's own position call, on the last lap before the green, gives you the position you would restart in instead.
+The callout is silent while a [full-course caution](#full-course-caution) is out. The running order freezes under yellow and iRacing's official positions then catch up to it, which used to read as a handful of places changing hands on a lap where nobody passed anybody. The caution's own position call, on the last lap before the green, gives you your race position instead, by which time the order has settled.
 
 ## Race Position Status (every 3 laps)
 
@@ -604,9 +604,9 @@ Under **Caution**, nine callouts are toggleable, all enabled by default (see [Fu
 - **Pace car out** (`calloutEnabledCautionPaceCarOut`) — the pace car reaching the track.
 - **Two to green** (`calloutEnabledCautionFieldCaught`) — the pace car has the field: *"Two to green."* and the car to follow. Ovals only, since no flag marks that moment on a road course.
 - **Another caution lap** (`calloutEnabledCautionExtraLap`) — one per extra lap when the caution runs past the two it defaults to.
-- **One to go** (`calloutEnabledCautionOneToGo`) — the last lap under caution, with the car ahead and (on a double-file oval restart) the lane you form up in.
+- **One lap to green** (`calloutEnabledCautionOneToGo`) — the last lap under caution, with the car ahead and (on a double-file oval restart) the lane you form up in.
 - **Car ahead changed** (`calloutEnabledCautionLineupChanged`) — the car you line up behind has changed mid-caution.
-- **Position on the last lap** (`calloutEnabledCautionPosition`) — the position you would restart in, about a third of the way around the last caution lap.
+- **Position on the last lap** (`calloutEnabledCautionPosition`) — your race position, about a third of the way around the last caution lap.
 - **Pace car off** (`calloutEnabledCautionPaceCarOff`) — the pace car peeling off to pit road, a few seconds before the green.
 - **Restart** (`calloutEnabledCautionRestart`) — the green that releases the field. This is the switch for the restart call; **Start lights** above no longer covers it.
 

@@ -66,13 +66,13 @@
  * decision and then stands down. The field re-forms double file on the tick
  * before the flag — 415.10 vs 415.12, and 793.92 vs 793.93 — so without a
  * hold the "Change — you're behind car twelve" line would start playing
- * 20 ms before "One to go. Take the inside line, behind car oh nine." and be
- * cut mid-beep by it (same `family`, so preemption is wholesale and
+ * 20 ms before "One lap to green. Take the inside line behind car oh nine."
+ * and be cut mid-beep by it (same `family`, so preemption is wholesale and
  * weight-independent). `triggerDelay` is the engine's own answer to "the data
  * this scenario needs takes a moment to settle": the fire DECISION waits
  * {@link CAUTION_LINEUP_CHANGE_DELAY_MS}, and by then the one-to-go flag is up
- * in live telemetry and the change is no longer news — the one-to-go call
- * names the car and the lane itself. A genuine mid-caution reorder (someone
+ * in live telemetry and the change is no longer news — the one-lap-to-green
+ * call names the car and the lane itself. A genuine mid-caution reorder (someone
  * pitting) has no flag beside it, so it speaks a second and a half late,
  * which is nothing against the minute it has. The hold also coalesces a
  * re-form that shuffles the car ahead over several ticks into one decision,
@@ -95,21 +95,30 @@
  * stays silent when one to green rises on the same tick.** The road capture
  * never shows a waving caution going static on its own: at 309.33 it drops
  * straight from `CautionWaving` to `Caution | OneLapToGreen`, one tick, which
- * as first built said "Two to green" and "One to go" back to back. On an oval
+ * as first built said "Two to green" and "One lap to green" back to back. On an oval
  * the two are a leader crossing apart and nothing changes. The gate reads the
  * flag off live telemetry ({@link oneLapToGreenShown}) at event time — the
  * translator emits the two events in that order on the one tick, and the
  * telemetry both ride carries the one-to-go bit already.
  *
- * **5. "Pace car's off" speaks only once one to green is up.** Mid-caution on
- * the road course the pace car reads `AproachingPits` for about three seconds
- * and comes back on track (152.23 → 155.37, and 562.07 → 565.22 in the second
- * caution) — its route out through pit exit. Read literally that was "Pace
- * car's off" then "Pace car's out" three seconds apart. The real exit on both
- * tracks comes after one to green (461.22 there, 5.7 s before the green;
- * 488.07 / 866.98 on the oval), so gating on the flag removes both blips and
- * delays nothing. A debounce was rejected: waiting five seconds for a return
- * would push the real call to half a second before the green.
+ * **5. "Pace car's off" speaks only once one to green is up.** On the road
+ * course the pace car's `AproachingPits` means two opposite things. That
+ * start was a standing start, so the pace car never ran on the road; it
+ * waited PARKED, and iRacing reports a waiting pace car as `OnTrack` (its
+ * surface reads `OnTrack` from the first record, and its `CarIdxLapCompleted`
+ * stays −1 for the whole capture). Mid-caution it shows `AproachingPits` for
+ * about three seconds and then `OnTrack` again (152.23 → 155.37, and 562.07 →
+ * 565.22 in the second caution): that is the pace car rolling OUT through pit
+ * exit onto the circuit — its deployment, not a departure that returns
+ * (corrected by the maintainer, 2026-09-18). Read literally, the first half
+ * would have said "Pace car's off" at the very moment the pace car arrived.
+ * The real exit on both tracks comes after one to green (461.22 there, 5.7 s
+ * before the green; 488.07 / 866.98 on the oval), so gating "off" on the flag
+ * tells the two apart and delays nothing — and "Pace car's out" at 155.37 is
+ * right, the road course's deployment moment, later than the oval's ~20 s
+ * because the pace car starts from a standstill. A debounce was rejected:
+ * waiting five seconds for a return would push the real call to half a second
+ * before the green.
  *
  * **The follow call deliberately carries no `family`.** Every other contract
  * here shares `family: "flag"` so a newer caution call supersedes a stale
@@ -361,14 +370,15 @@ export function buildCautionContracts(getUnderFullCourseCaution: UnderCautionRes
     {
       ...cautionContract("pace-car-off", getUnderFullCourseCaution),
       description:
-        "The pace car peels off to pit road on the last caution lap, about five seconds before the green — once the one-to-go flag is up, so its mid-caution pit-exit blips on a road course stay silent.",
+        "The pace car peels off to pit road on the last caution lap, about five seconds before the green — once the one-to-go flag is up, so its pit-exit surface while deploying on a road course stays silent.",
       when: {
         event: "paceCar.off",
-        // Finding 5 in the module header: on a road course the pace car
-        // shows AproachingPits for three seconds mid-caution and comes back.
-        // The real exit is always after one to go, so waiting for the flag
-        // costs nothing. `oneLapToGreenNotYet` rather than `!Shown`, so a
-        // tick with no telemetry to read silences nothing.
+        // Finding 5 in the module header: on a road course a parked pace car
+        // reads OnTrack, and its three seconds of AproachingPits mid-caution
+        // are it rolling OUT through pit exit to deploy — an arrival, not a
+        // departure. The real exit is always after one to go, so waiting for
+        // the flag costs nothing. `oneLapToGreenNotYet` rather than `!Shown`,
+        // so a tick with no telemetry to read silences nothing.
         where: (e) => underCautionCar(e) && !oneLapToGreenNotYet(),
       },
     },
@@ -481,7 +491,7 @@ export function registerCautionVocabulary(
   engine.defineVar(
     "caution.followCarNumber",
     followCarNumberRef,
-    'The car number you line up behind under caution, spoken from the car-number group exactly as the sim spells it — "09" and "9" are different clips. Null while the pace car is the only thing ahead of you, and while the field carries no readable lineup, so branch on caution.followsPaceCar before naming it. Nothing to say is common rather than exceptional here, so keep the number in an optional clause with the words that introduce it: a null var in a required step aborts the whole callout, silently and at debug level, and the driver hears nothing at all. Where the callout must still say SOMETHING without the number — one to go, above all — branch on caution.hasFollowCarNumber and give the other branch a numberless wording.',
+    'The car number you line up behind under caution, spoken from the car-number group exactly as the sim spells it — "09" and "9" are different clips. Null while the pace car is the only thing ahead of you, and while the field carries no readable lineup, so branch on caution.followsPaceCar before naming it. Nothing to say is common rather than exceptional here, so keep the number in an optional clause with the words that introduce it: a null var in a required step aborts the whole callout, silently and at debug level, and the driver hears nothing at all. Where the callout must still say SOMETHING without the number — one lap to green, above all — branch on caution.hasFollowCarNumber and give the other branch a numberless wording.',
   );
 
   engine.defineVar(
@@ -540,7 +550,7 @@ export function registerCautionVocabulary(
   engine.defineCond(
     "caution.hasFollowCarNumber",
     () => followCarNumberRef() !== null,
-    'The car ahead of you in your line can be named — caution.followCarNumber would resolve. False while the pace car is the only thing ahead (ask caution.followsPaceCar for that), while the field carries no readable lineup, and when the session cannot spell the car\'s number. The condition to branch on when a callout must still speak without the number: the one-to-go call says a plain "One to go." in the other branch rather than nothing, because an optional clause alone expands to an empty callout and the driver hears no warning at all.',
+    'The car ahead of you in your line can be named — caution.followCarNumber would resolve. False while the pace car is the only thing ahead (ask caution.followsPaceCar for that), while the field carries no readable lineup, and when the session cannot spell the car\'s number. The condition to branch on when a callout must still speak without the number: the one-lap-to-green call says a plain "One lap to green." in the other branch rather than nothing, because an optional clause alone expands to an empty callout and the driver hears no warning at all.',
   );
 
   engine.defineCond(

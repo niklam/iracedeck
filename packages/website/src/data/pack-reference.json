@@ -21,7 +21,7 @@
       "speakGate": "Re-checked at speak time: the full-course caution is still out.",
       "base": "voice/{voice}",
       "comment": "The caution has been extended past the two laps it defaults to — one of three ways of saying the field is going around again. Never a lap count: nothing in the sim says how many are left, so each extra lap is reported as it happens.",
-      "test": "Harness → Flags → Caution → extra lap, with the race session and hot-lap presets — expect it after the leader's extra crossing, before the one-to-go line. In-sim: an admin adds a pace lap (!pacelaps +1) after the pickup.",
+      "test": "Harness → Flags → Caution → extra lap, with the race session and hot-lap presets — expect it after the leader's extra crossing, before the one-lap-to-green line. In-sim: an admin adds a pace lap (!pacelaps +1) after the pickup.",
       "skip": false,
       "references": {
         "pools": [
@@ -110,7 +110,7 @@
       "interrupt": false,
       "speakGate": "Re-checked at speak time: the full-course caution is still out.",
       "base": "voice/{voice}",
-      "comment": "The car you line up behind changed mid-caution — someone pitted, or the field re-formed. \"Change —\" then, with only the pace car ahead now, \"you're at the front now, just the pace car ahead\"; otherwise the lane and the new car ahead, in the same three shapes as the one-to-go line (inside, outside, or no lane), each an optional clause with its number. A new car ahead the session cannot name gets \"The car ahead of you has changed.\" — asked through caution.hasFollowCarNumber before the lane is chosen, because an optional clause alone expands to nothing. That fallback deliberately drops the lane even where caution.line would answer: four more clips to keep it on a rare path is not proportionate.",
+      "comment": "The car you line up behind changed mid-caution — someone pitted, or the field re-formed. \"Change —\" then, with only the pace car ahead now, \"you're at the front now, just the pace car ahead\"; otherwise the lane and the new car ahead, in the same three shapes as the one-lap-to-green line (inside, outside, or no lane), each an optional clause with its number. A new car ahead the session cannot name gets \"The car ahead of you has changed.\" — asked through caution.hasFollowCarNumber before the lane is chosen, because an optional clause alone expands to nothing. That fallback deliberately drops the lane even where caution.line would answer: four more clips to keep it on a rare path is not proportionate.",
       "test": "Harness → Flags → Caution → lineup change, with the race session and hot-lap presets — expect \"Change — you're behind car seven\" a second and a half after the reorder; with the practice preset (a player car but an empty driver list) the new car ahead cannot be named, so expect \"The car ahead of you has changed.\" In-sim: pit under caution, or a car ahead of you pitting, before the one-to-go flag.",
       "skip": false,
       "references": {
@@ -153,8 +153,8 @@
       "interrupt": false,
       "speakGate": "Re-checked at speak time: the full-course caution is still out.",
       "base": "voice/{voice}",
-      "comment": "One to go, with the restart lineup. Leading: \"One to go. You're leading them away.\" On the front row with only the pace car ahead but not the leader — the outside car of a double-file restart — a plain \"One to go.\", since telling P2 it leads would be wrong. Otherwise the lane and the car ahead, read from the pace rows at speak time: inside or outside on an oval running double file, and \"Line up behind\" with no lane anywhere else or single file. A car ahead the session cannot name gets the plain \"One to go.\" too — this is the one call that must never come out as nothing, so it asks caution.hasFollowCarNumber before choosing a numbered wording rather than leaving the number to an optional clause alone, which expands to silence when there is no number to say. The numbered wordings already contain the words \"One to go\", which is why the fallback replaces them rather than preceding them.",
-      "test": "Harness → Flags → Caution → restart, with the race session and hot-lap presets — a double-file lineup, so expect \"One to go. … behind car eight\", with the lane when the preset's track is an oval; Caution → lineup change re-forms single file and hears the plain wording. With no session preset the run is refused, and with the practice preset (a player car but an empty driver list) the car ahead cannot be named, so expect the bare \"One to go.\" In-sim: the one-to-go flag on the last caution lap.",
+      "comment": "One lap to green, with the restart lineup. Leading: \"One lap to green. You're leading them away.\" On the front row with only the pace car ahead but not the leader — the outside car of a double-file restart — a plain \"One lap to green.\", since telling P2 it leads would be wrong. Otherwise the lane and the car ahead, read from the pace rows at speak time: inside or outside on an oval running double file, and \"Line up behind\" with no lane anywhere else or single file. A car ahead the session cannot name gets the plain \"One lap to green.\" too — this is the one call that must never come out as nothing, so it asks caution.hasFollowCarNumber before choosing a numbered wording rather than leaving the number to an optional clause alone, which expands to silence when there is no number to say. The numbered wordings already contain the words \"One lap to green\", which is why the fallback replaces them rather than preceding them.",
+      "test": "Harness → Flags → Caution → restart, with the race session and hot-lap presets — a double-file lineup, so expect \"One lap to green. … behind car eight\", with the lane when the preset's track is an oval; Caution → lineup change re-forms single file and hears the plain wording. With no session preset the run is refused, and with the practice preset (a player car but an empty driver list) the car ahead cannot be named, so expect the bare \"One lap to green.\" In-sim: the one-to-go flag on the last caution lap.",
       "skip": false,
       "references": {
         "pools": [
@@ -189,7 +189,7 @@
       "id": "pit-crew.caution-pace-car-off",
       "family": "flag",
       "event": "paceCar.off",
-      "description": "The pace car peels off to pit road on the last caution lap, about five seconds before the green — once the one-to-go flag is up, so its mid-caution pit-exit blips on a road course stay silent.",
+      "description": "The pace car peels off to pit road on the last caution lap, about five seconds before the green — once the one-to-go flag is up, so its pit-exit surface while deploying on a road course stays silent.",
       "frame": "radio",
       "weight": 70,
       "weightBand": "SAFETY",
@@ -241,7 +241,7 @@
       "id": "pit-crew.caution-position",
       "family": "flag",
       "event": "caution.lastLapCheckpoint",
-      "description": "About a third of the way into the last caution lap — the one-to-go flag is up and your lap distance passes 35% — the position you would restart in, read from the pace rows.",
+      "description": "About a third of the way into the last caution lap — the one-to-go flag is up and your lap distance passes 35% — your race position from the live running order, the number your display shows.",
       "frame": "radio",
       "weight": 70,
       "weightBand": "SAFETY",
@@ -249,15 +249,15 @@
       "interrupt": false,
       "speakGate": "Re-checked at speak time: the full-course caution is still out.",
       "base": "voice/{voice}",
-      "comment": "The position you would restart in, about a third of the way into the last caution lap — the normal position wording (\"We're currently\" and the number, read from the pace rows at speak time). The WHOLE call is one optional clause, and here that is correct rather than the empty-sequence defect the other caution entries guard against: a position call with no position — no pace row for the player, or a field past the spoken range — has nothing true to say, so saying nothing IS the right sentence. Do not add a fallback wording outside the clause.",
-      "test": "Harness → Flags → Caution → restart, with the race session and hot-lap presets — expect \"We're currently seven\" a couple of seconds after the one-to-go line; with the practice preset (no pace car in session info) the pace rows carry no position and the call is silent. In-sim: about 35% into the one-to-go lap.",
+      "comment": "Your race position, about a third of the way into the last caution lap — the normal position wording (\"We're currently\" and the number). The number is caution.racePosition, the live race position at the moment it is spoken, NOT caution.restartPosition: a lapped car lined up ahead of you is behind you in the race, and the number your display shows is the race one (a 2026-09-19 test heard \"P21\" in a 20-car field from the lineup, with the display on P19). The WHOLE call is one optional clause, and here that is correct rather than the empty-sequence defect the other caution entries guard against: a position call with no position — no running order to read, or a field past the spoken range — has nothing true to say, so saying nothing IS the right sentence. Do not add a fallback wording outside the clause.",
+      "test": "Harness → Flags → Caution → restart, with the race session and hot-lap presets — expect \"We're currently seven\" a couple of seconds after the one-lap-to-green line (the button patches per-car lap progress at one to go so the race order can rank you; the hot-lap preset alone carries none). In-sim: about 35% into the one-lap-to-green lap; a lapped car lined up ahead of you does not count.",
       "skip": false,
       "references": {
         "pools": [
           "position-intro-worse/currently"
         ],
         "vars": [
-          "caution.restartPosition"
+          "caution.racePosition"
         ],
         "conds": [],
         "cases": [],
@@ -4500,7 +4500,7 @@
     "vars": [
       {
         "name": "caution.followCarNumber",
-        "description": "The car number you line up behind under caution, spoken from the car-number group exactly as the sim spells it — \"09\" and \"9\" are different clips. Null while the pace car is the only thing ahead of you, and while the field carries no readable lineup, so branch on caution.followsPaceCar before naming it. Nothing to say is common rather than exceptional here, so keep the number in an optional clause with the words that introduce it: a null var in a required step aborts the whole callout, silently and at debug level, and the driver hears nothing at all. Where the callout must still say SOMETHING without the number — one to go, above all — branch on caution.hasFollowCarNumber and give the other branch a numberless wording.",
+        "description": "The car number you line up behind under caution, spoken from the car-number group exactly as the sim spells it — \"09\" and \"9\" are different clips. Null while the pace car is the only thing ahead of you, and while the field carries no readable lineup, so branch on caution.followsPaceCar before naming it. Nothing to say is common rather than exceptional here, so keep the number in an optional clause with the words that introduce it: a null var in a required step aborts the whole callout, silently and at debug level, and the driver hears nothing at all. Where the callout must still say SOMETHING without the number — one lap to green, above all — branch on caution.hasFollowCarNumber and give the other branch a numberless wording.",
         "usedBy": [
           "pit-crew.caution-field-caught",
           "pit-crew.caution-follow",
@@ -4509,11 +4509,16 @@
         ]
       },
       {
-        "name": "caution.restartPosition",
-        "description": "The position you would restart in, spoken from the position-number group, which stops at 64 — a position past that is null, since there is no clip to say it with. Read from the pace rows rather than the running order — that is what iRacing lines the field up by — and null whenever the rows carry no absolute position, which happens whenever session info cannot name the pace car. Keep it in an optional clause with the words that introduce it: a null var in a required step aborts the whole callout, silently and at debug level. In the position call that clause IS the whole callout, and there that is right — a position call with no position has nothing true to say.",
+        "name": "caution.racePosition",
+        "description": "Your race position at the moment the call is spoken, from the canonical live running order — the number your display shows, in your class in a multi-class race — spoken from the position-number group, which stops at 64; a position past that is null, since there is no clip to say it with. This is what the position call on the last caution lap speaks. It is not your place in the restart lineup (caution.restartPosition): a lapped car lined up ahead of you is behind you in the race, and the two differ by exactly those cars. Null while the order cannot be read. Keep it in an optional clause with the words that introduce it: a null var in a required step aborts the whole callout, silently and at debug level. In the position call that clause IS the whole callout, and there that is right — a position call with no position has nothing true to say.",
         "usedBy": [
           "pit-crew.caution-position"
         ]
+      },
+      {
+        "name": "caution.restartPosition",
+        "description": "Your place in the restart LINEUP, spoken from the position-number group, which stops at 64 — a position past that is null, since there is no clip to say it with. Counted off the pace rows rather than the running order — that is what iRacing lines the field up by — and null whenever the rows carry no absolute position, which happens whenever session info cannot name the pace car. This is NOT the race position: a lapped car lined up ahead of you is behind you in the race, so a spoken \"P\" belongs to caution.racePosition, which is what the reference position call uses. Keep it in an optional clause with the words that introduce it: a null var in a required step aborts the whole callout, silently and at debug level.",
+        "usedBy": []
       },
       {
         "name": "cornerName.clip",
@@ -4863,7 +4868,7 @@
       },
       {
         "name": "caution.hasFollowCarNumber",
-        "description": "The car ahead of you in your line can be named — caution.followCarNumber would resolve. False while the pace car is the only thing ahead (ask caution.followsPaceCar for that), while the field carries no readable lineup, and when the session cannot spell the car's number. The condition to branch on when a callout must still speak without the number: the one-to-go call says a plain \"One to go.\" in the other branch rather than nothing, because an optional clause alone expands to an empty callout and the driver hears no warning at all.",
+        "description": "The car ahead of you in your line can be named — caution.followCarNumber would resolve. False while the pace car is the only thing ahead (ask caution.followsPaceCar for that), while the field carries no readable lineup, and when the session cannot spell the car's number. The condition to branch on when a callout must still speak without the number: the one-lap-to-green call says a plain \"One lap to green.\" in the other branch rather than nothing, because an optional clause alone expands to an empty callout and the driver hears no warning at all.",
         "usedBy": [
           "pit-crew.caution-follow",
           "pit-crew.caution-lineup-changed",
@@ -28358,6 +28363,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -28377,6 +28383,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -28396,6 +28403,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -28415,6 +28423,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -28434,6 +28443,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -28453,6 +28463,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -28472,6 +28483,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -28491,6 +28503,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -28510,6 +28523,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -28529,6 +28543,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -28548,6 +28563,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -28567,6 +28583,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -28586,6 +28603,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -28605,6 +28623,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -28624,6 +28643,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -28643,6 +28663,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -28662,6 +28683,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -28681,6 +28703,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -28700,6 +28723,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -28719,6 +28743,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -28738,6 +28763,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -28757,6 +28783,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -28776,6 +28803,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -28795,6 +28823,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -28814,6 +28843,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -28833,6 +28863,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -28852,6 +28883,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -28871,6 +28903,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -28890,6 +28923,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -28909,6 +28943,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -28928,6 +28963,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -28947,6 +28983,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -28966,6 +29003,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -28985,6 +29023,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -29004,6 +29043,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -29023,6 +29063,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -29042,6 +29083,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -29061,6 +29103,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -29080,6 +29123,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -29099,6 +29143,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -29118,6 +29163,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -29137,6 +29183,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -29156,6 +29203,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -29175,6 +29223,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -29194,6 +29243,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -29213,6 +29263,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -29232,6 +29283,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -29251,6 +29303,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -29270,6 +29323,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -29289,6 +29343,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -29308,6 +29363,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -29327,6 +29383,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -29346,6 +29403,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -29365,6 +29423,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -29384,6 +29443,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -29403,6 +29463,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -29422,6 +29483,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -29441,6 +29503,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -29460,6 +29523,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -29479,6 +29543,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -29498,6 +29563,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -29517,6 +29583,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -29536,6 +29603,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
@@ -29555,6 +29623,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [
+            "caution.racePosition",
             "caution.restartPosition",
             "opponentFlag.number",
             "opponentPit.number",
