@@ -40,7 +40,7 @@ When the engineer is enabled, the Pit Crew catalog confirms every meaningful pit
 Flag transitions are also voiced — every flag the iRacing translator publishes gets a dedicated engineer callout:
 
 - **Yellow** — scope-aware: full-course yellow ("pace car deployed") and local sector yellow ("mind the slow cars") play different lines.
-- **Yellow cleared** — engineer announces when the yellow drops.
+- **Yellow cleared** — engineer announces when a **local** yellow drops, since a local yellow ends with no flag shown and this call is the only way to learn the sector is clear. It does not play after a full-course caution, which ends with the restart, and the full-course caution sequence calls that in its own words.
 - **Green** — the green-flag call, with its own line for practice, qualifying and races: it fires when the green comes without a start signal, which is how practice and qualifying go green. It stays quiet at a race start (iRacing gives the start signal with the green, and the Start Lights go line announces it) and at every restart after a full-course caution, whether or not the start signal comes with it — the caution sequence calls the restart in its own words.
 - **Blue** — alternates between two recorded variants ("faster car approaching" / "check your mirrors").
 - **White** — final-lap alert.
