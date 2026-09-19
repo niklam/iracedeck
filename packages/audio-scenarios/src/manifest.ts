@@ -3,6 +3,7 @@
  * interpreter ↔ validation circular import. Both modules consume these
  * symbols, so they live in a leaf module that depends on neither.
  */
+import { stripTakeSuffix } from "@iracedeck/callout-script";
 
 /** Manifest shape the scenario engine consumes; matches `@iracedeck/audio-assets/manifest.json`. */
 export type AudioAssetsManifest = {
@@ -61,6 +62,16 @@ export function referenceVoice(manifest: AudioAssetsManifest): string | null {
  * paths. The set is the union across voices — a name only present for one
  * voice still shows up; runtime playback skips gracefully when the active
  * voice has no clip for the chosen name.
+ *
+ * A name is a pool BASE, because that is how it is spoken: the engine plays
+ * the chosen name as the `names/<name>` pool, and its pool rule
+ * (`poolMemberPattern`) reads `<name>-NN.mp3` as a take of `<name>` (issue
+ * #1173). So a take lists as its base — `niklas.mp3` and `niklas-01.mp3` are
+ * one entry, and a pack that records only `adam-01.mp3` lists `adam` — and
+ * listing `niklas-01` instead would offer a pool no voice's `niklas` clips
+ * answer to. The fold is `@iracedeck/callout-script`'s `stripTakeSuffix`, the
+ * same two-digit rule, so a name that merely ends in digits (`r2d2`, `abc-1`)
+ * is left as it is.
  */
 export function scanDriverNames(manifest: AudioAssetsManifest): string[] {
   const names = new Set<string>();
@@ -72,7 +83,7 @@ export function scanDriverNames(manifest: AudioAssetsManifest): string[] {
 
     if (segments.length === 4 && segments[2] === "names") {
       const file = segments[3];
-      const name = file.endsWith(".mp3") ? file.slice(0, -".mp3".length) : file;
+      const name = stripTakeSuffix(file.endsWith(".mp3") ? file.slice(0, -".mp3".length) : file);
 
       if (name.length > 0) names.add(name);
     }

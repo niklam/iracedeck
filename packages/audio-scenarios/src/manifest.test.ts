@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { poolMemberPattern } from "./interpreter.js";
 import {
   type AudioAssetsManifest,
   manifestVoices,
@@ -81,6 +82,65 @@ describe("scanDriverNames", () => {
       clips: ["voice/luca/names/sub/nested.mp3", "voice/luca/welcome.mp3"],
     };
     expect(scanDriverNames(m)).toEqual([]);
+  });
+
+  describe("name takes (#1173)", () => {
+    // A pack may record a name as takes (`names/niklas-01.mp3`), which the
+    // engine plays as the `niklas` pool. The list offers what is SPOKEN, so a
+    // take lists as its base — otherwise the dropdown carries `niklas-01`
+    // beside `niklas`, and picking it names a pool the bare clips never join.
+    const names = (...clips: string[]): string[] => scanDriverNames({ ...manifest, clips });
+
+    it("lists a bare clip as itself", () => {
+      expect(names("voice/luca/names/niklas.mp3")).toEqual(["niklas"]);
+    });
+
+    it("lists a take as its base", () => {
+      expect(names("voice/luca/names/niklas-01.mp3")).toEqual(["niklas"]);
+    });
+
+    it("folds a bare clip and its takes into one entry, across voices", () => {
+      expect(
+        names("voice/default/names/niklas.mp3", "voice/snoop/names/niklas-01.mp3", "voice/snoop/names/niklas-02.mp3"),
+      ).toEqual(["niklas"]);
+    });
+
+    it("lists a name one pack carries only as a take under its base", () => {
+      expect(names("voice/default/names/niklas.mp3", "voice/snoop/names/adam-01.mp3")).toEqual(["adam", "niklas"]);
+    });
+
+    it.each([
+      ["digits with no hyphen", "r2d2"],
+      ["a one-digit suffix", "abc-1"],
+      ["a three-digit suffix", "abc-123"],
+    ])("leaves a name ending in %s as it is (%s)", (_case, name) => {
+      expect(names(`voice/luca/names/${name}.mp3`)).toEqual([name]);
+    });
+
+    it("lists every clip under exactly one name, by the engine's own pool rule", () => {
+      // The pin: the fold is only right if each listed name, played as the
+      // `names/<name>` pool, reaches the clips it came from. Membership is the
+      // interpreter's `poolMemberPattern`, not a restatement of it — so a fold
+      // that drifted from the engine fails here rather than going quiet in-game.
+      const clips = [
+        "voice/default/names/niklas.mp3",
+        "voice/snoop/names/niklas-01.mp3",
+        "voice/snoop/names/adam-01.mp3",
+        "voice/snoop/names/adam-12.mp3",
+        "voice/luca/names/r2d2.mp3",
+        "voice/luca/names/abc-1.mp3",
+        "voice/luca/names/abc-123.mp3",
+      ];
+      const listed = names(...clips);
+
+      expect(listed).toEqual(["abc-1", "abc-123", "adam", "niklas", "r2d2"]);
+
+      for (const clip of clips) {
+        const owners = listed.filter((name) => poolMemberPattern("names", name).test(clip));
+
+        expect(owners, `${clip} is reachable from exactly one listed name`).toHaveLength(1);
+      }
+    });
   });
 });
 
