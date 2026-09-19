@@ -638,6 +638,18 @@ export interface TelemetryData {
   // may be absent — the SRX exposes only the Right one (#953).
   dpWeightJackerLeft?: number;
   dpWeightJackerRight?: number;
+  // Pending next-pit-stop tire change requests (#954). A car publishes ONLY the
+  // fields matching the granularity its pit crew can change: the four corner
+  // fields (e.g. GT3), the two side fields (e.g. ARCA, SRX) or the single
+  // all-four field (e.g. Super Formula Lights). Presence is the capability
+  // signal — see getTireChangeGranularity in @iracedeck/iracing-sdk.
+  dpLFTireChange?: number;
+  dpRFTireChange?: number;
+  dpLRTireChange?: number;
+  dpRRTireChange?: number;
+  dpLTireChange?: number;
+  dpRTireChange?: number;
+  dpTireChange?: number;
 
   // Camera & Replay
   CamCameraNumber?: number;

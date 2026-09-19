@@ -5,6 +5,7 @@ import {
   areLeftTiresOn,
   areRightTiresOn,
   buildTireToggleMacro,
+  coerceTireRequest,
   doCurrentTiresMatch,
   generateTireIcon,
   generateTireServiceSvg,
@@ -27,6 +28,7 @@ const {
   mockGetConnectionStatus,
   mockGetCurrentTelemetry,
   mockGetSessionInfo,
+  mockGetTireChangeGranularity,
 } = vi.hoisted(() => ({
   mockSendMessage: vi.fn(async () => true),
   mockPitTireCompound: vi.fn(() => true),
@@ -43,6 +45,7 @@ const {
   mockGetConnectionStatus: vi.fn(() => true),
   mockGetCurrentTelemetry: vi.fn(() => ({ PitSvFlags: 0, PlayerTireCompound: 0, PitSvTireCompound: 0 })),
   mockGetSessionInfo: vi.fn((): Record<string, unknown> | null => null),
+  mockGetTireChangeGranularity: vi.fn((_telemetry: unknown): "corner" | "side" | "all" | null => null),
 }));
 
 vi.mock("@iracedeck/icons/tire-service/change-all-tires.svg", () => ({
@@ -59,6 +62,7 @@ vi.mock("@iracedeck/icons/tire-service/toggle-tires.svg", () => ({
 }));
 
 vi.mock("@iracedeck/iracing-sdk", () => ({
+  getTireChangeGranularity: mockGetTireChangeGranularity,
   hasFlag: vi.fn((value: number, flag: number) => (value & flag) !== 0),
   PitSvFlags: {
     LFTireChange: 0x0001,
@@ -198,6 +202,7 @@ describe("TireService", () => {
     vi.clearAllMocks();
     mockGetConnectionStatus.mockReturnValue(true);
     mockGetCurrentTelemetry.mockReturnValue({ PitSvFlags: 0, PlayerTireCompound: 0, PitSvTireCompound: 0 });
+    mockGetTireChangeGranularity.mockReturnValue(null);
   });
 
   describe("getDriverTires", () => {
@@ -443,6 +448,62 @@ describe("TireService", () => {
     });
   });
 
+  describe("coerceTireRequest", () => {
+    const ALL = ["lf", "rf", "lr", "rr"] as const;
+    const singles = [["lf"], ["rf"], ["lr"], ["rr"]] as const;
+
+    it.each([null, "corner"] as const)("leaves every set unchanged at %s granularity", (g) => {
+      for (const set of [[], ["lf"], ["rr"], ["lf", "rf"], ["lf", "rr"], ["lf", "rf", "lr"], [...ALL]] as const) {
+        expect(coerceTireRequest([...set], g)).toEqual([...set]);
+      }
+    });
+
+    it("keeps the requested order at corner granularity", () => {
+      expect(coerceTireRequest(["rr", "lf"], "corner")).toEqual(["rr", "lf"]);
+    });
+
+    it("expands a single corner to its side pair on per-side cars", () => {
+      expect(coerceTireRequest(["lf"], "side")).toEqual(["lf", "lr"]);
+      expect(coerceTireRequest(["lr"], "side")).toEqual(["lf", "lr"]);
+      expect(coerceTireRequest(["rf"], "side")).toEqual(["rf", "rr"]);
+      expect(coerceTireRequest(["rr"], "side")).toEqual(["rf", "rr"]);
+    });
+
+    it("expands corners on both sides to all four on per-side cars", () => {
+      expect(coerceTireRequest(["lf", "rf"], "side")).toEqual([...ALL]);
+      expect(coerceTireRequest(["lf", "rr"], "side")).toEqual([...ALL]);
+      expect(coerceTireRequest(["lr", "rr"], "side")).toEqual([...ALL]);
+    });
+
+    it("keeps an already-whole side on per-side cars", () => {
+      expect(coerceTireRequest(["lf", "lr"], "side")).toEqual(["lf", "lr"]);
+      expect(coerceTireRequest(["rr", "rf"], "side")).toEqual(["rf", "rr"]);
+    });
+
+    it("expands any non-empty set to all four on all-four cars", () => {
+      for (const set of [...singles, ["lf", "lr"], ["rf", "rr"], ["lf", "rr"], ["lf", "rf", "lr"], [...ALL]] as const) {
+        expect(coerceTireRequest([...set], "all")).toEqual([...ALL]);
+      }
+    });
+
+    it("keeps an empty set empty at every granularity", () => {
+      for (const g of [null, "corner", "side", "all"] as const) {
+        expect(coerceTireRequest([], g)).toEqual([]);
+      }
+    });
+
+    it("only ever yields shorthand macros on coarse cars", () => {
+      for (const g of ["side", "all"] as const) {
+        for (const set of [...singles, ["lf", "rf"], ["lf", "rr"], ["lr", "rr"], ["lf", "rf", "lr"]] as const) {
+          const tires = coerceTireRequest([...set], g);
+          expect(["#!t", "#!l", "#!r"]).toContain(
+            buildTireToggleMacro(TireServiceSettings.parse({ mode: "toggle-tires", tires })),
+          );
+        }
+      }
+    });
+  });
+
   describe("doCurrentTiresMatch", () => {
     it("should return true when all tires configured and all on", () => {
       expect(doCurrentTiresMatch({ tires: ["lf", "rf", "lr", "rr"] }, { lf: true, rf: true, lr: true, rr: true })).toBe(
@@ -474,6 +535,17 @@ describe("TireService", () => {
 
     it("should return false when left side on but right side configured", () => {
       expect(doCurrentTiresMatch({ tires: ["rf", "rr"] }, { lf: true, rf: false, lr: true, rr: false })).toBe(false);
+    });
+
+    it("matches a coerced all-four set against all four checked (all-of reading)", () => {
+      const tires = coerceTireRequest(["lf"], "all");
+      expect(doCurrentTiresMatch({ tires }, { lf: true, rf: true, lr: true, rr: true })).toBe(true);
+      expect(doCurrentTiresMatch({ tires }, { lf: true, rf: true, lr: true, rr: false })).toBe(false);
+    });
+
+    it("matches a coerced side set against that side checked", () => {
+      const tires = coerceTireRequest(["rr"], "side");
+      expect(doCurrentTiresMatch({ tires }, { lf: false, rf: true, lr: false, rr: true })).toBe(true);
     });
   });
 
@@ -560,6 +632,44 @@ describe("TireService", () => {
       for (const rect of rects) {
         expect(rect).toContain('fill="#FF4444"');
       }
+    });
+
+    it("draws the coerced set as configured on an all-four car", () => {
+      const result = generateToggleTiresIconContent(
+        TireServiceSettings.parse({ mode: "toggle-tires", tires: ["lf"] }),
+        { lf: false, rf: false, lr: false, rr: false },
+        "all",
+      );
+      const rects = result.match(/<rect[^>]+>/g) ?? [];
+      expect(rects).toHaveLength(4);
+
+      for (const rect of rects) expect(rect).toContain('fill="#FF4444"');
+    });
+
+    it("draws the side pair as configured on a per-side car", () => {
+      const result = generateToggleTiresIconContent(
+        TireServiceSettings.parse({ mode: "toggle-tires", tires: ["rf"] }),
+        { lf: false, rf: true, lr: false, rr: true },
+        "side",
+      );
+      const rects = result.match(/<rect[^>]+>/g) ?? [];
+      expect(rects[0]).toContain('fill="#000000ff"');
+      expect(rects[1]).toContain('fill="#44FF44"');
+      expect(rects[2]).toContain('fill="#000000ff"');
+      expect(rects[3]).toContain('fill="#44FF44"');
+    });
+
+    it("draws the configured set unchanged when granularity is unknown", () => {
+      const result = generateToggleTiresIconContent(
+        TireServiceSettings.parse({ mode: "toggle-tires", tires: ["lf"] }),
+        { lf: false, rf: false, lr: false, rr: false },
+        null,
+      );
+      const rects = result.match(/<rect[^>]+>/g) ?? [];
+      expect(rects[0]).toContain('fill="#FF4444"');
+      expect(rects[1]).toContain('fill="#000000ff"');
+      expect(rects[2]).toContain('fill="#000000ff"');
+      expect(rects[3]).toContain('fill="#000000ff"');
     });
   });
 
@@ -914,6 +1024,93 @@ describe("TireService", () => {
         });
       });
 
+      describe("tire-change granularity", () => {
+        const EXPANDED_LOG = "Tire request expanded to the car's tire-change granularity";
+
+        it("clears first and sends all four on an all-four car when nothing is checked", async () => {
+          mockGetTireChangeGranularity.mockReturnValue("all");
+          mockGetCurrentTelemetry.mockReturnValue({ PitSvFlags: 0, PlayerTireCompound: 0, PitSvTireCompound: 0 });
+
+          await action.onKeyDown(fakeEvent("a1", { mode: "toggle-tires", toggleMode: "select", tires: ["lf"] }) as any);
+
+          expect(mockPitClearTires).toHaveBeenCalledOnce();
+          expect(mockSendMessage).toHaveBeenCalledOnce();
+          expect(mockSendMessage).toHaveBeenCalledWith("#!t");
+          expect(action["logger"].info).toHaveBeenCalledWith(EXPANDED_LOG);
+        });
+
+        it("does not clear on an all-four car when all four are already checked", async () => {
+          // Comparing the raw ["lf"] against four checked tires would clear on every press.
+          mockGetTireChangeGranularity.mockReturnValue("all");
+          mockGetCurrentTelemetry.mockReturnValue({ PitSvFlags: 0x000f, PlayerTireCompound: 0, PitSvTireCompound: 0 });
+
+          await action.onKeyDown(fakeEvent("a1", { mode: "toggle-tires", toggleMode: "select", tires: ["lf"] }) as any);
+
+          expect(mockPitClearTires).not.toHaveBeenCalled();
+          expect(mockSendMessage).toHaveBeenCalledWith("#!t");
+        });
+
+        it("sends the side on a per-side car", async () => {
+          mockGetTireChangeGranularity.mockReturnValue("side");
+          mockGetCurrentTelemetry.mockReturnValue({ PitSvFlags: 0, PlayerTireCompound: 0, PitSvTireCompound: 0 });
+
+          await action.onKeyDown(fakeEvent("a1", { mode: "toggle-tires", toggleMode: "select", tires: ["rr"] }) as any);
+
+          expect(mockPitClearTires).toHaveBeenCalledOnce();
+          expect(mockSendMessage).toHaveBeenCalledWith("#!r");
+        });
+
+        it("sends the side in legacy toggle mode without clearing", async () => {
+          mockGetTireChangeGranularity.mockReturnValue("side");
+          mockGetCurrentTelemetry.mockReturnValue({ PitSvFlags: 0, PlayerTireCompound: 0, PitSvTireCompound: 0 });
+
+          await action.onKeyDown(fakeEvent("a1", { mode: "toggle-tires", toggleMode: "toggle", tires: ["lf"] }) as any);
+
+          expect(mockPitClearTires).not.toHaveBeenCalled();
+          expect(mockSendMessage).toHaveBeenCalledWith("#!l");
+        });
+
+        it("sends the single corner on a per-corner car and logs no expansion", async () => {
+          mockGetTireChangeGranularity.mockReturnValue("corner");
+          mockGetCurrentTelemetry.mockReturnValue({ PitSvFlags: 0, PlayerTireCompound: 0, PitSvTireCompound: 0 });
+
+          await action.onKeyDown(fakeEvent("a1", { mode: "toggle-tires", toggleMode: "select", tires: ["lf"] }) as any);
+
+          expect(mockSendMessage).toHaveBeenCalledWith("#!lf");
+          expect(action["logger"].info).not.toHaveBeenCalledWith(EXPANDED_LOG);
+        });
+
+        it("sends the configured set unchanged when the granularity is unknown", async () => {
+          mockGetTireChangeGranularity.mockReturnValue(null);
+          mockGetCurrentTelemetry.mockReturnValue({ PitSvFlags: 0, PlayerTireCompound: 0, PitSvTireCompound: 0 });
+
+          await action.onKeyDown(fakeEvent("a1", { mode: "toggle-tires", toggleMode: "select", tires: ["lf"] }) as any);
+
+          expect(mockSendMessage).toHaveBeenCalledWith("#!lf");
+          expect(action["logger"].info).not.toHaveBeenCalledWith(EXPANDED_LOG);
+        });
+
+        it("still warns and sends nothing when no tires are configured on an all-four car", async () => {
+          mockGetTireChangeGranularity.mockReturnValue("all");
+
+          await action.onKeyDown(fakeEvent("a1", { mode: "toggle-tires", toggleMode: "select", tires: [] }) as any);
+
+          expect(action["logger"].warn).toHaveBeenCalledWith("No tires configured");
+          expect(mockPitClearTires).not.toHaveBeenCalled();
+          expect(mockSendMessage).not.toHaveBeenCalled();
+        });
+
+        it("reads the granularity from the telemetry snapshot", async () => {
+          const telemetry = { PitSvFlags: 0, PlayerTireCompound: 0, PitSvTireCompound: 0 };
+          mockGetCurrentTelemetry.mockReturnValue(telemetry);
+
+          await action.onKeyDown(fakeEvent("a1", { mode: "toggle-tires", toggleMode: "select", tires: ["lf"] }) as any);
+
+          expect(mockGetTireChangeGranularity).toHaveBeenCalledWith(telemetry);
+          expect(mockGetTireChangeGranularity.mock.calls[0][0]).toBe(telemetry);
+        });
+      });
+
       it("should not clear or send message when no tires configured", async () => {
         await action.onKeyDown(fakeEvent("a1", { mode: "toggle-tires", tires: [] }) as any);
 
@@ -1113,6 +1310,56 @@ describe("TireService", () => {
       await action.onDialDown(fakeEvent("a1", { mode: "clear-tires" }) as any);
 
       expect(mockPitClearTires).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe("key icon tire-change granularity", () => {
+    const settings = { mode: "toggle-tires", toggleMode: "select", tires: ["lf"] };
+    let action: TireService;
+
+    /** Number of tires drawn as configured-but-off (red) in a rendered data URI. */
+    function redTires(dataUri: string): number {
+      return (decodeURIComponent(dataUri).match(/fill="#FF4444"/g) ?? []).length;
+    }
+
+    beforeEach(() => {
+      action = new TireService();
+    });
+
+    it("draws the expanded set on appear on an all-four car", async () => {
+      mockGetTireChangeGranularity.mockReturnValue("all");
+
+      await action.onWillAppear(fakeEvent("a1", settings) as any);
+
+      expect(redTires(vi.mocked(action["setKeyImage"]).mock.calls[0][1])).toBe(4);
+      expect(redTires(vi.mocked(action["setRegenerateCallback"]).mock.calls[0][1]())).toBe(4);
+    });
+
+    it("draws the expanded set when settings arrive on a per-side car", async () => {
+      mockGetTireChangeGranularity.mockReturnValue("side");
+
+      await action.onDidReceiveSettings(fakeEvent("a1", settings) as any);
+
+      expect(redTires(vi.mocked(action["setKeyImage"]).mock.calls[0][1])).toBe(2);
+      expect(redTires(vi.mocked(action["setRegenerateCallback"]).mock.calls[0][1]())).toBe(2);
+    });
+
+    it("re-renders the key when the car's granularity changes", async () => {
+      await action.onWillAppear(fakeEvent("a1", settings) as any);
+      const onTelemetry = vi.mocked(action["sdkController"].subscribe).mock.calls[0][1];
+      const telemetry = { PitSvFlags: 0, PlayerTireCompound: 0, PitSvTireCompound: 0 };
+
+      onTelemetry(telemetry, true);
+      expect(action["updateKeyImage"]).not.toHaveBeenCalled();
+
+      mockGetTireChangeGranularity.mockReturnValue("all");
+      onTelemetry(telemetry, true);
+
+      expect(action["updateKeyImage"]).toHaveBeenCalledOnce();
+      expect(redTires(vi.mocked(action["updateKeyImage"]).mock.calls[0][1])).toBe(4);
+      // The regenerate callback is registered after the awaited image push.
+      await vi.waitFor(() => expect(action["setRegenerateCallback"]).toHaveBeenCalledTimes(2));
+      expect(redTires(vi.mocked(action["setRegenerateCallback"]).mock.calls[1][1]())).toBe(4);
     });
   });
 

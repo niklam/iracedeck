@@ -2,6 +2,7 @@ import { Flags, SessionState, type TelemetryData } from "@iracedeck/iracing-nati
 import { describe, expect, it } from "vitest";
 
 import {
+  getTireChangeGranularity,
   hasPitLimiter,
   hasVisor,
   hasWipers,
@@ -64,6 +65,53 @@ describe("telemetry-features", () => {
 
     it("returns false for null telemetry", () => {
       expect(hasWipers(null)).toBe(false);
+    });
+  });
+
+  describe("getTireChangeGranularity", () => {
+    it("returns corner when all four corner fields are present", () => {
+      expect(
+        getTireChangeGranularity(
+          telemetry({ dpLFTireChange: 0, dpRFTireChange: 0, dpLRTireChange: 0, dpRRTireChange: 0 }),
+        ),
+      ).toBe("corner");
+    });
+
+    it("returns corner when any single corner field is present", () => {
+      expect(getTireChangeGranularity(telemetry({ dpRRTireChange: 0 }))).toBe("corner");
+    });
+
+    it("returns side when only the side fields are present", () => {
+      expect(getTireChangeGranularity(telemetry({ dpLTireChange: 0, dpRTireChange: 0 }))).toBe("side");
+    });
+
+    it("returns side when only one side field is present", () => {
+      expect(getTireChangeGranularity(telemetry({ dpRTireChange: 0 }))).toBe("side");
+    });
+
+    it("returns all when only dpTireChange is present", () => {
+      expect(getTireChangeGranularity(telemetry({ dpTireChange: 0 }))).toBe("all");
+    });
+
+    it("resolves an unexpected corner + all combination to the finer level", () => {
+      expect(getTireChangeGranularity(telemetry({ dpLFTireChange: 0, dpTireChange: 0 }))).toBe("corner");
+    });
+
+    it("resolves an unexpected side + all combination to the finer level", () => {
+      expect(getTireChangeGranularity(telemetry({ dpLTireChange: 0, dpTireChange: 0 }))).toBe("side");
+    });
+
+    it("reads presence, not value", () => {
+      expect(getTireChangeGranularity(telemetry({ dpTireChange: 1 }))).toBe("all");
+    });
+
+    it("returns null when no field is present", () => {
+      expect(getTireChangeGranularity(telemetry({}))).toBeNull();
+    });
+
+    it("returns null for null or undefined telemetry", () => {
+      expect(getTireChangeGranularity(null)).toBeNull();
+      expect(getTireChangeGranularity(undefined)).toBeNull();
     });
   });
 
