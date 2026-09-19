@@ -33,8 +33,9 @@
  *   - A fire whose contract names the waiting fire in `queueBehind` attaches
  *     BEHIND it instead of taking its slot, and the two replay in order —
  *     the single slot holds a pair, never a queue (issue #1108). The pair
- *     is displaced together, and a leader that fails to take the bus at
- *     replay leaves its follower to play next.
+ *     holds the slot at its heavier member's weight and is displaced
+ *     together; a leader that fails to take the bus at replay leaves its
+ *     follower to play next.
  *
  * Channel routing for clip steps:
  *   - Every clip a FRAME plays goes on the SFX channel, whatever it is (#1064).
@@ -366,13 +367,24 @@ type WaitingFire = {
  * #1108): a fire whose contract names the pending fire's id in `queueBehind`
  * attaches here instead of competing for the slot. The follower shares the
  * slot's fate — whatever replaces or clears `BusState.pending` takes it too,
- * which is why it lives INSIDE the pending fire rather than beside it — and
+ * which is why it lives INSIDE the pending fire rather than beside it, and
+ * the slot is held at the heavier of the two weights (`slotWeight`) — and
  * is replayed by `drainPending` right after its leader, as an ordinary fire
  * arriving then: it parks behind the leader the leader plays, and plays
  * itself when the leader does not take the bus. One level only: a follower
  * is a `WaitingFire`, so it can never carry a follower of its own.
  */
 type PendingFire = WaitingFire & { follower?: WaitingFire };
+
+/**
+ * The weight the pending slot is held at (issue #1108): the pending fire's
+ * own, or the heavier of it and its follower's — so attaching a fire behind
+ * another never makes either weaker than it would be on its own, and an
+ * arriving fire has to outweigh the pair's heavier member to take the slot.
+ */
+function slotWeight(pending: PendingFire): number {
+  return pending.follower === undefined ? pending.weight : Math.max(pending.weight, pending.follower.weight);
+}
 
 /** Where an interrupted resumable fire left off, for continuation at idle-replay. */
 type ResumeState = {
@@ -1330,9 +1342,12 @@ class ScenarioEngine implements IScenarioEngine {
    * and, the other way round, a waiting fire whose contract names the
    * ARRIVING fire is moved behind it (the readback stashed by an interrupt
    * while its report already holds the slot). Either way both survive,
-   * whatever their weights, and the pair then lives and dies with the slot:
-   * a fire that takes the slot by weight drops the leader and its follower
-   * together, exactly as the leader alone was dropped before.
+   * whatever their weights, and the pair then lives and dies with the slot,
+   * which it holds at the weight of its HEAVIER member (`slotWeight`): only
+   * a fire at least that heavy takes it, and then drops the leader and its
+   * follower together. Attaching never makes a fire weaker than it would be
+   * on its own — the report alone held the slot at NORMAL, and the pair it
+   * leads or follows holds it at NORMAL still.
    */
   private setPending(
     id: string,
@@ -1369,7 +1384,7 @@ class ScenarioEngine implements IScenarioEngine {
       return;
     }
 
-    if (current === null || weight >= current.weight) {
+    if (current === null || weight >= slotWeight(current)) {
       if (current?.follower !== undefined) {
         this.logger.debug(
           `Scenario "${current.follower.id}" dropped — waited behind "${current.id}", displaced by "${id}"`,
@@ -1378,8 +1393,12 @@ class ScenarioEngine implements IScenarioEngine {
 
       state.pending = arriving;
       this.logger.debug(`Scenario "${id}" pending — ${reason}`);
-    } else {
+    } else if (current.follower === undefined) {
       this.logger.debug(`Scenario "${id}" dropped — lower weight than queued "${current.id}"`);
+    } else {
+      this.logger.debug(
+        `Scenario "${id}" dropped — lower weight than queued "${current.id}" with "${current.follower.id}" behind it (held at ${slotWeight(current)})`,
+      );
     }
   }
 

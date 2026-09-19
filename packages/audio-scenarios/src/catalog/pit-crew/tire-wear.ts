@@ -51,9 +51,10 @@
  * one relation that prevents it: while the readback is the waiting fire the
  * report attaches behind it, both play in order once the bus idles, and a
  * readback that fails to take the bus at replay leaves the report to play
- * next. The pair still shares the slot's fate — a heavier fire that takes
- * it drops both — and a readback cut mid-line by an interrupt while the
- * report already waits is put back ahead of it.
+ * next. The pair still shares the slot's fate, holding it at the report's
+ * own weight rather than the readback's — only a fire at least that heavy
+ * takes the slot, and then drops both — and a readback cut mid-line by an
+ * interrupt while the report already waits is put back ahead of it.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { TireCorner, TireCornerWear, TireWearReport, TireZone } from "@iracedeck/event-bus";

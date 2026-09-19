@@ -2590,6 +2590,37 @@ describe("queueBehind (issue #1108)", () => {
     expect(voicePaths()).toEqual([AUTOFUEL, FUEL]);
   });
 
+  it("(2) the pair holds the slot at its heavier member's weight — a fire lighter than the follower but heavier than the leader is dropped, and the pair plays in order", () => {
+    // Attaching never makes a fire weaker than it would be on its own: the
+    // NORMAL report held the slot at NORMAL alone, and holds it there behind
+    // the CHATTER readback too. A 40-weight fire (the pit-status nags' band)
+    // would have taken the readback's slot alone; it takes neither now.
+    engine.defineScenario({
+      id: "test.nag",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      weight: 40,
+      queueable: true,
+      sequence: [ALICE],
+    });
+    defineBusy();
+    defineLeader();
+    defineFollower();
+
+    engine.fire("test.busy");
+    engine.fire("test.leader");
+    engine.fire("test.follower");
+    engine.fire("test.nag");
+
+    expect(mockLogger.debug).toHaveBeenCalledWith(
+      'Scenario "test.nag" dropped — lower weight than queued "test.leader" with "test.follower" behind it (held at 50)',
+    );
+
+    flushVoiceAndSfx(audio);
+
+    expect(voicePaths()).toEqual([AUTOFUEL, A, B, TIRES]);
+  });
+
   describe("(3) a follower is never stranded when its leader does not take the bus at replay", () => {
     it("because the leader's expansion aborts", () => {
       let speakable = true;

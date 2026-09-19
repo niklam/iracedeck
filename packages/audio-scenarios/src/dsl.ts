@@ -254,9 +254,11 @@ export type ScenarioContract = {
    * idles — whatever their weights, and neither is dropped. The relation
    * holds the other way round too: a named contract that arrives to wait
    * (stashed by an interrupt, say) while this fire holds the slot goes
-   * ahead of it rather than losing to it. It is a pair, not a queue: a
-   * heavier fire that takes the slot drops the leader and its follower
-   * together, and a second follower replaces the first. A follower is never
+   * ahead of it rather than losing to it. It is a pair, not a queue: the
+   * pair holds the slot at the weight of its heavier member — attaching
+   * never makes a fire weaker than it would be on its own — so only a fire
+   * at least that heavy takes the slot, and it then drops the leader and
+   * its follower together; a second follower replaces the first. A follower is never
    * stranded — a leader that does not take the bus when it replays (its
    * expansion aborted, its `speakGate` refused, the voice has no script for
    * it) leaves the follower to play next. With nothing pending, or an
