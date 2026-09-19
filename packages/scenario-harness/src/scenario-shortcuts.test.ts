@@ -464,3 +464,190 @@ describe("the two follow-on caution shortcuts (issue #1127)", () => {
     });
   });
 });
+
+describe("the two Tire Wear shortcuts (issue #1108)", () => {
+  beforeEach(() => {
+    initializeEventBus(silentLogger);
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    _resetSimEventsIracing();
+    _resetEventBus();
+  });
+
+  const report = SCENARIO_SHORTCUTS.find((s) => s.id === "tire-wear-report");
+  const stop = SCENARIO_SHORTCUTS.find((s) => s.id === "tire-wear-stop");
+  const steps = stop?.telemetrySequence ?? [];
+
+  /** The pit-lane chain the stop drives, plus the report — everything the translator says about a stop. */
+  const STOP_EVENTS = new Set([
+    "pitLane.approaching",
+    "pitLane.entered",
+    "pitStall.entered",
+    "pitStall.departed",
+    "pitLane.exited",
+    "pitService.readbackRequested",
+    "tireWear.reported",
+  ]);
+
+  /**
+   * The translator as a tester's harness has it at boot — the mock's own
+   * default telemetry, in the garage, with no preset applied — so the button
+   * is shown to set up everything the report needs itself.
+   */
+  function startAtBoot(): { controller: MockSDKController; events: Published[] } {
+    const controller = new MockSDKController();
+    controller.setConnected(true);
+    initializeSimEventsIracing(getEventBus(), controller as unknown as SDKController, silentLogger);
+    controller.tickOnce();
+
+    const events: Published[] = [];
+
+    for (const name of ALL_EVENT_NAMES) {
+      if (!STOP_EVENTS.has(name)) continue;
+
+      getEventBus().subscribe(name, (ev) => events.push({ event: ev.event, data: ev.data }));
+    }
+
+    return { controller, events };
+  }
+
+  /** The report the captured stop's readings make: the sim's L/M/R as inside/middle/outside, mirrored across the car. */
+  const CAPTURED_REPORT = {
+    corners: {
+      lf: { inside: 98.3, middle: 98.4, outside: 99.1, zone: "inside" },
+      rf: { inside: 98.6, middle: 98.8, outside: 99.6, zone: "inside" },
+      lr: { inside: 98.6, middle: 98.6, outside: 99.0, zone: "inside" },
+      rr: { inside: 98.9, middle: 98.9, outside: 99.7, zone: "inside" },
+    },
+    heaviest: { corner: "lf", zone: "inside" },
+  };
+
+  it('"Report after a stop" publishes a well-formed report — each tread its lowest zone, the heaviest the lowest of all', () => {
+    // The bundled script's `test` line names this button, so its label is pinned.
+    expect(report?.label).toBe("Report after a stop");
+    expect(report?.category).toBe("Tire Wear");
+    expect(report?.event).toBe("tireWear.reported");
+
+    const data = report?.data as {
+      corners: Record<string, { inside: number; middle: number; outside: number; tread: number; zone: string }>;
+      heaviest: { corner: string; zone: string };
+    };
+    let lowest = { corner: "", tread: Infinity };
+
+    for (const [corner, wear] of Object.entries(data.corners)) {
+      const zones = { inside: wear.inside, middle: wear.middle, outside: wear.outside };
+
+      expect(wear.tread, corner).toBe(Math.min(...Object.values(zones)));
+      expect(zones[wear.zone as keyof typeof zones], corner).toBe(wear.tread);
+
+      if (wear.tread < lowest.tread) lowest = { corner, tread: wear.tread };
+    }
+
+    expect(Object.keys(data.corners)).toEqual(["lf", "rf", "lr", "rr"]);
+    expect(data.heaviest).toEqual({ corner: lowest.corner, zone: data.corners[lowest.corner].zone });
+    // Not the tie-break's first pick, so the closing sentence is audibly the payload's.
+    expect(data.heaviest).not.toEqual({ corner: "lf", zone: "inside" });
+  });
+
+  it('"Stop replayed from a capture" drives the translator rather than publishing an event', () => {
+    expect(stop?.label).toBe("Stop replayed from a capture");
+    expect(stop?.category).toBe("Tire Wear");
+    expect(stop?.event).toBeUndefined();
+    expect(steps.length).toBeGreaterThan(0);
+  });
+
+  it("replays the captured stop's transitions in order, refreshing the readings on the stall surface before the car is in its box", () => {
+    const surfaceAt = steps.map((s) => s.patch.PlayerTrackSurface);
+    const index = (key: string, value: unknown): number => steps.findIndex((s) => s.patch[key] === value);
+    const approach = index("PlayerTrackSurface", 2);
+    const onPitRoad = index("OnPitRoad", true);
+    const stallSurface = index("PlayerTrackSurface", 1);
+    const inStall = index("PlayerCarInPitStall", true);
+    const outOfStall = steps.findIndex((s, i) => i > inStall && s.patch.PlayerCarInPitStall === false);
+    const offPitRoad = steps.findIndex((s, i) => i > onPitRoad && s.patch.OnPitRoad === false);
+
+    expect(surfaceAt[0]).toBe(3);
+    expect(0 < approach && approach < onPitRoad && onPitRoad < stallSurface && stallSurface < inStall).toBe(true);
+    expect(inStall < outOfStall && outOfStall < offPitRoad).toBe(true);
+    // The capture's refresh tick: the stall surface, with PlayerCarInPitStall still false.
+    expect(steps[stallSurface].patch).toMatchObject({
+      LFwearL: 0.991,
+      LFwearM: 0.984,
+      LFwearR: 0.983,
+      RFwearL: 0.986,
+      RFwearM: 0.988,
+      RFwearR: 0.996,
+      LRwearL: 0.99,
+      LRwearM: 0.986,
+      LRwearR: 0.986,
+      RRwearL: 0.989,
+      RRwearM: 0.989,
+      RRwearR: 0.997,
+    });
+    // Before the stop the readings are the unrefreshed ones, so a second press refreshes them again.
+    expect(steps[0].patch).toMatchObject({ LFwearL: 1, RRwearR: 1 });
+  });
+
+  it("listens past the exit readback's settle window after leaving pit road, and ends on the circuit", () => {
+    const onPitRoad = steps.findIndex((s) => s.patch.OnPitRoad === true);
+    const offPitRoad = steps.findIndex((s, i) => i > onPitRoad && s.patch.OnPitRoad === false);
+    const after = steps.slice(offPitRoad).reduce((sum, s) => sum + (s.holdMs ?? 0), 0);
+    const end = Object.assign({}, ...steps.map((s) => s.patch)) as Record<string, unknown>;
+
+    expect(offPitRoad).toBeGreaterThan(0);
+    expect(after).toBeGreaterThan(4500);
+    expect(steps.reduce((sum, s) => sum + (s.holdMs ?? 0), 0)).toBeLessThanOrEqual(30_000);
+    expect(end).toMatchObject({
+      IsOnTrack: true,
+      PlayerTrackSurface: 3,
+      OnPitRoad: false,
+      PlayerCarInPitStall: false,
+      PlayerCarPitSvStatus: 0,
+      EngineWarnings: 0,
+      dcPitSpeedLimiterToggle: false,
+    });
+  });
+
+  it("the translator reports the stop's tire wear right behind the exit readback", () => {
+    const { controller, events } = startAtBoot();
+
+    runSequence(controller, steps);
+
+    expect(events.map((e) => e.event)).toEqual([
+      "pitLane.approaching",
+      "pitService.readbackRequested",
+      "pitLane.entered",
+      "pitStall.entered",
+      "pitStall.departed",
+      "pitLane.exited",
+      "pitService.readbackRequested",
+      "tireWear.reported",
+    ]);
+    expect(events[6].data).toEqual({ reason: "exit" });
+
+    const reported = events[7].data as { corners: Record<string, Record<string, number | string>> };
+
+    // Percent from fractions, so compare with a tolerance rather than exactly.
+    for (const [corner, expected] of Object.entries(CAPTURED_REPORT.corners)) {
+      for (const zone of ["inside", "middle", "outside"] as const) {
+        expect(reported.corners[corner][zone] as number, `${corner} ${zone}`).toBeCloseTo(expected[zone], 6);
+      }
+
+      expect(reported.corners[corner].zone, corner).toBe(expected.zone);
+    }
+
+    expect(events[7].data).toMatchObject({ heaviest: CAPTURED_REPORT.heaviest });
+  });
+
+  it("reports again on a second press, as a second stop would", () => {
+    const { controller, events } = startAtBoot();
+
+    runSequence(controller, steps);
+    runSequence(controller, steps);
+
+    expect(events.filter((e) => e.event === "tireWear.reported")).toHaveLength(2);
+  });
+});
