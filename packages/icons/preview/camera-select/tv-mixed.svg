@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 85 67" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#2a4a5a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"CAMERA\nTV MIXED"},"border":{"color":"#5a7a8a"}}</desc>
+
+    <rect x="12.98" y="2" width="70" height="46" rx="8" fill="#ffffff" stroke="none"/>
+    <rect x="2.98" y="11" width="70" height="46" rx="8" fill="#ffffff" stroke="#2a4a5a" stroke-width="3.5"/>
+    <line x1="19.98" y1="62.33" x2="55.98" y2="62.33"
+      stroke="#ffffff" stroke-linecap="round" stroke-miterlimit="10" stroke-width="5.33"/>
+
+    <text x="37.98" y="49" text-anchor="middle"
+          fill="#2a4a5a" font-family="Arial, sans-serif" font-size="25" font-weight="bold" stroke="none">TV</text>
+
+</svg>

@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 85 61" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#2a4a5a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"CAMERA\nTV STATIC"},"border":{"color":"#5a7a8a"}}</desc>
+
+    <path d="M74.96,52.71H10.99A8.03,8.03,0,0,1,2.97,44.69V10.06A8.03,8.03,0,0,1,10.99,2.04H74.96A8.03,8.03,0,0,1,82.98,10.06V44.69A8.03,8.03,0,0,1,74.96,52.71Z"
+      fill="#ffffff" stroke="none"/>
+    <line x1="21.64" y1="58.05" x2="64.31" y2="58.05"
+      stroke="#ffffff" stroke-linecap="round" stroke-miterlimit="10" stroke-width="5.33"/>
+
+    <text x="27.5" y="44.67" text-anchor="middle"
+          fill="#2a4a5a" font-family="Arial, sans-serif" font-size="25" font-weight="bold" stroke="none">TV</text>
+
+    <rect x="52.5" y="15" width="17" height="10" rx="2" fill="#2a4a5a" stroke="none"/>
+    <path d="M69.5,17.5L74.5,15.5V24.5L69.5,22.5Z" fill="#2a4a5a" stroke="none"/>
+    <g stroke="#2a4a5a" stroke-width="3" stroke-linecap="round" fill="none">
+      <line x1="61" y1="25" x2="61" y2="43.2"/>
+      <line x1="61" y1="26" x2="53.5" y2="43.2"/>
+      <line x1="61" y1="26" x2="68.5" y2="43.2"/>
+    </g>
+
+</svg>
