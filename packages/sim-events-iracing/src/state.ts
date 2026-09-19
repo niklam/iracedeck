@@ -511,8 +511,11 @@ export type TranslatorState = {
   tireWearStallDriveIn: boolean;
   /**
    * The report read at `pitStall.departed`, waiting for the exit readback that
-   * publishes it. Dropped at the next `pitLane.entered`, so a report whose exit
-   * fire was cancelled cannot ride out on a later drive-through.
+   * publishes it. Dropped on `pitLane.approaching` — the one event on which
+   * `diffPitReadback` cancels that exit fire — so the two share a lifecycle: a
+   * report whose fire was cancelled cannot ride out on a later drive-through,
+   * and one whose fire is merely re-armed (an `OnPitRoad` flicker at pit exit)
+   * still follows it.
    */
   tireWearReport: TireWearReport | null;
 

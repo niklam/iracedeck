@@ -7,7 +7,9 @@
  *   - no report for missing / non-finite / all-zero readings
  *   - a stop the driver drove into reports once, behind the exit readback
  *   - a garage start, a tow and a teleport into the stall report nothing
- *   - a report whose exit fire was cancelled by a re-entry never rides out
+ *   - a stored report shares the exit readback's lifecycle: dropped on the
+ *     re-approach that cancels the fire, kept across a pit-road re-entry that
+ *     only re-arms it (an `OnPitRoad` flicker at pit exit)
  *   - the 2026-09-19 capture, replayed through the real pit-lane → readback →
  *     tire-wear chain: two stops, the first after a four-tire change
  */
@@ -66,6 +68,7 @@ const inStall = (overrides: Partial<TelemetryData> = {}): TelemetryData =>
   telemetry({ OnPitRoad: true, PlayerCarInPitStall: true, PlayerTrackSurface: TrkLoc.InPitStall, ...overrides });
 
 const EXIT: PendingEvent = { event: "pitService.readbackRequested", data: { reason: "exit" } };
+const APPROACHING: PendingEvent = { event: "pitLane.approaching", data: {} };
 const PIT_ENTERED: PendingEvent = { event: "pitLane.entered", data: {} };
 const STALL_ENTERED: PendingEvent = { event: "pitStall.entered", data: {} };
 const STALL_DEPARTED: PendingEvent = { event: "pitStall.departed", data: {} };
@@ -394,20 +397,35 @@ describe("diffTireWear — a stall visit that is not a stop", () => {
   });
 });
 
-describe("diffTireWear — a report never outlives its visit", () => {
-  it("drops the stored report when the car re-enters pit road before the exit fire, so a drive-through stays silent", () => {
+describe("diffTireWear — the stored report follows the exit readback's lifecycle", () => {
+  it("drops the stored report on a re-approach, where the readback cancels its exit fire, so a drive-through stays silent", () => {
     const state = createInitialState();
 
     driveIntoStop(state);
     step(state, onCircuit(), [{ event: "pitLane.exited", data: {} }]);
-    // Back onto pit road inside the settle delay — the readback's exit fire is
-    // cancelled by the re-approach, and the report with it.
-    step(state, onPitRoad(), [PIT_ENTERED]);
+    // Back into the approach zone inside the settle delay — `diffPitReadback`
+    // cancels its exit fire on this event, and the report goes with it.
+    step(state, onCircuit({ PlayerTrackSurface: TrkLoc.AproachingPits }), [APPROACHING]);
     expect(state.tireWearReport).toBeNull();
 
     // Straight through, no stop: the next exit readback has nothing to carry.
+    step(state, onPitRoad(), [PIT_ENTERED]);
     step(state, onCircuit(), [{ event: "pitLane.exited", data: {} }]);
     expect(step(state, onCircuit(), [EXIT])).toEqual([]);
+  });
+
+  it("keeps the stored report across a pit-road re-entry with no approach, for the re-armed exit readback", () => {
+    const state = createInitialState();
+
+    driveIntoStop(state);
+    step(state, onCircuit(), [{ event: "pitLane.exited", data: {} }]);
+    // An `OnPitRoad` flicker at the pit-exit blend line: on and off pit road
+    // again with no approach, which cancels nothing in the readback.
+    step(state, onPitRoad(), [PIT_ENTERED]);
+    expect(state.tireWearReport).not.toBeNull();
+    step(state, onCircuit(), [{ event: "pitLane.exited", data: {} }]);
+
+    expect(reports(step(state, onCircuit(), [EXIT]))).toHaveLength(1);
   });
 
   it("a re-entry that stops again reports the second stop", () => {
@@ -418,6 +436,7 @@ describe("diffTireWear — a report never outlives its visit", () => {
 
     const second = wear([0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8]);
 
+    step(state, onCircuit({ PlayerTrackSurface: TrkLoc.AproachingPits }), [APPROACHING]);
     step(state, onPitRoad(), [PIT_ENTERED]);
     step(state, inStall(second), [STALL_ENTERED]);
     step(state, inStall({ PlayerCarInPitStall: false, ...second }), [STALL_DEPARTED]);
@@ -437,6 +456,102 @@ describe("diffTireWear — a report never outlives its visit", () => {
     expect(step(state, onCircuit(), [EXIT], true)).toEqual([]);
     expect(state.tireWearReport).toBeNull();
     expect(state.tireWearDroveOnCircuit).toBe(false);
+  });
+});
+
+type Emitted = { t: number; event: PendingEvent };
+
+/** Run telemetry through the same three diffs the translator runs, in its order. */
+function runChain(ticks: ReadonlyArray<readonly [number, TelemetryData]>): Emitted[] {
+  const state = createInitialState();
+  const out: Emitted[] = [];
+
+  for (const [t, tick] of ticks) {
+    const now = t * 1000;
+    const pending: PendingEvent[] = [];
+    const emit = (e: PendingEvent): void => {
+      pending.push(e);
+    };
+
+    diffPitLane(state, tick, TrackType.RoadCourse, now, emit);
+    diffPitReadback(state, tick, now, emit, pending);
+    diffTireWear(state, tick, emit, pending, false);
+
+    for (const event of pending) out.push({ t, event });
+  }
+
+  return out;
+}
+
+const isExitReadback = (e: Emitted): boolean =>
+  e.event.event === "pitService.readbackRequested" && e.event.data.reason === "exit";
+const timesOf = (emitted: Emitted[], match: (e: Emitted) => boolean): number[] => emitted.filter(match).map((e) => e.t);
+
+/**
+ * A road-course stop the driver drove into, through the real pit-lane and
+ * readback diffs: approach at 1 s, pit road at 2 s, the box from 10 s to 30 s,
+ * pit exit at 35 s — which arms the readback's exit fire for 39.5 s.
+ */
+const ROAD_STOP: ReadonlyArray<readonly [number, TelemetryData]> = [
+  [0, onCircuit()],
+  [1, onCircuit({ PlayerTrackSurface: TrkLoc.AproachingPits })],
+  [2, onPitRoad()],
+  [10, inStall()],
+  [30, inStall({ PlayerCarInPitStall: false })],
+  [31, onPitRoad()],
+  [35, onCircuit({ PlayerTrackSurface: TrkLoc.AproachingPits })],
+];
+
+describe("diffTireWear — through the real pit-lane and readback diffs", () => {
+  it("follows the exit readback re-armed by an OnPitRoad flicker at pit exit", () => {
+    const emitted = runChain([
+      ...ROAD_STOP,
+      // The flicker: back on pit road for one tick and off again, still in the
+      // approach zone — no approach fires (it is suppressed while exiting), so
+      // the readback cancels nothing and re-arms its exit fire for 40.1 s.
+      [35.5, onPitRoad()],
+      [35.6, onCircuit({ PlayerTrackSurface: TrkLoc.AproachingPits })],
+      [36, onCircuit()],
+      // Where the ORIGINAL fire would have played — it was re-armed instead.
+      [39.6, onCircuit()],
+      [40.5, onCircuit()],
+    ]);
+
+    expect(timesOf(emitted, (e) => e.event.event === "pitLane.entered")).toEqual([2, 35.5]);
+    expect(timesOf(emitted, (e) => e.event.event === "pitLane.approaching")).toEqual([1]);
+    expect(timesOf(emitted, isExitReadback)).toEqual([40.5]);
+
+    const exitAt = emitted.findIndex(isExitReadback);
+
+    expect(emitted[exitAt + 1]?.event.event).toBe("tireWear.reported");
+    expect(timesOf(emitted, (e) => e.event.event === "tireWear.reported")).toEqual([40.5]);
+  });
+
+  it("is dropped with the exit fire a re-approach cancels, and the drive-through after it stays silent", () => {
+    const emitted = runChain([
+      ...ROAD_STOP,
+      [36, onCircuit()],
+      // Back into the approach zone inside the settle delay: the readback
+      // cancels its 39.5 s exit fire and asks for an entry readback instead.
+      [37, onCircuit({ PlayerTrackSurface: TrkLoc.AproachingPits })],
+      [38, onPitRoad()],
+      [39.6, onPitRoad()],
+      // Straight through, no stop: exit at 45 s arms a fresh fire for 49.5 s.
+      [45, onCircuit({ PlayerTrackSurface: TrkLoc.AproachingPits })],
+      [46, onCircuit()],
+      [50, onCircuit()],
+    ]);
+
+    expect(timesOf(emitted, (e) => e.event.event === "pitLane.approaching")).toEqual([1, 37]);
+    expect(timesOf(emitted, isExitReadback)).toEqual([50]);
+    expect(timesOf(emitted, (e) => e.event.event === "tireWear.reported")).toEqual([]);
+  });
+
+  it("reports on the stop's own exit readback when nothing intervenes (the control)", () => {
+    const emitted = runChain([...ROAD_STOP, [36, onCircuit()], [40, onCircuit()]]);
+
+    expect(timesOf(emitted, isExitReadback)).toEqual([40]);
+    expect(timesOf(emitted, (e) => e.event.event === "tireWear.reported")).toEqual([40]);
   });
 });
 
@@ -472,8 +587,6 @@ function held(ticks: FixtureTick[], stepS = 0.25, tailS = 6): Array<{ t: number;
 
   return out;
 }
-
-type Emitted = { t: number; event: PendingEvent };
 
 /** Replay the capture through the same three diffs the translator runs, in its order. */
 function replayCapture(): Emitted[] {

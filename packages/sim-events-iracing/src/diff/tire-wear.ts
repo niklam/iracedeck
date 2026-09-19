@@ -2,7 +2,10 @@
  * Tire wear of a pit stop (issue #1108).
  *
  * Emits `tireWear.reported` once per stop the driver drove into, right behind
- * the exit `pitService.readbackRequested` of the same tick.
+ * the exit `pitService.readbackRequested` of the same tick. A stored report
+ * shares that exit fire's lifecycle: it is dropped exactly where
+ * `diffPitReadback` cancels the fire, and otherwise follows it however often
+ * the fire is re-armed.
  *
  * What the sim gives us (measured, `local/telemetry-watch-20260919-193233-855.jsonl`,
  * cut into `__fixtures__/tire-wear-stops-20260919.json`): the twelve
@@ -19,13 +22,17 @@
  *   1. `tireWearDroveOnCircuit` — set on a tick the car is driving on the
  *      circuit, cleared when the driver is out of the car or the car is out of
  *      the world, untouched on pit road so it survives the drive down the lane.
- *   2. `pitLane.entered` — drops a report still waiting from an earlier visit
- *      (its exit fire was cancelled by this re-entry, so it must not ride out
- *      on a later drive-through), and clears the flag when the car arrived on
- *      pit road already in its box: a tow or a teleport, never a drive-in.
- *   3. `pitStall.entered` — latches whether this stall visit is a drive-in.
- *   4. `pitStall.departed` — reads the report, only for a drive-in visit.
- *   5. `pitService.readbackRequested { reason: "exit" }` — publishes it.
+ *   2. `pitLane.entered` — clears the flag when the car arrived on pit road
+ *      already in its box: a tow or a teleport, never a drive-in. It does NOT
+ *      drop a stored report: a re-entry that skips the approach zone (an
+ *      `OnPitRoad` flicker at the pit-exit blend line) leaves the readback's
+ *      exit fire armed, and it re-arms on the next on→off edge and plays.
+ *   3. `pitLane.approaching` — drops a report still waiting, because this is
+ *      the one event on which `diffPitReadback` cancels its exit fire; a report
+ *      with no fire left to follow must not ride out on a later drive-through.
+ *   4. `pitStall.entered` — latches whether this stall visit is a drive-in.
+ *   5. `pitStall.departed` — reads the report, only for a drive-in visit.
+ *   6. `pitService.readbackRequested { reason: "exit" }` — publishes it.
  *
  * A garage start ("Drive") and a tow into the stall both reach the box from a
  * not-on-track / not-in-world state, so neither is a stop and neither reports
@@ -155,30 +162,36 @@ export function diffTireWear(
     state.tireWearDroveOnCircuit = true;
   }
 
-  // 2. A new pit-road visit. A report still stored belongs to the previous
-  //    visit, whose exit fire this re-entry cancelled. A car that arrives on pit
-  //    road already in its box was put there (tow, reset, garage) — the same
-  //    signature `diffPitLane`'s dirt-oval guard uses — so it did not drive in,
-  //    even if the tick before it read "on the circuit".
+  // 2. How the car arrived on pit road. One that arrives already in its box was
+  //    put there (tow, reset, garage) — the same signature `diffPitLane`'s
+  //    dirt-oval guard uses — so it did not drive in, even if the tick before it
+  //    read "on the circuit". A stored report is deliberately left alone here:
+  //    entering pit road cancels nothing in `diffPitReadback`.
   if (has(pending, "pitLane.entered")) {
-    state.tireWearReport = null;
     state.tireWearStallDriveIn = false;
 
     if (inPitStall || surface === TrkLoc.InPitStall) state.tireWearDroveOnCircuit = false;
   }
 
-  // 3. This stall visit is a stop only if the car drove into it.
+  // 3. The readback cancels its exit fire on a fresh approach, and the report
+  //    goes with it — one lifecycle, so the report can neither outlive the fire
+  //    it waits for nor be lost while that fire still plays.
+  if (has(pending, "pitLane.approaching")) {
+    state.tireWearReport = null;
+  }
+
+  // 4. This stall visit is a stop only if the car drove into it.
   if (has(pending, "pitStall.entered")) {
     state.tireWearStallDriveIn = state.tireWearDroveOnCircuit;
   }
 
-  // 4. Leaving the box: the readings are the ones taken on arrival.
+  // 5. Leaving the box: the readings are the ones taken on arrival.
   if (has(pending, "pitStall.departed")) {
     state.tireWearReport = state.tireWearStallDriveIn ? buildTireWearReport(telemetry) : null;
     state.tireWearStallDriveIn = false;
   }
 
-  // 5. Behind the exit readback, from the same tick — never ahead of it.
+  // 6. Behind the exit readback, from the same tick — never ahead of it.
   const exitReadback = pending.some((p) => p.event === "pitService.readbackRequested" && p.data.reason === "exit");
 
   if (exitReadback && state.tireWearReport !== null) {
