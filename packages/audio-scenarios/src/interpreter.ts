@@ -32,10 +32,11 @@
  *     line stutter back into its gaps (issue #758).
  *   - A fire whose contract names the waiting fire in `queueBehind` attaches
  *     BEHIND it instead of taking its slot, and the two replay in order —
- *     the single slot holds a pair, never a queue (issue #1108). The pair
- *     holds the slot at its heavier member's weight and is displaced
- *     together; a leader that fails to take the bus at replay leaves its
- *     follower to play next.
+ *     the single slot holds a pair, never a queue (issue #1108). Each member
+ *     keeps the fate its own weight earns against a newcomer; a follower
+ *     never plays ahead of its waiting leader, even on an idle bus; and a
+ *     leader that fails to take the bus at replay leaves its follower to
+ *     play next.
  *
  * Channel routing for clip steps:
  *   - Every clip a FRAME plays goes on the SFX channel, whatever it is (#1064).
@@ -366,25 +367,19 @@ type WaitingFire = {
  * The bus's one pending fire, and the fire waiting behind it, if any (issue
  * #1108): a fire whose contract names the pending fire's id in `queueBehind`
  * attaches here instead of competing for the slot. The follower shares the
- * slot's fate — whatever replaces or clears `BusState.pending` takes it too,
- * which is why it lives INSIDE the pending fire rather than beside it, and
- * the slot is held at the heavier of the two weights (`slotWeight`) — and
- * is replayed by `drainPending` right after its leader, as an ordinary fire
- * arriving then: it parks behind the leader the leader plays, and plays
- * itself when the leader does not take the bus. One level only: a follower
- * is a `WaitingFire`, so it can never carry a follower of its own.
+ * slot's fate only as far as its OWN weight decides it — each member keeps
+ * the fate it would have had alone: an arriving fire that outweighs the
+ * leader replaces the leader, and takes the follower with it only if it
+ * outweighs the follower too, else the follower stays, now behind the
+ * newcomer. Whatever clears `BusState.pending` outright (`stopAll`, the
+ * leader's disable) takes it too, which is why it lives INSIDE the pending
+ * fire rather than beside it. It is replayed by `drainPending` right after
+ * its leader, as an ordinary fire arriving then: it parks behind the leader
+ * the leader plays, and plays itself when the leader does not take the bus.
+ * One level only: a follower is a `WaitingFire`, so it can never carry a
+ * follower of its own.
  */
 type PendingFire = WaitingFire & { follower?: WaitingFire };
-
-/**
- * The weight the pending slot is held at (issue #1108): the pending fire's
- * own, or the heavier of it and its follower's — so attaching a fire behind
- * another never makes either weaker than it would be on its own, and an
- * arriving fire has to outweigh the pair's heavier member to take the slot.
- */
-function slotWeight(pending: PendingFire): number {
-  return pending.follower === undefined ? pending.weight : Math.max(pending.weight, pending.follower.weight);
-}
 
 /** Where an interrupted resumable fire left off, for continuation at idle-replay. */
 type ResumeState = {
@@ -700,6 +695,7 @@ class ScenarioEngine implements IScenarioEngine {
 
     this.scenarios.set(s.id, entry);
     this.markScriptsDirty();
+    this.warnCrossBusQueueBehind(entry);
 
     const { errors, warnings } = validateScenario(
       s,
@@ -723,6 +719,36 @@ class ScenarioEngine implements IScenarioEngine {
 
     if (s.when) {
       entry.unsubscribe = this.subscribeToEvent(s.id, s.when.event, s.when.where);
+    }
+  }
+
+  /**
+   * A `queueBehind` relation is per bus — the pending slot it concerns is
+   * the bus's — so an id on another bus can never match, and nothing would
+   * ever say so (issue #1108). Warned once, at whichever registration makes
+   * the mismatch visible: this contract naming an already-registered id on
+   * another bus, or an already-registered contract naming this one. Never
+   * an error: the relation is inert, the contracts themselves are fine.
+   */
+  private warnCrossBusQueueBehind(entry: CompiledScenario): void {
+    const s = entry.raw;
+
+    for (const id of s.queueBehind ?? []) {
+      const named = this.scenarios.get(id);
+
+      if (named !== undefined && named !== entry && named.raw.bus !== s.bus) {
+        this.logger.warn(
+          `Scenario "${s.id}" queueBehind names "${id}" on bus ${named.raw.bus}, not its own bus ${s.bus} — the relation never matches`,
+        );
+      }
+    }
+
+    for (const other of this.scenarios.values()) {
+      if (other === entry || other.raw.bus === s.bus || !other.raw.queueBehind?.includes(s.id)) continue;
+
+      this.logger.warn(
+        `Scenario "${other.raw.id}" queueBehind names "${s.id}" on bus ${s.bus}, not its own bus ${other.raw.bus} — the relation never matches`,
+      );
     }
   }
 
@@ -1304,6 +1330,17 @@ class ScenarioEngine implements IScenarioEngine {
       return;
     }
 
+    // An idle bus can still have a fire waiting in its slot — held back by a
+    // `pendingHoldMs` hold, or parked below a focus floor this fire clears.
+    // A fire whose contract waits behind THAT fire must not play past it
+    // (issue #1108): it attaches behind it here exactly as it would on a
+    // busy bus, and the drain plays the two in order.
+    if (state.pending !== null && this.waitsBehind(entry.raw.id, state.pending.id)) {
+      this.setPending(entry.raw.id, event, weight, state, "the fire it waits behind is pending", resume, admitted);
+
+      return;
+    }
+
     const expanded = this.prepareOps(entry, event, admitted);
 
     if (expanded === null) return;
@@ -1342,12 +1379,15 @@ class ScenarioEngine implements IScenarioEngine {
    * and, the other way round, a waiting fire whose contract names the
    * ARRIVING fire is moved behind it (the readback stashed by an interrupt
    * while its report already holds the slot). Either way both survive,
-   * whatever their weights, and the pair then lives and dies with the slot,
-   * which it holds at the weight of its HEAVIER member (`slotWeight`): only
-   * a fire at least that heavy takes it, and then drops the leader and its
-   * follower together. Attaching never makes a fire weaker than it would be
-   * on its own — the report alone held the slot at NORMAL, and the pair it
-   * leads or follows holds it at NORMAL still.
+   * whatever their weights. Against a later, unrelated fire each member
+   * then keeps exactly the fate it would have had alone — attaching changes
+   * neither: a newcomer that outweighs the leader replaces the leader as it
+   * always did, and the follower goes with it only if the newcomer outweighs
+   * the follower too, else the follower stays, now waiting behind the
+   * newcomer; a newcomer lighter than the leader is dropped as it always
+   * was. So a fresher chatter line still replaces a stale chatter leader
+   * (the entry readback after a quick re-entry, say), and the leader's own
+   * scheduling never comes to depend on what waits behind it.
    */
   private setPending(
     id: string,
@@ -1374,7 +1414,12 @@ class ScenarioEngine implements IScenarioEngine {
 
     if (current !== null && this.waitsBehind(current.id, id)) {
       if (current.follower !== undefined) {
-        this.logger.debug(`Scenario "${current.follower.id}" dropped — replaced behind "${current.id}" by "${id}"`);
+        // A follower can carry no follower of its own, so the one that was
+        // waiting behind the fire now moving into second place has nowhere
+        // to wait.
+        this.logger.debug(
+          `Scenario "${current.follower.id}" dropped — its leader "${current.id}" now waits behind "${id}"`,
+        );
       }
 
       const { follower: _replaced, ...leader } = current;
@@ -1384,22 +1429,39 @@ class ScenarioEngine implements IScenarioEngine {
       return;
     }
 
-    if (current === null || weight >= slotWeight(current)) {
-      if (current?.follower !== undefined) {
-        this.logger.debug(
-          `Scenario "${current.follower.id}" dropped — waited behind "${current.id}", displaced by "${id}"`,
-        );
+    if (current === null) {
+      state.pending = arriving;
+      this.logger.debug(`Scenario "${id}" pending — ${reason}`);
+
+      return;
+    }
+
+    if (weight < current.weight) {
+      this.logger.debug(`Scenario "${id}" dropped — lower weight than queued "${current.id}"`);
+
+      return;
+    }
+
+    // The newcomer replaces the leader, as it would have replaced it alone.
+    // The follower's fate is its own weight's: outweighed too, it goes with
+    // the leader; otherwise it stays, waiting behind the newcomer now.
+    const follower = current.follower;
+
+    if (follower === undefined || weight >= follower.weight) {
+      if (follower !== undefined) {
+        this.logger.debug(`Scenario "${follower.id}" dropped — waited behind "${current.id}", displaced by "${id}"`);
       }
 
       state.pending = arriving;
       this.logger.debug(`Scenario "${id}" pending — ${reason}`);
-    } else if (current.follower === undefined) {
-      this.logger.debug(`Scenario "${id}" dropped — lower weight than queued "${current.id}"`);
-    } else {
-      this.logger.debug(
-        `Scenario "${id}" dropped — lower weight than queued "${current.id}" with "${current.follower.id}" behind it (held at ${slotWeight(current)})`,
-      );
+
+      return;
     }
+
+    state.pending = { ...arriving, follower };
+    this.logger.debug(
+      `Scenario "${id}" pending — ${reason}; replaces "${current.id}", and "${follower.id}" now waits behind "${id}"`,
+    );
   }
 
   /** Whether the contract `followerId` declares that it waits behind `leaderId` (issue #1108). */

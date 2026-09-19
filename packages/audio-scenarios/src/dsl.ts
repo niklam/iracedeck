@@ -254,18 +254,24 @@ export type ScenarioContract = {
    * idles — whatever their weights, and neither is dropped. The relation
    * holds the other way round too: a named contract that arrives to wait
    * (stashed by an interrupt, say) while this fire holds the slot goes
-   * ahead of it rather than losing to it. It is a pair, not a queue: the
-   * pair holds the slot at the weight of its heavier member — attaching
-   * never makes a fire weaker than it would be on its own — so only a fire
-   * at least that heavy takes the slot, and it then drops the leader and
-   * its follower together; a second follower replaces the first. A follower is never
-   * stranded — a leader that does not take the bus when it replays (its
-   * expansion aborted, its `speakGate` refused, the voice has no script for
-   * it) leaves the follower to play next. With nothing pending, or an
-   * unrelated fire pending, this fire schedules by the normal rules.
-   * Requires `queueable: true` and must not name the contract itself
-   * (validated at load time); an id that is not registered simply never
-   * matches. The tire-wear report waits behind the exit readback this way.
+   * ahead of it rather than losing to it. It is a pair, not a queue, and
+   * against a later unrelated fire each member keeps the fate it would have
+   * had alone — attaching changes neither: a fire that outweighs the leader
+   * replaces it, and drops the follower too only if it outweighs the
+   * follower as well, else the follower stays, now behind the newcomer; a
+   * fire lighter than the leader is dropped. A follower never plays ahead of
+   * its waiting leader, even when the bus is idle but the leader is held in
+   * the slot (a `pendingHoldMs` hold, a focus floor between the two): it
+   * attaches behind it there too. A second follower replaces the first. A
+   * follower is never stranded — a leader that does not take the bus when
+   * it replays (its expansion aborted, its `speakGate` refused, the voice
+   * has no script for it) leaves the follower to play next. With nothing
+   * pending, or an unrelated fire pending, this fire schedules by the
+   * normal rules. Requires `queueable: true` and must not name the contract
+   * itself (validated at load time); an id that is not registered simply
+   * never matches, and an id registered on another `bus` never matches
+   * either — the slot is per bus — which is warned once at registration.
+   * The tire-wear report waits behind the exit readback this way.
    */
   queueBehind?: readonly string[];
   /**

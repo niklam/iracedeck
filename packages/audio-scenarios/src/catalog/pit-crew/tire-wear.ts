@@ -39,22 +39,26 @@
  * **Scheduling.** Default weight, `queueable: true`, the default radio frame,
  * `family: "tire-wear"`, and `queueBehind` naming the exit readback. The
  * readback sits at `WEIGHT.CHATTER` and is published first, so on an idle
- * bus the report waits behind it as the pending fire (higher weight, no
- * interrupt) and plays when it finishes; on a busy bus it defers for
- * idle-replay rather than being dropped, since losing the stint's summary
- * to a passing flag would be wrong. Its own family, not the readback's, so
- * neither preempts the other. The engine keeps ONE pending fire per bus,
- * and the two are published in the same tick — so when the readback itself
- * had to wait (the spotter shares the Voice bus, and rejoining traffic makes
- * that common), the report, the heavier of the two, would have taken its
- * slot and silently dropped the pit-exit confirmation. `queueBehind` is the
- * one relation that prevents it: while the readback is the waiting fire the
- * report attaches behind it, both play in order once the bus idles, and a
- * readback that fails to take the bus at replay leaves the report to play
- * next. The pair still shares the slot's fate, holding it at the report's
- * own weight rather than the readback's — only a fire at least that heavy
- * takes the slot, and then drops both — and a readback cut mid-line by an
- * interrupt while the report already waits is put back ahead of it.
+ * bus it takes the bus and the report waits as the pending fire (higher
+ * weight, no interrupt) and plays when it finishes. Its own family, not the
+ * readback's, so neither preempts the other. `queueable` means a report that
+ * cannot take the bus waits for it rather than being dropped on arrival —
+ * and no more than that: the engine keeps ONE pending fire per bus, so
+ * while the readback plays the report waits ALONE in that slot, and a
+ * queueable fire of at least its weight that arrives then replaces it, and
+ * the report is gone. That is the engine's one-slot limit, shared by every
+ * queueable callout, and not something this contract can buy its way out
+ * of. What `queueBehind` fixes is the other ordering, which rejoining
+ * traffic makes common (the spotter shares the Voice bus): when the
+ * readback itself has to wait, the report — published right after it in
+ * the same tick, and the heavier of the two — would have taken its slot and
+ * silently dropped the pit-exit confirmation. Instead it attaches behind
+ * the waiting readback, both play in order once the bus idles, a readback
+ * that fails to take the bus at replay leaves the report to play next, and
+ * a readback cut mid-line by an interrupt while the report already waits is
+ * put back ahead of it. Each keeps its own fate against a later fire: one
+ * that outweighs the readback replaces the readback, and takes the report
+ * with it only if it outweighs the report too.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { TireCorner, TireCornerWear, TireWearReport, TireZone } from "@iracedeck/event-bus";
