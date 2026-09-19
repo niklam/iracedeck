@@ -15,7 +15,7 @@ Select the mode from the **Mode** dropdown in the Property Inspector.
 
 ### Change Camera
 
-Switch the active camera group to a specific numeric group (1–20). Useful when you want a single button to always jump to the same camera.
+Switch to one specific camera group — Nose, Cockpit, TV1, TV Mixed and so on. Useful when you want a single button to always jump to the same camera.
 
 #### Details
 
@@ -26,7 +26,16 @@ Switch the active camera group to a specific numeric group (1–20). Useful when
 
 #### Setting: Camera Group
 
-The numeric camera group to select (1–20). Defaults to `9`. The mapping from number to group (Nose, Cockpit, TV1, etc.) depends on the car and track combination — hover over the group dropdown in the Property Inspector for the list of available groups.
+The camera group to switch to, picked by name from a dropdown that lists all 25 groups iRaceDeck knows, sorted into four sections. Defaults to **Cockpit**.
+
+- **Car** — Nose, Gearbox, Cockpit, Roll Bar, Gyro, and the four suspension cameras
+- **Chase** — Chase, Far Chase, Rear Chase
+- **Track** — TV1, TV2, TV3, Scenic, Pit Lane, Pit Lane 2, TV Static, TV Mixed, TV4, Spotter, Spectator
+- **Aerial** — Chopper, Blimp
+
+The button finds the group by its **name** in the session you are in, so it reaches the same camera on every car and track even though iRacing numbers its camera groups differently from one track to the next.
+
+Not every track has every group. TV Static and TV Mixed exist on most content, while TV4, Spotter and Spectator are only on some — so far they have turned up on oval and dirt tracks. If the session you are in has no group of that name, pressing the button does nothing (the plugin log notes it) rather than switching to an unrelated camera.
 
 ---
 
@@ -39,7 +48,7 @@ Cycle through camera groups. The **Direction** setting picks whether pressing th
 - **Method:** iRacing API — no key binding needed
 - **Dial:** Rotation supported ([On a dial](#on-a-dial))
 - **Default binding:** No keyboard binding
-- **Telemetry-aware icon:** Yes — the button shows a preview icon for the currently active camera group (Nose, Cockpit, TV1, etc.)
+- **Telemetry-aware icon:** Yes — by default the button shows the camera group the next press will switch to; with **Icon Shows** set to **Current camera** it shows the group iRacing is on right now
 
 #### Setting: Direction
 
@@ -48,9 +57,20 @@ Cycle through camera groups. The **Direction** setting picks whether pressing th
 
 #### Setting: Camera Group Subset
 
-A checkbox grid in the Property Inspector lets you pick exactly which groups should participate in the cycle. By default Nose, Cockpit, Chase, TV1, TV2, and TV3 are enabled. Use **Select All** / **Clear Selection** to manage the list quickly.
+A checkbox grid in the Property Inspector lets you pick exactly which groups should participate in the cycle. By default Nose, Cockpit, Chase, TV1, TV2, and TV3 are enabled; every other group starts unchecked, including TV Static, TV Mixed, TV4, Spotter, and Spectator. Use **Select All** / **Clear Selection** to manage the list quickly.
+
+Not every track has every group — TV4, Spotter and Spectator in particular are only on some content, such as oval and dirt tracks. The cycle simply skips any enabled group the session you are in doesn't have, so enabling one costs nothing on a track without it.
 
 Each button stores its own subset, so different buttons can cycle different sets. A button that has never saved a selection follows the plugin-global camera set — the one the dial's Cycle Camera mode uses — until you change its grid, which then takes precedence for that button.
+
+#### Setting: Icon Shows
+
+What the button's icon shows while iRacing is running. Defaults to **Next camera**.
+
+- **Next camera** (default) — the camera group the next press will switch to, following the **Direction** setting
+- **Current camera** — the camera group iRacing is on right now, the way a pit-service key shows its current value. It follows the camera however it was changed — this button, another key, a dial, or iRacing itself — and shows the group even when it isn't one of the groups this button cycles through
+
+If iRacing is on a group iRaceDeck has no icon for, **Current camera** shows the generic Cycle Camera icon. While iRacing isn't connected the button shows a grid of its enabled groups, whichever option you pick. Each button has its own setting, so one key can show where the next press goes while another shows the live camera. The setting is for keys only — on a dial the touch strip already shows the current group in the centre with its neighbours at the sides.
 
 ---
 
@@ -322,7 +342,7 @@ Flips the turn direction of the selected mode. Off by default, which gives the s
 
 #### Setting: Camera Groups (Cycle Camera)
 
-When the dial mode is **Cycle Camera**, a checkbox grid lets you pick which camera groups the dial cycles through and previews on the carousel. This is the **plugin-global camera set** — every dial shares it, and keypad Cycle Camera buttons follow it too until a button saves its own per-button selection. Use **Select All** / **Clear Selection** to manage it quickly.
+When the dial mode is **Cycle Camera**, a checkbox grid lets you pick which camera groups the dial cycles through and previews on the carousel. This is the **plugin-global camera set** — every dial shares it, and keypad Cycle Camera buttons follow it too until a button saves its own per-button selection. Use **Select All** / **Clear Selection** to manage it quickly. It lists the same groups as the keypad grid: TV Static, TV Mixed, TV4, Spotter, and Spectator start unchecked, and an enabled group the session doesn't have is skipped, both when turning and in the carousel.
 
 #### Setting: Press Action / Long Press
 
