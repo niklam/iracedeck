@@ -189,6 +189,8 @@ describe("race-engineer partials", () => {
     const html = render("<%- include('race-engineer-callouts') %>", withRequire);
 
     expect(html).toContain('setting="calloutEnabledFlag');
+    // The tire wear report (issue #1108) sits with the pit-service readbacks it follows.
+    expect(html).toContain('setting="calloutEnabledTireWearReport" label="Tire wear report"');
     expect((html.match(/setting="calloutEnabled/g) ?? []).length).toBeGreaterThan(40);
     expect(html).not.toContain("<details");
   });
