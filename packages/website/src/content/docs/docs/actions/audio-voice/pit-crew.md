@@ -72,11 +72,11 @@ These apply to every Pit Crew button at once, so they live in the [Settings wind
 
 When the engineer is enabled, the Pit Crew catalog calls out every flag transition the iRacing translator publishes:
 
-- **Yellow** — scope-aware: full-course yellow ("pace car deployed") and local sector yellow ("mind the slow cars") play different lines.
+- **Yellow** — scope-aware: full-course yellow ("pace car deployed") and local sector yellow ("mind the slow cars") play different lines. The full-course line is for a caution that comes out static, with no waving flag ahead of it. When the caution waves first — which is what happens on an oval — the **Caution waving** line below announces it instead and the [full-course caution](#full-course-caution) sequence takes it from there, so you no longer hear "pace car will be deployed" a minute and a half late, with the pace car already leading the field.
 - **Yellow waving (local)** — a separate, more urgent line ("Local yellow waving — slow, hazard ahead!") for a waving local yellow, distinct from the static local yellow above.
-- **Caution waving** — a separate, more urgent line ("Caution coming out!") for a waving full-course caution, distinct from the static full-course yellow above.
-- **Yellow cleared** — engineer announces when the yellow drops. It fires only when every yellow-ish flag (static and waving, local and full) has cleared — escalating a static yellow to its waving variant never triggers a false "all clear".
-- **Green** — race-restart / race-on callout. Suppressed at the race start itself (the Start Lights family below owns the start); it still fires on restarts (caution → green).
+- **Caution waving** — a separate, more urgent line ("Caution coming out!") for a waving full-course caution, distinct from the static full-course yellow above. It now waits its turn behind radio traffic already in progress instead of being dropped: in testing the spotter was mid-call when the caution came out, and the announcement was lost outright.
+- **Yellow cleared** — engineer announces when a **local** yellow drops. It waits until every yellow-ish flag (static and waving, local and full) has stayed down for three seconds, so escalating a static yellow to its waving variant never triggers a false "all clear". It is deliberately local-only: a local yellow ends with no flag shown at all, so this line is the only way you learn the sector is clear. A full-course caution never ends that way — it ends with a restart, which the engineer now calls in its own right (see [Full-course caution](#full-course-caution)) — so no all-clear lands on top of the restart.
+- **Green** — the green-flag call, with its own line for practice, qualifying and races. It stays quiet when iRacing gives the start signal together with the green, at the race start itself, and at every restart after a full-course caution, whether or not the start signal comes with it. [Start Lights](#start-lights) covers the race start, and the [full-course caution](#full-course-caution) sequence covers the restart.
 - **Blue** — alternates between two recorded variants ("faster car approaching" / "check your mirrors").
 - **White** — a two-stage final-lap alert in races: a heads-up when the white flag comes out (iRacing shows it while the leader is closing on the line to start the final lap — *"White flag. We're about to start the final lap."*), then *"This is the last lap."* as you cross start/finish and begin yours — leader included. If you cross while the heads-up is still playing, you keep just the heads-up (the two lines never talk over each other). Practice and qualifying keep their single raise-time line. A third stage covers everyone else in the field: when the OVERALL race leader starts their final lap — detected from lap counting, or in a timed race from the leader's first start/finish crossing after the clock expires — the engineer announces *"The leader is about to start their final lap."*, so you have advance notice even while your own white flag is still a lap or more away. It fires once per race (a new green flag — overtime, a restart — re-arms it) and stays silent if you ARE the leader or your own white flag is already up, since you'll hear your own heads-up instead. All three stages share the White callout toggle.
 - **Crossed** — "Crossed flags." (leaders and tail-enders sharing the track at the halfway point).
@@ -95,7 +95,7 @@ The four race-formation / progression callouts above (Crossed, One pace lap to g
 - **Furled cleared** — "Black flag cleared." when an announced furled warning is withdrawn. It fires only if the furled callout actually played, so a transient flicker triggers neither callout.
 - **DQ scoring invalid** — "DQ — scoring's off." (disqualification because scoring is invalid).
 - **Checkered** — session-aware: practice, qualifying, and race finishes get distinct lines. In qualifying and races it's spoken as you take the flag at the start/finish line, not the moment the session ends — so on your final qualifying lap the call comes when you actually cross the line. In practice it's spoken immediately when the flag rises (the flag there just means the session is over). (In qualifying, if you're in the pits or out of the car when the checkered flies, it's spoken right away; driving into the pits after the flag also counts as done. In a race you take the flag at the line — even from pit lane.)
-- **Meatball** — the only flag callout marked **urgent + preempt**: it cancels in-flight engineer chatter mid-message, since failing to pit on a meatball costs a black-flag penalty. All non-meatball flag callouts share a `flag` family so a newer flag preempts an older one (no "yellow's clear" + "green flag" double-talk on race restart).
+- **Meatball** — the only flag callout marked **urgent + preempt**: it cancels in-flight engineer chatter mid-message, since failing to pit on a meatball costs a black-flag penalty. All non-meatball flag callouts share a `flag` family so a newer flag preempts an older one.
 
 Pit-service confirmations (fuel on/off, every tire-set selection, dry/wet compound switch, windshield-tearoff on/off, fast-repair on/off) continue to fire on the relevant Tire Service / Pit Service action presses.
 
@@ -107,11 +107,13 @@ On a **standing start** the Race Engineer walks you through the gantry sequence 
 
 During the pre-start countdown the engineer also speaks the numeric marks — *"Ninety seconds to race start."*, *"Sixty seconds to race start."*, *"Thirty seconds to race start."*, *"Ten seconds to race start."* — as the clock crosses each threshold. The countdown plays **even while you're out of the car** — in the garage, the session screen, or the in-session replay view — since it's exactly the "get in the car" reminder (watching a saved standalone replay stays silent). The gantry lines above stay in-car only: if you're not in the car when the lights come up, you've missed the start. The countdown is **standing-start only** and announces only the marks that genuinely fall inside the live countdown window, so a compressed procedure (a short pre-start, an AI race) that starts below a mark simply skips the higher numbers rather than blurting a stale burst.
 
-On a **rolling start** there's no light gantry and no numeric countdown — the lead-in comes from the race-progression flags instead: **One pace lap to go**, spoken once when one pace lap remains (the engineer assumes at most two pace laps, so it lands as the pace car begins the final pace lap), then **Green held** as the field bunches up, followed by the green flag.
+On a **rolling start** there's no light gantry and no numeric countdown — the lead-in comes from the race-progression flags instead: **One pace lap to go**, spoken once when one pace lap remains (the engineer assumes at most two pace laps, so it lands as the pace car begins the final pace lap), then **Green held** as the field bunches up, and *"Go, go, go!"* the moment the field is released.
+
+*"Go, go, go!"* belongs to the start of the race, and only to it. On the oval we tested, iRacing signals the **restart after a full-course caution** exactly the way it signals a start, which is why the go line used to speak there as well; it now stands down for the length of a caution and the [full-course caution](#full-course-caution) sequence calls the restart in its own words, after its own **Green held** heads-up. The **Green** flag callout stays quiet at both.
 
 Two opt-ins live under **Race Engineer Callouts → Start Lights** in the Settings window, both on by default:
 
-- **Start lights** — the two gantry lines (get ready / go).
+- **Start lights** — the get-ready line (standing starts) and the go line (the start of the race).
 - **Start countdown** — the four numeric marks (ninety / sixty / thirty / ten).
 
 ## Rolling Start
@@ -121,6 +123,37 @@ On a **rolling start** the Race Engineer calls out once the moment the pace car 
 One opt-in lives under **Race Engineer Callouts → Rolling Start** in the Settings window, on by default:
 
 - **Pace car moving** — the start-of-formation call when the pace car begins rolling the field away.
+
+## Full-course caution
+
+When the whole track goes yellow, the Race Engineer talks you through it from the flag to the green — so you can keep your eyes up, find the car you belong behind, and know where you will be when the field is released. It works in every race, not only on an oval.
+
+What you hear, in the order it happens:
+
+1. **The caution comes out.** The announcement itself, as before — and it now waits its turn behind a call already in progress instead of being dropped.
+2. **Who you line up behind.** A couple of seconds later, once iRacing has settled the order behind the pace car, the engineer names the car you form up behind — by its number, spoken the way the sim spells it, so `09` and `9` are never confused for one another. If there is nobody ahead of you in your own line, he tells you that instead.
+3. **The pace car reaches the track.** A short heads-up, roughly twenty seconds after the flag.
+4. **Two to green.** About a minute and a half in, as the pace car finishes gathering the field, the engineer calls *"Two to green."* and names the car to follow. On a road course there is no such moment — iRacing shows one to go the instant the field is gathered — so this call is not made there.
+5. **Another caution lap.** If the caution runs longer than the two laps it defaults to, you are told each time the field goes around again.
+6. **One lap to green.** The last lap under caution, with the car ahead of you named again. On an **oval running double file** the engineer also tells you which lane you form up in, inside or outside. Anywhere else — and any time the field is single file — there is no lane to name, so he just names the car.
+7. **Your position on the last lap.** About a third of the way around the last caution lap, your race position — *"We're currently P fourteen."* It is the number your display shows, not your place in the queue behind the pace car: a lapped car lined up ahead of you is still behind you in the race.
+8. **The pace car peels off.** About five seconds before the green, once *"One lap to green"* has been called. On a road course the pace car waits parked until the caution needs it and then rolls out through pit exit to deploy — that moment is announced as the pace car reaching the track, never as it leaving.
+9. **The restart.** The green, called in its own right rather than borrowing the race start's line.
+
+If the car ahead of you changes while the caution is still running — somebody pits, or the field re-forms for a double-file restart — the engineer tells you, so you are never left following a car that has gone.
+
+**No lap count is ever spoken beyond "two to green" and "one lap to green", and each only where iRacing shows a flag for it.** iRacing gives no warning that a caution has been extended: any admin in the session can add a pace lap, and nothing says so until the lap you expected to be the last one simply is not. So the engineer never promises a count past the flag in front of him, and reports each extra lap as it happens, which is the only honest thing he can tell you.
+
+Who you line up behind, and which lane, come from iRacing's own caution order — the order the sim actually forms the field up in — rather than from the live race positions. The two can disagree for a lap or so after the caution comes out, and the caution order is the one that matches what you see out of the window. The position you are given on the last lap is the other way round: it is your race position, the same number your display shows, because the queue behind the pace car can put a lapped car ahead of you without it being ahead of you in the race.
+
+### What changes while a caution is out
+
+- **"Yellow cleared." no longer plays after a full-course caution.** That line exists for a local yellow, which ends with no flag shown at all and so is the only way you learn the sector is clear. A caution ends with the restart instead, which is now called in its own right — so the all-clear no longer lands a few seconds into the green. A yellow that stayed local still gets it, including one raised moments after a restart.
+- **Your best-lap and position-change callouts stay quiet.** A pace lap is not a lap time, and the running order freezing while the official positions catch up to it is not a position lost — both used to be announced as though they were. That covers the lap that ends the caution too, which you complete a few seconds after the green. The position call on the last caution lap gives you your race position instead, once the order has settled.
+- **Pit open and pit closed calls are untouched.** Every change is still announced: whether the pits are open is exactly what you need to know under a caution.
+- **The start lights' *"Go, go, go!"* no longer speaks at a restart.** The restart has its own call now, and its own switch.
+
+Nine opt-ins live under **Race Engineer Callouts → Caution** in the Settings window, all on by default — listed in full [below](#race-engineer-callouts-per-subject-opt-inout). The caution announcement itself keeps the existing **Caution waving** switch under **Flags**.
 
 ## Pit Service Readback
 
@@ -215,7 +248,7 @@ A couple of seconds after you cross the start/finish line, the Race Engineer ann
 
 Sub-1-minute laps skip the minute clip — *"That was your best lap yet. Thirty-four point eight seconds."* The lap time is announced to one decimal place (rounded to the nearest tenth). Lap times of 11 minutes or longer stay silent — the engineer never speaks a partial readout, and the minute-clip range stops at 10 for now. The minute coverage will expand in follow-up releases.
 
-On the final lap of a race the best-lap callout is suppressed — the race-end result takes the floor instead.
+On the final lap of a race the best-lap callout is suppressed — the race-end result takes the floor instead. It is also silent while a [full-course caution](#full-course-caution) is out, and for the lap that ends one, which you complete a few seconds after the green: a lap behind the pace car is timed like any other, so without that it could be announced as your best yet at forty-odd seconds.
 
 ## Qualifying Lap Invalidation
 
@@ -240,6 +273,8 @@ In qualifying the wording follows the standings-after-lap-time model: *"That put
 In race the wording is always *"We're currently pee N."* regardless of direction — race standings come from overtakes and pit stops, not lap times, so "that puts us to" reads wrong there. The pole call doesn't apply in race either. The every-3-laps race-status callout below handles hold-position updates, and the final lap stays silent so the race-end result has the floor. Practice and test sessions stay silent entirely.
 
 When iRacing flags the just-completed lap as invalid (track-limits cut, pit-lane violation, etc.) the engineer prefixes the readout with *"That lap didn't count."* and always uses the "currently" framing — *"That lap didn't count. We're currently pee five."* — so you know the time was thrown out. The invalid-lap prefix overrides the pole and "puts us to" branches even if standings shifted on paper from other drivers' laps.
+
+The callout is silent while a [full-course caution](#full-course-caution) is out, and for the lap that ends one, which you complete a few seconds after the green. The running order freezes under yellow and iRacing's official positions then catch up to it, which used to read as a handful of places changing hands on a lap where nobody passed anybody. The caution's own position call, on the last lap before the green, gives you your race position instead, by which time the order has settled.
 
 ## Race Position Status (every 3 laps)
 
@@ -436,10 +471,10 @@ Disabling a flag also disables its preemption — a disabled callout can't inter
 
 Under **Start Lights**, two callouts are toggleable independently, both enabled by default (see [Start Lights](#start-lights) above for the full behavior):
 
-- **Start lights** — the two standing-start gantry lines (get ready / go). Disabling silences the gantry calls without affecting the numeric countdown.
+- **Start lights** — the get-ready line (standing starts) and the go line (the start of the race). Disabling silences both without affecting the numeric countdown. A restart after a full-course caution is not covered here — it has its own **Restart** switch under **Caution** below.
 - **Start countdown** — the four numeric marks (ninety / sixty / thirty / ten) spoken during the standing-start countdown window. Disabling silences the numbers without affecting the gantry lines.
 
-Disabling either does not affect the other. Both are moot on rolling starts, where the lead-in comes from the **One pace lap to go** / **Green held** flag callouts instead.
+Disabling either does not affect the other. On a rolling start only the go line applies; the rest of the lead-in comes from the **One pace lap to go** / **Green held** flag callouts.
 
 Under **Opponent Pits**, two callouts are toggleable, both enabled by default (see [Opponent pit entries (races)](#opponent-pit-entries-races) above for the full behavior):
 
@@ -562,6 +597,20 @@ Under **Spotter**, two callouts are toggleable, both enabled by default (see [Sp
 - **Announce cars around you** (`calloutEnabledSpotterCars`) — every transition call (car / two cars / one car / three wide / clear / combined). Disabling silences the spoken calls while leaving the focus gate and "still there" reminder logic intact.
 - **Repeat reminder while alongside** (`calloutEnabledSpotterStillThere`) — the "Still there." reminder loop. Disabling stops the loop without affecting the transition calls.
 - **Reminder interval (s)** (`spotterStillThereSeconds`, 1–10, default 3) — how often the "still there" reminder repeats while a car is alongside. Read live.
+
+Under **Caution**, nine callouts are toggleable, all enabled by default (see [Full-course caution](#full-course-caution) above for the full behavior). They only ever fire in a race, while you are live in the car, and only as part of a full-course caution:
+
+- **Who to follow** (`calloutEnabledCautionFollow`) — the car you line up behind, named a couple of seconds after the caution comes out.
+- **Pace car out** (`calloutEnabledCautionPaceCarOut`) — the pace car reaching the track.
+- **Two to green** (`calloutEnabledCautionFieldCaught`) — the pace car has the field: *"Two to green."* and the car to follow. Ovals only, since no flag marks that moment on a road course.
+- **Another caution lap** (`calloutEnabledCautionExtraLap`) — one per extra lap when the caution runs past the two it defaults to.
+- **One lap to green** (`calloutEnabledCautionOneToGo`) — the last lap under caution, with the car ahead and (on a double-file oval restart) the lane you form up in.
+- **Car ahead changed** (`calloutEnabledCautionLineupChanged`) — the car you line up behind has changed mid-caution.
+- **Position on the last lap** (`calloutEnabledCautionPosition`) — your race position, about a third of the way around the last caution lap.
+- **Pace car off** (`calloutEnabledCautionPaceCarOff`) — the pace car peeling off to pit road, a few seconds before the green.
+- **Restart** (`calloutEnabledCautionRestart`) — the green that releases the field. This is the switch for the restart call; **Start lights** above no longer covers it.
+
+The caution announcement that opens the sequence is not in this group — it keeps its existing **Caution waving** switch under **Flags**.
 
 ## Notes
 

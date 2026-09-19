@@ -90,6 +90,20 @@ export const EVENT_TEMPLATES = [
     data: {},
   },
 
+  // ── Full-course caution (issue #1127) ──
+  { name: "paceCar.deployed", description: "Pace car reached the track", data: {} },
+  { name: "paceCar.off", description: "Pace car left for pit road", data: {} },
+  { name: "caution.fieldCaught", description: "Pace car picked up the field — two to green", data: {} },
+  { name: "caution.extraLap", description: "Another lap under caution", data: {} },
+  { name: "caution.oneLapToGreen", description: "One lap to green", data: {} },
+  { name: "caution.lastLapCheckpoint", description: "35% into the one-to-green lap — the position call", data: {} },
+  {
+    name: "caution.lineup.changed",
+    description: "The car to follow changed",
+    data: { followCarIdx: 5, followCarNumber: "09", line: "inside", isLeader: false },
+  },
+  { name: "caution.restarted", description: "The green that ends the caution", data: {} },
+
   // ── Start lights ──
   { name: "startLight.start-ready.raised", description: "Start gantry: Ready", data: {} },
   { name: "startLight.start-go.raised", description: "Start gantry: Go", data: {} },

@@ -25,6 +25,8 @@ import {
   scanRaceEngineerVoices,
 } from "@iracedeck/audio-scenarios";
 import {
+  CAUTION_CALLOUT_SETTING_KEYS,
+  type CautionCalloutId,
   CORNER_NAME_CALLOUT_SETTING_KEYS,
   type CornerNameCalloutId,
   type CornerNameSnapshot,
@@ -263,6 +265,8 @@ import { IRacingNative } from "@iracedeck/iracing-native";
 import { LogLevel } from "@iracedeck/logger";
 import { createSvgRasterizer } from "@iracedeck/rasterizer";
 import {
+  getCautionLineup,
+  getCautionPhase,
   getDriverSetupName,
   getLiveCarPosition,
   getLiveGaps,
@@ -278,6 +282,7 @@ import {
   initializeSimEventsIracing,
   isPitActionsAllowed,
   isRaceFinished,
+  isUnderFullCourseCaution,
   sanitizeCornerCalloutLeadSeconds,
   sanitizeFuelCalloutMarginLaps,
   sanitizeGapAlertThresholdSeconds,
@@ -816,6 +821,17 @@ const resolvePendingCarLivePosition = (pending: {
 // scenarios and without cutting a callout already playing. Per-key rationale
 // lives on `PitCrewDeps` in @iracedeck/audio-scenarios.
 registerPitCrew(eventBus, {
+  // The full-course caution sequence (issue #1127): the per-callout opt-ins,
+  // the lineup the `caution.*` vocabulary reads at speak time, and the
+  // translator's own caution phase — the boolean for the lap-time and
+  // position-change silencings, the phase itself for the caution family,
+  // which gates on WHICH stage the caution is in (the two pace-car callouts
+  // because `paceCar.deployed` / `paceCar.off` also fire at a rolling start).
+  getCautionCalloutEnabled: (id: CautionCalloutId) =>
+    (getGlobalSettings() as Record<string, unknown>)[CAUTION_CALLOUT_SETTING_KEYS[id]] !== false,
+  getCautionLineup: () => getCautionLineup(),
+  getUnderFullCourseCaution: () => isUnderFullCourseCaution(),
+  getCautionPhase: () => getCautionPhase(),
   getFlagCalloutEnabled: (id: FlagCalloutId) =>
     (getGlobalSettings() as Record<string, unknown>)[FLAG_CALLOUT_SETTING_KEYS[id]] !== false,
   logger: adapter.createLogger("PitCrewScenarios"),

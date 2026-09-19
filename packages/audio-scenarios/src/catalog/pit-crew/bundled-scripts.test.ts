@@ -79,11 +79,12 @@ const VOICE = "default";
 
 /**
  * How many contracts the catalog registered when #1065 closed it: 24 flags
- * (#1064) plus the 125 callouts migrated in #1065. Bump the literal when a
- * callout is added — it is only the vacuity floor for the enumeration; the
- * completeness checks below are what actually guard the catalog.
+ * (#1064) plus the 125 callouts migrated in #1065, plus the nine caution
+ * contracts of #1127. Bump the literal when a callout is added — it is only
+ * the vacuity floor for the enumeration; the completeness checks below are
+ * what actually guard the catalog.
  */
-const CATALOG_FLOOR = 149;
+const CATALOG_FLOOR = 158;
 
 /**
  * How many distinct clip sources the bundled script addresses — `pool:<group>/<base>`

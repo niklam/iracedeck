@@ -19,6 +19,7 @@ import {
   EngineWarnings,
   Flags,
   IncidentFlags,
+  PaceMode,
   PitSvFlags,
   type SDKController,
   SessionState,
@@ -27,11 +28,14 @@ import {
   TrkLoc,
 } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
+import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { YELLOW_CLEARED_HOLD_MS } from "./diff/flags.js";
 import {
   _resetSimEventsIracing,
+  getCautionLineup,
+  getCautionPhase,
   getDriverSetupName,
   getFuelStats,
   getLatestTelemetry,
@@ -45,6 +49,7 @@ import {
   getStartingGridPosition,
   initializeSimEventsIracing,
   isSimEventsIracingInitialized,
+  isUnderFullCourseCaution,
   resolveLeaderLapTimeS,
 } from "./translator.js";
 
@@ -3727,6 +3732,557 @@ describe("sim-events-iracing translator", () => {
       controller.__tick(garageTick(28));
 
       expect(handler).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("full-course caution wiring (issue #1127)", () => {
+    /** car0 is the player, car1 the rival, car2 the pace car, car3 the car behind the rival on the outside line. */
+    const PLAYER = 0;
+    const RIVAL = 1;
+    const PACE = 2;
+    const OUTSIDE = 3;
+
+    /** `SessionFlags` values lifted from the 2026-09-17 capture (see `diff/caution.test.ts`). */
+    const RACING = 0x10040000; // Servicible | StartHidden — green-flag running
+    const WAVING = 0x10048000; // + CautionWaving
+    const STATIC = 0x10044000; // + Caution
+    const ONE_TO_GO = 0x10044200; // + OneLapToGreen
+    const RESTART = 0x80040004 | 0; // Green | Servicible | StartGo — StartGo is the sign bit
+
+    function ovalRace(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+      return {
+        WeekendInfo: { Category: "Oval", TrackType: "medium oval" },
+        DriverInfo: {
+          DriverCarIdx: PLAYER,
+          PaceCarIdx: PACE,
+          Drivers: [
+            { CarIdx: PLAYER, CarNumber: "7" },
+            { CarIdx: RIVAL, CarNumber: "11" },
+            { CarIdx: PACE, CarNumber: "0", CarIsPaceCar: 1 },
+            { CarIdx: OUTSIDE, CarNumber: "4" },
+          ],
+        },
+        SessionInfo: { Sessions: [{ SessionNum: 0, SessionType: "Race" }] },
+        ...overrides,
+      };
+    }
+
+    type CautionTick = {
+      flags: number;
+      /** Per-car `[lapCompleted, lapDistPct]`, indexed by carIdx. */
+      progress?: Array<[number, number]>;
+      /** Per-car `[paceRow, paceLine]`, indexed by carIdx; `[-1, -1]` for a car not lined up. */
+      pace?: Array<[number, number]>;
+      paceCarSurface?: TrkLoc;
+      paceMode?: number;
+      replay?: boolean;
+    };
+
+    /**
+     * The lineup the disagreement tests run on. The pace car heads line 0, the
+     * PLAYER holds line 0 row 1, and the RIVAL line 1 row 0 — so the lineup's
+     * own front car is the player while the canonical order (below) names the
+     * rival as the leader. That is the disagreement the 2026-09-17 capture
+     * showed and the reason the canonical order is the authority here. The
+     * OUTSIDE car behind the rival is what makes line 1 a COLUMN: the lineup
+     * reader counts a line only when it holds two cars, so a lone car on line
+     * 1 would read as a stray and the field as single file.
+     */
+    const FRONT_ROW: Array<[number, number]> = [
+      [1, 0],
+      [0, 1],
+      [0, 0],
+      [1, 1],
+    ];
+
+    function cautionTick({
+      flags,
+      progress = [
+        [10, 0.5],
+        [11, 0.5],
+        [5, 0.5],
+        [10, 0.5],
+      ],
+      pace = FRONT_ROW,
+      paceCarSurface = TrkLoc.OnTrack,
+      paceMode,
+      replay,
+    }: CautionTick): TelemetryData {
+      const surfaces = [TrkLoc.OnTrack, TrkLoc.OnTrack, TrkLoc.OnTrack, TrkLoc.OnTrack];
+      surfaces[PACE] = paceCarSurface;
+
+      return telemetry({
+        SessionState: SessionState.Racing,
+        SessionFlags: flags,
+        SessionTime: 600,
+        CarIdxLapCompleted: progress.map(([lap]) => lap),
+        CarIdxLapDistPct: progress.map(([, pct]) => pct),
+        CarIdxTrackSurface: surfaces,
+        CarIdxClass: [0, 0, 0, 0],
+        CarIdxPaceRow: pace.map(([row]) => row),
+        CarIdxPaceLine: pace.map(([, line]) => line),
+        ...(paceMode === undefined ? {} : { PaceMode: paceMode }),
+        ...(replay === undefined ? {} : { IsReplayPlaying: replay }),
+      });
+    }
+
+    /** Records the caution + gantry stream in publish order, as event names. */
+    function recordStream(): string[] {
+      const seen: string[] = [];
+      const bus = getEventBus();
+
+      for (const name of [
+        "paceCar.deployed",
+        "paceCar.off",
+        "caution.fieldCaught",
+        "caution.extraLap",
+        "caution.oneLapToGreen",
+        "caution.restarted",
+        "startLight.start-go.raised",
+      ] as const) {
+        bus.subscribe(name, () => seen.push(name));
+      }
+
+      return seen;
+    }
+
+    /**
+     * A full caution, thrown → picked up → one to go → restarted. The pace car
+     * starts in its stall so the deployment edge is a real transition rather
+     * than a seeded value.
+     */
+    function driveFullCaution(controller: MockController): void {
+      controller.__tick(cautionTick({ flags: RACING, paceCarSurface: TrkLoc.InPitStall }));
+      controller.__tick(cautionTick({ flags: WAVING, paceCarSurface: TrkLoc.InPitStall }));
+      controller.__tick(cautionTick({ flags: WAVING }));
+      controller.__tick(cautionTick({ flags: STATIC }));
+      controller.__tick(cautionTick({ flags: ONE_TO_GO, paceMode: PaceMode.DoubleFileRestart }));
+      // The capture has the pace car heading for the pits about five seconds
+      // BEFORE the green, so its departure is its own tick rather than the
+      // restart's. Keeping the two apart is what stops this asserting the
+      // arbitrary within-tick order of `diffPaceCar` and `diffCautionEpisode`.
+      controller.__tick(
+        cautionTick({ flags: ONE_TO_GO, paceMode: PaceMode.DoubleFileRestart, paceCarSurface: TrkLoc.AproachingPits }),
+      );
+      controller.__tick(cautionTick({ flags: RESTART, paceCarSurface: TrkLoc.AproachingPits }));
+    }
+
+    it("publishes the caution sequence, in order, through the real tick loop", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(ovalRace());
+      const seen = recordStream();
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      driveFullCaution(controller);
+
+      expect(seen).toEqual([
+        "paceCar.deployed",
+        "caution.fieldCaught",
+        "caution.oneLapToGreen",
+        "paceCar.off",
+        "caution.restarted",
+      ]);
+    });
+
+    it("a restart does not also speak the race start — diffCaution runs AFTER diffStartLights", () => {
+      // The measured restart tick carries `StartGo`, so the gantry diff would
+      // announce a race start unless it reads a caution phase that `diffCaution`
+      // clears on the very same tick. Half of the #1127 start-go gate is dead
+      // code until this wiring exists, and this is what exercises it.
+      const controller = createMockController();
+      controller.__setSessionInfo(ovalRace());
+      const seen = recordStream();
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      driveFullCaution(controller);
+
+      expect(seen).toContain("caution.restarted");
+      expect(seen).not.toContain("startLight.start-go.raised");
+    });
+
+    it("but a race start still speaks — the suppression is the phase, not the bit", () => {
+      // The positive control for the test above: the identical `StartGo` rising
+      // edge with no caution episode behind it must still announce.
+      const controller = createMockController();
+      controller.__setSessionInfo(ovalRace());
+      const seen = recordStream();
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(cautionTick({ flags: RACING }));
+      controller.__tick(cautionTick({ flags: RESTART }));
+
+      expect(seen).toEqual(["startLight.start-go.raised"]);
+    });
+
+    it("a restart with NO start bit is announced once — diffFlags stands its green line down for caution.restarted", () => {
+      // Unmeasured ordering (the oval restarts all carried `StartGo`), and the
+      // one where the two families used to double up: `flag.green.raised` AND
+      // `caution.restarted` on one tick, both `family: "flag"`, the CRITICAL
+      // restart line cutting the green line mid-word. `diffFlags` reads the
+      // caution phase ahead of `diffCaution` clearing it, so this pins the
+      // wiring order for that reader as the start-go test does for its own.
+      const controller = createMockController();
+      controller.__setSessionInfo(ovalRace());
+      const seen = recordStream();
+      const greens: string[] = [];
+      getEventBus().subscribe("flag.green.raised", () => greens.push("flag.green.raised"));
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(cautionTick({ flags: RACING }));
+      controller.__tick(cautionTick({ flags: WAVING }));
+      controller.__tick(cautionTick({ flags: STATIC }));
+      controller.__tick(cautionTick({ flags: RACING | Flags.Green })); // green, no start bit
+
+      expect(seen).toEqual(["caution.fieldCaught", "caution.restarted"]);
+      expect(greens).toEqual([]);
+    });
+
+    it("but a green with no caution behind it still raises the green line — the positive control", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(ovalRace());
+      const seen = recordStream();
+      const greens: string[] = [];
+      getEventBus().subscribe("flag.green.raised", () => greens.push("flag.green.raised"));
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(cautionTick({ flags: RACING }));
+      controller.__tick(cautionTick({ flags: RACING | Flags.Green }));
+
+      expect(seen).toEqual([]);
+      expect(greens).toEqual(["flag.green.raised"]);
+    });
+
+    it("counts the caution's laps in the CANONICAL leader, not the front of the lineup", () => {
+      // The lineup's front car (the player, line 0 row 1) and the canonical
+      // leader (the rival, one lap further round) are deliberately different
+      // cars — the disagreement the capture showed. Only the rival crosses, so
+      // `caution.extraLap` fires if and only if the tick's real canonical order
+      // reached the diff. Passing `null` runs it on the lineup fallback, where
+      // the player's lap counter never moves and the extra lap is never seen.
+      const controller = createMockController();
+      controller.__setSessionInfo(ovalRace());
+      const seen = recordStream();
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      // A caution that is already static when the diff first sees it re-anchors
+      // on the leader outright, so ONE later crossing is an extra lap.
+      controller.__tick(cautionTick({ flags: RACING }));
+      controller.__tick(
+        cautionTick({
+          flags: STATIC,
+          progress: [
+            [10, 0.5],
+            [11, 0.99],
+            [5, 0.5],
+            [10, 0.5],
+          ],
+        }),
+      );
+      controller.__tick(
+        cautionTick({
+          flags: STATIC,
+          progress: [
+            [10, 0.52],
+            [12, 0.01],
+            [5, 0.52],
+            [10, 0.52],
+          ],
+        }),
+      );
+
+      expect(seen).toEqual(["caution.extraLap"]);
+    });
+
+    describe("the readers", () => {
+      it("report nothing before the translator is initialized", () => {
+        expect(isUnderFullCourseCaution()).toBe(false);
+        expect(getCautionPhase()).toBe("none");
+        expect(getCautionLineup()).toBeNull();
+      });
+
+      it("expose the phase itself — and the boolean is that phase not being none", () => {
+        const controller = createMockController();
+        controller.__setSessionInfo(ovalRace());
+        initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+        controller.__tick(cautionTick({ flags: RACING }));
+        expect(getCautionPhase()).toBe("none");
+
+        controller.__tick(cautionTick({ flags: WAVING }));
+        expect(getCautionPhase()).toBe("waving");
+
+        controller.__tick(cautionTick({ flags: STATIC }));
+        expect(getCautionPhase()).toBe("caught");
+
+        controller.__tick(cautionTick({ flags: STATIC | Flags.OneLapToGreen }));
+        expect(getCautionPhase()).toBe("one-to-go");
+        expect(isUnderFullCourseCaution()).toBe(true);
+
+        controller.__tick(cautionTick({ flags: RESTART }));
+        expect(getCautionPhase()).toBe("none");
+        expect(isUnderFullCourseCaution()).toBe(false);
+      });
+
+      it("resolve the lineup once per tick — the same object for every reader of that tick, a fresh one for the next", () => {
+        // One expansion of a caution callout asks up to five times.
+        const controller = createMockController();
+        controller.__setSessionInfo(ovalRace());
+        initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+        controller.__tick(cautionTick({ flags: STATIC }));
+        const first = getCautionLineup();
+
+        expect(first).not.toBeNull();
+        expect(getCautionLineup()).toBe(first);
+
+        controller.__tick(cautionTick({ flags: STATIC }));
+        const second = getCautionLineup();
+
+        expect(second).not.toBe(first);
+        expect(second).toEqual(first);
+      });
+
+      it("report nothing before the first tick", () => {
+        const controller = createMockController();
+        controller.__setSessionInfo(ovalRace());
+        initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+        expect(isUnderFullCourseCaution()).toBe(false);
+        expect(getCautionLineup()).toBeNull();
+      });
+
+      it("track the episode from thrown to restarted", () => {
+        const controller = createMockController();
+        controller.__setSessionInfo(ovalRace());
+        initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+        controller.__tick(cautionTick({ flags: RACING }));
+        expect(isUnderFullCourseCaution()).toBe(false);
+
+        controller.__tick(cautionTick({ flags: WAVING }));
+        expect(isUnderFullCourseCaution()).toBe(true);
+
+        controller.__tick(cautionTick({ flags: STATIC }));
+        expect(isUnderFullCourseCaution()).toBe(true);
+
+        controller.__tick(cautionTick({ flags: RESTART }));
+        expect(isUnderFullCourseCaution()).toBe(false);
+      });
+
+      it("read the lineup live, off the latest tick", () => {
+        const controller = createMockController();
+        controller.__setSessionInfo(ovalRace());
+        initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+        controller.__tick(cautionTick({ flags: STATIC }));
+
+        // Player at line 0 row 1 behind the pace car, rival alongside at line 1
+        // row 0 — the double-file front row.
+        expect(getCautionLineup()).toEqual({
+          followCarIdx: PACE,
+          followCarNumber: "0",
+          line: "inside",
+          isLeader: true,
+          followsPaceCar: true,
+          doubleFile: true,
+          restartPosition: 1,
+        });
+      });
+
+      it("name the lanes only on an oval — the track category reaches the resolver", () => {
+        // The discriminator for the `isOval` argument: a hardcoded `false` (or a
+        // `true`) shows up here and nowhere else.
+        const controller = createMockController();
+        controller.__setSessionInfo(ovalRace({ WeekendInfo: { Category: "Road", TrackType: "road course" } }));
+        initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+        controller.__tick(cautionTick({ flags: STATIC }));
+
+        expect(getCautionLineup()?.line).toBeNull();
+        expect(getCautionLineup()?.doubleFile).toBe(true);
+      });
+
+      it("report no lineup at all for a player the re-form has not placed", () => {
+        // A car in the pits during the re-form holds no row, so there is no
+        // place in the lineup to report. `null` here is what makes a `null`
+        // elsewhere mean "the field is not lined up" rather than "we forgot".
+        const controller = createMockController();
+        controller.__setSessionInfo(ovalRace());
+        initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+        // The first tick only seeds the diff, so the episode needs a second one
+        // to reach a phase at all.
+        controller.__tick(cautionTick({ flags: RACING }));
+        controller.__tick(
+          cautionTick({
+            flags: STATIC,
+            pace: [
+              [-1, -1], // the player, still in the pits
+              [1, 0],
+              [0, 0],
+              [1, 1],
+            ],
+          }),
+        );
+
+        expect(getCautionLineup()).toBeNull();
+        // …while the episode itself carries on regardless.
+        expect(isUnderFullCourseCaution()).toBe(true);
+      });
+    });
+
+    // The lap that ENDS a caution is completed AFTER the green (issue #1127,
+    // second review R16) — 2.2–5.1 s after each oval restart, the player at
+    // 3.3 s and 2.3 s — so its `lap.completed` arrives with the caution gone
+    // and the "is a caution out now" gates open. Driven through the committed
+    // oval fixture rather than a synthetic lap, with the player's own lap
+    // fields synthesised from car 0's scored laps (the capture recorded no
+    // `LapLastLapTime`), and the clock following the capture so the lap
+    // diff's standings wait times out the way it does with no results.
+    describe("the lap that ends a caution", () => {
+      type OvalTick = {
+        t: number;
+        SessionFlags: number;
+        SessionState: number;
+        CarIdxLapCompleted: number[];
+        CarIdxTrackSurface: number[];
+        CarIdxPaceLine: number[];
+        CarIdxPaceRow: number[];
+      };
+      const oval = JSON.parse(
+        readFileSync(new URL("./diff/__fixtures__/caution-restart-20260917.json", import.meta.url), "utf-8"),
+      ) as OvalTick[];
+      const FIXTURE_PACE_SLOT = 20;
+      const FIXTURE_PACE = 64;
+
+      /** A fixture tick as the player (car 0) would see it, per-car arrays widened to 72 slots. */
+      function ovalTick(tick: OvalTick): TelemetryData {
+        const widen = (values: number[], fill: number): number[] => {
+          const out = new Array(72).fill(fill);
+
+          values.forEach((v, i) => (out[i === FIXTURE_PACE_SLOT ? FIXTURE_PACE : i] = v));
+
+          return out;
+        };
+        const lap = tick.CarIdxLapCompleted[0] ?? -1;
+
+        return telemetry({
+          SessionState: tick.SessionState,
+          SessionFlags: tick.SessionFlags,
+          SessionTime: tick.t,
+          LapCompleted: lap,
+          // Changes with every scored lap, which is what the lap diff waits
+          // for; the value itself is never asserted on.
+          LapLastLapTime: 30 + lap,
+          CarIdxLapCompleted: widen(tick.CarIdxLapCompleted, -1),
+          CarIdxTrackSurface: widen(tick.CarIdxTrackSurface, TrkLoc.OnTrack),
+          CarIdxPaceLine: widen(tick.CarIdxPaceLine, -1),
+          CarIdxPaceRow: widen(tick.CarIdxPaceRow, -1),
+        });
+      }
+
+      it("marks the player's first lap after the green as a caution lap, and the next one — wholly under green — as clean", () => {
+        vi.useFakeTimers();
+
+        const controller = createMockController();
+        controller.__setSessionInfo({
+          WeekendInfo: { Category: "Oval", TrackType: "medium oval" },
+          DriverInfo: { DriverCarIdx: 0, PaceCarIdx: FIXTURE_PACE, Drivers: [] },
+          SessionInfo: { Sessions: [{ SessionNum: 0, SessionType: "Race" }] },
+        });
+        const laps: Array<{ t: number; lap: number; wasCaution: boolean | undefined }> = [];
+        const restarts: number[] = [];
+        let now = 0;
+
+        getEventBus().subscribe("lap.completed", (ev) =>
+          laps.push({ t: now, lap: ev.data.lap, wasCaution: ev.data.wasCaution }),
+        );
+        getEventBus().subscribe("caution.restarted", () => restarts.push(now));
+        initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+        for (const tick of oval) {
+          now = tick.t;
+          vi.setSystemTime(1_700_000_000_000 + tick.t * 1000);
+          controller.__tick(ovalTick(tick));
+        }
+
+        expect(restarts).toEqual([492.82, 872.45]);
+
+        // Car 0 scores lap 5 at 496.08 — 3.3 s after the first restart — and
+        // lap 6 at 533.30, before the second caution waves at 542.75. Lap 7
+        // (574.40) is under that caution again. The events themselves land a
+        // few seconds after each crossing, once the standings wait times out.
+        const byLap = new Map(laps.map((l) => [l.lap, l]));
+
+        expect(byLap.get(5)?.wasCaution).toBe(true);
+        expect(byLap.get(5)?.t).toBeGreaterThan(492.82);
+        expect(byLap.get(6)?.wasCaution).toBeUndefined();
+        expect(byLap.get(7)?.wasCaution).toBe(true);
+        // …and the lap that ends the second caution, scored 2.3 s after its
+        // restart, carries it too.
+        expect(byLap.get(11)?.wasCaution).toBe(true);
+        expect(byLap.get(11)?.t).toBeGreaterThan(872.45);
+      });
+    });
+
+    // `wipeStateForReplay` preserves `cautionPhase` but not
+    // `cautionInitialized`, so the first tick back always re-SEEDS the caution
+    // diff. What that seed does with the preserved phase decides both tests
+    // below, and they want opposite things of it — hence the pair.
+    describe("a replay glance", () => {
+      /** Park the translator mid-caution, then glance at the replay. */
+      function glanceAtReplay(controller: MockController): void {
+        controller.__tick(cautionTick({ flags: RACING }));
+        controller.__tick(cautionTick({ flags: WAVING }));
+        controller.__tick(cautionTick({ flags: STATIC }));
+        controller.__tick(cautionTick({ flags: STATIC, replay: true }));
+      }
+
+      it("does not swallow a start-go edge when the caution ended during the glance", () => {
+        // The seed expires a phase the flags contradict, so the phase is gone
+        // on the FIRST tick back rather than the second. Without that, the
+        // gantry diff reads the stale phase on the very next tick — it runs
+        // before `diffCaution` — and suppresses a legitimate race start as if
+        // it were a restart, losing the line for good.
+        const controller = createMockController();
+        controller.__setSessionInfo(ovalRace());
+        const seen = recordStream();
+        initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+        glanceAtReplay(controller);
+
+        // Back in the car, and the caution is gone — an admin re-grid, say.
+        controller.__tick(cautionTick({ flags: RACING }));
+        expect(isUnderFullCourseCaution()).toBe(false);
+
+        controller.__tick(cautionTick({ flags: RESTART }));
+
+        expect(seen).toContain("startLight.start-go.raised");
+      });
+
+      it("keeps the phase when the caution is still out, so the restart is still a restart", () => {
+        // The positive control for the expiry above, and the reason the phase
+        // is preserved across the wipe at all: come back to a caution that is
+        // STILL running and the episode must survive intact — the restart that
+        // ends it is announced as one, and the `StartGo` it carries stays
+        // suppressed. An expiry that fired unconditionally would pass the test
+        // above and fail this one.
+        const controller = createMockController();
+        controller.__setSessionInfo(ovalRace());
+        const seen = recordStream();
+        initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+        glanceAtReplay(controller);
+
+        controller.__tick(cautionTick({ flags: STATIC }));
+        expect(isUnderFullCourseCaution()).toBe(true);
+
+        controller.__tick(cautionTick({ flags: RESTART }));
+
+        expect(seen).toContain("caution.restarted");
+        expect(seen).not.toContain("startLight.start-go.raised");
+        expect(isUnderFullCourseCaution()).toBe(false);
+      });
     });
   });
 });

@@ -1,19 +1,36 @@
 import type { VoiceConfig } from "./config.ts";
 
 /**
- * Filter applied to the voices × groups iteration in the TTS generator.
- * `null` means "no filter" — iterate all of that axis.
+ * Filter applied to the voices × groups × entries iteration in the TTS
+ * generator. `null` means "no filter" — iterate all of that axis.
  */
 export interface Scope {
   voices: string[] | null;
   groups: string[] | null;
+  /**
+   * Entry NAMES — the `<name>` half of `<group>/<name>` — matched in every
+   * group the scope iterates. This is the axis `--group` cannot express: a
+   * slice of ONE large group. It exists because of #1127, where the
+   * maintainer wanted to hear 21 of the 1,110 `car-number` clips spliced
+   * onto a re-texted lead-in before paying for the other 1,089; without it
+   * the only ways to cut a slice were a temporary config edit or a
+   * four-figure re-cut. Entries outside the slice keep their manifest rows,
+   * so an unscoped dry-run afterwards still reports them as out of date.
+   */
+  entries: string[] | null;
 }
 
-const FLAGS = ["--voice", "--group"] as const;
+const FLAGS = ["--voice", "--group", "--entry"] as const;
 type FlagName = (typeof FLAGS)[number];
 
+const FLAG_KEYS: Record<FlagName, keyof Scope> = {
+  "--voice": "voices",
+  "--group": "groups",
+  "--entry": "entries",
+};
+
 function flagToKey(flag: FlagName): keyof Scope {
-  return flag === "--voice" ? "voices" : "groups";
+  return FLAG_KEYS[flag];
 }
 
 function splitValue(flag: FlagName, raw: string): string[] {
@@ -37,19 +54,20 @@ function splitValue(flag: FlagName, raw: string): string[] {
 }
 
 /**
- * Parse `--voice` / `--group` flags out of argv. Both forms are accepted:
+ * Parse `--voice` / `--group` / `--entry` flags out of argv. Both forms are
+ * accepted:
  *   --group acknowledgment        (value as next token)
  *   --group=acknowledgment        (equals form)
  * Values may be comma-separated and the flag may repeat; the union of all
  * values is returned, deduped while preserving first-seen order.
  *
- * Args that aren't `--voice`/`--group` (e.g. `--dry-run`) pass through
+ * Args that aren't one of the three flags (e.g. `--dry-run`) pass through
  * untouched in `remaining` so the caller can interpret them.
  *
  * Throws if a flag is followed by no value or an empty value.
  */
 export function parseScopeArgs(argv: readonly string[]): { scope: Scope; remaining: string[] } {
-  const acc: Record<keyof Scope, string[]> = { voices: [], groups: [] };
+  const acc: Record<keyof Scope, string[]> = { voices: [], groups: [], entries: [] };
   const remaining: string[] = [];
 
   for (let i = 0; i < argv.length; i++) {
@@ -78,20 +96,23 @@ export function parseScopeArgs(argv: readonly string[]): { scope: Scope; remaini
     remaining.push(arg);
   }
 
+  const axis = (values: string[]): string[] | null => (values.length > 0 ? Array.from(new Set(values)) : null);
+
   return {
     scope: {
-      voices: acc.voices.length > 0 ? Array.from(new Set(acc.voices)) : null,
-      groups: acc.groups.length > 0 ? Array.from(new Set(acc.groups)) : null,
+      voices: axis(acc.voices),
+      groups: axis(acc.groups),
+      entries: axis(acc.entries),
     },
     remaining,
   };
 }
 
 /**
- * Throw with a helpful message if any requested voice/group key is missing
- * from the loaded voice configs. Lists the unknown names and the valid
- * options so the user can correct the typo without spelunking through the
- * config files.
+ * Throw with a helpful message if any requested voice/group/entry key is
+ * missing from the loaded voice configs. Lists the unknown names and the
+ * valid options so the user can correct the typo without spelunking through
+ * the config files.
  *
  * Voice ids come from the `configs/*.voice.json` filename stems. Group
  * names come from the union of `groups` across every loaded voice — so a
@@ -100,6 +121,15 @@ export function parseScopeArgs(argv: readonly string[]): { scope: Scope; remaini
  * deliberately not enforced since #1065; `script-coverage.test.ts` holds
  * each voice to its own script instead), so the union is the right answer,
  * not merely a permissive one.
+ *
+ * Entry names are checked the same way, against the union of entry names in
+ * the groups the scope would iterate — every group when there is no group
+ * filter, the named ones otherwise — across the voices it would iterate. So
+ * `--group car-number --entry 09` is accepted while `--group caution
+ * --entry 09` is refused: an entry filter that matches nothing in its scope
+ * is a typo, and the alternative (a run that reports "0 generated" and
+ * looks like a full cache hit) is exactly the silent no-op that a paid API
+ * should never leave a maintainer guessing about.
  */
 export function validateScope(scope: Scope, voiceConfigs: Map<string, VoiceConfig>): void {
   if (scope.voices) {
@@ -114,6 +144,22 @@ export function validateScope(scope: Scope, voiceConfigs: Map<string, VoiceConfi
     }
 
     requireKnown("--group", scope.groups, Array.from(groups).sort());
+  }
+
+  if (scope.entries) {
+    const entries = new Set<string>();
+
+    for (const [voiceId, voice] of voiceConfigs) {
+      if (scope.voices && !scope.voices.includes(voiceId)) continue;
+
+      for (const [groupName, groupEntries] of Object.entries(voice.groups)) {
+        if (scope.groups && !scope.groups.includes(groupName)) continue;
+
+        for (const entry of groupEntries) entries.add(entry.name);
+      }
+    }
+
+    requireKnown("--entry", scope.entries, Array.from(entries).sort());
   }
 }
 
@@ -140,6 +186,8 @@ export function formatScope(scope: Scope): string | null {
   if (scope.voices) parts.push(`voices=${scope.voices.join(",")}`);
 
   if (scope.groups) parts.push(`groups=${scope.groups.join(",")}`);
+
+  if (scope.entries) parts.push(`entries=${scope.entries.join(",")}`);
 
   return parts.length > 0 ? parts.join(", ") : null;
 }

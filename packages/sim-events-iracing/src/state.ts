@@ -10,6 +10,13 @@ import { type IncidentType, type PitBoxMark, type RadarState, TrackWetness } fro
 import type { GapTrendDirection, ProgressTrace } from "@iracedeck/iracing-sdk";
 import type { CornerMarker } from "@iracedeck/track-data";
 
+/**
+ * How far the current full-course caution has got (issue #1127): thrown and
+ * waving, static with the field caught behind the pace car, or running its last
+ * lap. `"none"` when no full-course caution is out.
+ */
+export type CautionPhase = "none" | "waving" | "caught" | "one-to-go";
+
 /** Live gap snapshot for one class-standings neighbor (issue #933). */
 export type GapNeighborState = {
   /** The neighbor's car index. */
@@ -103,6 +110,18 @@ export type TranslatorState = {
 
   // ── Flags ───────────────────────────────────────────────────────────────
   flagStateInitialized: boolean;
+  /**
+   * The flag keys `diffFlags` edge-detects against, as of last tick. NOT a
+   * reading of which flags are flying: it is the narrower "flags flying that we
+   * would ANNOUNCE", and the `"yellow"` key is absent in two cases where a
+   * yellow-ish bit is very much set. A static yellow ESCALATING to its waving
+   * variant drops the key (see {@link lastAnyYellow}, which exists because that
+   * once misled someone into clearing a caution that was still out), and since
+   * issue #1127 a full-course caution DE-escalating to its static bit never
+   * adds the key at all — that is the pace car picking the field up, which
+   * `caution.fieldCaught` reports. So never read this set to answer "is a
+   * yellow out"; `lastAnyYellow` and the live `SessionFlags` bits answer that.
+   */
   activeFlags: Set<string>;
   lastYellowScope: "local" | "full" | null;
   /**
@@ -124,6 +143,34 @@ export type TranslatorState = {
    * re-raise cancels the pending clear. `null` when no clear is pending.
    */
   yellowClearPendingSince: number | null;
+  /**
+   * Whether the CURRENT yellow episode has been full-course at any point —
+   * i.e. whether `Caution` or `CautionWaving` has been observed since it
+   * began (issue #1127). Decides whether the validated clear above is
+   * ANNOUNCED at all, and — its second reader — whether a static `Caution`
+   * RISING raises `flag.yellow.raised {full}` or is the pace car picking the
+   * field up, which `caution.fieldCaught` reports instead. `diffFlags` reads it
+   * for that before the tick can set it, so the first tick of an episode still
+   * raises and only the ones after it are the pickup.
+   *
+   * `flag.yellow.cleared` was designed for a LOCAL yellow, which ends with
+   * no flag shown: the callout is the only way the driver learns the sector
+   * is clear. A full-course caution ends with a restart instead, and the
+   * restart is announced already: on the one track measured, a paved oval
+   * (`local/telemetry-watch-20260917-191825-092.jsonl`), each restart
+   * carried `StartGo`, so the start-light family's "Go, go, go!" played and
+   * `flag.green.raised` stayed suppressed. The cleared line landed about
+   * three seconds after each of those restarts — on top of the restart, at
+   * the busiest moment of the race.
+   *
+   * Set on any tick a caution bit is present, and seeded from the current
+   * bits on the first tick so a plugin started mid-caution still knows the
+   * episode is full-course. Cleared when the pending clear RESOLVES (fired
+   * or suppressed) and on a GREEN rising edge — the latter is what keeps a
+   * caution's marker from leaking onto a SEPARATE local yellow raised
+   * seconds after the restart, which must still get its line.
+   */
+  yellowEpisodeFullCourse: boolean;
   /**
    * Timestamp (ms) when the `Furled` bit's rising edge was observed, while a
    * `flag.furled.raised` emission is pending its debounce window (issue
@@ -190,6 +237,107 @@ export type TranslatorState = {
    * can't preempt the still-playing heads-up. Reset when the bit drops.
    */
   whiteRaisedAt: number;
+
+  // ── Full-course caution (issue #1127) ───────────────────────────────────
+  /** Whether the caution diff has seeded its baselines. The first tick never emits. */
+  cautionInitialized: boolean;
+  /** Previous-tick pace-car track surface, for the deployed/off edges. `null` until seeded. */
+  cautionPaceCarSurface: number | null;
+  /**
+   * Where the current caution has got to. `"none"` when no full-course caution
+   * is out. Deliberately NOT seeded from nothing on the diff's first tick — the
+   * seed leaves a LIVE caution's phase alone so the value {@link TranslatorState}
+   * carries through a replay wipe survives, and so a fresh connect reports only
+   * the transitions it actually watched (a caution already static when the
+   * plugin starts moves to `"caught"` on the next tick, silently). The seed does
+   * EXPIRE a phase the flags contradict, so a caution that ended while the
+   * driver glanced at the replay cannot survive as a latch into the tick where
+   * `diffStartLights` reads it — see `diff/caution.ts`.
+   *
+   * Read outside `diffCaution` by exactly two things, both of which stand down
+   * for the restart while it is anything but `"none"`: `diffStartLights`
+   * suppresses `startLight.start-go.raised`, because a restart carries
+   * `StartGo` exactly as a race start does and would otherwise borrow its
+   * line; and `diffFlags` suppresses `flag.green.raised` on the green's rising
+   * edge, because `caution.restarted` speaks for that green whether or not a
+   * start bit came with it. Those readers are why the translator must run
+   * `diffCaution` AFTER both — the green's rising edge ends the episode on the
+   * very tick they judge it, so running it first would leave nothing for
+   * either gate to see.
+   */
+  cautionPhase: CautionPhase;
+  /**
+   * When (`now`, ms) the last `caution.restarted` was emitted, or `null` when
+   * none has been this state's lifetime. Read by `diffStartLights`, which
+   * suppresses `startLight.start-go.raised` for `RESTART_GO_GRACE_MS` after
+   * it: the phase alone covers a `StartGo` that rises ON the restart tick
+   * (the measured ordering), but a `StartGo` trailing the green by a tick
+   * finds the phase already `"none"` and would re-speak the restart as a race
+   * start. Not preserved across a replay wipe — no tick runs during the
+   * replay, and the first tick back re-seeds every edge.
+   */
+  cautionRestartedAt: number | null;
+  /** Previous-tick `SessionFlags`, for the caution edges. */
+  cautionLastFlags: number;
+  /**
+   * Previous-tick `CarIdxLapCompleted` for the race leader, for crossing
+   * detection. `null` until seeded.
+   *
+   * It is a HIGH-WATER baseline rather than a plain previous value, which is
+   * what lets the pickup consume the crossing it landed on: at the pickup the
+   * value is moved one past the leader's PRE-pickup lap, so the increment that
+   * arrives about half a second later (the static flag precedes it — measured
+   * at both pickups) is not reported as an extra lap. Reading the pre-pickup
+   * lap rather than the current one is strictly the better of the two — equal
+   * on the measured ordering, and still exact if the counter were ever scored
+   * on the same tick as the flag — but it is not ordering-proof: a counter
+   * scored on an EARLIER tick than the flag would cost the next genuine
+   * crossing too.
+   *
+   * Never lowered, so a leader swap to a car with fewer laps scored goes quiet
+   * rather than manufacturing an extra lap. That swap is not hypothetical: the
+   * double-file re-form at one to go changes which car holds each row, twice in
+   * the committed fixture, both times between cars whose lap counts agree. What
+   * remains unobserved is a reorder from PITTING under caution (see
+   * `diff/caution.ts`).
+   */
+  cautionLeaderLapCompleted: number | null;
+  /**
+   * The car the player was last told to follow in the caution lineup, so a
+   * change of it can be reported. `null` means "not known during this episode"
+   * rather than "nobody": the first lineup an episode produces SEEDS this
+   * silently, and the phase returning to `"none"` clears it again — so every
+   * caution reports its own changes, and none of them reports its start as one.
+   *
+   * Pointedly NOT preserved across a replay wipe, unlike `cautionPhase`. It is
+   * re-derived from the very next tick's pace arrays, so carrying a
+   * replay-timeline value across would at best be overwritten immediately and
+   * at worst announce a change between two different timelines' lineups.
+   */
+  cautionFollowCarIdx: number | null;
+  /**
+   * Previous-tick player `LapDistPct`, for the one-to-green lap's checkpoint
+   * (`caution.lastLapCheckpoint`: the first upward crossing of
+   * `LAST_LAP_CHECKPOINT_PCT` after `caution.oneLapToGreen`). `null` until
+   * seeded, and a tick whose value cannot be read keeps the last one rather
+   * than writing `null` — a gap is not a reading (the pace-car surface rule).
+   *
+   * Re-seeds after a replay wipe, like every other baseline here: a
+   * replay-timeline lap distance says nothing about where the live car is.
+   */
+  cautionLastLapDistPct: number | null;
+  /**
+   * Whether the one-to-green lap's checkpoint is still owed. Armed by
+   * `caution.oneLapToGreen`, disarmed by the checkpoint firing and by the
+   * phase leaving `"one-to-go"` — so a one-to-go withdrawn and later re-raised
+   * (the F2 path) re-arms for the new final lap, and a green that arrives
+   * before the checkpoint leaves nothing to fire.
+   *
+   * PRESERVED across a replay wipe, with `cautionPhase` and for the same
+   * reason: a glance at the replay on the last caution lap must neither lose
+   * the position call (had it not fired yet) nor repeat it (had it).
+   */
+  cautionCheckpointArmed: boolean;
 
   // ── Rolling-start pace laps (issue #657) ────────────────────────────────
   /**
@@ -860,6 +1008,30 @@ export type TranslatorState = {
    */
   lastEmittedLapTime: number;
   /**
+   * The `LapCompleted` value the caution latch below is accumulating for —
+   * the lap IN PROGRESS (issue #1127, second review R16). When the counter
+   * moves, the accumulated latch becomes {@link lapCompletedWasCaution} and a
+   * fresh one starts. `null` until the first tick.
+   */
+  lapCautionLatchLap: number | null;
+  /**
+   * Whether a full-course caution — the translator's own phase, never the raw
+   * bits — has been out on ANY tick of the lap in progress. The same idea
+   * `fuel-laps.ts` keeps as its `wasCaution`, kept separately because that
+   * tracker segments laps its own way (pit and tow partials), lives outside
+   * this state, and reads the caution bits rather than the phase.
+   */
+  lapCautionSeen: boolean;
+  /**
+   * The latch for the lap the counter last moved past — what `lap.completed`
+   * publishes as `wasCaution`. The lap that ENDS a caution is completed
+   * seconds after the green (2.2–11.6 s across both captures, the player
+   * 2.3–6.7 s), so a gate that only asks "is a caution out now" at that
+   * event lets a best-lap or position-change call land as the driver heads
+   * into turn one; this is what stops it.
+   */
+  lapCompletedWasCaution: boolean;
+  /**
    * Position baselines captured at the previous `lap.completed` emission
    * (issue #566). `0` is the sentinel for "no baseline yet" — mirroring how
    * `lastLapBestLapTime` uses `0` to mean "no prior best". Cleared by the
@@ -922,6 +1094,7 @@ export function createInitialState(): TranslatorState {
     lastYellowScope: null,
     lastAnyYellow: false,
     yellowClearPendingSince: null,
+    yellowEpisodeFullCourse: false,
     furledPendingAt: 0,
     furledAnnounced: false,
     flagLastLapCompleted: null,
@@ -930,6 +1103,16 @@ export function createInitialState(): TranslatorState {
     whiteLastLapFired: false,
     playerFinalLapStarted: false,
     whiteRaisedAt: 0,
+
+    cautionInitialized: false,
+    cautionPaceCarSurface: null,
+    cautionPhase: "none",
+    cautionRestartedAt: null,
+    cautionLastFlags: 0,
+    cautionLeaderLapCompleted: null,
+    cautionFollowCarIdx: null,
+    cautionLastLapDistPct: null,
+    cautionCheckpointArmed: false,
 
     paceLapInitialized: false,
     lastTickInParadeLaps: false,
@@ -1091,6 +1274,9 @@ export function createInitialState(): TranslatorState {
 
     lapCompletedInitialized: false,
     lastLapCompletedCounter: -1,
+    lapCautionLatchLap: null,
+    lapCautionSeen: false,
+    lapCompletedWasCaution: false,
     lastLapBestLapTime: 0,
     lastLapSessionNum: null,
     lastEmittedLapTime: 0,

@@ -304,6 +304,19 @@ function renderInjector() {
   syncInjectorPayload();
 }
 
+// The id of the shortcut currently running, or null. ONE shortcut at a time,
+// page-wide: a `telemetrySequence` runs for seconds with waits between its
+// steps (issue #1127), and two sequences interleaving would write the same
+// telemetry field from both, so neither would be the one described on either
+// button. Disabling only the clicked button left every OTHER button live for
+// the whole run, which is exactly the second sequence that note forbids.
+let shortcutInFlight = null;
+
+/** Every shortcut button follows the lock, including ones rendered mid-run. */
+function setShortcutButtonsDisabled(disabled) {
+  for (const btn of $("shortcuts").querySelectorAll("button")) btn.disabled = disabled;
+}
+
 function renderShortcuts() {
   const container = $("shortcuts");
   container.innerHTML = "";
@@ -335,8 +348,46 @@ function renderShortcuts() {
       const btn = document.createElement("button");
       btn.textContent = s.label;
       if (s.description) btn.title = s.description;
+      // A re-render while a sequence runs must not hand the tester a fresh,
+      // enabled set of buttons.
+      btn.disabled = shortcutInFlight !== null;
       btn.addEventListener("click", async () => {
+        // The page-wide lock (see `shortcutInFlight`): every shortcut button is
+        // disabled for the duration, not just this one, and a click that
+        // reaches here anyway (a keyboard-activated button, a stale render)
+        // is refused. Costs the instant shortcuts an invisible blink.
+        if (shortcutInFlight !== null) return;
+
+        shortcutInFlight = s.id;
+        setShortcutButtonsDisabled(true);
+
         try {
+          // Issue #1127 — every shortcut announces itself here first, and the
+          // server refuses the ones whose declared preconditions the harness
+          // does not meet. The failure this replaces is a caution sequence
+          // pressed with no session preset applied: the flag lines play, the
+          // lineup lines silently do not, and nothing on screen says why. A
+          // refusal (409) carries the reason and is SHOWN — a button that
+          // quietly does nothing would be the same bug wearing a different hat.
+          const start = await fetch("/api/shortcut/start", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: s.id }),
+          });
+
+          if (start.status === 409) {
+            const refusal = await start.json().catch(() => ({}));
+
+            alert(`Shortcut "${s.label}" was not run.\n\n${refusal.error || "A precondition is not met."}`);
+            return;
+          }
+
+          if (!start.ok) {
+            const err = await start.json().catch(() => ({ error: start.statusText }));
+
+            throw new Error(err.error || `POST /api/shortcut/start failed: ${start.status}`);
+          }
+
           // Issue #567 — qualifying-invalidation shortcuts carry an embedded
           // snapshot the scenario reads at fire time. Push it first so the
           // resolver returns the intended snapshot when the trigger event
@@ -360,9 +411,26 @@ function renderShortcuts() {
           if (s.telemetryPatch) {
             await post("/api/telemetry", { patch: s.telemetryPatch });
           }
-          await post("/api/bus/publish", { event: s.event, data: s.data });
+          // Issue #1127 — a shortcut that drives the TRANSLATOR rather than
+          // the bus: telemetry patches in order, holding between them, and no
+          // publish at all. It is the only way to audition what the translator
+          // DECIDES (whether a caution's end reports a cleared yellow), since
+          // publishing the event steps over the decision.
+          if (s.telemetrySequence) {
+            for (const step of s.telemetrySequence) {
+              await post("/api/telemetry", { patch: step.patch });
+
+              if (step.holdMs) await new Promise((resolve) => setTimeout(resolve, step.holdMs));
+            }
+          }
+          if (s.event) {
+            await post("/api/bus/publish", { event: s.event, data: s.data });
+          }
         } catch (e) {
           alert(`Shortcut "${s.label}" failed: ${e.message}`);
+        } finally {
+          shortcutInFlight = null;
+          setShortcutButtonsDisabled(false);
         }
       });
       buttons.appendChild(btn);

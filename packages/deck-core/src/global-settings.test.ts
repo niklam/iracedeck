@@ -494,6 +494,35 @@ describe("pit-limiter / no-limiter callout defaults (issue #1051)", () => {
   });
 });
 
+describe("caution callout defaults (issue #1127)", () => {
+  // Keys must match packages/audio-scenarios/src/catalog/pit-crew/caution.ts
+  // CAUTION_CALLOUT_SETTING_KEYS exactly — the plugins read this schema's
+  // fields by that map's values, not by a literal name in plugin.ts.
+  const CAUTION_CALLOUT_KEYS = [
+    "calloutEnabledCautionFollow",
+    "calloutEnabledCautionPaceCarOut",
+    "calloutEnabledCautionFieldCaught",
+    "calloutEnabledCautionExtraLap",
+    "calloutEnabledCautionOneToGo",
+    "calloutEnabledCautionLineupChanged",
+    "calloutEnabledCautionPaceCarOff",
+    "calloutEnabledCautionRestart",
+    "calloutEnabledCautionPosition",
+  ] as const;
+
+  it.each(CAUTION_CALLOUT_KEYS)("%s defaults to true", (key) => {
+    const parsed = GlobalSettingsSchema.parse({}) as Record<string, unknown>;
+
+    expect(parsed[key]).toBe(true);
+  });
+
+  it.each(CAUTION_CALLOUT_KEYS)('%s coerces the literal string "false" to boolean false', (key) => {
+    const parsed = GlobalSettingsSchema.parse({ [key]: "false" }) as Record<string, unknown>;
+
+    expect(parsed[key]).toBe(false);
+  });
+});
+
 describe("gap callout settings (issue #933)", () => {
   it("defaults the toggles on with threshold 1.0 and cooldown 30", () => {
     const parsed = GlobalSettingsSchema.parse({}) as Record<string, unknown>;

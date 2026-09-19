@@ -8,6 +8,7 @@
 export type { EventHandler, IEventBus } from "./event-bus.js";
 export { _resetEventBus, getEventBus, initializeEventBus, isEventBusInitialized } from "./event-bus.js";
 export type {
+  CautionLine,
   EmptySimEventPayload,
   FlagScope,
   GapSide,

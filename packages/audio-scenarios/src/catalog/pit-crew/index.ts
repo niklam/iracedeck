@@ -79,6 +79,15 @@ import { TrackDirection } from "@iracedeck/sim-events-iracing";
 import type { ScenarioContract } from "../../dsl.js";
 import { getScenarioEngine, isAudioScenariosInitialized } from "../../interpreter.js";
 import {
+  buildCautionContracts,
+  type CautionCalloutId,
+  type CautionLineupResolver,
+  type CautionPhaseResolver,
+  registerCautionVocabulary,
+  SCENARIO_ID_TO_CAUTION_ID,
+  type UnderCautionResolver,
+} from "./caution.js";
+import {
   buildCornerNameContract,
   type CornerNameCalloutId,
   type CornerNameSnapshotResolver,
@@ -251,6 +260,20 @@ export {
   type CornerNameSnapshot,
   type CornerNameSnapshotResolver,
 } from "./corner-name.js";
+export {
+  buildCautionContracts,
+  CAUTION_CALLOUT_SETTING_KEYS,
+  CAUTION_FOLLOW_DELAY_MS,
+  CAUTION_LINEUP_CHANGE_DELAY_MS,
+  CAUTION_SCENARIO_IDS,
+  type CautionCalloutId,
+  type CautionContractDeps,
+  type CautionLineupResolver,
+  type CautionPhaseResolver,
+  registerCautionVocabulary,
+  SCENARIO_ID_TO_CAUTION_ID,
+  type UnderCautionResolver,
+} from "./caution.js";
 export {
   _resetOpponentFlagPending,
   OPPONENT_FLAG_CALLOUT_SETTING_KEYS,
@@ -1120,6 +1143,38 @@ export type PitCrewDeps = {
   // Default `() => null` falls back to the emit-time payload position — a
   // safe stub for tests and the harness.
   getOpponentFlagLivePosition?: OpponentFlagLivePositionResolver;
+  // User opt-ins for the full-course caution callouts (issue #1127). Nine
+  // subjects, one per moment of the sequence. Same gate-at-event-arrival shape
+  // as the other callout families. Default `() => true` preserves legacy
+  // behavior for tests that don't supply a closure.
+  getCautionCalloutEnabled?: (id: CautionCalloutId) => boolean;
+  // Caution lineup resolver (issue #1127). Plugins wire `getCautionLineup()`
+  // from `@iracedeck/sim-events-iracing`. Read at SPEAK time inside every
+  // `caution.*` var, condition and case, so a call that waited behind a busier
+  // bus names the car that is ahead now rather than the one that was ahead
+  // when it fired — the lineup keeps moving while the field re-forms. Default
+  // `() => null` leaves every caution line numberless and laneless, which is a
+  // safe stub for tests.
+  getCautionLineup?: CautionLineupResolver;
+  // Whether a full-course caution is out (issue #1127). Plugins wire
+  // `isUnderFullCourseCaution()` from `@iracedeck/sim-events-iracing` — the
+  // translator's own caution phase not being "none", never a re-derivation of
+  // the caution bits. Read by the lap-time and position-change contracts,
+  // which fall silent under a caution. Default `() => false` is the truthful
+  // answer for a caller that wires no reader.
+  getUnderFullCourseCaution?: UnderCautionResolver;
+  // WHICH stage the caution is in (issue #1127, second review). Plugins wire
+  // `getCautionPhase()` from `@iracedeck/sim-events-iracing` — the same phase
+  // the boolean above is derived from, exposed whole. The caution family is
+  // built against it: the two pace-car callouts speak only under a live phase
+  // (their events fire at a rolling start too), the follow call only while
+  // the field is still waving, the pickup only once the phase settled on
+  // caught, the pace-car-off call only under one to go, and every speak-time
+  // gate asks it for "still out". Default `() => "none"` is the truthful
+  // answer for a caller that wires no reader — note what it costs, though:
+  // the whole family then never speaks, so the scenario harness MUST wire it
+  // (`main.ts` does) or every caution button is silent for the wrong reason.
+  getCautionPhase?: CautionPhaseResolver;
   // Pit-road speeding cue opt-in (issue #912). Live-read, single subject.
   // Consumed inside the imperative engine rather than by a scenario wrapper —
   // the cue plays direct, so there is no `where:` to gate.
@@ -1199,6 +1254,10 @@ const DEFAULT_DEPS = {
   getLiveGaps: () => null,
   getOpponentFlagCalloutEnabled: () => true,
   getOpponentFlagLivePosition: () => null,
+  getCautionCalloutEnabled: () => true,
+  getCautionLineup: () => null,
+  getUnderFullCourseCaution: () => false,
+  getCautionPhase: () => "none",
   getPitSpeedingCalloutEnabled: () => true,
   getPitLimiterCalloutEnabled: () => true,
   getNoLimiterCalloutEnabled: () => true,
@@ -1254,6 +1313,10 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
     getLiveGaps = DEFAULT_DEPS.getLiveGaps,
     getOpponentFlagCalloutEnabled = DEFAULT_DEPS.getOpponentFlagCalloutEnabled,
     getOpponentFlagLivePosition = DEFAULT_DEPS.getOpponentFlagLivePosition,
+    getCautionCalloutEnabled = DEFAULT_DEPS.getCautionCalloutEnabled,
+    getCautionLineup = DEFAULT_DEPS.getCautionLineup,
+    getUnderFullCourseCaution = DEFAULT_DEPS.getUnderFullCourseCaution,
+    getCautionPhase = DEFAULT_DEPS.getCautionPhase,
     getPitSpeedingCalloutEnabled = DEFAULT_DEPS.getPitSpeedingCalloutEnabled,
     getPitLimiterCalloutEnabled = DEFAULT_DEPS.getPitLimiterCalloutEnabled,
     getNoLimiterCalloutEnabled = DEFAULT_DEPS.getNoLimiterCalloutEnabled,
@@ -1341,6 +1404,31 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   for (const c of FLAG_CONTRACTS) {
     engine.defineContract(
       wrapWithMaster(wrapCalloutScenario(c, SCENARIO_ID_TO_FLAG_ID, getFlagCalloutEnabled, "flag callout", logger)),
+    );
+  }
+
+  // Full-course caution family (issue #1127) — the narrated sequence around a
+  // caution: who to follow, the pace car out and off, the pickup (two to
+  // green), each extra lap, one lap to green, a change to the car ahead, your
+  // race position on the last lap, and the green. Registered right after the
+  // flags because it is part of the same conversation: eight of the nine share
+  // `family: "flag"` so a newer caution call supersedes a stale one, and the
+  // ninth (the follow call) deliberately does not, because it
+  // rides the very event that fires `pit-crew.flag-caution-waving` and must
+  // queue behind that line rather than cut it (see `caution.ts`).
+  //
+  // The vocabulary goes first, as every family's does; it carries the lineup
+  // resolver because every lineup entry reads it at SPEAK time — the lineup is
+  // never frozen into an event payload — and the SAME `getLivePosition` the
+  // position and race-status vocabularies take, because the position call on
+  // the last caution lap speaks the race position, not the lineup's.
+  registerCautionVocabulary(engine, getCautionLineup, getLivePosition, logger);
+
+  for (const c of buildCautionContracts({ getCautionPhase, getCautionLineup })) {
+    engine.defineContract(
+      wrapWithMaster(
+        wrapCalloutScenario(c, SCENARIO_ID_TO_CAUTION_ID, getCautionCalloutEnabled, "caution callout", logger),
+      ),
     );
   }
 
@@ -1649,15 +1737,17 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   // Lap-time best-lap contract (issue #555; scripted since #1065). The
   // readout's four components and the minute gate are the `lapTime.*`
   // vocabulary, reading the snapshot at expansion time; the contract keeps
-  // only the race-finished gate its `where:` reads.
+  // only the race-finished gate and the full-course-caution gate its
+  // `where:` reads.
   registerLapTimeVocabulary(engine, getLapCompletedSnapshot);
   engine.defineContract(
     wrapWithMaster(
       wrapCalloutScenario(
         // Pass the race-finished resolver so the best-lap callout is
         // suppressed on the final lap of a race (issue #569) — race-end
-        // takes the floor.
-        buildLapTimeContract(getRaceFinishedFired),
+        // takes the floor — and the caution resolver so a pace lap under a
+        // full-course caution never registers as a best lap (issue #1127).
+        buildLapTimeContract(getRaceFinishedFired, getUnderFullCourseCaution),
         SCENARIO_ID_TO_LAP_TIME_ID,
         getLapTimeCalloutEnabled,
         "lap-time callout",
@@ -1701,8 +1791,13 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
         // Pass the race-finished resolver so position-change is suppressed on
         // the final lap of a race (issue #569) — race-end takes the floor, and
         // without the gate position-change would queue "We're currently P[n]"
-        // behind race-end and play it after the result speech.
-        buildPositionContract(getRaceFinishedFired, getLivePosition),
+        // behind race-end and play it after the result speech. The caution
+        // resolver silences the callout while a full-course caution is out
+        // (issue #1127) — the frozen order catching up to official positions
+        // is not a position change, and the caution sequence's own position
+        // call, a third of the way into the last caution lap, reads the race
+        // position out.
+        buildPositionContract(getRaceFinishedFired, getLivePosition, getUnderFullCourseCaution),
         SCENARIO_ID_TO_POSITION_ID,
         getPositionCalloutEnabled,
         "position callout",

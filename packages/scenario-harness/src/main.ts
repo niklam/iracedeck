@@ -36,10 +36,14 @@ import { initializeEventBus } from "@iracedeck/event-bus";
 import type { SDKController } from "@iracedeck/iracing-sdk";
 import { createConsoleLogger, LogLevel } from "@iracedeck/logger";
 import {
+  getCautionLineup,
+  getCautionPhase,
   getLiveGaps,
+  getLivePosition,
   getReadbackSnapshot,
   initializeSimEventsIracing,
   isPitActionsAllowed,
+  isUnderFullCourseCaution,
 } from "@iracedeck/sim-events-iracing";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -177,6 +181,28 @@ async function main(): Promise<void> {
     // ones — wiring them here is what lets the spoken "gap is N seconds"
     // readout clause be auditioned at all (issue #933).
     getLiveGaps: () => getLiveGaps(),
+    // The full-course caution family (issue #1127) reads the lineup and the
+    // caution phase straight off the same real translator, exactly as every
+    // plugin's `plugin.ts` wires them. Without these three the family's
+    // `speakGate` (`getCautionPhase`) never admits a single caution line,
+    // the follow / pickup / pace-car-off calls never find the stage they
+    // speak at, and every `caution.*` script variable (`getCautionLineup`)
+    // resolves to nothing — the "Caution → …" shortcuts would look wired but
+    // play no follow/field-caught/lineup-changed/extra-lap/restart lines at
+    // all. A dependency missing HERE has made a call silent for the wrong
+    // reason twice already; `getUnderFullCourseCaution` still feeds the
+    // lap-time and position-change silencings.
+    getCautionLineup: () => getCautionLineup(),
+    getUnderFullCourseCaution: () => isUnderFullCourseCaution(),
+    getCautionPhase: () => getCautionPhase(),
+    // The position call on the last caution lap speaks the RACE position, not
+    // the lineup's (`caution.racePosition`, the 2026-09-19 correction), so it
+    // reads the same live position the position-change and race-status
+    // vocabularies do. Left at its `() => null` default it would play silence
+    // for the wrong reason — exactly what cost one test run already. The
+    // canonical order needs per-car lap progress to rank anybody, which the
+    // "Caution → …" shortcuts patch in at their one-to-go step.
+    getLivePosition: () => getLivePosition(),
   });
 
   // ── Callout scripts (#1064) ──────────────────────────────────────────────

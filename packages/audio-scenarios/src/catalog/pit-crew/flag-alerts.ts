@@ -24,8 +24,8 @@
  *
  * **Family preemption.** All non-meatball flag contracts share
  * `family: "flag"` so a newer flag callout supersedes the in-flight one
- * (yellow → green at restart no longer plays both back-to-back; whichever
- * flag fires last wins). Meatball is intentionally excluded from the
+ * (a flag replaced by another moments later no longer plays both
+ * back-to-back; whichever flag fires last wins). Meatball is intentionally excluded from the
  * family — we want it to preempt anything in flight (handled by
  * `weight: WEIGHT.CRITICAL` + `interrupt: true`), but we do NOT want a routine
  * yellow to cancel a still-playing meatball.
@@ -98,7 +98,12 @@ const raceOnly = () => isRaceSession(getSessionType());
 // checkered — the #657 post-race misfire. (`one-pace-lap-to-go` is additionally
 // ParadeLaps-gated in its own diff, so it can't reach post-race regardless.)
 // Read from the event's telemetry at fire time.
-const liveRaceCar = (e: SimEventOf<SimEventName>): boolean =>
+// Exported since #1127: the caution family's eight contracts carry the same
+// gate, and it is the same question there — a caution sequence is race-only,
+// means nothing out of the car, and must not re-fire on the grid bits iRacing
+// re-asserts after the checkered. One definition, so the two families cannot
+// drift apart on what "live in a race" means.
+export const liveRaceCar = (e: SimEventOf<SimEventName>): boolean =>
   raceOnly() && isLiveOnTrack(e.telemetry as TelemetryData | null) && !isPostRace(e.telemetry as TelemetryData | null);
 
 // Rolling-only formation cue (green-held). A standing start has no pace lap, yet
@@ -150,14 +155,14 @@ const YELLOW_CLEARED: ScenarioContract = {
   ...flagContract("yellow-cleared"),
   queueable: true,
   description:
-    "Every yellow and caution flag has been down for three seconds straight after a yellow, so the all-clear is confirmed rather than a gap between zones.",
+    "A LOCAL yellow has been withdrawn and every yellow and caution flag has stayed down for three seconds straight; a full-course episode stays silent, since its restart is already announced.",
   when: { event: "flag.yellow.cleared" },
 };
 
 const GREEN: ScenarioContract = {
   ...flagContract("green"),
   description:
-    "The green flag comes out at the start of a practice or qualifying session or at a race restart; the initial race start belongs to the start lights and stays silent here.",
+    "The green flag comes out with no start signal from iRacing, as when a practice or qualifying session goes green; a race start and an oval caution restart carry that signal and stay silent here.",
   when: { event: "flag.green.raised" },
 };
 
@@ -547,8 +552,18 @@ const YELLOW_WAVING: ScenarioContract = {
   when: { event: "flag.yellow-waving.raised" },
 };
 
+// `queueable: true` (issue #1127) — measured, not inferred. In the first
+// session of the 2026-09-17 capture this call fired 0.8 s after the `!yellow`
+// and was DROPPED because the spotter held the Voice bus with "car outside";
+// without the flag an equal-weight fire that cannot take the bus is discarded
+// rather than deferred, so the driver got no audio at all for the caution
+// coming out — the report #1127 was filed with. The caution is a sustained
+// state that lasts minutes, so a replay a second or two late is always still
+// correct (the YELLOW_CLEARED / FURLED reasoning), and the 30 s cooldown below
+// still collapses the bit's re-raises.
 const CAUTION_WAVING: ScenarioContract = {
   ...flagContract("caution-waving"),
+  queueable: true,
   cooldown: WAVING_FLAG_COOLDOWN_MS,
   description:
     "The full-course caution is shown waving to the field, in any session; a repeat inside thirty seconds stays silent.",

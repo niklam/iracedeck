@@ -8,6 +8,8 @@
  */
 export {
   _resetSimEventsIracing,
+  getCautionLineup,
+  getCautionPhase,
   getDriverSetupName,
   getFuelStats,
   getLatestTelemetry,
@@ -31,6 +33,7 @@ export {
   isPitActionsAllowed,
   isRaceFinished,
   isSimEventsIracingInitialized,
+  isUnderFullCourseCaution,
   type GapNeighbor,
   type LivePosition,
   type LiveGaps,
@@ -58,6 +61,18 @@ export {
   CORNER_CALLOUT_LEAD_MIN_SECONDS,
   sanitizeCornerCalloutLeadSeconds,
 } from "./diff/corner-name.js";
+// The lineup shape `getCautionLineup()` returns (issue #1127). Exported from
+// the module that defines it rather than re-exported through the translator —
+// the `FuelStats` precedent directly below. `resolvePlayerCarIdx` rides with
+// it for the scenario harness, whose caution-shortcut precondition asks THIS
+// reader whether a session names the player rather than restating its rule.
+// `resolveCautionLineup` itself — the pure reader `getCautionLineup()` wraps —
+// rides for the audio-scenarios test that derives the 2026-09-19 snapshot's
+// lineup from the committed fixture rather than typing its number in.
+export { type CautionLineup, resolveCautionLineup, resolvePlayerCarIdx } from "./diff/caution-lineup.js";
+// The phase `getCautionPhase()` returns (issue #1127) — the callouts that
+// gate on a STAGE of the caution rather than on "is one out" name it.
+export { type CautionPhase } from "./state.js";
 export { DAMAGE_DEBOUNCE_MS } from "./diff/damage.js";
 export { YELLOW_CLEARED_HOLD_MS } from "./diff/flags.js";
 export {

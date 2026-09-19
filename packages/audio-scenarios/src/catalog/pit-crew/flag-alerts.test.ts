@@ -381,6 +381,9 @@ describe("FLAG_CONTRACTS structure", () => {
       "pit-crew.flag-black",
       "pit-crew.flag-disqualify",
       "pit-crew.flag-dq-scoring-invalid",
+      // Issue #1127: measured being dropped behind the spotter, which is the
+      // "no audio when the caution is thrown" report. Its own case is below.
+      "pit-crew.flag-caution-waving",
     ];
 
     for (const id of queueableIds) {
@@ -392,6 +395,17 @@ describe("FLAG_CONTRACTS structure", () => {
 
       expect(s.queueable).not.toBe(true);
     }
+  });
+
+  // Issue #1127. This one line is a measurement, not a preference: in the
+  // 2026-09-17 capture's first session the caution call fired 0.8 s after
+  // `!yellow` and was DROPPED because the spotter held the bus with "car
+  // outside" — it was not queueable, so it was discarded rather than
+  // deferred, and the driver got no audio for the caution at all. That is the
+  // report #1127 was filed with. It gets its own case because the list test
+  // above would go on passing if the flag were removed and the id moved back.
+  it("the full-course caution call is queueable — it waits for the spotter instead of being dropped", () => {
+    expect(findContract("pit-crew.flag-caution-waving").queueable).toBe(true);
   });
 
   // Issue #671 — iRacing re-raises the waving bits on every zone re-approach

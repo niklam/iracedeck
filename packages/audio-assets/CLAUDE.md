@@ -101,6 +101,12 @@ pnpm --filter @iracedeck/audio-assets generate:dry-run --group <group-name>
 
 # Scope to a single voice when several exist:
 pnpm --filter @iracedeck/audio-assets generate --voice default --group acknowledgment
+
+# Cut a SLICE of one large group — entry names, matched in the groups iterated.
+# Added for #1127 so 21 of the 1,110 car numbers could be auditioned before the
+# other 1,089 were paid for; the entries left out keep their manifest rows, so an
+# unscoped dry-run afterwards still reports them as out of date, which is the truth.
+pnpm --filter @iracedeck/audio-assets generate --voice default --group car-number --entry 0,1,2,09
 ```
 
 Requires `ELEVENLABS_API_KEY` in `.env.local` at the repo root (falls back to `.env`; both auto-loaded).

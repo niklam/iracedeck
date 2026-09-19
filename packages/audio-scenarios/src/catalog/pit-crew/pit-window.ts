@@ -37,6 +37,13 @@
  * contract `where:` therefore only discriminates direction — which keeps both
  * lines firable from the scenario harness (it publishes the bus event directly
  * with an explicit `to`).
+ *
+ * **Deliberately no full-course-caution gate (issue #1127).** Every open and
+ * closed flip is announced, caution or not — this was explicitly ruled on
+ * after being proposed and reversed once already (collapsing to the first
+ * open/close per caution was tried, then rejected in favor of announcing all
+ * of them). Do not "tidy" this into a caution-suppressed family alongside
+ * lap-time and position.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { SimEventOf } from "@iracedeck/event-bus";

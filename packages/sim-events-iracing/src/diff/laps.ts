@@ -157,9 +157,29 @@ export function diffLaps(
     // emission entirely.
     state.lastPositionChangeLap = -1;
     state.raceFinishedFired = false;
+    state.lapCautionLatchLap = null;
+    state.lapCautionSeen = false;
+    state.lapCompletedWasCaution = false;
   }
 
   state.lastLapSessionNum = sessionNum;
+
+  // Per-lap caution latch (issue #1127, second review R16): was a full-course
+  // caution out on ANY tick of the lap? Read off the translator's own phase,
+  // which is what the whole caution family reads, never off the raw bits.
+  // Latched BEFORE the counter is compared, so the crossing tick's own state
+  // still counts toward the lap it completes (the `fuel-laps.ts` ordering);
+  // when the counter moves, the accumulated value becomes the completed lap's
+  // and a fresh latch starts for the lap now in progress. Runs on every tick
+  // — the seed and the sentinel returns below included — because the lap in
+  // progress does not stop while this diff waits for standings to sync.
+  if (state.cautionPhase !== "none") state.lapCautionSeen = true;
+
+  if (lapCompleted !== state.lapCautionLatchLap) {
+    state.lapCompletedWasCaution = state.lapCautionLatchLap !== null && state.lapCautionSeen;
+    state.lapCautionSeen = false;
+    state.lapCautionLatchLap = lapCompleted;
+  }
 
   // First-tick seed. Captures the current `LapLastLapTime` so a mid-session
   // connect doesn't immediately re-emit whatever lap iRacing already has on
@@ -278,6 +298,7 @@ export function diffLaps(
     isMultiClass?: boolean;
     lapsSincePositionChange?: number;
     lapIsValid?: boolean;
+    wasCaution?: boolean;
   } = {
     lap: lapCompleted,
     lapTime: lapLastLapTime,
@@ -408,6 +429,13 @@ export function diffLaps(
   const lapIsValid = resolveLapIsValid(telemetry);
 
   if (lapIsValid !== undefined) data.lapIsValid = lapIsValid;
+
+  // A caution was out at some point during this lap (issue #1127, R16) — the
+  // lap that ENDS a caution completes after the green, and the callouts
+  // silenced under caution need to know it was a caution lap all the same.
+  // Omitted rather than `false`, like every other optional flag here, so an
+  // older consumer reading the payload sees exactly what it always did.
+  if (state.lapCompletedWasCaution) data.wasCaution = true;
 
   // Race-end detection (issue #569). Once per race session: fires the first
   // `lap.completed` in a race session after iRacing has raised the checkered

@@ -67,12 +67,16 @@ pnpm --filter @iracedeck/audio-assets pack:voice default
 | `--dry-run` | List entries that would be generated/skipped. No API calls, no file writes, no manifest changes. |
 | `--voice <key>[,<key>...]` | Only iterate the named voices (e.g. `luca`). Repeatable. |
 | `--group <name>[,<name>...]` | Only iterate the named groups (e.g. `numbers`). Repeatable. |
+| `--entry <name>[,<name>...]` | Only iterate entries with these names, in whichever groups are iterated (e.g. `0,09`). Repeatable. The way to cut a slice of one large group — added for #1127 so 21 of the 1,110 car numbers could be auditioned before the rest were paid for. |
 
-`--voice` and `--group` accept either the space-separated form (`--voice luca`)
-or the equals form (`--voice=luca`). They compose as an intersection. Manifest
-entries outside the filter are not touched, so a subsequent unscoped run still
-sees them as cache hits. Unknown names exit non-zero with the list of valid
-choices.
+`--voice`, `--group` and `--entry` accept either the space-separated form
+(`--voice luca`) or the equals form (`--voice=luca`). They compose as an
+intersection. Manifest entries outside the filter are not touched, so a
+subsequent unscoped run still sees them as cache hits — or, after a config change
+that reaches them, still reports them as out of date. Unknown names exit non-zero
+with the list of valid choices; an entry name is checked against the groups the
+scope iterates, so a slice that would match nothing is refused rather than
+reported as a full cache hit.
 
 ### Examples
 
@@ -88,4 +92,7 @@ pnpm --filter @iracedeck/audio-assets generate --dry-run --group numbers
 
 # Equals form (interchangeable with the space-separated form)
 pnpm --filter @iracedeck/audio-assets generate --voice=luca --group=numbers
+
+# A slice of one group: three of the car numbers, nothing else
+pnpm --filter @iracedeck/audio-assets generate --voice default --group car-number --entry 0,9,09
 ```
