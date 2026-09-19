@@ -8,9 +8,16 @@
  * keys) which the plugin maintains by inspecting `voice/<voice>/names/…`
  * paths in `@iracedeck/audio-assets/manifest.json`.
  *
- * Falls back to the first available name when the persisted value is
- * gone (e.g. a TTS regen removed it) and persists the fallback so
- * dropdown and setting stay in sync.
+ * Falls back to the `default` name, else the first available one, when the
+ * persisted value is not in the list — and persists that fallback only when
+ * there was no persisted value at all, since a name can leave the list
+ * because a voice pack was briefly unreadable (#1034; see `voice-select.ts`).
+ *
+ * A persisted name take (`adam-01`) shows as its base (`adam`) when the list
+ * has the base, and nothing is persisted for it (#1173): builds before that
+ * listed a pack's name takes as names of their own, and the plugin plays such
+ * a choice under its base (`resolveActiveDriverName`), so the dropdown shows
+ * what is actually spoken without rewriting what the user picked.
  *
  * Usage:
  * ```html
@@ -40,6 +47,16 @@ let styleInjected = false;
 
 const DEFAULT_SETTING = "driverName";
 const DEFAULT_NAMES_SETTING = "_driverNames";
+
+/**
+ * @internal Exported for testing — the `-NN` take suffix, a copy of
+ * `TAKE_SUFFIX` in `@iracedeck/callout-script` (the rule the plugin's name
+ * list and `resolveActiveDriverName` both fold with, #1173). A copy because
+ * this file ships in the PI browser bundle, which resolves no workspace
+ * package — and that one would pull `zod` in with it. `name-select.test.ts`
+ * pins the copy to the shared rule, so the two cannot drift apart.
+ */
+export const NAME_TAKE_SUFFIX = /-(\d{2})$/;
 
 function titleCase(s: string): string {
   return s.length === 0 ? s : s.charAt(0).toUpperCase() + s.slice(1);
@@ -171,10 +188,22 @@ export class NameSelect extends HTMLElement {
   private applySavedValue(): void {
     if (!this.select || this.select.options.length === 0) return;
 
-    const exists = Array.from(this.select.options).some((opt) => opt.value === this.savedValue);
+    const options = Array.from(this.select.options);
+    const exists = options.some((opt) => opt.value === this.savedValue);
 
     if (exists) {
       this.select.value = this.savedValue;
+
+      return;
+    }
+
+    // A stored name take shows as its base, the name the plugin plays it
+    // under (#1173). Nothing is persisted: the stored value is the user's
+    // choice and still resolves correctly, so rewriting it would buy nothing.
+    const base = this.savedValue.replace(NAME_TAKE_SUFFIX, "");
+
+    if (base.length > 0 && options.some((opt) => opt.value === base)) {
+      this.select.value = base;
 
       return;
     }
