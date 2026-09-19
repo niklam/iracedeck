@@ -9,6 +9,58 @@
   },
   "callouts": [
     {
+      "id": "pit-crew.auto-fuel-off",
+      "family": "pit-service.fuel",
+      "event": "pitService.autoFuelChanged",
+      "description": "Fuel is taken off the service for your next pit stop while iRacing's autofuel is armed — usually the sim's own decision, not a press of yours.",
+      "frame": "radio",
+      "weight": 50,
+      "weightBand": "NORMAL",
+      "queueable": false,
+      "interrupt": false,
+      "speakGate": null,
+      "base": "voice/{voice}",
+      "comment": "iRacing's autofuel took fuel off the next stop by itself — the bare line, no acknowledgment, for the same reason as the refuel direction.",
+      "test": "Harness → Pit Service → Auto Fuel OFF, outside the pit-action cooldown. In-sim: as for Auto Fuel ON — arm autofuel and drive until the sim clears the fuel-fill checkbox itself.",
+      "skip": false,
+      "references": {
+        "pools": [
+          "pit-actions/auto-fuel-off"
+        ],
+        "vars": [],
+        "conds": [],
+        "cases": [],
+        "includes": [],
+        "frames": []
+      }
+    },
+    {
+      "id": "pit-crew.auto-fuel-on",
+      "family": "pit-service.fuel",
+      "event": "pitService.autoFuelChanged",
+      "description": "Fuel is added to the service for your next pit stop while iRacing's autofuel is armed — usually the sim's own decision, not a press of yours.",
+      "frame": "radio",
+      "weight": 50,
+      "weightBand": "NORMAL",
+      "queueable": false,
+      "interrupt": false,
+      "speakGate": null,
+      "base": "voice/{voice}",
+      "comment": "iRacing's autofuel put fuel on the next stop by itself — the bare line, with no acknowledgment in front: nobody asked, and the missing \"Got it.\" is what tells the driver this was the sim rather than their own press. A press made while autofuel is armed is announced this way too, since telemetry cannot tell the two apart. It shares the manual fuel toggle's family, so a press straight after replaces it, and like the toggle confirmations it stays silent for a few seconds after leaving the pit lane.",
+      "test": "Harness → Pit Service → Auto Fuel ON, not within about 4.5 s of Exited Pit Lane (the pit-action cooldown). In-sim: arm autofuel in the pit black box (or with a Fuel Service key) and drive; the sim flips the fuel-fill checkbox on its own.",
+      "skip": false,
+      "references": {
+        "pools": [
+          "pit-actions/auto-fuel-on"
+        ],
+        "vars": [],
+        "conds": [],
+        "cases": [],
+        "includes": [],
+        "frames": []
+      }
+    },
+    {
       "id": "pit-crew.caution-extra-lap",
       "family": "flag",
       "event": "caution.extraLap",
@@ -27212,6 +27264,30 @@
             "pit-crew.toggle-fuel-on",
             "pit-crew.toggle-windshield-off",
             "pit-crew.toggle-windshield-on"
+          ],
+          "viaVar": [],
+          "playedBy": null
+        },
+        {
+          "base": "auto-fuel-off",
+          "texts": [
+            "Auto fuel says we don't need fuel next stop."
+          ],
+          "takes": 1,
+          "usedBy": [
+            "pit-crew.auto-fuel-off"
+          ],
+          "viaVar": [],
+          "playedBy": null
+        },
+        {
+          "base": "auto-fuel-on",
+          "texts": [
+            "Auto fuel has us taking fuel at the next stop."
+          ],
+          "takes": 1,
+          "usedBy": [
+            "pit-crew.auto-fuel-on"
           ],
           "viaVar": [],
           "playedBy": null
