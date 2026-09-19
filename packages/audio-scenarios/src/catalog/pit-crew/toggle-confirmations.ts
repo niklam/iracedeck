@@ -90,12 +90,15 @@ export const FUEL_TOGGLE_CONTRACTS: readonly ScenarioContract[] = [fuelContract(
  * the other out.
  *
  * What the two directions mean is not symmetric. `refuel: false` is autofuel
- * TAKING OVER the next stop's fuel, not deciding none is needed: with the
- * autofuel system on, the sim re-arms autofuel on pit approach and, in that
- * same tick, clears the driver's manual request (fuel-fill bit, fill flag and
- * amount all to zero); autofuel then adds whatever the car needs at the stop.
- * That is the one sim-made flip the #474 capture recorded. `refuel: true` —
- * the bit turning on while autofuel is armed — has not been captured yet.
+ * TAKING OVER the next stop's fuel, not deciding none is needed. In the #474
+ * capture — a car with autofuel (`dpFuelAutoFillEnabled`, which the sim sets:
+ * it says the car has the system, not that the driver switched it on), armed
+ * once earlier in the session — the sim re-armed autofuel on the pit approach
+ * and, in that same tick, cleared the driver's manual request (fuel-fill bit,
+ * fill flag and amount all to zero); autofuel then adds whatever the car needs
+ * at the stop. What makes the sim re-arm there is not known. That is the one
+ * sim-made flip the capture recorded; `refuel: true` — the bit turning on
+ * while autofuel is armed — has not been captured yet.
  *
  * `family: "pit-service.fuel"` is shared with the manual pair on purpose: a
  * burst of flips replaces its in-flight family-mate instead of stacking, and
