@@ -544,6 +544,13 @@ export type SimEventMap = {
    * adapters may expose richer compound rosters.
    */
   "tireService.compoundChanged": SimEvent<"tireService.compoundChanged", { from: number; to: number }>;
+  /**
+   * A pit-service request the driver toggled settled into a new state
+   * (debounced). For `service: "fuel"` this is only a flip made while the
+   * sim's auto-fuel is NOT armed — one made while it is armed publishes
+   * `pitService.autoFuelChanged` instead (issue #474), so a consumer that
+   * wants every settled fuel change subscribes to both.
+   */
   "pitService.toggled": SimEvent<"pitService.toggled", { service: PitServiceKind; on: boolean }>;
   /**
    * The fuel-fill request changed while the sim's auto-fuel is armed for the
