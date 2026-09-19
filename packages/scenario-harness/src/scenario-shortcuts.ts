@@ -23,7 +23,7 @@ import {
   TrackWetness,
 } from "@iracedeck/event-bus";
 import { EngineWarnings, Flags, PaceMode, PitSvStatus, TrkLoc } from "@iracedeck/iracing-sdk";
-import { YELLOW_CLEARED_HOLD_MS } from "@iracedeck/sim-events-iracing";
+import { PIT_READBACK_EXIT_DELAY_MS, YELLOW_CLEARED_HOLD_MS } from "@iracedeck/sim-events-iracing";
 
 import type { ShortcutPrecondition } from "./shortcut-preconditions.js";
 
@@ -736,12 +736,10 @@ const TIRE_WEAR_CAPTURED_STOP = {
 /**
  * How long the stop listens on the circuit after leaving pit road: past the
  * exit readback's settle window, whose end is also when the translator
- * publishes the report. That window is `PIT_READBACK_EXIT_DELAY_MS` (4.5 s)
- * in `sim-events-iracing`'s `diff/pit-readback.ts`, which the package does
- * not export, hence the literal; `scenario-shortcuts.test.ts` drives the
- * translator through this very sequence, so a longer window turns it red.
+ * publishes the report. `scenario-shortcuts.test.ts` drives the translator
+ * through this very sequence, so a hold that stops short of it turns red.
  */
-const TIRE_WEAR_EXIT_SETTLE_MS = 4500;
+const TIRE_WEAR_EXIT_SETTLE_MS = PIT_READBACK_EXIT_DELAY_MS;
 
 /** The hold on the pit-exit step, the capture's 4.4 s on the exit lane compressed. */
 const TIRE_WEAR_EXIT_LANE_MS = 1500;
