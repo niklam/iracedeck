@@ -605,7 +605,7 @@ export function generateWindGraphic(
 }
 
 /**
- * What the Time Remaining key is counting down (issue #1109): the limit that
+ * What the Time / Laps Remaining key is counting down (issue #1109): the limit that
  * ends the session sooner, together with the reading behind it. A session can
  * carry a lap cap, a clock, both or neither, and a lap-limited race reports
  * its clock as the unlimited sentinel — which is why the key used to read
