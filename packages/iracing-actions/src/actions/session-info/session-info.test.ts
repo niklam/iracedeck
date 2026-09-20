@@ -1852,6 +1852,10 @@ describe("SessionInfo", () => {
 });
 
 describe("gaps mode (issue #933)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   function gaps(
     ahead: { gapSeconds: number | null; lapDelta?: number; trend?: "closing" | "opening" | "steady" | null } | null,
     behind: { gapSeconds: number | null; lapDelta?: number; trend?: "closing" | "opening" | "steady" | null } | null,

@@ -1191,7 +1191,12 @@ function resolvePlayerIsLeader(
  * unknown instead, which is what the fuel diff already handles by falling back
  * to the player's own validated average.
  *
- * @internal Exported for testing.
+ * Public since #1109: Session Info's Time Remaining key converts the session
+ * clock into laps through this same estimate, so that key and the fuel
+ * callouts can never disagree about which limit ends the race. It stays pure —
+ * the caller supplies the canonical order (`@.claude/rules/race-positions.md`),
+ * which is what keeps this the project's one leader-pace reading rather than a
+ * second source.
  */
 export function resolveLeaderLapTimeS(telemetry: TelemetryData, positions: number[]): number | null {
   if (isPreGreen(telemetry)) return null;
