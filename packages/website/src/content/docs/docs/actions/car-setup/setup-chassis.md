@@ -326,6 +326,8 @@ Each gesture slot (**Press Action**, **Long Press**, **Tap Display**, **Long Tou
 - **Show Pit Stop Black Box** — brings up iRacing's F7 Pit Stop box (the screen the spring offsets live on) regardless of which box was open before. It uses the Black Box key bindings (at minimum *Pit Stop*, plus one other box binding used to switch deterministically), configured under **Related Key Bindings**.
 - **Switch LR / RR Spring** — flips the dial's Mode between the LR and RR spring (from any other mode it jumps to LR Spring) and remembers the choice, so one dial covers both rear springs; the lit side-arrow on the strip shows which spring you're editing. Needs no key bindings.
 
+As the Long Press action, Switch LR / RR Spring also previews itself: hold past the threshold and the strip shows the spring you are about to switch to, with its side-arrow lit, so you can release on the change — see [Seeing the outcome before you let go](/docs/features/dials/#seeing-the-outcome-before-you-let-go). Show Pit Stop Black Box shows nothing while held, because iRacing never reports which black box is open.
+
 ## Key Styles — paired +/− buttons
 
 Adjustment modes with a live value (on Setup Chassis: Differential Preload, Differential Entry, Differential Middle, Differential Exit, Front ARB, Rear ARB, Power Steering, and the LR/RR Springs) can render as **paired keys**: place two keys with opposite directions next to each other (or three, with a View key in the middle) and both show the live value — no separate display key needed. Choose the look under **Key Style**:

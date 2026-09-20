@@ -159,6 +159,8 @@ What a short or long press of the dial button does, chosen from:
 
 A press is classified when you release the dial — a hold past the [Long-press threshold](/docs/features/dials/#the-long-press-threshold) fires the Long Press action. Turning the dial while pressed adjusts the value (a "push + turn") and never fires the press action.
 
+When Long Press is set to Toggle TC, holding past the threshold shows the state you are about to switch to (`TC ON` or `TC OFF`), so you can release on the change rather than counting — see [Seeing the outcome before you let go](/docs/features/dials/#seeing-the-outcome-before-you-let-go). With no telemetry the strip stays as it is, because the plugin cannot know which way the toggle will go.
+
 #### Setting: Tap Display / Long Touch
 
 Optional touch-strip gestures (Stream Deck+ only), each over { Toggle TC, None }. Both default to **None** for VR safety.

@@ -18,7 +18,22 @@ A dial exposes more than one gesture. In an action's Property Inspector, each co
 
 ## How presses are classified
 
-Push, Long Press, and Push + Turn are all decided **when you release** the dial button, from how long it was held (compared against the Long-press threshold) and whether you turned the dial while holding it. There is no mid-hold timer, so the three gestures never conflict with one another. This also means a dial that reports its release instantly simply treats a hold as a short press, degrading gracefully where the hardware can't distinguish a hold.
+Push, Long Press, and Push + Turn are all decided **when you release** the dial button, from how long it was held (compared against the Long-press threshold) and whether you turned the dial while holding it. Nothing fires mid-hold, so the three gestures never conflict with one another. This also means a dial that reports its release instantly simply treats a hold as a short press, degrading gracefully where the hardware can't distinguish a hold.
+
+## Seeing the outcome before you let go
+
+Hold the dial button past the Long-press threshold and, where the plugin can tell what will happen, the touch strip shows you — the outcome appears in place of the value, with a small bar under it. So you can hold until you see the change and then release, instead of holding "long enough" and hoping. Turning the dial while still holding it cancels the press as usual, and the strip goes straight back to normal.
+
+Nothing about *when* the action runs has changed: it still runs when you release, and only then. The preview is a display.
+
+It appears on the dials whose long-press outcome iRacing actually reports back:
+
+- **Fuel Service** — the fueling toggle, fill-to-max, the autofuel toggle, and the mode switch
+- **Setup Brakes** — ABS on/off
+- **Setup Traction** — TC on/off
+- **Setup Chassis** — which spring side the dial switches to
+
+Every other dial gesture leaves the strip unchanged while you hold. That is deliberate rather than an omission: iRacing reports nothing back for things like recentering VR, opening a black box, toggling the wipers, or letting the camera director pick a car, so the plugin genuinely cannot say what the strip will look like afterwards. Showing you a guess would be worse than showing you nothing, because the whole point is that you can trust the change you see.
 
 ## The touch strip is Stream Deck+ only
 
