@@ -1,5 +1,7 @@
 import {
   FLAG_DEFINITIONS,
+  IRSDK_UNLIMITED_LAPS,
+  IRSDK_UNLIMITED_TIME,
   resolveActiveFlag,
   SessionState,
   type TelemetryData,
@@ -12,6 +14,7 @@ import {
   getLiveRacePositions,
   getStartingGridPosition,
   type LiveGaps,
+  resolveLeaderLapTimeS,
 } from "@iracedeck/sim-events-iracing";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -26,6 +29,7 @@ import {
   generateTrackWetnessGraphic,
   generateWindGraphic,
   iratingValueColor,
+  resolveSessionLimitDisplay,
   resolveWindDisplay,
   SessionInfo,
   trackWetnessLabel,
@@ -42,6 +46,9 @@ vi.mock("@iracedeck/iracing-sdk", async () => {
 // position-mode tests control the frozen overall + authoritative class numbers.
 // getStartingGridPosition is the qualifying-grid resolver used pre-green (issue #647).
 // getFuelStats is the validated fuel lap history accessor (issue #465).
+// resolveLeaderLapTimeS is the canonical leader-lap estimate that puts the
+// clock and the lap counter in the same unit (issue #1109); `null` is its real
+// answer before the green, which is the "no estimate yet" case.
 vi.mock("@iracedeck/sim-events-iracing", () => ({
   FUEL_LAP_HISTORY_CAP: 20,
   getFuelStats: vi.fn(() => ({ lastLap: null, avg: null, avgLapTime: null, samples: 0 })),
@@ -49,6 +56,7 @@ vi.mock("@iracedeck/sim-events-iracing", () => ({
   getLivePosition: vi.fn(() => null),
   getLiveRacePositions: vi.fn(() => null),
   getStartingGridPosition: vi.fn(() => null),
+  resolveLeaderLapTimeS: vi.fn(() => null),
 }));
 
 vi.mock("@iracedeck/deck-core", () => ({
@@ -2190,6 +2198,186 @@ describe("gaps mode (issue #933)", () => {
       // Both rows favorable (ahead closing / behind opening) render green.
       expect(decoded).toContain("#2ecc71");
       expect(decoded).not.toContain("#e74c3c");
+    });
+  });
+});
+
+describe("time-remaining mode (issue #1109)", () => {
+  /** Build a minimal TelemetryData mock from a partial set of fields. */
+  function telemetry(fields: Partial<TelemetryData>): TelemetryData {
+    return fields as TelemetryData;
+  }
+
+  /** A session running only to a lap cap: the clock reads the unlimited sentinel. */
+  function lapLimited(lapsToGo: number): TelemetryData {
+    return telemetry({ SessionLapsRemainEx: lapsToGo, SessionTimeRemain: IRSDK_UNLIMITED_TIME });
+  }
+
+  /** A session running only to a clock: the lap counter reads the unlimited sentinel. */
+  function timeLimited(remainingS: number): TelemetryData {
+    return telemetry({ SessionLapsRemainEx: IRSDK_UNLIMITED_LAPS, SessionTimeRemain: remainingS });
+  }
+
+  /** Both limits absent — the practice/testing session with nothing to count down. */
+  const UNLIMITED = { SessionLapsRemainEx: IRSDK_UNLIMITED_LAPS, SessionTimeRemain: IRSDK_UNLIMITED_TIME };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // clearAllMocks() drops call history but not implementations, so the "no
+    // estimate yet" default has to be restored rather than assumed — the tests
+    // that supply a leader lap time would otherwise leak it into the next one.
+    vi.mocked(resolveLeaderLapTimeS).mockReturnValue(null);
+  });
+
+  describe("resolveSessionLimitDisplay", () => {
+    it("binds on the lap counter in a lap-limited race", () => {
+      expect(resolveSessionLimitDisplay(lapLimited(10), null)).toEqual({ binding: "laps", lapsToGo: 10 });
+    });
+
+    it("binds on the clock in a timed race even before any lap-time estimate exists", () => {
+      // The pre-estimate rule is about a race that HAS a lap cap. A timed race
+      // has none, so an unquantified clock must still bind rather than
+      // degrading to UNLIM until the leader has turned a racing lap.
+      expect(resolveSessionLimitDisplay(timeLimited(1800), null)).toEqual({ binding: "time", remainingS: 1800 });
+    });
+
+    it("binds on the lap cap in a dual-limit race until an estimate exists (spec decision 2)", () => {
+      // The 2026-08-08 capture (#880): a 10-lap race whose clock read 23.7 h, a
+      // nominal ceiling that never binds. Showing 23:44:24 for a lap and then
+      // flipping is exactly what the spec rejected.
+      const dual = telemetry({ SessionLapsRemainEx: 10, SessionTimeRemain: 85_400 });
+
+      expect(resolveSessionLimitDisplay(dual, null)).toEqual({ binding: "laps", lapsToGo: 10 });
+    });
+
+    it("treats a non-positive leader lap time as no estimate at all", () => {
+      const dual = telemetry({ SessionLapsRemainEx: 10, SessionTimeRemain: 85_400 });
+
+      expect(resolveSessionLimitDisplay(dual, 0)).toEqual({ binding: "laps", lapsToGo: 10 });
+    });
+
+    it("binds on the clock in a dual-limit race once the estimate says it runs out first", () => {
+      // 300 s at a 100 s lap is 3 laps — sooner than the 20-lap cap.
+      const dual = telemetry({ SessionLapsRemainEx: 20, SessionTimeRemain: 300 });
+
+      expect(resolveSessionLimitDisplay(dual, 100)).toEqual({ binding: "time", remainingS: 300 });
+    });
+
+    it("binds on the lap cap in a dual-limit race when the cap runs out first", () => {
+      // 600 s at a 100 s lap is 6 laps — the 2-lap cap ends the race sooner.
+      const dual = telemetry({ SessionLapsRemainEx: 2, SessionTimeRemain: 600 });
+
+      expect(resolveSessionLimitDisplay(dual, 100)).toEqual({ binding: "laps", lapsToGo: 2 });
+    });
+
+    it("binds on neither when both limits read their unlimited sentinel", () => {
+      expect(resolveSessionLimitDisplay(telemetry(UNLIMITED), 100)).toEqual({ binding: "none" });
+    });
+
+    it("binds on neither when the session reports no limits at all", () => {
+      expect(resolveSessionLimitDisplay(telemetry({}), 100)).toEqual({ binding: "none" });
+    });
+  });
+
+  describe("value and title", () => {
+    /** Render the whole key the way every live path does, and decode it. */
+    function render(current: TelemetryData | null, action = new SessionInfo()): string {
+      return decodeURIComponent(
+        action["renderIcon"]("time-action", defaultSettings({ mode: "time-remaining" }), current),
+      );
+    }
+
+    it("shows the bare laps-to-go count under a LAPS LEFT title in a lap-limited race", () => {
+      const decoded = render(lapLimited(7));
+
+      expect(decoded).toContain(">7</text>");
+      expect(decoded).toContain("LAPS LEFT");
+      expect(decoded).not.toContain("TIME LEFT");
+    });
+
+    it("shows the clock under a TIME LEFT title in a timed race", () => {
+      const decoded = render(timeLimited(1500));
+
+      expect(decoded).toContain(">25:00</text>");
+      expect(decoded).toContain("TIME LEFT");
+      expect(decoded).not.toContain("LAPS LEFT");
+    });
+
+    it("shows UNLIM under the TIME LEFT title when neither limit exists", () => {
+      const decoded = render(telemetry(UNLIMITED));
+
+      expect(decoded).toContain(">UNLIM</text>");
+      expect(decoded).toContain("TIME LEFT");
+    });
+
+    it("shows the placeholder under the TIME LEFT title with no telemetry at all", () => {
+      const decoded = render(null);
+
+      expect(decoded).toContain(">--:--</text>");
+      expect(decoded).toContain("TIME LEFT");
+    });
+
+    it("moves the title to LAPS LEFT when the binding side changes to laps", () => {
+      // A dual-limit race under a caution that stretches the lap time out, so
+      // the clock covers fewer laps than the cap — then back at racing pace,
+      // where the cap is what ends the race.
+      const action = new SessionInfo();
+      const dual = telemetry({ SessionLapsRemainEx: 5, SessionTimeRemain: 600 });
+
+      vi.mocked(resolveLeaderLapTimeS).mockReturnValue(200); // 3 laps of clock against a 5-lap cap
+      expect(render(dual, action)).toContain("TIME LEFT");
+
+      vi.mocked(resolveLeaderLapTimeS).mockReturnValue(60); // 10 laps of clock against a 5-lap cap
+      const decoded = render(dual, action);
+
+      expect(decoded).toContain(">5</text>");
+      expect(decoded).toContain("LAPS LEFT");
+      expect(decoded).not.toContain("TIME LEFT");
+    });
+
+    it("moves the title back to TIME LEFT when the binding side changes to time", () => {
+      const action = new SessionInfo();
+      const dual = telemetry({ SessionLapsRemainEx: 5, SessionTimeRemain: 600 });
+
+      vi.mocked(resolveLeaderLapTimeS).mockReturnValue(null); // no estimate yet, so the cap binds
+      expect(render(dual, action)).toContain("LAPS LEFT");
+
+      vi.mocked(resolveLeaderLapTimeS).mockReturnValue(200); // 3 laps of clock against a 5-lap cap
+      const decoded = render(dual, action);
+
+      expect(decoded).toContain(">10:00</text>");
+      expect(decoded).toContain("TIME LEFT");
+      expect(decoded).not.toContain("LAPS LEFT");
+    });
+
+    it("resolves the limit once per render, so the value and the title can never disagree", () => {
+      render(lapLimited(3));
+
+      expect(resolveLeaderLapTimeS).toHaveBeenCalledTimes(1);
+    });
+
+    it("resolves no limit for the other modes", () => {
+      const action = new SessionInfo();
+
+      action["renderIcon"]("incident-action", defaultSettings({ mode: "incidents" }), lapLimited(3));
+
+      expect(resolveLeaderLapTimeS).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("laps mode keeps its own sentinel behaviour (spec decision 5)", () => {
+    it("still renders lap/infinity when SessionLapsTotal reads the unlimited sentinel", () => {
+      const action = new SessionInfo();
+      const practice = telemetry({ Lap: 5, SessionLapsTotal: IRSDK_UNLIMITED_LAPS });
+
+      expect(action["extractDisplayValue"](defaultSettings({ mode: "laps" }), practice)).toBe("5/∞");
+    });
+
+    it("still renders lap/total in a lap-limited session", () => {
+      const action = new SessionInfo();
+      const race = telemetry({ Lap: 5, SessionLapsTotal: 20 });
+
+      expect(action["extractDisplayValue"](defaultSettings({ mode: "laps" }), race)).toBe("5/20");
     });
   });
 });

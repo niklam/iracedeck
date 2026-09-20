@@ -18,6 +18,7 @@ import {
 } from "@iracedeck/deck-core";
 import {
   absoluteWindBearingDeg,
+  type BindingLimit,
   compassPoint,
   DisplayUnits,
   estimateIRatingChanges,
@@ -26,13 +27,17 @@ import {
   formatWindSpeed,
   type SessionInfo as IRacingSessionInfo,
   type IRatingFieldDriver,
+  IRSDK_UNLIMITED_LAPS,
   isCalmWind,
   isLiveOnTrack,
   isPreGreen,
   normalizeDegrees,
   relativeWindAngleDeg,
   resolveActiveFlag,
+  resolveBindingLimit,
   resolveIRatingEstimateOrder,
+  resolveLapsRemaining,
+  resolveTimeRemainingS,
   type TelemetryData,
   TrackWetness,
 } from "@iracedeck/iracing-sdk";
@@ -45,6 +50,7 @@ import {
   getLiveRacePositions,
   getStartingGridPosition,
   type LiveGaps,
+  resolveLeaderLapTimeS,
 } from "@iracedeck/sim-events-iracing";
 import z from "zod";
 
@@ -79,12 +85,6 @@ const FLASH_INTERVAL_MS = 250;
 const FLASH_STEPS = 12; // on-off x6 (6 red flashes)
 
 const PULSE_INTERVAL_MS = 500;
-
-/** iRacing uses 604800s (7 days) as the sentinel for unlimited session time */
-const UNLIMITED_TIME_THRESHOLD = 604800;
-
-/** iRacing uses 32767 as the sentinel for unlimited laps */
-const UNLIMITED_LAPS = 32767;
 
 const LITERS_PER_GALLON = 3.78541;
 
@@ -604,6 +604,64 @@ export function generateWindGraphic(
   ].join("\n    ");
 }
 
+/**
+ * What the Time Remaining key is counting down (issue #1109): the limit that
+ * ends the session sooner, together with the reading behind it. A session can
+ * carry a lap cap, a clock, both or neither, and a lap-limited race reports
+ * its clock as the unlimited sentinel — which is why the key used to read
+ * `UNLIM` for a whole Porsche Cup race.
+ *
+ * A discriminated union rather than a bag of nullable readings: the branch
+ * that names a side is the branch that carries its number, so no consumer can
+ * be handed a verdict of `"laps"` with nothing to print.
+ */
+export type SessionLimitDisplay =
+  { binding: "laps"; lapsToGo: number } | { binding: "time"; remainingS: number } | { binding: "none" };
+
+/**
+ * @internal Exported for testing
+ *
+ * Resolves which of the session's two limits the key should show, applying the
+ * shared whichever-ends-sooner rule from `@iracedeck/iracing-sdk` — the same
+ * policy the fuel laps-left callouts use, so the two keys can never disagree
+ * about which limit a dual-limit race is running to.
+ *
+ * `leaderLapTimeS` is the translator's leader-lap estimate (the canonical
+ * source per `.claude/rules/race-positions.md`), or `null` when there isn't
+ * one yet.
+ */
+export function resolveSessionLimitDisplay(
+  telemetry: TelemetryData,
+  leaderLapTimeS: number | null,
+): SessionLimitDisplay {
+  const lapsToGo = resolveLapsRemaining(telemetry);
+  const remainingS = resolveTimeRemainingS(telemetry);
+
+  // The clock only competes with the lap counter once it can be expressed in laps. With no leader lap time yet —
+  // pre-green, or before anyone has completed a racing lap — the clock is KNOWN but unquantified, which is not the
+  // same as absent: it must still bind a race that has no lap cap at all, and it must NOT bind one that does (spec
+  // decision 2: "before any lap-time estimate exists, a finite lap cap binds over the clock"). Infinity says exactly
+  // that — a side that exists and can never be the sooner one — where `null` would claim the clock doesn't exist and
+  // turn a plain timed race into `UNLIM` until the leader's first lap lands.
+  const timeSideLaps =
+    remainingS === null
+      ? null
+      : leaderLapTimeS !== null && leaderLapTimeS > 0
+        ? remainingS / leaderLapTimeS
+        : Number.POSITIVE_INFINITY;
+
+  const binding: BindingLimit = resolveBindingLimit(lapsToGo, timeSideLaps);
+
+  // Each verdict is taken together with the reading behind it. `resolveBindingLimit` only ever names a side it was
+  // given a number for, so the null checks are the type system's rather than a second policy — and falling through
+  // to `none` degrades to the same "no limit to count down" an unlimited session already shows.
+  if (binding === "laps" && lapsToGo !== null) return { binding, lapsToGo };
+
+  if (binding === "time" && remainingS !== null) return { binding, remainingS };
+
+  return { binding: "none" };
+}
+
 /** Mode-specific state the icon needs beyond the plain value string. */
 export type SessionInfoModeState = {
   /** Track-wetness state for the wetness bar. */
@@ -614,6 +672,8 @@ export type SessionInfoModeState = {
   gaps?: LiveGaps | null;
   /** Resolved wind arrow + label. */
   wind?: WindDisplay | null;
+  /** Which limit the time-remaining key is counting down, so the title can follow the value. */
+  sessionLimit?: SessionLimitDisplay;
 };
 
 /**
@@ -628,7 +688,7 @@ export function generateSessionInfoSvg(
   colorOverride?: { background: string; text: string },
   modeState: SessionInfoModeState = {},
 ): string {
-  const { trackWetness: trackWetnessState, valueColor, gaps: liveGaps, wind: windDisplay } = modeState;
+  const { trackWetness: trackWetnessState, valueColor, gaps: liveGaps, wind: windDisplay, sessionLimit } = modeState;
   const titleLabels: Record<string, string> = {
     incidents: "INCIDENTS",
     "time-remaining": "TIME LEFT",
@@ -643,8 +703,12 @@ export function generateSessionInfoSvg(
   };
   // Track-wetness uses the live state name as its title so the icon shows the
   // current state in one line. The fuel consumption sub-modes carry their own
-  // labels so a glance tells which number the key is showing. All other modes
-  // use a fixed category label.
+  // labels so a glance tells which number the key is showing. Time-remaining's
+  // title follows whatever it is counting down (#1109) — the caller resolves
+  // that limit once and passes it in, so the number and the word above it can
+  // never come from two different telemetry ticks. All other modes use a fixed
+  // category label, which is also what time-remaining falls back to: `UNLIM`
+  // and a clock both live under TIME LEFT.
   let actionDefaultTitle: string;
 
   if (settings.mode === "track-wetness") {
@@ -653,6 +717,8 @@ export function generateSessionInfoSvg(
     actionDefaultTitle = "LAST LAP";
   } else if (settings.mode === "fuel" && settings.fuelSubMode === "avgN") {
     actionDefaultTitle = `AVG ${settings.fuelLapWindow} ${settings.fuelLapWindow === 1 ? "LAP" : "LAPS"}`;
+  } else if (settings.mode === "time-remaining" && sessionLimit?.binding === "laps") {
+    actionDefaultTitle = "LAPS LEFT";
   } else {
     actionDefaultTitle = titleLabels[settings.mode] ?? "INCIDENTS";
   }
@@ -824,7 +890,8 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
   ): Promise<void> {
     const telemetry = this.sdkController.getCurrentTelemetry();
     const wind = this.resolveWind(settings, telemetry);
-    const value = this.extractDisplayValue(settings, telemetry, wind);
+    const sessionLimit = this.resolveSessionLimit(settings, telemetry);
+    const value = this.extractDisplayValue(settings, telemetry, wind, sessionLimit);
     const isFlashing = this.flashStates.get(ev.action.id) ?? false;
 
     // Resolve flag colors for flags mode
@@ -835,7 +902,7 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
       value,
       isFlashing,
       colorOverride,
-      this.resolveModeState(settings, telemetry, value, wind),
+      this.resolveModeState(settings, telemetry, value, wind, sessionLimit),
     );
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
@@ -867,6 +934,7 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
     settings: SessionInfoSettings,
     telemetry: TelemetryData | null,
     wind?: WindDisplay | null,
+    sessionLimit?: SessionLimitDisplay,
   ): string {
     // Track wetness renders its label inside the graphic content. The label is still
     // returned here so the state-key cache busts on state transitions; generateSessionInfoSvg
@@ -939,7 +1007,7 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
 
       if (lap === undefined || total === undefined) return "-/-";
 
-      if (total >= UNLIMITED_LAPS) return `${lap}/\u221E`;
+      if (total >= IRSDK_UNLIMITED_LAPS) return `${lap}/\u221E`;
 
       return `${lap}/${total}`;
     }
@@ -1062,14 +1130,24 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
       return settings.blankWhenNoFlag ? "" : "--";
     }
 
-    // time-remaining (default)
-    const remain = telemetry.SessionTimeRemain;
+    // time-remaining (default). The key counts down whatever actually ends the
+    // session (#1109): the clock when the clock binds, the bare laps-to-go
+    // count when the lap cap binds, and `UNLIM` only when neither limit exists.
+    // The limit is resolved once by the caller and passed in, so this value and
+    // the title it drives can never disagree — the same reason the wind model
+    // above is threaded rather than re-resolved.
+    //
+    // The bare count also busts the state-key cache on its own: no clock
+    // rendering is ever a bare integer (`formatSessionTime` always carries a
+    // colon) and `UNLIM` is neither, so a change of binding always changes the
+    // value string too.
+    if (!sessionLimit) return "--:--";
 
-    if (remain === undefined) return "--:--";
+    if (sessionLimit.binding === "laps") return String(sessionLimit.lapsToGo);
 
-    if (remain >= UNLIMITED_TIME_THRESHOLD) return "UNLIM";
+    if (sessionLimit.binding === "time") return formatSessionTime(sessionLimit.remainingS);
 
-    return formatSessionTime(remain);
+    return "UNLIM";
   }
 
   private extractIRatingValue(telemetry: TelemetryData | null): string {
@@ -1214,7 +1292,8 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
     }
 
     const wind = this.resolveWind(settings, telemetry);
-    const value = this.extractDisplayValue(settings, telemetry, wind);
+    const sessionLimit = this.resolveSessionLimit(settings, telemetry);
+    const value = this.extractDisplayValue(settings, telemetry, wind, sessionLimit);
     const isFlashing = this.flashStates.get(contextId) ?? false;
     const colorOverride = this.resolveFlagColorOverride(settings, telemetry);
     const stateKey = this.buildStateKey(settings, value, isFlashing, colorOverride?.background);
@@ -1227,7 +1306,7 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
         value,
         isFlashing,
         colorOverride,
-        this.resolveModeState(settings, telemetry, value, wind),
+        this.resolveModeState(settings, telemetry, value, wind, sessionLimit),
       );
 
       // Telemetry arrives at the sim's tick rate, and a continuously-varying
@@ -1252,13 +1331,40 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
     telemetry: TelemetryData | null,
     value: string,
     wind: WindDisplay | null | undefined,
+    sessionLimit: SessionLimitDisplay | undefined,
   ): SessionInfoModeState {
     return {
       trackWetness: telemetry?.TrackWetness as TrackWetness | undefined,
       valueColor: settings.mode === "irating" ? iratingValueColor(value) : undefined,
       gaps: settings.mode === "gaps" ? getLiveGaps() : undefined,
       wind,
+      sessionLimit,
     };
+  }
+
+  /**
+   * Resolves the session's binding limit once per render pass (#1109), the
+   * same contract the wind model below keeps: BOTH the value and the title
+   * derive from this single verdict, so a telemetry tick landing between two
+   * resolves can never leave a lap count sitting under a `TIME LEFT` title.
+   *
+   * `undefined` for every other mode, and for a missing telemetry snapshot —
+   * there is nothing to decide there, and the value falls back to `--:--`
+   * under the fixed title.
+   */
+  private resolveSessionLimit(
+    settings: SessionInfoSettings,
+    telemetry: TelemetryData | null,
+  ): SessionLimitDisplay | undefined {
+    if (settings.mode !== "time-remaining" || !telemetry) return undefined;
+
+    // The leader's lap time is what puts the clock and the lap counter in the
+    // same unit. It comes from the translator's own resolver over the canonical
+    // live order (`.claude/rules/race-positions.md` — never a second ordering
+    // invented here), and is deliberately `null` before the green: a parade lap
+    // is not a racing lap, so a lap-limited race simply shows its lap count
+    // until the first real one lands.
+    return resolveSessionLimitDisplay(telemetry, resolveLeaderLapTimeS(telemetry, getLiveRacePositions() ?? []));
   }
 
   /**
@@ -1276,14 +1382,15 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
    */
   private renderIcon(contextId: string, settings: SessionInfoSettings, telemetry: TelemetryData | null): string {
     const wind = this.resolveWind(settings, telemetry);
-    const value = this.extractDisplayValue(settings, telemetry, wind);
+    const sessionLimit = this.resolveSessionLimit(settings, telemetry);
+    const value = this.extractDisplayValue(settings, telemetry, wind, sessionLimit);
 
     return generateSessionInfoSvg(
       settings,
       value,
       this.flashStates.get(contextId) ?? false,
       this.resolveFlagColorOverride(settings, telemetry),
-      this.resolveModeState(settings, telemetry, value, wind),
+      this.resolveModeState(settings, telemetry, value, wind, sessionLimit),
     );
   }
 
