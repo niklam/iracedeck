@@ -72,11 +72,12 @@
  * samples — no estimate, no callout, never a guess.
  */
 import {
+  bindingLapsToGo,
   Flags,
-  IRSDK_UNLIMITED_LAPS,
-  IRSDK_UNLIMITED_TIME,
   isLiveOnTrack,
   isPostRace,
+  resolveLapsRemaining,
+  resolveTimeRemainingS,
   type TelemetryData,
 } from "@iracedeck/iracing-sdk";
 
@@ -222,7 +223,11 @@ export function diffFuelLapsLeft(
   // nothing to refuel for. Two independently-known limits; whichever ends
   // the race sooner binds (a session can carry BOTH a lap and a time limit,
   // #866 limitation 1), and each suppresses only on a positive
-  // determination — an unknown reading keeps announcing.
+  // determination — an unknown reading keeps announcing. The sentinel
+  // decoding and the whichever-ends-sooner rule are the shared session-limit
+  // helper (`@iracedeck/iracing-sdk`, #1109) — one policy for this estimate
+  // and Session Info's Time Remaining key; the adjustments that follow are
+  // this estimate's own precision and stay here.
   const whiteUp = typeof telemetry.SessionFlags === "number" && (telemetry.SessionFlags & Flags.White) !== 0;
 
   // Lap counter: `count` means full laps completable AFTER the current one,
@@ -238,14 +243,8 @@ export function diffFuelLapsLeft(
   // crossed under it (the sticky latch would have returned above), the
   // leader is on THEIR final lap (raw 1 → 0 needed) but the player still
   // runs the current lap plus their OWN full white lap — clamp to ≥ 1.
-  const rawLapsRemain = telemetry.SessionLapsRemainEx;
-  let lapsNeededAfterCurrent =
-    typeof rawLapsRemain === "number" &&
-    Number.isFinite(rawLapsRemain) &&
-    rawLapsRemain >= 0 &&
-    rawLapsRemain < IRSDK_UNLIMITED_LAPS
-      ? Math.max(0, rawLapsRemain - 1)
-      : null;
+  const rawLapsRemain = resolveLapsRemaining(telemetry);
+  let lapsNeededAfterCurrent = rawLapsRemain !== null ? Math.max(0, rawLapsRemain - 1) : null;
 
   if (lapsNeededAfterCurrent !== null && whiteUp) {
     lapsNeededAfterCurrent = Math.max(lapsNeededAfterCurrent, 1);
@@ -265,17 +264,10 @@ export function diffFuelLapsLeft(
   // direction. The averages exclude caution laps (see `FuelLap.wasCaution`),
   // so a long caution can neither deflate the burn rate nor inflate the lap
   // time into a false "enough fuel".
-  const timeRemain = telemetry.SessionTimeRemain;
+  const timeRemain = resolveTimeRemainingS(telemetry);
   let timedLapsAfterCurrent: number | null = null;
 
-  if (
-    typeof timeRemain === "number" &&
-    Number.isFinite(timeRemain) &&
-    timeRemain >= 0 &&
-    timeRemain < IRSDK_UNLIMITED_TIME &&
-    stats.avgLapTime !== null &&
-    stats.avgLapTime > 0
-  ) {
+  if (timeRemain !== null && stats.avgLapTime !== null && stats.avgLapTime > 0) {
     const leaderRaw = getLeaderLapTimeS();
     const leaderLap =
       typeof leaderRaw === "number" && Number.isFinite(leaderRaw) && leaderRaw > 0 ? leaderRaw : stats.avgLapTime;
@@ -287,13 +279,12 @@ export function diffFuelLapsLeft(
     );
   }
 
-  // The binding remaining distance — the limit that actually ends the race.
-  // Infinity when neither limit is known, which keeps every comparison
-  // below false (announce on unknown).
-  const remainingLaps = Math.min(
-    lapsNeededAfterCurrent ?? Number.POSITIVE_INFINITY,
-    timedLapsAfterCurrent ?? Number.POSITIVE_INFINITY,
-  );
+  // The binding remaining distance — the limit that actually ends the race,
+  // by the shared whichever-ends-sooner rule (a tie goes to the lap counter,
+  // which is value-identical here). Infinity when neither limit is known —
+  // the helper's "none" verdict — which keeps every comparison below false
+  // (announce on unknown: a `null` is ignorance, never a short race).
+  const remainingLaps = bindingLapsToGo(lapsNeededAfterCurrent, timedLapsAfterCurrent) ?? Number.POSITIVE_INFINITY;
 
   if (count >= remainingLaps) {
     // Enough-fuel reassurance (issue #880): a positive coverage

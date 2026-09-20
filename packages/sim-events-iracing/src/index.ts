@@ -34,6 +34,7 @@ export {
   isRaceFinished,
   isSimEventsIracingInitialized,
   isUnderFullCourseCaution,
+  resolveLeaderLapTimeS,
   type GapNeighbor,
   type LivePosition,
   type LiveGaps,
