@@ -29,5 +29,9 @@ export type {
   SimEventOf,
   RadarState,
   StartCountdownSeconds,
+  TireCorner,
+  TireCornerWear,
+  TireWearReport,
+  TireZone,
 } from "./event-catalog.js";
 export { OpponentPenaltyFlag, TrackWetness } from "./event-catalog.js";

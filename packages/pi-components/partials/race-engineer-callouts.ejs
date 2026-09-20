@@ -136,6 +136,7 @@ var opponentFlagCheckboxes = opponentFlagCallouts.map(function (c) {
 
 // Pit-service callouts (readback entry/exit from issue #476, the
 // family-wide pit-service-requests toggle from issue #468, and the
+// tire wear report that follows the exit readback, issue #1108).
 // auto-fuel-changed opt-in from issue #474, independent of the
 // family-wide toggle above).
 // Same source-of-truth 2-column grid as flag callouts — adding a
@@ -143,6 +144,7 @@ var opponentFlagCheckboxes = opponentFlagCallouts.map(function (c) {
 var pitServiceCallouts = [
 	{ setting: "calloutEnabledPitReadbackEntry",   label: "Pit entry readback" },
 	{ setting: "calloutEnabledPitReadbackExit",    label: "Pit exit readback" },
+	{ setting: "calloutEnabledTireWearReport",     label: "Tire wear report" },
 	{ setting: "calloutEnabledPitServiceRequests", label: "Pit service requests" },
 	{ setting: "calloutEnabledPitServiceAutoFuel", label: "Autofuel changes" },
 ];

@@ -22,9 +22,10 @@ import {
   type StartCountdownSeconds,
   TrackWetness,
 } from "@iracedeck/event-bus";
-import { Flags, PaceMode, PitSvFlags, PitSvStatus, TrkLoc } from "@iracedeck/iracing-sdk";
-import { YELLOW_CLEARED_HOLD_MS } from "@iracedeck/sim-events-iracing";
+import { EngineWarnings, Flags, PaceMode, PitSvFlags, PitSvStatus, TrkLoc } from "@iracedeck/iracing-sdk";
+import { PIT_READBACK_EXIT_DELAY_MS, YELLOW_CLEARED_HOLD_MS } from "@iracedeck/sim-events-iracing";
 
+import { TIRE_WEAR_REPORT_EXAMPLE } from "./event-names.js";
 import type { ShortcutPrecondition } from "./shortcut-preconditions.js";
 
 /** Fields every shortcut carries, whatever it drives. */
@@ -804,6 +805,150 @@ const AUTO_FUEL_TAKEOVER_SHORTCUT: TelemetrySequenceShortcut = {
   ],
 };
 
+/**
+ * The twelve tread readings before the stop: iRacing's `<corner>wear<L|M|R>`
+ * fractions read 1 until the car first arrives in its box, which is where the
+ * capture below starts. Setting them first also lets a second press refresh
+ * them again, as a second real stop would.
+ */
+const TIRE_WEAR_UNREFRESHED = {
+  LFwearL: 1,
+  LFwearM: 1,
+  LFwearR: 1,
+  RFwearL: 1,
+  RFwearM: 1,
+  RFwearR: 1,
+  LRwearL: 1,
+  LRwearM: 1,
+  LRwearR: 1,
+  RRwearL: 1,
+  RRwearM: 1,
+  RRwearR: 1,
+};
+
+/**
+ * The readings the captured stop refreshed to on arriving in the box
+ * (`local/telemetry-watch-20260919-193233-855.jsonl`, stop 1, sessionTime
+ * 447.25), in iRacing's own terms: fractions, the sim's L / M / R. The
+ * translator maps them to inside / middle / outside, so the report reads
+ * 98 / 99 / 99 / 99 with the left front's inside shoulder the most worn.
+ */
+const TIRE_WEAR_CAPTURED_STOP = {
+  LFwearL: 0.991,
+  LFwearM: 0.984,
+  LFwearR: 0.983,
+  RFwearL: 0.986,
+  RFwearM: 0.988,
+  RFwearR: 0.996,
+  LRwearL: 0.99,
+  LRwearM: 0.986,
+  LRwearR: 0.986,
+  RRwearL: 0.989,
+  RRwearM: 0.989,
+  RRwearR: 0.997,
+};
+
+/**
+ * How long the stop listens on the circuit after leaving pit road: past the
+ * exit readback's settle window, whose end is also when the translator
+ * publishes the report. `scenario-shortcuts.test.ts` drives the translator
+ * through this very sequence, so a hold that stops short of it turns red.
+ */
+const TIRE_WEAR_EXIT_SETTLE_MS = PIT_READBACK_EXIT_DELAY_MS;
+
+/** The hold on the pit-exit step, the capture's 4.4 s on the exit lane compressed. */
+const TIRE_WEAR_EXIT_LANE_MS = 1500;
+
+/** The hold on the last step: the rest of the settle window plus a second of margin. */
+const TIRE_WEAR_LISTEN_MS = TIRE_WEAR_EXIT_SETTLE_MS - TIRE_WEAR_EXIT_LANE_MS + 1000;
+
+/**
+ * A pit stop replayed through the TRANSLATOR (issue #1108), modelled on stop 1
+ * of the capture above: on the circuit → the approach (`PlayerTrackSurface`
+ * AproachingPits) → pit road → the stall surface, on the tick the twelve
+ * readings refresh → in the stall, service in progress → service complete →
+ * out of the stall → down the lane → off pit road → back on the circuit. The
+ * order and the values are the capture's; the holds are compressed, from a
+ * minute to about nineteen seconds.
+ *
+ * Beyond what the capture recorded, it also drives what a clean stop looks
+ * like to the rest of the translator — the speed, and the pit limiter on
+ * between the cones (`EngineWarnings.PitSpeedLimiter` and the
+ * `dcPitSpeedLimiterToggle` the limiter family reads) — so the limiter
+ * warnings stay out of it; and it skips the capture's `TooFarBack` status on
+ * the roll into the box, which would add a positioning nag the stop is not
+ * about.
+ *
+ * It exists because the report's DECISION is the translator's: a stop counts
+ * only when the car drove into the box, and the report rides out behind the
+ * exit readback. Publishing `tireWear.reported` by hand ("Report after a
+ * stop") auditions the words; this button auditions the moment.
+ *
+ * It ends on the circuit, off pit road and out of the box, limiter off and
+ * no service status — where any other shortcut can start — with the readings
+ * left at the stop's values, as iRacing leaves them. The last step holds
+ * rather than ends, so the page-wide shortcut lock covers the settle window:
+ * another button rewriting `OnPitRoad` inside it would cancel the report.
+ */
+const TIRE_WEAR_STOP_SHORTCUT: TelemetrySequenceShortcut = {
+  id: "tire-wear-stop",
+  category: "Tire Wear",
+  label: "Stop replayed from a capture",
+  description:
+    'Drives the TRANSLATOR through a pit stop modelled on one captured on 2026-09-19, about 19 s end to end: the approach, pit road with the limiter on, the box, service, and back out. It needs no preset — its first step puts the car on the circuit from wherever it is. Expect the pit-entry readback, the service in-progress and complete lines, and — about four and a half seconds after leaving pit road — the exit readback, followed by the tire wear report: "Tire wear at the pit stop: Left front: ninety-eight percent. Right front: ninety-nine percent. Left rear: ninety-nine percent. Right rear: ninety-nine percent. Wear is heaviest on the left front, inside shoulder." The report always follows the exit readback. Needs the mock SDK CONNECTED; with it disconnected the translator sees no ticks and the button is silent for the wrong reason.',
+  telemetrySequence: [
+    {
+      patch: {
+        IsOnTrack: true,
+        PlayerTrackSurface: TrkLoc.OnTrack,
+        OnPitRoad: false,
+        PlayerCarInPitStall: false,
+        PitstopActive: false,
+        PlayerCarPitSvStatus: PitSvStatus.None,
+        EngineWarnings: 0,
+        dcPitSpeedLimiterToggle: false,
+        Speed: 60,
+        ...TIRE_WEAR_UNREFRESHED,
+      },
+      holdMs: 1000,
+    },
+    { patch: { PlayerTrackSurface: TrkLoc.AproachingPits, Speed: 30 }, holdMs: 1500 },
+    {
+      patch: {
+        OnPitRoad: true,
+        Speed: 16,
+        EngineWarnings: EngineWarnings.PitSpeedLimiter,
+        dcPitSpeedLimiterToggle: true,
+      },
+      holdMs: 3000,
+    },
+    { patch: { PlayerTrackSurface: TrkLoc.InPitStall, Speed: 3, ...TIRE_WEAR_CAPTURED_STOP }, holdMs: 300 },
+    {
+      patch: {
+        PlayerCarInPitStall: true,
+        PitstopActive: true,
+        Speed: 0,
+        PlayerCarPitSvStatus: PitSvStatus.InProgress,
+      },
+      holdMs: 3000,
+    },
+    { patch: { PlayerCarPitSvStatus: PitSvStatus.Complete, PitstopActive: false }, holdMs: 1500 },
+    { patch: { PlayerCarInPitStall: false, Speed: 8 }, holdMs: 600 },
+    { patch: { PlayerTrackSurface: TrkLoc.AproachingPits, Speed: 16 }, holdMs: 2500 },
+    {
+      patch: {
+        OnPitRoad: false,
+        PlayerCarPitSvStatus: PitSvStatus.None,
+        EngineWarnings: 0,
+        dcPitSpeedLimiterToggle: false,
+        Speed: 30,
+      },
+      holdMs: TIRE_WEAR_EXIT_LANE_MS,
+    },
+    { patch: { PlayerTrackSurface: TrkLoc.OnTrack, Speed: 60 }, holdMs: TIRE_WEAR_LISTEN_MS },
+  ],
+};
+
 export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   // ── Pit Service ──
   {
@@ -1052,6 +1197,20 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     event: "pitSpeeding.ended",
     data: {},
   },
+
+  // ── Tire Wear (issue #1108) ──
+  // The report straight to the bus (the words), and a stop driven through the
+  // translator (the moment: after a drive-in stop, behind the exit readback).
+  {
+    id: "tire-wear-report",
+    category: "Tire Wear",
+    label: "Report after a stop",
+    description:
+      'The tire wear of a stop, published straight to the bus — "Tire wear at the pit stop: Left front: eighty-nine percent. Right front: ninety-one percent. Left rear: eighty-seven percent. Right rear: eighty-five percent. Wear is heaviest on the right rear, inside shoulder." Skips the translator, so it plays on its own rather than behind the exit readback; "Stop replayed from a capture" drives the real moment.',
+    event: "tireWear.reported",
+    data: TIRE_WEAR_REPORT_EXAMPLE,
+  },
+  TIRE_WEAR_STOP_SHORTCUT,
 
   // ── Flags ──
   flag("Yellow (local)", "flag.yellow.raised", { scope: "local" }),

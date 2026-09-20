@@ -12,6 +12,7 @@ import {
   initializeEventBus,
   OpponentPenaltyFlag,
   type SimEventOf,
+  type TireWearReport,
   TrackWetness,
 } from "@iracedeck/event-bus";
 import {
@@ -4399,6 +4400,145 @@ describe("sim-events-iracing translator", () => {
         expect(seen).toContain("caution.restarted");
         expect(seen).not.toContain("startLight.start-go.raised");
         expect(isUnderFullCourseCaution()).toBe(false);
+      });
+    });
+  });
+
+  describe("tire wear of a stop (issue #1108)", () => {
+    const BASE = 1_700_000_000_000;
+
+    /** The pit stream in publish order, envelope timestamps included. */
+    function recordPitStream(): Array<{ name: string; timestamp: number; data: unknown }> {
+      const seen: Array<{ name: string; timestamp: number; data: unknown }> = [];
+
+      for (const name of [
+        "pitStall.departed",
+        "pitLane.exited",
+        "pitService.readbackRequested",
+        "tireWear.reported",
+      ] as const) {
+        getEventBus().subscribe(name, (ev) => seen.push({ name, timestamp: ev.timestamp, data: ev.data }));
+      }
+
+      return seen;
+    }
+
+    const isExit = (e: { name: string; data: unknown }): boolean =>
+      e.name === "pitService.readbackRequested" && (e.data as { reason: string }).reason === "exit";
+
+    it("flushes each stop's report right behind its exit readback, on the same tick, through the 2026-09-19 capture", () => {
+      vi.useFakeTimers();
+
+      type WearCaptureTick = { t: number } & Partial<TelemetryData>;
+      const capture = JSON.parse(
+        readFileSync(new URL("./diff/__fixtures__/tire-wear-stops-20260919.json", import.meta.url), "utf-8"),
+      ) as WearCaptureTick[];
+      const controller = createMockController();
+      const seen = recordPitStream();
+
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      // The capture records a tick only on a change; the sim keeps ticking in
+      // between with the same values, and past its end (stop 2's pit exit) long
+      // enough for the settle delay.
+      capture.forEach(({ t: at, ...values }, i) => {
+        const until = capture[i + 1]?.t ?? at + 6;
+
+        for (let t = at; t < until - 1e-9; t += 0.25) {
+          vi.setSystemTime(BASE + t * 1000);
+          controller.__tick(telemetry(values));
+        }
+      });
+
+      const exits = seen.flatMap((e, i) => (isExit(e) ? [i] : []));
+      const reports = seen.flatMap((e, i) => (e.name === "tireWear.reported" ? [i] : []));
+
+      expect(exits).toHaveLength(2);
+      expect(reports).toEqual(exits.map((i) => i + 1));
+
+      for (const i of reports) {
+        expect(seen[i]!.timestamp).toBe(seen[i - 1]!.timestamp);
+      }
+
+      const first = seen[reports[0]!]!.data as TireWearReport;
+
+      expect(first.heaviest).toEqual({ corner: "lf", zone: "inside" });
+      expect(first.corners.lf.tread).toBeCloseTo(98.338, 3);
+    });
+
+    describe("a stored report does not outlive its session or a replay glance", () => {
+      /** LF inside (R) the most worn, everything else fresher. */
+      const WORN: Partial<TelemetryData> = {
+        LFwearL: 0.95,
+        LFwearM: 0.93,
+        LFwearR: 0.9,
+        RFwearL: 0.94,
+        RFwearM: 0.95,
+        RFwearR: 0.96,
+        LRwearL: 0.97,
+        LRwearM: 0.96,
+        LRwearR: 0.96,
+        RRwearL: 0.97,
+        RRwearM: 0.97,
+        RRwearR: 0.98,
+      };
+
+      /**
+       * Drive into a stop and out again; `interrupt` runs at 6 s, after the car
+       * left its box and while it is still on pit road.
+       */
+      function stopAndLeave(interrupt: (tickAt: (s: number, o: Partial<TelemetryData>) => void) => void) {
+        vi.useFakeTimers();
+
+        const controller = createMockController();
+        const seen = recordPitStream();
+        let sessionNum = 0;
+        const tickAt = (s: number, overrides: Partial<TelemetryData>): void => {
+          if (overrides.SessionNum !== undefined) sessionNum = overrides.SessionNum;
+
+          vi.setSystemTime(BASE + s * 1000);
+          controller.__tick(telemetry({ ...WORN, SessionNum: sessionNum, ...overrides }));
+        };
+
+        initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+        tickAt(0, {});
+        tickAt(1, { PlayerTrackSurface: TrkLoc.AproachingPits });
+        tickAt(2, { OnPitRoad: true, PlayerTrackSurface: TrkLoc.AproachingPits });
+        tickAt(3, { OnPitRoad: true, PlayerCarInPitStall: true, PlayerTrackSurface: TrkLoc.InPitStall });
+        tickAt(4, { OnPitRoad: true, PlayerCarInPitStall: true, PlayerTrackSurface: TrkLoc.InPitStall });
+        tickAt(5, { OnPitRoad: true, PlayerTrackSurface: TrkLoc.InPitStall });
+        interrupt(tickAt);
+        tickAt(7, { PlayerTrackSurface: TrkLoc.AproachingPits });
+        tickAt(12, {});
+
+        return seen;
+      }
+
+      it("publishes when nothing intervenes (the control)", () => {
+        const seen = stopAndLeave(() => {});
+
+        expect(seen.filter(isExit)).toHaveLength(1);
+        expect(seen.filter((e) => e.name === "tireWear.reported")).toHaveLength(1);
+      });
+
+      it("drops it on a session change between the box and pit exit, though the exit readback still fires", () => {
+        const seen = stopAndLeave((tickAt) =>
+          tickAt(6, { SessionNum: 1, OnPitRoad: true, PlayerTrackSurface: TrkLoc.AproachingPits }),
+        );
+
+        expect(seen.filter(isExit)).toHaveLength(1);
+        expect(seen.filter((e) => e.name === "tireWear.reported")).toHaveLength(0);
+      });
+
+      it("drops it on a replay glance between the box and pit exit, though the exit readback still fires", () => {
+        const seen = stopAndLeave((tickAt) => {
+          tickAt(6, { IsReplayPlaying: true, OnPitRoad: true, PlayerTrackSurface: TrkLoc.AproachingPits });
+          tickAt(6.5, { OnPitRoad: true, PlayerTrackSurface: TrkLoc.AproachingPits });
+        });
+
+        expect(seen.filter(isExit)).toHaveLength(1);
+        expect(seen.filter((e) => e.name === "tireWear.reported")).toHaveLength(0);
       });
     });
   });

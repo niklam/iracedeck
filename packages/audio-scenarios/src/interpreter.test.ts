@@ -4,7 +4,7 @@ import type { CalloutScript } from "@iracedeck/callout-script";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 
-import type { ScenarioContract, SpeakGate } from "./dsl.js";
+import type { Scenario, ScenarioContract, SpeakGate } from "./dsl.js";
 import { DEFAULT_FRAME, DEFAULT_WEIGHT, NO_FRAME, poolRef, WEIGHT } from "./dsl.js";
 import type { AudioAssetsManifest, FrameOptions, IScenarioEngine } from "./interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios } from "./interpreter.js";
@@ -2461,6 +2461,646 @@ describe("pending hold (issue #758)", () => {
     vi.advanceTimersByTime(5000);
 
     expect(voicePaths()).toEqual(["pit-crew/reminder/fuel.mp3"]);
+  });
+});
+
+// ─── queueBehind (issue #1108) ──────────────────────────────────────────────
+
+describe("queueBehind (issue #1108)", () => {
+  const AUTOFUEL = "pit-crew/reminder/autofuel.mp3";
+  const A = "pit-crew/greeting/a.mp3";
+  const B = "pit-crew/greeting/b.mp3";
+  const TIRES = "pit-crew/reminder/tires.mp3";
+  const FUEL = "pit-crew/reminder/fuel.mp3";
+  const ALICE = "pit-crew/names/alice.mp3";
+
+  /** Holds the bus at SAFETY — above both lines below, so each has to wait. */
+  function defineBusy(): void {
+    engine.defineScenario({
+      id: "test.busy",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      weight: WEIGHT.SAFETY,
+      sequence: [AUTOFUEL],
+    });
+  }
+
+  /** The leader, in the exit readback's shape: chatter, queueable, resumable, two clips. */
+  function defineLeader(extra: Partial<Scenario> = {}): void {
+    engine.defineScenario({
+      id: "test.leader",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      weight: WEIGHT.CHATTER,
+      queueable: true,
+      resumable: true,
+      sequence: [A, B],
+      ...extra,
+    });
+  }
+
+  /** The follower, in the tire-wear report's shape: default weight, queueable, waiting behind the leader. */
+  function defineFollower(extra: Partial<Scenario> = {}): void {
+    engine.defineScenario({
+      id: "test.follower",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      queueable: true,
+      queueBehind: ["test.leader"],
+      sequence: [TIRES],
+      ...extra,
+    });
+  }
+
+  /** A queueable fire heavier than the leader, unrelated to either. */
+  function defineHeavy(): void {
+    engine.defineScenario({
+      id: "test.heavy",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      weight: WEIGHT.SAFETY,
+      queueable: true,
+      sequence: [FUEL],
+    });
+  }
+
+  /** A queueable chatter fire unrelated to either. */
+  function defineOther(): void {
+    engine.defineScenario({
+      id: "test.other",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      weight: WEIGHT.CHATTER,
+      queueable: true,
+      sequence: [ALICE],
+    });
+  }
+
+  /** An interrupter above the follower's weight, so it cuts either line mid-clip. */
+  function defineCutter(): void {
+    engine.defineScenario({
+      id: "test.cutter",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      weight: WEIGHT.SAFETY,
+      interrupt: true,
+      sequence: [FUEL],
+    });
+  }
+
+  function voicePaths(): string[] {
+    return audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path);
+  }
+
+  it("(1) attaches behind the waiting fire its contract names, and the two play in order once the bus idles — neither dropped, whatever their weights", () => {
+    defineBusy();
+    defineLeader();
+    defineFollower();
+
+    engine.fire("test.busy");
+    engine.fire("test.leader"); // deferred — chatter behind a SAFETY line
+    engine.fire("test.follower"); // heavier than the leader: would take its slot, attaches behind instead
+
+    expect(mockLogger.debug).toHaveBeenCalledWith(
+      'Scenario "test.follower" pending behind "test.leader" — deferred (bus busy)',
+    );
+
+    flushVoiceAndSfx(audio);
+
+    expect(voicePaths()).toEqual([AUTOFUEL, A, B, TIRES]);
+  });
+
+  it("(2) a heavier fire that takes the slot drops the leader and its follower together", () => {
+    defineBusy();
+    defineLeader();
+    defineFollower();
+    defineHeavy();
+
+    engine.fire("test.busy");
+    engine.fire("test.leader");
+    engine.fire("test.follower");
+    engine.fire("test.heavy"); // SAFETY outweighs the CHATTER leader in the slot
+
+    expect(mockLogger.debug).toHaveBeenCalledWith(
+      'Scenario "test.follower" dropped — waited behind "test.leader", displaced by "test.heavy"',
+    );
+
+    flushVoiceAndSfx(audio);
+
+    expect(voicePaths()).toEqual([AUTOFUEL, FUEL]);
+  });
+
+  it("(2) a fire between the two weights replaces the leader alone — the follower stays, now waiting behind the newcomer", () => {
+    // Each member keeps the fate it would have had alone: a 40-weight fire
+    // (the pit-status nags' band) outweighs the CHATTER leader and replaces
+    // it as it always did, but not the NORMAL follower, which goes on
+    // waiting — behind the newcomer now — so the order is busy, N, report.
+    engine.defineScenario({
+      id: "test.nag",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      weight: 40,
+      queueable: true,
+      sequence: [ALICE],
+    });
+    defineBusy();
+    defineLeader();
+    defineFollower();
+
+    engine.fire("test.busy");
+    engine.fire("test.leader");
+    engine.fire("test.follower");
+    engine.fire("test.nag");
+
+    expect(mockLogger.debug).toHaveBeenCalledWith(
+      'Scenario "test.nag" pending — deferred (bus busy); replaces "test.leader", and "test.follower" now waits behind "test.nag"',
+    );
+
+    flushVoiceAndSfx(audio);
+
+    expect(voicePaths()).toEqual([AUTOFUEL, ALICE, TIRES]);
+  });
+
+  it("(2) a fresher chatter fire replaces the pending chatter leader by the tie rule, with the follower still behind it", () => {
+    // The entry readback after a quick re-entry: the leader's own scheduling
+    // never depends on what waits behind it.
+    defineBusy();
+    defineLeader();
+    defineFollower();
+    defineOther();
+
+    engine.fire("test.busy");
+    engine.fire("test.leader");
+    engine.fire("test.follower");
+    engine.fire("test.other"); // CHATTER ties the CHATTER leader: newest wins, as ever
+
+    flushVoiceAndSfx(audio);
+
+    expect(voicePaths()).toEqual([AUTOFUEL, ALICE, TIRES]);
+  });
+
+  it("(2) a fire lighter than the leader is dropped, as it would be against the leader alone", () => {
+    engine.defineScenario({
+      id: "test.transient",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      weight: WEIGHT.TRANSIENT,
+      queueable: true,
+      sequence: [ALICE],
+    });
+    defineBusy();
+    defineLeader();
+    defineFollower();
+
+    engine.fire("test.busy");
+    engine.fire("test.leader");
+    engine.fire("test.follower");
+    engine.fire("test.transient");
+
+    expect(mockLogger.debug).toHaveBeenCalledWith(
+      'Scenario "test.transient" dropped — lower weight than queued "test.leader"',
+    );
+
+    flushVoiceAndSfx(audio);
+
+    expect(voicePaths()).toEqual([AUTOFUEL, A, B, TIRES]);
+  });
+
+  it("(C) a leader moved behind an arriving fire drops the follower it carried, saying why", () => {
+    // `test.g` waits behind the follower; the follower waits behind the
+    // leader. With the follower and g in the slot, the leader arrives to wait
+    // and is put ahead of the follower — which can carry g no further.
+    engine.defineScenario({
+      id: "test.g",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      queueable: true,
+      queueBehind: ["test.follower"],
+      sequence: [FUEL],
+    });
+    defineBusy();
+    defineLeader();
+    defineFollower();
+
+    engine.fire("test.busy");
+    engine.fire("test.follower"); // pending
+    engine.fire("test.g"); // behind the follower
+    engine.fire("test.leader"); // the follower moves behind it; g is dropped
+
+    expect(mockLogger.debug).toHaveBeenCalledWith(
+      'Scenario "test.g" dropped — its leader "test.follower" now waits behind "test.leader"',
+    );
+
+    flushVoiceAndSfx(audio);
+
+    expect(voicePaths()).toEqual([AUTOFUEL, A, B, TIRES]);
+  });
+
+  describe("(B) a follower never plays ahead of its waiting leader, even on an idle bus", () => {
+    it("with a pendingHoldMs hold armed and the leader in the slot, the follower attaches behind it and the leader plays first", () => {
+      vi.useFakeTimers();
+
+      try {
+        engine.defineScenario({
+          id: "test.holder",
+          channel: AudioChannel.Voice,
+          bus: AudioBus.Voice,
+          weight: WEIGHT.NORMAL,
+          pendingHoldMs: 2000,
+          sequence: [FUEL],
+        });
+        defineLeader();
+        defineFollower();
+
+        engine.fire("test.holder");
+        engine.fire("test.leader"); // deferred
+        audio._triggerChannelEnd(AudioChannel.Voice); // holder finishes → bus idle, hold armed, leader still in the slot
+        engine.fire("test.follower"); // must not play past the leader
+
+        expect(mockLogger.debug).toHaveBeenCalledWith(
+          'Scenario "test.follower" pending behind "test.leader" — the fire it waits behind is pending',
+        );
+        expect(voicePaths()).toEqual([FUEL]);
+
+        vi.advanceTimersByTime(2000);
+        flushVoiceAndSfx(audio);
+        expect(voicePaths()).toEqual([FUEL, A, B, TIRES]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("with a focus floor between the two weights, the follower attaches behind the parked leader and plays after it once the floor lifts", () => {
+      defineLeader();
+      defineFollower();
+
+      engine.acquireFocus(AudioBus.Voice, "spotter", 30); // CHATTER is below it, NORMAL above
+      engine.fire("test.leader"); // parked below the floor
+      engine.fire("test.follower"); // clears the floor on an idle bus — and still waits
+
+      expect(voicePaths()).toEqual([]);
+
+      engine.releaseFocus(AudioBus.Voice, "spotter");
+      flushVoiceAndSfx(audio);
+
+      expect(voicePaths()).toEqual([A, B, TIRES]);
+    });
+  });
+
+  describe("(D) a queueBehind across buses never matches, and says so once at registration", () => {
+    it("warns when the named id is already registered on another bus", () => {
+      defineLeader();
+      engine.defineScenario({
+        id: "test.cross",
+        channel: AudioChannel.SFX,
+        bus: AudioBus.Background,
+        queueable: true,
+        queueBehind: ["test.leader"],
+        sequence: [FUEL],
+      });
+
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        `Scenario "test.cross" queueBehind names "test.leader" on bus ${AudioBus.Voice}, not its own bus ${AudioBus.Background} — the relation never matches`,
+      );
+      expect(mockLogger.error).not.toHaveBeenCalled();
+    });
+
+    it("warns when the named id is registered later, on another bus", () => {
+      engine.defineScenario({
+        id: "test.cross",
+        channel: AudioChannel.SFX,
+        bus: AudioBus.Background,
+        queueable: true,
+        queueBehind: ["test.leader"],
+        sequence: [FUEL],
+      });
+
+      expect(mockLogger.warn).not.toHaveBeenCalled(); // nothing to compare against yet
+
+      defineLeader();
+
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        `Scenario "test.cross" queueBehind names "test.leader" on bus ${AudioBus.Voice}, not its own bus ${AudioBus.Background} — the relation never matches`,
+      );
+    });
+
+    it("stays quiet for a pair on one bus", () => {
+      defineLeader();
+      defineFollower();
+
+      expect(mockLogger.warn).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("(3) a follower is never stranded when its leader does not take the bus at replay", () => {
+    it("because the leader's expansion aborts", () => {
+      let speakable = true;
+      engine.defineVar("maybe", () => (speakable ? A : null));
+      defineBusy();
+      defineLeader({ sequence: ["{{maybe}}"] });
+      defineFollower();
+
+      engine.fire("test.busy");
+      engine.fire("test.leader"); // parked before it ever expanded
+      engine.fire("test.follower");
+      speakable = false; // the world moved on: at replay the leader's var resolves to nothing
+
+      flushVoiceAndSfx(audio);
+
+      expect(voicePaths()).toEqual([AUTOFUEL, TIRES]);
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        'Scenario "test.leader" skipped — var {{maybe}} resolved to nothing',
+      );
+    });
+
+    it("because the leader's speak-time gate refuses", () => {
+      defineBusy();
+      defineLeader({ speakGate: { description: "Still due.", admit: () => false } });
+      defineFollower();
+
+      engine.fire("test.busy");
+      engine.fire("test.leader");
+      engine.fire("test.follower");
+
+      flushVoiceAndSfx(audio);
+
+      expect(voicePaths()).toEqual([AUTOFUEL, TIRES]);
+      expect(mockLogger.debug).toHaveBeenCalledWith('Scenario "test.leader" skipped — speak-time gate: Still due.');
+    });
+
+    it("because the leader is found disabled at the drain", () => {
+      // `fire()` does not consult `enabled` (an event does), so a disabled
+      // leader can still be parked — and the drain then refuses it.
+      defineBusy();
+      defineLeader();
+      defineFollower();
+      engine.setEnabled("test.leader", false);
+
+      engine.fire("test.busy");
+      engine.fire("test.leader");
+      engine.fire("test.follower");
+
+      flushVoiceAndSfx(audio);
+
+      expect(voicePaths()).toEqual([AUTOFUEL, TIRES]);
+    });
+  });
+
+  it("(4) with nothing pending — the leader is PLAYING — the follower takes the slot by the normal rule", () => {
+    defineLeader();
+    defineFollower();
+    defineOther();
+
+    engine.fire("test.leader"); // takes the idle bus
+    engine.fire("test.follower"); // higher weight, no interrupt: waits as the pending fire
+
+    expect(mockLogger.debug).toHaveBeenCalledWith(
+      'Scenario "test.follower" pending — waiting for bus (higher weight, no interrupt)',
+    );
+
+    engine.fire("test.other"); // chatter against the follower holding the slot: dropped, as ever
+
+    expect(mockLogger.debug).toHaveBeenCalledWith(
+      'Scenario "test.other" dropped — lower weight than queued "test.follower"',
+    );
+
+    flushVoiceAndSfx(audio);
+
+    expect(voicePaths()).toEqual([A, B, TIRES]);
+  });
+
+  it("(5) an unrelated pending fire is competed with by weight, unchanged — the follower takes a lighter one's slot", () => {
+    defineBusy();
+    defineFollower();
+    defineOther();
+
+    engine.fire("test.busy");
+    engine.fire("test.other"); // chatter, pending
+    engine.fire("test.follower"); // default weight beats it for the slot
+
+    expect(mockLogger.debug).toHaveBeenCalledWith('Scenario "test.follower" pending — deferred (bus busy)');
+
+    flushVoiceAndSfx(audio);
+
+    expect(voicePaths()).toEqual([AUTOFUEL, TIRES]);
+  });
+
+  it("(5) an unrelated pending fire is competed with by weight, unchanged — and a heavier one drops the follower", () => {
+    defineBusy();
+    defineFollower();
+    defineHeavy();
+
+    engine.fire("test.busy");
+    engine.fire("test.heavy"); // SAFETY, pending
+    engine.fire("test.follower");
+
+    expect(mockLogger.debug).toHaveBeenCalledWith(
+      'Scenario "test.follower" dropped — lower weight than queued "test.heavy"',
+    );
+
+    flushVoiceAndSfx(audio);
+
+    expect(voicePaths()).toEqual([AUTOFUEL, FUEL]);
+  });
+
+  it("(6) a second follower replaces the one already waiting behind the leader", () => {
+    defineBusy();
+    defineLeader();
+    defineFollower();
+    engine.defineScenario({
+      id: "test.follower2",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      queueable: true,
+      queueBehind: ["test.leader"],
+      sequence: [ALICE],
+    });
+
+    engine.fire("test.busy");
+    engine.fire("test.leader");
+    engine.fire("test.follower");
+    engine.fire("test.follower2");
+
+    expect(mockLogger.debug).toHaveBeenCalledWith(
+      'Scenario "test.follower" dropped — replaced behind "test.leader" by "test.follower2"',
+    );
+
+    flushVoiceAndSfx(audio);
+
+    expect(voicePaths()).toEqual([AUTOFUEL, A, B, ALICE]);
+  });
+
+  describe("(7) everything that clears the slot clears the follower with it", () => {
+    it("stopAll", () => {
+      defineBusy();
+      defineLeader();
+      defineFollower();
+
+      engine.fire("test.busy");
+      engine.fire("test.leader");
+      engine.fire("test.follower");
+      engine.stopAll();
+
+      engine.fire("test.busy"); // the bus is free and nothing is waiting
+      flushVoiceAndSfx(audio);
+
+      expect(voicePaths()).toEqual([AUTOFUEL, AUTOFUEL]);
+    });
+
+    it("disabling the follower's own scenario drops it and leaves its leader waiting", () => {
+      defineBusy();
+      defineLeader();
+      defineFollower();
+
+      engine.fire("test.busy");
+      engine.fire("test.leader");
+      engine.fire("test.follower");
+      engine.setEnabled("test.follower", false); // its opt-in was turned off
+
+      flushVoiceAndSfx(audio);
+
+      expect(voicePaths()).toEqual([AUTOFUEL, A, B]);
+    });
+
+    it("disabling the leader's scenario drops the follower with it", () => {
+      defineBusy();
+      defineLeader();
+      defineFollower();
+
+      engine.fire("test.busy");
+      engine.fire("test.leader");
+      engine.fire("test.follower");
+      engine.setEnabled("test.leader", false);
+
+      flushVoiceAndSfx(audio);
+
+      expect(voicePaths()).toEqual([AUTOFUEL]);
+    });
+  });
+
+  describe("(8) a follower is an ordinary replay when its turn comes", () => {
+    it("carries its own event, so its vars resolve against the payload that fired it", () => {
+      engine.defineVar("fromEvent", (ctx) => (ctx.data as { clip?: string } | null)?.clip ?? null);
+      defineBusy();
+      defineLeader();
+      defineFollower({ when: { event: "pitLane.exited" }, sequence: ["{{fromEvent}}"] });
+
+      engine.fire("test.busy");
+      engine.fire("test.leader");
+      bus.publishEvent("pitLane.exited", { clip: ALICE });
+
+      flushVoiceAndSfx(audio);
+
+      expect(voicePaths()).toEqual([AUTOFUEL, A, B, ALICE]);
+    });
+
+    it("is asked its speak-time gate when it replays, not when it attaches", () => {
+      const admit = vi.fn(() => true);
+      defineBusy();
+      defineLeader();
+      defineFollower({ speakGate: { description: "Still worth saying.", admit } });
+
+      engine.fire("test.busy");
+      engine.fire("test.leader");
+      engine.fire("test.follower");
+
+      expect(admit).not.toHaveBeenCalled();
+
+      flushVoiceAndSfx(audio);
+
+      expect(admit).toHaveBeenCalledTimes(1);
+      expect(voicePaths()).toEqual([AUTOFUEL, A, B, TIRES]);
+    });
+
+    it("keeps its admission: cut by an interrupt and stashed behind a waiting leader, it replays whole and is not asked again", () => {
+      const admit = vi.fn(() => true);
+      defineLeader();
+      defineFollower({ speakGate: { description: "Still worth saying.", admit } });
+      defineCutter();
+
+      engine.fire("test.follower"); // plays — asked once
+      engine.fire("test.leader"); // chatter behind it: deferred into the slot
+      engine.fire("test.cutter"); // cuts the follower; the stash attaches behind the waiting leader
+
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        'Scenario "test.follower" pending behind "test.leader" — stashed (preempted)',
+      );
+
+      flushVoiceAndSfx(audio);
+
+      expect(voicePaths()).toEqual([TIRES, FUEL, A, B, TIRES]);
+      expect(admit).toHaveBeenCalledTimes(1);
+    });
+
+    it("attaches behind a leader stashed by an interrupt, which then resumes from the cut before the follower plays (issue #758)", () => {
+      defineLeader();
+      defineFollower();
+      defineCutter();
+
+      engine.fire("test.leader"); // a in flight
+      audio._triggerChannelEnd(AudioChannel.Voice); // a done → b in flight
+      engine.fire("test.cutter"); // cuts b; the resumable leader is stashed as the pending fire
+      engine.fire("test.follower"); // arrives while the cutter plays: attaches behind the stash
+
+      flushVoiceAndSfx(audio);
+
+      // The leader resumes at b — a is not replayed — and the follower plays after it.
+      expect(voicePaths()).toEqual([A, B, FUEL, B, TIRES]);
+    });
+
+    it("a leader stashed while its follower already holds the slot is put back ahead of it", () => {
+      defineLeader();
+      defineFollower();
+      defineCutter();
+
+      engine.fire("test.leader"); // a in flight
+      engine.fire("test.follower"); // higher weight, no interrupt: pending
+      audio._triggerChannelEnd(AudioChannel.Voice); // a done → b in flight
+      engine.fire("test.cutter"); // cuts b; the stash would have lost the slot to the follower by weight
+
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        'Scenario "test.leader" pending — stashed (preempted); "test.follower" now waits behind it',
+      );
+
+      flushVoiceAndSfx(audio);
+
+      expect(voicePaths()).toEqual([A, B, FUEL, B, TIRES]);
+    });
+
+    describe("with a pendingHoldMs hold on the bus", () => {
+      beforeEach(() => {
+        vi.useFakeTimers();
+      });
+
+      afterEach(() => {
+        vi.useRealTimers();
+      });
+
+      it("the pair waits out the hold together, then plays in order", () => {
+        engine.defineScenario({
+          id: "test.holder",
+          channel: AudioChannel.Voice,
+          bus: AudioBus.Voice,
+          weight: WEIGHT.NORMAL,
+          pendingHoldMs: 2000,
+          sequence: [FUEL],
+        });
+        defineLeader();
+        defineFollower();
+
+        engine.fire("test.holder");
+        engine.fire("test.leader"); // deferred
+        engine.fire("test.follower"); // equal weight to the holder: deferred, attaches
+        audio._triggerChannelEnd(AudioChannel.Voice); // holder finishes → hold armed
+
+        vi.advanceTimersByTime(1999);
+        expect(voicePaths()).toEqual([FUEL]);
+
+        vi.advanceTimersByTime(1);
+        flushVoiceAndSfx(audio);
+        expect(voicePaths()).toEqual([FUEL, A, B, TIRES]);
+      });
+    });
   });
 });
 

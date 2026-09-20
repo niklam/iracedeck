@@ -456,6 +456,71 @@
         }
       ]
     },
+    "pit-crew.tire-wear-report": {
+      "comment": "After a pit stop, once the exit readback has played: the remaining tread of all four tires, front to rear, each as the lowest of its three zones in whole percent, then where the wear is heaviest, a sentence left out when every tire still reads one hundred. After a tire change the numbers describe the set that came off.",
+      "test": "Harness → Tire Wear → Report after a stop. In-sim: drive into your box, stop, and leave pit road; the report follows the exit readback.",
+      "sequence": [
+        "pool:tire-wear/intro",
+        "pool:tire-wear/left-front",
+        "{{tireWear.leftFrontTread}}",
+        "pool:tire-wear/right-front",
+        "{{tireWear.rightFrontTread}}",
+        "pool:tire-wear/left-rear",
+        "{{tireWear.leftRearTread}}",
+        "pool:tire-wear/right-rear",
+        "{{tireWear.rightRearTread}}",
+        {
+          "optional": [
+            {
+              "if": "tireWear.hasWear",
+              "then": [
+                {
+                  "case": "tireWear.heaviestSpot",
+                  "of": {
+                    "lf-inside": [
+                      "pool:tire-wear/heaviest-lf-inside"
+                    ],
+                    "lf-middle": [
+                      "pool:tire-wear/heaviest-lf-middle"
+                    ],
+                    "lf-outside": [
+                      "pool:tire-wear/heaviest-lf-outside"
+                    ],
+                    "rf-inside": [
+                      "pool:tire-wear/heaviest-rf-inside"
+                    ],
+                    "rf-middle": [
+                      "pool:tire-wear/heaviest-rf-middle"
+                    ],
+                    "rf-outside": [
+                      "pool:tire-wear/heaviest-rf-outside"
+                    ],
+                    "lr-inside": [
+                      "pool:tire-wear/heaviest-lr-inside"
+                    ],
+                    "lr-middle": [
+                      "pool:tire-wear/heaviest-lr-middle"
+                    ],
+                    "lr-outside": [
+                      "pool:tire-wear/heaviest-lr-outside"
+                    ],
+                    "rr-inside": [
+                      "pool:tire-wear/heaviest-rr-inside"
+                    ],
+                    "rr-middle": [
+                      "pool:tire-wear/heaviest-rr-middle"
+                    ],
+                    "rr-outside": [
+                      "pool:tire-wear/heaviest-rr-outside"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
     "pit-crew.pit-window-opened": {
       "comment": "Pit road has opened for the driver — one line, above ordinary chatter but below a flag, replayed after a busier line finishes rather than dropped because the window matters to strategy.",
       "test": "Harness → Pit Window → Pits opened. In-sim: the pits open in a race — after the field takes the green, or when a caution's pit window opens.",

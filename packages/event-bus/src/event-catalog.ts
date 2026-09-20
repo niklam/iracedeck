@@ -137,6 +137,38 @@ export enum OpponentPenaltyFlag {
 /** Who a flagged car is relative to the player. `"others"` is the aggregate tail. */
 export type OpponentFlagRelation = "ahead" | "behind" | "track-ahead" | "others";
 
+/** One tire, by the car's own front/rear and left/right (issue #1108). */
+export type TireCorner = "lf" | "rf" | "lr" | "rr";
+
+/**
+ * A zone of one tire's tread, named from the car's centreline rather than from
+ * the sim's left/middle/right (issue #1108): `inside` is the shoulder nearer the
+ * centreline. The translator owns the mapping, which mirrors between the two
+ * sides of the car.
+ */
+export type TireZone = "inside" | "middle" | "outside";
+
+/** Remaining tread on one tire, each zone in percent (0–100, unrounded) (issue #1108). */
+export type TireCornerWear = {
+  inside: number;
+  middle: number;
+  outside: number;
+  /** The lowest of the three zones — the figure that ends the tire's life. */
+  tread: number;
+  /** The zone `tread` was read from. */
+  zone: TireZone;
+};
+
+/**
+ * The tire-wear report of one pit stop (issue #1108). `heaviest` names the tire
+ * with the lowest `tread` and, within it, the zone. Ties resolve to the first in
+ * the order lf, rf, lr, rr and, within a tire, inside, middle, outside.
+ */
+export type TireWearReport = {
+  corners: Record<TireCorner, TireCornerWear>;
+  heaviest: { corner: TireCorner; zone: TireZone };
+};
+
 /**
  * Pit-service readback snapshot — the queued-services view the readback
  * scenarios speak to (issue #476). Lives next to the catalog because it's
@@ -408,6 +440,18 @@ export type SimEventMap = {
     "pitService.readbackRequested",
     { reason: "entry" | "entry-refire" | "exit" }
   >;
+  /**
+   * The tire wear of the stop just made (issue #1108). iRacing refreshes its
+   * twelve tread readings only as the car arrives in its pit box, and they
+   * describe the tires ON the car at that moment — after a tire change, the set
+   * that came off, so the report is a summary of the stint just driven. The
+   * translator reads them as the car leaves the box of a stop it drove into (a
+   * garage start or a tow into the stall reports nothing) and publishes this
+   * right after the exit `pitService.readbackRequested`, from the same settle
+   * timer, so the report always queues behind the readback. Never published
+   * when the readings are missing or all zero.
+   */
+  "tireWear.reported": SimEvent<"tireWear.reported", TireWearReport>;
 
   "flag.yellow.raised": SimEvent<"flag.yellow.raised", { scope: FlagScope }>;
   "flag.yellow.cleared": SimEvent<"flag.yellow.cleared", EmptySimEventPayload>;

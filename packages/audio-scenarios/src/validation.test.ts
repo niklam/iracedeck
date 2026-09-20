@@ -158,6 +158,45 @@ describe("validateScenario", () => {
     expect(errorLogs).toEqual([]);
   });
 
+  it("flags queueBehind without queueable (issue #1108)", () => {
+    engine.defineScenario({
+      id: "bad",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      queueBehind: ["other"],
+      sequence: ["pit-crew/greeting/a.mp3"],
+    });
+
+    expect(errorLogs.join("\n")).toContain("queueBehind requires queueable: true");
+  });
+
+  it("flags a queueBehind that names the contract itself (issue #1108)", () => {
+    engine.defineScenario({
+      id: "self",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      queueable: true,
+      queueBehind: ["other", "self"],
+      sequence: ["pit-crew/greeting/a.mp3"],
+    });
+
+    expect(errorLogs.join("\n")).toContain("queueBehind must not name the contract itself");
+  });
+
+  it("accepts a queueBehind naming an id that is not registered — registration order is not its business (issue #1108)", () => {
+    engine.defineScenario({
+      id: "good-follower",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      queueable: true,
+      queueBehind: ["not.registered.yet"],
+      sequence: ["pit-crew/greeting/a.mp3"],
+    });
+
+    expect(errorLogs).toEqual([]);
+    expect(warnLogs).toEqual([]);
+  });
+
   it("flags a negative pendingHoldMs (issue #758)", () => {
     engine.defineScenario({
       id: "bad",

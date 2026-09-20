@@ -49,12 +49,14 @@ import {
   type PitWindowCalloutId,
   registerPitCrew,
   type RollingStartCalloutId,
+  type TireWearCalloutId,
 } from "./index.js";
 import { NO_LIMITER_CLIP_SOURCES } from "./no-limiter.js";
 import { LIMITER_MISSING_DELAY_MS, LIMITER_ON_TRACK_DELAY_MS, PIT_LIMITER_CLIP_SOURCES } from "./pit-limiter.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import { _resetRadarEngine } from "./radar-engine.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
+import { TIRE_WEAR_CLIP_SOURCES } from "./tire-wear.js";
 
 const mockSessionType = vi.fn(() => "Race");
 // Live-telemetry feed. Most of this file leaves it at `null` — the pre-#1051
@@ -417,6 +419,14 @@ const PIT_LIMITER_CLIP_PATHS = [
   `voice/${VOICE}/pit-limiter/entry-01.mp3`,
 ] as const;
 
+// Tire-wear clips referenced from `tire-wear.ts` (issue #1108) — one variant of
+// each line, plus the whole-percent numbers the tread vars draw from the
+// `numbers-percent` group, whose clips speak the unit themselves.
+const TIRE_WEAR_CLIP_PATHS = [
+  ...TIRE_WEAR_CLIP_SOURCES.map(({ group, base }) => `voice/${VOICE}/${group}/${base}-01.mp3`),
+  ...[85, 87, 89, 91].map((n) => `voice/${VOICE}/numbers-percent/${n}.mp3`),
+] as const;
+
 const manifest: AudioAssetsManifest = {
   clips: [
     "sfx/IRD-tick-open.mp3",
@@ -436,6 +446,7 @@ const manifest: AudioAssetsManifest = {
     ...FUEL_LAPS_LEFT_CLIP_PATHS,
     ...GAP_CLIP_PATHS,
     ...PIT_LIMITER_CLIP_PATHS,
+    ...TIRE_WEAR_CLIP_PATHS,
   ],
   ambientLoop: "sfx/IRD-ambient-pit.mp3",
   ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
@@ -522,6 +533,7 @@ let incidentEnabled: Map<IncidentCalloutId, boolean>;
 let pitStatusEnabled: Map<PitStatusCalloutId, boolean>;
 let pitBoxEnabled: boolean;
 let pitWindowEnabled: Map<PitWindowCalloutId, boolean>;
+let tireWearEnabled: Map<TireWearCalloutId, boolean>;
 let opponentPitEnabled: Map<OpponentPitCalloutId, boolean>;
 let opponentPitLivePosition: number | null;
 let rollingStartEnabled: Map<RollingStartCalloutId, boolean>;
@@ -549,6 +561,7 @@ beforeEach(() => {
   pitStatusEnabled = new Map<PitStatusCalloutId, boolean>();
   pitBoxEnabled = true;
   pitWindowEnabled = new Map<PitWindowCalloutId, boolean>([["pit-open-closed", true]]);
+  tireWearEnabled = new Map<TireWearCalloutId, boolean>([["report", true]]);
   opponentPitEnabled = new Map<OpponentPitCalloutId, boolean>([
     ["leader", true],
     ["nearby", true],
@@ -582,6 +595,7 @@ beforeEach(() => {
     getIncidentCalloutEnabled: (id) => incidentEnabled.get(id) ?? true,
     getPitBoxCalloutEnabled: () => pitBoxEnabled,
     getPitWindowCalloutEnabled: (id) => pitWindowEnabled.get(id) ?? true,
+    getTireWearCalloutEnabled: (id) => tireWearEnabled.get(id) ?? true,
     getRollingStartCalloutEnabled: (id) => rollingStartEnabled.get(id) ?? true,
     getStartLightCalloutEnabled: () => true,
     getFuelCalloutEnabled: (id) => fuelEnabled.get(id) ?? true,
@@ -1669,6 +1683,48 @@ describe("rolling-start family registration (issue #660)", () => {
   it("is suppressed when the master gate is off", () => {
     voiceMasterEnabled = false;
     bus.publishEvent("rollingStart.pace-car-moving.raised", {} as never);
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([]);
+  });
+});
+
+// Issue #1108: the tire-wear report is registered by `registerPitCrew` and
+// wrapped by the master gate + its single opt-in (`report`). These tests
+// confirm the wiring; the report's content, `where:` and scheduling against
+// the exit readback are covered in `tire-wear.test.ts`.
+describe("tire-wear family registration (issue #1108)", () => {
+  const REPORT = {
+    corners: {
+      lf: { inside: 89.2, middle: 90.4, outside: 91.1, tread: 89.2, zone: "inside" },
+      rf: { inside: 90.6, middle: 91.3, outside: 92.8, tread: 90.6, zone: "inside" },
+      lr: { inside: 87.9, middle: 87.4, outside: 88.6, tread: 87.4, zone: "middle" },
+      rr: { inside: 85.3, middle: 86.1, outside: 88.0, tread: 85.3, zone: "inside" },
+    },
+    heaviest: { corner: "rr", zone: "inside" },
+  } as const;
+
+  it("reads the report when the opt-in is on", () => {
+    bus.publishEvent("tireWear.reported", REPORT as never);
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toContain(`voice/${VOICE}/tire-wear/left-front-01.mp3`);
+    expect(voiceClipsPlayed()).toContain(`voice/${VOICE}/numbers-percent/85.mp3`);
+    expect(voiceClipsPlayed().at(-1)).toBe(`voice/${VOICE}/tire-wear/heaviest-rr-inside-01.mp3`);
+  });
+
+  it("is suppressed, with a debug line, when the opt-in is off", () => {
+    tireWearEnabled.set("report", false);
+    bus.publishEvent("tireWear.reported", REPORT as never);
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([]);
+    expect(mockLogger.debug).toHaveBeenCalledWith("tire-wear callout suppressed: report");
+  });
+
+  it("is suppressed when the master gate is off", () => {
+    voiceMasterEnabled = false;
+    bus.publishEvent("tireWear.reported", REPORT as never);
     flush(audio);
 
     expect(voiceClipsPlayed()).toEqual([]);

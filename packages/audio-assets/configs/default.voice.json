@@ -2826,6 +2826,7 @@
         "name": "0",
         "text": "zero",
         "seed": 2,
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -2834,8 +2835,8 @@
       {
         "name": "1",
         "text": "one",
-        "next_text": " degrees Celsius,",
         "seed": 10,
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -2844,6 +2845,7 @@
       {
         "name": "2",
         "text": "two",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -2852,6 +2854,7 @@
       {
         "name": "3",
         "text": "three",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -2860,6 +2863,7 @@
       {
         "name": "4",
         "text": "four",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -2868,6 +2872,7 @@
       {
         "name": "5",
         "text": "five",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -2876,6 +2881,7 @@
       {
         "name": "6",
         "text": "six",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -2884,6 +2890,7 @@
       {
         "name": "7",
         "text": "seven",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -2892,6 +2899,7 @@
       {
         "name": "8",
         "text": "eight",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -2900,8 +2908,8 @@
       {
         "name": "9",
         "text": "nine",
+        "seed": 3,
         "next_text": " degrees Celsius,",
-        "seed": 2,
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -2910,8 +2918,8 @@
       {
         "name": "10",
         "text": "ten",
+        "seed": 4,
         "next_text": " degrees Celsius,",
-        "seed": 3,
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -2920,8 +2928,8 @@
       {
         "name": "11",
         "text": "eleven",
-        "next_text": " degrees Celsius,",
         "seed": 2,
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -2930,6 +2938,7 @@
       {
         "name": "12",
         "text": "twelve",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -2937,20 +2946,19 @@
       },
       {
         "name": "13",
-        "text": "thirteen.",
-        "seed": 5,
+        "text": "thirteen",
+        "seed": 6,
         "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
-        ],
-        "voice_settings": {
-          "speed": 0.9
-        }
+        ]
       },
       {
         "name": "14",
         "text": "fourteen",
+        "seed": 2,
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -2986,7 +2994,7 @@
       },
       {
         "name": "18",
-        "text": "eighteen.",
+        "text": "eighteen",
         "seed": 4,
         "next_text": " degrees Celsius,",
         "previous_request_ids": [
@@ -3001,6 +3009,7 @@
         "name": "19",
         "text": "nineteen",
         "seed": 2,
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3009,6 +3018,7 @@
       {
         "name": "20",
         "text": "twenty",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3017,6 +3027,7 @@
       {
         "name": "21",
         "text": "twenty one",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3025,6 +3036,7 @@
       {
         "name": "22",
         "text": "twenty two",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3033,6 +3045,7 @@
       {
         "name": "23",
         "text": "twenty three",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3042,6 +3055,7 @@
         "name": "24",
         "text": "twenty four",
         "seed": 4,
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3050,6 +3064,7 @@
       {
         "name": "25",
         "text": "twenty five",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3058,6 +3073,7 @@
       {
         "name": "26",
         "text": "twenty six",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3066,6 +3082,7 @@
       {
         "name": "27",
         "text": "twenty seven",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3074,6 +3091,7 @@
       {
         "name": "28",
         "text": "twenty eight",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3082,6 +3100,7 @@
       {
         "name": "29",
         "text": "twenty nine",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3090,6 +3109,7 @@
       {
         "name": "30",
         "text": "thirty",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3098,6 +3118,7 @@
       {
         "name": "31",
         "text": "thirty one",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3106,6 +3127,7 @@
       {
         "name": "32",
         "text": "thirty two",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3114,6 +3136,7 @@
       {
         "name": "33",
         "text": "thirty three",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3122,6 +3145,7 @@
       {
         "name": "34",
         "text": "thirty four",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3130,6 +3154,7 @@
       {
         "name": "35",
         "text": "thirty five",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3138,6 +3163,7 @@
       {
         "name": "36",
         "text": "thirty six",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3146,6 +3172,7 @@
       {
         "name": "37",
         "text": "thirty seven",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3154,6 +3181,7 @@
       {
         "name": "38",
         "text": "thirty eight",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3162,6 +3190,7 @@
       {
         "name": "39",
         "text": "thirty nine",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3170,6 +3199,7 @@
       {
         "name": "40",
         "text": "forty",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3178,6 +3208,7 @@
       {
         "name": "41",
         "text": "forty one",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3186,6 +3217,7 @@
       {
         "name": "42",
         "text": "forty two",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3194,6 +3226,7 @@
       {
         "name": "43",
         "text": "forty three",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3202,6 +3235,7 @@
       {
         "name": "44",
         "text": "forty four",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3210,6 +3244,7 @@
       {
         "name": "45",
         "text": "forty five",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3218,6 +3253,7 @@
       {
         "name": "46",
         "text": "forty six",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3226,6 +3262,7 @@
       {
         "name": "47",
         "text": "forty seven",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3234,6 +3271,7 @@
       {
         "name": "48",
         "text": "forty eight",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3242,6 +3280,7 @@
       {
         "name": "49",
         "text": "forty nine",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3250,6 +3289,7 @@
       {
         "name": "50",
         "text": "fifty",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3258,6 +3298,7 @@
       {
         "name": "51",
         "text": "fifty one",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3266,6 +3307,7 @@
       {
         "name": "52",
         "text": "fifty two",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3274,6 +3316,7 @@
       {
         "name": "53",
         "text": "fifty three",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3282,6 +3325,7 @@
       {
         "name": "54",
         "text": "fifty four",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3290,6 +3334,7 @@
       {
         "name": "55",
         "text": "fifty five",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3298,6 +3343,7 @@
       {
         "name": "56",
         "text": "fifty six",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3306,6 +3352,7 @@
       {
         "name": "57",
         "text": "fifty seven",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3314,6 +3361,7 @@
       {
         "name": "58",
         "text": "fifty eight",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3322,6 +3370,7 @@
       {
         "name": "59",
         "text": "fifty nine",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3330,6 +3379,7 @@
       {
         "name": "60",
         "text": "sixty",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3338,6 +3388,7 @@
       {
         "name": "61",
         "text": "sixty one",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3346,6 +3397,7 @@
       {
         "name": "62",
         "text": "sixty two",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3354,6 +3406,7 @@
       {
         "name": "63",
         "text": "sixty three",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3362,6 +3415,7 @@
       {
         "name": "64",
         "text": "sixty four",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3370,6 +3424,7 @@
       {
         "name": "65",
         "text": "sixty five",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3378,6 +3433,7 @@
       {
         "name": "66",
         "text": "sixty six",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3386,6 +3442,7 @@
       {
         "name": "67",
         "text": "sixty seven",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3394,6 +3451,7 @@
       {
         "name": "68",
         "text": "sixty eight",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3402,6 +3460,7 @@
       {
         "name": "69",
         "text": "sixty nine",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3410,6 +3469,7 @@
       {
         "name": "70",
         "text": "seventy",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3418,6 +3478,7 @@
       {
         "name": "71",
         "text": "seventy one",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3426,6 +3487,7 @@
       {
         "name": "72",
         "text": "seventy two",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3434,6 +3496,7 @@
       {
         "name": "73",
         "text": "seventy three",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3442,6 +3505,7 @@
       {
         "name": "74",
         "text": "seventy four",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3450,6 +3514,7 @@
       {
         "name": "75",
         "text": "seventy five",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3458,6 +3523,7 @@
       {
         "name": "76",
         "text": "seventy six",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3466,6 +3532,7 @@
       {
         "name": "77",
         "text": "seventy seven",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3474,6 +3541,7 @@
       {
         "name": "78",
         "text": "seventy eight",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3482,6 +3550,7 @@
       {
         "name": "79",
         "text": "seventy nine",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3490,6 +3559,7 @@
       {
         "name": "80",
         "text": "eighty",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3498,6 +3568,7 @@
       {
         "name": "81",
         "text": "eighty one",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3506,6 +3577,7 @@
       {
         "name": "82",
         "text": "eighty two",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3514,6 +3586,7 @@
       {
         "name": "83",
         "text": "eighty three",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3522,6 +3595,7 @@
       {
         "name": "84",
         "text": "eighty four",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3530,6 +3604,7 @@
       {
         "name": "85",
         "text": "eighty five",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3538,6 +3613,7 @@
       {
         "name": "86",
         "text": "eighty six",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3546,6 +3622,7 @@
       {
         "name": "87",
         "text": "eighty seven",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3554,6 +3631,7 @@
       {
         "name": "88",
         "text": "eighty eight",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3562,6 +3640,7 @@
       {
         "name": "89",
         "text": "eighty nine",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3570,6 +3649,7 @@
       {
         "name": "90",
         "text": "ninety",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3578,6 +3658,7 @@
       {
         "name": "91",
         "text": "ninety one",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3586,6 +3667,7 @@
       {
         "name": "92",
         "text": "ninety two",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3594,6 +3676,7 @@
       {
         "name": "93",
         "text": "ninety three",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3602,6 +3685,7 @@
       {
         "name": "94",
         "text": "ninety four",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3610,6 +3694,7 @@
       {
         "name": "95",
         "text": "ninety five",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3618,6 +3703,7 @@
       {
         "name": "96",
         "text": "ninety six",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3626,6 +3712,7 @@
       {
         "name": "97",
         "text": "ninety seven",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3634,6 +3721,7 @@
       {
         "name": "98",
         "text": "ninety eight",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3642,6 +3730,7 @@
       {
         "name": "99",
         "text": "ninety nine",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3650,6 +3739,7 @@
       {
         "name": "100",
         "text": "one hundred",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3658,6 +3748,7 @@
       {
         "name": "101",
         "text": "one hundred one",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3666,6 +3757,7 @@
       {
         "name": "102",
         "text": "one hundred two",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3674,6 +3766,7 @@
       {
         "name": "103",
         "text": "one hundred three",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3682,6 +3775,7 @@
       {
         "name": "104",
         "text": "one hundred four",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3690,6 +3784,7 @@
       {
         "name": "105",
         "text": "one hundred five",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3698,6 +3793,7 @@
       {
         "name": "106",
         "text": "one hundred six",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3706,6 +3802,7 @@
       {
         "name": "107",
         "text": "one hundred seven",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3714,6 +3811,7 @@
       {
         "name": "108",
         "text": "one hundred eight",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3722,6 +3820,7 @@
       {
         "name": "109",
         "text": "one hundred nine",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3730,6 +3829,7 @@
       {
         "name": "110",
         "text": "one hundred ten",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3738,6 +3838,7 @@
       {
         "name": "111",
         "text": "one hundred eleven",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3746,6 +3847,7 @@
       {
         "name": "112",
         "text": "one hundred twelve",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3754,6 +3856,7 @@
       {
         "name": "113",
         "text": "one hundred thirteen",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3762,6 +3865,7 @@
       {
         "name": "114",
         "text": "one hundred fourteen",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3770,6 +3874,7 @@
       {
         "name": "115",
         "text": "one hundred fifteen",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3778,6 +3883,7 @@
       {
         "name": "116",
         "text": "one hundred sixteen",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3786,6 +3892,7 @@
       {
         "name": "117",
         "text": "one hundred seventeen",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3794,6 +3901,7 @@
       {
         "name": "118",
         "text": "one hundred eighteen",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3802,6 +3910,7 @@
       {
         "name": "119",
         "text": "one hundred nineteen",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3810,6 +3919,7 @@
       {
         "name": "120",
         "text": "one hundred twenty",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3818,6 +3928,7 @@
       {
         "name": "121",
         "text": "one hundred twenty one",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3826,6 +3937,7 @@
       {
         "name": "122",
         "text": "one hundred twenty two",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3834,14 +3946,15 @@
       {
         "name": "123",
         "text": "one hundred twenty three",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
-          "session-start/track-temp-intro",
-          "session-start/air-temp-intro"
+          "session-start/track-temp-intro"
         ]
       },
       {
         "name": "124",
         "text": "one hundred twenty four",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3850,6 +3963,7 @@
       {
         "name": "125",
         "text": "one hundred twenty five",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3858,6 +3972,7 @@
       {
         "name": "126",
         "text": "one hundred twenty six",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3866,6 +3981,7 @@
       {
         "name": "127",
         "text": "one hundred twenty seven",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3874,6 +3990,7 @@
       {
         "name": "128",
         "text": "one hundred twenty eight",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3882,6 +3999,7 @@
       {
         "name": "129",
         "text": "one hundred twenty nine",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3890,6 +4008,7 @@
       {
         "name": "130",
         "text": "one hundred thirty",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3898,6 +4017,7 @@
       {
         "name": "131",
         "text": "one hundred thirty one",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3906,6 +4026,7 @@
       {
         "name": "132",
         "text": "one hundred thirty two",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3914,6 +4035,7 @@
       {
         "name": "133",
         "text": "one hundred thirty three",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3922,6 +4044,7 @@
       {
         "name": "134",
         "text": "one hundred thirty four",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3930,6 +4053,7 @@
       {
         "name": "135",
         "text": "one hundred thirty five",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3938,6 +4062,7 @@
       {
         "name": "136",
         "text": "one hundred thirty six",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3946,6 +4071,7 @@
       {
         "name": "137",
         "text": "one hundred thirty seven",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3954,6 +4080,7 @@
       {
         "name": "138",
         "text": "one hundred thirty eight",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3962,6 +4089,7 @@
       {
         "name": "139",
         "text": "one hundred thirty nine",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3970,6 +4098,7 @@
       {
         "name": "140",
         "text": "one hundred forty",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3978,6 +4107,7 @@
       {
         "name": "141",
         "text": "one hundred forty one",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3986,6 +4116,7 @@
       {
         "name": "142",
         "text": "one hundred forty two",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -3994,6 +4125,7 @@
       {
         "name": "143",
         "text": "one hundred forty three",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -4002,6 +4134,7 @@
       {
         "name": "144",
         "text": "one hundred forty four",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -4010,6 +4143,7 @@
       {
         "name": "145",
         "text": "one hundred forty five",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -4018,6 +4152,7 @@
       {
         "name": "146",
         "text": "one hundred forty six",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -4026,6 +4161,7 @@
       {
         "name": "147",
         "text": "one hundred forty seven",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -4034,6 +4170,7 @@
       {
         "name": "148",
         "text": "one hundred forty eight",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -4042,6 +4179,7 @@
       {
         "name": "149",
         "text": "one hundred forty nine",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -4050,6 +4188,7 @@
       {
         "name": "150",
         "text": "one hundred fifty",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -17792,6 +17931,482 @@
           "caution/one-to-go-outside-01"
         ]
       }
+    ],
+    "numbers-percent": [
+      {
+        "name": "0",
+        "text": "zero percent."
+      },
+      {
+        "name": "1",
+        "text": "one percent."
+      },
+      {
+        "name": "2",
+        "text": "two percent."
+      },
+      {
+        "name": "3",
+        "text": "three percent."
+      },
+      {
+        "name": "4",
+        "text": "four percent."
+      },
+      {
+        "name": "5",
+        "text": "five percent."
+      },
+      {
+        "name": "6",
+        "text": "six percent."
+      },
+      {
+        "name": "7",
+        "text": "seven percent."
+      },
+      {
+        "name": "8",
+        "text": "eight percent."
+      },
+      {
+        "name": "9",
+        "text": "nine percent."
+      },
+      {
+        "name": "10",
+        "text": "ten percent."
+      },
+      {
+        "name": "11",
+        "text": "eleven percent."
+      },
+      {
+        "name": "12",
+        "text": "twelve percent."
+      },
+      {
+        "name": "13",
+        "text": "thirteen percent."
+      },
+      {
+        "name": "14",
+        "text": "fourteen percent."
+      },
+      {
+        "name": "15",
+        "text": "fifteen percent."
+      },
+      {
+        "name": "16",
+        "text": "sixteen percent."
+      },
+      {
+        "name": "17",
+        "text": "seventeen percent."
+      },
+      {
+        "name": "18",
+        "text": "eighteen percent."
+      },
+      {
+        "name": "19",
+        "text": "nineteen percent."
+      },
+      {
+        "name": "20",
+        "text": "twenty percent."
+      },
+      {
+        "name": "21",
+        "text": "twenty one percent."
+      },
+      {
+        "name": "22",
+        "text": "twenty two percent."
+      },
+      {
+        "name": "23",
+        "text": "twenty three percent."
+      },
+      {
+        "name": "24",
+        "text": "twenty four percent."
+      },
+      {
+        "name": "25",
+        "text": "twenty five percent."
+      },
+      {
+        "name": "26",
+        "text": "twenty six percent."
+      },
+      {
+        "name": "27",
+        "text": "twenty seven percent."
+      },
+      {
+        "name": "28",
+        "text": "twenty eight percent."
+      },
+      {
+        "name": "29",
+        "text": "twenty nine percent."
+      },
+      {
+        "name": "30",
+        "text": "thirty percent."
+      },
+      {
+        "name": "31",
+        "text": "thirty one percent."
+      },
+      {
+        "name": "32",
+        "text": "thirty two percent."
+      },
+      {
+        "name": "33",
+        "text": "thirty three percent."
+      },
+      {
+        "name": "34",
+        "text": "thirty four percent."
+      },
+      {
+        "name": "35",
+        "text": "thirty five percent."
+      },
+      {
+        "name": "36",
+        "text": "thirty six percent."
+      },
+      {
+        "name": "37",
+        "text": "thirty seven percent."
+      },
+      {
+        "name": "38",
+        "text": "thirty eight percent."
+      },
+      {
+        "name": "39",
+        "text": "thirty nine percent."
+      },
+      {
+        "name": "40",
+        "text": "forty percent."
+      },
+      {
+        "name": "41",
+        "text": "forty one percent."
+      },
+      {
+        "name": "42",
+        "text": "forty two percent."
+      },
+      {
+        "name": "43",
+        "text": "forty three percent."
+      },
+      {
+        "name": "44",
+        "text": "forty four percent."
+      },
+      {
+        "name": "45",
+        "text": "forty five percent."
+      },
+      {
+        "name": "46",
+        "text": "forty six percent."
+      },
+      {
+        "name": "47",
+        "text": "forty seven percent."
+      },
+      {
+        "name": "48",
+        "text": "forty eight percent."
+      },
+      {
+        "name": "49",
+        "text": "forty nine percent."
+      },
+      {
+        "name": "50",
+        "text": "fifty percent."
+      },
+      {
+        "name": "51",
+        "text": "fifty one percent."
+      },
+      {
+        "name": "52",
+        "text": "fifty two percent."
+      },
+      {
+        "name": "53",
+        "text": "fifty three percent."
+      },
+      {
+        "name": "54",
+        "text": "fifty four percent."
+      },
+      {
+        "name": "55",
+        "text": "fifty five percent."
+      },
+      {
+        "name": "56",
+        "text": "fifty six percent."
+      },
+      {
+        "name": "57",
+        "text": "fifty seven percent."
+      },
+      {
+        "name": "58",
+        "text": "fifty eight percent."
+      },
+      {
+        "name": "59",
+        "text": "fifty nine percent."
+      },
+      {
+        "name": "60",
+        "text": "sixty percent."
+      },
+      {
+        "name": "61",
+        "text": "sixty one percent."
+      },
+      {
+        "name": "62",
+        "text": "sixty two percent."
+      },
+      {
+        "name": "63",
+        "text": "sixty three percent."
+      },
+      {
+        "name": "64",
+        "text": "sixty four percent."
+      },
+      {
+        "name": "65",
+        "text": "sixty five percent."
+      },
+      {
+        "name": "66",
+        "text": "sixty six percent."
+      },
+      {
+        "name": "67",
+        "text": "sixty seven percent."
+      },
+      {
+        "name": "68",
+        "text": "sixty eight percent."
+      },
+      {
+        "name": "69",
+        "text": "sixty nine percent."
+      },
+      {
+        "name": "70",
+        "text": "seventy percent."
+      },
+      {
+        "name": "71",
+        "text": "seventy one percent."
+      },
+      {
+        "name": "72",
+        "text": "seventy two percent."
+      },
+      {
+        "name": "73",
+        "text": "seventy three percent."
+      },
+      {
+        "name": "74",
+        "text": "seventy four percent."
+      },
+      {
+        "name": "75",
+        "text": "seventy five percent."
+      },
+      {
+        "name": "76",
+        "text": "seventy six percent."
+      },
+      {
+        "name": "77",
+        "text": "seventy seven percent."
+      },
+      {
+        "name": "78",
+        "text": "seventy eight percent."
+      },
+      {
+        "name": "79",
+        "text": "seventy nine percent."
+      },
+      {
+        "name": "80",
+        "text": "eighty percent."
+      },
+      {
+        "name": "81",
+        "text": "eighty one percent."
+      },
+      {
+        "name": "82",
+        "text": "eighty two percent."
+      },
+      {
+        "name": "83",
+        "text": "eighty three percent."
+      },
+      {
+        "name": "84",
+        "text": "eighty four percent."
+      },
+      {
+        "name": "85",
+        "text": "eighty five percent."
+      },
+      {
+        "name": "86",
+        "text": "eighty six percent."
+      },
+      {
+        "name": "87",
+        "text": "eighty seven percent."
+      },
+      {
+        "name": "88",
+        "text": "eighty eight percent."
+      },
+      {
+        "name": "89",
+        "text": "eighty nine percent."
+      },
+      {
+        "name": "90",
+        "text": "ninety percent."
+      },
+      {
+        "name": "91",
+        "text": "ninety one percent."
+      },
+      {
+        "name": "92",
+        "text": "ninety two percent."
+      },
+      {
+        "name": "93",
+        "text": "ninety three percent."
+      },
+      {
+        "name": "94",
+        "text": "ninety four percent."
+      },
+      {
+        "name": "95",
+        "text": "ninety five percent."
+      },
+      {
+        "name": "96",
+        "text": "ninety six percent."
+      },
+      {
+        "name": "97",
+        "text": "ninety seven percent."
+      },
+      {
+        "name": "98",
+        "text": "ninety eight percent."
+      },
+      {
+        "name": "99",
+        "text": "ninety nine percent."
+      },
+      {
+        "name": "100",
+        "text": "one hundred percent."
+      }
+    ],
+    "tire-wear": [
+      {
+        "name": "intro-01",
+        "text": "Tire wear at the pit stop:"
+      },
+      {
+        "name": "left-front-01",
+        "text": "Left front:"
+      },
+      {
+        "name": "right-front-01",
+        "text": "Right front:"
+      },
+      {
+        "name": "left-rear-01",
+        "text": "Left rear:"
+      },
+      {
+        "name": "right-rear-01",
+        "text": "Right rear:"
+      },
+      {
+        "name": "heaviest-lf-inside-01",
+        "text": "Wear is heaviest on the left front, inside shoulder."
+      },
+      {
+        "name": "heaviest-lf-middle-01",
+        "text": "Wear is heaviest in the middle of the left front."
+      },
+      {
+        "name": "heaviest-lf-outside-01",
+        "text": "Wear is heaviest on the left front, outside shoulder."
+      },
+      {
+        "name": "heaviest-rf-inside-01",
+        "text": "Wear is heaviest on the right front, inside shoulder."
+      },
+      {
+        "name": "heaviest-rf-middle-01",
+        "text": "Wear is heaviest in the middle of the right front."
+      },
+      {
+        "name": "heaviest-rf-outside-01",
+        "text": "Wear is heaviest on the right front, outside shoulder."
+      },
+      {
+        "name": "heaviest-lr-inside-01",
+        "text": "Wear is heaviest on the left rear, inside shoulder."
+      },
+      {
+        "name": "heaviest-lr-middle-01",
+        "text": "Wear is heaviest in the middle of the left rear."
+      },
+      {
+        "name": "heaviest-lr-outside-01",
+        "text": "Wear is heaviest on the left rear, outside shoulder."
+      },
+      {
+        "name": "heaviest-rr-inside-01",
+        "text": "Wear is heaviest on the right rear, inside shoulder."
+      },
+      {
+        "name": "heaviest-rr-middle-01",
+        "text": "Wear is heaviest in the middle of the right rear."
+      },
+      {
+        "name": "heaviest-rr-outside-01",
+        "text": "Wear is heaviest on the right rear, outside shoulder."
+      }
     ]
   },
   "scenarios": {
@@ -18122,6 +18737,47 @@
           "if": "!readback.hasAnyService",
           "then": ["pool:pit-readback/empty-fallback"],
           "else": ["@readback-body"]
+        }
+      ]
+    },
+    "pit-crew.tire-wear-report": {
+      "comment": "After a pit stop, once the exit readback has played: the remaining tread of all four tires, front to rear, each as the lowest of its three zones in whole percent, then where the wear is heaviest, a sentence left out when every tire still reads one hundred. After a tire change the numbers describe the set that came off.",
+      "test": "Harness → Tire Wear → Report after a stop. In-sim: drive into your box, stop, and leave pit road; the report follows the exit readback.",
+      "sequence": [
+        "pool:tire-wear/intro",
+        "pool:tire-wear/left-front",
+        "{{tireWear.leftFrontTread}}",
+        "pool:tire-wear/right-front",
+        "{{tireWear.rightFrontTread}}",
+        "pool:tire-wear/left-rear",
+        "{{tireWear.leftRearTread}}",
+        "pool:tire-wear/right-rear",
+        "{{tireWear.rightRearTread}}",
+        {
+          "optional": [
+            {
+              "if": "tireWear.hasWear",
+              "then": [
+                {
+                  "case": "tireWear.heaviestSpot",
+                  "of": {
+                    "lf-inside": ["pool:tire-wear/heaviest-lf-inside"],
+                    "lf-middle": ["pool:tire-wear/heaviest-lf-middle"],
+                    "lf-outside": ["pool:tire-wear/heaviest-lf-outside"],
+                    "rf-inside": ["pool:tire-wear/heaviest-rf-inside"],
+                    "rf-middle": ["pool:tire-wear/heaviest-rf-middle"],
+                    "rf-outside": ["pool:tire-wear/heaviest-rf-outside"],
+                    "lr-inside": ["pool:tire-wear/heaviest-lr-inside"],
+                    "lr-middle": ["pool:tire-wear/heaviest-lr-middle"],
+                    "lr-outside": ["pool:tire-wear/heaviest-lr-outside"],
+                    "rr-inside": ["pool:tire-wear/heaviest-rr-inside"],
+                    "rr-middle": ["pool:tire-wear/heaviest-rr-middle"],
+                    "rr-outside": ["pool:tire-wear/heaviest-rr-outside"]
+                  }
+                }
+              ]
+            }
+          ]
         }
       ]
     },

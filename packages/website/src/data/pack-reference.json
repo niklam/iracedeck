@@ -4126,6 +4126,73 @@
       }
     },
     {
+      "id": "pit-crew.tire-wear-report",
+      "family": "tire-wear",
+      "event": "tireWear.reported",
+      "description": "You leave pit road after stopping in your pit box under your own power and stay out for about four and a half seconds, right behind the exit readback.",
+      "frame": "radio",
+      "weight": 50,
+      "weightBand": "NORMAL",
+      "queueable": true,
+      "interrupt": false,
+      "speakGate": null,
+      "base": "voice/{voice}",
+      "comment": "After a pit stop, once the exit readback has played: the remaining tread of all four tires, front to rear, each as the lowest of its three zones in whole percent, then where the wear is heaviest, a sentence left out when every tire still reads one hundred. After a tire change the numbers describe the set that came off.",
+      "test": "Harness → Tire Wear → Report after a stop. In-sim: drive into your box, stop, and leave pit road; the report follows the exit readback.",
+      "skip": false,
+      "references": {
+        "pools": [
+          "tire-wear/heaviest-lf-inside",
+          "tire-wear/heaviest-lf-middle",
+          "tire-wear/heaviest-lf-outside",
+          "tire-wear/heaviest-lr-inside",
+          "tire-wear/heaviest-lr-middle",
+          "tire-wear/heaviest-lr-outside",
+          "tire-wear/heaviest-rf-inside",
+          "tire-wear/heaviest-rf-middle",
+          "tire-wear/heaviest-rf-outside",
+          "tire-wear/heaviest-rr-inside",
+          "tire-wear/heaviest-rr-middle",
+          "tire-wear/heaviest-rr-outside",
+          "tire-wear/intro",
+          "tire-wear/left-front",
+          "tire-wear/left-rear",
+          "tire-wear/right-front",
+          "tire-wear/right-rear"
+        ],
+        "vars": [
+          "tireWear.leftFrontTread",
+          "tireWear.leftRearTread",
+          "tireWear.rightFrontTread",
+          "tireWear.rightRearTread"
+        ],
+        "conds": [
+          "tireWear.hasWear"
+        ],
+        "cases": [
+          {
+            "name": "tireWear.heaviestSpot",
+            "keys": [
+              "lf-inside",
+              "lf-middle",
+              "lf-outside",
+              "lr-inside",
+              "lr-middle",
+              "lr-outside",
+              "rf-inside",
+              "rf-middle",
+              "rf-outside",
+              "rr-inside",
+              "rr-middle",
+              "rr-outside"
+            ]
+          }
+        ],
+        "includes": [],
+        "frames": []
+      }
+    },
+    {
       "id": "pit-crew.toggle-fast-repair-off",
       "family": "pit-service.fast-repair",
       "event": "pitService.toggled",
@@ -4957,6 +5024,39 @@
           "pit-crew.spotter-call",
           "pit-crew.spotter-info"
         ]
+      },
+      {
+        "name": "tireWear.heaviestTread",
+        "description": "The remaining tread on the most-worn tire from the tire-wear report as a whole percent — the lowest of all twelve zone readings, rounded — spoken by the numbers-percent clip group, whose lines carry the word percent themselves, and nothing outside that report.",
+        "usedBy": []
+      },
+      {
+        "name": "tireWear.leftFrontTread",
+        "description": "The left-front tire's remaining tread from the tire-wear report as a whole percent — the lowest of its three zones, rounded — spoken by the numbers-percent clip group, whose lines carry the word percent themselves, and nothing outside that report.",
+        "usedBy": [
+          "pit-crew.tire-wear-report"
+        ]
+      },
+      {
+        "name": "tireWear.leftRearTread",
+        "description": "The left-rear tire's remaining tread from the tire-wear report as a whole percent — the lowest of its three zones, rounded — spoken by the numbers-percent clip group, whose lines carry the word percent themselves, and nothing outside that report.",
+        "usedBy": [
+          "pit-crew.tire-wear-report"
+        ]
+      },
+      {
+        "name": "tireWear.rightFrontTread",
+        "description": "The right-front tire's remaining tread from the tire-wear report as a whole percent — the lowest of its three zones, rounded — spoken by the numbers-percent clip group, whose lines carry the word percent themselves, and nothing outside that report.",
+        "usedBy": [
+          "pit-crew.tire-wear-report"
+        ]
+      },
+      {
+        "name": "tireWear.rightRearTread",
+        "description": "The right-rear tire's remaining tread from the tire-wear report as a whole percent — the lowest of its three zones, rounded — spoken by the numbers-percent clip group, whose lines carry the word percent themselves, and nothing outside that report.",
+        "usedBy": [
+          "pit-crew.tire-wear-report"
+        ]
       }
     ],
     "conds": [
@@ -5139,6 +5239,13 @@
         "usedBy": [
           "pit-crew.race-start"
         ]
+      },
+      {
+        "name": "tireWear.hasWear",
+        "description": "At least one tire in the tire-wear report reads below one hundred percent as a whole number, so a heaviest-wear sentence names real wear rather than a tie-break between untouched tires.",
+        "usedBy": [
+          "pit-crew.tire-wear-report"
+        ]
       }
     ],
     "cases": [
@@ -5264,6 +5371,48 @@
           "pit-crew.flag-green",
           "pit-crew.flag-white"
         ]
+      },
+      {
+        "name": "tireWear.heaviestCorner",
+        "description": "Which tire the tire-wear report found the least tread left on, whatever the zone.",
+        "keys": {
+          "lf": "The left-front tire.",
+          "rf": "The right-front tire.",
+          "lr": "The left-rear tire.",
+          "rr": "The right-rear tire."
+        },
+        "usedBy": []
+      },
+      {
+        "name": "tireWear.heaviestSpot",
+        "description": "Where the tire-wear report found the least tread left, as the tire and the zone of its tread together (lf-inside … rr-outside); ties go to the first tire front to rear, left before right, then inside before middle before outside.",
+        "keys": {
+          "lf-inside": "The inside shoulder of the left-front tire, the edge nearer the car's centerline.",
+          "lf-middle": "The middle of the left-front tire's tread.",
+          "lf-outside": "The outside shoulder of the left-front tire, the edge farther from the car's centerline.",
+          "rf-inside": "The inside shoulder of the right-front tire, the edge nearer the car's centerline.",
+          "rf-middle": "The middle of the right-front tire's tread.",
+          "rf-outside": "The outside shoulder of the right-front tire, the edge farther from the car's centerline.",
+          "lr-inside": "The inside shoulder of the left-rear tire, the edge nearer the car's centerline.",
+          "lr-middle": "The middle of the left-rear tire's tread.",
+          "lr-outside": "The outside shoulder of the left-rear tire, the edge farther from the car's centerline.",
+          "rr-inside": "The inside shoulder of the right-rear tire, the edge nearer the car's centerline.",
+          "rr-middle": "The middle of the right-rear tire's tread.",
+          "rr-outside": "The outside shoulder of the right-rear tire, the edge farther from the car's centerline."
+        },
+        "usedBy": [
+          "pit-crew.tire-wear-report"
+        ]
+      },
+      {
+        "name": "tireWear.heaviestZone",
+        "description": "Which zone of the most-worn tire's tread the tire-wear report found the least tread left in, named from the car's centerline so inside is the same shoulder on either side.",
+        "keys": {
+          "inside": "The inside shoulder — the edge of the tread nearer the car's centerline.",
+          "middle": "The middle of the tread.",
+          "outside": "The outside shoulder — the edge of the tread farther from the car's centerline."
+        },
+        "usedBy": []
       }
     ]
   },
@@ -26987,6 +27136,1627 @@
       ]
     },
     {
+      "group": "numbers-percent",
+      "lines": [
+        {
+          "base": "0",
+          "texts": [
+            "zero percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "1",
+          "texts": [
+            "one percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "10",
+          "texts": [
+            "ten percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "100",
+          "texts": [
+            "one hundred percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "11",
+          "texts": [
+            "eleven percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "12",
+          "texts": [
+            "twelve percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "13",
+          "texts": [
+            "thirteen percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "14",
+          "texts": [
+            "fourteen percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "15",
+          "texts": [
+            "fifteen percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "16",
+          "texts": [
+            "sixteen percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "17",
+          "texts": [
+            "seventeen percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "18",
+          "texts": [
+            "eighteen percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "19",
+          "texts": [
+            "nineteen percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "2",
+          "texts": [
+            "two percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "20",
+          "texts": [
+            "twenty percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "21",
+          "texts": [
+            "twenty one percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "22",
+          "texts": [
+            "twenty two percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "23",
+          "texts": [
+            "twenty three percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "24",
+          "texts": [
+            "twenty four percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "25",
+          "texts": [
+            "twenty five percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "26",
+          "texts": [
+            "twenty six percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "27",
+          "texts": [
+            "twenty seven percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "28",
+          "texts": [
+            "twenty eight percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "29",
+          "texts": [
+            "twenty nine percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "3",
+          "texts": [
+            "three percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "30",
+          "texts": [
+            "thirty percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "31",
+          "texts": [
+            "thirty one percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "32",
+          "texts": [
+            "thirty two percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "33",
+          "texts": [
+            "thirty three percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "34",
+          "texts": [
+            "thirty four percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "35",
+          "texts": [
+            "thirty five percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "36",
+          "texts": [
+            "thirty six percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "37",
+          "texts": [
+            "thirty seven percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "38",
+          "texts": [
+            "thirty eight percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "39",
+          "texts": [
+            "thirty nine percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "4",
+          "texts": [
+            "four percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "40",
+          "texts": [
+            "forty percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "41",
+          "texts": [
+            "forty one percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "42",
+          "texts": [
+            "forty two percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "43",
+          "texts": [
+            "forty three percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "44",
+          "texts": [
+            "forty four percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "45",
+          "texts": [
+            "forty five percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "46",
+          "texts": [
+            "forty six percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "47",
+          "texts": [
+            "forty seven percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "48",
+          "texts": [
+            "forty eight percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "49",
+          "texts": [
+            "forty nine percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "5",
+          "texts": [
+            "five percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "50",
+          "texts": [
+            "fifty percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "51",
+          "texts": [
+            "fifty one percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "52",
+          "texts": [
+            "fifty two percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "53",
+          "texts": [
+            "fifty three percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "54",
+          "texts": [
+            "fifty four percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "55",
+          "texts": [
+            "fifty five percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "56",
+          "texts": [
+            "fifty six percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "57",
+          "texts": [
+            "fifty seven percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "58",
+          "texts": [
+            "fifty eight percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "59",
+          "texts": [
+            "fifty nine percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "6",
+          "texts": [
+            "six percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "60",
+          "texts": [
+            "sixty percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "61",
+          "texts": [
+            "sixty one percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "62",
+          "texts": [
+            "sixty two percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "63",
+          "texts": [
+            "sixty three percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "64",
+          "texts": [
+            "sixty four percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "65",
+          "texts": [
+            "sixty five percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "66",
+          "texts": [
+            "sixty six percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "67",
+          "texts": [
+            "sixty seven percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "68",
+          "texts": [
+            "sixty eight percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "69",
+          "texts": [
+            "sixty nine percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "7",
+          "texts": [
+            "seven percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "70",
+          "texts": [
+            "seventy percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "71",
+          "texts": [
+            "seventy one percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "72",
+          "texts": [
+            "seventy two percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "73",
+          "texts": [
+            "seventy three percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "74",
+          "texts": [
+            "seventy four percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "75",
+          "texts": [
+            "seventy five percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "76",
+          "texts": [
+            "seventy six percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "77",
+          "texts": [
+            "seventy seven percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "78",
+          "texts": [
+            "seventy eight percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "79",
+          "texts": [
+            "seventy nine percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "8",
+          "texts": [
+            "eight percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "80",
+          "texts": [
+            "eighty percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "81",
+          "texts": [
+            "eighty one percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "82",
+          "texts": [
+            "eighty two percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "83",
+          "texts": [
+            "eighty three percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "84",
+          "texts": [
+            "eighty four percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "85",
+          "texts": [
+            "eighty five percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "86",
+          "texts": [
+            "eighty six percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "87",
+          "texts": [
+            "eighty seven percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "88",
+          "texts": [
+            "eighty eight percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "89",
+          "texts": [
+            "eighty nine percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "9",
+          "texts": [
+            "nine percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "90",
+          "texts": [
+            "ninety percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "91",
+          "texts": [
+            "ninety one percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "92",
+          "texts": [
+            "ninety two percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "93",
+          "texts": [
+            "ninety three percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "94",
+          "texts": [
+            "ninety four percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "95",
+          "texts": [
+            "ninety five percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "96",
+          "texts": [
+            "ninety six percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "97",
+          "texts": [
+            "ninety seven percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "98",
+          "texts": [
+            "ninety eight percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "99",
+          "texts": [
+            "ninety nine percent."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "tireWear.heaviestTread",
+            "tireWear.leftFrontTread",
+            "tireWear.leftRearTread",
+            "tireWear.rightFrontTread",
+            "tireWear.rightRearTread"
+          ],
+          "playedBy": null
+        }
+      ]
+    },
+    {
       "group": "openers",
       "lines": [
         {
@@ -36181,7 +37951,7 @@
         {
           "base": "13",
           "texts": [
-            "thirteen."
+            "thirteen"
           ],
           "takes": 1,
           "usedBy": [],
@@ -36571,7 +38341,7 @@
         {
           "base": "18",
           "texts": [
-            "eighteen."
+            "eighteen"
           ],
           "takes": 1,
           "usedBy": [],
@@ -38313,6 +40083,215 @@
           "takes": 1,
           "usedBy": [
             "pit-crew.start-light-ready"
+          ],
+          "viaVar": [],
+          "playedBy": null
+        }
+      ]
+    },
+    {
+      "group": "tire-wear",
+      "lines": [
+        {
+          "base": "heaviest-lf-inside",
+          "texts": [
+            "Wear is heaviest on the left front, inside shoulder."
+          ],
+          "takes": 1,
+          "usedBy": [
+            "pit-crew.tire-wear-report"
+          ],
+          "viaVar": [],
+          "playedBy": null
+        },
+        {
+          "base": "heaviest-lf-middle",
+          "texts": [
+            "Wear is heaviest in the middle of the left front."
+          ],
+          "takes": 1,
+          "usedBy": [
+            "pit-crew.tire-wear-report"
+          ],
+          "viaVar": [],
+          "playedBy": null
+        },
+        {
+          "base": "heaviest-lf-outside",
+          "texts": [
+            "Wear is heaviest on the left front, outside shoulder."
+          ],
+          "takes": 1,
+          "usedBy": [
+            "pit-crew.tire-wear-report"
+          ],
+          "viaVar": [],
+          "playedBy": null
+        },
+        {
+          "base": "heaviest-lr-inside",
+          "texts": [
+            "Wear is heaviest on the left rear, inside shoulder."
+          ],
+          "takes": 1,
+          "usedBy": [
+            "pit-crew.tire-wear-report"
+          ],
+          "viaVar": [],
+          "playedBy": null
+        },
+        {
+          "base": "heaviest-lr-middle",
+          "texts": [
+            "Wear is heaviest in the middle of the left rear."
+          ],
+          "takes": 1,
+          "usedBy": [
+            "pit-crew.tire-wear-report"
+          ],
+          "viaVar": [],
+          "playedBy": null
+        },
+        {
+          "base": "heaviest-lr-outside",
+          "texts": [
+            "Wear is heaviest on the left rear, outside shoulder."
+          ],
+          "takes": 1,
+          "usedBy": [
+            "pit-crew.tire-wear-report"
+          ],
+          "viaVar": [],
+          "playedBy": null
+        },
+        {
+          "base": "heaviest-rf-inside",
+          "texts": [
+            "Wear is heaviest on the right front, inside shoulder."
+          ],
+          "takes": 1,
+          "usedBy": [
+            "pit-crew.tire-wear-report"
+          ],
+          "viaVar": [],
+          "playedBy": null
+        },
+        {
+          "base": "heaviest-rf-middle",
+          "texts": [
+            "Wear is heaviest in the middle of the right front."
+          ],
+          "takes": 1,
+          "usedBy": [
+            "pit-crew.tire-wear-report"
+          ],
+          "viaVar": [],
+          "playedBy": null
+        },
+        {
+          "base": "heaviest-rf-outside",
+          "texts": [
+            "Wear is heaviest on the right front, outside shoulder."
+          ],
+          "takes": 1,
+          "usedBy": [
+            "pit-crew.tire-wear-report"
+          ],
+          "viaVar": [],
+          "playedBy": null
+        },
+        {
+          "base": "heaviest-rr-inside",
+          "texts": [
+            "Wear is heaviest on the right rear, inside shoulder."
+          ],
+          "takes": 1,
+          "usedBy": [
+            "pit-crew.tire-wear-report"
+          ],
+          "viaVar": [],
+          "playedBy": null
+        },
+        {
+          "base": "heaviest-rr-middle",
+          "texts": [
+            "Wear is heaviest in the middle of the right rear."
+          ],
+          "takes": 1,
+          "usedBy": [
+            "pit-crew.tire-wear-report"
+          ],
+          "viaVar": [],
+          "playedBy": null
+        },
+        {
+          "base": "heaviest-rr-outside",
+          "texts": [
+            "Wear is heaviest on the right rear, outside shoulder."
+          ],
+          "takes": 1,
+          "usedBy": [
+            "pit-crew.tire-wear-report"
+          ],
+          "viaVar": [],
+          "playedBy": null
+        },
+        {
+          "base": "intro",
+          "texts": [
+            "Tire wear at the pit stop:"
+          ],
+          "takes": 1,
+          "usedBy": [
+            "pit-crew.tire-wear-report"
+          ],
+          "viaVar": [],
+          "playedBy": null
+        },
+        {
+          "base": "left-front",
+          "texts": [
+            "Left front:"
+          ],
+          "takes": 1,
+          "usedBy": [
+            "pit-crew.tire-wear-report"
+          ],
+          "viaVar": [],
+          "playedBy": null
+        },
+        {
+          "base": "left-rear",
+          "texts": [
+            "Left rear:"
+          ],
+          "takes": 1,
+          "usedBy": [
+            "pit-crew.tire-wear-report"
+          ],
+          "viaVar": [],
+          "playedBy": null
+        },
+        {
+          "base": "right-front",
+          "texts": [
+            "Right front:"
+          ],
+          "takes": 1,
+          "usedBy": [
+            "pit-crew.tire-wear-report"
+          ],
+          "viaVar": [],
+          "playedBy": null
+        },
+        {
+          "base": "right-rear",
+          "texts": [
+            "Right rear:"
+          ],
+          "takes": 1,
+          "usedBy": [
+            "pit-crew.tire-wear-report"
           ],
           "viaVar": [],
           "playedBy": null

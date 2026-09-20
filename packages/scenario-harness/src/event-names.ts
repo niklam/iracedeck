@@ -9,7 +9,24 @@
  * cannot drift silently.
  */
 import { OpponentPenaltyFlag } from "@iracedeck/event-bus";
-import type { SimEventName } from "@iracedeck/event-bus";
+import type { SimEventName, TireWearReport } from "@iracedeck/event-bus";
+
+/**
+ * A tire-wear report as `tireWear.reported` carries it (issue #1108): each zone
+ * in percent, the lowest zone as the tire's tread, and the most-worn tire and
+ * zone. A longer stint than the captured stop the scenario shortcuts replay, so
+ * every number differs and the heaviest spot is not the tie-break's first pick.
+ * Shared by the raw-event template below and the "Report after a stop" shortcut.
+ */
+export const TIRE_WEAR_REPORT_EXAMPLE: TireWearReport = {
+  corners: {
+    lf: { inside: 89.2, middle: 90.4, outside: 91.1, tread: 89.2, zone: "inside" },
+    rf: { inside: 90.6, middle: 91.3, outside: 92.8, tread: 90.6, zone: "inside" },
+    lr: { inside: 87.9, middle: 87.4, outside: 88.6, tread: 87.4, zone: "middle" },
+    rr: { inside: 85.3, middle: 86.1, outside: 88.0, tread: 85.3, zone: "inside" },
+  },
+  heaviest: { corner: "rr", zone: "inside" },
+};
 
 export type EventTemplate = {
   name: SimEventName;
@@ -59,6 +76,11 @@ export const EVENT_TEMPLATES = [
       windshield: { queued: false, available: true },
       limiterEngaged: false,
     },
+  },
+  {
+    name: "tireWear.reported",
+    description: "Tire wear after a pit stop (issue #1108) — tread per zone in percent, lowest zone per tire",
+    data: TIRE_WEAR_REPORT_EXAMPLE,
   },
 
   // ── Flags ──
