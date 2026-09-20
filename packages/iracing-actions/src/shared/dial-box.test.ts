@@ -212,3 +212,72 @@ describe("dialAppearanceFields", () => {
     }
   });
 });
+
+describe("renderDialBox — pending long-press preview (#1120)", () => {
+  const colors = resolveDialBoxColors(undefined, ACCENT);
+  const PENDING = { text: "RR", color: "#f39c12" };
+
+  function box(overrides: Partial<Parameters<typeof renderDialBox>[0]> = {}): string {
+    return renderDialBox({ width: 200, height: 100, abbr: "SPR", value: "+3", colors, ...overrides });
+  }
+
+  it("shows the pending outcome in place of the live value", () => {
+    const svg = box({ pending: PENDING });
+
+    expect(svg).toContain(">RR</text>");
+    expect(svg).not.toContain(">+3</text>");
+  });
+
+  it("colors the pending text with the outcome's own color, not the box value color", () => {
+    const svg = box({ pending: PENDING });
+
+    expect(svg).toMatch(/fill="#f39c12"[^>]*>RR<\/text>/);
+  });
+
+  it("underlines the pending outcome with the shared pending bar", () => {
+    expect(box({ pending: PENDING })).toContain('data-pending-bar="true"');
+  });
+
+  it("draws no bar when nothing is pending", () => {
+    expect(box()).not.toContain("data-pending-bar");
+    expect(box({ pending: null })).not.toContain("data-pending-bar");
+  });
+
+  it("keeps the label, so the driver still knows which dial is previewing", () => {
+    expect(box({ pending: PENDING })).toContain(">SPR</text>");
+  });
+
+  it("lends the value slot to a pending outcome on an identity-only box", () => {
+    const svg = box({ value: "", pending: { text: "LR", color: ACCENT } });
+
+    expect(svg).toContain(">LR</text>");
+    expect(svg).toContain('data-pending-bar="true"');
+    // The label drops back to its label-above-value baseline rather than staying
+    // centered, so the borrowed value slot has somewhere to sit.
+    expect(svg).toContain(`y="${Math.round(100 * 0.28)}"`);
+  });
+
+  it("keeps the pending bar inside the panel at both the strip and a small box size", () => {
+    for (const height of [100, 60]) {
+      const svg = renderDialBox({ width: 200, height, abbr: "SPR", value: "+3", colors, pending: PENDING });
+      const bar = /data-pending-bar="true" x="(\d+)" y="(\d+)" width="(\d+)" height="(\d+)"/.exec(svg);
+
+      expect(bar).not.toBeNull();
+
+      const [y, barHeight] = [Number(bar?.[2]), Number(bar?.[4])];
+      const inset = Math.max(5, Math.round(Math.min(200, height) * 0.045));
+      const strokeWidth = Math.max(5, Math.round(Math.min(200, height) * 0.05));
+
+      // Below the panel's inner edge (the border strokes ON the inset rect, so
+      // half of it eats into the panel).
+      expect(y + barHeight).toBeLessThanOrEqual(height - inset - strokeWidth / 2);
+    }
+  });
+
+  it("still dims under the #612 warning when the rotation binding is missing", () => {
+    const svg = box({ pending: PENDING, bindingMissing: true });
+
+    expect(svg).toContain("<binding-warning/>");
+    expect(svg).toContain(">RR</text>");
+  });
+});

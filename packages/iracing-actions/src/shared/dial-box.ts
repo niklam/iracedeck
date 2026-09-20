@@ -16,6 +16,8 @@
 import { applyBindingWarning } from "@iracedeck/deck-core";
 import { z } from "zod";
 
+import { type DialPendingPreview, PENDING_BAR_HEIGHT, renderPendingBar } from "./dial-preview.js";
+
 /** Default panel background — near-black, ≈ the device screen, so the default look is unchanged. */
 export const DIAL_BOX_BACKGROUND = "#0d0d0d";
 
@@ -92,6 +94,14 @@ export function renderDialBox(args: {
    * the user switches between the two sides.
    */
   sideMarker?: "left" | "right";
+  /**
+   * The pending long-press outcome (issue #1120). While set, the value slot
+   * shows this instead of the live value, underlined by the shared pending bar —
+   * so a hold past the threshold visibly changes the strip and the driver can
+   * release on the change rather than on a guess. An identity-only box (no live
+   * value) borrows the value slot for the duration.
+   */
+  pending?: DialPendingPreview | null;
 }): string {
   const {
     width: w,
@@ -102,13 +112,16 @@ export function renderDialBox(args: {
     identityLabelScale = DEFAULT_IDENTITY_LABEL_SCALE,
     bindingMissing = false,
     sideMarker,
+    pending = null,
   } = args;
 
   const minSide = Math.min(w, h);
   const radius = Math.round(minSide * 0.16);
   const inset = Math.max(5, Math.round(minSide * 0.045));
   const strokeWidth = Math.max(5, Math.round(minSide * 0.05));
-  const identityOnly = value === "";
+  const displayValue = pending ? pending.text : value;
+  const valueColor = pending ? pending.color : colors.value;
+  const identityOnly = displayValue === "";
 
   const labelFontSize = identityOnly ? Math.round(minSide * identityLabelScale) : Math.round(minSide * 0.15);
   // SVG <text> y is the BASELINE and resvg ignores dominant-baseline, so a
@@ -123,12 +136,21 @@ export function renderDialBox(args: {
 
   if (!identityOnly) {
     const valueFontSize = fitValueFontSize(
-      value,
+      displayValue,
       w - 2 * (inset + strokeWidth + Math.round(w * 0.05)),
       Math.round(h * 0.52),
     );
     const valueY = Math.round(h * 0.64) + 13;
-    valueText = `<text x="${w / 2}" y="${valueY}" text-anchor="middle" fill="${colors.value}" font-family="Arial, sans-serif" font-size="${valueFontSize}" font-weight="bold">${value}</text>`;
+    valueText = `<text x="${w / 2}" y="${valueY}" text-anchor="middle" fill="${valueColor}" font-family="Arial, sans-serif" font-size="${valueFontSize}" font-weight="bold">${displayValue}</text>`;
+
+    // The pending underline sits just under the value's baseline, clamped so it
+    // stays inside the panel — the border strokes ON the inset rect, so half of
+    // it eats inward. Every caller draws at 200×100, where the clamp never
+    // binds; it is there so a smaller box can never push the mark off the panel.
+    if (pending) {
+      const barTop = Math.min(valueY + 4, h - inset - Math.round(strokeWidth / 2) - PENDING_BAR_HEIGHT);
+      valueText += renderPendingBar({ centerX: w / 2, y: barTop, width: w, color: pending.color });
+    }
   }
 
   let markerContent = "";
