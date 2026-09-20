@@ -20,13 +20,33 @@ The one timer this adds is armed at `dialDown` and does exactly one thing when i
 
 ### 2. One helper, every surface
 
-`deck-core/src/dial-gesture.ts` gains `createHoldPreview({ thresholdMs, onThreshold, onCancel })` returning `{ down(), up(), rotated(), dispose() }`: `down` arms the timer with the same `getDualPressThresholdMs()` the classifier uses (so the preview appears at exactly the instant a release would count as long), `up` and `rotated` clear it and call `onCancel` if it had fired, `dispose` clears it on `willDisappear`. Each dial surface owns one per context and implements two small things: what its preview looks like, and reverting to its normal strip. The helper is gated by `__FEATURE_DIAL_FEEDBACK__` at the call sites, like all strip work, so the non-Elgato bundles carry none of it.
+`deck-core/src/dial-gesture.ts` gains `createHoldPreview({ thresholdMs, onThreshold, onCancel })` returning `{ down(), up(), rotated(), dispose() }`: `down` arms the timer with the same `getDualPressThresholdMs()` the classifier uses (so the preview appears at exactly the instant a release would count as long), `up` and `rotated` clear it and call `onCancel` if it had fired, `dispose` clears it on `willDisappear`. Each dial surface owns one per context and implements two small things: what its preview looks like, and reverting to its normal strip.
 
-Ten surfaces adopt it: Fuel Service (the requester's case: the fill toggle, and the press gesture when it is not fill), Audio Controls (mute / PTT), the seven Setup dials that have a press gesture (Brakes, Traction, Hybrid, Fuel, Engine, Aero, Chassis — Hybrid and Engine only where a gesture is configured), Force Feedback (Auto FFB), Camera Controls, Camera Editor Adjustments, Cockpit Misc, View Adjustment, Splits & Reference, Black Box Selector. A surface whose long-press gesture is `none` arms nothing.
+`onThreshold` **returns a boolean** — whether it actually drew anything. That is what lets the helper own "did we show something", so a surface whose gesture has no knowable outcome arms, shows nothing, and pushes no pointless revert frame at release; without it every surface would carry the same guard. The flag gating is a constant-folded ternary at construction (`__FEATURE_DIAL_FEEDBACK__ ? createHoldPreview(…) : NOOP`) rather than a condition at each of the four call sites: the call sites stay unconditional, terser drops the closures, and the non-Elgato bundles carry none of it either way.
+
+This section originally said ten surfaces adopt it, every dial with a press gesture. Implementation proved that wrong twice over, and the amendment below is what shipped (Niklas, 2026-09-20).
+
+**Only a KNOWABLE outcome is previewed.** A preview is drawn only where the plugin can compute the state the gesture will produce *before* it fires; a gesture that merely performs an action iRacing never reports back shows nothing and arms nothing. The strip simply stays still for those. This replaces the original "the value **or label** the gesture will set": naming the verb ("TOGGLE FCY") was considered and rejected — it answers "what does this button do", which the trigger description already answers, not "what will the strip look like after I let go", which is what was asked for. Showing a state the plugin only assumed would be worse than showing nothing, because the driver's whole rule is to trust the change they see.
+
+An audit of every long-press gesture on every dial surface, evidence-based against the code rather than against what iRacing might expose, leaves **five surfaces**:
+
+| Surface | Gesture | How the outcome is known |
+|---|---|---|
+| Fuel Service | `toggle-fueling`, `fill-to-max`, `toggle-autofuel-mode`, `switch-mode` | `isFuelFillOn` / the at-max test / `isAutofuelActive` / the plugin's own `dial.mode` |
+| Setup Brakes | `toggle-abs` | `dcABS` via the keypad half's `absToggleState` |
+| Setup Traction | `toggle-tc` | `dcTractionControl` via the keypad half's `tcToggleState` |
+| Setup Chassis | `toggle-spring-side` | the plugin owns the setting the gesture flips |
+| Camera Controls | `focus-my-car`, `focus-on-leader` | the car number, from the canonical race order |
+
+Everything else arms nothing, and the reasons are worth recording because they will be re-asked. Setup Fuel's FCY toggle, Setup Aero's rear-flap toggle, Cockpit Misc's four, View Adjustment's two, Splits & Reference's five, Camera Editor Adjustments' thirty-one and Black Box Selector's `open-selected-box` are all a single `tapBinding` into iRacing with no readback — several are even named `*-toggle` while their state is unreadable, and most of those surfaces already render `""` in the value slot for exactly this reason. Force Feedback's Auto FFB asks iRacing to compute a new max force, so the result exists only in the next telemetry tick *after* the release. Setup Chassis's black-box gesture is the documented "telemetry never reports which black box is open". Setup Engine and Setup Hybrid have `GESTURE_ACTIONS = ["none"]`, so no gesture exists to preview.
+
+**Audio Controls is out entirely**, and not because of knowability: that dial has no long press at all. Its `rotate()` takes no `pressed` flag, it has no `pressStart` / `rotatedWhilePressed` / `classifyDialRelease`, and mute fires at `dialDown` by a deliberate documented choice. There is no hold to preview, and adding one would move mute from press-down to release — a user-visible change to an existing gesture, which this issue is not. Recorded as a possible follow-up, not built here.
 
 ### 3. What a preview shows
 
-The strip's normal layout with the outcome applied and marked as pending: the value or label the gesture will set, in the accent colour, with a thin bar under it — the same visual in every surface, drawn by `renderDialBox` for the box-style dials and by each pixmap surface for its own strip. Not a modal "release now" text: the driver asked to see the change, not an instruction. The preview obeys the ≤10 `setFeedback`/s cap through the surfaces' existing throttles; one extra frame at threshold and one at release is well inside it.
+The strip's normal layout with the knowable outcome in the value slot, in the outcome's own colour where the surface has one (Fuel Service's green/red fill states) and the dash box's accent otherwise, underlined by a thin pending bar. One mark, drawn from one place — `iracing-actions/src/shared/dial-preview.ts` — so `renderDialBox` and the surfaces that draw their own pixmap cannot drift into slightly different marks, the way the double chevron is one marker across two actions in `icons.md`. Not a modal "release now" text: the driver asked to see the change, not an instruction.
+
+The preview is **not a one-off frame**. Every one of these surfaces has a heartbeat, a telemetry change-detector, or a `refreshAll` that would wipe a pushed frame mid-hold, and each keys its dedupe on a signature that a preview frame would poison. So the pending state lives on the context, every render path draws it while it is pending, and the revert is an ordinary render — which also keeps the ≤10 `setFeedback`/s cap intact, since the preview adds one frame at the threshold and one at release.
 
 ### 4. Cancel paths
 
@@ -39,15 +59,20 @@ The same idea applies to keypad keys with a dual-press action (the key image cou
 ## Alternatives rejected
 
 - **Executing at the threshold instead of at release.** The rebuild rejected it for push+turn races and instant-release hosts; nothing has changed.
-- **Fuel Service only.** The helper is small and the surfaces already share the gesture vocabulary; leaving nine dials without it would make the tenth feel like a different product.
+- **Fuel Service only.** The helper is small and the surfaces already share the gesture vocabulary; leaving nine dials without it would make the tenth feel like a different product. What actually decided the set was knowability, not surface count — see decision 2 — but the principle held: the helper is shared, and every surface that *can* preview does.
 - **A "release now" banner.** Tells the driver what to do instead of showing what will happen; the requester asked for the latter.
+- **Naming the action where the outcome is unknowable** ("TOGGLE FCY", "RECENTER"). Rejected at implementation (Niklas, 2026-09-20). It would have given nine more dials *a* mid-hold change, which is the literal ask, but the thing changing would have been a restatement of the trigger description rather than the outcome — and it would have taught drivers to trust a mark that, on those very dials, can never mean what it means on Fuel Service. A strip that stays still is honest about the plugin not knowing.
 
 ## Testing
 
-`dial-gesture.test.ts`: the helper fires once at the threshold, not before; `up` before the threshold fires nothing; `rotated` after the threshold calls `onCancel`; `dispose` clears a pending timer. Per surface: a fake-timer test that the preview frame is pushed at the threshold and the normal frame at release, and that the push+turn path reverts. The flag-off path (`vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", false)`) pushes nothing. Manual on hardware: Fuel Service fill toggle, Audio Controls mute, one Setup dial; a hold with a rotation in the middle.
+`dial-gesture.test.ts`: the helper fires once at the threshold, not before; `up` before the threshold fires nothing; `rotated` after the threshold calls `onCancel`; `dispose` clears a pending timer. Per surface: a fake-timer test that the preview frame is pushed at the threshold and the normal frame at release, and that the push+turn path reverts. The flag-off path (`vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", false)`) pushes nothing.
+
+Two more that the amendment above makes load-bearing. **A heartbeat or telemetry tick mid-hold must leave the preview up** — the render paths are preview-aware precisely so a pushed frame cannot be wiped, and that is the regression nobody would notice by hand, because it needs a hold longer than the surface's refresh interval. **An unknowable outcome must push nothing**: where the state comes from telemetry (`dcABS`, `dcTractionControl`, the leader's car number), absent telemetry previews NOTHING rather than a default — the honesty case, and the one a careless fallback would quietly break.
+
+Manual on hardware: Fuel Service fill toggle, one Setup dial; a hold with a rotation in the middle; and a hold on a dial whose gesture is unknowable, confirming the strip stays still.
 
 ## Affected artifacts
 
-- `packages/deck-core/src/dial-gesture.ts` (+ test); the ten dial-surface modules under `packages/iracing-actions/src/actions/*/…-dial-surface.ts` and `shared/dial-box.ts`.
-- Website: the "On a dial" sections of the affected action pages gain one sentence; changelog entry.
-- Rules: `encoders-and-touchscreen.md` — the "no timer" wording and the preview convention.
+- `packages/deck-core/src/dial-gesture.ts` (+ test); `iracing-actions/src/shared/dial-preview.ts` (new) and `shared/dial-box.ts`; the five dial-surface modules named in decision 2 — Fuel Service, Setup Brakes, Setup Traction, Setup Chassis, Camera Controls.
+- Website: the "On a dial" sections of those five action pages gain one sentence; changelog entry.
+- Rules: `encoders-and-touchscreen.md` — the "no timer" wording, the preview convention, and the knowable-outcome rule a future dial surface has to apply to its own gestures.
