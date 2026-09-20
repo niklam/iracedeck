@@ -10,6 +10,7 @@ import { extractQualifyResults } from "./grid-utils.js";
 import { estimateIRatingChanges, type IRatingEstimates, resolveIRatingEstimateOrder } from "./irating-utils.js";
 import { classPositionFromOrder } from "./position-utils.js";
 import type { SDKController } from "./SDKController.js";
+import { resolveLapsRemaining } from "./session-limit.js";
 import { findNearestCarOnTrack } from "./track-utils.js";
 import type { SessionInfo, TelemetryData } from "./types.js";
 
@@ -631,11 +632,12 @@ function buildSessionFields(
 ): FieldMaps {
   const currentSession = getCurrentSession(sessionInfo, telemetry);
 
-  const lapsRemaining = telemetry?.SessionLapsRemainEx;
+  // Absent from raw and blank in display when the lap side does not bind —
+  // the unlimited sentinel of a timed race is not a lap count (#1109).
+  const lapsRemaining = resolveLapsRemaining(telemetry);
   const timeRemaining = telemetry?.SessionTimeRemain;
 
   const type = (currentSession?.SessionType as string) ?? "";
-  const hasLapsRemaining = lapsRemaining !== undefined && lapsRemaining >= 0;
   // time_remaining keeps the formatted M:SS string in BOTH maps — expressions
   // wanting math on it should use telemetry.SessionTimeRemain instead.
   const timeRemainingFormatted = formatTimeRemaining(timeRemaining);
@@ -646,7 +648,7 @@ function buildSessionFields(
 
   const raw: Record<string, TemplateValue> = { type, time_remaining: timeRemainingFormatted };
 
-  if (hasLapsRemaining) {
+  if (lapsRemaining !== null) {
     raw.laps_remaining = lapsRemaining;
   }
 
@@ -657,7 +659,7 @@ function buildSessionFields(
   return {
     display: {
       type,
-      laps_remaining: hasLapsRemaining ? String(lapsRemaining) : "",
+      laps_remaining: lapsRemaining !== null ? String(lapsRemaining) : "",
       time_remaining: timeRemainingFormatted,
       sof: sof !== null ? String(Math.round(sof)) : "",
     },

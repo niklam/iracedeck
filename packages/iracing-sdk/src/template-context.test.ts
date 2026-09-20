@@ -11,8 +11,7 @@ import {
   splitDriverName,
 } from "./template-context.js";
 import { resolveTemplate } from "./template-resolver.js";
-import type { SessionInfo } from "./types.js";
-import type { TelemetryData } from "./types.js";
+import { IRSDK_UNLIMITED_LAPS, type SessionInfo, type TelemetryData } from "./types.js";
 
 function makeDriver(overrides: Record<string, unknown> = {}) {
   return {
@@ -442,6 +441,43 @@ describe("buildTemplateContextFromData", () => {
 
     expect("session.laps_remaining" in ctx.raw).toBe(false);
     expect(ctx.display["session.laps_remaining"]).toBe("");
+  });
+
+  it("should omit session.laps_remaining when SessionLapsRemainEx reads the unlimited sentinel (#1109)", () => {
+    // A timed race reports the lap side as IRSDK_UNLIMITED_LAPS — not a count,
+    // so a custom template must not render 32767.
+    const drivers = [makeDriver({ CarIdx: 0 })];
+    const sessionInfo = makeSessionInfo(drivers, 0);
+    const telemetry = makeTelemetry({ SessionLapsRemainEx: IRSDK_UNLIMITED_LAPS });
+
+    const ctx = buildTemplateContextFromData(telemetry, sessionInfo);
+
+    expect("session.laps_remaining" in ctx.raw).toBe(false);
+    expect(ctx.display["session.laps_remaining"]).toBe("");
+  });
+
+  it("should omit session.laps_remaining when SessionLapsRemainEx is missing or NaN", () => {
+    const drivers = [makeDriver({ CarIdx: 0 })];
+    const sessionInfo = makeSessionInfo(drivers, 0);
+
+    const missing = buildTemplateContextFromData(makeTelemetry({ SessionLapsRemainEx: undefined }), sessionInfo);
+    expect("session.laps_remaining" in missing.raw).toBe(false);
+    expect(missing.display["session.laps_remaining"]).toBe("");
+
+    const nan = buildTemplateContextFromData(makeTelemetry({ SessionLapsRemainEx: NaN }), sessionInfo);
+    expect("session.laps_remaining" in nan.raw).toBe(false);
+    expect(nan.display["session.laps_remaining"]).toBe("");
+  });
+
+  it("should keep session.laps_remaining at 0 in the leader-finished window (a real count, not unknown)", () => {
+    const drivers = [makeDriver({ CarIdx: 0 })];
+    const sessionInfo = makeSessionInfo(drivers, 0);
+    const telemetry = makeTelemetry({ SessionLapsRemainEx: 0 });
+
+    const ctx = buildTemplateContextFromData(telemetry, sessionInfo);
+
+    expect(ctx.raw["session.laps_remaining"]).toBe(0);
+    expect(ctx.display["session.laps_remaining"]).toBe("0");
   });
 
   it("should populate race_ahead and race_behind from race position", () => {
