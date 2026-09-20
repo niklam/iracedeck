@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { buildTriggerDescription, formatDialValue } from "./setup-brakes-dial-surface.js";
+import { buildTriggerDescription, formatDialValue, pendingGesturePreview } from "./setup-brakes-dial-surface.js";
 import { parseSetupBrakesSettings } from "./setup-brakes-settings.js";
 import { SetupBrakes } from "./setup-brakes.js";
 
@@ -19,8 +19,18 @@ vi.mock("@iracedeck/deck-core", async () => {
   // REAL zod semantics for the extended settings schema (defaults, the `dial`
   // prefault, enum validation) — only the CommonSettings base fields are absent.
   const { z } = await import("zod");
+  // deck-core's dial-gesture module, reached by PATH rather than through the
+  // mocked barrel (the `mouse-to-sim.test.ts` pattern): the hold preview's
+  // timer behaviour is the thing under test, so the REAL helper has to run — a
+  // stub would only assert the stub. That module has zero imports of its own,
+  // so reaching it directly drags in none of the barrel's graph. The path is
+  // inlined because `vi.mock` is hoisted above every top-level const.
+  const dialGesture = await vi.importActual<typeof import("../../../../deck-core/src/dial-gesture.js")>(
+    "../../../../deck-core/src/dial-gesture.js",
+  );
 
   return {
+    createHoldPreview: dialGesture.createHoldPreview,
     IconUpdateThrottle: class {
       schedule(_id: string, render: () => unknown): void {
         try {
@@ -171,6 +181,25 @@ describe("setup-brakes dial-surface pure helpers", () => {
       expect(desc.push).toBeUndefined();
       expect(desc.touch).toBe("Toggle ABS");
       expect(desc.longTouch).toBe("Toggle ABS");
+    });
+  });
+
+  describe("pendingGesturePreview (#1120)", () => {
+    it("previews the flip of the live ABS state", () => {
+      expect(pendingGesturePreview("toggle-abs", { dcABS: 3 } as never, "#f39c12")).toEqual({
+        text: "ABS OFF",
+        color: "#f39c12",
+      });
+      expect(pendingGesturePreview("toggle-abs", { dcABS: 0 } as never, "#f39c12")).toEqual({
+        text: "ABS ON",
+        color: "#f39c12",
+      });
+    });
+
+    it("previews nothing without an ABS reading, and nothing for a none slot", () => {
+      expect(pendingGesturePreview("toggle-abs", null, "#f39c12")).toBeNull();
+      expect(pendingGesturePreview("toggle-abs", {} as never, "#f39c12")).toBeNull();
+      expect(pendingGesturePreview("none", { dcABS: 3 } as never, "#f39c12")).toBeNull();
     });
   });
 });
@@ -445,6 +474,219 @@ describe("SetupBrakes dial surface", () => {
 
       expect(decoded).toContain(">ABS<");
       expect(decoded).toContain(">3<");
+    });
+  });
+
+  describe("hold preview (#1120)", () => {
+    /** The last pushed touch-strip pixmap, decoded back to SVG. */
+    function lastBox(ctx: DialContext): string {
+      return decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+    }
+
+    const held = (dial: Record<string, unknown> = {}) =>
+      dialSettings({ setting: "brake-bias", pressAction: "none", longPressAction: "toggle-abs", ...dial });
+
+    it("draws the ABS flip when the hold passes the threshold, and not before", async () => {
+      const ctx = dialContext("hp1");
+      const settings = held();
+      mockGetCurrentTelemetry.mockReturnValue({ dcBrakeBias: 54, dcABS: 3 });
+      await appear(ctx, settings);
+      ctx.setFeedback.mockClear();
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      vi.advanceTimersByTime(499);
+
+      expect(ctx.setFeedback).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(1);
+
+      expect(ctx.setFeedback).toHaveBeenCalledTimes(1);
+      const decoded = lastBox(ctx);
+
+      // ABS is on, so releasing now turns it off.
+      expect(decoded).toContain(">ABS OFF<");
+      expect(decoded).toContain("data-pending-bar");
+      // The live value is replaced for the duration, not drawn beside the preview.
+      expect(decoded).not.toContain(">54.0<");
+    });
+
+    it("previews ABS ON while ABS is off", async () => {
+      const ctx = dialContext("hp2");
+      const settings = held();
+      mockGetCurrentTelemetry.mockReturnValue({ dcBrakeBias: 54, dcABS: 0 });
+      await appear(ctx, settings);
+      ctx.setFeedback.mockClear();
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      vi.advanceTimersByTime(500);
+
+      expect(lastBox(ctx)).toContain(">ABS ON<");
+    });
+
+    it("follows the configured long-press threshold rather than a constant", async () => {
+      mockDualPressThreshold.value = 900;
+      const ctx = dialContext("hp3");
+      const settings = held();
+      await appear(ctx, settings);
+      ctx.setFeedback.mockClear();
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      vi.advanceTimersByTime(800);
+
+      expect(ctx.setFeedback).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(100);
+
+      expect(lastBox(ctx)).toContain(">ABS OFF<");
+    });
+
+    it("puts the normal frame back at release", async () => {
+      const ctx = dialContext("hp4");
+      const settings = held();
+      await appear(ctx, settings);
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      vi.advanceTimersByTime(500);
+      ctx.setFeedback.mockClear();
+
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+
+      expect(ctx.setFeedback).toHaveBeenCalledTimes(1);
+      const decoded = lastBox(ctx);
+
+      expect(decoded).not.toContain("data-pending-bar");
+      expect(decoded).not.toContain("ABS OFF");
+      expect(decoded).toContain(">54.0<");
+    });
+
+    it("reverts at once on a push+turn mid-hold", async () => {
+      const ctx = dialContext("hp5");
+      const settings = held();
+      await appear(ctx, settings);
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      vi.advanceTimersByTime(500);
+
+      expect(lastBox(ctx)).toContain("data-pending-bar");
+      ctx.setFeedback.mockClear();
+
+      await action.onDialRotate(rotateEvent(ctx, settings, 1, true) as never);
+
+      expect(ctx.setFeedback).toHaveBeenCalled();
+      expect(lastBox(ctx)).not.toContain("data-pending-bar");
+
+      // The release that follows a push+turn fires nothing and needs no second revert.
+      ctx.setFeedback.mockClear();
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+
+      expect(ctx.setFeedback).not.toHaveBeenCalled();
+    });
+
+    it("pushes neither a preview nor a revert for a release before the threshold", async () => {
+      const ctx = dialContext("hp6");
+      const settings = held();
+      await appear(ctx, settings);
+      ctx.setFeedback.mockClear();
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      vi.advanceTimersByTime(200);
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+
+      expect(ctx.setFeedback).not.toHaveBeenCalled();
+
+      // The disarmed timer must not fire after the release either.
+      vi.advanceTimersByTime(1000);
+
+      expect(ctx.setFeedback).not.toHaveBeenCalled();
+    });
+
+    it("previews NOTHING when telemetry does not report an ABS state", async () => {
+      // The honesty case: with no reading the plugin cannot say which way the
+      // toggle goes, so the strip stays still rather than guessing.
+      for (const [id, telemetry] of [
+        ["hp7", null],
+        ["hp8", { dcBrakeBias: 54 }],
+      ] as const) {
+        const ctx = dialContext(id);
+        const settings = held();
+        mockGetCurrentTelemetry.mockReturnValue(telemetry);
+        await appear(ctx, settings);
+        ctx.setFeedback.mockClear();
+
+        await action.onDialDown(basicEvent(ctx, settings) as never);
+        vi.advanceTimersByTime(600);
+
+        expect(ctx.setFeedback).not.toHaveBeenCalled();
+
+        await action.onDialUp(basicEvent(ctx, settings) as never);
+
+        expect(ctx.setFeedback).not.toHaveBeenCalled();
+      }
+    });
+
+    it("previews nothing when the long-press slot is none", async () => {
+      const ctx = dialContext("hp9");
+      const settings = dialSettings({ setting: "brake-bias", pressAction: "toggle-abs", longPressAction: "none" });
+      await appear(ctx, settings);
+      ctx.setFeedback.mockClear();
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      vi.advanceTimersByTime(600);
+
+      expect(ctx.setFeedback).not.toHaveBeenCalled();
+    });
+
+    it("keeps the preview up when telemetry ticks mid-hold", async () => {
+      const ctx = dialContext("hp10");
+      mockGetCurrentTelemetry.mockReturnValue({ dcBrakeBias: 54, dcABS: 3 });
+      const settings = held();
+      await appear(ctx, settings);
+
+      const onTick = (
+        action as unknown as { sdkController: { subscribe: ReturnType<typeof vi.fn> } }
+      ).sdkController.subscribe.mock.calls.at(-1)?.[1] as (telemetry: unknown) => void;
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      vi.advanceTimersByTime(500);
+      ctx.setFeedback.mockClear();
+
+      // Past the change-render throttle window, with a moved live value.
+      vi.advanceTimersByTime(150);
+      mockGetCurrentTelemetry.mockReturnValue({ dcBrakeBias: 56, dcABS: 3 });
+      onTick({ dcBrakeBias: 56, dcABS: 3 });
+
+      // The tick re-renders, and the re-render still carries the preview.
+      expect(lastBox(ctx)).toContain(">ABS OFF<");
+      expect(lastBox(ctx)).toContain("data-pending-bar");
+    });
+
+    it("drops the preview when the settings change mid-hold", async () => {
+      const ctx = dialContext("hp11");
+      const settings = held();
+      await appear(ctx, settings);
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      vi.advanceTimersByTime(500);
+
+      expect(lastBox(ctx)).toContain("data-pending-bar");
+
+      await action.onDidReceiveSettings(basicEvent(ctx, held({ setting: "abs-adjust" })) as never);
+
+      expect(lastBox(ctx)).not.toContain("data-pending-bar");
+    });
+
+    it("pushes nothing when dial feedback is disabled", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", false);
+      const ctx = dialContext("hp12");
+      const settings = held();
+      await appear(ctx, settings);
+      ctx.setFeedback.mockClear();
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      vi.advanceTimersByTime(600);
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+
+      expect(ctx.setFeedback).not.toHaveBeenCalled();
     });
   });
 

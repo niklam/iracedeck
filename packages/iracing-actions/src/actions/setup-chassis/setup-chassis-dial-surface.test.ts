@@ -1,6 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { buildTriggerDescription, DialSettings, formatDialValue } from "./setup-chassis-dial-surface.js";
+import {
+  buildTriggerDescription,
+  DialSettings,
+  formatDialValue,
+  nextSpringSide,
+  pendingGesturePreview,
+} from "./setup-chassis-dial-surface.js";
 import { SetupChassis } from "./setup-chassis.js";
 
 const {
@@ -21,8 +27,18 @@ const {
 
 vi.mock("@iracedeck/deck-core", async () => {
   const { z } = await import("zod");
+  // deck-core's dial-gesture module, reached by PATH rather than through the
+  // mocked barrel (the `mouse-to-sim.test.ts` pattern): the hold preview's
+  // timer behaviour is the thing under test, so the REAL helper has to run — a
+  // stub would only assert the stub. That module has zero imports of its own,
+  // so reaching it directly drags in none of the barrel's graph. The path is
+  // inlined because `vi.mock` is hoisted above every top-level const.
+  const dialGesture = await vi.importActual<typeof import("../../../../deck-core/src/dial-gesture.js")>(
+    "../../../../deck-core/src/dial-gesture.js",
+  );
 
   return {
+    createHoldPreview: dialGesture.createHoldPreview,
     IconUpdateThrottle: class {
       schedule(_id: string, render: () => unknown): void {
         try {
@@ -185,6 +201,40 @@ describe("setup-chassis dial-surface pure helpers", () => {
       );
 
       expect(desc.push).toBe("Switch LR/RR");
+    });
+  });
+
+  describe("nextSpringSide / pendingGesturePreview (#1120)", () => {
+    it("previews the side the gesture will select, from the same helper the gesture uses", () => {
+      for (const from of ["lr-spring", "rr-spring", "differential-preload", "lf-shock"] as const) {
+        const preview = pendingGesturePreview("toggle-spring-side", from, "#2ecc71");
+
+        expect(preview).not.toBeNull();
+        // The preview's setting IS the gesture's next side — one definition.
+        expect(preview?.setting).toBe(nextSpringSide(from));
+      }
+    });
+
+    it("labels the pending side with that side's own dash-box abbreviation", () => {
+      expect(pendingGesturePreview("toggle-spring-side", "lr-spring", "#2ecc71")).toEqual({
+        pending: { text: "RR SPR", color: "#2ecc71" },
+        setting: "rr-spring",
+      });
+      expect(pendingGesturePreview("toggle-spring-side", "rr-spring", "#2ecc71")).toEqual({
+        pending: { text: "LR SPR", color: "#2ecc71" },
+        setting: "lr-spring",
+      });
+      // Any non-spring setting jumps to LR, exactly as the gesture does.
+      expect(pendingGesturePreview("toggle-spring-side", "differential-preload", "#2ecc71")?.pending.text).toBe(
+        "LR SPR",
+      );
+    });
+
+    it("previews nothing for the black box or a none slot", () => {
+      // Telemetry never reports which black box is open, so the plugin cannot
+      // say what the press leaves on screen — it shows nothing rather than guess.
+      expect(pendingGesturePreview("show-pit-stop-black-box", "lr-spring", "#2ecc71")).toBeNull();
+      expect(pendingGesturePreview("none", "lr-spring", "#2ecc71")).toBeNull();
     });
   });
 });
@@ -439,6 +489,265 @@ describe("SetupChassis dial surface", () => {
         "setupChassisDifferentialPreloadDecrease",
       ]);
       expect(decoded).toContain("binding-warning");
+    });
+  });
+
+  describe("hold preview (#1120)", () => {
+    /** The last pushed touch-strip pixmap, decoded back to SVG. */
+    function lastBox(ctx: DialContext): string {
+      return decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+    }
+
+    /** The `<polygon>` for one side marker, or undefined when the box draws none. */
+    function marker(svg: string, side: "left" | "right"): string | undefined {
+      return new RegExp(`<polygon data-side="${side}"[^>]*>`).exec(svg)?.[0];
+    }
+
+    const held = (dial: Record<string, unknown> = {}) =>
+      dialSettings({ setting: "lr-spring", pressAction: "none", longPressAction: "toggle-spring-side", ...dial });
+
+    it("draws the pending side when the hold passes the threshold, and not before", async () => {
+      const ctx = dialContext("hp1");
+      const settings = held();
+      mockGetCurrentTelemetry.mockReturnValue({ dpWeightJackerLeft: 2.54, DisplayUnits: 1 });
+      await appear(ctx, settings);
+      ctx.setFeedback.mockClear();
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      vi.advanceTimersByTime(499);
+
+      expect(ctx.setFeedback).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(1);
+
+      expect(ctx.setFeedback).toHaveBeenCalledTimes(1);
+      const decoded = lastBox(ctx);
+
+      expect(decoded).toContain(">RR SPR<");
+      expect(decoded).toContain("data-pending-bar");
+      // The live spring offset is replaced for the duration.
+      expect(decoded).not.toContain(">3 mm<");
+    });
+
+    it("flips the side marker with the previewed text so the arrow cannot disagree", async () => {
+      const ctx = dialContext("hp2");
+      const settings = held();
+      await appear(ctx, settings);
+
+      const before = lastBox(ctx);
+
+      // Before the hold: LR is the edited side, so the left arrow is lit.
+      expect(marker(before, "left")).not.toContain("opacity");
+      expect(marker(before, "right")).toContain("opacity");
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      vi.advanceTimersByTime(500);
+
+      const during = lastBox(ctx);
+
+      expect(during).toContain(">RR SPR<");
+      expect(marker(during, "right")).not.toContain("opacity");
+      expect(marker(during, "left")).toContain("opacity");
+    });
+
+    it("previews LR SPR from a non-spring setting, which has no marker of its own", async () => {
+      const ctx = dialContext("hp3");
+      const settings = held({ setting: "differential-preload" });
+      await appear(ctx, settings);
+
+      expect(lastBox(ctx)).not.toContain("data-side");
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      vi.advanceTimersByTime(500);
+
+      const during = lastBox(ctx);
+
+      expect(during).toContain(">LR SPR<");
+      expect(marker(during, "left")).not.toContain("opacity");
+    });
+
+    it("selects the side the preview promised when the hold is released", async () => {
+      const ctx = dialContext("hp4");
+      const settings = held();
+      await appear(ctx, settings);
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      vi.advanceTimersByTime(500);
+      const promised = lastBox(ctx).includes(">RR SPR<") ? "rr-spring" : "lr-spring";
+      ctx.setFeedback.mockClear();
+
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+
+      const lastWrite = ctx.setSettings.mock.calls.at(-1)?.[0] as { dial: { setting: string } };
+
+      expect(lastWrite.dial.setting).toBe(promised);
+      // The normal frame is back: the new side as the LABEL, no pending mark.
+      const decoded = lastBox(ctx);
+
+      expect(decoded).not.toContain("data-pending-bar");
+      expect(decoded).toContain(">RR SPR<");
+    });
+
+    it("follows the configured long-press threshold rather than a constant", async () => {
+      mockDualPressThreshold.value = 900;
+      const ctx = dialContext("hp5");
+      const settings = held();
+      await appear(ctx, settings);
+      ctx.setFeedback.mockClear();
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      vi.advanceTimersByTime(800);
+
+      expect(ctx.setFeedback).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(100);
+
+      expect(lastBox(ctx)).toContain(">RR SPR<");
+    });
+
+    it("reverts at once on a push+turn mid-hold", async () => {
+      const ctx = dialContext("hp6");
+      const settings = held();
+      await appear(ctx, settings);
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      vi.advanceTimersByTime(500);
+
+      expect(lastBox(ctx)).toContain("data-pending-bar");
+      ctx.setFeedback.mockClear();
+
+      await action.onDialRotate(rotateEvent(ctx, settings, 1, true) as never);
+
+      expect(ctx.setFeedback).toHaveBeenCalled();
+      const decoded = lastBox(ctx);
+
+      expect(decoded).not.toContain("data-pending-bar");
+      // The arrow came back with the text: LR is still the edited side.
+      expect(marker(decoded, "left")).not.toContain("opacity");
+
+      // A push+turn fires no gesture on release and needs no second revert.
+      ctx.setFeedback.mockClear();
+      ctx.setSettings.mockClear();
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+
+      expect(ctx.setFeedback).not.toHaveBeenCalled();
+      expect(ctx.setSettings).not.toHaveBeenCalled();
+    });
+
+    it("pushes neither a preview nor a revert for a release before the threshold", async () => {
+      const ctx = dialContext("hp7");
+      const settings = held();
+      await appear(ctx, settings);
+      ctx.setFeedback.mockClear();
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      vi.advanceTimersByTime(200);
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+
+      expect(ctx.setFeedback).not.toHaveBeenCalled();
+
+      // The disarmed timer must not fire after the release either.
+      vi.advanceTimersByTime(1000);
+
+      expect(ctx.setFeedback).not.toHaveBeenCalled();
+    });
+
+    it("previews NOTHING for the black box, whose outcome telemetry never reports", async () => {
+      const ctx = dialContext("hp8");
+      const settings = held({ longPressAction: "show-pit-stop-black-box" });
+      await appear(ctx, settings);
+      ctx.setFeedback.mockClear();
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      vi.advanceTimersByTime(600);
+
+      expect(ctx.setFeedback).not.toHaveBeenCalled();
+
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+
+      expect(ctx.setFeedback).not.toHaveBeenCalled();
+      expect(mockTapBindingSequence).toHaveBeenCalled();
+    });
+
+    it("previews nothing when the long-press slot is none", async () => {
+      const ctx = dialContext("hp9");
+      const settings = held({ longPressAction: "none" });
+      await appear(ctx, settings);
+      ctx.setFeedback.mockClear();
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      vi.advanceTimersByTime(600);
+
+      expect(ctx.setFeedback).not.toHaveBeenCalled();
+    });
+
+    it("keeps the preview up when telemetry ticks mid-hold", async () => {
+      const ctx = dialContext("hp10");
+      mockGetCurrentTelemetry.mockReturnValue({ dpWeightJackerLeft: 2.54, DisplayUnits: 1 });
+      const settings = held();
+      await appear(ctx, settings);
+
+      const onTick = (
+        action as unknown as { sdkController: { subscribe: ReturnType<typeof vi.fn> } }
+      ).sdkController.subscribe.mock.calls.at(-1)?.[1] as (telemetry: unknown) => void;
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      vi.advanceTimersByTime(500);
+      ctx.setFeedback.mockClear();
+
+      // Past the change-render throttle window, with a moved live value.
+      vi.advanceTimersByTime(150);
+      mockGetCurrentTelemetry.mockReturnValue({ dpWeightJackerLeft: 5.08, DisplayUnits: 1 });
+      onTick({ dpWeightJackerLeft: 5.08, DisplayUnits: 1 });
+
+      const decoded = lastBox(ctx);
+
+      expect(decoded).toContain(">RR SPR<");
+      expect(decoded).toContain("data-pending-bar");
+      expect(marker(decoded, "right")).not.toContain("opacity");
+    });
+
+    it("survives a global-settings refresh mid-hold", async () => {
+      const ctx = dialContext("hp11");
+      const settings = held();
+      await appear(ctx, settings);
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      vi.advanceTimersByTime(500);
+      ctx.setFeedback.mockClear();
+
+      for (const listener of globalListeners) listener();
+
+      expect(lastBox(ctx)).toContain("data-pending-bar");
+    });
+
+    it("drops the preview when the settings change mid-hold", async () => {
+      const ctx = dialContext("hp12");
+      const settings = held();
+      await appear(ctx, settings);
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      vi.advanceTimersByTime(500);
+
+      expect(lastBox(ctx)).toContain("data-pending-bar");
+
+      await action.onDidReceiveSettings(basicEvent(ctx, held({ setting: "rear-arb" })) as never);
+
+      expect(lastBox(ctx)).not.toContain("data-pending-bar");
+    });
+
+    it("pushes nothing when dial feedback is disabled", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", false);
+      const ctx = dialContext("hp13");
+      const settings = held();
+      await appear(ctx, settings);
+      ctx.setFeedback.mockClear();
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      vi.advanceTimersByTime(600);
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+
+      expect(ctx.setFeedback).not.toHaveBeenCalled();
     });
   });
 

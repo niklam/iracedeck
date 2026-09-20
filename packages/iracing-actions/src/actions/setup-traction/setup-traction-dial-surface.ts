@@ -19,9 +19,11 @@
  */
 import {
   classifyDialRelease,
+  createHoldPreview,
   type DeckFeedbackPayload,
   type DeckTriggerDescription,
   getDualPressThresholdMs,
+  type HoldPreview,
   type IDeckActionContext,
   svgToDataUri,
 } from "@iracedeck/deck-core";
@@ -29,8 +31,10 @@ import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 import z from "zod";
 
+import { toggleStateFromLevel } from "../../icons/status-bar.js";
 import { dialAppearanceFields, renderDialBox, resolveDialBoxColors } from "../../shared/dial-box.js";
 import { renderDialNameIcon } from "../../shared/dial-name-icon.js";
+import type { DialPendingPreview } from "../../shared/dial-preview.js";
 import { formatViewValue, type ViewSettingId } from "../../shared/setup-view.js";
 
 /** Minimum gap (ms) between change-driven feedback pushes (≤10 setFeedback/s/dial). */
@@ -207,6 +211,55 @@ function gestureLabel(action: GestureSlot): string | undefined {
   }
 }
 
+/**
+ * The hold preview compiled out on the hosts with no plugin touch strip. Every
+ * call site stays unconditional and `__FEATURE_DIAL_FEEDBACK__` folds to `false`
+ * there, so terser drops this object's users and `createHoldPreview` with them.
+ */
+const NOOP_HOLD_PREVIEW: HoldPreview = {
+  down: () => {},
+  up: () => {},
+  rotated: () => {},
+  dispose: () => {},
+  showing: false,
+};
+
+/**
+ * @internal Exported for testing
+ *
+ * What the strip shows once the hold passes the long-press threshold (#1120):
+ * the state releasing now would leave the car in. `toggle-tc` flips the live TC
+ * state, so the outcome is knowable — but only while telemetry reports one. A
+ * `na` reading means the plugin does not know which way the toggle will go, and
+ * a guess drawn as a promise is worse than a strip that stays still, so it
+ * previews nothing and the helper arms no revert.
+ *
+ * The tri-state comes from the one shared rule the keypad's TC Toggle key uses
+ * (`toggleStateFromLevel`: `dcTractionControl > 0` is on). Note that
+ * `dcTractionControl` is slot 1 only (see `shared/setup-view.ts`, `view-tc-slot-1`):
+ * a car with several TC presets exposes the others as `dcTractionControl2`/`3`/`4`,
+ * so the preview predicts the CANONICAL TC — which is exactly what the TC Toggle
+ * binding this gesture taps acts on, whichever slot the dial happens to rotate.
+ *
+ * It is imported from `icons/status-bar.ts` rather than from `setup-traction.ts`'s
+ * `tcToggleState` wrapper, which names the same field: `setup-traction.ts`
+ * imports THIS module, so reaching back into it would close a workspace import
+ * cycle, which the plugin build fails on (#1176).
+ */
+export function pendingGesturePreview(
+  gesture: GestureSlot,
+  telemetry: TelemetryData | null,
+  color: string,
+): DialPendingPreview | null {
+  if (gesture !== "toggle-tc") return null;
+
+  const state = toggleStateFromLevel(telemetry?.dcTractionControl);
+
+  if (state === "na") return null;
+
+  return { text: state === "on" ? "TC OFF" : "TC ON", color };
+}
+
 /** Per-context runtime state. */
 interface SetupTractionDialContext {
   dial: DialSettings;
@@ -215,6 +268,16 @@ interface SetupTractionDialContext {
   rotatedWhilePressed: boolean;
   lastRenderSig: string | null;
   lastChangeRenderAt: number;
+  /**
+   * The pending long-press outcome currently on the strip (#1120), or null for
+   * the normal display. Read by EVERY render path rather than pushed as a
+   * one-off frame: a telemetry tick mid-hold would otherwise redraw the live
+   * value over the preview, and the baseline that one-off frame stamped would
+   * make the revert look like "nothing changed".
+   */
+  preview: DialPendingPreview | null;
+  /** Arms the preview at the long-press threshold and reverts it on release. */
+  holdPreview: HoldPreview;
 }
 
 /**
@@ -253,11 +316,19 @@ export class SetupTractionDialSurface {
   }
 
   willDisappear(actionId: string): void {
+    // The context is gone, so a frame pushed at it would be wasted: tear the
+    // preview down without reverting.
+    this.contextsState.get(actionId)?.holdPreview.dispose();
     this.contextsState.delete(actionId);
   }
 
   async didReceiveSettings(action: IDeckActionContext, dial: DialSettings): Promise<void> {
     const ctx = this.ensureContext(action, dial);
+    // The gesture may be the thing that just changed, so a preview armed under
+    // the old one is void. Drop it without a revert frame — the re-render below
+    // IS the revert.
+    ctx.holdPreview.dispose();
+    ctx.preview = null;
     ctx.lastRenderSig = null;
 
     await this.applyTriggerDescription(ctx);
@@ -269,6 +340,10 @@ export class SetupTractionDialSurface {
 
     if (pressed) {
       ctx.rotatedWhilePressed = true;
+      // Push+turn pre-empts the press, so the preview goes at once rather than
+      // waiting for the release. Placed beside the guard it mirrors: this
+      // surface has no zero-tick early return, so the two always agree.
+      ctx.holdPreview.rotated();
     }
 
     const direction: SetupTractionDirection = ticks > 0 ? "increase" : "decrease";
@@ -280,12 +355,20 @@ export class SetupTractionDialSurface {
 
     ctx.pressStart = Date.now();
     ctx.rotatedWhilePressed = false;
+    // The only timer this arms DRAWS and never dispatches — press vs long-press
+    // is still classified once at dialUp (#1120).
+    ctx.holdPreview.down();
   }
 
   async up(actionId: string): Promise<void> {
     const ctx = this.contextsState.get(actionId);
 
     if (!ctx) return;
+
+    // Take the preview off the strip before ANY of the early returns below: a
+    // release that fires no gesture (a stray dialUp, a push+turn, a `none`
+    // slot) must still revert what the hold drew.
+    ctx.holdPreview.up();
 
     const pressStartMs = ctx.pressStart;
     ctx.pressStart = 0;
@@ -360,7 +443,13 @@ export class SetupTractionDialSurface {
         rotatedWhilePressed: false,
         lastRenderSig: null,
         lastChangeRenderAt: 0,
+        preview: null,
+        // Replaced immediately below — the preview's callbacks close over the
+        // very context being built. On a host with no plugin touch strip the
+        // no-op is what stays.
+        holdPreview: NOOP_HOLD_PREVIEW,
       };
+      ctx.holdPreview = this.createPreview(ctx);
       this.contextsState.set(action.id, ctx);
     } else {
       ctx.action = action;
@@ -368,6 +457,49 @@ export class SetupTractionDialSurface {
     }
 
     return ctx;
+  }
+
+  /** The per-context hold preview, or the no-op where there is no touch strip. */
+  private createPreview(ctx: SetupTractionDialContext): HoldPreview {
+    if (!__FEATURE_DIAL_FEEDBACK__) return NOOP_HOLD_PREVIEW;
+
+    return createHoldPreview({
+      // The same value the release classifier reads, so the strip changes at
+      // exactly the instant a release starts counting as a long press.
+      thresholdMs: () => getDualPressThresholdMs(),
+      onThreshold: () => this.showPreview(ctx),
+      onCancel: () => this.hidePreview(ctx),
+    });
+  }
+
+  /**
+   * Draws the long-press outcome. Returns whether anything was drawn — a
+   * gesture with no knowable outcome leaves the strip alone, which is what
+   * stops the release pushing a pointless revert frame.
+   */
+  private showPreview(ctx: SetupTractionDialContext): boolean {
+    const pending = pendingGesturePreview(
+      ctx.dial.longPressAction,
+      this.host.getTelemetry(),
+      resolveDialBoxColors(ctx.dial.colors, MODE_COLOR[ctx.dial.setting]).value,
+    );
+
+    if (!pending) return false;
+
+    ctx.preview = pending;
+    this.renderFeedback(ctx).catch((err) => {
+      this.host.logger.debug(`Dial hold preview render failed: ${String(err)}`);
+    });
+
+    return true;
+  }
+
+  /** Reverts to the normal strip after a preview that was showing. */
+  private hidePreview(ctx: SetupTractionDialContext): void {
+    ctx.preview = null;
+    this.renderFeedback(ctx).catch((err) => {
+      this.host.logger.debug(`Dial hold preview revert failed: ${String(err)}`);
+    });
   }
 
   private async dispatchRotation(ctx: SetupTractionDialContext, direction: SetupTractionDirection): Promise<void> {
@@ -401,10 +533,21 @@ export class SetupTractionDialSurface {
     return this.host.isBindingMissing(keys);
   }
 
+  /**
+   * The pending preview is part of the DISPLAYED state, so it belongs in the
+   * signature: without it, arming and reverting a preview would both leave the
+   * baseline unchanged and the next telemetry tick would decide the strip was
+   * already correct.
+   */
   private displayedSignature(ctx: SetupTractionDialContext): string {
     const value = formatDialValue(ctx.dial.setting, this.host.getTelemetry());
 
-    return [ctx.dial.setting, value, this.computeBindingMissing(ctx.dial) ? "warn" : ""].join("|");
+    return [
+      ctx.dial.setting,
+      value,
+      this.computeBindingMissing(ctx.dial) ? "warn" : "",
+      ctx.preview ? `pending:${ctx.preview.text}` : "",
+    ].join("|");
   }
 
   private async applyTriggerDescription(ctx: SetupTractionDialContext): Promise<void> {
@@ -427,6 +570,9 @@ export class SetupTractionDialSurface {
       colors: resolveDialBoxColors(ctx.dial.colors, MODE_COLOR[setting]),
       identityLabelScale: 0.24,
       bindingMissing: this.computeBindingMissing(ctx.dial),
+      // EVERY render path carries the pending preview, so a telemetry tick or a
+      // global-settings refresh mid-hold redraws it instead of wiping it.
+      pending: ctx.preview,
     });
     const feedback: DeckFeedbackPayload = { box: svgToDataUri(boxSvg) };
     await ctx.action.setFeedback(feedback);
