@@ -22265,21 +22265,37 @@
       "generatedAt": "2026-09-18T16:36:25.032Z",
       "requestId": "hIV4ZKT3WTI9GgtdzJgz"
     },
-    "voice/default/pit-actions/auto-fuel-on-01.mp3": {
-      "hash": "b0880ace9d723ee0",
+    "voice/default/pit-actions/auto-fuel-on-refuel-01.mp3": {
+      "hash": "143de7d3b6935002",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "Auto fuel has us taking fuel at the next stop.",
-      "generatedAt": "2026-09-19T16:30:53.046Z",
-      "requestId": "vtl2U3eioDg2pOiXKUna"
+      "textPreview": "Auto fuel is on. We're refueling at the next pit stop.",
+      "generatedAt": "2026-09-20T08:10:10.444Z",
+      "requestId": "olObynW3ZfQy7SyyFEWK"
     },
-    "voice/default/pit-actions/auto-fuel-off-01.mp3": {
-      "hash": "5d5e002aa84c571a",
+    "voice/default/pit-actions/auto-fuel-on-no-refuel-01.mp3": {
+      "hash": "960fcf3056afb81c",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "Auto fuel is handling the fuel at the next stop.",
-      "generatedAt": "2026-09-19T16:59:28.201Z",
-      "requestId": "H8iXcAWGGBum0h36vaN2"
+      "textPreview": "Auto fuel is on. We're not refueling at the next pit stop.",
+      "generatedAt": "2026-09-20T08:10:10.704Z",
+      "requestId": "fDjqIIUhSSH46jhT1YNQ"
+    },
+    "voice/default/pit-actions/auto-fuel-off-refuel-01.mp3": {
+      "hash": "92b5551c2e867f5e",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Auto fuel is off. The plan is still to refuel during the next pit stop.",
+      "generatedAt": "2026-09-20T08:10:10.969Z",
+      "requestId": "KIxgvOEQcZOzzSePHNk1"
+    },
+    "voice/default/pit-actions/auto-fuel-off-no-refuel-01.mp3": {
+      "hash": "a4d5b149396b59d0",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Auto fuel is off. We're not refueling at the next pit stop.",
+      "generatedAt": "2026-09-20T08:10:11.219Z",
+      "requestId": "XSDQh6zsbu501xael1MT"
     }
   }
 }
