@@ -357,6 +357,8 @@ What a short or long press of the dial button does, chosen from:
 
 Both default to **None** (blind-safe). A press is classified when you release the dial — a hold past the [Long-press threshold](/docs/features/dials/#the-long-press-threshold) fires the Long Press action. Turning the dial while pressed cycles the target (a "push + turn") and never fires the press action.
 
+With Long Press set to **Focus My Car**, holding past the threshold shows the car number the release will jump to, so you can let go on the change — see [Seeing the outcome before you let go](/docs/features/dials/#seeing-the-outcome-before-you-let-go). The other gestures show nothing while held: iRacing picks the car for Focus on Leader, Focus on Incident and Focus on Most Exciting itself, so the plugin cannot say in advance which one you will get.
+
 #### Setting: Tap Display / Long Touch
 
 Optional touch-strip gestures (Stream Deck+ only), each over the same set { Focus My Car, Change Camera, Focus on Leader, Focus on Incident, Focus on Most Exciting, None }. Both default to **None** for VR safety.

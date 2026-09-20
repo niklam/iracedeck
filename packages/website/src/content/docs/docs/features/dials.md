@@ -32,8 +32,9 @@ It appears on the dials whose long-press outcome iRacing actually reports back:
 - **Setup Brakes** — ABS on/off
 - **Setup Traction** — TC on/off
 - **Setup Chassis** — which spring side the dial switches to
+- **Camera Controls** — the car number a Focus My Car press will jump to
 
-Every other dial gesture leaves the strip unchanged while you hold. That is deliberate rather than an omission: iRacing reports nothing back for things like recentering VR, opening a black box, toggling the wipers, or letting the camera director pick a car, so the plugin genuinely cannot say what the strip will look like afterwards. Showing you a guess would be worse than showing you nothing, because the whole point is that you can trust the change you see.
+Every other dial gesture leaves the strip unchanged while you hold. That is deliberate rather than an omission: iRacing reports nothing back for things like recentering VR, opening a black box or toggling the wipers, and for Focus on Leader or Focus on Incident the sim picks the car itself — so the plugin genuinely cannot say what the strip will look like afterwards. Showing you a guess would be worse than showing you nothing, because the whole point is that you can trust the change you see.
 
 ## The touch strip is Stream Deck+ only
 
