@@ -48,7 +48,8 @@
  * queueable fire of at least its weight that arrives then replaces it, and
  * the report is gone. That is the engine's one-slot limit, shared by every
  * queueable callout, and not something this contract can buy its way out
- * of. What `queueBehind` fixes is the other ordering, which rejoining
+ * of; #1185 is where lifting it would be decided. What `queueBehind` fixes
+ * is the other ordering, which rejoining
  * traffic makes common (the spotter shares the Voice bus): when the
  * readback itself has to wait, the report — published right after it in
  * the same tick, and the heavier of the two — would have taken its slot and
