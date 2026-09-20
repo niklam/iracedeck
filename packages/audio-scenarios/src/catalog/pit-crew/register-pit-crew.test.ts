@@ -413,11 +413,11 @@ const PIT_LIMITER_CLIP_PATHS = [
 ] as const;
 
 // Tire-wear clips referenced from `tire-wear.ts` (issue #1108) — one variant of
-// each line, plus the whole-percent numbers the tread vars borrow from the
-// session-start temperature group.
+// each line, plus the whole-percent numbers the tread vars draw from the
+// `numbers-percent` group, whose clips speak the unit themselves.
 const TIRE_WEAR_CLIP_PATHS = [
   ...TIRE_WEAR_CLIP_SOURCES.map(({ group, base }) => `voice/${VOICE}/${group}/${base}-01.mp3`),
-  ...[85, 87, 89, 91].map((n) => `voice/${VOICE}/session-start-temp-numbers/${n}.mp3`),
+  ...[85, 87, 89, 91].map((n) => `voice/${VOICE}/numbers-percent/${n}.mp3`),
 ] as const;
 
 const manifest: AudioAssetsManifest = {
@@ -1560,7 +1560,7 @@ describe("tire-wear family registration (issue #1108)", () => {
     flush(audio);
 
     expect(voiceClipsPlayed()).toContain(`voice/${VOICE}/tire-wear/left-front-01.mp3`);
-    expect(voiceClipsPlayed()).toContain(`voice/${VOICE}/session-start-temp-numbers/85.mp3`);
+    expect(voiceClipsPlayed()).toContain(`voice/${VOICE}/numbers-percent/85.mp3`);
     expect(voiceClipsPlayed().at(-1)).toBe(`voice/${VOICE}/tire-wear/heaviest-rr-inside-01.mp3`);
   });
 

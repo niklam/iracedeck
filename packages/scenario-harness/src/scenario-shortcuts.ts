@@ -764,7 +764,7 @@ const TIRE_WEAR_STOP_SHORTCUT: TelemetrySequenceShortcut = {
   category: "Tire Wear",
   label: "Stop replayed from a capture",
   description:
-    'Drives the TRANSLATOR through a pit stop modelled on one captured on 2026-09-19, about 19 s end to end: the approach, pit road with the limiter on, the box, service, and back out. It needs no preset — its first step puts the car on the circuit from wherever it is. Expect the pit-entry readback, the service in-progress and complete lines, and — about four and a half seconds after leaving pit road — the exit readback, followed by the tire wear report: "Left front ninety-eight percent. Right front ninety-nine. Left rear ninety-nine. Right rear ninety-nine. Wear is heaviest on the left front, inside shoulder." The report always follows the exit readback. Needs the mock SDK CONNECTED; with it disconnected the translator sees no ticks and the button is silent for the wrong reason.',
+    'Drives the TRANSLATOR through a pit stop modelled on one captured on 2026-09-19, about 19 s end to end: the approach, pit road with the limiter on, the box, service, and back out. It needs no preset — its first step puts the car on the circuit from wherever it is. Expect the pit-entry readback, the service in-progress and complete lines, and — about four and a half seconds after leaving pit road — the exit readback, followed by the tire wear report: "Tire wear at the pit stop: Left front: ninety-eight percent. Right front: ninety-nine percent. Left rear: ninety-nine percent. Right rear: ninety-nine percent. Wear is heaviest on the left front, inside shoulder." The report always follows the exit readback. Needs the mock SDK CONNECTED; with it disconnected the translator sees no ticks and the button is silent for the wrong reason.',
   telemetrySequence: [
     {
       patch: {
@@ -1037,7 +1037,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     category: "Tire Wear",
     label: "Report after a stop",
     description:
-      'The tire wear of a stop, published straight to the bus — "Left front eighty-nine percent. Right front ninety-one. Left rear eighty-seven. Right rear eighty-five. Wear is heaviest on the right rear, inside shoulder." Skips the translator, so it plays on its own rather than behind the exit readback; "Stop replayed from a capture" drives the real moment.',
+      'The tire wear of a stop, published straight to the bus — "Tire wear at the pit stop: Left front: eighty-nine percent. Right front: ninety-one percent. Left rear: eighty-seven percent. Right rear: eighty-five percent. Wear is heaviest on the right rear, inside shoulder." Skips the translator, so it plays on its own rather than behind the exit readback; "Stop replayed from a capture" drives the real moment.',
     event: "tireWear.reported",
     data: TIRE_WEAR_REPORT_EXAMPLE,
   },

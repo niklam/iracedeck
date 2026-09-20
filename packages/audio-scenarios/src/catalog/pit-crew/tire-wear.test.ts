@@ -153,8 +153,8 @@ function flush(audio: FakeAudio, iterations = 60): void {
 
 const VOICE = "luca";
 
-/** The number clips the tread vars draw — the bundled voice records 0–150; the fixture stops at 100 so a reading past it can be shown to abort. */
-const NUMBER_CLIPS = Array.from({ length: 101 }, (_, n) => `voice/${VOICE}/session-start-temp-numbers/${n}.mp3`);
+/** The number clips the tread vars draw — a whole percent with its unit, 0 to 100, which is every reading a tread can have. */
+const NUMBER_CLIPS = Array.from({ length: 101 }, (_, n) => `voice/${VOICE}/numbers-percent/${n}.mp3`);
 
 /** The exit readback's two lines, for the scheduling case (a null snapshot reads back as the empty fallback). */
 const READBACK_CLIPS = [
@@ -281,7 +281,7 @@ function voiceClipsPlayed(): string[] {
 }
 
 const tw = (base: string): string => `voice/${VOICE}/tire-wear/${base}-01.mp3`;
-const num = (n: number): string => `voice/${VOICE}/session-start-temp-numbers/${n}.mp3`;
+const num = (n: number): string => `voice/${VOICE}/numbers-percent/${n}.mp3`;
 
 describe("TIRE_WEAR_CONTRACTS structure", () => {
   it("exports the one report contract", () => {
@@ -439,7 +439,11 @@ describe("registerTireWearVocabulary (issue #1108)", () => {
 
   it("names the clip group every tread var draws from, so the recording script attributes the numbers to it (#1066)", () => {
     for (const v of engine.vocabulary().vars.filter((x) => x.name.startsWith("tireWear."))) {
-      expect(descriptionNamesGroup(v.description, "session-start-temp-numbers"), v.name).toBe(true);
+      expect(descriptionNamesGroup(v.description, "numbers-percent"), v.name).toBe(true);
+      // The numbers came from the temperature group until the percent step was
+      // dropped; a description still naming it would credit those clips with
+      // lines they no longer speak.
+      expect(descriptionNamesGroup(v.description, "session-start-temp-numbers"), v.name).toBe(false);
       // The report lines are the script's, addressed directly — no var claims them.
       expect(descriptionNamesGroup(v.description, "tire-wear"), v.name).toBe(false);
     }
@@ -463,14 +467,14 @@ describe("registerTireWearVocabulary (issue #1108)", () => {
 });
 
 describe("the tire wear report fires through the bundled script (issue #1108)", () => {
-  it("reads the four tires front to rear, the percent after the first, then the heaviest spot, inside the radio frame", () => {
+  it("opens with the intro, reads the four tires front to rear, then the heaviest spot, inside the radio frame", () => {
     bus.publishEvent("tireWear.reported", DISTINCT);
     flush(audio);
 
     expect(voiceClipsPlayed()).toEqual([
+      tw("intro"),
       tw("left-front"),
       num(89),
-      tw("percent"),
       tw("right-front"),
       num(91),
       tw("left-rear"),
@@ -491,9 +495,9 @@ describe("the tire wear report fires through the bundled script (issue #1108)", 
     flush(audio);
 
     expect(voiceClipsPlayed()).toEqual([
+      tw("intro"),
       tw("left-front"),
       num(98),
-      tw("percent"),
       tw("right-front"),
       num(99),
       tw("left-rear"),
@@ -509,9 +513,9 @@ describe("the tire wear report fires through the bundled script (issue #1108)", 
     flush(audio);
 
     expect(voiceClipsPlayed()).toEqual([
+      tw("intro"),
       tw("left-front"),
       num(100),
-      tw("percent"),
       tw("right-front"),
       num(100),
       tw("left-rear"),
@@ -526,9 +530,9 @@ describe("the tire wear report fires through the bundled script (issue #1108)", 
     flush(audio);
 
     expect(voiceClipsPlayed()).toEqual([
+      tw("intro"),
       tw("left-front"),
       num(89),
-      tw("percent"),
       tw("right-front"),
       num(91),
       tw("left-rear"),
@@ -566,9 +570,9 @@ describe("the tire wear report fires through the bundled script (issue #1108)", 
     expect(voiceClipsPlayed()).toEqual([
       `voice/${VOICE}/pit-readback/opener-exit-01.mp3`,
       `voice/${VOICE}/pit-readback/empty-fallback-01.mp3`,
+      tw("intro"),
       tw("left-front"),
       num(89),
-      tw("percent"),
       tw("right-front"),
       num(91),
       tw("left-rear"),
@@ -606,9 +610,9 @@ describe("the tire wear report fires through the bundled script (issue #1108)", 
       SPOTTER_CLIP,
       `voice/${VOICE}/pit-readback/opener-exit-01.mp3`,
       `voice/${VOICE}/pit-readback/empty-fallback-01.mp3`,
+      tw("intro"),
       tw("left-front"),
       num(89),
-      tw("percent"),
       tw("right-front"),
       num(91),
       tw("left-rear"),
@@ -685,7 +689,7 @@ describe("the bundled script's tire-wear entry (issue #1108)", () => {
   it("the bundled voice records every whole percent a tread can read, 0 to 100", () => {
     const clips = new Set(MANIFEST.clips);
     const missing = Array.from({ length: 101 }, (_, n) => n).filter(
-      (n) => !clips.has(`voice/${BUNDLED_VOICE}/session-start-temp-numbers/${n}.mp3`),
+      (n) => !clips.has(`voice/${BUNDLED_VOICE}/numbers-percent/${n}.mp3`),
     );
 
     expect(missing).toEqual([]);

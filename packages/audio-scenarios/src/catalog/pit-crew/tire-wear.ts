@@ -12,14 +12,19 @@
  * The code below decides WHETHER the report fires and how it is scheduled;
  * WHAT is said lives in the active voice's `callouts.json` under the same id
  * (`scenarios["pit-crew.tire-wear-report"]`), paired at `setScripts` time.
- * The bundled script reads the four tires front to rear, each as a whole
- * percent (`pool:tire-wear/<corner>` + `{{tireWear.<corner>Tread}}`, with
- * `pool:tire-wear/percent` after the first number only), then — as an
- * optional whole clause, and only when `tireWear.hasWear` says a tire reads
- * below 100 — where the wear is heaviest, through the `tireWear.heaviestSpot`
+ * The bundled script opens with `pool:tire-wear/intro` and then reads the
+ * four tires front to rear, each as a `pool:tire-wear/<corner>` heading
+ * followed by `{{tireWear.<corner>Tread}}` — the number clip says the word
+ * "percent" itself, so there is no separate percent step — then, as an
+ * optional whole clause and only when `tireWear.hasWear` says a tire reads
+ * below 100, where the wear is heaviest, through the `tireWear.heaviestSpot`
  * case: one recorded sentence per tire and zone, so the closing clause is
  * never spliced mid-sentence. On an untouched set the heaviest spot is just
- * the tie-break's first pick, which is why the condition exists.
+ * the tie-break's first pick, which is why the condition exists. In the
+ * bundled voice that is: "Tire wear at the pit stop: Left front: ninety-eight
+ * percent. Right front: ninety-nine percent. Left rear: ninety-nine percent.
+ * Right rear: ninety-nine percent. Wear is heaviest on the left front, inside
+ * shoulder."
  *
  * **Everything is read off the fire's own event.** The payload is the report:
  * the readings do not change again until the next stop, so there is no live
@@ -30,11 +35,16 @@
  * `tireWear.*` name from another callout's entry — which aborts a required
  * step and takes a case's `default` branch, as the grammar says.
  *
- * **The numbers are the session-start temperature clips.** A tread percent is
- * a whole number from 0 to 100, which that group already records (0–150)
- * for the temperature brief, so the report needs no number clips of its own.
- * No range is checked here (issue #836): the clips that exist for the active
- * voice define what is speakable.
+ * **The numbers say "percent" themselves — the `numbers-percent` group.** A
+ * tread percent is a whole number from 0 to 100, and the report first borrowed
+ * the session-start temperature numbers, which record exactly that range. It
+ * does not any more: those clips were cut expecting the word "degrees" to
+ * follow, so each ends on a trailing consonant that reads as an unfinished
+ * phrase when a sentence stops on it — audible four times a report. The
+ * `numbers-percent` group records the figure and the unit as one line
+ * ("ninety eight percent."), which is why the script has no percent step of
+ * its own. No range is checked here (issue #836): the clips that exist for the
+ * active voice define what is speakable.
  *
  * **Scheduling.** Default weight, `queueable: true`, the default radio frame,
  * `family: "tire-wear"`, and `queueBehind` naming the exit readback. The
@@ -68,8 +78,8 @@ import type { ScenarioContext, ScenarioContract } from "../../dsl.js";
 import { poolRef } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
 
-/** The clip group the spoken percentages borrow — whole numbers 0–150, recorded for the temperature brief. */
-const NUMBER_GROUP = "session-start-temp-numbers";
+/** The clip group the spoken percentages draw from — whole percents 0–100, each recorded with its unit ("ninety eight percent."). */
+const NUMBER_GROUP = "numbers-percent";
 
 /** The four tires, in the order the report reads them and ties resolve in. */
 const CORNERS: readonly TireCorner[] = ["lf", "rf", "lr", "rr"];
@@ -278,14 +288,14 @@ export function registerTireWearVocabulary(
     engine.defineVar(
       name,
       (ctx) => percentClip(resolveCornerTread(ctx, corner)),
-      `The ${CORNER_PROSE[corner]} tire's remaining tread from the tire-wear report as a whole percent — the lowest of its three zones, rounded — drawn from the session-start-temp-numbers clip group, and nothing outside that report.`,
+      `The ${CORNER_PROSE[corner]} tire's remaining tread from the tire-wear report as a whole percent — the lowest of its three zones, rounded — spoken by the numbers-percent clip group, whose lines carry the word percent themselves, and nothing outside that report.`,
     );
   }
 
   engine.defineVar(
     "tireWear.heaviestTread",
     (ctx) => percentClip(resolveHeaviestTread(ctx)),
-    "The remaining tread on the most-worn tire from the tire-wear report as a whole percent — the lowest of all twelve zone readings, rounded — drawn from the session-start-temp-numbers clip group, and nothing outside that report.",
+    "The remaining tread on the most-worn tire from the tire-wear report as a whole percent — the lowest of all twelve zone readings, rounded — spoken by the numbers-percent clip group, whose lines carry the word percent themselves, and nothing outside that report.",
   );
 
   engine.defineCond(
@@ -341,9 +351,9 @@ export const TIRE_WEAR_SCENARIO_IDS: readonly string[] = TIRE_WEAR_CONTRACTS.map
 
 /**
  * The clip sources the tire-wear script draws from directly — every
- * `pool:tire-wear/<base>` the bundled script writes: the four tire intros,
- * the word after the first number, and one whole sentence per tire and zone
- * for the heaviest-wear clause. The spoken numbers are the vars', whose
+ * `pool:tire-wear/<base>` the bundled script writes: the opening line, the
+ * four tire headings, and one whole sentence per tire and zone for the
+ * heaviest-wear clause. The spoken numbers are the vars', whose
  * descriptions name their group. The completeness tests read this list: the
  * bundled voice must ship at least one clip for each, and the bundled script
  * must reference exactly this set. A `(group, base)` a script addresses is
@@ -351,11 +361,11 @@ export const TIRE_WEAR_SCENARIO_IDS: readonly string[] = TIRE_WEAR_CONTRACTS.map
  * pack's clip folder.
  */
 export const TIRE_WEAR_CLIP_SOURCES: readonly { group: "tire-wear"; base: string }[] = [
+  { group: "tire-wear", base: "intro" },
   { group: "tire-wear", base: "left-front" },
   { group: "tire-wear", base: "right-front" },
   { group: "tire-wear", base: "left-rear" },
   { group: "tire-wear", base: "right-rear" },
-  { group: "tire-wear", base: "percent" },
   { group: "tire-wear", base: "heaviest-lf-inside" },
   { group: "tire-wear", base: "heaviest-lf-middle" },
   { group: "tire-wear", base: "heaviest-lf-outside" },
