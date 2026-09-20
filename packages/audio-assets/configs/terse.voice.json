@@ -64,7 +64,15 @@
         "text": "Blue flag."
       },
       {
-        "name": "checkered-01",
+        "name": "checkered-practice-01",
+        "text": "checkered flag."
+      },
+      {
+        "name": "checkered-qualifying-01",
+        "text": "checkered flag."
+      },
+      {
+        "name": "checkered-race-01",
         "text": "checkered flag."
       },
       {
@@ -72,7 +80,15 @@
         "text": "Watch for debris."
       },
       {
-        "name": "green-01",
+        "name": "green-practice-01",
+        "text": "Green, green, green!"
+      },
+      {
+        "name": "green-qualifying-01",
+        "text": "Green, green, green!"
+      },
+      {
+        "name": "green-race-01",
         "text": "Green, green, green!"
       },
       {
@@ -84,7 +100,19 @@
         "text": "Red flag. Session stopped."
       },
       {
-        "name": "white-01",
+        "name": "white-last-lap-01",
+        "text": "White flag, last lap."
+      },
+      {
+        "name": "white-practice-01",
+        "text": "White flag, last lap."
+      },
+      {
+        "name": "white-qualifying-01",
+        "text": "White flag, last lap."
+      },
+      {
+        "name": "white-race-01",
         "text": "White flag, last lap."
       },
       {
