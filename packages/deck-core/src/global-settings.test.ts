@@ -523,6 +523,23 @@ describe("caution callout defaults (issue #1127)", () => {
   });
 });
 
+describe("tire-wear callout default (issue #1108)", () => {
+  // Must match packages/audio-scenarios/src/catalog/pit-crew/index.ts
+  // TIRE_WEAR_CALLOUT_SETTING_KEYS — the plugins read the field by that map's
+  // value, not by a literal name in plugin.ts.
+  it("calloutEnabledTireWearReport defaults to true", () => {
+    const parsed = GlobalSettingsSchema.parse({}) as Record<string, unknown>;
+
+    expect(parsed.calloutEnabledTireWearReport).toBe(true);
+  });
+
+  it('calloutEnabledTireWearReport coerces the literal string "false" to boolean false', () => {
+    const parsed = GlobalSettingsSchema.parse({ calloutEnabledTireWearReport: "false" }) as Record<string, unknown>;
+
+    expect(parsed.calloutEnabledTireWearReport).toBe(false);
+  });
+});
+
 describe("gap callout settings (issue #933)", () => {
   it("defaults the toggles on with threshold 1.0 and cooldown 30", () => {
     const parsed = GlobalSettingsSchema.parse({}) as Record<string, unknown>;

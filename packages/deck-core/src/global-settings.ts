@@ -567,6 +567,18 @@ export const GlobalSettingsSchema = z
       .transform((val) => val === true || val === "true")
       .default(true),
     /**
+     * Tire-wear report opt-in (issue #1108). The remaining tread of all four
+     * tires, spoken after a pit stop the driver drove into, right behind the
+     * exit readback. Same forward-compat semantics as the flag callouts —
+     * default `true`, opt-out read at event arrival without cutting an
+     * in-flight report. Canonical id↔key mapping in
+     * `TIRE_WEAR_CALLOUT_SETTING_KEYS`.
+     */
+    calloutEnabledTireWearReport: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    /**
      * Family-wide gate for the per-toggle pit-service request
      * confirmations (issue #468). One boolean covers fuel, tire-set,
      * compound, windshield-tearoff, and fast-repair on/off acks — the

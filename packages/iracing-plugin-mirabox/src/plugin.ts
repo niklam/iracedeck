@@ -86,6 +86,8 @@ import {
   type SpotterCalloutId,
   START_LIGHT_CALLOUT_SETTING_KEYS,
   type StartLightCalloutId,
+  TIRE_WEAR_CALLOUT_SETTING_KEYS,
+  type TireWearCalloutId,
   TRACK_CONDITIONS_CALLOUT_SETTING_KEYS,
   type TrackConditionsCalloutId,
 } from "@iracedeck/audio-scenarios/pit-crew";
@@ -839,6 +841,9 @@ registerPitCrew(eventBus, {
   getPitServiceRequestsEnabled: () =>
     (getGlobalSettings() as Record<string, unknown>).calloutEnabledPitServiceRequests !== false,
   getReadbackSnapshot: () => getReadbackSnapshot(),
+  // The tire wear report after a pit stop (issue #1108), read live.
+  getTireWearCalloutEnabled: (id: TireWearCalloutId) =>
+    (getGlobalSettings() as Record<string, unknown>)[TIRE_WEAR_CALLOUT_SETTING_KEYS[id]] !== false,
   getDamageCalloutEnabled: (id: DamageCalloutId) =>
     (getGlobalSettings() as Record<string, unknown>)[DAMAGE_CALLOUT_SETTING_KEYS[id]] !== false,
   getPitStatusCalloutEnabled: (id: PitStatusCalloutId) =>

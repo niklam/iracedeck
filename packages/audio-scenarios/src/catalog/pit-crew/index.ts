@@ -34,6 +34,8 @@
  *     `pitService.readbackRequested`) — scripted the same way since #1065,
  *     with the `readback.*` vocabulary reading the queued-services snapshot
  *     at fire time
+ *   - The tire-wear report after a pit stop (`tireWear.reported`, issue
+ *     #1108), whose `tireWear.*` vocabulary reads the event's own payload
  *   - Laps-of-fuel-left contracts (counts 10 → 1 plus the box-this-lap call,
  *     via `fuel.lapsLeft.crossed` — issue #838; scripted since #1065)
  *
@@ -210,6 +212,7 @@ import {
 } from "./session-start.js";
 import { registerSpotterEngine, SPOTTER_STILL_THERE_DEFAULT_MS } from "./spotter-engine.js";
 import { START_LIGHT_CONTRACTS } from "./start-lights.js";
+import { registerTireWearVocabulary, TIRE_WEAR_CONTRACTS } from "./tire-wear.js";
 import { TOGGLE_CONFIRMATION_CONTRACTS } from "./toggle-confirmations.js";
 import { TRACK_CONDITIONS_CONTRACTS } from "./track-conditions.js";
 
@@ -252,6 +255,13 @@ export {
   type ReadbackSnapshotResolver,
 } from "./readback.js";
 export { PIT_LIMITER_CALLOUT_SETTING_KEYS, type PitLimiterCalloutId, PIT_LIMITER_SCENARIO_IDS } from "./pit-limiter.js";
+export {
+  registerTireWearVocabulary,
+  TIRE_WEAR_CLIP_SOURCES,
+  TIRE_WEAR_CONTRACTS,
+  TIRE_WEAR_SCENARIO_IDS,
+  type TireWearSpotKey,
+} from "./tire-wear.js";
 export { NO_LIMITER_CALLOUT_SETTING_KEYS, type NoLimiterCalloutId, NO_LIMITER_SCENARIO_IDS } from "./no-limiter.js";
 export {
   buildCornerNameContract,
@@ -592,6 +602,27 @@ const SCENARIO_ID_TO_DAMAGE_ID: Record<string, DamageCalloutId> = {
 };
 
 /**
+ * Stable identifier for the tire-wear callout family (issue #1108). Single
+ * subject (`report`) — the whole post-stop report is one toggle. Future
+ * tire-wear callouts (a mid-stint estimate, a worn-out warning) can append
+ * cleanly under this family.
+ */
+export type TireWearCalloutId = "report";
+
+/**
+ * Canonical mapping from `TireWearCalloutId` to its plugin-global setting key
+ * in `GlobalSettingsSchema`. Plugin entry points use this to read the live
+ * opt-in without duplicating the key string.
+ */
+export const TIRE_WEAR_CALLOUT_SETTING_KEYS: Record<TireWearCalloutId, string> = {
+  report: "calloutEnabledTireWearReport",
+};
+
+const SCENARIO_ID_TO_TIRE_WEAR_ID: Record<string, TireWearCalloutId> = {
+  "pit-crew.tire-wear-report": "report",
+};
+
+/**
  * Stable identifier for each user-toggleable pit-service-status callout
  * (issue #479). One id per non-`None` `PlayerCarPitSvStatus` target — the
  * idle state never reaches the bus, so it has no opt-out either. Eight
@@ -889,6 +920,12 @@ export type PitCrewDeps = {
   // collapses every readback to the empty-fallback clip — a safe stub for
   // tests that don't supply a resolver.
   getReadbackSnapshot?: () => PitReadbackSnapshot | null;
+  // User opt-in for the tire-wear report after a pit stop (issue #1108).
+  // Single subject (`report`); same gate-at-event-arrival shape as the other
+  // callout families — read live so a toggle off mid-session takes effect on
+  // the next stop without cutting an in-flight report. Default `() => true`
+  // preserves legacy behavior for tests that don't supply a closure.
+  getTireWearCalloutEnabled?: (id: TireWearCalloutId) => boolean;
   // User opt-in for the damage-alert callout (issue #489). Same
   // gate-at-event-arrival shape as the flag and pit-readback callouts —
   // toggling off mid-session takes effect on the next event without
@@ -1214,6 +1251,7 @@ const DEFAULT_DEPS = {
   getPitActionsAllowed: () => true,
   getPitServiceRequestsEnabled: () => true,
   getReadbackSnapshot: () => null,
+  getTireWearCalloutEnabled: () => true,
   getDamageCalloutEnabled: () => true,
   getPitStatusCalloutEnabled: () => true,
   getTrackConditionsCalloutEnabled: () => true,
@@ -1273,6 +1311,7 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
     getPitActionsAllowed = DEFAULT_DEPS.getPitActionsAllowed,
     getPitServiceRequestsEnabled = DEFAULT_DEPS.getPitServiceRequestsEnabled,
     getReadbackSnapshot = DEFAULT_DEPS.getReadbackSnapshot,
+    getTireWearCalloutEnabled = DEFAULT_DEPS.getTireWearCalloutEnabled,
     getDamageCalloutEnabled = DEFAULT_DEPS.getDamageCalloutEnabled,
     getPitStatusCalloutEnabled = DEFAULT_DEPS.getPitStatusCalloutEnabled,
     getTrackConditionsCalloutEnabled = DEFAULT_DEPS.getTrackConditionsCalloutEnabled,
@@ -1361,6 +1400,12 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   // `pitStatus.still*` speak-time gates, each re-reading live telemetry when
   // its nag comes to speak.
   registerPitStatusVocabulary(engine);
+
+  // The vocabulary the tire-wear script names (issue #1108) — the per-tire
+  // and most-worn `tireWear.*Tread` vars, the `tireWear.hasWear` condition and
+  // the three `tireWear.heaviest*` cases, every one reading the fire's own
+  // `tireWear.reported` payload.
+  registerTireWearVocabulary(engine);
 
   // No radio-frame fragments are registered here any more (issue #1064): the
   // engine wraps every scenario in the frame its `frame` field names — the
@@ -1583,6 +1628,21 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
     engine.defineContract(
       wrapWithMaster(
         wrapCalloutScenario(c, SCENARIO_ID_TO_PIT_READBACK_ID, getPitReadbackEnabled, "pit readback callout", logger),
+      ),
+    );
+  }
+
+  // Tire-wear report (issue #1108): what the report says is the active voice's
+  // business (`scenarios["pit-crew.tire-wear-report"]`, addressing
+  // `pool:tire-wear/<base>` and reading the numbers through the `tireWear.*`
+  // vocabulary registered above). Published right after the exit readback,
+  // from the same settle timer, so it queues behind it (see `tire-wear.ts`).
+  // Single subject (`report`) gates the contract via
+  // `SCENARIO_ID_TO_TIRE_WEAR_ID`.
+  for (const c of TIRE_WEAR_CONTRACTS) {
+    engine.defineContract(
+      wrapWithMaster(
+        wrapCalloutScenario(c, SCENARIO_ID_TO_TIRE_WEAR_ID, getTireWearCalloutEnabled, "tire-wear callout", logger),
       ),
     );
   }

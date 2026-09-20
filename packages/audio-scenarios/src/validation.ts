@@ -53,6 +53,22 @@ export function validateScenario(
     errors.push("resumable requires queueable: true (only a queueable fire is stashed for idle-replay)");
   }
 
+  // Waiting behind another contract (issue #1108) is a refinement of
+  // waiting at all: a non-queueable fire is dropped before the slot is ever
+  // looked at, so `queueBehind` without `queueable` would be a silent no-op
+  // like `resumable` above. A contract cannot wait behind itself. An id that
+  // is not registered is NOT an error — registration order is the catalog's
+  // business — it just never matches.
+  if (s.queueBehind !== undefined) {
+    if (s.queueable !== true) {
+      errors.push("queueBehind requires queueable: true (only a queueable fire waits for the bus)");
+    }
+
+    if (s.queueBehind.includes(s.id)) {
+      errors.push("queueBehind must not name the contract itself");
+    }
+  }
+
   if (s.pendingHoldMs !== undefined && (!Number.isFinite(s.pendingHoldMs) || s.pendingHoldMs < 0)) {
     errors.push(`pendingHoldMs must be a non-negative number (got ${String(s.pendingHoldMs)})`);
   }

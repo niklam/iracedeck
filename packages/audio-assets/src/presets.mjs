@@ -11,19 +11,30 @@
  * outside voice/ (currently only sfx/) is copied unchanged — SFX tones,
  * ticks and squelch beeps should not be radio-filtered.
  *
- * The trailing `apad` is the one part that is about SEQUENCING rather than
- * tone (issue #1127). A callout is several clips played back to back, and
- * `interpreter.ts` chains them on the "clip finished" callback with no gap
- * at all — so the spacing between two spoken words is whatever silence the
- * clips happen to carry. Measured across the reference voice, that is
- * essentially none: trailing silence is 0.000 s on every clip sampled, and
- * leading silence averages ~20 ms. Words therefore butt straight into one
- * another, and a native end-callback that fires a hair before the buffer
- * drains clips the final consonant outright. 90 ms of digital silence on
- * the tail buys the breath the recordings do not have and gives that
- * callback somewhere harmless to land. It is deliberately NOT a `pause` op
- * in each script: the gap is a property of how clips are joined, so a fix
- * per script would have to be repeated in every voice pack anyone writes.
+ * **There is deliberately no trailing pad, and that is a reversal (#1108).**
+ * #1127 appended `apad=pad_dur=0.09` here, reasoning that `interpreter.ts`
+ * chains a callout's clips on the "clip finished" callback with no gap, so a
+ * native end-callback firing a hair before the buffer drains would clip the
+ * final consonant. Nothing ever recorded a word that came out wrong — not the
+ * spec, not the PR, not a test, not an issue — so the pad was a 90 ms margin
+ * on every clip against a defect nobody had heard.
+ *
+ * What it cost was audible. A clip conditioned to run into the next one ends
+ * mid-phrase by design: `session-start-temp-numbers/28` stops on the closure
+ * of the "d" that starts "degrees", and the temperature line then spoke it as
+ * "twenty eight" — pause — "degrees Celsius". The maintainer heard the join,
+ * the pad came off, and every seam tightened. The rule it broke: **some clips
+ * must carry no padding at all.** A clip generated with `next_text` is cut to
+ * run straight into the words that follow — it ends on a consonant that has
+ * not finished, and any silence appended to it is a stutter in the middle of
+ * a phrase. A filter applied to every clip cannot know which ones those are,
+ * so it must add nothing. Spacing between two spoken words belongs to the
+ * clips themselves (a value and its unit recorded as one line, as
+ * `numbers-percent` and `car-number` do) or to a `pause` step where a script
+ * wants one — never to silence smeared across all of them.
+ *
+ * If a final consonant IS ever swallowed, fix it where it happens — in the
+ * audio service's end-callback handling — rather than padding 2800 clips.
  *
  * Changing this string automatically invalidates the processed-asset cache
  * (the cache path embeds a hash of the filter chain), so the next plugin
@@ -32,4 +43,4 @@
  * and the committed sources are never touched.
  */
 export const RADIO_ENGINEER_FILTER =
-  "highpass=f=250,lowpass=f=3500,volume=8dB,asoftclip=type=tanh,alimiter=limit=0.95,apad=pad_dur=0.09";
+  "highpass=f=250,lowpass=f=3500,volume=8dB,asoftclip=type=tanh,alimiter=limit=0.95";

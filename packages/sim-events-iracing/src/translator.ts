@@ -83,6 +83,7 @@ import { updatePositionTracking } from "./diff/race-finish.js";
 import { diffRadar, resolveRadarState } from "./diff/radar.js";
 import { diffRollingStart } from "./diff/rolling-start.js";
 import { diffStartCountdown, diffStartLights } from "./diff/start-lights.js";
+import { diffTireWear } from "./diff/tire-wear.js";
 import { diffToggles } from "./diff/toggles.js";
 import { diffTrackWetness } from "./diff/track-wetness.js";
 import type { PendingEvent } from "./diff/types.js";
@@ -1882,6 +1883,11 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // `tireService.compoundChanged`) in `pending` — those signal user intent
   // and trigger an `entry-refire` readback.
   diffPitReadback(self.state, telemetry, now, emit, pending);
+  // The tire wear of a stop (issue #1108) rides the exit readback: it reads the
+  // pit-lane edges and the exit `pitService.readbackRequested` out of `pending`,
+  // so it must run immediately after `diffPitReadback` — pushed after it, the
+  // report is always flushed behind the readback of the same tick.
+  diffTireWear(self.state, telemetry, emit, pending, replayOnlySession);
   // The discipline-resolved collision-car value (Sporting Code §3.5.1:
   // 4x pavement / 2x dirt) feeds the spoken incident value (#938).
   diffIncidents(self.state, telemetry, now, emit, resolveCollisionCarValue(sessionInfo));

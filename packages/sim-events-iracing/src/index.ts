@@ -75,6 +75,10 @@ export { type CautionLineup, resolveCautionLineup, resolvePlayerCarIdx } from ".
 export { type CautionPhase } from "./state.js";
 export { DAMAGE_DEBOUNCE_MS } from "./diff/damage.js";
 export { YELLOW_CLEARED_HOLD_MS } from "./diff/flags.js";
+// The settle window between leaving pit road and the exit readback, which is
+// also when the tire wear report is published (#1108). Exported for the
+// harness's replayed stop, which must hold past it.
+export { PIT_READBACK_EXIT_DELAY_MS } from "./diff/pit-readback.js";
 export {
   FUEL_CALLOUT_DEFAULT_MARGIN_LAPS,
   FUEL_CALLOUT_MARGIN_MAX_LAPS,
