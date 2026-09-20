@@ -47,23 +47,31 @@ const { mockGroups, mockCameras, mockCarNumber, mockCarNumberByIdx, mockCarNumbe
   }),
 );
 
-vi.mock("@iracedeck/deck-core", () => ({
-  // push-turn when rotated while held, else long/short vs the threshold.
-  classifyDialRelease: (args: {
-    pressStartMs: number;
-    nowMs: number;
-    rotatedWhilePressed: boolean;
-    thresholdMs?: number;
-  }) => {
-    if (args.rotatedWhilePressed) return "push-turn";
+vi.mock("@iracedeck/deck-core", async () => {
+  // The REAL hold-preview helper (#1120), reached by its own module rather
+  // than the deck-core barrel: the timer/threshold/revert behaviour under test
+  // is the helper's, and a stub here would only re-test the stub.
+  const { createHoldPreview } = await import("../../../../deck-core/src/dial-gesture.js");
 
-    return args.nowMs - args.pressStartMs >= (args.thresholdMs ?? 500) ? "long" : "short";
-  },
-  getDualPressThresholdMs: () => 500,
-  applyBindingWarning: vi.fn((content: string) => `${content}<binding-warning/>`),
-  escapeXml: (str: string) => str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"),
-  svgToDataUri: (svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`,
-}));
+  return {
+    createHoldPreview,
+    // push-turn when rotated while held, else long/short vs the threshold.
+    classifyDialRelease: (args: {
+      pressStartMs: number;
+      nowMs: number;
+      rotatedWhilePressed: boolean;
+      thresholdMs?: number;
+    }) => {
+      if (args.rotatedWhilePressed) return "push-turn";
+
+      return args.nowMs - args.pressStartMs >= (args.thresholdMs ?? 500) ? "long" : "short";
+    },
+    getDualPressThresholdMs: () => 500,
+    applyBindingWarning: vi.fn((content: string) => `${content}<binding-warning/>`),
+    escapeXml: (str: string) => str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"),
+    svgToDataUri: (svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`,
+  };
+});
 
 vi.mock("@iracedeck/iracing-sdk", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@iracedeck/iracing-sdk")>();
@@ -586,6 +594,77 @@ describe("camera dial-surface pure helpers", () => {
 
       expect(svg).toContain(">POSITION<");
     });
+  });
+});
+
+describe("hold preview centre (#1120)", () => {
+  const colors = { border: "#2ecc71", label: "#2ecc71", value: "#2ecc71", background: "#000" };
+  const base = { width: 200, height: 100, colors, title: "CAR #", identityLabel: "CAR #" };
+  const pending = { text: "#99", color: "#2ecc71" };
+
+  it("swaps the car carousel's centre for the pending number + bar and leaves the sides alone", () => {
+    const svg = renderCarCarousel({ ...base, center: "42", left: "99", right: "3", pending });
+
+    expect(svg).toContain(">#99<");
+    expect(svg).toContain('data-pending-bar="true"');
+    expect(svg).not.toContain(">#42<"); // the current centre is replaced, not overdrawn
+    expect(svg).toMatch(sideText(0.16, "#99"));
+    expect(svg).toMatch(sideText(0.84, "#3"));
+  });
+
+  it("keeps the pending bar inside the panel frame", () => {
+    const svg = renderCarCarousel({ ...base, center: "42", left: null, right: null, pending });
+    const bar = /<rect data-pending-bar="true" x="\d+" y="(\d+)" width="\d+" height="(\d+)"/.exec(svg);
+
+    expect(bar).not.toBeNull();
+    // Panel inner edge at 200×100: inset 5 + half the 5px stroke → 92.
+    expect(Number(bar?.[1]) + Number(bar?.[2])).toBeLessThanOrEqual(92);
+  });
+
+  it("draws the pending centre on the race-position, sub-camera and camera carousels the same way", () => {
+    const race = renderRacePositionCarousel({
+      ...base,
+      centerPosition: 2,
+      centerCarNumber: "42",
+      leftPosition: 3,
+      rightPosition: 1,
+      pending,
+    });
+    const sub = renderSubCameraCarousel({ ...base, current: "Roll Bar", left: "Nose", right: "Gyro", pending });
+    const cam = renderCameraCarousel({
+      ...base,
+      current: { name: "Cockpit", glyph: null },
+      left: { name: "Nose", glyph: null },
+      right: { name: "Chase", glyph: null },
+      pending,
+    });
+
+    for (const svg of [race, sub, cam]) {
+      expect(svg).toContain(">#99<");
+      expect(svg).toContain('data-pending-bar="true"');
+    }
+
+    expect(race).not.toContain(">P2<");
+    expect(race).toMatch(sideText(0.84, "P1")); // sides untouched
+    expect(sub).not.toContain(">ROLL BAR<");
+    expect(sub).toMatch(sideText(0.85, "GYRO"));
+    expect(cam).not.toContain(">COCKPIT<");
+    expect(cam).toMatch(sideText(0.82, "CHASE"));
+  });
+
+  it("renders the pending centre even where the strip would otherwise be identity-only", () => {
+    const svg = renderCarCarousel({ ...base, center: null, left: null, right: null, pending });
+
+    expect(svg).toContain(">#99<");
+    expect(svg).toContain('data-pending-bar="true"');
+    expect(svg).toContain(">CAR #<"); // the mode title line, not the identity box
+  });
+
+  it("changes nothing without a pending preview", () => {
+    const plain = renderCarCarousel({ ...base, center: "42", left: "99", right: "3" });
+
+    expect(plain).toBe(renderCarCarousel({ ...base, center: "42", left: "99", right: "3", pending: null }));
+    expect(plain).not.toContain("data-pending-bar");
   });
 });
 
@@ -1639,6 +1718,310 @@ describe("CameraDialSurface", () => {
       expect(decoded).toContain(">COCKPIT<");
       expect(decoded).toContain('data-group="Nose"');
       expect(decoded).toContain('data-group="Chase"');
+    });
+  });
+
+  describe("hold preview (#1120)", () => {
+    // The player drives #99 (carIdx 5); the camera is on #42 (carIdx 3).
+    const PLAYER_TELEMETRY = { CamGroupNumber: 9, CamCarIdx: 3, PlayerCarIdx: 5 };
+
+    function decodeLast(ctx: ReturnType<typeof dialContext>): string {
+      return decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+    }
+
+    /** A dial on the strip, past willAppear, with the push log cleared. */
+    async function heldDial(id: string, over: Record<string, unknown> = {}, host = makeHost()) {
+      const surface = new CameraDialSurface(host as never);
+      const ctx = dialContext(id);
+      const settings = dial({ mode: "car-number", longPressAction: "focus-my-car", ...over });
+      await surface.willAppear(ctx as never, settings);
+      ctx.setFeedback.mockClear();
+
+      return { surface, ctx, settings, host };
+    }
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+      mockCarNumberByIdx.value = { 1: "3", 3: "42", 5: "99" };
+      mockCarNumberRawByIdx.value = { 1: 3, 3: 42, 5: 99 };
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("pushes the preview frame at the threshold, not before, and the normal frame at release", async () => {
+      const { surface, ctx, settings, host } = await heldDial(
+        "hp1",
+        {},
+        makeHost({ getTelemetry: vi.fn(() => PLAYER_TELEMETRY as never) }),
+      );
+
+      surface.down(ctx as never, settings);
+      vi.advanceTimersByTime(499);
+
+      expect(ctx.setFeedback).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(1);
+
+      expect(ctx.setFeedback).toHaveBeenCalledTimes(1);
+      const preview = decodeLast(ctx);
+
+      expect(preview).toContain(">#99<"); // the player's own car, not the focused #42
+      expect(preview).toContain('data-pending-bar="true"');
+      expect(preview).not.toContain(">#42<");
+
+      await surface.up("hp1");
+
+      expect(host.focusMyCar).toHaveBeenCalledTimes(1);
+      expect(ctx.setFeedback).toHaveBeenCalledTimes(2);
+      const reverted = decodeLast(ctx);
+
+      expect(reverted).toContain(">#42<");
+      expect(reverted).not.toContain("data-pending-bar");
+    });
+
+    it("keeps the side previews where the rotation mapping put them while the preview is up (#884 guard)", async () => {
+      const { surface, ctx, settings, host } = await heldDial(
+        "hp2",
+        {},
+        makeHost({ getTelemetry: vi.fn(() => PLAYER_TELEMETRY as never) }),
+      );
+
+      surface.down(ctx as never, settings);
+      vi.advanceTimersByTime(500);
+      const preview = decodeLast(ctx);
+
+      // Number-primary default: clockwise goes DOWN the number order (#973).
+      expect(preview).toMatch(sideText(0.84, "#3"));
+      expect(preview).toMatch(sideText(0.16, "#99"));
+
+      await surface.up("hp2");
+      surface.rotate(ctx as never, settings, 1, false);
+
+      expect(host.focusCarNumber).toHaveBeenLastCalledWith(3); // what the right slot promised
+    });
+
+    it("reverts at once on a push+turn mid-hold, and the release fires nothing", async () => {
+      const { surface, ctx, settings, host } = await heldDial(
+        "hp3",
+        {},
+        makeHost({ getTelemetry: vi.fn(() => PLAYER_TELEMETRY as never) }),
+      );
+
+      surface.down(ctx as never, settings);
+      vi.advanceTimersByTime(600);
+
+      expect(ctx.setFeedback).toHaveBeenCalledTimes(1);
+
+      surface.rotate(ctx as never, settings, 1, true);
+
+      expect(host.focusCarNumber).toHaveBeenCalled(); // the rotation still cycles
+      expect(ctx.setFeedback).toHaveBeenCalledTimes(2);
+      expect(decodeLast(ctx)).not.toContain("data-pending-bar");
+
+      await surface.up("hp3");
+
+      expect(host.focusMyCar).not.toHaveBeenCalled();
+      expect(ctx.setFeedback).toHaveBeenCalledTimes(2); // no second revert
+    });
+
+    it("pushes neither a preview nor a revert for a release before the threshold", async () => {
+      const { surface, ctx, settings, host } = await heldDial(
+        "hp4",
+        {},
+        makeHost({ getTelemetry: vi.fn(() => PLAYER_TELEMETRY as never) }),
+      );
+
+      surface.down(ctx as never, settings);
+      vi.advanceTimersByTime(300);
+      await surface.up("hp4");
+      vi.advanceTimersByTime(1000); // the disarmed timer never fires
+
+      expect(ctx.setFeedback).not.toHaveBeenCalled();
+      expect(host.focusMyCar).not.toHaveBeenCalled(); // pressAction defaults to none
+    });
+
+    it("previews focus-my-car from PlayerCarIdx, never from the car the camera is on", async () => {
+      // Camera on #42 (carIdx 3) — a CamCarIdx read would preview #42.
+      const { surface, ctx, settings } = await heldDial(
+        "hp5",
+        { mode: "camera" },
+        makeHost({ getTelemetry: vi.fn(() => PLAYER_TELEMETRY as never) }),
+      );
+
+      surface.down(ctx as never, settings);
+      vi.advanceTimersByTime(500);
+
+      const preview = decodeLast(ctx);
+
+      expect(preview).toContain(">#99<");
+      expect(preview).not.toContain(">#42<");
+      expect(preview).toContain(">CAMERA<"); // the mode title stays
+      expect(preview).not.toContain(">COCKPIT<"); // the centre group name gives way to the preview
+    });
+
+    it("previews nothing for focus-my-car when PlayerCarIdx, the raw number or the session info is missing", async () => {
+      const cases = [
+        { name: "no PlayerCarIdx", host: makeHost() }, // TELEMETRY carries none
+        {
+          name: "no raw number",
+          host: makeHost({ getTelemetry: vi.fn(() => PLAYER_TELEMETRY as never) }),
+          before: () => {
+            mockCarNumberRawByIdx.value = { 3: 42 };
+          },
+        },
+        {
+          name: "no session info",
+          host: makeHost({ getTelemetry: vi.fn(() => PLAYER_TELEMETRY as never), getSessionInfo: vi.fn(() => null) }),
+        },
+        { name: "no telemetry", host: makeHost({ getTelemetry: vi.fn(() => null) }) },
+      ];
+
+      for (const [i, c] of cases.entries()) {
+        c.before?.();
+        const { surface, ctx, settings } = await heldDial(`hp6-${i}`, {}, c.host);
+
+        surface.down(ctx as never, settings);
+        vi.advanceTimersByTime(600);
+
+        expect(ctx.setFeedback, c.name).not.toHaveBeenCalled();
+
+        await surface.up(`hp6-${i}`);
+
+        expect(ctx.setFeedback, c.name).not.toHaveBeenCalled(); // nothing shown → nothing to revert
+      }
+    });
+
+    it("previews nothing for focus-on-leader: iRacing resolves the leader, the plugin does not", async () => {
+      // Everything a canonical-order guess would need is available — and is deliberately not used.
+      const host = makeHost({
+        getTelemetry: vi.fn(() => PLAYER_TELEMETRY as never),
+        getRacePositions: vi.fn(() => [0, 1, 3, 2, 0, 4]),
+      });
+      const { surface, ctx, settings } = await heldDial("hp7", { longPressAction: "focus-on-leader" }, host);
+
+      surface.down(ctx as never, settings);
+      vi.advanceTimersByTime(600);
+
+      expect(ctx.setFeedback).not.toHaveBeenCalled();
+      expect(host.getRacePositions).not.toHaveBeenCalled();
+
+      await surface.up("hp7");
+
+      expect(host.focusOnLeader).toHaveBeenCalledTimes(1); // the release still fires it
+      expect(ctx.setFeedback).not.toHaveBeenCalled();
+    });
+
+    it("previews nothing for the next-camera and director gestures", async () => {
+      for (const gesture of ["change-camera", "focus-on-incident", "focus-on-most-exciting", "none"] as const) {
+        const { surface, ctx, settings } = await heldDial(
+          `hp8-${gesture}`,
+          { longPressAction: gesture },
+          makeHost({ getTelemetry: vi.fn(() => PLAYER_TELEMETRY as never) }),
+        );
+
+        surface.down(ctx as never, settings);
+        vi.advanceTimersByTime(600);
+        await surface.up(`hp8-${gesture}`);
+
+        expect(ctx.setFeedback, gesture).not.toHaveBeenCalled();
+      }
+    });
+
+    it("keeps the preview up through a telemetry re-render mid-hold", async () => {
+      const telemetry = { value: PLAYER_TELEMETRY };
+      const { surface, ctx, settings } = await heldDial(
+        "hp9",
+        {},
+        makeHost({ getTelemetry: vi.fn(() => telemetry.value as never) }),
+      );
+
+      surface.down(ctx as never, settings);
+      vi.advanceTimersByTime(500);
+
+      expect(ctx.setFeedback).toHaveBeenCalledTimes(1);
+
+      // The camera moves to #3 (carIdx 1) while the button is still held.
+      vi.advanceTimersByTime(200);
+      telemetry.value = { ...PLAYER_TELEMETRY, CamCarIdx: 1 };
+      surface.onTelemetry("hp9", telemetry.value as never);
+
+      expect(ctx.setFeedback).toHaveBeenCalledTimes(2);
+      const frame = decodeLast(ctx);
+
+      expect(frame).toContain(">#99<");
+      expect(frame).toContain('data-pending-bar="true"');
+      expect(frame).not.toContain(">#3<"); // the new focus does not take the centre back mid-hold
+    });
+
+    it("keeps the preview up through refreshAll mid-hold and reverts it at release", async () => {
+      const { surface, ctx, settings } = await heldDial(
+        "hp10",
+        {},
+        makeHost({ getTelemetry: vi.fn(() => PLAYER_TELEMETRY as never) }),
+      );
+
+      surface.down(ctx as never, settings);
+      vi.advanceTimersByTime(500);
+      surface.refreshAll();
+
+      expect(ctx.setFeedback).toHaveBeenCalledTimes(2);
+      expect(decodeLast(ctx)).toContain('data-pending-bar="true"');
+
+      await surface.up("hp10");
+
+      expect(ctx.setFeedback).toHaveBeenCalledTimes(3);
+      expect(decodeLast(ctx)).not.toContain("data-pending-bar");
+    });
+
+    it("abandons the hold on a settings change: the re-render is the revert and the release pushes nothing more", async () => {
+      const { surface, ctx, settings } = await heldDial(
+        "hp11",
+        {},
+        makeHost({ getTelemetry: vi.fn(() => PLAYER_TELEMETRY as never) }),
+      );
+
+      surface.down(ctx as never, settings);
+      vi.advanceTimersByTime(500);
+
+      await surface.didReceiveSettings(ctx as never, dial({ mode: "camera", longPressAction: "focus-my-car" }));
+
+      expect(ctx.setFeedback).toHaveBeenCalledTimes(2);
+      expect(decodeLast(ctx)).not.toContain("data-pending-bar");
+
+      await surface.up("hp11");
+
+      expect(ctx.setFeedback).toHaveBeenCalledTimes(2);
+    });
+
+    it("disposes the timer on willDisappear so nothing is pushed at a gone context", async () => {
+      const { surface, ctx, settings } = await heldDial(
+        "hp12",
+        {},
+        makeHost({ getTelemetry: vi.fn(() => PLAYER_TELEMETRY as never) }),
+      );
+
+      surface.down(ctx as never, settings);
+      surface.willDisappear("hp12");
+      vi.advanceTimersByTime(1000);
+
+      expect(ctx.setFeedback).not.toHaveBeenCalled();
+    });
+
+    it("arms no preview when dial feedback is disabled", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", false);
+      const { surface, ctx, settings } = await heldDial(
+        "hp13",
+        {},
+        makeHost({ getTelemetry: vi.fn(() => PLAYER_TELEMETRY as never) }),
+      );
+
+      surface.down(ctx as never, settings);
+      vi.advanceTimersByTime(1000);
+
+      expect(ctx.setFeedback).not.toHaveBeenCalled();
+      expect(surface["contextsState"].get("hp13")?.holdPreview.showing).toBe(false);
     });
   });
 

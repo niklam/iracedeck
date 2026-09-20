@@ -83,14 +83,32 @@
  * the sim's own Next / Previous Sub Camera bindings since #852; the owning
  * action answers `isBindingMissing` for it). Out of a session each mode falls
  * back to a plain identity label.
+ *
+ * Hold preview (issue #1120): while the dial button is held past the
+ * long-press threshold, the centre slot shows the car the release will focus,
+ * underlined by the shared pending bar (`renderPendingBar`), and the side
+ * previews stay exactly where the rotation mapping put them — the preview is a
+ * variation of the centre only, so `orientSides` / `MODE_NUMBER_PRIMARY` are
+ * untouched by it. It is drawn ONLY where the outcome is knowable before the
+ * gesture fires (see `pendingPreviewFor`): Focus My Car resolves the player's
+ * own car number from `PlayerCarIdx` + session info, the same lookup the
+ * keypad's dispatch makes. Focus on Leader is deliberately NOT previewed: its
+ * dispatch is iRacing's own `FocusAtLeader` sentinel (`switchPos(-2)`), so the
+ * sim resolves the leader from its official scoring — a plugin-side guess from
+ * the canonical order can name a different car for a whole lap after a
+ * mid-lap pass. Change Camera and the two director picks have no knowable
+ * outcome at all. The preview never dispatches: `classifyDialRelease` at
+ * `dialUp` stays the only place a press becomes an action.
  */
 import {
   applyBindingWarning,
   classifyDialRelease,
+  createHoldPreview,
   type DeckFeedbackPayload,
   type DeckTriggerDescription,
   escapeXml,
   getDualPressThresholdMs,
+  type HoldPreview,
   type IDeckActionContext,
   svgToDataUri,
 } from "@iracedeck/deck-core";
@@ -115,6 +133,7 @@ import {
 } from "../../shared/car-cycling.js";
 import { dialAppearanceFields, type DialBoxColors, resolveDialBoxColors } from "../../shared/dial-box.js";
 import { renderDialNameIcon } from "../../shared/dial-name-icon.js";
+import { type DialPendingPreview, PENDING_BAR_HEIGHT, renderPendingBar } from "../../shared/dial-preview.js";
 import {
   computeCameraCarousel,
   computeSubCameraCarousel,
@@ -131,6 +150,20 @@ import { SUB_CAMERA_BINDING_KEY_LIST } from "./sub-camera-bindings.js";
  * (mirrors the Setup Brakes dial).
  */
 const CHANGE_RENDER_MIN_INTERVAL_MS = 100;
+
+/**
+ * The hold preview the Mirabox / Ulanzi bundles get (issue #1120): no timer,
+ * nothing drawn. Chosen at context creation behind `__FEATURE_DIAL_FEEDBACK__`
+ * so every call site stays unconditional and terser folds the real helper out
+ * of the builds that have no touch strip to draw on.
+ */
+const NOOP_HOLD_PREVIEW: HoldPreview = {
+  down(): void {},
+  up(): void {},
+  rotated(): void {},
+  dispose(): void {},
+  showing: false,
+};
 
 /** The cycle target the dial rotates through. */
 export const DIAL_MODES = ["camera", "sub-camera", "car-number", "race-position", "track-order", "driving"] as const;
@@ -536,13 +569,40 @@ function svgWrap(w: number, h: number, inner: string): string {
  * the label/value strips.
  */
 function dialPanel(w: number, h: number, colors: DialBoxColors): string {
-  const minSide = Math.min(w, h);
-  const radius = Math.round(minSide * 0.16);
-  const inset = Math.max(5, Math.round(minSide * 0.045));
-  const strokeWidth = Math.max(5, Math.round(minSide * 0.05));
+  const { radius, inset, strokeWidth } = panelFrame(w, h);
   const innerRx = Math.max(0, radius - inset);
 
   return `<rect x="${inset}" y="${inset}" width="${w - 2 * inset}" height="${h - 2 * inset}" rx="${innerRx}" fill="${colors.background}" stroke="${colors.border}" stroke-width="${strokeWidth}"/>`;
+}
+
+/** The panel's frame geometry, shared by the panel rect and the pending mark's clamp. */
+function panelFrame(w: number, h: number): { radius: number; inset: number; strokeWidth: number } {
+  const minSide = Math.min(w, h);
+
+  return {
+    radius: Math.round(minSide * 0.16),
+    inset: Math.max(5, Math.round(minSide * 0.045)),
+    strokeWidth: Math.max(5, Math.round(minSide * 0.05)),
+  };
+}
+
+/**
+ * The centre slot while a hold preview is pending (issue #1120): the outcome
+ * in the big car-number typography every car strip already uses for its
+ * centre, in the preview's colour, underlined by the shared pending bar. ONE
+ * helper for all four carousels, so a Camera preview and a Fuel Service
+ * preview read as the same language — and so the sides, which every renderer
+ * draws before its centre, are never touched by the preview.
+ */
+function pendingCentre(w: number, h: number, pending: DialPendingPreview): string {
+  const { inset, strokeWidth } = panelFrame(w, h);
+  const valueY = Math.round(h * 0.72);
+  const text = `<text x="${w / 2}" y="${valueY}" text-anchor="middle" fill="${pending.color}" font-family="Arial, sans-serif" font-size="40" font-weight="bold">${escapeXml(pending.text)}</text>`;
+  // Just under the value's baseline, clamped inside the panel — the border
+  // strokes ON the inset rect, so half of it eats inward (as `renderDialBox`).
+  const barTop = Math.min(valueY + 6, h - inset - Math.round(strokeWidth / 2) - PENDING_BAR_HEIGHT);
+
+  return text + renderPendingBar({ centerX: w / 2, y: barTop, width: w, color: pending.color });
 }
 
 /** A centred identity label (out-of-session fallback). */
@@ -575,7 +635,9 @@ function placeGlyph(glyph: CarouselGlyph, cx: number, cy: number, size: number, 
  * dimmed neighbour groups — `left` is the counter-clockwise detent's target,
  * `right` the clockwise one (#884). Driving mode passes both as `null` for
  * a current-only render (no coherent neighbour to preview). Falls back to a
- * centred identity label out of a session (no current group).
+ * centred identity label out of a session (no current group). With `pending`
+ * (issue #1120) the centre shows the hold preview instead of the current
+ * group; the sides are drawn exactly as without it.
  */
 export function renderCameraCarousel(args: {
   width: number;
@@ -586,10 +648,11 @@ export function renderCameraCarousel(args: {
   current: CarouselSlot | null;
   left: CarouselSlot | null;
   right: CarouselSlot | null;
+  pending?: DialPendingPreview | null;
 }): string {
   const { width: w, height: h, colors } = args;
 
-  if (!args.current) return identityBox(w, h, args.identityLabel, colors);
+  if (!args.current && !args.pending) return identityBox(w, h, args.identityLabel, colors);
 
   const parts: string[] = [dialPanel(w, h, colors), titleLine(w, h, args.title, colors)];
 
@@ -607,12 +670,16 @@ export function renderCameraCarousel(args: {
       );
   }
 
-  // Centre glyph (if mapped) with the group name beneath it.
-  if (args.current.glyph) parts.push(placeGlyph(args.current.glyph, w / 2, h * 0.5, 42, 1));
+  if (args.pending) {
+    parts.push(pendingCentre(w, h, args.pending));
+  } else if (args.current) {
+    // Centre glyph (if mapped) with the group name beneath it.
+    if (args.current.glyph) parts.push(placeGlyph(args.current.glyph, w / 2, h * 0.5, 42, 1));
 
-  parts.push(
-    `<text x="${w / 2}" y="${Math.round(h * 0.9)}" text-anchor="middle" fill="${colors.value}" font-family="Arial, sans-serif" font-size="14" font-weight="bold">${escapeXml(args.current.name.toUpperCase())}</text>`,
-  );
+    parts.push(
+      `<text x="${w / 2}" y="${Math.round(h * 0.9)}" text-anchor="middle" fill="${colors.value}" font-family="Arial, sans-serif" font-size="14" font-weight="bold">${escapeXml(args.current.name.toUpperCase())}</text>`,
+    );
+  }
 
   return svgWrap(w, h, parts.join(""));
 }
@@ -628,7 +695,8 @@ export function renderCameraCarousel(args: {
  * sim owns the stepping order and the sides are a guide to the group's camera
  * list rather than a guaranteed landing spot. Falls back to a centred identity
  * label out of a session (no current camera), or to the #612 missing-binding
- * warning when `bindingMissing` is set.
+ * warning when `bindingMissing` is set. With `pending` (issue #1120) the
+ * centre shows the hold preview instead of the current camera name.
  */
 export function renderSubCameraCarousel(args: {
   width: number;
@@ -641,6 +709,7 @@ export function renderSubCameraCarousel(args: {
   right: string | null;
   /** #612 overlay: the Sub-Camera bindings (#852) are unset, so a detent would do nothing. */
   bindingMissing?: boolean;
+  pending?: DialPendingPreview | null;
 }): string {
   const { width: w, height: h, colors } = args;
 
@@ -655,7 +724,7 @@ export function renderSubCameraCarousel(args: {
     );
   }
 
-  if (!args.current) return identityBox(w, h, args.identityLabel, colors);
+  if (!args.current && !args.pending) return identityBox(w, h, args.identityLabel, colors);
 
   const parts: string[] = [dialPanel(w, h, colors), titleLine(w, h, args.title, colors)];
 
@@ -670,9 +739,13 @@ export function renderSubCameraCarousel(args: {
     );
   }
 
-  parts.push(
-    `<text x="${w / 2}" y="${Math.round(h * 0.68)}" text-anchor="middle" fill="${colors.value}" font-family="Arial, sans-serif" font-size="20" font-weight="bold">${escapeXml(args.current.toUpperCase())}</text>`,
-  );
+  if (args.pending) {
+    parts.push(pendingCentre(w, h, args.pending));
+  } else if (args.current) {
+    parts.push(
+      `<text x="${w / 2}" y="${Math.round(h * 0.68)}" text-anchor="middle" fill="${colors.value}" font-family="Arial, sans-serif" font-size="20" font-weight="bold">${escapeXml(args.current.toUpperCase())}</text>`,
+    );
+  }
 
   return svgWrap(w, h, parts.join(""));
 }
@@ -688,7 +761,8 @@ export function renderSubCameraCarousel(args: {
  * `sideCaptions`, each side number gets a small caption beneath it (the
  * track-order AHEAD / BEHIND, #886) — only where that side has a number.
  * Falls back to a centred identity label out of a session (no focused car
- * number).
+ * number). With `pending` (issue #1120) the centre shows the hold preview
+ * instead of the focused number; the sides and their captions are unchanged.
  */
 export function renderCarCarousel(
   args: {
@@ -697,11 +771,12 @@ export function renderCarCarousel(
     colors: DialBoxColors;
     title: string;
     identityLabel: string;
+    pending?: DialPendingPreview | null;
   } & CarCarouselView,
 ): string {
   const { width: w, height: h, colors } = args;
 
-  if (!args.center) return identityBox(w, h, args.identityLabel, colors);
+  if (!args.center && !args.pending) return identityBox(w, h, args.identityLabel, colors);
 
   const parts: string[] = [dialPanel(w, h, colors), titleLine(w, h, args.title, colors)];
 
@@ -722,9 +797,13 @@ export function renderCarCarousel(
     }
   }
 
-  parts.push(
-    `<text x="${w / 2}" y="${Math.round(h * 0.72)}" text-anchor="middle" fill="${colors.value}" font-family="Arial, sans-serif" font-size="40" font-weight="bold">#${escapeXml(args.center)}</text>`,
-  );
+  if (args.pending) {
+    parts.push(pendingCentre(w, h, args.pending));
+  } else if (args.center) {
+    parts.push(
+      `<text x="${w / 2}" y="${Math.round(h * 0.72)}" text-anchor="middle" fill="${colors.value}" font-family="Arial, sans-serif" font-size="40" font-weight="bold">#${escapeXml(args.center)}</text>`,
+    );
+  }
 
   return svgWrap(w, h, parts.join(""));
 }
@@ -741,7 +820,9 @@ export function renderCarCarousel(
  * When the focused car has no classified position (the pace / safety car),
  * the centre falls back to a number-only readout rather than a lying `P`
  * badge; the side previews still show the recovery targets. Falls back to a
- * centred identity label out of a session (no focused car number).
+ * centred identity label out of a session (no focused car number). With
+ * `pending` (issue #1120) the centre shows the hold preview instead of the
+ * position + number pair; the side positions are unchanged.
  */
 export function renderRacePositionCarousel(args: {
   width: number;
@@ -753,10 +834,11 @@ export function renderRacePositionCarousel(args: {
   centerCarNumber: string | null;
   leftPosition: number | null;
   rightPosition: number | null;
+  pending?: DialPendingPreview | null;
 }): string {
   const { width: w, height: h, colors } = args;
 
-  if (!args.centerCarNumber) return identityBox(w, h, args.identityLabel, colors);
+  if (!args.centerCarNumber && !args.pending) return identityBox(w, h, args.identityLabel, colors);
 
   const parts: string[] = [dialPanel(w, h, colors), titleLine(w, h, args.title, colors)];
 
@@ -771,14 +853,16 @@ export function renderRacePositionCarousel(args: {
     );
   }
 
-  if (args.centerPosition !== null) {
+  if (args.pending) {
+    parts.push(pendingCentre(w, h, args.pending));
+  } else if (args.centerCarNumber && args.centerPosition !== null) {
     parts.push(
       `<text x="${w / 2}" y="${Math.round(h * 0.68)}" text-anchor="middle" fill="${colors.value}" font-family="Arial, sans-serif" font-size="40" font-weight="bold">P${args.centerPosition}</text>`,
     );
     parts.push(
       `<text x="${w / 2}" y="${Math.round(h * 0.9)}" text-anchor="middle" fill="${colors.label}" font-family="Arial, sans-serif" font-size="15" font-weight="bold">#${escapeXml(args.centerCarNumber)}</text>`,
     );
-  } else {
+  } else if (args.centerCarNumber) {
     parts.push(
       `<text x="${w / 2}" y="${Math.round(h * 0.72)}" text-anchor="middle" fill="${colors.value}" font-family="Arial, sans-serif" font-size="40" font-weight="bold">#${escapeXml(args.centerCarNumber)}</text>`,
     );
@@ -805,6 +889,15 @@ interface CameraDialContext {
   lastRenderSig: string | null;
   /** Timestamp (ms) of the last change-driven feedback push (throttle gate). */
   lastChangeRenderAt: number;
+  /**
+   * The hold preview on the strip right now (issue #1120), or null. Read by
+   * EVERY render path — the change-driven telemetry render, `refreshAll`, and
+   * the settings re-render — so a re-render mid-hold keeps the preview up and
+   * the revert is an ordinary render with this back at null.
+   */
+  preview: DialPendingPreview | null;
+  /** The display-only hold timer for this context; a no-op where there is no touch strip. */
+  holdPreview: HoldPreview;
 }
 
 /**
@@ -887,11 +980,18 @@ export class CameraDialSurface {
   }
 
   willDisappear(actionId: string): void {
+    // Tear the hold timer down without a revert frame: the context is gone,
+    // so a push at it would be wasted.
+    this.contextsState.get(actionId)?.holdPreview.dispose();
     this.contextsState.delete(actionId);
   }
 
   async didReceiveSettings(action: IDeckActionContext, dial: DialSettings): Promise<void> {
     const ctx = this.ensureContext(action, dial);
+    // A hold in progress is abandoned: the re-render below IS the revert, and
+    // the new settings may name a different long-press gesture anyway.
+    ctx.holdPreview.dispose();
+    ctx.preview = null;
     // Bust the memo so the next render reflects the new mode even if it happens
     // to format to the same readout string as the previous one.
     ctx.lastRenderSig = null;
@@ -907,9 +1007,13 @@ export class CameraDialSurface {
 
     // A pressed rotation still cycles; the guard makes the dialUp classifier
     // skip the press gesture so holding-and-turning never also fires it. The
-    // readout settles a beat later from telemetry.
+    // readout settles a beat later from telemetry. The hold preview is
+    // cancelled HERE, beside the guard and after the zero-tick return, so the
+    // strip stops promising the gesture at exactly the moment the release
+    // stops delivering it — a zero-tick pressed event leaves both alone.
     if (pressed) {
       ctx.rotatedWhilePressed = true;
+      ctx.holdPreview.rotated();
     }
 
     // One step per rotate event (direction from the tick sign through the
@@ -928,16 +1032,22 @@ export class CameraDialSurface {
   down(action: IDeckActionContext, dial: DialSettings): void {
     const ctx = this.ensureContext(action, dial);
 
-    // Record the press start and clear the push+turn guard. Fire nothing and
-    // start no timer — press vs long-press is classified once at dialUp.
+    // Record the press start and clear the push+turn guard. Fire nothing —
+    // press vs long-press is classified once at dialUp. The one timer armed
+    // here only DRAWS: at the threshold it previews what the release will do.
     ctx.pressStart = Date.now();
     ctx.rotatedWhilePressed = false;
+    ctx.holdPreview.down();
   }
 
   async up(actionId: string): Promise<void> {
     const ctx = this.contextsState.get(actionId);
 
     if (!ctx) return;
+
+    // Revert a showing preview before anything can return early below: the
+    // strip must never stay on the pending frame after the button is up.
+    ctx.holdPreview.up();
 
     // Consume the press start immediately so a stray dialUp without a preceding
     // dialDown can't reclassify. A 0 sentinel means "no press in progress".
@@ -1019,14 +1129,26 @@ export class CameraDialSurface {
     let ctx = this.contextsState.get(action.id);
 
     if (!ctx) {
-      ctx = {
+      const created: CameraDialContext = {
         dial,
         action,
         pressStart: 0,
         rotatedWhilePressed: false,
         lastRenderSig: null,
         lastChangeRenderAt: 0,
+        preview: null,
+        holdPreview: NOOP_HOLD_PREVIEW,
       };
+      // The real helper only where there is a strip to draw on; the constant
+      // folds at build time, so the other bundles never carry the timer.
+      created.holdPreview = __FEATURE_DIAL_FEEDBACK__
+        ? createHoldPreview({
+            onThreshold: () => this.showHoldPreview(created),
+            onCancel: () => this.hideHoldPreview(created),
+            thresholdMs: () => getDualPressThresholdMs(),
+          })
+        : NOOP_HOLD_PREVIEW;
+      ctx = created;
       this.contextsState.set(action.id, ctx);
     } else {
       ctx.action = action;
@@ -1034,6 +1156,73 @@ export class CameraDialSurface {
     }
 
     return ctx;
+  }
+
+  /**
+   * The hold passed the threshold: draw the long-press gesture's outcome in the
+   * centre slot, if it is knowable. Returns whether a preview frame was pushed
+   * — `false` keeps the release from pushing a pointless revert.
+   */
+  private showHoldPreview(ctx: CameraDialContext): boolean {
+    const preview = this.pendingPreviewFor(ctx.dial);
+
+    if (!preview) return false;
+
+    ctx.preview = preview;
+    this.renderFeedback(ctx).catch((err) => {
+      this.host.logger.debug(`Dial hold preview render failed: ${String(err)}`);
+    });
+
+    return true;
+  }
+
+  /** The hold ended (release or push+turn) with the preview up: an ordinary render restores the strip. */
+  private hideHoldPreview(ctx: CameraDialContext): void {
+    ctx.preview = null;
+    this.renderFeedback(ctx).catch((err) => {
+      this.host.logger.debug(`Dial hold preview revert failed: ${String(err)}`);
+    });
+  }
+
+  /**
+   * What the strip may promise for the long-press gesture (issue #1120), or
+   * null. The ruling this encodes: a preview is shown ONLY where the resulting
+   * state is knowable before the gesture fires.
+   *
+   *  - `focus-my-car` — knowable: the keypad's dispatch resolves the player's
+   *    car number from `PlayerCarIdx` and session info and focuses it by
+   *    number, so the same lookup here names the car the release will land on.
+   *    Deliberately NOT `focusedCarNumber()`, which reads `CamCarIdx` — the car
+   *    the camera is ON, not the player's.
+   *  - `focus-on-leader` — NOT knowable: its dispatch is iRacing's own
+   *    `FocusAtLeader` sentinel (`CameraCommand.focusOnLeader` →
+   *    `switchPos(-2)`), so the sim resolves the leader from its official
+   *    scoring, which lags the canonical lap-progress order until the next
+   *    start/finish crossing. A preview from the canonical order would name the
+   *    wrong car for a whole lap after a mid-lap pass; nothing is shown.
+   *  - `change-camera`, `focus-on-incident`, `focus-on-most-exciting` — the
+   *    next angle and the director's picks; iRacing never reports them ahead.
+   *  - `none` — nothing to preview.
+   */
+  private pendingPreviewFor(dial: DialSettings): DialPendingPreview | null {
+    if (dial.longPressAction !== "focus-my-car") return null;
+
+    const telemetry = this.host.getTelemetry();
+    const sessionInfo = this.host.getSessionInfo();
+    const playerCarIdx = telemetry?.PlayerCarIdx;
+
+    if (!telemetry || !sessionInfo || typeof playerCarIdx !== "number" || playerCarIdx < 0) return null;
+
+    // Execution dispatches the RAW number and gives up without one; the strip
+    // shows the display number. Both come from the same driver entry — require
+    // both, so the preview never names a car the release would fail to focus.
+    if (getCarNumberRawFromSessionInfo(sessionInfo, playerCarIdx) === null) return null;
+
+    const carNumber = getCarNumberFromSessionInfo(sessionInfo, playerCarIdx);
+
+    if (carNumber === null) return null;
+
+    return { text: `#${carNumber}`, color: resolveDialBoxColors(dial.colors, MODE_COLOR[dial.mode]).value };
   }
 
   /** Routes a rotation to the cycle dispatch or the car-focus dispatch by mode. */
@@ -1358,8 +1547,19 @@ export class CameraDialSurface {
     return group ? { name: group.groupName, glyph: this.host.getGroupGlyph(group.groupName) } : null;
   }
 
-  /** A compact signature of the displayed readout; a feedback push is due when it changes. */
+  /**
+   * A compact signature of the displayed strip; a feedback push is due when it
+   * changes. Carries the pending preview (issue #1120) as well as the readout,
+   * so the baseline describes what is actually on the strip.
+   */
   private displayedSignature(ctx: CameraDialContext): string {
+    const readout = this.readoutSignature(ctx);
+
+    return ctx.preview ? `${readout}|pending:${ctx.preview.text}` : readout;
+  }
+
+  /** The readout part of the signature: the mode's centre and side values. */
+  private readoutSignature(ctx: CameraDialContext): string {
     const dial = ctx.dial;
     const telemetry = this.host.getTelemetry();
 
@@ -1406,11 +1606,11 @@ export class CameraDialSurface {
     await ctx.action.setTriggerDescription(buildTriggerDescription(ctx.dial));
   }
 
-  /** Builds the touch-strip SVG for the current mode. */
-  private renderStrip(dial: DialSettings): string {
+  /** Builds the touch-strip SVG for the current mode, with the hold preview in the centre while one is pending. */
+  private renderStrip(dial: DialSettings, pending: DialPendingPreview | null): string {
     const colors = resolveDialBoxColors(dial.colors, MODE_COLOR[dial.mode]);
     const telemetry = this.host.getTelemetry();
-    const base = { width: 200, height: 100, colors, title: MODE_TITLE[dial.mode] } as const;
+    const base = { width: 200, height: 100, colors, title: MODE_TITLE[dial.mode], pending } as const;
 
     if (dial.mode === "camera") {
       const slots = this.cameraCarouselSlots(telemetry, dial);
@@ -1467,7 +1667,7 @@ export class CameraDialSurface {
     // stale state A while the baseline says B — suppressing B's render until
     // yet another change.
     const renderedSignature = this.displayedSignature(ctx);
-    const feedback: DeckFeedbackPayload = { box: svgToDataUri(this.renderStrip(ctx.dial)) };
+    const feedback: DeckFeedbackPayload = { box: svgToDataUri(this.renderStrip(ctx.dial, ctx.preview)) };
     await ctx.action.setFeedback(feedback);
 
     // Reset the change-detector baseline so this pushed feedback doesn't

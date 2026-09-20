@@ -164,7 +164,10 @@ const { mockGetGlobalSettings, mockCamera } = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("@iracedeck/deck-core", () => ({
+vi.mock("@iracedeck/deck-core", async () => ({
+  // The dial surface arms the REAL hold-preview helper (#1120) on every dial
+  // context; a dial press below would otherwise throw at `ensureContext`.
+  createHoldPreview: (await import("../../../../deck-core/src/dial-gesture.js")).createHoldPreview,
   CommonSettings: {
     extend: (_fields: unknown) => {
       const schema = {
