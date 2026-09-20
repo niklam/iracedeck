@@ -22266,36 +22266,36 @@
       "requestId": "hIV4ZKT3WTI9GgtdzJgz"
     },
     "voice/default/pit-actions/auto-fuel-on-refuel-01.mp3": {
-      "hash": "143de7d3b6935002",
+      "hash": "1abf90ce9925ed19",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "Auto fuel is on. We're refueling at the next pit stop.",
-      "generatedAt": "2026-09-20T08:10:10.444Z",
-      "requestId": "olObynW3ZfQy7SyyFEWK"
+      "textPreview": "Auto fuel is on. <break time=\"0.3s\" /> We're refueling at the next pit stop.",
+      "generatedAt": "2026-09-20T17:20:58.052Z",
+      "requestId": "JNhkuHgRCGRPWgP5nOH2"
     },
     "voice/default/pit-actions/auto-fuel-on-no-refuel-01.mp3": {
-      "hash": "960fcf3056afb81c",
+      "hash": "d6300a1cf670aaa5",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "Auto fuel is on. We're not refueling at the next pit stop.",
-      "generatedAt": "2026-09-20T08:10:10.704Z",
-      "requestId": "fDjqIIUhSSH46jhT1YNQ"
+      "textPreview": "Auto fuel is on. <break time=\"0.3s\" /> We're not refueling at the next pit stop.",
+      "generatedAt": "2026-09-20T17:20:58.328Z",
+      "requestId": "ertbBhgsPOTNmMLf4cFa"
     },
     "voice/default/pit-actions/auto-fuel-off-refuel-01.mp3": {
-      "hash": "92b5551c2e867f5e",
+      "hash": "53ec8f260679b9f1",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "Auto fuel is off. The plan is still to refuel during the next pit stop.",
-      "generatedAt": "2026-09-20T08:10:10.969Z",
-      "requestId": "KIxgvOEQcZOzzSePHNk1"
+      "textPreview": "Auto fuel is off. <break time=\"0.3s\" /> The plan is still to refuel during the …",
+      "generatedAt": "2026-09-20T17:21:46.901Z",
+      "requestId": "XHIFyRESzK3zkC8pBbus"
     },
     "voice/default/pit-actions/auto-fuel-off-no-refuel-01.mp3": {
-      "hash": "a4d5b149396b59d0",
+      "hash": "f58e51cea71666ae",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "Auto fuel is off. We're not refueling at the next pit stop.",
-      "generatedAt": "2026-09-20T08:10:11.219Z",
-      "requestId": "XSDQh6zsbu501xael1MT"
+      "textPreview": "Auto fuel is off. <break time=\"0.3s\" /> We're not refueling at the next pit sto…",
+      "generatedAt": "2026-09-20T17:20:58.871Z",
+      "requestId": "bRfkmvqgndGhyB8F0GAN"
     }
   }
 }

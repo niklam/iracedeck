@@ -685,19 +685,20 @@
       },
       {
         "name": "auto-fuel-on-refuel-01",
-        "text": "Auto fuel is on. We're refueling at the next pit stop."
+        "text": "Auto fuel is on. <break time=\"0.3s\" /> We're refueling at the next pit stop."
       },
       {
         "name": "auto-fuel-on-no-refuel-01",
-        "text": "Auto fuel is on. We're not refueling at the next pit stop."
+        "text": "Auto fuel is on. <break time=\"0.3s\" /> We're not refueling at the next pit stop."
       },
       {
         "name": "auto-fuel-off-refuel-01",
-        "text": "Auto fuel is off. The plan is still to refuel during the next pit stop."
+        "text": "Auto fuel is off. <break time=\"0.3s\" /> The plan is still to refuel during the next pit stop.",
+        "seed": 3
       },
       {
         "name": "auto-fuel-off-no-refuel-01",
-        "text": "Auto fuel is off. We're not refueling at the next pit stop."
+        "text": "Auto fuel is off. <break time=\"0.3s\" /> We're not refueling at the next pit stop."
       },
       {
         "name": "tires-off-01",

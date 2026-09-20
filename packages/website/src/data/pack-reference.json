@@ -27323,7 +27323,7 @@
         {
           "base": "auto-fuel-off-no-refuel",
           "texts": [
-            "Auto fuel is off. We're not refueling at the next pit stop."
+            "Auto fuel is off. <break time=\"0.3s\" /> We're not refueling at the next pit stop."
           ],
           "takes": 1,
           "usedBy": [
@@ -27335,7 +27335,7 @@
         {
           "base": "auto-fuel-off-refuel",
           "texts": [
-            "Auto fuel is off. The plan is still to refuel during the next pit stop."
+            "Auto fuel is off. <break time=\"0.3s\" /> The plan is still to refuel during the next pit stop."
           ],
           "takes": 1,
           "usedBy": [
@@ -27347,7 +27347,7 @@
         {
           "base": "auto-fuel-on-no-refuel",
           "texts": [
-            "Auto fuel is on. We're not refueling at the next pit stop."
+            "Auto fuel is on. <break time=\"0.3s\" /> We're not refueling at the next pit stop."
           ],
           "takes": 1,
           "usedBy": [
@@ -27359,7 +27359,7 @@
         {
           "base": "auto-fuel-on-refuel",
           "texts": [
-            "Auto fuel is on. We're refueling at the next pit stop."
+            "Auto fuel is on. <break time=\"0.3s\" /> We're refueling at the next pit stop."
           ],
           "takes": 1,
           "usedBy": [
