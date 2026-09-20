@@ -9,6 +9,110 @@
   },
   "callouts": [
     {
+      "id": "pit-crew.auto-fuel-off-no-refuel",
+      "family": "pit-service.fuel",
+      "event": "pitService.autoFuelSwitched",
+      "description": "iRacing's autofuel is switched off for your next pit stop with no fuel request left standing, so nothing goes in.",
+      "frame": "radio",
+      "weight": 50,
+      "weightBand": "NORMAL",
+      "queueable": false,
+      "interrupt": false,
+      "speakGate": null,
+      "base": "voice/{voice}",
+      "comment": "Autofuel was switched off with no fuel request left behind, so nothing goes in at the next stop. The bare line, no acknowledgment, as for the three siblings.",
+      "test": "Harness → Pit Service → Autofuel OFF, no fuel, outside the pit-action cooldown. In-sim: with no fuel queued, switch autofuel off in the pit black box.",
+      "skip": false,
+      "references": {
+        "pools": [
+          "pit-actions/auto-fuel-off-no-refuel"
+        ],
+        "vars": [],
+        "conds": [],
+        "cases": [],
+        "includes": [],
+        "frames": []
+      }
+    },
+    {
+      "id": "pit-crew.auto-fuel-off-refuel",
+      "family": "pit-service.fuel",
+      "event": "pitService.autoFuelSwitched",
+      "description": "iRacing's autofuel is switched off for your next pit stop and the fuel request it had set is left standing, so the stop still takes fuel.",
+      "frame": "radio",
+      "weight": 50,
+      "weightBand": "NORMAL",
+      "queueable": false,
+      "interrupt": false,
+      "speakGate": null,
+      "base": "voice/{voice}",
+      "comment": "Autofuel was switched off and the fuel request it had set is still standing, so the stop still takes fuel — the case that is easy to miss, since switching autofuel off looks like cancelling the fueling and does not. The bare line, no acknowledgment, as for the three siblings.",
+      "test": "Harness → Pit Service → Autofuel OFF, still refueling, outside the pit-action cooldown. In-sim: with autofuel on and fueling, switch autofuel off — the ordinary fuel request stays set.",
+      "skip": false,
+      "references": {
+        "pools": [
+          "pit-actions/auto-fuel-off-refuel"
+        ],
+        "vars": [],
+        "conds": [],
+        "cases": [],
+        "includes": [],
+        "frames": []
+      }
+    },
+    {
+      "id": "pit-crew.auto-fuel-on-no-refuel",
+      "family": "pit-service.fuel",
+      "event": "pitService.autoFuelSwitched",
+      "description": "iRacing's autofuel is switched on for your next pit stop, with the fuel request left clear — switching it on can wipe one you had queued.",
+      "frame": "radio",
+      "weight": 50,
+      "weightBand": "NORMAL",
+      "queueable": false,
+      "interrupt": false,
+      "speakGate": null,
+      "base": "voice/{voice}",
+      "comment": "Autofuel was switched on and the fuel request is left clear — switching it on can wipe one the driver had queued, which is what the sim did on the pit approach in the #474 capture. The bare line, no acknowledgment, as for the three siblings.",
+      "test": "Harness → Pit Service → Autofuel ON, no fuel, outside the pit-action cooldown; Harness → Pit Service → Autofuel takeover (replay) drives the captured pit-approach moment through the translator. In-sim: switch autofuel on in the pit black box; this is the line when the request is left clear.",
+      "skip": false,
+      "references": {
+        "pools": [
+          "pit-actions/auto-fuel-on-no-refuel"
+        ],
+        "vars": [],
+        "conds": [],
+        "cases": [],
+        "includes": [],
+        "frames": []
+      }
+    },
+    {
+      "id": "pit-crew.auto-fuel-on-refuel",
+      "family": "pit-service.fuel",
+      "event": "pitService.autoFuelSwitched",
+      "description": "iRacing's autofuel is switched on for your next pit stop, with the fuel request left set, so the stop takes fuel.",
+      "frame": "radio",
+      "weight": 50,
+      "weightBand": "NORMAL",
+      "queueable": false,
+      "interrupt": false,
+      "speakGate": null,
+      "base": "voice/{voice}",
+      "comment": "Autofuel was switched on and the fuel request is left set, so the line says both — autofuel is on, and we are refueling. The bare line, with no acknowledgment in front: the missing \"Got it.\" is what marks an autofuel change rather than a request the engineer is answering. A fuel-bit flip while autofuel is armed says nothing at all, so these four lines are the only fuel news in that window. It shares the manual fuel toggle's family, so a newer fuel line replaces it rather than stacking behind it, and like the toggle confirmations it stays silent for a few seconds after leaving the pit lane.",
+      "test": "Harness → Pit Service → Autofuel ON, refueling, outside the pit-action cooldown. In-sim: switch autofuel on in the pit black box; this is the line when the fuel request is left set.",
+      "skip": false,
+      "references": {
+        "pools": [
+          "pit-actions/auto-fuel-on-refuel"
+        ],
+        "vars": [],
+        "conds": [],
+        "cases": [],
+        "includes": [],
+        "frames": []
+      }
+    },
+    {
       "id": "pit-crew.caution-extra-lap",
       "family": "flag",
       "event": "caution.extraLap",
@@ -28982,6 +29086,54 @@
             "pit-crew.toggle-fuel-on",
             "pit-crew.toggle-windshield-off",
             "pit-crew.toggle-windshield-on"
+          ],
+          "viaVar": [],
+          "playedBy": null
+        },
+        {
+          "base": "auto-fuel-off-no-refuel",
+          "texts": [
+            "Auto fuel is off. <break time=\"0.3s\" /> We're not refueling at the next pit stop."
+          ],
+          "takes": 1,
+          "usedBy": [
+            "pit-crew.auto-fuel-off-no-refuel"
+          ],
+          "viaVar": [],
+          "playedBy": null
+        },
+        {
+          "base": "auto-fuel-off-refuel",
+          "texts": [
+            "Auto fuel is off. <break time=\"0.3s\" /> The plan is still to refuel during the next pit stop."
+          ],
+          "takes": 1,
+          "usedBy": [
+            "pit-crew.auto-fuel-off-refuel"
+          ],
+          "viaVar": [],
+          "playedBy": null
+        },
+        {
+          "base": "auto-fuel-on-no-refuel",
+          "texts": [
+            "Auto fuel is on. <break time=\"0.3s\" /> We're not refueling at the next pit stop."
+          ],
+          "takes": 1,
+          "usedBy": [
+            "pit-crew.auto-fuel-on-no-refuel"
+          ],
+          "viaVar": [],
+          "playedBy": null
+        },
+        {
+          "base": "auto-fuel-on-refuel",
+          "texts": [
+            "Auto fuel is on. <break time=\"0.3s\" /> We're refueling at the next pit stop."
+          ],
+          "takes": 1,
+          "usedBy": [
+            "pit-crew.auto-fuel-on-refuel"
           ],
           "viaVar": [],
           "playedBy": null

@@ -588,7 +588,30 @@ export type SimEventMap = {
    * adapters may expose richer compound rosters.
    */
   "tireService.compoundChanged": SimEvent<"tireService.compoundChanged", { from: number; to: number }>;
+  /**
+   * A pit-service request the driver toggled settled into a new state
+   * (debounced). For `service: "fuel"` this is only a flip made while the
+   * sim's auto-fuel is NOT armed: while it is armed the translator publishes
+   * nothing for the fuel bit (issue #474), because iRacing's auto-fuel writes
+   * that bit itself and telemetry carries no source for a flip — announcing
+   * one as the driver's request is the phantom confirmation #474 was filed
+   * about. What auto-fuel does IS announced, when it is switched on or off:
+   * see `pitService.autoFuelSwitched`.
+   */
   "pitService.toggled": SimEvent<"pitService.toggled", { service: PitServiceKind; on: boolean }>;
+  /**
+   * The sim's auto-fuel was switched on or off for the next stop (issue
+   * #474). `refuel` is what the fuel request is LEFT at once the change has
+   * settled — auto-fuel having fueling switched on leaves the ordinary fuel
+   * request set when it goes off, and switching it on can clear one — so a
+   * consumer can say both facts in one line. A fuel-bit flip settling in the
+   * same window is folded into this event rather than published on its own.
+   *
+   * The translator stays silent for a change made from pit road onward: the
+   * stop itself consumes auto-fuel (the flag drops as the stop begins), and
+   * that is bookkeeping rather than a decision anyone made.
+   */
+  "pitService.autoFuelSwitched": SimEvent<"pitService.autoFuelSwitched", { on: boolean; refuel: boolean }>;
   /**
    * Pit-service status transition (issue #479). Fired by the sim translator
    * on every change to the player's pit-service status (idle / in-progress /

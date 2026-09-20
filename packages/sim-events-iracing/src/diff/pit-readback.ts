@@ -27,10 +27,13 @@
  *
  * User-intent detection: this module runs after `diffToggles` in the
  * tick pipeline, so it inspects the per-tick `pending` queue for
- * `pitService.toggled` / `tireService.changed` / `tireService.compoundChanged`
- * events. Those events fire only on debounced user toggles (the seed-during-
- * stall branch in `diffToggles` silently absorbs the crew's bit-clears),
- * which is exactly the signal we want.
+ * `pitService.toggled` / `pitService.autoFuelSwitched` / `tireService.changed`
+ * / `tireService.compoundChanged` events. Those events fire only on debounced
+ * user toggles (the seed-during-stall branch in `diffToggles` silently
+ * absorbs the crew's bit-clears), which is exactly the signal we want. One
+ * plan change publishes no event at all — the fuel request moving while
+ * auto-fuel is armed (issue #474) — and reaches this module through
+ * `state.fuelPlanChangedThisTick` instead.
  */
 import type { PitReadbackSnapshot } from "@iracedeck/event-bus";
 import {
@@ -146,6 +149,12 @@ export function buildSnapshot(telemetry: TelemetryData): PitReadbackSnapshot {
 
 const USER_TOGGLE_EVENTS = new Set<PendingEvent["event"]>([
   "pitService.toggled",
+  // Auto-fuel switching on or off changes the queued plan as much as a toggle
+  // does (issue #474). It reaches pit road only when it ARMED before the car
+  // got there — `diffToggles` drops one that arms on pit road, which is the
+  // stop consuming auto-fuel by itself — but that window is real: pit
+  // approach can be under 300 ms from pit road on a short track.
+  "pitService.autoFuelSwitched",
   "tireService.changed",
   "tireService.compoundChanged",
 ]);
@@ -205,10 +214,18 @@ export function diffPitReadback(
     state.pitReadbackExitFireAt = 0;
     state.pitReadbackPreStartFireAt = 0;
     emit({ event: "pitService.readbackRequested", data: { reason: "entry" } });
-  } else if (onPitRoad && pending.some((p) => USER_TOGGLE_EVENTS.has(p.event))) {
+  } else if (onPitRoad && (state.fuelPlanChangedThisTick || pending.some((p) => USER_TOGGLE_EVENTS.has(p.event)))) {
     // While on pit road, any user-intent toggle event refires the
     // readback. Family preemption (`family: "pit-readback"`) cuts the
     // in-flight readback cleanly.
+    //
+    // `fuelPlanChangedThisTick` carries the fuel changes that publish no
+    // event at all: while auto-fuel is armed the CALLOUT is silent (issue
+    // #474), since the sim writes that bit itself and a confirmation there
+    // would be a phantom one — but the recap is a different promise. Without
+    // it the readback keeps saying "we're taking fuel" after the driver has
+    // cancelled it, with neither a line nor a corrected recap to say
+    // otherwise.
     emit({ event: "pitService.readbackRequested", data: { reason: "entry-refire" } });
   } else if (wasOnPitRoad && !onPitRoad) {
     // On → off: schedule the delayed "to confirm" fire. Pit-action

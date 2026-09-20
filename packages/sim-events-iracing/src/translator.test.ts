@@ -1137,6 +1137,123 @@ describe("sim-events-iracing translator", () => {
       expect(handler).not.toHaveBeenCalled();
     });
 
+    it("publishes the captured auto-fuel takeover as one pitService.autoFuelSwitched, and no fuel toggle (issue #474)", () => {
+      const controller = createMockController();
+      const bus = getEventBus();
+      const toggled = vi.fn();
+      const autoFuel = vi.fn();
+      bus.subscribe("pitService.toggled", toggled);
+      bus.subscribe("pitService.autoFuelSwitched", autoFuel);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      // The driver has asked for fuel with auto-fuel off. At pit approach —
+      // still off pit road — the sim arms auto-fuel and clears that request in
+      // the same tick.
+      controller.__tick(telemetry({ PitSvFlags: PitSvFlags.FuelFill, dpFuelAutoFillActive: 0 }));
+      controller.__tick(telemetry({ PitSvFlags: 0, dpFuelAutoFillActive: 1 }));
+      vi.useFakeTimers();
+      vi.setSystemTime(Date.now() + 400);
+      controller.__tick(telemetry({ PitSvFlags: 0, dpFuelAutoFillActive: 1 }));
+      vi.useRealTimers();
+
+      expect(toggled).not.toHaveBeenCalled();
+      expect(autoFuel).toHaveBeenCalledTimes(1);
+      expect((autoFuel.mock.calls[0]![0] as SimEventOf<"pitService.autoFuelSwitched">).data).toEqual({
+        on: true,
+        refuel: false,
+      });
+    });
+
+    it("says nothing at all for a fuel flip made while auto-fuel is armed (issue #474)", () => {
+      const controller = createMockController();
+      const bus = getEventBus();
+      const toggled = vi.fn();
+      const autoFuel = vi.fn();
+      const readback = vi.fn();
+      bus.subscribe("pitService.toggled", toggled);
+      bus.subscribe("pitService.autoFuelSwitched", autoFuel);
+      bus.subscribe("pitService.readbackRequested", readback);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      controller.__tick(telemetry({ PitSvFlags: 0, dpFuelAutoFillActive: 1 }));
+      controller.__tick(telemetry({ PitSvFlags: PitSvFlags.FuelFill, dpFuelAutoFillActive: 1 }));
+      vi.useFakeTimers();
+      vi.setSystemTime(Date.now() + 400);
+      controller.__tick(telemetry({ PitSvFlags: PitSvFlags.FuelFill, dpFuelAutoFillActive: 1 }));
+      vi.useRealTimers();
+
+      expect(toggled).not.toHaveBeenCalled();
+      expect(autoFuel).not.toHaveBeenCalled();
+      expect(readback).not.toHaveBeenCalled();
+    });
+
+    it("holds the auto-fuel line until a fuel press settles, then states the real plan (issue #474)", () => {
+      const controller = createMockController();
+      const bus = getEventBus();
+      const toggled = vi.fn();
+      const autoFuel = vi.fn();
+      bus.subscribe("pitService.toggled", toggled);
+      bus.subscribe("pitService.autoFuelSwitched", autoFuel);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      vi.useFakeTimers();
+      const t0 = Date.now();
+      controller.__tick(telemetry({ PitSvFlags: 0, dpFuelAutoFillActive: 0 }));
+
+      // The driver arms auto-fuel, then asks for fuel 100 ms later.
+      vi.setSystemTime(t0 + 100);
+      controller.__tick(telemetry({ PitSvFlags: 0, dpFuelAutoFillActive: 1 }));
+      vi.setSystemTime(t0 + 200);
+      controller.__tick(telemetry({ PitSvFlags: PitSvFlags.FuelFill, dpFuelAutoFillActive: 1 }));
+
+      // The switch settles first, with the request still mid-window: silence.
+      vi.setSystemTime(t0 + 400);
+      controller.__tick(telemetry({ PitSvFlags: PitSvFlags.FuelFill, dpFuelAutoFillActive: 1 }));
+      expect(autoFuel).not.toHaveBeenCalled();
+
+      // The request settles: one line, and it says the plan that now stands.
+      vi.setSystemTime(t0 + 500);
+      controller.__tick(telemetry({ PitSvFlags: PitSvFlags.FuelFill, dpFuelAutoFillActive: 1 }));
+      vi.useRealTimers();
+
+      expect(toggled).not.toHaveBeenCalled();
+      expect(autoFuel).toHaveBeenCalledTimes(1);
+      expect((autoFuel.mock.calls[0]![0] as SimEventOf<"pitService.autoFuelSwitched">).data).toEqual({
+        on: true,
+        refuel: true,
+      });
+    });
+
+    it("silences the callout but still refreshes the pit-road recap for that flip (issue #474)", () => {
+      const controller = createMockController();
+      const bus = getEventBus();
+      const toggled = vi.fn();
+      const autoFuel = vi.fn();
+      const readback = vi.fn();
+      bus.subscribe("pitService.toggled", toggled);
+      bus.subscribe("pitService.autoFuelSwitched", autoFuel);
+      bus.subscribe("pitService.readbackRequested", readback);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      // On pit road with auto-fuel armed and fuel queued, the driver cancels
+      // the fuel. No line — but the recap must stop saying "we're taking fuel".
+      controller.__tick(telemetry({ OnPitRoad: true, PitSvFlags: PitSvFlags.FuelFill, dpFuelAutoFillActive: 1 }));
+      controller.__tick(telemetry({ OnPitRoad: true, PitSvFlags: 0, dpFuelAutoFillActive: 1 }));
+      expect(readback).not.toHaveBeenCalled();
+
+      vi.useFakeTimers();
+      vi.setSystemTime(Date.now() + 400);
+      controller.__tick(telemetry({ OnPitRoad: true, PitSvFlags: 0, dpFuelAutoFillActive: 1 }));
+      vi.useRealTimers();
+
+      expect(toggled).not.toHaveBeenCalled();
+      expect(autoFuel).not.toHaveBeenCalled();
+      expect(readback).toHaveBeenCalledTimes(1);
+      expect((readback.mock.calls[0]![0] as SimEventOf<"pitService.readbackRequested">).data).toEqual({
+        reason: "entry-refire",
+      });
+    });
+
     it("emits carControl.drsToggled { on: true } on activation", () => {
       const controller = createMockController();
       const bus = getEventBus();

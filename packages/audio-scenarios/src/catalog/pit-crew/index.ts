@@ -213,7 +213,7 @@ import {
 import { registerSpotterEngine, SPOTTER_STILL_THERE_DEFAULT_MS } from "./spotter-engine.js";
 import { START_LIGHT_CONTRACTS } from "./start-lights.js";
 import { registerTireWearVocabulary, TIRE_WEAR_CONTRACTS } from "./tire-wear.js";
-import { TOGGLE_CONFIRMATION_CONTRACTS } from "./toggle-confirmations.js";
+import { AUTO_FUEL_CONTRACTS, TOGGLE_CONFIRMATION_CONTRACTS } from "./toggle-confirmations.js";
 import { TRACK_CONDITIONS_CONTRACTS } from "./track-conditions.js";
 
 /**
@@ -772,6 +772,32 @@ const SCENARIO_ID_TO_PIT_BOX_ID: Record<string, PitBoxCalloutId> = {
 };
 
 /**
+ * Stable identifier for the autofuel callout (issue #474). Single subject —
+ * one toggle covers autofuel being switched either way and whatever that
+ * leaves the fuel request at, so all four scenarios map to it (the pit-box
+ * shape). Independent of the pit-service requests opt-in in both directions:
+ * a driver may want their own presses confirmed and autofuel's news silent,
+ * or the reverse.
+ */
+export type AutoFuelCalloutId = "changed";
+
+/**
+ * Canonical mapping from `AutoFuelCalloutId` to its plugin-global setting key
+ * in `GlobalSettingsSchema`. Plugin entry points use this to read the live
+ * opt-in without duplicating the key string.
+ */
+export const AUTO_FUEL_CALLOUT_SETTING_KEYS: Record<AutoFuelCalloutId, string> = {
+  changed: "calloutEnabledPitServiceAutoFuel",
+};
+
+const SCENARIO_ID_TO_AUTO_FUEL_ID: Record<string, AutoFuelCalloutId> = {
+  "pit-crew.auto-fuel-on-refuel": "changed",
+  "pit-crew.auto-fuel-on-no-refuel": "changed",
+  "pit-crew.auto-fuel-off-refuel": "changed",
+  "pit-crew.auto-fuel-off-no-refuel": "changed",
+};
+
+/**
  * Stable identifier for the pit-road speeding cue (issue #912). Single
  * subject — one toggle covers the whole repeating tick.
  */
@@ -911,6 +937,15 @@ export type PitCrewDeps = {
   // from `getPitActionsAllowed` (engine-internal cooldown vs persistent
   // user preference) so they can move independently.
   getPitServiceRequestsEnabled?: () => boolean;
+  // User opt-in for the autofuel callout (issue #474): iRacing's autofuel
+  // being switched on or off for the next stop, and what that leaves the fuel
+  // request at, announced apart from the driver's own fuel toggle. One
+  // checkbox covers all four lines. Plugins wire it to
+  // `calloutEnabledPitServiceAutoFuel`, read live at event arrival.
+  // Independent of `getPitServiceRequestsEnabled` in both directions —
+  // neither gate reads the other. Default `() => true` preserves legacy
+  // behavior for tests that don't supply a closure.
+  getAutoFuelCalloutEnabled?: (id: AutoFuelCalloutId) => boolean;
   // Pit-readback queued-services snapshot (issue #481). Plugins wire this
   // to `getReadbackSnapshot()` from `@iracedeck/sim-events-iracing`, which
   // builds a snapshot from the latest telemetry tick. Read at fire time
@@ -1250,6 +1285,7 @@ const DEFAULT_DEPS = {
   getPitReadbackEnabled: () => true,
   getPitActionsAllowed: () => true,
   getPitServiceRequestsEnabled: () => true,
+  getAutoFuelCalloutEnabled: () => true,
   getReadbackSnapshot: () => null,
   getTireWearCalloutEnabled: () => true,
   getDamageCalloutEnabled: () => true,
@@ -1310,6 +1346,7 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
     getPitReadbackEnabled = DEFAULT_DEPS.getPitReadbackEnabled,
     getPitActionsAllowed = DEFAULT_DEPS.getPitActionsAllowed,
     getPitServiceRequestsEnabled = DEFAULT_DEPS.getPitServiceRequestsEnabled,
+    getAutoFuelCalloutEnabled = DEFAULT_DEPS.getAutoFuelCalloutEnabled,
     getReadbackSnapshot = DEFAULT_DEPS.getReadbackSnapshot,
     getTireWearCalloutEnabled = DEFAULT_DEPS.getTireWearCalloutEnabled,
     getDamageCalloutEnabled = DEFAULT_DEPS.getDamageCalloutEnabled,
@@ -1440,6 +1477,33 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   // addressing `pool:pit-actions/<base>`.
   for (const c of TOGGLE_CONFIRMATION_CONTRACTS) {
     engine.defineContract(wrapToggle(c));
+  }
+
+  // The four autofuel lines (issue #474) — autofuel switched on or off for
+  // the next stop, and what that left the fuel request at, published together
+  // as `pitService.autoFuelSwitched`. A fuel flip made while autofuel is armed
+  // is published as nothing at all, so no contract here reads the fuel bit.
+  // The toggles' own three layers, with the middle one swapped: master gate
+  // outermost, then the autofuel opt-in (`calloutEnabledPitServiceAutoFuel`,
+  // via `SCENARIO_ID_TO_AUTO_FUEL_ID` — one checkbox for all four), never the
+  // pit-service requests gate, since the two preferences are independent; then
+  // the pit-action cooldown innermost, so the sim's post-stop reset of the
+  // service queue at pit exit (and the pre-grid window) stays as quiet here as
+  // it does for a press. The cooldown does NOT reach the pit approach, where
+  // the #474 capture showed the sim arming autofuel and wiping the driver's
+  // fuel request in one tick — the moment this callout exists to announce.
+  for (const c of AUTO_FUEL_CONTRACTS) {
+    engine.defineContract(
+      wrapWithMaster(
+        wrapCalloutScenario(
+          wrapPitActionScenario(c, getPitActionsAllowed, logger),
+          SCENARIO_ID_TO_AUTO_FUEL_ID,
+          getAutoFuelCalloutEnabled,
+          "auto-fuel callout",
+          logger,
+        ),
+      ),
+    );
   }
 
   // Contracts, not scenarios (issue #1064): the flag family's wording is the

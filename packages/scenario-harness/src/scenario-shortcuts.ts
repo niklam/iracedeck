@@ -22,7 +22,7 @@ import {
   type StartCountdownSeconds,
   TrackWetness,
 } from "@iracedeck/event-bus";
-import { EngineWarnings, Flags, PaceMode, PitSvStatus, TrkLoc } from "@iracedeck/iracing-sdk";
+import { EngineWarnings, Flags, PaceMode, PitSvFlags, PitSvStatus, TrkLoc } from "@iracedeck/iracing-sdk";
 import { PIT_READBACK_EXIT_DELAY_MS, YELLOW_CLEARED_HOLD_MS } from "@iracedeck/sim-events-iracing";
 
 import { TIRE_WEAR_REPORT_EXAMPLE } from "./event-names.js";
@@ -675,6 +675,137 @@ const CAUTION_EXTRA_LAP_SHORTCUT: TelemetrySequenceShortcut = {
 };
 
 /**
+ * Step holds for `AUTO_FUEL_TAKEOVER_SHORTCUT` (issue #474). The capture spent
+ * 9 s between the driver's fuel press and the pit approach; the button
+ * compresses that to the time the press confirmation needs to finish, so the
+ * entry readback fires on an idle bus and is expanded on the approach tick
+ * itself (it reads the fuel bit when it is expanded, not when it was fired).
+ */
+const AUTO_FUEL_SETUP_MS = 500;
+const AUTO_FUEL_PRESS_LISTEN_MS = 5000;
+
+/**
+ * How long each replay-mode bracket step is held — long enough for a few of
+ * the mock controller's 14 ms ticks, which is all the translator needs to wipe
+ * its state on the way in and re-seed every diff on the way out.
+ */
+const AUTO_FUEL_SEED_MS = 200;
+
+/**
+ * How long the approach is held on its own before the takeover lands. The
+ * capture had them one sim tick apart (30 ms); this is a little longer so a
+ * couple of the mock controller's 14 ms ticks see the approach alone — the
+ * readback has to be expanded BEFORE the takeover clears the fuel bit, as it
+ * was in the sim.
+ */
+const AUTO_FUEL_APPROACH_MS = 50;
+
+/**
+ * How long the takeover is held before the last step restores the car. It has
+ * to outlast the translator's fuel debounce (`PIT_SERVICE_DEBOUNCE_MS`, 300 ms,
+ * not exported) with `dpFuelAutoFillActive` still set, or the flip settles as a
+ * driver's press. The rest is listening time: the entry readback, then the
+ * autofuel line, which waits behind it as the bus's pending fire.
+ */
+const AUTO_FUEL_TAKEOVER_LISTEN_MS = 9000;
+
+/**
+ * The autofuel takeover, driven through the TRANSLATOR (issue #474) and
+ * modelled on `local/telemetry-watch-20260919-193233-855.jsonl`, in a car with
+ * autofuel that had been armed once earlier in the session:
+ *
+ *   - 557.97 — the driver queues fuel by hand: `PitSvFlags` gains `FuelFill`
+ *     and `dpFuelFill` goes to 1, with `dpFuelAutoFillActive` still 0; then
+ *     `dpFuelAddKg` / `PitSvFuel` follow (1, then 6 at 558.63);
+ *   - 567.70 — `PlayerTrackSurface` goes to 2, the pit approach;
+ *   - 567.73 — in ONE tick: `PitSvFlags` 0, `dpFuelAutoFillActive` 1,
+ *     `dpFuelFill` 0, `dpFuelAddKg` 0, `PitSvFuel` 0 — the sim arming autofuel
+ *     and wiping the manual request.
+ *
+ * `dpFuelAutoFillEnabled` was 1 throughout (the sim set it; it says the car
+ * HAS autofuel, not that the driver switched it on), so the first step sets it
+ * and nothing changes it. The values are the captured ones; only the hold
+ * before the approach is compressed.
+ *
+ * That last tick is ONE `pitService.autoFuelSwitched { on: true, refuel: false }`
+ * — autofuel switched on, the fuel request left clear — with the fuel flip in
+ * the same window folded into it rather than published as a toggle of its own.
+ * What a bus-event shortcut cannot show, this can: that the translator reads
+ * the press as the driver's (acknowledged confirmation) and the arming as
+ * autofuel's (the bare line, and no "We're skipping fuel").
+ *
+ * The run is bracketed by two replay-mode steps that set up and tear down the
+ * world it needs without announcing any of it (see the first step's comment),
+ * so the button plays the same from every preset rather than assuming the
+ * tester applied the on-track one. It hands back a car on track with nothing
+ * queued, and the holds between one run's approach and the next run's add up
+ * past the translator's 10 s approach cooldown, so a second press replays it
+ * whole.
+ */
+const AUTO_FUEL_TAKEOVER_SHORTCUT: TelemetrySequenceShortcut = {
+  id: "auto-fuel-takeover",
+  category: "Pit Service",
+  label: "Autofuel takeover (replay)",
+  description:
+    'Drives the TRANSLATOR through the autofuel takeover captured on 2026-09-19, about 15 s end to end: you queue fuel by hand on track, then on the pit approach the sim arms autofuel and wipes your request in the same tick, as it did in the capture (a car with autofuel, armed once earlier in the session). Expect your press confirmed ("Got it." / "Roger that." / "Copy that." then "We\'re refueling at the next pit stop."), then at the approach the entry readback — still naming the fuel, because it is read on the approach tick, one tick before the takeover — then "Auto fuel is on. We\'re not refueling at the next pit stop." with no acknowledgment. Hearing "We\'re skipping fuel" there instead means the translator took the arming for a press of yours. No telemetry preset needed: the run opens and closes inside a replay-mode bracket, which the translator suppresses events through and re-seeds every diff from, so it sets up the car it needs from any preset — in the garage, on pit road, in the stall — and hands back a car on track with nothing queued. Any session preset works. Needs the mock SDK CONNECTED; with it disconnected the translator sees no ticks and the button is silent for the wrong reason.',
+  telemetrySequence: [
+    // The button's own bookkeeping, done inside a REPLAY-MODE bracket. Every
+    // run has to put the car on track off pit road with autofuel off and
+    // nothing queued — or the arming below is no change at all — and each of
+    // those resets is an edge some diff would announce: `OnPitRoad` going
+    // false from a pit-road preset is `pitLane.exited` (the 4.5 s pit-action
+    // cooldown that would swallow the press, plus a delayed "to confirm"
+    // recap landing mid-run), and disarming autofuel is itself an autofuel
+    // switch. The translator suppresses every event while `IsReplayPlaying`
+    // is true and re-seeds each diff from the current snapshot when it goes
+    // false, so the whole setup is seeded rather than spoken — from ANY
+    // preset, the stall and pit road included — and the state wipe clears a
+    // pit-action cooldown the tester's last button left running. The same
+    // bracket closes the sequence.
+    {
+      patch: {
+        IsReplayPlaying: true,
+        IsOnTrack: true,
+        OnPitRoad: false,
+        PlayerCarInPitStall: false,
+        PlayerTrackSurface: TrkLoc.OnTrack,
+        PitSvFlags: 0,
+        dpFuelAutoFillEnabled: 1,
+        dpFuelAutoFillActive: 0,
+        dpFuelFill: 0,
+        dpFuelAddKg: 0,
+        PitSvFuel: 0,
+      },
+      holdMs: AUTO_FUEL_SEED_MS,
+    },
+    { patch: { IsReplayPlaying: false }, holdMs: AUTO_FUEL_SETUP_MS },
+    { patch: { PitSvFlags: PitSvFlags.FuelFill, dpFuelFill: 1 }, holdMs: 30 },
+    { patch: { dpFuelAddKg: 1, PitSvFuel: 1 }, holdMs: 630 },
+    { patch: { dpFuelAddKg: 6, PitSvFuel: 6 }, holdMs: AUTO_FUEL_PRESS_LISTEN_MS },
+    { patch: { PlayerTrackSurface: TrkLoc.AproachingPits }, holdMs: AUTO_FUEL_APPROACH_MS },
+    {
+      patch: { PitSvFlags: 0, dpFuelAutoFillActive: 1, dpFuelFill: 0, dpFuelAddKg: 0, PitSvFuel: 0 },
+      holdMs: AUTO_FUEL_TAKEOVER_LISTEN_MS,
+    },
+    // Close the bracket: disarm inside replay mode, so the teardown is seeded
+    // rather than spoken, then hand back a car on track with nothing queued.
+    {
+      patch: {
+        IsReplayPlaying: true,
+        PlayerTrackSurface: TrkLoc.OnTrack,
+        dpFuelAutoFillActive: 0,
+        PitSvFlags: 0,
+        dpFuelFill: 0,
+        dpFuelAddKg: 0,
+        PitSvFuel: 0,
+      },
+      holdMs: AUTO_FUEL_SEED_MS,
+    },
+    { patch: { IsReplayPlaying: false } },
+  ],
+};
+
+/**
  * The twelve tread readings before the stop: iRacing's `<corner>wear<L|M|R>`
  * fractions read 1 until the car first arrives in its box, which is where the
  * capture below starts. Setting them first also lets a second press refresh
@@ -836,6 +967,44 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     event: "pitService.toggled",
     data: { service: "fuel", on: false },
   },
+  // Issue #474 — autofuel switched on or off, spoken without the
+  // acknowledgment a driver's press gets. One button per (switched to, fuel
+  // request left at) pair, because the line says both facts: `refuel` is what
+  // the request is LEFT at, not what autofuel will put in.
+  {
+    id: "auto-fuel-on-refuel",
+    category: "Pit Service",
+    label: "Autofuel ON, refueling",
+    description: "Autofuel switched on for the next stop, fuel request left set",
+    event: "pitService.autoFuelSwitched",
+    data: { on: true, refuel: true },
+  },
+  {
+    id: "auto-fuel-on-no-refuel",
+    category: "Pit Service",
+    label: "Autofuel ON, no fuel",
+    description:
+      "Autofuel switched on for the next stop, fuel request left clear (what the sim did on the pit approach)",
+    event: "pitService.autoFuelSwitched",
+    data: { on: true, refuel: false },
+  },
+  {
+    id: "auto-fuel-off-refuel",
+    category: "Pit Service",
+    label: "Autofuel OFF, still refueling",
+    description: "Autofuel switched off for the next stop, the fuel request it set left standing",
+    event: "pitService.autoFuelSwitched",
+    data: { on: false, refuel: true },
+  },
+  {
+    id: "auto-fuel-off-no-refuel",
+    category: "Pit Service",
+    label: "Autofuel OFF, no fuel",
+    description: "Autofuel switched off for the next stop with no fuel request left standing",
+    event: "pitService.autoFuelSwitched",
+    data: { on: false, refuel: false },
+  },
+  AUTO_FUEL_TAKEOVER_SHORTCUT,
   {
     id: "windshield-on",
     category: "Pit Service",

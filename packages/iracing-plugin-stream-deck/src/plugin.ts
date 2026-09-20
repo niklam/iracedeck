@@ -16,6 +16,8 @@ import {
   scanRaceEngineerVoices,
 } from "@iracedeck/audio-scenarios";
 import {
+  AUTO_FUEL_CALLOUT_SETTING_KEYS,
+  type AutoFuelCalloutId,
   CAUTION_CALLOUT_SETTING_KEYS,
   type CautionCalloutId,
   CORNER_NAME_CALLOUT_SETTING_KEYS,
@@ -909,6 +911,8 @@ registerPitCrew(eventBus, {
   getOvertakeGate: getOvertakeGate,
   getPitBoxCalloutEnabled: (id: PitBoxCalloutId) =>
     (getGlobalSettings() as Record<string, unknown>)[PIT_BOX_CALLOUT_SETTING_KEYS[id]] !== false,
+  getAutoFuelCalloutEnabled: (id: AutoFuelCalloutId) =>
+    (getGlobalSettings() as Record<string, unknown>)[AUTO_FUEL_CALLOUT_SETTING_KEYS[id]] !== false,
   getSetupWarningMismatch: (kind) =>
     evaluateSetupWarning(kind, getGlobalSettings() as Record<string, unknown>, getDriverSetupName()),
   getSpotterCalloutEnabled: (id: SpotterCalloutId) =>

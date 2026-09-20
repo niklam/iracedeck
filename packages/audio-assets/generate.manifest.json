@@ -22265,6 +22265,38 @@
       "generatedAt": "2026-09-18T16:36:25.032Z",
       "requestId": "hIV4ZKT3WTI9GgtdzJgz"
     },
+    "voice/default/pit-actions/auto-fuel-on-refuel-01.mp3": {
+      "hash": "1abf90ce9925ed19",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Auto fuel is on. <break time=\"0.3s\" /> We're refueling at the next pit stop.",
+      "generatedAt": "2026-09-20T17:20:58.052Z",
+      "requestId": "JNhkuHgRCGRPWgP5nOH2"
+    },
+    "voice/default/pit-actions/auto-fuel-on-no-refuel-01.mp3": {
+      "hash": "d6300a1cf670aaa5",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Auto fuel is on. <break time=\"0.3s\" /> We're not refueling at the next pit stop.",
+      "generatedAt": "2026-09-20T17:20:58.328Z",
+      "requestId": "ertbBhgsPOTNmMLf4cFa"
+    },
+    "voice/default/pit-actions/auto-fuel-off-refuel-01.mp3": {
+      "hash": "53ec8f260679b9f1",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Auto fuel is off. <break time=\"0.3s\" /> The plan is still to refuel during the …",
+      "generatedAt": "2026-09-20T17:21:46.901Z",
+      "requestId": "XHIFyRESzK3zkC8pBbus"
+    },
+    "voice/default/pit-actions/auto-fuel-off-no-refuel-01.mp3": {
+      "hash": "f58e51cea71666ae",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Auto fuel is off. <break time=\"0.3s\" /> We're not refueling at the next pit sto…",
+      "generatedAt": "2026-09-20T17:20:58.871Z",
+      "requestId": "bRfkmvqgndGhyB8F0GAN"
+    },
     "voice/default/tire-wear/left-front-01.mp3": {
       "hash": "3d933268af0d8ec7",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",

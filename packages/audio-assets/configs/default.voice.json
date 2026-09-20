@@ -684,6 +684,23 @@
         ]
       },
       {
+        "name": "auto-fuel-on-refuel-01",
+        "text": "Auto fuel is on. <break time=\"0.3s\" /> We're refueling at the next pit stop."
+      },
+      {
+        "name": "auto-fuel-on-no-refuel-01",
+        "text": "Auto fuel is on. <break time=\"0.3s\" /> We're not refueling at the next pit stop."
+      },
+      {
+        "name": "auto-fuel-off-refuel-01",
+        "text": "Auto fuel is off. <break time=\"0.3s\" /> The plan is still to refuel during the next pit stop.",
+        "seed": 3
+      },
+      {
+        "name": "auto-fuel-off-no-refuel-01",
+        "text": "Auto fuel is off. <break time=\"0.3s\" /> We're not refueling at the next pit stop."
+      },
+      {
         "name": "tires-off-01",
         "text": "We're skipping tires at the next pit stop.",
         "previous_request_ids": [
@@ -19252,6 +19269,26 @@
       "comment": "The driver removed fuel from the next stop — acknowledgment, then the confirmation.",
       "test": "Harness → Pit Service → Fuel OFF, outside the pit-action cooldown. In-sim: clear the fuel toggle in the pit black box.",
       "sequence": ["pool:pit-actions/acknowledgment", "pool:pit-actions/fuel-off"]
+    },
+    "pit-crew.auto-fuel-on-refuel": {
+      "comment": "Autofuel was switched on and the fuel request is left set, so the line says both — autofuel is on, and we are refueling. The bare line, with no acknowledgment in front: the missing \"Got it.\" is what marks an autofuel change rather than a request the engineer is answering. A fuel-bit flip while autofuel is armed says nothing at all, so these four lines are the only fuel news in that window. It shares the manual fuel toggle's family, so a newer fuel line replaces it rather than stacking behind it, and like the toggle confirmations it stays silent for a few seconds after leaving the pit lane.",
+      "test": "Harness → Pit Service → Autofuel ON, refueling, outside the pit-action cooldown. In-sim: switch autofuel on in the pit black box; this is the line when the fuel request is left set.",
+      "sequence": ["pool:pit-actions/auto-fuel-on-refuel"]
+    },
+    "pit-crew.auto-fuel-on-no-refuel": {
+      "comment": "Autofuel was switched on and the fuel request is left clear — switching it on can wipe one the driver had queued, which is what the sim did on the pit approach in the #474 capture. The bare line, no acknowledgment, as for the three siblings.",
+      "test": "Harness → Pit Service → Autofuel ON, no fuel, outside the pit-action cooldown; Harness → Pit Service → Autofuel takeover (replay) drives the captured pit-approach moment through the translator. In-sim: switch autofuel on in the pit black box; this is the line when the request is left clear.",
+      "sequence": ["pool:pit-actions/auto-fuel-on-no-refuel"]
+    },
+    "pit-crew.auto-fuel-off-refuel": {
+      "comment": "Autofuel was switched off and the fuel request it had set is still standing, so the stop still takes fuel — the case that is easy to miss, since switching autofuel off looks like cancelling the fueling and does not. The bare line, no acknowledgment, as for the three siblings.",
+      "test": "Harness → Pit Service → Autofuel OFF, still refueling, outside the pit-action cooldown. In-sim: with autofuel on and fueling, switch autofuel off — the ordinary fuel request stays set.",
+      "sequence": ["pool:pit-actions/auto-fuel-off-refuel"]
+    },
+    "pit-crew.auto-fuel-off-no-refuel": {
+      "comment": "Autofuel was switched off with no fuel request left behind, so nothing goes in at the next stop. The bare line, no acknowledgment, as for the three siblings.",
+      "test": "Harness → Pit Service → Autofuel OFF, no fuel, outside the pit-action cooldown. In-sim: with no fuel queued, switch autofuel off in the pit black box.",
+      "sequence": ["pool:pit-actions/auto-fuel-off-no-refuel"]
     },
     "pit-crew.tire-set-on-all": {
       "comment": "All four tires queued — acknowledgment, then the confirmation. Each tire line answers the RESULTING set, whichever buttons got the driver there.",

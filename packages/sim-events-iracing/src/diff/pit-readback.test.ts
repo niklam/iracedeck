@@ -6,6 +6,9 @@
  *   - `pitLane.approaching` in pending emits "entry"
  *   - reset/teleport (OnPitRoad off→on with no approach event) stays silent
  *   - on-pit-road + user toggle in the same tick emits "entry-refire"
+ *   - so do an auto-fuel switch and a silenced fuel change, on pit road only
+ *     (issue #474 — that fuel change publishes no event at all, and arrives
+ *     through `state.fuelPlanChangedThisTick`)
  *   - on→off schedules an exit fire that emits after the delay elapses
  *   - re-approach during the delay window cancels the scheduled exit
  *   - issue #481: event payload carries only `reason` (the
@@ -221,6 +224,55 @@ describe("diffPitReadback — refire", () => {
     const readbacks = readbackEvents(events);
     expect(readbacks).toHaveLength(1);
     expect(readbacks[0]?.data).toEqual({ reason: "entry-refire" });
+  });
+
+  it("emits 'entry-refire' on an auto-fuel switch that settles on pit road (issue #474)", () => {
+    // Reachable when the switch armed before pit road — a short-track approach
+    // under 300 ms from pit road, or a dirt oval's drive-in edge.
+    const state = createInitialState();
+    state.pitReadbackInitialized = true;
+    state.pitReadbackPrevOnPitRoad = true;
+    state.lastOnPitRoad = true;
+
+    const { events, emit } = collect();
+    diffPitReadback(state, tick({ PitSvFlags: 0 }), 100, emit, [
+      { event: "pitService.autoFuelSwitched", data: { on: true, refuel: false } },
+    ]);
+
+    expect(readbackEvents(events)).toEqual([
+      { event: "pitService.readbackRequested", data: { reason: "entry-refire" } },
+    ]);
+  });
+
+  it("emits 'entry-refire' for a fuel change that published nothing (issue #474)", () => {
+    // The driver cancels fuel on pit road while auto-fuel is armed: the
+    // callout is silent by design, but the recap must stop saying "we're
+    // taking fuel". `diffToggles` hands that over on the state.
+    const state = createInitialState();
+    state.pitReadbackInitialized = true;
+    state.pitReadbackPrevOnPitRoad = true;
+    state.lastOnPitRoad = true;
+    state.fuelPlanChangedThisTick = true;
+
+    const { events, emit } = collect();
+    diffPitReadback(state, tick({ PitSvFlags: 0 }), 100, emit, []);
+
+    expect(readbackEvents(events)).toEqual([
+      { event: "pitService.readbackRequested", data: { reason: "entry-refire" } },
+    ]);
+  });
+
+  it("does not refire for a silent fuel change off pit road (issue #474)", () => {
+    const state = createInitialState();
+    state.pitReadbackInitialized = true;
+    state.pitReadbackPrevOnPitRoad = false;
+    state.lastOnPitRoad = false;
+    state.fuelPlanChangedThisTick = true;
+
+    const { events, emit } = collect();
+    diffPitReadback(state, tick({ PitSvFlags: 0 }), 100, emit, []);
+
+    expect(readbackEvents(events)).toHaveLength(0);
   });
 
   it("does not emit when no user toggle event was queued", () => {

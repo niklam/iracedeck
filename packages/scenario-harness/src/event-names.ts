@@ -159,6 +159,12 @@ export const EVENT_TEMPLATES = [
     data: { service: "fuel", on: true },
   },
   {
+    name: "pitService.autoFuelSwitched",
+    description:
+      "The sim's autofuel was switched on or off for the next stop; `refuel` is what the fuel request is LEFT at once the change settles",
+    data: { on: true, refuel: false },
+  },
+  {
     name: "pitService.statusChanged",
     description:
       "Pit-service status transition (PlayerCarPitSvStatus). 0=None, 1=InProgress, 2=Complete, 100..105=positioning/cantFix",
