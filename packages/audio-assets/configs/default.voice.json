@@ -17914,6 +17914,412 @@
         ]
       }
     ],
+    "numbers-percent": [
+      {
+        "name": "0",
+        "text": "zero percent."
+      },
+      {
+        "name": "1",
+        "text": "one percent."
+      },
+      {
+        "name": "2",
+        "text": "two percent."
+      },
+      {
+        "name": "3",
+        "text": "three percent."
+      },
+      {
+        "name": "4",
+        "text": "four percent."
+      },
+      {
+        "name": "5",
+        "text": "five percent."
+      },
+      {
+        "name": "6",
+        "text": "six percent."
+      },
+      {
+        "name": "7",
+        "text": "seven percent."
+      },
+      {
+        "name": "8",
+        "text": "eight percent."
+      },
+      {
+        "name": "9",
+        "text": "nine percent."
+      },
+      {
+        "name": "10",
+        "text": "ten percent."
+      },
+      {
+        "name": "11",
+        "text": "eleven percent."
+      },
+      {
+        "name": "12",
+        "text": "twelve percent."
+      },
+      {
+        "name": "13",
+        "text": "thirteen percent."
+      },
+      {
+        "name": "14",
+        "text": "fourteen percent."
+      },
+      {
+        "name": "15",
+        "text": "fifteen percent."
+      },
+      {
+        "name": "16",
+        "text": "sixteen percent."
+      },
+      {
+        "name": "17",
+        "text": "seventeen percent."
+      },
+      {
+        "name": "18",
+        "text": "eighteen percent."
+      },
+      {
+        "name": "19",
+        "text": "nineteen percent."
+      },
+      {
+        "name": "20",
+        "text": "twenty percent."
+      },
+      {
+        "name": "21",
+        "text": "twenty one percent."
+      },
+      {
+        "name": "22",
+        "text": "twenty two percent."
+      },
+      {
+        "name": "23",
+        "text": "twenty three percent."
+      },
+      {
+        "name": "24",
+        "text": "twenty four percent."
+      },
+      {
+        "name": "25",
+        "text": "twenty five percent."
+      },
+      {
+        "name": "26",
+        "text": "twenty six percent."
+      },
+      {
+        "name": "27",
+        "text": "twenty seven percent."
+      },
+      {
+        "name": "28",
+        "text": "twenty eight percent."
+      },
+      {
+        "name": "29",
+        "text": "twenty nine percent."
+      },
+      {
+        "name": "30",
+        "text": "thirty percent."
+      },
+      {
+        "name": "31",
+        "text": "thirty one percent."
+      },
+      {
+        "name": "32",
+        "text": "thirty two percent."
+      },
+      {
+        "name": "33",
+        "text": "thirty three percent."
+      },
+      {
+        "name": "34",
+        "text": "thirty four percent."
+      },
+      {
+        "name": "35",
+        "text": "thirty five percent."
+      },
+      {
+        "name": "36",
+        "text": "thirty six percent."
+      },
+      {
+        "name": "37",
+        "text": "thirty seven percent."
+      },
+      {
+        "name": "38",
+        "text": "thirty eight percent."
+      },
+      {
+        "name": "39",
+        "text": "thirty nine percent."
+      },
+      {
+        "name": "40",
+        "text": "forty percent."
+      },
+      {
+        "name": "41",
+        "text": "forty one percent."
+      },
+      {
+        "name": "42",
+        "text": "forty two percent."
+      },
+      {
+        "name": "43",
+        "text": "forty three percent."
+      },
+      {
+        "name": "44",
+        "text": "forty four percent."
+      },
+      {
+        "name": "45",
+        "text": "forty five percent."
+      },
+      {
+        "name": "46",
+        "text": "forty six percent."
+      },
+      {
+        "name": "47",
+        "text": "forty seven percent."
+      },
+      {
+        "name": "48",
+        "text": "forty eight percent."
+      },
+      {
+        "name": "49",
+        "text": "forty nine percent."
+      },
+      {
+        "name": "50",
+        "text": "fifty percent."
+      },
+      {
+        "name": "51",
+        "text": "fifty one percent."
+      },
+      {
+        "name": "52",
+        "text": "fifty two percent."
+      },
+      {
+        "name": "53",
+        "text": "fifty three percent."
+      },
+      {
+        "name": "54",
+        "text": "fifty four percent."
+      },
+      {
+        "name": "55",
+        "text": "fifty five percent."
+      },
+      {
+        "name": "56",
+        "text": "fifty six percent."
+      },
+      {
+        "name": "57",
+        "text": "fifty seven percent."
+      },
+      {
+        "name": "58",
+        "text": "fifty eight percent."
+      },
+      {
+        "name": "59",
+        "text": "fifty nine percent."
+      },
+      {
+        "name": "60",
+        "text": "sixty percent."
+      },
+      {
+        "name": "61",
+        "text": "sixty one percent."
+      },
+      {
+        "name": "62",
+        "text": "sixty two percent."
+      },
+      {
+        "name": "63",
+        "text": "sixty three percent."
+      },
+      {
+        "name": "64",
+        "text": "sixty four percent."
+      },
+      {
+        "name": "65",
+        "text": "sixty five percent."
+      },
+      {
+        "name": "66",
+        "text": "sixty six percent."
+      },
+      {
+        "name": "67",
+        "text": "sixty seven percent."
+      },
+      {
+        "name": "68",
+        "text": "sixty eight percent."
+      },
+      {
+        "name": "69",
+        "text": "sixty nine percent."
+      },
+      {
+        "name": "70",
+        "text": "seventy percent."
+      },
+      {
+        "name": "71",
+        "text": "seventy one percent."
+      },
+      {
+        "name": "72",
+        "text": "seventy two percent."
+      },
+      {
+        "name": "73",
+        "text": "seventy three percent."
+      },
+      {
+        "name": "74",
+        "text": "seventy four percent."
+      },
+      {
+        "name": "75",
+        "text": "seventy five percent."
+      },
+      {
+        "name": "76",
+        "text": "seventy six percent."
+      },
+      {
+        "name": "77",
+        "text": "seventy seven percent."
+      },
+      {
+        "name": "78",
+        "text": "seventy eight percent."
+      },
+      {
+        "name": "79",
+        "text": "seventy nine percent."
+      },
+      {
+        "name": "80",
+        "text": "eighty percent."
+      },
+      {
+        "name": "81",
+        "text": "eighty one percent."
+      },
+      {
+        "name": "82",
+        "text": "eighty two percent."
+      },
+      {
+        "name": "83",
+        "text": "eighty three percent."
+      },
+      {
+        "name": "84",
+        "text": "eighty four percent."
+      },
+      {
+        "name": "85",
+        "text": "eighty five percent."
+      },
+      {
+        "name": "86",
+        "text": "eighty six percent."
+      },
+      {
+        "name": "87",
+        "text": "eighty seven percent."
+      },
+      {
+        "name": "88",
+        "text": "eighty eight percent."
+      },
+      {
+        "name": "89",
+        "text": "eighty nine percent."
+      },
+      {
+        "name": "90",
+        "text": "ninety percent."
+      },
+      {
+        "name": "91",
+        "text": "ninety one percent."
+      },
+      {
+        "name": "92",
+        "text": "ninety two percent."
+      },
+      {
+        "name": "93",
+        "text": "ninety three percent."
+      },
+      {
+        "name": "94",
+        "text": "ninety four percent."
+      },
+      {
+        "name": "95",
+        "text": "ninety five percent."
+      },
+      {
+        "name": "96",
+        "text": "ninety six percent."
+      },
+      {
+        "name": "97",
+        "text": "ninety seven percent."
+      },
+      {
+        "name": "98",
+        "text": "ninety eight percent."
+      },
+      {
+        "name": "99",
+        "text": "ninety nine percent."
+      },
+      {
+        "name": "100",
+        "text": "one hundred percent."
+      }
+    ],
     "tire-wear": [
       {
         "name": "intro-01",
