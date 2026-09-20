@@ -46,6 +46,13 @@ describe("pack-reference.json", () => {
     // reference, which takes seconds rather than milliseconds. On Vitest's 5 s
     // default it passes alone and times out under the full suite's parallel
     // load — a red that says nothing about the artifact (#1108).
+    //
+    // So READ THE MESSAGE before calling it flaky: "Test timed out in Xms" is
+    // the starved machine, while the assertion above ("is out of date … Run
+    // …") is a real stale artifact and is what a clip's text, a contract
+    // description or a vocabulary change looks like when the regenerate step
+    // was forgotten. Both were seen on one afternoon, on two branches, under
+    // this one test name, and the timeout nearly bought the stale one a pass.
   }, 60_000);
 
   it("publishes exactly the callouts the bundled script scripts", () => {
