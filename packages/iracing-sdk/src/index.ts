@@ -191,6 +191,16 @@ export {
   type TireChangeGranularity,
 } from "./telemetry-features.js";
 
+// Session limits (#1109) — sentinel decoding and the whichever-ends-sooner
+// rule shared by the fuel callouts, Session Info and the template context
+export {
+  type BindingLimit,
+  bindingLapsToGo,
+  resolveBindingLimit,
+  resolveLapsRemaining,
+  resolveTimeRemainingS,
+} from "./session-limit.js";
+
 // Session info utilities
 export {
   type CameraGroup,
