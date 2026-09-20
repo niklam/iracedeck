@@ -742,10 +742,11 @@ const SCENARIO_ID_TO_PIT_BOX_ID: Record<string, PitBoxCalloutId> = {
 
 /**
  * Stable identifier for the autofuel callout (issue #474). Single subject —
- * one toggle covers both directions of a fuel flip iRacing's autofuel made,
- * so both scenarios map to it (the pit-box shape). Independent of the
- * pit-service requests opt-in in both directions: a driver may want their own
- * presses confirmed and the sim's changes silent, or the reverse.
+ * one toggle covers autofuel being switched either way and whatever that
+ * leaves the fuel request at, so all four scenarios map to it (the pit-box
+ * shape). Independent of the pit-service requests opt-in in both directions:
+ * a driver may want their own presses confirmed and autofuel's news silent,
+ * or the reverse.
  */
 export type AutoFuelCalloutId = "changed";
 
@@ -759,8 +760,10 @@ export const AUTO_FUEL_CALLOUT_SETTING_KEYS: Record<AutoFuelCalloutId, string> =
 };
 
 const SCENARIO_ID_TO_AUTO_FUEL_ID: Record<string, AutoFuelCalloutId> = {
-  "pit-crew.auto-fuel-on": "changed",
-  "pit-crew.auto-fuel-off": "changed",
+  "pit-crew.auto-fuel-on-refuel": "changed",
+  "pit-crew.auto-fuel-on-no-refuel": "changed",
+  "pit-crew.auto-fuel-off-refuel": "changed",
+  "pit-crew.auto-fuel-off-no-refuel": "changed",
 };
 
 /**
@@ -1429,18 +1432,19 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
     engine.defineContract(wrapToggle(c));
   }
 
-  // The two autofuel lines (issue #474) — a fuel flip iRacing's autofuel made,
-  // published as `pitService.autoFuelChanged` in place of the fuel toggle.
+  // The four autofuel lines (issue #474) — autofuel switched on or off for
+  // the next stop, and what that left the fuel request at, published together
+  // as `pitService.autoFuelSwitched`. A fuel flip made while autofuel is armed
+  // is published as nothing at all, so no contract here reads the fuel bit.
   // The toggles' own three layers, with the middle one swapped: master gate
   // outermost, then the autofuel opt-in (`calloutEnabledPitServiceAutoFuel`,
-  // via `SCENARIO_ID_TO_AUTO_FUEL_ID`) — never the pit-service requests gate,
-  // since the two preferences are independent — then the pit-action cooldown
-  // innermost, so the sim's post-stop reset of the service queue at pit exit
-  // (and the pre-grid window) stays as quiet here as it does for a press.
-  // The cooldown does NOT reach the pit approach, where the #474 capture
-  // showed the sim re-arming autofuel and clearing the driver's manual request
-  // in one tick — the `refuel: false` take-over this callout exists to
-  // announce.
+  // via `SCENARIO_ID_TO_AUTO_FUEL_ID` — one checkbox for all four), never the
+  // pit-service requests gate, since the two preferences are independent; then
+  // the pit-action cooldown innermost, so the sim's post-stop reset of the
+  // service queue at pit exit (and the pre-grid window) stays as quiet here as
+  // it does for a press. The cooldown does NOT reach the pit approach, where
+  // the #474 capture showed the sim arming autofuel and wiping the driver's
+  // fuel request in one tick — the moment this callout exists to announce.
   for (const c of AUTO_FUEL_CONTRACTS) {
     engine.defineContract(
       wrapWithMaster(

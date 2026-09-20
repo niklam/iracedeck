@@ -37,15 +37,15 @@
  *
  * Those five groups are the twenty-four `TOGGLE_CONFIRMATION_CONTRACTS`.
  * Registered apart from them, with a clip-source list of their own:
- *   - `AUTO_FUEL_CONTRACTS` — the fuel-fill bit flipping while autofuel is
- *     armed, via `pitService.autoFuelChanged`, which the translator publishes
- *     INSTEAD of the fuel `pitService.toggled` when the flip was autofuel's.
- *     `refuel: false` is autofuel taking a manual fuel request over — never
- *     "no fuel needed" (see `autoFuelContract`). The bundled script speaks the bare line
- *     with no acknowledgment: nobody asked, and the missing "Got it." is how
- *     the driver tells the sim's change from their own press. They answer to
- *     their own opt-in, not the pit-service requests one, which is why they
- *     are not part of the family array `registerPitCrew` wraps with it.
+ *   - `AUTO_FUEL_CONTRACTS` — autofuel being switched on or off, via
+ *     `pitService.autoFuelSwitched`: four contracts, one per (switched to,
+ *     fuel request left at) pair, because the line says both facts (see
+ *     `autoFuelContract`). The bundled script speaks the bare line with no
+ *     acknowledgment: nobody asked the engineer for this, and the missing
+ *     "Got it." is what marks it as autofuel's news rather than an answer.
+ *     They answer to their own opt-in, not the pit-service requests one,
+ *     which is why they are not part of the family array `registerPitCrew`
+ *     wraps with it.
  *
  * All registered contracts use the default weight (`WEIGHT.NORMAL`) so
  * higher-weight pit-lane callouts still take precedence.
@@ -80,41 +80,62 @@ function fuelContract(on: boolean): ScenarioContract {
 
 export const FUEL_TOGGLE_CONTRACTS: readonly ScenarioContract[] = [fuelContract(true), fuelContract(false)];
 
-// ── Autofuel flip (registered apart, issue #474) ────────────────────────
+// ── Autofuel switched on or off (registered apart, issue #474) ──────────
 
 /**
- * A fuel-fill flip iRacing's autofuel made. The translator attributes the
- * flip at its debounce and publishes exactly one of `pitService.toggled` and
- * `pitService.autoFuelChanged` per flip, so these two and the manual pair
- * above can never both answer the same change — nothing here has to filter
- * the other out.
+ * Autofuel being switched on or off for the next stop. The callout is about
+ * that switch, never about the fuel bit: while autofuel is armed the
+ * translator publishes NOTHING for a fuel flip, because the sim writes that
+ * bit itself and telemetry carries no source for it — announcing one as the
+ * driver's request is the phantom confirmation #474 was filed about.
  *
- * What the two directions mean is not symmetric. `refuel: false` is autofuel
- * TAKING OVER the next stop's fuel, not deciding none is needed. In the #474
- * capture — a car with autofuel (`dpFuelAutoFillEnabled`, which the sim sets:
- * it says the car has the system, not that the driver switched it on), armed
- * once earlier in the session — the sim re-armed autofuel on the pit approach
- * and, in that same tick, cleared the driver's manual request (fuel-fill bit,
- * fill flag and amount all to zero); autofuel then adds whatever the car needs
- * at the stop. What makes the sim re-arm there is not known. That is the one
- * sim-made flip the capture recorded; `refuel: true` — the bit turning on
- * while autofuel is armed — has not been captured yet.
+ * Both facts ride one event (`{ on, refuel }`) and one line, because either
+ * alone misleads: autofuel with fueling switched on leaves the ordinary fuel
+ * request SET when it goes off, so "autofuel is off" on its own would read as
+ * "no fuel", when the stop still takes some. Hence four contracts rather than
+ * two, one per pair — and `refuel` is what the request is LEFT at once the
+ * change settles, a fuel flip in the same window folded in by the translator.
  *
  * `family: "pit-service.fuel"` is shared with the manual pair on purpose: a
- * burst of flips replaces its in-flight family-mate instead of stacking, and
- * a press right after an auto flip replaces the auto line. Not queueable — a
- * stale autofuel line replayed half a minute later is worse than silence.
+ * burst replaces its in-flight family-mate instead of stacking, and a press
+ * right after a switch replaces the autofuel line. Not queueable — a stale
+ * autofuel line replayed half a minute later is worse than silence.
  */
-function autoFuelContract(refuel: boolean): ScenarioContract {
+/** The four (switched to, fuel request left at) pairs, as they key the ids and clip bases. */
+type AutoFuelCase = `${"on" | "off"}-${"refuel" | "no-refuel"}`;
+
+/**
+ * When each of the four fires, for the generated reference (#1066). Each says
+ * what autofuel was switched to AND what that leaves the fuel request at,
+ * because the pair is the whole point of the callout. `off-refuel` is the one
+ * a driver is most likely to be surprised by: switching autofuel off looks
+ * like cancelling the fueling, and does not.
+ */
+const AUTO_FUEL_DESCRIPTIONS: Record<AutoFuelCase, string> = {
+  "on-refuel":
+    "iRacing's autofuel is switched on for your next pit stop, with the fuel request left set, so the stop takes fuel.",
+  "on-no-refuel":
+    "iRacing's autofuel is switched on for your next pit stop, with the fuel request left clear — switching it on can wipe one you had queued.",
+  "off-refuel":
+    "iRacing's autofuel is switched off for your next pit stop and the fuel request it had set is left standing, so the stop still takes fuel.",
+  "off-no-refuel":
+    "iRacing's autofuel is switched off for your next pit stop with no fuel request left standing, so nothing goes in.",
+};
+
+function autoFuelContract(on: boolean, refuel: boolean): ScenarioContract {
+  const key: AutoFuelCase = `${on ? "on" : "off"}-${refuel ? "refuel" : "no-refuel"}`;
+
   return {
-    id: `pit-crew.auto-fuel-${refuel ? "on" : "off"}`,
+    id: `pit-crew.auto-fuel-${key}`,
     when: {
-      event: "pitService.autoFuelChanged",
-      where: (e) => (e as SimEventOf<"pitService.autoFuelChanged">).data.refuel === refuel,
+      event: "pitService.autoFuelSwitched",
+      where: (e) => {
+        const data = (e as SimEventOf<"pitService.autoFuelSwitched">).data;
+
+        return data.on === on && data.refuel === refuel;
+      },
     },
-    description: refuel
-      ? "Fuel is added to the service for your next pit stop while iRacing's autofuel is armed — by the sim or by your own press, which telemetry cannot tell apart."
-      : "iRacing's autofuel clears your manual fuel request for the next pit stop and takes the fuel over, as it does when it re-arms on pit approach.",
+    description: AUTO_FUEL_DESCRIPTIONS[key],
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
     base: "voice/{voice}",
@@ -123,30 +144,38 @@ function autoFuelContract(refuel: boolean): ScenarioContract {
 }
 
 /**
- * The two autofuel lines. Deliberately NOT part of
- * {@link TOGGLE_CONFIRMATION_CONTRACTS}: `registerPitCrew` wraps that array
- * with the pit-service requests opt-in, and these answer to their own
+ * The four autofuel lines, in (switched to, left at) order. Deliberately NOT
+ * part of {@link TOGGLE_CONFIRMATION_CONTRACTS}: `registerPitCrew` wraps that
+ * array with the pit-service requests opt-in, and these answer to their own
  * (`calloutEnabledPitServiceAutoFuel`) — the two preferences are independent
  * in both directions.
  */
-export const AUTO_FUEL_CONTRACTS: readonly ScenarioContract[] = [autoFuelContract(true), autoFuelContract(false)];
+export const AUTO_FUEL_CONTRACTS: readonly ScenarioContract[] = [
+  autoFuelContract(true, true),
+  autoFuelContract(true, false),
+  autoFuelContract(false, true),
+  autoFuelContract(false, false),
+];
 
 /** Contract ids exported for tests so a typo here surfaces as a test failure. */
 export const AUTO_FUEL_SCENARIO_IDS: readonly string[] = AUTO_FUEL_CONTRACTS.map((c) => c.id);
 
 /**
- * The clip sources the autofuel scripts draw from — the bare line in each
- * direction, in the same `pit-actions` group as the manual `fuel-on` /
- * `fuel-off`. Its own list rather than an addition to
+ * The clip sources the autofuel scripts draw from — one bare line per
+ * (switched to, left at) pair, since each says both facts and none of the four
+ * is a composition of the others. They sit in the same `pit-actions` group as
+ * the manual `fuel-on` / `fuel-off`. Its own list rather than an addition to
  * {@link TOGGLE_CONFIRMATION_CLIP_SOURCES}, because each list is what the
  * scripts of ITS contract list reference, exactly: the completeness tests
- * pair a clip-source list with a scenario-id list, and these two ids are not
+ * pair a clip-source list with a scenario-id list, and these four ids are not
  * among the toggle confirmations'. No acknowledgment here — that absence is
  * the audible marker.
  */
 export const AUTO_FUEL_CLIP_SOURCES: readonly { group: "pit-actions"; base: string }[] = [
-  "auto-fuel-on",
-  "auto-fuel-off",
+  "auto-fuel-on-refuel",
+  "auto-fuel-on-no-refuel",
+  "auto-fuel-off-refuel",
+  "auto-fuel-off-no-refuel",
 ].map((base) => ({ group: "pit-actions" as const, base }));
 
 // ── Tire toggle (registered) ────────────────────────────────────────────
