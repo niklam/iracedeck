@@ -260,6 +260,8 @@ What a short dial press does. Defaults to **Toggle Fueling**.
 
 What a long dial press does. Defaults to **Toggle Autofuel** — a blind-safe default for VR, since you can change fuel mode without looking at the strip. A long press is classified when you release the dial button.
 
+Hold past the threshold and the strip previews what letting go will do — `FUEL ON`, `AUTO OFF`, `FULL` and so on — so you can release on the change instead of holding "long enough" and hoping. Turning the dial while held cancels the press and the strip reverts at once. See [Seeing the outcome before you let go](/docs/features/dials/#seeing-the-outcome-before-you-let-go).
+
 - **Toggle Autofuel** (default) — Switches the dial between manual and autofuel mode.
 - **Toggle Fueling** — Requests or clears the fuel request based on the live fuel-fill state.
 - **Toggle Full / No Fuel** — Toggles between full capacity and No Fuel (no fuel added), as in the Push action.

@@ -16,6 +16,7 @@
 import {
   applyBindingWarning,
   classifyDialRelease,
+  createHoldPreview,
   type DeckFeedbackPayload,
   type DeckTriggerDescription,
   type DirectionalPair,
@@ -23,6 +24,7 @@ import {
   fuelToDisplayUnits,
   getDualPressThresholdMs,
   getFuelUnitSuffix,
+  type HoldPreview,
   type IDeckActionContext,
   isAutofuelActive,
   isAutofuelEnabled,
@@ -36,6 +38,7 @@ import type { ILogger } from "@iracedeck/logger";
 
 import { borderColorForState, type ToggleState } from "../../icons/status-bar.js";
 import { renderDialNameIcon } from "../../shared/dial-name-icon.js";
+import { type DialPendingPreview, renderPendingBar } from "../../shared/dial-preview.js";
 import type { FuelPipeline } from "./fuel-pipeline.js";
 import {
   type DialGestureSlot,
@@ -112,6 +115,42 @@ const ADD_LABEL = WHITE;
 const TARGET_LINE = "#e74c3c";
 
 /**
+ * Baseline y of the strip's big readout (the value slot the hold preview
+ * borrows, #1120). The status band ends at y=30 and the fuel bar starts at y=66.
+ */
+const READOUT_BASELINE_Y = 56;
+/**
+ * @internal Exported for testing
+ *
+ * Top edge of the pending underline: just under the readout's baseline, the
+ * same `baseline + 4` the dash-box dials use. Its bottom edge
+ * (`PENDING_BAR_TOP_Y + PENDING_BAR_HEIGHT` = 64) stays above the fuel bar at
+ * {@link FUEL_BAR_TOP_Y}, so the mark never collides with the bar graphic.
+ */
+export const PENDING_BAR_TOP_Y = READOUT_BASELINE_Y + 4;
+/**
+ * @internal Exported for testing
+ *
+ * Top edge of the fuel bar's `<g translate>` — the y the pending mark must stay above.
+ */
+export const FUEL_BAR_TOP_Y = 66;
+
+/**
+ * The hold preview for a non-Elgato build (#1120): Mirabox and Ulanzi have no
+ * plugin touch strip, so there is nothing to preview on. The surface's call
+ * sites stay unconditional (`ctx.holdPreview.down()`) and the real helper is
+ * constructed only under `__FEATURE_DIAL_FEEDBACK__`, so terser drops the
+ * helper and its draw closures from those bundles.
+ */
+const NOOP_HOLD_PREVIEW: HoldPreview = {
+  down() {},
+  up() {},
+  rotated() {},
+  dispose() {},
+  showing: false,
+};
+
+/**
  * The "Push + Turn" pair for each `dial.pushTurnAction` value. The per-tick
  * dispatch goes through the shared {@link resolvePairedAction}. "none" maps to
  * `null` (no dispatch).
@@ -186,6 +225,15 @@ interface FuelDialContext {
   throttle: ThrottleState;
   /** Coalescing state for autofuel lap-margin keybind taps. */
   marginThrottle: MarginThrottleState;
+  /**
+   * The long-press outcome the strip is previewing (#1120), or null when no
+   * hold is past the threshold. Read by EVERY render path — the 5 s heartbeat
+   * and the render-on-change tick included — so a preview survives a mid-hold
+   * refresh and the revert is simply "render normally again".
+   */
+  preview: DialPendingPreview | null;
+  /** The display-only hold-preview timer for this context (a no-op off Elgato). */
+  holdPreview: HoldPreview;
 }
 
 /**
@@ -463,6 +511,109 @@ export function computeTotalLtr(currentLtr: number, addLtr: number, maxLtr: numb
 /**
  * @internal Exported for testing
  *
+ * The "Toggle Full / No Fuel" side test: whether the dialed value already sits
+ * at the tank capacity (within half a litre), so the next invocation is the
+ * NO FUEL side. One predicate shared by the press itself and the hold preview
+ * (#1120), so the preview can never disagree with what the release does.
+ */
+export function isAtMaxRequest(dialValueLtr: number, maxLtr: number): boolean {
+  return dialValueLtr >= maxLtr - 0.5;
+}
+
+/** What {@link resolveHoldPreview} needs to know about the dial and the sim. */
+export interface HoldPreviewInputs {
+  /** Live telemetry, or null when there is none — with none, no fuel state is knowable. */
+  telemetry: TelemetryData | null;
+  dialMode: DialSettings["mode"];
+  /** The dialed value (liters) — the add in add-amount mode, the target in fill-to. */
+  dialValueLtr: number;
+  /** Effective tank capacity (liters), or undefined when unknown. */
+  maxLtr: number | undefined;
+  displayUnits: number;
+  /** Whether the autofuel key binding is required by a gesture slot but unset (#612). */
+  autofuelBindingMissing: boolean;
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * The outcome a long-press gesture will have if the dial is released now, as
+ * the short text and colour the strip previews once the hold passes the
+ * threshold (#1120) — or `null` when that outcome is not genuinely knowable,
+ * in which case the strip shows nothing and nothing is armed.
+ *
+ * Each case mirrors {@link FuelDialSurface.doPress} exactly, including its
+ * escape hatches, so the preview is a promise the release keeps:
+ *
+ * - `toggle-fueling`: fueling ON → it will be cleared (`FUEL OFF`); fueling OFF
+ *   → it will be armed with the resolved add (`FUEL ON`) — but an add of 0
+ *   clears instead of arming, so previewing ON there would be a lie, and a
+ *   press that leaves fueling off has no change to show. No telemetry, or an
+ *   N/A state (autofuel engaged but unavailable), is not readable at all.
+ * - `fill-to-max`: unknown capacity → the press warns and skips → nothing. At
+ *   capacity ({@link isAtMaxRequest}) → the NO FUEL side. Otherwise the FULL
+ *   side — unless the add it would arm (dialed at capacity) resolves to 0, the
+ *   same clear-instead-of-arm case as above.
+ * - `toggle-autofuel-mode`: flips iRacing's autofuel through its key binding;
+ *   nothing when the binding is unset (the tap goes nowhere) or autofuel is
+ *   unavailable for this car (the sim ignores the key).
+ * - `switch-mode`: flips the manual dial mode; owned by the plugin, so always
+ *   knowable — even without telemetry.
+ * - `none`: nothing.
+ *
+ * The colours are the band's own tri-state language — green for a state that
+ * will be ON, red for one that will be OFF — so a preview reads like the band
+ * it sits under. The mode switch is not a state and stays in the readout's white.
+ */
+export function resolveHoldPreview(gesture: DialGestureSlot, inputs: HoldPreviewInputs): DialPendingPreview | null {
+  const { telemetry, dialMode, dialValueLtr, maxLtr, displayUnits, autofuelBindingMissing } = inputs;
+  const on = borderColorForState("on");
+  const off = borderColorForState("off");
+
+  switch (gesture) {
+    case "none":
+      return null;
+
+    case "switch-mode":
+      return { text: dialMode === "fill-to" ? "ADD AMOUNT" : "TARGET", color: WHITE };
+
+    case "toggle-autofuel-mode": {
+      if (!telemetry || autofuelBindingMissing || !isAutofuelEnabled(telemetry)) return null;
+
+      return isAutofuelActive(telemetry) ? { text: "AUTO OFF", color: off } : { text: "AUTO ON", color: on };
+    }
+
+    case "toggle-fueling": {
+      const fillState = resolveFuelFillState(resolveDialDisplayMode(telemetry), telemetry);
+
+      if (fillState === "na") return null;
+
+      if (fillState === "on") return { text: "FUEL OFF", color: off };
+
+      const addLtr = computeAddLtr(dialMode, dialValueLtr, readFuelLevel(telemetry), maxLtr, displayUnits);
+
+      return addLtr > 0 ? { text: "FUEL ON", color: on } : null;
+    }
+
+    case "fill-to-max": {
+      if (maxLtr === undefined) return null;
+
+      const fillState = resolveFuelFillState(resolveDialDisplayMode(telemetry), telemetry);
+
+      if (fillState === "na") return null;
+
+      if (isAtMaxRequest(dialValueLtr, maxLtr)) return { text: "NO FUEL", color: off };
+
+      const addLtr = computeAddLtr(dialMode, maxLtr, readFuelLevel(telemetry), maxLtr, displayUnits);
+
+      return addLtr > 0 ? { text: "FULL", color: on } : null;
+    }
+  }
+}
+
+/**
+ * @internal Exported for testing
+ *
  * Builds an SVG `<path>` `d` for a horizontal bar segment with INDEPENDENTLY
  * rounded left/right ends. The left end rounds its top-left + bottom-left
  * corners; the right end rounds its top-right + bottom-right corners. A square
@@ -612,6 +763,11 @@ export function renderFuelBarSvg(
  * (#728): the status band across the top (green `REFUEL: ON` / red
  * `REFUEL: OFF` / `AUTOFUEL` variants / gray N-A), the per-mode readout, and
  * the two-segment fuel bar (with the red target line in manual fill-to mode).
+ *
+ * While a hold preview is `pending` (#1120) the readout slot shows the pending
+ * outcome in its own colour, underlined by the shared pending bar; the band and
+ * the fuel bar are left exactly as they are, so the driver still sees the fuel
+ * picture the release will act on.
  */
 export function renderStripCanvasSvg(
   mode: DialDisplayMode,
@@ -624,9 +780,12 @@ export function renderStripCanvasSvg(
   maxLtr: number | undefined,
   displayUnits: number,
   bindingMissing = false,
+  pending: DialPendingPreview | null = null,
 ): string {
   const bandText = buildRefuelBandText(mode, fillState);
-  const valueText = buildDialReadout(mode, dialMode, addLtr, totalLtr, targetLtr, displayUnits);
+  const readout = buildDialReadout(mode, dialMode, addLtr, totalLtr, targetLtr, displayUnits);
+  const valueText = pending ? pending.text : readout;
+  const valueColor = pending ? pending.color : WHITE;
   // The red target line is drawn only in MANUAL fill-to mode; suppressed in autofuel.
   const barTarget = mode === "manual" && dialMode === "fill-to" ? targetLtr : undefined;
   const barSvg = renderFuelBarSvg(currentLtr, addLtr, maxLtr, fillState, 184, 28, displayUnits, barTarget);
@@ -640,8 +799,9 @@ export function renderStripCanvasSvg(
     // the small radius just softens the band edge).
     `<path d="M 0 ${bandHeight} L 0 8 A 8 8 0 0 1 8 0 L 192 0 A 8 8 0 0 1 200 8 L 200 ${bandHeight} Z" fill="${borderColorForState(fillState)}"/>`,
     `<text x="100" y="21" text-anchor="middle" fill="${WHITE}" font-family="Arial, sans-serif" font-size="17" font-weight="bold">${bandText}</text>`,
-    `<text x="100" y="56" text-anchor="middle" fill="${WHITE}" font-family="Arial, sans-serif" font-size="24" font-weight="bold">${valueText}</text>`,
-    `<g transform="translate(8, 66)">${stripSvgWrapper(barSvg)}</g>`,
+    `<text x="100" y="${READOUT_BASELINE_Y}" text-anchor="middle" fill="${valueColor}" font-family="Arial, sans-serif" font-size="24" font-weight="bold">${valueText}</text>`,
+    pending ? renderPendingBar({ centerX: 100, y: PENDING_BAR_TOP_Y, width: 200, color: pending.color }) : "",
+    `<g transform="translate(8, ${FUEL_BAR_TOP_Y})">${stripSvgWrapper(barSvg)}</g>`,
   ].join("");
 
   // When a gesture slot needs the autofuel key binding but it's unset, dim the
@@ -764,6 +924,12 @@ export class FuelDialSurface {
     const ctx = this.ensureContext(action, settings);
     ctx.settings = settings;
 
+    // The settings may have changed the long-press gesture mid-hold, so a
+    // preview computed for the old one is dropped without a revert frame of its
+    // own — the re-render below IS the revert (#1120).
+    ctx.holdPreview.dispose();
+    ctx.preview = null;
+
     await this.applyTriggerDescription(ctx);
     await this.renderFeedback(ctx);
   }
@@ -784,6 +950,11 @@ export class FuelDialSurface {
     // CCW → no fuel; "none" dispatches nothing.
     if (pressed) {
       ctx.rotatedWhilePressed = true;
+      // The hold is now a push+turn, so the release will fire nothing: revert
+      // the hold preview at once (#1120). Deliberately beside the guard and
+      // before the zero-tick resolve below, so a zero-tick pressed rotate —
+      // which already makes the release a no-op — also takes the preview down.
+      ctx.holdPreview.rotated();
       const gesture = resolvePairedAction(PUSH_TURN_PAIRS[settings.dial.pushTurnAction], ticks);
 
       if (gesture) {
@@ -840,15 +1011,24 @@ export class FuelDialSurface {
     ctx.settings = settings;
 
     // Record the press start and clear the push+turn guard. Fire NOTHING and
-    // start NO timer — press vs long-press is classified once at dialUp.
+    // start NO dispatch timer — press vs long-press is classified once at dialUp.
     ctx.pressStart = Date.now();
     ctx.rotatedWhilePressed = false;
+
+    // The one timer this arms only DRAWS (#1120): at the long-press threshold
+    // the strip previews what releasing now will do. Execution stays at dialUp.
+    ctx.holdPreview.down();
   }
 
   async up(actionId: string): Promise<void> {
     const ctx = this.contextsState.get(actionId);
 
     if (!ctx) return;
+
+    // Disarm the hold preview and revert a showing one FIRST — before every
+    // early return below, since a stray release, a push+turn and a `none`
+    // gesture all still need the strip put back (#1120).
+    ctx.holdPreview.up();
 
     // Consume the press start immediately so a stray dialUp without a preceding
     // dialDown (e.g. the context was recreated while the button was held) can't
@@ -965,7 +1145,7 @@ export class FuelDialSurface {
         // "Toggle Full / No Fuel" is a TOGGLE. The dialed value is set to the FULL
         // tank capacity (add-mode: capacity as the add; fill-to: capacity as the
         // target). A second invocation while already at max empties the request.
-        const atMax = ctx.dialValueLtr >= maxLtr - 0.5;
+        const atMax = isAtMaxRequest(ctx.dialValueLtr, maxLtr);
 
         if (atMax) {
           // No Fuel side — reduce the request by the full tank so the requested
@@ -1079,7 +1259,7 @@ export class FuelDialSurface {
     let ctx = this.contextsState.get(action.id);
 
     if (!ctx) {
-      ctx = {
+      const created: FuelDialContext = {
         settings,
         action,
         dialValueLtr: 0,
@@ -1092,7 +1272,22 @@ export class FuelDialSurface {
         lastSentWholeAdd: null,
         throttle: { timer: null, pendingLtr: null, lastSentLtr: null },
         marginThrottle: { timer: null, pendingTicks: 0 },
+        preview: null,
+        holdPreview: NOOP_HOLD_PREVIEW,
       };
+      // The real helper only under the touch-strip flag (#1120): its closures
+      // draw on the strip, and the non-Elgato bundles have no strip to draw on,
+      // so terser folds the constant and drops them there.
+      created.holdPreview = __FEATURE_DIAL_FEEDBACK__
+        ? createHoldPreview({
+            // The SAME value the release classifier reads, read at press time —
+            // the preview appears at exactly the instant a release counts as long.
+            thresholdMs: () => getDualPressThresholdMs(),
+            onThreshold: () => this.showHoldPreview(created),
+            onCancel: () => this.revertHoldPreview(created),
+          })
+        : NOOP_HOLD_PREVIEW;
+      ctx = created;
       this.contextsState.set(action.id, ctx);
     } else {
       ctx.action = action;
@@ -1414,6 +1609,10 @@ export class FuelDialSurface {
         : "",
       // So the strip re-renders when the autofuel binding is set/cleared (#612).
       this.autofuelBindingMissing(ctx.settings) ? "warn" : "",
+      // The hold preview is part of the DISPLAYED state (#1120): a render that
+      // showed it must not be mistaken for one that did not, or the change path
+      // would skip the revert.
+      ctx.preview ? `pending:${ctx.preview.text}` : "",
     ].join("|");
   }
 
@@ -1439,8 +1638,52 @@ export class FuelDialSurface {
     }
   }
 
+  /**
+   * The hold-preview threshold callback (#1120): resolves the long-press
+   * gesture's outcome and, when it is knowable, previews it on the strip.
+   * Returns whether anything was drawn, so the helper knows whether a release
+   * has a preview to revert. Fires nothing — the release still decides.
+   */
+  private showHoldPreview(ctx: FuelDialContext): boolean {
+    const preview = resolveHoldPreview(ctx.settings.dial.longPressAction, {
+      telemetry: this.host.getTelemetry(),
+      dialMode: ctx.settings.dial.mode,
+      dialValueLtr: ctx.dialValueLtr,
+      maxLtr: this.effectiveMaxLtr(),
+      displayUnits: this.effectiveDisplayUnits(ctx),
+      autofuelBindingMissing: this.autofuelBindingMissing(ctx.settings),
+    });
+
+    if (!preview) return false;
+
+    ctx.preview = preview;
+    this.host.logger.debug(`Fuel dial hold preview: ${preview.text}`);
+    // Both preview renders run from a timer callback with no caller left on the
+    // stack to catch a rejection (a host socket closed mid-hold being the
+    // realistic one), so they handle it here rather than riding the bare `void`
+    // this file uses where a caller still is — as the four sibling dial
+    // surfaces do.
+    this.renderFeedback(ctx).catch((err) => {
+      this.host.logger.debug(`Dial hold preview render failed: ${String(err)}`);
+    });
+
+    return true;
+  }
+
+  /** The hold-preview cancel callback (#1120): back to the normal strip. */
+  private revertHoldPreview(ctx: FuelDialContext): void {
+    ctx.preview = null;
+    this.renderFeedback(ctx).catch((err) => {
+      this.host.logger.debug(`Dial hold preview revert failed: ${String(err)}`);
+    });
+  }
+
   private clearTimers(ctx: FuelDialContext): void {
     this.clearDisplayTimer(ctx);
+    // The context is going away: drop the preview timer without a revert frame
+    // (a frame pushed at a vanished context is wasted, #1120).
+    ctx.holdPreview.dispose();
+    ctx.preview = null;
 
     if (ctx.throttle.timer !== null) {
       clearTimeout(ctx.throttle.timer);
@@ -1478,6 +1721,8 @@ export class FuelDialSurface {
     const fillState = this.fuelFillState(mode);
     // The whole strip slot is ONE self-drawn pixmap (band + readout + bar) — the
     // built-in layout text items can't have the colored band background (#728).
+    // `ctx.preview` rides every render, so the 5 s heartbeat and a change-driven
+    // tick mid-hold keep drawing the pending outcome rather than wiping it (#1120).
     const canvasSvg = renderStripCanvasSvg(
       mode,
       ctx.settings.dial.mode,
@@ -1489,6 +1734,7 @@ export class FuelDialSurface {
       maxLtr,
       displayUnits,
       this.autofuelBindingMissing(ctx.settings),
+      ctx.preview,
     );
     const feedback: DeckFeedbackPayload = { box: svgToDataUri(canvasSvg) };
     await ctx.action.setFeedback(feedback);

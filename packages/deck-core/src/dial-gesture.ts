@@ -1,7 +1,7 @@
 /**
  * Shared dial-gesture convention for Stream Deck+ encoder actions.
  *
- * Two reusable pieces, identical across every dial action so they are defined
+ * Three reusable pieces, identical across every dial action so they are defined
  * once here rather than re-implemented per action:
  *
  *  - {@link DirectionalPair} / {@link resolvePairedAction} — the "Push + Turn"
@@ -10,6 +10,8 @@
  *    decides, at `dialUp`, whether a press was a short push, a long press, or a
  *    push+turn. It is a duration comparison at release, NOT a `setTimeout` that
  *    fires mid-hold, so long-press never races push+turn.
+ *  - {@link createHoldPreview} — the display-only hold preview (issue #1120):
+ *    the one timer in this module, which draws and never dispatches.
  */
 
 /**
@@ -76,4 +78,113 @@ export function classifyDialRelease(args: {
   if (rotatedWhilePressed) return "push-turn";
 
   return nowMs - pressStartMs >= thresholdMs ? "long" : "short";
+}
+
+/**
+ * A per-context hold preview (issue #1120). One instance per dial context,
+ * driven from the surface's own `down` / `up` / `rotate` / `willDisappear`.
+ */
+export interface HoldPreview {
+  /**
+   * Arms the preview for a new press, reading the threshold once — the hold is
+   * previewed at the same instant a release would classify as `"long"`, and a
+   * threshold changed mid-hold is ignored by both.
+   */
+  down(): void;
+  /** Release: disarms, and reverts the strip if the preview was showing. */
+  up(): void;
+  /** A rotation while held (push+turn): disarms and reverts, same as a release. */
+  rotated(): void;
+  /**
+   * Tears the preview down without reverting — for `willDisappear` (the context
+   * is gone, so a frame pushed at it is wasted) and for a settings change, whose
+   * own re-render is the revert.
+   */
+  dispose(): void;
+  /** Whether the preview is on the strip right now. @internal Exported for testing */
+  readonly showing: boolean;
+}
+
+/**
+ * Creates the display-only hold preview: the strip shows what releasing now
+ * would do, the moment the hold passes the long-press threshold.
+ *
+ * This is the ONE timer in the dial-gesture module, and it draws — it never
+ * dispatches. {@link classifyDialRelease} at `dialUp` stays the only place a
+ * press becomes an action, so every property the #681 rebuild bought survives:
+ * push+turn still pre-empts both press kinds, a host that reports `dialUp`
+ * instantly still degrades a hold to a short press, and no platform needs a
+ * branch. The rule in `encoders-and-touchscreen.md` forbids a timer that decides
+ * execution; a timer that only draws is what it was never forbidding.
+ *
+ * `onThreshold` returns whether it actually drew anything — a surface whose
+ * long-press gesture is `none` has no outcome to show and returns `false`, which
+ * is what stops the release pushing a pointless revert frame.
+ */
+export function createHoldPreview(args: {
+  /** Draws the preview. Returns `true` when a preview frame was pushed. */
+  onThreshold: () => boolean;
+  /** Redraws the surface's normal strip after a preview that was showing. */
+  onCancel: () => void;
+  /** The long-press threshold, read once per press. Defaults to {@link DIAL_LONG_PRESS_THRESHOLD_MS}. */
+  thresholdMs?: () => number;
+}): HoldPreview {
+  const { onThreshold, onCancel, thresholdMs } = args;
+
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let showing = false;
+
+  const disarm = (): void => {
+    if (timer !== null) {
+      clearTimeout(timer);
+      timer = null;
+    }
+  };
+
+  const revert = (): void => {
+    disarm();
+
+    if (!showing) return;
+
+    showing = false;
+    onCancel();
+  };
+
+  return {
+    down(): void {
+      // A `down` without its `up` (a dropped release) must not leave the old
+      // timer armed or the old preview believed to be on the strip.
+      revert();
+
+      const delay = thresholdMs ? thresholdMs() : DIAL_LONG_PRESS_THRESHOLD_MS;
+
+      timer = setTimeout(
+        () => {
+          timer = null;
+
+          // A throw here would escape the timer callback uncaught and end the
+          // plugin process — there is no caller left to catch it. Every
+          // surface's draw reads live host state that can fail, and the preview
+          // is display-only, so a failed draw degrades to "no preview". The
+          // surfaces log their own render failures; this is the last resort,
+          // not the reporting path.
+          try {
+            showing = onThreshold();
+          } catch {
+            showing = false;
+          }
+        },
+        Math.max(0, delay),
+      );
+    },
+    up: revert,
+    rotated: revert,
+    dispose(): void {
+      disarm();
+      showing = false;
+    },
+    get showing(): boolean {
+      return showing;
+    },
+  };
 }

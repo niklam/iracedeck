@@ -164,7 +164,10 @@ const { mockGetGlobalSettings, mockCamera } = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("@iracedeck/deck-core", () => ({
+vi.mock("@iracedeck/deck-core", async () => ({
+  // The dial surface arms the REAL hold-preview helper (#1120) on every dial
+  // context; a dial press below would otherwise throw at `ensureContext`.
+  createHoldPreview: (await import("../../../../deck-core/src/dial-gesture.js")).createHoldPreview,
   CommonSettings: {
     extend: (_fields: unknown) => {
       const schema = {
@@ -982,6 +985,11 @@ describe("CameraControls", () => {
 
       expect(requestProfileSwitch).not.toHaveBeenCalled();
       expect(getSelectIntent("dev-1")).toBeUndefined();
+
+      // A dialDown arms the real #1120 hold-preview timer; without a release
+      // this test would leak it into whatever runs next. Disappear rather than
+      // release, so the press still classifies nothing.
+      await action.onWillDisappear(makeDialDownEvent(focusSelectSettings));
     });
 
     it("uses the focus-select-car icon, not the focus-your-car fallback", () => {

@@ -389,13 +389,16 @@ export {
 // Shared pit fuel-fill / autofuel telemetry readers (Fuel Service keypad + dial surfaces)
 export { isFuelFillOn, isAutofuelActive, isAutofuelEnabled, isPitstopActive } from "./fuel-telemetry.js";
 
-// Shared dial-gesture convention (Push + Turn pair + release-time classifier)
+// Shared dial-gesture convention (Push + Turn pair, release-time classifier,
+// display-only hold preview)
 export {
   DIAL_LONG_PRESS_THRESHOLD_MS,
   type DirectionalPair,
   type DialReleaseKind,
+  type HoldPreview,
   resolvePairedAction,
   classifyDialRelease,
+  createHoldPreview,
 } from "./dial-gesture.js";
 
 // Keyboard types

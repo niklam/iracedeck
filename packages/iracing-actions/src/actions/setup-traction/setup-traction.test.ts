@@ -52,8 +52,15 @@ vi.mock("@iracedeck/icons/setup-traction/tc-slot-4-decrease.svg", () => ({
 
 vi.mock("@iracedeck/deck-core", async () => {
   const { z } = await import("zod");
+  // The dial surface builds a real hold preview per context (#1120). Reached by
+  // PATH rather than through the mocked barrel, which this factory replaces;
+  // that module has zero imports of its own.
+  const dialGesture = await vi.importActual<typeof import("../../../../deck-core/src/dial-gesture.js")>(
+    "../../../../deck-core/src/dial-gesture.js",
+  );
 
   return {
+    createHoldPreview: dialGesture.createHoldPreview,
     IconUpdateThrottle: class {
       schedule(_id: string, render: () => unknown): void {
         try {
@@ -460,6 +467,10 @@ describe("SetupTraction", () => {
       await action.onDialDown(fakeEvent("action-1", { setting: "view-tc-slot-1" }) as any);
 
       expect(mockTapBinding).not.toHaveBeenCalled();
+
+      // A dialDown arms the real #1120 hold-preview timer; disappear (rather
+      // than release) clears it without classifying the press.
+      await action.onWillDisappear(fakeEvent("action-1", { setting: "view-tc-slot-1" }) as any);
     });
   });
 

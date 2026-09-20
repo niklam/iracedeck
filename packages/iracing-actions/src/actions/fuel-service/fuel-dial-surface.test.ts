@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { PENDING_BAR_HEIGHT } from "../../shared/dial-preview.js";
 import {
   buildDialReadout,
   buildRefuelBandText,
@@ -9,6 +10,10 @@ import {
   computeAddLtr,
   computeTotalLtr,
   formatDisplayValue,
+  FUEL_BAR_TOP_Y,
+  type HoldPreviewInputs,
+  isAtMaxRequest,
+  PENDING_BAR_TOP_Y,
   readEffectiveMaxLtr,
   readFuelLevel,
   readPitSvFuel,
@@ -16,6 +21,7 @@ import {
   renderStripCanvasSvg,
   resolveDialDisplayMode,
   resolveFuelFillState,
+  resolveHoldPreview,
   roundedBarPath,
   roundToWholeDisplayLtr,
 } from "./fuel-dial-surface.js";
@@ -140,6 +146,48 @@ vi.mock("@iracedeck/deck-core", async () => {
       if (ticks < 0) return pair.ccw;
 
       return null;
+    },
+    // Display-only hold preview (#1120) — mirrors deck-core's createHoldPreview:
+    // one timer armed at down, drawing at the threshold, reverting on up/rotated.
+    createHoldPreview: (args: { onThreshold: () => boolean; onCancel: () => void; thresholdMs?: () => number }) => {
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      let showing = false;
+      const disarm = () => {
+        if (timer !== null) {
+          clearTimeout(timer);
+          timer = null;
+        }
+      };
+      const revert = () => {
+        disarm();
+
+        if (!showing) return;
+
+        showing = false;
+        args.onCancel();
+      };
+
+      return {
+        down() {
+          revert();
+          timer = setTimeout(
+            () => {
+              timer = null;
+              showing = args.onThreshold();
+            },
+            Math.max(0, args.thresholdMs ? args.thresholdMs() : 500),
+          );
+        },
+        up: revert,
+        rotated: revert,
+        dispose() {
+          disarm();
+          showing = false;
+        },
+        get showing() {
+          return showing;
+        },
+      };
     },
     // Shared fuel telemetry readers (extracted to deck-core); behave like the real impls.
     isFuelFillOn: (t: any) => !!t && t.PitSvFlags !== undefined && (t.PitSvFlags & 0x10) === 0x10,
@@ -835,6 +883,225 @@ describe("fuel-dial-surface pure helpers", () => {
 
       expect(without).not.toContain("binding-warning");
       expect(withWarn).toContain("binding-warning");
+    });
+
+    it("previews a pending outcome in the readout slot, underlined, leaving band and bar alone (#1120)", () => {
+      const pending = { text: "FUEL ON", color: "#2ecc71" };
+      const svg = renderStripCanvasSvg("manual", "add-amount", "off", 45, 20, 65, 65, 90, 1, false, pending);
+
+      // The readout slot shows the outcome in its colour, not the live value in white.
+      expect(svg).toContain(
+        `fill="#2ecc71" font-family="Arial, sans-serif" font-size="24" font-weight="bold">FUEL ON<`,
+      );
+      expect(svg).not.toContain(">+20 = 65 L<");
+      // The shared pending bar, in the same colour, sits at its own y.
+      expect(svg).toMatch(
+        new RegExp(`<rect data-pending-bar="true" x="\\d+" y="${PENDING_BAR_TOP_Y}"[^>]*fill="#2ecc71"`),
+      );
+      // The band still tells the CURRENT state, and the fuel bar is still drawn.
+      expect(svg).toContain("REFUEL: OFF");
+      expect(svg).toMatch(/<path[^>]*fill="#e74c3c"/);
+      expect(svg).toContain("#9aa7b4");
+    });
+
+    it("draws no pending bar without a preview", () => {
+      const svg = renderStripCanvasSvg("manual", "add-amount", "off", 45, 20, 65, 65, 90, 1, false, null);
+
+      expect(svg).not.toContain("data-pending-bar");
+      expect(svg).toContain(">+20 = 65 L<");
+    });
+
+    it("keeps the pending bar above the fuel bar graphic", () => {
+      expect(PENDING_BAR_TOP_Y + PENDING_BAR_HEIGHT).toBeLessThanOrEqual(FUEL_BAR_TOP_Y);
+      // And the value slot's baseline sits above the bar, not on it.
+      expect(PENDING_BAR_TOP_Y).toBeGreaterThan(56);
+    });
+  });
+
+  describe("isAtMaxRequest", () => {
+    it("is at max within half a litre of capacity", () => {
+      expect(isAtMaxRequest(110, 110)).toBe(true);
+      expect(isAtMaxRequest(109.6, 110)).toBe(true);
+      expect(isAtMaxRequest(109.4, 110)).toBe(false);
+      expect(isAtMaxRequest(0, 110)).toBe(false);
+    });
+  });
+
+  describe("resolveHoldPreview (#1120)", () => {
+    const GREEN = "#2ecc71";
+    const RED = "#e74c3c";
+    /** Manual mode, fueling OFF, 45 L in a 90 L tank, +20 dialed. */
+    const base: HoldPreviewInputs = {
+      telemetry: { DisplayUnits: 1, PitSvFuel: 0, FuelLevel: 45, PitSvFlags: 0 } as never,
+      dialMode: "add-amount",
+      dialValueLtr: 20,
+      maxLtr: 90,
+      displayUnits: 1,
+      autofuelBindingMissing: false,
+    };
+    const withTelemetry = (telemetry: Record<string, unknown>): HoldPreviewInputs => ({
+      ...base,
+      telemetry: telemetry as never,
+    });
+
+    it("none previews nothing", () => {
+      expect(resolveHoldPreview("none", base)).toBeNull();
+    });
+
+    describe("toggle-fueling", () => {
+      it("fueling ON → FUEL OFF in red (the press clears)", () => {
+        const on = withTelemetry({ DisplayUnits: 1, PitSvFuel: 20, FuelLevel: 45, PitSvFlags: FUEL_FILL });
+
+        expect(resolveHoldPreview("toggle-fueling", on)).toEqual({ text: "FUEL OFF", color: RED });
+      });
+
+      it("fueling OFF with an add to arm → FUEL ON in green", () => {
+        expect(resolveHoldPreview("toggle-fueling", base)).toEqual({ text: "FUEL ON", color: GREEN });
+      });
+
+      it("fueling OFF with an add of 0 → nothing (the press clears instead of arming)", () => {
+        expect(resolveHoldPreview("toggle-fueling", { ...base, dialValueLtr: 0 })).toBeNull();
+      });
+
+      it("fueling OFF in fill-to with the target at/below current → nothing (add resolves to 0)", () => {
+        expect(resolveHoldPreview("toggle-fueling", { ...base, dialMode: "fill-to", dialValueLtr: 45 })).toBeNull();
+      });
+
+      it("fueling OFF in fill-to with the target above current → FUEL ON", () => {
+        expect(resolveHoldPreview("toggle-fueling", { ...base, dialMode: "fill-to", dialValueLtr: 60 })).toEqual({
+          text: "FUEL ON",
+          color: GREEN,
+        });
+      });
+
+      it("no telemetry → nothing (the state is not readable)", () => {
+        expect(resolveHoldPreview("toggle-fueling", { ...base, telemetry: null })).toBeNull();
+      });
+
+      it("autofuel engaged but unavailable (N/A band) → nothing", () => {
+        const na = withTelemetry({
+          DisplayUnits: 1,
+          PitSvFuel: 0,
+          FuelLevel: 45,
+          PitSvFlags: 0,
+          dpFuelAutoFillActive: 1,
+          dpFuelAutoFillEnabled: 0,
+        });
+
+        expect(resolveHoldPreview("toggle-fueling", na)).toBeNull();
+      });
+    });
+
+    describe("fill-to-max", () => {
+      it("unknown tank capacity → nothing (the press warns and skips)", () => {
+        expect(resolveHoldPreview("fill-to-max", { ...base, maxLtr: undefined })).toBeNull();
+      });
+
+      it("dialed below capacity → FULL in green", () => {
+        expect(resolveHoldPreview("fill-to-max", base)).toEqual({ text: "FULL", color: GREEN });
+      });
+
+      it("dialed at capacity → NO FUEL in red (the same at-max predicate the press uses)", () => {
+        expect(resolveHoldPreview("fill-to-max", { ...base, dialValueLtr: 90 })).toEqual({
+          text: "NO FUEL",
+          color: RED,
+        });
+        expect(resolveHoldPreview("fill-to-max", { ...base, dialValueLtr: 89.6 })).toEqual({
+          text: "NO FUEL",
+          color: RED,
+        });
+      });
+
+      it("FULL side that would arm 0 (fill-to with a full tank) → nothing", () => {
+        const full = withTelemetry({ DisplayUnits: 1, PitSvFuel: 0, FuelLevel: 90, PitSvFlags: 0 });
+
+        expect(resolveHoldPreview("fill-to-max", { ...full, dialMode: "fill-to", dialValueLtr: 60 })).toBeNull();
+      });
+
+      it("no telemetry → nothing", () => {
+        expect(resolveHoldPreview("fill-to-max", { ...base, telemetry: null })).toBeNull();
+      });
+    });
+
+    describe("toggle-autofuel-mode", () => {
+      it("autofuel off → AUTO ON in green", () => {
+        expect(resolveHoldPreview("toggle-autofuel-mode", base)).toEqual({ text: "AUTO ON", color: GREEN });
+      });
+
+      it("autofuel on → AUTO OFF in red", () => {
+        const on = withTelemetry({
+          DisplayUnits: 1,
+          PitSvFuel: 20,
+          FuelLevel: 45,
+          PitSvFlags: 0,
+          dpFuelAutoFillActive: 1,
+        });
+
+        expect(resolveHoldPreview("toggle-autofuel-mode", on)).toEqual({ text: "AUTO OFF", color: RED });
+      });
+
+      it("autofuel unavailable for this car → nothing (the sim ignores the key)", () => {
+        const disabled = withTelemetry({
+          DisplayUnits: 1,
+          PitSvFuel: 0,
+          FuelLevel: 45,
+          PitSvFlags: 0,
+          dpFuelAutoFillEnabled: 0,
+        });
+
+        expect(resolveHoldPreview("toggle-autofuel-mode", disabled)).toBeNull();
+      });
+
+      it("autofuel key binding unset → nothing (the tap goes nowhere)", () => {
+        expect(resolveHoldPreview("toggle-autofuel-mode", { ...base, autofuelBindingMissing: true })).toBeNull();
+      });
+
+      it("no telemetry → nothing", () => {
+        expect(resolveHoldPreview("toggle-autofuel-mode", { ...base, telemetry: null })).toBeNull();
+      });
+    });
+
+    describe("switch-mode", () => {
+      it("add-amount → TARGET, fill-to → ADD AMOUNT, in the readout's white", () => {
+        expect(resolveHoldPreview("switch-mode", base)).toEqual({ text: "TARGET", color: "#ffffff" });
+        expect(resolveHoldPreview("switch-mode", { ...base, dialMode: "fill-to" })).toEqual({
+          text: "ADD AMOUNT",
+          color: "#ffffff",
+        });
+      });
+
+      it("is plugin-owned, so it previews even without telemetry", () => {
+        expect(resolveHoldPreview("switch-mode", { ...base, telemetry: null })).toEqual({
+          text: "TARGET",
+          color: "#ffffff",
+        });
+      });
+    });
+
+    it("every preview text fits the 24px value slot (≤ 10 characters)", () => {
+      const on = withTelemetry({
+        DisplayUnits: 1,
+        PitSvFuel: 20,
+        FuelLevel: 45,
+        PitSvFlags: FUEL_FILL,
+        dpFuelAutoFillActive: 1,
+      });
+      const previews = [
+        resolveHoldPreview("toggle-fueling", base),
+        resolveHoldPreview("toggle-fueling", on),
+        resolveHoldPreview("fill-to-max", base),
+        resolveHoldPreview("fill-to-max", { ...base, dialValueLtr: 90 }),
+        resolveHoldPreview("toggle-autofuel-mode", base),
+        resolveHoldPreview("toggle-autofuel-mode", on),
+        resolveHoldPreview("switch-mode", base),
+        resolveHoldPreview("switch-mode", { ...base, dialMode: "fill-to" }),
+      ];
+
+      expect(previews.every((p) => p !== null)).toBe(true);
+
+      for (const p of previews) {
+        expect(p!.text.length).toBeLessThanOrEqual(10);
+      }
     });
   });
 
@@ -1790,7 +2057,7 @@ describe("FuelService dial surface", () => {
   });
 
   describe("gesture state machine (release-time classification)", () => {
-    it("onDialDown fires nothing (no press, no timer)", async () => {
+    it("onDialDown fires nothing (no press, no dispatch timer — the #1120 preview timer only draws)", async () => {
       const ctx = dialContext("g0");
       await appear(ctx, { pressAction: "toggle-fueling" });
       mockPitClearFuel.mockClear();
@@ -1970,6 +2237,257 @@ describe("FuelService dial surface", () => {
       await action.onDialUp(basicEvent(ctx, {}) as never);
 
       expect(mockTapBinding).toHaveBeenCalledWith("fuelServiceToggleAutofuel");
+    });
+  });
+
+  describe("hold preview on the touch strip (#1120)", () => {
+    // 110 L tank, empty, fueling OFF, manual add-amount: a fill-to-max long
+    // press will arm 110 L, so its preview is FULL; a short press is disabled so
+    // release-time frames are the preview machinery's alone.
+    const settings = { pressAction: "none", longPressAction: "fill-to-max", dialMode: "add-amount" };
+
+    /** Whether a pushed feedback frame carries the pending mark. */
+    function isPending(call: unknown[] | undefined): boolean {
+      return stripCanvas(call?.[0] as { box?: string }).includes("data-pending-bar");
+    }
+
+    async function appearHeld(id: string, held: Record<string, unknown> = settings) {
+      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      const ctx = dialContext(id);
+      await appear(ctx, held);
+      ctx.setFeedback.mockClear();
+      await action.onDialDown(basicEvent(ctx, held) as never);
+
+      return ctx;
+    }
+
+    it("pushes the preview frame at the threshold and not before", async () => {
+      const ctx = await appearHeld("hp1");
+
+      vi.advanceTimersByTime(499);
+      expect(ctx.setFeedback).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(1);
+      expect(ctx.setFeedback).toHaveBeenCalledTimes(1);
+      const canvas = stripCanvas(ctx.setFeedback.mock.calls[0]?.[0]);
+
+      expect(canvas).toContain(">FULL<");
+      expect(canvas).toContain('data-pending-bar="true"');
+      // The outcome is previewed in the ON green; the band still says OFF.
+      expect(canvas).toMatch(/fill="#2ecc71"[^>]*font-size="24"/);
+      expect(canvas).toContain("REFUEL: OFF");
+      // Drawn, not dispatched.
+      expect(mockPitFuel).not.toHaveBeenCalled();
+    });
+
+    it("reads the Long-press threshold at press time — the same instant the release counts as long", async () => {
+      mockDualPressThreshold.value = 800;
+      const ctx = await appearHeld("hp1b");
+
+      vi.advanceTimersByTime(500);
+      expect(ctx.setFeedback).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(300);
+      expect(ctx.setFeedback).toHaveBeenCalledTimes(1);
+      expect(isPending(ctx.setFeedback.mock.calls[0])).toBe(true);
+    });
+
+    it("pushes the normal frame at release, and the release fires the gesture as before", async () => {
+      const ctx = await appearHeld("hp2");
+      vi.advanceTimersByTime(500);
+      expect(isPending(ctx.setFeedback.mock.calls[0])).toBe(true);
+
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+
+      // Frame 2 is the revert (normal readout, no mark); the gesture's own
+      // render follows it and carries no mark either.
+      expect(ctx.setFeedback.mock.calls.length).toBeGreaterThanOrEqual(2);
+      expect(isPending(ctx.setFeedback.mock.calls[1])).toBe(false);
+      expect(isPending(ctx.setFeedback.mock.calls.at(-1))).toBe(false);
+      expect(mockPitFuel).toHaveBeenCalledWith(110);
+    });
+
+    it("a push+turn mid-hold reverts at once, and the release then fires nothing", async () => {
+      const ctx = await appearHeld("hp3");
+      vi.advanceTimersByTime(500);
+      expect(ctx.setFeedback).toHaveBeenCalledTimes(1);
+
+      await action.onDialRotate(rotateEvent(ctx, settings, 1, true) as never); // pressed rotation
+
+      expect(ctx.setFeedback).toHaveBeenCalledTimes(2);
+      expect(isPending(ctx.setFeedback.mock.calls[1])).toBe(false);
+
+      vi.advanceTimersByTime(300);
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+
+      // No second revert, no gesture.
+      expect(ctx.setFeedback).toHaveBeenCalledTimes(2);
+      expect(mockPitFuel).not.toHaveBeenCalled();
+      expect(mockPitClearFuel).not.toHaveBeenCalled();
+    });
+
+    it("a zero-tick pressed rotate takes the preview down, as it already makes the release a no-op", async () => {
+      const ctx = await appearHeld("hp3z");
+      vi.advanceTimersByTime(500);
+
+      await action.onDialRotate(rotateEvent(ctx, settings, 0, true) as never);
+
+      expect(ctx.setFeedback).toHaveBeenCalledTimes(2);
+      expect(isPending(ctx.setFeedback.mock.calls[1])).toBe(false);
+
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+
+      expect(mockPitFuel).not.toHaveBeenCalled();
+    });
+
+    it("a release before the threshold pushes no preview and no revert", async () => {
+      const ctx = await appearHeld("hp4");
+
+      vi.advanceTimersByTime(300);
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+      vi.advanceTimersByTime(1000);
+
+      expect(ctx.setFeedback).not.toHaveBeenCalled();
+      expect(mockPitFuel).not.toHaveBeenCalled();
+    });
+
+    it("the 5 s heartbeat mid-hold still shows the preview (a preview-aware render, not a one-off frame)", async () => {
+      const ctx = await appearHeld("hp5");
+      vi.advanceTimersByTime(500);
+      ctx.setFeedback.mockClear();
+
+      vi.advanceTimersByTime(5000);
+
+      expect(ctx.setFeedback).toHaveBeenCalled();
+      expect(ctx.setFeedback.mock.calls.every((call) => isPending(call))).toBe(true);
+      expect(stripCanvas(ctx.setFeedback.mock.calls.at(-1)?.[0])).toContain(">FULL<");
+    });
+
+    it("a change-driven telemetry tick mid-hold keeps the preview too", async () => {
+      const ctx = await appearHeld("hp5t");
+      vi.advanceTimersByTime(500);
+      ctx.setFeedback.mockClear();
+
+      // Fuel burns (well, appears): the displayed current value moves, so the
+      // render-on-change path pushes — with the preview still on it.
+      vi.advanceTimersByTime(200);
+      const tick = { DisplayUnits: 1, PitSvFuel: 0, FuelLevel: 10, PitSvFlags: 0 };
+      mockGetCurrentTelemetry.mockReturnValue(tick);
+      getTelemetryCallback(action)(tick);
+
+      expect(ctx.setFeedback).toHaveBeenCalledTimes(1);
+      expect(isPending(ctx.setFeedback.mock.calls[0])).toBe(true);
+    });
+
+    it("previews the default long press (toggle autofuel) as AUTO ON in green", async () => {
+      const ctx = await appearHeld("hp6", {});
+      vi.advanceTimersByTime(500);
+
+      const canvas = stripCanvas(ctx.setFeedback.mock.calls[0]?.[0]);
+
+      expect(canvas).toContain(">AUTO ON<");
+      expect(canvas).toMatch(/fill="#2ecc71"[^>]*font-size="24"/);
+      expect(mockTapBinding).not.toHaveBeenCalled();
+    });
+
+    it("previews switch-mode as the mode the release will select", async () => {
+      const ctx = await appearHeld("hp7", { pressAction: "none", longPressAction: "switch-mode", dialMode: "fill-to" });
+      vi.advanceTimersByTime(500);
+
+      expect(stripCanvas(ctx.setFeedback.mock.calls[0]?.[0])).toContain(">ADD AMOUNT<");
+    });
+
+    it("arms nothing when the long-press gesture is none", async () => {
+      const ctx = await appearHeld("hp8", { pressAction: "none", longPressAction: "none" });
+
+      vi.advanceTimersByTime(600);
+      await action.onDialUp(basicEvent(ctx, {}) as never);
+
+      expect(ctx.setFeedback).not.toHaveBeenCalled();
+    });
+
+    it("shows nothing when the outcome is not knowable: unknown tank capacity", async () => {
+      mockGetSessionInfo.mockReturnValue(null);
+      const ctx = await appearHeld("hp9");
+
+      vi.advanceTimersByTime(600);
+      expect(ctx.setFeedback).not.toHaveBeenCalled();
+
+      // And the release pushes no revert for a preview that never showed.
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+      expect(ctx.setFeedback).not.toHaveBeenCalled();
+    });
+
+    it("shows nothing when the outcome is not knowable: toggle-fueling whose add resolves to 0", async () => {
+      // Fueling OFF, nothing dialed: the press clears rather than arms.
+      const ctx = await appearHeld("hp10", { pressAction: "none", longPressAction: "toggle-fueling" });
+
+      vi.advanceTimersByTime(600);
+
+      expect(ctx.setFeedback).not.toHaveBeenCalled();
+    });
+
+    it("shows nothing when the outcome is not knowable: autofuel unavailable, or its binding unset", async () => {
+      mockGetCurrentTelemetry.mockReturnValue({
+        DisplayUnits: 1,
+        PitSvFuel: 0,
+        FuelLevel: 0,
+        PitSvFlags: 0,
+        dpFuelAutoFillEnabled: 0,
+      });
+      const unavailable = await appearHeld("hp11", {});
+      vi.advanceTimersByTime(600);
+      expect(unavailable.setFeedback).not.toHaveBeenCalled();
+      await action.onDialUp(basicEvent(unavailable, {}) as never);
+
+      mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 0, FuelLevel: 0, PitSvFlags: 0 });
+      vi.mocked((action as unknown as { isBindingMissing: () => boolean }).isBindingMissing).mockReturnValue(true);
+      const unbound = await appearHeld("hp12", {});
+      vi.advanceTimersByTime(600);
+      expect(unbound.setFeedback).not.toHaveBeenCalled();
+    });
+
+    it("settings arriving mid-hold drop the preview — their own re-render is the revert", async () => {
+      const ctx = await appearHeld("hp13");
+      vi.advanceTimersByTime(500);
+      ctx.setFeedback.mockClear();
+
+      await action.onDidReceiveSettings(basicEvent(ctx, { ...settings, longPressAction: "none" }) as never);
+
+      expect(ctx.setFeedback).toHaveBeenCalledTimes(1);
+      expect(isPending(ctx.setFeedback.mock.calls[0])).toBe(false);
+
+      // The release finds nothing showing: no extra revert frame.
+      await action.onDialUp(basicEvent(ctx, { ...settings, longPressAction: "none" }) as never);
+      expect(ctx.setFeedback).toHaveBeenCalledTimes(1);
+    });
+
+    it("willDisappear mid-hold tears the timer down without a frame", async () => {
+      const ctx = await appearHeld("hp14");
+
+      await action.onWillDisappear(basicEvent(ctx, settings) as never);
+      vi.advanceTimersByTime(1000);
+
+      expect(ctx.setFeedback).not.toHaveBeenCalled();
+    });
+
+    it("with the touch strip compiled out, arms no timer and pushes nothing", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", false);
+      const ctx = dialContext("hp15");
+      await appear(ctx, settings);
+      ctx.setFeedback.mockClear();
+
+      const timersBefore = vi.getTimerCount();
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+
+      expect(vi.getTimerCount()).toBe(timersBefore);
+
+      vi.advanceTimersByTime(600);
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+
+      expect(ctx.setFeedback).not.toHaveBeenCalled();
+      // The gesture itself is untouched by the flag.
+      expect(mockPitFuel).toHaveBeenCalledWith(110);
     });
   });
 

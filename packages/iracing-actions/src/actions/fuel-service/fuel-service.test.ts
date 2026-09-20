@@ -173,6 +173,49 @@ vi.mock("@iracedeck/deck-core", async () => {
 
       return null;
     },
+    // Display-only hold preview (#1120) — mirrors deck-core's createHoldPreview.
+    // This suite never holds a dial past the threshold; the surface's own suite
+    // covers the preview, this stand-in only keeps the dial contexts constructible.
+    createHoldPreview: (args: { onThreshold: () => boolean; onCancel: () => void; thresholdMs?: () => number }) => {
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      let showing = false;
+      const disarm = () => {
+        if (timer !== null) {
+          clearTimeout(timer);
+          timer = null;
+        }
+      };
+      const revert = () => {
+        disarm();
+
+        if (!showing) return;
+
+        showing = false;
+        args.onCancel();
+      };
+
+      return {
+        down() {
+          revert();
+          timer = setTimeout(
+            () => {
+              timer = null;
+              showing = args.onThreshold();
+            },
+            Math.max(0, args.thresholdMs ? args.thresholdMs() : 500),
+          );
+        },
+        up: revert,
+        rotated: revert,
+        dispose() {
+          disarm();
+          showing = false;
+        },
+        get showing() {
+          return showing;
+        },
+      };
+    },
     getGlobalTitleSettings: vi.fn(() => ({})),
     resolveBorderSettings: vi.fn((_svg: unknown, _global: unknown, _overrides?: unknown, _stateColor?: string) => ({
       enabled: false,
@@ -825,6 +868,10 @@ describe("FuelService", () => {
       expect(mockPitFuel).not.toHaveBeenCalled();
       expect(mockPitClearFuel).not.toHaveBeenCalled();
       expect(mockTapBinding).not.toHaveBeenCalled();
+
+      // It does arm the real #1120 hold-preview timer, though; disappear (not
+      // release) clears it without classifying the press this test is about.
+      await action.onWillDisappear(ev as any);
     });
 
     it("should keep keypad instances on the keypad path", async () => {
@@ -1214,6 +1261,11 @@ describe("FuelService", () => {
       await action.onDialDown(fakeDialEvent("action-1", { mode: "add-fuel" }) as any);
 
       expect((action as any).repeatIntervals.size).toBe(0);
+
+      // Clear the real #1120 hold-preview timer this armed — a later test in
+      // this describe switches to fake timers, and a leaked real timer would
+      // fire inside it.
+      await action.onWillDisappear(fakeDialEvent("action-1", { mode: "add-fuel" }) as any);
     });
 
     it("should repeat command while held using a self-awaiting loop", async () => {
