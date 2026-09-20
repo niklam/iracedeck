@@ -713,7 +713,14 @@ export function renderSubCameraCarousel(args: {
 }): string {
   const { width: w, height: h, colors } = args;
 
-  if (args.bindingMissing) {
+  // A pending preview outranks the missing-binding warning for the length of the
+  // hold (#1120). That warning is about ROTATION — the Sub-Camera bindings of
+  // #852 — while the press gesture being previewed works regardless, so keeping
+  // the warning here would compute a preview the strip never draws and then push
+  // a revert frame for something nobody saw. The warning is back the moment the
+  // hold ends. This is the only carousel with a warning branch, so it is the
+  // only one that could swallow a preview.
+  if (args.bindingMissing && !args.pending) {
     // Pass the strip canvas: the glyph is authored for the 144×144 key canvas
     // and only recentres/rescales onto the 200×100 strip when it is given
     // (#775) — without it the triangle lands off-centre and clipped.

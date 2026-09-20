@@ -621,6 +621,36 @@ describe("hold preview centre (#1120)", () => {
     expect(Number(bar?.[1]) + Number(bar?.[2])).toBeLessThanOrEqual(92);
   });
 
+  it("shows the preview on the sub-camera strip even when its rotation bindings are unset", () => {
+    // The #852 warning is about ROTATION; the previewed press works regardless,
+    // so swallowing the preview here would draw nothing and still revert.
+    const svg = renderSubCameraCarousel({
+      ...base,
+      current: "Roll Bar",
+      left: "Nose",
+      right: "Gyro",
+      bindingMissing: true,
+      pending,
+    });
+
+    expect(svg).toContain(">#99<");
+    expect(svg).toContain('data-pending-bar="true"');
+  });
+
+  it("restores the sub-camera binding warning once nothing is pending", () => {
+    const svg = renderSubCameraCarousel({
+      ...base,
+      current: "Roll Bar",
+      left: "Nose",
+      right: "Gyro",
+      bindingMissing: true,
+      pending: null,
+    });
+
+    expect(svg).not.toContain("data-pending-bar");
+    expect(svg).not.toContain(">#99<");
+  });
+
   it("draws the pending centre on the race-position, sub-camera and camera carousels the same way", () => {
     const race = renderRacePositionCarousel({
       ...base,

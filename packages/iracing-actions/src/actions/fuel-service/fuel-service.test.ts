@@ -868,6 +868,10 @@ describe("FuelService", () => {
       expect(mockPitFuel).not.toHaveBeenCalled();
       expect(mockPitClearFuel).not.toHaveBeenCalled();
       expect(mockTapBinding).not.toHaveBeenCalled();
+
+      // It does arm the real #1120 hold-preview timer, though; disappear (not
+      // release) clears it without classifying the press this test is about.
+      await action.onWillDisappear(ev as any);
     });
 
     it("should keep keypad instances on the keypad path", async () => {
@@ -1257,6 +1261,11 @@ describe("FuelService", () => {
       await action.onDialDown(fakeDialEvent("action-1", { mode: "add-fuel" }) as any);
 
       expect((action as any).repeatIntervals.size).toBe(0);
+
+      // Clear the real #1120 hold-preview timer this armed — a later test in
+      // this describe switches to fake timers, and a leaked real timer would
+      // fire inside it.
+      await action.onWillDisappear(fakeDialEvent("action-1", { mode: "add-fuel" }) as any);
     });
 
     it("should repeat command while held using a self-awaiting loop", async () => {

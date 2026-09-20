@@ -208,3 +208,65 @@ describe("createHoldPreview", () => {
     expect(onThreshold).toHaveBeenCalledTimes(2);
   });
 });
+
+describe("createHoldPreview — a failed draw must not take the plugin down", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("contains a throwing onThreshold instead of letting it escape the timer", () => {
+    const onCancel = vi.fn<() => void>();
+    const preview = createHoldPreview({
+      onThreshold: () => {
+        throw new Error("telemetry read failed mid-hold");
+      },
+      onCancel,
+    });
+
+    preview.down();
+    // An uncaught throw from a timer callback ends the plugin process, so the
+    // advance itself is the assertion.
+    expect(() => vi.advanceTimersByTime(DIAL_LONG_PRESS_THRESHOLD_MS)).not.toThrow();
+    expect(preview.showing).toBe(false);
+  });
+
+  it("treats a failed draw as nothing shown, so the release reverts nothing", () => {
+    const onCancel = vi.fn<() => void>();
+    const preview = createHoldPreview({
+      onThreshold: () => {
+        throw new Error("nope");
+      },
+      onCancel,
+    });
+
+    preview.down();
+    vi.advanceTimersByTime(DIAL_LONG_PRESS_THRESHOLD_MS);
+    preview.up();
+
+    expect(onCancel).not.toHaveBeenCalled();
+  });
+
+  it("recovers on the next press", () => {
+    let fail = true;
+    const onThreshold = vi.fn<() => boolean>(() => {
+      if (fail) throw new Error("first hold fails");
+
+      return true;
+    });
+    const preview = createHoldPreview({ onThreshold, onCancel: vi.fn() });
+
+    preview.down();
+    vi.advanceTimersByTime(DIAL_LONG_PRESS_THRESHOLD_MS);
+    preview.up();
+
+    fail = false;
+    preview.down();
+    vi.advanceTimersByTime(DIAL_LONG_PRESS_THRESHOLD_MS);
+
+    expect(preview.showing).toBe(true);
+  });
+});

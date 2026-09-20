@@ -1658,7 +1658,14 @@ export class FuelDialSurface {
 
     ctx.preview = preview;
     this.host.logger.debug(`Fuel dial hold preview: ${preview.text}`);
-    void this.renderFeedback(ctx);
+    // Both preview renders run from a timer callback with no caller left on the
+    // stack to catch a rejection (a host socket closed mid-hold being the
+    // realistic one), so they handle it here rather than riding the bare `void`
+    // this file uses where a caller still is — as the four sibling dial
+    // surfaces do.
+    this.renderFeedback(ctx).catch((err) => {
+      this.host.logger.debug(`Dial hold preview render failed: ${String(err)}`);
+    });
 
     return true;
   }
@@ -1666,7 +1673,9 @@ export class FuelDialSurface {
   /** The hold-preview cancel callback (#1120): back to the normal strip. */
   private revertHoldPreview(ctx: FuelDialContext): void {
     ctx.preview = null;
-    void this.renderFeedback(ctx);
+    this.renderFeedback(ctx).catch((err) => {
+      this.host.logger.debug(`Dial hold preview revert failed: ${String(err)}`);
+    });
   }
 
   private clearTimers(ctx: FuelDialContext): void {

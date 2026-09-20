@@ -161,7 +161,18 @@ export function createHoldPreview(args: {
       timer = setTimeout(
         () => {
           timer = null;
-          showing = onThreshold();
+
+          // A throw here would escape the timer callback uncaught and end the
+          // plugin process — there is no caller left to catch it. Every
+          // surface's draw reads live host state that can fail, and the preview
+          // is display-only, so a failed draw degrades to "no preview". The
+          // surfaces log their own render failures; this is the last resort,
+          // not the reporting path.
+          try {
+            showing = onThreshold();
+          } catch {
+            showing = false;
+          }
         },
         Math.max(0, delay),
       );

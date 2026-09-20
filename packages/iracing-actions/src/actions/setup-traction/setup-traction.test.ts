@@ -467,6 +467,10 @@ describe("SetupTraction", () => {
       await action.onDialDown(fakeEvent("action-1", { setting: "view-tc-slot-1" }) as any);
 
       expect(mockTapBinding).not.toHaveBeenCalled();
+
+      // A dialDown arms the real #1120 hold-preview timer; disappear (rather
+      // than release) clears it without classifying the press.
+      await action.onWillDisappear(fakeEvent("action-1", { setting: "view-tc-slot-1" }) as any);
     });
   });
 
