@@ -488,20 +488,18 @@ describe('the "Autofuel takeover (replay)" shortcut (issue #474)', () => {
   const shortcut = SCENARIO_SHORTCUTS.find((s) => s.id === "auto-fuel-takeover");
   const steps = shortcut?.telemetrySequence ?? [];
 
-  /** The events a tester hears this button through: the fuel decisions and the approach readback. */
-  const RECORDED = [
-    "pitService.toggled",
-    "pitService.autoFuelChanged",
-    "pitLane.approaching",
-    "pitService.readbackRequested",
-  ] as const;
-
-  /** `startTranslator`'s setup (race session, hot-lap telemetry, one seeding tick), recording {@link RECORDED}. */
+  /**
+   * `startTranslator`'s setup (race session, hot-lap telemetry, one seeding
+   * tick), recording EVERY event in the catalog rather than a chosen few. The
+   * button brackets its own bookkeeping off track so the harness's setup and
+   * teardown are seeded rather than spoken; a narrower recorder would not show
+   * an autofuel switch, a pit-lane event or a readback the bracket let slip.
+   */
   function startRecording(): { controller: MockSDKController; events: Published[] } {
     const { controller } = startTranslator();
     const events: Published[] = [];
 
-    for (const name of RECORDED) {
+    for (const name of ALL_EVENT_NAMES) {
       getEventBus().subscribe(name, (ev) => events.push({ event: ev.event, data: ev.data }));
     }
 
@@ -511,6 +509,8 @@ describe('the "Autofuel takeover (replay)" shortcut (issue #474)', () => {
   const pressAt = steps.findIndex((s) => s.patch.PitSvFlags === PitSvFlags.FuelFill);
   const approachAt = steps.findIndex((s) => s.patch.PlayerTrackSurface === TrkLoc.AproachingPits);
   const takeoverAt = steps.findIndex((s) => s.patch.dpFuelAutoFillActive === 1);
+  /** The two off-track bookkeeping steps that bracket the run. */
+  const seedSteps = steps.filter((s) => s.patch.IsOnTrack === false);
 
   it("drives the translator rather than publishing an event, in the Pit Service category", () => {
     expect(shortcut?.event).toBeUndefined();
@@ -518,7 +518,7 @@ describe('the "Autofuel takeover (replay)" shortcut (issue #474)', () => {
     expect(shortcut?.category).toBe("Pit Service");
   });
 
-  it("replays the capture's values in its order: the press with autofuel disarmed, the approach alone, then the takeover in one step", () => {
+  it("replays the capture's values in its order: the press with autofuel off, the approach alone, then the arming in one step", () => {
     // `local/telemetry-watch-20260919-193233-855.jsonl`, 557.97 → 567.73.
     expect(pressAt).toBeGreaterThan(0);
     expect(approachAt).toBeGreaterThan(pressAt);
@@ -536,9 +536,9 @@ describe('the "Autofuel takeover (replay)" shortcut (issue #474)', () => {
     });
   });
 
-  it("puts the car on track off pit road first, and keeps `dpFuelAutoFillEnabled` at 1 throughout, as the capture had it", () => {
+  it("seeds off track first, then puts the car on track, and keeps `dpFuelAutoFillEnabled` at 1 throughout, as the capture had it", () => {
     expect(steps[0].patch).toMatchObject({
-      IsOnTrack: true,
+      IsOnTrack: false,
       OnPitRoad: false,
       PlayerCarInPitStall: false,
       PlayerTrackSurface: TrkLoc.OnTrack,
@@ -546,7 +546,23 @@ describe('the "Autofuel takeover (replay)" shortcut (issue #474)', () => {
       dpFuelAutoFillEnabled: 1,
       dpFuelAutoFillActive: 0,
     });
+    expect(steps[1].patch).toEqual({ IsOnTrack: true });
     expect(steps.slice(1).some((s) => "dpFuelAutoFillEnabled" in s.patch)).toBe(false);
+  });
+
+  it("does its own bookkeeping off track, where the translator seeds instead of announcing", () => {
+    // Every run has to put autofuel back to off, or the arming below is no
+    // change at all — and on track that reset IS an autofuel switch, which the
+    // engineer would announce. Both bookkeeping steps therefore carry
+    // `IsOnTrack: false`, and both disarm rather than arm.
+    expect(seedSteps).toHaveLength(2);
+
+    for (const step of seedSteps) expect(step.patch.dpFuelAutoFillActive).toBe(0);
+
+    // The run is on track for everything between them, and ends back on track.
+    expect(steps.indexOf(seedSteps[0])).toBe(0);
+    expect(steps.indexOf(seedSteps[1])).toBe(steps.length - 2);
+    expect(steps.at(-1)?.patch).toEqual({ IsOnTrack: true });
   });
 
   it("holds the takeover past the translator's 300 ms fuel debounce, and the approach alone for less than one debounce", () => {
@@ -555,7 +571,7 @@ describe('the "Autofuel takeover (replay)" shortcut (issue #474)', () => {
     expect(steps[approachAt].holdMs ?? 0).toBeLessThan(300);
   });
 
-  it("reports the press as the driver's, then the approach readback, then the takeover as autofuel's — never a second fuel toggle", () => {
+  it("reports the press as the driver's, then the approach readback, then ONE autofuel switch — never a second fuel toggle", () => {
     const { controller, events } = startRecording();
 
     runSequence(controller, steps);
@@ -564,7 +580,7 @@ describe('the "Autofuel takeover (replay)" shortcut (issue #474)', () => {
       { event: "pitService.toggled", data: { service: "fuel", on: true } },
       { event: "pitLane.approaching", data: {} },
       { event: "pitService.readbackRequested", data: { reason: "entry" } },
-      { event: "pitService.autoFuelChanged", data: { refuel: false } },
+      { event: "pitService.autoFuelSwitched", data: { on: true, refuel: false } },
     ]);
   });
 
@@ -589,7 +605,7 @@ describe('the "Autofuel takeover (replay)" shortcut (issue #474)', () => {
   it("ends on track with autofuel disarmed and the fuel bit clear, so a second press replays it whole", () => {
     const holdOf = (list: readonly TelemetryStep[]): number => list.reduce((sum, s) => sum + (s.holdMs ?? 0), 0);
 
-    expect(steps.at(-1)?.patch).toMatchObject({
+    expect(seedSteps[1].patch).toMatchObject({
       PlayerTrackSurface: TrkLoc.OnTrack,
       dpFuelAutoFillActive: 0,
       PitSvFlags: 0,

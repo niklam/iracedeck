@@ -684,6 +684,13 @@ const AUTO_FUEL_SETUP_MS = 500;
 const AUTO_FUEL_PRESS_LISTEN_MS = 5000;
 
 /**
+ * How long each off-track bookkeeping step is held. Only long enough for a
+ * few of the mock controller's 14 ms ticks to seed the translator's autofuel
+ * baseline; the car is off track for that blip and nothing else reads it.
+ */
+const AUTO_FUEL_SEED_MS = 200;
+
+/**
  * How long the approach is held on its own before the takeover lands. The
  * capture had them one sim tick apart (30 ms); this is a little longer so a
  * couple of the mock controller's 14 ms ticks see the approach alone — the
@@ -711,16 +718,19 @@ const AUTO_FUEL_TAKEOVER_LISTEN_MS = 9000;
  *     `dpFuelAddKg` / `PitSvFuel` follow (1, then 6 at 558.63);
  *   - 567.70 — `PlayerTrackSurface` goes to 2, the pit approach;
  *   - 567.73 — in ONE tick: `PitSvFlags` 0, `dpFuelAutoFillActive` 1,
- *     `dpFuelFill` 0, `dpFuelAddKg` 0, `PitSvFuel` 0 — the sim re-arming
- *     autofuel and clearing the manual request.
+ *     `dpFuelFill` 0, `dpFuelAddKg` 0, `PitSvFuel` 0 — the sim arming autofuel
+ *     and wiping the manual request.
  *
  * `dpFuelAutoFillEnabled` was 1 throughout (the sim set it; it says the car
  * HAS autofuel, not that the driver switched it on), so the first step sets it
  * and nothing changes it. The values are the captured ones; only the hold
  * before the approach is compressed.
  *
+ * That last tick is ONE `pitService.autoFuelSwitched { on: true, refuel: false }`
+ * — autofuel switched on, the fuel request left clear — with the fuel flip in
+ * the same window folded into it rather than published as a toggle of its own.
  * What a bus-event shortcut cannot show, this can: that the translator reads
- * the press as the driver's (acknowledged confirmation) and the takeover as
+ * the press as the driver's (acknowledged confirmation) and the arming as
  * autofuel's (the bare line, and no "We're skipping fuel"). The last step
  * restores a car on track with autofuel disarmed and the fuel bit clear, and
  * the holds between one run's approach and the next run's add up past the
@@ -731,11 +741,16 @@ const AUTO_FUEL_TAKEOVER_SHORTCUT: TelemetrySequenceShortcut = {
   category: "Pit Service",
   label: "Autofuel takeover (replay)",
   description:
-    'Drives the TRANSLATOR through the autofuel takeover captured on 2026-09-19, about 15 s end to end: you queue fuel by hand on track, then on the pit approach the sim re-arms autofuel and clears your request in the same tick, as it did in the capture (a car with autofuel, armed once earlier in the session). Expect your press confirmed ("Got it." / "Roger that." / "Copy that." then "We\'re refueling at the next pit stop."), then at the approach the entry readback — still naming the fuel, because it is read on the approach tick, one tick before the takeover — then "Auto fuel is handling the fuel at the next stop." with no acknowledgment. Hearing "We\'re skipping fuel" there instead means the translator took the takeover for your press. Apply the hot-lap telemetry preset first (any on-track state off pit road will do — the sequence puts the car on track itself, but starting from pit road would trip the pit-exit cooldown and silence the press); any session preset works. Needs the mock SDK CONNECTED; with it disconnected the translator sees no ticks and the button is silent for the wrong reason.',
+    'Drives the TRANSLATOR through the autofuel takeover captured on 2026-09-19, about 15 s end to end: you queue fuel by hand on track, then on the pit approach the sim arms autofuel and wipes your request in the same tick, as it did in the capture (a car with autofuel, armed once earlier in the session). Expect your press confirmed ("Got it." / "Roger that." / "Copy that." then "We\'re refueling at the next pit stop."), then at the approach the entry readback — still naming the fuel, because it is read on the approach tick, one tick before the takeover — then "Auto fuel is on. We\'re not refueling at the next pit stop." with no acknowledgment. Hearing "We\'re skipping fuel" there instead means the translator took the arming for a press of yours. Apply the hot-lap telemetry preset first (any on-track state off pit road will do — the sequence puts the car on track itself, but starting from pit road would trip the pit-exit cooldown and silence the press); any session preset works. Needs the mock SDK CONNECTED; with it disconnected the translator sees no ticks and the button is silent for the wrong reason.',
   telemetrySequence: [
+    // Bookkeeping, done OFF TRACK on purpose: the translator seeds its
+    // autofuel baseline silently while `IsOnTrack` is false, so putting the
+    // car back to "autofuel off, nothing queued" — which every run has to do,
+    // or the arming below is no change at all — does not itself announce an
+    // autofuel switch. The same bracket closes the sequence.
     {
       patch: {
-        IsOnTrack: true,
+        IsOnTrack: false,
         OnPitRoad: false,
         PlayerCarInPitStall: false,
         PlayerTrackSurface: TrkLoc.OnTrack,
@@ -746,8 +761,9 @@ const AUTO_FUEL_TAKEOVER_SHORTCUT: TelemetrySequenceShortcut = {
         dpFuelAddKg: 0,
         PitSvFuel: 0,
       },
-      holdMs: AUTO_FUEL_SETUP_MS,
+      holdMs: AUTO_FUEL_SEED_MS,
     },
+    { patch: { IsOnTrack: true }, holdMs: AUTO_FUEL_SETUP_MS },
     { patch: { PitSvFlags: PitSvFlags.FuelFill, dpFuelFill: 1 }, holdMs: 30 },
     { patch: { dpFuelAddKg: 1, PitSvFuel: 1 }, holdMs: 630 },
     { patch: { dpFuelAddKg: 6, PitSvFuel: 6 }, holdMs: AUTO_FUEL_PRESS_LISTEN_MS },
@@ -756,7 +772,13 @@ const AUTO_FUEL_TAKEOVER_SHORTCUT: TelemetrySequenceShortcut = {
       patch: { PitSvFlags: 0, dpFuelAutoFillActive: 1, dpFuelFill: 0, dpFuelAddKg: 0, PitSvFuel: 0 },
       holdMs: AUTO_FUEL_TAKEOVER_LISTEN_MS,
     },
-    { patch: { PlayerTrackSurface: TrkLoc.OnTrack, dpFuelAutoFillActive: 0, PitSvFlags: 0 } },
+    // Close the bracket: disarm off track, so the teardown is seeded rather
+    // than spoken, then hand the car back on track where the button found it.
+    {
+      patch: { IsOnTrack: false, PlayerTrackSurface: TrkLoc.OnTrack, dpFuelAutoFillActive: 0, PitSvFlags: 0 },
+      holdMs: AUTO_FUEL_SEED_MS,
+    },
+    { patch: { IsOnTrack: true } },
   ],
 };
 
@@ -778,23 +800,42 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     event: "pitService.toggled",
     data: { service: "fuel", on: false },
   },
-  // Issue #474 — the sim's own fuel-fill flip, spoken without the
-  // acknowledgment a driver's press gets.
+  // Issue #474 — autofuel switched on or off, spoken without the
+  // acknowledgment a driver's press gets. One button per (switched to, fuel
+  // request left at) pair, because the line says both facts: `refuel` is what
+  // the request is LEFT at, not what autofuel will put in.
   {
-    id: "auto-fuel-on",
+    id: "auto-fuel-on-refuel",
     category: "Pit Service",
-    label: "Auto Fuel ON",
-    description: "Autofuel adds fuel to the next stop on its own",
-    event: "pitService.autoFuelChanged",
-    data: { refuel: true },
+    label: "Autofuel ON, refueling",
+    description: "Autofuel switched on for the next stop, fuel request left set",
+    event: "pitService.autoFuelSwitched",
+    data: { on: true, refuel: true },
   },
   {
-    id: "auto-fuel-off",
+    id: "auto-fuel-on-no-refuel",
     category: "Pit Service",
-    label: "Auto Fuel OFF",
-    description: "Autofuel clears a manual fuel request and takes the next stop's fuel over (as on pit approach)",
-    event: "pitService.autoFuelChanged",
-    data: { refuel: false },
+    label: "Autofuel ON, no fuel",
+    description:
+      "Autofuel switched on for the next stop, fuel request left clear (what the sim did on the pit approach)",
+    event: "pitService.autoFuelSwitched",
+    data: { on: true, refuel: false },
+  },
+  {
+    id: "auto-fuel-off-refuel",
+    category: "Pit Service",
+    label: "Autofuel OFF, still refueling",
+    description: "Autofuel switched off for the next stop, the fuel request it set left standing",
+    event: "pitService.autoFuelSwitched",
+    data: { on: false, refuel: true },
+  },
+  {
+    id: "auto-fuel-off-no-refuel",
+    category: "Pit Service",
+    label: "Autofuel OFF, no fuel",
+    description: "Autofuel switched off for the next stop with no fuel request left standing",
+    event: "pitService.autoFuelSwitched",
+    data: { on: false, refuel: false },
   },
   AUTO_FUEL_TAKEOVER_SHORTCUT,
   {
