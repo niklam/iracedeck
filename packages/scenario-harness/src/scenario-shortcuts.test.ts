@@ -495,8 +495,14 @@ describe('the "Autofuel takeover (replay)" shortcut (issue #474)', () => {
    * teardown are seeded rather than spoken; a narrower recorder would not show
    * an autofuel switch, a pit-lane event or a readback the bracket let slip.
    */
-  function startRecording(): { controller: MockSDKController; events: Published[] } {
+  function startRecording(telemetryPreset?: string): { controller: MockSDKController; events: Published[] } {
     const { controller } = startTranslator();
+
+    if (telemetryPreset !== undefined) {
+      controller.mutateTelemetry(readPreset("telemetry", telemetryPreset) as TelemetryPatch);
+      controller.tickOnce();
+    }
+
     const events: Published[] = [];
 
     for (const name of ALL_EVENT_NAMES) {
@@ -509,8 +515,8 @@ describe('the "Autofuel takeover (replay)" shortcut (issue #474)', () => {
   const pressAt = steps.findIndex((s) => s.patch.PitSvFlags === PitSvFlags.FuelFill);
   const approachAt = steps.findIndex((s) => s.patch.PlayerTrackSurface === TrkLoc.AproachingPits);
   const takeoverAt = steps.findIndex((s) => s.patch.dpFuelAutoFillActive === 1);
-  /** The two off-track bookkeeping steps that bracket the run. */
-  const seedSteps = steps.filter((s) => s.patch.IsOnTrack === false);
+  /** The two replay-mode bookkeeping steps that bracket the run. */
+  const seedSteps = steps.filter((s) => s.patch.IsReplayPlaying === true);
 
   it("drives the translator rather than publishing an event, in the Pit Service category", () => {
     expect(shortcut?.event).toBeUndefined();
@@ -536,9 +542,10 @@ describe('the "Autofuel takeover (replay)" shortcut (issue #474)', () => {
     });
   });
 
-  it("seeds off track first, then puts the car on track, and keeps `dpFuelAutoFillEnabled` at 1 throughout, as the capture had it", () => {
+  it("sets the whole world it needs in the opening bracket, and keeps `dpFuelAutoFillEnabled` at 1 throughout, as the capture had it", () => {
     expect(steps[0].patch).toMatchObject({
-      IsOnTrack: false,
+      IsReplayPlaying: true,
+      IsOnTrack: true,
       OnPitRoad: false,
       PlayerCarInPitStall: false,
       PlayerTrackSurface: TrkLoc.OnTrack,
@@ -546,23 +553,24 @@ describe('the "Autofuel takeover (replay)" shortcut (issue #474)', () => {
       dpFuelAutoFillEnabled: 1,
       dpFuelAutoFillActive: 0,
     });
-    expect(steps[1].patch).toEqual({ IsOnTrack: true });
+    expect(steps[1].patch).toEqual({ IsReplayPlaying: false });
     expect(steps.slice(1).some((s) => "dpFuelAutoFillEnabled" in s.patch)).toBe(false);
   });
 
-  it("does its own bookkeeping off track, where the translator seeds instead of announcing", () => {
-    // Every run has to put autofuel back to off, or the arming below is no
-    // change at all — and on track that reset IS an autofuel switch, which the
-    // engineer would announce. Both bookkeeping steps therefore carry
-    // `IsOnTrack: false`, and both disarm rather than arm.
+  it("does its own bookkeeping inside a replay-mode bracket, where the translator seeds instead of announcing", () => {
+    // Every run has to reset the car and autofuel, and each reset is an edge
+    // some diff would announce — `OnPitRoad` going false is `pitLane.exited`,
+    // disarming autofuel is an autofuel switch. Replay mode suppresses events
+    // and re-seeds every diff on the way out, so both bookkeeping steps carry
+    // `IsReplayPlaying: true`, and both disarm rather than arm.
     expect(seedSteps).toHaveLength(2);
 
     for (const step of seedSteps) expect(step.patch.dpFuelAutoFillActive).toBe(0);
 
-    // The run is on track for everything between them, and ends back on track.
+    // The run is live for everything between them, and leaves replay mode last.
     expect(steps.indexOf(seedSteps[0])).toBe(0);
     expect(steps.indexOf(seedSteps[1])).toBe(steps.length - 2);
-    expect(steps.at(-1)?.patch).toEqual({ IsOnTrack: true });
+    expect(steps.at(-1)?.patch).toEqual({ IsReplayPlaying: false });
   });
 
   it("holds the takeover past the translator's 300 ms fuel debounce, and the approach alone for less than one debounce", () => {
@@ -582,6 +590,43 @@ describe('the "Autofuel takeover (replay)" shortcut (issue #474)', () => {
       { event: "pitService.readbackRequested", data: { reason: "entry" } },
       { event: "pitService.autoFuelSwitched", data: { on: true, refuel: false } },
     ]);
+  });
+
+  /**
+   * The four events the button itself produces, in order — what every preset
+   * has to end up playing.
+   */
+  const BUTTON_EVENTS: Published[] = [
+    { event: "pitService.toggled", data: { service: "fuel", on: true } },
+    { event: "pitLane.approaching", data: {} },
+    { event: "pitService.readbackRequested", data: { reason: "entry" } },
+    { event: "pitService.autoFuelSwitched", data: { on: true, refuel: false } },
+  ];
+
+  it.each([
+    // The pit-road preset parks the car over the pit limit, so its speeding
+    // cue is looping when the button starts. Entering replay mode closes
+    // every active-state loop (`publishActiveStateTeardown`), which is the
+    // translator being right rather than the button being noisy: a cue left
+    // running would loop over the run. It is the ONLY event any preset adds.
+    { preset: "on-pit-road", extra: [{ event: "pitSpeeding.ended", data: {} }] as Published[] },
+    { preset: "in-pit-stall", extra: [] as Published[] },
+    { preset: "in-garage", extra: [] as Published[] },
+    { preset: "off-track", extra: [] as Published[] },
+  ])("plays the same four events from the $preset preset — the bracket makes it preset-proof", ({ preset, extra }) => {
+    // The review case (#474): from a pit-road preset the button's own reset of
+    // `OnPitRoad` used to be a `pitLane.exited` edge, which set the 4.5 s
+    // pit-action cooldown — swallowing the press confirmation — and scheduled
+    // a "to confirm" recap that landed mid-run. Inside the replay-mode bracket
+    // the reset is seeded instead, so every preset plays the run the
+    // description promises: no exit, no recap, the press confirmed.
+    const { controller, events } = startRecording(preset);
+
+    runSequence(controller, steps);
+
+    expect(events).toEqual([...extra, ...BUTTON_EVENTS]);
+    expect(events.filter((e) => e.event === "pitLane.exited")).toEqual([]);
+    expect(events.filter((e) => e.event === "pitService.readbackRequested")).toHaveLength(1);
   });
 
   it("positive control: the same takeover with autofuel left disarmed reads as the driver clearing fuel", () => {

@@ -906,12 +906,14 @@ export type PitCrewDeps = {
   // from `getPitActionsAllowed` (engine-internal cooldown vs persistent
   // user preference) so they can move independently.
   getPitServiceRequestsEnabled?: () => boolean;
-  // User opt-in for the autofuel callout (issue #474): a fuel flip iRacing's
-  // autofuel made, announced apart from the driver's fuel toggle. Plugins
-  // wire it to `calloutEnabledPitServiceAutoFuel`, read live at event
-  // arrival. Independent of `getPitServiceRequestsEnabled` in both
-  // directions — neither gate reads the other. Default `() => true`
-  // preserves legacy behavior for tests that don't supply a closure.
+  // User opt-in for the autofuel callout (issue #474): iRacing's autofuel
+  // being switched on or off for the next stop, and what that leaves the fuel
+  // request at, announced apart from the driver's own fuel toggle. One
+  // checkbox covers all four lines. Plugins wire it to
+  // `calloutEnabledPitServiceAutoFuel`, read live at event arrival.
+  // Independent of `getPitServiceRequestsEnabled` in both directions —
+  // neither gate reads the other. Default `() => true` preserves legacy
+  // behavior for tests that don't supply a closure.
   getAutoFuelCalloutEnabled?: (id: AutoFuelCalloutId) => boolean;
   // Pit-readback queued-services snapshot (issue #481). Plugins wire this
   // to `getReadbackSnapshot()` from `@iracedeck/sim-events-iracing`, which

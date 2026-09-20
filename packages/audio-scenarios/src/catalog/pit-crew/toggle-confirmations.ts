@@ -1,8 +1,8 @@
 /**
  * Toggle-confirmation contracts — short engineer voice lines played when the
  * driver toggles a pit-service option (issues #464, #468; scripted since
- * #1065) — and, beside them, the two lines for a fuel flip iRacing's autofuel
- * made on its own (issue #474), which are NOT confirmations and stay out of
+ * #1065) — and, beside them, the four lines for iRacing's autofuel being
+ * switched on or off (issue #474), which are NOT confirmations and stay out of
  * `TOGGLE_CONFIRMATION_CONTRACTS` (see `AUTO_FUEL_CONTRACTS` below).
  *
  * The code below decides WHICH toggle fired and how the confirmation is
@@ -82,25 +82,6 @@ export const FUEL_TOGGLE_CONTRACTS: readonly ScenarioContract[] = [fuelContract(
 
 // ── Autofuel switched on or off (registered apart, issue #474) ──────────
 
-/**
- * Autofuel being switched on or off for the next stop. The callout is about
- * that switch, never about the fuel bit: while autofuel is armed the
- * translator publishes NOTHING for a fuel flip, because the sim writes that
- * bit itself and telemetry carries no source for it — announcing one as the
- * driver's request is the phantom confirmation #474 was filed about.
- *
- * Both facts ride one event (`{ on, refuel }`) and one line, because either
- * alone misleads: autofuel with fueling switched on leaves the ordinary fuel
- * request SET when it goes off, so "autofuel is off" on its own would read as
- * "no fuel", when the stop still takes some. Hence four contracts rather than
- * two, one per pair — and `refuel` is what the request is LEFT at once the
- * change settles, a fuel flip in the same window folded in by the translator.
- *
- * `family: "pit-service.fuel"` is shared with the manual pair on purpose: a
- * burst replaces its in-flight family-mate instead of stacking, and a press
- * right after a switch replaces the autofuel line. Not queueable — a stale
- * autofuel line replayed half a minute later is worse than silence.
- */
 /** The four (switched to, fuel request left at) pairs, as they key the ids and clip bases. */
 type AutoFuelCase = `${"on" | "off"}-${"refuel" | "no-refuel"}`;
 
@@ -122,6 +103,25 @@ const AUTO_FUEL_DESCRIPTIONS: Record<AutoFuelCase, string> = {
     "iRacing's autofuel is switched off for your next pit stop with no fuel request left standing, so nothing goes in.",
 };
 
+/**
+ * One contract for autofuel being switched on or off for the next stop. The
+ * callout is about that switch, never about the fuel bit: while autofuel is
+ * armed the translator publishes NOTHING for a fuel flip, because the sim
+ * writes that bit itself and telemetry carries no source for it — announcing
+ * one as the driver's request is the phantom confirmation #474 was filed about.
+ *
+ * Both facts ride one event (`{ on, refuel }`) and one line, because either
+ * alone misleads: autofuel with fueling switched on leaves the ordinary fuel
+ * request SET when it goes off, so "autofuel is off" on its own would read as
+ * "no fuel", when the stop still takes some. Hence four contracts rather than
+ * two, one per pair — and `refuel` is what the request is LEFT at once the
+ * change settles, a fuel flip in the same window folded in by the translator.
+ *
+ * `family: "pit-service.fuel"` is shared with the manual pair on purpose: a
+ * burst replaces its in-flight family-mate instead of stacking, and a press
+ * right after a switch replaces the autofuel line. Not queueable — a stale
+ * autofuel line replayed half a minute later is worse than silence.
+ */
 function autoFuelContract(on: boolean, refuel: boolean): ScenarioContract {
   const key: AutoFuelCase = `${on ? "on" : "off"}-${refuel ? "refuel" : "no-refuel"}`;
 

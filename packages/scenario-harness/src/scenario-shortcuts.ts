@@ -684,9 +684,9 @@ const AUTO_FUEL_SETUP_MS = 500;
 const AUTO_FUEL_PRESS_LISTEN_MS = 5000;
 
 /**
- * How long each off-track bookkeeping step is held. Only long enough for a
- * few of the mock controller's 14 ms ticks to seed the translator's autofuel
- * baseline; the car is off track for that blip and nothing else reads it.
+ * How long each replay-mode bracket step is held — long enough for a few of
+ * the mock controller's 14 ms ticks, which is all the translator needs to wipe
+ * its state on the way in and re-seed every diff on the way out.
  */
 const AUTO_FUEL_SEED_MS = 200;
 
@@ -731,26 +731,40 @@ const AUTO_FUEL_TAKEOVER_LISTEN_MS = 9000;
  * the same window folded into it rather than published as a toggle of its own.
  * What a bus-event shortcut cannot show, this can: that the translator reads
  * the press as the driver's (acknowledged confirmation) and the arming as
- * autofuel's (the bare line, and no "We're skipping fuel"). The last step
- * restores a car on track with autofuel disarmed and the fuel bit clear, and
- * the holds between one run's approach and the next run's add up past the
- * translator's 10 s approach cooldown, so a second press replays it whole.
+ * autofuel's (the bare line, and no "We're skipping fuel").
+ *
+ * The run is bracketed by two replay-mode steps that set up and tear down the
+ * world it needs without announcing any of it (see the first step's comment),
+ * so the button plays the same from every preset rather than assuming the
+ * tester applied the on-track one. It hands back a car on track with nothing
+ * queued, and the holds between one run's approach and the next run's add up
+ * past the translator's 10 s approach cooldown, so a second press replays it
+ * whole.
  */
 const AUTO_FUEL_TAKEOVER_SHORTCUT: TelemetrySequenceShortcut = {
   id: "auto-fuel-takeover",
   category: "Pit Service",
   label: "Autofuel takeover (replay)",
   description:
-    'Drives the TRANSLATOR through the autofuel takeover captured on 2026-09-19, about 15 s end to end: you queue fuel by hand on track, then on the pit approach the sim arms autofuel and wipes your request in the same tick, as it did in the capture (a car with autofuel, armed once earlier in the session). Expect your press confirmed ("Got it." / "Roger that." / "Copy that." then "We\'re refueling at the next pit stop."), then at the approach the entry readback — still naming the fuel, because it is read on the approach tick, one tick before the takeover — then "Auto fuel is on. We\'re not refueling at the next pit stop." with no acknowledgment. Hearing "We\'re skipping fuel" there instead means the translator took the arming for a press of yours. Apply the hot-lap telemetry preset first (any on-track state off pit road will do — the sequence puts the car on track itself, but starting from pit road would trip the pit-exit cooldown and silence the press); any session preset works. Needs the mock SDK CONNECTED; with it disconnected the translator sees no ticks and the button is silent for the wrong reason.',
+    'Drives the TRANSLATOR through the autofuel takeover captured on 2026-09-19, about 15 s end to end: you queue fuel by hand on track, then on the pit approach the sim arms autofuel and wipes your request in the same tick, as it did in the capture (a car with autofuel, armed once earlier in the session). Expect your press confirmed ("Got it." / "Roger that." / "Copy that." then "We\'re refueling at the next pit stop."), then at the approach the entry readback — still naming the fuel, because it is read on the approach tick, one tick before the takeover — then "Auto fuel is on. We\'re not refueling at the next pit stop." with no acknowledgment. Hearing "We\'re skipping fuel" there instead means the translator took the arming for a press of yours. No telemetry preset needed: the run opens and closes inside a replay-mode bracket, which the translator suppresses events through and re-seeds every diff from, so it sets up the car it needs from any preset — in the garage, on pit road, in the stall — and hands back a car on track with nothing queued. Any session preset works. Needs the mock SDK CONNECTED; with it disconnected the translator sees no ticks and the button is silent for the wrong reason.',
   telemetrySequence: [
-    // Bookkeeping, done OFF TRACK on purpose: the translator seeds its
-    // autofuel baseline silently while `IsOnTrack` is false, so putting the
-    // car back to "autofuel off, nothing queued" — which every run has to do,
-    // or the arming below is no change at all — does not itself announce an
-    // autofuel switch. The same bracket closes the sequence.
+    // The button's own bookkeeping, done inside a REPLAY-MODE bracket. Every
+    // run has to put the car on track off pit road with autofuel off and
+    // nothing queued — or the arming below is no change at all — and each of
+    // those resets is an edge some diff would announce: `OnPitRoad` going
+    // false from a pit-road preset is `pitLane.exited` (the 4.5 s pit-action
+    // cooldown that would swallow the press, plus a delayed "to confirm"
+    // recap landing mid-run), and disarming autofuel is itself an autofuel
+    // switch. The translator suppresses every event while `IsReplayPlaying`
+    // is true and re-seeds each diff from the current snapshot when it goes
+    // false, so the whole setup is seeded rather than spoken — from ANY
+    // preset, the stall and pit road included — and the state wipe clears a
+    // pit-action cooldown the tester's last button left running. The same
+    // bracket closes the sequence.
     {
       patch: {
-        IsOnTrack: false,
+        IsReplayPlaying: true,
+        IsOnTrack: true,
         OnPitRoad: false,
         PlayerCarInPitStall: false,
         PlayerTrackSurface: TrkLoc.OnTrack,
@@ -763,7 +777,7 @@ const AUTO_FUEL_TAKEOVER_SHORTCUT: TelemetrySequenceShortcut = {
       },
       holdMs: AUTO_FUEL_SEED_MS,
     },
-    { patch: { IsOnTrack: true }, holdMs: AUTO_FUEL_SETUP_MS },
+    { patch: { IsReplayPlaying: false }, holdMs: AUTO_FUEL_SETUP_MS },
     { patch: { PitSvFlags: PitSvFlags.FuelFill, dpFuelFill: 1 }, holdMs: 30 },
     { patch: { dpFuelAddKg: 1, PitSvFuel: 1 }, holdMs: 630 },
     { patch: { dpFuelAddKg: 6, PitSvFuel: 6 }, holdMs: AUTO_FUEL_PRESS_LISTEN_MS },
@@ -772,13 +786,21 @@ const AUTO_FUEL_TAKEOVER_SHORTCUT: TelemetrySequenceShortcut = {
       patch: { PitSvFlags: 0, dpFuelAutoFillActive: 1, dpFuelFill: 0, dpFuelAddKg: 0, PitSvFuel: 0 },
       holdMs: AUTO_FUEL_TAKEOVER_LISTEN_MS,
     },
-    // Close the bracket: disarm off track, so the teardown is seeded rather
-    // than spoken, then hand the car back on track where the button found it.
+    // Close the bracket: disarm inside replay mode, so the teardown is seeded
+    // rather than spoken, then hand back a car on track with nothing queued.
     {
-      patch: { IsOnTrack: false, PlayerTrackSurface: TrkLoc.OnTrack, dpFuelAutoFillActive: 0, PitSvFlags: 0 },
+      patch: {
+        IsReplayPlaying: true,
+        PlayerTrackSurface: TrkLoc.OnTrack,
+        dpFuelAutoFillActive: 0,
+        PitSvFlags: 0,
+        dpFuelFill: 0,
+        dpFuelAddKg: 0,
+        PitSvFuel: 0,
+      },
       holdMs: AUTO_FUEL_SEED_MS,
     },
-    { patch: { IsOnTrack: true } },
+    { patch: { IsReplayPlaying: false } },
   ],
 };
 
