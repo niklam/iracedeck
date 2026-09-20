@@ -1,14 +1,17 @@
 /**
- * Unit tests for the pit-service toggle diff's auto-fuel attribution
+ * Unit tests for the auto-fuel half of the pit-service toggle diff
  * (issue #474).
  *
- * A settled `FuelFill` flip is announced as `pitService.autoFuelChanged`
- * when `dpFuelAutoFillActive` reads active on the tick the flip settles, and
- * as `pitService.toggled { service: "fuel" }` otherwise — exactly one of the
- * two per settled flip. The settling tick is the only read: what the flag
- * said when the flip began, or on the quiet ticks in between, does not count.
- * The silent seed paths (first tick, off track, in the pit stall) still
- * absorb every flip, and windshield and fast repair never read the flag.
+ * What is announced is auto-fuel being SWITCHED on or off
+ * (`pitService.autoFuelSwitched { on, refuel }`), debounced in the same
+ * 300 ms window the fuel bit uses so a fuel flip settling inside it is folded
+ * into that one line. What is NOT announced is the fuel bit moving while
+ * auto-fuel is armed, in either direction: the sim writes that bit itself and
+ * telemetry carries no source, so a confirmation there would be the phantom
+ * "got it" the issue was filed about. A switch is ignored (and its baseline
+ * re-seeded) from pit road onward, where the stop consumes auto-fuel itself,
+ * as well as on the existing silent paths — first tick, off track, in the
+ * stall.
  *
  * The broader toggle behaviour (tires, compound, car controls, the stall
  * seed) is covered end-to-end in `translator.test.ts`.
@@ -26,14 +29,20 @@ type Tick = {
   auto?: number;
   onTrack?: boolean;
   inStall?: boolean;
+  onPitRoad?: boolean;
 };
 
-function feed(state: TranslatorState, now: number, { flags = 0, auto, onTrack = true, inStall = false }: Tick = {}) {
+function feed(
+  state: TranslatorState,
+  now: number,
+  { flags = 0, auto, onTrack = true, inStall = false, onPitRoad = false }: Tick = {},
+) {
   const events: PendingEvent[] = [];
   const telemetry = {
     PitSvFlags: flags,
     IsOnTrack: onTrack,
     PlayerCarInPitStall: inStall,
+    OnPitRoad: onPitRoad,
     ...(auto === undefined ? {} : { dpFuelAutoFillActive: auto }),
   } as TelemetryData;
   diffToggles(state, telemetry, now, (e) => events.push(e));
@@ -49,201 +58,226 @@ function seeded(flags = 0, auto?: number): TranslatorState {
   return state;
 }
 
-const T_ARM = 1_000;
-const T_SETTLE = T_ARM + PIT_SERVICE_DEBOUNCE_MS;
+const T_EDGE = 1_000;
+const T_SETTLE = T_EDGE + PIT_SERVICE_DEBOUNCE_MS;
 
-const AUTO_REFUEL = { event: "pitService.autoFuelChanged", data: { refuel: true } } as const;
-const AUTO_NO_REFUEL = { event: "pitService.autoFuelChanged", data: { refuel: false } } as const;
+const switched = (on: boolean, refuel: boolean) =>
+  ({ event: "pitService.autoFuelSwitched", data: { on, refuel } }) as const;
 const MANUAL_FUEL_ON = { event: "pitService.toggled", data: { service: "fuel", on: true } } as const;
 const MANUAL_FUEL_OFF = { event: "pitService.toggled", data: { service: "fuel", on: false } } as const;
 
-describe("diffToggles — auto-fuel attribution (issue #474)", () => {
-  describe("a flip that settles with auto-fuel armed", () => {
-    it("announces a flip on as autoFuelChanged { refuel: true } and no fuel toggle", () => {
-      const state = seeded(0, 1);
-
-      expect(feed(state, T_ARM, { flags: PitSvFlags.FuelFill, auto: 1 })).toEqual([]);
-      expect(feed(state, T_SETTLE, { flags: PitSvFlags.FuelFill, auto: 1 })).toEqual([AUTO_REFUEL]);
-    });
-
-    it("announces a flip off as autoFuelChanged { refuel: false } and no fuel toggle", () => {
-      const state = seeded(PitSvFlags.FuelFill, 1);
-
-      expect(feed(state, T_ARM, { flags: 0, auto: 1 })).toEqual([]);
-      expect(feed(state, T_SETTLE, { flags: 0, auto: 1 })).toEqual([AUTO_NO_REFUEL]);
-    });
-
-    it("the captured takeover: auto-fuel re-arms and clears the driver's fuel request in the same tick", () => {
-      // The driver had asked for fuel with auto-fuel off; at pit approach the
-      // sim arms auto-fuel (0 → 1) and drops the request in that very tick,
-      // and the flag then stays armed well past the window.
+describe("diffToggles — auto-fuel (issue #474)", () => {
+  describe("auto-fuel switched on or off", () => {
+    it("announces the switch on with the fuel request it leaves set", () => {
       const state = seeded(PitSvFlags.FuelFill, 0);
 
-      expect(feed(state, T_ARM, { flags: 0, auto: 1 })).toEqual([]);
-      expect(feed(state, T_ARM + 100, { flags: 0, auto: 1 })).toEqual([]);
-      expect(feed(state, T_SETTLE, { flags: 0, auto: 1 })).toEqual([AUTO_NO_REFUEL]);
+      expect(feed(state, T_EDGE, { flags: PitSvFlags.FuelFill, auto: 1 })).toEqual([]);
+      expect(feed(state, T_SETTLE, { flags: PitSvFlags.FuelFill, auto: 1 })).toEqual([switched(true, true)]);
     });
 
-    it("is auto-fuel's even when the flag came on only after the flip began", () => {
+    it("the captured takeover: auto-fuel arms and clears the driver's request in one tick", () => {
+      // Pit approach, still off pit road: the sim arms auto-fuel (0 → 1) and
+      // drops the manual fuel request in that very tick. Exactly one event —
+      // the fuel flip is folded into it, not announced on its own.
+      const state = seeded(PitSvFlags.FuelFill, 0);
+
+      expect(feed(state, T_EDGE, { flags: 0, auto: 1 })).toEqual([]);
+      expect(feed(state, T_EDGE + 100, { flags: 0, auto: 1 })).toEqual([]);
+      expect(feed(state, T_SETTLE, { flags: 0, auto: 1 })).toEqual([switched(true, false)]);
+    });
+
+    it("announces the switch off with the fuel request left SET", () => {
+      // Auto-fuel had fuelling on, so switching it off leaves the ordinary
+      // request standing — the whole reason `refuel` rides on this event.
+      const state = seeded(PitSvFlags.FuelFill, 1);
+
+      feed(state, T_EDGE, { flags: PitSvFlags.FuelFill, auto: 0 });
+      expect(feed(state, T_SETTLE, { flags: PitSvFlags.FuelFill, auto: 0 })).toEqual([switched(false, true)]);
+    });
+
+    it("announces the switch off with the fuel request left CLEAR", () => {
+      const state = seeded(0, 1);
+
+      feed(state, T_EDGE, { flags: 0, auto: 0 });
+      expect(feed(state, T_SETTLE, { flags: 0, auto: 0 })).toEqual([switched(false, false)]);
+    });
+
+    it("reads `refuel` as the request stands when the switch settles, not when it began", () => {
+      const state = seeded(0, 1);
+
+      // Switching off; the request comes up while the switch is still pending.
+      feed(state, T_EDGE, { flags: 0, auto: 0 });
+      expect(feed(state, T_EDGE + 100, { flags: PitSvFlags.FuelFill, auto: 0 })).toEqual([]);
+      expect(feed(state, T_SETTLE, { flags: PitSvFlags.FuelFill, auto: 0 })).toEqual([switched(false, true)]);
+    });
+
+    it("says nothing for a switch that reverts inside the window, and the next one still lands", () => {
       const state = seeded(0, 0);
 
-      feed(state, T_ARM, { flags: PitSvFlags.FuelFill, auto: 0 });
-      expect(feed(state, T_SETTLE, { flags: PitSvFlags.FuelFill, auto: 1 })).toEqual([AUTO_REFUEL]);
+      expect(feed(state, T_EDGE, { flags: 0, auto: 1 })).toEqual([]);
+      expect(feed(state, T_EDGE + 100, { flags: 0, auto: 0 })).toEqual([]);
+      expect(feed(state, T_SETTLE, { flags: 0, auto: 0 })).toEqual([]);
+
+      const t = T_EDGE + 5_000;
+      expect(feed(state, t, { flags: 0, auto: 1 })).toEqual([]);
+      expect(feed(state, t + PIT_SERVICE_DEBOUNCE_MS, { flags: 0, auto: 1 })).toEqual([switched(true, false)]);
     });
 
-    it("advances the baseline exactly as a manual toggle does — the settled state is not re-announced", () => {
-      const state = seeded(0, 1);
-      feed(state, T_ARM, { flags: PitSvFlags.FuelFill, auto: 1 });
-      feed(state, T_SETTLE, { flags: PitSvFlags.FuelFill, auto: 1 });
-
-      expect(state.lastPitSvFlags & PitSvFlags.FuelFill).toBe(PitSvFlags.FuelFill);
-      expect(feed(state, T_SETTLE + 1_000, { flags: PitSvFlags.FuelFill, auto: 1 })).toEqual([]);
-    });
-
-    it("announces each settled flip of a cycling bit once, as auto-fuel's", () => {
-      const state = seeded(0, 1);
+    it("announces each settled switch of a cycling flag once", () => {
+      const state = seeded(0, 0);
       const events: PendingEvent[] = [];
-      let t = T_ARM;
+      let t = T_EDGE;
 
-      for (const flags of [PitSvFlags.FuelFill, 0, PitSvFlags.FuelFill]) {
-        events.push(...feed(state, t, { flags, auto: 1 }));
-        events.push(...feed(state, t + PIT_SERVICE_DEBOUNCE_MS, { flags, auto: 1 }));
+      for (const auto of [1, 0, 1]) {
+        events.push(...feed(state, t, { auto }));
+        events.push(...feed(state, t + PIT_SERVICE_DEBOUNCE_MS, { auto }));
         t += 5_000;
       }
 
-      expect(events).toEqual([AUTO_REFUEL, AUTO_NO_REFUEL, AUTO_REFUEL]);
+      expect(events).toEqual([switched(true, false), switched(false, false), switched(true, false)]);
+    });
+
+    it("says nothing while the flag holds steady, armed or not", () => {
+      const state = seeded(PitSvFlags.FuelFill, 1);
+
+      expect(feed(state, T_EDGE, { flags: PitSvFlags.FuelFill, auto: 1 })).toEqual([]);
+      expect(feed(state, T_SETTLE, { flags: PitSvFlags.FuelFill, auto: 1 })).toEqual([]);
+      expect(feed(state, T_SETTLE + 5_000, { flags: PitSvFlags.FuelFill, auto: 1 })).toEqual([]);
     });
   });
 
-  describe("a flip that settles with auto-fuel not armed", () => {
-    it("announces a flip on as the fuel toggle and no autoFuelChanged", () => {
-      const state = seeded(0, 0);
-
-      feed(state, T_ARM, { flags: PitSvFlags.FuelFill, auto: 0 });
-      expect(feed(state, T_SETTLE, { flags: PitSvFlags.FuelFill, auto: 0 })).toEqual([MANUAL_FUEL_ON]);
-    });
-
-    it("announces a flip off as the fuel toggle and no autoFuelChanged", () => {
-      const state = seeded(PitSvFlags.FuelFill, 0);
-
-      feed(state, T_ARM, { flags: 0, auto: 0 });
-      expect(feed(state, T_SETTLE, { flags: 0, auto: 0 })).toEqual([MANUAL_FUEL_OFF]);
-    });
-
-    it("reads an absent dpFuelAutoFillActive field as not armed", () => {
-      const state = seeded(0);
-
-      feed(state, T_ARM, { flags: PitSvFlags.FuelFill });
-      expect(feed(state, T_SETTLE, { flags: PitSvFlags.FuelFill })).toEqual([MANUAL_FUEL_ON]);
-    });
-
-    it("is the driver's toggle when auto-fuel was armed as the flip began but off when it settled", () => {
+  describe("the fuel bit while auto-fuel is armed", () => {
+    it("says nothing when the request comes on", () => {
       const state = seeded(0, 1);
 
-      feed(state, T_ARM, { flags: PitSvFlags.FuelFill, auto: 1 });
+      expect(feed(state, T_EDGE, { flags: PitSvFlags.FuelFill, auto: 1 })).toEqual([]);
+      expect(feed(state, T_SETTLE, { flags: PitSvFlags.FuelFill, auto: 1 })).toEqual([]);
+    });
+
+    it("says nothing when the request goes off", () => {
+      const state = seeded(PitSvFlags.FuelFill, 1);
+
+      expect(feed(state, T_EDGE, { flags: 0, auto: 1 })).toEqual([]);
+      expect(feed(state, T_SETTLE, { flags: 0, auto: 1 })).toEqual([]);
+    });
+
+    it("advances the baseline through the silence, so the flip is not announced later", () => {
+      const state = seeded(0, 1);
+      feed(state, T_EDGE, { flags: PitSvFlags.FuelFill, auto: 1 });
+      feed(state, T_SETTLE, { flags: PitSvFlags.FuelFill, auto: 1 });
+
+      expect(state.lastPitSvFlags & PitSvFlags.FuelFill).toBe(PitSvFlags.FuelFill);
+
+      // Auto-fuel goes off later; the request it leaves set is reported by the
+      // switch, and the bit that moved while armed is never re-announced.
+      const t = T_SETTLE + 5_000;
+      feed(state, t, { flags: PitSvFlags.FuelFill, auto: 0 });
+      expect(feed(state, t + PIT_SERVICE_DEBOUNCE_MS, { flags: PitSvFlags.FuelFill, auto: 0 })).toEqual([
+        switched(false, true),
+      ]);
+    });
+
+    it("still announces a fuel flip made with auto-fuel never armed", () => {
+      const state = seeded(0, 0);
+
+      feed(state, T_EDGE, { flags: PitSvFlags.FuelFill, auto: 0 });
       expect(feed(state, T_SETTLE, { flags: PitSvFlags.FuelFill, auto: 0 })).toEqual([MANUAL_FUEL_ON]);
     });
 
-    it("ignores the flag on the quiet ticks inside the window", () => {
-      const state = seeded(PitSvFlags.FuelFill, 0);
+    it("still announces a fuel flip when the field is absent entirely", () => {
+      const state = seeded(PitSvFlags.FuelFill);
 
-      feed(state, T_ARM, { flags: 0, auto: 0 });
-      expect(feed(state, T_ARM + 100, { flags: 0, auto: 1 })).toEqual([]);
-      expect(feed(state, T_ARM + 200, { flags: 0, auto: 1 })).toEqual([]);
-      expect(feed(state, T_SETTLE, { flags: 0, auto: 0 })).toEqual([MANUAL_FUEL_OFF]);
+      feed(state, T_EDGE, { flags: 0 });
+      expect(feed(state, T_SETTLE, { flags: 0 })).toEqual([MANUAL_FUEL_OFF]);
+    });
+
+    it("folds a fuel flip that settles inside a switch-off window into the one line", () => {
+      // Auto-fuel goes off and the request is cleared in the same tick: one
+      // event, not a switch plus a fuel toggle.
+      const state = seeded(PitSvFlags.FuelFill, 1);
+
+      expect(feed(state, T_EDGE, { flags: 0, auto: 0 })).toEqual([]);
+      expect(feed(state, T_SETTLE, { flags: 0, auto: 0 })).toEqual([switched(false, false)]);
+      expect(feed(state, T_SETTLE + 1_000, { flags: 0, auto: 0 })).toEqual([]);
     });
   });
 
-  describe("flips that never settle, or are seeded", () => {
-    it("a flip reverted inside the window emits nothing, and the next flip is judged on its own", () => {
+  describe("gates: the switch is ignored and its baseline re-seeded", () => {
+    it("on pit road, and leaving pit road afterwards does not fire it", () => {
+      const state = seeded(PitSvFlags.FuelFill, 1);
+
+      // The stop consumes auto-fuel: the flag drops while on pit road.
+      expect(feed(state, T_EDGE, { flags: PitSvFlags.FuelFill, auto: 0, onPitRoad: true })).toEqual([]);
+      expect(feed(state, T_SETTLE, { flags: PitSvFlags.FuelFill, auto: 0, onPitRoad: true })).toEqual([]);
+
+      // Back out on track with the flag still down — the drop is gone, not deferred.
+      expect(feed(state, T_SETTLE + 5_000, { flags: PitSvFlags.FuelFill, auto: 0 })).toEqual([]);
+      expect(feed(state, T_SETTLE + 6_000, { flags: PitSvFlags.FuelFill, auto: 0 })).toEqual([]);
+    });
+
+    it("but a fuel toggle on pit road is still the driver's, when auto-fuel is not armed", () => {
       const state = seeded(0, 0);
 
-      expect(feed(state, T_ARM, { flags: PitSvFlags.FuelFill, auto: 1 })).toEqual([]);
-      expect(feed(state, T_ARM + 100, { flags: 0, auto: 1 })).toEqual([]);
-      expect(feed(state, T_ARM + 1_000, { flags: 0, auto: 0 })).toEqual([]);
-
-      const t = T_ARM + 2_000;
-      expect(feed(state, t, { flags: PitSvFlags.FuelFill, auto: 0 })).toEqual([]);
-      expect(feed(state, t + PIT_SERVICE_DEBOUNCE_MS, { flags: PitSvFlags.FuelFill, auto: 0 })).toEqual([
+      feed(state, T_EDGE, { flags: PitSvFlags.FuelFill, auto: 0, onPitRoad: true });
+      expect(feed(state, T_SETTLE, { flags: PitSvFlags.FuelFill, auto: 0, onPitRoad: true })).toEqual([
         MANUAL_FUEL_ON,
       ]);
     });
 
-    it("pit-stall ticks seed silently with auto-fuel armed, and a flip on the first tick back is judged fresh", () => {
-      const state = seeded(0, 0);
-      feed(state, T_ARM, { flags: PitSvFlags.FuelFill, auto: 1 });
+    it("in the pit stall", () => {
+      const state = seeded(0, 1);
 
-      expect(feed(state, T_ARM + 100, { flags: PitSvFlags.FuelFill, auto: 1, inStall: true })).toEqual([]);
-      expect(feed(state, T_ARM + 1_000, { flags: 0, auto: 1, inStall: true })).toEqual([]);
-      expect(state.fuelDebounce).toEqual({ pendingAt: 0, lastSeen: false });
-
-      const t = T_ARM + 5_000;
-      feed(state, t, { flags: PitSvFlags.FuelFill, auto: 0 });
-      expect(feed(state, t + PIT_SERVICE_DEBOUNCE_MS, { flags: PitSvFlags.FuelFill, auto: 0 })).toEqual([
-        MANUAL_FUEL_ON,
-      ]);
+      expect(feed(state, T_EDGE, { auto: 0, inStall: true })).toEqual([]);
+      expect(feed(state, T_SETTLE, { auto: 0, inStall: true })).toEqual([]);
+      expect(state.autoFuelBaseline).toBe(false);
+      expect(feed(state, T_SETTLE + 5_000, { auto: 0 })).toEqual([]);
     });
 
-    it("off-track ticks seed silently with auto-fuel armed, and a flip on the first tick back is judged fresh", () => {
-      const state = seeded(0, 0);
-      feed(state, T_ARM, { flags: PitSvFlags.FuelFill, auto: 1 });
+    it("off track", () => {
+      const state = seeded(0, 1);
 
-      expect(feed(state, T_ARM + 100, { flags: PitSvFlags.FuelFill, auto: 1, onTrack: false })).toEqual([]);
-      expect(feed(state, T_ARM + 1_000, { flags: 0, auto: 1, onTrack: false })).toEqual([]);
-      expect(state.fuelDebounce).toEqual({ pendingAt: 0, lastSeen: false });
-
-      const t = T_ARM + 5_000;
-      feed(state, t, { flags: PitSvFlags.FuelFill, auto: 0 });
-      expect(feed(state, t + PIT_SERVICE_DEBOUNCE_MS, { flags: PitSvFlags.FuelFill, auto: 0 })).toEqual([
-        MANUAL_FUEL_ON,
-      ]);
+      expect(feed(state, T_EDGE, { auto: 0, onTrack: false })).toEqual([]);
+      expect(feed(state, T_SETTLE, { auto: 0, onTrack: false })).toEqual([]);
+      expect(state.autoFuelBaseline).toBe(false);
+      expect(feed(state, T_SETTLE + 5_000, { auto: 0 })).toEqual([]);
     });
 
-    it("the first tick seeds silently with auto-fuel armed and the fuel bit set", () => {
+    it("on the first tick, armed", () => {
       const state = createInitialState();
 
       expect(feed(state, 0, { flags: PitSvFlags.FuelFill, auto: 1 })).toEqual([]);
-      expect(state.fuelDebounce).toEqual({ pendingAt: 0, lastSeen: true });
+      expect(state.autoFuelBaseline).toBe(true);
       expect(feed(state, 1_000, { flags: PitSvFlags.FuelFill, auto: 1 })).toEqual([]);
     });
-  });
 
-  it("arming or disarming auto-fuel with the fuel bit unchanged publishes nothing", () => {
-    const state = seeded(PitSvFlags.FuelFill, 0);
+    it("mid-switch, dropping the pending change", () => {
+      const state = seeded(0, 0);
 
-    expect(feed(state, T_ARM, { flags: PitSvFlags.FuelFill, auto: 1 })).toEqual([]);
-    expect(feed(state, T_SETTLE, { flags: PitSvFlags.FuelFill, auto: 1 })).toEqual([]);
-    expect(feed(state, T_SETTLE + 1_000, { flags: PitSvFlags.FuelFill, auto: 0 })).toEqual([]);
-    expect(feed(state, T_SETTLE + 2_000, { flags: PitSvFlags.FuelFill, auto: 0 })).toEqual([]);
+      expect(feed(state, T_EDGE, { auto: 1 })).toEqual([]);
+      expect(feed(state, T_EDGE + 100, { auto: 1, onPitRoad: true })).toEqual([]);
+      expect(state.autoFuelDebounce.pendingAt).toBe(0);
+      expect(feed(state, T_SETTLE, { auto: 1 })).toEqual([]);
+      expect(feed(state, T_SETTLE + 5_000, { auto: 1 })).toEqual([]);
+    });
   });
 
   describe("windshield and fast repair ignore auto-fuel", () => {
     it("a windshield flip with auto-fuel armed is still the driver's toggle", () => {
       const state = seeded(0, 1);
 
-      feed(state, T_ARM, { flags: PitSvFlags.WindshieldTearoff, auto: 1 });
+      feed(state, T_EDGE, { flags: PitSvFlags.WindshieldTearoff, auto: 1 });
       expect(feed(state, T_SETTLE, { flags: PitSvFlags.WindshieldTearoff, auto: 1 })).toEqual([
         { event: "pitService.toggled", data: { service: "windshield", on: true } },
       ]);
     });
 
-    it("a fast-repair flip with auto-fuel armed is still the driver's toggle", () => {
-      const state = seeded(PitSvFlags.FastRepair, 1);
+    it("a fast-repair flip settling inside a switch window is still the driver's toggle", () => {
+      const state = seeded(PitSvFlags.FastRepair, 0);
 
-      feed(state, T_ARM, { flags: 0, auto: 1 });
+      feed(state, T_EDGE, { flags: 0, auto: 1 });
       expect(feed(state, T_SETTLE, { flags: 0, auto: 1 })).toEqual([
+        switched(true, false),
         { event: "pitService.toggled", data: { service: "fastRepair", on: false } },
-      ]);
-    });
-
-    it("fuel and windshield settling together with auto-fuel armed: one auto-fuel event, one windshield toggle", () => {
-      const state = seeded(0, 1);
-      const both = PitSvFlags.FuelFill | PitSvFlags.WindshieldTearoff;
-
-      feed(state, T_ARM, { flags: both, auto: 1 });
-      expect(feed(state, T_SETTLE, { flags: both, auto: 1 })).toEqual([
-        AUTO_REFUEL,
-        { event: "pitService.toggled", data: { service: "windshield", on: true } },
       ]);
     });
   });

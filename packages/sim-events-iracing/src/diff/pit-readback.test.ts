@@ -6,7 +6,7 @@
  *   - `pitLane.approaching` in pending emits "entry"
  *   - reset/teleport (OnPitRoad off→on with no approach event) stays silent
  *   - on-pit-road + user toggle in the same tick emits "entry-refire"
- *   - so does an auto-fuel change on pit road (issue #474), and not off it
+ *   - an auto-fuel switch does NOT refire (issue #474)
  *   - on→off schedules an exit fire that emits after the delay elapses
  *   - re-approach during the delay window cancels the scheduled exit
  *   - issue #481: event payload carries only `reason` (the
@@ -224,7 +224,11 @@ describe("diffPitReadback — refire", () => {
     expect(readbacks[0]?.data).toEqual({ reason: "entry-refire" });
   });
 
-  it("emits 'entry-refire' when an auto-fuel change lands while on pit road (issue #474)", () => {
+  it("does not refire on an auto-fuel switch (issue #474)", () => {
+    // `diffToggles` gates that event off from pit road onward, so it cannot
+    // reach this branch in the running plugin. The test pins the decision
+    // rather than the reachability: were it added to USER_TOGGLE_EVENTS, this
+    // is what would change.
     const state = createInitialState();
     state.pitReadbackInitialized = true;
     state.pitReadbackPrevOnPitRoad = true;
@@ -232,23 +236,7 @@ describe("diffPitReadback — refire", () => {
 
     const { events, emit } = collect();
     diffPitReadback(state, tick({ PitSvFlags: 0 }), 100, emit, [
-      { event: "pitService.autoFuelChanged", data: { refuel: false } },
-    ]);
-
-    expect(readbackEvents(events)).toEqual([
-      { event: "pitService.readbackRequested", data: { reason: "entry-refire" } },
-    ]);
-  });
-
-  it("does not refire on an auto-fuel change off pit road (issue #474)", () => {
-    const state = createInitialState();
-    state.pitReadbackInitialized = true;
-    state.pitReadbackPrevOnPitRoad = false;
-    state.lastOnPitRoad = false;
-
-    const { events, emit } = collect();
-    diffPitReadback(state, tick({ PitSvFlags: 0 }), 100, emit, [
-      { event: "pitService.autoFuelChanged", data: { refuel: false } },
+      { event: "pitService.autoFuelSwitched", data: { on: true, refuel: false } },
     ]);
 
     expect(readbackEvents(events)).toHaveLength(0);

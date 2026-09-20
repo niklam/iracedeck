@@ -11,9 +11,8 @@
  *                      `TrkLoc.AproachingPits` entirely, so the event
  *                      can't be synthesized for those cases and the
  *                      readback stays silent.
- *   - "entry-refire" — any change to the queued pit-service plan while
- *                      still on pit road (a toggle, or an auto-fuel
- *                      change). The running readback (family
+ *   - "entry-refire" — any user-intent pit-service toggle while still on
+ *                      pit road. The running readback (family
  *                      `"pit-readback"`) is preempted and replaced.
  *   - "exit"         — `OnPitRoad` on→off, plus `PIT_READBACK_EXIT_DELAY_MS`
  *                      settle delay so the "to confirm" beat doesn't
@@ -26,13 +25,12 @@
  * fire (busy-bus low-priority hold, urgent-flag preemption that stashes
  * the readback for replay, or in-stall toggling between emit and replay).
  *
- * Plan-change detection: this module runs after `diffToggles` in the
+ * User-intent detection: this module runs after `diffToggles` in the
  * tick pipeline, so it inspects the per-tick `pending` queue for
- * `pitService.toggled` / `pitService.autoFuelChanged` / `tireService.changed`
- * / `tireService.compoundChanged` events. Those events fire only on debounced
- * flips made outside the pit stall (the seed-during-stall branch in
- * `diffToggles` silently absorbs the crew's bit-clears), which is exactly the
- * signal we want.
+ * `pitService.toggled` / `tireService.changed` / `tireService.compoundChanged`
+ * events. Those events fire only on debounced user toggles (the seed-during-
+ * stall branch in `diffToggles` silently absorbs the crew's bit-clears),
+ * which is exactly the signal we want.
  */
 import type { PitReadbackSnapshot } from "@iracedeck/event-bus";
 import {
@@ -146,16 +144,15 @@ export function buildSnapshot(telemetry: TelemetryData): PitReadbackSnapshot {
   };
 }
 
+// `pitService.autoFuelSwitched` (issue #474) is deliberately NOT here. An
+// auto-fuel switch does change the queued plan, so on the face of it a refire
+// fits — but `diffToggles` gates that event off from pit road onward (the
+// stop itself consumes auto-fuel), so it can never reach the on-pit-road
+// branch that reads this set. Listing it would be code that cannot run,
+// asserted by a test that pins nothing. If that gate is ever lifted, add it
+// here in the same change.
 const USER_TOGGLE_EVENTS = new Set<PendingEvent["event"]>([
   "pitService.toggled",
-  // A fuel flip that settles while auto-fuel is armed is published as this
-  // instead of `pitService.toggled` (issue #474) — including the driver's own
-  // fuel press on pit road, which telemetry cannot tell apart from the sim's.
-  // Either way the queued fuel plan changed, and a changed plan is what the
-  // refire recaps. Auto-fuel's own takeover at pit approach settled before
-  // `OnPitRoad` turned true in the capture, so it did not reach the refire
-  // branch below.
-  "pitService.autoFuelChanged",
   "tireService.changed",
   "tireService.compoundChanged",
 ]);

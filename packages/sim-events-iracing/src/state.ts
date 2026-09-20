@@ -458,6 +458,12 @@ export type TranslatorState = {
   fuelDebounce: ServiceDebounceState;
   windshieldDebounce: ServiceDebounceState;
   fastRepairDebounce: ServiceDebounceState;
+  // Auto-fuel (issue #474) — `dpFuelAutoFillActive` is a state rather than a
+  // bit in `PitSvFlags`, so its last announced value needs a baseline of its
+  // own; the debounce beside it is the same model as the pit-service ones and
+  // shares their window (see `diff/toggles.ts`).
+  autoFuelBaseline: boolean; // BASELINE (last announced / seeded), not "previous tick"
+  autoFuelDebounce: ServiceDebounceState;
   // Tire debounce — same model but over a 4-bit set rather than a single bit.
   lastSeenTireFlags: number; // most recent observed tire bits (any tick)
   lastTireChangeAt: number; // 0 = stable; >0 = ms timestamp of most recent tire flag flip
@@ -1144,6 +1150,8 @@ export function createInitialState(): TranslatorState {
     fuelDebounce: { pendingAt: 0, lastSeen: false },
     windshieldDebounce: { pendingAt: 0, lastSeen: false },
     fastRepairDebounce: { pendingAt: 0, lastSeen: false },
+    autoFuelBaseline: false,
+    autoFuelDebounce: { pendingAt: 0, lastSeen: false },
     lastSeenTireFlags: 0,
     lastTireChangeAt: 0,
 
