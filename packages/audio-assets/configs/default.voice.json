@@ -2977,7 +2977,7 @@
       },
       {
         "name": "18",
-        "text": "eighteen.",
+        "text": "eighteen",
         "seed": 4,
         "next_text": " degrees Celsius,",
         "previous_request_ids": [
@@ -3452,6 +3452,7 @@
       {
         "name": "70",
         "text": "seventy",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
