@@ -99,7 +99,11 @@ The four race-formation / progression callouts above (Crossed, One pace lap to g
 
 Pit-service confirmations (fuel on/off, every tire-set selection, dry/wet compound switch, windshield-tearoff on/off, fast-repair on/off) continue to fire on the relevant Tire Service / Pit Service action presses.
 
-When the fuel for your next stop changes while iRacing's **autofuel** is armed, the engineer says so in its own words and without the "Got it." that confirms your requests: *"Auto fuel has us taking fuel at the next stop."* or *"Auto fuel is handling the fuel at the next stop."* That way you can tell by ear whether a line answers your press or the sim's decision. The second is the one you'll usually hear: once you've used autofuel, iRacing can re-arm it as you approach the pits and clear any fuel you queued by hand, then add whatever the car needs at the stop, which may be nothing. While autofuel is armed, iRacing gives no way to tell a fuel toggle you made from one it made, so the engineer announces every fuel change in that window as autofuel. Arming or disarming autofuel on its own says nothing. Like the other pit-service lines, it stays quiet for a few seconds after you leave pit road, where the sim resets the service queue on its own.
+When you switch iRacing's **autofuel** on or off, the engineer says so, and says what your fuel request is left at: *"Auto fuel is on. We're refueling at the next pit stop."*, *"Auto fuel is on. We're not refueling at the next pit stop."*, *"Auto fuel is off. The plan is still to refuel during the next pit stop."* or *"Auto fuel is off. We're not refueling at the next pit stop."* The third is the one worth listening for: autofuel sets the ordinary fuel request when it decides to fuel, so switching autofuel off can leave the car queued to refuel with nothing else to tell you. There is no "Got it." in front of any of them — that prefix answers a request you made, and this is the sim's doing.
+
+iRacing can also switch autofuel on by itself as you reach the pit approach, clearing any fuel you queued by hand. You hear the same line there, once, which is how you learn your request is gone before you reach the box.
+
+**While autofuel is armed, a change to the fuel request says nothing at all.** iRacing gives no way to tell a toggle you made from one autofuel made, so the engineer doesn't guess — and that silence is what keeps a session with autofuel from filling the radio with fuel confirmations nobody asked for. Your own fuel toggles with autofuel off are confirmed exactly as before, and the plan autofuel left you with is stated the moment autofuel goes off. A pit stop uses autofuel up as it begins, which switches it off; that is the sim's bookkeeping, so it is silent too.
 
 The engineer also calls out every iRacing-reported pit-service status transition during the stop itself — "crew working", "all done", positioning corrections ("too far left, line it up", etc.), and "crew can't fix that this stop" — so you can keep your eyes on the windscreen and react by ear.
 
@@ -495,7 +499,7 @@ Under **Pit Service**, four callouts are toggleable independently:
 - **Pit entry readback** — the "Don't forget your limiter. We're taking fuel, …" recap that fires as you roll onto pit road (and refires on any toggle while you're still on pit road).
 - **Pit exit readback** — the "To confirm: …" recap that plays after a short delay once you've left pit road.
 - **Pit service requests** — every per-toggle confirmation (fuel on/off, tire-set selection, compound switch, windshield-tearoff on/off, fast-repair on/off). Switching this off silences the engineer on every Stream Deck pit-service press while leaving the readbacks intact.
-- **Autofuel changes** (`calloutEnabledPitServiceAutoFuel`) — the *"Auto fuel has us taking fuel…"* / *"Auto fuel is handling the fuel…"* lines spoken when the fuel for your next stop changes while iRacing's autofuel is armed. Switching this off silences only those, and keeps your own fuel toggles confirmed.
+- **Autofuel changes** (`calloutEnabledPitServiceAutoFuel`) — the four *"Auto fuel is on/off…"* lines spoken when iRacing's autofuel is switched on or off, each naming the fuel request it leaves you with. Switching this off silences all four and keeps your own fuel toggles confirmed.
 
 Disabling any one of the four does not affect the others.
 
