@@ -626,6 +626,11 @@
     ],
     "pit-status": [
       {
+        "name": "in-progress-01",
+        "text": "Service started",
+        "seed": 2
+      },
+      {
         "name": "complete-01",
         "text": "Done. Go."
       },
