@@ -558,7 +558,7 @@ export type SimEventMap = {
   /**
    * The sim's auto-fuel was switched on or off for the next stop (issue
    * #474). `refuel` is what the fuel request is LEFT at once the change has
-   * settled — auto-fuel having fuelling switched on leaves the ordinary fuel
+   * settled — auto-fuel having fueling switched on leaves the ordinary fuel
    * request set when it goes off, and switching it on can clear one — so a
    * consumer can say both facts in one line. A fuel-bit flip settling in the
    * same window is folded into this event rather than published on its own.
