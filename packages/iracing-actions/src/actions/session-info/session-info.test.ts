@@ -32,6 +32,7 @@ import {
   resolveSessionLimitDisplay,
   resolveWindDisplay,
   SessionInfo,
+  type SessionLimitDisplay,
   trackWetnessLabel,
   WIND_ARROW_STEP_DEG,
 } from "./session-info.js";
@@ -2233,16 +2234,26 @@ describe("time-remaining mode (issue #1109)", () => {
     vi.mocked(resolveLeaderLapTimeS).mockReturnValue(null);
   });
 
+  /**
+   * The resolver takes the leader-lap estimate as a THUNK, so a single-limit
+   * session never walks the canonical order for a number it would discard.
+   * These cases care about the value, not the laziness — the laziness has its
+   * own tests below.
+   */
+  function limitWith(t: TelemetryData, leaderLapTimeS: number | null): SessionLimitDisplay {
+    return resolveSessionLimitDisplay(t, () => leaderLapTimeS);
+  }
+
   describe("resolveSessionLimitDisplay", () => {
     it("binds on the lap counter in a lap-limited race", () => {
-      expect(resolveSessionLimitDisplay(lapLimited(10), null)).toEqual({ binding: "laps", lapsToGo: 10 });
+      expect(limitWith(lapLimited(10), null)).toEqual({ binding: "laps", lapsToGo: 10 });
     });
 
     it("binds on the clock in a timed race even before any lap-time estimate exists", () => {
       // The pre-estimate rule is about a race that HAS a lap cap. A timed race
       // has none, so an unquantified clock must still bind rather than
       // degrading to UNLIM until the leader has turned a racing lap.
-      expect(resolveSessionLimitDisplay(timeLimited(1800), null)).toEqual({ binding: "time", remainingS: 1800 });
+      expect(limitWith(timeLimited(1800), null)).toEqual({ binding: "time", remainingS: 1800 });
     });
 
     it("binds on the lap cap in a dual-limit race until an estimate exists (spec decision 2)", () => {
@@ -2251,35 +2262,85 @@ describe("time-remaining mode (issue #1109)", () => {
       // flipping is exactly what the spec rejected.
       const dual = telemetry({ SessionLapsRemainEx: 10, SessionTimeRemain: 85_400 });
 
-      expect(resolveSessionLimitDisplay(dual, null)).toEqual({ binding: "laps", lapsToGo: 10 });
+      expect(limitWith(dual, null)).toEqual({ binding: "laps", lapsToGo: 10 });
     });
 
     it("treats a non-positive leader lap time as no estimate at all", () => {
       const dual = telemetry({ SessionLapsRemainEx: 10, SessionTimeRemain: 85_400 });
 
-      expect(resolveSessionLimitDisplay(dual, 0)).toEqual({ binding: "laps", lapsToGo: 10 });
+      expect(limitWith(dual, 0)).toEqual({ binding: "laps", lapsToGo: 10 });
     });
 
     it("binds on the clock in a dual-limit race once the estimate says it runs out first", () => {
       // 300 s at a 100 s lap is 3 laps — sooner than the 20-lap cap.
       const dual = telemetry({ SessionLapsRemainEx: 20, SessionTimeRemain: 300 });
 
-      expect(resolveSessionLimitDisplay(dual, 100)).toEqual({ binding: "time", remainingS: 300 });
+      expect(limitWith(dual, 100)).toEqual({ binding: "time", remainingS: 300 });
     });
 
     it("binds on the lap cap in a dual-limit race when the cap runs out first", () => {
       // 600 s at a 100 s lap is 6 laps — the 2-lap cap ends the race sooner.
       const dual = telemetry({ SessionLapsRemainEx: 2, SessionTimeRemain: 600 });
 
-      expect(resolveSessionLimitDisplay(dual, 100)).toEqual({ binding: "laps", lapsToGo: 2 });
+      expect(limitWith(dual, 100)).toEqual({ binding: "laps", lapsToGo: 2 });
     });
 
     it("binds on neither when both limits read their unlimited sentinel", () => {
-      expect(resolveSessionLimitDisplay(telemetry(UNLIMITED), 100)).toEqual({ binding: "none" });
+      expect(limitWith(telemetry(UNLIMITED), 100)).toEqual({ binding: "none" });
     });
 
     it("binds on neither when the session reports no limits at all", () => {
-      expect(resolveSessionLimitDisplay(telemetry({}), 100)).toEqual({ binding: "none" });
+      expect(limitWith(telemetry({}), 100)).toEqual({ binding: "none" });
+    });
+
+    it("hands a spent lap cap back to the clock, so a lap-limited qualifying keeps counting down", () => {
+      // iRacing lets a driver keep circulating after the counted laps are gone
+      // and parks SessionLapsRemainEx at 0 for the rest of the session (#776).
+      // A cap that has been reached cannot be what ENDS the session, so the six
+      // minutes still on the clock are what the key should show — not a frozen
+      // "0 LAPS LEFT" for the rest of qualifying.
+      const spent = telemetry({ SessionLapsRemainEx: 0, SessionTimeRemain: 360 });
+
+      expect(limitWith(spent, 100)).toEqual({ binding: "time", remainingS: 360 });
+    });
+
+    it("still shows a lap race's own 0, because there is no clock to defer to", () => {
+      // The leader-finished window of a pure lap race: 0 is the honest reading
+      // and the sentinel clock is no alternative.
+      expect(limitWith(lapLimited(0), 100)).toEqual({ binding: "laps", lapsToGo: 0 });
+    });
+
+    it("shows a clock that has run past zero as zero, not as UNLIM", () => {
+      // iRacing blips SessionTimeRemain below zero for a tick or two mid-race.
+      // The shared reader calls a negative duration unknown, which would render
+      // UNLIM here — the exact symptom this issue exists to remove.
+      expect(limitWith(timeLimited(-0.5), 100)).toEqual({ binding: "time", remainingS: 0 });
+    });
+  });
+
+  describe("the leader-lap estimate is only fetched when it is needed", () => {
+    it("is not consulted in a lap-limited race", () => {
+      const getLeaderLapTimeS = vi.fn(() => 100);
+
+      resolveSessionLimitDisplay(lapLimited(10), getLeaderLapTimeS);
+
+      expect(getLeaderLapTimeS).not.toHaveBeenCalled();
+    });
+
+    it("is not consulted in a timed race", () => {
+      const getLeaderLapTimeS = vi.fn(() => 100);
+
+      resolveSessionLimitDisplay(timeLimited(1800), getLeaderLapTimeS);
+
+      expect(getLeaderLapTimeS).not.toHaveBeenCalled();
+    });
+
+    it("is consulted when both limits are known and have to be compared", () => {
+      const getLeaderLapTimeS = vi.fn(() => 100);
+
+      resolveSessionLimitDisplay(telemetry({ SessionLapsRemainEx: 20, SessionTimeRemain: 300 }), getLeaderLapTimeS);
+
+      expect(getLeaderLapTimeS).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -2321,11 +2382,27 @@ describe("time-remaining mode (issue #1109)", () => {
       expect(decoded).toContain("TIME LEFT");
     });
 
+    /**
+     * An action whose session reports a Race. The leader-lap estimate is
+     * race-only — outside a race, rank 1 in the canonical order is whoever has
+     * turned the most laps rather than the fastest car — so a dual-limit case
+     * that wants the clock quantified has to say which session it is in.
+     */
+    function raceAction(): SessionInfo {
+      const action = new SessionInfo();
+
+      action["sdkController"].getSessionInfo = vi.fn().mockReturnValue({
+        SessionInfo: { Sessions: [{ SessionType: "Race" }] },
+      });
+
+      return action;
+    }
+
     it("moves the title to LAPS LEFT when the binding side changes to laps", () => {
       // A dual-limit race under a caution that stretches the lap time out, so
       // the clock covers fewer laps than the cap — then back at racing pace,
       // where the cap is what ends the race.
-      const action = new SessionInfo();
+      const action = raceAction();
       const dual = telemetry({ SessionLapsRemainEx: 5, SessionTimeRemain: 600 });
 
       vi.mocked(resolveLeaderLapTimeS).mockReturnValue(200); // 3 laps of clock against a 5-lap cap
@@ -2340,7 +2417,7 @@ describe("time-remaining mode (issue #1109)", () => {
     });
 
     it("moves the title back to TIME LEFT when the binding side changes to time", () => {
-      const action = new SessionInfo();
+      const action = raceAction();
       const dual = telemetry({ SessionLapsRemainEx: 5, SessionTimeRemain: 600 });
 
       vi.mocked(resolveLeaderLapTimeS).mockReturnValue(null); // no estimate yet, so the cap binds
@@ -2355,9 +2432,31 @@ describe("time-remaining mode (issue #1109)", () => {
     });
 
     it("resolves the limit once per render, so the value and the title can never disagree", () => {
-      render(lapLimited(3));
+      // A dual-limit race, because that is the only shape that consults the
+      // estimate at all: one render must reach it exactly once, not once for
+      // the value and again for the title.
+      vi.mocked(resolveLeaderLapTimeS).mockReturnValue(60);
+
+      render(telemetry({ SessionLapsRemainEx: 5, SessionTimeRemain: 600 }), raceAction());
 
       expect(resolveLeaderLapTimeS).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not reach for a leader lap time outside a race", () => {
+      // Qualifying with both a lap cap and a clock. There is no leader to read
+      // a pace from, so the estimate is refused and the cap binds — rather than
+      // letting somebody's out-lap decide which limit the key shows.
+      const action = new SessionInfo();
+
+      action["sdkController"].getSessionInfo = vi.fn().mockReturnValue({
+        SessionInfo: { Sessions: [{ SessionType: "Qualifying" }] },
+      });
+      vi.mocked(resolveLeaderLapTimeS).mockReturnValue(200); // would make the clock bind, if it were consulted
+
+      const decoded = render(telemetry({ SessionLapsRemainEx: 5, SessionTimeRemain: 600 }), action);
+
+      expect(resolveLeaderLapTimeS).not.toHaveBeenCalled();
+      expect(decoded).toContain("LAPS LEFT");
     });
 
     it("resolves no limit for the other modes", () => {

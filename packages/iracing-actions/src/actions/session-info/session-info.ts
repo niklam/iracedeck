@@ -623,19 +623,43 @@ export type SessionLimitDisplay =
  *
  * Resolves which of the session's two limits the key should show, applying the
  * shared whichever-ends-sooner rule from `@iracedeck/iracing-sdk` — the same
- * policy the fuel laps-left callouts use, so the two keys can never disagree
- * about which limit a dual-limit race is running to.
+ * POLICY the fuel laps-left callouts apply, so neither invents its own notion
+ * of which limit a dual-limit session is running to. They can still reach
+ * different verdicts on the same tick, and deliberately so: fuel compares the
+ * laps it can still complete after the current one against a checkered bound
+ * built from the player's own average, while this key compares the raw counter
+ * against the clock divided by the leader's pace. What is shared is the rule
+ * and the sentinel decoding, not the operands.
  *
- * `leaderLapTimeS` is the translator's leader-lap estimate (the canonical
- * source per `.claude/rules/race-positions.md`), or `null` when there isn't
- * one yet.
+ * `getLeaderLapTimeS` is the translator's leader-lap estimate (the canonical
+ * source per `@.claude/rules/race-positions.md`), read LAZILY: it is only
+ * consulted when both limits are known and therefore have to be compared,
+ * which is never in the single-limit sessions that are the overwhelming
+ * majority. It walks the canonical order, so calling it on every telemetry
+ * tick for a result that is then discarded is work worth not doing.
  */
 export function resolveSessionLimitDisplay(
   telemetry: TelemetryData,
-  leaderLapTimeS: number | null,
+  getLeaderLapTimeS: () => number | null,
 ): SessionLimitDisplay {
-  const lapsToGo = resolveLapsRemaining(telemetry);
-  const remainingS = resolveTimeRemainingS(telemetry);
+  const rawLapsToGo = resolveLapsRemaining(telemetry);
+
+  // iRacing can blip `SessionTimeRemain` below zero for a tick or two mid-race — the transient `leader-white.ts`
+  // guards with a two-tick confirmation — and a genuinely expired clock sits there while the leader runs to the
+  // flag. The shared reader calls a negative duration unknown, which is right for the fuel estimate: it would
+  // rather skip a sample than divide by nonsense. Here "unknown" would render `UNLIM`, which is the exact symptom
+  // this issue exists to remove, so a clock that has run past zero is shown as the zero it has left.
+  const rawTime = telemetry.SessionTimeRemain;
+  const clockRanPast = typeof rawTime === "number" && Number.isFinite(rawTime) && rawTime < 0;
+  const remainingS = resolveTimeRemainingS(telemetry) ?? (clockRanPast ? 0 : null);
+
+  // A lap counter reading 0 has already been reached, so it can no longer be the limit that ENDS the session —
+  // whatever happens next is the clock's business. This matters most in a lap-limited QUALIFYING, where iRacing
+  // lets the driver keep circulating after the counted laps are spent (#776) and the counter sits at 0 for the
+  // rest of the session: without this the key would freeze at `0 LAPS LEFT` while minutes remained, where before
+  // this issue it counted the clock down. A lap race with no clock still shows its `0` — there is nothing to
+  // defer to, and `0` is the honest reading during the leader-finished window.
+  const lapsSide = rawLapsToGo === 0 && remainingS !== null ? null : rawLapsToGo;
 
   // The clock only competes with the lap counter once it can be expressed in laps. With no leader lap time yet —
   // pre-green, or before anyone has completed a racing lap — the clock is KNOWN but unquantified, which is not the
@@ -643,19 +667,22 @@ export function resolveSessionLimitDisplay(
   // decision 2: "before any lap-time estimate exists, a finite lap cap binds over the clock"). Infinity says exactly
   // that — a side that exists and can never be the sooner one — where `null` would claim the clock doesn't exist and
   // turn a plain timed race into `UNLIM` until the leader's first lap lands.
-  const timeSideLaps =
-    remainingS === null
-      ? null
-      : leaderLapTimeS !== null && leaderLapTimeS > 0
-        ? remainingS / leaderLapTimeS
-        : Number.POSITIVE_INFINITY;
+  let timeSideLaps: number | null = null;
 
-  const binding: BindingLimit = resolveBindingLimit(lapsToGo, timeSideLaps);
+  if (remainingS !== null) {
+    // Only a session carrying BOTH limits has anything to compare, so the estimate is fetched only here.
+    const leaderLapTimeS = lapsSide !== null ? getLeaderLapTimeS() : null;
+
+    timeSideLaps =
+      leaderLapTimeS !== null && leaderLapTimeS > 0 ? remainingS / leaderLapTimeS : Number.POSITIVE_INFINITY;
+  }
+
+  const binding: BindingLimit = resolveBindingLimit(lapsSide, timeSideLaps);
 
   // Each verdict is taken together with the reading behind it. `resolveBindingLimit` only ever names a side it was
   // given a number for, so the null checks are the type system's rather than a second policy — and falling through
   // to `none` degrades to the same "no limit to count down" an unlimited session already shows.
-  if (binding === "laps" && lapsToGo !== null) return { binding, lapsToGo };
+  if (binding === "laps" && lapsSide !== null) return { binding, lapsToGo: lapsSide };
 
   if (binding === "time" && remainingS !== null) return { binding, remainingS };
 
@@ -1360,11 +1387,25 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
 
     // The leader's lap time is what puts the clock and the lap counter in the
     // same unit. It comes from the translator's own resolver over the canonical
-    // live order (`.claude/rules/race-positions.md` — never a second ordering
+    // live order (`@.claude/rules/race-positions.md` — never a second ordering
     // invented here), and is deliberately `null` before the green: a parade lap
     // is not a racing lap, so a lap-limited race simply shows its lap count
     // until the first real one lands.
-    return resolveSessionLimitDisplay(telemetry, resolveLeaderLapTimeS(telemetry, getLiveRacePositions() ?? []));
+    //
+    // RACE SESSIONS ONLY, for the same reason that resolver already refuses to
+    // answer pre-green. Outside a race there is no leader: rank 1 in the
+    // canonical order is whoever has covered the most ground, so in qualifying
+    // or practice it is whoever has turned the most laps, and their last lap is
+    // as likely to be an out- or cool-down lap as a representative one. Handing
+    // that to the comparison would let a 200-second tour decide which limit a
+    // dual-limit qualifying is running to. With no estimate the lap cap binds,
+    // which is decision 2's documented answer and the right one here.
+    //
+    // Passed as a thunk: the resolver only calls it when both limits are known,
+    // so a single-limit session never walks the order at all.
+    return resolveSessionLimitDisplay(telemetry, () =>
+      this.isRaceSession(telemetry) ? resolveLeaderLapTimeS(telemetry, getLiveRacePositions() ?? []) : null,
+    );
   }
 
   /**
