@@ -116,4 +116,18 @@ Three options went to the maintainer: let the report win the slot, let the readb
 - **Each member keeps the fate it would have had alone.** A later fire at least as heavy as both takes the slot and drops the pair. A fire heavier than the leader but lighter than the follower replaces the leader, as it would have alone, and the follower stays behind it. A lighter fire is dropped.
 - **Never stranded:** a leader that fails to take the bus at replay leaves the follower to play next. Everything that clears the slot clears the pair; disabling the follower's own opt-in drops only it. It is a pair, not a queue: a second follower replaces the first.
 
-One limit remains, and it belongs to the engine rather than to this feature. While the readback is *playing*, the report waits alone in the single slot, and a fire of at least its weight arriving then replaces it, as it would any queueable callout. Removing that means a bounded queue behind the slot, which is a separate decision.
+One limit remains, and it belongs to the engine rather than to this feature (#1185). While the readback is *playing*, the report waits alone in the single slot, and a fire of at least its weight arriving then replaces it, as it would any queueable callout. Removing that means a bounded queue behind the slot, which is a separate decision.
+
+## Amendment, 2026-09-20: the audition rewrote the line, and decision 7's free numbers were not free
+
+The maintainer auditioned the generated report and changed its shape. Decisions 1–6 and 8–9 are untouched; decision 7 is superseded in part.
+
+**The line.** It opens with an intro — "Tire wear at the pit stop:" — and names each corner in the colon form, so the four figures read as a list under a heading rather than as four sentences:
+
+> "Tire wear at the pit stop: Left front: ninety-eight percent. Right front: ninety-nine percent. Left rear: ninety-nine percent. Right rear: ninety-nine percent. Wear is heaviest on the left front, inside shoulder."
+
+**Every corner now carries the unit**, where the first draft said "percent" once after the left front and left the other three bare. That follows from the clip decision below rather than from taste: with the figure and its unit recorded as one clip, saying it once is no longer the cheaper option.
+
+**Decision 7's "numbers come free" was wrong, and the audition is what found it.** `session-start-temp-numbers` covers 0–150 and cost nothing to reuse, but its clips were cut with `next_text: " degrees Celsius,"`. Each therefore ends on the trailing consonant of a phrase that continues, and a sentence that stops on one reads as unfinished — four times a report. The report gets its own group, `numbers-percent`: 101 clips, 0–100, each recording the figure and the unit as one line ("ninety eight percent."). The separate "percent." clip is gone with it, and the script has no percent step. **A number set cut for one unit carries that unit's prosody into every sentence that borrows it**, so reusing a value group is only safe where the words that follow match what it was recorded against.
+
+The maintainer also re-cut `session-start-temp-numbers` in the same pass, adding the "degrees" hint to every entry that lacked it, which commits that group to temperatures rather than leaving it a general-purpose 0–150 set.
