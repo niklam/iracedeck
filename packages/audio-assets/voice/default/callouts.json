@@ -460,9 +460,9 @@
       "comment": "After a pit stop, once the exit readback has played: the remaining tread of all four tires, front to rear, each as the lowest of its three zones in whole percent, then where the wear is heaviest, a sentence left out when every tire still reads one hundred. After a tire change the numbers describe the set that came off.",
       "test": "Harness → Tire Wear → Report after a stop. In-sim: drive into your box, stop, and leave pit road; the report follows the exit readback.",
       "sequence": [
+        "pool:tire-wear/intro",
         "pool:tire-wear/left-front",
         "{{tireWear.leftFrontTread}}",
-        "pool:tire-wear/percent",
         "pool:tire-wear/right-front",
         "{{tireWear.rightFrontTread}}",
         "pool:tire-wear/left-rear",
