@@ -109,35 +109,85 @@ describe("diffToggles — auto-fuel (issue #474)", () => {
       expect(feed(state, T_SETTLE, { flags: 0, auto: 0 })).toEqual([switched(false, false)]);
     });
 
-    it("a press lagging the switch makes two lines, in order, each true when it is said", () => {
-      // Auto-fuel switched off at t0; the driver asks for fuel 120 ms later.
-      // Those are two actions, so two lines — but the switch must not
-      // pre-state the press's effect, or its own line would be a guess.
+    it("waits for a press that lags the switch, then says it in one line", () => {
+      // Auto-fuel switched off at t0; the driver asks for fuel 120 ms later,
+      // so at the switch's own settle the request is mid-window. Announcing
+      // there would say "not refueling" about a plan 120 ms from being the
+      // opposite.
       const state = seeded(0, 1);
 
       feed(state, T_EDGE, { flags: 0, auto: 0 });
       expect(feed(state, T_EDGE + 120, { flags: PitSvFlags.FuelFill, auto: 0 })).toEqual([]);
-
-      // The switch settles first, reporting the request as it stands: none.
-      expect(feed(state, T_SETTLE, { flags: PitSvFlags.FuelFill, auto: 0 })).toEqual([switched(false, false)]);
-
-      // The press settles 120 ms later, with auto-fuel off — its own line.
+      expect(feed(state, T_SETTLE, { flags: PitSvFlags.FuelFill, auto: 0 })).toEqual([]);
       expect(feed(state, T_EDGE + 419, { flags: PitSvFlags.FuelFill, auto: 0 })).toEqual([]);
-      expect(feed(state, T_EDGE + 420, { flags: PitSvFlags.FuelFill, auto: 0 })).toEqual([MANUAL_FUEL_ON]);
+
+      // The press settles: ONE line, carrying both facts. The fuel
+      // confirmation is suppressed — it would land on this same tick, in the
+      // same family, and be cut mid-word by this one.
+      expect(feed(state, T_EDGE + 420, { flags: PitSvFlags.FuelFill, auto: 0 })).toEqual([switched(false, true)]);
+      expect(feed(state, T_EDGE + 1_000, { flags: PitSvFlags.FuelFill, auto: 0 })).toEqual([]);
     });
 
-    it("does not report a press that never settled as the plan", () => {
-      // Auto-fuel off at t0; a press at t0+280 is taken back at t0+310, so at
-      // the switch's own settle it is 20 ms old and means nothing yet.
+    it("releases the held line when the press is taken back, with the plan unchanged", () => {
+      // Auto-fuel off at t0; a press at t0+280 is taken back at t0+310. The
+      // line must still be said — releasing only on a SETTLE would lose it
+      // altogether — and must report the request that actually stands.
       const state = seeded(0, 1);
 
       feed(state, T_EDGE, { flags: 0, auto: 0 });
       expect(feed(state, T_EDGE + 280, { flags: PitSvFlags.FuelFill, auto: 0 })).toEqual([]);
-      expect(feed(state, T_SETTLE, { flags: PitSvFlags.FuelFill, auto: 0 })).toEqual([switched(false, false)]);
+      expect(feed(state, T_SETTLE, { flags: PitSvFlags.FuelFill, auto: 0 })).toEqual([]);
 
-      // Taken back: nothing further, and no fuel line either.
-      expect(feed(state, T_EDGE + 310, { flags: 0, auto: 0 })).toEqual([]);
+      expect(feed(state, T_EDGE + 310, { flags: 0, auto: 0 })).toEqual([switched(false, false)]);
       expect(feed(state, T_EDGE + 1_000, { flags: 0, auto: 0 })).toEqual([]);
+    });
+
+    it("waits for a press that armed after the switch and settles after it too", () => {
+      // Auto-fuel armed at t0, fuel pressed on at t0+100. The switch settles
+      // at t0+300 with the request still reading its old value, and the press
+      // that follows is silent because auto-fuel is armed by then — so a line
+      // said at t0+300 would be the only line, and the opposite of the plan.
+      const state = seeded(0, 0);
+
+      expect(feed(state, T_EDGE, { flags: 0, auto: 1 })).toEqual([]);
+      expect(feed(state, T_EDGE + 100, { flags: PitSvFlags.FuelFill, auto: 1 })).toEqual([]);
+      expect(feed(state, T_SETTLE, { flags: PitSvFlags.FuelFill, auto: 1 })).toEqual([]);
+
+      expect(feed(state, T_EDGE + 400, { flags: PitSvFlags.FuelFill, auto: 1 })).toEqual([switched(true, true)]);
+      expect(feed(state, T_EDGE + 1_000, { flags: PitSvFlags.FuelFill, auto: 1 })).toEqual([]);
+    });
+
+    it("says the same case with the press taken back, reporting no refuel", () => {
+      const state = seeded(0, 0);
+
+      feed(state, T_EDGE, { flags: 0, auto: 1 });
+      feed(state, T_EDGE + 100, { flags: PitSvFlags.FuelFill, auto: 1 });
+      expect(feed(state, T_SETTLE, { flags: PitSvFlags.FuelFill, auto: 1 })).toEqual([]);
+
+      expect(feed(state, T_EDGE + 350, { flags: 0, auto: 1 })).toEqual([switched(true, false)]);
+      expect(feed(state, T_EDGE + 1_000, { flags: 0, auto: 1 })).toEqual([]);
+    });
+
+    it("a later switch settling over a held one replaces it", () => {
+      // Reachable only when ticks are sparse — a hitch, a paused sim. At a
+      // steady 60 Hz the hold is always released before a second switch could
+      // settle, since a hold lives only while the request is pending and the
+      // request resolves within its own 300 ms. Here the 1400 → 1700 gap
+      // delays the request's settle onto the tick the second switch lands on,
+      // and what the driver is owed is where auto-fuel ENDED UP.
+      const state = seeded(0, 0);
+
+      feed(state, 1_000, { flags: 0, auto: 1 });
+      expect(feed(state, 1_300, { flags: PitSvFlags.FuelFill, auto: 1 })).toEqual([]);
+      expect(state.autoFuelSwitchHeld).toBe(true);
+
+      // Auto-fuel back off while the request is still mid-window…
+      expect(feed(state, 1_400, { flags: PitSvFlags.FuelFill, auto: 0 })).toEqual([]);
+
+      // …and both land on the same tick after the gap: the newer switch wins.
+      expect(feed(state, 1_700, { flags: PitSvFlags.FuelFill, auto: 0 })).toEqual([switched(false, true)]);
+      expect(state.autoFuelSwitchHeld).toBeNull();
+      expect(feed(state, 3_000, { flags: PitSvFlags.FuelFill, auto: 0 })).toEqual([]);
     });
 
     it("says nothing for a switch that reverts inside the window, and the next one still lands", () => {
@@ -264,6 +314,41 @@ describe("diffToggles — auto-fuel (issue #474)", () => {
       expect(feed(state, T_SETTLE, { flags: PitSvFlags.FuelFill, auto: 0, onPitRoad: true })).toEqual([
         MANUAL_FUEL_ON,
       ]);
+    });
+
+    it("but a switch already HELD survives onto pit road and is announced there", () => {
+      // It settled off pit road — the decision was made and confirmed there,
+      // and the hold is only waiting for an accurate `refuel`. Dropping it
+      // would silence a decision the driver made, which is the failure the
+      // "where it started" rule exists to prevent.
+      const state = seeded(0, 0);
+
+      feed(state, T_EDGE, { flags: 0, auto: 1 });
+      feed(state, T_EDGE + 100, { flags: PitSvFlags.FuelFill, auto: 1 });
+      expect(feed(state, T_SETTLE, { flags: PitSvFlags.FuelFill, auto: 1 })).toEqual([]);
+      expect(state.autoFuelSwitchHeld).toBe(true);
+
+      // Onto pit road with the press still mid-window, then it settles.
+      expect(feed(state, T_SETTLE + 50, { flags: PitSvFlags.FuelFill, auto: 1, onPitRoad: true })).toEqual([]);
+      expect(feed(state, T_EDGE + 400, { flags: PitSvFlags.FuelFill, auto: 1, onPitRoad: true })).toEqual([
+        switched(true, true),
+      ]);
+      expect(state.autoFuelSwitchHeld).toBeNull();
+    });
+
+    it("in the pit stall, which also drops a held switch", () => {
+      const state = seeded(0, 0);
+
+      feed(state, T_EDGE, { flags: 0, auto: 1 });
+      feed(state, T_EDGE + 100, { flags: PitSvFlags.FuelFill, auto: 1 });
+      expect(feed(state, T_SETTLE, { flags: PitSvFlags.FuelFill, auto: 1 })).toEqual([]);
+      expect(state.autoFuelSwitchHeld).toBe(true);
+
+      // The stall is a reset of the world, not a rule about one event.
+      expect(feed(state, T_SETTLE + 10, { flags: PitSvFlags.FuelFill, auto: 1, inStall: true })).toEqual([]);
+      expect(state.autoFuelSwitchHeld).toBeNull();
+      expect(feed(state, T_EDGE + 400, { flags: PitSvFlags.FuelFill, auto: 1 })).toEqual([]);
+      expect(feed(state, T_EDGE + 2_000, { flags: PitSvFlags.FuelFill, auto: 1 })).toEqual([]);
     });
 
     it("in the pit stall", () => {

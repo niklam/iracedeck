@@ -10,8 +10,10 @@
  *   - pitService.autoFuelSwitched { on, refuel } — when auto-fuel
  *     (`dpFuelAutoFillActive`) is switched on or off, debounced like the
  *     bits, with `refuel` the settled fuel request the change leaves behind.
- *     A switch that ARMS on pit road is dropped, where the stop itself
- *     consumes auto-fuel; one that armed before pit road still lands.
+ *     Held back while a fuel flip is still inside its own window, so the
+ *     request is never reported at a value it is about to leave. A switch
+ *     that ARMS on pit road is dropped, where the stop itself consumes
+ *     auto-fuel; one that armed before pit road still lands.
  *   - tireService.changed { added, removed, current } — when tire service
  *     bits flip. `current` is the post-change set so consumers can decide
  *     based on the resulting state (vs. trying to reconstruct it from the
@@ -243,6 +245,11 @@ export function diffToggles(state: TranslatorState, telemetry: TelemetryData, no
     };
     state.fastRepairDebounce = { pendingAt: 0, lastSeen: (pitSvFlags & PitSvFlags.FastRepair) !== 0 };
     seedAutoFuel(state, autoFuelArmed);
+    // A held switch dies here, unlike at the pit-road gate below: the first
+    // tick, leaving the car, and the stall are resets of the world rather
+    // than a rule about one event, and a line about a switch made before one
+    // of those would arrive with no context left to make sense of it.
+    state.autoFuelSwitchHeld = null;
     state.fuelPlanChangedThisTick = false;
 
     return;
@@ -266,6 +273,13 @@ export function diffToggles(state: TranslatorState, telemetry: TelemetryData, no
   // let through, because it is the driver's or the takeover's: pit approach
   // can be under 300 ms from pit road on a short track, and on a dirt oval
   // the approach IS the drive-in edge.
+  //
+  // By the same reading, a switch already HELD (phase 3) survives onto pit
+  // road and is announced there. It has already settled, off pit road; the
+  // hold is only waiting for an accurate `refuel`, so dropping it would
+  // silence a decision the driver made and is owed — the very failure the
+  // "where it started" rule exists to prevent. It cannot outlive the stop:
+  // the in-stall seed above clears it.
   const autoFuelPending = state.autoFuelDebounce.pendingAt !== 0;
   let autoFuelStep: DebounceStep = { settled: false, baseline: state.autoFuelBaseline };
 
@@ -279,13 +293,20 @@ export function diffToggles(state: TranslatorState, telemetry: TelemetryData, no
   // Phase 2: the fuel bit, whose silence is decided by SETTLED auto-fuel —
   // the debounced armed state, plus a switch settling on this very tick,
   // whose consequence the switch's own `refuel` carries. A switch that is
-  // merely pending does NOT silence it: a one-tick blip of the flag would
+  // merely PENDING does not silence it: a one-tick blip of the flag would
   // otherwise swallow the driver's press for good, announcing neither.
   //
-  // Two settled changes still make two lines, and should: auto-fuel switched
-  // off and a fuel press a few hundred ms later are two separate actions, in
-  // that order, each with its own line.
-  const fuelFlipIsSilent = state.autoFuelBaseline || autoFuelStep.settled;
+  // A switch HELD from an earlier tick (phase 3) silences it too, and that is
+  // a choice about one moment rather than two. The hold is released on the
+  // very tick the request settles, so both lines would land together and,
+  // sharing a family, the switch would cut the fuel confirmation mid-word.
+  // The switch line is the one kept, because it already states both facts —
+  // "auto fuel is off, the plan is still to refuel" — where the fuel line
+  // states one of them. The only tick this can silence is that release tick:
+  // a hold exists only while the request is unstable, and an unstable request
+  // has nothing to announce yet.
+  const switchHeldFromEarlier = state.autoFuelSwitchHeld !== null;
+  const fuelFlipIsSilent = state.autoFuelBaseline || autoFuelStep.settled || switchHeldFromEarlier;
   const fuelBaselineBefore = (state.lastPitSvFlags & PitSvFlags.FuelFill) !== 0;
 
   // ── Pit service (fuel / windshield / fast-repair, debounced) ───────────
@@ -305,10 +326,30 @@ export function diffToggles(state: TranslatorState, telemetry: TelemetryData, no
   // change the callout deliberately said nothing about.
   state.fuelPlanChangedThisTick = nextBaselineFuel !== fuelBaselineBefore;
 
-  // Phase 3: announce the switch, now that the fuel request has settled, so
-  // `refuel` is the plan it leaves behind rather than a bit still in flight.
-  if (autoFuelStep.settled) {
-    emit(autoFuelSwitchedEvent(state.autoFuelBaseline, nextBaselineFuel));
+  // Phase 3: announce the switch, once the fuel request is STABLE, so
+  // `refuel` is the plan the switch leaves behind rather than a bit still in
+  // flight. A settled switch is held whenever a fuel flip is mid-window —
+  // usually not at all, and released on the same tick — because the request
+  // would otherwise be read at its old value and the line would state the
+  // opposite of the plan, with nothing to correct it afterwards: the flip
+  // itself says nothing once auto-fuel is armed.
+  //
+  // The release is the same for both ways a pending flip can end. It settles
+  // and `refuel` is the new request; it is taken back and `refuel` is the
+  // unchanged one. Waiting only for the settle would lose the line entirely
+  // for a press the driver thought better of.
+  //
+  // A later switch settling over a held one replaces it: what the driver is
+  // owed is where auto-fuel ended up, not every step on the way. That needs
+  // sparse ticks to happen at all — at a steady tick rate the hold is always
+  // released first, since it lives only while the request is pending and the
+  // request resolves within its own window — but a hitch or a paused sim can
+  // land both on one tick.
+  if (autoFuelStep.settled) state.autoFuelSwitchHeld = autoFuelStep.baseline;
+
+  if (state.autoFuelSwitchHeld !== null && state.fuelDebounce.pendingAt === 0) {
+    emit(autoFuelSwitchedEvent(state.autoFuelSwitchHeld, nextBaselineFuel));
+    state.autoFuelSwitchHeld = null;
   }
 
   const nextBaselineWindshield = diffPitServiceBit(

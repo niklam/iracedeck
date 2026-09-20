@@ -465,6 +465,20 @@ export type TranslatorState = {
   autoFuelBaseline: boolean; // BASELINE (last announced / seeded), not "previous tick"
   autoFuelDebounce: ServiceDebounceState;
   /**
+   * A settled auto-fuel switch waiting for the fuel request to be stable
+   * before it is announced — the settled `on` value, or `null` when nothing
+   * is held (issue #474).
+   *
+   * The switch event carries the fuel request the change leaves behind, so it
+   * must not be spoken while a fuel flip is still inside its own debounce
+   * window: the request would be read at its OLD value and the engineer would
+   * state the opposite of the plan, with nothing afterwards to correct it —
+   * the flip itself is silent once auto-fuel is armed. Held until the fuel
+   * debounce settles or is cancelled, whichever comes first, then announced
+   * with whatever the request finally says.
+   */
+  autoFuelSwitchHeld: boolean | null;
+  /**
    * Did the fuel REQUEST settle into a new state on this very tick? Written
    * by `diffToggles` on every tick it runs (its silent seed path included)
    * and read by `diffPitReadback`, which runs straight after it — a per-tick
@@ -1164,6 +1178,7 @@ export function createInitialState(): TranslatorState {
     fastRepairDebounce: { pendingAt: 0, lastSeen: false },
     autoFuelBaseline: false,
     autoFuelDebounce: { pendingAt: 0, lastSeen: false },
+    autoFuelSwitchHeld: null,
     fuelPlanChangedThisTick: false,
     lastSeenTireFlags: 0,
     lastTireChangeAt: 0,
