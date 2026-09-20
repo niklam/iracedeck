@@ -1186,6 +1186,36 @@ describe("sim-events-iracing translator", () => {
       expect(readback).not.toHaveBeenCalled();
     });
 
+    it("silences the callout but still refreshes the pit-road recap for that flip (issue #474)", () => {
+      const controller = createMockController();
+      const bus = getEventBus();
+      const toggled = vi.fn();
+      const autoFuel = vi.fn();
+      const readback = vi.fn();
+      bus.subscribe("pitService.toggled", toggled);
+      bus.subscribe("pitService.autoFuelSwitched", autoFuel);
+      bus.subscribe("pitService.readbackRequested", readback);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      // On pit road with auto-fuel armed and fuel queued, the driver cancels
+      // the fuel. No line — but the recap must stop saying "we're taking fuel".
+      controller.__tick(telemetry({ OnPitRoad: true, PitSvFlags: PitSvFlags.FuelFill, dpFuelAutoFillActive: 1 }));
+      controller.__tick(telemetry({ OnPitRoad: true, PitSvFlags: 0, dpFuelAutoFillActive: 1 }));
+      expect(readback).not.toHaveBeenCalled();
+
+      vi.useFakeTimers();
+      vi.setSystemTime(Date.now() + 400);
+      controller.__tick(telemetry({ OnPitRoad: true, PitSvFlags: 0, dpFuelAutoFillActive: 1 }));
+      vi.useRealTimers();
+
+      expect(toggled).not.toHaveBeenCalled();
+      expect(autoFuel).not.toHaveBeenCalled();
+      expect(readback).toHaveBeenCalledTimes(1);
+      expect((readback.mock.calls[0]![0] as SimEventOf<"pitService.readbackRequested">).data).toEqual({
+        reason: "entry-refire",
+      });
+    });
+
     it("emits carControl.drsToggled { on: true } on activation", () => {
       const controller = createMockController();
       const bus = getEventBus();

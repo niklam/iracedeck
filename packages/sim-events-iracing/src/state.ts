@@ -464,6 +464,18 @@ export type TranslatorState = {
   // shares their window (see `diff/toggles.ts`).
   autoFuelBaseline: boolean; // BASELINE (last announced / seeded), not "previous tick"
   autoFuelDebounce: ServiceDebounceState;
+  /**
+   * Did the fuel REQUEST settle into a new state on this very tick? Written
+   * by `diffToggles` on every tick it runs (its silent seed path included)
+   * and read by `diffPitReadback`, which runs straight after it — a per-tick
+   * handoff, never state that outlives the tick that set it.
+   *
+   * It exists because the fuel request's own `pitService.toggled` is
+   * suppressed while auto-fuel is armed (issue #474). The CALLOUT is silent
+   * there, but the pit-road recap must still be refreshed, or it keeps
+   * reading back a fuel plan the driver has already changed.
+   */
+  fuelPlanChangedThisTick: boolean;
   // Tire debounce — same model but over a 4-bit set rather than a single bit.
   lastSeenTireFlags: number; // most recent observed tire bits (any tick)
   lastTireChangeAt: number; // 0 = stable; >0 = ms timestamp of most recent tire flag flip
@@ -1152,6 +1164,7 @@ export function createInitialState(): TranslatorState {
     fastRepairDebounce: { pendingAt: 0, lastSeen: false },
     autoFuelBaseline: false,
     autoFuelDebounce: { pendingAt: 0, lastSeen: false },
+    fuelPlanChangedThisTick: false,
     lastSeenTireFlags: 0,
     lastTireChangeAt: 0,
 

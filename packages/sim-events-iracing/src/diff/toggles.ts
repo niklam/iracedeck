@@ -4,12 +4,14 @@
  * Emits:
  *   - pitService.toggled { service, on } — when Fuel / WindshieldTearoff /
  *     FastRepair bits in PitSvFlags flip. The fuel bit is the exception: a
- *     flip settling while auto-fuel is armed, or inside an auto-fuel switch's
- *     own window, publishes NOTHING (issue #474) — see the next line.
+ *     flip settling while auto-fuel is (settled) armed, or on the tick an
+ *     auto-fuel switch settles, publishes NOTHING (issue #474) — see the
+ *     next line.
  *   - pitService.autoFuelSwitched { on, refuel } — when auto-fuel
  *     (`dpFuelAutoFillActive`) is switched on or off, debounced like the
- *     bits, with `refuel` the fuel request the change leaves behind. Silent
- *     from pit road onward, where the stop itself consumes auto-fuel.
+ *     bits, with `refuel` the settled fuel request the change leaves behind.
+ *     A switch that ARMS on pit road is dropped, where the stop itself
+ *     consumes auto-fuel; one that armed before pit road still lands.
  *   - tireService.changed { added, removed, current } — when tire service
  *     bits flip. `current` is the post-change set so consumers can decide
  *     based on the resulting state (vs. trying to reconstruct it from the
@@ -68,29 +70,31 @@ export const TIRE_DEBOUNCE_MS = 500;
  */
 export const PIT_SERVICE_DEBOUNCE_MS = 300;
 
+/** What one tick did to a debounced boolean signal. */
+type DebounceStep = {
+  /** This tick completed the window — the tick to announce the change on. */
+  settled: boolean;
+  /** The baseline after this tick: the settled value on a settle, unchanged otherwise. */
+  baseline: boolean;
+};
+
 /**
- * Debounce one boolean signal against its baseline. Returns the new baseline
- * value. Mutates the debounce state in place.
- *
- * `settledEvent` names what a settled change publishes, given the settled
- * value. It is called on the settling tick only, and may return `null` for a
- * change that is deliberately silent — the baseline advances either way,
- * which is what keeps a silent flip from being re-announced later (issue
- * #474 relies on both halves of that).
+ * Debounce one boolean signal against its baseline, deciding only — nothing
+ * is published here, so a caller can settle several signals before any of
+ * them speaks (issue #474 needs exactly that). Mutates the debounce state in
+ * place.
  */
-function diffDebouncedFlag(
-  settledEvent: (on: boolean) => PendingEvent | null,
+function stepDebouncedFlag(
   current: boolean,
   baseline: boolean,
   debounce: ServiceDebounceState,
   now: number,
-  emit: EmitFn,
-): boolean {
+): DebounceStep {
   if (current === baseline) {
     debounce.pendingAt = 0;
     debounce.lastSeen = current;
 
-    return baseline;
+    return { settled: false, baseline };
   }
 
   if (debounce.pendingAt === 0 || current !== debounce.lastSeen) {
@@ -99,22 +103,22 @@ function diffDebouncedFlag(
   }
 
   if (now - debounce.pendingAt >= PIT_SERVICE_DEBOUNCE_MS) {
-    const event = settledEvent(current);
-
-    if (event !== null) emit(event);
-
     debounce.pendingAt = 0;
 
-    return current;
+    return { settled: true, baseline: current };
   }
 
-  return baseline;
+  return { settled: false, baseline };
 }
 
 /**
- * Debounce a single pit-service bit out of `PitSvFlags`. Returns the new
- * baseline value (true if set, false if cleared) — caller folds it back into
- * the persisted baseline-flags integer.
+ * Debounce a single pit-service bit out of `PitSvFlags` and publish what a
+ * settled flip says. Returns the new baseline value (true if set, false if
+ * cleared) — caller folds it back into the persisted baseline-flags integer.
+ *
+ * `settledEvent` may return `null` for a flip that is deliberately silent;
+ * the baseline advances either way, which is what keeps a silent flip from
+ * being re-announced later (issue #474 relies on both halves of that).
  */
 function diffPitServiceBit(
   settledEvent: (on: boolean) => PendingEvent | null,
@@ -125,14 +129,15 @@ function diffPitServiceBit(
   now: number,
   emit: EmitFn,
 ): boolean {
-  return diffDebouncedFlag(
-    settledEvent,
-    (pitSvFlags & flagMask) !== 0,
-    (baselineFlags & flagMask) !== 0,
-    debounce,
-    now,
-    emit,
-  );
+  const step = stepDebouncedFlag((pitSvFlags & flagMask) !== 0, (baselineFlags & flagMask) !== 0, debounce, now);
+
+  if (step.settled) {
+    const event = settledEvent(step.baseline);
+
+    if (event !== null) emit(event);
+  }
+
+  return step.baseline;
 }
 
 /** A settled windshield / fast-repair flip is always the driver's toggle. */
@@ -172,9 +177,11 @@ function fuelSettledEvent(on: boolean, silent: boolean): PendingEvent | null {
 
 /**
  * What a settled auto-fuel switch publishes (issue #474). `refuel` is the
- * fuel request as it stands when the change settles: auto-fuel having
- * fuelling switched on leaves the ordinary fuel request set when it goes off,
- * so the two facts belong in one line.
+ * SETTLED fuel request the switch leaves behind: auto-fuel having fueling
+ * switched on leaves the ordinary fuel request set when it goes off, so the
+ * two facts belong in one line. Reading the settled request rather than the
+ * live bit is what keeps a press that never settled — one made and taken back
+ * inside the window — from being reported as the plan.
  */
 function autoFuelSwitchedEvent(on: boolean, refuel: boolean): PendingEvent {
   return { event: "pitService.autoFuelSwitched", data: { on, refuel } };
@@ -212,7 +219,6 @@ export function diffToggles(state: TranslatorState, telemetry: TelemetryData, no
   const pitSvCompound = telemetry.PitSvTireCompound ?? 0;
   const currTireBits = pitSvFlags & TIRE_FLAGS_MASK;
   const autoFuelArmed = isAutoFuelActive(telemetry);
-  const fuelRequested = (pitSvFlags & PitSvFlags.FuelFill) !== 0;
 
   // Seed silently on first tick, off-track, or while in the pit stall.
   // While the crew is servicing the car, iRacing flips tire/service bits
@@ -237,50 +243,50 @@ export function diffToggles(state: TranslatorState, telemetry: TelemetryData, no
     };
     state.fastRepairDebounce = { pendingAt: 0, lastSeen: (pitSvFlags & PitSvFlags.FastRepair) !== 0 };
     seedAutoFuel(state, autoFuelArmed);
+    state.fuelPlanChangedThisTick = false;
 
     return;
   }
 
-  // ── Auto-fuel switched on / off (issue #474) ──────────────────────────
-  // Runs BEFORE the fuel bit, which asks whether a switch is in flight.
+  // ── Auto-fuel switched on / off (issue #474), phase 1: decide ──────────
+  // The switch and the fuel bit each debounce, and EVERY read that decides
+  // what is said is of a settled value, never of this tick's raw telemetry.
+  // So the switch is stepped here without publishing: the fuel bit needs to
+  // know whether it settles, and the switch needs the fuel request it leaves
+  // behind, which is not known until the fuel bit has stepped too. It is
+  // announced in phase 3 below.
   //
-  // Silent from pit road onward, on top of the seeding rules above: the stop
-  // CONSUMES auto-fuel, so the flag drops 1 → 0 as the stop begins (twice in
-  // the capture, both on pit road, ~200 ms before the in-stall flag). That is
-  // the sim's bookkeeping, not a decision anyone made. Re-seeding on every
-  // pit-road tick is what keeps it silent rather than merely deferred —
-  // otherwise leaving pit road would fire the drop the stop caused. Auto-fuel
-  // re-arming at pit APPROACH still announces: `OnPitRoad` is false there.
-  let autoFuelJustSwitched = false;
+  // The gate is on where a switch STARTED, not where it settles. While on pit
+  // road a switch that is not already pending is skipped and its baseline
+  // re-seeded: the stop CONSUMES auto-fuel, so the flag drops 1 → 0 as the
+  // stop begins (twice in the capture, both on pit road, ~200 ms before the
+  // in-stall flag) — the sim's bookkeeping, not a decision anyone made.
+  // Re-seeding is what makes that silence permanent rather than deferred to
+  // the tick the car leaves pit road. A switch that armed BEFORE pit road is
+  // let through, because it is the driver's or the takeover's: pit approach
+  // can be under 300 ms from pit road on a short track, and on a dirt oval
+  // the approach IS the drive-in edge.
+  const autoFuelPending = state.autoFuelDebounce.pendingAt !== 0;
+  let autoFuelStep: DebounceStep = { settled: false, baseline: state.autoFuelBaseline };
 
-  if (onPitRoad) {
+  if (onPitRoad && !autoFuelPending) {
     seedAutoFuel(state, autoFuelArmed);
   } else {
-    state.autoFuelBaseline = diffDebouncedFlag(
-      (on) => {
-        autoFuelJustSwitched = true;
-
-        // `refuel` reads the bit live rather than the debounced baseline: the
-        // capture's takeover clears the request in the very tick it arms
-        // auto-fuel, and the answer to "what are we left with" is what the
-        // request says once the change has settled.
-        return autoFuelSwitchedEvent(on, fuelRequested);
-      },
-      autoFuelArmed,
-      state.autoFuelBaseline,
-      state.autoFuelDebounce,
-      now,
-      emit,
-    );
+    autoFuelStep = stepDebouncedFlag(autoFuelArmed, state.autoFuelBaseline, state.autoFuelDebounce, now);
+    state.autoFuelBaseline = autoFuelStep.baseline;
   }
 
-  // A fuel flip that settles while auto-fuel is armed says nothing, and
-  // neither does one settling inside a switch's own window — that flip IS the
-  // switch's consequence, and `refuel` already carries it. Sharing
-  // `PIT_SERVICE_DEBOUNCE_MS` between the two is what makes "inside the
-  // window" the same span for both, so the pair can never split one change
-  // into two lines.
-  const fuelFlipIsSilent = autoFuelArmed || autoFuelJustSwitched || state.autoFuelDebounce.pendingAt !== 0;
+  // Phase 2: the fuel bit, whose silence is decided by SETTLED auto-fuel —
+  // the debounced armed state, plus a switch settling on this very tick,
+  // whose consequence the switch's own `refuel` carries. A switch that is
+  // merely pending does NOT silence it: a one-tick blip of the flag would
+  // otherwise swallow the driver's press for good, announcing neither.
+  //
+  // Two settled changes still make two lines, and should: auto-fuel switched
+  // off and a fuel press a few hundred ms later are two separate actions, in
+  // that order, each with its own line.
+  const fuelFlipIsSilent = state.autoFuelBaseline || autoFuelStep.settled;
+  const fuelBaselineBefore = (state.lastPitSvFlags & PitSvFlags.FuelFill) !== 0;
 
   // ── Pit service (fuel / windshield / fast-repair, debounced) ───────────
   const nextBaselineFuel = diffPitServiceBit(
@@ -292,6 +298,19 @@ export function diffToggles(state: TranslatorState, telemetry: TelemetryData, no
     now,
     emit,
   );
+
+  // The fuel debounce only ever settles into a value that differs from its
+  // baseline, so this IS "the fuel request settled this tick" — published or
+  // silenced. `diffPitReadback` reads it to refresh the pit-road recap for a
+  // change the callout deliberately said nothing about.
+  state.fuelPlanChangedThisTick = nextBaselineFuel !== fuelBaselineBefore;
+
+  // Phase 3: announce the switch, now that the fuel request has settled, so
+  // `refuel` is the plan it leaves behind rather than a bit still in flight.
+  if (autoFuelStep.settled) {
+    emit(autoFuelSwitchedEvent(state.autoFuelBaseline, nextBaselineFuel));
+  }
+
   const nextBaselineWindshield = diffPitServiceBit(
     toggledEvent("windshield"),
     PitSvFlags.WindshieldTearoff,
