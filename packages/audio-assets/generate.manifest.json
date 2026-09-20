@@ -18314,12 +18314,12 @@
       "requestId": "XLsNSw1I4acDpvyZDXMw"
     },
     "voice/terse/position-intro-better/that-puts-us-to-01.mp3": {
-      "hash": "c0033b8632b2114b",
+      "hash": "9d4d05a4e387cf8d",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "That puts us to",
-      "generatedAt": "2026-09-11T08:02:20.872Z",
-      "requestId": "C3MZYiklfhMFqRSsNJiH"
+      "generatedAt": "2026-09-20T16:07:42.248Z",
+      "requestId": "iN1HaritkOHl5dVKrkAg"
     },
     "voice/terse/position-intro-worse/currently-01.mp3": {
       "hash": "c96ab1d20d420ebe",
@@ -18338,516 +18338,516 @@
       "requestId": "7VCE2auh7VJc4xtB05ll"
     },
     "voice/terse/position-number/1.mp3": {
-      "hash": "f6b683e0dbd4461c",
+      "hash": "bc4c2cd4ed0fadf5",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee one.",
-      "generatedAt": "2026-09-11T08:02:21.463Z",
-      "requestId": "TuhaLPBqsrTcyhcUGWIm"
+      "generatedAt": "2026-09-20T16:07:42.440Z",
+      "requestId": "DxDUcYLsVYk1th5Lcb90"
     },
     "voice/terse/position-number/2.mp3": {
-      "hash": "ec29cb190b5afe6c",
+      "hash": "307107c166ce031c",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee two.",
-      "generatedAt": "2026-09-11T08:02:21.683Z",
-      "requestId": "IsMIfDDoT997tTCRDoDx"
+      "generatedAt": "2026-09-20T16:07:42.626Z",
+      "requestId": "sYGVS2PKg0RhKBw7SpvL"
     },
     "voice/terse/position-number/3.mp3": {
-      "hash": "73b40fcef31b5cf6",
+      "hash": "fa44d5b8d75a65b4",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee three.",
-      "generatedAt": "2026-09-11T08:02:21.894Z",
-      "requestId": "xRsnq6NJlrfY1MJVNqOG"
+      "generatedAt": "2026-09-20T16:07:42.808Z",
+      "requestId": "N6KtT8pTiShIWqMygPtX"
     },
     "voice/terse/position-number/4.mp3": {
-      "hash": "6be78cfb095806fe",
+      "hash": "504f0af3de896193",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee four.",
-      "generatedAt": "2026-09-11T08:02:22.112Z",
-      "requestId": "TNtxaQdbm6ncRWKwW9rs"
+      "generatedAt": "2026-09-20T16:07:43.007Z",
+      "requestId": "RbpynnAkmpCgRA4zVazi"
     },
     "voice/terse/position-number/5.mp3": {
-      "hash": "6caadf69f270629e",
+      "hash": "9e7bbfd1b3070bfd",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee five.",
-      "generatedAt": "2026-09-11T08:02:22.315Z",
-      "requestId": "DX6fCcjk5ifb6ceQTPfQ"
+      "generatedAt": "2026-09-20T16:07:43.215Z",
+      "requestId": "WzwLokhILpS5yLG8WTpB"
     },
     "voice/terse/position-number/6.mp3": {
-      "hash": "74000b8c68ba6fe6",
+      "hash": "101b637f23e32dd4",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee six.",
-      "generatedAt": "2026-09-11T08:02:22.551Z",
-      "requestId": "SINYOYSWpRd0VWIbDai1"
+      "generatedAt": "2026-09-20T16:07:43.396Z",
+      "requestId": "FisU6IA4uYHsW7jhqv2W"
     },
     "voice/terse/position-number/7.mp3": {
-      "hash": "4f4b4dbcd2791cb5",
+      "hash": "22e3887080114c8c",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee seven.",
-      "generatedAt": "2026-09-11T08:02:22.755Z",
-      "requestId": "sKYdM5CnpdDQfCUm94nY"
+      "generatedAt": "2026-09-20T16:07:43.584Z",
+      "requestId": "wbVtYbPcZ4kRp9OAoZUI"
     },
     "voice/terse/position-number/8.mp3": {
-      "hash": "08462c52d56ccf41",
+      "hash": "77b33e09db80667c",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee eight.",
-      "generatedAt": "2026-09-11T08:02:22.970Z",
-      "requestId": "DyyRD4p6TGRjtzn1xsyU"
+      "generatedAt": "2026-09-20T16:07:43.753Z",
+      "requestId": "Ww7huYZbHuINoO1lRz3p"
     },
     "voice/terse/position-number/9.mp3": {
-      "hash": "d2a34becd30f56ff",
+      "hash": "47557091531bc943",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee nine.",
-      "generatedAt": "2026-09-11T08:02:23.184Z",
-      "requestId": "tsPcJa9l1pAht7YdUsoB"
+      "generatedAt": "2026-09-20T16:07:43.984Z",
+      "requestId": "uYb2KYkjQ6Rq1FA7g7yn"
     },
     "voice/terse/position-number/10.mp3": {
-      "hash": "40079a1f7945f7f9",
+      "hash": "3006b6cdbcf7f7e7",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee ten.",
-      "generatedAt": "2026-09-11T08:02:23.429Z",
-      "requestId": "tQqdr1cLm0RAJ4Fowy82"
+      "generatedAt": "2026-09-20T16:07:44.158Z",
+      "requestId": "SUO6ByDlfQm4FwxiQrcg"
     },
     "voice/terse/position-number/11.mp3": {
-      "hash": "f0e437cffe7772f5",
+      "hash": "a6fc238dac5d14fd",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee eleven.",
-      "generatedAt": "2026-09-11T08:02:23.657Z",
-      "requestId": "PSgs7mqYBnYxKMceANS8"
+      "generatedAt": "2026-09-20T16:07:44.333Z",
+      "requestId": "1DzsFoFkBGaKRpXV4Rrv"
     },
     "voice/terse/position-number/12.mp3": {
-      "hash": "b9e77c424e5c4f52",
+      "hash": "232e7bab8bbd234a",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee twelve.",
-      "generatedAt": "2026-09-11T08:02:23.871Z",
-      "requestId": "Y1lFcTepoDYEgMl2qGTK"
+      "generatedAt": "2026-09-20T16:07:44.733Z",
+      "requestId": "d78zDfSE93RZHKwnQHMc"
     },
     "voice/terse/position-number/13.mp3": {
-      "hash": "616ecb3c8d57b5e0",
+      "hash": "f0362a43309a9335",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee thirteen.",
-      "generatedAt": "2026-09-11T08:02:24.077Z",
-      "requestId": "QS9QjYKqGFRU5Oh5rQY8"
+      "generatedAt": "2026-09-20T16:07:45.015Z",
+      "requestId": "ixwkS6vjp3zJENSgAREU"
     },
     "voice/terse/position-number/14.mp3": {
-      "hash": "0a7741234748761e",
+      "hash": "5db2c0d15b06cbaf",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee fourteen.",
-      "generatedAt": "2026-09-11T08:02:24.310Z",
-      "requestId": "XIlkasD8y77SXXQDTVgg"
+      "generatedAt": "2026-09-20T16:07:45.195Z",
+      "requestId": "JpA20rnbsSZgMAcfy2E1"
     },
     "voice/terse/position-number/15.mp3": {
-      "hash": "16f2a1c07d5d6a15",
+      "hash": "1d67a8e598f206a7",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee fifteen.",
-      "generatedAt": "2026-09-11T08:02:24.528Z",
-      "requestId": "EsxvKeDomPcLl7rBU9XI"
+      "generatedAt": "2026-09-20T16:07:45.385Z",
+      "requestId": "KOlWSP053hjQS7ym3205"
     },
     "voice/terse/position-number/16.mp3": {
-      "hash": "5f2494961bc516a0",
+      "hash": "035b6bb0a8ddaa33",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee sixteen.",
-      "generatedAt": "2026-09-11T08:02:24.735Z",
-      "requestId": "E3e3mveP5hYAogQDpBZp"
+      "generatedAt": "2026-09-20T16:07:45.574Z",
+      "requestId": "TChKX9hZGt5k0pCnfVFM"
     },
     "voice/terse/position-number/17.mp3": {
-      "hash": "e01182c0f90d4dd1",
+      "hash": "85003f80e2ed570a",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee seventeen.",
-      "generatedAt": "2026-09-11T08:02:24.951Z",
-      "requestId": "O44WORbZxOVwpLs71c5e"
+      "generatedAt": "2026-09-20T16:07:45.817Z",
+      "requestId": "olyVdDAuxBeBkb1n7iCg"
     },
     "voice/terse/position-number/18.mp3": {
-      "hash": "f0b49571cf08a214",
+      "hash": "ce52825faf7e5755",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee eighteen.",
-      "generatedAt": "2026-09-11T08:02:25.151Z",
-      "requestId": "C0U2Dle0U7OHmnYRGz25"
+      "generatedAt": "2026-09-20T16:07:46.031Z",
+      "requestId": "thxYLLbAYt83EHb3a6EG"
     },
     "voice/terse/position-number/19.mp3": {
-      "hash": "c03fb6c3db8d1771",
+      "hash": "70f5094cd24ab2e8",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee nineteen.",
-      "generatedAt": "2026-09-11T08:02:25.432Z",
-      "requestId": "IRLTxWDqjOV7sCWvlJI7"
+      "generatedAt": "2026-09-20T16:07:46.212Z",
+      "requestId": "VWLVe6KfS0bfepmd4rZP"
     },
     "voice/terse/position-number/20.mp3": {
-      "hash": "8cdebdc2c013db87",
+      "hash": "69e92537f2205335",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee twenty.",
-      "generatedAt": "2026-09-11T08:02:25.639Z",
-      "requestId": "DntmWs5TfHXVa9hD4Tuo"
+      "generatedAt": "2026-09-20T16:07:46.394Z",
+      "requestId": "qQMXIRH6WNdOrGjfABlF"
     },
     "voice/terse/position-number/21.mp3": {
-      "hash": "e103995d30fd06eb",
+      "hash": "a1dc37dcf2db2f93",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee twenty one.",
-      "generatedAt": "2026-09-11T08:02:25.856Z",
-      "requestId": "LYK7zJEBF6pRnvZrLDnf"
+      "generatedAt": "2026-09-20T16:07:46.572Z",
+      "requestId": "OzPzIeLvJJL37VwdHzjk"
     },
     "voice/terse/position-number/22.mp3": {
-      "hash": "3885361207a0c5d2",
+      "hash": "f7054d2882108f1c",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee twenty two.",
-      "generatedAt": "2026-09-11T08:02:26.125Z",
-      "requestId": "Oj1lO3FWDgZYljZUSZhY"
+      "generatedAt": "2026-09-20T16:07:46.757Z",
+      "requestId": "SwlARyhUBHBlJFLJefob"
     },
     "voice/terse/position-number/23.mp3": {
-      "hash": "bf40819dc1c9f4c6",
+      "hash": "0955ae7ab9f2f168",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee twenty three.",
-      "generatedAt": "2026-09-11T08:02:26.341Z",
-      "requestId": "YojkxyjFvTBlPNMcjbyd"
+      "generatedAt": "2026-09-20T16:07:46.945Z",
+      "requestId": "WIgCquFVGzEzY0rY1Gce"
     },
     "voice/terse/position-number/24.mp3": {
-      "hash": "758de373960ed8a1",
+      "hash": "bb8bffad90f18f62",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee twenty four.",
-      "generatedAt": "2026-09-11T08:02:26.554Z",
-      "requestId": "bmTAV5rJ6Hrkq4lQfUeq"
+      "generatedAt": "2026-09-20T16:07:47.135Z",
+      "requestId": "JO7VFiDLP5cm7k40fv4U"
     },
     "voice/terse/position-number/25.mp3": {
-      "hash": "d603ed787ffc9e65",
+      "hash": "e2c5d9e3b0f9dec7",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee twenty five.",
-      "generatedAt": "2026-09-11T08:02:26.788Z",
-      "requestId": "gmoldQD0gqoESu2ZlEpu"
+      "generatedAt": "2026-09-20T16:07:47.324Z",
+      "requestId": "QUCPztgwndhPoKiE7x1K"
     },
     "voice/terse/position-number/26.mp3": {
-      "hash": "48b3db53796c08f5",
+      "hash": "5910e4c8bc19e2bf",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee twenty six.",
-      "generatedAt": "2026-09-11T08:02:27.036Z",
-      "requestId": "JcoAxs2paQq02F8gdvLY"
+      "generatedAt": "2026-09-20T16:07:47.527Z",
+      "requestId": "Xrf8NyXT8iB01kSw7x8R"
     },
     "voice/terse/position-number/27.mp3": {
-      "hash": "3c942a64c2cc7991",
+      "hash": "d4b7a2758138e59f",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee twenty seven.",
-      "generatedAt": "2026-09-11T08:02:27.297Z",
-      "requestId": "3V4M5bZ6jamB6QBcNCEs"
+      "generatedAt": "2026-09-20T16:07:47.729Z",
+      "requestId": "tkFEiUi8eWsJuisvhh0j"
     },
     "voice/terse/position-number/28.mp3": {
-      "hash": "a022089eceec0665",
+      "hash": "9e8731a850bf0f6a",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee twenty eight.",
-      "generatedAt": "2026-09-11T08:02:27.544Z",
-      "requestId": "RQ7dcW23DIVrMpdcNUrK"
+      "generatedAt": "2026-09-20T16:07:47.920Z",
+      "requestId": "AhTN4enNUmytylDJWrg1"
     },
     "voice/terse/position-number/29.mp3": {
-      "hash": "b6238efd9c0b4eff",
+      "hash": "7a5ee87b15767678",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee twenty nine.",
-      "generatedAt": "2026-09-11T08:02:27.767Z",
-      "requestId": "kcSx3HV9kbdMIDBB8ouy"
+      "generatedAt": "2026-09-20T16:07:48.114Z",
+      "requestId": "gyBKi8Iq2WVNKTwMUi1c"
     },
     "voice/terse/position-number/30.mp3": {
-      "hash": "114d99b9c42d6716",
+      "hash": "fff354b7748782b4",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee thirty.",
-      "generatedAt": "2026-09-11T08:02:27.968Z",
-      "requestId": "Adjr7MWIbWsyEVMy53SX"
+      "generatedAt": "2026-09-20T16:07:48.295Z",
+      "requestId": "HWsjfsy9vEmLdfGAVcDx"
     },
     "voice/terse/position-number/31.mp3": {
-      "hash": "ba05c491b7ffef20",
+      "hash": "70f7471ac61badc0",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee thirty one.",
-      "generatedAt": "2026-09-11T08:02:28.191Z",
-      "requestId": "kP9A6dTiTHjSrvBmUZFE"
+      "generatedAt": "2026-09-20T16:07:48.726Z",
+      "requestId": "FR3nTqcO4sR5St05qLmG"
     },
     "voice/terse/position-number/32.mp3": {
-      "hash": "82ca425b685b6bbb",
+      "hash": "080b9f38d3dfa18f",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee thirty two.",
-      "generatedAt": "2026-09-11T08:02:28.401Z",
-      "requestId": "nJRBIDTYD5yIDctViZXX"
+      "generatedAt": "2026-09-20T16:07:48.974Z",
+      "requestId": "yKhuSU0Y9NoFJr2jAaTS"
     },
     "voice/terse/position-number/33.mp3": {
-      "hash": "6246baa18dab6546",
+      "hash": "1609c2fba4b66426",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee thirty three.",
-      "generatedAt": "2026-09-11T08:02:28.642Z",
-      "requestId": "wTXPhcQyZVWRn4B1OGaJ"
+      "generatedAt": "2026-09-20T16:07:49.198Z",
+      "requestId": "qgJkLaRUugPfwUEWQGO6"
     },
     "voice/terse/position-number/34.mp3": {
-      "hash": "f13fcbdf8738213a",
+      "hash": "4b2d494435672baa",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee thirty four.",
-      "generatedAt": "2026-09-11T08:02:28.895Z",
-      "requestId": "Ga0HZ9WIKug7xl6bqEPt"
+      "generatedAt": "2026-09-20T16:07:49.378Z",
+      "requestId": "eA28S6UGgXu71qzgIxX5"
     },
     "voice/terse/position-number/35.mp3": {
-      "hash": "5b21292436d0e7b6",
+      "hash": "c4edf1d526e083b7",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee thirty five.",
-      "generatedAt": "2026-09-11T08:02:29.306Z",
-      "requestId": "TVpr7QJIaBjCTD5AGuJo"
+      "generatedAt": "2026-09-20T16:07:49.574Z",
+      "requestId": "6Vz0GNDMY5PXnKm4KkD3"
     },
     "voice/terse/position-number/36.mp3": {
-      "hash": "bb97b0bc0629c2cb",
+      "hash": "d006653ad48b9968",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee thirty six.",
-      "generatedAt": "2026-09-11T08:02:29.530Z",
-      "requestId": "hfvcmfu9M1xKdCoip7ri"
+      "generatedAt": "2026-09-20T16:07:49.826Z",
+      "requestId": "IJE2txL1is8rm56cHbN4"
     },
     "voice/terse/position-number/37.mp3": {
-      "hash": "79c3d8143882e15b",
+      "hash": "93d8f4469aa0388a",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee thirty seven.",
-      "generatedAt": "2026-09-11T08:02:29.754Z",
-      "requestId": "Rb5kTqMLx0ZKkWKpUpbA"
+      "generatedAt": "2026-09-20T16:07:50.015Z",
+      "requestId": "49uwdZyFI2zA6fqffE2X"
     },
     "voice/terse/position-number/38.mp3": {
-      "hash": "2be9bf8d03d6a95b",
+      "hash": "b2c9ad251df2be68",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee thirty eight.",
-      "generatedAt": "2026-09-11T08:02:29.970Z",
-      "requestId": "xHTlGJuS3I6vHHxX42IL"
+      "generatedAt": "2026-09-20T16:07:50.239Z",
+      "requestId": "KGfCVX4G4YJE3LiEYDe3"
     },
     "voice/terse/position-number/39.mp3": {
-      "hash": "c41b46cd13840327",
+      "hash": "6d7bb15d88a0b2a5",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee thirty nine.",
-      "generatedAt": "2026-09-11T08:02:30.201Z",
-      "requestId": "adM16tGNXbjk7ziQbpMs"
+      "generatedAt": "2026-09-20T16:07:50.454Z",
+      "requestId": "kPWu45sTlSEYMxsso6CU"
     },
     "voice/terse/position-number/40.mp3": {
-      "hash": "c96d9048b48fd131",
+      "hash": "60fa76cdbc0862a5",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee forty.",
-      "generatedAt": "2026-09-11T08:02:30.427Z",
-      "requestId": "ZlL1qxUUuYGgMUIL6W5A"
+      "generatedAt": "2026-09-20T16:07:50.631Z",
+      "requestId": "8CjlqhFKtcojZUJ1NRiN"
     },
     "voice/terse/position-number/41.mp3": {
-      "hash": "0be6499499293635",
+      "hash": "e44c6db1249f1920",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee forty one.",
-      "generatedAt": "2026-09-11T08:02:30.643Z",
-      "requestId": "AbKbJyWCgbvgVKYG3gLR"
+      "generatedAt": "2026-09-20T16:07:50.803Z",
+      "requestId": "X0XHSMuN33BOGDsSRBCg"
     },
     "voice/terse/position-number/42.mp3": {
-      "hash": "8ec9180553d04566",
+      "hash": "3df82c37ab70b819",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee forty two.",
-      "generatedAt": "2026-09-11T08:02:30.854Z",
-      "requestId": "18pdf47ehJooxex3b8r1"
+      "generatedAt": "2026-09-20T16:07:50.997Z",
+      "requestId": "vIlf7G4030WuexAVVioe"
     },
     "voice/terse/position-number/43.mp3": {
-      "hash": "8ba2434aff057150",
+      "hash": "15c6717e3ecb1617",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee forty three.",
-      "generatedAt": "2026-09-11T08:02:31.076Z",
-      "requestId": "urD2ARw1NWEke2pKDYbh"
+      "generatedAt": "2026-09-20T16:07:51.189Z",
+      "requestId": "4l1ACZy3wcJuO4P5OYd2"
     },
     "voice/terse/position-number/44.mp3": {
-      "hash": "1f1303b66ae07885",
+      "hash": "89d2a20b1e77ba10",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee forty four.",
-      "generatedAt": "2026-09-11T08:02:31.283Z",
-      "requestId": "ZNKndSDxEQK3pYb183fv"
+      "generatedAt": "2026-09-20T16:07:51.393Z",
+      "requestId": "5iNIVCpMeIBFTHHUO54j"
     },
     "voice/terse/position-number/45.mp3": {
-      "hash": "2f9109d396dc3f51",
+      "hash": "144eea01b7028694",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee forty five.",
-      "generatedAt": "2026-09-11T08:02:31.499Z",
-      "requestId": "cIqpiwCJqQdF8leRBOiv"
+      "generatedAt": "2026-09-20T16:07:51.580Z",
+      "requestId": "1ZMP9dkBsI5S7mnUixJw"
     },
     "voice/terse/position-number/46.mp3": {
-      "hash": "fdff268239d73f7c",
+      "hash": "459bb8313a0330b9",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee forty six.",
-      "generatedAt": "2026-09-11T08:02:31.707Z",
-      "requestId": "acOb4Xk3kM6OhHK0tzse"
+      "generatedAt": "2026-09-20T16:07:51.766Z",
+      "requestId": "bQWQw6azAXpyIrsFGb3B"
     },
     "voice/terse/position-number/47.mp3": {
-      "hash": "5c29317641eecbc1",
+      "hash": "3d67f5218e7dee01",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee forty seven.",
-      "generatedAt": "2026-09-11T08:02:31.926Z",
-      "requestId": "hUKM6bP5LMcadJrQlPBe"
+      "generatedAt": "2026-09-20T16:07:51.948Z",
+      "requestId": "zbWFQWlFKdMAZD3Cu9Rh"
     },
     "voice/terse/position-number/48.mp3": {
-      "hash": "c2f8c5d60746c75b",
+      "hash": "d4957963377349c6",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee forty eight.",
-      "generatedAt": "2026-09-11T08:02:32.141Z",
-      "requestId": "0EwyQleS2vrQusHb6oro"
+      "generatedAt": "2026-09-20T16:07:52.170Z",
+      "requestId": "tO6mdApfPA20LBNdjGi8"
     },
     "voice/terse/position-number/49.mp3": {
-      "hash": "5be1892ded586ad7",
+      "hash": "0b68a00ab2464572",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee forty nine.",
-      "generatedAt": "2026-09-11T08:02:32.364Z",
-      "requestId": "8woeGi4RstZI4LDJHeap"
+      "generatedAt": "2026-09-20T16:07:52.365Z",
+      "requestId": "3Pgl8Yf1PB37V6LzWmUI"
     },
     "voice/terse/position-number/50.mp3": {
-      "hash": "1f61cc74a0159883",
+      "hash": "156fb9d4b23b2a32",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee fifty.",
-      "generatedAt": "2026-09-11T08:02:32.578Z",
-      "requestId": "zaTZFd99xpSllCMvWII4"
+      "generatedAt": "2026-09-20T16:07:52.573Z",
+      "requestId": "tGT5kw3n0JA3ZiWP5wnb"
     },
     "voice/terse/position-number/51.mp3": {
-      "hash": "3abecfa78d39f270",
+      "hash": "cec429c6d00edcfa",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee fifty one.",
-      "generatedAt": "2026-09-11T08:02:32.806Z",
-      "requestId": "rRMAbmdqqKygt1Kb25Zy"
+      "generatedAt": "2026-09-20T16:07:53.091Z",
+      "requestId": "hUM36WDIf4OEKfjjemlx"
     },
     "voice/terse/position-number/52.mp3": {
-      "hash": "c7ef2d8be93dc2db",
+      "hash": "ddb51b507119255f",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee fifty two.",
-      "generatedAt": "2026-09-11T08:02:33.032Z",
-      "requestId": "SQscPtifWGvYAGcjdTCj"
+      "generatedAt": "2026-09-20T16:07:53.281Z",
+      "requestId": "89GneJHdbExAo9bk2kU6"
     },
     "voice/terse/position-number/53.mp3": {
-      "hash": "7fadd688d2326162",
+      "hash": "4eb8eb494c56c93b",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee fifty three.",
-      "generatedAt": "2026-09-11T08:02:33.246Z",
-      "requestId": "IiNKCcqUzI6L8EOheJ2h"
+      "generatedAt": "2026-09-20T16:07:53.480Z",
+      "requestId": "bBlIvHkbTP6jgrfEVlCl"
     },
     "voice/terse/position-number/54.mp3": {
-      "hash": "9c2ff6ed53036eda",
+      "hash": "1ef5b8f49ab0decc",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee fifty four.",
-      "generatedAt": "2026-09-11T08:02:33.458Z",
-      "requestId": "mcHK8CXt7kLfUIqY4jN9"
+      "generatedAt": "2026-09-20T16:07:53.680Z",
+      "requestId": "PncWNYxNrKa8rpNfInGI"
     },
     "voice/terse/position-number/55.mp3": {
-      "hash": "994475d36a0d93b2",
+      "hash": "4385d45292118221",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee fifty five.",
-      "generatedAt": "2026-09-11T08:02:33.686Z",
-      "requestId": "SuMUH9cxpdjTmJVSxT6Z"
+      "generatedAt": "2026-09-20T16:07:53.875Z",
+      "requestId": "WjbFIjfPJCSy240v4loN"
     },
     "voice/terse/position-number/56.mp3": {
-      "hash": "bd8191de8c08278b",
+      "hash": "48232ec9c0550909",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee fifty six.",
-      "generatedAt": "2026-09-11T08:02:33.920Z",
-      "requestId": "ntfIjtbAoQtY9djKhNkD"
+      "generatedAt": "2026-09-20T16:07:54.070Z",
+      "requestId": "ldCHm5NK9JywZyPm0DPG"
     },
     "voice/terse/position-number/57.mp3": {
-      "hash": "d47566641473e4ab",
+      "hash": "27d07f78a58a12ad",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee fifty seven.",
-      "generatedAt": "2026-09-11T08:02:34.132Z",
-      "requestId": "cjEUJECX3oG9dVl6birv"
+      "generatedAt": "2026-09-20T16:07:54.292Z",
+      "requestId": "IvNnIv9b61XIk5gpiZMz"
     },
     "voice/terse/position-number/58.mp3": {
-      "hash": "18128a7d0b342e12",
+      "hash": "772567e100f846b2",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee fifty eight.",
-      "generatedAt": "2026-09-11T08:02:34.369Z",
-      "requestId": "XgPZ6ircSUrimCH1YY7v"
+      "generatedAt": "2026-09-20T16:07:54.469Z",
+      "requestId": "fpEmrbR4qIDPM4TGKOvs"
     },
     "voice/terse/position-number/59.mp3": {
-      "hash": "61df3f2b2fc0270d",
+      "hash": "3c618594fe067e8f",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee fifty nine.",
-      "generatedAt": "2026-09-11T08:02:34.582Z",
-      "requestId": "y9JQZHhu9IZ3gGMNNAcD"
+      "generatedAt": "2026-09-20T16:07:54.660Z",
+      "requestId": "U5Kp4QYha70jfh56XH5A"
     },
     "voice/terse/position-number/60.mp3": {
-      "hash": "50369662ab616cfe",
+      "hash": "1995b90305390d19",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee sixty.",
-      "generatedAt": "2026-09-11T08:02:34.805Z",
-      "requestId": "Kh6BtNKZQYmPqQbfebOA"
+      "generatedAt": "2026-09-20T16:07:54.849Z",
+      "requestId": "RXDE2VgCSvsHdAzxnJ2r"
     },
     "voice/terse/position-number/61.mp3": {
-      "hash": "e404422ee4db2c3a",
+      "hash": "f6f5004b4153a3e8",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee sixty one.",
-      "generatedAt": "2026-09-11T08:02:35.017Z",
-      "requestId": "pu4AqMmPt711XQSVNjYa"
+      "generatedAt": "2026-09-20T16:07:55.043Z",
+      "requestId": "6qjZIYgaAAmPVN9gZ6JD"
     },
     "voice/terse/position-number/62.mp3": {
-      "hash": "b0980d0fa85b3772",
+      "hash": "2452eae28bedbdb2",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee sixty two.",
-      "generatedAt": "2026-09-11T08:02:35.233Z",
-      "requestId": "echf9g0NqU4qKEOQwP6G"
+      "generatedAt": "2026-09-20T16:07:55.253Z",
+      "requestId": "1JgFUIe6HDT482klj4wz"
     },
     "voice/terse/position-number/63.mp3": {
-      "hash": "fe570d815b3cc993",
+      "hash": "4f0c52d56fcba7cb",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee sixty three.",
-      "generatedAt": "2026-09-11T08:02:35.447Z",
-      "requestId": "cWUpejOI6zC2kYBsk3P4"
+      "generatedAt": "2026-09-20T16:07:55.441Z",
+      "requestId": "ryk15m1I7EWSM09aXZAc"
     },
     "voice/terse/position-number/64.mp3": {
-      "hash": "09b114922420da62",
+      "hash": "dcc8fe9a5d630f4a",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "pee sixty four.",
-      "generatedAt": "2026-09-11T08:02:35.729Z",
-      "requestId": "Z6S0r7auB1s2jyklkLmI"
+      "generatedAt": "2026-09-20T16:07:55.637Z",
+      "requestId": "EbnxiUc2mxs0Duhr1FZh"
     },
     "voice/terse/qualifying-invalidation/invalidated-01.mp3": {
       "hash": "ad3b98e932b2d4ad",
@@ -25082,52 +25082,52 @@
       "requestId": "Oz3diKHZS1tvGzmIavbE"
     },
     "voice/terse/opponent-flags/furled-ahead-tail-01.mp3": {
-      "hash": "470f2d33234e78f0",
+      "hash": "a60e4a8d1d395769",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "has a slow-down.",
-      "generatedAt": "2026-09-11T08:10:11.819Z",
-      "requestId": "PZclFZXMMtUdn68dgDNW"
+      "generatedAt": "2026-09-20T16:07:41.099Z",
+      "requestId": "aNXOw9wTik3IsD0Dk7QL"
     },
     "voice/terse/opponent-flags/black-ahead-tail-01.mp3": {
-      "hash": "665adf9692b43b1c",
+      "hash": "7f11ebc7d7373c57",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "has a black flag.",
-      "generatedAt": "2026-09-11T08:10:12.053Z",
-      "requestId": "u9uP57WGw8e7mn3o04re"
+      "generatedAt": "2026-09-20T16:07:41.291Z",
+      "requestId": "nfkc4VMT1lGAXdKhI9tH"
     },
     "voice/terse/opponent-flags/meatball-ahead-tail-01.mp3": {
-      "hash": "41404137ed66d64a",
+      "hash": "9cb0f7fcd8b93b58",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "has the meatball.",
-      "generatedAt": "2026-09-11T08:10:12.258Z",
-      "requestId": "aeAO9kN3HpiI0rRQehXY"
+      "generatedAt": "2026-09-20T16:07:41.484Z",
+      "requestId": "jBX99jQrI57d7oXjqpGB"
     },
     "voice/terse/opponent-flags/disqualify-ahead-tail-01.mp3": {
-      "hash": "d9ec2a771a2545b3",
+      "hash": "b21cc677703e5861",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "has been disqualified.",
-      "generatedAt": "2026-09-11T08:10:12.477Z",
-      "requestId": "FdOOb28UBAZ7JrsLTfNy"
+      "generatedAt": "2026-09-20T16:07:41.711Z",
+      "requestId": "xp1YdEut6lh4Gpv0ddKq"
     },
     "voice/terse/opponent-pit/car-in-01.mp3": {
-      "hash": "9350fe94dd62c7e0",
+      "hash": "a83498566823d1a0",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "the car in",
-      "generatedAt": "2026-09-13T09:12:45.940Z",
-      "requestId": "h9LPO9lgNDtsKkppKPjF"
+      "generatedAt": "2026-09-20T16:07:41.882Z",
+      "requestId": "z1V2lpjKas7eDxuo0Ql0"
     },
     "voice/terse/opponent-pit/is-pitting-01.mp3": {
-      "hash": "1c11fd57903cd12c",
+      "hash": "02046fe2129a7aaf",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "is pitting.",
-      "generatedAt": "2026-09-11T08:10:12.887Z",
-      "requestId": "NMe7BQc3hszLZZv3oeUe"
+      "generatedAt": "2026-09-20T16:07:42.065Z",
+      "requestId": "l7HWwlOFomNqW79V8cNs"
     },
     "voice/terse/gap/readout-intro.mp3": {
       "hash": "4208a1b510d9068b",
