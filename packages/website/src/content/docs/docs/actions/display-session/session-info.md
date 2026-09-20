@@ -31,13 +31,13 @@ Size of the rendered value, in PI units (5–36, doubled for SVG render). Defaul
 
 ### Time Remaining
 
-Display the session time remaining. The icon flashes when less than 5 minutes remain so you can spot the cutoff at a glance.
+Show how much of the session is left, in whichever form actually ends it. In a timed session that's the clock, counting down under the title `TIME LEFT`. In a session counted in laps it's the number of laps to go, under `LAPS LEFT` — in a race that's the count the checkered flag follows, so it steps down as the leader crosses the line and reads the same for you as for anyone else in the field, lapped cars included. A race can carry a lap limit and a time limit at once; the key then shows whichever of the two will end it first, and switches over if that changes as the race runs. A session with neither limit — an open practice, say — shows `UNLIM`.
 
 #### Details
 
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
-- **Telemetry-aware icon:** Yes — the countdown updates every second and the icon flashes when under 5 minutes remain
+- **Telemetry-aware icon:** Yes — the clock counts down every second, and the laps to go step down as they are completed
 
 #### Setting: Font Size
 

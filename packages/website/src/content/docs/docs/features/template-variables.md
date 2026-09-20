@@ -127,7 +127,7 @@ The text fields (`name`, `first_name`, `last_name`, `abbrev_name`, `car_number`,
 | Variable | Description |
 |----------|-------------|
 | `{{session.type}}` | Session type (Practice, Qualify, Race, etc.) |
-| `{{session.laps_remaining}}` | Laps remaining |
+| `{{session.laps_remaining}}` | Laps remaining (blank in a session with no lap limit) |
 | `{{session.time_remaining}}` | Time remaining (MM:SS) |
 | `{{session.sof}}` | Strength of Field of your class (estimated, race and qualifying sessions) |
 
