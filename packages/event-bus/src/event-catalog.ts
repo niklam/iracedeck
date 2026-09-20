@@ -547,23 +547,27 @@ export type SimEventMap = {
   /**
    * A pit-service request the driver toggled settled into a new state
    * (debounced). For `service: "fuel"` this is only a flip made while the
-   * sim's auto-fuel is NOT armed — one made while it is armed publishes
-   * `pitService.autoFuelChanged` instead (issue #474), so a consumer that
-   * wants every settled fuel change subscribes to both.
+   * sim's auto-fuel is NOT armed: while it is armed the translator publishes
+   * nothing for the fuel bit (issue #474), because iRacing's auto-fuel writes
+   * that bit itself and telemetry carries no source for a flip — announcing
+   * one as the driver's request is the phantom confirmation #474 was filed
+   * about. What auto-fuel does IS announced, when it is switched on or off:
+   * see `pitService.autoFuelSwitched`.
    */
   "pitService.toggled": SimEvent<"pitService.toggled", { service: PitServiceKind; on: boolean }>;
   /**
-   * The fuel-fill request changed while the sim's auto-fuel is armed for the
-   * next stop (issue #474). Fired INSTEAD of `pitService.toggled { service:
-   * "fuel" }` for a settled fuel-fill flip made while auto-fuel is armed —
-   * exactly one of the two per flip, so a consumer of either never has to
-   * filter the other out. `refuel` is the request's new state. A `false`
-   * usually means auto-fuel took the next stop's fuel over rather than that
-   * none will go in: iRacing clears a manual fuel request when auto-fuel
-   * re-arms on pit approach, then fuels whatever the car needs. Arming or
-   * disarming auto-fuel with the request unchanged publishes nothing.
+   * The sim's auto-fuel was switched on or off for the next stop (issue
+   * #474). `refuel` is what the fuel request is LEFT at once the change has
+   * settled — auto-fuel having fuelling switched on leaves the ordinary fuel
+   * request set when it goes off, and switching it on can clear one — so a
+   * consumer can say both facts in one line. A fuel-bit flip settling in the
+   * same window is folded into this event rather than published on its own.
+   *
+   * The translator stays silent for a change made from pit road onward: the
+   * stop itself consumes auto-fuel (the flag drops as the stop begins), and
+   * that is bookkeeping rather than a decision anyone made.
    */
-  "pitService.autoFuelChanged": SimEvent<"pitService.autoFuelChanged", { refuel: boolean }>;
+  "pitService.autoFuelSwitched": SimEvent<"pitService.autoFuelSwitched", { on: boolean; refuel: boolean }>;
   /**
    * Pit-service status transition (issue #479). Fired by the sim translator
    * on every change to the player's pit-service status (idle / in-progress /
