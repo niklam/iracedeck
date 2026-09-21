@@ -1008,7 +1008,7 @@ describe("audio root resolution (issue #1034)", () => {
     expect(playedPath(native)).toBe(posix(path.join(PACK, "voice/luca/a.mp3")));
   });
 
-  it("prefers the plugin root when both roots have the file, so a pack cannot shadow a bundled clip", () => {
+  it("prefers the earlier root when two unbound roots both have the file", () => {
     const native = createMockNative();
     initializeAudio(mockLogger as never, native, [PLUGIN, PACK]);
     getAudio().init();
@@ -1084,10 +1084,10 @@ describe("audio root resolution (issue #1034)", () => {
       expect(playedPath(native)).toBe(posix(path.join(PACK, "voice/luca/a.mp3")));
     });
 
-    it("does not let a pack supply a bundled clip the plugin does not ship", () => {
-      // `reservedVoices` stops a pack DECLARING a bundled voice; it cannot stop
-      // one shipping `voice/default/…` files. Voices legitimately differ in which
-      // callouts they carry, so the bundle not having a given path is ordinary.
+    it("does not let a pack supply a plugin-root clip the plugin does not ship", () => {
+      // The scanner admits only a pack's own voices, but it cannot stop one
+      // SHIPPING files under any other path. A clip the unrestricted root does
+      // not have must still resolve there, never to a pack that planted it.
       const native = createMockNative();
       initializeAudio(mockLogger as never, native, [{ dir: PLUGIN }]);
       getAudio().init();
@@ -1138,5 +1138,123 @@ describe("audio root resolution (issue #1034)", () => {
     getAudio().playOnChannel(AudioChannel.Voice, "voice/luca/a.mp3");
 
     expect(playedPath(native)).toBe("voice/luca/a.mp3");
+  });
+
+  describe("a bound root answers only its own composite voice (#1144)", () => {
+    // Two packs, `a` and `b`, each shipping a voice called `matt` under the
+    // SAME relative path. The engine addresses them as `voice/a::matt/…` and
+    // `voice/b::matt/…`; each pack's root binds its composite to the bare
+    // folder inside it, and resolves nothing else.
+    const PACK_A = path.resolve("/packs/a");
+    const PACK_B = path.resolve("/packs/b");
+    const CLIP = "voice/matt/x/y.mp3";
+
+    function boundRoots() {
+      const native = createMockNative();
+      initializeAudio(mockLogger as never, native, [{ dir: PLUGIN }]);
+      getAudio().init();
+      getAudio().setFileProbe((candidate) => candidate.startsWith(PACK_A) || candidate.startsWith(PACK_B));
+      getAudio().setRoots([
+        { dir: PLUGIN },
+        { dir: PACK_A, clips: [CLIP], voices: { "a::matt": "matt" } },
+        { dir: PACK_B, clips: [CLIP], voices: { "b::matt": "matt" } },
+      ]);
+
+      return native;
+    }
+
+    it("resolves each composite path inside the root bound to it, as the bare path", () => {
+      const native = boundRoots();
+
+      getAudio().playOnChannel(AudioChannel.Voice, "voice/a::matt/x/y.mp3");
+      getAudio().playOnChannel(AudioChannel.Voice, "voice/b::matt/x/y.mp3");
+
+      const calls = (native.playOnChannel as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+
+      expect(posix(String(calls[0][1]))).toBe(posix(path.join(PACK_A, CLIP)));
+      expect(posix(String(calls[1][1]))).toBe(posix(path.join(PACK_B, CLIP)));
+    });
+
+    it("never serves a bare voice path from a bound root, even one that has the file", () => {
+      // Both packs HAVE `voice/matt/x/y.mp3` on disk and in their allow-lists.
+      // A bound root is skipped by the ordered walk entirely, so the bare path
+      // falls to the unrestricted plugin root exactly as a missing clip does.
+      const native = boundRoots();
+
+      getAudio().playOnChannel(AudioChannel.Voice, CLIP);
+
+      expect(playedPath(native)).toBe(posix(path.join(PLUGIN, CLIP)));
+    });
+
+    it("still resolves an sfx path through the plugin root", () => {
+      const native = boundRoots();
+      getAudio().setFileProbe((candidate) => candidate.startsWith(PLUGIN));
+
+      getAudio().playOnChannel(AudioChannel.SFX, "sfx/tick.mp3");
+
+      expect(playedPath(native)).toBe(posix(path.join(PLUGIN, "sfx/tick.mp3")));
+    });
+
+    it("does not serve a composite path whose bare form the bound root was not admitted for", () => {
+      // The file may be on disk — the probe says yes for anything under the
+      // pack — but the scanner did not admit it, so the root's own resolution
+      // is returned unprobed: one behaviour for a missing clip, as for the
+      // unbound walk. It does NOT fall through to another root.
+      const native = boundRoots();
+
+      getAudio().playOnChannel(AudioChannel.Voice, "voice/a::matt/x/planted.mp3");
+
+      expect(playedPath(native)).toBe(posix(path.join(PACK_A, "voice/matt/x/planted.mp3")));
+    });
+
+    it("resolves to the bound root, not another, when the clip is missing there", () => {
+      const native = createMockNative();
+      initializeAudio(mockLogger as never, native, [{ dir: PLUGIN }]);
+      getAudio().init();
+      getAudio().setFileProbe(() => false);
+      getAudio().setRoots([
+        { dir: PLUGIN },
+        { dir: PACK_A, clips: [CLIP], voices: { "a::matt": "matt" } },
+        { dir: PACK_B, clips: [CLIP], voices: { "b::matt": "matt" } },
+      ]);
+
+      getAudio().playOnChannel(AudioChannel.Voice, "voice/b::matt/x/y.mp3");
+
+      expect(playedPath(native)).toBe(posix(path.join(PACK_B, CLIP)));
+    });
+
+    it("falls to the ordered walk for a composite nobody binds", () => {
+      const native = boundRoots();
+      getAudio().setFileProbe(() => false);
+
+      getAudio().playOnChannel(AudioChannel.Voice, "voice/c::matt/x/y.mp3");
+
+      expect(playedPath(native)).toBe(posix(path.join(PLUGIN, "voice/c::matt/x/y.mp3")));
+    });
+
+    it("refuses a composite path whose tail escapes the bound root", () => {
+      boundRoots();
+
+      expect(() => getAudio().playOnChannel(AudioChannel.Voice, "voice/a::matt/../../../etc/passwd")).toThrow(
+        "escapes",
+      );
+    });
+
+    it("forgets a binding when setRoots replaces it", () => {
+      const native = boundRoots();
+
+      getAudio().playOnChannel(AudioChannel.Voice, "voice/a::matt/x/y.mp3");
+      expect(playedPath(native)).toBe(posix(path.join(PACK_A, CLIP)));
+
+      getAudio().setFileProbe(() => false);
+      getAudio().setRoots([{ dir: PLUGIN }, { dir: PACK_B, clips: [CLIP], voices: { "b::matt": "matt" } }]);
+      getAudio().playOnChannel(AudioChannel.Voice, "voice/a::matt/x/y.mp3");
+
+      const calls = (native.playOnChannel as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+
+      // The memo did not survive: the path is walked again and lands on the
+      // plugin root, since no root binds `a::matt` any more.
+      expect(posix(String(calls[1][1]))).toBe(posix(path.join(PLUGIN, "voice/a::matt/x/y.mp3")));
+    });
   });
 });

@@ -168,21 +168,36 @@ export interface PlaybackObserver {
  * `clips` is what makes a root's contribution AUTHORISED rather than merely
  * present. A voice pack is a folder somebody else assembled, and the scanner
  * already decides which of its files it is willing to serve — everything under
- * a voice the pack actually owns, and nothing else. Without that list here, the
- * resolver would fall back to "first root that HAS the file", and a pack could
- * serve a clip belonging to another pack, or a bundled clip the plugin happens
- * not to ship, simply by placing a file at the right relative path. It would
- * never appear in the settings list or the collision problems, because the
+ * a voice the pack actually declares, and nothing else. Without that list here,
+ * the resolver would fall back to "first root that HAS the file", and a pack
+ * could serve a clip under any path it liked simply by placing a file there. It
+ * would never appear in the settings list or the scan problems, because the
  * scanner drops those files rather than reporting them.
  *
- * Omit `clips` for an UNRESTRICTED root: only the plugin's own `assets/audio`,
- * whose contents are the bundle itself and are not third-party.
+ * `voices` is what makes a root BOUND (#1144). The engine addresses a pack's
+ * voice by its composite id, `voice/<pack id>::<voice id>/…`, while the pack's
+ * files sit under the bare `voice/<voice id>/…` its author wrote. The binding
+ * maps one to the other for THIS root alone: a `voice/<composite>/<rest>` path
+ * is resolved only in the root that binds that composite, as
+ * `voice/<bare>/<rest>` against that root's `clips`, and a bound root is never
+ * reached by the ordered walk at all — so two packs each shipping `matt` can
+ * never be reached by a path naming the other's voice, and no bare voice path
+ * can reach either.
+ *
+ * Omit both for an UNRESTRICTED root: only the plugin's own `assets/audio`,
+ * whose contents (the sfx tree) are the plugin's own and are not third-party.
  */
 export type AudioRoot = {
   /** Absolute directory. */
   dir: string;
   /** POSIX paths relative to {@link dir}; omit to allow anything inside it. */
   clips?: readonly string[];
+  /**
+   * Composite voice id → the bare voice folder inside THIS root (#1144). A root
+   * with `voices` is BOUND: it answers only `voice/<composite>/…` paths for the
+   * composites it lists, and is skipped by the ordered walk entirely.
+   */
+  voices?: Readonly<Record<string, string>>;
 };
 
 /** A bare string is an unrestricted root — shorthand for `{ dir }`. */
@@ -207,7 +222,8 @@ export interface IAudioService {
    * Replace the ordered list of audio roots. Called after a voice-pack scan:
    * each installed pack is its own root (issue #1034), so the list grows and
    * shrinks as packs are installed and removed. A pack root carries the clip
-   * list the scanner admitted from it — see {@link AudioRoot}.
+   * list the scanner admitted from it and the composite-to-bare binding of its
+   * voices (#1144) — see {@link AudioRoot}.
    */
   setRoots(roots: readonly AudioRootInput[]): void;
 
@@ -289,11 +305,13 @@ export interface IAudioService {
 
 // ─── Implementation ──────────────────────────────────────────────────────────
 
-/** A root with its clip allow-list resolved once, at `setRoots` time. */
+/** A root with its clip allow-list and voice binding resolved once, at `setRoots` time. */
 type NormalizedRoot = {
   dir: string;
-  /** `null` means unrestricted — the plugin's own bundled assets. */
+  /** `null` means unrestricted — the plugin's own assets. */
   clips: ReadonlySet<string> | null;
+  /** Composite voice id → bare voice folder; `null` for a root the ordered walk may visit (#1144). */
+  voices: ReadonlyMap<string, string> | null;
 };
 
 /**
@@ -308,10 +326,21 @@ function toPosix(value: string): string {
 function normalizeRoots(roots: readonly AudioRootInput[]): NormalizedRoot[] {
   return roots.map((root) =>
     typeof root === "string"
-      ? { dir: root, clips: null }
-      : { dir: root.dir, clips: root.clips === undefined ? null : new Set(root.clips.map(toPosix)) },
+      ? { dir: root, clips: null, voices: null }
+      : {
+          dir: root.dir,
+          clips: root.clips === undefined ? null : new Set(root.clips.map(toPosix)),
+          voices: root.voices === undefined ? null : new Map(Object.entries(root.voices)),
+        },
   );
 }
+
+/**
+ * The logical grammar a voice clip is addressed by: `voice/<voice>/<rest>`. The
+ * middle segment is what a bound root maps; anything else — an sfx path, a bare
+ * `voice/<x>` with no file under it — takes the ordered walk.
+ */
+const VOICE_CLIP = /^voice\/([^/]+)\/(.+)$/;
 
 class AudioService implements IAudioService {
   private logger: ILogger;
@@ -424,32 +453,39 @@ class AudioService implements IAudioService {
   }
 
   /**
-   * Resolve a clip path against the service's configured base path. Absolute
+   * Resolve a clip path against the service's configured roots. Absolute
    * paths pass through unchanged, so callers that build their own absolute
    * paths (e.g. the radar engine) still work. Callers passing manifest-
    * relative paths (e.g. the scenario interpreter emitting
-   * `sfx/IRD-tick-open.mp3`) are resolved against the ordered root list so the
+   * `sfx/IRD-tick-open.mp3`) are resolved against the root list so the
    * native layer receives a filesystem path it can actually open.
    *
-   * With more than one root (issue #1034 — each installed voice pack is its own
-   * root) containment alone cannot choose between them, because a relative path
-   * is "inside" every root. A root is therefore consulted only for the clips it
-   * is AUTHORISED to serve: a pack root carries the list the scanner admitted
-   * from it, and only the plugin's own assets directory is unrestricted.
+   * Two routes, decided by the path's voice segment (#1144):
    *
-   * File presence alone would not do, and that is the whole point of the
-   * allow-list. The scanner already refuses a pack's claim on a voice another
-   * pack or the bundle owns — but it enforces that by dropping those files from
-   * the pack's clip list, not by removing them from disk. A pack that simply
-   * PLACES a file at `voice/<someone-else>/…` would otherwise win resolution
-   * whenever it sorted earlier, silently substituting another pack's audio, or a
-   * bundled clip the plugin happens not to ship — and it would appear in no
-   * settings row and no collision problem, because the scanner dropped it.
+   * - **A bound voice.** `voice/<composite>/<rest>` where some root binds
+   *   `<composite>` is resolved in THAT root only, as `voice/<bare>/<rest>` —
+   *   the pack's own spelling — checked against the root's allow-list on the
+   *   bare form. No other root is consulted, and a miss returns that root's
+   *   resolution: the native layer then fails to open it exactly as it would
+   *   any missing clip, so a missing clip stays one behaviour rather than two.
+   *   This is what keeps two packs' `matt` apart — the composite names the
+   *   pack, and the pack's root is the only place it can resolve.
    *
-   * When no root is both authorised and holds the file, we return the first
-   * authorised root's resolution rather than throwing: the native layer then
-   * fails to open it exactly as it did before packs existed, so a missing clip
-   * stays one behaviour rather than two.
+   * - **Everything else** — an sfx path, a bare voice path, a composite nobody
+   *   binds — takes the ordered walk over the UNBOUND roots, and a bound root
+   *   is never one of them: a bare `voice/matt/…` cannot reach a pack's files,
+   *   however many packs have that folder on disk. With more than one root,
+   *   containment alone cannot choose between them, because a relative path is
+   *   "inside" every root; a root is therefore consulted only for the clips it
+   *   is AUTHORISED to serve — a pack root carries the list the scanner
+   *   admitted from it, and only the plugin's own assets directory is
+   *   unrestricted. File presence alone would not do: the scanner admits a
+   *   pack's own voices by dropping every other file from its clip list, not
+   *   by removing them from disk, so a pack that PLACES a file at some other
+   *   path would otherwise win resolution whenever it sorted earlier, with
+   *   nothing said in any settings row. When no unbound root is both
+   *   authorised and holds the file, the first authorised root's resolution is
+   *   returned rather than throwing, for the reason given above.
    *
    * Only successful probes are memoised, so a clip that appears later — a pack
    * installed mid-session — is found on its next play with no invalidation.
@@ -472,16 +508,26 @@ class AudioService implements IAudioService {
     if (cached !== undefined) return cached;
 
     const logical = toPosix(filePath);
+    const voiceClip = VOICE_CLIP.exec(logical);
+
+    if (voiceClip !== null) {
+      const [, composite, rest] = voiceClip;
+
+      for (const root of this.roots) {
+        const bare = root.voices?.get(composite);
+
+        if (bare !== undefined) return this.resolveBound(root, filePath, `voice/${bare}/${rest}`);
+      }
+    }
+
     let firstResolved: string | null = null;
 
     for (const root of this.roots) {
-      if (root.clips !== null && !root.clips.has(logical)) continue;
+      if (root.voices !== null) continue;
 
-      const base = path.resolve(root.dir);
-      const resolved = path.resolve(base, filePath);
-      const rel = path.relative(base, resolved);
+      const resolved = this.resolveIn(root, logical);
 
-      if (rel.startsWith("..") || path.isAbsolute(rel)) continue;
+      if (resolved === null) continue;
 
       if (firstResolved === null) firstResolved = resolved;
 
@@ -497,6 +543,48 @@ class AudioService implements IAudioService {
     }
 
     return firstResolved;
+  }
+
+  /**
+   * An unbound root's answer for a clip on the ordered walk: the absolute path
+   * it would serve, or `null` when the root is not authorised for `clip` or
+   * the path escapes it. The walk probes the answer and keeps looking on a
+   * miss.
+   */
+  private resolveIn(root: NormalizedRoot, clip: string): string | null {
+    const base = path.resolve(root.dir);
+    const resolved = path.resolve(base, clip);
+    const rel = path.relative(base, resolved);
+
+    if (rel.startsWith("..") || path.isAbsolute(rel)) return null;
+
+    if (root.clips !== null && !root.clips.has(clip)) return null;
+
+    return resolved;
+  }
+
+  /**
+   * The bound root's answer for `filePath`, spelled as `clip` — the bare
+   * `voice/<voice>/<rest>` the pack's files sit under (#1144). Always this
+   * root's path: an unadmitted or absent clip resolves here too and fails at
+   * the native layer like any missing clip, and only an admitted, present
+   * clip is memoised. A tail that escapes the root is the same bug the walk
+   * fails loud on.
+   */
+  private resolveBound(root: NormalizedRoot, filePath: string, clip: string): string {
+    const base = path.resolve(root.dir);
+    const resolved = path.resolve(base, clip);
+    const rel = path.relative(base, resolved);
+
+    if (rel.startsWith("..") || path.isAbsolute(rel)) {
+      throw new Error(`Audio clip path escapes every audio root: ${filePath}`);
+    }
+
+    if (root.clips !== null && root.clips.has(clip) && this.fileProbe(resolved)) {
+      this.resolvedCache.set(filePath, resolved);
+    }
+
+    return resolved;
   }
 
   setRoots(roots: readonly AudioRootInput[]): void {
@@ -941,7 +1029,9 @@ let audioService: AudioService | null = null;
  * resolved against (absolute paths pass through unchanged). The plugin passes
  * its own `assets/audio` — a bare string, so unrestricted — and `setRoots` later
  * appends one {@link AudioRoot} per installed voice pack, each carrying the clip
- * list the scanner admitted from it (issue #1034). The first root that is both
+ * list the scanner admitted from it (issue #1034) and bound to its voices'
+ * composite ids (#1144): a `voice/<pack>::<voice>/…` path resolves in that
+ * pack's root alone, and among the unbound roots the first that is both
  * authorised for the clip and has the file wins. Pass an empty list to disable
  * resolution entirely (useful in tests that inject a fake AudioNative and don't
  * care where the path points).
