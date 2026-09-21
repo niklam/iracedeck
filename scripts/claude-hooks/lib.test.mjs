@@ -4,14 +4,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { SPEC_DIR, specFilenames } from "./lib.mjs";
+import { readIndexFile, SPEC_DIR, specFilenames } from "./lib.mjs";
 
 let root;
 const git = (...args) =>
   execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", ...args], { cwd: root, stdio: "pipe" });
-const writeSpec = (name) => {
+const writeSpec = (name, text = "# spec\n") => {
   mkdirSync(join(root, SPEC_DIR), { recursive: true });
-  writeFileSync(join(root, SPEC_DIR, name), "# spec\n");
+  writeFileSync(join(root, SPEC_DIR, name), text);
 };
 
 beforeEach(() => {
@@ -45,5 +45,21 @@ describe("specFilenames", () => {
 
   it("is empty — the side that asks — when neither can answer", () => {
     expect(specFilenames(root)).toEqual([]);
+  });
+});
+
+// #1193 review (CodeRabbit): a plain commit takes the STAGED bytes.
+describe("readIndexFile", () => {
+  const rel = `${SPEC_DIR}2026-01-01-issue-7-a.md`;
+  it("returns what is staged, not the edit made after staging", () => {
+    writeSpec("2026-01-01-issue-7-a.md", "staged\n");
+    git("add", "-A");
+    writeSpec("2026-01-01-issue-7-a.md", "edited\n");
+    expect(readIndexFile(root, rel)).toBe("staged\n");
+  });
+
+  it("is undefined — the side that passes — for a path the index does not hold", () => {
+    writeSpec("2026-01-01-issue-7-a.md");
+    expect(readIndexFile(root, rel)).toBeUndefined();
   });
 });

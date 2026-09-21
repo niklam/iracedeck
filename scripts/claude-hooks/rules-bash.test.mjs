@@ -16,6 +16,7 @@ function ctx(overrides = {}) {
     branch: () => "master",
     staged: () => [],
     modified: () => [],
+    untracked: () => [],
     mainRoot: () => MASTER,
     originFresh: () => ({ fresh: true, local: "aaaaaaaaa", remote: "aaaaaaaaa" }),
     // The default describes issues that ALREADY have their spec, so the
@@ -360,6 +361,26 @@ describe("git commit", () => {
           ctx({ branch: () => "ir-1", staged: () => ["docs/superpowers/specs/a.md"], specText: () => "# T" }),
         ),
       ).toMatch(/never on a feature branch/));
+
+    // #1193 review (CodeRabbit): the bytes checked must be the bytes committed.
+    describe("reads each spec from where the commit takes it", () => {
+      const A = "docs/superpowers/specs/a.md";
+      // The index copy and the working copy disagree; each case says which one the commit takes.
+      const split = (index, worktree, o = {}) =>
+        ctx({ specText: (_d, _f, from) => (from === "index" ? index : worktree), ...o });
+      it("the index, for a spec staged before the command", () => {
+        expect(deny("git commit -m x", split("# T", whole, { staged: () => [A] }))).toMatch(/a\.md/);
+        passes("git commit -m x", split(whole, "# T", { staged: () => [A] }));
+      });
+      it("the working copy, for a spec a chained `git add` stages", () => {
+        expect(deny(`git add ${A} && git commit -m x`, split(whole, "# T"))).toMatch(/a\.md/);
+        passes(`git add ${A} && git commit -m x`, split("# T", whole, { staged: () => [A] }));
+      });
+      it("the working copy, for `-a`", () =>
+        expect(deny("git commit -am x", split(whole, "# T", { staged: () => [A] }))).toMatch(/a\.md/));
+      it("the working copy, for a pathspec commit", () =>
+        expect(deny(`git commit -m x -- ${A}`, split(whole, "# T", { staged: () => [A] }))).toMatch(/a\.md/));
+    });
   });
   it("reads -a as staged plus modified", () =>
     deny("git commit -am x", ctx({ branch: () => "ir-1", modified: () => ["docs/superpowers/specs/a.md"] })));
@@ -379,6 +400,30 @@ describe("git commit", () => {
     ));
   it("counts a spec staged by a `git add` earlier in the same command", () =>
     deny("git add docs/superpowers/specs/a.md && git commit -m x", ctx({ branch: () => "ir-1" })));
+
+  // #1193 review (CodeRabbit): a broad add named nothing, so a new spec it
+  // staged reached neither the branch rule nor the section check.
+  describe("a broad `git add` stages what it selects", () => {
+    const NEW = "docs/superpowers/specs/new.md";
+    const broad = (o = {}) => ctx({ untracked: () => [NEW, "src/x.ts"], specText: () => "# T", ...o });
+    it.each([
+      "git add -A && git commit -m x",
+      "git add --all && git commit -m x",
+      "git add . && git commit -m x",
+      "git add docs/superpowers/specs/ && git commit -m x",
+      "git add docs/superpowers && git commit -m x",
+    ])("%s checks the untracked spec", (c) => expect(deny(c, broad())).toMatch(/new\.md is missing/));
+    it("and the branch rule sees it too", () =>
+      expect(deny("git add -A && git commit -m x", broad({ branch: () => "ir-1" }))).toMatch(
+        /never on a feature branch/,
+      ));
+    it("leaves untracked files out of `-u`", () => passes("git add -u && git commit -m x", broad()));
+    it("selects only under a directory operand", () => passes("git add src && git commit -m x", broad()));
+    it("expands to modified files as well as untracked ones", () =>
+      expect(deny("git add -u && git commit -m x", broad({ untracked: () => [], modified: () => [NEW] }))).toMatch(
+        /new\.md is missing/,
+      ));
+  });
   it("judges the tree a chained `cd` lands in", () =>
     expect(
       deny(

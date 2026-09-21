@@ -131,7 +131,9 @@ export function toplevel(dir) {
  * spec written in the checkout but never committed has not reached master.
  */
 export function specFilenames(root) {
-  const r = git(["ls-tree", "--name-only", `origin/${MAIN_BRANCH}`, "--", SPEC_DIR], root);
+  // `-r` so the listing does not hinge on SPEC_DIR's trailing slash: without
+  // it, the same path spelled without one names only the directory entry.
+  const r = git(["ls-tree", "-r", "--name-only", `origin/${MAIN_BRANCH}`, "--", SPEC_DIR], root);
   if (r.ok)
     return r.out
       .split(/\r?\n/)
@@ -156,6 +158,16 @@ export function readRepoFile(root, rel) {
   } catch {
     return undefined;
   }
+}
+
+/**
+ * A repo-relative file's STAGED text — the bytes a plain `git commit` takes —
+ * or `undefined` when the index holds no such path. Callers fail open on
+ * `undefined`, exactly as for `readRepoFile`.
+ */
+export function readIndexFile(dir, rel) {
+  const r = git(["show", `:${rel}`], dir);
+  return r.ok ? r.out : undefined;
 }
 
 /** The main repository checkout (the one whose `.git` is a directory). */

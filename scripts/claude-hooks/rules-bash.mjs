@@ -222,7 +222,7 @@ export const rules = [
       if (!has(c, GIT_COMMIT)) return null;
       const dir = gitCwd(c, ctx.cwd, GIT_COMMIT);
       const branch = ctx.branch(dir);
-      const committed = committedFiles(c, ctx, dir);
+      const { files: committed, fromIndex } = commitSelection(c, ctx, dir);
       if (branch && branch !== MAIN_BRANCH) {
         const specs = committed.filter((f) => f.startsWith(SPEC_DIR));
         if (specs.length)
@@ -235,10 +235,11 @@ export const rules = [
       // — 30 of the 64 post-policy specs were amended, and none of those edits
       // is the moment to demand a section the spec was never asked for; and
       // text the hook cannot read, because a spec is never blocked over bytes
-      // the hook failed to find.
+      // the hook failed to find. The bytes are read from where the commit will
+      // take them — the index or the working copy, per `commitSelection`.
       for (const f of committed.filter((x) => x.startsWith(SPEC_DIR))) {
         if (ctx.tracked?.(dir, f)) continue;
-        const text = ctx.specText?.(dir, f);
+        const text = ctx.specText?.(dir, f, fromIndex.has(f) ? "index" : "worktree");
         if (text === undefined) continue;
         const missing = missingSpecParts(text);
         if (missing.length)
@@ -418,28 +419,58 @@ function chainWords(text) {
 const asPath = (p) => p.replace(/\\/g, "/");
 
 /**
- * What `git commit` would include: an explicit `--only` pathspec, else what is
- * staged plus what a `git add <paths>` EARLIER IN THE SAME COMMAND stages — the
- * hook runs before any of the chain does, so those paths are not staged yet
- * when it looks (`-a` folds in the modified files too). A `git add .`/`-A`
- * names nothing, and an untracked file is invisible to the diff, so that
- * shape stays unknown and the rules reading this fail towards asking.
+ * What `git commit` would include, and where each file's bytes come from.
+ *
+ * `files`: an explicit `--only` pathspec, else what is staged plus what a
+ * `git add` EARLIER IN THE SAME COMMAND stages — the hook runs before any of
+ * the chain does, so those paths are not staged yet when it looks (`-a` folds
+ * in the modified files too).
+ *
+ * `fromIndex`: the files a plain commit takes from the index AS IT STANDS NOW —
+ * staged before this command and not re-added by it (#1193 review). Every other
+ * file is committed from the working copy: a pathspec commit and `-a` take it
+ * directly, and a chained `git add` puts it in the index first. A rule that
+ * reads a file's bytes must read them from where they will be committed, or a
+ * staged spec is judged on an edit made after it was staged.
  */
-function committedFiles(command, ctx, dir) {
+function commitSelection(command, ctx, dir) {
   // Tokenised, not a line regex: a quoted commit message spans lines, and the
   // `--` that follows it sits on the message's last line.
   const afterCommit = chainWords(command.slice(command.search(/\bcommit\b/)));
   const dash = afterCommit.indexOf("--");
-  if (dash >= 0) return afterCommit.slice(dash + 1).map(asPath);
+  if (dash >= 0) return { files: afterCommit.slice(dash + 1).map(asPath), fromIndex: new Set() };
   const added = [...command.matchAll(/\bgit\s+(?:-C\s+\S+\s+)?add\s+(.+)$/gm)].flatMap((m) =>
-    chainWords(m[1])
-      .filter((w) => !w.startsWith("-") && w !== ".")
-      .map(asPath),
+    addedFiles(chainWords(m[1]), ctx, dir),
   );
-  const staged = [...ctx.staged(dir), ...added];
+  const before = ctx.staged(dir);
   if (has(command, /\bcommit\b[^|&;]*\s(-a|--all|-am|-a[a-zA-Z]+)\b/))
-    return [...new Set([...staged, ...ctx.modified(dir)])];
-  return [...new Set(staged)];
+    return { files: [...new Set([...before, ...added, ...ctx.modified(dir)])], fromIndex: new Set() };
+  const reAdded = new Set(added);
+  return { files: [...new Set([...before, ...added])], fromIndex: new Set(before.filter((f) => !reAdded.has(f))) };
+}
+
+/**
+ * The files one `git add <args>` stages. An operand names a file OR a
+ * directory, so each is matched against the files that differ from the index —
+ * modified and untracked — as itself or as a prefix (#1193 review: a new spec
+ * staged by `git add -A`, `git add .` or `git add docs/superpowers/specs/` used
+ * to reach no rule at all). `.`, and `-A`/`--all`/`-u` with no operand, select
+ * every candidate; `-u`/`--update` leaves untracked files out. An operand that
+ * matches nothing is kept as written — a file already staged, a glob, a path
+ * outside this model — which is exactly what the rules saw before.
+ */
+function addedFiles(args, ctx, dir) {
+  const flags = args.filter((w) => w.startsWith("-"));
+  const operands = args.filter((w) => !w.startsWith("-")).map(asPath);
+  const updateOnly = flags.some((f) => /^(-u|--update)$/.test(f));
+  const candidates = [...ctx.modified(dir), ...(updateOnly ? [] : (ctx.untracked?.(dir) ?? []))];
+  if (!operands.length) return flags.some((f) => /^(-A|--all|-u|--update)$/.test(f)) ? candidates : [];
+  return operands.flatMap((o) => {
+    const p = o.replace(/^\.\//, "").replace(/\/+$/, "");
+    if (p === "." || p === "") return candidates;
+    const hits = candidates.filter((f) => f === p || f.startsWith(`${p}/`));
+    return hits.length ? hits : [o];
+  });
 }
 
 /**

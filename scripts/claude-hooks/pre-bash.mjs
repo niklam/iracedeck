@@ -11,6 +11,7 @@ import {
   linkTargets,
   mainRepoRoot,
   originMasterFresh,
+  readIndexFile,
   readInput,
   readRepoFile,
   specFilenames,
@@ -46,14 +47,18 @@ if (typeof command === "string" && command.trim()) {
     // ref a new ir-<n> is cut from, which the freshness check has just
     // confirmed current (see `specFilenames` for the fallback).
     //
-    // `specText` reads the committing tree's WORKING copy, not the index, on
-    // purpose: a `git add spec.md && git commit` chain — the usual shape — has
-    // not staged anything yet when this hook runs, so the index holds no bytes
-    // for it, and `-a` and pathspec commits take the working copy anyway. What
-    // that costs is a spec staged, then edited, then committed with a plain
-    // `git commit`, which is judged on the edit.
+    // `specText` reads from wherever the commit will take the bytes, which the
+    // rule works out per file: the INDEX for a spec staged before this command
+    // and not re-added by it, the WORKING copy for everything else — a chained
+    // `git add spec.md && git commit` has staged nothing yet when this hook
+    // runs, and `-a` and pathspec commits take the working copy anyway.
     specFiles: memo((dir) => specFilenames(mainRepoRoot(dir) ?? mainRepoRoot(cwd) ?? cwd)),
-    specText: memo((dir, rel) => readRepoFile(toplevel(dir) ?? mainRepoRoot(cwd) ?? cwd, rel)),
+    specText: memo((dir, rel, from) =>
+      from === "index" ? readIndexFile(dir, rel) : readRepoFile(toplevel(dir) ?? mainRepoRoot(cwd) ?? cwd, rel),
+    ),
+    // Root-relative like `staged`/`modified`, so a `git add <dir>` operand can be
+    // matched against them.
+    untracked: memo((dir) => lines(git(["ls-files", "--others", "--exclude-standard", "--full-name"], dir))),
     // Already in HEAD means this commit AMENDS the spec rather than adding it.
     tracked: memo((dir, rel) => git(["cat-file", "-e", `HEAD:${rel}`], dir).ok),
     issueLabels: memo((issue, dir) => ghJson(["issue", "view", String(issue), "--json", "labels"], dir)),
