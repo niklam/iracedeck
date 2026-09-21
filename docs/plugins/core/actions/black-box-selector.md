@@ -128,7 +128,7 @@ All Direct mode icons include a small "BB" label in the corner to distinguish th
 | Direct: Tire Info | Tire with temperature bars + BB label |
 | Direct: Pit-stop | Pit board + BB label |
 | Direct: In-car | Sliders/adjustments + BB label |
-| Direct: Quick Access | Mirror + BB label |
+| Direct: Quick Access | Settings menu (sub-page chevrons + amber switch) + BB label |
 | Direct: Radio | Headset + BB label |
 | Direct: Weather | Cloud + BB label |
 

@@ -92,8 +92,8 @@ Prefer short, single-line titles — only use the two-line `"subLabel\nmainLabel
 
 Extends Default Key Icon Type (Standard label layout) with an inner black box frame. See [black-box-icons.md](black-box-icons.md) for details.
 
-- Adds inner black box frame (dark olive #2d2510, brown stroke #4a3728)
-- Uses Standard label layout (primary name on top, secondary action on bottom)
+- Adds inner black box frame: flat, filled with `{{backgroundColor}}` and outlined in `{{graphic1Color}}` (3.5px)
+- Single-line title (the box's name) rendered by the title system from `BLACK_BOX_TITLE_TEXT`
 - Background: #2a2a2a
 - Reference: `packages/icons/black-box-selector/`
 
