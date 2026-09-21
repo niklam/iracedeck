@@ -244,10 +244,13 @@ export interface IScenarioEngine {
   setScripts(scripts: ReadonlyMap<string, CalloutScript>): void;
   /**
    * Compile ONE script against the registries as they stand now — the very
-   * compile `setScripts` runs per voice, same deps, same result — and hand
-   * the diagnostics back instead of logging them. Loads nothing and changes
-   * nothing: what `lint:pack` (#1066) reports for a pack is thereby what the
-   * plugin would log for it, rather than a rebuild off the public reports.
+   * compile `setScripts` runs per voice, same deps, same diagnostics — and
+   * hand the diagnostics back instead of logging them. Loads nothing and
+   * changes nothing: what `lint:pack` (#1066) reports for a pack is thereby
+   * what the plugin would log for it, rather than a rebuild off the public
+   * reports. It names no voice, so a literal `voice/<voice>/…` path stays as
+   * the pack wrote it, where `setScripts` qualifies it with the pack of a
+   * composite voice (#1144).
    */
   compileScript(script: CalloutScript): CompiledVoiceScript;
   /**
@@ -1033,7 +1036,10 @@ class ScenarioEngine implements IScenarioEngine {
     const compiled = new Map<string, CompiledVoiceScript>();
 
     for (const [voice, script] of this.scripts) {
-      const result = compileVoiceScript(script, deps);
+      // The voice id goes in so a composite voice's literal voice paths are
+      // qualified with its pack (#1144) — the one way this compile differs
+      // from `compileScript`'s, and never in a diagnostic.
+      const result = compileVoiceScript(script, deps, voice);
       compiled.set(voice, result);
 
       this.logger.debug(`Voice "${voice}": ${result.scenarios.size} of ${deps.contracts.size} callouts scripted`);

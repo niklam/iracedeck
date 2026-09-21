@@ -144,7 +144,7 @@ describe("runLintPack", () => {
     expect(io.err).toEqual([]);
   });
 
-  it("hands the linter the engine's own compile, bound, the manifest's shared clips and the managed voice id", async () => {
+  it("hands the linter the engine's own compile, bound, and the manifest's shared clips", async () => {
     const { register, calls, compiled } = stubCatalog({ ok: true, problems: [], voices: [] });
 
     await runLintPack([dir], { ...sinks(), register });
@@ -153,7 +153,8 @@ describe("runLintPack", () => {
     expect(calls[0].compile({ schema: 1, scenarios: {}, frames: {}, pools: {} })).toBe(compiled);
     // Only what the plugin ships outside any voice — a voice's own clips are the pack's business.
     expect(calls[0].sharedClips).toEqual(["sfx/IRD-tick-open.mp3"]);
-    expect(calls[0].managedVoiceIds).toEqual([BUNDLED_VOICE]);
+    // No managed voice id (#1144): another pack's voice of the same id is a different voice, not a claim.
+    expect(calls[0]).not.toHaveProperty("managedVoiceIds");
   });
 
   it("passes the plugin-played clips through as group/base keys — the plugin-side list the pure linter does not know", async () => {

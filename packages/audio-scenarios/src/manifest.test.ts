@@ -55,8 +55,34 @@ describe("referenceVoice", () => {
     expect(referenceVoice(m)).toBe("default");
   });
 
+  it("prefers the managed pack's 'default::default' when no bare 'default' is present (#1144)", () => {
+    // Composite ids sort by their pack id, so `alpha::matt` would otherwise be
+    // the reference ahead of the voice every scripted callout is authored for.
+    const m: AudioAssetsManifest = {
+      ...manifest,
+      clips: ["voice/alpha::matt/welcome.mp3", "voice/default::default/welcome.mp3", "voice/zulu::mia/welcome.mp3"],
+    };
+    expect(referenceVoice(m)).toBe("default::default");
+  });
+
+  it("prefers a bare 'default' over 'default::default' — the source tree's voice is the reference there", () => {
+    const m: AudioAssetsManifest = {
+      ...manifest,
+      clips: ["voice/default::default/welcome.mp3", "voice/default/welcome.mp3"],
+    };
+    expect(referenceVoice(m)).toBe("default");
+  });
+
   it("falls back to the first sorted voice when 'default' is absent", () => {
     expect(referenceVoice(manifest)).toBe("luca");
+  });
+
+  it("falls back to the first sorted voice when neither default spelling is present", () => {
+    const m: AudioAssetsManifest = {
+      ...manifest,
+      clips: ["voice/zulu::mia/welcome.mp3", "voice/alpha::matt/welcome.mp3"],
+    };
+    expect(referenceVoice(m)).toBe("alpha::matt");
   });
 
   it("returns null when the manifest has no voices", () => {

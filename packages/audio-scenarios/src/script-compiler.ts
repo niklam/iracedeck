@@ -43,6 +43,15 @@
  * defined fragment no conversion reached is converted on its own (fresh
  * budget, the same cycle guard), and its problem, if any, is reported under
  * `fragmentProblems` by fragment name.
+ *
+ * Literal voice paths (issue #1144): a script may spell a clip by its literal
+ * path, `voice/<voice>/…`, as its pack author sees it on disk. The plugin's
+ * engine never sees that spelling — a pack's clips reach its manifest as
+ * `voice/<pack>::<voice>/…` — so when the script is compiled for a COMPOSITE
+ * voice id, every such literal is qualified with that voice's own pack, and
+ * pack authors keep writing the bare path. Compiled for a bare id (the source
+ * tree's voice, `lint:pack`, the tests) or for none, a literal is left as
+ * written. Only paths change; no diagnostic depends on one.
  */
 import {
   type CalloutScript,
@@ -53,7 +62,10 @@ import {
   type FrameDefinition,
   NO_FRAME,
   parseCondReference,
+  qualifyClipPath,
   type ScriptStep,
+  splitVoiceId,
+  VOICE_ID_SEPARATOR,
 } from "@iracedeck/callout-script";
 
 import { parseStepShorthand, type ResolvedStep, type VocabularyResolver } from "./dsl.js";
@@ -117,9 +129,13 @@ class CompileProblem {
 /** A frame's compilation outcome, kept so a failed frame can explain every scenario it fails. */
 type FrameResult = { ok: true; open: ResolvedStep[]; close: ResolvedStep[] } | { ok: false; reason: string };
 
-/** Compile one voice's script against what the engine registered. Never throws. */
-export function compileVoiceScript(script: CalloutScript, deps: CompileDeps): CompiledVoiceScript {
-  const converter = new StepConverter(script, deps);
+/**
+ * Compile one voice's script against what the engine registered. Never
+ * throws. `voice` is the id the script is compiled for; a composite one
+ * qualifies the script's literal voice paths with its pack (see the header).
+ */
+export function compileVoiceScript(script: CalloutScript, deps: CompileDeps, voice?: string): CompiledVoiceScript {
+  const converter = new StepConverter(script, deps, voice === undefined ? null : (splitVoiceId(voice)?.packId ?? null));
   const frames = new Map<string, FrameResult>();
   const scenarios = new Map<string, { resolved: ResolvedStep[]; frame: string }>();
   const skipped: { id: string; reason: string; deliberate: boolean }[] = [];
@@ -267,9 +283,15 @@ class StepConverter {
   /** Steps produced since `beginUnit`, checked against `FRAGMENT_EXPANSION_LIMIT` on every one. */
   private produced = 0;
 
+  /**
+   * @param packId - The pack of the composite voice being compiled, which a
+   *   literal voice path is qualified with; `null` leaves every literal as
+   *   written (see the module header).
+   */
   constructor(
     private readonly script: CalloutScript,
     private readonly deps: CompileDeps,
+    private readonly packId: string | null,
   ) {}
 
   /** Start a fresh expansion budget: once per entry, once per frame, once per standalone fragment. */
@@ -309,10 +331,12 @@ class StepConverter {
     if (typeof step === "string") {
       const parsed = parseStepShorthand(step);
 
-      return parsed.kind === "include" ? this.inline(parsed.id) : [this.check(parsed)];
+      if (parsed.kind === "include") return this.inline(parsed.id);
+
+      return [parsed.kind === "clip" ? this.clip(parsed.path) : this.check(parsed)];
     }
 
-    if ("clip" in step) return [this.emit({ kind: "clip", path: step.clip })];
+    if ("clip" in step) return [this.clip(step.clip)];
 
     if ("var" in step) return [this.check({ kind: "var", name: step.var })];
 
@@ -348,6 +372,27 @@ class StepConverter {
     }
 
     return step;
+  }
+
+  /**
+   * A literal clip step, in either spelling. A `voice/<voice>/…` path is
+   * qualified with {@link packId} when there is one (issue #1144), the
+   * leading `/` that escapes a contract's `base` kept in place. Two segments
+   * are left alone: `{voice}`, which the interpreter substitutes with the
+   * active voice — already composite — and one that already names its pack.
+   */
+  private clip(path: string): ResolvedStep {
+    if (this.packId === null) return this.emit({ kind: "clip", path });
+
+    const escape = path.startsWith("/") ? "/" : "";
+    const unescaped = path.slice(escape.length);
+    const segment = unescaped.split("/", 2)[1] ?? "";
+    const qualified =
+      segment.includes("{") || segment.includes(VOICE_ID_SEPARATOR)
+        ? unescaped
+        : qualifyClipPath(this.packId, unescaped);
+
+    return this.emit({ kind: "clip", path: `${escape}${qualified}` });
   }
 
   /**

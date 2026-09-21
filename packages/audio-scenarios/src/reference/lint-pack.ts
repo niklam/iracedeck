@@ -25,11 +25,13 @@
  * folder's name lowercased (the scanner's rule — the filesystem is
  * case-insensitive, the id regex is not); `label` a non-empty string of at
  * most 60 characters; `version` semver by shape (the scanner uses `semver`;
- * a regex is what plain JSON affords here); each `voices[]` entry a
- * kebab-case `id` with a `label`; and no voice id that belongs to the pack
- * iRaceDeck keeps current (`managedVoiceIds`, handed in by the runner —
- * `default`), whose claim the scanner honours first so this pack's copy of
- * that voice is dropped. A field problem is reported
+ * a regex is what plain JSON affords here); and each `voices[]` entry a
+ * kebab-case `id` with a `label`. An id holding `::` is reported with the
+ * separator named, ahead of the kebab-case rule, as the scanner does: the
+ * plugin names a voice `<pack id>::<voice id>` (#1144), and an author who
+ * qualified an id by hand should hear why. A voice id only has to be unique
+ * within its pack — another pack's `matt` is a different voice — so nothing
+ * is said about one any other pack declares. A field problem is reported
  * and the voice is linted anyway; when the manifest is missing, unparseable
  * or carries no usable id at all, that is reported AND the voices are taken
  * from the directories under `voice/` instead, so the author still gets
@@ -75,6 +77,7 @@ import {
   checkCoverage,
   parseCalloutScriptText,
   type VarDrivenGroup,
+  VOICE_ID_SEPARATOR,
 } from "@iracedeck/callout-script";
 
 import type { ContractReport, VocabularyReport } from "../interpreter.js";
@@ -186,14 +189,6 @@ export type LintPackInput = {
    */
   sharedClips: readonly string[];
   /**
-   * Voice ids of the pack iRaceDeck keeps current (`default`). The plugin
-   * bundles no voice since #1034 stage 3 and its scanner reserves nothing;
-   * the managed pack simply claims its voices before every other pack, so a
-   * pack declaring one of these ids has that voice dropped — the scanner's
-   * `priorityPacks` rule, restated for the author.
-   */
-  managedVoiceIds: readonly string[];
-  /**
    * Clips PLUGIN CODE plays with the active voice by path, outside any
    * script — the connect radio check, the toggle acknowledgments, the Test
    * button's greeting, the driver-name clips — as `group/base` keys, with
@@ -219,7 +214,6 @@ export function lintPack({
   vocabulary,
   compile,
   sharedClips,
-  managedVoiceIds,
   pluginPlayedBases,
 }: LintPackInput): LintReport {
   const packDir = rawPackDir.replace(/[\\/]+$/, "");
@@ -229,7 +223,7 @@ export function lintPack({
   };
 
   const onDisk = [...fs.listDirectories(`${packDir}/${VOICE_ROOT}`)].sort();
-  const declared = readManifest(fs.readTextFile(`${packDir}/${MANIFEST_FILE}`), packDirName, managedVoiceIds);
+  const declared = readManifest(fs.readTextFile(`${packDir}/${MANIFEST_FILE}`), packDirName);
   let voiceIds: readonly string[];
 
   if (declared.ids !== null) {
@@ -312,12 +306,19 @@ const SEMVER =
 const REFUSED = "the plugin refuses the manifest";
 
 /**
+ * deck-core's reason for an id holding the separator (`voice-pack-manifest.ts`),
+ * restated: checked before the kebab-case rule, which would refuse the same
+ * id, so the author reads why rather than merely that.
+ */
+const SEPARATOR_REASON = `must not contain "${VOICE_ID_SEPARATOR}" — iRaceDeck joins a pack id and a voice id with it`;
+
+/**
  * The manifest read as plain JSON, checked for what the scanner refuses a
  * pack over (see the header). An entry with no usable id is reported (the
  * plugin refuses such a manifest whole) and the others are kept; no usable id
  * at all falls back to the directories, the per-entry problems intact.
  */
-function readManifest(read: LintFileRead, packDirName: string, managedVoiceIds: readonly string[]): DeclaredVoices {
+function readManifest(read: LintFileRead, packDirName: string): DeclaredVoices {
   if (!read.ok) {
     return {
       ids: null,
@@ -353,6 +354,8 @@ function readManifest(read: LintFileRead, packDirName: string, managedVoiceIds: 
 
   if (typeof manifest.id !== "string" || manifest.id === "") {
     problems.push(`${MANIFEST_FILE}: id is missing — ${REFUSED}`);
+  } else if (manifest.id.includes(VOICE_ID_SEPARATOR)) {
+    problems.push(`${MANIFEST_FILE}: id "${manifest.id}" ${SEPARATOR_REASON}; ${REFUSED}`);
   } else if (!PACK_ID.test(manifest.id)) {
     problems.push(`${MANIFEST_FILE}: id "${manifest.id}" is not lowercase kebab-case (a-z, 0-9, dashes) — ${REFUSED}`);
   } else if (manifest.id !== packDirName.toLowerCase()) {
@@ -398,6 +401,12 @@ function readManifest(read: LintFileRead, packDirName: string, managedVoiceIds: 
       return;
     }
 
+    if (id.includes(VOICE_ID_SEPARATOR)) {
+      problems.push(`${MANIFEST_FILE}: voices[${index}].id "${id}" ${SEPARATOR_REASON}; ${REFUSED}`);
+
+      return;
+    }
+
     if (!PACK_ID.test(id)) {
       problems.push(
         `${MANIFEST_FILE}: voices[${index}].id "${id}" is not lowercase kebab-case (a-z, 0-9, dashes) — ${REFUSED}`,
@@ -407,12 +416,6 @@ function readManifest(read: LintFileRead, packDirName: string, managedVoiceIds: 
     }
 
     if (!isLabel(voice.label)) problems.push(`${MANIFEST_FILE}: voices[${index}] has no label — ${REFUSED}`);
-
-    if (managedVoiceIds.includes(id)) {
-      problems.push(
-        `${MANIFEST_FILE}: voices[${index}].id "${id}" belongs to the pack iRaceDeck keeps current, which claims it first — the plugin drops this pack's copy of the voice; pick a different voice id`,
-      );
-    }
 
     if (!ids.includes(id)) ids.push(id);
   });

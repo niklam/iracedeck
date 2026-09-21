@@ -3,7 +3,7 @@
  * interpreter ↔ validation circular import. Both modules consume these
  * symbols, so they live in a leaf module that depends on neither.
  */
-import { stripTakeSuffix } from "@iracedeck/callout-script";
+import { qualifiedVoiceId, stripTakeSuffix } from "@iracedeck/callout-script";
 
 /** Manifest shape the scenario engine consumes; matches `@iracedeck/audio-assets/manifest.json`. */
 export type AudioAssetsManifest = {
@@ -47,14 +47,23 @@ export function scanRaceEngineerVoices(manifest: AudioAssetsManifest): string[] 
  * variant counts or omit a callout — so validation checks `{voice}`-templated
  * paths against this single reference voice instead of requiring parity
  * across all voices.
+ *
+ * The canonical voice has two spellings since voice ids are namespaced by
+ * pack (#1144): the bare `default` of the source tree — the harness and the
+ * tests — and `default::default`, the managed pack's voice as the plugin's
+ * manifest carries it. Both are preferred, bare first, because a plain sort
+ * would otherwise make any pack whose id sorts before `default` the
+ * reference.
  */
 export function referenceVoice(manifest: AudioAssetsManifest): string | null {
   const voices = scanRaceEngineerVoices(manifest);
 
   if (voices.length === 0) return null;
 
-  return voices.includes("default") ? "default" : voices[0];
+  return CANONICAL_VOICES.find((voice) => voices.includes(voice)) ?? voices[0];
 }
+
+const CANONICAL_VOICES = ["default", qualifiedVoiceId("default", "default")] as const;
 
 /**
  * Sorted array of available driver-name keys (the names the engineer can
