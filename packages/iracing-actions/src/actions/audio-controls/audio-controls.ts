@@ -236,11 +236,22 @@ export class AudioControls extends ConnectionStateAwareAction<AudioControlsSetti
    * table — the same wiring the dial rotates, so the two surfaces can't drift.
    * The helper persists the new value and applies it to the audio engine;
    * Race Engineer stepping respects the master enable gate (the value updates
-   * but Voice stays muted while the Race Engineer feature is off). `mute`
-   * never reaches here (these categories expose only volume-up/down in the
-   * Property Inspector); treat anything that isn't `volume-down` as a step up.
+   * but Voice stays muted while the Race Engineer feature is off).
+   *
+   * These categories expose only volume-up / volume-down in the Property
+   * Inspector, so a mute value here is a STALE persisted setting — a
+   * hand-edited or imported profile, or a key whose PI has not been reopened.
+   * It logs and no-ops, matching the dial's `doMute` / `doMuteDriver`. It used
+   * to treat anything that wasn't `volume-down` as a step up, which turned
+   * such a setting into a silent volume increase on every single press.
    */
   private stepInternalVolume(category: InternalAudioCategory, audioAction: AudioAction): void {
+    if (audioAction !== "volume-up" && audioAction !== "volume-down") {
+      this.logger.warn(`${audioAction} is not available for the ${category} category`);
+
+      return;
+    }
+
     const down = audioAction === "volume-down";
     const next = INTERNAL_AUDIO_BUSES[category].stepBy(down ? -1 : 1);
     this.logger.info(`${category} volume ${down ? "down" : "up"} → ${next}`);

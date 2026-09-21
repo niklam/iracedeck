@@ -564,13 +564,28 @@ describe("AudioControls", () => {
       expect(mockStepRadarVolumeBy).toHaveBeenCalledWith(-1);
     });
 
-    it("leaves the internal buses alone when the mute action is persisted (PI never offers it)", async () => {
-      await action.onKeyDown(fakeEvent("action-1", { category: "radar", action: "mute" }) as any);
+    // A mute action can only reach an internal category from a stale or
+    // hand-edited profile: the PI offers these categories volume-up /
+    // volume-down only. The press logs and no-ops, matching the dial's
+    // doMute / doMuteDriver.
+    //
+    // This assertion used to read `toHaveBeenCalledWith(1)` while the test was
+    // already named "leaves the internal buses alone" — the code treated
+    // anything that wasn't volume-down as a step up, so a stale mute raised the
+    // volume on every single press. #863 widened the action enum, which would
+    // have put `mute-driver` into that same silent-increase set.
+    it.each([
+      ["race-engineer", "mute"],
+      ["race-engineer", "mute-driver"],
+      ["radar", "mute"],
+      ["radar", "mute-driver"],
+    ] as const)("leaves the %s bus alone for a stale %s action (the PI never offers it)", async (category, act) => {
+      await action.onKeyDown(fakeEvent("action-1", { category, action: act }) as any);
 
-      // `mute` can only arrive from a stale/hand-edited profile; treat it as a
-      // step up rather than dropping the press.
-      expect(mockStepRadarVolumeBy).toHaveBeenCalledWith(1);
+      expect(mockStepRaceEngineerVolumeBy).not.toHaveBeenCalled();
+      expect(mockStepRadarVolumeBy).not.toHaveBeenCalled();
       expect(mockTapBinding).not.toHaveBeenCalled();
+      expect(mockHoldBinding).not.toHaveBeenCalled();
     });
   });
 });
