@@ -31,7 +31,7 @@ The existing gap callouts are event-driven and relevance-gated; this one is the 
 
 ### 3. Rating and licence read from `DriverInfo`, the way #944 reads them
 
-`DriverInfo.Drivers[].IRating` and `LicString` (e.g. `"B 3.21"`) are the sources; the translator already carries the neighbours from `getLiveRacePositions()` per `race-positions.md`, so the new payload is the same neighbour resolution plus those two fields. iRating rounds to one decimal in thousands ("one point five K"); a licence string yields the class letter and the safety rating to one decimal. Rookie is spoken as "rookie licence", Pro/WC as "pro licence". A missing or zero iRating (AI cars, a driver who has none) drops the rating clause; a missing licence drops that clause; both missing → the line is gap-only, which the gap engine already covers, so the line is skipped entirely.
+`DriverInfo.Drivers[].IRating` and `LicString` (e.g. `"B 3.21"`) are the sources; the translator already carries the neighbours from `getLiveRacePositions()` per `race-positions.md`, so the new payload is the same neighbour resolution plus those two fields. iRating rounds to one decimal in thousands ("one point five K"); a licence string yields the class letter and the safety rating to one decimal. The licence goes through the parser #1199 specifies (`resolveDriverRatings` in `@iracedeck/iracing-sdk`, which cross-checks `LicSubLevel`), so the two features cannot read one driver differently. That spec also cuts the rating to one decimal instead of rounding it, so a 2.49 is never spoken as "two point five". Rookie is spoken as "rookie licence". Pro/WC is spoken as "pro licence" once a capture shows what `LicString` prints for it; until then the shared parser drops the licence clause for any letter other than R, D, C, B and A. A missing or zero iRating (AI cars, a driver who has none) drops the rating clause; a missing licence drops that clause; both missing → the line is gap-only, which the gap engine already covers, so the line is skipped entirely.
 
 ### 4. Names only where a clip exists
 
@@ -39,12 +39,12 @@ Voices are recorded clips, so the engineer cannot say an arbitrary surname. The 
 
 ### 5. Sequencing with #944 and the gap engine
 
-Same family as the gap callouts (`gaps`), `queueable: true` at `WEIGHT.NORMAL`, so it waits behind an in-flight gap or pass callout instead of talking over it. When #944 lands, its after-a-pass line and this spec's neighbour-change line say overlapping things about the same car; the neighbour-change trigger therefore yields to #944 when both fire within the settle window, and only the cadence line carries the behind side then. Implement the yield as a shared "last briefed at" timestamp per side, not as a dependency on #944's code.
+Same family as the gap callouts (`gap`), `queueable: true` at `WEIGHT.NORMAL`, so it waits behind an in-flight gap or pass callout instead of talking over it. When #944 lands, its after-a-pass line and this spec's neighbour-change line say overlapping things about the same car; the neighbour-change trigger therefore yields to #944 when both fire within the settle window, and only the cadence line carries the behind side then. Implement the yield as a shared "last briefed at" timestamp per side, not as a dependency on #944's code.
 
 ### 6. Clips
 
-- Reuse: the gap readout numbers and "closing" / "pulling away" wording from #933; the cardinal clips 0–150 from `session-start-temp-numbers` via `poolRef` (#836) for the safety-rating integer and decimal.
-- New, in a `neighbour-briefing` group: "Car ahead:", "Car behind:", "Rated", "K", "A licence" … "D licence", "rookie licence", "pro licence", "safety rating", and "point" if the decimal clip does not already exist in the temp-numbers pool. #944 plans the same rating clips; whichever lands first creates them and the other reuses.
+- Reuse: the gap readout numbers and "closing" / "pulling away" wording from #933. For the safety rating, the groups shared with #1199: `lap-time-second` for the whole part and `safety-rating-decimal` for the tenth. The first plan, the cardinal clips in `session-start-temp-numbers`, no longer works, because #1187 deletes that group.
+- Shared with #1199, created by whichever lands first: the `driver-rating` group ("Car ahead:", "Car behind:", "Rookie licence", "D licence" … "A licence", "safety rating") and `safety-rating-decimal`. New for this spec, in a `neighbour-briefing` group: "Rated", "K", and "pro licence" once its `LicString` is known. #944 plans the same rating clips and reuses these.
 
 ### 7. Settings
 
@@ -53,7 +53,7 @@ Same family as the gap callouts (`gaps`), `queueable: true` at `WEIGHT.NORMAL`, 
 ## Alternatives rejected
 
 - **Extending #944 to the car behind and to a cadence.** An event callout with a cadence bolted on; the two triggers are different shapes and would share nothing but the clips. Kept separate, with the yield in decision 5.
-- **"Safe / unsafe driver" as the requester phrased it.** A verdict word needs a threshold nobody agrees on; the safety rating number is the fact, and the driver already knows what 2.1 versus 4.9 means.
+- **"Safe / unsafe driver" as the requester phrased it.** A verdict word needs a threshold nobody agrees on; the safety rating number is the fact, and the driver already knows what 2.1 versus 4.9 means. The briefing stays verdict-free; #1199, the proximity readout, carries the two tiers the maintainer set (below 2.5 and below 2.0).
 - **A Session Info key showing the same data.** Useful, and a different issue; this spec is the spoken half only.
 
 ## Testing
@@ -62,7 +62,7 @@ Translator tests for the payload (rating rounding, licence parsing incl. Rookie/
 
 ## Affected artifacts
 
-- `@iracedeck/event-bus` catalog (a briefing payload, or fields on the gap-neighbour snapshot), `@iracedeck/sim-events-iracing` (the `DriverInfo` read), `@iracedeck/audio-scenarios` (the scenario, family `gaps`), `@iracedeck/audio-assets` (the new group, scoped dry-run first), `@iracedeck/deck-core` (three schema fields), the settings-window Race Engineer partial, the scenario harness (event name + two shortcuts).
+- `@iracedeck/event-bus` catalog (a briefing payload, or fields on the gap-neighbour snapshot), `@iracedeck/sim-events-iracing` (the `DriverInfo` read), `@iracedeck/audio-scenarios` (the scenario, family `gap`), `@iracedeck/audio-assets` (the new group, scoped dry-run first), `@iracedeck/deck-core` (three schema fields), the settings-window Race Engineer partial, the scenario harness (event name + two shortcuts).
 - Website: the Race Engineer page gains a section; changelog entry.
 - Rules: `race-engineer-callout-examples.md` gains the entry.
 
