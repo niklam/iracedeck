@@ -41,11 +41,23 @@ const SPEC_SECTIONS = [
 /** The `> **Issue:** … **Supersedes:** … **Superseded by:** …` block. */
 const SPEC_HEADER = /^>\s*\*\*Issue:\*\*.*\*\*Supersedes:\*\*.*\*\*Superseded by:\*\*/m;
 
-/** Headings at any level, plus the bold-only lines the specs use as headings. */
+/** A fenced code block: its opening run of backticks or tildes, up to the same run closing it. */
+const FENCED_BLOCK = /^(`{3,}|~{3,})[^\n]*\n[\s\S]*?^\1[^\n]*$/gm;
+
+/**
+ * Headings at any level, plus the lines the specs make headings of by bolding
+ * the WHOLE line (`**Manual verification**`, optionally with a trailing colon).
+ * Code fences are dropped first, since a `# verify the build` comment in a
+ * bash block is not a heading. A paragraph that merely OPENS in bold is body
+ * prose, and does not count: the one post-policy spec that passed on such a
+ * line (`**Tests assert structure, not pixels.**`, inside #1145's Decisions)
+ * has no test section, and is already in HEAD, so it is never re-checked.
+ */
 function specHeadings(text) {
+  const body = text.replace(FENCED_BLOCK, "");
   return [
-    ...[...text.matchAll(/^#{1,6}\s+(.+)$/gm)].map((m) => m[1]),
-    ...[...text.matchAll(/^\*\*(.+?)\*\*/gm)].map((m) => m[1]),
+    ...[...body.matchAll(/^#{1,6}\s+(.+)$/gm)].map((m) => m[1]),
+    ...[...body.matchAll(/^\*\*([^*\n]+?)\*\*[:.]?\s*$/gm)].map((m) => m[1]),
   ].map((h) => h.trim());
 }
 
@@ -453,11 +465,22 @@ export function classifyCheck(c) {
 
 const checkName = (c) => c.name ?? c.context ?? c.__typename ?? "?";
 
-/** Runs every rule; the first verdict wins. */
+/**
+ * Runs the rules. The first DENY wins at once; the first ask is held until
+ * every rule has had its turn, so a deny anywhere beats an ask anywhere,
+ * whatever order the two rules sit in. One chained command can match both — a
+ * spec-less `git worktree add … && <a denied shape>` used to surface only the
+ * ask, and confirming it ran the command the deny exists to stop (#1193
+ * review; the tag-push ask had the same gap). Order still picks which of two
+ * denies, or which of two asks, is the one reported.
+ */
 export function checkBash(command, ctx) {
+  let ask = null;
   for (const rule of rules) {
     const v = rule.test(command, ctx);
-    if (v) return v;
+    if (!v) continue;
+    if (typeof v === "string") return v;
+    ask ??= v;
   }
-  return null;
+  return ask;
 }

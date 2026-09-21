@@ -104,6 +104,25 @@ describe("a trapped shape merely MENTIONED is not a hit", () => {
   });
 });
 
+// #1193 review: `checkBash` used to return the FIRST verdict, so an ask rule
+// placed early in the list swallowed a deny rule placed later whenever one
+// chained command matched both — and confirming the ask ran the denied shape.
+describe("a deny anywhere beats an ask anywhere, whatever the rule order", () => {
+  const noSpec = ctx({ specFiles: () => [] });
+  it("denies a spec-less worktree add chained ahead of a denied shape", () =>
+    expect(deny("git worktree add ../ir-42 -b ir-42 origin/master && jq . x.json", noSpec)).toMatch(/jq/));
+  it("denies a tag push chained ahead of a denied shape", () =>
+    expect(deny("git push origin v9.9.9 && pnpm build --force")).toMatch(/--force/));
+  it("still asks when nothing denies", () =>
+    expect(asks("git worktree add ../ir-42 -b ir-42 origin/master && git -C ../ir-42 log -1", noSpec)).toMatch(
+      /No spec/,
+    ));
+  it("reports the first of two asks", () =>
+    expect(asks("git push origin v9.9.9 && git worktree add ../ir-42 -b ir-42 origin/master", noSpec)).toMatch(
+      /release/,
+    ));
+});
+
 describe("code review", () => {
   it("refuses --fix", () => expect(deny("claude /code-review high --fix")).toMatch(/--fix/));
 });
@@ -274,7 +293,7 @@ describe("git commit", () => {
     });
     it("accepts the heading spellings already in the corpus", () => {
       for (const scope of ["## Out of scope", "## Non-goals", "### What this deliberately does not do"])
-        for (const test of ["## Testing", "## Verification", "## Tests", "**Manual verification**"])
+        for (const test of ["## Testing", "## Verification", "## Tests", "**Manual verification**", "**Testing:**"])
           passes("git commit -m x", spec([HEADER, "# T", scope, "x", test, "y"].join("\n\n")));
     });
     it("reads headings, not prose — a passing mention of a test is not a test plan", () =>
@@ -284,6 +303,28 @@ describe("git commit", () => {
           spec([HEADER, "# T", "## Out of scope", "We tested it and verified nothing."].join("\n\n")),
         ),
       ).toMatch(/Testing or Verification/));
+    // #1193 review: both used to pass, one of them in the corpus (#1145).
+    it("does not take a paragraph that merely OPENS in bold for a heading", () =>
+      expect(
+        deny(
+          "git commit -m x",
+          spec(
+            [HEADER, "# T", "## Out of scope", "x", "**Tests assert structure, not pixels.** Then prose."].join("\n\n"),
+          ),
+        ),
+      ).toMatch(/Testing or Verification/));
+    it("does not take a comment inside a code fence for a heading", () =>
+      expect(
+        deny(
+          "git commit -m x",
+          spec([HEADER, "# T", "## Out of scope", "x", "```bash\n# verify the build\npnpm build\n```"].join("\n\n")),
+        ),
+      ).toMatch(/Testing or Verification/));
+    it("still reads the headings after a fenced block closes", () =>
+      passes(
+        "git commit -m x",
+        spec([HEADER, "# T", "```text\n# not a heading\n```", "## Out of scope", "x", "## Testing", "y"].join("\n\n")),
+      ));
     it("passes when the text cannot be read at all (fail open)", () =>
       passes("git commit -m x", ctx({ staged: () => ["docs/superpowers/specs/a.md"], specText: () => undefined })));
     it("leaves an AMENDMENT alone — the requirement is forward-only", () =>

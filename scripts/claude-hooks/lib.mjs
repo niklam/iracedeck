@@ -119,11 +119,24 @@ export function toplevel(dir) {
 }
 
 /**
- * Every spec filename under `root`'s spec directory, or `[]` when the
- * directory cannot be read. Callers treat `[]` as "no spec found", which is
- * the side that ASKS rather than the side that denies.
+ * Every spec filename `origin/master` carries, or — when git cannot answer
+ * (no such ref, no git) — every one in `root`'s working tree. Callers treat
+ * `[]` as "no spec found", which is the side that ASKS rather than the side
+ * that denies.
+ *
+ * The ref comes first because it is what a worktree is cut from, and what the
+ * freshness check has just confirmed current. The working tree answers a
+ * different question in both directions (#1193 review): a spec a cloud session
+ * pushed to master is absent from a local checkout nobody has pulled, and a
+ * spec written in the checkout but never committed has not reached master.
  */
 export function specFilenames(root) {
+  const r = git(["ls-tree", "--name-only", `origin/${MAIN_BRANCH}`, "--", SPEC_DIR], root);
+  if (r.ok)
+    return r.out
+      .split(/\r?\n/)
+      .filter((f) => f.endsWith(".md"))
+      .map((f) => path.posix.basename(f));
   try {
     return readdirSync(path.join(root, SPEC_DIR)).filter((f) => f.endsWith(".md"));
   } catch {

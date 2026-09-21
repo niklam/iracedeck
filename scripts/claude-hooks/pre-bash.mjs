@@ -42,10 +42,16 @@ if (typeof command === "string" && command.trim()) {
     // is how a valid `worktree add` got denied as "inside the repo".
     mainRoot: memo((dir) => mainRepoRoot(dir) ?? mainRepoRoot(cwd) ?? cwd),
     originFresh: memo(originMasterFresh),
-    // Specs live on master, so they are listed in the MAIN checkout — the tree
-    // a `worktree add` is being run from, and the one a sibling ir-<n> has not
-    // been created in yet. `specText` reads from the committing tree's own
-    // toplevel instead, since that is where the staged file actually is.
+    // Specs are listed off origin/master, asked of the MAIN repository — the
+    // ref a new ir-<n> is cut from, which the freshness check has just
+    // confirmed current (see `specFilenames` for the fallback).
+    //
+    // `specText` reads the committing tree's WORKING copy, not the index, on
+    // purpose: a `git add spec.md && git commit` chain — the usual shape — has
+    // not staged anything yet when this hook runs, so the index holds no bytes
+    // for it, and `-a` and pathspec commits take the working copy anyway. What
+    // that costs is a spec staged, then edited, then committed with a plain
+    // `git commit`, which is judged on the edit.
     specFiles: memo((dir) => specFilenames(mainRepoRoot(dir) ?? mainRepoRoot(cwd) ?? cwd)),
     specText: memo((dir, rel) => readRepoFile(toplevel(dir) ?? mainRepoRoot(cwd) ?? cwd, rel)),
     // Already in HEAD means this commit AMENDS the spec rather than adding it.

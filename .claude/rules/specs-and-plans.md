@@ -52,7 +52,7 @@ A spec covering several issues is named for the primary one and lists the rest i
 
 ## Required sections
 
-Beyond the header block, two sections are checked at the commit (#1193). The spellings already in use are all accepted:
+Beyond the header block, two sections are checked at the commit (#1193). A section is a heading at any level, or a line that is bold from end to end; a paragraph that merely opens in bold is prose, and so is anything inside a code fence. The spellings already in use are all accepted:
 
 - **Out of scope** — or `Non-goals`, or `What this deliberately does not do`. What the decision deliberately does not cover.
 - **Testing** — or `Verification`, `Tests`, `Manual verification`. How the thing is proven, by hand as well as by suite.

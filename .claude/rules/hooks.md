@@ -25,7 +25,7 @@ A **deny** refuses the call and tells the model why. An **ask** forces the permi
 | `gh pr merge` | deny unless: OPEN, `--squash` (or `--merge` for a `release/*` head), `reviewDecision` APPROVED, a CodeRabbit review at the current head plus an approval, every rollup entry green (fails closed on unknown node types), not BLOCKED/DIRTY. `--admin` skips only the review checks. | approval and checks are head-specific |
 | `git commit` with a spec on a non-master branch | deny | specs commit to master only |
 | `git commit` ADDING a spec with no header block, no Out-of-scope section or no Testing/Verification section | deny | the two sections that decayed to 17 % and 70 % because no rule named them; amendments and unreadable text pass, so it is forward-only |
-| `git worktree add ../ir-<n>` where no `docs/superpowers/specs/*-issue-<n>-*.md` exists | ask, unless the issue's labels are readable and carry no `enhancement` | a feature gets its spec before its worktree; the exemptions are judgement, so the maintainer confirms |
+| `git worktree add ../ir-<n>` where `origin/master` carries no `docs/superpowers/specs/*-issue-<n>-*.md` | ask, unless the issue's labels are readable and carry no `enhancement` | a feature gets its spec before its worktree; the exemptions are judgement, so the maintainer confirms |
 | `git commit` with a `package.json` while `pnpm-lock.yaml` is dirty and not included | deny | CI's frozen lockfile |
 | `git worktree add` inside the repo, not named `ir-<issue>`, or from a stale `origin/master` | deny | sibling worktrees; verify the base commit |
 | `git worktree remove` while a deck host's plugin link points into that tree | deny | relink to master first, or leave it if another session holds it |
@@ -37,7 +37,7 @@ A **deny** refuses the call and tells the model why. An **ask** forces the permi
 ## Rules
 
 1. **A new mechanical rule goes here, not only in prose.** When a rule file gains a "never do X" that a regex over the tool input can check, add it to `rules-bash.mjs` (or the matching module) with a test in the same change. The prose keeps the why; the hook keeps the rule.
-2. **Deny beats ask.** In `rules-bash.mjs` the first verdict wins, so a rule that denies a shape must come before one that would ask about it.
+2. **Deny beats ask, whatever the order.** `checkBash` returns the first deny at once and holds the first ask until every rule has run, because one chained command can match an ask rule early in the list and a deny rule late in it — until #1193 the ask won, and confirming it ran the shape the deny exists to stop. Rule order still decides which of two denies, or of two asks, is reported.
 3. **Board moves never go backwards.** `BOARD_MOVES` in `lib.mjs` lists the lanes each automated move may start from; a card in Testing or Done is never touched. The lane ids are read fresh from `gh project field-list` on every move, never hardcoded.
 4. **Exercise the mutating paths with `IRACEDECK_HOOKS_DRY_RUN=1`.** The board helpers then report what they would do instead of doing it. Every other path is read-only. This rule exists because the first pipe-test of the merge hook moved a real card.
 5. **Hooks read the tree of the session's `CLAUDE_PROJECT_DIR`.** A worktree runs the copy of the scripts it has checked out, so a hook change reaches other worktrees when it lands on `master` and they rebase.
