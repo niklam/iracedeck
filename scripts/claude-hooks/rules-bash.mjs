@@ -17,6 +17,50 @@ import { MAIN_BRANCH, SPEC_DIR } from "./lib.mjs";
 
 const TITLE_RE = /^(feat|fix|improve|perf|refactor|docs|ci|chore|test|build|style|revert)(\([^)]+\))?!?: .+ \(#\d+\)$/;
 
+/**
+ * What a spec must carry beyond its header block (#1193). Measured over all
+ * 106 specs: since the #621 policy, "Out of scope" fell from 50 % to 17 % and
+ * a Testing/Verification section from 88 % to 70 % — because no rule had ever
+ * named either. The only surviving prescription was a pre-#621 template in
+ * `.claude/agents/feature-planner.md` that has produced zero specs.
+ *
+ * The spellings are the ones ALREADY in the corpus, deliberately: the house
+ * style has never been uniform, and forcing one would rewrite 45 compliant
+ * specs' habits for nothing. Matched against headings at any level plus the
+ * bold pseudo-headings the specs use, never against body prose — a passing
+ * mention of a test is not a test plan.
+ */
+const SPEC_SECTIONS = [
+  {
+    what: "an Out of scope section",
+    re: /out of scope|non-goals?|not in scope|deliberately does not|does not (?:do|cover|include|ship)/i,
+  },
+  { what: "a Testing or Verification section", re: /\b(tests?|testing|verification|verify)\b/i },
+];
+
+/** The `> **Issue:** … **Supersedes:** … **Superseded by:** …` block. */
+const SPEC_HEADER = /^>\s*\*\*Issue:\*\*.*\*\*Supersedes:\*\*.*\*\*Superseded by:\*\*/m;
+
+/** Headings at any level, plus the bold-only lines the specs use as headings. */
+function specHeadings(text) {
+  return [
+    ...[...text.matchAll(/^#{1,6}\s+(.+)$/gm)].map((m) => m[1]),
+    ...[...text.matchAll(/^\*\*(.+?)\*\*/gm)].map((m) => m[1]),
+  ].map((h) => h.trim());
+}
+
+/** What a committed spec is missing, in the order a reader would fix it. */
+export function missingSpecParts(text) {
+  const missing = [];
+  if (!SPEC_HEADER.test(text)) missing.push("the header block (Issue · Supersedes · Superseded by)");
+  const heads = specHeadings(text);
+  for (const s of SPEC_SECTIONS) if (!heads.some((h) => s.re.test(h))) missing.push(s.what);
+  return missing;
+}
+
+/** A spec is named for its issue; the date and the topic around it are free. */
+const specExistsFor = (files, issue) => files.some((f) => new RegExp(`-issue-${issue}-`).test(f));
+
 /** The pieces of a chained shell command: split at `&&`, `||`, `;`, `|` and newlines. */
 export function segments(command) {
   return command
@@ -172,6 +216,22 @@ export const rules = [
         if (specs.length)
           return `A spec commits to ${MAIN_BRANCH} as its own docs(specs) commit, never on a feature branch (${specs.join(", ")} on ${branch}). See .claude/rules/specs-and-plans.md.`;
       }
+      // The commit is where a spec's bytes are knowable and its author is still
+      // holding it. Two things pass on purpose (#1193): a spec ALREADY in HEAD,
+      // because the requirement is forward-only like #621's naming convention
+      // and `specs-and-plans.md` protects editing a spec freely before it ships
+      // — 30 of the 64 post-policy specs were amended, and none of those edits
+      // is the moment to demand a section the spec was never asked for; and
+      // text the hook cannot read, because a spec is never blocked over bytes
+      // the hook failed to find.
+      for (const f of committed.filter((x) => x.startsWith(SPEC_DIR))) {
+        if (ctx.tracked?.(dir, f)) continue;
+        const text = ctx.specText?.(dir, f);
+        if (text === undefined) continue;
+        const missing = missingSpecParts(text);
+        if (missing.length)
+          return `${f} is missing ${missing.join(" and ")}. A spec carries the header block, an Out of scope section and a Testing/Verification section. See .claude/rules/specs-and-plans.md.`;
+      }
       if (
         committed.some((f) => /(^|\/)package\.json$/.test(f)) &&
         !committed.includes("pnpm-lock.yaml") &&
@@ -206,6 +266,22 @@ export const rules = [
       const fresh = ctx.originFresh(dir);
       if (fresh && !fresh.fresh)
         return `origin/${MAIN_BRANCH} is stale (local ${fresh.local}, remote ${fresh.remote}); run \`git fetch origin\` first or the branch starts behind and surfaces as a PR conflict.`;
+      // The one moment where the issue number is known and implementation has
+      // not started (#1193): 47 of the 56 enhancement issues filed since the
+      // #621 policy have a spec, and nothing was checking the other nine.
+      // An ASK, never a deny — the exemptions (a bug, a docs fix, a dependency
+      // bump, a hygiene sweep) are judgement no regex makes. Labels that are
+      // readable and carry no `enhancement` ARE those exemptions, so the ask
+      // stays silent for them; labels that cannot be read (no `gh`, offline)
+      // ask, and the prompt names the exemption so it costs one keypress.
+      const issue = resolved.match(/ir-(\d+)$/)?.[1];
+      if (issue && !specExistsFor(ctx.specFiles?.(dir) ?? [], issue)) {
+        const labels = (ctx.issueLabels?.(issue, dir)?.labels ?? []).map((l) => l?.name ?? l);
+        if (!labels.length || labels.includes("enhancement"))
+          return {
+            ask: `No spec on ${MAIN_BRANCH} for #${issue} (${SPEC_DIR}*-issue-${issue}-*.md). A feature or enhancement gets its spec BEFORE its worktree; a bug, docs fix, dependency bump or hygiene sweep is exempt — confirm to proceed. See .claude/rules/specs-and-plans.md.`,
+          };
+      }
       return null;
     },
   },

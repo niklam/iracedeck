@@ -118,6 +118,33 @@ export function toplevel(dir) {
   return r.ok ? path.resolve(r.out.trim()) : undefined;
 }
 
+/**
+ * Every spec filename under `root`'s spec directory, or `[]` when the
+ * directory cannot be read. Callers treat `[]` as "no spec found", which is
+ * the side that ASKS rather than the side that denies.
+ */
+export function specFilenames(root) {
+  try {
+    return readdirSync(path.join(root, SPEC_DIR)).filter((f) => f.endsWith(".md"));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * A repo-relative file's text, or `undefined` when it cannot be read — a file
+ * staged by a `git add` that has since moved, a rename, a pathspec the hook
+ * mis-parsed. Every caller fails OPEN on `undefined`: a spec must never be
+ * blocked because the hook could not find the bytes it wanted to check.
+ */
+export function readRepoFile(root, rel) {
+  try {
+    return readFileSync(path.join(root, rel), "utf8");
+  } catch {
+    return undefined;
+  }
+}
+
 /** The main repository checkout (the one whose `.git` is a directory). */
 export function mainRepoRoot(dir) {
   const r = git(["rev-parse", "--git-common-dir"], dir);

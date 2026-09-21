@@ -12,6 +12,9 @@ import {
   mainRepoRoot,
   originMasterFresh,
   readInput,
+  readRepoFile,
+  specFilenames,
+  toplevel,
   workspacePackages,
 } from "./lib.mjs";
 import { checkBash } from "./rules-bash.mjs";
@@ -39,6 +42,15 @@ if (typeof command === "string" && command.trim()) {
     // is how a valid `worktree add` got denied as "inside the repo".
     mainRoot: memo((dir) => mainRepoRoot(dir) ?? mainRepoRoot(cwd) ?? cwd),
     originFresh: memo(originMasterFresh),
+    // Specs live on master, so they are listed in the MAIN checkout — the tree
+    // a `worktree add` is being run from, and the one a sibling ir-<n> has not
+    // been created in yet. `specText` reads from the committing tree's own
+    // toplevel instead, since that is where the staged file actually is.
+    specFiles: memo((dir) => specFilenames(mainRepoRoot(dir) ?? mainRepoRoot(cwd) ?? cwd)),
+    specText: memo((dir, rel) => readRepoFile(toplevel(dir) ?? mainRepoRoot(cwd) ?? cwd, rel)),
+    // Already in HEAD means this commit AMENDS the spec rather than adding it.
+    tracked: memo((dir, rel) => git(["cat-file", "-e", `HEAD:${rel}`], dir).ok),
+    issueLabels: memo((issue, dir) => ghJson(["issue", "view", String(issue), "--json", "labels"], dir)),
     linkTargets: memo(() => linkTargets()),
     packages: memo(() => workspacePackages(mainRepoRoot(cwd) ?? cwd)),
     isInside,

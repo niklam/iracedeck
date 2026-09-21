@@ -40,37 +40,11 @@ You help plan and document features for the iRaceDeck project by creating clear,
 
 ## Documentation Structure
 
-### Feature Planning Documents
+### Design Specs
 
-Create feature planning documents in `docs/` with this structure:
+A design decision goes in a spec. `.claude/rules/specs-and-plans.md` owns the format — where it lives, how it is named, its header block, the required sections, and the rule that it commits to `master` on its own. Follow it; do not invent a template here.
 
-```markdown
-# Feature: [Feature Name]
-
-## Overview
-Brief description of what this feature enables for users.
-
-## User Stories
-- As a [user type], I want to [action] so that [benefit].
-
-## Plugin: [Plugin Name]
-Which plugin this belongs to and why.
-
-## Actions Summary
-Brief overview of actions this feature includes.
-
-## Key Bindings
-List keyboard shortcuts this feature sends and their iRacing defaults.
-Note: All key bindings must be user-configurable via Property Inspector.
-
-## Technical Considerations
-- Edge cases
-- Performance concerns
-- Dependencies on other features
-
-## Out of Scope
-What this feature explicitly does NOT include.
-```
+This file carried one until #1193. It predated the #621 policy by two months and disagreed with it on the directory, the naming, the header and the commit rule, and it had produced exactly one document in the repo's history and zero specs. Two templates for one artifact is how a section ends up required in one place and unknown in the other.
 
 ### Action Documentation
 

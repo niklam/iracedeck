@@ -24,6 +24,8 @@ A **deny** refuses the call and tells the model why. An **ask** forces the permi
 | `gh pr create` | deny on a title that is not `<type>(<scope>): … (#<issue>)` | PR title discipline |
 | `gh pr merge` | deny unless: OPEN, `--squash` (or `--merge` for a `release/*` head), `reviewDecision` APPROVED, a CodeRabbit review at the current head plus an approval, every rollup entry green (fails closed on unknown node types), not BLOCKED/DIRTY. `--admin` skips only the review checks. | approval and checks are head-specific |
 | `git commit` with a spec on a non-master branch | deny | specs commit to master only |
+| `git commit` ADDING a spec with no header block, no Out-of-scope section or no Testing/Verification section | deny | the two sections that decayed to 17 % and 70 % because no rule named them; amendments and unreadable text pass, so it is forward-only |
+| `git worktree add ../ir-<n>` where no `docs/superpowers/specs/*-issue-<n>-*.md` exists | ask, unless the issue's labels are readable and carry no `enhancement` | a feature gets its spec before its worktree; the exemptions are judgement, so the maintainer confirms |
 | `git commit` with a `package.json` while `pnpm-lock.yaml` is dirty and not included | deny | CI's frozen lockfile |
 | `git worktree add` inside the repo, not named `ir-<issue>`, or from a stale `origin/master` | deny | sibling worktrees; verify the base commit |
 | `git worktree remove` while a deck host's plugin link points into that tree | deny | relink to master first, or leave it if another session holds it |

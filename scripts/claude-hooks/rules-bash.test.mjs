@@ -18,6 +18,15 @@ function ctx(overrides = {}) {
     modified: () => [],
     mainRoot: () => MASTER,
     originFresh: () => ({ fresh: true, local: "aaaaaaaaa", remote: "aaaaaaaaa" }),
+    // The default describes issues that ALREADY have their spec, so the
+    // worktree cases below test placement and freshness as they always did;
+    // the spec-gate cases override with `specFiles: () => []`. `specText`
+    // returning undefined is the fail-open contract the commit rule rests on
+    // — a spec whose bytes the hook cannot read must still commit.
+    specFiles: () => ["2026-01-01-issue-1-topic.md", "2026-01-01-issue-5-topic.md", "2026-01-01-issue-6-topic.md"],
+    specText: () => undefined,
+    tracked: () => false,
+    issueLabels: () => undefined,
     linkTargets: () => [],
     packages: () => ({ "@iracedeck/logger": { dir: "x", scripts: ["build", "typecheck"] } }),
     isInside: (c, p) => c.toLowerCase() === p.toLowerCase() || c.toLowerCase().startsWith(p.toLowerCase() + path.sep),
@@ -239,6 +248,78 @@ describe("git commit", () => {
     ).toMatch(/never on a feature branch/));
   it("allows a spec on master", () =>
     passes("git commit -m x", ctx({ staged: () => ["docs/superpowers/specs/a.md"] })));
+
+  // #1193. The header block held at 98 % on its own, but "Out of scope" fell
+  // 50 % -> 17 % and Testing/Verification 88 % -> 70 % once the spec became a
+  // filing-time decision record — so the commit now reads what it carries.
+  describe("the required sections", () => {
+    const HEADER = "> **Issue:** [#9](u) · **Supersedes:** _none_ · **Superseded by:** _none_";
+    const spec = (body) => ctx({ staged: () => ["docs/superpowers/specs/a.md"], specText: () => body });
+    const whole = [HEADER, "# T", "## Out of scope", "none", "## Testing", "vitest"].join("\n\n");
+
+    it("passes a spec carrying all three", () => passes("git commit -m x", spec(whole)));
+    it("denies a missing header block", () =>
+      expect(deny("git commit -m x", spec(whole.replace(HEADER, "")))).toMatch(/header block/));
+    it("denies a missing Out of scope section", () =>
+      expect(deny("git commit -m x", spec(whole.replace("## Out of scope\n\nnone\n\n", "")))).toMatch(/Out of scope/));
+    it("denies a missing Testing section", () =>
+      expect(deny("git commit -m x", spec(whole.replace("## Testing\n\nvitest", "")))).toMatch(
+        /Testing or Verification/,
+      ));
+    it("names every missing piece at once", () => {
+      const v = deny("git commit -m x", spec("# T\n\nprose only"));
+      expect(v).toMatch(/header block/);
+      expect(v).toMatch(/Out of scope/);
+      expect(v).toMatch(/Testing or Verification/);
+    });
+    it("accepts the heading spellings already in the corpus", () => {
+      for (const scope of ["## Out of scope", "## Non-goals", "### What this deliberately does not do"])
+        for (const test of ["## Testing", "## Verification", "## Tests", "**Manual verification**"])
+          passes("git commit -m x", spec([HEADER, "# T", scope, "x", test, "y"].join("\n\n")));
+    });
+    it("reads headings, not prose — a passing mention of a test is not a test plan", () =>
+      expect(
+        deny(
+          "git commit -m x",
+          spec([HEADER, "# T", "## Out of scope", "We tested it and verified nothing."].join("\n\n")),
+        ),
+      ).toMatch(/Testing or Verification/));
+    it("passes when the text cannot be read at all (fail open)", () =>
+      passes("git commit -m x", ctx({ staged: () => ["docs/superpowers/specs/a.md"], specText: () => undefined })));
+    it("leaves an AMENDMENT alone — the requirement is forward-only", () =>
+      passes(
+        "git commit -m x",
+        ctx({ staged: () => ["docs/superpowers/specs/a.md"], specText: () => "# T", tracked: () => true }),
+      ));
+    it("still checks the new spec in a commit that also amends an old one", () =>
+      expect(
+        deny(
+          "git commit -m x",
+          ctx({
+            staged: () => ["docs/superpowers/specs/old.md", "docs/superpowers/specs/new.md"],
+            specText: () => "# T",
+            tracked: (_d, f) => f.endsWith("old.md"),
+          }),
+        ),
+      ).toMatch(/new\.md/));
+    it("checks every spec the commit carries", () =>
+      expect(
+        deny(
+          "git commit -m x",
+          ctx({
+            staged: () => ["docs/superpowers/specs/a.md", "docs/superpowers/specs/b.md"],
+            specText: (_d, f) => (f.endsWith("a.md") ? whole : "# T"),
+          }),
+        ),
+      ).toMatch(/b\.md/));
+    it("still denies the feature branch first — the branch is the bigger mistake", () =>
+      expect(
+        deny(
+          "git commit -m x",
+          ctx({ branch: () => "ir-1", staged: () => ["docs/superpowers/specs/a.md"], specText: () => "# T" }),
+        ),
+      ).toMatch(/never on a feature branch/));
+  });
   it("reads -a as staged plus modified", () =>
     deny("git commit -am x", ctx({ branch: () => "ir-1", modified: () => ["docs/superpowers/specs/a.md"] })));
   it("reads an explicit pathspec after --", () => {
@@ -297,6 +378,38 @@ describe("git worktree add", () => {
   });
   it("passes when offline (freshness unknown)", () =>
     passes("git worktree add ../ir-1", ctx({ originFresh: () => undefined })));
+
+  // #1193: 47 of 56 enhancement issues since the #621 policy had a spec, and
+  // nothing checked the other nine. The worktree is the last moment before
+  // implementation where the issue number is known.
+  describe("the spec gate", () => {
+    const noSpec = (o = {}) => ctx({ specFiles: () => [], ...o });
+    it("asks when the issue has no spec", () =>
+      expect(asks("git worktree add ../ir-42 -b ir-42", noSpec())).toMatch(/No spec on master for #42/));
+    it("passes when a spec is named for the issue, whatever its date and topic", () =>
+      passes("git worktree add ../ir-42 -b ir-42", ctx({ specFiles: () => ["2026-09-21-issue-42-anything.md"] })));
+    it("is not satisfied by a spec for a DIFFERENT issue whose number contains this one", () =>
+      expect(
+        asks("git worktree add ../ir-42 -b ir-42", noSpec({ specFiles: () => ["2026-09-21-issue-421-x.md"] })),
+      ).toMatch(/#42\b/));
+    it("stays silent for an issue whose labels carry no enhancement", () =>
+      passes("git worktree add ../ir-42 -b ir-42", noSpec({ issueLabels: () => ({ labels: [{ name: "bug" }] }) })));
+    it("asks for an enhancement even when it also carries a kind: label", () =>
+      asks(
+        "git worktree add ../ir-42 -b ir-42",
+        noSpec({ issueLabels: () => ({ labels: [{ name: "enhancement" }, { name: "kind: hygiene" }] }) }),
+      ));
+    it("asks when the labels cannot be read at all, and names the exemption", () =>
+      expect(asks("git worktree add ../ir-42 -b ir-42", noSpec({ issueLabels: () => undefined }))).toMatch(
+        /bug, docs fix, dependency bump or hygiene sweep is exempt/,
+      ));
+    it("never overrides a deny: placement and freshness still win", () => {
+      expect(deny("git worktree add ../feature-x", noSpec())).toMatch(/ir-<issue>/);
+      expect(
+        deny("git worktree add ../ir-42", noSpec({ originFresh: () => ({ fresh: false, local: "a", remote: "b" }) })),
+      ).toMatch(/stale/);
+    });
+  });
 });
 
 describe("git worktree remove", () => {
