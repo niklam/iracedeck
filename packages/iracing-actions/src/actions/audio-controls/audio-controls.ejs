@@ -35,7 +35,7 @@
 					<option value="volume-up">Volume Up</option>
 					<option value="volume-down">Volume Down</option>
 					<option value="mute" id="mute-option">Mute</option>
-					<option value="mute-driver" id="mute-driver-option">Mute a Driver</option>
+					<option value="mute-driver">Mute a Driver</option>
 				</sdpi-select>
 			</sdpi-item>
 
@@ -68,7 +68,7 @@
 				<sdpi-select id="dial-press-select" setting="dial.pressAction" default="none">
 					<option value="push-to-talk">Push to Talk</option>
 					<option value="mute-unmute" id="dial-mute-option">Mute / Unmute</option>
-					<option value="mute-driver" id="dial-mute-driver-option">Mute a Driver</option>
+					<option value="mute-driver">Mute a Driver</option>
 					<option value="none">None</option>
 				</sdpi-select>
 			</sdpi-item>
@@ -151,27 +151,48 @@
 				return { option, parent, categories, following: siblings.slice(siblings.indexOf(option) + 1) };
 			}
 
-			// Put a detached option back WHERE IT STARTED: before the first option
-			// that originally followed it and is attached right now, or at the end
-			// when none of them is. A plain appendChild moved the dial's
-			// Mute / Unmute past None the first time a Mode switch detached it, and
-			// #863 adds a second such option, so the order is restored rather than
-			// the reordering copied.
+			// Put a detached option back WHERE IT STARTED. A plain appendChild moved
+			// the dial's Mute / Unmute past None the first time a Mode switch
+			// detached it, and #863 adds a second such option.
+			//
+			// insertBefore alone does NOT fix it: sdpi-select renders from its
+			// MutationObserver's `items` array (getItemsFromChildNodes reduces over
+			// `this._mutationObserver.items`), and that array is append-ordered —
+			// handleMutation does items.push() for an added node and items.splice()
+			// for a removed one, never re-reading document order. It only matches
+			// the document initially because the component is defined in <head> and
+			// upgrades before its children are parsed.
+			//
+			// So the option order has to be rebuilt through the observer: detach
+			// every option that originally followed this one, append this one, then
+			// re-append those in their original order. All of it is synchronous, so
+			// the whole sequence lands in ONE observer batch and costs one refresh.
 			function reattachOption(entry) {
-				const anchor = entry.following.find((el) => el.parentNode === entry.parent);
-				entry.parent.insertBefore(entry.option, anchor || null);
+				const trailing = entry.following.filter((el) => el.parentNode === entry.parent);
+
+				for (const el of trailing) el.remove();
+
+				entry.parent.appendChild(entry.option);
+
+				for (const el of trailing) entry.parent.appendChild(el);
 			}
 
 			// Attach or detach each conditional option for `category`. When the
 			// select currently shows an option about to be detached, the selection is
 			// switched to `fallback` FIRST — dispatching both input and change so
-			// sdpi persists it — and only then is the option removed, so the stored
-			// setting can never name an option that is no longer rendered.
+			// sdpi persists it — and only then is the option removed, so the setting
+			// stored for THIS category can never name an option it does not offer.
+			//
+			// Deliberately not a whole-PI invariant: the keypad's push-to-talk branch
+			// returns before calling this, which LEAVES `action` as it was. That is
+			// what lets a user visit Push to Talk and come back to Voice Chat with
+			// their Mute / Mute a Driver choice intact; resetting it there would
+			// discard a choice the category change never asked about. The resulting
+			// {push-to-talk, mute-driver} blob is inert — PTT ignores `action` — and
+			// the next non-PTT category selection resolves it through this loop.
 			function applyConditionalOptions(select, entries, category, fallback) {
 				for (const entry of entries) {
 					if (!entry) continue;
-
-					const isAttached = entry.option.parentNode === entry.parent;
 
 					if (!entry.categories.has(category)) {
 						if (select && select.value === entry.option.value) {
@@ -179,8 +200,11 @@
 							select.dispatchEvent(new Event("input", { bubbles: true }));
 							select.dispatchEvent(new Event("change", { bubbles: true }));
 						}
-						if (isAttached) entry.option.remove();
-					} else if (!isAttached) {
+						// Attachment is read HERE, not before the dispatch: the select's
+						// own change/input listener re-enters this function, so a flag
+						// captured earlier is stale by the time we act on it.
+						if (entry.option.parentNode === entry.parent) entry.option.remove();
+					} else if (entry.option.parentNode !== entry.parent) {
 						reattachOption(entry);
 					}
 				}
