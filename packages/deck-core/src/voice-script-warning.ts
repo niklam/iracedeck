@@ -64,12 +64,21 @@ export function evaluateVoiceScriptWarning(input: VoiceScriptWarningInput): PiWa
 
 /**
  * How the banner names the voice: its label where the map has one, else the
- * voice half of a composite id, else the id as it is. The composite is never
- * shown — it is an address, and the dropdown the message points at does not
- * display it either.
+ * voice half of a composite id (or a bare id as it is) title-cased. The
+ * composite is never shown — it is an address, and the dropdown the message
+ * points at does not display it either. The fallback is the DROPDOWN's
+ * fallback, `ird-voice-select`'s `titleCase` (first character upper-cased,
+ * nothing else), copied rather than imported because the PI bundle and
+ * deck-core cannot share a module — so the banner and the option it sends the
+ * user to read the same.
  */
 function displayName(voice: string, labels: Readonly<Record<string, string>> | undefined): string {
-  return labels?.[voice] ?? splitVoiceId(voice)?.voiceId ?? voice;
+  return labels?.[voice] ?? titleCase(splitVoiceId(voice)?.voiceId ?? voice);
+}
+
+/** `ird-voice-select`'s rule for an unlabelled voice, verbatim. */
+function titleCase(s: string): string {
+  return s.length === 0 ? s : s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 /**

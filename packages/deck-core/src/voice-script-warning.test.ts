@@ -13,7 +13,7 @@ describe("evaluateVoiceScriptWarning", () => {
     // 3.2.0 the unscripted families still speak, and the wording must hold
     // after #1065 scripts them too.
     expect(result?.message).toBe(
-      'The Race Engineer voice "laconic" has no callout script, so every callout that comes from the script ' +
+      'The Race Engineer voice "Laconic" has no callout script, so every callout that comes from the script ' +
         "is skipped in it. Reinstall the voice pack, or pick another voice under Race Engineer Voice.",
     );
     expect(result?.message).not.toMatch(/silent/);
@@ -43,20 +43,26 @@ describe("evaluateVoiceScriptWarning", () => {
       expect(result?.message).not.toContain("::");
     });
 
-    it("falls back to the voice half of an unlabelled composite id", () => {
+    it("falls back to the voice half of an unlabelled composite id, title-cased as the dropdown shows it", () => {
+      // `ird-voice-select` renders an unlabelled voice as `titleCase(voice)`;
+      // the banner sends the user to that dropdown, so it must say `Matt`,
+      // not `matt` — and only the first character moves, as there.
       const result = evaluateVoiceScriptWarning({ activeVoice: "luca::matt", scriptedVoices: new Set(), labels: {} });
 
-      expect(result?.message).toContain('voice "matt"');
+      expect(result?.message).toContain('voice "Matt"');
       expect(result?.message).not.toContain("::");
+      expect(
+        evaluateVoiceScriptWarning({ activeVoice: "luca::matt-short", scriptedVoices: new Set() })?.message,
+      ).toContain('voice "Matt-short"');
     });
 
-    it("names a bare id as it is, with or without a label map", () => {
+    it("names a bare id the same way, with or without a label map", () => {
       expect(evaluateVoiceScriptWarning({ activeVoice: "laconic", scriptedVoices: new Set() })?.message).toContain(
-        'voice "laconic"',
+        'voice "Laconic"',
       );
       expect(
         evaluateVoiceScriptWarning({ activeVoice: "laconic", scriptedVoices: new Set(), labels: {} })?.message,
-      ).toContain('voice "laconic"');
+      ).toContain('voice "Laconic"');
     });
 
     it("still decides on the id — a label changes the wording, not whether to warn", () => {

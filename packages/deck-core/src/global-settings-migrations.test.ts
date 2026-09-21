@@ -148,15 +148,45 @@ describe("migrateRaceEngineerVoiceId (#1144)", () => {
     _resetGlobalSettings();
   });
 
-  it("does nothing before the settings store is ready", () => {
-    // Before the load the cache is schema defaults, where `raceEngineerVoice`
-    // is the empty string — there is nothing to qualify and writing anything
-    // would persist a default over the file.
+  it("does nothing before the settings store is ready, even with a bare value in the cache", () => {
+    // A startup write can put a bare value in the cache before the load — so
+    // the value alone is not what stops the migration; the readiness gate is.
+    // Without it this would qualify and write.
     const store = initWithStore({ raceEngineerVoice: "default" });
+    updateGlobalSettings({ raceEngineerVoice: "default" });
     const saves = store.saved.length;
 
     expect(migrateRaceEngineerVoiceId(VOICES, createMockLogger())).toBe(false);
+    expect(cache().raceEngineerVoice).toBe("default");
     expect(store.saved).toHaveLength(saves);
+  });
+
+  it("waits for the managed pack before persisting anything, whatever else is available", async () => {
+    // A leftover sideload declaring a voice called `default` (refused before
+    // 3.3.0, never deleted) while `default` itself is still downloading: the
+    // alphabetical half alone would write `aaa::default` for good. The
+    // resolver still reads the value through the same rule meanwhile, so
+    // nothing is silent; the scan that installs `default` persists the answer.
+    const store = initWithStore({ raceEngineerVoice: "default" });
+    await tick();
+    const saves = store.saved.length;
+
+    expect(migrateRaceEngineerVoiceId(["aaa::default", "zeta::matt"], createMockLogger())).toBe(false);
+    expect(cache().raceEngineerVoice).toBe("default");
+    expect(store.saved).toHaveLength(saves);
+
+    expect(migrateRaceEngineerVoiceId(["aaa::default", "default::default"], createMockLogger())).toBe(true);
+    expect(cache().raceEngineerVoice).toBe("default::default");
+  });
+
+  it("persists an alphabetical answer once the managed pack is present, even for a voice it lacks", async () => {
+    // The gate is about the managed PACK being there, not about it providing
+    // this voice: with `default` installed the pre-3.3.0 order is fully known.
+    initWithStore({ raceEngineerVoice: "matt" });
+    await tick();
+
+    expect(migrateRaceEngineerVoiceId(["default::default", "zeta::matt", "beta::matt"], createMockLogger())).toBe(true);
+    expect(cache().raceEngineerVoice).toBe("beta::matt");
   });
 
   it("qualifies a bare id the managed pack provides, in one write", async () => {
@@ -203,19 +233,20 @@ describe("migrateRaceEngineerVoiceId (#1144)", () => {
   });
 
   it("keeps a bare id no pack provides, so a pack arriving later can still qualify it", async () => {
-    // A fresh launch still downloading `default`: the value must survive
-    // untouched for the re-run after that scan, never be replaced by a
-    // fallback the user did not choose.
-    const store = initWithStore({ raceEngineerVoice: "default" });
+    // The managed pack is present but does not provide this voice, and no
+    // other pack does yet: the value must survive untouched for the re-run
+    // after a later scan, never be replaced by a fallback the user did not
+    // choose.
+    const store = initWithStore({ raceEngineerVoice: "matt" });
     await tick();
     const saves = store.saved.length;
 
-    expect(migrateRaceEngineerVoiceId(["aria::aria"], createMockLogger())).toBe(false);
-    expect(cache().raceEngineerVoice).toBe("default");
+    expect(migrateRaceEngineerVoiceId(["default::default"], createMockLogger())).toBe(false);
+    expect(cache().raceEngineerVoice).toBe("matt");
     expect(store.saved).toHaveLength(saves);
 
-    expect(migrateRaceEngineerVoiceId(["aria::aria", "default::default"], createMockLogger())).toBe(true);
-    expect(cache().raceEngineerVoice).toBe("default::default");
+    expect(migrateRaceEngineerVoiceId(["default::default", "zeta::matt"], createMockLogger())).toBe(true);
+    expect(cache().raceEngineerVoice).toBe("zeta::matt");
   });
 
   it("does nothing for an empty value", async () => {

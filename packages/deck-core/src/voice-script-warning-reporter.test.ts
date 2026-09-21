@@ -38,7 +38,7 @@ describe("createVoiceScriptWarningReporter", () => {
     report({ activeVoice: "laconic", scriptedVoices: new Set(["default"]) });
 
     expect(set).toHaveBeenCalledTimes(1);
-    expect(set).toHaveBeenCalledWith(VOICE_SCRIPT_WARNING_ID, "warning", expect.stringContaining('"laconic"'));
+    expect(set).toHaveBeenCalledWith(VOICE_SCRIPT_WARNING_ID, "warning", expect.stringContaining('"Laconic"'));
     expect(clear).not.toHaveBeenCalled();
   });
 
@@ -111,7 +111,7 @@ describe("createVoiceScriptWarningReporter", () => {
       report({ activeVoice: "gruff", scriptedVoices: new Set() });
 
       expect(warnings()).toHaveLength(1);
-      expect(warnings()[0]?.message).toContain('"gruff"');
+      expect(warnings()[0]?.message).toContain('"Gruff"');
     });
 
     it("leaves other producers' banners alone", () => {

@@ -311,12 +311,17 @@ export const GlobalSettingsSchema = z
      */
     radarVolume: z.coerce.number().min(0).max(100).default(50).catch(50),
     /**
-     * Active voice used by Race Engineer scenarios — the key under
-     * `voice/<voice>/` in `@iracedeck/audio-assets` (e.g., `"luca"`,
-     * `"titan"`). Substituted into scenario `base: "voice/{voice}"` at
-     * clip-resolution time. Empty string or unset means "no voice
-     * selected" — the plugin seeds the first available voice from the
-     * audio-assets manifest on startup. Persists across plugin restarts.
+     * Active voice used by Race Engineer scenarios — a composite
+     * `<pack id>::<voice id>` (#1144, e.g. `"default::default"`), the
+     * voice's identity outside its pack folder, substituted into scenario
+     * `base: "voice/{voice}"` at clip-resolution time and bound back to the
+     * pack's `voice/<voice id>/` folder by the audio service. A bare value
+     * from before 3.3.0 (`"default"`, `"luca"`) is read through
+     * `qualifyVoiceId` — managed pack first, then the alphabetically first
+     * pack providing it — and persisted in that form by
+     * `migrateRaceEngineerVoiceId`. Empty string or unset means "no voice
+     * selected", which `resolveActiveRaceEngineerVoice` answers with
+     * `DEFAULT_RACE_ENGINEER_VOICE`. Persists across plugin restarts.
      */
     raceEngineerVoice: z.preprocess((val) => (val === undefined || val === null ? "" : val), z.string().default("")),
     /**
