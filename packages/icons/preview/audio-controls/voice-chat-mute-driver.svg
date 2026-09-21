@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 92 88" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#888888","graphic2Color":"#e74c3c"},"locked":["graphic2Color"],"title":{"text":"MUTE\nDRIVER"},"border":{"color":"#5a6a7a"}}</desc>
+
+
+    <!-- Shoulders -->
+    <path fill="#888888" d="M1,87C1,71,16,59,46,59C76,59,91,71,91,87Z" stroke="none"/>
+    <!-- Neck -->
+    <rect x="40" y="46" width="12" height="16" fill="#888888" stroke="none"/>
+    <!-- Head -->
+    <circle cx="46" cy="31" r="21" fill="#888888" stroke="none"/>
+    <!-- Background separation: lifts the headset off the head so band, earcups and mic read as their own parts -->
+    <g stroke="#2a3a4a" fill="#2a3a4a">
+      <path d="M70,40C70,46,64,50,58,48" fill="none" stroke-width="11" stroke-linecap="round"/>
+      <rect x="10" y="18" width="21" height="30" rx="10" stroke="none"/>
+      <rect x="61" y="18" width="21" height="30" rx="10" stroke="none"/>
+      <circle cx="55" cy="48" r="7.5" stroke="none"/>
+    </g>
+    <!-- Headset band -->
+    <path d="M19.21,36A27.25,27.25 0 1 1 72.79,36" fill="none" stroke="#888888" stroke-width="5.5"/>
+    <!-- Mic boom -->
+    <path d="M70,40C70,46,64,50,58,48" fill="none" stroke="#888888" stroke-width="5" stroke-linecap="round"/>
+    <!-- Earcups -->
+    <rect x="13" y="21" width="15" height="24" rx="7" fill="#888888" stroke="none"/>
+    <rect x="64" y="21" width="15" height="24" rx="7" fill="#888888" stroke="none"/>
+    <!-- Mic capsule -->
+    <circle cx="55" cy="48" r="4.5" fill="#888888" stroke="none"/>
+    <!-- Mute strike-through -->
+    <line x1="82" y1="7" x2="12" y2="77" fill="none" stroke="#e74c3c" stroke-width="5.5" stroke-linecap="round"/>
+
+</svg>
