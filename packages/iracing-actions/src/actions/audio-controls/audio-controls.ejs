@@ -138,11 +138,28 @@
 
 			// An option a select offers only for some categories: `option` is the
 			// element, `parent` is where it lives when attached, `categories` is the
-			// set that may see it. Populated in initialize() once sdpi-select exists.
+			// set that may see it, and `following` is every option that originally
+			// sat AFTER it. Populated in initialize() once sdpi-select exists.
 			// Both surfaces run the same rule over their list (#863 generalised the
 			// one-option pair into this shape rather than copying it).
 			function conditionalOption(option, categories) {
-				return option ? { option, parent: option.parentNode, categories } : null;
+				if (!option) return null;
+
+				const parent = option.parentNode;
+				const siblings = Array.from(parent.children);
+
+				return { option, parent, categories, following: siblings.slice(siblings.indexOf(option) + 1) };
+			}
+
+			// Put a detached option back WHERE IT STARTED: before the first option
+			// that originally followed it and is attached right now, or at the end
+			// when none of them is. A plain appendChild moved the dial's
+			// Mute / Unmute past None the first time a Mode switch detached it, and
+			// #863 adds a second such option, so the order is restored rather than
+			// the reordering copied.
+			function reattachOption(entry) {
+				const anchor = entry.following.find((el) => el.parentNode === entry.parent);
+				entry.parent.insertBefore(entry.option, anchor || null);
 			}
 
 			// Attach or detach each conditional option for `category`. When the
@@ -164,7 +181,7 @@
 						}
 						if (isAttached) entry.option.remove();
 					} else if (!isAttached) {
-						entry.parent.appendChild(entry.option);
+						reattachOption(entry);
 					}
 				}
 			}
