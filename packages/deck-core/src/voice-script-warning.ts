@@ -18,6 +18,8 @@
  * The message intentionally carries NO leading emoji — the `ird-warnings`
  * banner renders a level icon itself, so adding one here would double it.
  */
+import { splitVoiceId } from "@iracedeck/callout-script";
+
 import type { PiWarning } from "./pi-warnings.js";
 
 export const VOICE_SCRIPT_WARNING_ID = "voice-script-missing";
@@ -32,6 +34,13 @@ export interface VoiceScriptWarningInput {
   activeVoice: string | null;
   /** Every voice id the voice-pack service has a parsed script for. */
   scriptedVoices: ReadonlySet<string>;
+  /**
+   * The `_voiceLabels` map — composite id → the label the dropdown shows
+   * (#1144). Only the WORDING reads it: a voice id is now `<pack>::<voice>`,
+   * and a banner saying `"default::default"` names nothing the user has ever
+   * seen, while the dropdown they are sent to shows the label.
+   */
+  labels?: Readonly<Record<string, string>>;
 }
 
 /**
@@ -40,13 +49,27 @@ export interface VoiceScriptWarningInput {
  * installed knows which one to reinstall.
  */
 export function evaluateVoiceScriptWarning(input: VoiceScriptWarningInput): PiWarning | null {
-  const { activeVoice, scriptedVoices } = input;
+  const { activeVoice, scriptedVoices, labels } = input;
 
   if (activeVoice === null || activeVoice === "") return null;
 
   if (scriptedVoices.has(activeVoice)) return null;
 
-  return { id: VOICE_SCRIPT_WARNING_ID, level: "warning", message: voiceScriptMissingMessage(activeVoice) };
+  return {
+    id: VOICE_SCRIPT_WARNING_ID,
+    level: "warning",
+    message: voiceScriptMissingMessage(displayName(activeVoice, labels)),
+  };
+}
+
+/**
+ * How the banner names the voice: its label where the map has one, else the
+ * voice half of a composite id, else the id as it is. The composite is never
+ * shown — it is an address, and the dropdown the message points at does not
+ * display it either.
+ */
+function displayName(voice: string, labels: Readonly<Record<string, string>> | undefined): string {
+  return labels?.[voice] ?? splitVoiceId(voice)?.voiceId ?? voice;
 }
 
 /**

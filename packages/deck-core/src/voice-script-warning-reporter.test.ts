@@ -54,6 +54,17 @@ describe("createVoiceScriptWarningReporter", () => {
     expect(set).not.toHaveBeenCalled();
   });
 
+  it("passes the label map through, so the banner names the voice as the dropdown does (#1144)", () => {
+    const set = vi.fn();
+    const clear = vi.fn();
+    const report = createVoiceScriptWarningReporter({ set, clear });
+
+    report({ activeVoice: "luca::matt", scriptedVoices: new Set(), labels: { "luca::matt": "Luca: Matt" } });
+
+    expect(set).toHaveBeenCalledWith(VOICE_SCRIPT_WARNING_ID, "warning", expect.stringContaining('"Luca: Matt"'));
+    expect(set).toHaveBeenCalledWith(VOICE_SCRIPT_WARNING_ID, "warning", expect.not.stringContaining("::"));
+  });
+
   it("clears rather than posts when there is no active voice at all", () => {
     const set = vi.fn();
     const clear = vi.fn();

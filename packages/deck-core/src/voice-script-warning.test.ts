@@ -31,6 +31,45 @@ describe("evaluateVoiceScriptWarning", () => {
     expect(evaluateVoiceScriptWarning({ activeVoice: "", scriptedVoices: new Set() })).toBeNull();
   });
 
+  describe("names the voice as a user knows it, never as a composite id (#1144)", () => {
+    it("uses the pack's label for the voice when one is known", () => {
+      const result = evaluateVoiceScriptWarning({
+        activeVoice: "luca::matt",
+        scriptedVoices: new Set(),
+        labels: { "luca::matt": "Luca's Pack: Matt" },
+      });
+
+      expect(result?.message).toContain('voice "Luca\'s Pack: Matt"');
+      expect(result?.message).not.toContain("::");
+    });
+
+    it("falls back to the voice half of an unlabelled composite id", () => {
+      const result = evaluateVoiceScriptWarning({ activeVoice: "luca::matt", scriptedVoices: new Set(), labels: {} });
+
+      expect(result?.message).toContain('voice "matt"');
+      expect(result?.message).not.toContain("::");
+    });
+
+    it("names a bare id as it is, with or without a label map", () => {
+      expect(evaluateVoiceScriptWarning({ activeVoice: "laconic", scriptedVoices: new Set() })?.message).toContain(
+        'voice "laconic"',
+      );
+      expect(
+        evaluateVoiceScriptWarning({ activeVoice: "laconic", scriptedVoices: new Set(), labels: {} })?.message,
+      ).toContain('voice "laconic"');
+    });
+
+    it("still decides on the id — a label changes the wording, not whether to warn", () => {
+      expect(
+        evaluateVoiceScriptWarning({
+          activeVoice: "luca::matt",
+          scriptedVoices: new Set(["luca::matt"]),
+          labels: { "luca::matt": "Matt" },
+        }),
+      ).toBeNull();
+    });
+  });
+
   it("does not start the message with an emoji — the banner draws its own level icon", () => {
     const result = evaluateVoiceScriptWarning({ activeVoice: "x", scriptedVoices: new Set() });
 

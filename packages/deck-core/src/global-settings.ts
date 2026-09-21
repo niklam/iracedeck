@@ -25,7 +25,7 @@
  * the deck host's copy, which this module now ignores; the settings window
  * (#992) already writes through the plugin.
  */
-import { stripTakeSuffix } from "@iracedeck/callout-script";
+import { qualifiedVoiceId, qualifyVoiceId, stripTakeSuffix } from "@iracedeck/callout-script";
 import type { ILogger } from "@iracedeck/logger";
 import { gt, valid } from "semver";
 import { z } from "zod";
@@ -49,6 +49,7 @@ import {
 } from "./sim-pointer-target.js";
 import type { IDeckPlatformAdapter } from "./types.js";
 import { CHANGELOG_NOTIFICATION_POLICIES, DEFAULT_CHANGELOG_NOTIFICATION_POLICY } from "./version-check.js";
+import { ENSURED_VOICE_PACK_ID } from "./voice-pack-constants.js";
 
 /**
  * Schema for key binding values stored in global settings.
@@ -2471,18 +2472,28 @@ export function frameOptionsFromSettings(settings: Record<string, unknown>): Rad
 
 /**
  * The voice a user who has never opened the dropdown is entitled to treat as
- * chosen (issue #1034).
+ * chosen (issue #1034): the managed pack's own `default` voice, by its
+ * composite id — `default::default` (#1144).
  *
- * A named id, deliberately, rather than "the first bundled voice" or "the only
- * bundled voice": a second bundled voice is on its way (#999), so any rule
- * phrased by position or by count is already on a timer. This one survives it.
+ * A named id, deliberately, rather than "the first voice" or "the managed
+ * pack's only voice": any rule phrased by position or by count breaks the day
+ * that pack ships a second voice. This one survives it.
  */
-export const DEFAULT_RACE_ENGINEER_VOICE = "default";
+export const DEFAULT_RACE_ENGINEER_VOICE = qualifiedVoiceId(ENSURED_VOICE_PACK_ID, "default");
 
 /**
  * Resolve the active Race Engineer voice key: the persisted value while it is
  * still available, otherwise `defaultVoice` when the list has it, otherwise the
  * first entry.
+ *
+ * The persisted value is read through `qualifyVoiceId` first (#1144): a bare
+ * id — every stored selection from before voice ids were namespaced by pack,
+ * or a hand-edited file — is taken to mean `default::<id>` when the managed
+ * pack provides it, else the alphabetically first pack that does, which is
+ * exactly the order that decided who won a voice id before. So the voice a
+ * user was hearing is the voice they keep, before and without the write
+ * `migrateRaceEngineerVoiceId` makes. A composite value is used as it is.
+ * This is a read; nothing here rewrites the setting.
  *
  * The anchor is what stops an installed voice pack quietly becoming somebody's
  * engineer (issue #1034). Before packs, the list was a compile-time constant, so
@@ -2499,9 +2510,9 @@ export const DEFAULT_RACE_ENGINEER_VOICE = "default";
  * rather than the old one.
  *
  * Falls through to `availableVoices[0]` when the anchor itself is absent — a
- * build or install whose manifest carries no `default` voice, which is a real
- * state (the release that drops the bundle; a packs-only install). Picking
- * something the user can then change beats going silent.
+ * packs-only install, or a fresh launch still downloading the managed pack,
+ * which is a real state. Picking something the user can then change beats
+ * going silent.
  *
  * Returns `null` only if no voices are available at all — callers should
  * suppress voice scenarios in that case.
@@ -2512,7 +2523,7 @@ export function resolveActiveRaceEngineerVoice(
 ): string | null {
   if (availableVoices.length === 0) return null;
 
-  const chosen = currentSettings.raceEngineerVoice ?? "";
+  const chosen = qualifyVoiceId(currentSettings.raceEngineerVoice ?? "", availableVoices, ENSURED_VOICE_PACK_ID);
 
   if (chosen.length > 0 && availableVoices.includes(chosen)) {
     return chosen;

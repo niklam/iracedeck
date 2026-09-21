@@ -1,7 +1,7 @@
 import type { ILogger } from "@iracedeck/logger";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { migrateGlobalSettingsKeys } from "./global-settings-migrations.js";
+import { migrateGlobalSettingsKeys, migrateRaceEngineerVoiceId } from "./global-settings-migrations.js";
 import {
   _resetGlobalSettings,
   getGlobalSettings,
@@ -134,5 +134,96 @@ describe("migrateGlobalSettingsKeys", () => {
     expect(cache().setupChassisLrSpringIncrease).toBe("OLD-BINDING");
     expect(cache().setupChassisLeftSpringIncrease).toBeUndefined();
     expect(store.saved).toHaveLength(savesAfterMigration + 1); // only the unrelated write
+  });
+});
+
+describe("migrateRaceEngineerVoiceId (#1144)", () => {
+  const VOICES = ["aaa::default", "default::default", "zeta::matt", "beta::matt"];
+
+  beforeEach(() => {
+    _resetGlobalSettings();
+  });
+
+  afterEach(() => {
+    _resetGlobalSettings();
+  });
+
+  it("does nothing before the settings store is ready", () => {
+    // Before the load the cache is schema defaults, where `raceEngineerVoice`
+    // is the empty string — there is nothing to qualify and writing anything
+    // would persist a default over the file.
+    const store = initWithStore({ raceEngineerVoice: "default" });
+    const saves = store.saved.length;
+
+    expect(migrateRaceEngineerVoiceId(VOICES, createMockLogger())).toBe(false);
+    expect(store.saved).toHaveLength(saves);
+  });
+
+  it("qualifies a bare id the managed pack provides, in one write", async () => {
+    const store = initWithStore({ raceEngineerVoice: "default" });
+    await tick();
+    const saves = store.saved.length;
+    const logger = createMockLogger();
+
+    expect(migrateRaceEngineerVoiceId(VOICES, logger)).toBe(true);
+    expect(cache().raceEngineerVoice).toBe("default::default");
+    expect(store.saved).toHaveLength(saves + 1);
+    expect((store.saved.at(-1) as Record<string, unknown>).raceEngineerVoice).toBe("default::default");
+    expect(logger.info).toHaveBeenCalledWith("Qualified the Race Engineer voice with its pack");
+    expect(logger.debug).toHaveBeenCalledWith("default -> default::default");
+  });
+
+  it("qualifies a bare id only another pack provides with the alphabetically first one", async () => {
+    initWithStore({ raceEngineerVoice: "matt" });
+    await tick();
+
+    expect(migrateRaceEngineerVoiceId(VOICES, createMockLogger())).toBe(true);
+    expect(cache().raceEngineerVoice).toBe("beta::matt");
+  });
+
+  it("is idempotent — a second call writes nothing", async () => {
+    const store = initWithStore({ raceEngineerVoice: "default" });
+    await tick();
+
+    migrateRaceEngineerVoiceId(VOICES, createMockLogger());
+    const saves = store.saved.length;
+
+    expect(migrateRaceEngineerVoiceId(VOICES, createMockLogger())).toBe(false);
+    expect(store.saved).toHaveLength(saves);
+  });
+
+  it("never touches a composite value, even one no pack provides", async () => {
+    const store = initWithStore({ raceEngineerVoice: "gone::voice" });
+    await tick();
+    const saves = store.saved.length;
+
+    expect(migrateRaceEngineerVoiceId(VOICES, createMockLogger())).toBe(false);
+    expect(cache().raceEngineerVoice).toBe("gone::voice");
+    expect(store.saved).toHaveLength(saves);
+  });
+
+  it("keeps a bare id no pack provides, so a pack arriving later can still qualify it", async () => {
+    // A fresh launch still downloading `default`: the value must survive
+    // untouched for the re-run after that scan, never be replaced by a
+    // fallback the user did not choose.
+    const store = initWithStore({ raceEngineerVoice: "default" });
+    await tick();
+    const saves = store.saved.length;
+
+    expect(migrateRaceEngineerVoiceId(["aria::aria"], createMockLogger())).toBe(false);
+    expect(cache().raceEngineerVoice).toBe("default");
+    expect(store.saved).toHaveLength(saves);
+
+    expect(migrateRaceEngineerVoiceId(["aria::aria", "default::default"], createMockLogger())).toBe(true);
+    expect(cache().raceEngineerVoice).toBe("default::default");
+  });
+
+  it("does nothing for an empty value", async () => {
+    const store = initWithStore({ raceEngineerVoice: "" });
+    await tick();
+    const saves = store.saved.length;
+
+    expect(migrateRaceEngineerVoiceId(VOICES, createMockLogger())).toBe(false);
+    expect(store.saved).toHaveLength(saves);
   });
 });
