@@ -3,9 +3,10 @@
  *
  * The encoder half of the Audio Controls action, following the Fuel Service
  * dial-surface pattern (#759). Rotating adjusts the selected category's
- * volume; the press is configurable as Push to Talk (hold) or Mute/Unmute.
- * The touch strip shows a live 0–100 level bar for the iRaceDeck-internal
- * categories (Race Engineer, Radar) — their volumes are plugin-owned globals.
+ * volume; the press is configurable as Push to Talk (hold), Mute/Unmute, or
+ * Mute a Driver (#863, voice chat only). The touch strip shows a live 0–100
+ * level bar for the iRaceDeck-internal categories (Race Engineer, Radar) —
+ * their volumes are plugin-owned globals.
  * The iRacing categories (voice chat, master, spotter — #809) go through blind
  * key bindings and iRacing exposes no volume/mute state, so their strip shows
  * category identity only (a documented limitation, not an implementation gap).
@@ -25,6 +26,7 @@ import {
   type AudioControlsSettings,
   type AudioDialSettings,
   DIAL_MUTE_BINDINGS,
+  DIAL_MUTE_DRIVER_BINDINGS,
   type DialCategory,
   type DialPressAction,
   isInternalAudioCategory,
@@ -71,6 +73,7 @@ const ROTATE_LABELS: Record<DialCategory, string> = {
 const PRESS_LABELS: Record<DialPressAction, string | undefined> = {
   "push-to-talk": "Push to talk (hold)",
   "mute-unmute": "Mute / unmute",
+  "mute-driver": "Mute a driver",
   none: undefined,
 };
 
@@ -290,6 +293,15 @@ export class AudioDialSurface {
       return;
     }
 
+    // Mute a Driver (#863) fires immediately on dialDown, like Mute / Unmute:
+    // no long-press slot exists, so no release-time classification is needed.
+    if (press === "mute-driver") {
+      this.host.logger.info("Audio dial mute-driver pressed");
+      await this.doMuteDriver(ctx);
+
+      return;
+    }
+
     // Mute / Unmute fires immediately on dialDown (no long-press slot exists,
     // so no release-time classification is needed).
     this.host.logger.info("Audio dial mute pressed");
@@ -340,6 +352,35 @@ export class AudioDialSurface {
     }
 
     await this.host.tapBinding(muteKey);
+  }
+
+  /**
+   * Runs Mute a Driver (#863) for the current category: a blind tap of the
+   * category's driver-mute binding — iRacing's *Mute a Driver*, which silences
+   * whoever is transmitting on voice chat. Only voice chat has one, and the PI
+   * offers the press for that Mode alone, so any other category reached here
+   * is a stale persisted value (the `doMute` master precedent): log + no-op.
+   * There is no readback, so nothing to render.
+   */
+  private async doMuteDriver(ctx: AudioDialContext): Promise<void> {
+    const category = ctx.settings.dial.category;
+    const muteDriverKey = isInternalAudioCategory(category) ? undefined : DIAL_MUTE_DRIVER_BINDINGS[category];
+
+    if (!muteDriverKey) {
+      this.host.logger.warn(`Mute a Driver is not available for the ${category} category`);
+
+      return;
+    }
+
+    if (this.host.isBindingMissing(muteDriverKey)) {
+      this.host.logger.warn(
+        `Mute a Driver press ignored — the ${category} driver-mute binding (${muteDriverKey}) is not configured`,
+      );
+
+      return;
+    }
+
+    await this.host.tapBinding(muteDriverKey);
   }
 
   private ensureContext(action: IDeckActionContext, settings: AudioControlsSettings): AudioDialContext {

@@ -36,6 +36,7 @@ import { BLACK_BOX_GLOBAL_KEYS } from "../shared/black-box.js";
 import { SPOTTER_GLOBAL_KEYS } from "../shared/spotter-bindings.js";
 import {
   dialMuteBindingMap,
+  dialMuteDriverBindingMap,
   type KeybindDialCategory,
   rotationBindingKeys,
 } from "./audio-controls/audio-controls-settings.js";
@@ -472,6 +473,8 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
       "volume-up": "audioVoiceChatVolumeUp",
       "volume-down": "audioVoiceChatVolumeDown",
       mute: "audioVoiceChatMute",
+      // iRacing's *Mute a Driver* — the per-driver mute (#863).
+      "mute-driver": "audioVoiceChatMuteDriver",
     }),
     master: keybindBy("action", {
       "volume-up": "audioMasterVolumeUp",
@@ -495,6 +498,8 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
   // status line and the surface's dispatch can't disagree. The PI hides the
   // press status line for internal-category Mute / Unmute (plugin audio,
   // nothing to configure); "none" is omitted so its line renders nothing.
+  // Mute a Driver (#863) is its own press with its own table — the PI derives
+  // which categories offer it (voice chat only) from this entry's keyBy map.
   "audio-controls-dial": entry("dial.category", {
     "voice-chat": dialRotation("voice-chat"),
     master: dialRotation("master"),
@@ -503,6 +508,7 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     radar: keybindFixed(),
     "push-to-talk": keybind("audioControlsPushToTalk"),
     "mute-unmute": keybindBy("dial.category", dialMuteBindingMap()),
+    "mute-driver": keybindBy("dial.category", dialMuteDriverBindingMap()),
   }),
 
   "toggle-ui-elements": entry("element", {

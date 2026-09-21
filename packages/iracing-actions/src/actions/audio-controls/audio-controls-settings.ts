@@ -16,6 +16,8 @@ export const PUSH_TO_TALK_KEY = "audioControlsPushToTalk";
 export const VOICE_CHAT_VOLUME_UP_KEY = "audioVoiceChatVolumeUp";
 export const VOICE_CHAT_VOLUME_DOWN_KEY = "audioVoiceChatVolumeDown";
 export const VOICE_CHAT_MUTE_KEY = "audioVoiceChatMute";
+/** iRacing's *Mute a Driver* — silences whoever is transmitting on voice chat (#863). */
+export const VOICE_CHAT_MUTE_DRIVER_KEY = "audioVoiceChatMuteDriver";
 export const MASTER_VOLUME_UP_KEY = "audioMasterVolumeUp";
 export const MASTER_VOLUME_DOWN_KEY = "audioMasterVolumeDown";
 
@@ -29,6 +31,7 @@ export const AUDIO_CONTROLS_GLOBAL_KEYS: Record<string, string> = {
   "voice-chat-volume-up": VOICE_CHAT_VOLUME_UP_KEY,
   "voice-chat-volume-down": VOICE_CHAT_VOLUME_DOWN_KEY,
   "voice-chat-mute": VOICE_CHAT_MUTE_KEY,
+  "voice-chat-mute-driver": VOICE_CHAT_MUTE_DRIVER_KEY,
   "master-volume-up": MASTER_VOLUME_UP_KEY,
   "master-volume-down": MASTER_VOLUME_DOWN_KEY,
 };
@@ -100,12 +103,40 @@ export function dialMuteBindingMap(): Record<string, string> {
 }
 
 /**
+ * Mute a Driver binding per keybind category (#863) — a second table beside
+ * {@link DIAL_MUTE_BINDINGS} rather than an exception inside it: a per-category
+ * special case in `mute-unmute` would make one press action mean two different
+ * things depending on the Mode, which the trigger description cannot honestly
+ * label. Kept in the same `Partial<Record<KeybindDialCategory, string>>` shape
+ * so "which categories offer this press" is a lookup, not a conditional, and
+ * so the comms catalog derives the PI's availability from the same table the
+ * surface dispatches from. One entry today: only iRacing's voice chat has a
+ * per-driver mute (spotter and master have no such control).
+ */
+export const DIAL_MUTE_DRIVER_BINDINGS: Partial<Record<KeybindDialCategory, string>> = {
+  "voice-chat": VOICE_CHAT_MUTE_DRIVER_KEY,
+};
+
+/**
+ * The driver-mute map as a total record, for callers that can't accept the
+ * optional values of {@link DIAL_MUTE_DRIVER_BINDINGS} (the comms catalog
+ * builds its `keyBy` map from this) — the {@link dialMuteBindingMap} twin.
+ */
+export function dialMuteDriverBindingMap(): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(DIAL_MUTE_DRIVER_BINDINGS).filter((entry): entry is [string, string] => entry[1] !== undefined),
+  );
+}
+
+/**
  * What the dial PRESS runs. `push-to-talk` holds the PTT binding for the
  * duration of the press; `mute-unmute` taps the category's mute binding
- * (`DIAL_MUTE_BINDINGS`) or toggles the internal category's feature gate.
- * Default `none` (blind-safe).
+ * (`DIAL_MUTE_BINDINGS`) or toggles the internal category's feature gate;
+ * `mute-driver` taps the category's driver-mute binding
+ * (`DIAL_MUTE_DRIVER_BINDINGS`, voice chat only — #863). Default `none`
+ * (blind-safe).
  */
-export const DIAL_PRESS_ACTIONS = ["push-to-talk", "mute-unmute", "none"] as const;
+export const DIAL_PRESS_ACTIONS = ["push-to-talk", "mute-unmute", "mute-driver", "none"] as const;
 export type DialPressAction = (typeof DIAL_PRESS_ACTIONS)[number];
 
 /**
@@ -135,7 +166,7 @@ export const AudioControlsSettings = CommonSettings.extend({
     .enum(["push-to-talk", "voice-chat", "master", ...INTERNAL_AUDIO_CATEGORIES])
     .default("push-to-talk")
     .catch("push-to-talk"),
-  action: z.enum(["volume-up", "volume-down", "mute"]).default("volume-up").catch("volume-up"),
+  action: z.enum(["volume-up", "volume-down", "mute", "mute-driver"]).default("volume-up").catch("volume-up"),
   dial: AudioDialSettings,
 });
 
@@ -175,15 +206,24 @@ export function resolveRotationBinding(category: KeybindDialCategory, ticks: num
  * Binding keys the dial PRESS requires. PTT always needs its binding;
  * Mute / Unmute needs the keybind category's mute binding when it has one —
  * the internal categories toggle their feature gate (no binding) and master
- * has no mute at all.
+ * has no mute at all; Mute a Driver (#863) needs the category's driver-mute
+ * binding when it has one (voice chat only).
  */
 export function pressBindingKeys(dial: AudioDialSettings): string[] {
   if (dial.pressAction === "push-to-talk") return [PUSH_TO_TALK_KEY];
 
+  // Fail-soft like rotationBindingKeys: this feeds the touch-strip render, so
+  // a category without the press degrades to "no bindings needed".
   if (dial.pressAction === "mute-unmute" && !isInternalAudioCategory(dial.category)) {
     const muteKey = DIAL_MUTE_BINDINGS[dial.category];
 
     return muteKey ? [muteKey] : [];
+  }
+
+  if (dial.pressAction === "mute-driver" && !isInternalAudioCategory(dial.category)) {
+    const muteDriverKey = DIAL_MUTE_DRIVER_BINDINGS[dial.category];
+
+    return muteDriverKey ? [muteDriverKey] : [];
   }
 
   return [];

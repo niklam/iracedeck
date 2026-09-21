@@ -3,11 +3,17 @@ import { describe, expect, it, vi } from "vitest";
 import {
   AUDIO_CONTROLS_GLOBAL_KEYS,
   DIAL_CATEGORIES,
+  DIAL_MUTE_BINDINGS,
+  DIAL_MUTE_DRIVER_BINDINGS,
+  DIAL_PRESS_ACTIONS,
+  dialMuteBindingMap,
+  dialMuteDriverBindingMap,
   isInternalAudioCategory,
   parseAudioControlsSettings,
   pressBindingKeys,
   resolveRotationBinding,
   rotationBindingKeys,
+  VOICE_CHAT_MUTE_DRIVER_KEY,
 } from "./audio-controls-settings.js";
 
 // Real zod semantics for the extended schema (defaults + the `dial` prefault).
@@ -86,6 +92,56 @@ describe("audio-controls settings", () => {
     expect(AUDIO_CONTROLS_GLOBAL_KEYS["master-volume-down"]).toBe("audioMasterVolumeDown");
   });
 
+  describe("Mute a Driver (#863)", () => {
+    it("parses mute-driver on the keypad action axis", () => {
+      const s = parseAudioControlsSettings({ category: "voice-chat", action: "mute-driver" });
+      expect(s.category).toBe("voice-chat");
+      expect(s.action).toBe("mute-driver");
+    });
+
+    it("parses mute-driver on the dial press axis", () => {
+      expect(DIAL_PRESS_ACTIONS).toContain("mute-driver");
+      const s = parseAudioControlsSettings({ dial: { category: "voice-chat", pressAction: "mute-driver" } });
+      expect(s.dial).toEqual({ category: "voice-chat", pressAction: "mute-driver" });
+    });
+
+    it("keeps per-field .catch degradation around the new value on both axes", () => {
+      // An unknown keypad action degrades only that field; the dial press
+      // holding the new value survives — and vice versa.
+      const keypadBad = parseAudioControlsSettings({
+        category: "voice-chat",
+        action: "not-an-action",
+        dial: { category: "voice-chat", pressAction: "mute-driver" },
+      });
+      expect(keypadBad.action).toBe("volume-up");
+      expect(keypadBad.dial.pressAction).toBe("mute-driver");
+
+      const dialBad = parseAudioControlsSettings({
+        category: "voice-chat",
+        action: "mute-driver",
+        dial: { category: "voice-chat", pressAction: "not-a-press" },
+      });
+      expect(dialBad.action).toBe("mute-driver");
+      expect(dialBad.dial.pressAction).toBe("none");
+    });
+
+    it("maps the keypad voice-chat-mute-driver key to the new binding", () => {
+      expect(VOICE_CHAT_MUTE_DRIVER_KEY).toBe("audioVoiceChatMuteDriver");
+      expect(AUDIO_CONTROLS_GLOBAL_KEYS["voice-chat-mute-driver"]).toBe("audioVoiceChatMuteDriver");
+      // No other category has a per-driver mute.
+      expect(AUDIO_CONTROLS_GLOBAL_KEYS["master-mute-driver"]).toBeUndefined();
+    });
+
+    it("keeps the driver-mute table symmetric with the mute table's shape and offers it for voice chat only", () => {
+      expect(DIAL_MUTE_DRIVER_BINDINGS).toEqual({ "voice-chat": "audioVoiceChatMuteDriver" });
+      expect(dialMuteDriverBindingMap()).toEqual({ "voice-chat": "audioVoiceChatMuteDriver" });
+      // The twin table is untouched: spotter still mutes but has no driver mute.
+      expect(DIAL_MUTE_BINDINGS.spotter).toBe("spotterSilence");
+      expect(dialMuteBindingMap()).toEqual({ "voice-chat": "audioVoiceChatMute", spotter: "spotterSilence" });
+      expect(dialMuteDriverBindingMap().spotter).toBeUndefined();
+    });
+  });
+
   describe("rotationBindingKeys", () => {
     it("requires both volume keys for the keybind categories", () => {
       expect(rotationBindingKeys("voice-chat")).toEqual(["audioVoiceChatVolumeUp", "audioVoiceChatVolumeDown"]);
@@ -128,6 +184,18 @@ describe("audio-controls settings", () => {
 
     it("requires nothing for none", () => {
       expect(pressBindingKeys({ category: "voice-chat", pressAction: "none" })).toEqual([]);
+    });
+
+    it("requires the driver-mute key for voice-chat Mute a Driver and nothing elsewhere (#863)", () => {
+      expect(pressBindingKeys({ category: "voice-chat", pressAction: "mute-driver" })).toEqual([
+        "audioVoiceChatMuteDriver",
+      ]);
+      // Fail-soft: a category with no driver mute (a stale persisted value)
+      // needs no binding rather than throwing into the strip render.
+      expect(pressBindingKeys({ category: "master", pressAction: "mute-driver" })).toEqual([]);
+      expect(pressBindingKeys({ category: "spotter", pressAction: "mute-driver" })).toEqual([]);
+      expect(pressBindingKeys({ category: "race-engineer", pressAction: "mute-driver" })).toEqual([]);
+      expect(pressBindingKeys({ category: "radar", pressAction: "mute-driver" })).toEqual([]);
     });
   });
 

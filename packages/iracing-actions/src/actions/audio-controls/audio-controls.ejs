@@ -35,6 +35,7 @@
 					<option value="volume-up">Volume Up</option>
 					<option value="volume-down">Volume Down</option>
 					<option value="mute" id="mute-option">Mute</option>
+					<option value="mute-driver">Mute a Driver</option>
 				</sdpi-select>
 			</sdpi-item>
 
@@ -67,6 +68,7 @@
 				<sdpi-select id="dial-press-select" setting="dial.pressAction" default="none">
 					<option value="push-to-talk">Push to Talk</option>
 					<option value="mute-unmute" id="dial-mute-option">Mute / Unmute</option>
+					<option value="mute-driver">Mute a Driver</option>
 					<option value="none">None</option>
 				</sdpi-select>
 			</sdpi-item>
@@ -126,14 +128,89 @@
 		}) %>
 
 		<script>
-			// Only Voice Chat supports mute. For every other category the mute option is
-			// removed from the DOM (style.display is ignored by sdpi-select, which re-renders
-			// options from the source list via a MutationObserver). The "iRaceDeck audio"
-			// categories (Race Engineer / Radar) also show a supporting note.
+			// Only Voice Chat supports mute — channel-wide Mute and Mute a Driver
+			// (#863) alike. For every other category those options are removed from
+			// the DOM (style.display is ignored by sdpi-select, which re-renders
+			// options from the source list via a MutationObserver). The "iRaceDeck
+			// audio" categories (Race Engineer / Radar) also show a supporting note.
 			const MUTE_CATEGORIES = new Set(["voice-chat"]);
 			const INTERNAL_VOLUME_CATEGORIES = new Set(["race-engineer", "radar"]);
-			let muteOption = null;
-			let muteOptionParent = null;
+
+			// An option a select offers only for some categories: `option` is the
+			// element, `parent` is where it lives when attached, `categories` is the
+			// set that may see it, and `following` is every option that originally
+			// sat AFTER it. Populated in initialize() once sdpi-select exists.
+			// Both surfaces run the same rule over their list (#863 generalised the
+			// one-option pair into this shape rather than copying it).
+			function conditionalOption(option, categories) {
+				if (!option) return null;
+
+				const parent = option.parentNode;
+				const siblings = Array.from(parent.children);
+
+				return { option, parent, categories, following: siblings.slice(siblings.indexOf(option) + 1) };
+			}
+
+			// Put a detached option back WHERE IT STARTED. A plain appendChild moved
+			// the dial's Mute / Unmute past None the first time a Mode switch
+			// detached it, and #863 adds a second such option.
+			//
+			// insertBefore alone does NOT fix it: sdpi-select renders from its
+			// MutationObserver's `items` array (getItemsFromChildNodes reduces over
+			// `this._mutationObserver.items`), and that array is append-ordered —
+			// handleMutation does items.push() for an added node and items.splice()
+			// for a removed one, never re-reading document order. It only matches
+			// the document initially because the component is defined in <head> and
+			// upgrades before its children are parsed.
+			//
+			// So the option order has to be rebuilt through the observer: detach
+			// every option that originally followed this one, append this one, then
+			// re-append those in their original order. All of it is synchronous, so
+			// the whole sequence lands in ONE observer batch and costs one refresh.
+			function reattachOption(entry) {
+				const trailing = entry.following.filter((el) => el.parentNode === entry.parent);
+
+				for (const el of trailing) el.remove();
+
+				entry.parent.appendChild(entry.option);
+
+				for (const el of trailing) entry.parent.appendChild(el);
+			}
+
+			// Attach or detach each conditional option for `category`. When the
+			// select currently shows an option about to be detached, the selection is
+			// switched to `fallback` FIRST — dispatching both input and change so
+			// sdpi persists it — and only then is the option removed, so the setting
+			// stored for THIS category can never name an option it does not offer.
+			//
+			// Deliberately not a whole-PI invariant: the keypad's push-to-talk branch
+			// returns before calling this, which LEAVES `action` as it was. That is
+			// what lets a user visit Push to Talk and come back to Voice Chat with
+			// their Mute / Mute a Driver choice intact; resetting it there would
+			// discard a choice the category change never asked about. The resulting
+			// {push-to-talk, mute-driver} blob is inert — PTT ignores `action` — and
+			// the next non-PTT category selection resolves it through this loop.
+			function applyConditionalOptions(select, entries, category, fallback) {
+				for (const entry of entries) {
+					if (!entry) continue;
+
+					if (!entry.categories.has(category)) {
+						if (select && select.value === entry.option.value) {
+							select.value = fallback;
+							select.dispatchEvent(new Event("input", { bubbles: true }));
+							select.dispatchEvent(new Event("change", { bubbles: true }));
+						}
+						// Attachment is read HERE, not before the dispatch: the select's
+						// own change/input listener re-enters this function, so a flag
+						// captured earlier is stale by the time we act on it.
+						if (entry.option.parentNode === entry.parent) entry.option.remove();
+					} else if (entry.option.parentNode !== entry.parent) {
+						reattachOption(entry);
+					}
+				}
+			}
+
+			let keypadConditionalOptions = [];
 
 			function updateVisibility(category) {
 				const actionItem = document.getElementById("action-item");
@@ -151,23 +228,10 @@
 				}
 
 				if (actionItem) actionItem.classList.remove("hidden");
-				if (!muteOption || !muteOptionParent) return;
 
-				const isAttached = muteOption.parentNode === muteOptionParent;
-
-				if (!MUTE_CATEGORIES.has(category)) {
-					// Master / Race Engineer / Radar have no mute. Switch selection away
-					// from mute before detaching the option so the persisted setting stays
-					// consistent with what's rendered.
-					if (actionSelect && actionSelect.value === "mute") {
-						actionSelect.value = "volume-up";
-						actionSelect.dispatchEvent(new Event("input", { bubbles: true }));
-						actionSelect.dispatchEvent(new Event("change", { bubbles: true }));
-					}
-					if (isAttached) muteOption.remove();
-				} else if (!isAttached) {
-					muteOptionParent.appendChild(muteOption);
-				}
+				// Master / Race Engineer / Radar have neither mute: both Voice-Chat-only
+				// options fall back to volume-up.
+				applyConditionalOptions(actionSelect, keypadConditionalOptions, category, "volume-up");
 			}
 
 			// ── Dial surface (#782) ─────────────────────────────────────────────
@@ -215,8 +279,15 @@
 						}))
 				) %>
 			);
-			let dialMuteOption = null;
-			let dialMuteOptionParent = null;
+			// Which categories offer Mute a Driver (#863): only those with a
+			// driver-mute binding in the dial tables (voice chat). Derived from the
+			// generated entry for the same reason as DIAL_MUTABLE_CATEGORIES, and a
+			// separate set because the two presses are offered for different Modes.
+			// Its status line is never hidden - the driver mute is a real binding.
+			const DIAL_MUTE_DRIVER_CATEGORIES = new Set(
+				<%- JSON.stringify(Object.keys((__dialComms['mute-driver'].binding.keyBy || {}).map || {})) %>
+			);
+			let dialConditionalOptions = [];
 
 			function updateDialVisibility() {
 				const categorySelect = document.getElementById("dial-category-select");
@@ -235,28 +306,18 @@
 					pressStatus.classList.toggle("hidden", hideStatus);
 				}
 
-				if (!dialMuteOption || !dialMuteOptionParent) return;
-
-				const isAttached = dialMuteOption.parentNode === dialMuteOptionParent;
-
-				if (!DIAL_MUTABLE_CATEGORIES.has(category)) {
-					if (pressSelect && pressSelect.value === "mute-unmute") {
-						pressSelect.value = "none";
-						pressSelect.dispatchEvent(new Event("input", { bubbles: true }));
-						pressSelect.dispatchEvent(new Event("change", { bubbles: true }));
-					}
-					if (isAttached) dialMuteOption.remove();
-				} else if (!isAttached) {
-					dialMuteOptionParent.appendChild(dialMuteOption);
-				}
+				// A press the current Mode cannot fire falls back to None (blind-safe).
+				applyConditionalOptions(pressSelect, dialConditionalOptions, category, "none");
 			}
 
 			async function initialize() {
 				await customElements.whenDefined("sdpi-select");
 
 				const categorySelect = document.getElementById("category-select");
-				muteOption = document.querySelector('#action-select option[value="mute"]');
-				muteOptionParent = muteOption ? muteOption.parentNode : null;
+				keypadConditionalOptions = [
+					conditionalOption(document.querySelector('#action-select option[value="mute"]'), MUTE_CATEGORIES),
+					conditionalOption(document.querySelector('#action-select option[value="mute-driver"]'), MUTE_CATEGORIES),
+				];
 
 				if (categorySelect) {
 					const initialValue = categorySelect.value || "push-to-talk";
@@ -281,8 +342,16 @@
 				}
 
 				// Dial section wiring — polling fallback covers both selects at once.
-				dialMuteOption = document.querySelector('#dial-press-select option[value="mute-unmute"]');
-				dialMuteOptionParent = dialMuteOption ? dialMuteOption.parentNode : null;
+				dialConditionalOptions = [
+					conditionalOption(
+						document.querySelector('#dial-press-select option[value="mute-unmute"]'),
+						DIAL_MUTABLE_CATEGORIES,
+					),
+					conditionalOption(
+						document.querySelector('#dial-press-select option[value="mute-driver"]'),
+						DIAL_MUTE_DRIVER_CATEGORIES,
+					),
+				];
 
 				for (const id of ["dial-category-select", "dial-press-select"]) {
 					const el = document.getElementById(id);
