@@ -103,7 +103,7 @@ describe("loadInstalledVoiceScripts", () => {
   const bundledScripts = new Map<string, CalloutScript>([["default", VALID_SCRIPT]]);
 
   type Applied = {
-    roots: readonly { dir: string; clips?: readonly string[] }[] | null;
+    roots: readonly { dir: string; clips?: readonly string[]; voices?: Readonly<Record<string, string>> }[] | null;
     manifest: AudioAssetsManifest | null;
     scripts: ReadonlyMap<string, CalloutScript> | null;
     order: string[];
@@ -118,7 +118,6 @@ describe("loadInstalledVoiceScripts", () => {
       root: packsRoot,
       pluginAudioDir,
       bundledManifest,
-      bundledVoices: ["default"],
       bundledScripts,
       logger: silentLogger,
       applyRoots: (roots) => {
@@ -168,11 +167,19 @@ describe("loadInstalledVoiceScripts", () => {
 
     expect(applied.order).toEqual(["roots", "manifest", "scripts"]);
     expect(applied.roots?.[0]).toEqual({ dir: pluginAudioDir });
-    expect(applied.roots?.[1]).toEqual({ dir: join(packsRoot, "testpack"), clips: ["voice/luca/flags/green-01.mp3"] });
-    expect(applied.manifest?.clips).toEqual([...bundledManifest.clips, "voice/luca/flags/green-01.mp3"].sort());
+    // The pack's root keeps its own clip spelling and binds the composite id to
+    // it; the manifest carries the composite spelling the engine asks for (#1144).
+    expect(applied.roots?.[1]).toEqual({
+      dir: join(packsRoot, "testpack"),
+      clips: ["voice/luca/flags/green-01.mp3"],
+      voices: { "testpack::luca": "luca" },
+    });
+    expect(applied.manifest?.clips).toEqual(
+      [...bundledManifest.clips, "voice/testpack::luca/flags/green-01.mp3"].sort(),
+    );
     expect(applied.manifest?.ticks).toEqual(bundledManifest.ticks);
-    expect([...(applied.scripts?.keys() ?? [])]).toEqual(["default", "luca"]);
-    expect(applied.scripts?.get("luca")).toEqual(lucaScript);
+    expect([...(applied.scripts?.keys() ?? [])]).toEqual(["default", "testpack::luca"]);
+    expect(applied.scripts?.get("testpack::luca")).toEqual(lucaScript);
     expect(service.installed().map((pack) => pack.id)).toEqual(["testpack"]);
     expect(service.problems()).toEqual([]);
   });
@@ -186,7 +193,28 @@ describe("loadInstalledVoiceScripts", () => {
     const { applied } = run(packsRoot, pluginAudioDir);
 
     expect([...(applied.scripts?.keys() ?? [])]).toEqual(["default"]);
-    expect(applied.manifest?.clips).toContain("voice/luca/flags/green-01.mp3");
+    expect(applied.manifest?.clips).toContain("voice/testpack::luca/flags/green-01.mp3");
+  });
+
+  it("lists a pack's voice beside the source tree's voice of the same id — two voices, not one (#1144)", () => {
+    const packsRoot = join(tmp, "packs");
+    const pluginAudioDir = join(tmp, "audio");
+    plantScript(pluginAudioDir, "default", JSON.stringify(VALID_SCRIPT));
+    const packScript: CalloutScript = { ...VALID_SCRIPT, pools: { greeting: { group: "flags", base: "green" } } };
+    plantPack(packsRoot, "default", "default", packScript);
+
+    const { applied, service } = run(packsRoot, pluginAudioDir);
+
+    // The source tree's `default` plays from the processed root; the installed
+    // `default::default` only from its own bound root — no merged voice.
+    expect(service.problems()).toEqual([]);
+    expect([...(applied.scripts?.keys() ?? [])]).toEqual(["default", "default::default"]);
+    expect(applied.scripts?.get("default")).toEqual(VALID_SCRIPT);
+    expect(applied.scripts?.get("default::default")).toEqual(packScript);
+    expect(applied.manifest?.clips).toEqual(
+      [...bundledManifest.clips, "voice/default::default/flags/green-01.mp3"].sort(),
+    );
+    expect(applied.roots?.[1]?.voices).toEqual({ "default::default": "default" });
   });
 
   it("falls back to the bundled scripts when the processed root has no script copy yet", () => {
@@ -198,7 +226,7 @@ describe("loadInstalledVoiceScripts", () => {
     const { applied } = run(packsRoot, pluginAudioDir);
 
     expect(applied.scripts?.get("default")).toEqual(VALID_SCRIPT);
-    expect(applied.scripts?.has("luca")).toBe(true);
+    expect(applied.scripts?.has("testpack::luca")).toBe(true);
   });
 
   it("is a no-pack scan for a directory that does not exist: bundled manifest, bundled scripts, no throw", () => {
@@ -244,8 +272,7 @@ describe("reloadVoiceScripts — the script half of the UI's Reload (#1064)", ()
       root: packsRoot,
       pluginAudioDir,
       bundledManifest: { clips: [], ambientLoop: "sfx/ambient.mp3", ticks: { open: "o", close: "c" } },
-      bundledVoices: ["default"],
-      bundledScripts: new Map(),
+      bundledScripts: new Map([["default", VALID_SCRIPT]]),
       logger: silentLogger,
       applyRoots: () => {},
       applyManifest: () => {},

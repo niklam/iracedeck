@@ -28,7 +28,6 @@ import {
   getGlobalSettings,
   initGlobalSettings,
   onGlobalSettingsChange,
-  resolveActiveRaceEngineerVoice,
   voiceDisplayLabels,
   type VoicePackService,
 } from "@iracedeck/deck-core";
@@ -48,6 +47,7 @@ import {
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { resolveHarnessVoice } from "./active-voice.js";
 import { getAudioAssetsManifest, seedGlobalSettings } from "./bootstrap-settings.js";
 import { MockPlatformAdapter } from "./mock-platform-adapter.js";
 import { MockSDKController } from "./mock-sdk-controller.js";
@@ -111,13 +111,11 @@ async function main(): Promise<void> {
   const manifest = getAudioAssetsManifest();
   // Every voice the authored manifest describes — since #1034 stage 3 that is
   // no longer "what a plugin bundles": the harness auditions every PUBLISHED
-  // voice. The scanner-facing dep it feeds is still named `bundledVoices`
-  // (`voice-scripts.ts`), which is the reserved-voices list it maps onto — and
-  // the harness DOES reserve them, where a plugin now reserves nothing: these
-  // voices play from the audio-assets source tree here, so a pack under
-  // `IRACEDECK_VOICE_PACKS_PATH` claiming one of their ids (a downloaded
-  // `default`) would only add extra takes into a voice already being
-  // auditioned, a half-merged voice nobody asked for. Dropped instead.
+  // voice, from the audio-assets source tree, under its bare id. A pack under
+  // `IRACEDECK_VOICE_PACKS_PATH` lists its voices by their composite
+  // `<pack>::<voice>` ids (#1144), so a downloaded `default` there is a second,
+  // distinct voice — `default::default` beside the source tree's `default` —
+  // each playing only its own clips.
   const { raceEngineerVoices: publishedVoices } = seedGlobalSettings(adapter);
   // A `let`, like the plugins' `raceEngineerVoices`: an installed voice pack
   // (below) extends the list after the engine is constructed.
@@ -135,7 +133,9 @@ async function main(): Promise<void> {
     audio,
     manifest,
     logger.createScope("AudioScenarios"),
-    () => resolveActiveRaceEngineerVoice(raceEngineerVoices),
+    // Not the plugins' resolver as it is: that one would qualify the source
+    // tree's bare `default` into an installed `default::default` (#1144).
+    () => resolveHarnessVoice(getGlobalSettings().raceEngineerVoice, raceEngineerVoices),
     getFrameOptions,
   );
 
@@ -236,7 +236,6 @@ async function main(): Promise<void> {
       root: voicePacksRoot,
       pluginAudioDir: audioBasePath,
       bundledManifest: manifest,
-      bundledVoices: publishedVoices,
       bundledScripts,
       logger: voicePacksLogger,
       applyRoots: (roots) => audio.setRoots(roots),

@@ -21,13 +21,12 @@
  *   over a packs directory (`IRACEDECK_VOICE_PACKS_PATH`), with the real file
  *   system port, so a sideloaded or downloaded pack's clips AND script load
  *   as they do in a plugin — the service applies roots, then the manifest,
- *   then the scripts, in the order the plugins rely on. One carve-out: the
- *   harness RESERVES every published voice (the plugins, bundling nothing
- *   since #1034 stage 3, reserve none), so a pack claiming one of those ids —
- *   a downloaded `default` under that directory, say — is dropped here and
- *   admitted in a plugin. Deliberate: the harness serves those voices from
- *   the audio-assets source tree, and admitting a pack's copy beside it would
- *   make a half-merged voice nobody is auditioning.
+ *   then the scripts, in the order the plugins rely on. A pack's voices are
+ *   its composite `<pack>::<voice>` ids (#1144) and the source tree's are
+ *   bare, so a pack shipping one of the source tree's voice ids — a
+ *   downloaded `default` under that directory, say — is a second voice
+ *   (`default::default`) beside the source tree's `default`, each playing
+ *   only its own clips, never one half-merged voice.
  *
  * And one re-loader, {@link reloadVoiceScripts}, for the UI's Reload and Wipe
  * cache buttons: the audio processor copies a regenerated `callouts.json`
@@ -38,8 +37,18 @@
  */
 import { audioAssetsPath, PUBLISHED_VOICE_IDS } from "@iracedeck/audio-assets/build";
 import { type AudioAssetsManifest, mergeManifests } from "@iracedeck/audio-scenarios";
-import { type CalloutScript, calloutScriptPath, parseCalloutScriptText } from "@iracedeck/callout-script";
-import { createVoicePackFileSystem, createVoicePackService, type VoicePackService } from "@iracedeck/deck-core";
+import {
+  CALLOUT_SCRIPT_FILE,
+  type CalloutScript,
+  calloutScriptPath,
+  parseCalloutScriptText,
+} from "@iracedeck/callout-script";
+import {
+  createVoicePackFileSystem,
+  createVoicePackService,
+  readVoiceScript,
+  type VoicePackService,
+} from "@iracedeck/deck-core";
 import type { ILogger } from "@iracedeck/logger";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -114,21 +123,22 @@ export type LoadInstalledVoiceScriptsDeps = {
   pluginAudioDir: string;
   /** The compiled-in manifest the packs' clip lists are merged over. */
   bundledManifest: AudioAssetsManifest;
-  /** Voice ids the bundle provides; a pack may not claim one (#1034). */
-  bundledVoices: readonly string[];
   /**
-   * The bundled scripts (from {@link loadBundledVoiceScripts}). The service
-   * reads the bundled voices' scripts from `pluginAudioDir` itself, so these
-   * only fill in for a processed root that predates the script copy; where
-   * both exist they are the same bytes.
+   * The bundled scripts (from {@link loadBundledVoiceScripts}), keyed by the
+   * source tree's bare voice ids — which are also the voices whose scripts
+   * are re-read from `pluginAudioDir` on every scan, so a regenerated copy
+   * there is picked up by a Reload. These fill in for a processed root that
+   * predates the script copy; where both exist they are the same bytes.
    */
   bundledScripts: ReadonlyMap<string, CalloutScript>;
   logger: ILogger;
   /** The ordered audio roots → the audio service (`setRoots`). */
-  applyRoots(roots: readonly { dir: string; clips?: readonly string[] }[]): void;
+  applyRoots(
+    roots: readonly { dir: string; clips?: readonly string[]; voices?: Readonly<Record<string, string>> }[],
+  ): void;
   /** The MERGED manifest — bundled plus every pack's clips — → the engine and the voice list. */
   applyManifest(manifest: AudioAssetsManifest): void;
-  /** Bundled scripts with every installed voice's script over them → the engine. */
+  /** Bundled scripts with every installed voice's script beside them → the engine. */
   applyScripts(scripts: ReadonlyMap<string, CalloutScript>): void;
 };
 
@@ -143,17 +153,46 @@ export type LoadInstalledVoiceScriptsDeps = {
  * loud failure mode is reserved for the bundled script above.
  */
 export function loadInstalledVoiceScripts(deps: LoadInstalledVoiceScriptsDeps): VoicePackService {
+  const fs = createVoicePackFileSystem(deps.logger);
+
+  /**
+   * The bundled voices' scripts as the processed root holds them now, through
+   * the reader the scanner runs over a pack. The plugins bundle no voice, so
+   * this is the harness's own read (it was the service's until #1144 dropped
+   * the bundle from it). Never a throw — it runs inside the service's refresh,
+   * which must not end the harness over a script: a voice whose copy is
+   * missing or broken is warned about and keeps the script it was booted with.
+   */
+  function readProcessedScripts(): Map<string, CalloutScript> {
+    const scripts = new Map(deps.bundledScripts);
+
+    for (const id of deps.bundledScripts.keys()) {
+      const read = readVoiceScript(fs, deps.pluginAudioDir, id);
+
+      if (read.ok && read.script !== null) {
+        scripts.set(id, read.script);
+        continue;
+      }
+
+      deps.logger.warn(
+        `Bundled voice "${id}" has no usable script: ${read.ok ? `it has no ${CALLOUT_SCRIPT_FILE}` : read.reason}`,
+      );
+    }
+
+    return scripts;
+  }
+
   const service = createVoicePackService({
     root: deps.root,
-    fs: createVoicePackFileSystem(deps.logger),
+    fs,
     logger: deps.logger,
     pluginAudioDir: deps.pluginAudioDir,
-    reservedVoices: deps.bundledVoices,
     applyRoots: (roots) => deps.applyRoots(roots),
     applyManifest: (fragments) => deps.applyManifest(mergeManifests(deps.bundledManifest, fragments)),
-    // Installed over bundled: the two sets cannot overlap (the scanner refuses a
-    // pack's claim on a bundled id), so this is a union, not a precedence rule.
-    applyScripts: (scripts) => deps.applyScripts(new Map([...deps.bundledScripts, ...scripts])),
+    // Bundled beside installed: the source tree's voices are bare ids and a
+    // pack's are composite (#1144), so the two key sets cannot overlap and
+    // this is a union, not a precedence rule.
+    applyScripts: (scripts) => deps.applyScripts(new Map([...readProcessedScripts(), ...scripts])),
     onPacksChanged: () => {},
   });
 
@@ -184,12 +223,12 @@ export type ReloadVoiceScriptsDeps = {
  * How a broken regenerated script surfaces depends on the path. Without a
  * packs directory the bundled loader THROWS, naming the file, and the Reload
  * request fails loudly rather than leaving the engine on the old map in
- * silence. With one, the reload is the plugins' own pack service, which never
- * throws over a script: it WARNS per bundled voice with no usable script
- * (`Bundled voice "<id>" has no usable script: …`) and hands the engine a map
- * with that voice left out — the request succeeds and the engineer goes quiet
- * on every scripted callout of that voice, exactly as the plugin would. Read
- * the harness log after a Reload on that path.
+ * silence. With one, the reload is the plugins' own pack service's refresh,
+ * which never throws over a script, and neither does the bundled read inside
+ * it: it WARNS per bundled voice with no usable script (`Bundled voice "<id>"
+ * has no usable script: …`) and that voice keeps the script it was booted
+ * with — the request succeeds and the OLD script stays live. Read the harness
+ * log after a Reload on that path.
  */
 export function reloadVoiceScripts(deps: ReloadVoiceScriptsDeps): void {
   if (deps.voicePacks !== null) {
