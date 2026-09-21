@@ -1196,15 +1196,28 @@ describe("audio root resolution (issue #1034)", () => {
     });
 
     it("does not serve a composite path whose bare form the bound root was not admitted for", () => {
-      // The file may be on disk — the probe says yes for anything under the
-      // pack — but the scanner did not admit it, so the root's own resolution
-      // is returned unprobed: one behaviour for a missing clip, as for the
-      // unbound walk. It does NOT fall through to another root.
+      // The file IS on disk — the probe says yes for anything under the pack —
+      // but the scanner did not admit it, and "on disk" was never the rule.
+      // The path takes the unbound walk instead, which can only land on the
+      // plugin root: the same "missing clip" answer an unknown path gets.
       const native = boundRoots();
 
       getAudio().playOnChannel(AudioChannel.Voice, "voice/a::matt/x/planted.mp3");
 
-      expect(playedPath(native)).toBe(posix(path.join(PACK_A, "voice/matt/x/planted.mp3")));
+      expect(playedPath(native)).toBe(posix(path.join(PLUGIN, "voice/a::matt/x/planted.mp3")));
+      expect(playedPath(native).startsWith(posix(PACK_A))).toBe(false);
+    });
+
+    it("does not serve a composite path whose tail steps out of the voice but stays inside the pack", () => {
+      // `..` that never leaves the pack folder passes the containment check,
+      // so the allow-list is the only thing between it and an undeclared
+      // voice's files. The scan never admits a path spelled this way.
+      const native = boundRoots();
+
+      getAudio().playOnChannel(AudioChannel.Voice, "voice/a::matt/../undeclared/x.mp3");
+
+      expect(playedPath(native).startsWith(posix(PACK_A))).toBe(false);
+      expect(playedPath(native).startsWith(posix(PLUGIN))).toBe(true);
     });
 
     it("resolves to the bound root, not another, when the clip is missing there", () => {
@@ -1246,7 +1259,8 @@ describe("audio root resolution (issue #1034)", () => {
       getAudio().playOnChannel(AudioChannel.Voice, "voice/a::matt/x/y.mp3");
       expect(playedPath(native)).toBe(posix(path.join(PACK_A, CLIP)));
 
-      getAudio().setFileProbe(() => false);
+      // The probe is deliberately left as it is — it still says yes under
+      // PACK_A — so only `setRoots` clearing the memo can change the answer.
       getAudio().setRoots([{ dir: PLUGIN }, { dir: PACK_B, clips: [CLIP], voices: { "b::matt": "matt" } }]);
       getAudio().playOnChannel(AudioChannel.Voice, "voice/a::matt/x/y.mp3");
 

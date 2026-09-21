@@ -465,11 +465,16 @@ class AudioService implements IAudioService {
    * - **A bound voice.** `voice/<composite>/<rest>` where some root binds
    *   `<composite>` is resolved in THAT root only, as `voice/<bare>/<rest>` —
    *   the pack's own spelling — checked against the root's allow-list on the
-   *   bare form. No other root is consulted, and a miss returns that root's
-   *   resolution: the native layer then fails to open it exactly as it would
-   *   any missing clip, so a missing clip stays one behaviour rather than two.
-   *   This is what keeps two packs' `matt` apart — the composite names the
-   *   pack, and the pack's root is the only place it can resolve.
+   *   bare form. No other pack is consulted. An admitted clip whose file is
+   *   absent returns that root's resolution: the native layer then fails to
+   *   open it exactly as it would any missing clip, so a missing clip stays
+   *   one behaviour rather than two. A clip the scan did NOT admit is not
+   *   served from the pack at all — it takes the unbound walk below, which
+   *   can only land on the plugin root — because the file may well be there
+   *   (a stray under an undeclared voice, a `..` that stays inside the pack)
+   *   and "on disk" was never the rule. This is what keeps two packs' `matt`
+   *   apart — the composite names the pack, and the pack's root is the only
+   *   place it can resolve.
    *
    * - **Everything else** — an sfx path, a bare voice path, a composite nobody
    *   binds — takes the ordered walk over the UNBOUND roots, and a bound root
@@ -516,7 +521,16 @@ class AudioService implements IAudioService {
       for (const root of this.roots) {
         const bare = root.voices?.get(composite);
 
-        if (bare !== undefined) return this.resolveBound(root, filePath, `voice/${bare}/${rest}`);
+        if (bare === undefined) continue;
+
+        const bound = this.resolveBound(root, filePath, `voice/${bare}/${rest}`);
+
+        if (bound !== null) return bound;
+
+        // Bound but not authorised: the walk below answers, and no unbound
+        // root can be the pack, so the path lands on the plugin root's
+        // "missing" resolution rather than on a file the scan never admitted.
+        break;
       }
     }
 
@@ -565,13 +579,16 @@ class AudioService implements IAudioService {
 
   /**
    * The bound root's answer for `filePath`, spelled as `clip` — the bare
-   * `voice/<voice>/<rest>` the pack's files sit under (#1144). Always this
-   * root's path: an unadmitted or absent clip resolves here too and fails at
-   * the native layer like any missing clip, and only an admitted, present
-   * clip is memoised. A tail that escapes the root is the same bug the walk
-   * fails loud on.
+   * `voice/<voice>/<rest>` the pack's files sit under (#1144). This root's
+   * path for an ADMITTED clip, present or not: an absent one fails at the
+   * native layer like any missing clip, and only a present one is memoised.
+   * `null` for a clip the scan did not admit, so the caller falls through to
+   * the unbound walk and the path can never land on a file merely SITTING in
+   * the pack folder — a stray under an undeclared voice, an extra directory
+   * level, or a `..` that stays inside the pack. A tail that escapes the root
+   * is the same bug the walk fails loud on.
    */
-  private resolveBound(root: NormalizedRoot, filePath: string, clip: string): string {
+  private resolveBound(root: NormalizedRoot, filePath: string, clip: string): string | null {
     const base = path.resolve(root.dir);
     const resolved = path.resolve(base, clip);
     const rel = path.relative(base, resolved);
@@ -580,9 +597,9 @@ class AudioService implements IAudioService {
       throw new Error(`Audio clip path escapes every audio root: ${filePath}`);
     }
 
-    if (root.clips !== null && root.clips.has(clip) && this.fileProbe(resolved)) {
-      this.resolvedCache.set(filePath, resolved);
-    }
+    if (root.clips !== null && !root.clips.has(clip)) return null;
+
+    if (this.fileProbe(resolved)) this.resolvedCache.set(filePath, resolved);
 
     return resolved;
   }
