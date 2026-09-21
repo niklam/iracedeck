@@ -71,10 +71,15 @@ describe("settings-window favicon (#1156)", () => {
     expect(existsSync(path.join(browserDir, SETTINGS_WINDOW_ICON))).toBe(true);
   });
 
-  it("is a square with an alpha channel, large enough for the taskbar", () => {
-    // The website's 96 px favicon was the first attempt, and in the taskbar
-    // its mark read as too small inside the tile. The PNG header is enough to
-    // refuse that file coming back.
+  it("is an opaque square with no alpha channel, large enough for the taskbar", () => {
+    // Chromium hands Windows the window icon with premultiplied pixels, which
+    // Windows draws as straight alpha: every partially transparent pixel comes
+    // out darker than it should. Read back from a live window, every soft
+    // corner pixel of a rounded tile was affected, and in the taskbar they
+    // showed as grey brackets. So the icon has no transparency at all, and the
+    // PNG header proves it: colour type 2 is RGB, with no alpha channel to be
+    // partial. The size bound refuses the website's 96 px favicon, whose mark
+    // also read as too small.
     const png = readFileSync(path.join(browserDir, SETTINGS_WINDOW_ICON));
     const width = png.readUInt32BE(16);
     const height = png.readUInt32BE(20);
@@ -82,8 +87,7 @@ describe("settings-window favicon (#1156)", () => {
 
     expect(width).toBe(height);
     expect(width).toBeGreaterThanOrEqual(256);
-    // 4 = greyscale + alpha, 6 = RGBA
-    expect([4, 6]).toContain(colorType);
+    expect(colorType).toBe(2);
   });
 
   it("is linked by the window page, by that same name", () => {
