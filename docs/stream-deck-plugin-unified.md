@@ -39,7 +39,7 @@ Opens a specific black box or cycles through them.
 | Tire Info            | F6               | -               | None       | -     |
 | Pit Stop Adjustments | F7               | -               | None       | -     |
 | In-Car Adjustments   | F8               | -               | None       | -     |
-| Mirror Adjustments   | F9               | -               | None       | -     |
+| Quick Access          | F9               | -               | None       | -     |
 | Radio Adjustments    | F10              | -               | None       | -     |
 | Graphics Adjustments | F11              | -               | None       | -     |
 | Cycle Next           | _(configurable)_ | -               | None       | -     |

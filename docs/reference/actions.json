@@ -120,7 +120,7 @@
             { "mode": "direct", "blackBox": "tire-info", "label": "Select Tire Info" },
             { "mode": "direct", "blackBox": "pit-stop", "label": "Select Pit Stop" },
             { "mode": "direct", "blackBox": "in-car", "label": "Select In-Car" },
-            { "mode": "direct", "blackBox": "mirror", "label": "Select Mirror/Graphics" },
+            { "mode": "direct", "blackBox": "mirror", "label": "Select Quick Access" },
             { "mode": "direct", "blackBox": "radio", "label": "Select Radio" },
             { "mode": "direct", "blackBox": "weather", "label": "Select Weather" },
             { "mode": "next", "label": "Next Black Box" },

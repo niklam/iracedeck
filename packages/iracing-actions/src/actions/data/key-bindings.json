@@ -8,7 +8,7 @@
     { "id": "tireInfo", "label": "Tire Info", "default": "F6", "setting": "blackBoxTireInfo" },
     { "id": "pitStop", "label": "Pit-stop Adjustments", "default": "F7", "setting": "blackBoxPitStop" },
     { "id": "inCar", "label": "In-car Adjustments", "default": "F8", "setting": "blackBoxInCar" },
-    { "id": "mirror", "label": "Mirror Adjustments", "default": "F9", "setting": "blackBoxMirror" },
+    { "id": "mirror", "label": "Quick Access", "default": "F9", "setting": "blackBoxMirror" },
     { "id": "radio", "label": "Radio Adjustments", "default": "F10", "setting": "blackBoxRadio" },
     { "id": "weather", "label": "Weather", "default": "F11", "setting": "blackBoxWeather" },
     { "id": "cycleNext", "label": "Cycle Next", "default": "", "setting": "blackBoxCycleNext" },
