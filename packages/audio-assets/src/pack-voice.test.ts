@@ -348,7 +348,6 @@ describe("packVoice", () => {
     const result = scanVoicePacks({
       root: path.dirname(first.stageDir),
       fs: createVoicePackFileSystem(noopLogger),
-      reservedVoices: [],
     });
 
     expect(result.problems).toEqual([]);
@@ -359,7 +358,8 @@ describe("packVoice", () => {
       version: "1.2.3",
       author: "iRaceDeck",
       dir: first.stageDir,
-      voices: [{ id: "testvoice", label: "Test Voice", script: SCRIPT }],
+      // The pack declares the bare id; the plugin names the voice by its pack (#1144).
+      voices: [{ id: "testvoice::testvoice", packVoiceId: "testvoice", label: "Test Voice", script: SCRIPT }],
       clips: ["voice/testvoice/numbers/1.mp3", "voice/testvoice/seconds/1.mp3"],
     });
   });

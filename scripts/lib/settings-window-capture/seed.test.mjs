@@ -36,6 +36,25 @@ describe("buildSeedSettings", () => {
     }
   });
 
+  // The plugin publishes voices by their composite `<pack>::<voice>` ids
+  // (#1144). A fixture still on bare ids would render the same dropdown by
+  // accident — the labels match either way — while documenting a payload no
+  // plugin sends, and a label the page could not find would show the raw id.
+  it("names every voice by its composite id, as the plugin publishes them", () => {
+    const settings = buildSeedSettings();
+    const voices = JSON.parse(settings._raceEngineerVoices);
+    const labels = JSON.parse(settings._voiceLabels);
+    const packVoices = JSON.parse(settings._voicePacks).packs.flatMap((pack) =>
+      pack.voices.map((voice) => ({ pack: pack.id, id: voice.id })),
+    );
+
+    expect(voices).toEqual(["default::default", "luca::luca"]);
+    expect(Object.keys(labels).sort()).toEqual(voices);
+    expect(packVoices.map(({ id }) => id).sort()).toEqual(voices);
+    expect(packVoices.every(({ pack, id }) => id.startsWith(`${pack}::`))).toBe(true);
+    expect(voices).toContain(settings.raceEngineerVoice);
+  });
+
   it("shows a fake settings path, never the capturing machine's own", () => {
     expect(buildSeedSettings()._settingsStorePath).toBe(SEED_STORE_PATH);
     expect(SEED_STORE_PATH).toContain("Driver");
