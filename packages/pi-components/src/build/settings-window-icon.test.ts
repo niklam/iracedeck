@@ -71,6 +71,21 @@ describe("settings-window favicon (#1156)", () => {
     expect(existsSync(path.join(browserDir, SETTINGS_WINDOW_ICON))).toBe(true);
   });
 
+  it("is a square with an alpha channel, large enough for the taskbar", () => {
+    // The website's 96 px favicon was the first attempt: Windows scaled its
+    // white tile up into the taskbar as a white blob with the mark shrunk
+    // inside it. The PNG header is enough to refuse that file coming back.
+    const png = readFileSync(path.join(browserDir, SETTINGS_WINDOW_ICON));
+    const width = png.readUInt32BE(16);
+    const height = png.readUInt32BE(20);
+    const colorType = png[25];
+
+    expect(width).toBe(height);
+    expect(width).toBeGreaterThanOrEqual(256);
+    // 4 = greyscale + alpha, 6 = RGBA
+    expect([4, 6]).toContain(colorType);
+  });
+
   it("is linked by the window page, by that same name", () => {
     const page = readFileSync(windowPage, "utf-8");
     const link = /<link[^>]*rel="icon"[^>]*>/.exec(page)?.[0] ?? "";
