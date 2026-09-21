@@ -7,6 +7,13 @@
 		    ~200 lines of script whose elements are not on the page. %>
 		<%- include('settings-window-scripts') %>
 		<title>iRaceDeck Settings</title>
+		<%# The square brand mark, served from ui/ beside this page (#1156). This
+		    window is the only page we serve that a browser gives window chrome
+		    to — a title bar, a taskbar button, an alt-tab entry — each of which
+		    falls back to the browser's placeholder globe without it. Action PIs
+		    are file:// pages inside the deck host with nothing to show an icon
+		    in, so head-common.ejs deliberately carries no link of its own. %>
+		<link rel="icon" type="image/png" sizes="256x256" href="iracedeck-icon.png" />
 		<%#
 		  The dedicated settings window (issue #992). Served by the plugin process
 		  over loopback and opened as a chromeless browser app window; NOT a

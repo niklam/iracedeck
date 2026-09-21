@@ -8,6 +8,7 @@ import {
   piTemplatePlugin,
   SETTINGS_WINDOW_BRIDGE,
   SETTINGS_WINDOW_HTML,
+  SETTINGS_WINDOW_ICON,
   SETTINGS_WINDOW_LOGO,
 } from "@iracedeck/pi-components/build";
 import commonjs from "@rollup/plugin-commonjs";
@@ -187,6 +188,7 @@ function copyAssetsPlugin(sdPlugin) {
         PI_SETTINGS_BRIDGE,
         SETTINGS_WINDOW_BRIDGE,
         SETTINGS_WINDOW_LOGO,
+        SETTINGS_WINDOW_ICON,
       ]) {
         const src = path.join(browserDir, jsFile);
         if (!existsSync(src)) {

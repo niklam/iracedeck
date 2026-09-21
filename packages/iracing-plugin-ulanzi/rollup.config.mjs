@@ -7,6 +7,7 @@ import {
   piTemplatePlugin,
   SETTINGS_WINDOW_BRIDGE,
   SETTINGS_WINDOW_HTML,
+  SETTINGS_WINDOW_ICON,
   SETTINGS_WINDOW_LOGO,
 } from "@iracedeck/pi-components/build";
 import commonjs from "@rollup/plugin-commonjs";
@@ -180,7 +181,7 @@ function copyAssetsPlugin(sdPlugin) {
       if (!existsSync(uiDir)) {
         mkdirSync(uiDir, { recursive: true });
       }
-      for (const jsFile of ["sdpi-components.js", "pi-components.js", "ulanzi-pi-bridge.js", SETTINGS_WINDOW_BRIDGE, SETTINGS_WINDOW_LOGO]) {
+      for (const jsFile of ["sdpi-components.js", "pi-components.js", "ulanzi-pi-bridge.js", SETTINGS_WINDOW_BRIDGE, SETTINGS_WINDOW_LOGO, SETTINGS_WINDOW_ICON]) {
         const src = path.join(browserDir, jsFile);
         if (!existsSync(src)) {
           this.error(
