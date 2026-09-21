@@ -17,6 +17,62 @@ import { MAIN_BRANCH, SPEC_DIR } from "./lib.mjs";
 
 const TITLE_RE = /^(feat|fix|improve|perf|refactor|docs|ci|chore|test|build|style|revert)(\([^)]+\))?!?: .+ \(#\d+\)$/;
 
+/**
+ * What a spec must carry beyond its header block (#1193). Measured over all
+ * 106 specs: since the #621 policy, "Out of scope" fell from 50 % to 17 % and
+ * a Testing/Verification section from 88 % to 70 % — because no rule had ever
+ * named either. The only surviving prescription was a pre-#621 template in
+ * `.claude/agents/feature-planner.md` that has produced zero specs.
+ *
+ * The spellings are the ones ALREADY in the corpus, deliberately: the house
+ * style has never been uniform, and forcing one would rewrite 45 compliant
+ * specs' habits for nothing. Matched against headings at any level plus the
+ * bold pseudo-headings the specs use, never against body prose — a passing
+ * mention of a test is not a test plan.
+ */
+const SPEC_SECTIONS = [
+  {
+    what: "an Out of scope section",
+    re: /out of scope|non-goals?|not in scope|deliberately does not|does not (?:do|cover|include|ship)/i,
+  },
+  { what: "a Testing or Verification section", re: /\b(tests?|testing|verification|verify)\b/i },
+];
+
+/** The `> **Issue:** … **Supersedes:** … **Superseded by:** …` block. */
+const SPEC_HEADER = /^>\s*\*\*Issue:\*\*.*\*\*Supersedes:\*\*.*\*\*Superseded by:\*\*/m;
+
+/** A fenced code block: its opening run of backticks or tildes, up to the same run closing it. */
+const FENCED_BLOCK = /^(`{3,}|~{3,})[^\n]*\n[\s\S]*?^\1[^\n]*$/gm;
+
+/**
+ * Headings at any level, plus the lines the specs make headings of by bolding
+ * the WHOLE line (`**Manual verification**`, optionally with a trailing colon).
+ * Code fences are dropped first, since a `# verify the build` comment in a
+ * bash block is not a heading. A paragraph that merely OPENS in bold is body
+ * prose, and does not count: the one post-policy spec that passed on such a
+ * line (`**Tests assert structure, not pixels.**`, inside #1145's Decisions)
+ * has no test section, and is already in HEAD, so it is never re-checked.
+ */
+function specHeadings(text) {
+  const body = text.replace(FENCED_BLOCK, "");
+  return [
+    ...[...body.matchAll(/^#{1,6}\s+(.+)$/gm)].map((m) => m[1]),
+    ...[...body.matchAll(/^\*\*([^*\n]+?)\*\*[:.]?\s*$/gm)].map((m) => m[1]),
+  ].map((h) => h.trim());
+}
+
+/** What a committed spec is missing, in the order a reader would fix it. */
+export function missingSpecParts(text) {
+  const missing = [];
+  if (!SPEC_HEADER.test(text)) missing.push("the header block (Issue · Supersedes · Superseded by)");
+  const heads = specHeadings(text);
+  for (const s of SPEC_SECTIONS) if (!heads.some((h) => s.re.test(h))) missing.push(s.what);
+  return missing;
+}
+
+/** A spec is named for its issue; the date and the topic around it are free. */
+const specExistsFor = (files, issue) => files.some((f) => new RegExp(`-issue-${issue}-`).test(f));
+
 /** The pieces of a chained shell command: split at `&&`, `||`, `;`, `|` and newlines. */
 export function segments(command) {
   return command
@@ -166,11 +222,28 @@ export const rules = [
       if (!has(c, GIT_COMMIT)) return null;
       const dir = gitCwd(c, ctx.cwd, GIT_COMMIT);
       const branch = ctx.branch(dir);
-      const committed = committedFiles(c, ctx, dir);
+      const { files: committed, fromIndex } = commitSelection(c, ctx, dir);
       if (branch && branch !== MAIN_BRANCH) {
         const specs = committed.filter((f) => f.startsWith(SPEC_DIR));
         if (specs.length)
           return `A spec commits to ${MAIN_BRANCH} as its own docs(specs) commit, never on a feature branch (${specs.join(", ")} on ${branch}). See .claude/rules/specs-and-plans.md.`;
+      }
+      // The commit is where a spec's bytes are knowable and its author is still
+      // holding it. Two things pass on purpose (#1193): a spec ALREADY in HEAD,
+      // because the requirement is forward-only like #621's naming convention
+      // and `specs-and-plans.md` protects editing a spec freely before it ships
+      // — 30 of the 64 post-policy specs were amended, and none of those edits
+      // is the moment to demand a section the spec was never asked for; and
+      // text the hook cannot read, because a spec is never blocked over bytes
+      // the hook failed to find. The bytes are read from where the commit will
+      // take them — the index or the working copy, per `commitSelection`.
+      for (const f of committed.filter((x) => x.startsWith(SPEC_DIR))) {
+        if (ctx.tracked?.(dir, f)) continue;
+        const text = ctx.specText?.(dir, f, fromIndex.has(f) ? "index" : "worktree");
+        if (text === undefined) continue;
+        const missing = missingSpecParts(text);
+        if (missing.length)
+          return `${f} is missing ${missing.join(" and ")}. A spec carries the header block, an Out of scope section and a Testing/Verification section. See .claude/rules/specs-and-plans.md.`;
       }
       if (
         committed.some((f) => /(^|\/)package\.json$/.test(f)) &&
@@ -206,6 +279,22 @@ export const rules = [
       const fresh = ctx.originFresh(dir);
       if (fresh && !fresh.fresh)
         return `origin/${MAIN_BRANCH} is stale (local ${fresh.local}, remote ${fresh.remote}); run \`git fetch origin\` first or the branch starts behind and surfaces as a PR conflict.`;
+      // The one moment where the issue number is known and implementation has
+      // not started (#1193): 47 of the 56 enhancement issues filed since the
+      // #621 policy have a spec, and nothing was checking the other nine.
+      // An ASK, never a deny — the exemptions (a bug, a docs fix, a dependency
+      // bump, a hygiene sweep) are judgement no regex makes. Labels that are
+      // readable and carry no `enhancement` ARE those exemptions, so the ask
+      // stays silent for them; labels that cannot be read (no `gh`, offline)
+      // ask, and the prompt names the exemption so it costs one keypress.
+      const issue = resolved.match(/ir-(\d+)$/)?.[1];
+      if (issue && !specExistsFor(ctx.specFiles?.(dir) ?? [], issue)) {
+        const labels = (ctx.issueLabels?.(issue, dir)?.labels ?? []).map((l) => l?.name ?? l);
+        if (!labels.length || labels.includes("enhancement"))
+          return {
+            ask: `No spec on ${MAIN_BRANCH} for #${issue} (${SPEC_DIR}*-issue-${issue}-*.md). A feature or enhancement gets its spec BEFORE its worktree; a bug, docs fix, dependency bump or hygiene sweep is exempt — confirm to proceed. See .claude/rules/specs-and-plans.md.`,
+          };
+      }
       return null;
     },
   },
@@ -330,28 +419,58 @@ function chainWords(text) {
 const asPath = (p) => p.replace(/\\/g, "/");
 
 /**
- * What `git commit` would include: an explicit `--only` pathspec, else what is
- * staged plus what a `git add <paths>` EARLIER IN THE SAME COMMAND stages — the
- * hook runs before any of the chain does, so those paths are not staged yet
- * when it looks (`-a` folds in the modified files too). A `git add .`/`-A`
- * names nothing, and an untracked file is invisible to the diff, so that
- * shape stays unknown and the rules reading this fail towards asking.
+ * What `git commit` would include, and where each file's bytes come from.
+ *
+ * `files`: an explicit `--only` pathspec, else what is staged plus what a
+ * `git add` EARLIER IN THE SAME COMMAND stages — the hook runs before any of
+ * the chain does, so those paths are not staged yet when it looks (`-a` folds
+ * in the modified files too).
+ *
+ * `fromIndex`: the files a plain commit takes from the index AS IT STANDS NOW —
+ * staged before this command and not re-added by it (#1193 review). Every other
+ * file is committed from the working copy: a pathspec commit and `-a` take it
+ * directly, and a chained `git add` puts it in the index first. A rule that
+ * reads a file's bytes must read them from where they will be committed, or a
+ * staged spec is judged on an edit made after it was staged.
  */
-function committedFiles(command, ctx, dir) {
+function commitSelection(command, ctx, dir) {
   // Tokenised, not a line regex: a quoted commit message spans lines, and the
   // `--` that follows it sits on the message's last line.
   const afterCommit = chainWords(command.slice(command.search(/\bcommit\b/)));
   const dash = afterCommit.indexOf("--");
-  if (dash >= 0) return afterCommit.slice(dash + 1).map(asPath);
+  if (dash >= 0) return { files: afterCommit.slice(dash + 1).map(asPath), fromIndex: new Set() };
   const added = [...command.matchAll(/\bgit\s+(?:-C\s+\S+\s+)?add\s+(.+)$/gm)].flatMap((m) =>
-    chainWords(m[1])
-      .filter((w) => !w.startsWith("-") && w !== ".")
-      .map(asPath),
+    addedFiles(chainWords(m[1]), ctx, dir),
   );
-  const staged = [...ctx.staged(dir), ...added];
+  const before = ctx.staged(dir);
   if (has(command, /\bcommit\b[^|&;]*\s(-a|--all|-am|-a[a-zA-Z]+)\b/))
-    return [...new Set([...staged, ...ctx.modified(dir)])];
-  return [...new Set(staged)];
+    return { files: [...new Set([...before, ...added, ...ctx.modified(dir)])], fromIndex: new Set() };
+  const reAdded = new Set(added);
+  return { files: [...new Set([...before, ...added])], fromIndex: new Set(before.filter((f) => !reAdded.has(f))) };
+}
+
+/**
+ * The files one `git add <args>` stages. An operand names a file OR a
+ * directory, so each is matched against the files that differ from the index —
+ * modified and untracked — as itself or as a prefix (#1193 review: a new spec
+ * staged by `git add -A`, `git add .` or `git add docs/superpowers/specs/` used
+ * to reach no rule at all). `.`, and `-A`/`--all`/`-u` with no operand, select
+ * every candidate; `-u`/`--update` leaves untracked files out. An operand that
+ * matches nothing is kept as written — a file already staged, a glob, a path
+ * outside this model — which is exactly what the rules saw before.
+ */
+function addedFiles(args, ctx, dir) {
+  const flags = args.filter((w) => w.startsWith("-"));
+  const operands = args.filter((w) => !w.startsWith("-")).map(asPath);
+  const updateOnly = flags.some((f) => /^(-u|--update)$/.test(f));
+  const candidates = [...ctx.modified(dir), ...(updateOnly ? [] : (ctx.untracked?.(dir) ?? []))];
+  if (!operands.length) return flags.some((f) => /^(-A|--all|-u|--update)$/.test(f)) ? candidates : [];
+  return operands.flatMap((o) => {
+    const p = o.replace(/^\.\//, "").replace(/\/+$/, "");
+    if (p === "." || p === "") return candidates;
+    const hits = candidates.filter((f) => f === p || f.startsWith(`${p}/`));
+    return hits.length ? hits : [o];
+  });
 }
 
 /**
@@ -377,11 +496,22 @@ export function classifyCheck(c) {
 
 const checkName = (c) => c.name ?? c.context ?? c.__typename ?? "?";
 
-/** Runs every rule; the first verdict wins. */
+/**
+ * Runs the rules. The first DENY wins at once; the first ask is held until
+ * every rule has had its turn, so a deny anywhere beats an ask anywhere,
+ * whatever order the two rules sit in. One chained command can match both — a
+ * spec-less `git worktree add … && <a denied shape>` used to surface only the
+ * ask, and confirming it ran the command the deny exists to stop (#1193
+ * review; the tag-push ask had the same gap). Order still picks which of two
+ * denies, or which of two asks, is the one reported.
+ */
 export function checkBash(command, ctx) {
+  let ask = null;
   for (const rule of rules) {
     const v = rule.test(command, ctx);
-    if (v) return v;
+    if (!v) continue;
+    if (typeof v === "string") return v;
+    ask ??= v;
   }
-  return null;
+  return ask;
 }

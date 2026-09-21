@@ -118,6 +118,58 @@ export function toplevel(dir) {
   return r.ok ? path.resolve(r.out.trim()) : undefined;
 }
 
+/**
+ * Every spec filename `origin/master` carries, or — when git cannot answer
+ * (no such ref, no git) — every one in `root`'s working tree. Callers treat
+ * `[]` as "no spec found", which is the side that ASKS rather than the side
+ * that denies.
+ *
+ * The ref comes first because it is what a worktree is cut from, and what the
+ * freshness check has just confirmed current. The working tree answers a
+ * different question in both directions (#1193 review): a spec a cloud session
+ * pushed to master is absent from a local checkout nobody has pulled, and a
+ * spec written in the checkout but never committed has not reached master.
+ */
+export function specFilenames(root) {
+  // `-r` so the listing does not hinge on SPEC_DIR's trailing slash: without
+  // it, the same path spelled without one names only the directory entry.
+  const r = git(["ls-tree", "-r", "--name-only", `origin/${MAIN_BRANCH}`, "--", SPEC_DIR], root);
+  if (r.ok)
+    return r.out
+      .split(/\r?\n/)
+      .filter((f) => f.endsWith(".md"))
+      .map((f) => path.posix.basename(f));
+  try {
+    return readdirSync(path.join(root, SPEC_DIR)).filter((f) => f.endsWith(".md"));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * A repo-relative file's text, or `undefined` when it cannot be read — a file
+ * staged by a `git add` that has since moved, a rename, a pathspec the hook
+ * mis-parsed. Every caller fails OPEN on `undefined`: a spec must never be
+ * blocked because the hook could not find the bytes it wanted to check.
+ */
+export function readRepoFile(root, rel) {
+  try {
+    return readFileSync(path.join(root, rel), "utf8");
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * A repo-relative file's STAGED text — the bytes a plain `git commit` takes —
+ * or `undefined` when the index holds no such path. Callers fail open on
+ * `undefined`, exactly as for `readRepoFile`.
+ */
+export function readIndexFile(dir, rel) {
+  const r = git(["show", `:${rel}`], dir);
+  return r.ok ? r.out : undefined;
+}
+
 /** The main repository checkout (the one whose `.git` is a directory). */
 export function mainRepoRoot(dir) {
   const r = git(["rev-parse", "--git-common-dir"], dir);

@@ -21,8 +21,10 @@ This is required for **maintainer-authored** work. Outside contributors are neve
 
 ```text
 file the issue  ->  get its number  ->  write the spec named with it
-                ->  commit to master ->  add the master permalink to the issue body
+                ->  commit to master ->  link the spec from the issue
 ```
+
+The link goes in the body or in a comment — a comment is the better place when it also says what the spec decided beyond the issue's text (#1187 is the pattern). It is a `blob/master/…` link, not a permalink: the spec is meant to be read at its current state, and a pinned sha would freeze a document that is edited freely until the work ships.
 
 The **issue** carries what and why: problem, goal, tasks, affected artifacts. The **spec** carries how and why-this-way: approaches weighed, alternatives rejected, load-bearing constraints. The issue links the spec; the spec does not restate the issue.
 
@@ -47,6 +49,15 @@ A spec covering several issues is named for the primary one and lists the rest i
 ```
 
 **There is no `Status:` field, deliberately.** Whether the work shipped is already tracked by the issue being open, closed, or closed as not planned — and a status field nobody remembers to update is worse than none, because it asserts something false. `Supersedes:` / `Superseded by:` are the only hand-maintained fields, and both are one-time edits.
+
+## Required sections
+
+Beyond the header block, two sections are checked at the commit (#1193). A section is a heading at any level, or a line that is bold from end to end; a paragraph that merely opens in bold is prose, and so is anything inside a code fence. The spellings already in use are all accepted:
+
+- **Out of scope** — or `Non-goals`, or `What this deliberately does not do`. What the decision deliberately does not cover.
+- **Testing** — or `Verification`, `Tests`, `Manual verification`. How the thing is proven, by hand as well as by suite.
+
+Both faded once the spec became a filing-time decision record instead of an implementation-time design doc — 50 % → 17 % and 88 % → 70 % across the #621 policy, measured in the #1193 spec — and both are worth keeping from the older shape. **Forward-only**, like the naming convention: the check sees only a spec a commit ADDS, so amending an existing one is untouched and nothing is backfilled.
 
 ## Specs commit to `master`, and never inside a feature branch
 

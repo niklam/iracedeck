@@ -11,7 +11,11 @@ import {
   linkTargets,
   mainRepoRoot,
   originMasterFresh,
+  readIndexFile,
   readInput,
+  readRepoFile,
+  specFilenames,
+  toplevel,
   workspacePackages,
 } from "./lib.mjs";
 import { checkBash } from "./rules-bash.mjs";
@@ -39,6 +43,25 @@ if (typeof command === "string" && command.trim()) {
     // is how a valid `worktree add` got denied as "inside the repo".
     mainRoot: memo((dir) => mainRepoRoot(dir) ?? mainRepoRoot(cwd) ?? cwd),
     originFresh: memo(originMasterFresh),
+    // Specs are listed off origin/master, asked of the MAIN repository — the
+    // ref a new ir-<n> is cut from, which the freshness check has just
+    // confirmed current (see `specFilenames` for the fallback).
+    //
+    // `specText` reads from wherever the commit will take the bytes, which the
+    // rule works out per file: the INDEX for a spec staged before this command
+    // and not re-added by it, the WORKING copy for everything else — a chained
+    // `git add spec.md && git commit` has staged nothing yet when this hook
+    // runs, and `-a` and pathspec commits take the working copy anyway.
+    specFiles: memo((dir) => specFilenames(mainRepoRoot(dir) ?? mainRepoRoot(cwd) ?? cwd)),
+    specText: memo((dir, rel, from) =>
+      from === "index" ? readIndexFile(dir, rel) : readRepoFile(toplevel(dir) ?? mainRepoRoot(cwd) ?? cwd, rel),
+    ),
+    // Root-relative like `staged`/`modified`, so a `git add <dir>` operand can be
+    // matched against them.
+    untracked: memo((dir) => lines(git(["ls-files", "--others", "--exclude-standard", "--full-name"], dir))),
+    // Already in HEAD means this commit AMENDS the spec rather than adding it.
+    tracked: memo((dir, rel) => git(["cat-file", "-e", `HEAD:${rel}`], dir).ok),
+    issueLabels: memo((issue, dir) => ghJson(["issue", "view", String(issue), "--json", "labels"], dir)),
     linkTargets: memo(() => linkTargets()),
     packages: memo(() => workspacePackages(mainRepoRoot(cwd) ?? cwd)),
     isInside,
