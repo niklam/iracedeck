@@ -28,6 +28,7 @@ import {
   getGlobalSettings,
   initGlobalSettings,
   onGlobalSettingsChange,
+  resolveActiveRaceEngineerVoice,
   voiceDisplayLabels,
   type VoicePackService,
 } from "@iracedeck/deck-core";
@@ -47,7 +48,6 @@ import {
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { resolveHarnessVoice } from "./active-voice.js";
 import { getAudioAssetsManifest, seedGlobalSettings } from "./bootstrap-settings.js";
 import { MockPlatformAdapter } from "./mock-platform-adapter.js";
 import { MockSDKController } from "./mock-sdk-controller.js";
@@ -133,9 +133,10 @@ async function main(): Promise<void> {
     audio,
     manifest,
     logger.createScope("AudioScenarios"),
-    // Not the plugins' resolver as it is: that one would qualify the source
-    // tree's bare `default` into an installed `default::default` (#1144).
-    () => resolveHarnessVoice(getGlobalSettings().raceEngineerVoice, raceEngineerVoices),
+    // The plugins' own resolver. A stored bare id that is itself in the list —
+    // the source tree's `default` — is taken as it is, so it stays pickable
+    // beside an installed `default::default` (#1144).
+    () => resolveActiveRaceEngineerVoice(raceEngineerVoices),
     getFrameOptions,
   );
 
