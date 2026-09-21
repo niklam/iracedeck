@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
+import { qualifiedVoiceId, splitVoiceId, VOICE_ID_SEPARATOR } from "@iracedeck/callout-script";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// Import the module to trigger custom element registration
-import "./voice-select.js";
+// Importing the module also registers the custom element.
+import { VOICE_SEPARATOR, voiceHalf } from "./voice-select.js";
 
 type SettingsCallback = (value: string) => void;
 
@@ -72,32 +73,42 @@ describe("ird-voice-select", () => {
   describe("the default anchor (#1034)", () => {
     // The dropdown's half of `resolveActiveRaceEngineerVoice`'s anchor. Without
     // it both fell to the first option, which a pack named `aria` wins — and the
-    // dropdown would then disagree with what the plugin actually plays.
+    // dropdown would then disagree with what the plugin actually plays. The ids
+    // are composite, as the plugin publishes them since #1144, and the anchor
+    // is the one `race-engineer-settings.ejs` sets.
 
     beforeEach(() => {
-      el.setAttribute("default", "default");
+      el.setAttribute("default", "default::default");
     });
 
     it("shows the default voice rather than an alphabetically earlier pack", () => {
       publishChoice("");
-      publishVoices(["aria", "default"]);
+      publishVoices(["aria::aria", "default::default"]);
 
-      expect(selected()).toBe("default");
-      expect(save()).toHaveBeenCalledWith("default");
+      expect(selected()).toBe("default::default");
+      expect(save()).toHaveBeenCalledWith("default::default");
     });
 
     it("falls through to the first entry when the anchor is not installed", () => {
       publishChoice("");
-      publishVoices(["aria", "zeta"]);
+      publishVoices(["aria::aria", "zeta::zeta"]);
 
-      expect(selected()).toBe("aria");
+      expect(selected()).toBe("aria::aria");
     });
 
     it("never overrides a voice the user actually chose", () => {
-      publishChoice("aria");
-      publishVoices(["aria", "default"]);
+      publishChoice("aria::aria");
+      publishVoices(["aria::aria", "default::default"]);
 
-      expect(selected()).toBe("aria");
+      expect(selected()).toBe("aria::aria");
+      expect(save()).not.toHaveBeenCalled();
+    });
+
+    it("shows the anchor for a pre-#1144 bare value without persisting over it — the plugin qualifies it", () => {
+      publishChoice("default");
+      publishVoices(["aria::aria", "default::default"]);
+
+      expect(selected()).toBe("default::default");
       expect(save()).not.toHaveBeenCalled();
     });
   });
@@ -154,12 +165,23 @@ describe("ird-voice-select", () => {
     });
 
     it("falls back to the capitalised id for a voice no pack named", () => {
-      // The bundled voice has no manifest and so no entry — which is why it
-      // needs no special case anywhere.
+      // A voice with no manifest has no entry — which is why it needs no
+      // special case anywhere.
       publishVoices(["default"]);
       publishLabels({});
 
       expect(options()).toEqual([{ value: "default", text: "Default" }]);
+    });
+
+    it("capitalises only the voice half of a composite id no label names (#1144)", () => {
+      // `default::default` is an identity, never something to read.
+      publishVoices(["default::default", "luca::matt-two"]);
+      publishLabels({});
+
+      expect(options()).toEqual([
+        { value: "default::default", text: "Default" },
+        { value: "luca::matt-two", text: "Matt-two" },
+      ]);
     });
 
     it("retitles the existing options when labels arrive after the list", () => {
@@ -204,5 +226,26 @@ describe("ird-voice-select", () => {
 
       expect(options()).toEqual([{ value: "aaa-test", text: "Aaa-test" }]);
     });
+  });
+});
+
+describe("VOICE_SEPARATOR — the browser copy of the composite voice id's separator (#1144)", () => {
+  // The component cannot import `@iracedeck/callout-script` (see the constant's
+  // comment), so it keeps a copy. A copy that drifted would show every
+  // unlabelled pack voice as its whole composite id.
+
+  it("is callout-script's VOICE_ID_SEPARATOR", () => {
+    expect(VOICE_SEPARATOR).toBe(VOICE_ID_SEPARATOR);
+  });
+
+  it.each([
+    ["a composite id", qualifiedVoiceId("luca", "matt")],
+    ["the managed voice", qualifiedVoiceId("default", "default")],
+    ["a bare id", "default"],
+    ["an empty pack half", "::matt"],
+    ["an empty voice half", "luca::"],
+    ["more than one separator", "a::b::c"],
+  ])("reads the voice half of %s exactly as splitVoiceId does", (_case, id) => {
+    expect(voiceHalf(id)).toBe(splitVoiceId(id)?.voiceId ?? id);
   });
 });

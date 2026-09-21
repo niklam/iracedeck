@@ -29,7 +29,8 @@
  *   voice keys (default: `_raceEngineerVoices`).
  * - labels: Plugin-global setting key holding a JSON `{ id: label }` map of the
  *   names packs gave their voices (default: `_voiceLabels`, issue #1034). A
- *   voice with no entry falls back to its capitalised id.
+ *   voice with no entry falls back to its capitalised id — the voice half of
+ *   a composite `<pack>::<voice>` id (#1144).
  *
  * The plugin populates both in ONE write, so the dropdown can never pair one
  * scan's voices with another scan's names.
@@ -41,6 +42,27 @@ let styleInjected = false;
 const DEFAULT_SETTING = "raceEngineerVoice";
 const DEFAULT_VOICES_SETTING = "_raceEngineerVoices";
 const DEFAULT_LABELS_SETTING = "_voiceLabels";
+
+/**
+ * @internal Exported for testing — the separator of a composite voice id,
+ * `<pack id>::<voice id>` (#1144): a copy of `VOICE_ID_SEPARATOR` in
+ * `@iracedeck/callout-script`. A copy because this file ships in the PI
+ * browser bundle, which resolves no workspace package — and that one would
+ * pull `zod` in with it. `voice-select.test.ts` pins the copy to the shared
+ * constant, so the two cannot drift apart.
+ */
+export const VOICE_SEPARATOR = "::";
+
+/**
+ * @internal Exported for testing — the voice half of a composite id, read as
+ * `splitVoiceId` reads it: exactly one separator with both halves non-empty.
+ * Anything else — a bare id, a malformed one — is returned whole.
+ */
+export function voiceHalf(id: string): string {
+  const parts = id.split(VOICE_SEPARATOR);
+
+  return parts.length === 2 && parts[0].length > 0 && parts[1].length > 0 ? parts[1] : id;
+}
 
 function titleCase(s: string): string {
   return s.length === 0 ? s : s.charAt(0).toUpperCase() + s.slice(1);
@@ -224,8 +246,10 @@ export class VoiceSelect extends HTMLElement {
       opt.value = voice;
       // The pack's own name for this voice when it declared one, otherwise the
       // id capitalised — which is what every voice showed before packs could
-      // name theirs, and is why the bundled voice needs no entry.
-      opt.textContent = this.labels[voice] ?? titleCase(voice);
+      // name theirs, and is why a voice with no manifest needs no entry. Only
+      // the voice half of a composite id (#1144): `default::default` is an
+      // identity, not something a user should read.
+      opt.textContent = this.labels[voice] ?? titleCase(voiceHalf(voice));
       this.select.appendChild(opt);
     }
   }

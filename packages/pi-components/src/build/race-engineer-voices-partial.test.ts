@@ -1,3 +1,4 @@
+import { DEFAULT_RACE_ENGINEER_VOICE } from "@iracedeck/deck-core";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import url from "node:url";
@@ -77,12 +78,16 @@ describe("race-engineer-settings voice packs (issue #1034)", () => {
     }
   });
 
-  it("anchors the voice dropdown to `default`, so an installed pack cannot win by sorting first", () => {
+  it("anchors the voice dropdown to `default::default`, so an installed pack cannot win by sorting first", () => {
     // The counterpart of `resolveActiveRaceEngineerVoice`'s anchor: without this
     // attribute the dropdown falls to the first option and disagrees with what
-    // the plugin actually plays (issue #1034).
+    // the plugin actually plays (issue #1034). The anchor is the managed pack's
+    // voice by its composite id, `DEFAULT_RACE_ENGINEER_VOICE` (#1144); a bare
+    // `default` would match no option the plugin publishes.
     for (const locals of [{}, { settingsWindow: true }]) {
-      expect(render(locals)).toContain('voices="_raceEngineerVoices" labels="_voiceLabels" default="default"');
+      expect(render(locals)).toContain(
+        `voices="_raceEngineerVoices" labels="_voiceLabels" default="${DEFAULT_RACE_ENGINEER_VOICE}"`,
+      );
     }
   });
 

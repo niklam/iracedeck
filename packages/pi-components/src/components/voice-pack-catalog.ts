@@ -122,12 +122,12 @@ const EMPTY_STATUS: VoicePackStatus = { catalog: { state: "unknown" }, installs:
  * under Installed Voices, an installed pack appeared in both places at once.
  * One pack, one row, in the section that describes it.
  *
- * Deliberately a RENDER-layer rule, not a verdict change. The reasoning above
- * `isProvidedByBundle` in deck-core — that a bundle-provided pack reads as
- * `installed` rather than taking a verdict of its own, because a renderer that
- * does not know a verdict drops the row — is about the verdict vocabulary and
- * still holds. This filters what one surface shows; it does not touch what the
- * plugin decided.
+ * Deliberately a RENDER-layer rule, not a verdict change. The reasoning in
+ * deck-core's `buildOffer` — that a pack the development root provides reads
+ * as `installed` rather than taking a verdict of its own, because a renderer
+ * that does not know a verdict drops the row — is about the verdict vocabulary
+ * and still holds. This filters what one surface shows; it does not touch
+ * what the plugin decided.
  *
  * `update` deliberately survives: a newer version genuinely is something to
  * download, so the one case where an installed pack must stay visible is
