@@ -111,6 +111,7 @@ Actions marked "Available via SDK" use SDK commands directly and don't require k
 |--------|-----------------|-------------------|-----------------|
 | Adjust Voice Chat Volume | Shift+Ctrl+Alt+NUMPAD - / + | No | Voice Chat Louder / Quieter |
 | Mute Voice Chat | Shift+Ctrl+Alt+M | No | Mute Voice Chat |
+| Mute a Driver | Shift+Ctrl+Alt+D | No | Mute a Driver |
 
 ### Text Chat
 
