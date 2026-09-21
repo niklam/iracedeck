@@ -74,6 +74,13 @@ describe("qualifyVoiceId", () => {
     expect(qualifyVoiceId("default::default", [], MANAGED)).toBe("default::default");
   });
 
+  it("returns a bare id unchanged when it is itself an available voice, ahead of any pack providing it", () => {
+    // A bare id in the list is a real voice — the harness's source-tree voice,
+    // or one a plugin bundles — not a pre-#1144 value to reinterpret.
+    expect(qualifyVoiceId("default", ["default", "default::default"], MANAGED)).toBe("default");
+    expect(qualifyVoiceId("matt", ["a-pack::matt", "matt"], MANAGED)).toBe("matt");
+  });
+
   it("qualifies a bare id with the managed pack when that pack provides it", () => {
     expect(qualifyVoiceId("default", ["a-pack::default", "default::default"], MANAGED)).toBe("default::default");
     expect(qualifyVoiceId("matt", ["b-pack::matt", "default::matt"], MANAGED)).toBe("default::matt");
@@ -99,6 +106,6 @@ describe("qualifyVoiceId", () => {
   });
 
   it("skips a malformed available entry rather than matching it", () => {
-    expect(qualifyVoiceId("matt", ["matt", "::matt", "b-pack::matt"], MANAGED)).toBe("b-pack::matt");
+    expect(qualifyVoiceId("matt", ["::matt", "a::matt::b", "b-pack::matt"], MANAGED)).toBe("b-pack::matt");
   });
 });

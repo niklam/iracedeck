@@ -70,7 +70,11 @@ export function qualifyClipPath(packId: string, clip: string): string {
  *
  * Empty or already-composite → returned unchanged; a composite is never
  * rewritten, even one whose pack is absent, because the pack may simply not
- * have arrived yet. A bare `v` → `<managedPackId>::v` when the managed pack
+ * have arrived yet. A bare `v` that is itself in `available` → unchanged too:
+ * a bare id in the list is a real voice (the harness's source-tree voice, or
+ * one a plugin bundles), not a pre-#1144 value to reinterpret, and qualifying
+ * it would make that voice impossible to choose beside a pack's voice of the
+ * same id. Otherwise a bare `v` → `<managedPackId>::v` when the managed pack
  * provides it, else the available composite whose voice half is `v` with the
  * alphabetically first pack id (a plain JS string sort on the PACK id, not on
  * the composite — `a` sorts before `a-b` as an id but after it as `a::…`
@@ -81,7 +85,7 @@ export function qualifyClipPath(packId: string, clip: string): string {
  * the voice they keep.
  */
 export function qualifyVoiceId(stored: string, available: readonly string[], managedPackId: string): string {
-  if (stored.length === 0 || stored.includes(VOICE_ID_SEPARATOR)) return stored;
+  if (stored.length === 0 || stored.includes(VOICE_ID_SEPARATOR) || available.includes(stored)) return stored;
 
   const providers: string[] = [];
 
