@@ -1,10 +1,9 @@
-import { CALLOUT_SCRIPT_FILE, type CalloutScript } from "@iracedeck/callout-script";
+import { type CalloutScript, qualifyClipPath } from "@iracedeck/callout-script";
 import type { ILogger } from "@iracedeck/logger";
 import { resolve } from "node:path";
 
 import {
   type InstalledVoicePack,
-  readVoiceScript,
   scanVoicePacks,
   type VoicePackFileSystem,
   type VoicePackProblem,
@@ -15,9 +14,9 @@ export interface VoicePackServiceDeps {
   root: string;
   /**
    * The development voice root this build carries (#1143), scanned BEFORE
-   * {@link root} so a staged pack claims its voice ids ahead of everything in
-   * AppData — see `devRoot` on `ScanVoicePacksOptions` for the ordering rule
-   * and why `development` provenance is decided by where a pack was found.
+   * {@link root} so a staged pack shadows the same pack id in AppData — see
+   * `devRoot` on `ScanVoicePacksOptions` for the rule and why `development`
+   * provenance is decided by where a pack was found.
    *
    * `undefined` in every release build: the path comes from a gitignored file
    * the plugin's Rollup config bakes into `bin/config.json`. A path that does
@@ -36,38 +35,38 @@ export interface VoicePackServiceDeps {
   devRoot?: string;
   fs: VoicePackFileSystem;
   logger: ILogger;
-  /** The plugin's own `assets/audio` — always the first, highest-precedence root. */
+  /** The plugin's own `assets/audio` — the sfx tree, and the one unrestricted root. */
   pluginAudioDir: string;
-  /**
-   * Voice ids the plugin's own bundled audio provides; a pack may not claim
-   * one. See `reservedVoices` on `ScanVoicePacksOptions` for why.
-   */
-  reservedVoices: readonly string[];
-  /**
-   * Pack ids the scanner visits before the alphabetical order — the managed
-   * pack, so a sideload that sorts first cannot claim its voice. See
-   * `priorityPacks` on `ScanVoicePacksOptions` for why.
-   */
-  priorityPacks?: readonly string[];
   /**
    * Hand the ordered audio roots to the audio service.
    *
-   * The plugin's own directory comes first and carries no `clips`, which means
-   * unrestricted. Every pack root carries the clip list the scan admitted from
-   * it, so a pack can only serve the files it was allowed to contribute — the
-   * scanner enforces its collision rules by DROPPING files, not by removing
-   * them from disk, so a resolver going on file presence alone would let a pack
-   * serve another pack's voice, or a bundled clip the plugin does not ship,
-   * simply by placing a file at the right relative path. Structurally typed
-   * rather than imported: `deck-core` must not depend on `audio-service`.
+   * The plugin's own directory comes first and carries neither `clips` nor
+   * `voices`, which means unrestricted. Every pack root carries the clip list
+   * the scan admitted from it, so a pack can only serve the files it was
+   * allowed to contribute — the scanner admits a pack's own voices by DROPPING
+   * every other file from its list, not by removing them from disk, so a
+   * resolver going on file presence alone would let a pack serve a clip under
+   * any path simply by placing a file there. It also carries `voices`, the
+   * composite-to-bare binding (#1144): the engine addresses this pack's voice
+   * as `voice/<pack>::<voice>/…`, its files sit under `voice/<voice>/…`, and
+   * the audio service resolves the former only in this root, as the latter.
+   * Structurally typed rather than imported: `deck-core` must not depend on
+   * `audio-service`.
    */
-  applyRoots(roots: readonly { dir: string; clips?: readonly string[] }[]): void;
-  /** Hand each pack's clip list to the scenario engine, as manifest fragments. */
+  applyRoots(
+    roots: readonly { dir: string; clips?: readonly string[]; voices?: Readonly<Record<string, string>> }[],
+  ): void;
+  /**
+   * Hand each pack's clip list to the scenario engine, as manifest fragments —
+   * each clip rewritten to its logical path, `voice/<pack>::<voice>/…`
+   * (#1144), so the manifest's voice list, the `{voice}` substitution and the
+   * driver-name union all carry composite ids with no engine change, and two
+   * packs' `matt` clips can never merge into one pool.
+   */
   applyManifest(fragments: readonly (readonly string[])[]): void;
   /**
-   * Hand every voice's callout script to the scenario engine (#1064), voice id
-   * → parsed script, replacing whatever it held. The bundled voices first, read
-   * from `pluginAudioDir`, then each installed voice that has one; a
+   * Hand every voice's callout script to the scenario engine (#1064),
+   * composite voice id → parsed script, replacing whatever it held; a
    * clips-only voice is simply absent. Called AFTER `applyManifest` — a script
    * draws its pool clips from what the manifest advertises, so a script must
    * never be live before its clips are, or a callout firing in that window
@@ -92,8 +91,8 @@ export interface VoicePackService {
   installed(): readonly InstalledVoicePack[];
   /**
    * Why the most recent scan ignored what it ignored — a pack with no manifest,
-   * an id that disagrees with its folder, a voice another pack or the bundle
-   * already provides, or a declared voice with no clips under it.
+   * an id that disagrees with its folder, a voice declared twice, or a
+   * declared voice with no clips under it.
    *
    * Surfaced beside the installed list rather than left in the log (#1034): a
    * hand-placed pack that does nothing, with no visible reason, is the single
@@ -103,8 +102,8 @@ export interface VoicePackService {
    */
   problems(): readonly VoicePackProblem[];
   /**
-   * Voice id → parsed script for the most recent APPLIED scan — bundled voices
-   * first, then installed voices with one — and the very object `applyScripts`
+   * Composite voice id → parsed script for the most recent APPLIED scan —
+   * every installed voice that has one — and the very object `applyScripts`
    * was handed. Empty before the first refresh. Assigned together with
    * `installed()` and `problems()`, and only once every `apply*` call has
    * returned, so a consumer deciding whether the active voice has a script
@@ -124,11 +123,10 @@ export interface VoicePackService {
    * refresh, and for every pack the packs root provides.
    *
    * "Provides" means the pack contributed at least one voice, not merely that
-   * a folder was listed. The two conditions cannot come apart today — the only
-   * pack the scanner lists with no voices is a bundled seed, and the dev root
-   * never reads a provenance record, so nothing found there can be one — so the
-   * voice count states what the answer MEANS rather than guarding a live case:
-   * a pack that provides nothing is not a reason to withhold the real one.
+   * a folder was listed. The two conditions cannot come apart today — the
+   * scanner lists no pack without a voice — so the voice count states what the
+   * answer MEANS rather than guarding a live case: a pack that provides
+   * nothing is not a reason to withhold the real one.
    */
   isProvidedByDevRoot(id: string): boolean;
 }
@@ -187,38 +185,6 @@ export function createVoicePackService(deps: VoicePackServiceDeps): VoicePackSer
     return deps.devRoot;
   }
 
-  /**
-   * Every bundled voice's script, read from the plugin's own audio root through
-   * the SAME reader the scanner runs over a pack (#1064) — so that when #1034
-   * stage 3 drops the bundle, only the roots list changes.
-   *
-   * A bundled voice is the one case where "no script" is not a clips-only
-   * voice but a bug: the build copies the artifact beside the clips, and a
-   * missing or malformed one means the plugin shipped wrong, not that a pack
-   * author chose silence. It is said at `warn`, once per voice per refresh,
-   * naming the voice and the reason — and the voice is simply absent from the
-   * map, which the engine treats as every callout skipped. Never a throw: the
-   * refresh runs where a throw ends the process.
-   */
-  function readBundledScripts(): Map<string, CalloutScript> {
-    const bundled = new Map<string, CalloutScript>();
-
-    for (const id of deps.reservedVoices) {
-      const read = readVoiceScript(deps.fs, deps.pluginAudioDir, id);
-
-      if (read.ok && read.script !== null) {
-        bundled.set(id, read.script);
-        continue;
-      }
-
-      const reason = read.ok ? `it has no ${CALLOUT_SCRIPT_FILE} — every callout is skipped` : read.reason;
-
-      deps.logger.warn(`Bundled voice "${id}" has no usable script: ${reason}`);
-    }
-
-    return bundled;
-  }
-
   return {
     // Never throws. This runs on two paths that both END THE PLUGIN PROCESS if
     // it does: module-scope startup, and the settings window's `sendToPlugin`
@@ -253,13 +219,10 @@ export function createVoicePackService(deps: VoicePackServiceDeps): VoicePackSer
           root: deps.root,
           ...(devRoot === undefined ? {} : { devRoot }),
           fs: deps.fs,
-          reservedVoices: deps.reservedVoices,
-          ...(deps.priorityPacks === undefined ? {} : { priorityPacks: deps.priorityPacks }),
         });
-        // Bundled first, then installed. The two sets cannot overlap — the
-        // scanner refuses a pack's claim on a reserved id — so the order is a
-        // reading order rather than a precedence rule.
-        const next = readBundledScripts();
+        // Keyed by the composite id (#1144): two packs' scripts for the same
+        // bare voice are two entries, as their voices are two voices.
+        const next = new Map<string, CalloutScript>();
 
         for (const pack of scanned) {
           for (const voice of pack.voices) if (voice.script !== null) next.set(voice.id, voice.script);
@@ -269,11 +232,20 @@ export function createVoicePackService(deps: VoicePackServiceDeps): VoicePackSer
         // exists; a clip must never be advertised before there is a root that can
         // resolve it, or a callout firing in that window would resolve to the
         // fallback root and fail to play.
+        //
+        // The root keeps the pack's own clip spelling and binds each composite
+        // id to the bare folder it names; the manifest fragment carries the
+        // logical, qualified spelling the engine will ask for (#1144). The
+        // binding is what joins the two back up at resolve time.
         deps.applyRoots([
           { dir: deps.pluginAudioDir },
-          ...scanned.map((pack) => ({ dir: pack.dir, clips: pack.clips })),
+          ...scanned.map((pack) => ({
+            dir: pack.dir,
+            clips: pack.clips,
+            voices: Object.fromEntries(pack.voices.map((voice) => [voice.id, voice.packVoiceId])),
+          })),
         ]);
-        deps.applyManifest(scanned.map((pack) => pack.clips));
+        deps.applyManifest(scanned.map((pack) => pack.clips.map((clip) => qualifyClipPath(pack.id, clip))));
         // Scripts AFTER the manifest, for the reason roots come before it: a
         // script draws its pool clips from the manifest, so it must not be live
         // before the clips it names are advertised.

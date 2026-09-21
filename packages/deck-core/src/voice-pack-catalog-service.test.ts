@@ -60,7 +60,6 @@ function service(overrides: Partial<VoicePackCatalogServiceDeps> = {}) {
     isEnabled: () => true,
     getPluginVersion: () => "3.2.0",
     getInstalledSha: () => undefined,
-    bundledVoices: [],
     fetchImpl: catalogResponse([pack("luca")]),
     now: () => 1_000,
     logger,
@@ -155,74 +154,6 @@ describe("createVoicePackCatalogService", () => {
       installedSha = SHA_A;
       const after = await svc.get();
       expect(after).toMatchObject({ packs: [{ verdict: "installed" }] });
-    });
-
-    describe("a pack the plugin itself bundles", () => {
-      // The release that publishes `default` to the catalog still ships it
-      // inside the plugin. Nothing in the packs folder can add to a voice the
-      // bundle already provides, and a downloaded copy is reported by the
-      // scanner as a broken pack — so it must never be offered.
-      it("is reported installed, not offered, when nothing is in the packs folder", async () => {
-        const status = await service({
-          fetchImpl: catalogResponse([pack("default")]),
-          getInstalledSha: () => undefined,
-          bundledVoices: ["default"],
-        }).get();
-
-        expect(status).toMatchObject({ state: "ok", packs: [{ id: "default", verdict: "installed" }] });
-      });
-
-      it("is reported installed even when the catalog's archive differs from the seeded copy", async () => {
-        // A newer catalog archive of a bundled voice changes nothing the user
-        // can hear — the bundle wins every clip — so "update" would download
-        // for no effect.
-        const status = await service({
-          fetchImpl: catalogResponse([pack("default", { sha256: SHA_A })]),
-          getInstalledSha: () => SHA_B,
-          bundledVoices: ["default"],
-        }).get();
-
-        expect(status).toMatchObject({ packs: [{ id: "default", verdict: "installed" }] });
-      });
-
-      it("is reported installed ahead of a version floor this plugin does not meet", async () => {
-        // The voice plays on this plugin today; a floor on the ARCHIVE cannot
-        // make that false, and "needs a newer iRaceDeck" would.
-        const status = await service({
-          fetchImpl: catalogResponse([pack("default", { minPluginVersion: "9.9.9" })]),
-          getPluginVersion: () => "3.2.0",
-          bundledVoices: ["default"],
-        }).get();
-
-        expect(status).toMatchObject({ packs: [{ id: "default", verdict: "installed" }] });
-      });
-
-      it("is still offered when only SOME of its voices are bundled", async () => {
-        // The scanner drops the colliding voice and keeps the rest, so the
-        // pack contributes something and the install is worth its download.
-        const status = await service({
-          fetchImpl: catalogResponse([
-            pack("duo", {
-              voices: [
-                { id: "default", label: "Default" },
-                { id: "luca", label: "Luca" },
-              ],
-            }),
-          ]),
-          bundledVoices: ["default"],
-        }).get();
-
-        expect(status).toMatchObject({ packs: [{ id: "duo", verdict: "install" }] });
-      });
-
-      it("goes inert when nothing is bundled — the stage-3 release needs no edit here", async () => {
-        const status = await service({
-          fetchImpl: catalogResponse([pack("default")]),
-          bundledVoices: [],
-        }).get();
-
-        expect(status).toMatchObject({ packs: [{ id: "default", verdict: "install" }] });
-      });
     });
 
     describe("a pack the development root provides (#1143)", () => {

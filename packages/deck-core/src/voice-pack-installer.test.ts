@@ -506,8 +506,8 @@ function harness(opts: HarnessOptions = {}) {
   };
 }
 
-function scanned(disk: FakeDisk, reservedVoices: readonly string[] = []) {
-  return scanVoicePacks({ root: ROOT, fs: disk.scanFs, reservedVoices });
+function scanned(disk: FakeDisk) {
+  return scanVoicePacks({ root: ROOT, fs: disk.scanFs });
 }
 
 /** The property under test, in one place: the installed pack is exactly as it was, and nothing was moved aside. */
@@ -1440,29 +1440,20 @@ describe("createVoicePackInstaller — seed by copy", () => {
     expectNoDebris(disk);
   });
 
-  it("writes the one source value the scanner exempts from the bundled-voice collision report", async () => {
+  it("writes the bundled-seed source value the scanner reports as the pack's provenance", async () => {
     const disk = new FakeDisk();
     withBundle(disk);
     const { installer } = harness({ disk, bundled: [bundledDefault()] });
 
     await installer.seed();
 
-    // With `default` bundled, the seeded copy loses the voice to the bundle —
-    // expected — and is reported as NO PROBLEM, because its record says it is
-    // our own seed. A sideload claiming the same id would be reported.
-    //
-    // It is still LISTED though (#1100), providing nothing: `voices` and
-    // `clips` both empty, so it appears on the Installed Voices card without
-    // putting a second `default` in the voice dropdown.
-    const quiet = scanned(disk, ["default"]);
-    expect(quiet.problems).toEqual([]);
-    expect(quiet.packs).toHaveLength(1);
-    expect(quiet.packs[0]).toMatchObject({ id: "default", voices: [], clips: [], provenance: "bundled-seed" });
-
-    // Once the bundle is gone (the next release), the same copy is live.
-    const live = scanned(disk, []);
+    // The seeded copy is a live pack like any other (#1144 — nothing is
+    // reserved for a bundle any more): its voice is listed under the composite
+    // id, and the record decides only the provenance badge.
+    const live = scanned(disk);
     expect(live.problems).toEqual([]);
     expect(live.packs.map((pack) => `${pack.id}:${pack.provenance}`)).toEqual(["default:bundled-seed"]);
+    expect(live.packs[0]?.voices.map((voice) => voice.id)).toEqual(["default::default"]);
   });
 
   it("records the catalog's digest, so the next catalog check downloads nothing", async () => {
@@ -1626,7 +1617,7 @@ describe("createVoicePackInstaller — seed by copy", () => {
       expect(disk.writes.some((path) => path.endsWith(join("voice", "default", "callouts.json")))).toBe(true);
 
       // The real scanner, once the bundle is gone, finds a scripted voice.
-      const { packs, problems } = scanned(disk, []);
+      const { packs, problems } = scanned(disk);
       expect(problems).toEqual([]);
       expect(packs[0]?.voices[0]?.script).toMatchObject({ schema: 1, scenarios: { "flag-green": {} } });
       expectNoDebris(disk);
@@ -1643,9 +1634,11 @@ describe("createVoicePackInstaller — seed by copy", () => {
 
       expect(disk.has(join(ROOT, "default", "voice", "default", "callouts.json"))).toBe(false);
 
-      const { packs, problems } = scanned(disk, []);
+      const { packs, problems } = scanned(disk);
       expect(problems).toEqual([]);
-      expect(packs[0]?.voices).toEqual([{ id: "default", label: "Default", script: null }]);
+      expect(packs[0]?.voices).toEqual([
+        { id: "default::default", packVoiceId: "default", label: "Default", script: null },
+      ]);
     });
 
     it("decides per voice: a two-voice bundle where only one has a script", async () => {
@@ -1707,7 +1700,7 @@ describe("createVoicePackInstaller — seed by copy", () => {
         results: [{ id: "default", result: { ok: true, outcome: "installed" } }],
       });
       expect(disk.files(join(ROOT, "default"))[SCRIPT_PATH]).toBe("{not json");
-      expect(scanned(disk, []).problems.map((problem) => problem.reason)).toEqual([
+      expect(scanned(disk).problems.map((problem) => problem.reason)).toEqual([
         expect.stringContaining("callouts.json (document): not valid JSON"),
       ]);
     });
