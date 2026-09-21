@@ -1641,7 +1641,8 @@
           "map": {
             "volume-up": "audioVoiceChatVolumeUp",
             "volume-down": "audioVoiceChatVolumeDown",
-            "mute": "audioVoiceChatMute"
+            "mute": "audioVoiceChatMute",
+            "mute-driver": "audioVoiceChatMuteDriver"
           }
         }
       }
@@ -1722,6 +1723,18 @@
           "map": {
             "voice-chat": "audioVoiceChatMute",
             "spotter": "spotterSilence"
+          }
+        }
+      }
+    },
+    "mute-driver": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "dial.category",
+          "map": {
+            "voice-chat": "audioVoiceChatMuteDriver"
           }
         }
       }

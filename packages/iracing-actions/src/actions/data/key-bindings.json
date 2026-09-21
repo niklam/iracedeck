@@ -1025,6 +1025,12 @@
       "setting": "audioVoiceChatMute"
     },
     {
+      "id": "voiceChatMuteDriver",
+      "label": "Voice Chat Mute a Driver",
+      "default": "Shift+Ctrl+Alt+D",
+      "setting": "audioVoiceChatMuteDriver"
+    },
+    {
       "id": "masterVolumeUp",
       "label": "Master Volume Up",
       "default": "Shift+Alt+numpad_add",

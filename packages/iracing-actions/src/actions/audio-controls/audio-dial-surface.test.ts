@@ -59,6 +59,7 @@ vi.mock("@iracedeck/icons/audio-controls/radar-volume-down.svg", () => ({ defaul
 vi.mock("@iracedeck/icons/audio-controls/voice-chat-volume-up.svg", () => ({ default: MOCK_SVG }));
 vi.mock("@iracedeck/icons/audio-controls/voice-chat-volume-down.svg", () => ({ default: MOCK_SVG }));
 vi.mock("@iracedeck/icons/audio-controls/voice-chat-mute.svg", () => ({ default: MOCK_SVG }));
+vi.mock("@iracedeck/icons/audio-controls/voice-chat-mute-driver.svg", () => ({ default: MOCK_SVG }));
 vi.mock("@iracedeck/icons/audio-controls/master-volume-up.svg", () => ({ default: MOCK_SVG }));
 vi.mock("@iracedeck/icons/audio-controls/master-volume-down.svg", () => ({ default: MOCK_SVG }));
 vi.mock("@iracedeck/icons/audio-controls/master-mute.svg", () => ({ default: MOCK_SVG }));
@@ -226,6 +227,13 @@ describe("buildAudioTriggerDescription", () => {
     expect(buildAudioTriggerDescription({ category: "spotter", pressAction: "mute-unmute" })).toEqual({
       rotate: "Adjust spotter volume",
       push: "Mute / unmute",
+    });
+  });
+
+  it("labels the Mute a Driver press (#863)", () => {
+    expect(buildAudioTriggerDescription({ category: "voice-chat", pressAction: "mute-driver" })).toEqual({
+      rotate: "Adjust voice chat volume",
+      push: "Mute a driver",
     });
   });
 });
@@ -455,6 +463,96 @@ describe("AudioDialSurface (through AudioControls)", () => {
       expect(mockTapBinding).not.toHaveBeenCalled();
       expect(mockHoldBinding).not.toHaveBeenCalled();
       expect(mockReleaseBinding).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("press: Mute a Driver (#863)", () => {
+    const warn = () => (action as unknown as { logger: { warn: ReturnType<typeof vi.fn> } }).logger.warn;
+
+    it("taps the voice-chat driver-mute binding on dialDown", async () => {
+      const ctx = dialAction();
+      const settings = { dial: { category: "voice-chat", pressAction: "mute-driver" } };
+      await action.onDialDown(ev(ctx, settings));
+      await action.onDialUp(ev(ctx, settings));
+
+      expect(mockTapBinding).toHaveBeenCalledTimes(1);
+      expect(mockTapBinding).toHaveBeenCalledWith("audioVoiceChatMuteDriver");
+      // A plain tap: nothing is held, nothing is released, and the channel
+      // mute and the internal gates are untouched.
+      expect(mockHoldBinding).not.toHaveBeenCalled();
+      expect(mockReleaseBinding).not.toHaveBeenCalled();
+      expect(mockTapBinding).not.toHaveBeenCalledWith("audioVoiceChatMute");
+      expect(mockToggleRaceEngineerFeature).not.toHaveBeenCalled();
+      expect(mockToggleRadarFeature).not.toHaveBeenCalled();
+      expect(warn()).not.toHaveBeenCalled();
+      await flush();
+    });
+
+    it.each(["master", "spotter", "race-engineer", "radar"])(
+      "logs + no-ops a stale %s Mute a Driver value (the PI offers it for voice chat only)",
+      async (category) => {
+        const ctx = dialAction();
+        await action.onDialDown(ev(ctx, { dial: { category, pressAction: "mute-driver" } }));
+
+        expect(mockTapBinding).not.toHaveBeenCalled();
+        expect(mockToggleRaceEngineerFeature).not.toHaveBeenCalled();
+        expect(mockToggleRadarFeature).not.toHaveBeenCalled();
+        expect(warn()).toHaveBeenCalledWith(expect.stringContaining("not available"));
+        await flush();
+      },
+    );
+
+    it("logs + no-ops when the driver-mute binding is not configured", async () => {
+      mockIsBindingMissing.mockImplementation((keys: unknown) =>
+        Array.isArray(keys) ? keys.includes("audioVoiceChatMuteDriver") : keys === "audioVoiceChatMuteDriver",
+      );
+      const ctx = dialAction();
+      await action.onDialDown(ev(ctx, { dial: { category: "voice-chat", pressAction: "mute-driver" } }));
+
+      expect(mockIsBindingMissing).toHaveBeenCalledWith("audioVoiceChatMuteDriver");
+      expect(mockTapBinding).not.toHaveBeenCalled();
+      expect(warn()).toHaveBeenCalledWith(expect.stringContaining("not configured"));
+      await flush();
+    });
+
+    it("leaves Mute / Unmute's dispatch unchanged", async () => {
+      const ctx = dialAction();
+      await action.onDialDown(ev(ctx, { dial: { category: "voice-chat", pressAction: "mute-unmute" } }));
+
+      expect(mockTapBinding).toHaveBeenCalledTimes(1);
+      expect(mockTapBinding).toHaveBeenCalledWith("audioVoiceChatMute");
+      await flush();
+    });
+
+    it("dims the strip with the binding warning when the driver-mute binding is unset", async () => {
+      mockIsBindingMissing.mockImplementation((keys: unknown) =>
+        Array.isArray(keys) ? keys.includes("audioVoiceChatMuteDriver") : keys === "audioVoiceChatMuteDriver",
+      );
+      const ctx = dialAction();
+      await action.onWillAppear(ev(ctx, { dial: { category: "voice-chat", pressAction: "mute-driver" } }));
+      await flush();
+
+      // The strip asks about the rotation pair plus the press binding, derived
+      // through pressBindingKeys — no renderer change was needed.
+      expect(mockIsBindingMissing).toHaveBeenCalledWith([
+        "audioVoiceChatVolumeUp",
+        "audioVoiceChatVolumeDown",
+        "audioVoiceChatMuteDriver",
+      ]);
+      expect(ctx.setTriggerDescription).toHaveBeenCalledWith({
+        rotate: "Adjust voice chat volume",
+        push: "Mute a driver",
+      });
+      expect(lastFeedbackSvg(ctx)).toContain("<binding-warning/>");
+    });
+
+    it("renders the strip clean when the driver-mute binding is set", async () => {
+      const ctx = dialAction();
+      await action.onWillAppear(ev(ctx, { dial: { category: "voice-chat", pressAction: "mute-driver" } }));
+      await flush();
+
+      expect(lastFeedbackSvg(ctx)).toContain("VOICE CHAT");
+      expect(lastFeedbackSvg(ctx)).not.toContain("<binding-warning/>");
     });
   });
 

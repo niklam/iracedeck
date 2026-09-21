@@ -26,6 +26,7 @@ import raceEngineerVolumeDownIconSvg from "@iracedeck/icons/audio-controls/race-
 import raceEngineerVolumeUpIconSvg from "@iracedeck/icons/audio-controls/race-engineer-volume-up.svg";
 import radarVolumeDownIconSvg from "@iracedeck/icons/audio-controls/radar-volume-down.svg";
 import radarVolumeUpIconSvg from "@iracedeck/icons/audio-controls/radar-volume-up.svg";
+import voiceChatMuteDriverIconSvg from "@iracedeck/icons/audio-controls/voice-chat-mute-driver.svg";
 import voiceChatMuteIconSvg from "@iracedeck/icons/audio-controls/voice-chat-mute.svg";
 import voiceChatVolumeDownIconSvg from "@iracedeck/icons/audio-controls/voice-chat-volume-down.svg";
 import voiceChatVolumeUpIconSvg from "@iracedeck/icons/audio-controls/voice-chat-volume-up.svg";
@@ -44,7 +45,7 @@ import { AudioDialSurface } from "./audio-dial-surface.js";
 export { AUDIO_CONTROLS_GLOBAL_KEYS };
 
 type AudioCategory = "push-to-talk" | "voice-chat" | "master" | "race-engineer" | "radar";
-type AudioAction = "volume-up" | "volume-down" | "mute";
+type AudioAction = "volume-up" | "volume-down" | "mute" | "mute-driver";
 
 /**
  * Flat record mapping "{category}-{action}" keys to imported SVGs.
@@ -54,6 +55,7 @@ const AUDIO_ICONS: Record<string, string> = {
   "voice-chat-volume-up": voiceChatVolumeUpIconSvg,
   "voice-chat-volume-down": voiceChatVolumeDownIconSvg,
   "voice-chat-mute": voiceChatMuteIconSvg,
+  "voice-chat-mute-driver": voiceChatMuteDriverIconSvg,
   "master-volume-up": masterVolumeUpIconSvg,
   "master-volume-down": masterVolumeDownIconSvg,
   "master-mute": masterMuteIconSvg,
@@ -71,6 +73,7 @@ const AUDIO_CONTROLS_TITLES: Record<string, string> = {
   "voice-chat-volume-up": "VOL UP\nVOICE",
   "voice-chat-volume-down": "VOL DOWN\nVOICE",
   "voice-chat-mute": "MUTE\nVOICE",
+  "voice-chat-mute-driver": "MUTE\nDRIVER",
   "master-volume-up": "VOL UP\nMASTER",
   "master-volume-down": "VOL DOWN\nMASTER",
   "master-mute": "MUTE\nMASTER",
@@ -113,8 +116,10 @@ export function generateAudioControlsSvg(settings: AudioControlsSettings, bindin
  * Audio Controls Action
  * One action, two surfaces (#782): on a keypad button it provides volume and
  * mute controls for the iRacing (voice chat, master) and iRaceDeck (Race
- * Engineer, Radar) audio categories; on a dial/knob it routes every event to
- * the {@link AudioDialSurface} (rotate = volume, press = PTT / Mute–Unmute).
+ * Engineer, Radar) audio categories — Voice Chat also offers Mute a Driver
+ * (#863), a blind tap of iRacing's per-driver mute; on a dial/knob it routes
+ * every event to the {@link AudioDialSurface} (rotate = volume, press = PTT /
+ * Mute–Unmute / Mute a Driver).
  */
 export const AUDIO_CONTROLS_UUID = "com.iracedeck.sd.core.audio-controls" as const;
 

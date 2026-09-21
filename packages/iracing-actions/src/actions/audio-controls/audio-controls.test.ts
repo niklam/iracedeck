@@ -49,6 +49,11 @@ vi.mock("@iracedeck/icons/audio-controls/voice-chat-volume-down.svg", () => ({
 vi.mock("@iracedeck/icons/audio-controls/voice-chat-mute.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
 }));
+// A distinct body so the test can tell the driver-mute icon from the channel
+// mute icon (#863).
+vi.mock("@iracedeck/icons/audio-controls/voice-chat-mute-driver.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">mute-driver-icon {{mainLabel}} {{subLabel}}</svg>',
+}));
 vi.mock("@iracedeck/icons/audio-controls/master-volume-up.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
 }));
@@ -141,8 +146,19 @@ vi.mock("@iracedeck/deck-core", () => ({
     customPosition: 0,
   })),
   assembleIcon: vi.fn(
-    ({ graphicSvg, title }: { graphicSvg: string; colors: unknown; title: { titleText: string } }) => {
-      const encoded = encodeURIComponent(`<svg>${graphicSvg}${title?.titleText ?? ""}</svg>`);
+    ({
+      graphicSvg,
+      title,
+      bindingMissing,
+    }: {
+      graphicSvg: string;
+      colors: unknown;
+      title: { titleText: string };
+      bindingMissing?: boolean;
+    }) => {
+      const encoded = encodeURIComponent(
+        `<svg>${graphicSvg}${title?.titleText ?? ""}${bindingMissing ? "<binding-warning/>" : ""}</svg>`,
+      );
 
       return `data:image/svg+xml,${encoded}`;
     },
@@ -196,8 +212,12 @@ describe("AudioControls", () => {
       expect(AUDIO_CONTROLS_GLOBAL_KEYS["push-to-talk"]).toBe("audioControlsPushToTalk");
     });
 
-    it("should have exactly 6 entries", () => {
-      expect(Object.keys(AUDIO_CONTROLS_GLOBAL_KEYS)).toHaveLength(6);
+    it("should have correct mapping for voice-chat-mute-driver (#863)", () => {
+      expect(AUDIO_CONTROLS_GLOBAL_KEYS["voice-chat-mute-driver"]).toBe("audioVoiceChatMuteDriver");
+    });
+
+    it("should have exactly 7 entries", () => {
+      expect(Object.keys(AUDIO_CONTROLS_GLOBAL_KEYS)).toHaveLength(7);
     });
 
     it("should not have a mapping for master-mute", () => {
@@ -319,6 +339,34 @@ describe("AudioControls", () => {
       expect(ptt).not.toBe(voiceChat);
     });
 
+    describe("voice-chat mute-driver (#863)", () => {
+      it("picks the driver-mute icon and the MUTE / DRIVER title", () => {
+        const decoded = decodeURIComponent(
+          generateAudioControlsSvg(parseAudioControlsSettings({ category: "voice-chat", action: "mute-driver" })),
+        );
+
+        expect(decoded).toContain("mute-driver-icon");
+        expect(decoded).toContain("MUTE\nDRIVER");
+      });
+
+      it("is a different key from the channel-wide mute", () => {
+        const mute = generateAudioControlsSvg(parseAudioControlsSettings({ category: "voice-chat", action: "mute" }));
+        const muteDriver = generateAudioControlsSvg(
+          parseAudioControlsSettings({ category: "voice-chat", action: "mute-driver" }),
+        );
+
+        expect(muteDriver).not.toBe(mute);
+        expect(decodeURIComponent(mute)).not.toContain("mute-driver-icon");
+      });
+
+      it("passes the missing-binding flag through to the icon", () => {
+        const settings = parseAudioControlsSettings({ category: "voice-chat", action: "mute-driver" });
+
+        expect(decodeURIComponent(generateAudioControlsSvg(settings, true))).toContain("<binding-warning/>");
+        expect(decodeURIComponent(generateAudioControlsSvg(settings, false))).not.toContain("<binding-warning/>");
+      });
+    });
+
     it("should include correct labels for all combinations", () => {
       const expectedLabels: Record<string, Record<string, { mainLabel: string; subLabel: string }>> = {
         "voice-chat": {
@@ -386,6 +434,28 @@ describe("AudioControls", () => {
 
       expect(mockTapBinding).toHaveBeenCalledWith("audioVoiceChatMute");
     });
+
+    it("taps the driver-mute binding for voice-chat mute-driver (#863)", async () => {
+      await action.onKeyDown(fakeEvent("action-1", { category: "voice-chat", action: "mute-driver" }) as any);
+
+      expect(mockTapBinding).toHaveBeenCalledTimes(1);
+      expect(mockTapBinding).toHaveBeenCalledWith("audioVoiceChatMuteDriver");
+      expect(mockHoldBinding).not.toHaveBeenCalled();
+    });
+
+    it("does not tap anything for a stale master mute-driver value (no global key mapping)", async () => {
+      await action.onKeyDown(fakeEvent("action-1", { category: "master", action: "mute-driver" }) as any);
+
+      expect(mockTapBinding).not.toHaveBeenCalled();
+    });
+
+    it("declares the driver-mute binding as the active one on appear (#863)", async () => {
+      const ev = fakeEvent("action-1", { category: "voice-chat", action: "mute-driver" });
+      await action.onWillAppear(ev as any);
+
+      expect(action["setActiveBinding"]).toHaveBeenCalledWith("audioVoiceChatMuteDriver");
+      expect(action["setKeyImage"]).toHaveBeenCalled();
+    });
   });
 
   describe("push-to-talk hold behavior", () => {
@@ -432,8 +502,8 @@ describe("AudioControls", () => {
     it("has no global key mapping for race-engineer or radar", () => {
       expect(AUDIO_CONTROLS_GLOBAL_KEYS["race-engineer-volume-up"]).toBeUndefined();
       expect(AUDIO_CONTROLS_GLOBAL_KEYS["radar-volume-up"]).toBeUndefined();
-      // Still exactly the six keyboard-backed entries.
-      expect(Object.keys(AUDIO_CONTROLS_GLOBAL_KEYS)).toHaveLength(6);
+      // Still exactly the seven keyboard-backed entries (#863 added the driver mute).
+      expect(Object.keys(AUDIO_CONTROLS_GLOBAL_KEYS)).toHaveLength(7);
     });
 
     it("generates labelled icons for race-engineer volume", () => {
