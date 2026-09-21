@@ -1,3 +1,4 @@
 browser/*
 !browser/sdpi-components.js
 !browser/iracedeck-logo.png
+!browser/iracedeck-icon.png

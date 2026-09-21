@@ -14,6 +14,12 @@ export const SETTINGS_WINDOW_HTML = "settings-window.html";
 export const SETTINGS_WINDOW_BRIDGE = "settings-window-bridge.js";
 /** The iRaceDeck wordmark the settings window shows in its header (committed in browser/). */
 export const SETTINGS_WINDOW_LOGO = "iracedeck-logo.png";
+/**
+ * The square brand mark the settings window declares as its favicon (#1156;
+ * committed in browser/). The window is the only page we serve that a browser
+ * gives window chrome to, so it is the only page that links this.
+ */
+export const SETTINGS_WINDOW_ICON = "iracedeck-icon.png";
 /** The Elgato/Mirabox PI settings bridge, injected into every action PI (#993 phase 2). */
 export const PI_SETTINGS_BRIDGE = "pi-settings-bridge.js";
 
