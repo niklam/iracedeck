@@ -72,9 +72,9 @@ describe("settings-window favicon (#1156)", () => {
   });
 
   it("is a square with an alpha channel, large enough for the taskbar", () => {
-    // The website's 96 px favicon was the first attempt: Windows scaled its
-    // white tile up into the taskbar as a white blob with the mark shrunk
-    // inside it. The PNG header is enough to refuse that file coming back.
+    // The website's 96 px favicon was the first attempt, and in the taskbar
+    // its mark read as too small inside the tile. The PNG header is enough to
+    // refuse that file coming back.
     const png = readFileSync(path.join(browserDir, SETTINGS_WINDOW_ICON));
     const width = png.readUInt32BE(16);
     const height = png.readUInt32BE(20);
