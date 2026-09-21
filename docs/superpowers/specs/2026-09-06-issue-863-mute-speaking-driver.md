@@ -12,7 +12,9 @@ iRacing exposes the per-driver case as its own control, **Mute a Driver** (`docs
 
 ## What ships
 
-Audio Controls' Voice Chat mode gains a second **Action** value beside Mute: **Mute a Driver** (iRacing's own wording). Pressing the key taps a new global binding, `audioVoiceChatMuteDriver`, defaulting to iRacing's `Shift+Ctrl+Alt+D`. It is the third Voice Chat action and needs no other setting. Keypad only.
+Audio Controls' Voice Chat mode gains a second **Action** value beside Mute: **Mute a Driver** (iRacing's own wording). Pressing the key taps a new global binding, `audioVoiceChatMuteDriver`, defaulting to iRacing's `Shift+Ctrl+Alt+D`. It is the third Voice Chat action and needs no other setting.
+
+The dial surface gains the same thing as a fourth **Press Action** value, offered only while the dial's Mode is Voice Chat (Decision 4 — amended 2026-09-21).
 
 ## Decisions
 
@@ -22,7 +24,7 @@ The keypad half is a `{category}-{action}` pair, and every consumer keys off tha
 
 Rejected: a sixth top-level Mode. It would need its own category with exactly one action, a second `voice-chat`-shaped comms entry, and its own PI branch in the category/action visibility script — all to express something the `action` axis already models. It also reads wrong: this *is* a voice-chat control.
 
-The PI's existing machinery covers the new option: `MUTE_CATEGORIES` removes the Mute option from the DOM for every non-Voice-Chat category (`sdpi-select` ignores `style.display`), and the Mute a Driver option is removed by the same code path.
+The PI's existing machinery covers the new option: `MUTE_CATEGORIES` removes the Mute option from the DOM for every non-Voice-Chat category (`sdpi-select` ignores `style.display`), and the Mute a Driver option is removed by the same code path — generalised from one option to a list in Decision 4.
 
 ### 2. A plain tap; what iRacing does with it is iRacing's business
 
@@ -36,9 +38,17 @@ The action fires blind. iRacing publishes `RadioTransmitCarIdx` ("the car index 
 
 A "currently talking: #77" key or dial strip is a genuinely different feature: it needs `RadioTransmitCarIdx` added to the translator's snapshot and diffed into a bus event, plus a driver-name lookup. Recorded as a possible follow-up on the issue, not built here — #863 is the small keybind the requester asked for.
 
-### 4. Keypad only; the dial press slot stays as it is
+### 4. Both surfaces — a keypad Action value and a dial Press Action
 
-The dial's Mute / Unmute press is keyed by `dial.category` through `dialMuteBindingMap()`, a map from keybind category to its mute binding. A driver-mute press exists for exactly one category, so it would need either a fourth `DIAL_PRESS_ACTIONS` value whose availability depends on the selected category — a new PI gating rule and a new hidden-option dance — or a per-category exception inside the existing one. That is not free, and it lands on the dial surface #1120 is actively reworking, while #863 is ordered last in 3.3.0. Keypad only, and revisit once #1120 has shipped.
+**Amended 2026-09-21.** As first written this decision deferred the dial half: a driver-mute press exists for exactly one category, so it needs a fourth `DIAL_PRESS_ACTIONS` value whose availability depends on the selected category — a new PI gating rule and a second hidden-option dance — and that work landed on the dial surface #1120 was actively reworking while #863 sat last in 3.3.0. #1120 shipped (`d508e93b0`), which removes the collision the deferral was mostly about; the maintainer's call is to ship both halves together rather than leave a Voice Chat control that exists on the keypad and not on the dial. What follows is the shape that keeps the cost the original text was worried about from being paid twice.
+
+The category-dependent availability is expressed as **a second binding table, not an exception inside the first**: `DIAL_MUTE_DRIVER_BINDINGS` sits beside `DIAL_MUTE_BINDINGS` with the same `Partial<Record<KeybindDialCategory, string>>` shape and one entry (`voice-chat`), with `dialMuteDriverBindingMap()` beside `dialMuteBindingMap()`. That keeps the property the dial comms entry already has — every keybind descriptor is *derived* from the settings module's own tables, so the PI status line and the surface's dispatch cannot describe different keys — and it makes "which categories offer this press" a lookup rather than a conditional. `pressBindingKeys` gains one branch, symmetric with the Mute / Unmute one.
+
+The PI's hidden-option machinery is **generalised to a list rather than copied**. Today it holds one option element and its parent (`dialMuteOption` / `dialMuteOptionParent`) plus a single `DIAL_MUTABLE_CATEGORIES` set, and detaching is how an option is hidden at all (`sdpi-select` re-renders from its source list via a MutationObserver, so `style.display` is ignored). A second conditional option with a *different* category set makes that pair a two-element list of `{ option, parent, categories }`, driven by one loop that detaches, reattaches, and switches the selection away before detaching — the existing reset-before-detach rule, which is what keeps the persisted value consistent with what is rendered. The same generalisation applies to the keypad's `muteOption` pair for the same reason: Mute and Mute a Driver are both Voice-Chat-only there, so the keypad list has two entries sharing one category set.
+
+Rejected: a per-category exception inside `mute-unmute` (it would make one press action mean two different things depending on the Mode, which the trigger description cannot honestly label), and a fifth dial *Mode* (same reasoning as Decision 1 — this is a voice-chat control, and the dial Mode axis is what rotation adjusts).
+
+The strip gains nothing: a driver mute has no readback (Decision 3), so the press is blind exactly like Mute / Unmute, and `renderAudioStripSvg` is untouched apart from the missing-binding dimming it already derives from `pressBindingKeys`. There is no hold preview to add — #1120 gave one to five surfaces and Audio Controls is not among them, because none of its press outcomes is knowable before it fires.
 
 ### 5. One new icon, not a reused one
 
@@ -46,14 +56,14 @@ The dial's Mute / Unmute press is keyed by `dial.category` through `dialMuteBind
 
 ## Verification
 
-Unit: the settings schema parses `mute-driver` and keeps `.catch` degradation per field; `generateAudioControlsSvg` picks the new icon and title for `voice-chat` + `mute-driver`; `resolveGlobalKey` returns the new binding key; the comms-catalog freshness test and its key cross-check against `key-bindings.json` pass after `pnpm generate:action-comms`; the icon-preview and icon-defaults freshness tests pass after regeneration.
+Unit: the settings schema parses `mute-driver` on both axes (the keypad `action` enum and `DIAL_PRESS_ACTIONS`) and keeps `.catch` degradation per field; `generateAudioControlsSvg` picks the new icon and title for `voice-chat` + `mute-driver`; `resolveGlobalKey` returns the new binding key; `pressBindingKeys` returns it for the dial press and returns nothing for a category that has no driver mute; `buildAudioTriggerDescription` labels the new press; the dial surface taps the binding on `down` and logs-and-no-ops for a stale non-Voice-Chat category (the `doMute` master precedent); the comms-catalog freshness test and its key cross-check against `key-bindings.json` pass after `pnpm generate:action-comms`; the icon-preview and icon-defaults freshness tests pass after regeneration.
 
-Manual, in a multi-driver online session with voice chat active (the maintainer's stated test condition): with the binding unset, the key shows the ⚠️ overlay and the PI status line says so; with it set, pressing while another driver transmits silences that driver and leaves the rest of the channel audible; the channel-wide Mute still works independently; the binding survives a plugin restart. Settle Decision 2's open question in the same session: press again while the same driver transmits and record whether they come back.
+Manual, in a multi-driver online session with voice chat active (the maintainer's stated test condition): with the binding unset, the key shows the ⚠️ overlay and the PI status line says so; with it set, pressing while another driver transmits silences that driver and leaves the rest of the channel audible; the channel-wide Mute still works independently; the binding survives a plugin restart. On the dial: the Press Action offers Mute a Driver while the Mode is Voice Chat and not otherwise, switching the Mode away from Voice Chat with it selected falls back to None rather than leaving a press that cannot fire, and the press does the same thing the keypad key does. Settle Decision 2's open question in the same session: press again while the same driver transmits and record whether they come back.
 
 ## Affected artifacts
 
-- `packages/iracing-actions/src/actions/audio-controls/`: `audio-controls-settings.ts` (the `action` enum, `VOICE_CHAT_MUTE_DRIVER_KEY`, `AUDIO_CONTROLS_GLOBAL_KEYS`), `audio-controls.ts` (`AUDIO_ICONS`, `AUDIO_CONTROLS_TITLES`), `audio-controls.ejs` (the option + its removal list), and both test files.
-- `packages/iracing-actions/src/actions/data/key-bindings.json` (`audioControls` row) and `comms-catalog.ts` + `pnpm generate:action-comms`.
+- `packages/iracing-actions/src/actions/audio-controls/`: `audio-controls-settings.ts` (the `action` enum, `DIAL_PRESS_ACTIONS`, `VOICE_CHAT_MUTE_DRIVER_KEY`, `AUDIO_CONTROLS_GLOBAL_KEYS`, `DIAL_MUTE_DRIVER_BINDINGS` + `dialMuteDriverBindingMap()`, `pressBindingKeys`), `audio-controls.ts` (`AUDIO_ICONS`, `AUDIO_CONTROLS_TITLES`, the `AudioAction` union), `audio-dial-surface.ts` (`PRESS_LABELS`, the `down` branch), `audio-controls.ejs` (both surfaces' options and the generalised removal list), and all three test files.
+- `packages/iracing-actions/src/actions/data/key-bindings.json` (`audioControls` row) and `comms-catalog.ts` (the keypad `voice-chat` map and the dial `mute-driver` descriptor) + `pnpm generate:action-comms`.
 - `packages/icons/audio-controls/voice-chat-mute-driver.svg`, then `node scripts/generate-icon-previews.mjs` and `node scripts/generate-icon-defaults.mjs`.
-- Website: `docs/actions/audio-voice/audio-controls.md` (a bullet under Voice Chat → Setting: Action) and the keyboard-shortcut table if it lists the action's bindings; changelog under **Features** plus `pnpm generate:changelog-data`.
+- Website: `docs/actions/audio-voice/audio-controls.md` (a bullet under Voice Chat → Setting: Action, and the dial section's Press Action copy + its Details **Method** / **Default binding** lines) and the keyboard-shortcut table if it lists the action's bindings; changelog under **Features** plus `pnpm generate:changelog-data`.
 - `.claude/skills/iracedeck-actions/SKILL.md`: the Audio Controls mode row's voice-chat action list.
