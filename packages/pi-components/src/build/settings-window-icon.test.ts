@@ -31,8 +31,16 @@ const windowPage = path.join(
  * The plugin configs that copy this package's browser assets, discovered rather
  * than listed, so a fourth deck ecosystem is covered the day its package
  * appears — the shape `third-party-licenses.test.mjs` uses.
+ *
+ * `copyList` is the array the config's copy loop iterates, NOT the whole file:
+ * the import line names the constant too, so a whole-file search is satisfied
+ * by a config that imports the icon and copies everything except it — which
+ * emits no `ui/iracedeck-icon.png` and puts the globe back. Nothing else would
+ * catch that: `pnpm lint` globs each package's `src` tree, never a plugin's
+ * `rollup.config.mjs`, so the orphaned import is not even an unused-import
+ * error.
  */
-function pluginConfigs(): { pkg: string; source: string }[] {
+function pluginConfigs(): { pkg: string; copyList: string }[] {
   const packagesDir = path.join(repoRoot, "packages");
 
   return readdirSync(packagesDir, { withFileTypes: true })
@@ -40,7 +48,22 @@ function pluginConfigs(): { pkg: string; source: string }[] {
     .map((entry) => ({ pkg: entry.name, config: path.join(packagesDir, entry.name, "rollup.config.mjs") }))
     .filter(({ config }) => existsSync(config))
     .map(({ pkg, config }) => ({ pkg, source: readFileSync(config, "utf-8") }))
-    .filter(({ source }) => source.includes("browserDir"));
+    .filter(({ source }) => source.includes("browserDir"))
+    .map(({ pkg, source }) => ({ pkg, copyList: browserAssetCopyList(source) }));
+}
+
+/**
+ * The `for (const … of [ … ])` list the browser-assets copy step walks,
+ * identified by the one asset every plugin has always copied. Empty when no
+ * such loop is found, which fails the assertion rather than passing it — a
+ * config whose copy step was restructured must be re-read, not waved through.
+ */
+function browserAssetCopyList(source: string): string {
+  for (const [, list] of source.matchAll(/for \(const \w+ of \[([^\]]*)\]\)/g)) {
+    if (list.includes("sdpi-components.js")) return list;
+  }
+
+  return "";
 }
 
 describe("settings-window favicon (#1156)", () => {
@@ -60,8 +83,8 @@ describe("settings-window favicon (#1156)", () => {
 
     expect(configs.length).toBeGreaterThan(0);
 
-    for (const { pkg, source } of configs) {
-      expect(source.includes("SETTINGS_WINDOW_ICON"), `${pkg} copies browser assets but not the icon`).toBe(true);
+    for (const { pkg, copyList } of configs) {
+      expect(copyList.includes("SETTINGS_WINDOW_ICON"), `${pkg}'s browser-asset copy list omits the icon`).toBe(true);
     }
   });
 });
