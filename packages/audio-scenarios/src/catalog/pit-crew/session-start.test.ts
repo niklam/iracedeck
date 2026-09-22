@@ -12,7 +12,7 @@ import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "j
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
-import { type CalloutScript, collectScriptReferences } from "@iracedeck/callout-script";
+import { type CalloutScript, collectScriptReferences, type ScriptStep } from "@iracedeck/callout-script";
 import type { IEventBus, SessionStartSnapshot, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { TrackWetness } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -163,13 +163,15 @@ const SESSION_START_CLIPS = [
   "speed-unit-mph",
   "track-temp-intro",
   "air-temp-intro",
-  "degrees-celsius",
-  "degrees-fahrenheit",
   "wetness-intro",
   ...WETNESS_SUFFIXES.map((s) => `wetness-${s}`),
 ];
 
 const GREETING_NAMES = ["niklas", "driver"];
+
+// The temperature figures the bundled voice records (issue #1187): -20 … 176,
+// below zero named minus<N>.
+const TEMP_CLIP_NAMES = Array.from({ length: 197 }, (_, i) => (i < 20 ? `minus${20 - i}` : String(i - 20)));
 
 // The speed-number clips this fixture stages. Includes 100 — a value outside
 // the historical hardcoded findings set — because speakability now derives
@@ -191,13 +193,17 @@ const manifest: AudioAssetsManifest = {
     "sfx/IRD-ambient-pit.mp3",
     ...GREETING_NAMES.map((n) => `voice/${VOICE}/session-start-greeting/${n}.mp3`),
     ...SESSION_START_CLIPS.map((c) => `voice/${VOICE}/session-start/${c}.mp3`),
+    // The optional unit-only clips a pack may record (issue #1187); the
+    // bundled voice has none.
+    `voice/${VOICE}/session-start/unit-celsius.mp3`,
+    `voice/${VOICE}/session-start/unit-fahrenheit.mp3`,
     ...SPEED_CLIP_VALUES.map((n) => `voice/${VOICE}/session-start-speed-numbers/${n}.mp3`),
-    ...Array.from({ length: 151 }, (_, i) => `voice/${VOICE}/session-start-temp-numbers/${i}.mp3`),
+    ...TEMP_CLIP_NAMES.map((n) => `voice/${VOICE}/numbers-degrees/${n}.mp3`),
     `voice/${VOICE}/setup-warning/qualifying-01.mp3`,
     `voice/${VOICE}/setup-warning/race-01.mp3`,
     `voice/${BARE_VOICE}/session-start-greeting/driver.mp3`,
     ...SESSION_START_CLIPS.map((c) => `voice/${BARE_VOICE}/session-start/${c}.mp3`),
-    ...Array.from({ length: 151 }, (_, i) => `voice/${BARE_VOICE}/session-start-temp-numbers/${i}.mp3`),
+    ...TEMP_CLIP_NAMES.map((n) => `voice/${BARE_VOICE}/numbers-degrees/${n}.mp3`),
     ...GREETING_NAMES.map((n) => `voice/${PARTIAL_VOICE}/session-start-greeting/${n}.mp3`),
     ...SESSION_START_CLIPS.filter((c) => !/^wetness-./.test(c)).map(
       (c) => `voice/${PARTIAL_VOICE}/session-start/${c}.mp3`,
@@ -227,6 +233,24 @@ const SESSION_START_SCRIPT: CalloutScript = {
   scenarios: Object.fromEntries(SESSION_START_SCENARIO_IDS.map((id) => [id, SCRIPT.scenarios[id]])),
   fragments: {},
 };
+
+/**
+ * `script` with `{{<varPrefix>.degreesUnit}}` appended to each temperature
+ * clause — what a pack that wants its engineer to say the unit writes. The
+ * bundled voice records no unit clip and never names the var (issue #1187).
+ */
+function withUnitStep(script: CalloutScript, id: string, varPrefix: string): CalloutScript {
+  const entry = script.scenarios[id];
+  const sequence = (entry.sequence ?? []).map((step): ScriptStep =>
+    typeof step === "object" &&
+    "optional" in step &&
+    step.optional.some((s) => typeof s === "string" && /TempNumber/.test(s))
+      ? { optional: [...step.optional, `{{${varPrefix}.degreesUnit}}`] }
+      : step,
+  );
+
+  return { ...script, scenarios: { ...script.scenarios, [id]: { ...entry, sequence } } };
+}
 
 // Default to a qualifying snapshot — race sessions are spoken exclusively by
 // the race-start contract, so session-start's `where:` skips
@@ -313,12 +337,12 @@ describe("value clips derive speakability from the manifest (issue #836)", () =>
   it("skips the temp clause when the temperature has no clip (no clamping), playing the rest", () => {
     fire(snap({ trackTemp: 200 }));
 
-    expect(voicePaths().some((p) => p.includes("session-start-temp-numbers/200"))).toBe(false);
-    expect(voicePaths().some((p) => p.includes("session-start-temp-numbers/150"))).toBe(false);
+    expect(voicePaths().some((p) => p.includes("numbers-degrees/200"))).toBe(false);
+    expect(voicePaths().some((p) => p.includes("numbers-degrees/176"))).toBe(false);
     expect(hasClip("/session-start/track-temp-intro.mp3")).toBe(false);
     // The air-temp clause and the rest of the brief still play.
     expect(hasClip("/session-start/air-temp-intro.mp3")).toBe(true);
-    expect(hasClip("/session-start-temp-numbers/20.mp3")).toBe(true);
+    expect(hasClip("/numbers-degrees/20.mp3")).toBe(true);
     expect(hasClip("/session-start/wetness-intro.mp3")).toBe(true);
   });
 });
@@ -371,10 +395,9 @@ describe("session-start scenario", () => {
     expect(hasClip("/session-start-speed-numbers/80.mp3")).toBe(true);
     expect(hasClip("/session-start/speed-unit-kmh.mp3")).toBe(true);
     expect(hasClip("/session-start/track-temp-intro.mp3")).toBe(true);
-    expect(hasClip("/session-start-temp-numbers/28.mp3")).toBe(true);
+    expect(hasClip("/numbers-degrees/28.mp3")).toBe(true);
     expect(hasClip("/session-start/air-temp-intro.mp3")).toBe(true);
-    expect(hasClip("/session-start-temp-numbers/20.mp3")).toBe(true);
-    expect(hasClip("/session-start/degrees-celsius.mp3")).toBe(true);
+    expect(hasClip("/numbers-degrees/20.mp3")).toBe(true);
     expect(hasClip("/session-start/wetness-intro.mp3")).toBe(true);
     expect(hasClip("/session-start/wetness-mostly-dry.mp3")).toBe(true);
   });
@@ -478,14 +501,46 @@ describe("session-start scenario", () => {
   });
 
   describe("units", () => {
-    it("uses imperial unit clips when the snapshot says so", () => {
-      fire(snap({ pitSpeedLimit: 45, speedUnit: "mph", tempUnit: "fahrenheit", trackTemp: 82, airTemp: 68 }));
+    it("uses the imperial speed unit and reads a Fahrenheit figure from the same degrees group (issue #1187)", () => {
+      fire(snap({ pitSpeedLimit: 45, speedUnit: "mph", tempUnit: "fahrenheit", trackTemp: 150, airTemp: 68 }));
 
       expect(hasClip("/session-start/speed-unit-mph.mp3")).toBe(true);
-      expect(hasClip("/session-start/degrees-fahrenheit.mp3")).toBe(true);
-      expect(hasClip("/session-start-temp-numbers/82.mp3")).toBe(true);
+      expect(hasClip("/numbers-degrees/150.mp3")).toBe(true);
+      expect(hasClip("/numbers-degrees/68.mp3")).toBe(true);
       expect(hasClip("/session-start/speed-unit-kmh.mp3")).toBe(false);
-      expect(hasClip("/session-start/degrees-celsius.mp3")).toBe(false);
+    });
+
+    it("reads a below-zero temperature as a minus clip, never a hyphenated name (issue #1187)", () => {
+      fire(snap({ trackTemp: -4, airTemp: -20 }));
+
+      expect(hasClip("/numbers-degrees/minus4.mp3")).toBe(true);
+      expect(hasClip("/numbers-degrees/minus20.mp3")).toBe(true);
+      expect(voicePaths().some((p) => p.includes("numbers-degrees/-"))).toBe(false);
+    });
+
+    it.each([
+      ["celsius", "unit-celsius"],
+      ["fahrenheit", "unit-fahrenheit"],
+    ] as const)(
+      "a pack that adds the unit step hears the unit-only clip for %s after each figure (issue #1187)",
+      (tempUnit, clip) => {
+        getScenarioEngine().setScripts(
+          new Map([[VOICE, withUnitStep(SESSION_START_SCRIPT, "pit-crew.session-start", "sessionStart")]]),
+        );
+        fire(snap({ tempUnit, trackTemp: 28, airTemp: 20 }));
+
+        const played = voicePaths().map((p) => p.split(`voice/${VOICE}/`)[1]);
+
+        expect(played).toContain(`session-start/${clip}.mp3`);
+        expect(played.indexOf("numbers-degrees/28.mp3") + 1).toBe(played.indexOf(`session-start/${clip}.mp3`));
+        expect(played.filter((p) => p === `session-start/${clip}.mp3`)).toHaveLength(2);
+      },
+    );
+
+    it("the bundled script says no unit word", () => {
+      fire(snap({ tempUnit: "fahrenheit" }));
+
+      expect(voicePaths().some((p) => /session-start\/unit-/.test(p))).toBe(false);
     });
   });
 
@@ -579,11 +634,9 @@ describe("session-start scenario", () => {
         "session-start-speed-numbers/80.mp3",
         "session-start/speed-unit-kmh.mp3",
         "session-start/track-temp-intro.mp3",
-        "session-start-temp-numbers/28.mp3",
-        "session-start/degrees-celsius.mp3",
+        "numbers-degrees/28.mp3",
         "session-start/air-temp-intro.mp3",
-        "session-start-temp-numbers/20.mp3",
-        "session-start/degrees-celsius.mp3",
+        "numbers-degrees/20.mp3",
         "session-start/wetness-intro.mp3",
         "session-start/wetness-mostly-dry.mp3",
         "setup-warning/qualifying-01.mp3",
@@ -668,20 +721,8 @@ describe("the bundled script's session-start entry (issue #1065)", () => {
       {
         optional: ["pool:session-start/pit-speed-intro", "{{sessionStart.speedNumber}}", "{{sessionStart.speedUnit}}"],
       },
-      {
-        optional: [
-          "pool:session-start/track-temp-intro",
-          "{{sessionStart.trackTempNumber}}",
-          "{{sessionStart.degreesUnit}}",
-        ],
-      },
-      {
-        optional: [
-          "pool:session-start/air-temp-intro",
-          "{{sessionStart.airTempNumber}}",
-          "{{sessionStart.degreesUnit}}",
-        ],
-      },
+      { optional: ["pool:session-start/track-temp-intro", "{{sessionStart.trackTempNumber}}"] },
+      { optional: ["pool:session-start/air-temp-intro", "{{sessionStart.airTempNumber}}"] },
       "pool:session-start/wetness-intro",
       "{{sessionStart.wetness}}",
       { if: "setupWarning.qualifyingMismatch", then: [{ optional: ["pool:setup-warning/qualifying"] }] },
@@ -694,7 +735,6 @@ describe("the bundled script's session-start entry (issue #1065)", () => {
 
     expect(refs.vars).toEqual([
       "sessionStart.airTempNumber",
-      "sessionStart.degreesUnit",
       "sessionStart.greeting",
       "sessionStart.sessionLine",
       "sessionStart.speedNumber",

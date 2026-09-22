@@ -30,8 +30,8 @@
  *   "Ok, <Name>,"                                  {{sessionStart.greeting}} — optional
  *   <session line>                                 {{sessionStart.sessionLine}} — required
  *   "The pit speed limit is" <N> <speed-unit>      optional clause — see below
- *   "Track temperature is" <N> "degrees" <unit>    optional clause
- *   "air temperature is"   <N> "degrees" <unit>    optional clause
+ *   "Track temperature is" <N degrees>             optional clause
+ *   "air temperature is"   <N degrees>             optional clause
  *   "and the track is" {{sessionStart.wetness}}    required
  *   (if setupWarning.qualifyingMismatch) the nudge optional clause
  *   [radio close]
@@ -72,6 +72,12 @@ import type { ScenarioContract } from "../../dsl.js";
 import { poolRef } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
 import type { SetupWarningResolver } from "./race-start.js";
+import {
+  TEMPERATURE_UNIT_DESCRIPTION,
+  temperatureNumberDescription,
+  temperatureNumberRef,
+  temperatureUnitRef,
+} from "./temperature-number.js";
 
 /**
  * Resolver for the session-start snapshot, invoked at fire time. Returns
@@ -173,9 +179,9 @@ export function registerSessionStartVocabulary(
     () => {
       const s = getSnapshot();
 
-      return s ? poolRef("session-start-temp-numbers", String(s.trackTemp)) : null;
+      return s ? temperatureNumberRef(s.trackTemp) : null;
     },
-    "The track temperature as a whole number in the driver's display unit. Draws from the session-start-temp-numbers clip group; a reading outside the recorded range aborts the clause it sits in.",
+    temperatureNumberDescription("track"),
   );
 
   engine.defineVar(
@@ -183,9 +189,9 @@ export function registerSessionStartVocabulary(
     () => {
       const s = getSnapshot();
 
-      return s ? poolRef("session-start-temp-numbers", String(s.airTemp)) : null;
+      return s ? temperatureNumberRef(s.airTemp) : null;
     },
-    "The air temperature as a whole number in the driver's display unit. Draws from the session-start-temp-numbers clip group; a reading outside the recorded range aborts the clause it sits in.",
+    temperatureNumberDescription("air"),
   );
 
   engine.defineVar(
@@ -193,9 +199,9 @@ export function registerSessionStartVocabulary(
     () => {
       const s = getSnapshot();
 
-      return s ? poolRef("session-start", `degrees-${s.tempUnit}`) : null;
+      return s ? temperatureUnitRef(s.tempUnit) : null;
     },
-    "The temperature unit word — degrees celsius or degrees fahrenheit, per the driver's display setting. Draws the degrees-celsius and degrees-fahrenheit lines from the session-start clip group.",
+    TEMPERATURE_UNIT_DESCRIPTION,
   );
 
   engine.defineVar(
