@@ -100,7 +100,7 @@ The speed seam is also the milder one: 38 numbers, conditioned in **both** direc
 - `packages/website/src/data/pack-reference.json` — regenerated (`pnpm generate:pack-reference`); committed and freshness-tested.
 - `packages/audio-assets/voice/default/callouts.json` — regenerated from the config (`pnpm generate:callout-scripts`), likewise freshness-tested.
 - The changelog, plus `pnpm generate:changelog-data`.
-- **A third-party pack** records `numbers-degrees-<unit>/<value>` for the values its audience will meet, drops the unit step from its session-start and race-start entries (decision 5), and may delete its own `session-start-temp-numbers` and `degrees-*` clips. Nothing new is required of the plugins or the harness.
+- **A third-party pack** records `numbers-degrees/<value>` for the values its audience will meet, keeps the unit step only if it also records `session-start/unit-celsius` and `unit-fahrenheit` (decision 5), and may delete its own `session-start-temp-numbers` and `degrees-*` clips. Nothing new is required of the plugins or the harness.
 
 ## Verification
 
