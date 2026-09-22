@@ -53,7 +53,9 @@ export function scanRaceEngineerVoices(manifest: AudioAssetsManifest): string[] 
  * tests — and `default::default`, the managed pack's voice as the plugin's
  * manifest carries it. Both are preferred, bare first, because a plain sort
  * would otherwise make any pack whose id sorts before `default` the
- * reference.
+ * reference. The composite spelling is deck-core's `DEFAULT_RACE_ENGINEER_VOICE`
+ * restated, since this package cannot depend on deck-core; the scenario
+ * harness, which holds both, pins the two together.
  */
 export function referenceVoice(manifest: AudioAssetsManifest): string | null {
   const voices = scanRaceEngineerVoices(manifest);

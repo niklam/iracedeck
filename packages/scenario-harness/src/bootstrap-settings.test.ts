@@ -1,6 +1,9 @@
+import { referenceVoice } from "@iracedeck/audio-scenarios";
 import {
   _resetGlobalSettings,
   createMemorySettingsStore,
+  DEFAULT_RACE_ENGINEER_VOICE,
+  getGlobalSettings,
   initGlobalSettings,
   resolveActiveRaceEngineerVoice,
   updateGlobalSettings,
@@ -98,8 +101,20 @@ describe("the voice the harness plays (#1144)", () => {
     return raceEngineerVoices;
   }
 
-  it("plays the source tree's `default` it seeds, beside an installed `default::default`", async () => {
+  it("plays the source tree's voice it seeds, beside an installed `default::default`", async () => {
+    // Read off the seed rather than assumed: it picks the first published
+    // voice, which is `default` only while no other voice sorts before it.
     const published = await boot();
+    const seeded = getGlobalSettings().raceEngineerVoice;
+
+    expect(published).toContain(seeded);
+    expect(resolveActiveRaceEngineerVoice([...published, "default::default"])).toBe(seeded);
+  });
+
+  it("plays the source tree's bare `default` when that is the one picked, beside `default::default`", async () => {
+    const published = await boot();
+
+    updateGlobalSettings({ raceEngineerVoice: "default" });
 
     expect(published).toContain("default");
     expect(resolveActiveRaceEngineerVoice([...published, "default::default"])).toBe("default");
@@ -111,5 +126,25 @@ describe("the voice the harness plays (#1144)", () => {
     updateGlobalSettings({ raceEngineerVoice: "default::default" });
 
     expect(resolveActiveRaceEngineerVoice([...published, "default::default"])).toBe("default::default");
+  });
+});
+
+describe("the engine's reference voice is deck-core's default voice (#1144)", () => {
+  // `referenceVoice` spells the managed pack's voice itself, because
+  // audio-scenarios cannot depend on deck-core. This package holds both, so it
+  // is where the two spellings are held together: a renamed managed pack would
+  // otherwise leave the engine checking `{voice}` paths against whichever
+  // composite voice sorts first.
+  it("prefers DEFAULT_RACE_ENGINEER_VOICE over a composite voice that sorts before it", () => {
+    const clip = (voice: string): string => `voice/${voice}/flags/green-01.mp3`;
+
+    expect("aaa::matt" < DEFAULT_RACE_ENGINEER_VOICE).toBe(true);
+    expect(
+      referenceVoice({
+        clips: [clip("aaa::matt"), clip(DEFAULT_RACE_ENGINEER_VOICE), clip("zzz::nina")],
+        ambientLoop: "sfx/ambient.mp3",
+        ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
+      }),
+    ).toBe(DEFAULT_RACE_ENGINEER_VOICE);
   });
 });
