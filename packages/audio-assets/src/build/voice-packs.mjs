@@ -10,10 +10,16 @@
  * `bundled: false` on 2026-09-07. It was NOT the one-word edit this comment
  * used to promise: the manifest had to split into an authored `manifest.json`
  * and a bundled `manifest.bundled.json` first, because with an empty bundle the
- * two slices stop being the same file (see the spec's *Stage 3* section). What
- * IS one word is the way back — setting `bundled: true` on an entry re-bundles
- * that voice with no code change anywhere, which is what an offline installer
- * variant would do.
+ * two slices stop being the same file (see the spec's *Stage 3* section). The
+ * way back was one word until #1144, and is not any more: namespacing voice ids
+ * by pack removed what a bundled voice leaned on — the voice-pack service's read
+ * of a bundled voice's `callouts.json`, and the catalog's `isProvidedByBundle`,
+ * which kept the same pack from being offered for download too. So
+ * `bundled: true` today puts the clips back and nothing else: the voice ships
+ * with no script, speaking no callout, and lists under its bare id beside its
+ * own pack's `default::default`. An offline installer variant would have to
+ * restore both and decide how a bundled voice is named beside its pack first;
+ * `voice-packs.test.ts` fails while any entry is bundled, and says so.
  *
  * `version` is the PACK's version, independent of the plugin's. It is what a
  * user reads; the catalog's `sha256` is what decides whether a download is due.
