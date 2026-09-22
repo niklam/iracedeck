@@ -20,19 +20,17 @@ That is also the reason this is worth clip count rather than effort on the seam:
 
 ## What ships
 
-> "Track temperature is twenty eight degrees Celsius, air temperature is twenty degrees Celsius, and the track is completely dry."
+> "Track temperature is twenty eight degrees, air temperature is twenty degrees, and the track is completely dry."
 
-The same words. Each temperature clause is intro plus one clip instead of intro plus two, in whichever unit the driver's display is set to.
+Each temperature clause is intro plus one clip instead of intro plus two, and the unit word is gone (amended 2026-09-22, see decision 1).
 
 ## Decisions
 
-### 1. Two value groups, one per unit
+### 1. One value group, and no unit word
 
-`numbers-degrees-celsius` and `numbers-degrees-fahrenheit`, the naming following `numbers-percent` (#1108) and `car-number` before it. One entry per value, the text carrying the unit: `{ "name": "28", "text": "twenty eight degrees Celsius," }`.
+**Amended 2026-09-22 by the maintainer, before implementation landed.** The clip says "degrees" and stops: `{ "name": "28", "text": "twenty eight degrees," }`. Nobody speaking about the weather says the unit. The driver already knows which unit their own display is set to, so the unit word only made the brief longer. With no unit in the text, the Celsius and the Fahrenheit clip for one value are the same recording, so there is **one** group, `numbers-degrees`, named after `numbers-percent` (#1108) and `car-number`. Before the amendment the design was two groups, `numbers-degrees-celsius` and `numbers-degrees-fahrenheit`, each text carrying its unit. The amendment does two things to it: it drops the reason there were two groups, and it removes the 101 recordings the two ranges duplicated.
 
-Two groups rather than one group keyed `<value>-<unit>`. The engine's pool rule reads `<base>-NN.mp3` as a take of `<base>` (`poolMemberPattern`), so a name that ends in a hyphen and two digits is a shape to avoid in a group whose names are numbers; and the group is the unit of the var-driven reading that both the coverage test and `lint:pack` apply, so "this pack recorded Celsius only" is legible as a fact about a group rather than as a scatter of missing names.
-
-The four resolvers keep their names — `sessionStart.trackTempNumber`, `sessionStart.airTempNumber`, `raceStart.trackTempNumber`, `raceStart.airTempNumber` — and choose the group from the snapshot's `tempUnit`. Renaming them is the same breaking change as removing one (decision 5) and buys nothing: the clause still needs "the temperature figure", which is what the name says.
+The four resolvers keep their names — `sessionStart.trackTempNumber`, `sessionStart.airTempNumber`, `raceStart.trackTempNumber`, `raceStart.airTempNumber` — and all draw from `numbers-degrees` whatever the snapshot's `tempUnit`. Renaming them is the same breaking change as removing one (decision 5) and buys nothing: the clause still needs "the temperature figure", which is what the name says.
 
 ### 2. The old clips go, and only one of the two removals is caught by a test
 
@@ -40,16 +38,15 @@ The four resolvers keep their names — `sessionStart.trackTempNumber`, `session
 
 The two `degrees-*` clips are the opposite case. They live in `session-start`, a group the script addresses directly, so they are exempt from the orphan rule only through the `session-start/degrees-(celsius|fahrenheit)` entry in the test's `VAR_DRIVEN_BASES`. That list is checked in both directions — a pattern matching no authored base is reported as stale — so the clips and the entry have to move in one commit: dropping the entry while the clips stay still passes, dropping the clips while the entry stays turns the allowlist test red.
 
-One more edit rides with them: `session-start/wetness-intro` is conditioned on both degrees clips, and the config validator rejects a reference to a clip that is not defined (`Invalid previous_request_ids reference "…"`). Repoint it at one value clip per unit — whatever will actually precede it.
+One more edit rides with them: `session-start/wetness-intro` is conditioned on both degrees clips, and the config validator rejects a reference to a clip that is not defined (`Invalid previous_request_ids reference "…"`). Repoint it at a `numbers-degrees` value clip — that is what will actually precede it.
 
-### 3. The range per unit, and below zero
+### 3. The range, and below zero
 
-| Group                        | Range    | Clips |
-| ---------------------------- | -------- | ----- |
-| `numbers-degrees-celsius`    | −20 … 80 | 101   |
-| `numbers-degrees-fahrenheit` | −5 … 176 | 182   |
+| Group             | Range     | Clips |
+| ----------------- | --------- | ----- |
+| `numbers-degrees` | −20 … 176 | 197   |
 
-Both sets cover the same physical span: −20 °C is −4 °F, and 80 °C is exactly 176 °F. That symmetry is the point of choosing the bounds together — a driver who switches iRacing's display units must never find one unit silent where the other spoke, which is precisely what a shared 0–150 group produced.
+The range is the union of the two physical spans the bounds were chosen for: Celsius −20 … 80 and Fahrenheit −5 … 176. −20 °C is −4 °F, and 80 °C is exactly 176 °F. So whichever display unit the driver switches to, the same span of the sim's temperatures is covered. A shared 0–150 group could not promise that.
 
 **Negative readings are in scope.** The snapshot builder rounds and hands the resolver a plain integer (`Math.round`, in the translator's `toDisplayTemp`), so a below-zero Celsius reading already reaches the pool lookup as `-4`, finds nothing, and drops the whole clause — silently, because the clause is `optional`. Nobody will ever report that, and the fix costs 20 clips in a run that is happening anyway. They are named `minus20` … `minus1`, and the resolver spells the name rather than using `String(n)`: `-20.mp3` would be read by the take rule as a two-digit take of an empty base, and `minus-20` as a take of `minus`.
 
@@ -87,7 +84,7 @@ The speed seam is also the milder one: 38 numbers, conditioned in **both** direc
 
 **Tuning the existing splice** — a different seed, different wording, more conditioning. `previous_request_ids` biases a generation; it does not join audio. The field takes three references and the unit clip would need 151.
 
-**Re-cutting the unit clip per number** — `degrees-celsius-<n>` for every value, each conditioned on its own predecessor. Exactly the same 300-odd recordings as this design, and still two utterances played back to back, so it pays the whole price for none of the benefit.
+**Re-cutting the unit clip per number** — `degrees-celsius-<n>` for every value, each conditioned on its own predecessor. More recordings than this design, and still two utterances played back to back, so it pays the whole price for none of the benefit.
 
 **Joining in the build pipeline.** `presets.mjs` is a build-time ffmpeg filter over one clip. Making two clips into one would mean pitch-matching and cross-fading every pair at build time — 302 pre-rendered pairs by another name, with a filter chain that every other clip in the pack also passes through.
 
@@ -95,9 +92,9 @@ The speed seam is also the milder one: 38 numbers, conditioned in **both** direc
 
 ## What else moves
 
-- `packages/audio-assets/configs/default.voice.json` — the two new groups; `session-start-temp-numbers` and `session-start/degrees-{celsius,fahrenheit}` removed; `session-start/wetness-intro`'s conditioning repointed.
-- The clip tree and `manifest.json` — 151 files deleted, 283 added, the manifest regenerated. Generate with `--group` scoping and a `--dry-run` first.
-- `packages/audio-scenarios` — four resolvers repointed and their descriptions rewritten, two deleted, both scripts' clauses shortened, and the catalog/bundled-script tests updated. The descriptions are load-bearing rather than cosmetic: `lint:pack` decides var-driven-ness with `descriptionNamesGroup`, whose regex wants `<group>/<base>` or "`<group>` group" / "`<group>` clip group" in the **singular** — "the numbers-degrees-celsius and numbers-degrees-fahrenheit clip groups" matches neither group. Name each one in its own clause.
+- `packages/audio-assets/configs/default.voice.json` — the new `numbers-degrees` group; `session-start-temp-numbers` and `session-start/degrees-{celsius,fahrenheit}` removed; `session-start/wetness-intro`'s conditioning repointed.
+- The clip tree and `manifest.json` — 151 files deleted, 197 added, the manifest regenerated. Generate with `--group` scoping and a `--dry-run` first.
+- `packages/audio-scenarios` — four resolvers repointed and their descriptions rewritten, two deleted, both scripts' clauses shortened, and the catalog/bundled-script tests updated. The descriptions are load-bearing rather than cosmetic: `lint:pack` decides var-driven-ness with `descriptionNamesGroup`, whose regex wants `<group>/<base>` or "`<group>` group" / "`<group>` clip group" in the **singular** — so name `numbers-degrees` in one of those forms.
 - `packages/audio-assets/src/generate/script-coverage.test.ts` — the `session-start/degrees-(celsius|fahrenheit)` entry in `VAR_DRIVEN_BASES` comes out with the clips (decision 2). `SCRIPTED_GROUPS_FLOOR` is untouched: `session-start` stays addressed through its intro and wetness pool steps.
 - `packages/audio-assets/src/build/voice-packs.mjs` — the pack version (`1.0.1` today) and a regenerated `catalog/default.json`. The release workflow verifies the archive against that entry and fails the job on a mismatch.
 - `packages/website/src/data/pack-reference.json` — regenerated (`pnpm generate:pack-reference`); committed and freshness-tested.
