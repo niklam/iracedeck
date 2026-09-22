@@ -154,6 +154,7 @@ Value-indexed clips (position numbers, lap-time digits, temperatures, speeds, na
 - **No hardcoded value ranges.** The former `SESSION_START_SPEED_VALUES`, temp clamps, `POSITION_MAX` / `POSITION_NUMBER_MAX`, and `LAP_TIME_MINUTE_MAX` constants are gone — the clips that exist define what's speakable. A value with no clip skips its `optional` clause or aborts the callout (per #835). Extending a range is now just generating clips.
 - **Variants for free.** Any value clip can gain `-NN` variants (e.g. `currently-01` / `currently-02`) with no code change — the poolRef picks uniform-random with the shared no-repeat guard.
 - `where:` predicates keep only **null/known checks** (is there a position at all?), never numeric range checks.
+- **A value that can be negative is spelled `minus<N>`**, never `String(n)` — `-4` would be read by the pool rule as a take of an empty base, `minus-4` as a take of `minus`. The temperature figure is the case today: `catalog/pit-crew/temperature-number.ts` (#1187), shared by the session-start and race-start resolvers, draws `numbers-degrees/<n>` whose lines carry the word "degrees" themselves.
 
 ## Live gating
 

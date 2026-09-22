@@ -1601,15 +1601,13 @@
         {
           "optional": [
             "pool:session-start/track-temp-intro",
-            "{{raceStart.trackTempNumber}}",
-            "{{raceStart.degreesUnit}}"
+            "{{raceStart.trackTempNumber}}"
           ]
         },
         {
           "optional": [
             "pool:session-start/air-temp-intro",
-            "{{raceStart.airTempNumber}}",
-            "{{raceStart.degreesUnit}}"
+            "{{raceStart.airTempNumber}}"
           ]
         },
         "pool:session-start/wetness-intro",
@@ -1646,15 +1644,13 @@
         {
           "optional": [
             "pool:session-start/track-temp-intro",
-            "{{sessionStart.trackTempNumber}}",
-            "{{sessionStart.degreesUnit}}"
+            "{{sessionStart.trackTempNumber}}"
           ]
         },
         {
           "optional": [
             "pool:session-start/air-temp-intro",
-            "{{sessionStart.airTempNumber}}",
-            "{{sessionStart.degreesUnit}}"
+            "{{sessionStart.airTempNumber}}"
           ]
         },
         "pool:session-start/wetness-intro",

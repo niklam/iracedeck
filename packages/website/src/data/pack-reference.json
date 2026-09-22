@@ -3311,7 +3311,6 @@
         ],
         "vars": [
           "raceStart.airTempNumber",
-          "raceStart.degreesUnit",
           "raceStart.greeting",
           "raceStart.position",
           "raceStart.trackTempNumber",
@@ -3415,7 +3414,6 @@
         ],
         "vars": [
           "sessionStart.airTempNumber",
-          "sessionStart.degreesUnit",
           "sessionStart.greeting",
           "sessionStart.sessionLine",
           "sessionStart.speedNumber",
@@ -4900,17 +4898,15 @@
       },
       {
         "name": "raceStart.airTempNumber",
-        "description": "The air temperature as a whole number in the driver's display unit. Draws from the session-start-temp-numbers clip group; a reading outside the recorded range aborts the clause it sits in.",
+        "description": "The air temperature as a whole number in the driver's display unit, Celsius or Fahrenheit alike. Draws from the numbers-degrees clip group, whose lines carry the word degrees themselves and are recorded for -20 to 176 (below zero named minus1 to minus20); a reading the voice has no clip for aborts the clause it sits in.",
         "usedBy": [
           "pit-crew.race-start"
         ]
       },
       {
         "name": "raceStart.degreesUnit",
-        "description": "The temperature unit word — degrees celsius or degrees fahrenheit, per the driver's display setting. Draws the degrees-celsius and degrees-fahrenheit lines from the session-start clip group.",
-        "usedBy": [
-          "pit-crew.race-start"
-        ]
+        "description": "Optional: the temperature unit's name alone, per the driver's display setting — composes after a numbers-degrees figure, which already says the word degrees, to make \"twenty eight degrees, Celsius\". Draws session-start/unit-celsius or session-start/unit-fahrenheit. The reference voice records neither and its script does not use it; a pack records both to have its engineer say the unit.",
+        "usedBy": []
       },
       {
         "name": "raceStart.greeting",
@@ -4928,7 +4924,7 @@
       },
       {
         "name": "raceStart.trackTempNumber",
-        "description": "The track temperature as a whole number in the driver's display unit. Draws from the session-start-temp-numbers clip group; a reading outside the recorded range aborts the clause it sits in.",
+        "description": "The track temperature as a whole number in the driver's display unit, Celsius or Fahrenheit alike. Draws from the numbers-degrees clip group, whose lines carry the word degrees themselves and are recorded for -20 to 176 (below zero named minus1 to minus20); a reading the voice has no clip for aborts the clause it sits in.",
         "usedBy": [
           "pit-crew.race-start"
         ]
@@ -4963,17 +4959,15 @@
       },
       {
         "name": "sessionStart.airTempNumber",
-        "description": "The air temperature as a whole number in the driver's display unit. Draws from the session-start-temp-numbers clip group; a reading outside the recorded range aborts the clause it sits in.",
+        "description": "The air temperature as a whole number in the driver's display unit, Celsius or Fahrenheit alike. Draws from the numbers-degrees clip group, whose lines carry the word degrees themselves and are recorded for -20 to 176 (below zero named minus1 to minus20); a reading the voice has no clip for aborts the clause it sits in.",
         "usedBy": [
           "pit-crew.session-start"
         ]
       },
       {
         "name": "sessionStart.degreesUnit",
-        "description": "The temperature unit word — degrees celsius or degrees fahrenheit, per the driver's display setting. Draws the degrees-celsius and degrees-fahrenheit lines from the session-start clip group.",
-        "usedBy": [
-          "pit-crew.session-start"
-        ]
+        "description": "Optional: the temperature unit's name alone, per the driver's display setting — composes after a numbers-degrees figure, which already says the word degrees, to make \"twenty eight degrees, Celsius\". Draws session-start/unit-celsius or session-start/unit-fahrenheit. The reference voice records neither and its script does not use it; a pack records both to have its engineer say the unit.",
+        "usedBy": []
       },
       {
         "name": "sessionStart.greeting",
@@ -5005,7 +4999,7 @@
       },
       {
         "name": "sessionStart.trackTempNumber",
-        "description": "The track temperature as a whole number in the driver's display unit. Draws from the session-start-temp-numbers clip group; a reading outside the recorded range aborts the clause it sits in.",
+        "description": "The track temperature as a whole number in the driver's display unit, Celsius or Fahrenheit alike. Draws from the numbers-degrees clip group, whose lines carry the word degrees themselves and are recorded for -20 to 176 (below zero named minus1 to minus20); a reading the voice has no clip for aborts the clause it sits in.",
         "usedBy": [
           "pit-crew.session-start"
         ]
@@ -27136,6 +27130,2966 @@
       ]
     },
     {
+      "group": "numbers-degrees",
+      "lines": [
+        {
+          "base": "0",
+          "texts": [
+            "zero degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "1",
+          "texts": [
+            "one degree,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "10",
+          "texts": [
+            "ten degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "100",
+          "texts": [
+            "one hundred degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "101",
+          "texts": [
+            "one hundred one degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "102",
+          "texts": [
+            "one hundred two degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "103",
+          "texts": [
+            "one hundred three degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "104",
+          "texts": [
+            "one hundred four degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "105",
+          "texts": [
+            "one hundred five degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "106",
+          "texts": [
+            "one hundred six degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "107",
+          "texts": [
+            "one hundred seven degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "108",
+          "texts": [
+            "one hundred eight degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "109",
+          "texts": [
+            "one hundred nine degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "11",
+          "texts": [
+            "eleven degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "110",
+          "texts": [
+            "one hundred ten degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "111",
+          "texts": [
+            "one hundred eleven degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "112",
+          "texts": [
+            "one hundred twelve degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "113",
+          "texts": [
+            "one hundred thirteen degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "114",
+          "texts": [
+            "one hundred fourteen degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "115",
+          "texts": [
+            "one hundred fifteen degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "116",
+          "texts": [
+            "one hundred sixteen degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "117",
+          "texts": [
+            "one hundred seventeen degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "118",
+          "texts": [
+            "one hundred eighteen degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "119",
+          "texts": [
+            "one hundred nineteen degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "12",
+          "texts": [
+            "twelve degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "120",
+          "texts": [
+            "one hundred twenty degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "121",
+          "texts": [
+            "one hundred twenty one degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "122",
+          "texts": [
+            "one hundred twenty two degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "123",
+          "texts": [
+            "one hundred twenty three degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "124",
+          "texts": [
+            "one hundred twenty four degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "125",
+          "texts": [
+            "one hundred twenty five degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "126",
+          "texts": [
+            "one hundred twenty six degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "127",
+          "texts": [
+            "one hundred twenty seven degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "128",
+          "texts": [
+            "one hundred twenty eight degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "129",
+          "texts": [
+            "one hundred twenty nine degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "13",
+          "texts": [
+            "thirteen degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "130",
+          "texts": [
+            "one hundred thirty degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "131",
+          "texts": [
+            "one hundred thirty one degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "132",
+          "texts": [
+            "one hundred thirty two degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "133",
+          "texts": [
+            "one hundred thirty three degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "134",
+          "texts": [
+            "one hundred thirty four degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "135",
+          "texts": [
+            "one hundred thirty five degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "136",
+          "texts": [
+            "one hundred thirty six degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "137",
+          "texts": [
+            "one hundred thirty seven degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "138",
+          "texts": [
+            "one hundred thirty eight degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "139",
+          "texts": [
+            "one hundred thirty nine degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "14",
+          "texts": [
+            "fourteen degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "140",
+          "texts": [
+            "one hundred forty degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "141",
+          "texts": [
+            "one hundred forty one degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "142",
+          "texts": [
+            "one hundred forty two degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "143",
+          "texts": [
+            "one hundred forty three degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "144",
+          "texts": [
+            "one hundred forty four degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "145",
+          "texts": [
+            "one hundred forty five degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "146",
+          "texts": [
+            "one hundred forty six degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "147",
+          "texts": [
+            "one hundred forty seven degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "148",
+          "texts": [
+            "one hundred forty eight degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "149",
+          "texts": [
+            "one hundred forty nine degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "15",
+          "texts": [
+            "fifteen degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "150",
+          "texts": [
+            "one hundred fifty degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "151",
+          "texts": [
+            "one hundred fifty one degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "152",
+          "texts": [
+            "one hundred fifty two degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "153",
+          "texts": [
+            "one hundred fifty three degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "154",
+          "texts": [
+            "one hundred fifty four degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "155",
+          "texts": [
+            "one hundred fifty five degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "156",
+          "texts": [
+            "one hundred fifty six degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "157",
+          "texts": [
+            "one hundred fifty seven degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "158",
+          "texts": [
+            "one hundred fifty eight degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "159",
+          "texts": [
+            "one hundred fifty nine degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "16",
+          "texts": [
+            "sixteen degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "160",
+          "texts": [
+            "one hundred sixty degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "161",
+          "texts": [
+            "one hundred sixty one degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "162",
+          "texts": [
+            "one hundred sixty two degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "163",
+          "texts": [
+            "one hundred sixty three degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "164",
+          "texts": [
+            "one hundred sixty four degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "165",
+          "texts": [
+            "one hundred sixty five degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "166",
+          "texts": [
+            "one hundred sixty six degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "167",
+          "texts": [
+            "one hundred sixty seven degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "168",
+          "texts": [
+            "one hundred sixty eight degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "169",
+          "texts": [
+            "one hundred sixty nine degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "17",
+          "texts": [
+            "seventeen degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "170",
+          "texts": [
+            "one hundred seventy degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "171",
+          "texts": [
+            "one hundred seventy one degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "172",
+          "texts": [
+            "one hundred seventy two degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "173",
+          "texts": [
+            "one hundred seventy three degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "174",
+          "texts": [
+            "one hundred seventy four degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "175",
+          "texts": [
+            "one hundred seventy five degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "176",
+          "texts": [
+            "one hundred seventy six degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "18",
+          "texts": [
+            "eighteen degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "19",
+          "texts": [
+            "nineteen degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "2",
+          "texts": [
+            "two degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "20",
+          "texts": [
+            "twenty degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "21",
+          "texts": [
+            "twenty one degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "22",
+          "texts": [
+            "twenty two degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "23",
+          "texts": [
+            "twenty three degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "24",
+          "texts": [
+            "twenty four degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "25",
+          "texts": [
+            "twenty five degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "26",
+          "texts": [
+            "twenty six degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "27",
+          "texts": [
+            "twenty seven degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "28",
+          "texts": [
+            "twenty eight degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "29",
+          "texts": [
+            "twenty nine degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "3",
+          "texts": [
+            "three degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "30",
+          "texts": [
+            "thirty degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "31",
+          "texts": [
+            "thirty one degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "32",
+          "texts": [
+            "thirty two degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "33",
+          "texts": [
+            "thirty three degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "34",
+          "texts": [
+            "thirty four degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "35",
+          "texts": [
+            "thirty five degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "36",
+          "texts": [
+            "thirty six degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "37",
+          "texts": [
+            "thirty seven degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "38",
+          "texts": [
+            "thirty eight degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "39",
+          "texts": [
+            "thirty nine degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "4",
+          "texts": [
+            "four degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "40",
+          "texts": [
+            "forty degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "41",
+          "texts": [
+            "forty one degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "42",
+          "texts": [
+            "forty two degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "43",
+          "texts": [
+            "forty three degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "44",
+          "texts": [
+            "forty four degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "45",
+          "texts": [
+            "forty five degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "46",
+          "texts": [
+            "forty six degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "47",
+          "texts": [
+            "forty seven degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "48",
+          "texts": [
+            "forty eight degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "49",
+          "texts": [
+            "forty nine degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "5",
+          "texts": [
+            "five degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "50",
+          "texts": [
+            "fifty degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "51",
+          "texts": [
+            "fifty one degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "52",
+          "texts": [
+            "fifty two degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "53",
+          "texts": [
+            "fifty three degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "54",
+          "texts": [
+            "fifty four degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "55",
+          "texts": [
+            "fifty five degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "56",
+          "texts": [
+            "fifty six degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "57",
+          "texts": [
+            "fifty seven degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "58",
+          "texts": [
+            "fifty eight degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "59",
+          "texts": [
+            "fifty nine degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "6",
+          "texts": [
+            "six degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "60",
+          "texts": [
+            "sixty degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "61",
+          "texts": [
+            "sixty one degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "62",
+          "texts": [
+            "sixty two degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "63",
+          "texts": [
+            "sixty three degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "64",
+          "texts": [
+            "sixty four degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "65",
+          "texts": [
+            "sixty five degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "66",
+          "texts": [
+            "sixty six degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "67",
+          "texts": [
+            "sixty seven degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "68",
+          "texts": [
+            "sixty eight degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "69",
+          "texts": [
+            "sixty nine degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "7",
+          "texts": [
+            "seven degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "70",
+          "texts": [
+            "seventy degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "71",
+          "texts": [
+            "seventy one degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "72",
+          "texts": [
+            "seventy two degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "73",
+          "texts": [
+            "seventy three degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "74",
+          "texts": [
+            "seventy four degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "75",
+          "texts": [
+            "seventy five degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "76",
+          "texts": [
+            "seventy six degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "77",
+          "texts": [
+            "seventy seven degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "78",
+          "texts": [
+            "seventy eight degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "79",
+          "texts": [
+            "seventy nine degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "8",
+          "texts": [
+            "eight degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "80",
+          "texts": [
+            "eighty degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "81",
+          "texts": [
+            "eighty one degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "82",
+          "texts": [
+            "eighty two degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "83",
+          "texts": [
+            "eighty three degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "84",
+          "texts": [
+            "eighty four degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "85",
+          "texts": [
+            "eighty five degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "86",
+          "texts": [
+            "eighty six degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "87",
+          "texts": [
+            "eighty seven degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "88",
+          "texts": [
+            "eighty eight degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "89",
+          "texts": [
+            "eighty nine degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "9",
+          "texts": [
+            "nine degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "90",
+          "texts": [
+            "ninety degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "91",
+          "texts": [
+            "ninety one degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "92",
+          "texts": [
+            "ninety two degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "93",
+          "texts": [
+            "ninety three degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "94",
+          "texts": [
+            "ninety four degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "95",
+          "texts": [
+            "ninety five degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "96",
+          "texts": [
+            "ninety six degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "97",
+          "texts": [
+            "ninety seven degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "98",
+          "texts": [
+            "ninety eight degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "99",
+          "texts": [
+            "ninety nine degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "minus1",
+          "texts": [
+            "minus one degree,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "minus10",
+          "texts": [
+            "minus ten degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "minus11",
+          "texts": [
+            "minus eleven degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "minus12",
+          "texts": [
+            "minus twelve degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "minus13",
+          "texts": [
+            "minus thirteen degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "minus14",
+          "texts": [
+            "minus fourteen degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "minus15",
+          "texts": [
+            "minus fifteen degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "minus16",
+          "texts": [
+            "minus sixteen degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "minus17",
+          "texts": [
+            "minus seventeen degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "minus18",
+          "texts": [
+            "minus eighteen degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "minus19",
+          "texts": [
+            "minus nineteen degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "minus2",
+          "texts": [
+            "minus two degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "minus20",
+          "texts": [
+            "minus twenty degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "minus3",
+          "texts": [
+            "minus three degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "minus4",
+          "texts": [
+            "minus four degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "minus5",
+          "texts": [
+            "minus five degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "minus6",
+          "texts": [
+            "minus six degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "minus7",
+          "texts": [
+            "minus seven degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "minus8",
+          "texts": [
+            "minus eight degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "minus9",
+          "texts": [
+            "minus nine degrees,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.airTempNumber",
+            "raceStart.trackTempNumber",
+            "sessionStart.airTempNumber",
+            "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        }
+      ]
+    },
+    {
       "group": "numbers-percent",
       "lines": [
         {
@@ -35437,42 +38391,6 @@
           "playedBy": null
         },
         {
-          "base": "degrees-celsius",
-          "texts": [
-            "degrees Celsius,"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "pitSpeed.limitIntro",
-            "raceStart.degreesUnit",
-            "raceStart.wetness",
-            "sessionStart.degreesUnit",
-            "sessionStart.sessionLine",
-            "sessionStart.speedUnit",
-            "sessionStart.wetness"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "degrees-fahrenheit",
-          "texts": [
-            "degrees Fahrenheit,"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "pitSpeed.limitIntro",
-            "raceStart.degreesUnit",
-            "raceStart.wetness",
-            "sessionStart.degreesUnit",
-            "sessionStart.sessionLine",
-            "sessionStart.speedUnit",
-            "sessionStart.wetness"
-          ],
-          "playedBy": null
-        },
-        {
           "base": "pit-speed-intro",
           "texts": [
             "The pit speed limit is"
@@ -37415,2276 +40333,6 @@
           "viaVar": [
             "pitSpeed.limitNumber",
             "sessionStart.speedNumber"
-          ],
-          "playedBy": null
-        }
-      ]
-    },
-    {
-      "group": "session-start-temp-numbers",
-      "lines": [
-        {
-          "base": "0",
-          "texts": [
-            "zero"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "1",
-          "texts": [
-            "one"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "10",
-          "texts": [
-            "ten"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "100",
-          "texts": [
-            "one hundred"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "101",
-          "texts": [
-            "one hundred one"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "102",
-          "texts": [
-            "one hundred two"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "103",
-          "texts": [
-            "one hundred three"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "104",
-          "texts": [
-            "one hundred four"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "105",
-          "texts": [
-            "one hundred five"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "106",
-          "texts": [
-            "one hundred six"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "107",
-          "texts": [
-            "one hundred seven"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "108",
-          "texts": [
-            "one hundred eight"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "109",
-          "texts": [
-            "one hundred nine"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "11",
-          "texts": [
-            "eleven"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "110",
-          "texts": [
-            "one hundred ten"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "111",
-          "texts": [
-            "one hundred eleven"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "112",
-          "texts": [
-            "one hundred twelve"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "113",
-          "texts": [
-            "one hundred thirteen"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "114",
-          "texts": [
-            "one hundred fourteen"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "115",
-          "texts": [
-            "one hundred fifteen"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "116",
-          "texts": [
-            "one hundred sixteen"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "117",
-          "texts": [
-            "one hundred seventeen"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "118",
-          "texts": [
-            "one hundred eighteen"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "119",
-          "texts": [
-            "one hundred nineteen"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "12",
-          "texts": [
-            "twelve"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "120",
-          "texts": [
-            "one hundred twenty"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "121",
-          "texts": [
-            "one hundred twenty one"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "122",
-          "texts": [
-            "one hundred twenty two"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "123",
-          "texts": [
-            "one hundred twenty three"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "124",
-          "texts": [
-            "one hundred twenty four"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "125",
-          "texts": [
-            "one hundred twenty five"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "126",
-          "texts": [
-            "one hundred twenty six"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "127",
-          "texts": [
-            "one hundred twenty seven"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "128",
-          "texts": [
-            "one hundred twenty eight"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "129",
-          "texts": [
-            "one hundred twenty nine"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "13",
-          "texts": [
-            "thirteen"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "130",
-          "texts": [
-            "one hundred thirty"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "131",
-          "texts": [
-            "one hundred thirty one"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "132",
-          "texts": [
-            "one hundred thirty two"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "133",
-          "texts": [
-            "one hundred thirty three"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "134",
-          "texts": [
-            "one hundred thirty four"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "135",
-          "texts": [
-            "one hundred thirty five"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "136",
-          "texts": [
-            "one hundred thirty six"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "137",
-          "texts": [
-            "one hundred thirty seven"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "138",
-          "texts": [
-            "one hundred thirty eight"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "139",
-          "texts": [
-            "one hundred thirty nine"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "14",
-          "texts": [
-            "fourteen"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "140",
-          "texts": [
-            "one hundred forty"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "141",
-          "texts": [
-            "one hundred forty one"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "142",
-          "texts": [
-            "one hundred forty two"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "143",
-          "texts": [
-            "one hundred forty three"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "144",
-          "texts": [
-            "one hundred forty four"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "145",
-          "texts": [
-            "one hundred forty five"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "146",
-          "texts": [
-            "one hundred forty six"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "147",
-          "texts": [
-            "one hundred forty seven"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "148",
-          "texts": [
-            "one hundred forty eight"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "149",
-          "texts": [
-            "one hundred forty nine"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "15",
-          "texts": [
-            "fifteen"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "150",
-          "texts": [
-            "one hundred fifty"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "16",
-          "texts": [
-            "sixteen"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "17",
-          "texts": [
-            "seventeen"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "18",
-          "texts": [
-            "eighteen"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "19",
-          "texts": [
-            "nineteen"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "2",
-          "texts": [
-            "two"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "20",
-          "texts": [
-            "twenty"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "21",
-          "texts": [
-            "twenty one"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "22",
-          "texts": [
-            "twenty two"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "23",
-          "texts": [
-            "twenty three"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "24",
-          "texts": [
-            "twenty four"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "25",
-          "texts": [
-            "twenty five"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "26",
-          "texts": [
-            "twenty six"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "27",
-          "texts": [
-            "twenty seven"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "28",
-          "texts": [
-            "twenty eight"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "29",
-          "texts": [
-            "twenty nine"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "3",
-          "texts": [
-            "three"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "30",
-          "texts": [
-            "thirty"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "31",
-          "texts": [
-            "thirty one"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "32",
-          "texts": [
-            "thirty two"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "33",
-          "texts": [
-            "thirty three"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "34",
-          "texts": [
-            "thirty four"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "35",
-          "texts": [
-            "thirty five"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "36",
-          "texts": [
-            "thirty six"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "37",
-          "texts": [
-            "thirty seven"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "38",
-          "texts": [
-            "thirty eight"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "39",
-          "texts": [
-            "thirty nine"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "4",
-          "texts": [
-            "four"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "40",
-          "texts": [
-            "forty"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "41",
-          "texts": [
-            "forty one"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "42",
-          "texts": [
-            "forty two"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "43",
-          "texts": [
-            "forty three"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "44",
-          "texts": [
-            "forty four"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "45",
-          "texts": [
-            "forty five"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "46",
-          "texts": [
-            "forty six"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "47",
-          "texts": [
-            "forty seven"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "48",
-          "texts": [
-            "forty eight"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "49",
-          "texts": [
-            "forty nine"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "5",
-          "texts": [
-            "five"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "50",
-          "texts": [
-            "fifty"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "51",
-          "texts": [
-            "fifty one"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "52",
-          "texts": [
-            "fifty two"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "53",
-          "texts": [
-            "fifty three"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "54",
-          "texts": [
-            "fifty four"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "55",
-          "texts": [
-            "fifty five"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "56",
-          "texts": [
-            "fifty six"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "57",
-          "texts": [
-            "fifty seven"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "58",
-          "texts": [
-            "fifty eight"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "59",
-          "texts": [
-            "fifty nine"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "6",
-          "texts": [
-            "six"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "60",
-          "texts": [
-            "sixty"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "61",
-          "texts": [
-            "sixty one"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "62",
-          "texts": [
-            "sixty two"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "63",
-          "texts": [
-            "sixty three"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "64",
-          "texts": [
-            "sixty four"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "65",
-          "texts": [
-            "sixty five"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "66",
-          "texts": [
-            "sixty six"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "67",
-          "texts": [
-            "sixty seven"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "68",
-          "texts": [
-            "sixty eight"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "69",
-          "texts": [
-            "sixty nine"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "7",
-          "texts": [
-            "seven"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "70",
-          "texts": [
-            "seventy"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "71",
-          "texts": [
-            "seventy one"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "72",
-          "texts": [
-            "seventy two"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "73",
-          "texts": [
-            "seventy three"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "74",
-          "texts": [
-            "seventy four"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "75",
-          "texts": [
-            "seventy five"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "76",
-          "texts": [
-            "seventy six"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "77",
-          "texts": [
-            "seventy seven"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "78",
-          "texts": [
-            "seventy eight"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "79",
-          "texts": [
-            "seventy nine"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "8",
-          "texts": [
-            "eight"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "80",
-          "texts": [
-            "eighty"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "81",
-          "texts": [
-            "eighty one"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "82",
-          "texts": [
-            "eighty two"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "83",
-          "texts": [
-            "eighty three"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "84",
-          "texts": [
-            "eighty four"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "85",
-          "texts": [
-            "eighty five"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "86",
-          "texts": [
-            "eighty six"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "87",
-          "texts": [
-            "eighty seven"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "88",
-          "texts": [
-            "eighty eight"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "89",
-          "texts": [
-            "eighty nine"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "9",
-          "texts": [
-            "nine"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "90",
-          "texts": [
-            "ninety"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "91",
-          "texts": [
-            "ninety one"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "92",
-          "texts": [
-            "ninety two"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "93",
-          "texts": [
-            "ninety three"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "94",
-          "texts": [
-            "ninety four"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "95",
-          "texts": [
-            "ninety five"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "96",
-          "texts": [
-            "ninety six"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "97",
-          "texts": [
-            "ninety seven"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "98",
-          "texts": [
-            "ninety eight"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "99",
-          "texts": [
-            "ninety nine"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.airTempNumber",
-            "raceStart.trackTempNumber",
-            "sessionStart.airTempNumber",
-            "sessionStart.trackTempNumber"
           ],
           "playedBy": null
         }

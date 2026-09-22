@@ -22,8 +22,8 @@
  *     composed             "Qualifying put us to," + {{raceStart.position}}
  *     none                 (clause skipped entirely)
  *   ──
- *   "Track temperature is" <N> "degrees" <unit>    optional clause (session-start clips)
- *   "air temperature is"   <N> "degrees" <unit>    optional clause (session-start clips)
+ *   "Track temperature is" <N degrees>             optional clause (session-start intros)
+ *   "air temperature is"   <N degrees>             optional clause (session-start intros)
  *   "and the track is" {{raceStart.wetness}}        required
  *   (if setupWarning.raceMismatch) the setup nudge  optional clause
  *   [radio close]
@@ -50,10 +50,10 @@
  * Snapshot-at-fire-time (session-start pattern, issue #542): every dynamic clip
  * is a `{{var}}` backed by a resolver that reads the snapshot closure at fire
  * time; the grid-position case and the setup-warning condition read it (or
- * the setup-warning resolver) the same way. The clip ranges (temp 0-150 in
- * display units, position 1-64) are the same as the families they borrow
- * from — both come from the same voice-group source of truth and don't need
- * to be tracked separately here. That is why the vocabulary takes both
+ * the setup-warning resolver) the same way. The clip ranges (temperature
+ * -20 to 176 in display units, position 1-64) are the same as the families
+ * they borrow from — both come from the same voice-group source of truth and
+ * don't need to be tracked separately here. That is why the vocabulary takes both
  * resolvers; the contract builder keeps the snapshot resolver for its `where:`.
  *
  * Family `race-start`: reserves the namespace for future race-start scenarios
@@ -81,6 +81,12 @@ import { getSessionType } from "@iracedeck/sim-events-iracing";
 import type { ScenarioContract } from "../../dsl.js";
 import { poolRef } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
+import {
+  TEMPERATURE_UNIT_DESCRIPTION,
+  temperatureNumberDescription,
+  temperatureNumberRef,
+  temperatureUnitRef,
+} from "./temperature-number.js";
 
 /**
  * Resolver for the race-start snapshot, invoked at fire time. Returns `null`
@@ -125,7 +131,6 @@ const WETNESS_CLIP_SUFFIX: Readonly<Partial<Record<TrackWetness, string>>> = {
 
 const RACE_START_GREETING_GROUP = "race-start-greeting";
 const SESSION_START_GROUP = "session-start";
-const SESSION_START_TEMP_NUMBERS_GROUP = "session-start-temp-numbers";
 const POSITION_NUMBER_GROUP = "position-number";
 
 /** The three buckets a session type collapses into — the keys of the `session.type` vocabulary (issue #1064). */
@@ -259,9 +264,9 @@ export function registerRaceStartVocabulary(
 
       if (!s) return null;
 
-      return poolRef(SESSION_START_TEMP_NUMBERS_GROUP, String(s.trackTemp));
+      return temperatureNumberRef(s.trackTemp);
     },
-    "The track temperature as a whole number in the driver's display unit. Draws from the session-start-temp-numbers clip group; a reading outside the recorded range aborts the clause it sits in.",
+    temperatureNumberDescription("track"),
   );
 
   engine.defineVar(
@@ -271,9 +276,9 @@ export function registerRaceStartVocabulary(
 
       if (!s) return null;
 
-      return poolRef(SESSION_START_TEMP_NUMBERS_GROUP, String(s.airTemp));
+      return temperatureNumberRef(s.airTemp);
     },
-    "The air temperature as a whole number in the driver's display unit. Draws from the session-start-temp-numbers clip group; a reading outside the recorded range aborts the clause it sits in.",
+    temperatureNumberDescription("air"),
   );
 
   engine.defineVar(
@@ -283,9 +288,9 @@ export function registerRaceStartVocabulary(
 
       if (!s) return null;
 
-      return poolRef(SESSION_START_GROUP, `degrees-${s.tempUnit}`);
+      return temperatureUnitRef(s.tempUnit);
     },
-    "The temperature unit word — degrees celsius or degrees fahrenheit, per the driver's display setting. Draws the degrees-celsius and degrees-fahrenheit lines from the session-start clip group.",
+    TEMPERATURE_UNIT_DESCRIPTION,
   );
 
   engine.defineVar(
@@ -412,7 +417,7 @@ export const SCENARIO_ID_TO_RACE_START_ID: Record<(typeof RACE_START_SCENARIO_ID
  * position-clause lines under `race-start`, the three conditions intros it
  * borrows from `session-start` (issue #568 reuses the session-start clips),
  * and the setup nudge under `setup-warning`. The value-driven clips (the
- * greeting, the numbers, the unit, the wetness) are the vars', whose
+ * greeting, the numbers, the wetness) are the vars', whose
  * descriptions name their groups. The completeness tests read this list:
  * the bundled voice must ship at least one clip for each, and the bundled
  * script must reference exactly this set. A `(group, base)` a script

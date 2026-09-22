@@ -78,10 +78,6 @@ const VAR_DRIVEN_BASES: readonly { pattern: RegExp; resolver: string }[] = [
   { pattern: /^pit-limiter\/unit-(kmh|mph)$/, resolver: "pitSpeed.limitUnit" },
   { pattern: /^session-start\/session-(practice|qualifying|race)$/, resolver: "sessionStart.sessionLine" },
   { pattern: /^session-start\/speed-unit-(kmh|mph)$/, resolver: "sessionStart.speedUnit" },
-  {
-    pattern: /^session-start\/degrees-(celsius|fahrenheit)$/,
-    resolver: "sessionStart.degreesUnit, raceStart.degreesUnit",
-  },
   { pattern: /^session-start\/wetness-[a-z-]+$/, resolver: "sessionStart.wetness, raceStart.wetness" },
 ];
 

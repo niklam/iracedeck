@@ -441,9 +441,10 @@ describe("registerTireWearVocabulary (issue #1108)", () => {
     for (const v of engine.vocabulary().vars.filter((x) => x.name.startsWith("tireWear."))) {
       expect(descriptionNamesGroup(v.description, "numbers-percent"), v.name).toBe(true);
       // The numbers came from the temperature group until the percent step was
-      // dropped; a description still naming it would credit those clips with
-      // lines they no longer speak.
-      expect(descriptionNamesGroup(v.description, "session-start-temp-numbers"), v.name).toBe(false);
+      // dropped; a description naming the temperature group (now
+      // numbers-degrees, #1187) would credit those clips with lines they do
+      // not speak here.
+      expect(descriptionNamesGroup(v.description, "numbers-degrees"), v.name).toBe(false);
       // The report lines are the script's, addressed directly — no var claims them.
       expect(descriptionNamesGroup(v.description, "tire-wear"), v.name).toBe(false);
     }
