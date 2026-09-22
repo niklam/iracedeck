@@ -240,9 +240,9 @@ There is **no separate setting** for the repeats — they're part of the same ca
 
 ## Session Start
 
-Around 3 seconds after a **practice or qualifying** session starts — even if you're still in the garage — the Race Engineer greets you by name and reads a short situational brief — *"Ok, Niklas, it's time to qualify. The pit speed limit is 80 kilometers per hour. Track temperature is 28 degrees Celsius, air temperature is 20 degrees Celsius, and the track is mostly dry."* The session-type line varies between practice and qualifying. The brief also fires when you connect into a practice or qualifying session that is already in progress.
+Around 3 seconds after a **practice or qualifying** session starts — even if you're still in the garage — the Race Engineer greets you by name and reads a short situational brief — *"Ok, Niklas, it's time to qualify. The pit speed limit is 80 kilometers per hour. Track temperature is 28 degrees, air temperature is 20 degrees, and the track is mostly dry."* The session-type line varies between practice and qualifying. The brief also fires when you connect into a practice or qualifying session that is already in progress.
 
-Units follow iRacing's own display setting — metric drivers hear km/h and degrees Celsius, imperial drivers hear mph and degrees Fahrenheit. The pit speed limit is rounded to the nearest whole unit before it's spoken, and is only read out when it matches one of the known iRacing pit limits the engineer has a clip for — otherwise the pit-speed part of the brief is simply skipped rather than guessing a number.
+Units follow iRacing's own display setting — metric drivers hear km/h and temperatures in degrees Celsius, imperial drivers hear mph and degrees Fahrenheit. A temperature is read as its figure and the word "degrees" in one breath, without naming the unit, and a reading below zero is read as "minus" ("minus four degrees"). The pit speed limit is rounded to the nearest whole unit before it's spoken, and is only read out when it matches one of the known iRacing pit limits the engineer has a clip for — otherwise the pit-speed part of the brief is simply skipped rather than guessing a number.
 
 In **race** sessions the session-start brief is suppressed entirely — the dedicated **Race Start** callout below takes its place.
 
@@ -250,8 +250,8 @@ In **race** sessions the session-start brief is suppressed entirely — the dedi
 
 Around 3 seconds after iRacing changes to a race session — even if you're still in the pit or garage — the Race Engineer greets you by name, reports your grid position, and reads the same temperature + wetness brief as the session-start callout (without the pit speed limit, since you already heard it during practice / qualifying).
 
-- **P1** — *"Time to race, Adam. Starting from pole. Well done. Track temperature is twenty-eight degrees Celsius, air temperature is twenty degrees Celsius, and the track is mostly dry."*
-- **P2..P64** — *"Time to race, Niklas. Qualifying put us to P seven. Track temperature is thirty-two degrees Celsius, air temperature is twenty-four degrees Celsius, and the track is dry."*
+- **P1** — *"Time to race, Adam. Starting from pole. Well done. Track temperature is twenty-eight degrees, air temperature is twenty degrees, and the track is mostly dry."*
+- **P2..P64** — *"Time to race, Niklas. Qualifying put us to P seven. Track temperature is thirty-two degrees, air temperature is twenty-four degrees, and the track is dry."*
 - **Position unknown or above P64** — the grid-position clause is skipped entirely; the engineer still speaks the greeting and conditions.
 
 In a multi-class race the grid position is your **class** grid slot, not your overall qualifying rank — so a GT3 racer who qualified P15 overall but third in class hears *"Qualifying put us to P three,"* and leading your class off the line plays *"Starting from pole."* This matches how the rest of the race callouts focus on your class.
