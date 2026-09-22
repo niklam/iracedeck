@@ -1666,68 +1666,68 @@
       "requestId": "qbJVuWefihNpOD26Pz8w"
     },
     "voice/default/session-start/wetness-intro.mp3": {
-      "hash": "c48f4fe98820ba5f",
+      "hash": "74d64544d63190c2",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "and the track is",
-      "generatedAt": "2026-09-20T12:22:31.445Z",
-      "requestId": "pAA1hBaW1JTmCsB7z7RP"
+      "generatedAt": "2026-09-22T17:11:31.409Z",
+      "requestId": "lgKw4pxqSVKay6fQtD6Q"
     },
     "voice/default/session-start/wetness-dry.mp3": {
-      "hash": "417c3abc320a51bd",
+      "hash": "ca094dbae44083c7",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "completely dry.",
-      "generatedAt": "2026-09-20T12:22:31.625Z",
-      "requestId": "2WAfQG1j6ROumYwyqGp6"
+      "generatedAt": "2026-09-22T17:11:31.621Z",
+      "requestId": "ZxlvBgamslaHf3K0mfpB"
     },
     "voice/default/session-start/wetness-mostly-dry.mp3": {
-      "hash": "5546d6e21840ddac",
+      "hash": "c833d7ed07dd0ec0",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "mostly dry.",
-      "generatedAt": "2026-09-20T12:22:31.839Z",
-      "requestId": "cczSFaKiOJXZJ4MbTfcC"
+      "generatedAt": "2026-09-22T17:11:31.832Z",
+      "requestId": "2u7RhAAmrxeJXxuSLhrm"
     },
     "voice/default/session-start/wetness-very-lightly-wet.mp3": {
-      "hash": "94c01240de1513ad",
+      "hash": "80a9eceba2c8ff7e",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "very lightly wet.",
-      "generatedAt": "2026-09-20T12:22:32.015Z",
-      "requestId": "ixhZqVJKpHyGXZfGRr2n"
+      "generatedAt": "2026-09-22T17:11:32.068Z",
+      "requestId": "GrlQEzL0UtnH3zzPPn13"
     },
     "voice/default/session-start/wetness-lightly-wet.mp3": {
-      "hash": "0225a612ce595ec3",
+      "hash": "448c4ee3f8c3d612",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "lightly wet.",
-      "generatedAt": "2026-09-20T12:22:32.162Z",
-      "requestId": "h6EwSambe5BGa9WP2eak"
+      "generatedAt": "2026-09-22T17:11:32.229Z",
+      "requestId": "E2rfOeAP3hJgk8KkW8WX"
     },
     "voice/default/session-start/wetness-moderately-wet.mp3": {
-      "hash": "2919c9918e5e742c",
+      "hash": "07fc53de138df039",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "wet.",
-      "generatedAt": "2026-09-20T12:22:32.301Z",
-      "requestId": "rpB2Cd9ctZSQ1BFTg4GT"
+      "generatedAt": "2026-09-22T17:11:32.385Z",
+      "requestId": "CnX4rOidd5JUoHXcBoeH"
     },
     "voice/default/session-start/wetness-very-wet.mp3": {
-      "hash": "96e0b8dccb370ca8",
+      "hash": "b2145e02fe928e6a",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "very wet.",
-      "generatedAt": "2026-09-20T12:22:32.449Z",
-      "requestId": "82Y3ho3jkEB0Mw9S0CF5"
+      "generatedAt": "2026-09-22T17:11:32.541Z",
+      "requestId": "4lsFlSAPAZy8dcYMwz82"
     },
     "voice/default/session-start/wetness-extremely-wet.mp3": {
-      "hash": "e3671fecad1c0298",
+      "hash": "9e59ed50d8aeac27",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "extremely wet.",
-      "generatedAt": "2026-09-20T12:22:32.702Z",
-      "requestId": "RudVxc0b7g71gzthYp90"
+      "generatedAt": "2026-09-22T17:11:32.719Z",
+      "requestId": "PshsQ3QPAQQYv6vmhvRs"
     },
     "voice/default/session-start-speed-numbers/24.mp3": {
       "hash": "33c7be3c43933d73",
@@ -23256,6 +23256,1582 @@
       "textPreview": "one hundred percent.",
       "generatedAt": "2026-09-20T12:38:43.329Z",
       "requestId": "0Rdm2hpS1g194tEY79BA"
+    },
+    "voice/default/numbers-degrees/minus20.mp3": {
+      "hash": "e59e398c3f3332fa",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "minus twenty degrees,",
+      "generatedAt": "2026-09-22T17:10:55.862Z",
+      "requestId": "H6PXb1xOPdYmRoy5UOEg"
+    },
+    "voice/default/numbers-degrees/minus19.mp3": {
+      "hash": "16c7ff5964c4ae32",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "minus nineteen degrees,",
+      "generatedAt": "2026-09-22T17:10:56.038Z",
+      "requestId": "OHwGz3FxeSKe4LyRTCvw"
+    },
+    "voice/default/numbers-degrees/minus18.mp3": {
+      "hash": "86957542051da741",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "minus eighteen degrees,",
+      "generatedAt": "2026-09-22T17:10:56.196Z",
+      "requestId": "0IAMMuP8tdvRHfKtHWKo"
+    },
+    "voice/default/numbers-degrees/minus17.mp3": {
+      "hash": "93cb98385d338991",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "minus seventeen degrees,",
+      "generatedAt": "2026-09-22T17:10:56.356Z",
+      "requestId": "4T6R01WLHIKG7UpAHNZB"
+    },
+    "voice/default/numbers-degrees/minus16.mp3": {
+      "hash": "38704013dea09135",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "minus sixteen degrees,",
+      "generatedAt": "2026-09-22T17:10:56.531Z",
+      "requestId": "0unzhsJTqsqResor0kV1"
+    },
+    "voice/default/numbers-degrees/minus15.mp3": {
+      "hash": "570950b31c3b0cfa",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "minus fifteen degrees,",
+      "generatedAt": "2026-09-22T17:10:56.688Z",
+      "requestId": "JLvfZ7bKlJLK5Wtt7SEO"
+    },
+    "voice/default/numbers-degrees/minus14.mp3": {
+      "hash": "1446a33cd39fae48",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "minus fourteen degrees,",
+      "generatedAt": "2026-09-22T17:10:56.854Z",
+      "requestId": "whI2q0F83b2yv1HT0OPT"
+    },
+    "voice/default/numbers-degrees/minus13.mp3": {
+      "hash": "354f793e88ef35c5",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "minus thirteen degrees,",
+      "generatedAt": "2026-09-22T17:10:57.004Z",
+      "requestId": "IJuJILK6vgIlWbOg1T7p"
+    },
+    "voice/default/numbers-degrees/minus12.mp3": {
+      "hash": "b4b2a1cf2a9eb0dd",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "minus twelve degrees,",
+      "generatedAt": "2026-09-22T17:10:57.171Z",
+      "requestId": "IBCTtBF9KJWZVTvHLDCy"
+    },
+    "voice/default/numbers-degrees/minus11.mp3": {
+      "hash": "b59c681dd3e1003e",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "minus eleven degrees,",
+      "generatedAt": "2026-09-22T17:10:57.339Z",
+      "requestId": "VNfu7Hkzq8ZRM6jyTiTH"
+    },
+    "voice/default/numbers-degrees/minus10.mp3": {
+      "hash": "e2c4212e620bcc08",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "minus ten degrees,",
+      "generatedAt": "2026-09-22T17:10:57.498Z",
+      "requestId": "RcFv68lZOOB5ckscI3Pr"
+    },
+    "voice/default/numbers-degrees/minus9.mp3": {
+      "hash": "910f86ce87704fed",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "minus nine degrees,",
+      "generatedAt": "2026-09-22T17:10:57.661Z",
+      "requestId": "De7BuAZPpEZj1U59t5bD"
+    },
+    "voice/default/numbers-degrees/minus8.mp3": {
+      "hash": "a45b9741b0d217bb",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "minus eight degrees,",
+      "generatedAt": "2026-09-22T17:10:57.827Z",
+      "requestId": "0YvNEHPs1DOmmbPeidXu"
+    },
+    "voice/default/numbers-degrees/minus7.mp3": {
+      "hash": "5f113ac5fa0ffbc8",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "minus seven degrees,",
+      "generatedAt": "2026-09-22T17:10:57.979Z",
+      "requestId": "cebTEJ3D888LmtudsgXU"
+    },
+    "voice/default/numbers-degrees/minus6.mp3": {
+      "hash": "33ace1b5c778b18d",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "minus six degrees,",
+      "generatedAt": "2026-09-22T17:10:58.140Z",
+      "requestId": "tnvOkJ1u6ophKPTAWJtz"
+    },
+    "voice/default/numbers-degrees/minus5.mp3": {
+      "hash": "ea78bd226a515ade",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "minus five degrees,",
+      "generatedAt": "2026-09-22T17:10:58.295Z",
+      "requestId": "aMt0vTsQndWt3s5kdQut"
+    },
+    "voice/default/numbers-degrees/minus4.mp3": {
+      "hash": "1124a42bcca26f02",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "minus four degrees,",
+      "generatedAt": "2026-09-22T17:10:58.467Z",
+      "requestId": "UCtRTMs2V9G0vxSiULiA"
+    },
+    "voice/default/numbers-degrees/minus3.mp3": {
+      "hash": "209a27e1556805d4",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "minus three degrees,",
+      "generatedAt": "2026-09-22T17:10:58.613Z",
+      "requestId": "U2QWRD5SlUvMv0FTUoHh"
+    },
+    "voice/default/numbers-degrees/minus2.mp3": {
+      "hash": "1ac93738af7dcf13",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "minus two degrees,",
+      "generatedAt": "2026-09-22T17:10:58.776Z",
+      "requestId": "g76L53RunLOLSVZhrfWR"
+    },
+    "voice/default/numbers-degrees/minus1.mp3": {
+      "hash": "71f3cc8607084e23",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "minus one degree,",
+      "generatedAt": "2026-09-22T17:10:58.926Z",
+      "requestId": "VVcfXftIVwFrebBdD2rS"
+    },
+    "voice/default/numbers-degrees/0.mp3": {
+      "hash": "dd6e94afc78bfb83",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "zero degrees,",
+      "generatedAt": "2026-09-22T17:10:59.085Z",
+      "requestId": "nghew0vk4cfm4irChycM"
+    },
+    "voice/default/numbers-degrees/1.mp3": {
+      "hash": "8ce5c7e609dacdb8",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one degree,",
+      "generatedAt": "2026-09-22T17:10:59.228Z",
+      "requestId": "DTmLfRJ44nW6nVM7wQQv"
+    },
+    "voice/default/numbers-degrees/2.mp3": {
+      "hash": "12a5012d9a9952b1",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "two degrees,",
+      "generatedAt": "2026-09-22T17:10:59.389Z",
+      "requestId": "J4Ya2iLPW7JWxlxq4GNj"
+    },
+    "voice/default/numbers-degrees/3.mp3": {
+      "hash": "d37e8c43ba091b59",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "three degrees,",
+      "generatedAt": "2026-09-22T17:10:59.531Z",
+      "requestId": "gSwoKorN3CgViwnkqu5N"
+    },
+    "voice/default/numbers-degrees/4.mp3": {
+      "hash": "8e919e03186a1d82",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "four degrees,",
+      "generatedAt": "2026-09-22T17:10:59.697Z",
+      "requestId": "uTAixmdMWGGEEC71T5hD"
+    },
+    "voice/default/numbers-degrees/5.mp3": {
+      "hash": "a63b93cb9f59e97c",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "five degrees,",
+      "generatedAt": "2026-09-22T17:10:59.851Z",
+      "requestId": "c9Jq9OjsBv5hixl5ftoc"
+    },
+    "voice/default/numbers-degrees/6.mp3": {
+      "hash": "5bc67a807b3e4c17",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "six degrees,",
+      "generatedAt": "2026-09-22T17:11:00.004Z",
+      "requestId": "5fhVid1wrVcOHpcFUpBZ"
+    },
+    "voice/default/numbers-degrees/7.mp3": {
+      "hash": "75960ac35ddf50a9",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "seven degrees,",
+      "generatedAt": "2026-09-22T17:11:00.159Z",
+      "requestId": "SFgurJBHhAmTlrHIIY85"
+    },
+    "voice/default/numbers-degrees/8.mp3": {
+      "hash": "0798ccedd9ffebfc",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "eight degrees,",
+      "generatedAt": "2026-09-22T17:11:00.316Z",
+      "requestId": "Se4DRrGpsOcNTJDIn0dX"
+    },
+    "voice/default/numbers-degrees/9.mp3": {
+      "hash": "831e248ca5fc030b",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "nine degrees,",
+      "generatedAt": "2026-09-22T17:11:00.465Z",
+      "requestId": "yW2ZBAV0G4JvlsoaIZ5g"
+    },
+    "voice/default/numbers-degrees/10.mp3": {
+      "hash": "d8a224fae625283d",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "ten degrees,",
+      "generatedAt": "2026-09-22T17:11:00.619Z",
+      "requestId": "fPxtEflOMReXyGDFQvhZ"
+    },
+    "voice/default/numbers-degrees/11.mp3": {
+      "hash": "97f00a7f054b9de2",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "eleven degrees,",
+      "generatedAt": "2026-09-22T17:11:00.765Z",
+      "requestId": "jxq8HVDpCDAynBh0sULG"
+    },
+    "voice/default/numbers-degrees/12.mp3": {
+      "hash": "170cce2d4a1ee80c",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "twelve degrees,",
+      "generatedAt": "2026-09-22T17:11:00.928Z",
+      "requestId": "2SHB4dRwne3xfzLVfMmt"
+    },
+    "voice/default/numbers-degrees/13.mp3": {
+      "hash": "61fa2237b90b344d",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "thirteen degrees,",
+      "generatedAt": "2026-09-22T17:11:01.079Z",
+      "requestId": "AUl8IWJPfflVvxCGSuIg"
+    },
+    "voice/default/numbers-degrees/14.mp3": {
+      "hash": "fa6fb0c4d5e1e6b7",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "fourteen degrees,",
+      "generatedAt": "2026-09-22T17:11:01.239Z",
+      "requestId": "uJmdY8xf9hTBopRt3m9k"
+    },
+    "voice/default/numbers-degrees/15.mp3": {
+      "hash": "2775f0623c2edbf2",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "fifteen degrees,",
+      "generatedAt": "2026-09-22T17:11:01.392Z",
+      "requestId": "NzGdMr4MoClAQ6ZPheTH"
+    },
+    "voice/default/numbers-degrees/16.mp3": {
+      "hash": "703e7d5bca631794",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "sixteen degrees,",
+      "generatedAt": "2026-09-22T17:11:01.582Z",
+      "requestId": "tzxdp4CIqJCutBgShvfc"
+    },
+    "voice/default/numbers-degrees/17.mp3": {
+      "hash": "a602d7beccda3efa",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "seventeen degrees,",
+      "generatedAt": "2026-09-22T17:11:01.744Z",
+      "requestId": "kAz5ShRoCcHW5xgYdK1G"
+    },
+    "voice/default/numbers-degrees/18.mp3": {
+      "hash": "1683f6dca614a8d2",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "eighteen degrees,",
+      "generatedAt": "2026-09-22T17:11:01.910Z",
+      "requestId": "gkIVKkPC9qE1Fxk1P7V0"
+    },
+    "voice/default/numbers-degrees/19.mp3": {
+      "hash": "1223d769c6478c2f",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "nineteen degrees,",
+      "generatedAt": "2026-09-22T17:11:02.061Z",
+      "requestId": "5Iev78i1bTym2Vk8lk0o"
+    },
+    "voice/default/numbers-degrees/20.mp3": {
+      "hash": "6f48e116c8696e78",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "twenty degrees,",
+      "generatedAt": "2026-09-22T17:11:02.299Z",
+      "requestId": "hADo6Hqk1m2vmxZs8RGS"
+    },
+    "voice/default/numbers-degrees/21.mp3": {
+      "hash": "dd71019bf041959a",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "twenty one degrees,",
+      "generatedAt": "2026-09-22T17:11:02.457Z",
+      "requestId": "r5oeJfmQdnDMI46h3cFW"
+    },
+    "voice/default/numbers-degrees/22.mp3": {
+      "hash": "3a27acee6286b2ee",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "twenty two degrees,",
+      "generatedAt": "2026-09-22T17:11:02.643Z",
+      "requestId": "MmF6thegtQb9kpEEcsJO"
+    },
+    "voice/default/numbers-degrees/23.mp3": {
+      "hash": "92e7343f92a866cb",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "twenty three degrees,",
+      "generatedAt": "2026-09-22T17:11:02.785Z",
+      "requestId": "7qxkuRv4FrOGDkluxgTI"
+    },
+    "voice/default/numbers-degrees/24.mp3": {
+      "hash": "1d5f4db3288d656d",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "twenty four degrees,",
+      "generatedAt": "2026-09-22T17:11:02.945Z",
+      "requestId": "jXziLvXFYt31nXME21Nb"
+    },
+    "voice/default/numbers-degrees/25.mp3": {
+      "hash": "55b996648dabf736",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "twenty five degrees,",
+      "generatedAt": "2026-09-22T17:11:03.097Z",
+      "requestId": "PvwqswXCQMQmJgHWWN7e"
+    },
+    "voice/default/numbers-degrees/26.mp3": {
+      "hash": "a806f5d326a8eb3d",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "twenty six degrees,",
+      "generatedAt": "2026-09-22T17:11:03.267Z",
+      "requestId": "RdPBC8ijQKAyG5xhgSdo"
+    },
+    "voice/default/numbers-degrees/27.mp3": {
+      "hash": "5366478bc6c773bf",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "twenty seven degrees,",
+      "generatedAt": "2026-09-22T17:11:03.415Z",
+      "requestId": "6Q5KLPKmASnn3eVKx5Ar"
+    },
+    "voice/default/numbers-degrees/28.mp3": {
+      "hash": "8ec2133e17514775",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "twenty eight degrees,",
+      "generatedAt": "2026-09-22T17:11:03.592Z",
+      "requestId": "neoHclFJMjvKaRdRekEw"
+    },
+    "voice/default/numbers-degrees/29.mp3": {
+      "hash": "d9681d13e842cfac",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "twenty nine degrees,",
+      "generatedAt": "2026-09-22T17:11:03.742Z",
+      "requestId": "b6YMgqBDB7NHUl7JYN0Z"
+    },
+    "voice/default/numbers-degrees/30.mp3": {
+      "hash": "1901fddd253ce524",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "thirty degrees,",
+      "generatedAt": "2026-09-22T17:11:03.900Z",
+      "requestId": "BxI5me10angyAjajhukU"
+    },
+    "voice/default/numbers-degrees/31.mp3": {
+      "hash": "c1bc8df5fcf08d8c",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "thirty one degrees,",
+      "generatedAt": "2026-09-22T17:11:04.048Z",
+      "requestId": "EeE9IrHp8c92r4c2Uxfm"
+    },
+    "voice/default/numbers-degrees/32.mp3": {
+      "hash": "9708ea9a50ee5d8e",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "thirty two degrees,",
+      "generatedAt": "2026-09-22T17:11:04.210Z",
+      "requestId": "uJNiBH5srB4JAzhq1QvT"
+    },
+    "voice/default/numbers-degrees/33.mp3": {
+      "hash": "0a43ca63cb43f417",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "thirty three degrees,",
+      "generatedAt": "2026-09-22T17:11:04.380Z",
+      "requestId": "mK4pwWrNw7CNWUaDY8Ko"
+    },
+    "voice/default/numbers-degrees/34.mp3": {
+      "hash": "575c4e40f90ee143",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "thirty four degrees,",
+      "generatedAt": "2026-09-22T17:11:04.538Z",
+      "requestId": "V65ZUWKVkExQyP1Akwc6"
+    },
+    "voice/default/numbers-degrees/35.mp3": {
+      "hash": "f7a212b4724d1017",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "thirty five degrees,",
+      "generatedAt": "2026-09-22T17:11:04.690Z",
+      "requestId": "fIY88AlQQSN5LcXNQSsf"
+    },
+    "voice/default/numbers-degrees/36.mp3": {
+      "hash": "95b36cef3567eba5",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "thirty six degrees,",
+      "generatedAt": "2026-09-22T17:11:04.847Z",
+      "requestId": "qFASBGrhFZ0ClVqUM46o"
+    },
+    "voice/default/numbers-degrees/37.mp3": {
+      "hash": "9b6acef918e78588",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "thirty seven degrees,",
+      "generatedAt": "2026-09-22T17:11:05.007Z",
+      "requestId": "Dso38vSsXwO3iiIFGOA1"
+    },
+    "voice/default/numbers-degrees/38.mp3": {
+      "hash": "181bb369f38deacb",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "thirty eight degrees,",
+      "generatedAt": "2026-09-22T17:11:05.175Z",
+      "requestId": "2RWrOzy0E96m4q5oJNYV"
+    },
+    "voice/default/numbers-degrees/39.mp3": {
+      "hash": "4025de53615197e6",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "thirty nine degrees,",
+      "generatedAt": "2026-09-22T17:11:05.326Z",
+      "requestId": "uB2HsPemT8v11r4VMVHn"
+    },
+    "voice/default/numbers-degrees/40.mp3": {
+      "hash": "641cea10ed14d596",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "forty degrees,",
+      "generatedAt": "2026-09-22T17:11:05.478Z",
+      "requestId": "G3fJfnMIy2hvFgNjvaYz"
+    },
+    "voice/default/numbers-degrees/41.mp3": {
+      "hash": "e4fc718a4a5909f5",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "forty one degrees,",
+      "generatedAt": "2026-09-22T17:11:05.631Z",
+      "requestId": "aA6eDSRjdyEpHKIbNZeT"
+    },
+    "voice/default/numbers-degrees/42.mp3": {
+      "hash": "bf2f647a59061c90",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "forty two degrees,",
+      "generatedAt": "2026-09-22T17:11:05.786Z",
+      "requestId": "WxhWRh9wFztDsZT4yUB7"
+    },
+    "voice/default/numbers-degrees/43.mp3": {
+      "hash": "6270df89fa92cbca",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "forty three degrees,",
+      "generatedAt": "2026-09-22T17:11:05.932Z",
+      "requestId": "OxO55iYeTQcpf7Z9mB6z"
+    },
+    "voice/default/numbers-degrees/44.mp3": {
+      "hash": "65e911d4714be7aa",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "forty four degrees,",
+      "generatedAt": "2026-09-22T17:11:06.096Z",
+      "requestId": "YU6Ijrs6VFfS977uLKiW"
+    },
+    "voice/default/numbers-degrees/45.mp3": {
+      "hash": "7abfd5f3bcf8cad8",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "forty five degrees,",
+      "generatedAt": "2026-09-22T17:11:06.248Z",
+      "requestId": "ps3P1tGb3burT49SHFhJ"
+    },
+    "voice/default/numbers-degrees/46.mp3": {
+      "hash": "386756d4eccaad70",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "forty six degrees,",
+      "generatedAt": "2026-09-22T17:11:06.464Z",
+      "requestId": "Krl8EiOysYep4Rr3Dx2r"
+    },
+    "voice/default/numbers-degrees/47.mp3": {
+      "hash": "ec524cc5a11a7583",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "forty seven degrees,",
+      "generatedAt": "2026-09-22T17:11:06.618Z",
+      "requestId": "BrNrHq52hfWP8rWByfv1"
+    },
+    "voice/default/numbers-degrees/48.mp3": {
+      "hash": "c72c382b801bcfe5",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "forty eight degrees,",
+      "generatedAt": "2026-09-22T17:11:06.787Z",
+      "requestId": "540oDL9g1UkJHiY8FSUv"
+    },
+    "voice/default/numbers-degrees/49.mp3": {
+      "hash": "e58752f5664b5b73",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "forty nine degrees,",
+      "generatedAt": "2026-09-22T17:11:06.932Z",
+      "requestId": "4Exg93CBW0Jl7kN3T4kR"
+    },
+    "voice/default/numbers-degrees/50.mp3": {
+      "hash": "7f1bb8b3a08e828d",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "fifty degrees,",
+      "generatedAt": "2026-09-22T17:11:07.090Z",
+      "requestId": "aPnBeEyJR9ak5ZFwZxNe"
+    },
+    "voice/default/numbers-degrees/51.mp3": {
+      "hash": "6ca4aeb2caca3d0f",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "fifty one degrees,",
+      "generatedAt": "2026-09-22T17:11:07.291Z",
+      "requestId": "ULFvTz2gnpBVKmE6Ep4G"
+    },
+    "voice/default/numbers-degrees/52.mp3": {
+      "hash": "57da29aa91818cae",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "fifty two degrees,",
+      "generatedAt": "2026-09-22T17:11:07.465Z",
+      "requestId": "brEMNFaM6FVBmZJxfbVf"
+    },
+    "voice/default/numbers-degrees/53.mp3": {
+      "hash": "1525112cbff880ed",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "fifty three degrees,",
+      "generatedAt": "2026-09-22T17:11:07.643Z",
+      "requestId": "RQNQIErjNWhKKqQRiV1Z"
+    },
+    "voice/default/numbers-degrees/54.mp3": {
+      "hash": "7bf37bfd7e17b2b5",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "fifty four degrees,",
+      "generatedAt": "2026-09-22T17:11:07.809Z",
+      "requestId": "U3xJ2hOnIGKnrPgRmtv5"
+    },
+    "voice/default/numbers-degrees/55.mp3": {
+      "hash": "5a80858d7cc350ff",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "fifty five degrees,",
+      "generatedAt": "2026-09-22T17:11:07.958Z",
+      "requestId": "cP8BDZyimQOd3KdFFHid"
+    },
+    "voice/default/numbers-degrees/56.mp3": {
+      "hash": "a8b44471cece4561",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "fifty six degrees,",
+      "generatedAt": "2026-09-22T17:11:08.121Z",
+      "requestId": "tQXRxr95LfynrRtCu4Za"
+    },
+    "voice/default/numbers-degrees/57.mp3": {
+      "hash": "584a36a40cb3ee96",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "fifty seven degrees,",
+      "generatedAt": "2026-09-22T17:11:08.274Z",
+      "requestId": "lorCVkMGlyVzexlYSv52"
+    },
+    "voice/default/numbers-degrees/58.mp3": {
+      "hash": "aa3049a3ca4472d2",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "fifty eight degrees,",
+      "generatedAt": "2026-09-22T17:11:08.434Z",
+      "requestId": "H3mPlKCccuu9Og5FheNN"
+    },
+    "voice/default/numbers-degrees/59.mp3": {
+      "hash": "861459376e112d07",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "fifty nine degrees,",
+      "generatedAt": "2026-09-22T17:11:08.582Z",
+      "requestId": "zAsukExPXlsKbcK48dPR"
+    },
+    "voice/default/numbers-degrees/60.mp3": {
+      "hash": "bb0f208a1484f9ac",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "sixty degrees,",
+      "generatedAt": "2026-09-22T17:11:08.748Z",
+      "requestId": "ONN15YjjiTPgnZnXtdFl"
+    },
+    "voice/default/numbers-degrees/61.mp3": {
+      "hash": "70ee6b78bf05aff4",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "sixty one degrees,",
+      "generatedAt": "2026-09-22T17:11:08.901Z",
+      "requestId": "rQxYvxRFknFzPosYOtVR"
+    },
+    "voice/default/numbers-degrees/62.mp3": {
+      "hash": "f9464de746f499fa",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "sixty two degrees,",
+      "generatedAt": "2026-09-22T17:11:09.065Z",
+      "requestId": "qmsmkJFsxYehkPw3mZbs"
+    },
+    "voice/default/numbers-degrees/63.mp3": {
+      "hash": "50661b2d72e73a47",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "sixty three degrees,",
+      "generatedAt": "2026-09-22T17:11:09.211Z",
+      "requestId": "0ZELttqY5kLViKNfWV8V"
+    },
+    "voice/default/numbers-degrees/64.mp3": {
+      "hash": "4719e6ed444c083d",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "sixty four degrees,",
+      "generatedAt": "2026-09-22T17:11:09.381Z",
+      "requestId": "Mg3RKvtERfm1aumkYFNP"
+    },
+    "voice/default/numbers-degrees/65.mp3": {
+      "hash": "e2b97406a405d574",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "sixty five degrees,",
+      "generatedAt": "2026-09-22T17:11:09.547Z",
+      "requestId": "QgEage5SLFnzwj4wrdez"
+    },
+    "voice/default/numbers-degrees/66.mp3": {
+      "hash": "67692e40f17075f9",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "sixty six degrees,",
+      "generatedAt": "2026-09-22T17:11:09.708Z",
+      "requestId": "3smXYma9F2Wlj42k1iq5"
+    },
+    "voice/default/numbers-degrees/67.mp3": {
+      "hash": "6ad7f93bf7f00988",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "sixty seven degrees,",
+      "generatedAt": "2026-09-22T17:11:09.861Z",
+      "requestId": "V6tVXZYOcm3OcHmxy1sH"
+    },
+    "voice/default/numbers-degrees/68.mp3": {
+      "hash": "464ed66645b685fc",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "sixty eight degrees,",
+      "generatedAt": "2026-09-22T17:11:10.028Z",
+      "requestId": "pnf3zv9v5uRfD1tQN9p8"
+    },
+    "voice/default/numbers-degrees/69.mp3": {
+      "hash": "91bf64c688859df7",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "sixty nine degrees,",
+      "generatedAt": "2026-09-22T17:11:10.181Z",
+      "requestId": "d7SPRTBGw1kUiFQVl8Vj"
+    },
+    "voice/default/numbers-degrees/70.mp3": {
+      "hash": "1bb72dc71f65d273",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "seventy degrees,",
+      "generatedAt": "2026-09-22T17:11:10.347Z",
+      "requestId": "cxIR3DTv8vs11sBFN0bM"
+    },
+    "voice/default/numbers-degrees/71.mp3": {
+      "hash": "c2947e60c44f07e4",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "seventy one degrees,",
+      "generatedAt": "2026-09-22T17:11:10.497Z",
+      "requestId": "TCM0gWTTPRD418WLHNVA"
+    },
+    "voice/default/numbers-degrees/72.mp3": {
+      "hash": "def4eb968b1bec2c",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "seventy two degrees,",
+      "generatedAt": "2026-09-22T17:11:10.662Z",
+      "requestId": "WyxGDPF7J8C3QFCAT0VM"
+    },
+    "voice/default/numbers-degrees/73.mp3": {
+      "hash": "bfd15ceb9576fd3d",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "seventy three degrees,",
+      "generatedAt": "2026-09-22T17:11:10.811Z",
+      "requestId": "kCtzNK2VmR76I693tYSi"
+    },
+    "voice/default/numbers-degrees/74.mp3": {
+      "hash": "4938d03db162df44",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "seventy four degrees,",
+      "generatedAt": "2026-09-22T17:11:10.982Z",
+      "requestId": "w0uidZ9YegpQ4w5gpZt6"
+    },
+    "voice/default/numbers-degrees/75.mp3": {
+      "hash": "bb0828ff22c6f088",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "seventy five degrees,",
+      "generatedAt": "2026-09-22T17:11:11.131Z",
+      "requestId": "I7HQWUTtEvb8YC7yoLRD"
+    },
+    "voice/default/numbers-degrees/76.mp3": {
+      "hash": "56dfb1dd0e03b40e",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "seventy six degrees,",
+      "generatedAt": "2026-09-22T17:11:11.286Z",
+      "requestId": "42bGtzmBTu7e7G2bJbd0"
+    },
+    "voice/default/numbers-degrees/77.mp3": {
+      "hash": "a88eff0d77bfb3e7",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "seventy seven degrees,",
+      "generatedAt": "2026-09-22T17:11:11.440Z",
+      "requestId": "1t9ZMa4K7ZVNgyIjnQf4"
+    },
+    "voice/default/numbers-degrees/78.mp3": {
+      "hash": "d3fba29cb93bdf26",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "seventy eight degrees,",
+      "generatedAt": "2026-09-22T17:11:11.607Z",
+      "requestId": "SWrZfXIofb8VZdM8QYyN"
+    },
+    "voice/default/numbers-degrees/79.mp3": {
+      "hash": "40b9b76e11ba95cf",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "seventy nine degrees,",
+      "generatedAt": "2026-09-22T17:11:11.768Z",
+      "requestId": "fandVoucmshsLhtc06V9"
+    },
+    "voice/default/numbers-degrees/80.mp3": {
+      "hash": "fd742fcd4d18fb74",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "eighty degrees,",
+      "generatedAt": "2026-09-22T17:11:11.923Z",
+      "requestId": "wPVQK2E14yhsk0sjJ5Pv"
+    },
+    "voice/default/numbers-degrees/81.mp3": {
+      "hash": "fec9f152f7cb3e0b",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "eighty one degrees,",
+      "generatedAt": "2026-09-22T17:11:12.070Z",
+      "requestId": "l5lBkxR0bTwN6VzocwkD"
+    },
+    "voice/default/numbers-degrees/82.mp3": {
+      "hash": "75fc760a1d045849",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "eighty two degrees,",
+      "generatedAt": "2026-09-22T17:11:12.232Z",
+      "requestId": "VImxxM4WNxKvq78fJGLP"
+    },
+    "voice/default/numbers-degrees/83.mp3": {
+      "hash": "aff647fc811bebe9",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "eighty three degrees,",
+      "generatedAt": "2026-09-22T17:11:12.378Z",
+      "requestId": "emchHqxIrYoJWuVLnjze"
+    },
+    "voice/default/numbers-degrees/84.mp3": {
+      "hash": "19fbc19959136307",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "eighty four degrees,",
+      "generatedAt": "2026-09-22T17:11:12.548Z",
+      "requestId": "wPoF6J0wMDOKaXlMFiNp"
+    },
+    "voice/default/numbers-degrees/85.mp3": {
+      "hash": "8910fe8ec00f92ce",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "eighty five degrees,",
+      "generatedAt": "2026-09-22T17:11:12.694Z",
+      "requestId": "u8mK8QG6fLuTDESPDjeb"
+    },
+    "voice/default/numbers-degrees/86.mp3": {
+      "hash": "e6caeae9ae44f4ec",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "eighty six degrees,",
+      "generatedAt": "2026-09-22T17:11:12.860Z",
+      "requestId": "fEAAD05EehpbAfy9vzCI"
+    },
+    "voice/default/numbers-degrees/87.mp3": {
+      "hash": "5362fc57f4c52687",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "eighty seven degrees,",
+      "generatedAt": "2026-09-22T17:11:13.018Z",
+      "requestId": "oYt1vCD6LHjha6YSzx4L"
+    },
+    "voice/default/numbers-degrees/88.mp3": {
+      "hash": "e1375c9a32157eaf",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "eighty eight degrees,",
+      "generatedAt": "2026-09-22T17:11:13.176Z",
+      "requestId": "OaWF2ll3XGGoy6XJ5mE0"
+    },
+    "voice/default/numbers-degrees/89.mp3": {
+      "hash": "975cb34558f11ecf",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "eighty nine degrees,",
+      "generatedAt": "2026-09-22T17:11:13.327Z",
+      "requestId": "jqhgGCUogcJJlVMNxakT"
+    },
+    "voice/default/numbers-degrees/90.mp3": {
+      "hash": "b8376db79f1fb082",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "ninety degrees,",
+      "generatedAt": "2026-09-22T17:11:13.489Z",
+      "requestId": "5j6GMFn1D4MmYW3dLlNU"
+    },
+    "voice/default/numbers-degrees/91.mp3": {
+      "hash": "b9dc3891c7b961fd",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "ninety one degrees,",
+      "generatedAt": "2026-09-22T17:11:13.642Z",
+      "requestId": "5xhT54en8UEAKrMUUmBR"
+    },
+    "voice/default/numbers-degrees/92.mp3": {
+      "hash": "25475f8c4f31d012",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "ninety two degrees,",
+      "generatedAt": "2026-09-22T17:11:13.803Z",
+      "requestId": "F5g4QTjiRXMmHLkHUjOm"
+    },
+    "voice/default/numbers-degrees/93.mp3": {
+      "hash": "d48630ce635d1261",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "ninety three degrees,",
+      "generatedAt": "2026-09-22T17:11:13.948Z",
+      "requestId": "d6zTRHGFVlcDNHwKEYbm"
+    },
+    "voice/default/numbers-degrees/94.mp3": {
+      "hash": "c9595cbfbacfb6e4",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "ninety four degrees,",
+      "generatedAt": "2026-09-22T17:11:14.104Z",
+      "requestId": "uRRPLFcJVdK7f9JvnhKs"
+    },
+    "voice/default/numbers-degrees/95.mp3": {
+      "hash": "9ea44630f0b65163",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "ninety five degrees,",
+      "generatedAt": "2026-09-22T17:11:14.250Z",
+      "requestId": "rNt83MvplirFShWuVLMZ"
+    },
+    "voice/default/numbers-degrees/96.mp3": {
+      "hash": "a8fa3ad79bbffd83",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "ninety six degrees,",
+      "generatedAt": "2026-09-22T17:11:14.436Z",
+      "requestId": "3wnknoS7nRsMixqZQOp2"
+    },
+    "voice/default/numbers-degrees/97.mp3": {
+      "hash": "a00680741cb3c2f4",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "ninety seven degrees,",
+      "generatedAt": "2026-09-22T17:11:14.589Z",
+      "requestId": "qZYh3lh3l06Jq5O5oPjJ"
+    },
+    "voice/default/numbers-degrees/98.mp3": {
+      "hash": "666016526ea947ae",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "ninety eight degrees,",
+      "generatedAt": "2026-09-22T17:11:14.750Z",
+      "requestId": "Ac5R8MN1d1KdRhbaqDqw"
+    },
+    "voice/default/numbers-degrees/99.mp3": {
+      "hash": "6ffff0dad69fcf27",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "ninety nine degrees,",
+      "generatedAt": "2026-09-22T17:11:14.901Z",
+      "requestId": "rccxeBsiXjZwWSg8QFLG"
+    },
+    "voice/default/numbers-degrees/100.mp3": {
+      "hash": "918b4d69d476b1ea",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred degrees,",
+      "generatedAt": "2026-09-22T17:11:15.072Z",
+      "requestId": "mCPnhYSxl6Y0p8ZPVueZ"
+    },
+    "voice/default/numbers-degrees/101.mp3": {
+      "hash": "7efe26b5eec2d1db",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred one degrees,",
+      "generatedAt": "2026-09-22T17:11:15.226Z",
+      "requestId": "XT7mxJPUFpkq3bRaDk9G"
+    },
+    "voice/default/numbers-degrees/102.mp3": {
+      "hash": "9f19f9d8a3886acd",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred two degrees,",
+      "generatedAt": "2026-09-22T17:11:15.392Z",
+      "requestId": "I0zHPZBrDHxOPvvKKmIZ"
+    },
+    "voice/default/numbers-degrees/103.mp3": {
+      "hash": "aed521677f799b85",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred three degrees,",
+      "generatedAt": "2026-09-22T17:11:15.555Z",
+      "requestId": "LhhwbgGMEkFwRl4P66dq"
+    },
+    "voice/default/numbers-degrees/104.mp3": {
+      "hash": "4b730d16be3eae00",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred four degrees,",
+      "generatedAt": "2026-09-22T17:11:15.741Z",
+      "requestId": "RuWl3ttJlPXQRTTNOlpu"
+    },
+    "voice/default/numbers-degrees/105.mp3": {
+      "hash": "405698cd06667fc6",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred five degrees,",
+      "generatedAt": "2026-09-22T17:11:15.894Z",
+      "requestId": "B4yKpElHwdtgxjADbugk"
+    },
+    "voice/default/numbers-degrees/106.mp3": {
+      "hash": "958229738c6a63ff",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred six degrees,",
+      "generatedAt": "2026-09-22T17:11:16.239Z",
+      "requestId": "B9k2sJJrx6uGxTSm32PN"
+    },
+    "voice/default/numbers-degrees/107.mp3": {
+      "hash": "2d4e34c4e8260c3d",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred seven degrees,",
+      "generatedAt": "2026-09-22T17:11:16.396Z",
+      "requestId": "TcRU1qj5YDkLCH6raGb2"
+    },
+    "voice/default/numbers-degrees/108.mp3": {
+      "hash": "3037c7db477e0c50",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred eight degrees,",
+      "generatedAt": "2026-09-22T17:11:16.558Z",
+      "requestId": "9ExECURe3o5iIE5nqgBt"
+    },
+    "voice/default/numbers-degrees/109.mp3": {
+      "hash": "74c5580b79b30bb3",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred nine degrees,",
+      "generatedAt": "2026-09-22T17:11:16.708Z",
+      "requestId": "8U7vtOCZZQX7F0aAN0hA"
+    },
+    "voice/default/numbers-degrees/110.mp3": {
+      "hash": "467572058040ee14",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred ten degrees,",
+      "generatedAt": "2026-09-22T17:11:16.879Z",
+      "requestId": "VTlhWMbMWHeHfqoeiNDG"
+    },
+    "voice/default/numbers-degrees/111.mp3": {
+      "hash": "e4335839d3a7bf92",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred eleven degrees,",
+      "generatedAt": "2026-09-22T17:11:17.033Z",
+      "requestId": "agcsigxYyP3eAYvld5Sf"
+    },
+    "voice/default/numbers-degrees/112.mp3": {
+      "hash": "8aa1e3290a951df0",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred twelve degrees,",
+      "generatedAt": "2026-09-22T17:11:17.199Z",
+      "requestId": "tfAdXjSx7vm0eKPQx2hU"
+    },
+    "voice/default/numbers-degrees/113.mp3": {
+      "hash": "13fd4a60a7789456",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred thirteen degrees,",
+      "generatedAt": "2026-09-22T17:11:17.361Z",
+      "requestId": "HWNh9odAbbHF2HvyAtef"
+    },
+    "voice/default/numbers-degrees/114.mp3": {
+      "hash": "a13bfaad3dbb640e",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred fourteen degrees,",
+      "generatedAt": "2026-09-22T17:11:17.530Z",
+      "requestId": "7Pr2vCZEHcO1PeVc4Qbm"
+    },
+    "voice/default/numbers-degrees/115.mp3": {
+      "hash": "218e25afd3e68c85",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred fifteen degrees,",
+      "generatedAt": "2026-09-22T17:11:17.684Z",
+      "requestId": "qMcmGW7Q7EyAuGiSs3Lv"
+    },
+    "voice/default/numbers-degrees/116.mp3": {
+      "hash": "7d48be06726f292c",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred sixteen degrees,",
+      "generatedAt": "2026-09-22T17:11:17.856Z",
+      "requestId": "UnLGxk1oUNSasdMaBezC"
+    },
+    "voice/default/numbers-degrees/117.mp3": {
+      "hash": "e6d83736a66a33eb",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred seventeen degrees,",
+      "generatedAt": "2026-09-22T17:11:18.016Z",
+      "requestId": "LqZc5ZUW1s7UEXlbcNj7"
+    },
+    "voice/default/numbers-degrees/118.mp3": {
+      "hash": "b8248f45abf75c52",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred eighteen degrees,",
+      "generatedAt": "2026-09-22T17:11:18.179Z",
+      "requestId": "XTgYq8bjCEPBcaXHO3yh"
+    },
+    "voice/default/numbers-degrees/119.mp3": {
+      "hash": "f98290fd9ad87a05",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred nineteen degrees,",
+      "generatedAt": "2026-09-22T17:11:18.337Z",
+      "requestId": "wU2VQE5jQDBrDMh4XaAc"
+    },
+    "voice/default/numbers-degrees/120.mp3": {
+      "hash": "cc68c3336fce2c16",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred twenty degrees,",
+      "generatedAt": "2026-09-22T17:11:18.506Z",
+      "requestId": "gbWkUNCCtY1MX5x9FBxL"
+    },
+    "voice/default/numbers-degrees/121.mp3": {
+      "hash": "e7abe4c308a7de9c",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred twenty one degrees,",
+      "generatedAt": "2026-09-22T17:11:18.719Z",
+      "requestId": "2pC976aFyipk1RxVSu2J"
+    },
+    "voice/default/numbers-degrees/122.mp3": {
+      "hash": "36eb01b8a1f14320",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred twenty two degrees,",
+      "generatedAt": "2026-09-22T17:11:18.945Z",
+      "requestId": "HidQDJIS3cjj77vw8mFv"
+    },
+    "voice/default/numbers-degrees/123.mp3": {
+      "hash": "9cf354555b237911",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred twenty three degrees,",
+      "generatedAt": "2026-09-22T17:11:19.167Z",
+      "requestId": "2Vc4DxtkdNcpai7M1T9e"
+    },
+    "voice/default/numbers-degrees/124.mp3": {
+      "hash": "e70ac58fb8e1b316",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred twenty four degrees,",
+      "generatedAt": "2026-09-22T17:11:19.407Z",
+      "requestId": "JAHMiDHQXVFHzK51O2xf"
+    },
+    "voice/default/numbers-degrees/125.mp3": {
+      "hash": "48a43d960af5543d",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred twenty five degrees,",
+      "generatedAt": "2026-09-22T17:11:19.627Z",
+      "requestId": "ZpUcbslUV3x3JD00YkIV"
+    },
+    "voice/default/numbers-degrees/126.mp3": {
+      "hash": "b337538a43da245f",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred twenty six degrees,",
+      "generatedAt": "2026-09-22T17:11:19.852Z",
+      "requestId": "n8cndAsck0MaGmhe6PA5"
+    },
+    "voice/default/numbers-degrees/127.mp3": {
+      "hash": "87866a0b13a0b2ac",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred twenty seven degrees,",
+      "generatedAt": "2026-09-22T17:11:20.072Z",
+      "requestId": "eMARGu3Jn4phVXBLDxlq"
+    },
+    "voice/default/numbers-degrees/128.mp3": {
+      "hash": "724eda2fa9347fdd",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred twenty eight degrees,",
+      "generatedAt": "2026-09-22T17:11:20.299Z",
+      "requestId": "Yu17flQS8mRNZ2aWtUw7"
+    },
+    "voice/default/numbers-degrees/129.mp3": {
+      "hash": "d6d8ed07966263c6",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred twenty nine degrees,",
+      "generatedAt": "2026-09-22T17:11:20.521Z",
+      "requestId": "UIo8cu0VnQhN8ScbT3Fj"
+    },
+    "voice/default/numbers-degrees/130.mp3": {
+      "hash": "279ddd0fe41e751a",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred thirty degrees,",
+      "generatedAt": "2026-09-22T17:11:20.688Z",
+      "requestId": "UJB6XbWp1mRvXfGkva4T"
+    },
+    "voice/default/numbers-degrees/131.mp3": {
+      "hash": "3be902aabdc727be",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred thirty one degrees,",
+      "generatedAt": "2026-09-22T17:11:20.901Z",
+      "requestId": "sIE7EUsSrnaGMsoxJPKs"
+    },
+    "voice/default/numbers-degrees/132.mp3": {
+      "hash": "e37f73bc2fb0e705",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred thirty two degrees,",
+      "generatedAt": "2026-09-22T17:11:21.143Z",
+      "requestId": "hpotNgvFkgPZ9xcoLLfF"
+    },
+    "voice/default/numbers-degrees/133.mp3": {
+      "hash": "beae6d9951de2fc4",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred thirty three degrees,",
+      "generatedAt": "2026-09-22T17:11:21.381Z",
+      "requestId": "hUeJvilmwTbAccLa0Cnh"
+    },
+    "voice/default/numbers-degrees/134.mp3": {
+      "hash": "495ad94b0c2f642c",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred thirty four degrees,",
+      "generatedAt": "2026-09-22T17:11:21.616Z",
+      "requestId": "Y0UrcYloCxWLvcBzzVDo"
+    },
+    "voice/default/numbers-degrees/135.mp3": {
+      "hash": "419f8bf77e69d9cc",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred thirty five degrees,",
+      "generatedAt": "2026-09-22T17:11:21.839Z",
+      "requestId": "D2FZ9uvEyk7YLQgfC80u"
+    },
+    "voice/default/numbers-degrees/136.mp3": {
+      "hash": "5943b6f45315d813",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred thirty six degrees,",
+      "generatedAt": "2026-09-22T17:11:22.071Z",
+      "requestId": "lef0tLwywY6WXyDGtEKe"
+    },
+    "voice/default/numbers-degrees/137.mp3": {
+      "hash": "2277c3356945b4fb",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred thirty seven degrees,",
+      "generatedAt": "2026-09-22T17:11:22.294Z",
+      "requestId": "S92woFtKW8HL4YAb1dNP"
+    },
+    "voice/default/numbers-degrees/138.mp3": {
+      "hash": "44f2427a43c3cb79",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred thirty eight degrees,",
+      "generatedAt": "2026-09-22T17:11:22.518Z",
+      "requestId": "AGJvsmblbVGCLA05dzja"
+    },
+    "voice/default/numbers-degrees/139.mp3": {
+      "hash": "a58da0ea4e6e99a2",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred thirty nine degrees,",
+      "generatedAt": "2026-09-22T17:11:22.736Z",
+      "requestId": "Rf1QBp2JWqJSTAgaZZxC"
+    },
+    "voice/default/numbers-degrees/140.mp3": {
+      "hash": "39cd65667a5cc0c0",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred forty degrees,",
+      "generatedAt": "2026-09-22T17:11:22.905Z",
+      "requestId": "Es1FMdkFVRjtx1bSvI2w"
+    },
+    "voice/default/numbers-degrees/141.mp3": {
+      "hash": "5b25ee0f75a70b4e",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred forty one degrees,",
+      "generatedAt": "2026-09-22T17:11:23.069Z",
+      "requestId": "XlsFWVAvBrafcvxBT5z7"
+    },
+    "voice/default/numbers-degrees/142.mp3": {
+      "hash": "932b5d0d1e4f463c",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred forty two degrees,",
+      "generatedAt": "2026-09-22T17:11:23.243Z",
+      "requestId": "iZWTNN4w8JIpjxRWn5cs"
+    },
+    "voice/default/numbers-degrees/143.mp3": {
+      "hash": "68e35796b844775c",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred forty three degrees,",
+      "generatedAt": "2026-09-22T17:11:23.462Z",
+      "requestId": "FMwVylYsYj6T5RYedVeY"
+    },
+    "voice/default/numbers-degrees/144.mp3": {
+      "hash": "b6d9f435c04b3b57",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred forty four degrees,",
+      "generatedAt": "2026-09-22T17:11:23.676Z",
+      "requestId": "QV6sJR6BYSU6BzJIJRI6"
+    },
+    "voice/default/numbers-degrees/145.mp3": {
+      "hash": "94702cdd6ed31146",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred forty five degrees,",
+      "generatedAt": "2026-09-22T17:11:23.912Z",
+      "requestId": "ByKFNUDTIqr6U3F6r4VS"
+    },
+    "voice/default/numbers-degrees/146.mp3": {
+      "hash": "9e4cc77ce76d2448",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred forty six degrees,",
+      "generatedAt": "2026-09-22T17:11:24.083Z",
+      "requestId": "Ybpop84SG45WVeIDZbaE"
+    },
+    "voice/default/numbers-degrees/147.mp3": {
+      "hash": "1240a3d4e397c22e",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred forty seven degrees,",
+      "generatedAt": "2026-09-22T17:11:24.295Z",
+      "requestId": "spcN0N7fXBAGSYwyqH9e"
+    },
+    "voice/default/numbers-degrees/148.mp3": {
+      "hash": "c07d7c4e809d14e5",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred forty eight degrees,",
+      "generatedAt": "2026-09-22T17:11:24.524Z",
+      "requestId": "sbt99tvFIY1gRqhnYEXs"
+    },
+    "voice/default/numbers-degrees/149.mp3": {
+      "hash": "b919a8cb423829dd",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred forty nine degrees,",
+      "generatedAt": "2026-09-22T17:11:24.741Z",
+      "requestId": "rxsXYome8l4csIyKNltZ"
+    },
+    "voice/default/numbers-degrees/150.mp3": {
+      "hash": "0a578c544100f6b8",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred fifty degrees,",
+      "generatedAt": "2026-09-22T17:11:24.918Z",
+      "requestId": "OoLKDLzAxvraiNTN7F8y"
+    },
+    "voice/default/numbers-degrees/151.mp3": {
+      "hash": "e8daba177a98b9e3",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred fifty one degrees,",
+      "generatedAt": "2026-09-22T17:11:25.110Z",
+      "requestId": "5uHar8i2HHuzZYrLt60e"
+    },
+    "voice/default/numbers-degrees/152.mp3": {
+      "hash": "400bb481bd430343",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred fifty two degrees,",
+      "generatedAt": "2026-09-22T17:11:25.285Z",
+      "requestId": "SokciIdtnCxRvIJG6BxF"
+    },
+    "voice/default/numbers-degrees/153.mp3": {
+      "hash": "8028f9e036973115",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred fifty three degrees,",
+      "generatedAt": "2026-09-22T17:11:25.506Z",
+      "requestId": "Mk2TtiQjPFnLAB2XDooT"
+    },
+    "voice/default/numbers-degrees/154.mp3": {
+      "hash": "9f036df67eb1ce7e",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred fifty four degrees,",
+      "generatedAt": "2026-09-22T17:11:25.748Z",
+      "requestId": "bPSdMx0ybyYowzQt8TTe"
+    },
+    "voice/default/numbers-degrees/155.mp3": {
+      "hash": "931bcd7f9054b3b7",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred fifty five degrees,",
+      "generatedAt": "2026-09-22T17:11:25.964Z",
+      "requestId": "BFtNr1pNDSzdazFqClxq"
+    },
+    "voice/default/numbers-degrees/156.mp3": {
+      "hash": "2aa985fe114b85e3",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred fifty six degrees,",
+      "generatedAt": "2026-09-22T17:11:26.141Z",
+      "requestId": "2x4xVaPbTBS59Y71GKTP"
+    },
+    "voice/default/numbers-degrees/157.mp3": {
+      "hash": "64f4d12aaf45c50c",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred fifty seven degrees,",
+      "generatedAt": "2026-09-22T17:11:26.356Z",
+      "requestId": "A3hae6dAGOBFfJaOF5An"
+    },
+    "voice/default/numbers-degrees/158.mp3": {
+      "hash": "6a43e05d52f8f05c",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred fifty eight degrees,",
+      "generatedAt": "2026-09-22T17:11:26.579Z",
+      "requestId": "VGsSifSZ69wbnDvCVyWU"
+    },
+    "voice/default/numbers-degrees/159.mp3": {
+      "hash": "75ffcfee8b194827",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred fifty nine degrees,",
+      "generatedAt": "2026-09-22T17:11:26.799Z",
+      "requestId": "vFkCCnaQgGatzCQ4gaQJ"
+    },
+    "voice/default/numbers-degrees/160.mp3": {
+      "hash": "8efa00cf78629c9b",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred sixty degrees,",
+      "generatedAt": "2026-09-22T17:11:26.968Z",
+      "requestId": "J7mmxM76SlymldYAxHNz"
+    },
+    "voice/default/numbers-degrees/161.mp3": {
+      "hash": "cdbc91690cf64cbc",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred sixty one degrees,",
+      "generatedAt": "2026-09-22T17:11:27.363Z",
+      "requestId": "bSSKo79QXUANxwPpdQPA"
+    },
+    "voice/default/numbers-degrees/162.mp3": {
+      "hash": "ed6d725f13a369cb",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred sixty two degrees,",
+      "generatedAt": "2026-09-22T17:11:27.534Z",
+      "requestId": "bmJboXt8aZs00t0LZptk"
+    },
+    "voice/default/numbers-degrees/163.mp3": {
+      "hash": "080af55dc10d3dc0",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred sixty three degrees,",
+      "generatedAt": "2026-09-22T17:11:27.755Z",
+      "requestId": "nC6Fwkz91GfQHsbaufO2"
+    },
+    "voice/default/numbers-degrees/164.mp3": {
+      "hash": "2bce728d8d48c47a",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred sixty four degrees,",
+      "generatedAt": "2026-09-22T17:11:27.988Z",
+      "requestId": "FajieJ8YJhlgS2VzSchA"
+    },
+    "voice/default/numbers-degrees/165.mp3": {
+      "hash": "80f2b56686eb2912",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred sixty five degrees,",
+      "generatedAt": "2026-09-22T17:11:28.215Z",
+      "requestId": "NLxN3M54UzsHzxGvsqdR"
+    },
+    "voice/default/numbers-degrees/166.mp3": {
+      "hash": "ce5cb90c9cf5a72c",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred sixty six degrees,",
+      "generatedAt": "2026-09-22T17:11:28.390Z",
+      "requestId": "ikPxpCVdHnKL9sNT7Q5t"
+    },
+    "voice/default/numbers-degrees/167.mp3": {
+      "hash": "2a35fc6576b3ddb9",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred sixty seven degrees,",
+      "generatedAt": "2026-09-22T17:11:28.600Z",
+      "requestId": "yur3baRYWXtxJaff2XZW"
+    },
+    "voice/default/numbers-degrees/168.mp3": {
+      "hash": "35fcb5412e28bfd4",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred sixty eight degrees,",
+      "generatedAt": "2026-09-22T17:11:28.866Z",
+      "requestId": "61nXpfrQd1CN2B7QQFec"
+    },
+    "voice/default/numbers-degrees/169.mp3": {
+      "hash": "939576ef418f40ff",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred sixty nine degrees,",
+      "generatedAt": "2026-09-22T17:11:29.083Z",
+      "requestId": "i8OYXc87zn4xpHWtx8tg"
+    },
+    "voice/default/numbers-degrees/170.mp3": {
+      "hash": "313bf2d80edc40f3",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred seventy degrees,",
+      "generatedAt": "2026-09-22T17:11:29.251Z",
+      "requestId": "x62zwvISXHVfDFxYn2l6"
+    },
+    "voice/default/numbers-degrees/171.mp3": {
+      "hash": "b41ed01cf1c0dee8",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred seventy one degrees,",
+      "generatedAt": "2026-09-22T17:11:29.474Z",
+      "requestId": "cKL2GYtm4gEfW2brpO79"
+    },
+    "voice/default/numbers-degrees/172.mp3": {
+      "hash": "d398c46faabd4ec4",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred seventy two degrees,",
+      "generatedAt": "2026-09-22T17:11:29.712Z",
+      "requestId": "mzW521Z7MlBoqQctKXdE"
+    },
+    "voice/default/numbers-degrees/173.mp3": {
+      "hash": "4d805520015e5923",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred seventy three degrees,",
+      "generatedAt": "2026-09-22T17:11:29.932Z",
+      "requestId": "PM6ngEDTgem4TsmCYfHR"
+    },
+    "voice/default/numbers-degrees/174.mp3": {
+      "hash": "364cf2f60ba09302",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred seventy four degrees,",
+      "generatedAt": "2026-09-22T17:11:30.164Z",
+      "requestId": "uNX2DU893KhPNnb2aSDA"
+    },
+    "voice/default/numbers-degrees/175.mp3": {
+      "hash": "87d0a43ab9c1fb51",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred seventy five degrees,",
+      "generatedAt": "2026-09-22T17:11:30.387Z",
+      "requestId": "iBO61SftJGrBF67Lh3rq"
+    },
+    "voice/default/numbers-degrees/176.mp3": {
+      "hash": "e159c465f2096159",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred seventy six degrees,",
+      "generatedAt": "2026-09-22T17:11:30.620Z",
+      "requestId": "Z76RwtmI9bu2TidLd8Z5"
     }
   }
 }
