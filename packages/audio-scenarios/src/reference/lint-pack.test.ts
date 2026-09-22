@@ -532,6 +532,28 @@ describe("lintPack", () => {
     expect(report.voices.map((v) => v.id)).toEqual([VOICE, "default"]);
   });
 
+  it("reports a voice id declared twice in one pack, as the scanner does, and lints it once (#1144)", () => {
+    // Unique within a pack is the one rule a voice id still has. The scanner
+    // keeps the first entry and says so; a lint that only de-duplicated would
+    // pass a pack whose second name the author never sees anywhere.
+    const manifest = JSON.stringify({
+      schema: 1,
+      id: "demo",
+      label: "Demo",
+      version: "1.0.0",
+      voices: [
+        { id: VOICE, label: "Demo voice" },
+        { id: VOICE, label: "Same voice, other name" },
+      ],
+    });
+    const report = lint(packFiles({ manifest }));
+
+    expect(messages(report.problems)).toEqual([
+      `(pack) manifest: voice-pack.json: voices[1].id "${VOICE}" is declared more than once; the first wins`,
+    ]);
+    expect(report.voices.map((v) => v.id)).toEqual([VOICE]);
+  });
+
   it('names the separator when a pack id or a voice id contains "::", ahead of the kebab-case rule (#1144)', () => {
     const manifest = JSON.stringify({
       schema: 1,

@@ -31,7 +31,9 @@
  * plugin names a voice `<pack id>::<voice id>` (#1144), and an author who
  * qualified an id by hand should hear why. A voice id only has to be unique
  * within its pack — another pack's `matt` is a different voice — so nothing
- * is said about one any other pack declares. A field problem is reported
+ * is said about one any other pack declares, while one declared twice in the
+ * same pack is reported in the scanner's words (the first wins) and linted
+ * once. A field problem is reported
  * and the voice is linted anyway; when the manifest is missing, unparseable
  * or carries no usable id at all, that is reported AND the voices are taken
  * from the directories under `voice/` instead, so the author still gets
@@ -417,7 +419,16 @@ function readManifest(read: LintFileRead, packDirName: string): DeclaredVoices {
 
     if (!isLabel(voice.label)) problems.push(`${MANIFEST_FILE}: voices[${index}] has no label — ${REFUSED}`);
 
-    if (!ids.includes(id)) ids.push(id);
+    // The scanner's words: it keeps the first entry and reports the rest, and
+    // the pack still loads — so no REFUSED. Said here rather than folded away,
+    // because unique within the pack is the one rule a voice id still has.
+    if (ids.includes(id)) {
+      problems.push(`${MANIFEST_FILE}: voices[${index}].id "${id}" is declared more than once; the first wins`);
+
+      return;
+    }
+
+    ids.push(id);
   });
 
   return { ids: ids.length === 0 ? null : ids, problems };
