@@ -22,6 +22,16 @@
 
 export const VOICE_ID_SEPARATOR = "::";
 
+/**
+ * Why an id holding {@link VOICE_ID_SEPARATOR} is refused: the one sentence
+ * `deck-core`'s manifest and catalog schemas and `lint:pack` all report, ahead
+ * of the kebab-case rule, so an author who qualified an id by hand is told why
+ * rather than merely that the id is malformed. It follows the field it is
+ * about — `id: must not contain …` in the scanner's problem row,
+ * `voices[1].id "demo::matt" must not contain …` in the linter's.
+ */
+export const VOICE_ID_SEPARATOR_REASON = `must not contain "${VOICE_ID_SEPARATOR}" — iRaceDeck joins a pack id and a voice id with it`;
+
 const VOICE_CLIP_PREFIX = "voice/";
 
 /** `<packId>::<voiceId>`. Inputs are already-validated kebab-case ids. */

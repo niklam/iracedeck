@@ -33,9 +33,10 @@
  * within its pack — another pack's `matt` is a different voice — so nothing
  * is said about one any other pack declares, while one declared twice in the
  * same pack is reported in the scanner's words (the first wins) and linted
- * once. A field problem is reported
- * and the voice is linted anyway; when the manifest is missing, unparseable
- * or carries no usable id at all, that is reported AND the voices are taken
+ * once. The separator's reason is `VOICE_ID_SEPARATOR_REASON`, the very
+ * sentence deck-core's schemas report. A field problem is reported and the
+ * voice is linted anyway; when the manifest is missing, unparseable or
+ * carries no usable id at all, that is reported AND the voices are taken
  * from the directories under `voice/` instead, so the author still gets
  * clip and script feedback.
  *
@@ -80,6 +81,7 @@ import {
   parseCalloutScriptText,
   type VarDrivenGroup,
   VOICE_ID_SEPARATOR,
+  VOICE_ID_SEPARATOR_REASON,
 } from "@iracedeck/callout-script";
 
 import type { ContractReport, VocabularyReport } from "../interpreter.js";
@@ -308,13 +310,6 @@ const SEMVER =
 const REFUSED = "the plugin refuses the manifest";
 
 /**
- * deck-core's reason for an id holding the separator (`voice-pack-manifest.ts`),
- * restated: checked before the kebab-case rule, which would refuse the same
- * id, so the author reads why rather than merely that.
- */
-const SEPARATOR_REASON = `must not contain "${VOICE_ID_SEPARATOR}" — iRaceDeck joins a pack id and a voice id with it`;
-
-/**
  * The manifest read as plain JSON, checked for what the scanner refuses a
  * pack over (see the header). An entry with no usable id is reported (the
  * plugin refuses such a manifest whole) and the others are kept; no usable id
@@ -357,7 +352,7 @@ function readManifest(read: LintFileRead, packDirName: string): DeclaredVoices {
   if (typeof manifest.id !== "string" || manifest.id === "") {
     problems.push(`${MANIFEST_FILE}: id is missing — ${REFUSED}`);
   } else if (manifest.id.includes(VOICE_ID_SEPARATOR)) {
-    problems.push(`${MANIFEST_FILE}: id "${manifest.id}" ${SEPARATOR_REASON}; ${REFUSED}`);
+    problems.push(`${MANIFEST_FILE}: id "${manifest.id}" ${VOICE_ID_SEPARATOR_REASON}; ${REFUSED}`);
   } else if (!PACK_ID.test(manifest.id)) {
     problems.push(`${MANIFEST_FILE}: id "${manifest.id}" is not lowercase kebab-case (a-z, 0-9, dashes) — ${REFUSED}`);
   } else if (manifest.id !== packDirName.toLowerCase()) {
@@ -404,7 +399,7 @@ function readManifest(read: LintFileRead, packDirName: string): DeclaredVoices {
     }
 
     if (id.includes(VOICE_ID_SEPARATOR)) {
-      problems.push(`${MANIFEST_FILE}: voices[${index}].id "${id}" ${SEPARATOR_REASON}; ${REFUSED}`);
+      problems.push(`${MANIFEST_FILE}: voices[${index}].id "${id}" ${VOICE_ID_SEPARATOR_REASON}; ${REFUSED}`);
 
       return;
     }

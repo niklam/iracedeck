@@ -1,4 +1,4 @@
-import { VOICE_ID_SEPARATOR } from "@iracedeck/callout-script";
+import { VOICE_ID_SEPARATOR, VOICE_ID_SEPARATOR_REASON } from "@iracedeck/callout-script";
 import { valid as semverValid } from "semver";
 import { z } from "zod";
 
@@ -11,14 +11,12 @@ import { z } from "zod";
  * already excludes `::`. It is a better reason. iRaceDeck names a voice outside
  * its pack as `<pack id>::<voice id>` (#1144), and an author who tried to
  * qualify an id by hand should be told that is why, rather than merely that
- * the id is malformed.
+ * the id is malformed. The reason is `VOICE_ID_SEPARATOR_REASON`, the sentence
+ * `lint:pack` reports too.
  */
 export const packId = z
   .string()
-  .refine(
-    (id) => !id.includes(VOICE_ID_SEPARATOR),
-    `must not contain "${VOICE_ID_SEPARATOR}" — iRaceDeck joins a pack id and a voice id with it`,
-  )
+  .refine((id) => !id.includes(VOICE_ID_SEPARATOR), VOICE_ID_SEPARATOR_REASON)
   .regex(/^[a-z][a-z0-9-]*$/, "must be lowercase kebab-case (a-z, 0-9, dashes)");
 
 /**

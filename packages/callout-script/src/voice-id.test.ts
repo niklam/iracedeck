@@ -1,10 +1,24 @@
 import { describe, expect, it } from "vitest";
 
-import { qualifiedVoiceId, qualifyClipPath, qualifyVoiceId, splitVoiceId, VOICE_ID_SEPARATOR } from "./voice-id.js";
+import {
+  qualifiedVoiceId,
+  qualifyClipPath,
+  qualifyVoiceId,
+  splitVoiceId,
+  VOICE_ID_SEPARATOR,
+  VOICE_ID_SEPARATOR_REASON,
+} from "./voice-id.js";
 
 describe("VOICE_ID_SEPARATOR", () => {
   it("is two characters, so a single colon stays free for the id grammar", () => {
     expect(VOICE_ID_SEPARATOR).toBe("::");
+  });
+});
+
+describe("VOICE_ID_SEPARATOR_REASON", () => {
+  it("names the separator it refuses, and reads after the field it is about", () => {
+    // `id: must not contain "::" — …` (scanner), `voices[1].id "x::y" must not contain "::" — …` (lint:pack).
+    expect(VOICE_ID_SEPARATOR_REASON).toMatch(new RegExp(`^must not contain "${VOICE_ID_SEPARATOR}" — `));
   });
 });
 
