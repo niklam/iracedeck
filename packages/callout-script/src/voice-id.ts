@@ -80,9 +80,14 @@ export function qualifyClipPath(packId: string, clip: string): string {
  * the composite — `a` sorts before `a-b` as an id but after it as `a::…`
  * against `a-b::…`), else `v` unchanged so the caller's own fallback decides.
  *
- * Managed first, then alphabetical, is exactly the order that decided which
- * pack claimed a voice id before #1144 — so the voice a user was hearing is
- * the voice they keep.
+ * Managed first, then alphabetical, is the order that decided which pack
+ * claimed a voice id before #1144 for every lowercase pack folder — which is
+ * every folder the installer writes — so the voice a user was hearing is the
+ * voice they keep. It is not the same order in every case: that scanner sorted
+ * FOLDER names case-sensitively, and a pack id is matched to its folder
+ * without regard to case, so a hand-made folder with capitals (`Zeta/`) sorted
+ * before `alpha/` there and after it here. Accepted: no third-party pack exists
+ * yet, and nothing the plugin installs is spelled that way.
  */
 export function qualifyVoiceId(stored: string, available: readonly string[], managedPackId: string): string {
   if (stored.length === 0 || stored.includes(VOICE_ID_SEPARATOR) || available.includes(stored)) return stored;

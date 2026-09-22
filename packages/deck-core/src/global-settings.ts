@@ -2495,9 +2495,11 @@ export const DEFAULT_RACE_ENGINEER_VOICE = qualifiedVoiceId(ENSURED_VOICE_PACK_I
  * id — every stored selection from before voice ids were namespaced by pack,
  * or a hand-edited file — is taken to mean `default::<id>` when the managed
  * pack provides it, else the alphabetically first pack that does, which is
- * exactly the order that decided who won a voice id before. So the voice a
- * user was hearing is the voice they keep, before and without the write
- * `migrateRaceEngineerVoiceId` makes. A composite value is used as it is.
+ * the order that decided who won a voice id before for every lowercase pack
+ * folder (a hand-made folder with capitals sorted differently then — see
+ * `qualifyVoiceId`). So the voice a user was hearing is the voice they keep,
+ * before and without the write `migrateRaceEngineerVoiceId` makes. A
+ * composite value is used as it is.
  * This is a read; nothing here rewrites the setting.
  *
  * The anchor is what stops an installed voice pack quietly becoming somebody's
