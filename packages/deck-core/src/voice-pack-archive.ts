@@ -331,7 +331,7 @@ function checkEntryName(raw: string): EntryNameCheck {
     const last = segments[segments.length - 1] ?? "";
 
     // Lowercase exactly, because the scanner's pool grammar is case-sensitive:
-    // `blue-01.MP3` would install, claim its voice, and never play.
+    // `blue-01.MP3` would install, list its voice, and never play.
     if (!ACCEPTED_EXTENSIONS.some((extension) => last.endsWith(extension))) {
       return { ok: false, code: "extension", problem: "is not a .mp3 or .json file (the extension must be lowercase)" };
     }

@@ -3,14 +3,15 @@
  * Race Engineer Voice Select Web Component for Stream Deck Property Inspector
  *
  * A styled `<select>` bound to a plugin-global setting that stores the
- * active Race Engineer voice key (e.g. `"luca"`, `"titan"`). Options come
- * from a second global setting (a JSON string array of voice keys) which
- * the plugin maintains by inspecting `voice/<voice>/…` paths in
- * `@iracedeck/audio-assets/manifest.json`.
+ * active Race Engineer voice id — composite since #1144, `<pack id>::<voice
+ * id>` (e.g. `"default::default"`). Options come from a second global setting
+ * (a JSON string array of voice ids) which the plugin maintains by inspecting
+ * the `voice/<voice>/…` paths of its merged manifest.
  *
- * If the persisted voice isn't in the current list (e.g. a TTS regen
- * removed it), the dropdown falls back to the first available voice and
- * persists that choice.
+ * If the persisted voice isn't in the current list, a bare pre-#1144 id is
+ * first read through the plugin's own qualification rule; failing that, the
+ * dropdown shows the `default` voice or the first entry, and persists that
+ * only when there was no choice to lose (see `applySavedValue`).
  *
  * Usage:
  * ```html
@@ -29,7 +30,8 @@
  *   voice keys (default: `_raceEngineerVoices`).
  * - labels: Plugin-global setting key holding a JSON `{ id: label }` map of the
  *   names packs gave their voices (default: `_voiceLabels`, issue #1034). A
- *   voice with no entry falls back to its capitalised id.
+ *   voice with no entry falls back to its capitalised id — the voice half of
+ *   a composite `<pack>::<voice>` id (#1144).
  *
  * The plugin populates both in ONE write, so the dropdown can never pair one
  * scan's voices with another scan's names.
@@ -41,6 +43,68 @@ let styleInjected = false;
 const DEFAULT_SETTING = "raceEngineerVoice";
 const DEFAULT_VOICES_SETTING = "_raceEngineerVoices";
 const DEFAULT_LABELS_SETTING = "_voiceLabels";
+
+/**
+ * @internal Exported for testing — the separator of a composite voice id,
+ * `<pack id>::<voice id>` (#1144): a copy of `VOICE_ID_SEPARATOR` in
+ * `@iracedeck/callout-script`. A copy because this file ships in the PI
+ * browser bundle, which resolves no workspace package — and that one would
+ * pull `zod` in with it. `voice-select.test.ts` pins the copy to the shared
+ * constant, so the two cannot drift apart.
+ */
+export const VOICE_SEPARATOR = "::";
+
+/**
+ * @internal Exported for testing — a copy of `splitVoiceId`: `{ packId,
+ * voiceId }` for exactly one separator with both halves non-empty, `null` for
+ * anything else — a bare id, a malformed one.
+ */
+export function splitVoice(id: string): { packId: string; voiceId: string } | null {
+  const parts = id.split(VOICE_SEPARATOR);
+
+  if (parts.length !== 2 || parts[0].length === 0 || parts[1].length === 0) return null;
+
+  return { packId: parts[0], voiceId: parts[1] };
+}
+
+/**
+ * @internal Exported for testing — the voice half of a composite id, read as
+ * `splitVoiceId` reads it. Anything else — a bare id, a malformed one — is
+ * returned whole.
+ */
+export function voiceHalf(id: string): string {
+  return splitVoice(id)?.voiceId ?? id;
+}
+
+/**
+ * @internal Exported for testing — a copy of `qualifyVoiceId` (#1144), the
+ * rule the plugin's `resolveActiveRaceEngineerVoice` reads a stored value
+ * through: empty, composite, or a bare id that is itself listed → unchanged;
+ * otherwise `<managedPackId>::<id>` when that pack provides the voice, else
+ * the provider with the alphabetically first PACK id, else unchanged. A copy
+ * for the reason {@link VOICE_SEPARATOR} is one; `voice-select.test.ts` pins
+ * it to the shared rule over a table of cases. An empty `managedPackId`
+ * matches no pack, which is how a caller with no managed pack skips that step.
+ */
+export function qualifyVoice(stored: string, available: readonly string[], managedPackId: string): string {
+  if (stored.length === 0 || stored.includes(VOICE_SEPARATOR) || available.includes(stored)) return stored;
+
+  const providers: string[] = [];
+
+  for (const id of available) {
+    const split = splitVoice(id);
+
+    if (split !== null && split.voiceId === stored) providers.push(split.packId);
+  }
+
+  if (providers.includes(managedPackId)) return `${managedPackId}${VOICE_SEPARATOR}${stored}`;
+
+  if (providers.length === 0) return stored;
+
+  providers.sort();
+
+  return `${providers[0]}${VOICE_SEPARATOR}${stored}`;
+}
 
 function titleCase(s: string): string {
   return s.length === 0 ? s : s.charAt(0).toUpperCase() + s.slice(1);
@@ -224,8 +288,10 @@ export class VoiceSelect extends HTMLElement {
       opt.value = voice;
       // The pack's own name for this voice when it declared one, otherwise the
       // id capitalised — which is what every voice showed before packs could
-      // name theirs, and is why the bundled voice needs no entry.
-      opt.textContent = this.labels[voice] ?? titleCase(voice);
+      // name theirs, and is why a voice with no manifest needs no entry. Only
+      // the voice half of a composite id (#1144): `default::default` is an
+      // identity, not something a user should read.
+      opt.textContent = this.labels[voice] ?? titleCase(voiceHalf(voice));
       this.select.appendChild(opt);
     }
   }
@@ -233,7 +299,8 @@ export class VoiceSelect extends HTMLElement {
   private applySavedValue(): void {
     if (!this.select || this.select.options.length === 0) return;
 
-    const exists = Array.from(this.select.options).some((opt) => opt.value === this.savedValue);
+    const options = Array.from(this.select.options);
+    const exists = options.some((opt) => opt.value === this.savedValue);
 
     if (exists) {
       this.select.value = this.savedValue;
@@ -241,8 +308,25 @@ export class VoiceSelect extends HTMLElement {
       return;
     }
 
-    // Saved value isn't in the list (cold start with no preference, or a voice
-    // was removed). Show the fallback either way.
+    // A bare id from before #1144 shows as the voice the plugin plays it as:
+    // `resolveActiveRaceEngineerVoice` reads it through `qualifyVoiceId` before
+    // falling back, and the migration that writes the composite down waits for
+    // the managed pack — so without this, a user whose voice only a sideloaded
+    // pack provides would see the first entry while hearing their own voice.
+    // The managed pack is the one the `default` attribute names; with no
+    // composite there, the managed step is skipped. Display only: the stored
+    // value is the user's choice and already resolves, so nothing is persisted.
+    const managedPackId = splitVoice(this.getAttribute("default") ?? "")?.packId ?? "";
+    const qualified = qualifyVoice(this.savedValue, this.voices, managedPackId);
+
+    if (qualified !== this.savedValue && options.some((opt) => opt.value === qualified)) {
+      this.select.value = qualified;
+
+      return;
+    }
+
+    // Saved value isn't in the list, however it is read (cold start with no
+    // preference, or a voice was removed). Show the fallback either way.
     const fallback = this.resolveFallback();
     this.select.value = fallback;
 

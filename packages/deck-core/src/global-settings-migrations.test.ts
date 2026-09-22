@@ -1,7 +1,7 @@
 import type { ILogger } from "@iracedeck/logger";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { migrateGlobalSettingsKeys } from "./global-settings-migrations.js";
+import { migrateGlobalSettingsKeys, migrateRaceEngineerVoiceId } from "./global-settings-migrations.js";
 import {
   _resetGlobalSettings,
   getGlobalSettings,
@@ -134,5 +134,127 @@ describe("migrateGlobalSettingsKeys", () => {
     expect(cache().setupChassisLrSpringIncrease).toBe("OLD-BINDING");
     expect(cache().setupChassisLeftSpringIncrease).toBeUndefined();
     expect(store.saved).toHaveLength(savesAfterMigration + 1); // only the unrelated write
+  });
+});
+
+describe("migrateRaceEngineerVoiceId (#1144)", () => {
+  const VOICES = ["aaa::default", "default::default", "zeta::matt", "beta::matt"];
+
+  beforeEach(() => {
+    _resetGlobalSettings();
+  });
+
+  afterEach(() => {
+    _resetGlobalSettings();
+  });
+
+  it("does nothing before the settings store is ready, even with a bare value in the cache", () => {
+    // A startup write can put a bare value in the cache before the load — so
+    // the value alone is not what stops the migration; the readiness gate is.
+    // Without it this would qualify and write.
+    const store = initWithStore({ raceEngineerVoice: "default" });
+    updateGlobalSettings({ raceEngineerVoice: "default" });
+    const saves = store.saved.length;
+
+    expect(migrateRaceEngineerVoiceId(VOICES, createMockLogger())).toBe(false);
+    expect(cache().raceEngineerVoice).toBe("default");
+    expect(store.saved).toHaveLength(saves);
+  });
+
+  it("waits for the managed pack before persisting anything, whatever else is available", async () => {
+    // A leftover sideload declaring a voice called `default` (refused before
+    // 3.3.0, never deleted) while `default` itself is still downloading: the
+    // alphabetical half alone would write `aaa::default` for good. The
+    // resolver still reads the value through the same rule meanwhile, so
+    // nothing is silent; the scan that installs `default` persists the answer.
+    const store = initWithStore({ raceEngineerVoice: "default" });
+    await tick();
+    const saves = store.saved.length;
+
+    expect(migrateRaceEngineerVoiceId(["aaa::default", "zeta::matt"], createMockLogger())).toBe(false);
+    expect(cache().raceEngineerVoice).toBe("default");
+    expect(store.saved).toHaveLength(saves);
+
+    expect(migrateRaceEngineerVoiceId(["aaa::default", "default::default"], createMockLogger())).toBe(true);
+    expect(cache().raceEngineerVoice).toBe("default::default");
+  });
+
+  it("persists an alphabetical answer once the managed pack is present, even for a voice it lacks", async () => {
+    // The gate is about the managed PACK being there, not about it providing
+    // this voice: with `default` installed the pre-3.3.0 order is fully known.
+    initWithStore({ raceEngineerVoice: "matt" });
+    await tick();
+
+    expect(migrateRaceEngineerVoiceId(["default::default", "zeta::matt", "beta::matt"], createMockLogger())).toBe(true);
+    expect(cache().raceEngineerVoice).toBe("beta::matt");
+  });
+
+  it("qualifies a bare id the managed pack provides, in one write", async () => {
+    const store = initWithStore({ raceEngineerVoice: "default" });
+    await tick();
+    const saves = store.saved.length;
+    const logger = createMockLogger();
+
+    expect(migrateRaceEngineerVoiceId(VOICES, logger)).toBe(true);
+    expect(cache().raceEngineerVoice).toBe("default::default");
+    expect(store.saved).toHaveLength(saves + 1);
+    expect((store.saved.at(-1) as Record<string, unknown>).raceEngineerVoice).toBe("default::default");
+    expect(logger.info).toHaveBeenCalledWith("Qualified the Race Engineer voice with its pack");
+    expect(logger.debug).toHaveBeenCalledWith("default -> default::default");
+  });
+
+  it("qualifies a bare id only another pack provides with the alphabetically first one", async () => {
+    initWithStore({ raceEngineerVoice: "matt" });
+    await tick();
+
+    expect(migrateRaceEngineerVoiceId(VOICES, createMockLogger())).toBe(true);
+    expect(cache().raceEngineerVoice).toBe("beta::matt");
+  });
+
+  it("is idempotent — a second call writes nothing", async () => {
+    const store = initWithStore({ raceEngineerVoice: "default" });
+    await tick();
+
+    migrateRaceEngineerVoiceId(VOICES, createMockLogger());
+    const saves = store.saved.length;
+
+    expect(migrateRaceEngineerVoiceId(VOICES, createMockLogger())).toBe(false);
+    expect(store.saved).toHaveLength(saves);
+  });
+
+  it("never touches a composite value, even one no pack provides", async () => {
+    const store = initWithStore({ raceEngineerVoice: "gone::voice" });
+    await tick();
+    const saves = store.saved.length;
+
+    expect(migrateRaceEngineerVoiceId(VOICES, createMockLogger())).toBe(false);
+    expect(cache().raceEngineerVoice).toBe("gone::voice");
+    expect(store.saved).toHaveLength(saves);
+  });
+
+  it("keeps a bare id no pack provides, so a pack arriving later can still qualify it", async () => {
+    // The managed pack is present but does not provide this voice, and no
+    // other pack does yet: the value must survive untouched for the re-run
+    // after a later scan, never be replaced by a fallback the user did not
+    // choose.
+    const store = initWithStore({ raceEngineerVoice: "matt" });
+    await tick();
+    const saves = store.saved.length;
+
+    expect(migrateRaceEngineerVoiceId(["default::default"], createMockLogger())).toBe(false);
+    expect(cache().raceEngineerVoice).toBe("matt");
+    expect(store.saved).toHaveLength(saves);
+
+    expect(migrateRaceEngineerVoiceId(["default::default", "zeta::matt"], createMockLogger())).toBe(true);
+    expect(cache().raceEngineerVoice).toBe("zeta::matt");
+  });
+
+  it("does nothing for an empty value", async () => {
+    const store = initWithStore({ raceEngineerVoice: "" });
+    await tick();
+    const saves = store.saved.length;
+
+    expect(migrateRaceEngineerVoiceId(VOICES, createMockLogger())).toBe(false);
+    expect(store.saved).toHaveLength(saves);
   });
 });

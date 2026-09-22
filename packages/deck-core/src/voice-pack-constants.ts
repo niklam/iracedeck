@@ -25,8 +25,9 @@
 export const VOICE_PACKS_KEY = "_voicePacks";
 
 /**
- * Passthrough global mapping a voice id to the label its pack declared, as JSON:
- * `{ "<voice-id>": "<label>", … }`.
+ * Passthrough global mapping a voice's composite id (`<pack id>::<voice id>`,
+ * #1144) to the label its pack declared, as JSON:
+ * `{ "<pack-id>::<voice-id>": "<label>", … }`.
  *
  * A separate key from `_raceEngineerVoices` on purpose. That list is the set of
  * voices that EXIST, derived from the merged manifest's clip paths, and it is
@@ -41,11 +42,22 @@ export const VOICE_PACKS_KEY = "_voicePacks";
  * shorter life than the list is exactly the drift keeping them in one write
  * exists to prevent.
  *
- * Absence is normal, not an error. A voice with no entry — the bundled one,
- * which has no manifest to declare a label in — renders as `titleCase(id)`,
- * which is what every voice rendered as before this key existed.
+ * Absence is normal, not an error. A voice with no entry renders as the title
+ * case of its voice half, which is what every voice rendered as before this
+ * key existed.
  */
 export const VOICE_LABELS_KEY = "_voiceLabels";
+
+/**
+ * The pack iRaceDeck keeps current unasked (#1034 stage 3) — a PACK id, and
+ * the pack half of the default voice's composite id (#1144).
+ *
+ * Here rather than in `voice-pack-launch.ts`, which owns the ensure and
+ * re-exports it: `global-settings.ts` needs it to anchor the default voice and
+ * to qualify a stored bare id, and importing the launch step from there would
+ * close a cycle the plugins' Rollup builds fail on.
+ */
+export const ENSURED_VOICE_PACK_ID = "default";
 
 /**
  * Passthrough global holding what this run knows about downloadable packs, as

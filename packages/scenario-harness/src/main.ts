@@ -111,13 +111,11 @@ async function main(): Promise<void> {
   const manifest = getAudioAssetsManifest();
   // Every voice the authored manifest describes — since #1034 stage 3 that is
   // no longer "what a plugin bundles": the harness auditions every PUBLISHED
-  // voice. The scanner-facing dep it feeds is still named `bundledVoices`
-  // (`voice-scripts.ts`), which is the reserved-voices list it maps onto — and
-  // the harness DOES reserve them, where a plugin now reserves nothing: these
-  // voices play from the audio-assets source tree here, so a pack under
-  // `IRACEDECK_VOICE_PACKS_PATH` claiming one of their ids (a downloaded
-  // `default`) would only add extra takes into a voice already being
-  // auditioned, a half-merged voice nobody asked for. Dropped instead.
+  // voice, from the audio-assets source tree, under its bare id. A pack under
+  // `IRACEDECK_VOICE_PACKS_PATH` lists its voices by their composite
+  // `<pack>::<voice>` ids (#1144), so a downloaded `default` there is a second,
+  // distinct voice — `default::default` beside the source tree's `default` —
+  // each playing only its own clips.
   const { raceEngineerVoices: publishedVoices } = seedGlobalSettings(adapter);
   // A `let`, like the plugins' `raceEngineerVoices`: an installed voice pack
   // (below) extends the list after the engine is constructed.
@@ -135,6 +133,9 @@ async function main(): Promise<void> {
     audio,
     manifest,
     logger.createScope("AudioScenarios"),
+    // The plugins' own resolver. A stored bare id that is itself in the list —
+    // the source tree's `default` — is taken as it is, so it stays pickable
+    // beside an installed `default::default` (#1144).
     () => resolveActiveRaceEngineerVoice(raceEngineerVoices),
     getFrameOptions,
   );
@@ -236,7 +237,6 @@ async function main(): Promise<void> {
       root: voicePacksRoot,
       pluginAudioDir: audioBasePath,
       bundledManifest: manifest,
-      bundledVoices: publishedVoices,
       bundledScripts,
       logger: voicePacksLogger,
       applyRoots: (roots) => audio.setRoots(roots),

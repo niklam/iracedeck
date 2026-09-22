@@ -25,7 +25,7 @@ export {
   initializeAudioScenarios,
   isAudioScenariosInitialized,
 } from "./interpreter.js";
-export { manifestVoices, mergeManifests, scanDriverNames, scanRaceEngineerVoices } from "./manifest.js";
+export { manifestVoices, mergeManifests, referenceVoice, scanDriverNames, scanRaceEngineerVoices } from "./manifest.js";
 // The pack-author reference (#1066): the pure builder the root generator
 // `scripts/generate-pack-reference.mjs` calls off this package's dist.
 export type {

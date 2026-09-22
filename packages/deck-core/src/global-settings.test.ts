@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   _resetGlobalSettings,
+  DEFAULT_RACE_ENGINEER_VOICE,
   deleteGlobalSettings,
   frameOptionsFromSettings,
   getGlobalSettings,
@@ -608,40 +609,89 @@ describe("resolveActiveRaceEngineerVoice", () => {
   });
 
   describe("an installed pack cannot become the engineer by sorting first (#1034)", () => {
+    // The anchor is the managed pack's own voice, `default::default` (#1144).
     it("prefers the default voice over an alphabetically earlier pack", () => {
       // Nothing persisted: the user has never opened the dropdown, so their
       // engineer is the default one and a pack is not entitled to displace it.
-      expect(resolveActiveRaceEngineerVoice(["aria", "default"])).toBe("default");
+      expect(resolveActiveRaceEngineerVoice(["aria::aria", "default::default"])).toBe("default::default");
     });
 
     it("prefers it over a pack whose id sorts earlier than the persisted value's replacement", async () => {
       await initWithStore({ raceEngineerVoice: "removed-voice" });
 
-      expect(resolveActiveRaceEngineerVoice(["aria", "default", "zeta"])).toBe("default");
+      expect(resolveActiveRaceEngineerVoice(["aria::aria", "default::default", "zeta::zeta"])).toBe("default::default");
     });
 
     it("still returns a pack the user actually chose", async () => {
-      await initWithStore({ raceEngineerVoice: "aria" });
+      await initWithStore({ raceEngineerVoice: "aria::aria" });
 
-      expect(resolveActiveRaceEngineerVoice(["aria", "default"])).toBe("aria");
+      expect(resolveActiveRaceEngineerVoice(["aria::aria", "default::default"])).toBe("aria::aria");
     });
 
     it("falls through to the first entry when the anchor itself is not installed", () => {
-      // A build or install whose manifest has no `default` voice — the release
-      // that stops bundling audio, or a packs-only install. Picking something
-      // the user can change beats going silent.
-      expect(resolveActiveRaceEngineerVoice(["aria", "zeta"])).toBe("aria");
+      // A packs-only install with no managed pack yet — a fresh launch still
+      // downloading `default`. Picking something the user can change beats
+      // going silent.
+      expect(resolveActiveRaceEngineerVoice(["aria::aria", "zeta::zeta"])).toBe("aria::aria");
     });
 
     it("honours an explicit anchor over the built-in one", () => {
-      expect(resolveActiveRaceEngineerVoice(["aria", "default", "zeta"], "zeta")).toBe("zeta");
+      expect(resolveActiveRaceEngineerVoice(["aria::aria", "default::default", "zeta::zeta"], "zeta::zeta")).toBe(
+        "zeta::zeta",
+      );
     });
 
-    it("is anchored by NAME, not by position — a second bundled voice does not move it (#999)", () => {
-      // `short-calls` arrives bundled alongside `default`. A rule phrased as
-      // "the first bundled voice" would have flipped the answer here.
-      expect(resolveActiveRaceEngineerVoice(["default", "short-calls"])).toBe("default");
-      expect(resolveActiveRaceEngineerVoice(["aria", "default", "short-calls"])).toBe("default");
+    it("is anchored by NAME, not by position — a second voice in the managed pack does not move it", () => {
+      // A rule phrased as "the first voice" or "the managed pack's first
+      // voice" would flip the answer here.
+      expect(resolveActiveRaceEngineerVoice(["default::default", "default::short-calls"])).toBe("default::default");
+      expect(resolveActiveRaceEngineerVoice(["aria::aria", "default::default", "default::short-calls"])).toBe(
+        "default::default",
+      );
+    });
+
+    it("anchors on default::default, the managed pack's own voice", () => {
+      expect(DEFAULT_RACE_ENGINEER_VOICE).toBe("default::default");
+    });
+  });
+
+  describe("a stored bare id is qualified at read time (#1144)", () => {
+    // The same rule the migration persists, applied on every read, so a
+    // hand-edited settings file — or a value the migration has not yet
+    // written — resolves to the voice it meant before the write lands.
+    it("qualifies a bare id with the managed pack when that pack provides it", async () => {
+      await initWithStore({ raceEngineerVoice: "default" });
+
+      expect(resolveActiveRaceEngineerVoice(["aaa::default", "default::default"])).toBe("default::default");
+    });
+
+    it("qualifies a bare id with the alphabetically first pack otherwise", async () => {
+      await initWithStore({ raceEngineerVoice: "matt" });
+
+      expect(resolveActiveRaceEngineerVoice(["default::default", "zeta::matt", "beta::matt"])).toBe("beta::matt");
+    });
+
+    it("keeps a composite choice as it is", async () => {
+      await initWithStore({ raceEngineerVoice: "zeta::matt" });
+
+      expect(resolveActiveRaceEngineerVoice(["default::default", "zeta::matt", "beta::matt"])).toBe("zeta::matt");
+    });
+
+    it("falls back to the managed voice, then the first, for a bare id no pack provides", async () => {
+      await initWithStore({ raceEngineerVoice: "ghost" });
+
+      expect(resolveActiveRaceEngineerVoice(["aria::aria", "default::default"])).toBe("default::default");
+      expect(resolveActiveRaceEngineerVoice(["aria::aria", "zeta::zeta"])).toBe("aria::aria");
+    });
+
+    it("never writes the qualified value back — that is the migration's job", async () => {
+      const { store } = await initWithStore({ raceEngineerVoice: "default" });
+      const saves = store.saved.length;
+
+      resolveActiveRaceEngineerVoice(["default::default"]);
+
+      expect(store.saved).toHaveLength(saves);
+      expect((getGlobalSettings() as Record<string, unknown>).raceEngineerVoice).toBe("default");
     });
   });
 });

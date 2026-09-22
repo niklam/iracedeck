@@ -137,7 +137,7 @@ const ZIP_ENTRY_OPTIONS = Object.freeze({ level: 9, mtime: ZIP_ENTRY_MTIME, os: 
  * than trusting this copy.
  *
  * A clip this refuses is a build FAILURE, never a warning. A pack carrying it
- * would install cleanly, claim its voice, and then be silent for that clip —
+ * would install cleanly, list its voice, and then be silent for that clip —
  * with the only trace at debug level on the user's machine.
  */
 const USABLE_CLIP = /^voice\/[^/]+\/[^/]+\/[^/]+\.mp3$/;
@@ -184,7 +184,7 @@ function assertPackDefinition(pack) {
  * Refuse to pack a callout script the scanner would refuse (#1064).
  *
  * The scanner drops a voice whose `callouts.json` fails to read, to parse or
- * to validate — so a pack carrying one would install cleanly, claim nothing,
+ * to validate — so a pack carrying one would install cleanly, provide nothing,
  * and be silent, with the only trace a line in Installed Voices on the user's
  * machine. Checked HERE, before a single clip of the voice is staged, with the
  * grammar's own text stage (`parseCalloutScriptText`): the very function the

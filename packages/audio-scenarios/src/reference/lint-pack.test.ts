@@ -75,9 +75,6 @@ const compile = (script: CalloutScript) => compileVoiceScript(script, DEPS);
 /** The plugin's built-ins as its manifest lists them — the frame's tick paths are checked against these. */
 const SHARED_CLIPS = ["sfx/IRD-ambient-pit.mp3", "sfx/IRD-tick-close.mp3", "sfx/IRD-tick-open.mp3"];
 
-/** The voice id of the pack iRaceDeck keeps current; a pack declaring it has that voice dropped. */
-const MANAGED_VOICE_IDS = ["default"];
-
 // ─── The fixture pack ────────────────────────────────────────────────────────
 
 const PACK_DIR = "/packs/demo";
@@ -175,7 +172,6 @@ function lint(files: Files, overrides: Partial<Omit<LintPackInput, "fs" | "packD
     vocabulary: VOCABULARY,
     compile,
     sharedClips: SHARED_CLIPS,
-    managedVoiceIds: MANAGED_VOICE_IDS,
     pluginPlayedBases: [],
     ...overrides,
   });
@@ -516,7 +512,7 @@ describe("lintPack", () => {
     expect(lint(packFiles({}), { packDirName: "DEMO" }).problems).toEqual([]);
   });
 
-  it("reports a voice id that belongs to the pack iRaceDeck keeps current — the plugin drops this pack's copy", () => {
+  it("says nothing about a voice id another pack also declares — ids are unique within a pack only (#1144)", () => {
     const manifest = JSON.stringify({
       schema: 1,
       id: "demo",
@@ -529,11 +525,56 @@ describe("lintPack", () => {
     });
     const report = lint(packFiles({ manifest, clips: [...CLIPS, "voice/default/flags/green-01.mp3"] }));
 
+    // The managed pack's voice is `default::default`; this one is `demo::default`.
     expect(messages(report.problems)).toEqual([
-      '(pack) manifest: voice-pack.json: voices[1].id "default" belongs to the pack iRaceDeck keeps current, which claims it first — the plugin drops this pack\'s copy of the voice; pick a different voice id',
       "default script: no voice/default/callouts.json — a clips-only voice: every callout is skipped in it, and the plugin shows the missing-script banner when it is selected",
     ]);
     expect(report.voices.map((v) => v.id)).toEqual([VOICE, "default"]);
+  });
+
+  it("reports a voice id declared twice in one pack, as the scanner does, and lints it once (#1144)", () => {
+    // Unique within a pack is the one rule a voice id still has. The scanner
+    // keeps the first entry and says so; a lint that only de-duplicated would
+    // pass a pack whose second name the author never sees anywhere.
+    const manifest = JSON.stringify({
+      schema: 1,
+      id: "demo",
+      label: "Demo",
+      version: "1.0.0",
+      voices: [
+        { id: VOICE, label: "Demo voice" },
+        { id: VOICE, label: "Same voice, other name" },
+      ],
+    });
+    const report = lint(packFiles({ manifest }));
+
+    expect(messages(report.problems)).toEqual([
+      `(pack) manifest: voice-pack.json: voices[1].id "${VOICE}" is declared more than once; the first wins`,
+    ]);
+    expect(report.voices.map((v) => v.id)).toEqual([VOICE]);
+  });
+
+  it('names the separator when a pack id or a voice id contains "::", ahead of the kebab-case rule (#1144)', () => {
+    const manifest = JSON.stringify({
+      schema: 1,
+      id: "demo::pack",
+      label: "Demo",
+      version: "1.0.0",
+      voices: [
+        { id: VOICE, label: "Demo voice" },
+        { id: "demo::matt", label: "Qualified by hand" },
+        { id: "Other::Matt", label: "Not kebab-case either" },
+      ],
+    });
+    const report = lint(packFiles({ manifest }));
+
+    expect(messages(report.problems)).toEqual([
+      '(pack) manifest: voice-pack.json: id "demo::pack" must not contain "::" — iRaceDeck joins a pack id and a voice id with it; the plugin refuses the manifest',
+      '(pack) manifest: voice-pack.json: voices[1].id "demo::matt" must not contain "::" — iRaceDeck joins a pack id and a voice id with it; the plugin refuses the manifest',
+      '(pack) manifest: voice-pack.json: voices[2].id "Other::Matt" must not contain "::" — iRaceDeck joins a pack id and a voice id with it; the plugin refuses the manifest',
+    ]);
+    // Like any other refused id, a voice id with the separator is never used as a path.
+    expect(report.voices.map((v) => v.id)).toEqual([VOICE]);
   });
 
   it("reports a declared id the plugin would refuse, or one that is not a string, and lints the rest", () => {

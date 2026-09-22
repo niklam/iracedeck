@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 
-import { voiceDisplayLabels } from "./voice-labels.js";
 import { scanVoicePacks, VOICE_SCRIPT_MAX_BYTES, type VoicePackFileSystem } from "./voice-pack-scanner.js";
 
 const ROOT = "/packs";
@@ -90,7 +89,7 @@ const luca = { schema: 1, id: "luca", label: "Luca", version: "1.2.0", voices: [
 
 describe("scanVoicePacks", () => {
   it("returns nothing for a missing or empty root", () => {
-    const result = scanVoicePacks({ root: ROOT, reservedVoices: [], fs: fakeFs({}) });
+    const result = scanVoicePacks({ root: ROOT, fs: fakeFs({}) });
 
     expect(result.packs).toEqual([]);
     expect(result.problems).toEqual([]);
@@ -99,7 +98,6 @@ describe("scanVoicePacks", () => {
   it("reads a pack and its clips", () => {
     const result = scanVoicePacks({
       root: ROOT,
-      reservedVoices: [],
       fs: fakeFs({ luca: { manifest: luca, clips: ["voice/luca/flags/blue-01.mp3"] } }),
     });
 
@@ -108,14 +106,16 @@ describe("scanVoicePacks", () => {
       id: "luca",
       label: "Luca",
       version: "1.2.0",
-      voices: [{ id: "luca", label: "Luca" }],
+      // The voice's identity outside the pack is `<pack>::<voice>` (#1144);
+      // the bare declared id names its folder, and the clips keep that spelling.
+      voices: [{ id: "luca::luca", packVoiceId: "luca", label: "Luca" }],
       clips: ["voice/luca/flags/blue-01.mp3"],
     });
     expect(result.packs[0].dir.replace(/\\/g, "/")).toBe("/packs/luca");
   });
 
   it("reports a folder with no voice-pack.json instead of throwing", () => {
-    const result = scanVoicePacks({ root: ROOT, reservedVoices: [], fs: fakeFs({ junk: { clips: [] } }) });
+    const result = scanVoicePacks({ root: ROOT, fs: fakeFs({ junk: { clips: [] } }) });
 
     expect(result.packs).toEqual([]);
     expect(result.problems).toEqual([{ pack: "junk", reason: "no voice-pack.json" }]);
@@ -127,7 +127,6 @@ describe("scanVoicePacks", () => {
     // paragraph of the docs that cannot help them — the file is right there.
     const result = scanVoicePacks({
       root: ROOT,
-      reservedVoices: [],
       fs: fakeFs({ luca: { manifest: UNREADABLE, clips: ["voice/luca/flags/a.mp3"] } }),
     });
 
@@ -138,7 +137,6 @@ describe("scanVoicePacks", () => {
   it("reports a malformed manifest and keeps scanning the others", () => {
     const result = scanVoicePacks({
       root: ROOT,
-      reservedVoices: [],
       fs: fakeFs({
         broken: { manifest: "{nope", clips: [] },
         luca: { manifest: luca, clips: ["voice/luca/flags/blue-01.mp3"] },
@@ -152,7 +150,6 @@ describe("scanVoicePacks", () => {
   it("keeps only clips under a declared voice", () => {
     const result = scanVoicePacks({
       root: ROOT,
-      reservedVoices: [],
       fs: fakeFs({
         luca: {
           manifest: luca,
@@ -167,7 +164,6 @@ describe("scanVoicePacks", () => {
   it("drops a pack whose clips are all outside its declared voices", () => {
     const result = scanVoicePacks({
       root: ROOT,
-      reservedVoices: [],
       fs: fakeFs({ luca: { manifest: luca, clips: ["voice/other/flags/blue-01.mp3"] } }),
     });
 
@@ -178,12 +174,23 @@ describe("scanVoicePacks", () => {
   it("ignores a pack whose folder name does not match its declared id", () => {
     const result = scanVoicePacks({
       root: ROOT,
-      reservedVoices: [],
       fs: fakeFs({ renamed: { manifest: luca, clips: ["voice/luca/flags/blue-01.mp3"] } }),
     });
 
     expect(result.packs).toEqual([]);
     expect(result.problems[0].reason).toContain("does not match");
+  });
+
+  it("refuses a manifest whose id carries the voice-id separator, naming the separator (#1144)", () => {
+    // The manifest is parsed before the folder-name check, so the reason a
+    // user reads is the separator's, not "does not match its folder name".
+    const result = scanVoicePacks({
+      root: ROOT,
+      fs: fakeFs({ "a::b": { manifest: { ...luca, id: "a::b" }, clips: ["voice/luca/flags/blue-01.mp3"] } }),
+    });
+
+    expect(result.packs).toEqual([]);
+    expect(result.problems).toEqual([{ pack: "a::b", reason: expect.stringMatching(/^id: must not contain "::"/) }]);
   });
 
   it("accepts a pack whose folder differs from its id only by case", () => {
@@ -194,7 +201,6 @@ describe("scanVoicePacks", () => {
     // satisfied to whoever is looking at the folder.
     const result = scanVoicePacks({
       root: ROOT,
-      reservedVoices: [],
       fs: fakeFs({ Luca: { manifest: luca, clips: ["voice/luca/flags/blue-01.mp3"] } }),
     });
 
@@ -203,21 +209,32 @@ describe("scanVoicePacks", () => {
     expect(result.packs[0].dir.replace(/\\/g, "/")).toBe("/packs/Luca");
   });
 
-  it("resolves a voice claimed by two packs to the first by sorted pack id, and reports the loser", () => {
+  it("lists a voice two packs both declare under each pack's composite id (#1144)", () => {
+    // Before #1144 the first pack by sorted id claimed the voice and the other
+    // was muted with a problem row. Now a voice id is unique within a pack
+    // only: both are listed, both keep their clips, and nothing is reported.
     const result = scanVoicePacks({
       root: ROOT,
-      reservedVoices: [],
       fs: fakeFs({
         zeta: { manifest: { ...luca, id: "zeta" }, clips: ["voice/luca/flags/blue-01.mp3"] },
         alpha: { manifest: { ...luca, id: "alpha" }, clips: ["voice/luca/flags/blue-01.mp3"] },
       }),
     });
 
-    expect(result.packs.map((p) => p.id)).toEqual(["alpha"]);
-    expect(result.problems).toEqual([{ pack: "zeta", reason: 'voice "luca" is already provided by pack "alpha"' }]);
+    expect(result.problems).toEqual([]);
+    expect(result.packs.map((p) => p.id)).toEqual(["alpha", "zeta"]);
+    expect(result.packs.map((p) => p.voices.map((v) => v.id))).toEqual([["alpha::luca"], ["zeta::luca"]]);
+    expect(result.packs.map((p) => p.voices.map((v) => v.packVoiceId))).toEqual([["luca"], ["luca"]]);
+    expect(result.packs.map((p) => p.clips)).toEqual([
+      ["voice/luca/flags/blue-01.mp3"],
+      ["voice/luca/flags/blue-01.mp3"],
+    ]);
   });
 
-  describe("priorityPacks (#1034 stage 3)", () => {
+  it("lists a sideloaded pack declaring `default` beside the managed pack, neither displacing the other", () => {
+    // The case `priorityPacks` existed for (#1034 stage 3): a sideload sorting
+    // before `default` used to take the `default` VOICE id off the pack the
+    // plugin keeps current. With composite ids there is nothing to take.
     const aaa = { schema: 1, id: "aaa", label: "Aaa", version: "1.0.0", voices: [{ id: "default", label: "Mine" }] };
     const dflt = {
       schema: 1,
@@ -226,53 +243,21 @@ describe("scanVoicePacks", () => {
       version: "1.0.0",
       voices: [{ id: "default", label: "Default" }],
     };
-    const tree = {
-      aaa: { manifest: aaa, clips: ["voice/default/flags/blue-01.mp3"] },
-      default: { manifest: dflt, clips: ["voice/default/flags/blue-01.mp3"] },
-    };
-
-    it("lets the named packs claim their voices before the alphabetical order does", () => {
-      // With nothing reserved, a sideloaded `aaa` sorts before `default` and
-      // would take the `default` VOICE id off the pack the plugin keeps
-      // current — the managed pack claims first.
-      const result = scanVoicePacks({ root: ROOT, reservedVoices: [], priorityPacks: ["default"], fs: fakeFs(tree) });
-
-      expect(result.packs.map((p) => p.id)).toEqual(["default"]);
-      expect(result.problems).toEqual([
-        { pack: "aaa", reason: 'voice "default" is already provided by pack "default"' },
-      ]);
+    const result = scanVoicePacks({
+      root: ROOT,
+      fs: fakeFs({
+        aaa: { manifest: aaa, clips: ["voice/default/flags/blue-01.mp3"] },
+        default: { manifest: dflt, clips: ["voice/default/flags/blue-01.mp3"] },
+      }),
     });
 
-    it("keeps the alphabetical order without it", () => {
-      const result = scanVoicePacks({ root: ROOT, reservedVoices: [], fs: fakeFs(tree) });
-
-      expect(result.packs.map((p) => p.id)).toEqual(["aaa"]);
-      expect(result.problems).toEqual([
-        { pack: "default", reason: 'voice "default" is already provided by pack "aaa"' },
-      ]);
-    });
-
-    it("skips a priority pack that is not on disk, and matches the folder case-insensitively like the id rule", () => {
-      const result = scanVoicePacks({
-        root: ROOT,
-        reservedVoices: [],
-        priorityPacks: ["missing", "default"],
-        // Both capitalised, so the plain sort still puts `Aaa` first and the
-        // priority is what decides.
-        fs: fakeFs({ Aaa: tree.aaa, Default: tree.default }),
-      });
-
-      expect(result.packs.map((p) => p.id)).toEqual(["default"]);
-      expect(result.problems).toEqual([
-        { pack: "Aaa", reason: 'voice "default" is already provided by pack "Default"' },
-      ]);
-    });
+    expect(result.problems).toEqual([]);
+    expect(result.packs.flatMap((p) => p.voices.map((v) => v.id))).toEqual(["aaa::default", "default::default"]);
   });
 
   it("is deterministic regardless of directory-listing order", () => {
     const forward = scanVoicePacks({
       root: ROOT,
-      reservedVoices: [],
       fs: fakeFs({
         alpha: { manifest: { ...luca, id: "alpha" }, clips: ["voice/luca/flags/a.mp3"] },
         zeta: { manifest: { ...luca, id: "zeta" }, clips: ["voice/luca/flags/a.mp3"] },
@@ -280,7 +265,6 @@ describe("scanVoicePacks", () => {
     });
     const reversed = scanVoicePacks({
       root: ROOT,
-      reservedVoices: [],
       fs: fakeFs({
         zeta: { manifest: { ...luca, id: "zeta" }, clips: ["voice/luca/flags/a.mp3"] },
         alpha: { manifest: { ...luca, id: "alpha" }, clips: ["voice/luca/flags/a.mp3"] },
@@ -290,10 +274,9 @@ describe("scanVoicePacks", () => {
     expect(forward.packs.map((p) => p.id)).toEqual(reversed.packs.map((p) => p.id));
   });
 
-  it("keeps a pack's second voice when only its first collides", () => {
+  it("keeps every voice of a pack that shares one id with another pack", () => {
     const result = scanVoicePacks({
       root: ROOT,
-      reservedVoices: [],
       fs: fakeFs({
         alpha: {
           manifest: { ...luca, id: "alpha", voices: [{ id: "luca", label: "Luca" }] },
@@ -314,14 +297,13 @@ describe("scanVoicePacks", () => {
     });
 
     expect(result.packs.map((p) => p.id)).toEqual(["alpha", "beta"]);
-    expect(result.packs[1].voices.map((v) => v.id)).toEqual(["nina"]);
-    expect(result.packs[1].clips).toEqual(["voice/nina/flags/a.mp3"]);
+    expect(result.packs[1].voices.map((v) => v.id)).toEqual(["beta::luca", "beta::nina"]);
+    expect(result.packs[1].clips).toEqual(["voice/luca/flags/a.mp3", "voice/nina/flags/a.mp3"]);
   });
 
   it("skips the installer's own reserved folders", () => {
     const result = scanVoicePacks({
       root: ROOT,
-      reservedVoices: [],
       fs: fakeFs({ ".tmp": { clips: [] }, ".trash": { clips: [] } }),
     });
 
@@ -329,47 +311,12 @@ describe("scanVoicePacks", () => {
     expect(result.problems).toEqual([]);
   });
 
-  it("refuses a voice the plugin's own bundled audio provides", () => {
-    const result = scanVoicePacks({
-      root: ROOT,
-      fs: fakeFs({ luca: { manifest: luca, clips: ["voice/luca/flags/a.mp3"] } }),
-      reservedVoices: ["luca"],
-    });
-
-    expect(result.packs).toEqual([]);
-    expect(result.problems[0].reason).toContain("bundled audio");
-  });
-
-  it("keeps a pack's other voice when only one collides with a bundled voice", () => {
+  it("does not list a declared voice it ships no clips for", () => {
     const result = scanVoicePacks({
       root: ROOT,
       fs: fakeFs({
-        duo: {
-          manifest: {
-            ...luca,
-            id: "duo",
-            voices: [
-              { id: "luca", label: "Luca" },
-              { id: "nina", label: "Nina" },
-            ],
-          },
-          clips: ["voice/luca/flags/a.mp3", "voice/nina/flags/a.mp3"],
-        },
-      }),
-      reservedVoices: ["luca"],
-    });
-
-    expect(result.packs[0].voices.map((v) => v.id)).toEqual(["nina"]);
-    expect(result.packs[0].clips).toEqual(["voice/nina/flags/a.mp3"]);
-  });
-
-  it("does not claim a declared voice it ships no clips for", () => {
-    const result = scanVoicePacks({
-      root: ROOT,
-      reservedVoices: [],
-      fs: fakeFs({
-        // `alpha` declares nina but ships only luca; `beta` really has nina and
-        // must not be locked out by alpha's empty declaration.
+        // `alpha` declares nina but ships only luca: its nina is dropped with a
+        // reason, and `beta`'s nina is its own voice either way.
         alpha: {
           manifest: {
             ...luca,
@@ -389,17 +336,16 @@ describe("scanVoicePacks", () => {
     });
 
     expect(result.packs.map((p) => p.id)).toEqual(["alpha", "beta"]);
-    expect(result.packs[0].voices.map((v) => v.id)).toEqual(["luca"]);
-    expect(result.packs[1].voices.map((v) => v.id)).toEqual(["nina"]);
+    expect(result.packs[0].voices.map((v) => v.id)).toEqual(["alpha::luca"]);
+    expect(result.packs[1].voices.map((v) => v.id)).toEqual(["beta::nina"]);
     expect(result.problems).toEqual([{ pack: "alpha", reason: "no clips found under voice/nina/" }]);
   });
 
   describe("a voice must ship clips the ENGINE can reach, not merely files", () => {
     // The gate used to be `startsWith("voice/<id>/")`, which is looser than the
     // grammar `buildManifestPool` compiles. A pack failing either rule below
-    // installed cleanly, claimed its voice — locking out a pack that had it
-    // properly — reached the dropdown, and then played nothing at all, with the
-    // only trace a debug line at fire time.
+    // installed cleanly, reached the dropdown, and then played nothing at all,
+    // with the only trace a debug line at fire time.
 
     it("refuses a voice whose clips carry an uppercase extension", () => {
       // `listMp3Files` matches `.mp3` case-insensitively and records the name
@@ -407,7 +353,6 @@ describe("scanVoicePacks", () => {
       // `.MP3` is what plenty of Windows tools emit.
       const result = scanVoicePacks({
         root: ROOT,
-        reservedVoices: [],
         fs: fakeFs({ luca: { manifest: luca, clips: ["voice/luca/flags/blue-01.MP3"] } }),
       });
 
@@ -419,7 +364,6 @@ describe("scanVoicePacks", () => {
     it("refuses a voice whose clips have no group segment", () => {
       const result = scanVoicePacks({
         root: ROOT,
-        reservedVoices: [],
         fs: fakeFs({ luca: { manifest: luca, clips: ["voice/luca/sample.mp3"] } }),
       });
 
@@ -428,10 +372,9 @@ describe("scanVoicePacks", () => {
       expect(result.problems[0].reason).toContain("<group>");
     });
 
-    it("does not lock the voice out of a later pack that ships it properly", () => {
+    it("drops only the pack with unreachable clips; another pack's voice of the same id is unaffected", () => {
       const result = scanVoicePacks({
         root: ROOT,
-        reservedVoices: [],
         fs: fakeFs({
           alpha: {
             manifest: { ...luca, id: "alpha", voices: [{ id: "luca", label: "Luca" }] },
@@ -445,13 +388,12 @@ describe("scanVoicePacks", () => {
       });
 
       expect(result.packs.map((p) => p.id)).toEqual(["beta"]);
-      expect(result.packs[0].voices.map((v) => v.id)).toEqual(["luca"]);
+      expect(result.packs[0].voices.map((v) => v.id)).toEqual(["beta::luca"]);
     });
 
     it("keeps the reachable clips and drops only the unreachable ones", () => {
       const result = scanVoicePacks({
         root: ROOT,
-        reservedVoices: [],
         fs: fakeFs({
           luca: { manifest: luca, clips: ["voice/luca/flags/blue-01.mp3", "voice/luca/stray.mp3"] },
         }),
@@ -468,7 +410,6 @@ describe("scanVoicePacks", () => {
     // by label look like two distinct things to whoever wrote them.
     const result = scanVoicePacks({
       root: ROOT,
-      reservedVoices: [],
       fs: fakeFs({
         luca: {
           manifest: {
@@ -483,7 +424,7 @@ describe("scanVoicePacks", () => {
       }),
     });
 
-    expect(result.packs[0].voices).toEqual([{ id: "luca", label: "Luca", script: null }]);
+    expect(result.packs[0].voices).toEqual([{ id: "luca::luca", packVoiceId: "luca", label: "Luca", script: null }]);
     expect(result.problems).toEqual([
       { pack: "luca", reason: 'voice "luca" is declared more than once; the first wins' },
     ]);
@@ -492,7 +433,6 @@ describe("scanVoicePacks", () => {
   it("de-duplicates a voice id repeated in one manifest", () => {
     const result = scanVoicePacks({
       root: ROOT,
-      reservedVoices: [],
       fs: fakeFs({
         luca: {
           manifest: {
@@ -507,155 +447,17 @@ describe("scanVoicePacks", () => {
       }),
     });
 
-    expect(result.packs[0].voices.map((v) => v.id)).toEqual(["luca"]);
+    expect(result.packs[0].voices.map((v) => v.id)).toEqual(["luca::luca"]);
     expect(result.packs[0].clips).toEqual(["voice/luca/flags/a.mp3"]);
   });
 
   it("carries the author through when present", () => {
     const result = scanVoicePacks({
       root: ROOT,
-      reservedVoices: [],
       fs: fakeFs({ luca: { manifest: { ...luca, author: "Someone" }, clips: ["voice/luca/flags/a.mp3"] } }),
     });
 
     expect(result.packs[0].author).toBe("Someone");
-  });
-});
-
-describe("scanVoicePacks and the bundled seed (#1100)", () => {
-  const seedRecord = {
-    schema: 1,
-    source: "bundled-seed",
-    id: "default",
-    version: "3.2.0",
-    sha256: "d".repeat(64),
-    installedAt: "2026-09-02T00:00:00.000Z",
-  };
-
-  const bundled = {
-    schema: 1,
-    id: "default",
-    label: "Default",
-    version: "3.2.0",
-    voices: [{ id: "default", label: "Default" }],
-  };
-
-  const scan = (install?: unknown) =>
-    scanVoicePacks({
-      root: ROOT,
-      reservedVoices: ["default"],
-      fs: fakeFs({ default: { manifest: bundled, install, clips: ["voice/default/flags/blue-01.mp3"] } }),
-    });
-
-  it("lists the pack we seeded from the plugin's own bundle, providing nothing", () => {
-    const result = scan(seedRecord);
-
-    // LISTED since #1100. It is on disk, and a card reading "No voice packs
-    // installed" beside a button that opens a folder containing exactly this
-    // pack was a contradiction the user met on their first screen. Its voice is
-    // still dropped — the bundle owns that id, and that was never in question —
-    // so it is listed as providing nothing, which is what `voices` means.
-    expect(result.packs).toHaveLength(1);
-    expect(result.packs[0]).toMatchObject({
-      id: "default",
-      label: "Default",
-      version: "3.2.0",
-      voices: [],
-      clips: [],
-      provenance: "bundled-seed",
-    });
-    // The point of the exemption: no report, because nothing is wrong.
-    expect(result.problems).toEqual([]);
-  });
-
-  // THE TRAP, pinned rather than left to be noticed later (#1100).
-  //
-  // `default` is ALREADY in the voice dropdown, provided by the plugin's own
-  // audio. Listing the seeded pack must not also register its voice, or the
-  // dropdown gains a SECOND "Default": two rows, one voice, and nothing for the
-  // user to tell them apart. Listing a pack and contributing a voice are two
-  // different jobs and this pack must only do the first.
-  //
-  // Asserted against BOTH publishers' actual inputs rather than against the
-  // scanner's output shape alone, because they derive differently and a change
-  // could break one without the other: `_voiceLabels` is built by
-  // `voiceDisplayLabels` from the installed packs — which now include this one,
-  // where they did not before — and `_raceEngineerVoices` is built from the
-  // clip paths packs contribute to the merged manifest.
-  it("contributes nothing to either published voice list", () => {
-    const result = scan(seedRecord);
-
-    // `_voiceLabels`: the seed is in this input now and must add no entry. A
-    // `default` key here would rename the bundled voice in the dropdown.
-    expect(voiceDisplayLabels(result.packs)).toEqual({});
-
-    // `_raceEngineerVoices`: derived from the clips packs contribute. One clip
-    // under `voice/default/` would put a second `default` in the list.
-    expect(result.packs.flatMap((pack) => pack.clips)).toEqual([]);
-  });
-
-  // The id-match rule added for the provenance badge must not reach this row.
-  // It does not even apply: the seeded branch hardcodes `bundled-seed` after
-  // `isBundledSeed` has already required the record to name this pack. Pinned
-  // because a regression here turns "Built-in" into "Installed by hand" on
-  // every machine, which is the badge lying in the opposite direction.
-  it("still reports the seed as bundled-seed, not sideload", () => {
-    expect(scan(seedRecord).packs[0].provenance).toBe("bundled-seed");
-  });
-
-  // The branch fires only when the BUNDLE took every voice (#1100). A seed
-  // whose voice another pack already claimed has a real problem, and must not
-  // render as a healthy "Built-in" row with its own problem line underneath —
-  // shown as fine and broken at once. Not reachable for `default` while it is
-  // reserved, but it is exactly the state the branch is carried into once the
-  // plugin stops bundling audio.
-  it("does not list a seed as built-in when another pack took its voice", () => {
-    const result = scanVoicePacks({
-      root: ROOT,
-      reservedVoices: [],
-      fs: fakeFs({
-        alpha: {
-          manifest: {
-            schema: 1,
-            id: "alpha",
-            label: "Alpha",
-            version: "1.0.0",
-            voices: [{ id: "shared", label: "Shared" }],
-          },
-          clips: ["voice/shared/flags/a.mp3"],
-        },
-        default: {
-          manifest: { ...bundled, voices: [{ id: "shared", label: "Shared" }] },
-          install: seedRecord,
-          clips: ["voice/shared/flags/a.mp3"],
-        },
-      }),
-    });
-
-    expect(result.packs.map((pack) => pack.id)).toEqual(["alpha"]);
-    expect(result.problems).toEqual([
-      { pack: "default", reason: `voice "shared" is already provided by pack "alpha"` },
-    ]);
-  });
-
-  // The hostile cases, and the reason the exemption is written as narrowly as
-  // it is. Each must keep reporting; if a later change widens the branch into
-  // "any pack with an .install.json may claim a bundled voice", one of these
-  // fails rather than the behaviour quietly going missing.
-  it.each([
-    ["no provenance at all — an ordinary sideloaded pack", undefined],
-    ["a catalog install rather than a seed", { ...seedRecord, source: "catalog", url: "https://example.com/x.zip" }],
-    ["a seed record naming a different pack", { ...seedRecord, id: "luca" }],
-    ["a provenance file that does not parse", "{ not json"],
-    ["a provenance file that cannot be read", UNREADABLE],
-    ["a record with no source at all", { ...seedRecord, source: undefined }],
-  ])("still reports a pack claiming a bundled voice with %s", (_label, install) => {
-    const result = scan(install);
-
-    expect(result.packs).toEqual([]);
-    expect(result.problems).toEqual([
-      { pack: "default", reason: `voice "default" is provided by the plugin's bundled audio` },
-    ]);
   });
 });
 
@@ -673,7 +475,6 @@ describe("scanVoicePacks reports where a pack came from (#1100)", () => {
   const scan = (install?: unknown) =>
     scanVoicePacks({
       root: ROOT,
-      reservedVoices: [],
       fs: fakeFs({ luca: { manifest: luca, install, clips: ["voice/luca/flags/blue-01.mp3"] } }),
     });
 
@@ -684,15 +485,29 @@ describe("scanVoicePacks reports where a pack came from (#1100)", () => {
     expect(scan(record(source)).packs[0].provenance).toBe(expected);
   });
 
-  // A record has to name THIS pack. `isBundledSeed` and the installer's hash
-  // read both already require it; this path did not, so a folder copied or
+  it("lists a bundled-seed pack as an ordinary pack, voices and clips included", () => {
+    // Until #1144 a seed whose voices the plugin bundled was listed providing
+    // nothing. No plugin bundles a voice any more and nothing is reserved, so
+    // the record decides the badge and nothing else: the pack is heard.
+    const result = scan(record("bundled-seed"));
+
+    expect(result.problems).toEqual([]);
+    expect(result.packs[0]).toMatchObject({
+      id: "luca",
+      voices: [{ id: "luca::luca", packVoiceId: "luca" }],
+      clips: ["voice/luca/flags/blue-01.mp3"],
+      provenance: "bundled-seed",
+    });
+  });
+
+  // A record has to name THIS pack. The installer's hash read already requires
+  // it; this path did not, so a folder copied or
   // renamed by hand kept its old `.install.json` and rendered as "Downloaded"
   // for a pack never downloaded under that id — the provenance badge lying in
   // the one place it exists to tell the truth.
   it("reports sideload when the record names a different pack", () => {
     const result = scanVoicePacks({
       root: ROOT,
-      reservedVoices: [],
       fs: fakeFs({
         luca: {
           manifest: luca,
@@ -731,7 +546,6 @@ describe("scanVoicePacks reads a voice's callouts.json beside its clips (#1064)"
   const scan = (files?: FakePack["files"], overrides: Partial<FakePack> = {}) =>
     scanVoicePacks({
       root: ROOT,
-      reservedVoices: [],
       fs: fakeFs({ luca: { manifest: luca, clips: ["voice/luca/flags/blue-01.mp3"], files, ...overrides } }),
     });
 
@@ -739,7 +553,7 @@ describe("scanVoicePacks reads a voice's callouts.json beside its clips (#1064)"
     const result = scan({ [SCRIPT_PATH]: JSON.stringify(script) });
 
     expect(result.problems).toEqual([]);
-    expect(result.packs[0].voices).toEqual([{ id: "luca", label: "Luca", script }]);
+    expect(result.packs[0].voices).toEqual([{ id: "luca::luca", packVoiceId: "luca", label: "Luca", script }]);
   });
 
   it("lists a voice with no script file as clips-only, with no problem", () => {
@@ -749,7 +563,7 @@ describe("scanVoicePacks reads a voice's callouts.json beside its clips (#1064)"
     const result = scan();
 
     expect(result.problems).toEqual([]);
-    expect(result.packs[0].voices).toEqual([{ id: "luca", label: "Luca", script: null }]);
+    expect(result.packs[0].voices).toEqual([{ id: "luca::luca", packVoiceId: "luca", label: "Luca", script: null }]);
     expect(result.packs[0].clips).toEqual(["voice/luca/flags/blue-01.mp3"]);
   });
 
@@ -788,7 +602,6 @@ describe("scanVoicePacks reads a voice's callouts.json beside its clips (#1064)"
       const deep = JSON.stringify({ ...script, scenarios: { "flag-green": { sequence: [step] } } });
       const result = scanVoicePacks({
         root: ROOT,
-        reservedVoices: [],
         fs: fakeFs({
           deep: {
             manifest: { ...luca, id: "deep" },
@@ -844,7 +657,7 @@ describe("scanVoicePacks reads a voice's callouts.json beside its clips (#1064)"
         },
       };
 
-      const result = scanVoicePacks({ root: ROOT, reservedVoices: [], fs: throwing });
+      const result = scanVoicePacks({ root: ROOT, fs: throwing });
 
       expect(result.packs).toEqual([]);
       expect(result.problems).toEqual([
@@ -894,10 +707,9 @@ describe("scanVoicePacks reads a voice's callouts.json beside its clips (#1064)"
       ]);
     });
 
-    it("does not claim the voice, so a later pack that ships it properly still can", () => {
+    it("drops only the pack whose script is broken; another pack's voice of the same id is unaffected", () => {
       const result = scanVoicePacks({
         root: ROOT,
-        reservedVoices: [],
         fs: fakeFs({
           alpha: {
             manifest: { ...luca, id: "alpha" },
@@ -909,14 +721,13 @@ describe("scanVoicePacks reads a voice's callouts.json beside its clips (#1064)"
       });
 
       expect(result.packs.map((p) => p.id)).toEqual(["beta"]);
-      expect(result.packs[0].voices).toEqual([{ id: "luca", label: "Luca", script: null }]);
+      expect(result.packs[0].voices).toEqual([{ id: "beta::luca", packVoiceId: "luca", label: "Luca", script: null }]);
       expect(result.problems.map((p) => p.pack)).toEqual(["alpha"]);
     });
 
     it("keeps a pack's other voice, and only that voice's clips", () => {
       const result = scanVoicePacks({
         root: ROOT,
-        reservedVoices: [],
         fs: fakeFs({
           duo: {
             manifest: {
@@ -933,7 +744,7 @@ describe("scanVoicePacks reads a voice's callouts.json beside its clips (#1064)"
         }),
       });
 
-      expect(result.packs[0].voices).toEqual([{ id: "nina", label: "Nina", script }]);
+      expect(result.packs[0].voices).toEqual([{ id: "duo::nina", packVoiceId: "nina", label: "Nina", script }]);
       expect(result.packs[0].clips).toEqual(["voice/nina/flags/a.mp3"]);
       expect(result.problems).toHaveLength(1);
       expect(result.problems[0].reason).toMatch(/^voice "luca": callouts\.json /);
@@ -948,42 +759,6 @@ describe("scanVoicePacks reads a voice's callouts.json beside its clips (#1064)"
 
     expect(result.packs).toEqual([]);
     expect(result.problems).toEqual([{ pack: "luca", reason: "no clips found under voice/luca/" }]);
-  });
-
-  it("leaves the bundled seed's listing untouched", () => {
-    // The seeded copy of the bundled pack carries its script too — it rides
-    // the voice tree — but the seed's voices are dropped to the bundle BEFORE
-    // the per-voice loop, so the script is never read and can never surface
-    // as a problem on a row that is listed as providing nothing.
-    const result = scanVoicePacks({
-      root: ROOT,
-      reservedVoices: ["default"],
-      fs: fakeFs({
-        default: {
-          manifest: {
-            schema: 1,
-            id: "default",
-            label: "Default",
-            version: "3.2.0",
-            voices: [{ id: "default", label: "Default" }],
-          },
-          install: {
-            schema: 1,
-            source: "bundled-seed",
-            id: "default",
-            version: "3.2.0",
-            sha256: "d".repeat(64),
-            installedAt: "2026-09-02T00:00:00.000Z",
-          },
-          clips: ["voice/default/flags/blue-01.mp3"],
-          files: { "voice/default/callouts.json": "{nope" },
-        },
-      }),
-    });
-
-    expect(result.problems).toEqual([]);
-    expect(result.packs).toHaveLength(1);
-    expect(result.packs[0]).toMatchObject({ id: "default", voices: [], clips: [], provenance: "bundled-seed" });
   });
 });
 
@@ -1013,7 +788,6 @@ describe("development root (#1143)", () => {
     const result = scanVoicePacks({
       root: ROOT,
       devRoot: DEV_ROOT,
-      reservedVoices: [],
       fs: fakeFsAt({ [DEV_ROOT]: { default: { manifest: dflt, install: catalogRecord, clips } }, [ROOT]: {} }),
     });
 
@@ -1023,7 +797,7 @@ describe("development root (#1143)", () => {
     const pack = result.packs.find((p) => p.id === "default");
 
     expect(pack?.provenance).toBe("development");
-    expect(pack?.voices.map((v) => v.id)).toEqual(["default"]);
+    expect(pack?.voices.map((v) => v.id)).toEqual(["default::default"]);
     expect(pack?.dir.replace(/\\/g, "/")).toBe(`${DEV_ROOT}/default`);
   });
 
@@ -1031,8 +805,6 @@ describe("development root (#1143)", () => {
     const result = scanVoicePacks({
       root: ROOT,
       devRoot: DEV_ROOT,
-      reservedVoices: [],
-      priorityPacks: ["default"],
       fs: fakeFsAt({
         [DEV_ROOT]: { default: { manifest: dflt, clips } },
         [ROOT]: { default: { manifest: dflt, install: catalogRecord, clips } },
@@ -1073,8 +845,6 @@ describe("development root (#1143)", () => {
     const result = scanVoicePacks({
       root: ROOT,
       devRoot: DEV_ROOT,
-      reservedVoices: [],
-      priorityPacks: ["default"],
       fs: fakeFsAt({
         [DEV_ROOT]: { default: { manifest: devA, clips: ["voice/a/flags/blue-01.mp3"] } },
         [ROOT]: {
@@ -1089,7 +859,7 @@ describe("development root (#1143)", () => {
 
     expect(result.packs).toHaveLength(1);
     expect(result.packs[0]?.provenance).toBe("development");
-    expect(result.packs[0]?.voices.map((v) => v.id)).toEqual(["a"]);
+    expect(result.packs[0]?.voices.map((v) => v.id)).toEqual(["default::a"]);
     expect(result.problems).toEqual([
       {
         pack: "default",
@@ -1098,24 +868,26 @@ describe("development root (#1143)", () => {
     ]);
   });
 
-  it("keeps the per-voice reason for a collision between DIFFERENT pack ids", () => {
-    // The pack-level rule is about one id existing under both roots. A genuine
-    // voice collision between two different packs still names the voice.
+  it("lists a DIFFERENT pack id under root even when it declares the same voice as a dev pack (#1144)", () => {
+    // The shadowing rule is about one PACK id existing under both roots. A
+    // voice id shared between two different packs is two voices, as it is
+    // between two packs under one root.
     const mine = { schema: 1, id: "mine", label: "Mine", version: "1.0.0", voices: [{ id: "default", label: "Mine" }] };
     const result = scanVoicePacks({
       root: ROOT,
       devRoot: DEV_ROOT,
-      reservedVoices: [],
       fs: fakeFsAt({
         [DEV_ROOT]: { default: { manifest: dflt, clips } },
         [ROOT]: { mine: { manifest: mine, clips } },
       }),
     });
 
-    expect(result.packs.map((p) => p.id)).toEqual(["default"]);
-    expect(result.problems).toEqual([
-      { pack: "mine", reason: 'voice "default" is already provided by the development build of pack "default"' },
+    expect(result.problems).toEqual([]);
+    expect(result.packs.map((p) => [p.id, p.provenance])).toEqual([
+      ["default", "development"],
+      ["mine", "sideload"],
     ]);
+    expect(result.packs.flatMap((p) => p.voices.map((v) => v.id))).toEqual(["default::default", "mine::default"]);
   });
 
   it("does not shadow a root pack whose id only a SKIPPED dev folder carries", () => {
@@ -1125,7 +897,6 @@ describe("development root (#1143)", () => {
     const result = scanVoicePacks({
       root: ROOT,
       devRoot: DEV_ROOT,
-      reservedVoices: [],
       fs: fakeFsAt({
         [DEV_ROOT]: { default: { clips } },
         [ROOT]: { default: { manifest: dflt, clips } },
@@ -1140,7 +911,6 @@ describe("development root (#1143)", () => {
     const result = scanVoicePacks({
       root: ROOT,
       devRoot: DEV_ROOT,
-      reservedVoices: [],
       fs: fakeFsAt({
         [DEV_ROOT]: { default: { manifest: dflt, clips } },
         [ROOT]: { Default: { manifest: dflt, install: catalogRecord, clips } },
@@ -1158,11 +928,10 @@ describe("development root (#1143)", () => {
 
   it("falls back to the root pack when the dev copy is unusable", () => {
     // A staged folder with no manifest yet — the packer was interrupted, or
-    // the folder is empty. It claims nothing, so the AppData pack is heard.
+    // the folder is empty. It lists nothing, so the AppData pack is heard.
     const result = scanVoicePacks({
       root: ROOT,
       devRoot: DEV_ROOT,
-      reservedVoices: [],
       fs: fakeFsAt({
         [DEV_ROOT]: { default: { clips } },
         [ROOT]: { default: { manifest: dflt, clips } },
@@ -1173,27 +942,6 @@ describe("development root (#1143)", () => {
     expect(result.problems.map((p) => p.reason)).toContain("no voice-pack.json");
   });
 
-  it("keeps priorityPacks order within each root", () => {
-    // Under the dev root a sideloaded-looking `aaa` sorts before `default` and
-    // declares the same voice; `priorityPacks` still decides, root by root.
-    const aaa = { schema: 1, id: "aaa", label: "Aaa", version: "1.0.0", voices: [{ id: "default", label: "Mine" }] };
-    const result = scanVoicePacks({
-      root: ROOT,
-      devRoot: DEV_ROOT,
-      reservedVoices: [],
-      priorityPacks: ["default"],
-      fs: fakeFsAt({
-        [DEV_ROOT]: { aaa: { manifest: aaa, clips }, default: { manifest: dflt, clips } },
-        [ROOT]: {},
-      }),
-    });
-
-    expect(result.packs.map((p) => [p.id, p.provenance])).toEqual([["default", "development"]]);
-    expect(result.problems).toEqual([
-      { pack: "aaa", reason: 'voice "default" is already provided by the development build of pack "default"' },
-    ]);
-  });
-
   it("behaves exactly as before when devRoot is absent", () => {
     // Same disk, no dev root: the AppData pack is listed with its record's
     // provenance, and nothing under the development directory is even listed.
@@ -1201,7 +949,7 @@ describe("development root (#1143)", () => {
       [DEV_ROOT]: { default: { manifest: dflt, clips } },
       [ROOT]: { default: { manifest: dflt, install: catalogRecord, clips } },
     });
-    const result = scanVoicePacks({ root: ROOT, reservedVoices: [], priorityPacks: ["default"], fs });
+    const result = scanVoicePacks({ root: ROOT, fs });
 
     expect(result.problems).toEqual([]);
     expect(result.packs.map((p) => [p.id, p.provenance])).toEqual([["default", "catalog"]]);

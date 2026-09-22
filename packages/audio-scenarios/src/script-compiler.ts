@@ -43,6 +43,22 @@
  * defined fragment no conversion reached is converted on its own (fresh
  * budget, the same cycle guard), and its problem, if any, is reported under
  * `fragmentProblems` by fragment name.
+ *
+ * Literal voice paths (issue #1144): a script may spell a clip by its literal
+ * path, `voice/<voice>/…`, as its pack author sees it on disk. The plugin's
+ * engine never sees that spelling — a pack's clips reach its manifest as
+ * `voice/<pack>::<voice>/…` — so when the script is compiled for a COMPOSITE
+ * voice id, every such literal that reaches the engine as written is
+ * qualified with that voice's own pack, and pack authors keep writing the
+ * bare path. "As written" is `applyBase`'s rule: a path escaped with a
+ * leading `/`, or one no contract `base` will be put in front of — in a
+ * frame, or in an entry whose contract declares none. A relative literal
+ * under a base is left alone, since the interpreter prefixes the base first
+ * (`voice/{voice}` + `voice/matt/…` is a path inside the active voice, not a
+ * voice path), so one fragment may compile both ways at two include sites.
+ * Compiled for a bare id (the source tree's voice, `lint:pack`, the tests) or
+ * for none, a literal is left as written. Only paths change; no diagnostic
+ * depends on one.
  */
 import {
   type CalloutScript,
@@ -53,7 +69,10 @@ import {
   type FrameDefinition,
   NO_FRAME,
   parseCondReference,
+  qualifyClipPath,
   type ScriptStep,
+  splitVoiceId,
+  VOICE_ID_SEPARATOR,
 } from "@iracedeck/callout-script";
 
 import { parseStepShorthand, type ResolvedStep, type VocabularyResolver } from "./dsl.js";
@@ -95,8 +114,12 @@ export type CompiledVoiceScript = {
 
 /** What the engine holds, as the compiler needs to see it. */
 export type CompileDeps = {
-  /** Every contract id the engine knows and its default frame. */
-  contracts: ReadonlyMap<string, { frame: string }>;
+  /**
+   * Every contract id the engine knows, its default frame, and the `base` the
+   * interpreter puts in front of its body's relative clip paths — which
+   * decides whether a literal voice path is qualified (see the header).
+   */
+  contracts: ReadonlyMap<string, { frame: string; base?: string }>;
   vars: ReadonlySet<string>;
   /** Every registered condition; the predicate receives the fire context at expansion time (issue #1065). */
   conds: ReadonlyMap<string, VocabularyResolver<boolean>>;
@@ -117,9 +140,13 @@ class CompileProblem {
 /** A frame's compilation outcome, kept so a failed frame can explain every scenario it fails. */
 type FrameResult = { ok: true; open: ResolvedStep[]; close: ResolvedStep[] } | { ok: false; reason: string };
 
-/** Compile one voice's script against what the engine registered. Never throws. */
-export function compileVoiceScript(script: CalloutScript, deps: CompileDeps): CompiledVoiceScript {
-  const converter = new StepConverter(script, deps);
+/**
+ * Compile one voice's script against what the engine registered. Never
+ * throws. `voice` is the id the script is compiled for; a composite one
+ * qualifies the script's literal voice paths with its pack (see the header).
+ */
+export function compileVoiceScript(script: CalloutScript, deps: CompileDeps, voice?: string): CompiledVoiceScript {
+  const converter = new StepConverter(script, deps, voice === undefined ? null : (splitVoiceId(voice)?.packId ?? null));
   const frames = new Map<string, FrameResult>();
   const scenarios = new Map<string, { resolved: ResolvedStep[]; frame: string }>();
   const skipped: { id: string; reason: string; deliberate: boolean }[] = [];
@@ -144,7 +171,7 @@ export function compileVoiceScript(script: CalloutScript, deps: CompileDeps): Co
       continue;
     }
 
-    const outcome = compileEntry(converter, entry, contract.frame, frames);
+    const outcome = compileEntry(converter, entry, contract, frames);
 
     if (outcome.ok) scenarios.set(id, { resolved: outcome.resolved, frame: outcome.frame });
     else skipped.push({ id, reason: outcome.reason, deliberate: false });
@@ -177,7 +204,8 @@ export function compileVoiceScript(script: CalloutScript, deps: CompileDeps): Co
 }
 
 function compileFrame(converter: StepConverter, frame: FrameDefinition): FrameResult {
-  // One budget for the whole frame: its two halves play around one body.
+  // One budget for the whole frame: its two halves play around one body. No
+  // base: the interpreter expands a frame with none, whatever the contract.
   converter.beginUnit();
 
   try {
@@ -197,6 +225,7 @@ function checkUnreached(converter: StepConverter): ReadonlyMap<string, string> {
   const problems = new Map<string, string>();
 
   for (const [name, fragment] of converter.unreachedFragments()) {
+    // No base: only the problem is kept, and no diagnostic depends on a path.
     converter.beginUnit();
 
     try {
@@ -212,14 +241,14 @@ function checkUnreached(converter: StepConverter): ReadonlyMap<string, string> {
 function compileEntry(
   converter: StepConverter,
   entry: CalloutScriptEntry,
-  defaultFrame: string,
+  contract: { frame: string; base?: string },
   frames: ReadonlyMap<string, FrameResult>,
 ): { ok: true; resolved: ResolvedStep[]; frame: string } | { ok: false; reason: string } {
   // The schema requires `sequence` unless `skip` is exactly `true`; the type
   // still allows its absence, and a hand-built script may omit it.
   if (!entry.sequence) return { ok: false, reason: "no sequence" };
 
-  const frame = entry.frame ?? defaultFrame;
+  const frame = entry.frame ?? contract.frame;
 
   // `NO_FRAME` is the reserved word for unframed: never looked up, so a
   // script need not (and may not) define it.
@@ -231,7 +260,9 @@ function compileEntry(
     if (!compiled.ok) return { ok: false, reason: `frame "${frame}": ${compiled.reason}` };
   }
 
-  converter.beginUnit();
+  // The body is expanded under the contract's base, so its literals are read
+  // against it.
+  converter.beginUnit(contract.base);
 
   try {
     return { ok: true, resolved: converter.convertAll(entry.sequence), frame };
@@ -266,16 +297,29 @@ class StepConverter {
   private readonly reached = new Set<string>();
   /** Steps produced since `beginUnit`, checked against `FRAGMENT_EXPANSION_LIMIT` on every one. */
   private produced = 0;
+  /** The contract `base` the current unit's relative paths will be expanded under; `undefined` for none. */
+  private base: string | undefined = undefined;
 
+  /**
+   * @param packId - The pack of the composite voice being compiled, which a
+   *   literal voice path is qualified with; `null` leaves every literal as
+   *   written (see the module header).
+   */
   constructor(
     private readonly script: CalloutScript,
     private readonly deps: CompileDeps,
+    private readonly packId: string | null,
   ) {}
 
-  /** Start a fresh expansion budget: once per entry, once per frame, once per standalone fragment. */
-  beginUnit(): void {
+  /**
+   * Start a fresh expansion budget: once per entry, once per frame, once per
+   * standalone fragment. `base` is the contract base the unit's body will be
+   * expanded under — an entry's contract's, never a frame's.
+   */
+  beginUnit(base?: string): void {
     this.produced = 0;
     this.inlining.length = 0;
+    this.base = base;
   }
 
   convertAll(steps: readonly ScriptStep[]): ResolvedStep[] {
@@ -309,10 +353,12 @@ class StepConverter {
     if (typeof step === "string") {
       const parsed = parseStepShorthand(step);
 
-      return parsed.kind === "include" ? this.inline(parsed.id) : [this.check(parsed)];
+      if (parsed.kind === "include") return this.inline(parsed.id);
+
+      return [parsed.kind === "clip" ? this.clip(parsed.path) : this.check(parsed)];
     }
 
-    if ("clip" in step) return [this.emit({ kind: "clip", path: step.clip })];
+    if ("clip" in step) return [this.clip(step.clip)];
 
     if ("var" in step) return [this.check({ kind: "var", name: step.var })];
 
@@ -348,6 +394,31 @@ class StepConverter {
     }
 
     return step;
+  }
+
+  /**
+   * A literal clip step, in either spelling. A `voice/<voice>/…` path is
+   * qualified with {@link packId} when there is one (issue #1144), the
+   * leading `/` that escapes a contract's `base` kept in place — but only a
+   * path that reaches the engine as written, by `applyBase`'s own rule: an
+   * escaped one, or one under no {@link base}. A relative path under a base is
+   * a path inside that base, and is left alone. Two segments are left alone
+   * too: `{voice}`, which the interpreter substitutes with the active voice —
+   * already composite — and one that already names its pack.
+   */
+  private clip(path: string): ResolvedStep {
+    const escape = path.startsWith("/") ? "/" : "";
+
+    if (this.packId === null || (escape === "" && this.base)) return this.emit({ kind: "clip", path });
+
+    const unescaped = path.slice(escape.length);
+    const segment = unescaped.split("/", 2)[1] ?? "";
+    const qualified =
+      segment.includes("{") || segment.includes(VOICE_ID_SEPARATOR)
+        ? unescaped
+        : qualifyClipPath(this.packId, unescaped);
+
+    return this.emit({ kind: "clip", path: `${escape}${qualified}` });
   }
 
   /**

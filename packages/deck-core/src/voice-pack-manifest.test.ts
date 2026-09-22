@@ -155,6 +155,53 @@ describe("parseVoicePackManifest", () => {
     expect(result.ok === false && result.reason.length).toBeGreaterThan(0);
   });
 
+  describe("an id containing the voice-id separator (#1144)", () => {
+    // Kebab-case already excludes `::`, so this is not a new rejection — it is
+    // a better reason. An author who tried to qualify an id by hand is told
+    // WHY the separator is refused, ahead of the general kebab-case message.
+    it("refuses a pack id, naming the separator", () => {
+      const raw = JSON.stringify({
+        schema: 1,
+        id: "a::b",
+        label: "A",
+        version: "1.0.0",
+        voices: [{ id: "a", label: "A" }],
+      });
+      const result = parseVoicePackManifest(raw);
+
+      expect(result.ok).toBe(false);
+      expect(result.ok === false && result.reason).toMatch(/^id: must not contain "::"/);
+      expect(result.ok === false && result.reason).not.toContain("kebab-case");
+    });
+
+    it("refuses a voice id, naming the separator", () => {
+      const raw = JSON.stringify({
+        schema: 1,
+        id: "a",
+        label: "A",
+        version: "1.0.0",
+        voices: [{ id: "a::b", label: "A" }],
+      });
+      const result = parseVoicePackManifest(raw);
+
+      expect(result.ok).toBe(false);
+      expect(result.ok === false && result.reason).toMatch(/^voices\.0\.id: must not contain "::"/);
+    });
+
+    it("still gives the kebab-case reason for an id that is merely malformed", () => {
+      const raw = JSON.stringify({
+        schema: 1,
+        id: "Luca!",
+        label: "A",
+        version: "1.0.0",
+        voices: [{ id: "a", label: "A" }],
+      });
+      const result = parseVoicePackManifest(raw);
+
+      expect(result.ok === false && result.reason).toContain("kebab-case");
+    });
+  });
+
   it("names the offending field in the reason", () => {
     const raw = JSON.stringify({ schema: 1, id: "a", label: "A", version: "one", voices: [{ id: "a", label: "A" }] });
     const result = parseVoicePackManifest(raw);

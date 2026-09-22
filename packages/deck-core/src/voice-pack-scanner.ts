@@ -3,6 +3,7 @@ import {
   type CalloutScript,
   calloutScriptPath,
   parseCalloutScriptText,
+  qualifiedVoiceId,
 } from "@iracedeck/callout-script";
 import { join } from "node:path";
 
@@ -43,19 +44,35 @@ export interface VoicePackFileSystem {
 }
 
 /**
- * A voice a pack provides. `id` is identity and matches the `voice/<id>/…` clip
- * path; `label` is what a user reads and nothing more.
+ * A voice a pack provides.
  *
- * `script` is the voice's parsed `voice/<id>/callouts.json` (#1064), or `null`
- * for a clips-only voice — one with no script file at all, which is valid and
- * whose callouts are simply all skipped. It is never the raw text: a voice
- * whose file exists but does not parse is not listed at all (see
+ * `id` is the voice's identity everywhere OUTSIDE the pack folder — the
+ * composite `<pack id>::<voice id>` (#1144): what `_raceEngineerVoices` lists,
+ * what `raceEngineerVoice` stores, what the label and script maps are keyed
+ * by, and the voice segment of the logical clip paths the engine resolves.
+ * `packVoiceId` is the bare id the pack's `voice-pack.json` declares, unique
+ * within that pack only, and names the `voice/<packVoiceId>/…` folder its
+ * clips and script sit under. Two packs may each declare a `matt`; their
+ * composite ids differ, so both are listed and both play. `label` is what a
+ * user reads and nothing more.
+ *
+ * `script` is the voice's parsed `voice/<packVoiceId>/callouts.json` (#1064),
+ * or `null` for a clips-only voice — one with no script file at all, which is
+ * valid and whose callouts are simply all skipped. It is never the raw text: a
+ * voice whose file exists but does not parse is not listed at all (see
  * {@link scanVoicePacks}), so a listed voice's script is always usable or
  * absent, never broken. Plain data, like the rest of the pack: the settings
  * window's `_voicePacks` payload must map this OUT rather than publish it — a
  * script is the engine's input, not something a list row renders.
  */
-export type InstalledVoice = { id: string; label: string; script: CalloutScript | null };
+export type InstalledVoice = {
+  /** Composite `<pack id>::<voice id>` — the voice's identity everywhere outside the pack folder. */
+  id: string;
+  /** The bare id the pack's voice-pack.json declares; names the `voice/<packVoiceId>/` folder. */
+  packVoiceId: string;
+  label: string;
+  script: CalloutScript | null;
+};
 
 export type InstalledVoicePack = {
   id: string;
@@ -64,9 +81,9 @@ export type InstalledVoicePack = {
   author?: string;
   /** Absolute path to the pack folder — this is the pack's own audio root. */
   dir: string;
-  /** The voices this pack actually provides, after collisions are resolved. */
+  /** The voices this pack actually provides: declared, with usable clips and a readable script. */
   voices: readonly InstalledVoice[];
-  /** POSIX paths relative to {@link dir}, always `voice/<voice-id>/…`. */
+  /** POSIX paths relative to {@link dir}, always `voice/<packVoiceId>/…` — the pack's own spelling. */
   clips: readonly string[];
   /**
    * Where this pack came from, for the settings window's provenance badge.
@@ -79,7 +96,11 @@ export type InstalledVoicePack = {
    * we wrote says otherwise.
    *
    * Displayed, never enforced. The badge tells a user that a pack came from
-   * someone other than us; it is not a trust decision the plugin acts on.
+   * someone other than us; it is not a trust decision the plugin acts on. The
+   * one thing that withholds a control — the managed pack's missing Remove
+   * button — is keyed by the plugin-published `managed` flag
+   * (`isManagedVoicePack`), never by this field, so no record a pack author
+   * can write reaches it.
    */
   provenance: VoicePackProvenanceKind;
 };
@@ -101,42 +122,12 @@ export interface ScanVoicePacksOptions {
   /**
    * A development voice root (#1143), scanned BEFORE `root`. Every pack found
    * here is `development` provenance — decided by where it was found, so no
-   * folder can claim it — and claims its voice ids ahead of every pack under
-   * `root`: the `priorityPacks` idea generalised from one pack first to one
-   * root first. `undefined` in every release build.
+   * folder can claim it — and a pack id it lists SHADOWS the same id under
+   * `root`, whole: the packs-root copy is skipped before its manifest is read.
+   * `undefined` in every release build.
    */
   devRoot?: string;
   fs: VoicePackFileSystem;
-  /**
-   * Voice ids the plugin's own bundled audio already provides — the plugin
-   * passes `scanRaceEngineerVoices(<compiled-in manifest>)`.
-   *
-   * This is the "plugin root wins" half of the collision rule, the sibling of
-   * the pack-vs-pack rule below. Plugin-root-first path resolution already wins
-   * for every clip the bundle HAS, so a pack sharing a bundled voice id could
-   * only ever add EXTRA variants into that voice's pools — a half-merged voice
-   * nobody asked for, and one that would change how the bundled engineer sounds
-   * without appearing anywhere as a new voice.
-   *
-   * REQUIRED, not optional with an empty default. Its failure mode is accepting
-   * rather than refusing: a caller that simply omitted it would type-check, log
-   * nothing, and let a pack claim `default`. Pass `[]` deliberately when there is
-   * genuinely no bundled audio to protect.
-   */
-  reservedVoices: readonly string[];
-  /**
-   * Pack ids visited BEFORE the alphabetical order, in the order given — the
-   * plugins pass `[ENSURED_VOICE_PACK_ID]` (#1034 stage 3). With nothing
-   * reserved, the pack-vs-pack rule below is the only thing deciding who
-   * provides the `default` voice, and "first by sorted folder name" would let
-   * any sideloaded folder that sorts before `default` — `aaa`, say — claim the
-   * voice id off the pack the plugin keeps current, silently replacing the
-   * engineer the user hears with the sideload's recordings. The managed pack
-   * claims first; everything else keeps the alphabetical order. An id with no
-   * folder is simply skipped; the folder is matched case-insensitively, the
-   * same way its declared id is.
-   */
-  priorityPacks?: readonly string[];
 }
 
 export interface ScanVoicePacksResult {
@@ -159,7 +150,7 @@ const MANIFEST_FILE = "voice-pack.json";
  * - **A non-lowercase extension.** `listMp3Files` matches `.mp3` case-INSENSITIVELY
  *   and records the name verbatim, which is right for finding files; the pool
  *   regex and the `clipSet` lookup are both case-SENSITIVE. `blue-01.MP3` — what
- *   plenty of Windows tools emit — would otherwise install, claim its voice and
+ *   plenty of Windows tools emit — would otherwise install, list its voice and
  *   play nothing.
  *
  * `VOICE_PACK_MAX_DEPTH` already reasons from this grammar for the depth CEILING.
@@ -170,21 +161,22 @@ const USABLE_CLIP = /^voice\/[^/]+\/[^/]+\/[^/]+\.mp3$/;
 
 /**
  * The most text a `callouts.json` may hold before it is refused unread
- * (#1064). The bundled script is under 200 KB and the largest JSON anywhere
- * in the audio pipeline is 480 KB (the numbers `VOICE_PACK_ARCHIVE_LIMITS`
- * was calibrated against), so a megabyte is headroom for any pack an author
- * would write and a bound on what a sideloaded file can make the grammar
- * validate — the pack folder is user-writable, and the schema walk is not
- * free. Measured in UTF-16 code units of the decoded text, which never
- * exceeds the file's byte count, so a file this check refuses is always
- * larger than the cap in bytes as well.
+ * (#1064). The reference voice's script is under 200 KB and the largest JSON
+ * anywhere in the audio pipeline is 480 KB (the numbers
+ * `VOICE_PACK_ARCHIVE_LIMITS` was calibrated against), so a megabyte is
+ * headroom for any pack an author would write and a bound on what a
+ * sideloaded file can make the grammar validate — the pack folder is
+ * user-writable, and the schema walk is not free. Measured in UTF-16 code
+ * units of the decoded text, which never exceeds the file's byte count, so a
+ * file this check refuses is always larger than the cap in bytes as well.
  */
 export const VOICE_SCRIPT_MAX_BYTES = 1024 * 1024;
 
 export type VoiceScriptRead = { ok: true; script: CalloutScript | null } | { ok: false; reason: string };
 
 /**
- * Read one voice's `voice/<id>/callouts.json` (#1064).
+ * Read one voice's `voice/<id>/callouts.json` (#1064), `id` being the bare id
+ * the pack declares — the folder name, not the composite.
  *
  * Three outcomes, and the middle one is the point. No file is a CLIPS-ONLY
  * voice — `script: null`, no problem — because a pack built before scripts
@@ -210,11 +202,8 @@ export type VoiceScriptRead = { ok: true; script: CalloutScript | null } | { ok:
  * throw ends the plugin, so an error the grammar did not foresee is reported
  * as this voice's problem, never propagated.
  *
- * Exported for the voice-pack service, which reads each BUNDLED voice's script
- * under the plugin's own audio root through this same function (#1064): one
- * reader for both roots, so that when the bundle is dropped only the roots
- * list changes. It is also deck-core's port-based script reader for anything
- * else that holds a `VoicePackFileSystem`.
+ * Exported as deck-core's port-based script reader, for anything else that
+ * holds a `VoicePackFileSystem` and a voice folder to read a script from.
  */
 export function readVoiceScript(fs: VoicePackFileSystem, dir: string, voiceId: string): VoiceScriptRead {
   try {
@@ -243,19 +232,6 @@ export function readVoiceScript(fs: VoicePackFileSystem, dir: string, voiceId: s
   }
 }
 
-/** The `priorityPacks` that are on disk, in their given order, then every other folder sorted. */
-function visitOrder(folders: readonly string[], priorityPacks: readonly string[]): string[] {
-  const first: string[] = [];
-
-  for (const id of priorityPacks) {
-    const folder = folders.find((name) => name.toLowerCase() === id && !first.includes(name));
-
-    if (folder !== undefined) first.push(folder);
-  }
-
-  return [...first, ...folders.filter((name) => !first.includes(name)).sort()];
-}
-
 /**
  * Which root a folder was found under, which is all that decides a pack's
  * provenance there (#1143): `development` for the dev root, and the record's
@@ -263,27 +239,19 @@ function visitOrder(folders: readonly string[], priorityPacks: readonly string[]
  */
 type ScanRootKind = "development" | "packs";
 
-/**
- * The accumulators one scan shares across its roots (#1143), so a pack found
- * under an earlier root claims its voice ids ahead of every pack under a later
- * one — the same `claimedVoices` map, the same `problems` list.
- */
+/** The accumulators one scan shares across its roots (#1143): one packs list, one problems list. */
 type ScanState = {
   fs: VoicePackFileSystem;
   packs: InstalledVoicePack[];
   problems: VoicePackProblem[];
-  /** Voice id → the pack folder that provides it, and whether that pack is a development build. */
-  claimedVoices: Map<string, { folder: string; development: boolean }>;
   /**
    * Pack ids the development root LISTED (#1143) — lower-cased, which is what
    * a manifest id already is. A packs-root folder with one of these ids is
-   * shadowed whole; see the branch in {@link scanRoot} for why per-voice is not
-   * enough. Listed, not merely present: a dev folder the scan refused (no
-   * manifest, a bad id) must not silence the AppData copy in favour of nothing.
+   * shadowed whole; see the branch in {@link scanRoot} for why. Listed, not
+   * merely present: a dev folder the scan refused (no manifest, a bad id) must
+   * not silence the AppData copy in favour of nothing.
    */
   developmentPackIds: Set<string>;
-  bundledVoices: ReadonlySet<string>;
-  priorityPacks: readonly string[];
 };
 
 /**
@@ -294,28 +262,15 @@ type ScanState = {
  * only. Everything it refuses comes back as a `problem` so the reason can be
  * logged and shown rather than silently swallowed.
  *
- * Folders are visited in a fixed order — the `priorityPacks` first, then the
- * rest sorted — which makes the winner of a voice collision deterministic
- * rather than dependent on directory-listing order. With a `devRoot` (#1143)
- * that root is visited first, in the same order within it, and everything it
- * provides is claimed before the packs root is read at all.
+ * Voice ids are unique WITHIN a pack only (#1144). Two packs may each declare
+ * `matt`; each is listed under its own composite id, `<pack id>::matt`, and
+ * nothing here decides between them — there is no claim to win. Folders are
+ * still visited in sorted order so the result is independent of
+ * directory-listing order. With a `devRoot` (#1143) that root is visited
+ * first, and a pack id it lists shadows the same id under the packs root.
  */
-export function scanVoicePacks({
-  root,
-  devRoot,
-  fs,
-  reservedVoices,
-  priorityPacks = [],
-}: ScanVoicePacksOptions): ScanVoicePacksResult {
-  const state: ScanState = {
-    fs,
-    packs: [],
-    problems: [],
-    claimedVoices: new Map(),
-    developmentPackIds: new Set(),
-    bundledVoices: new Set(reservedVoices),
-    priorityPacks,
-  };
+export function scanVoicePacks({ root, devRoot, fs }: ScanVoicePacksOptions): ScanVoicePacksResult {
+  const state: ScanState = { fs, packs: [], problems: [], developmentPackIds: new Set() };
 
   if (devRoot !== undefined) scanRoot(devRoot, "development", state);
 
@@ -326,9 +281,9 @@ export function scanVoicePacks({
 
 /** One root's folders, appended into the shared `state` — see {@link scanVoicePacks}. */
 function scanRoot(root: string, kind: ScanRootKind, state: ScanState): void {
-  const { fs, packs, problems, claimedVoices, developmentPackIds, bundledVoices, priorityPacks } = state;
+  const { fs, packs, problems, developmentPackIds } = state;
 
-  for (const folder of visitOrder(fs.listDirectories(root), priorityPacks)) {
+  for (const folder of [...fs.listDirectories(root)].sort()) {
     // Dot-folders are the installer's own working space (`.tmp`, `.trash`) and
     // anything else a tool decided to hide. Never packs.
     if (folder.startsWith(".")) continue;
@@ -337,14 +292,13 @@ function scanRoot(root: string, kind: ScanRootKind, state: ScanState): void {
     // with this id, so this folder is the same pack seen twice and is skipped
     // whole — before its manifest is even read.
     //
-    // The per-voice rule below is not enough here, and the gap was real: it
-    // drops the voices the dev copy CLAIMED, so a packs-root copy declaring one
-    // extra voice survived with that voice alone. Two `packs` rows then carried
-    // one id, and every consumer of this list is keyed by id — the launch
-    // step's `isPackUsable`, the installer's target lookup, the settings
-    // window's rows — so which copy a lookup found came down to array order.
-    // The extra voice is not a loss worth that: it is a voice of a pack the
-    // developer is in the middle of editing, and the answer is to stage it.
+    // Whole, not per voice: two `packs` rows carrying one id would leave every
+    // consumer of this list — the launch step's `isPackUsable`, the installer's
+    // target lookup, the settings window's rows — keyed on an id that names
+    // two things, so which copy a lookup found would come down to array order.
+    // A voice only the AppData copy declares is not a loss worth that: it is a
+    // voice of a pack the developer is in the middle of editing, and the
+    // answer is to stage it.
     //
     // Matched on the folder name lower-cased, the same case-insensitive
     // comparison the id-vs-folder check below makes, because the filesystem
@@ -394,83 +348,22 @@ function scanRoot(root: string, kind: ScanRootKind, state: ScanState): void {
       continue;
     }
 
-    // A voice already provided by the bundle or by an earlier pack is dropped
-    // from THIS pack rather than rejecting the pack wholesale: a pack shipping
-    // two voices, one of which collides, still contributes the other.
-    // De-duplicated first — a manifest repeating a voice id would otherwise
-    // claim it twice, duplicate its clips, and list it twice in the settings
-    // window. Keyed on `id`, never the label: two entries naming the same voice
-    // under different labels are still one voice, and the first wins.
-    // Why the scanner reads the installer's record at all, having managed
-    // without it through stage 1.
+    // The installer's record, read for the provenance badge alone. Not a
+    // security boundary: a sideloaded pack can write the same file, and packs
+    // are deliberately unsigned — the record is displayed, never enforced (see
+    // `provenance` on the pack type for what does and does not key off it).
     //
-    // The release that first publishes packs still BUNDLES `default` and also
-    // seeds a copy of it into this directory, so that the next release — the one
-    // that stops bundling audio — needs no network for the entire install base.
-    // For that one release the seeded copy is inert: plugin-root-first
-    // resolution means the bundle still provides every clip, so nothing the
-    // driver hears changes. What DOES change without this branch is that every
-    // start reports the seed as a broken pack, telling the user something is
-    // wrong when nothing is.
-    //
-    // Be precise about what this marker is worth. It is NOT a security
-    // boundary: a sideloaded pack can write the same file, and packs are
-    // deliberately unsigned (a provenance record is displayed, never enforced).
-    //
-    // What it gates GREW in #1100 and the honest statement grew with it. It was
-    // only a diagnostic message: a forged marker bought the suppression of a
-    // log line about a pack that still could not shadow a single bundled clip.
-    // Now it also buys a DISPLAY TREATMENT — the row is listed with a
-    // "Built-in" badge, reads "Included with the plugin", and offers no Remove.
-    // So a sideloaded pack that forges the record and declares nothing but
-    // bundled voice ids can present itself as shipped by iRaceDeck, and the one
-    // UI route to deleting it is withheld.
-    //
-    // Still accepted, for reasons that survive the change but should be
-    // re-argued rather than assumed. To forge it a pack must declare ONLY
-    // voices the bundle already provides, so it provides nothing and cannot
-    // shadow a clip: the exposure is a misleading label on an inert folder that
-    // the user placed there by hand, on a machine where they can already write
-    // the plugin's own JavaScript. Nothing here is a capability the forger did
-    // not already have.
-    //
-    // What would change that verdict is a Remove button becoming the only way
-    // to delete a pack, or the badge ever being read as a trust decision by
-    // code rather than by a person. Neither is true today; if either becomes
-    // true, this marker stops being an acceptable instrument.
-    //
-    // Stage 3 (#1034) shrank what the marker is worth rather than growing it,
-    // which is the outcome the paragraph above was watching for. The withheld
-    // Remove is now keyed by the plugin-published `managed` flag
-    // (`isManagedVoicePack`) — the plugin's own statement about the pack IT
-    // refreshes — never by provenance, so no record a pack author can write
-    // reaches it. The provenance-keyed row is out of reach as well: it needs
-    // `droppedToBundle > 0`, and a plugin that bundles no audio reserves no
-    // voice ids, so nothing is ever dropped to the bundle and the branch cannot
-    // fire at all. On such a plugin a forged `bundled-seed` record buys its
-    // author nothing whatsoever.
-    //
-    // Keep the exemption exactly this narrow. It requires OUR source value and
-    // a record that names this same pack, so it cannot be widened by accident
-    // into "any pack with an .install.json may claim a bundled voice".
-    //
-    // Under the development root (#1143) the record is not read at all: the
-    // provenance there is decided by where the pack was found, and a staged
-    // folder that happens to carry a seed record must not buy the seed's
-    // treatment either — `provenance` stays undefined, so `isBundledSeed` is
-    // false and the pack is judged on its clips like any other.
+    // Under the development root (#1143) it is not read at all: the provenance
+    // there is decided by where the pack was found, and a staged folder that
+    // happens to carry a record must not be badged by it.
     const provenanceRead = kind === "packs" ? fs.readTextFile(join(dir, VOICE_PACK_PROVENANCE_FILE)) : undefined;
     const provenance = provenanceRead?.ok ? parseVoicePackProvenance(provenanceRead.text) : undefined;
-    const isBundledSeed = provenance?.source === "bundled-seed" && provenance.id === manifest.id;
 
+    // De-duplicated within the pack — a manifest repeating a voice id would
+    // otherwise duplicate its clips and list it twice in the settings window.
+    // Keyed on `id`, never the label: two entries naming the same voice under
+    // different labels are still one voice, and the first wins.
     const seen = new Set<string>();
-    // Why the drops happened, not just how many. The bundled-seed branch below
-    // must fire only when the BUNDLE took every voice: a seed whose voice was
-    // claimed by another pack, or declared twice, is a pack with a real problem
-    // and would otherwise render as a healthy "Built-in" row with a problem
-    // line underneath it — shown as fine and broken at once.
-    let droppedToBundle = 0;
-    let droppedOtherwise = 0;
     const declared = manifest.voices.filter((voice) => {
       if (seen.has(voice.id)) {
         // Reported, not silently swallowed. Every other malformation in this
@@ -480,102 +373,24 @@ function scanRoot(root: string, kind: ScanRootKind, state: ScanState): void {
         // dropped. More likely now that a voice carries a label, since two
         // entries differing only by label look like two things.
         problems.push({ pack: folder, reason: `voice "${voice.id}" is declared more than once; the first wins` });
-        droppedOtherwise += 1;
 
         return false;
       }
 
       seen.add(voice.id);
 
-      if (bundledVoices.has(voice.id)) {
-        // Dropped either way — the bundle wins the id, and that is not in
-        // question here. Only whether the user is told something broke.
-        if (!isBundledSeed) {
-          problems.push({ pack: folder, reason: `voice "${voice.id}" is provided by the plugin's bundled audio` });
-        }
-
-        droppedToBundle += 1;
-
-        return false;
-      }
-
-      const owner = claimedVoices.get(voice.id);
-
-      if (owner === undefined) return true;
-
-      // A loser to the development root is told so (#1143): the folder it
-      // names is not one the user can see beside their own, and "already
-      // provided by pack default" about their own `default` would read as
-      // nonsense.
-      problems.push({
-        pack: folder,
-        reason: owner.development
-          ? `voice "${voice.id}" is already provided by the development build of pack "${owner.folder}"`
-          : `voice "${voice.id}" is already provided by pack "${owner.folder}"`,
-      });
-      droppedOtherwise += 1;
-
-      return false;
+      return true;
     });
-
-    // A bundled seed provides nothing and is still LISTED (#1100).
-    //
-    // Every voice it declares belongs to the plugin's own audio, so `declared`
-    // is empty and the pack used to be skipped here — invisible, and reported
-    // as neither installed nor a problem. That produced a contradiction on the
-    // first screen a user sees: the card said "No voice packs installed" while
-    // the button beside it opened a folder containing exactly this pack. The
-    // pack is on disk; the card should say so.
-    //
-    // Listed with NO voices and NO clips, which is not a special case but the
-    // plain reading of the field: `voices` is what a pack ACTUALLY provides
-    // after collisions are resolved, and for this pack the honest answer is
-    // nothing. An empty `clips` list is inert downstream rather than merely
-    // harmless — `normalizeRoots` turns it into an empty allow-list, so the
-    // root can resolve nothing, where an ABSENT list would have meant
-    // unrestricted.
-    //
-    // LISTING A PACK AND CONTRIBUTING A VOICE ARE TWO DIFFERENT JOBS, and this
-    // pack does the first and must never do the second. `default` is already in
-    // the voice dropdown, provided by the bundle; registering it again here
-    // would put two identically named rows in front of the user with nothing to
-    // tell them apart. That is why the voices are dropped BEFORE this point and
-    // why nothing below re-adds them — and it is pinned by a test rather than
-    // left to be noticed.
-    //
-    // It claims no voice id either, so a later pack that genuinely provides one
-    // of these ids is not locked out by the seed's presence.
-    if (isBundledSeed && declared.length === 0 && droppedToBundle > 0 && droppedOtherwise === 0) {
-      packs.push({
-        id: manifest.id,
-        label: manifest.label,
-        version: manifest.version,
-        ...(manifest.author === undefined ? {} : { author: manifest.author }),
-        dir,
-        voices: [],
-        clips: [],
-        provenance: "bundled-seed",
-      });
-
-      // Unreachable under the development root — the provenance record is not
-      // read there, so `isBundledSeed` is false — but recorded anyway so
-      // "listed under the dev root" has exactly one meaning at every push site.
-      if (kind === "development") developmentPackIds.add(manifest.id);
-
-      continue;
-    }
-
-    if (declared.length === 0) continue;
 
     // Clip presence is checked PER VOICE, not per pack. A pack that declares a
     // voice but ships nothing under it would register an empty pool for every
-    // callout — at runtime indistinguishable from a missing clip — and, worse,
-    // would CLAIM that voice, locking out a later pack that really has it.
+    // callout — at runtime indistinguishable from a missing clip — and would
+    // put a voice in the dropdown that can never make a sound.
     //
     // "Ships something" means something the ENGINE CAN REACH, not merely a file
     // under the right prefix — see USABLE_CLIP. A gate looser than what the pool
-    // builder consumes lets a pack install cleanly, claim its voice, enter the
-    // dropdown and then be completely silent, with the only trace at debug level.
+    // builder consumes lets a pack install cleanly, enter the dropdown and then
+    // be completely silent, with the only trace at debug level.
     const found = fs.listMp3Files(dir);
     const voices: InstalledVoice[] = [];
     const clips: string[] = [];
@@ -604,8 +419,7 @@ function scanRoot(root: string, kind: ScanRootKind, state: ScanState): void {
       // reports that and nothing else — a second line telling the author to fix
       // a script for a voice that cannot make a sound would send them to the
       // wrong file first. A malformed script drops the voice on the same terms
-      // as no usable clips (#1064): it is not listed, contributes no clips, and
-      // claims no id, so a later pack that ships the voice properly still can.
+      // as no usable clips (#1064): it is not listed and contributes no clips.
       const scriptRead = readVoiceScript(fs, dir, voice.id);
 
       if (!scriptRead.ok) {
@@ -613,7 +427,12 @@ function scanRoot(root: string, kind: ScanRootKind, state: ScanState): void {
         continue;
       }
 
-      voices.push({ id: voice.id, label: voice.label, script: scriptRead.script });
+      voices.push({
+        id: qualifiedVoiceId(manifest.id, voice.id),
+        packVoiceId: voice.id,
+        label: voice.label,
+        script: scriptRead.script,
+      });
 
       // Appended one at a time rather than spread: `usable` is derived from a
       // directory walk that caps DEPTH but not breadth, and a spread past V8's
@@ -632,8 +451,6 @@ function scanRoot(root: string, kind: ScanRootKind, state: ScanState): void {
 
     if (voices.length === 0) continue;
 
-    for (const voice of voices) claimedVoices.set(voice.id, { folder, development: kind === "development" });
-
     // Recorded only for a pack that is actually LISTED, so a dev folder the
     // scan refused shadows nothing under the packs root (#1143).
     if (kind === "development") developmentPackIds.add(manifest.id);
@@ -648,12 +465,12 @@ function scanRoot(root: string, kind: ScanRootKind, state: ScanState): void {
       // Sorted so the fragment a pack contributes is independent of the order
       // its voices happen to be declared in.
       clips: clips.sort(),
-      // The record must name THIS pack, the same condition `isBundledSeed`
-      // above and the installer's own hash read already apply. A folder copied
-      // or renamed by hand keeps the previous `.install.json`, and without this
-      // the row would read "Downloaded" for a pack that was never downloaded
-      // under that id — which contradicts the field's own definition of
-      // `sideload` as the absence of a USABLE record.
+      // The record must name THIS pack, the same condition the installer's own
+      // hash read applies. A folder copied or renamed by hand keeps the
+      // previous `.install.json`, and without this the row would read
+      // "Downloaded" for a pack that was never downloaded under that id —
+      // which contradicts the field's own definition of `sideload` as the
+      // absence of a USABLE record.
       //
       // Under the development root the answer is the root itself (#1143).
       provenance:

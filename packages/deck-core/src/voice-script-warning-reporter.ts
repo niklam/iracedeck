@@ -13,7 +13,10 @@
  * `set` and `clear` are injected rather than imported so the reporter can be
  * wired against a store double in tests and against `setWarning` /
  * `clearWarning` in the plugins; the evaluator stays the single decision
- * point — set or clear is read off its result, never re-derived here.
+ * point — set or clear is read off its result, never re-derived here. The
+ * input passes through whole, `labels` included (#1144): the plugins hand the
+ * evaluator the `_voiceLabels` map so the banner names the voice as the
+ * dropdown does rather than by its composite id.
  */
 import type { clearWarning, setWarning } from "./pi-warnings.js";
 import {

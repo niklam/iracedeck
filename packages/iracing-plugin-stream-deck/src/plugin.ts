@@ -111,7 +111,6 @@ import {
   createVoicePackStorageFileSystem,
   createVoiceScriptWarningReporter,
   deleteGlobalSettings,
-  ENSURED_VOICE_PACK_ID,
   evaluateSetupWarning,
   findChromiumBrowserOnThisMachine,
   FIRST_RUN_VERSION_KEY,
@@ -142,6 +141,7 @@ import {
   isSettingsStoreReady,
   isSimHubReachable,
   migrateGlobalSettingsKeys,
+  migrateRaceEngineerVoiceId,
   migrateStartupPolicies,
   MIGRATION_PENDING_KEY,
   onGlobalSettingsChange,
@@ -447,21 +447,24 @@ applyAudioState();
 // ACTIVE manifest. Installed voice packs (issue #1034) make that manifest
 // dynamic: the compiled-in one is the built-in half — sfx plus any bundled
 // voice — and each installed pack contributes its own audio root and its own
-// clips on top. Rescanned on demand, so a hand-placed pack needs a button
-// press in Settings rather than a restart.
+// clips on top, its voices under their composite `<pack>::<voice>` ids
+// (#1144), so two packs that both ship a `matt` list two voices. Rescanned on
+// demand, so a hand-placed pack needs a button press in Settings rather than
+// a restart.
 let activeManifest: AudioAssetsManifest = audioAssetsManifest;
 let raceEngineerVoices = scanRaceEngineerVoices(activeManifest);
 let driverNames = scanDriverNames(activeManifest);
 
 // The voices the plugin itself bundles — fixed for the process, since they come
-// from the compiled-in manifest. No pack may claim one of these.
+// from the compiled-in manifest. Read by the seed below and nothing else.
 const bundledVoices = scanRaceEngineerVoices(audioAssetsManifest);
 
-// Every voice's callout script, voice id → parsed script (#1064): what the
-// voice-pack service hands over on each scan, held here for the same reason
-// `activeManifest` is a `let` above — the startup scan runs BEFORE the scenario
-// engine exists. The engine takes this map right after `registerPitCrew` below;
-// every later rescan hands its map to the engine directly from `applyScripts`.
+// Every voice's callout script, composite voice id → parsed script (#1064,
+// #1144): what the voice-pack service hands over on each scan, held here for
+// the same reason `activeManifest` is a `let` above — the startup scan runs
+// BEFORE the scenario engine exists. The engine takes this map right after
+// `registerPitCrew` below; every later rescan hands its map to the engine
+// directly from `applyScripts`.
 let activeScripts: ReadonlyMap<string, CalloutScript> = new Map();
 
 // The missing-callout-script banner (#1064). State-driven, so it is re-asserted
@@ -488,11 +491,6 @@ const voicePacks = createVoicePackService({
   fs: voicePackFs,
   logger: voicePacksLogger,
   pluginAudioDir: audioRootDir,
-  reservedVoices: bundledVoices,
-  // The managed pack claims its voice before the alphabetical order does
-  // (#1034 stage 3): with nothing reserved, a sideloaded folder sorting
-  // before `default` could otherwise take the `default` voice id off it.
-  priorityPacks: [ENSURED_VOICE_PACK_ID],
   applyRoots: (roots) => getAudio().setRoots(roots),
   applyManifest: (fragments) => {
     activeManifest = mergeManifests(audioAssetsManifest, fragments);
@@ -526,6 +524,9 @@ const voicePacks = createVoicePackService({
     pushRaceEngineerVoicesIfChanged();
     pushDriverNamesIfChanged();
     pushVoicePackListIfChanged();
+    // Before the banner, so it evaluates the qualified value: a scan can bring
+    // the pack a stored bare voice id belongs to (#1144).
+    migrateRaceEngineerVoiceId(raceEngineerVoices, voicePacksLogger);
     reassertVoiceScriptWarning();
   },
 });
@@ -580,14 +581,6 @@ const voicePackCatalog = createVoicePackCatalogService({
 
     return typeof raw === "string" ? raw : undefined;
   },
-  // The voices this build ships — the same list the scanner reserves. A
-  // catalog entry whose voices are all in it is reported installed, never
-  // offered: the bundle provides every one of its clips whatever is in the
-  // packs folder, so the download would only buy the scanner's "provided by
-  // the plugin's bundled audio" error row. Passing the computed list rather
-  // than an id is what lets stage 3 need no edit here — nothing bundled,
-  // empty list, rule inert.
-  bundledVoices,
   logger: adapter.createLogger("VoicePackCatalog"),
 });
 
@@ -597,14 +590,16 @@ const voicePackCatalog = createVoicePackCatalogService({
 // after a seed answer "installed" rather than re-download what was just
 // copied. Since 3.3.0 no plugin ships a voice, so this is inert: the loop
 // below matches nothing and the plugin fetches `default` at launch instead.
-// It stays as the permanent rule — set `bundled: true` on an entry in
-// `voice-packs.mjs` and that voice is bundled and seeded again, here, with no
-// code change (an offline installer variant is what would want that).
+// It stays as the rule for seeding — set `bundled: true` on an entry in
+// `voice-packs.mjs` and that pack is seeded again, here (an offline installer
+// variant is what would want that). Since #1144 nothing hides the bundled
+// copy behind the seeded one, though: the bundle's bare `default` would list
+// beside the pack's `default::default`, so re-bundling needs that settled.
 //
 // Importing an entry does NOT decide that its pack is bundled. That is decided
 // once, in `@iracedeck/audio-assets`'s `voice-packs.mjs`, and reaches this
 // process as the clips the build copied into `assets/audio` and the manifest
-// it compiled in — `bundledVoices` above, the same set the scanner reserves.
+// it compiled in — `bundledVoices` above, bare ids like a catalog entry's.
 // An entry whose voices that set does not cover is a published pack this
 // build does not carry, and is simply not seeded. That is why the stage 3 flip
 // needed no edit here: the import went stale and inert, nothing more.
@@ -1025,11 +1020,11 @@ function pushRaceEngineerVoicesIfChanged(): void {
 }
 
 /**
- * Voice id -> what the dropdown should call it. The rule lives in deck-core
- * (`voiceDisplayLabels`) so all three plugins share one implementation and it is
- * tested once. Only voices a pack provides appear; the bundled voice has no
- * manifest and needs no entry, because the dropdown falls back to
- * `titleCase(id)`.
+ * Composite voice id -> what the dropdown should call it (#1144). The rule
+ * lives in deck-core (`voiceDisplayLabels`) so all three plugins share one
+ * implementation and it is tested once. Only voices a pack provides appear;
+ * any other voice has no manifest to name it, and the dropdown falls back to
+ * its title-cased voice id.
  */
 function voiceLabels(): Record<string, string> {
   return voiceDisplayLabels(voicePacks.installed());
@@ -1098,6 +1093,8 @@ function reassertVoiceScriptWarning(): void {
   reportVoiceScriptWarning({
     activeVoice: resolveActiveRaceEngineerVoice(raceEngineerVoices),
     scriptedVoices: new Set(voicePacks.scripts().keys()),
+    // The banner names the voice as the dropdown does, never by its composite id.
+    labels: voiceLabels(),
   });
 }
 
@@ -1479,6 +1476,9 @@ onGlobalSettingsChange((settings) => {
   pushRaceEngineerVoicesIfChanged();
   pushDriverNamesIfChanged();
   pushVoicePackListIfChanged();
+  // A stored bare voice id is qualified with its pack (#1144) — here once the
+  // store is ready, and again after any scan that brings its pack.
+  migrateRaceEngineerVoiceId(raceEngineerVoices, voicePacksLogger);
   // The active voice is a setting, so its banner is re-evaluated here (#1064).
   reassertVoiceScriptWarning();
 

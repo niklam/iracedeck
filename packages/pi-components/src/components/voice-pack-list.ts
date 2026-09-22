@@ -652,10 +652,12 @@ export class VoicePackList extends HTMLElement {
       // the release that does it: with nothing bundled the scanner reserves no
       // voice ids, so it emits no such row and the case stops arising by
       // itself, rather than leaving a working, user-owned pack permanently
-      // unremovable and mislabelled. Kept rather than deleted because it
-      // describes a ROW, not a release: a row that provides nothing earns a
-      // statement instead of a button whenever one turns up, and whether one
-      // can turn up is decided by the compiled-in audio manifest, not here.
+      // unremovable and mislabelled. Since #1144 the scanner cannot emit one
+      // at all: it drops no voice to the bundle, and lists no pack without a
+      // voice. Kept rather than deleted because it describes a ROW, not a
+      // release: a row that provides nothing earns a statement instead of a
+      // button whenever one turns up, and that is decided by the plugin, not
+      // here.
       //
       // NOT because it would be undone on the next start — that reason is
       // false often enough to be worth naming, and it belongs to the managed

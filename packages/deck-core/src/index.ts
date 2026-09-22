@@ -174,8 +174,9 @@ export {
   _resetGlobalSettings,
 } from "./global-settings.js";
 
-// One-shot renamed-key migrations (issue #953)
-export { migrateGlobalSettingsKeys } from "./global-settings-migrations.js";
+// One-shot renamed-key migrations (issue #953) and the idempotent voice-id
+// qualification (#1144)
+export { migrateGlobalSettingsKeys, migrateRaceEngineerVoiceId } from "./global-settings-migrations.js";
 
 // Per-feature startup policy for the Race Engineer / Radar gates (issue #1007)
 export {

@@ -30,13 +30,13 @@ function rootOf(packDir: string): string {
 
 /**
  * `packs` names each pack folder and its clips; `files` plants extra files by
- * POSIX absolute path (`/plugin/assets/audio/voice/default/callouts.json`,
- * `/packs/luca/voice/luca/callouts.json`) for the reads the scan and the
- * bundled-script read make beyond the manifest.
+ * POSIX absolute path (`/packs/luca/voice-pack.json` to declare a voice whose
+ * id differs from the pack's, `/packs/luca/voice/luca/callouts.json`) for the
+ * reads the scan makes beyond the manifest it fabricates.
  *
  * `devPacks` is the same for the development root (#1143). It is keyed by root
  * rather than merged, so a test can put the same folder under BOTH and see
- * which copy claims the voice — the whole point of that root.
+ * which copy is listed — the whole point of that root.
  */
 function fakeFs(
   packs: Record<string, string[]>,
@@ -74,6 +74,17 @@ function fakeFs(
   };
 }
 
+/** A manifest for pack `id` declaring the given bare voice ids. */
+function manifest(id: string, voices: readonly string[]): string {
+  return JSON.stringify({
+    schema: 1,
+    id,
+    label: id,
+    version: "1.0.0",
+    voices: voices.map((v) => ({ id: v, label: v })),
+  });
+}
+
 function make(
   packs: Record<string, string[]>,
   overrides: Partial<VoicePackServiceDeps> = {},
@@ -89,7 +100,6 @@ function make(
     fs: fakeFs(packs, files, devPacks),
     logger: logger as never,
     pluginAudioDir: PLUGIN_AUDIO,
-    reservedVoices: [],
     applyRoots,
     applyManifest,
     applyScripts,
@@ -100,13 +110,15 @@ function make(
   return { service, applyRoots, applyManifest, applyScripts, onPacksChanged };
 }
 
+type AppliedRoot = { dir: string; clips?: readonly string[]; voices?: Readonly<Record<string, string>> };
+
 describe("createVoicePackService", () => {
   it("puts the plugin audio dir first and each pack dir after it", () => {
     const { service, applyRoots } = make({ luca: ["voice/luca/flags/a.mp3"] });
     service.refresh();
 
     expect(applyRoots).toHaveBeenCalledTimes(1);
-    const roots = applyRoots.mock.calls[0][0] as { dir: string; clips?: readonly string[] }[];
+    const roots = applyRoots.mock.calls[0][0] as AppliedRoot[];
 
     expect(roots[0].dir).toBe(PLUGIN_AUDIO);
     expect(roots).toHaveLength(2);
@@ -114,20 +126,20 @@ describe("createVoicePackService", () => {
   });
 
   it("leaves the plugin root unrestricted and gives every pack root its admitted clips", () => {
-    // The authorisation half of the collision rule. The scanner enforces "one
-    // voice, one owner" by DROPPING a foreign file from a pack's clip list — the
-    // file is still on that pack's disk, so a resolver going on file presence
-    // alone would serve it. The allow-list is what makes dropping it mean
-    // something.
+    // The authorisation half of the rule. The scanner admits a pack's own
+    // voices by DROPPING every other file from its clip list — the file is
+    // still on that pack's disk, so a resolver going on file presence alone
+    // would serve it. The allow-list is what makes dropping it mean something.
     const { service, applyRoots } = make({
       "aaa-evil": ["voice/aaa-evil/flags/a.mp3", "voice/luca/flags/blue-01.mp3"],
       luca: ["voice/luca/flags/blue-01.mp3"],
     });
     service.refresh();
 
-    const roots = applyRoots.mock.calls[0][0] as { dir: string; clips?: readonly string[] }[];
+    const roots = applyRoots.mock.calls[0][0] as AppliedRoot[];
 
     expect(roots[0].clips).toBeUndefined();
+    expect(roots[0].voices).toBeUndefined();
     expect(folderOf(roots[1].dir)).toBe("aaa-evil");
     expect(roots[1].clips).toEqual(["voice/aaa-evil/flags/a.mp3"]);
     expect(roots[1].clips).not.toContain("voice/luca/flags/blue-01.mp3");
@@ -135,11 +147,50 @@ describe("createVoicePackService", () => {
     expect(roots[2].clips).toEqual(["voice/luca/flags/blue-01.mp3"]);
   });
 
-  it("passes each pack's clips through as a fragment", () => {
-    const { service, applyManifest } = make({ luca: ["voice/luca/flags/a.mp3"] });
+  it("binds each pack root to its voices' composite ids (#1144)", () => {
+    // The audio service resolves `voice/<composite>/…` only in the root bound
+    // to that composite, as the bare `voice/<voice>/…` the pack's files sit
+    // under. The binding is what the scan's `packVoiceId` is for.
+    const { service, applyRoots } = make(
+      { duo: ["voice/a/flags/a.mp3", "voice/b/flags/a.mp3"] },
+      {},
+      { "/packs/duo/voice-pack.json": manifest("duo", ["a", "b"]) },
+    );
     service.refresh();
 
-    expect(applyManifest).toHaveBeenCalledWith([["voice/luca/flags/a.mp3"]]);
+    const roots = applyRoots.mock.calls[0][0] as AppliedRoot[];
+
+    expect(roots[1].voices).toEqual({ "duo::a": "a", "duo::b": "b" });
+  });
+
+  it("passes each pack's clips through as a fragment, qualified with the pack id", () => {
+    // The engine's logical clip paths carry the composite id (#1144), so the
+    // manifest's voice list, the `{voice}` substitution and the driver-name
+    // union all see `duo::luca` — while the pack's own root keeps the bare
+    // spelling its files actually have.
+    const { service, applyManifest, applyRoots } = make({ luca: ["voice/luca/flags/a.mp3"] });
+    service.refresh();
+
+    expect(applyManifest).toHaveBeenCalledWith([["voice/luca::luca/flags/a.mp3"]]);
+    expect((applyRoots.mock.calls[0][0] as AppliedRoot[])[1].clips).toEqual(["voice/luca/flags/a.mp3"]);
+  });
+
+  it("gives two packs sharing a bare voice id two bindings and two fragments", () => {
+    const { service, applyManifest, applyRoots } = make(
+      { alpha: ["voice/matt/flags/a.mp3"], beta: ["voice/matt/flags/a.mp3"] },
+      {},
+      {
+        "/packs/alpha/voice-pack.json": manifest("alpha", ["matt"]),
+        "/packs/beta/voice-pack.json": manifest("beta", ["matt"]),
+      },
+    );
+    service.refresh();
+
+    const roots = applyRoots.mock.calls[0][0] as AppliedRoot[];
+
+    expect(roots.slice(1).map((root) => root.voices)).toEqual([{ "alpha::matt": "matt" }, { "beta::matt": "matt" }]);
+    expect(applyManifest).toHaveBeenCalledWith([["voice/alpha::matt/flags/a.mp3"], ["voice/beta::matt/flags/a.mp3"]]);
+    expect(service.problems()).toEqual([]);
   });
 
   it("applies roots before the manifest so a clip is never advertised before it can resolve", () => {
@@ -190,37 +241,6 @@ describe("createVoicePackService", () => {
 
     expect(logger.warn).toHaveBeenCalledTimes(1);
     expect(String(logger.warn.mock.calls[0][0])).toContain("luca");
-  });
-
-  it("forwards priorityPacks so the managed pack claims its voice before a sideload that sorts first", () => {
-    const { service } = make(
-      {
-        aaa: ["voice/default/flags/a.mp3"],
-        default: ["voice/default/flags/a.mp3"],
-      },
-      { priorityPacks: ["default"] },
-      {
-        "/packs/aaa/voice-pack.json": JSON.stringify({
-          schema: 1,
-          id: "aaa",
-          label: "Aaa",
-          version: "1.0.0",
-          voices: [{ id: "default", label: "Mine" }],
-        }),
-      },
-    );
-
-    expect(service.refresh().map((pack) => pack.id)).toEqual(["default"]);
-    expect(service.problems()).toEqual([
-      { pack: "aaa", reason: 'voice "default" is already provided by pack "default"' },
-    ]);
-  });
-
-  it("forwards reservedVoices so a pack cannot claim a bundled voice", () => {
-    const { service, applyRoots } = make({ luca: ["voice/luca/flags/a.mp3"] }, { reservedVoices: ["luca"] });
-
-    expect(service.refresh()).toEqual([]);
-    expect(applyRoots).toHaveBeenCalledWith([{ dir: PLUGIN_AUDIO }]);
   });
 
   it("survives a throwing apply callback rather than taking the plugin down with it", () => {
@@ -275,7 +295,6 @@ describe("createVoicePackService", () => {
 });
 
 describe("createVoicePackService hands the engine every voice's callout script (#1064)", () => {
-  const BUNDLED_SCRIPT_PATH = `${PLUGIN_AUDIO}/voice/default/callouts.json`;
   const LUCA_SCRIPT_PATH = `${PACKS_ROOT}/luca/voice/luca/callouts.json`;
   const LUCA_CLIPS = { luca: ["voice/luca/flags/a.mp3"] };
 
@@ -283,37 +302,40 @@ describe("createVoicePackService hands the engine every voice's callout script (
     return { schema: 1, scenarios: { [scenario]: { sequence: [`pool:${scenario}`] } }, frames: {}, pools: {} };
   }
 
-  const bundledScript = script("flag-green");
   const lucaScript = script("flag-blue");
+  const ninaScript = script("flag-green");
 
   function lastApplied(applyScripts: ReturnType<typeof vi.fn>): ReadonlyMap<string, CalloutScript> {
     return applyScripts.mock.calls.at(-1)?.[0] as ReadonlyMap<string, CalloutScript>;
   }
 
-  it("reads each bundled voice's script from the plugin audio dir and hands it to the engine", () => {
-    const { service, applyScripts } = make(
-      {},
-      { reservedVoices: ["default"] },
-      { [BUNDLED_SCRIPT_PATH]: JSON.stringify(bundledScript) },
-    );
+  it("hands each installed voice's script to the engine, keyed by its composite id (#1144)", () => {
+    const { service, applyScripts } = make(LUCA_CLIPS, {}, { [LUCA_SCRIPT_PATH]: JSON.stringify(lucaScript) });
     service.refresh();
 
     expect(applyScripts).toHaveBeenCalledTimes(1);
-    expect(lastApplied(applyScripts)).toEqual(new Map([["default", bundledScript]]));
+    expect(lastApplied(applyScripts)).toEqual(new Map([["luca::luca", lucaScript]]));
   });
 
-  it("adds each installed voice's script after the bundled ones", () => {
+  it("keeps two packs' scripts for the same bare voice id apart", () => {
     const { service, applyScripts } = make(
-      LUCA_CLIPS,
-      { reservedVoices: ["default"] },
-      { [BUNDLED_SCRIPT_PATH]: JSON.stringify(bundledScript), [LUCA_SCRIPT_PATH]: JSON.stringify(lucaScript) },
+      { alpha: ["voice/matt/flags/a.mp3"], beta: ["voice/matt/flags/a.mp3"] },
+      {},
+      {
+        "/packs/alpha/voice-pack.json": manifest("alpha", ["matt"]),
+        "/packs/beta/voice-pack.json": manifest("beta", ["matt"]),
+        "/packs/alpha/voice/matt/callouts.json": JSON.stringify(lucaScript),
+        "/packs/beta/voice/matt/callouts.json": JSON.stringify(ninaScript),
+      },
     );
     service.refresh();
 
-    const applied = lastApplied(applyScripts);
-
-    expect([...applied.keys()]).toEqual(["default", "luca"]);
-    expect(applied.get("luca")).toEqual(lucaScript);
+    expect(lastApplied(applyScripts)).toEqual(
+      new Map([
+        ["alpha::matt", lucaScript],
+        ["beta::matt", ninaScript],
+      ]),
+    );
   });
 
   it("leaves a clips-only installed voice out of the map rather than mapping it to nothing", () => {
@@ -341,109 +363,46 @@ describe("createVoicePackService hands the engine every voice's callout script (
     expect(order).toEqual(["roots", "manifest", "scripts", "changed"]);
   });
 
-  it("warns once per refresh for a bundled voice with no script, and leaves it out of the map", () => {
-    // A bundled voice is ours: a missing script is a packaging bug, not a
-    // pack author's choice, so it is said out loud rather than treated as a
-    // clips-only voice — but said once per refresh, not once per callout.
-    logger.warn.mockClear();
-    const { service, applyScripts } = make({}, { reservedVoices: ["default"] });
-    service.refresh();
-
-    expect(lastApplied(applyScripts)).toEqual(new Map());
-    expect(logger.warn).toHaveBeenCalledTimes(1);
-    expect(String(logger.warn.mock.calls[0][0])).toContain('"default"');
-    expect(String(logger.warn.mock.calls[0][0])).toContain("callouts.json");
-
-    service.refresh();
-
-    expect(logger.warn).toHaveBeenCalledTimes(2);
-  });
-
-  it("warns for a bundled voice whose script is malformed, naming the reason, and leaves it out", () => {
-    logger.warn.mockClear();
-    const { service, applyScripts } = make(
-      {},
-      { reservedVoices: ["default"] },
-      { [BUNDLED_SCRIPT_PATH]: JSON.stringify({ schema: 2, scenarios: {}, frames: {}, pools: {} }) },
-    );
-    service.refresh();
-
-    expect(lastApplied(applyScripts)).toEqual(new Map());
-    expect(logger.warn).toHaveBeenCalledTimes(1);
-    expect(String(logger.warn.mock.calls[0][0])).toContain('"default"');
-    expect(String(logger.warn.mock.calls[0][0])).toContain("schema");
-  });
-
-  it("warns for a bundled voice whose script cannot be read, with the errno", () => {
-    logger.warn.mockClear();
-    const { service, applyScripts } = make({}, { reservedVoices: ["default"] }, { [BUNDLED_SCRIPT_PATH]: UNREADABLE });
-    service.refresh();
-
-    expect(lastApplied(applyScripts)).toEqual(new Map());
-    expect(logger.warn).toHaveBeenCalledTimes(1);
-    expect(String(logger.warn.mock.calls[0][0])).toContain("EBUSY");
-  });
-
-  it("never throws for a bundled voice's script problem, and still hands the other voices over", () => {
-    const { service, applyScripts, onPacksChanged } = make(
-      LUCA_CLIPS,
-      { reservedVoices: ["default"] },
-      { [BUNDLED_SCRIPT_PATH]: "{not json", [LUCA_SCRIPT_PATH]: JSON.stringify(lucaScript) },
-    );
-
-    expect(() => service.refresh()).not.toThrow();
-    expect(lastApplied(applyScripts)).toEqual(new Map([["luca", lucaScript]]));
-    expect(onPacksChanged).toHaveBeenCalledTimes(1);
-  });
-
   it("returns the last applied map from scripts(), and an empty one before the first refresh", () => {
-    const { service, applyScripts } = make(
-      {},
-      { reservedVoices: ["default"] },
-      { [BUNDLED_SCRIPT_PATH]: JSON.stringify(bundledScript) },
-    );
+    const { service, applyScripts } = make(LUCA_CLIPS, {}, { [LUCA_SCRIPT_PATH]: JSON.stringify(lucaScript) });
 
     expect(service.scripts()).toEqual(new Map());
 
     service.refresh();
 
     expect(service.scripts()).toBe(lastApplied(applyScripts));
-    expect(service.scripts()).toEqual(new Map([["default", bundledScript]]));
+    expect(service.scripts()).toEqual(new Map([["luca::luca", lucaScript]]));
   });
 
   it("re-reads every script on each refresh, so an edited file is what the engine gets", () => {
-    const files: PlantedFiles = { [BUNDLED_SCRIPT_PATH]: JSON.stringify(bundledScript) };
-    const { service } = make({}, { reservedVoices: ["default"] }, files);
+    const files: PlantedFiles = { [LUCA_SCRIPT_PATH]: JSON.stringify(lucaScript) };
+    const { service } = make(LUCA_CLIPS, {}, files);
     service.refresh();
 
-    files[BUNDLED_SCRIPT_PATH] = JSON.stringify(lucaScript);
+    files[LUCA_SCRIPT_PATH] = JSON.stringify(ninaScript);
     service.refresh();
 
-    expect(service.scripts().get("default")).toEqual(lucaScript);
+    expect(service.scripts().get("luca::luca")).toEqual(ninaScript);
   });
 
   it("keeps the previous map when the scan fails", () => {
     logger.error.mockClear();
     let scans = 0;
-    const inner = fakeFs({}, { [BUNDLED_SCRIPT_PATH]: JSON.stringify(bundledScript) });
-    const { service, applyScripts } = make(
-      {},
-      {
-        reservedVoices: ["default"],
-        fs: {
-          ...inner,
-          listDirectories: (dir) => {
-            if (++scans > 1) throw new Error("disk gone");
+    const inner = fakeFs(LUCA_CLIPS, { [LUCA_SCRIPT_PATH]: JSON.stringify(lucaScript) });
+    const { service, applyScripts } = make(LUCA_CLIPS, {
+      fs: {
+        ...inner,
+        listDirectories: (dir) => {
+          if (++scans > 1) throw new Error("disk gone");
 
-            return inner.listDirectories(dir);
-          },
+          return inner.listDirectories(dir);
         },
       },
-    );
+    });
     service.refresh();
     const first = service.scripts();
 
-    expect(first).toEqual(new Map([["default", bundledScript]]));
+    expect(first).toEqual(new Map([["luca::luca", lucaScript]]));
 
     service.refresh();
 
@@ -463,24 +422,18 @@ describe("createVoicePackService hands the engine every voice's callout script (
     const { service, applyScripts } = make(
       LUCA_CLIPS,
       {
-        reservedVoices: ["default"],
         applyManifest: () => {
           if (++refreshes > 1) throw new Error("engine exploded");
         },
       },
-      { [BUNDLED_SCRIPT_PATH]: JSON.stringify(bundledScript), [LUCA_SCRIPT_PATH]: JSON.stringify(lucaScript) },
+      { [LUCA_SCRIPT_PATH]: JSON.stringify(lucaScript) },
     );
     service.refresh();
     const scripts = service.scripts();
     const installed = service.installed();
     const problems = service.problems();
 
-    expect(scripts).toEqual(
-      new Map([
-        ["default", bundledScript],
-        ["luca", lucaScript],
-      ]),
-    );
+    expect(scripts).toEqual(new Map([["luca::luca", lucaScript]]));
 
     service.refresh();
 
@@ -491,7 +444,7 @@ describe("createVoicePackService hands the engine every voice's callout script (
     expect(logger.error).toHaveBeenCalledTimes(1);
   });
 
-  it("hands over an empty map when nothing is bundled and no pack is installed", () => {
+  it("hands over an empty map when no pack is installed", () => {
     const { service, applyScripts } = make({});
     service.refresh();
 
@@ -501,10 +454,9 @@ describe("createVoicePackService hands the engine every voice's callout script (
 
 describe("createVoicePackService and the development voice root (#1143)", () => {
   it("scans the development root ahead of the packs root, and says which packs it provides", () => {
-    // The same pack id under both roots: the dev copy wins the voice, and the
-    // AppData copy is reported with the reason that names the development
-    // build — otherwise "already provided by pack default" would be a sentence
-    // about the user's own folder.
+    // The same pack id under both roots: the dev copy is listed, and the
+    // AppData copy is shadowed whole with the reason that names the
+    // development build — a sentence about the row the user is looking at.
     const { service } = make(
       { default: ["voice/default/flags/green-01.mp3"] },
       { devRoot: DEV_ROOT },

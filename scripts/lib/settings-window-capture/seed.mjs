@@ -32,7 +32,9 @@ export const SEED_STORE_PATH = "C:\\Users\\Driver\\AppData\\Local\\iRaceDeck\\Se
 export function buildSeedSettings() {
   return {
     // ── Runtime-pushed lists (the plugin publishes these; no schema field) ──
-    _raceEngineerVoices: JSON.stringify(["default", "luca"]),
+    // Voices by their composite `<pack>::<voice>` ids, as the plugin publishes
+    // them (#1144); the labels below are what the dropdown shows.
+    _raceEngineerVoices: JSON.stringify(["default::default", "luca::luca"]),
     _driverNames: JSON.stringify(["driver", "carl", "craig", "holger", "lex"]),
     _audioDeviceList: JSON.stringify([
       { id: "", name: "System Default", isDefault: true },
@@ -44,7 +46,7 @@ export function buildSeedSettings() {
     // place of the capitalised id. Seeded because a real install always has it:
     // the plugin writes it in the same call as the list above, and since stage 3
     // `default` arrives in a pack like any other, so it carries a label too.
-    _voiceLabels: JSON.stringify({ default: "Default", luca: "Luca" }),
+    _voiceLabels: JSON.stringify({ "default::default": "Default", "luca::luca": "Luca" }),
     // Both voices above, as the packs that provide them, plus one pack that was
     // ignored — the Installed Voices list shows both halves of a scan (#1034),
     // and a shot of the empty state would document neither. Kept to two rows
@@ -64,7 +66,7 @@ export function buildSeedSettings() {
           version: "1.0.0",
           // A real voice now, downloaded like any other pack. Nothing bundled
           // provides it, so the pack is what puts "Default" in the dropdown.
-          voices: [{ id: "default", label: "Default" }],
+          voices: [{ id: "default::default", label: "Default" }],
           provenance: "catalog",
           managed: true,
         },
@@ -72,7 +74,7 @@ export function buildSeedSettings() {
           id: "luca",
           label: "Luca",
           version: "1.2.0",
-          voices: [{ id: "luca", label: "Luca" }],
+          voices: [{ id: "luca::luca", label: "Luca" }],
           // Downloaded rather than hand-installed, so the badge documents the
           // provenance it exists to show and agrees with the catalog below,
           // where the same pack reads as already installed. An omitted value
@@ -139,7 +141,7 @@ export function buildSeedSettings() {
     pitCrewRadarEnabled: false,
     pitCrewRaceEngineerStartupPolicy: "remember-last",
     pitCrewRadarStartupPolicy: "always-off",
-    raceEngineerVoice: "default",
+    raceEngineerVoice: "default::default",
     driverName: "driver",
     audioOutputDevice: "",
     raceEngineerVolume: 60,

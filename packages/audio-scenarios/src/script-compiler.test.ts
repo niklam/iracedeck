@@ -221,6 +221,149 @@ describe("compileVoiceScript — step conversion", () => {
   });
 });
 
+// ─── Literal voice paths (#1144) ─────────────────────────────────────────────
+
+describe("compileVoiceScript — literal voice paths", () => {
+  /**
+   * Every literal shape a script can spell, in an entry (plain, nested, and
+   * through a fragment) and in a frame, so one compile shows which are
+   * qualified and which are left alone.
+   */
+  function literalScript(): CalloutScript {
+    return script({
+      scenarios: {
+        "pit-crew.flag-blue": {
+          sequence: [
+            "/voice/matt/flags/green-01.mp3",
+            { clip: "voice/mia/flags/blue.mp3" },
+            "flags/blue-01.mp3",
+            "/sfx/IRD-tick-open.mp3",
+            "/voice/{voice}/flags/white.mp3",
+            "/voice/other::matt/flags/black.mp3",
+            "/voice/matt",
+            { optional: ["/voice/matt/flags/yellow.mp3"] },
+            { if: "session.isRace", then: ["/voice/matt/flags/checkered.mp3"] },
+            "@beep",
+          ],
+        },
+      },
+      frames: { radio: { open: ["voice/matt/beeps/open.mp3"], close: ["/sfx/IRD-tick-close.mp3"] } },
+      fragments: { beep: { sequence: ["/voice/matt/beeps/mid.mp3"] } },
+    });
+  }
+
+  /** Every clip path in a compiled tree, depth first. */
+  function clipPaths(steps: readonly ResolvedStep[]): string[] {
+    return steps.flatMap((step) => {
+      switch (step.kind) {
+        case "clip":
+          return [step.path];
+        case "optional":
+          return clipPaths(step.steps);
+        case "if":
+          return [...clipPaths(step.then), ...clipPaths(step.else ?? [])];
+        case "case":
+          return [...[...step.of.values()].flatMap(clipPaths), ...clipPaths(step.fallback)];
+        default:
+          return [];
+      }
+    });
+  }
+
+  it("qualifies a literal voice path with the pack of the composite voice it is compiled for", () => {
+    const compiled = compileVoiceScript(literalScript(), deps(), "luca::matt");
+
+    // The pack's clips reach the engine only as `voice/<pack>::<voice>/…`, so a
+    // bare literal would name a clip the manifest does not carry. The leading
+    // slash — the escape from a contract's `base` — is kept; another voice of
+    // the SAME pack is qualified with that pack too; the active voice's own
+    // `{voice}` template, a path that already names a pack, a path outside
+    // `voice/` and a voice folder with nothing under it are left as written.
+    expect(clipPaths(compiled.scenarios.get("pit-crew.flag-blue")!.resolved)).toEqual([
+      "/voice/luca::matt/flags/green-01.mp3",
+      "voice/luca::mia/flags/blue.mp3",
+      "flags/blue-01.mp3",
+      "/sfx/IRD-tick-open.mp3",
+      "/voice/{voice}/flags/white.mp3",
+      "/voice/other::matt/flags/black.mp3",
+      "/voice/matt",
+      "/voice/luca::matt/flags/yellow.mp3",
+      "/voice/luca::matt/flags/checkered.mp3",
+      "/voice/luca::matt/beeps/mid.mp3",
+    ]);
+    expect(clipPaths(compiled.frames.get("radio")!.open)).toEqual(["voice/luca::matt/beeps/open.mp3"]);
+  });
+
+  it("leaves every literal as written for a bare voice id, or for none — the source tree and lint:pack", () => {
+    const expected = [
+      "/voice/matt/flags/green-01.mp3",
+      "voice/mia/flags/blue.mp3",
+      "flags/blue-01.mp3",
+      "/sfx/IRD-tick-open.mp3",
+      "/voice/{voice}/flags/white.mp3",
+      "/voice/other::matt/flags/black.mp3",
+      "/voice/matt",
+      "/voice/matt/flags/yellow.mp3",
+      "/voice/matt/flags/checkered.mp3",
+      "/voice/matt/beeps/mid.mp3",
+    ];
+
+    for (const compiled of [
+      compileVoiceScript(literalScript(), deps(), "matt"),
+      compileVoiceScript(literalScript(), deps()),
+    ]) {
+      expect(clipPaths(compiled.scenarios.get("pit-crew.flag-blue")!.resolved)).toEqual(expected);
+      expect(clipPaths(compiled.frames.get("radio")!.open)).toEqual(["voice/matt/beeps/open.mp3"]);
+    }
+  });
+
+  it("leaves a relative literal alone under a contract base — the interpreter prefixes that base", () => {
+    // `applyBase` puts a contract's `base` in front of every path that does not
+    // start with `/`, so qualifying `voice/matt/…` there would play
+    // `voice/{voice}/voice/luca::matt/…`. Only a path that reaches the engine
+    // as written is qualified: an escaped one, or one no base will be put in
+    // front of — a frame, or an entry whose contract has none. The same
+    // fragment is therefore left alone where the entry inlines it and
+    // qualified where the frame does.
+    const based = compileVoiceScript(
+      script({
+        scenarios: {
+          "pit-crew.flag-blue": {
+            sequence: [
+              "voice/matt/flags/green.mp3",
+              { clip: "voice/mia/flags/blue.mp3" },
+              "/voice/matt/x.mp3",
+              "@beep",
+            ],
+          },
+        },
+        frames: { radio: { open: ["@beep"], close: ["/sfx/IRD-tick-close.mp3"] } },
+        fragments: { beep: { sequence: ["voice/matt/beeps/mid.mp3"] } },
+      }),
+      deps({ contracts: new Map([["pit-crew.flag-blue", { frame: DEFAULT_FRAME, base: "voice/{voice}" }]]) }),
+      "luca::matt",
+    );
+
+    expect(clipPaths(based.scenarios.get("pit-crew.flag-blue")!.resolved)).toEqual([
+      "voice/matt/flags/green.mp3",
+      "voice/mia/flags/blue.mp3",
+      "/voice/luca::matt/x.mp3",
+      "voice/matt/beeps/mid.mp3",
+    ]);
+    expect(clipPaths(based.frames.get("radio")!.open)).toEqual(["voice/luca::matt/beeps/mid.mp3"]);
+  });
+
+  it("reports the same diagnostics whichever voice id it is compiled for", () => {
+    const withDefect = script({
+      scenarios: { "pit-crew.flag-blue": { sequence: ["/voice/matt/flags/green.mp3", "pool:nope"] } },
+    });
+
+    expect(compileVoiceScript(withDefect, deps(), "luca::matt").skipped).toEqual(
+      compileVoiceScript(withDefect, deps()).skipped,
+    );
+  });
+});
+
 // ─── Frames ──────────────────────────────────────────────────────────────────
 
 describe("compileVoiceScript — frames", () => {

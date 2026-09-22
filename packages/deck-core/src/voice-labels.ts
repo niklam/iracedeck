@@ -28,11 +28,13 @@ import type { InstalledVoicePack } from "./voice-pack-scanner.js";
  * deliberately (Niklas, 2026-09-01) as rarer than the renaming the alternative
  * would cause.
  *
- * A voice with no pack at all — the bundled one, which has no manifest — is
- * absent from this map and falls back to `titleCase(id)` in the component. Note
- * that is temporary: stages 2–3 of this issue ship the bundled voice AS a pack,
- * at which point the same rule renders it `iRaceDeck: Default` rather than
- * `Default`. A one-time change arriving with a migration, not a surprise.
+ * Keys are the voices' composite ids, `<pack id>::<voice id>` (#1144) — what
+ * the dropdown's options carry and `_voiceLabels` is read by. Two packs each
+ * shipping a `matt` are therefore two entries. The naming RULE above is not
+ * this issue's to change: #1147 owns it (every third-party voice as
+ * `<pack label>: <voice label>`), and until it lands two packs that label a
+ * voice identically show two identical entries, as the rule already allows for
+ * two different voice ids.
  */
 export function voiceDisplayLabels(packs: readonly InstalledVoicePack[]): Record<string, string> {
   const labels: Record<string, string> = {};

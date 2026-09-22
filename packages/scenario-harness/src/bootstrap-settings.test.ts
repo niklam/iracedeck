@@ -1,8 +1,19 @@
+import { referenceVoice } from "@iracedeck/audio-scenarios";
+import {
+  _resetGlobalSettings,
+  createMemorySettingsStore,
+  DEFAULT_RACE_ENGINEER_VOICE,
+  getGlobalSettings,
+  initGlobalSettings,
+  resolveActiveRaceEngineerVoice,
+  updateGlobalSettings,
+  whenSettingsStoreSettled,
+} from "@iracedeck/deck-core";
 import { silentLogger } from "@iracedeck/logger";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { getAudioAssetsManifest, seedGlobalSettings } from "./bootstrap-settings.js";
 import { MockPlatformAdapter } from "./mock-platform-adapter.js";
@@ -67,5 +78,73 @@ describe("seedGlobalSettings", () => {
     }
 
     expect(adapter.readSettings().raceEngineerVoice).toBe(raceEngineerVoices[0]);
+  });
+});
+
+describe("the voice the harness plays (#1144)", () => {
+  // Booted the way `main.ts` boots it: the seed, then deck-core's settings over
+  // a memory store, then the plugins' own resolver over the voice list. The
+  // source tree's voice is bare and an installed pack's is composite, so a
+  // packs directory holding the managed pack lists `default` AND
+  // `default::default` — and both must stay pickable.
+  afterEach(() => {
+    _resetGlobalSettings();
+  });
+
+  async function boot(): Promise<string[]> {
+    const adapter = new MockPlatformAdapter(silentLogger);
+    const { raceEngineerVoices } = seedGlobalSettings(adapter);
+
+    initGlobalSettings(adapter, silentLogger, createMemorySettingsStore());
+    await whenSettingsStoreSettled();
+
+    return raceEngineerVoices;
+  }
+
+  it("plays the source tree's voice it seeds, beside an installed `default::default`", async () => {
+    // Read off the seed rather than assumed: it picks the first published
+    // voice, which is `default` only while no other voice sorts before it.
+    const published = await boot();
+    const seeded = getGlobalSettings().raceEngineerVoice;
+
+    expect(published).toContain(seeded);
+    expect(resolveActiveRaceEngineerVoice([...published, "default::default"])).toBe(seeded);
+  });
+
+  it("plays the source tree's bare `default` when that is the one picked, beside `default::default`", async () => {
+    const published = await boot();
+
+    updateGlobalSettings({ raceEngineerVoice: "default" });
+
+    expect(published).toContain("default");
+    expect(resolveActiveRaceEngineerVoice([...published, "default::default"])).toBe("default");
+  });
+
+  it("plays the installed `default::default` once it is the one picked", async () => {
+    const published = await boot();
+
+    updateGlobalSettings({ raceEngineerVoice: "default::default" });
+
+    expect(resolveActiveRaceEngineerVoice([...published, "default::default"])).toBe("default::default");
+  });
+});
+
+describe("the engine's reference voice is deck-core's default voice (#1144)", () => {
+  // `referenceVoice` spells the managed pack's voice itself, because
+  // audio-scenarios cannot depend on deck-core. This package holds both, so it
+  // is where the two spellings are held together: a renamed managed pack would
+  // otherwise leave the engine checking `{voice}` paths against whichever
+  // composite voice sorts first.
+  it("prefers DEFAULT_RACE_ENGINEER_VOICE over a composite voice that sorts before it", () => {
+    const clip = (voice: string): string => `voice/${voice}/flags/green-01.mp3`;
+
+    expect("aaa::matt" < DEFAULT_RACE_ENGINEER_VOICE).toBe(true);
+    expect(
+      referenceVoice({
+        clips: [clip("aaa::matt"), clip(DEFAULT_RACE_ENGINEER_VOICE), clip("zzz::nina")],
+        ambientLoop: "sfx/ambient.mp3",
+        ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
+      }),
+    ).toBe(DEFAULT_RACE_ENGINEER_VOICE);
   });
 });

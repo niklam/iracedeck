@@ -3439,6 +3439,49 @@ describe("pack-owned scripts (issue #1064)", () => {
     expect(playedPaths()).toEqual(["voice/default/flags/green-01.mp3"]);
   });
 
+  it("plays a pack voice's literal voice path from its own pack — the compile qualifies it (#1144)", () => {
+    // A pack's clips reach the manifest as `voice/<pack>::<voice>/…`; its
+    // author still writes the bare path they see on disk.
+    engine.setManifest({
+      ...scriptedManifest,
+      clips: [...scriptedManifest.clips, "voice/luca::matt/flags/green-01.mp3"],
+    });
+    engine.defineContract(contract({ when: { event: "flag.green.raised" }, frame: NO_FRAME }));
+    engine.setScripts(
+      new Map([
+        ["luca::matt", script({ scenarios: { "test.green": { sequence: ["/voice/matt/flags/green-01.mp3"] } } })],
+      ]),
+    );
+
+    activeVoice = "luca::matt";
+    bus.publishEvent("flag.green.raised");
+    flushVoiceAndSfx(audio);
+
+    expect(playedPaths()).toEqual(["voice/luca::matt/flags/green-01.mp3"]);
+  });
+
+  it("leaves a pack voice's relative literal under the contract's base, which the engine prefixes (#1144)", () => {
+    // The compile reads the base the engine hands it: `voice/matt/…` under
+    // `voice/{voice}` is a path INSIDE the active voice, so qualifying it too
+    // would put the pack in the path twice.
+    engine.setManifest({
+      ...scriptedManifest,
+      clips: [...scriptedManifest.clips, "voice/luca::matt/voice/matt/flags/green-01.mp3"],
+    });
+    engine.defineContract(contract({ when: { event: "flag.green.raised" }, frame: NO_FRAME, base: "voice/{voice}" }));
+    engine.setScripts(
+      new Map([
+        ["luca::matt", script({ scenarios: { "test.green": { sequence: ["voice/matt/flags/green-01.mp3"] } } })],
+      ]),
+    );
+
+    activeVoice = "luca::matt";
+    bus.publishEvent("flag.green.raised");
+    flushVoiceAndSfx(audio);
+
+    expect(playedPaths()).toEqual(["voice/luca::matt/voice/matt/flags/green-01.mp3"]);
+  });
+
   it("(b) plays nothing and stamps no cooldown when the active voice's script lacks the entry", () => {
     engine.defineContract(contract({ frame: NO_FRAME, cooldown: 60_000 }));
     engine.setScripts(

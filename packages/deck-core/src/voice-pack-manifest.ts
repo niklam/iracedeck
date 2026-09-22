@@ -1,3 +1,4 @@
+import { VOICE_ID_SEPARATOR, VOICE_ID_SEPARATOR_REASON } from "@iracedeck/callout-script";
 import { valid as semverValid } from "semver";
 import { z } from "zod";
 
@@ -5,8 +6,18 @@ import { z } from "zod";
  * Pack and voice ids share the audio-assets kebab-case rule, so a voice id in a
  * pack is spelled exactly as it is in `configs/<voice-id>.voice.json` and in the
  * `voice/<id>/…` clip paths it produces.
+ *
+ * The separator check comes FIRST, and is not a new rejection: kebab-case
+ * already excludes `::`. It is a better reason. iRaceDeck names a voice outside
+ * its pack as `<pack id>::<voice id>` (#1144), and an author who tried to
+ * qualify an id by hand should be told that is why, rather than merely that
+ * the id is malformed. The reason is `VOICE_ID_SEPARATOR_REASON`, the sentence
+ * `lint:pack` reports too.
  */
-export const packId = z.string().regex(/^[a-z][a-z0-9-]*$/, "must be lowercase kebab-case (a-z, 0-9, dashes)");
+export const packId = z
+  .string()
+  .refine((id) => !id.includes(VOICE_ID_SEPARATOR), VOICE_ID_SEPARATOR_REASON)
+  .regex(/^[a-z][a-z0-9-]*$/, "must be lowercase kebab-case (a-z, 0-9, dashes)");
 
 /**
  * A name a user reads: the pack's, or one of its voices'.
@@ -30,10 +41,11 @@ export const displayLabel = z
 /**
  * A voice the pack provides: what it IS, and what it is CALLED.
  *
- * `id` is identity — it matches the `voice/<id>/…` clip path, it is what
- * `raceEngineerVoice` stores, what the default anchor compares, and what a
- * collision is decided on. `label` is presentation and nothing else: no code
- * resolves, compares or persists it.
+ * `id` is identity — it matches the `voice/<id>/…` clip path inside the pack,
+ * and joined to the pack's id as `<pack id>::<id>` (#1144) it is what
+ * `raceEngineerVoice` stores and what the default anchor compares. Unique
+ * within the pack only: two packs may each declare a `matt`. `label` is
+ * presentation and nothing else: no code resolves, compares or persists it.
  *
  * The pair exists because the pack already had one and its voices did not, so a
  * pack author could name their pack but not their voices — the dropdown fell

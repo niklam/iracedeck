@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { isVoicePackOfferable, parseVoicePackCatalog, type VoicePackCatalogEntry } from "./voice-pack-catalog.js";
+import {
+  isVoicePackOfferable,
+  parseVoicePackCatalog,
+  type VoicePackCatalogEntry,
+  VoicePackCatalogEntrySchema,
+} from "./voice-pack-catalog.js";
 
 const SHA = "a".repeat(64);
 
@@ -55,6 +60,18 @@ describe("parseVoicePackCatalog", () => {
     ["an unknown schema version", { schema: 2, packs: [] }],
   ])("refuses %s", (_label, body) => {
     expect(parseVoicePackCatalog(body)).toBeUndefined();
+  });
+
+  it("refuses an entry whose pack id or voice id carries the voice-id separator (#1144)", () => {
+    // The catalog reuses the manifest's id primitives, so the `::` refinement
+    // arrives here for free — pinned so the two schemas cannot drift apart.
+    const pack = VoicePackCatalogEntrySchema.safeParse(entry({ id: "a::b" }));
+    const voice = VoicePackCatalogEntrySchema.safeParse(entry({ voices: [{ id: "a::b", label: "A" }] }));
+
+    expect(pack.success).toBe(false);
+    expect(!pack.success && pack.error.issues[0]?.message).toMatch(/^must not contain "::"/);
+    expect(voice.success).toBe(false);
+    expect(!voice.success && voice.error.issues[0]?.message).toMatch(/^must not contain "::"/);
   });
 
   it("accepts an empty catalog as a real answer", () => {

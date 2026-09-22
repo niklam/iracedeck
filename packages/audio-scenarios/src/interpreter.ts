@@ -244,10 +244,13 @@ export interface IScenarioEngine {
   setScripts(scripts: ReadonlyMap<string, CalloutScript>): void;
   /**
    * Compile ONE script against the registries as they stand now — the very
-   * compile `setScripts` runs per voice, same deps, same result — and hand
-   * the diagnostics back instead of logging them. Loads nothing and changes
-   * nothing: what `lint:pack` (#1066) reports for a pack is thereby what the
-   * plugin would log for it, rather than a rebuild off the public reports.
+   * compile `setScripts` runs per voice, same deps, same diagnostics — and
+   * hand the diagnostics back instead of logging them. Loads nothing and
+   * changes nothing: what `lint:pack` (#1066) reports for a pack is thereby
+   * what the plugin would log for it, rather than a rebuild off the public
+   * reports. It names no voice, so a literal `voice/<voice>/…` path stays as
+   * the pack wrote it, where `setScripts` qualifies it with the pack of a
+   * composite voice (#1144).
    */
   compileScript(script: CalloutScript): CompiledVoiceScript;
   /**
@@ -994,10 +997,13 @@ class ScenarioEngine implements IScenarioEngine {
    * or which pool names are code-registered.
    */
   private compileDeps(): CompileDeps {
-    const contracts = new Map<string, { frame: string }>();
+    const contracts = new Map<string, { frame: string; base?: string }>();
 
+    // The base travels with the frame because it is the base the body will be
+    // expanded under, and the compiler qualifies a literal voice path only
+    // where none will be put in front of it (#1144).
     for (const [id, entry] of this.scenarios) {
-      if (entry.resolvedSequence === null) contracts.set(id, { frame: entry.frame });
+      if (entry.resolvedSequence === null) contracts.set(id, { frame: entry.frame, base: entry.raw.base });
     }
 
     const conds = new Map<string, VocabularyResolver<boolean>>();
@@ -1033,7 +1039,10 @@ class ScenarioEngine implements IScenarioEngine {
     const compiled = new Map<string, CompiledVoiceScript>();
 
     for (const [voice, script] of this.scripts) {
-      const result = compileVoiceScript(script, deps);
+      // The voice id goes in so a composite voice's literal voice paths are
+      // qualified with its pack (#1144) — the one way this compile differs
+      // from `compileScript`'s, and never in a diagnostic.
+      const result = compileVoiceScript(script, deps, voice);
       compiled.set(voice, result);
 
       this.logger.debug(`Voice "${voice}": ${result.scenarios.size} of ${deps.contracts.size} callouts scripted`);

@@ -30,6 +30,7 @@
  */
 import type { ILogger } from "@iracedeck/logger";
 
+import { ENSURED_VOICE_PACK_ID } from "./voice-pack-constants.js";
 import type {
   VoicePackInstaller,
   VoicePackInstallFailureCode,
@@ -37,8 +38,10 @@ import type {
 } from "./voice-pack-installer.js";
 import type { VoicePackOffer } from "./voice-pack-status.js";
 
-/** The pack iRaceDeck keeps current unasked — a PACK id (voice and pack ids merely coincide today). */
-export const ENSURED_VOICE_PACK_ID = "default";
+// Defined in the leaf constants module (#1144) so `global-settings.ts` can
+// name the managed pack without importing this step; re-exported from here,
+// the module that gives it its meaning.
+export { ENSURED_VOICE_PACK_ID };
 
 /** True for the pack the plugin manages itself: installed and refreshed at launch, un-removable in the settings window. */
 export function isManagedVoicePack(id: string): boolean {

@@ -38,7 +38,7 @@ describe("createVoiceScriptWarningReporter", () => {
     report({ activeVoice: "laconic", scriptedVoices: new Set(["default"]) });
 
     expect(set).toHaveBeenCalledTimes(1);
-    expect(set).toHaveBeenCalledWith(VOICE_SCRIPT_WARNING_ID, "warning", expect.stringContaining('"laconic"'));
+    expect(set).toHaveBeenCalledWith(VOICE_SCRIPT_WARNING_ID, "warning", expect.stringContaining('"Laconic"'));
     expect(clear).not.toHaveBeenCalled();
   });
 
@@ -52,6 +52,17 @@ describe("createVoiceScriptWarningReporter", () => {
     expect(clear).toHaveBeenCalledTimes(1);
     expect(clear).toHaveBeenCalledWith(VOICE_SCRIPT_WARNING_ID);
     expect(set).not.toHaveBeenCalled();
+  });
+
+  it("passes the label map through, so the banner names the voice as the dropdown does (#1144)", () => {
+    const set = vi.fn();
+    const clear = vi.fn();
+    const report = createVoiceScriptWarningReporter({ set, clear });
+
+    report({ activeVoice: "luca::matt", scriptedVoices: new Set(), labels: { "luca::matt": "Luca: Matt" } });
+
+    expect(set).toHaveBeenCalledWith(VOICE_SCRIPT_WARNING_ID, "warning", expect.stringContaining('"Luca: Matt"'));
+    expect(set).toHaveBeenCalledWith(VOICE_SCRIPT_WARNING_ID, "warning", expect.not.stringContaining("::"));
   });
 
   it("clears rather than posts when there is no active voice at all", () => {
@@ -100,7 +111,7 @@ describe("createVoiceScriptWarningReporter", () => {
       report({ activeVoice: "gruff", scriptedVoices: new Set() });
 
       expect(warnings()).toHaveLength(1);
-      expect(warnings()[0]?.message).toContain('"gruff"');
+      expect(warnings()[0]?.message).toContain('"Gruff"');
     });
 
     it("leaves other producers' banners alone", () => {

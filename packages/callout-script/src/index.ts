@@ -71,3 +71,11 @@ export {
   PoolDefinitionSchema,
   ScriptStepSchema,
 } from "./schema.js";
+export {
+  qualifiedVoiceId,
+  qualifyClipPath,
+  qualifyVoiceId,
+  splitVoiceId,
+  VOICE_ID_SEPARATOR,
+  VOICE_ID_SEPARATOR_REASON,
+} from "./voice-id.js";
