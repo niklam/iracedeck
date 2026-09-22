@@ -997,10 +997,13 @@ class ScenarioEngine implements IScenarioEngine {
    * or which pool names are code-registered.
    */
   private compileDeps(): CompileDeps {
-    const contracts = new Map<string, { frame: string }>();
+    const contracts = new Map<string, { frame: string; base?: string }>();
 
+    // The base travels with the frame because it is the base the body will be
+    // expanded under, and the compiler qualifies a literal voice path only
+    // where none will be put in front of it (#1144).
     for (const [id, entry] of this.scenarios) {
-      if (entry.resolvedSequence === null) contracts.set(id, { frame: entry.frame });
+      if (entry.resolvedSequence === null) contracts.set(id, { frame: entry.frame, base: entry.raw.base });
     }
 
     const conds = new Map<string, VocabularyResolver<boolean>>();
