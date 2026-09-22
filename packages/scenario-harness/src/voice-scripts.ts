@@ -156,21 +156,27 @@ export function loadInstalledVoiceScripts(deps: LoadInstalledVoiceScriptsDeps): 
   const fs = createVoicePackFileSystem(deps.logger);
 
   /**
+   * The last script each bundled voice read cleanly: the boot copy until a
+   * re-read succeeds, then whatever that read returned.
+   */
+  const lastGood = new Map(deps.bundledScripts);
+
+  /**
    * The bundled voices' scripts as the processed root holds them now, through
    * the reader the scanner runs over a pack. The plugins bundle no voice, so
    * this is the harness's own read (it was the service's until #1144 dropped
    * the bundle from it). Never a throw — it runs inside the service's refresh,
    * which must not end the harness over a script: a voice whose copy is
-   * missing or broken is warned about and keeps the script it was booted with.
+   * missing or broken is warned about and keeps the last script it read
+   * cleanly — the boot copy only when no re-read has succeeded since, so a
+   * broken edit never quietly reverts an audition to a version two edits back.
    */
   function readProcessedScripts(): Map<string, CalloutScript> {
-    const scripts = new Map(deps.bundledScripts);
-
     for (const id of deps.bundledScripts.keys()) {
       const read = readVoiceScript(fs, deps.pluginAudioDir, id);
 
       if (read.ok && read.script !== null) {
-        scripts.set(id, read.script);
+        lastGood.set(id, read.script);
         continue;
       }
 
@@ -179,7 +185,7 @@ export function loadInstalledVoiceScripts(deps: LoadInstalledVoiceScriptsDeps): 
       );
     }
 
-    return scripts;
+    return new Map(lastGood);
   }
 
   const service = createVoicePackService({
@@ -226,9 +232,9 @@ export type ReloadVoiceScriptsDeps = {
  * silence. With one, the reload is the plugins' own pack service's refresh,
  * which never throws over a script, and neither does the bundled read inside
  * it: it WARNS per bundled voice with no usable script (`Bundled voice "<id>"
- * has no usable script: …`) and that voice keeps the script it was booted
- * with — the request succeeds and the OLD script stays live. Read the harness
- * log after a Reload on that path.
+ * has no usable script: …`) and that voice keeps the last script it read
+ * cleanly — the request succeeds and that OLDER script stays live. Read the
+ * harness log after a Reload on that path.
  */
 export function reloadVoiceScripts(deps: ReloadVoiceScriptsDeps): void {
   if (deps.voicePacks !== null) {

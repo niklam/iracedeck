@@ -229,6 +229,36 @@ describe("loadInstalledVoiceScripts", () => {
     expect(applied.scripts?.has("testpack::luca")).toBe(true);
   });
 
+  it("keeps the LAST script a voice read cleanly when a later copy breaks — not the one it booted with", () => {
+    // v1 at boot, v2 regenerated and reloaded, then a broken v3: the voice must
+    // stay on v2. Falling back to the boot copy would quietly revert an
+    // audition two edits back while the log only says the new one is broken.
+    const packsRoot = join(tmp, "packs");
+    const pluginAudioDir = join(tmp, "audio");
+    plantScript(pluginAudioDir, "default", JSON.stringify(VALID_SCRIPT));
+
+    const { applied, service } = run(packsRoot, pluginAudioDir);
+
+    expect(applied.scripts?.get("default")).toEqual(VALID_SCRIPT);
+
+    const v2: CalloutScript = { ...VALID_SCRIPT, pools: { greeting: { group: "flags", base: "green" } } };
+    plantScript(pluginAudioDir, "default", JSON.stringify(v2));
+    service.refresh();
+
+    expect(applied.scripts?.get("default")).toEqual(v2);
+
+    plantScript(pluginAudioDir, "default", "{not json");
+    service.refresh();
+
+    expect(applied.scripts?.get("default")).toEqual(v2);
+
+    const v4: CalloutScript = { ...VALID_SCRIPT, pools: { greeting: { group: "flags", base: "blue" } } };
+    plantScript(pluginAudioDir, "default", JSON.stringify(v4));
+    service.refresh();
+
+    expect(applied.scripts?.get("default")).toEqual(v4);
+  });
+
   it("is a no-pack scan for a directory that does not exist: bundled manifest, bundled scripts, no throw", () => {
     const pluginAudioDir = join(tmp, "audio");
     plantScript(pluginAudioDir, "default", JSON.stringify(VALID_SCRIPT));
