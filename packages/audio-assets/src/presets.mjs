@@ -20,8 +20,9 @@
  * on every clip against a defect nobody had heard.
  *
  * What it cost was audible. A clip conditioned to run into the next one ends
- * mid-phrase by design: `session-start-temp-numbers/28` stops on the closure
- * of the "d" that starts "degrees", and the temperature line then spoke it as
+ * mid-phrase by design: `session-start-temp-numbers/28` (the bare-number
+ * temperature group #1187 replaced) stopped on the closure of the "d" that
+ * starts "degrees", and the temperature line then spoke it as
  * "twenty eight" — pause — "degrees Celsius". The maintainer heard the join,
  * the pad came off, and every seam tightened. The rule it broke: **some clips
  * must carry no padding at all.** A clip generated with `next_text` is cut to
@@ -30,7 +31,7 @@
  * a phrase. A filter applied to every clip cannot know which ones those are,
  * so it must add nothing. Spacing between two spoken words belongs to the
  * clips themselves (a value and its unit recorded as one line, as
- * `numbers-percent` and `car-number` do) or to a `pause` step where a script
+ * `numbers-percent`, `numbers-degrees` and `car-number` do) or to a `pause` step where a script
  * wants one — never to silence smeared across all of them.
  *
  * If a final consonant IS ever swallowed, fix it where it happens — in the

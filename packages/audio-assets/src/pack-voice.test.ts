@@ -274,7 +274,7 @@ describe("packVoice", () => {
     configsDir = path.join(root, "configs");
 
     const sources: [string, string][] = [
-      ["voice/default/session-start-temp-numbers/1.mp3", "testvoice/numbers/1.mp3"],
+      ["voice/default/numbers-percent/1.mp3", "testvoice/numbers/1.mp3"],
       ["voice/default/lap-time-second/1.mp3", "testvoice/seconds/1.mp3"],
     ];
 
