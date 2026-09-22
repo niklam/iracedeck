@@ -23,10 +23,10 @@ import {
 import fuelIconSvg from "@iracedeck/icons/black-box-selector/fuel.svg";
 import inCarIconSvg from "@iracedeck/icons/black-box-selector/in-car.svg";
 import lapTimingIconSvg from "@iracedeck/icons/black-box-selector/lap-timing.svg";
-import mirrorIconSvg from "@iracedeck/icons/black-box-selector/mirror.svg";
 import nextIconSvg from "@iracedeck/icons/black-box-selector/next.svg";
 import pitStopIconSvg from "@iracedeck/icons/black-box-selector/pit-stop.svg";
 import previousIconSvg from "@iracedeck/icons/black-box-selector/previous.svg";
+import quickAccessIconSvg from "@iracedeck/icons/black-box-selector/quick-access.svg";
 import radioIconSvg from "@iracedeck/icons/black-box-selector/radio.svg";
 import relativeIconSvg from "@iracedeck/icons/black-box-selector/relative.svg";
 import standingsIconSvg from "@iracedeck/icons/black-box-selector/standings.svg";
@@ -47,7 +47,7 @@ const DIRECT_ICONS: Record<string, string> = {
   "tire-info": tireInfoIconSvg,
   "pit-stop": pitStopIconSvg,
   "in-car": inCarIconSvg,
-  mirror: mirrorIconSvg,
+  mirror: quickAccessIconSvg,
   radio: radioIconSvg,
   weather: weatherIconSvg,
 };
@@ -71,7 +71,7 @@ const BLACK_BOX_TITLE_TEXT: Record<string, string> = {
   "tire-info": "TIRE INFO",
   "pit-stop": "PIT-STOP",
   "in-car": "IN-CAR",
-  mirror: "GRAPHICS",
+  mirror: "QUICK ACCESS",
   radio: "RADIO",
   weather: "WEATHER",
 };

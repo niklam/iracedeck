@@ -65,7 +65,7 @@ The Property Inspector shows the settings for the surface the instance sits on: 
 - Tire Info
 - Pit-stop Adjustments
 - In-car Adjustments
-- Mirror Adjustments
+- Quick Access
 - Radio Adjustments
 - Weather
 
@@ -98,7 +98,7 @@ There is no Push + Turn gesture and no rotation-mode setting for the dial — ro
 | Tire Info | F6 | Tire Info Black Box |
 | Pit-stop Adjustments | F7 | Pit-stop Adjustments Black Box |
 | In-car Adjustments | F8 | In-car Adjustments Black Box |
-| Mirror Adjustments | F9 | Mirror Adjustments Black Box |
+| Quick Access | F9 | Quick Access |
 | Radio Adjustments | F10 | Radio Adjustments Black Box |
 | Weather | F11 | Weather Black Box |
 
@@ -128,7 +128,7 @@ All Direct mode icons include a small "BB" label in the corner to distinguish th
 | Direct: Tire Info | Tire with temperature bars + BB label |
 | Direct: Pit-stop | Pit board + BB label |
 | Direct: In-car | Sliders/adjustments + BB label |
-| Direct: Mirror | Mirror + BB label |
+| Direct: Quick Access | Settings menu (sub-page chevrons + amber switch) + BB label |
 | Direct: Radio | Headset + BB label |
 | Direct: Weather | Cloud + BB label |
 

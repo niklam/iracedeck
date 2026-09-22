@@ -36,7 +36,7 @@ The overlay this button opens. Each option has its own key binding with the defa
 - **Tire Info** (default `F6`) — Tire Info black box
 - **Pit-Stop Adjustments** (default `F7`) — Pit stop adjustments black box
 - **In-Car Adjustments** (default `F8`) — In-car adjustments black box
-- **Mirror Adjustments** (default `F9`) — Mirror adjustments black box
+- **Quick Access** (default `F9`) — iRacing's Quick Access menu, the F9 black box since 2026 Season 4
 - **Radio Adjustments** (default `F10`) — Radio adjustments black box
 - **Weather** (default `F11`) — Weather black box
 

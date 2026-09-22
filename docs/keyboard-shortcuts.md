@@ -114,7 +114,7 @@
 | Tire Info Black Box | F6 | No | Tire Info Black Box |
 | Pit-stop Adjustments Black Box | F7 | No | Pit-stop Adjustments Black Box |
 | In-car Adjustments Black Box | F8 | No | In-car Adjustments Black Box |
-| Mirror Adjustments Black Box | F9 | No | Mirror Adjustments Black Box |
+| Quick Access | F9 | No | Quick Access |
 | Radio Adjustments Black Box | F10 | No | Radio Adjustments Black Box |
 | Weather Black Box | F11 | No | Weather Black Box |
 | Cycle Selected Control | - | No | Select Next Control / Select Previous Control |

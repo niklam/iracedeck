@@ -36,7 +36,7 @@ vi.mock("@iracedeck/icons/black-box-selector/pit-stop.svg", () => ({
 vi.mock("@iracedeck/icons/black-box-selector/in-car.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">in-car</svg>',
 }));
-vi.mock("@iracedeck/icons/black-box-selector/mirror.svg", () => ({
+vi.mock("@iracedeck/icons/black-box-selector/quick-access.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">mirror</svg>',
 }));
 vi.mock("@iracedeck/icons/black-box-selector/radio.svg", () => ({
@@ -269,7 +269,7 @@ describe("BlackBoxSelector", () => {
         "tire-info": "TIRE INFO",
         "pit-stop": "PIT-STOP",
         "in-car": "IN-CAR",
-        mirror: "GRAPHICS",
+        mirror: "QUICK ACCESS",
         radio: "RADIO",
         weather: "WEATHER",
       };

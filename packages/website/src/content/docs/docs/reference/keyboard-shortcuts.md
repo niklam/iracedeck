@@ -63,7 +63,7 @@ Actions marked "Available via SDK" use SDK commands directly and don't require k
 | Tire Info Black Box | F6 | No | Tire Info Black Box |
 | Pit-stop Adjustments | F7 | No | Pit-stop Adjustments Black Box |
 | In-car Adjustments | F8 | No | In-car Adjustments Black Box |
-| Mirror Adjustments | F9 | No | Mirror Adjustments Black Box |
+| Quick Access | F9 | No | Quick Access |
 | Radio Adjustments | F10 | No | Radio Adjustments Black Box |
 | Weather Black Box | F11 | No | Weather Black Box |
 
