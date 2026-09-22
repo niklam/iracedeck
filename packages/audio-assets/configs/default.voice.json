@@ -2954,7 +2954,7 @@
       },
       {
         "name": "minus1",
-        "text": "minus one degrees,",
+        "text": "minus one degree,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -2970,7 +2970,7 @@
       },
       {
         "name": "1",
-        "text": "one degrees,",
+        "text": "one degree,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
