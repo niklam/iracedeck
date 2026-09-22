@@ -31,7 +31,11 @@ export const TEMPERATURE_NUMBER_GROUP = "numbers-degrees";
  * @internal Exported for testing
  */
 export function temperatureClipName(value: number): string {
-  return value < 0 ? `minus${-value}` : String(value);
+  // Rounded here too: the snapshot builder rounds, but the harness and any
+  // future caller may not, and `28.5` names a clip no voice records.
+  const n = Math.round(value);
+
+  return n < 0 ? `minus${-n}` : String(n);
 }
 
 /** The pool step that speaks `value` as a temperature figure. */

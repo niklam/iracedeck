@@ -34,6 +34,7 @@ import {
   SESSION_START_SCENARIO_IDS,
 } from "./session-start.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
+import { temperatureClipName } from "./temperature-number.js";
 
 vi.mock("@iracedeck/sim-events-iracing", () => ({
   getSessionType: () => "Race",
@@ -171,7 +172,7 @@ const GREETING_NAMES = ["niklas", "driver"];
 
 // The temperature figures the bundled voice records (issue #1187): -20 … 176,
 // below zero named minus<N>.
-const TEMP_CLIP_NAMES = Array.from({ length: 197 }, (_, i) => (i < 20 ? `minus${20 - i}` : String(i - 20)));
+const TEMP_CLIP_NAMES = Array.from({ length: 197 }, (_, i) => temperatureClipName(i - 20));
 
 // The speed-number clips this fixture stages. Includes 100 — a value outside
 // the historical hardcoded findings set — because speakability now derives

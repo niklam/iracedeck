@@ -29,6 +29,13 @@ describe("temperature figures (issue #1187)", () => {
     expect(temperatureNumberRef(-4)).toBe("pool:numbers-degrees/minus4");
   });
 
+  it("rounds a fractional reading to the clip a voice records", () => {
+    expect(temperatureClipName(28.4)).toBe("28");
+    expect(temperatureClipName(28.5)).toBe("29");
+    expect(temperatureClipName(-4.6)).toBe("minus5");
+    expect(temperatureClipName(-0.4)).toBe("0");
+  });
+
   it("does not choose a group by unit: a Fahrenheit reading is the same clip name", () => {
     expect(temperatureNumberRef(150)).toBe("pool:numbers-degrees/150");
   });
