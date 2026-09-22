@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
-import { qualifiedVoiceId, splitVoiceId, VOICE_ID_SEPARATOR } from "@iracedeck/callout-script";
+import { qualifiedVoiceId, qualifyVoiceId, splitVoiceId, VOICE_ID_SEPARATOR } from "@iracedeck/callout-script";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Importing the module also registers the custom element.
-import { VOICE_SEPARATOR, voiceHalf } from "./voice-select.js";
+import { qualifyVoice, splitVoice, VOICE_SEPARATOR, voiceHalf } from "./voice-select.js";
 
 type SettingsCallback = (value: string) => void;
 
@@ -107,6 +107,74 @@ describe("ird-voice-select", () => {
     it("shows the anchor for a pre-#1144 bare value without persisting over it — the plugin qualifies it", () => {
       publishChoice("default");
       publishVoices(["aria::aria", "default::default"]);
+
+      expect(selected()).toBe("default::default");
+      expect(save()).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("a pre-#1144 bare value, read as the plugin reads it (#1144)", () => {
+    // `resolveActiveRaceEngineerVoice` qualifies a stored bare id before it
+    // falls back, and the migration that writes the composite down waits for
+    // the managed pack. Until then the dropdown must show the voice that
+    // actually plays — never the first entry — and must write nothing.
+
+    beforeEach(() => {
+      el.setAttribute("default", "default::default");
+    });
+
+    it("shows the only pack that provides it, not the first entry, when the managed pack is absent", () => {
+      publishChoice("luca");
+      publishVoices(["aaa::x", "luca::luca"]);
+
+      expect(selected()).toBe("luca::luca");
+      expect(save()).not.toHaveBeenCalled();
+    });
+
+    it("prefers the managed pack's voice of that id over an alphabetically earlier pack", () => {
+      publishChoice("matt");
+      publishVoices(["aaa::matt", "default::matt", "zzz::matt"]);
+
+      expect(selected()).toBe("default::matt");
+      expect(save()).not.toHaveBeenCalled();
+    });
+
+    it("otherwise takes the alphabetically first PACK id, not the first composite string", () => {
+      publishChoice("v");
+      publishVoices(["a-b::v", "a::v"]);
+
+      expect(selected()).toBe("a::v");
+    });
+
+    it("reads the managed pack from its own `default` attribute, never a hard-coded id", () => {
+      el.setAttribute("default", "other::other");
+      publishChoice("matt");
+      publishVoices(["aaa::matt", "default::matt", "other::matt"]);
+
+      expect(selected()).toBe("other::matt");
+    });
+
+    it("skips the managed step when the `default` attribute names no composite voice", () => {
+      // `default::matt` is listed first, so neither the plain fallback nor a
+      // hard-coded `default` managed pack can produce the alphabetical answer.
+      el.removeAttribute("default");
+      publishChoice("matt");
+      publishVoices(["default::matt", "aaa::matt"]);
+
+      expect(selected()).toBe("aaa::matt");
+      expect(save()).not.toHaveBeenCalled();
+    });
+
+    it("keeps a bare value that is itself in the list, beside a pack's voice of the same id", () => {
+      publishChoice("default");
+      publishVoices(["default", "default::default"]);
+
+      expect(selected()).toBe("default");
+    });
+
+    it("still falls back, without persisting, for a bare value no pack provides", () => {
+      publishChoice("ghost");
+      publishVoices(["aaa::x", "default::default"]);
 
       expect(selected()).toBe("default::default");
       expect(save()).not.toHaveBeenCalled();
@@ -247,5 +315,42 @@ describe("VOICE_SEPARATOR — the browser copy of the composite voice id's separ
     ["more than one separator", "a::b::c"],
   ])("reads the voice half of %s exactly as splitVoiceId does", (_case, id) => {
     expect(voiceHalf(id)).toBe(splitVoiceId(id)?.voiceId ?? id);
+  });
+
+  it.each([
+    ["a composite id", qualifiedVoiceId("luca", "matt")],
+    ["a bare id", "default"],
+    ["the empty string", ""],
+    ["an empty pack half", "::matt"],
+    ["an empty voice half", "luca::"],
+    ["more than one separator", "a::b::c"],
+  ])("splits %s exactly as splitVoiceId does", (_case, id) => {
+    expect(splitVoice(id)).toEqual(splitVoiceId(id));
+  });
+});
+
+describe("qualifyVoice — the browser copy of callout-script's qualifyVoiceId (#1144)", () => {
+  // The dropdown reads a stored bare id through the same rule the plugin's
+  // resolver does, so the two show and play the same voice. A copy for the
+  // reason `VOICE_SEPARATOR` is one; this table is what keeps it the same rule.
+
+  const MANAGED = "default";
+
+  it.each<[string, string, string[], string]>([
+    ["an empty value", "", ["default::default"], MANAGED],
+    ["a composite value", "luca::matt", ["default::matt"], MANAGED],
+    ["a composite whose pack is absent", "gone::matt", ["default::default"], MANAGED],
+    ["a bare value that is itself available", "default", ["default", "default::default"], MANAGED],
+    ["a bare value the managed pack provides", "matt", ["aaa::matt", "default::matt"], MANAGED],
+    ["a bare value only another pack provides", "luca", ["aaa::x", "luca::luca"], MANAGED],
+    ["a bare value several other packs provide", "matt", ["zzz::matt", "bbb::matt"], MANAGED],
+    ["pack ids that sort apart from their composites", "v", ["a-b::v", "a::v"], MANAGED],
+    ["a bare value no pack provides", "ghost", ["default::default", "aaa::matt"], MANAGED],
+    ["an empty list", "matt", [], MANAGED],
+    ["malformed available entries", "matt", ["::matt", "a::matt::b", "b-pack::matt"], MANAGED],
+    ["another managed pack", "matt", ["aaa::matt", "default::matt", "other::matt"], "other"],
+    ["no managed pack at all", "matt", ["default::matt", "aaa::matt"], ""],
+  ])("qualifies %s exactly as qualifyVoiceId does", (_case, stored, available, managed) => {
+    expect(qualifyVoice(stored, available, managed)).toBe(qualifyVoiceId(stored, available, managed));
   });
 });
