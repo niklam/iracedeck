@@ -342,6 +342,20 @@ function normalizeRoots(roots: readonly AudioRootInput[]): NormalizedRoot[] {
  */
 const VOICE_CLIP = /^voice\/([^/]+)\/(.+)$/;
 
+/**
+ * `clip` resolved under `dir` — the absolute path it names — or `null` when it
+ * escapes `dir` (a `..` that climbs out, or an absolute tail). Containment
+ * only: whether the root may serve the clip, and whether an escape is a miss
+ * or a bug, is each caller's to decide.
+ */
+function containedPath(dir: string, clip: string): string | null {
+  const base = path.resolve(dir);
+  const resolved = path.resolve(base, clip);
+  const rel = path.relative(base, resolved);
+
+  return rel.startsWith("..") || path.isAbsolute(rel) ? null : resolved;
+}
+
 class AudioService implements IAudioService {
   private logger: ILogger;
   private native: AudioNative;
@@ -566,11 +580,9 @@ class AudioService implements IAudioService {
    * miss.
    */
   private resolveIn(root: NormalizedRoot, clip: string): string | null {
-    const base = path.resolve(root.dir);
-    const resolved = path.resolve(base, clip);
-    const rel = path.relative(base, resolved);
+    const resolved = containedPath(root.dir, clip);
 
-    if (rel.startsWith("..") || path.isAbsolute(rel)) return null;
+    if (resolved === null) return null;
 
     if (root.clips !== null && !root.clips.has(clip)) return null;
 
@@ -589,11 +601,9 @@ class AudioService implements IAudioService {
    * is the same bug the walk fails loud on.
    */
   private resolveBound(root: NormalizedRoot, filePath: string, clip: string): string | null {
-    const base = path.resolve(root.dir);
-    const resolved = path.resolve(base, clip);
-    const rel = path.relative(base, resolved);
+    const resolved = containedPath(root.dir, clip);
 
-    if (rel.startsWith("..") || path.isAbsolute(rel)) {
+    if (resolved === null) {
       throw new Error(`Audio clip path escapes every audio root: ${filePath}`);
     }
 
