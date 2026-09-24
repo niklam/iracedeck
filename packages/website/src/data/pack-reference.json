@@ -785,7 +785,7 @@
       "id": "pit-crew.flag-green-held",
       "family": "flag",
       "event": "flag.green-held.raised",
-      "description": "iRacing holds the green on the final pace lap of a rolling start or restart, as the pace car pulls in, while you are live in the car; never on a standing-start grid.",
+      "description": "iRacing holds the green seconds before a rolling start or restart goes green, often while the pace car is still on track, with you live in the car; never on a standing-start grid.",
       "frame": "radio",
       "weight": 70,
       "weightBand": "SAFETY",
@@ -24461,10 +24461,10 @@
         {
           "base": "green-held",
           "texts": [
-            "This is it. Pace car's coming in. Green any second now, so get ready to launch.",
-            "Pace car's peeling off. Eyes up, pick your gear, and launch clean off the line.",
+            "This is it. Green any second now, so get ready to launch.",
+            "Nearly time. Eyes up, pick your gear, and launch clean off the line.",
             "Here we go, green's coming. Watch the car ahead and get a good run into turn one.",
-            "Pace car's gone. Stand by... it's racing the moment that gap opens up.",
+            "Stand by... stand by. It's racing the moment the green drops.",
             "Last few seconds behind the pace car. Get set — clean launch, smart into turn one."
           ],
           "takes": 5,
