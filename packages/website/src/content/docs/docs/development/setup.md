@@ -107,15 +107,21 @@ setx IRACEDECK_DEV_VOICES 1
 
 `setx` writes the variable into your user environment, but only processes started afterwards see it — so open a new terminal (and restart your editor, if you build from its terminal) before the next build. You can set it through **System Properties → Environment Variables** instead. The value must be exactly `1` or `0`; anything else fails the build, naming the variable, rather than leaving the mode silently off.
 
-From then on, every build of every worktree stages the voice and points the plugins at it:
+From then on, every build of every worktree stages the voice and points the plugins at it. Build once with the deck host stopped, then start it:
 
 ```bash
 pnpm build
 ```
 
-Each plugin build depends on a `stage:dev-voices` task that runs the voice packs through the same radio filter a downloaded pack gets and stages them under `packages/audio-assets/dist/voice-packs/` in that worktree; each plugin carries that directory into its `bin/config.json` as `devVoicePacksRoot`, and prints `[dev-voices] development voice root on via IRACEDECK_DEV_VOICES: …` so the mode is visible in the build output. The first build in a fresh worktree runs every clip through ffmpeg once, which takes about half a minute; after that an unchanged voice is a cache hit and a changed clip restages in seconds. The build never writes an archive or touches the committed `catalog/default.json`, the release contract the download path is verified against, and CI never sets the variable, so the mechanism cannot ship.
+Each plugin build depends on a `stage:dev-voices` task that runs the voice packs through the same radio filter a downloaded pack gets and stages them under `packages/audio-assets/dist/voice-packs/` in that worktree; each plugin carries that directory into its `bin/config.json` as `devVoicePacksRoot`, and prints `[dev-voices] development voice root on via IRACEDECK_DEV_VOICES: …` so the mode is visible in the build output. Staging takes about five seconds: the audio assets build already runs every clip through ffmpeg into a per-worktree cache on every build, whether the mode is on or not, so the stage only copies from that cache. The build never writes an archive or touches the committed `catalog/default.json`, the release contract the download path is verified against, and CI never sets the variable, so the mechanism cannot ship.
 
-Then the loop is: edit clips, or the wording in `packages/audio-assets/configs/<voice-id>.voice.json`, run `pnpm build`, and restart the plugin — or press **Rescan voices** in iRaceDeck Settings, which picks up the new stage without a restart. There is no watcher on the voice directory, and `watch` mode does not restage, so run `pnpm build` after a voice edit. A change destined for a release still needs the flagless `pnpm --filter @iracedeck/audio-assets pack:voice default`, and its regenerated catalog entry committed.
+Then, with the deck host running, the loop is: edit clips, or the wording in `packages/audio-assets/configs/<voice-id>.voice.json`, restage, and press **Rescan voices** in iRaceDeck Settings, which picks up the new stage without a restart:
+
+```bash
+pnpm stage:voices
+```
+
+Restage rather than rebuild while the host is running. A voice edit makes all three plugin builds run again, and a running deck host holds the native addon open, so `pnpm build` fails with EPERM. `pnpm build` is for when the host is stopped — after a code change, say — and then you start or restart the host. There is no watcher on the voice directory, and `watch` mode does not restage, so run `pnpm stage:voices` after a voice edit. A change destined for a release still needs the flagless `pnpm --filter @iracedeck/audio-assets pack:voice default`, and its regenerated catalog entry committed.
 
 What plays is the bytes the packer stages, radio-filtered exactly as a downloaded pack is, never the raw source tree. The plugin scans that directory ahead of the downloaded packs and never installs over what it finds there, so `default` stops being replaced under you. Two things say the mode is on in the plugin: the plugin log's `Voice packs: development root active`, once per start, and the **Installed Voices** list, where the pack is badged *Development build* and shows its directory in place of a Remove button — iRaceDeck never deletes from a directory it did not create.
 

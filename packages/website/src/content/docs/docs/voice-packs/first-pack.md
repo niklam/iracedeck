@@ -130,7 +130,7 @@ The harness terminal logs at debug level, so among the boot lines you will find 
 
 Everything above works on your own pack as it sits in the voices folder, and nothing overwrites it there — a pack you installed by hand is yours, and iRaceDeck leaves it alone.
 
-One case is different, and only if you cloned the repo: editing **iRaceDeck's own `default` voice**. The plugin keeps that pack matching the published catalog and will replace your edits, so a repo checkout has a development mode that points the plugin at the packer's staged output instead — set the user environment variable `IRACEDECK_DEV_VOICES` to `1` once (`setx IRACEDECK_DEV_VOICES 1`, then open a new terminal), then edit, run `pnpm build`, and restart the plugin or press **Rescan voices**. It is described in full under [Auditioning a voice change](/docs/development/setup/#auditioning-a-voice-change). You do not need it for a pack of your own.
+One case is different, and only if you cloned the repo: editing **iRaceDeck's own `default` voice**. The plugin keeps that pack matching the published catalog and will replace your edits, so a repo checkout has a development mode that points the plugin at the packer's staged output instead — set the user environment variable `IRACEDECK_DEV_VOICES` to `1` once (`setx IRACEDECK_DEV_VOICES 1`, then open a new terminal), run `pnpm build` once with the deck host stopped, then edit, run `pnpm stage:voices`, and press **Rescan voices**. It is described in full under [Auditioning a voice change](/docs/development/setup/#auditioning-a-voice-change). You do not need it for a pack of your own.
 
 ## Lint the pack
 
