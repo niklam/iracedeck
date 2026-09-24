@@ -21,9 +21,9 @@ The three offending lines are reworded in `packages/audio-assets/configs/default
 
 | Clip | Before | After |
 | --- | --- | --- |
-| `green-held-01` | This is it. Pace car's coming in. Green any second now, so get ready to launch. | This is it. Green any second now, so get ready to launch. |
+| `green-held-01` | This is it. Pace car's coming in. Green any second now, so get ready to launch. | Green any second now, so get ready to launch. |
 | `green-held-02` | Pace car's peeling off. Eyes up, pick your gear, and launch clean off the line. | Nearly time. Eyes up, pick your gear, and launch clean off the line. |
-| `green-held-04` | Pace car's gone. Stand by... it's racing the moment that gap opens up. | Stand by... stand by. It's racing the moment the green drops. |
+| `green-held-04` | Pace car's gone. Stand by... it's racing the moment that gap opens up. | Stand by... It's racing the moment the green drops. |
 
 `green-held-03` and `green-held-05` already make no pace-car claim and stay as they are. The pool keeps five lines.
 
