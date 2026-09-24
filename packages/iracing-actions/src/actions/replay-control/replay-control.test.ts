@@ -1,3 +1,4 @@
+import type { LapStartLookup, LapStartQuery, LapStartRecord } from "@iracedeck/deck-core";
 import {
   carInWorld,
   getAllCarNumbers,
@@ -184,6 +185,8 @@ vi.mock("@iracedeck/deck-core", () => ({
   getGlobalColors: vi.fn(() => ({})),
   getGlobalSettings: vi.fn(() => ({ fastestLapSearchDelayMs: 400 })),
   getGlobalGraphicSettings: vi.fn(() => ({})),
+  getReplaySessionStore: vi.fn(),
+  isReplaySessionStoreInitialized: vi.fn(() => false),
   LogLevel: { Info: 2 },
   parseSvgViewBox: vi.fn(() => undefined),
   getGlobalTitleSettings: vi.fn(() => ({})),
@@ -1690,6 +1693,8 @@ describe("ReplayControl", () => {
       play: vi.fn(() => true),
       pause: vi.fn(() => true),
       setPlaySpeed: vi.fn(() => true),
+      nextFrame: vi.fn(() => true),
+      prevFrame: vi.fn(() => true),
       nextLap: vi.fn(() => true),
       prevLap: vi.fn(() => true),
       nextSession: vi.fn(() => true),
@@ -1702,6 +1707,22 @@ describe("ReplayControl", () => {
 
     const mockCamera = {
       switchNum: vi.fn(() => true),
+    };
+
+    /**
+     * The per-session replay record (#1203). `findLapStart` defaults to a
+     * miss so the dispatch walks; a test that wants the lookup path returns a
+     * hit from it.
+     */
+    const mockStore = {
+      laps: {
+        findLapStart: vi.fn<(query: LapStartQuery & { subSessionId?: number }) => LapStartLookup>(() => ({
+          hit: false,
+          reason: "no file",
+        })),
+        recordLapStart: vi.fn<(record: LapStartRecord & { subSessionId?: number }) => boolean>(() => true),
+        recordLapTime: vi.fn(() => true),
+      },
     };
 
     /** Shared helper — used by the dispatch + encoder describes below. */
@@ -1728,12 +1749,17 @@ describe("ReplayControl", () => {
       // so it survives between tests by default — reset it so each test
       // starts with a clean cache.
       _resetFastestLapSessionCache();
-      const { getCommands } = await import("@iracedeck/deck-core");
+      const { getCommands, getReplaySessionStore, isReplaySessionStoreInitialized } =
+        await import("@iracedeck/deck-core");
       // getCarNumberRawFromSessionInfo is mocked in the shared @iracedeck/iracing-sdk block;
       // default it to returning the carIdx as the raw number so individual tests don't have
       // to wire fake session info.
       vi.mocked(getCarNumberRawFromSessionInfo).mockImplementation((_si: unknown, idx: number) => idx);
       vi.mocked(getCommands).mockReturnValue({ replay: mockReplay, camera: mockCamera } as any);
+      vi.mocked(isReplaySessionStoreInitialized).mockReturnValue(true);
+      vi.mocked(getReplaySessionStore).mockReturnValue(mockStore as any);
+      mockStore.laps.findLapStart.mockImplementation(() => ({ hit: false, reason: "no file" }));
+      mockStore.laps.recordLapStart.mockImplementation(() => true);
       action = new ReplayControl();
     });
 
@@ -1829,7 +1855,9 @@ describe("ReplayControl", () => {
        * with `dist = (frame % framesPerLap) / framesPerLap`. The mock wires:
        *
        *   - `goToStart` → cursor to first session's startFrame.
-       *   - `goToEnd` → cursor to bufferEnd (last session's endFrame).
+       *   - `goToEnd` → cursor to bufferEnd (last session's endFrame). The
+       *     walk must never call it (#1203); the mock keeps it so a
+       *     regression shows as a call, not a TypeError.
        *   - `nextSession` → cursor to next session's startFrame, or no-op
        *     when already in the last session.
        *   - `setPlayPosition(Begin, frame)` → cursor clamped to buffer.
@@ -1837,8 +1865,13 @@ describe("ReplayControl", () => {
        *   - `prevLap` → cursor to end of previous lap (lap-1, dist≈0.999).
        *
        * `getCurrentTelemetry()` returns SessionUniqueID + SessionNum + the
-       * lap/dist for `carIdx`. `getSessionInfo()` wires `ResultsPositions`
-       * so `findFastestLapForCar` resolves to each session's `fastestLap`.
+       * lap/dist for `carIdx`, plus `ReplayFrameNumEnd = bufferEnd - frame`
+       * so `ReplayFrameNum + ReplayFrameNumEnd` is the constant recording
+       * length the map build reads, and `ReplayPlaySpeed: 0` so the action's
+       * speed cache has an entry the walk's `setLocalSpeed` calls land in.
+       * `getSessionInfo()` wires `ResultsPositions` so `findFastestLapForCar`
+       * resolves to each session's `fastestLap`; `opts.fastestTime` (seconds)
+       * fills `FastestTime` beside it for the #1203 convention check.
        */
       type SessionLayout = {
         sessionNum: number;
@@ -1852,7 +1885,13 @@ describe("ReplayControl", () => {
       function multiSessionBuffer(
         carIdx: number,
         sessions: SessionLayout[],
-        opts: { driverCarIdx?: number; initialCursor?: number } = {},
+        opts: {
+          driverCarIdx?: number;
+          initialCursor?: number;
+          fastestTime?: number;
+          subSessionId?: number;
+          userId?: number;
+        } = {},
       ) {
         const cursor = { frame: opts.initialCursor ?? sessions[0].startFrame };
         const bufferEnd = sessions[sessions.length - 1].endFrame;
@@ -1921,7 +1960,10 @@ describe("ReplayControl", () => {
           if (!session) {
             return {
               CamCarIdx: carIdx,
+              IsReplayPlaying: true,
+              ReplayPlaySpeed: 0,
               ReplayFrameNum: cursor.frame,
+              ReplayFrameNumEnd: bufferEnd - cursor.frame,
               SessionNum: -1,
               SessionUniqueID: 0,
               CarIdxLap: [],
@@ -1941,7 +1983,10 @@ describe("ReplayControl", () => {
 
           return {
             CamCarIdx: carIdx,
+            IsReplayPlaying: true,
+            ReplayPlaySpeed: 0,
             ReplayFrameNum: cursor.frame,
+            ReplayFrameNumEnd: bufferEnd - cursor.frame,
             SessionNum: session.sessionNum,
             SessionUniqueID: session.sessionUniqueId,
             CarIdxLap: lapArr,
@@ -1953,11 +1998,19 @@ describe("ReplayControl", () => {
         action["sdkController"].getSessionInfo = vi.fn(
           () =>
             ({
-              DriverInfo: { DriverCarIdx: opts.driverCarIdx ?? carIdx },
+              ...(opts.subSessionId === undefined ? {} : { WeekendInfo: { SubSessionID: opts.subSessionId } }),
+              DriverInfo: {
+                DriverCarIdx: opts.driverCarIdx ?? carIdx,
+                Drivers: [{ CarIdx: carIdx, UserID: opts.userId ?? 0 }],
+              },
               SessionInfo: {
                 Sessions: sessions.map((s) => ({
                   SessionNum: s.sessionNum,
-                  ResultsPositions: [{ CarIdx: carIdx, FastestLap: s.fastestLap }],
+                  ResultsPositions: [
+                    opts.fastestTime === undefined
+                      ? { CarIdx: carIdx, FastestLap: s.fastestLap }
+                      : { CarIdx: carIdx, FastestLap: s.fastestLap, FastestTime: opts.fastestTime },
+                  ],
                 })),
               },
             }) as any,
@@ -1972,7 +2025,11 @@ describe("ReplayControl", () => {
        * `initialCursor` starts at a frame inside that session so the
        * dispatch's first telemetry read sees `SessionNum=2`.
        */
-      function singleSessionBuffer(carIdx: number, fastestLap: number, opts: { initialCursor?: number } = {}) {
+      function singleSessionBuffer(
+        carIdx: number,
+        fastestLap: number,
+        opts: { initialCursor?: number; fastestTime?: number; subSessionId?: number; userId?: number } = {},
+      ) {
         return multiSessionBuffer(
           carIdx,
           [
@@ -1985,12 +2042,26 @@ describe("ReplayControl", () => {
               fastestLap,
             },
           ],
-          { initialCursor: opts.initialCursor ?? 5000 },
+          { ...opts, initialCursor: opts.initialCursor ?? 5000 },
         );
       }
 
+      /** Every cursor- or speed-affecting replay command the walk and the lookup can send. */
+      function countReplayCommands(): number {
+        return [
+          mockReplay.pause,
+          mockReplay.play,
+          mockReplay.goToStart,
+          mockReplay.goToEnd,
+          mockReplay.nextSession,
+          mockReplay.nextLap,
+          mockReplay.prevLap,
+          mockReplay.setPlayPosition,
+        ].reduce((n, command) => n + command.mock.calls.length, 0);
+      }
+
       describe("session map building", () => {
-        it("builds a map via goToStart + nextSession × N + goToEnd on first press", async () => {
+        it("builds a map via goToStart + nextSession × N on first press, never goToEnd (#1203)", async () => {
           vi.useFakeTimers();
 
           try {
@@ -2025,7 +2096,9 @@ describe("ReplayControl", () => {
             expect(mockReplay.goToStart).toHaveBeenCalled();
             // 3 sessions → 3 nextSession calls (last one is the no-op detector).
             expect(mockReplay.nextSession.mock.calls.length).toBeGreaterThanOrEqual(2);
-            expect(mockReplay.goToEnd).toHaveBeenCalled();
+            // `goToEnd` would leave a live session's replay for the live view,
+            // where ReplayFrameNum reads 0 and the last session's bounds collapse.
+            expect(mockReplay.goToEnd).not.toHaveBeenCalled();
 
             const cache = _getFastestLapSessionCache();
 
@@ -2037,7 +2110,7 @@ describe("ReplayControl", () => {
           }
         });
 
-        it("computes each session's endFrame as the next session's startFrame - 1", async () => {
+        it("computes each session's endFrame as the next session's startFrame - 1, the last from ReplayFrameNum + ReplayFrameNumEnd", async () => {
           vi.useFakeTimers();
 
           try {
@@ -2064,7 +2137,10 @@ describe("ReplayControl", () => {
             const cache = _getFastestLapSessionCache();
 
             expect(cache?.sessions[0].endFrame).toBe(999); // session 2's startFrame - 1
-            expect(cache?.sessions[1].endFrame).toBe(10_999); // bufferEnd
+            // The recording's length, read at goToStart as ReplayFrameNum +
+            // ReplayFrameNumEnd (= bufferEnd in the fixture) — not learned by a goToEnd.
+            expect(cache?.sessions[1].endFrame).toBe(10_999);
+            expect(mockReplay.goToEnd).not.toHaveBeenCalled();
           } finally {
             vi.useRealTimers();
           }
@@ -2171,10 +2247,10 @@ describe("ReplayControl", () => {
             await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
             await vi.runAllTimersAsync();
 
-            // Cache miss → rebuild → new goToStart / nextSession / goToEnd.
+            // Cache miss → rebuild → new goToStart / nextSession (still no goToEnd).
             expect(mockReplay.goToStart).toHaveBeenCalled();
             expect(mockReplay.nextSession).toHaveBeenCalled();
-            expect(mockReplay.goToEnd).toHaveBeenCalled();
+            expect(mockReplay.goToEnd).not.toHaveBeenCalled();
             // New cache contains the new uniqueIds.
             expect([...(_getFastestLapSessionCache()?.sessionUniqueIds ?? [])].sort()).toEqual([10, 11]);
           } finally {
@@ -2183,27 +2259,245 @@ describe("ReplayControl", () => {
         });
       });
 
-      describe("per-car frame cache", () => {
-        it("stores the landed frame after a successful walk", async () => {
+      describe("record lookup (#1203)", () => {
+        const recordHit = (frame: number, timeMs: number | null = null, matchedBy: "pair" | "sessionNum" = "pair") =>
+          mockStore.laps.findLapStart.mockImplementation(() => ({ hit: true, frame, timeMs, matchedBy }));
+
+        it("a hit sends exactly switchNum, one setPlayPosition(Begin, frame - 60) and play(), and no search", async () => {
+          singleSessionBuffer(4, 4);
+          recordHit(5000, 91_433);
+
+          await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+          await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+
+          expect(mockStore.laps.findLapStart).toHaveBeenCalledWith({
+            subSessionId: undefined,
+            sessionNum: 2,
+            sessionUniqueId: 3,
+            carIdx: 4,
+            carNumberRaw: 4,
+            lap: 4,
+          });
+          expect(mockCamera.switchNum).toHaveBeenCalledWith(4, 0, 0);
+          expect(mockReplay.setPlayPosition).toHaveBeenCalledTimes(1);
+          expect(mockReplay.setPlayPosition).toHaveBeenCalledWith(expect.anything(), 4940);
+          expect(mockReplay.play).toHaveBeenCalledTimes(1);
+          expect(mockReplay.pause).not.toHaveBeenCalled();
+          expect(mockReplay.goToStart).not.toHaveBeenCalled();
+          expect(mockReplay.goToEnd).not.toHaveBeenCalled();
+          expect(mockReplay.nextSession).not.toHaveBeenCalled();
+          expect(mockReplay.nextLap).not.toHaveBeenCalled();
+          expect(mockReplay.prevLap).not.toHaveBeenCalled();
+          expect(action["logger"].info).toHaveBeenCalledWith("Jump to fastest lap: record HIT (matchedBy pair)");
+        });
+
+        it("names the sessionNum fallback in the HIT line when the pair did not match", async () => {
+          singleSessionBuffer(4, 4);
+          recordHit(5000, null, "sessionNum");
+
+          await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+          await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+
+          expect(action["logger"].info).toHaveBeenCalledWith("Jump to fastest lap: record HIT (matchedBy sessionNum)");
+        });
+
+        it("updates the local speed cache to 1, so the Play key's next press pauses", async () => {
+          singleSessionBuffer(4, 4);
+          recordHit(5000);
+
+          await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+          await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+
+          expect(action["replaySpeed"].get("ctx-1")).toBe(1);
+        });
+
+        it("clamps the approach frame at 0 for a lap that starts inside the first second", async () => {
+          singleSessionBuffer(4, 4);
+          recordHit(30);
+
+          await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+          await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+
+          expect(mockReplay.setPlayPosition).toHaveBeenCalledWith(expect.anything(), 0);
+        });
+
+        it("passes WeekendInfo.SubSessionID to the lookup", async () => {
+          singleSessionBuffer(4, 4, { subSessionId: 86_697_546 });
+          recordHit(5000);
+
+          await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+          await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+
+          expect(mockStore.laps.findLapStart).toHaveBeenCalledWith(
+            expect.objectContaining({ subSessionId: 86_697_546 }),
+          );
+        });
+
+        it("a miss logs the store's reason and walks", async () => {
           vi.useFakeTimers();
 
           try {
             singleSessionBuffer(4, 4);
+            mockStore.laps.findLapStart.mockImplementation(() => ({ hit: false, reason: "lap not recorded" }));
 
             await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
             await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
             await vi.runAllTimersAsync();
 
-            const cache = _getFastestLapSessionCache();
-
-            expect(cache?.fastestLapFrames.has("4|4|2")).toBe(true);
-            expect(typeof cache?.fastestLapFrames.get("4|4|2")).toBe("number");
+            expect(action["logger"].info).toHaveBeenCalledWith(
+              "Jump to fastest lap: record MISS (lap not recorded); walking",
+            );
+            expect(mockReplay.pause).toHaveBeenCalledTimes(1);
+            expect(mockReplay.goToStart).toHaveBeenCalled();
           } finally {
             vi.useRealTimers();
           }
         });
 
-        it("uses the cached frame on the next press (single setPlayPosition, no walk)", async () => {
+        it("walks when no store is initialized (a plugin without one), without touching the store", async () => {
+          vi.useFakeTimers();
+
+          try {
+            const { isReplaySessionStoreInitialized } = await import("@iracedeck/deck-core");
+
+            vi.mocked(isReplaySessionStoreInitialized).mockReturnValue(false);
+            singleSessionBuffer(4, 4);
+
+            await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+            await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+            await vi.runAllTimersAsync();
+
+            expect(action["logger"].info).toHaveBeenCalledWith("Jump to fastest lap: record MISS (no store); walking");
+            expect(mockStore.laps.findLapStart).not.toHaveBeenCalled();
+            expect(mockStore.laps.recordLapStart).not.toHaveBeenCalled();
+            expect(mockReplay.pause).toHaveBeenCalledTimes(1);
+            expect(mockReplay.play).toHaveBeenCalledTimes(1);
+          } finally {
+            vi.useRealTimers();
+          }
+        });
+
+        it("logs a FastestTime disagreement at debug and still jumps", async () => {
+          // ResultsPositions says 92.000 s; the record's lap 4 took 91.433 s.
+          singleSessionBuffer(4, 4, { fastestTime: 92 });
+          recordHit(5000, 91_433);
+
+          await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+          await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+
+          expect(action["logger"].debug).toHaveBeenCalledWith(expect.stringContaining("FastestTime disagreement"));
+          expect(mockReplay.setPlayPosition).toHaveBeenCalledWith(expect.anything(), 4940);
+          expect(mockReplay.play).toHaveBeenCalledTimes(1);
+        });
+
+        it("stays quiet when FastestTime agrees with the record within a tick, or the lap is untimed", async () => {
+          singleSessionBuffer(4, 4, { fastestTime: 91.44 });
+          recordHit(5000, 91_433);
+
+          await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+          await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+
+          recordHit(5000, null);
+          await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+
+          expect(action["logger"].debug).not.toHaveBeenCalledWith(expect.stringContaining("FastestTime disagreement"));
+        });
+
+        it("a hit while a walk is in flight cancels the walk and lands on the recorded frame", async () => {
+          vi.useFakeTimers();
+
+          try {
+            singleSessionBuffer(4, 4);
+
+            await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+            await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+            // Mid-walk: past the opening pause and the goToStart of the map build.
+            await vi.advanceTimersByTimeAsync(1200);
+            expect(mockReplay.goToStart).toHaveBeenCalledTimes(1);
+
+            recordHit(5000);
+            const commandsBefore = countReplayCommands();
+
+            await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+            expect(action["logger"].info).toHaveBeenCalledWith(
+              "Jump to fastest lap: walk cancelled by jump-to-fastest-lap",
+            );
+            await vi.runAllTimersAsync();
+
+            // The hit's own setPlayPosition + play, and nothing more from the walk.
+            expect(countReplayCommands()).toBe(commandsBefore + 2);
+            expect(mockReplay.setPlayPosition.mock.calls.at(-1)?.[1]).toBe(4940);
+            expect(mockReplay.play).toHaveBeenCalledTimes(1);
+            expect(mockStore.laps.recordLapStart).not.toHaveBeenCalled();
+          } finally {
+            vi.useRealTimers();
+          }
+        });
+      });
+
+      describe("walk repairs (#1203)", () => {
+        it("mirrors the opening pause and the closing play into the speed cache, and ends playing", async () => {
+          vi.useFakeTimers();
+
+          try {
+            singleSessionBuffer(4, 4);
+
+            await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+            await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+
+            // The pause is sent before the walk's first await; the cache says so at once.
+            expect(mockReplay.pause).toHaveBeenCalledTimes(1);
+            expect(action["replaySpeed"].get("ctx-1")).toBe(0);
+
+            await vi.runAllTimersAsync();
+
+            expect(mockReplay.play).toHaveBeenCalledTimes(1);
+            expect(action["replaySpeed"].get("ctx-1")).toBe(1);
+            // play() is the walk's last cursor-affecting command: after the back-step.
+            const lastJump = Math.max(...mockReplay.setPlayPosition.mock.invocationCallOrder);
+
+            expect(mockReplay.play.mock.invocationCallOrder[0]).toBeGreaterThan(lastJump);
+            expect(action["logger"].info).toHaveBeenCalledWith(
+              "Jump to fastest lap: walk converged; replay playing (lap start recorded)",
+            );
+          } finally {
+            vi.useRealTimers();
+          }
+        });
+
+        it("a converged walk records its landed frame, back-adjusted by the back-step, with the time left to the store", async () => {
+          vi.useFakeTimers();
+
+          try {
+            singleSessionBuffer(4, 4, { subSessionId: 86_697_546, userId: 123_456 });
+
+            await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+            await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+            await vi.runAllTimersAsync();
+
+            const backstepFrame = mockReplay.setPlayPosition.mock.calls.at(-1)?.[1];
+
+            expect(typeof backstepFrame).toBe("number");
+            expect(mockStore.laps.recordLapStart).toHaveBeenCalledTimes(1);
+            expect(mockStore.laps.recordLapStart).toHaveBeenCalledWith({
+              subSessionId: 86_697_546,
+              sessionNum: 2,
+              sessionUniqueId: 3,
+              carIdx: 4,
+              carNumberRaw: 4,
+              userId: 123_456,
+              lap: 4,
+              frame: (backstepFrame as number) + 2,
+            });
+            // End of lap 3 in the fixture is frame 3999: the recorded start of lap 4 sits there.
+            expect((backstepFrame as number) + 2).toBeGreaterThanOrEqual(3997);
+            expect((backstepFrame as number) + 2).toBeLessThanOrEqual(3999);
+          } finally {
+            vi.useRealTimers();
+          }
+        });
+
+        it("keeps no per-car frame cache: a second press whose record still misses walks again", async () => {
           vi.useFakeTimers();
 
           try {
@@ -2212,68 +2506,309 @@ describe("ReplayControl", () => {
             await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
             await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
             await vi.runAllTimersAsync();
-
-            const cachedFrame = _getFastestLapSessionCache()?.fastestLapFrames.get("4|4|2");
-
-            expect(cachedFrame).toBeDefined();
 
             mockReplay.setPlayPosition.mockClear();
-            mockReplay.nextLap.mockClear();
-            mockReplay.prevLap.mockClear();
 
             await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
             await vi.runAllTimersAsync();
 
-            // Exactly one setPlayPosition (the cache-jump). No lap-step.
-            expect(mockReplay.setPlayPosition).toHaveBeenCalledTimes(1);
-            expect(mockReplay.setPlayPosition).toHaveBeenCalledWith(expect.anything(), cachedFrame);
-            expect(mockReplay.nextLap).not.toHaveBeenCalled();
-            expect(mockReplay.prevLap).not.toHaveBeenCalled();
+            expect(mockReplay.setPlayPosition.mock.calls.length).toBeGreaterThan(1);
+            expect(mockStore.laps.recordLapStart).toHaveBeenCalledTimes(2);
           } finally {
             vi.useRealTimers();
           }
         });
 
-        it("misses when targetLap changes (player set a new fastest lap)", async () => {
+        it("does not record when no store is initialized, and still ends playing", async () => {
           vi.useFakeTimers();
 
           try {
-            // First press: fastestLap = 4
-            const buffer = singleSessionBuffer(4, 4);
+            const { isReplaySessionStoreInitialized } = await import("@iracedeck/deck-core");
+
+            vi.mocked(isReplaySessionStoreInitialized).mockReturnValue(false);
+            singleSessionBuffer(4, 4);
 
             await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
             await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
             await vi.runAllTimersAsync();
 
-            // Switch to a buffer where the same car set a new fastest lap = 6.
-            // Reuses the same session unique-id so the session map cache hits.
-            multiSessionBuffer(
-              4,
-              [
-                {
-                  sessionNum: 2,
-                  sessionUniqueId: 3,
-                  startFrame: 0,
-                  endFrame: 9999,
-                  framesPerLap: 1000,
-                  fastestLap: 6,
-                },
-              ],
-              { initialCursor: buffer.cursor.frame },
+            expect(mockStore.laps.recordLapStart).not.toHaveBeenCalled();
+            expect(mockReplay.play).toHaveBeenCalledTimes(1);
+            expect(action["logger"].info).toHaveBeenCalledWith(
+              "Jump to fastest lap: walk converged; replay playing (lap start not recorded)",
+            );
+          } finally {
+            vi.useRealTimers();
+          }
+        });
+
+        it("an absolute jump waits for ReplayFrameNum to read the sent frame before the next command", async () => {
+          vi.useFakeTimers();
+
+          try {
+            const buffer = singleSessionBuffer(4, 4);
+            // Every jump lands 900 ms after it is sent: longer than the 400 ms
+            // clock wait the old walk trusted (it would have read the previous
+            // frame's telemetry and bisected the wrong bracket), shorter than
+            // the 1600 ms settle timeout.
+            let pending: number | null = null;
+            let commandsWhileInFlight = 0;
+
+            mockReplay.setPlayPosition.mockImplementation((_mode: unknown, frame: number) => {
+              if (pending !== null) commandsWhileInFlight++;
+
+              pending = Math.max(0, Math.min(buffer.bufferEnd, frame));
+              setTimeout(() => {
+                buffer.cursor.frame = pending as number;
+                pending = null;
+              }, 900);
+
+              return true;
+            });
+
+            for (const command of [mockReplay.nextLap, mockReplay.prevLap, mockReplay.play] as const) {
+              const impl = command.getMockImplementation()!;
+
+              command.mockImplementation(() => {
+                if (pending !== null) commandsWhileInFlight++;
+
+                return impl();
+              });
+            }
+
+            await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+            await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+            await vi.runAllTimersAsync();
+
+            expect(commandsWhileInFlight).toBe(0);
+            expect(mockReplay.setPlayPosition.mock.calls.length).toBeGreaterThan(1);
+            expect(mockReplay.play).toHaveBeenCalledTimes(1);
+            expect(buffer.cursor.frame).toBeGreaterThanOrEqual(3990);
+            expect(buffer.cursor.frame).toBeLessThanOrEqual(3999);
+          } finally {
+            vi.useRealTimers();
+          }
+        });
+
+        it("aborts past the settle timeout when a jump never lands, leaving the replay paused and the slot free", async () => {
+          vi.useFakeTimers();
+
+          try {
+            singleSessionBuffer(4, 4);
+            // The cursor never moves on setPlayPosition.
+            mockReplay.setPlayPosition.mockImplementation(() => true);
+
+            await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+            await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+            await vi.runAllTimersAsync();
+
+            expect(action["logger"].warn).toHaveBeenCalledWith(
+              "Jump to fastest lap: jump did not settle; aborting walk",
+            );
+            expect(mockReplay.setPlayPosition).toHaveBeenCalledTimes(1);
+            expect(mockReplay.play).not.toHaveBeenCalled();
+            expect(action["replaySpeed"].get("ctx-1")).toBe(0);
+            expect(mockStore.laps.recordLapStart).not.toHaveBeenCalled();
+
+            // The walk slot is released: the next press walks again.
+            await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+            await vi.runAllTimersAsync();
+
+            expect(mockReplay.pause).toHaveBeenCalledTimes(2);
+          } finally {
+            vi.useRealTimers();
+          }
+        });
+
+        it("a search waits for the frame to move and then hold before the next command", async () => {
+          vi.useFakeTimers();
+
+          try {
+            const buffer = singleSessionBuffer(4, 4);
+            // After a lap search the cursor is "in transit" for 120 ms: every
+            // telemetry read shows a different frame (the sim resolving the
+            // boundary), and only then does it hold at the landed frame.
+            let transitUntil = 0;
+            let reads = 0;
+            let commandsInTransit = 0;
+            const settled = action["sdkController"].getCurrentTelemetry;
+
+            action["sdkController"].getCurrentTelemetry = vi.fn(() => {
+              const tel = settled() as any;
+
+              if (Date.now() < transitUntil) {
+                reads++;
+
+                return { ...tel, ReplayFrameNum: tel.ReplayFrameNum - 10 - (reads % 2) };
+              }
+
+              return tel;
+            });
+
+            for (const command of [mockReplay.nextLap, mockReplay.prevLap] as const) {
+              const impl = command.getMockImplementation()!;
+
+              command.mockImplementation(() => {
+                if (Date.now() < transitUntil) commandsInTransit++;
+
+                const result = impl();
+
+                transitUntil = Date.now() + 120;
+
+                return result;
+              });
+            }
+
+            for (const command of [mockReplay.setPlayPosition, mockReplay.play] as const) {
+              const impl = command.getMockImplementation()!;
+
+              command.mockImplementation((...args: any[]) => {
+                if (Date.now() < transitUntil) commandsInTransit++;
+
+                return (impl as (...a: any[]) => boolean)(...args);
+              });
+            }
+
+            await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+            await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+            await vi.runAllTimersAsync();
+
+            expect(mockReplay.nextLap.mock.calls.length + mockReplay.prevLap.mock.calls.length).toBeGreaterThan(0);
+            expect(commandsInTransit).toBe(0);
+            expect(mockReplay.play).toHaveBeenCalledTimes(1);
+            expect(buffer.cursor.frame).toBeGreaterThanOrEqual(3990);
+            expect(buffer.cursor.frame).toBeLessThanOrEqual(3999);
+          } finally {
+            vi.useRealTimers();
+          }
+        });
+
+        it("keeps fastestLapSearchDelayMs as the minimum gap after a search", async () => {
+          vi.useFakeTimers();
+
+          try {
+            const { getGlobalSettings } = await import("@iracedeck/deck-core");
+
+            vi.mocked(getGlobalSettings).mockReturnValue({ fastestLapSearchDelayMs: 600 } as any);
+            singleSessionBuffer(4, 4);
+
+            const stamps: Array<{ name: string; at: number }> = [];
+            const searches = new Set(["goToStart", "nextSession", "nextLap", "prevLap"]);
+
+            for (const name of ["goToStart", "nextSession", "nextLap", "prevLap", "setPlayPosition", "play"] as const) {
+              const command = mockReplay[name] as unknown as ReturnType<typeof vi.fn<(...args: any[]) => boolean>>;
+              const impl = command.getMockImplementation()!;
+
+              command.mockImplementation((...args: any[]) => {
+                stamps.push({ name, at: Date.now() });
+
+                return impl(...args);
+              });
+            }
+
+            await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+            await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+            await vi.runAllTimersAsync();
+
+            const searchStamps = stamps.filter((s) => searches.has(s.name));
+
+            expect(searchStamps.length).toBeGreaterThan(0);
+
+            for (let i = 0; i < stamps.length - 1; i++) {
+              if (!searches.has(stamps[i].name)) continue;
+
+              expect(stamps[i + 1].at - stamps[i].at).toBeGreaterThanOrEqual(600);
+            }
+          } finally {
+            const { getGlobalSettings } = await import("@iracedeck/deck-core");
+
+            vi.mocked(getGlobalSettings).mockReturnValue({ fastestLapSearchDelayMs: 400 } as any);
+            vi.useRealTimers();
+          }
+        });
+
+        it("a play-pause dispatch during a walk cancels it; the walk sends nothing more", async () => {
+          vi.useFakeTimers();
+
+          try {
+            singleSessionBuffer(4, 4);
+
+            await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+            await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+            await vi.advanceTimersByTimeAsync(1200);
+
+            const commandsBefore = countReplayCommands();
+
+            // The cache says paused (the walk mirrored its pause), so Play/Pause sends play.
+            await action.onKeyDown(fakeEvent("ctx-2", { mode: "play-pause" }) as any);
+
+            expect(mockReplay.play).toHaveBeenCalledTimes(1);
+            expect(action["logger"].info).toHaveBeenCalledWith("Jump to fastest lap: walk cancelled by play-pause");
+
+            await vi.runAllTimersAsync();
+
+            expect(countReplayCommands()).toBe(commandsBefore + 1);
+            expect(action["replaySpeed"].get("ctx-1")).toBe(1);
+            expect(mockStore.laps.recordLapStart).not.toHaveBeenCalled();
+
+            // The slot is released: a new press walks.
+            await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+            await vi.runAllTimersAsync();
+
+            expect(mockReplay.pause).toHaveBeenCalledTimes(2);
+          } finally {
+            vi.useRealTimers();
+          }
+        });
+
+        it("a dial rotation on a transport key cancels a walk too", async () => {
+          vi.useFakeTimers();
+
+          try {
+            singleSessionBuffer(4, 4);
+
+            await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+            await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+            await vi.advanceTimersByTimeAsync(1200);
+
+            const commandsBefore = countReplayCommands();
+
+            await action.onDialRotate({
+              action: { id: "ctx-2", setTitle: vi.fn(), setImage: vi.fn() },
+              payload: { settings: { mode: "play-pause" }, ticks: 1 },
+            } as any);
+
+            expect(action["logger"].info).toHaveBeenCalledWith("Jump to fastest lap: walk cancelled by play-pause");
+
+            await vi.runAllTimersAsync();
+
+            expect(countReplayCommands()).toBe(commandsBefore);
+            expect(mockReplay.play).not.toHaveBeenCalled();
+          } finally {
+            vi.useRealTimers();
+          }
+        });
+
+        it("runs one walk per action instance: a second fastest-lap press from another key is ignored", async () => {
+          vi.useFakeTimers();
+
+          try {
+            singleSessionBuffer(4, 4);
+
+            await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+            await action.onWillAppear(fakeEvent("ctx-2", { mode: "jump-to-fastest-lap" }) as any);
+            await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+            await action.onKeyDown(fakeEvent("ctx-2", { mode: "jump-to-fastest-lap" }) as any);
+
+            expect(mockReplay.pause).toHaveBeenCalledTimes(1);
+            expect(action["logger"].info).toHaveBeenCalledWith(
+              "Jump to fastest lap: walk already in flight; press ignored",
             );
 
-            mockReplay.setPlayPosition.mockClear();
-
-            await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
             await vi.runAllTimersAsync();
 
-            // Different key (4|6|2) → cache miss → full walk.
-            expect(mockReplay.setPlayPosition.mock.calls.length).toBeGreaterThan(1);
-            // After the walk both keys are in the cache.
-            const cache = _getFastestLapSessionCache();
-
-            expect(cache?.fastestLapFrames.has("4|4|2")).toBe(true);
-            expect(cache?.fastestLapFrames.has("4|6|2")).toBe(true);
+            expect(mockReplay.play).toHaveBeenCalledTimes(1);
+            expect(mockStore.laps.recordLapStart).toHaveBeenCalledTimes(1);
           } finally {
             vi.useRealTimers();
           }
@@ -2499,10 +3034,9 @@ describe("ReplayControl", () => {
 
             // Camera switched to the driver's car (idx 3), NOT the viewed car (99).
             expect(mockCamera.switchNum).toHaveBeenCalledWith(3, 0, 0);
-            // Cache key uses driverCarIdx=3.
-            const cache = _getFastestLapSessionCache();
-
-            expect(cache?.fastestLapFrames.has("3|4|2")).toBe(true);
+            // The lookup and the record both address driverCarIdx=3.
+            expect(mockStore.laps.findLapStart).toHaveBeenCalledWith(expect.objectContaining({ carIdx: 3, lap: 4 }));
+            expect(mockStore.laps.recordLapStart).toHaveBeenCalledWith(expect.objectContaining({ carIdx: 3, lap: 4 }));
           } finally {
             vi.useRealTimers();
           }
