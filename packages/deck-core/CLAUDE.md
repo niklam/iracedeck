@@ -68,6 +68,20 @@ deck-core adds global settings readers on top of the pure functions:
 - `mouse-pointer-service.ts` — Mouse pointer singleton (#926): `initMousePointer`, `movePointerToSim`, `PointerMoveResult`, `DEFAULT_POINTER_X_FRACTION` / `DEFAULT_POINTER_Y_FRACTION`, `_resetMousePointer`. Deliberately a SIBLING of the focus service rather than part of it — one owns the foreground, the other owns where the pointer goes, and neither needs the other. Same injected-delegate shape and the same hand-kept native mirror, guarded by `pointer-move-result.test.ts`. Composing the two (focus, then move) is feature policy and lives in `@iracedeck/iracing-actions`' `shared/mouse-to-sim.ts`. The two `DEFAULT_POINTER_*_FRACTION` constants remain the no-argument fallback; since #1029 the target callers actually pass comes from `sim-pointer-target.ts`.
 - `sim-pointer-target.ts` — Pure Mouse to Sim target resolution (#1029): `POINTER_ANCHORS_X`/`_Y`, `POINTER_ANCHOR_X_FRACTIONS`/`_Y_FRACTIONS`, the `DEFAULT_POINTER_ANCHOR_*` / `DEFAULT_POINTER_OFFSET_*` defaults, `POINTER_OFFSET_LIMIT`, `SimPointerTargetConfig`, `SimPointerTarget`, `resolveSimPointerTarget`. Zero imports: it knows nothing about settings storage or the addon, so the pointer service stays the injected OS primitive and the four `mouseToSim*` global settings stay plain persistence. Total on an invalid input — an unknown anchor or a non-finite offset resolves to the default rather than a NaN the native call would turn into an arbitrary cursor position. Its defaults resolve to exactly `DEFAULT_POINTER_X_FRACTION` / `DEFAULT_POINTER_Y_FRACTION`, pinned by `sim-pointer-target.test.ts` — that equality is what keeps #1029 from moving anyone's pointer — and `sim-pointer-target.partial.test.ts` pins the settings-window control's `default=` attributes to the same constants.
 
+### Settings window
+
+`settings-window.ts` (controller), `settings-window-{guard,server,launcher,commands}.ts`, `settings-window-warning{,-reporter}.ts`, `chromium-browser.ts` and `open-folder.ts` (#992, #993). Architecture and rules: `.claude/rules/settings-window.md`.
+
+### Voice packs
+
+The Race Engineer voice-pack stack (#1034, #1064, #1144). Packs live under `%LOCALAPPDATA%\iRaceDeck\Race Engineer\Voices` (`voice-packs-path.ts`).
+
+- `voice-pack-scanner.ts` — admits packs and reads each voice's `callouts.json` beside its clips (`readVoiceScript`). A voice is addressed as `<pack id>::<voice id>` outside its pack (#1144; ours is `default::default`), so two packs may ship the same bare voice id; the scanner refuses only a voice id declared twice within ONE pack.
+- `voice-pack-service.ts` — rewrites each pack's clips to `voice/<pack id>::<voice id>/…`, binds each pack's audio root to its own voices, hands the engine the composite-id → script map through the `applyScripts` dep, and exposes it as `scripts()`.
+- `voice-pack-launch.ts` — no plugin bundles a voice since #1034 stage 3, so at every start this step keeps the managed pack (`ENSURED_VOICE_PACK_ID` in `voice-pack-constants.ts`, tested by `isManagedVoicePack`) at the catalog's digest and every other catalog-installed pack up to date — silently, opening no window, retrying on a schedule that tightens while the Race Engineer is on. Startup wiring: `.claude/rules/plugin-structure.md`; the development voice root that shadows it: `.claude/rules/platform-feature-flags.md`.
+- `voice-pack-installer.ts` + `voice-pack-{catalog*,download,archive,provenance,storage,status}.ts` — catalog fetch, download, verify, install and removal, and the run-scoped `_voicePackStatus`.
+- `voice-script-warning{,-reporter}.ts` — the `voice-script-missing` banner (`.claude/rules/global-settings.md`).
+
 ## Build
 
 ```bash
