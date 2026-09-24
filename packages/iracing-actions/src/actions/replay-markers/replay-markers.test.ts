@@ -17,7 +17,7 @@ type Marker = { frame: number; sessionNum: number; sessionTimeMs: number; [key: 
 const mocks = vi.hoisted(() => ({
   isStoreInitialized: vi.fn(() => true),
   markers: {
-    add: vi.fn((): boolean => true),
+    add: vi.fn((_marker: Marker, _scope?: unknown): boolean => true),
     deleteNearest: vi.fn((): Marker | null => null),
     next: vi.fn((): Marker | null => null),
     previous: vi.fn((): Marker | null => null),
@@ -385,7 +385,7 @@ describe("ReplayMarkers", () => {
     it("from the car, deletes a marker just added with 15 seconds back", async () => {
       const { action } = makeAction(LIVE);
       await action.onKeyDown(keyDown({ mode: "add", secondsBack: 15 }));
-      const added = mocks.markers.add.mock.calls[0]?.[0] as unknown as Marker;
+      const added = mocks.markers.add.mock.calls[0]![0];
       expect(added).toMatchObject({ frame: 29_100, pressFrame: 30_000 });
 
       mocks.markers.list.mockReturnValue([added]);
