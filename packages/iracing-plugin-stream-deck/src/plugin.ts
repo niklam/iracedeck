@@ -1237,6 +1237,16 @@ const replaySessionStore = initializeReplaySessionStore({
 
 process.on("exit", () => replaySessionStore.flushSync());
 
+// The translator's lap recorder (#1203) publishes each live lap start and lap
+// time; the store keeps them in the session's replay file for the fastest-lap
+// lookup. The store ignores an event whose subSessionId is not the open one.
+eventBus.subscribe("replay.lapStarted", (ev) => {
+  replaySessionStore.laps.recordLapStart(ev.data);
+});
+eventBus.subscribe("replay.lapTimed", (ev) => {
+  replaySessionStore.laps.recordLapTime(ev.data);
+});
+
 // Settings window (#992): the plugin serves ui/settings-window.html (compiled
 // from settings-window.ejs, with settings-window-bridge.js injected before
 // sdpi-components.js) over a loopback server started at plugin startup (#993 —
