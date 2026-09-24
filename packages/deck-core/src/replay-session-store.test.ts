@@ -12,17 +12,21 @@ import {
   initializeReplaySessionStore,
   isReplaySessionStoreInitialized,
   REPLAY_STORE_WRITE_DEBOUNCE_MS,
+  REPLAY_STORE_WRITE_MAX_WAIT_MS,
   type ReplaySessionStore,
 } from "./replay-session-store.js";
 
 // The atomic write's rename, counted and made to fail on demand: an ESM
 // namespace cannot be spied on, and the settings-store test's directory-as-lock
-// trick cannot count how many writes a burst produced.
-const fsState = vi.hoisted(() => ({ renames: 0, failNext: 0 }));
+// trick cannot count how many writes a burst produced. `handedOff` counts the
+// writes the store STARTED (its first step is the folder's mkdir), which is the
+// timing the debounce tests measure under fake timers, where the real I/O
+// behind it cannot be awaited.
+const fsState = vi.hoisted(() => ({ renames: 0, failNext: 0, handedOff: 0, landed: 0 }));
 
-// The synchronous side: the load's read, the corrupt-aside rename/copy and the
-// shutdown flush's rename, each counted and made to fail on demand.
-const syncFs = vi.hoisted(() => ({ renames: 0, failRename: 0, failRead: 0, failCopy: 0 }));
+// The synchronous side: the load's read, the corrupt-aside rename/copy/unlink
+// and the shutdown flush's rename, each counted and made to fail on demand.
+const syncFs = vi.hoisted(() => ({ renames: 0, failRename: 0, failRead: 0, failCopy: 0, failUnlink: 0 }));
 
 vi.mock("node:fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs")>();
@@ -30,13 +34,21 @@ vi.mock("node:fs", async (importOriginal) => {
 
   return {
     ...actual,
-    readFileSync: (path: string, options: "utf-8") => {
+    readFileSync: (path: string, options?: "utf-8") => {
       if (syncFs.failRead > 0) {
         syncFs.failRead--;
         throw fail("EBUSY");
       }
 
-      return actual.readFileSync(path, options);
+      return options === undefined ? actual.readFileSync(path) : actual.readFileSync(path, options);
+    },
+    unlinkSync: (path: string) => {
+      if (syncFs.failUnlink > 0) {
+        syncFs.failUnlink--;
+        throw fail("EPERM");
+      }
+
+      return actual.unlinkSync(path);
     },
     renameSync: (from: string, to: string) => {
       syncFs.renames++;
@@ -64,6 +76,11 @@ vi.mock("node:fs/promises", async (importOriginal) => {
 
   return {
     ...actual,
+    mkdir: async (path: string, options: { recursive: boolean }) => {
+      fsState.handedOff++;
+
+      return actual.mkdir(path, options);
+    },
     rename: async (from: string, to: string) => {
       fsState.renames++;
 
@@ -72,7 +89,8 @@ vi.mock("node:fs/promises", async (importOriginal) => {
         throw Object.assign(new Error("EPERM: operation not permitted"), { code: "EPERM" });
       }
 
-      return actual.rename(from, to);
+      await actual.rename(from, to);
+      fsState.landed++;
     },
   };
 });
@@ -153,10 +171,13 @@ describe("createReplaySessionStore", () => {
     store = createReplaySessionStore({ directory: dir, logger: silentLogger, debounceMs: 10 });
     fsState.renames = 0;
     fsState.failNext = 0;
+    fsState.handedOff = 0;
+    fsState.landed = 0;
     syncFs.renames = 0;
     syncFs.failRename = 0;
     syncFs.failRead = 0;
     syncFs.failCopy = 0;
+    syncFs.failUnlink = 0;
   });
 
   afterEach(async () => {
@@ -164,8 +185,9 @@ describe("createReplaySessionStore", () => {
     rmSync(join(dir, ".."), { recursive: true, force: true });
   });
 
-  it("pins the debounce the spec sized for a crossing wave", () => {
+  it("pins the debounce the spec sized for a crossing wave, and the max wait behind it", () => {
     expect(REPLAY_STORE_WRITE_DEBOUNCE_MS).toBe(2000);
+    expect(REPLAY_STORE_WRITE_MAX_WAIT_MS).toBe(10_000);
   });
 
   describe("the envelope", () => {
@@ -395,6 +417,119 @@ describe("createReplaySessionStore", () => {
       await retrying.flush();
     });
 
+    it("a failed write's retry never overwrites a newer write for the same file that landed meanwhile", async () => {
+      const retrying = createReplaySessionStore({
+        directory: dir,
+        logger: silentLogger,
+        debounceMs: 10,
+        writeRetryDelaysMs: [30],
+      });
+      fsState.failNext = 1;
+
+      retrying.setActiveSession(header());
+      retrying.markers.add({ frame: 1, sessionNum: 0, sessionTimeMs: 0 });
+      await waitUntil(() => fsState.renames === 1); // A: refused
+      expect(existsSync(filePath)).toBe(false);
+
+      retrying.markers.add({ frame: 5000, sessionNum: 0, sessionTimeMs: 0 });
+      await waitUntil(() => existsSync(filePath)); // B: landed, carrying both markers
+      expect(fsState.renames).toBe(2);
+
+      // Past A's retry delay: A's payload is stale and must not come back.
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      await retrying.flush();
+
+      expect(fsState.renames).toBe(2);
+      expect(
+        JSON.parse(readFileSync(filePath, "utf-8")).sections.markers.map((m: { frame: number }) => m.frame),
+      ).toEqual([1, 5000]);
+    });
+
+    it("retries a failed write for each session on its own — one session's failure does not drop another's", async () => {
+      const retrying = createReplaySessionStore({
+        directory: dir,
+        logger: silentLogger,
+        debounceMs: 10,
+        writeRetryDelaysMs: [30],
+      });
+      const otherPath = join(dir, replaySessionFileName(SUB + 1));
+
+      fsState.failNext = 2;
+      retrying.setActiveSession(header());
+      retrying.markers.add({ frame: 1, sessionNum: 0, sessionTimeMs: 0 });
+      retrying.setActiveSession(header(SUB + 1)); // A's write goes out now and is refused
+      retrying.markers.add({ frame: 2, sessionNum: 0, sessionTimeMs: 0 }); // B's is refused after its debounce
+      await waitUntil(() => fsState.renames === 2);
+
+      await waitUntil(() => existsSync(filePath) && existsSync(otherPath));
+      await retrying.flush();
+
+      expect(fsState.renames).toBe(4);
+      expect(JSON.parse(readFileSync(filePath, "utf-8")).sections.markers[0].frame).toBe(1);
+      expect(JSON.parse(readFileSync(otherPath, "utf-8")).sections.markers[0].frame).toBe(2);
+    });
+
+    it("hands a change to the disk no later than the max wait after the first unsaved one, however busy the field", async () => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+      const busy = createReplaySessionStore({ directory: dir, logger: silentLogger, debounceMs: 100, maxWaitMs: 300 });
+
+      try {
+        busy.setActiveSession(header());
+
+        let lap = 0;
+        const crossing = async (): Promise<void> => {
+          lap++;
+          busy.laps.recordLapStart(lapStart({ carIdx: lap % 60, carNumberRaw: lap % 60, lap: 1, frame: lap * 30 }));
+          await vi.advanceTimersByTimeAsync(50);
+        };
+        // Writes are chained, so the next can only start once the real I/O of
+        // the last has landed; setImmediate is not faked and lets it.
+        const landed = async (writes: number): Promise<void> => {
+          while (fsState.landed < writes) await new Promise((resolve) => setImmediate(resolve));
+        };
+
+        // A crossing every 50 ms never lets a 100 ms debounce go idle …
+        for (let i = 0; i < 5; i++) await crossing();
+
+        expect(fsState.handedOff).toBe(0); // t = 250 ms
+
+        await crossing(); // t = 300 ms: the max wait from the first change at t = 0
+        expect(fsState.handedOff).toBe(1);
+        await landed(1);
+
+        // … and the next window counts from the first change after that write.
+        for (let i = 0; i < 5; i++) await crossing();
+
+        expect(fsState.handedOff).toBe(1); // t = 550 ms: the window opened at t = 300
+        await crossing();
+        expect(fsState.handedOff).toBe(2); // t = 600 ms
+        await landed(2);
+
+        // Left alone, the trailing debounce lands the rest.
+        await crossing();
+        await vi.advanceTimersByTimeAsync(100); // t = 750 ms: the debounce fired at 700
+        expect(fsState.handedOff).toBe(3);
+      } finally {
+        vi.useRealTimers();
+      }
+
+      await busy.flush();
+      expect(Object.keys(JSON.parse(readFileSync(filePath, "utf-8")).sections.laps.sessions[0].cars)).toHaveLength(13);
+    });
+
+    it("writes compact JSON — one line, newline-terminated — because a race's record reaches megabytes", async () => {
+      store.setActiveSession(header());
+      store.markers.add({ frame: 42, sessionNum: 1, sessionTimeMs: 0 });
+      store.laps.recordLapStart(lapStart());
+      await store.flush();
+
+      const text = readFileSync(filePath, "utf-8");
+
+      expect(text.endsWith("\n")).toBe(true);
+      expect(text.split("\n")).toHaveLength(2);
+      expect(text).not.toContain("  ");
+    });
+
     it("flushSync re-does a failed write that has not been retried yet", async () => {
       const failing = createReplaySessionStore({
         directory: dir,
@@ -464,15 +599,30 @@ describe("createReplaySessionStore", () => {
   });
 
   describe("fail closed: a file the store cannot take responsibility for is never written over", () => {
-    it("an unreadable file (EBUSY, not ENOENT) opens a memory-only record and no write ever touches it", async () => {
-      mkdirSync(dir, { recursive: true });
-      const original = JSON.stringify({
+    const lockedFile = () =>
+      JSON.stringify({
         version: 1,
-        sections: { markers: [{ frame: 5, sessionNum: 0, sessionTimeMs: 1 }], laps: { version: 1, sessions: [] } },
+        sections: {
+          markers: [{ frame: 5, sessionNum: 0, sessionTimeMs: 1 }],
+          laps: {
+            version: 1,
+            sessions: [
+              {
+                sessionNum: 2,
+                sessionUniqueId: 3,
+                cars: { "7": { carNumberRaw: 2, userId: 123456, laps: [{ lap: 1, frame: 30821, timeMs: null }] } },
+              },
+            ],
+          },
+        },
       });
 
+    it("a file that stays unreadable (EBUSY, not ENOENT) opens a memory-only record and no write ever touches it", async () => {
+      mkdirSync(dir, { recursive: true });
+      const original = lockedFile();
+
       writeFileSync(filePath, original);
-      syncFs.failRead = 1;
+      syncFs.failRead = 100; // every read, including the retries on the way out
 
       store.setActiveSession(header());
 
@@ -482,13 +632,109 @@ describe("createReplaySessionStore", () => {
       expect(store.laps.recordLapStart(lapStart())).toBe(true);
 
       await store.flush();
+      store.flushSync();
       store.clearActiveSession();
       await store.flush();
-      store.flushSync();
 
+      syncFs.failRead = 0;
       expect(readFileSync(filePath, "utf-8")).toBe(original);
       expect(fsState.renames).toBe(0);
       expect(syncFs.renames).toBe(0);
+    });
+
+    it("a file locked at open is re-read on the retry schedule; once readable, the record is merged into it and written", async () => {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(filePath, lockedFile());
+      const retrying = createReplaySessionStore({
+        directory: dir,
+        logger: silentLogger,
+        debounceMs: 10,
+        loadRetryDelaysMs: [20],
+      });
+
+      syncFs.failRead = 1;
+      retrying.setActiveSession(header());
+      expect(retrying.getActiveSession()).toMatchObject({ path: null });
+      expect(retrying.laps.findLapStart(lapStart())).toEqual({ hit: false, reason: "no file" });
+
+      // Recorded while the file was locked.
+      expect(retrying.markers.add({ frame: 30, sessionNum: 0, sessionTimeMs: 0 })).toBe(true); // within 60 of the file's 5
+      expect(retrying.markers.add({ frame: 100, sessionNum: 0, sessionTimeMs: 0 })).toBe(true);
+      retrying.laps.recordLapStart(lapStart({ lap: 1, frame: 99999 })); // the file has lap 1 at 30821
+      retrying.laps.recordLapStart(lapStart({ lap: 2, frame: 36305 }));
+      retrying.laps.recordLapTime({ sessionNum: 2, sessionUniqueId: 3, carIdx: 7, lap: 1, timeMs: 91433 });
+
+      await waitUntil(() => retrying.getActiveSession()?.path !== null);
+      await waitUntil(() => fsState.renames === 1);
+      await retrying.flush();
+
+      // Union: the file's marker at 5 stays and dedupes the 30; the file's lap 1 frame stays and takes the time.
+      expect(retrying.markers.list().map((m) => m.frame)).toEqual([5, 100]);
+      expect(retrying.laps.findLapStart(lapStart())).toEqual({
+        hit: true,
+        frame: 30821,
+        timeMs: 91433,
+        matchedBy: "pair",
+      });
+
+      const { sections } = JSON.parse(readFileSync(filePath, "utf-8"));
+
+      expect(sections.markers.map((m: { frame: number }) => m.frame)).toEqual([5, 100]);
+      expect(sections.laps.sessions[0].cars["7"].laps).toEqual([
+        { lap: 1, frame: 30821, timeMs: 91433 },
+        { lap: 2, frame: 36305, timeMs: null },
+      ]);
+    });
+
+    it("past the retry schedule the record stays in memory, and a later setActiveSession for the same id tries the read again", async () => {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(filePath, lockedFile());
+      const retrying = createReplaySessionStore({
+        directory: dir,
+        logger: silentLogger,
+        debounceMs: 10,
+        loadRetryDelaysMs: [10, 10],
+      });
+
+      syncFs.failRead = 3; // the open and both retries
+      retrying.setActiveSession(header());
+      retrying.markers.add({ frame: 100, sessionNum: 0, sessionTimeMs: 0 });
+
+      await waitUntil(() => syncFs.failRead === 0);
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      expect(retrying.getActiveSession()).toMatchObject({ path: null });
+      expect(fsState.renames).toBe(0);
+
+      retrying.setActiveSession(header());
+      expect(retrying.getActiveSession()).toMatchObject({ path: filePath });
+      expect(retrying.markers.list().map((m) => m.frame)).toEqual([5, 100]);
+
+      await retrying.flush();
+      expect(JSON.parse(readFileSync(filePath, "utf-8")).sections.markers).toHaveLength(2);
+    });
+
+    it("a locked corrupt file that can only be copied aside is preserved once, not once per open", () => {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(filePath, "{ not json");
+      syncFs.failRename = 2;
+      syncFs.failUnlink = 2;
+
+      // A clock that moves between the opens, so the asides would get different names.
+      let seconds = 0;
+      const ticking = createReplaySessionStore({
+        directory: dir,
+        logger: silentLogger,
+        now: () => new Date(Date.UTC(2026, 8, 24, 10, 11, seconds++)),
+      });
+
+      ticking.setActiveSession(header());
+      ticking.setActiveSession(header(SUB + 1));
+      ticking.setActiveSession(header());
+
+      const asides = readdirSync(dir).filter((f) => f.startsWith(`session_${SUB}.corrupt-`));
+
+      expect(asides).toHaveLength(1);
+      expect(readFileSync(filePath, "utf-8")).toBe("{ not json");
     });
 
     it("a corrupt file that can be neither moved nor copied aside opens a memory-only record and stays where it is", async () => {
@@ -621,6 +867,49 @@ describe("createReplaySessionStore", () => {
       expect(sections.laps.sessions[0].cars["7"].team).toBe("A");
       expect(sections.laps.sessions[0].cars["7"].laps[0]).toEqual({ lap: 1, frame: 10, timeMs: 90000, valid: true });
       expect(sections.laps.sessions[0].cars["7"].laps[1]).toEqual({ lap: 2, frame: 20, timeMs: null });
+    });
+
+    it("carries a laps section from a newer build through verbatim, and neither reads nor writes it", async () => {
+      const newer = { version: 2, sessions: [{ sessionNum: 2, sessionUniqueId: 3, stints: [{ from: 1, to: 9 }] }] };
+
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(filePath, JSON.stringify({ version: 1, sections: { laps: newer } }));
+
+      store.setActiveSession(header());
+
+      expect(store.laps.recordLapStart(lapStart())).toBe(false);
+      expect(store.laps.recordLapTime({ sessionNum: 2, sessionUniqueId: 3, carIdx: 7, lap: 1, timeMs: 1 })).toBe(false);
+      expect(store.laps.findLapStart(lapStart())).toEqual({ hit: false, reason: "newer format" });
+
+      store.markers.add({ frame: 1, sessionNum: 0, sessionTimeMs: 0 });
+      await store.flush();
+
+      expect(JSON.parse(readFileSync(filePath, "utf-8")).sections.laps).toEqual(newer);
+    });
+
+    it("carries a markers entry it cannot read through every write, after the markers it can", async () => {
+      const span = { kind: "span", frames: [100, 900] };
+
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        filePath,
+        JSON.stringify({
+          version: 1,
+          sections: { markers: [span, { frame: 5000, sessionNum: 0, sessionTimeMs: 1 }] },
+        }),
+      );
+
+      store.setActiveSession(header());
+      expect(store.markers.list().map((m) => m.frame)).toEqual([5000]);
+      store.markers.add({ frame: 1, sessionNum: 0, sessionTimeMs: 0 });
+      await store.flush();
+      store.markers.deleteNearest(5000);
+      await store.flush();
+
+      expect(JSON.parse(readFileSync(filePath, "utf-8")).sections.markers).toEqual([
+        { frame: 1, sessionNum: 0, sessionTimeMs: 0 },
+        span,
+      ]);
     });
   });
 
