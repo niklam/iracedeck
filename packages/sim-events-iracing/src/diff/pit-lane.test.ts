@@ -157,4 +157,16 @@ describe("diffPitLane — approach cooldown (dirt oval)", () => {
     expect(approachEvents(events)).toHaveLength(0);
     expect(state.pitApproachCooldownUntil).toBe(0);
   });
+
+  it("stays silent when the car comes out of the garage onto pit road, even before the stall signals catch up (issue #1201)", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+
+    diffPitLane(state, tick({ PlayerTrackSurface: TrkLoc.NotInWorld }), TrackType.DirtOval, 1000, emit); // seed: garage
+    // One tick where OnPitRoad is up but neither stall signal is yet.
+    diffPitLane(state, droveIn, TrackType.DirtOval, 1010, emit);
+
+    expect(approachEvents(events)).toHaveLength(0);
+    expect(state.pitApproachCooldownUntil).toBe(0);
+  });
 });

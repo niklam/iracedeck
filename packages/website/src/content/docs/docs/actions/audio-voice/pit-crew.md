@@ -435,7 +435,7 @@ A car with no limiter has nothing holding it under the limit and no dashboard cu
 
 The second half of that line is literally the [session-start briefing](#session-start) clip — the same recording of the limit, in the same units, rather than a second wording of the same fact. At a track whose limit has no recorded number the callout plays its opening line and stops there rather than reaching for a nearby one, so you may hear only *"Pit entry. Mind the limit."*
 
-It plays as you head into the pit lane (on most tracks a few seconds before the speed line), at the same moment as the [pit entry readback](#pit-service-readback). When your car is placed straight into its pit stall (clicking **Drive**, a tow, or a reset), you have not driven in, so the reminder stays silent.
+It plays as you head into the pit lane (on most tracks a few seconds before the speed line), at the same moment as the [pit entry readback](#pit-service-readback). The reminder speaks first and the readback follows it. When your car is placed straight into its pit stall (clicking **Drive**, a tow, or a reset), you have not driven in, so the reminder stays silent.
 
 Every callout in both groups is individually switchable under **Race Engineer Callouts → Pit Limiter** and **→ No Pit Limiter**, all on by default.
 

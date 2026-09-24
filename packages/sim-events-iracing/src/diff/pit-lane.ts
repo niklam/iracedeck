@@ -63,6 +63,7 @@ export function diffPitLane(
     state.pitLaneInitialized = true;
     state.lastOnPitRoad = onPitRoad;
     state.lastInPitStall = inPitStall;
+    state.lastTrackSurface = trackSurface;
     state.approachAlertFired = isApproaching;
     state.approachExitingSuppressed = onPitRoad || isApproaching;
 
@@ -109,8 +110,16 @@ export function diffPitLane(
     // fire on the OnPitRoad drive-in edge instead. Suppress the teleport/tow
     // case — a car materialized directly in the box reports `PlayerCarInPitStall`
     // true and/or `PlayerTrackSurface` jumping straight to `InPitStall`, and has
-    // nothing to "approach". The exit edge (OnPitRoad on→off) never fires here.
-    if (enteredPitRoad && !inPitStall && trackSurface !== TrkLoc.InPitStall) {
+    // nothing to "approach". A car coming out of the garage (`NotInWorld` on
+    // the previous tick) was placed there too, even if the stall signals lag
+    // the `OnPitRoad` edge by a tick (issue #1201). The exit edge (OnPitRoad
+    // on→off) never fires here.
+    if (
+      enteredPitRoad &&
+      !inPitStall &&
+      trackSurface !== TrkLoc.InPitStall &&
+      state.lastTrackSurface !== TrkLoc.NotInWorld
+    ) {
       fireApproach();
     }
   } else if (isApproaching && !state.approachAlertFired && !isExitingPits) {
@@ -126,4 +135,5 @@ export function diffPitLane(
 
   state.lastOnPitRoad = onPitRoad;
   state.lastInPitStall = inPitStall;
+  state.lastTrackSurface = trackSurface;
 }
