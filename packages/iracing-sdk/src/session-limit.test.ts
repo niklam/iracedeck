@@ -5,7 +5,13 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { bindingLapsToGo, resolveBindingLimit, resolveLapsRemaining, resolveTimeRemainingS } from "./session-limit.js";
+import {
+  bindingLapsToGo,
+  resolveBindingLimit,
+  resolveLapsRemaining,
+  resolveShownTimeRemainingS,
+  resolveTimeRemainingS,
+} from "./session-limit.js";
 import { IRSDK_UNLIMITED_LAPS, IRSDK_UNLIMITED_TIME, type TelemetryData } from "./types.js";
 
 /** Build a minimal TelemetryData mock from a partial set of fields. */
@@ -60,6 +66,27 @@ describe("resolveTimeRemainingS", () => {
     expect(resolveTimeRemainingS(telemetry({ SessionTimeRemain: NaN }))).toBeNull();
     expect(resolveTimeRemainingS(telemetry({ SessionTimeRemain: Number.POSITIVE_INFINITY }))).toBeNull();
     expect(resolveTimeRemainingS(telemetry({ SessionTimeRemain: -1 }))).toBeNull();
+  });
+});
+
+describe("resolveShownTimeRemainingS (#1221)", () => {
+  it("returns a live clock as-is, 0 included", () => {
+    expect(resolveShownTimeRemainingS(telemetry({ SessionTimeRemain: 3661 }))).toBe(3661);
+    expect(resolveShownTimeRemainingS(telemetry({ SessionTimeRemain: 0 }))).toBe(0);
+  });
+
+  it("shows a clock that has run past zero as the 0 it has left", () => {
+    expect(resolveShownTimeRemainingS(telemetry({ SessionTimeRemain: -3.2 }))).toBe(0);
+    expect(resolveShownTimeRemainingS(telemetry({ SessionTimeRemain: -0.01 }))).toBe(0);
+  });
+
+  it("still returns null for the unlimited sentinel, a missing field and a non-finite reading", () => {
+    expect(resolveShownTimeRemainingS(telemetry({ SessionTimeRemain: IRSDK_UNLIMITED_TIME }))).toBeNull();
+    expect(resolveShownTimeRemainingS(telemetry({}))).toBeNull();
+    expect(resolveShownTimeRemainingS(null)).toBeNull();
+    expect(resolveShownTimeRemainingS(telemetry({ SessionTimeRemain: NaN }))).toBeNull();
+    expect(resolveShownTimeRemainingS(telemetry({ SessionTimeRemain: Number.NEGATIVE_INFINITY }))).toBeNull();
+    expect(resolveShownTimeRemainingS(telemetry({ SessionTimeRemain: Number.POSITIVE_INFINITY }))).toBeNull();
   });
 });
 

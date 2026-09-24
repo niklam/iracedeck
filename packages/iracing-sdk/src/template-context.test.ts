@@ -506,13 +506,31 @@ describe("buildTemplateContextFromData", () => {
     expect(nan.display["session.time_remaining"]).toBe("");
   });
 
-  it("should render session.time_remaining empty for a negative or infinite SessionTimeRemain", () => {
+  it("should render session.time_remaining empty for an infinite SessionTimeRemain", () => {
     const drivers = [makeDriver({ CarIdx: 0 })];
     const sessionInfo = makeSessionInfo(drivers, 0);
 
-    for (const value of [-3.2, Infinity]) {
+    for (const value of [Infinity, -Infinity]) {
       const ctx = buildTemplateContextFromData(makeTelemetry({ SessionTimeRemain: value }), sessionInfo);
       expect(ctx.display["session.time_remaining"]).toBe("");
+    }
+  });
+
+  it("should render session.time_remaining as 0:00 once a timed race's clock has run out (#1221)", () => {
+    // The clock sits below zero while the leader runs to the flag — an
+    // expired clock, not an unlimited one, so it shows the zero it has left.
+    const drivers = [makeDriver({ CarIdx: 0 })];
+    const sessionInfo = makeSessionInfo(drivers, 0);
+
+    const ctx = buildTemplateContextFromData(makeTelemetry({ SessionTimeRemain: -3.2 }), sessionInfo);
+
+    expect(ctx.raw["session.time_remaining"]).toBe("0:00");
+    expect(ctx.display["session.time_remaining"]).toBe("0:00");
+
+    // A hair below zero must clamp before formatting, never floor to "-1:59".
+    for (const value of [-0.0001, -0]) {
+      const edge = buildTemplateContextFromData(makeTelemetry({ SessionTimeRemain: value }), sessionInfo);
+      expect(edge.display["session.time_remaining"]).toBe("0:00");
     }
   });
 

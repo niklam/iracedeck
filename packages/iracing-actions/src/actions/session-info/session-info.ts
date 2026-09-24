@@ -37,7 +37,7 @@ import {
   resolveBindingLimit,
   resolveIRatingEstimateOrder,
   resolveLapsRemaining,
-  resolveTimeRemainingS,
+  resolveShownTimeRemainingS,
   type TelemetryData,
   TrackWetness,
 } from "@iracedeck/iracing-sdk";
@@ -644,14 +644,9 @@ export function resolveSessionLimitDisplay(
 ): SessionLimitDisplay {
   const rawLapsToGo = resolveLapsRemaining(telemetry);
 
-  // iRacing can blip `SessionTimeRemain` below zero for a tick or two mid-race — the transient `leader-white.ts`
-  // guards with a two-tick confirmation — and a genuinely expired clock sits there while the leader runs to the
-  // flag. The shared reader calls a negative duration unknown, which is right for the fuel estimate: it would
-  // rather skip a sample than divide by nonsense. Here "unknown" would render `UNLIM`, which is the exact symptom
-  // this issue exists to remove, so a clock that has run past zero is shown as the zero it has left.
-  const rawTime = telemetry.SessionTimeRemain;
-  const clockRanPast = typeof rawTime === "number" && Number.isFinite(rawTime) && rawTime < 0;
-  const remainingS = resolveTimeRemainingS(telemetry) ?? (clockRanPast ? 0 : null);
+  // A clock that has run past zero is shown as the zero it has left, not as `UNLIM` — the display rule shared with
+  // the template context's `session.time_remaining` (#1221).
+  const remainingS = resolveShownTimeRemainingS(telemetry);
 
   // A lap counter reading 0 has already been reached, so it can no longer be the limit that ENDS the session —
   // whatever happens next is the clock's business. This matters most in a lap-limited QUALIFYING, where iRacing
