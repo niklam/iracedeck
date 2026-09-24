@@ -10,7 +10,7 @@ import { extractQualifyResults } from "./grid-utils.js";
 import { estimateIRatingChanges, type IRatingEstimates, resolveIRatingEstimateOrder } from "./irating-utils.js";
 import { classPositionFromOrder } from "./position-utils.js";
 import type { SDKController } from "./SDKController.js";
-import { resolveLapsRemaining } from "./session-limit.js";
+import { resolveLapsRemaining, resolveTimeRemainingS } from "./session-limit.js";
 import { findNearestCarOnTrack } from "./track-utils.js";
 import type { SessionInfo, TelemetryData } from "./types.js";
 
@@ -635,7 +635,9 @@ function buildSessionFields(
   // Absent from raw and blank in display when the lap side does not bind —
   // the unlimited sentinel of a timed race is not a lap count (#1109).
   const lapsRemaining = resolveLapsRemaining(telemetry);
-  const timeRemaining = telemetry?.SessionTimeRemain;
+  // Blank when the time side does not bind — the unlimited sentinel of a lap
+  // race is not a clock (#1186).
+  const timeRemaining = resolveTimeRemainingS(telemetry) ?? undefined;
 
   const type = (currentSession?.SessionType as string) ?? "";
   // time_remaining keeps the formatted M:SS string in BOTH maps — expressions
