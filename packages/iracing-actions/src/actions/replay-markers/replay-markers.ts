@@ -31,6 +31,8 @@ import previousIconSvg from "@iracedeck/icons/replay-markers/previous.svg";
 import { ReplayPosMode, resolveReplayFrame, type TelemetryData } from "@iracedeck/iracing-sdk";
 import z from "zod";
 
+import { cancelReplayCursorOwner } from "../../shared/replay-cursor.js";
+
 /**
  * Replay Markers (issue #1162): mark a moment and jump back to it. A marker is
  * an absolute replay frame kept in the per-session replay store; Next and
@@ -345,6 +347,8 @@ export class ReplayMarkers extends ConnectionStateAwareAction<ReplayMarkersSetti
           return undefined;
         }
 
+        // Takes the replay cursor from an in-flight Jump to Fastest Lap walk (#1203).
+        cancelReplayCursorOwner(settings.mode);
         const success = getCommands().replay.setPlayPosition(ReplayPosMode.Begin, target.frame);
         this.logger.info(`Jumped to ${settings.mode} marker`);
         this.logger.debug(`Result: ${success}, current=${frame}, target=${target.frame}`);

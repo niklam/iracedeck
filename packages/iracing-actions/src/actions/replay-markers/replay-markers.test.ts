@@ -1,6 +1,7 @@
 import { ReplayPosMode, type TelemetryData } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { _resetReplayCursor, claimReplayCursor } from "../../shared/replay-cursor.js";
 import {
   buildMarker,
   CONFIRMATION_FLASH_MS,
@@ -428,6 +429,22 @@ describe("ReplayMarkers", () => {
 
       expect(mocks.markers.previous).toHaveBeenCalledWith(12_000, { subSessionId: 86697546 });
       expect(mocks.setPlayPosition).toHaveBeenCalledWith(ReplayPosMode.Begin, 9_000);
+    });
+
+    it("takes the replay cursor from an in-flight fastest-lap walk before jumping", async () => {
+      mocks.markers.next.mockReturnValue({ frame: 15_000, sessionNum: 1, sessionTimeMs: 0 });
+      const onCancelled = vi.fn(() => {
+        expect(mocks.setPlayPosition).not.toHaveBeenCalled();
+      });
+      const claim = claimReplayCursor("jump-to-fastest-lap", onCancelled);
+      const { action } = makeAction(REPLAY);
+
+      await action.onKeyDown(keyDown({ mode: "next" }));
+
+      expect(onCancelled).toHaveBeenCalledWith("next");
+      expect(claim.cancelledBy).toBe("next");
+      expect(mocks.setPlayPosition).toHaveBeenCalledWith(ReplayPosMode.Begin, 15_000);
+      _resetReplayCursor();
     });
 
     it.each(["next", "previous"])("%s from the car sends nothing and says why at debug", async (mode) => {
