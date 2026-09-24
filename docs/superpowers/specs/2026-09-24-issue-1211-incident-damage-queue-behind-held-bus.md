@@ -90,6 +90,10 @@ Two translator-driven `telemetrySequence` shortcuts (the #1127 shape) under the 
 
 A third, qualifying variant (the same collision during a spotter call with a qualifying snapshot posted first) confirms the lap-invalidation line plays after "clear" and the incident line does not. The #1122 branch adds `incident.scored` to `event-names.ts`; nothing new is needed there.
 
+## Confirmed by Niklas (2026-09-24)
+
+Four choices this spec made on its own were put to Niklas and confirmed as written: the qualifying lap-invalidation contract becomes queueable inside #1211 (§4); the incident speak-time age limit is 10 s (§1); a damage line with no incident burst open waits the 2 s grace (§5); and a lap-invalidation line still parked when the driver crosses start/finish is dropped rather than spoken on the next lap (§4). The remaining loss — a parked incident displaced by an opponent-pit, pit-window or NORMAL fuel line during the hold — stays #1185's.
+
 ## Artifacts beyond the code
 
 - `incidents.ts`, `damage-alerts.ts`, `qualifying-invalidation.ts` headers and the `registerPitCrew` comment block in `index.ts`: scheduling paragraphs rewritten, since each describes the drop this removes.
