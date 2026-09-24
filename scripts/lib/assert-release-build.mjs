@@ -7,14 +7,16 @@
  * a build from a clean clone or a tag safe, and it is not the same question as
  * whether the ARTIFACT ABOUT TO BE PACKED is clean: `pnpm pack:plugin` packs
  * whatever is on disk in the plugin folder, and on a maintainer's machine that
- * folder is routinely a build made with `dev:voices on` in effect. The spec's
+ * folder is routinely a development build (`dev:voices on`, or the machine-wide
+ * `IRACEDECK_DEV_VOICES=1` opt-in). The spec's
  * *Failure modes* row promises "a packed plugin carries no `devVoicePacksRoot`";
  * this is the step that keeps the promise, wired as the first thing every
  * `pack:plugin` script does.
  *
  * PRESENCE of the key is the property, never its value. It reaches the config
- * through a conditional spread, so a key that is there at all means the marker
- * was read at build time — a blank or `null` value would still be a
+ * through a conditional spread, so a key that is there at all means the build
+ * resolved development mode on — from the marker or, since #1214, from
+ * `IRACEDECK_DEV_VOICES` — a blank or `null` value would still be a
  * development build, and one whose `devVoicePacksRoot` a hand edit had emptied
  * is not a release build that happens to look tidy.
  *
@@ -78,8 +80,9 @@ export function assertReleaseBuild(configPath, { fs = { existsSync, readFileSync
   if (DEV_VOICE_PACKS_ROOT_KEY in parsed) {
     log.error(
       `Error: ${configPath} carries ${DEV_VOICE_PACKS_ROOT_KEY} — this is a DEVELOPMENT build and must not be ` +
-        "packed or published. Run `pnpm dev:voices off` (it removes dev.local.json and rebuilds the three plugins), " +
-        "then pack again.",
+        "packed or published. Development mode comes from dev.local.json or from IRACEDECK_DEV_VOICES=1 in your " +
+        "environment. Run `pnpm dev:voices off` (it writes `voicePacksRoot: false` to dev.local.json, which wins " +
+        "over the variable, and rebuilds the three plugins), then pack again.",
     );
 
     return EXIT_PROBLEM;
