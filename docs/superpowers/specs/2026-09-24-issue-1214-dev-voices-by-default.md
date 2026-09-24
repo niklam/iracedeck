@@ -48,13 +48,13 @@ The default root resolves against the worktree being built. So "the linked direc
 - **Off:** it exits at once and stages nothing.
 - **On:** it runs the packer's staging for every authored pack in `src/build/voice-packs.mjs`, into `dist/voice-packs/<id>/`. The packer's own checks stay, including the real-scanner verification of the staged tree. The zip and the catalog rewrite are skipped. This is a new packer flag (`--stage-only`), stricter than `--no-catalog`, which still zips.
 
-Its turbo `inputs` are the voice configs, the clips, the packer and its libraries, `dev.local.json` and `scripts/lib/dev-local.mjs`. `IRACEDECK_DEV_VOICES` goes in `env`, and the stage directory in `outputs`. An unchanged voice is then a cache hit, and a changed clip restages only what the processed-clip cache does not already hold.
+Its turbo `inputs` are the voice configs, the clips, the packer and its libraries, `dev.local.json` and `scripts/lib/dev-local.mjs`. `IRACEDECK_DEV_VOICES` goes in `env`. The task is `cache: false` with no `outputs`: it does not own `dist/voice-packs/` (zips and sideloads live there too), and a turbo restore would resurrect files the packer's wipe-first stage exists to remove, such as a clip since reverted. Its inputs still feed the hash its dependents see. A restage is cheap anyway, because `audio-assets#build` has already warmed the processed-clip cache and the stage only copies from it.
 
 The same resolver (§2) decides both the stage task and the Rollup `devVoicePacksRoot`, so the build cannot stage without pointing the plugin at the stage, or the reverse. If the marker names a hand-picked path outside the default, the task stages nothing: that root belongs to whoever picked it.
 
 ### 4. No new rescan mechanism
 
-The plugin scans voice packs on every start, so a build followed by a plugin restart plays the new stage. The Elgato `watch` script already restarts after each rebuild. The **Rescan voices** button covers the case where the developer doesn't want to restart. Niklas prefers the manual rescan over a watcher, so none is added.
+The plugin scans voice packs on every start, so a build followed by a plugin restart plays the new stage. The **Rescan voices** button covers the case where the developer doesn't want to restart, and is the loop while a deck host is running: a voice edit reruns the three plugin builds, which fail on the native addon a running host holds open, so there the developer restages with the stage task alone. The `watch` scripts run Rollup directly rather than through turbo and never restage; after a voice edit the developer runs the build or the stage task. Niklas prefers the manual rescan over a watcher, so none is added.
 
 ### 5. Visibility moves to the build log
 
@@ -71,7 +71,7 @@ Nothing here weakens #1143's guarantee that a shipped plugin cannot carry a deve
 ## Out of scope
 
 - A file watcher on the development root, or an automatic rescan. §4 covers why.
-- A machine-wide processed-clip cache. The cache lives under each worktree's `audio-assets`, so the first dev build of a new worktree processes every clip through ffmpeg once. The implementation measures this cost and reports it. It is accepted as paid once per worktree and only with the opt-in; sharing the cache across worktrees is a separate change.
+- A machine-wide processed-clip cache. The cache lives under each worktree's `audio-assets`, and `audio-assets#build` fills it on every fresh worktree's first build whether or not the opt-in is set, so the stage task adds only a copy (about 5 s). Sharing the cache across worktrees is a separate change.
 - Staging `sfx/`, which still ships inside the plugin build.
 - Any change to the scanner, the launch step, the shadowing rules, or the settings window. The plugin side of #1143 is untouched.
 - Website and changelog. This is developer tooling only.
