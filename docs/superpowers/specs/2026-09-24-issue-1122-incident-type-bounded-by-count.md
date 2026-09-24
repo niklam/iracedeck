@@ -50,9 +50,15 @@ If no consistent byte is ever seen, the burst stays untyped and flushes silently
 
 `diffIncidents` takes the translator's `ILogger` (default `silentLogger`) and logs at debug: each classified byte (report value, count), each increment (delta, chain total, chosen type, and every rejected type with its value), each late-byte retype or rejection, and each flush (type, points, delta). A field report like #1122 can then be matched against the log instead of reconstructed.
 
+### 5. `incident.scored` — the type-blind signal (added after review)
+
+`incident.occurred` fires only for a typed burst, yet two consumers read it as "an incident was scored" and never look at the type: the qualifying lap-invalidation contract and the plugins' `lastIncidentAt` overtake gate. The bound multiplies untyped bursts (a counted incident whose only bytes contradict the count), and #938 already left them silent — so a qualifying contact that moved the count would not invalidate the lap aloud.
+
+A new bus event, `incident.scored { delta }`, fires for **every** counted burst at flush, typed or not, and both type-blind consumers move onto it; `incident.occurred` keeps its contract (every fire has a type) and stays the incident callouts' trigger. On the flush tick the translator emits `incident.scored` **before** `incident.occurred`: the qualifying contract won the Voice bus over the incident contracts by registration order on one shared event, and with two events publication order is what keeps that. Rejected: a nullable `type` on `incident.occurred` (breaks its documented contract for every consumer) and accepting the gap.
+
 ## Out of scope
 
-- The event payload, the audio catalog, clip wording and the website page — what is announced for a consistent sequence is unchanged.
+- The `incident.occurred` payload, clip wording — what is announced for a consistent sequence is unchanged.
 - Burst cadence (`INCIDENT_BURST_QUIET_MS`, `INCIDENT_BURST_MAX_MS`, `INCIDENT_LATE_TYPE_MS`).
 - The penalty byte stays unused (#938).
 - Opponent incidents.
