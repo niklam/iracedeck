@@ -35,6 +35,8 @@ Found in manual testing. #1127 kept `caution-pace-car-off` silent at an opening 
 
 So `caution-pace-car-off` also speaks at an opening rolling start. Its gate becomes: live in the race car, and either the caution phase is `one-to-go` (unchanged, restarts) **or** there is no caution (`none`) and iRacing's `GreenHeld` bit is up in the event's telemetry. The #1127 Homestead capture measures it: at the rolling start `GreenHeld` rises at 186.28 s, the pace car (car index 64) goes OnTrack → AproachingPits at 196.53 s with `GreenHeld` still up, and the green comes at 201.18 s. The restart repeats the pattern (477.77 / 488.07 / 492.82 s).
 
+The same holds at speak time. The family's shared `speakGate` ("the caution is still out") would refuse every opening-start fire; the second manual test showed exactly that. So `caution-pace-car-off` gets its own gate: the caution is still out, **or** `GreenHeld` is still up in the translator's latest tick. A fire queued behind a busy bus that drains after the green therefore stays silent, and with no telemetry to read the gate stays closed.
+
 The road-course deploy that #1127 guards against stays silent. It happens mid-caution, while the phase is `waving`, never `none`, and `GreenHeld` is not up.
 
 A standing start never raises `GreenHeld` and has no pace car leaving, so it is unaffected.
