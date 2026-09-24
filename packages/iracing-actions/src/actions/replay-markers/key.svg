@@ -7,8 +7,8 @@
   <path d="M43,24 H53 M48,19 V29" fill="none" stroke="#2ecc71" stroke-width="3" stroke-linecap="round"/>
 
   <!-- Two-line label -->
-  <text x="36" y="52" text-anchor="middle" dominant-baseline="central"
+  <text x="36" y="55.6" text-anchor="middle"
         fill="#ffffff" font-family="Arial, sans-serif" font-size="10" font-weight="bold">MARKERS</text>
-  <text x="36" y="63" text-anchor="middle" dominant-baseline="central"
+  <text x="36" y="65.88" text-anchor="middle"
         fill="#ffffff" font-family="Arial, sans-serif" font-size="8">REPLAY</text>
 </svg>
