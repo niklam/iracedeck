@@ -2,6 +2,10 @@
  * Incidents and off-track excursions.
  *
  * Emits:
+ *   - incident.scored — once per counted burst at flush, typed or not
+ *     (issue #1122): the type-blind "the count moved" signal, carrying the
+ *     burst's raw accumulated delta. Emitted BEFORE `incident.occurred` on
+ *     the same flush — see `flushIncidentBurst` for why the order matters.
  *   - incident.occurred — coalesced across a "burst" of count-increment
  *     events. iRacing reports a single physical crash as a stream of
  *     point-by-point increments over seconds. We buffer the latest
@@ -9,7 +13,8 @@
  *     the burst goes quiet for `INCIDENT_BURST_QUIET_MS` (or once
  *     `INCIDENT_BURST_MAX_MS` has elapsed from the first increment,
  *     whichever comes first). The audio scenario then plays one callout
- *     per crash, not three. Issue #530.
+ *     per crash, not three. Issue #530. Only a burst that resolved a type
+ *     emits it; an untyped burst emits `incident.scored` alone.
  *   - offTrack.started — when PlayerTrackSurface transitions to OffTrack.
  *   - offTrack.ended — when PlayerTrackSurface returns from OffTrack.
  *
@@ -243,7 +248,23 @@ function clearIncidentBurst(state: TranslatorState): void {
 }
 
 function flushIncidentBurst(state: TranslatorState, emit: EmitFn, collisionCarValue: number, logger: ILogger): void {
-  // Only flush when the burst resolved a type — an untyped burst (its
+  if (state.incidentBurstDelta > 0) {
+    // Every counted burst says the count moved (#1122), typed or not — the
+    // type-blind consumers (the qualifying lap-invalidation callout, the
+    // overtake gate's recent-incident window) read this and nothing else.
+    //
+    // Emitted BEFORE `incident.occurred`, and the order is load-bearing. The
+    // translator publishes the tick's emits in emit order and the bus
+    // dispatches each synchronously, so the qualifying contract's fire has
+    // already taken the Voice bus by the time the incident contracts hear
+    // `incident.occurred` — they then drop on the busy bus, and the driver
+    // hears "this lap will be invalidated" rather than generic coaching.
+    // Before #1122 that race was decided by registration order on ONE shared
+    // event; with two events, publication order is what decides it.
+    emit({ event: "incident.scored", data: { delta: state.incidentBurstDelta } });
+  }
+
+  // Only announce when the burst resolved a type — an untyped burst (its
   // report byte never observed, even via the late-type window, or every
   // byte it saw contradicted the count) stays silent so the engineer never
   // announces an unclassified incident.

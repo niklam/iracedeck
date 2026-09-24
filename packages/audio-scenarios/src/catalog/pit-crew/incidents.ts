@@ -143,10 +143,11 @@ function incidentContract(id: string, type: IncidentType): ScenarioContract {
     when: {
       event: "incident.occurred",
       // No session-type gate here. In qualifying sessions, the
-      // `pit-crew.qualifying-invalidation-lap-invalidated` contract (#567) is
-      // registered BEFORE these incidents in `index.ts` and grabs the Voice
-      // bus first on a valid flying lap, so the incident contract's
-      // attemptFire is dropped by the bus-busy check. On out-laps,
+      // `pit-crew.qualifying-invalidation-lap-invalidated` contract (#567)
+      // fires on `incident.scored`, which the translator publishes BEFORE
+      // this event on the same flush (#1122), so on a valid flying lap it
+      // grabs the Voice bus first and this contract's attemptFire is dropped
+      // by the bus-busy check. On out-laps,
       // post-pit-exit laps, race / practice sessions, and any other case
       // where the qualifying contract's `where:` returns false, this contract
       // fires normally — the driver still hears generic coaching.

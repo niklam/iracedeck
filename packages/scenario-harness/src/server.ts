@@ -443,9 +443,10 @@ export async function createServer(ctx: HarnessContext): Promise<FastifyInstance
 
   // Qualifying lap-invalidation composer (issue #567). Same shape as the
   // session-start composer: the UI pushes a fully-formed snapshot here, then
-  // publishes `incident.occurred` via `/api/bus/publish` to fire the scenario.
-  // Pre-baked shortcuts in `scenario-shortcuts.ts` carry the snapshot inline so
-  // a single click hits both endpoints in sequence.
+  // publishes `incident.scored` (and, for a typed burst, `incident.occurred`
+  // after it, #1122) via `/api/bus/publish` to fire the scenario. Pre-baked
+  // shortcuts in `scenario-shortcuts.ts` carry the snapshot inline so a single
+  // click hits both endpoints in sequence.
   app.post("/api/qualifying-invalidation/snapshot", async (req, reply) => {
     const snapshot = validateQualifyingInvalidationSnapshot(req.body);
 
@@ -472,23 +473,43 @@ export async function createServer(ctx: HarnessContext): Promise<FastifyInstance
     return reply.code(204).send();
   });
 
+  // One event — `{ event, data }` — or several in order — `{ events: [...] }`
+  // (issue #1122). The batch publishes back to back and synchronously, the
+  // way the translator publishes one tick's emits, which is what a shortcut
+  // standing for "an incident" needs: `incident.scored` must have been
+  // dispatched, and the qualifying line's fire must hold the bus, before
+  // `incident.occurred` is published. Every entry is validated before any is
+  // published, so a bad second entry never leaves a first one half-fired.
   app.post("/api/bus/publish", async (req, reply) => {
-    const body = req.body as { event?: unknown; data?: unknown };
+    const body = req.body as { event?: unknown; data?: unknown; events?: unknown };
+    const entries = Array.isArray(body.events) ? body.events : [body];
 
-    if (typeof body.event !== "string" || !ALL_EVENT_NAMES.includes(body.event as SimEventName)) {
-      return reply.code(400).send({ error: `event must be one of: ${ALL_EVENT_NAMES.join(", ")}` });
+    if (entries.length === 0) return reply.code(400).send({ error: "events must not be empty" });
+
+    for (const entry of entries as { event?: unknown; data?: unknown }[]) {
+      if (typeof entry !== "object" || entry === null) {
+        return reply.code(400).send({ error: "event must be an object" });
+      }
+
+      if (typeof entry.event !== "string" || !ALL_EVENT_NAMES.includes(entry.event as SimEventName)) {
+        return reply.code(400).send({ error: `event must be one of: ${ALL_EVENT_NAMES.join(", ")}` });
+      }
+
+      if (typeof entry.data !== "object" || entry.data === null) {
+        return reply.code(400).send({ error: "data must be an object" });
+      }
     }
 
-    if (typeof body.data !== "object" || body.data === null) {
-      return reply.code(400).send({ error: "data must be an object" });
-    }
+    const telemetry = ctx.controller.getState().telemetry;
 
-    ctx.bus.publish({
-      event: body.event as SimEventName,
-      timestamp: Date.now(),
-      telemetry: ctx.controller.getState().telemetry,
-      data: body.data as Record<string, unknown>,
-    } as SimEventOf<SimEventName>);
+    for (const entry of entries as { event: SimEventName; data: Record<string, unknown> }[]) {
+      ctx.bus.publish({
+        event: entry.event,
+        timestamp: Date.now(),
+        telemetry,
+        data: entry.data,
+      } as SimEventOf<SimEventName>);
+    }
 
     return reply.code(204).send();
   });

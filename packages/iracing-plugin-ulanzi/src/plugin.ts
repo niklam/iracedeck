@@ -783,9 +783,9 @@ eventBus.subscribe("overtake.lost", (ev) => {
 
 // Track the most recent incident so the overtake gate can suppress callouts
 // for a swap caused by an incident (issue #574 follow-up). Mirrors the Stream
-// Deck plugin.
+// Deck plugin: the type-blind `incident.scored` (#1122).
 let lastIncidentAt: number | null = null;
-eventBus.subscribe("incident.occurred", () => {
+eventBus.subscribe("incident.scored", () => {
   lastIncidentAt = Date.now();
 });
 

@@ -783,9 +783,10 @@ eventBus.subscribe("overtake.lost", (ev) => {
 
 // Track the most recent incident so the overtake gate can suppress callouts
 // for a swap caused by an incident (issue #574 follow-up). `null` until the
-// first incident this session.
+// first incident this session. Read off the type-blind `incident.scored`
+// (#1122): a counted burst the translator could not type is still a moment.
 let lastIncidentAt: number | null = null;
-eventBus.subscribe("incident.occurred", () => {
+eventBus.subscribe("incident.scored", () => {
   lastIncidentAt = Date.now();
 });
 

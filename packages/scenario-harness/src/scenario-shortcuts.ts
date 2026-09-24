@@ -57,6 +57,12 @@ export type TelemetryStep = {
   holdMs?: number;
 };
 
+/** One bus publication as the harness wires it: the event name and its payload. */
+export type PublishedEvent = {
+  event: SimEventName;
+  data: Record<string, unknown>;
+};
+
 /**
  * A shortcut that publishes ONE bus event — the original and still the common
  * shape. It injects past the translator, which is what makes it a one-click
@@ -66,6 +72,20 @@ export type BusEventShortcut = ScenarioShortcutBase & {
   event: SimEventName;
   data: Record<string, unknown>;
   telemetrySequence?: never;
+  /**
+   * Events published BEFORE `event`, in order, in the SAME `/api/bus/publish`
+   * call — back to back and synchronously, exactly as the translator publishes
+   * one tick's emits (issue #1122). Exists for the incident pair: the
+   * translator emits `incident.scored` and then `incident.occurred` on one
+   * flush, and the qualifying lap-invalidation callout wins the Voice bus
+   * over the incident line only because the first is dispatched, and its
+   * fire has taken the bus, before the second is published. A shortcut that
+   * stands for "an incident" therefore leads with `incident.scored`, so the
+   * audition hears what the driver would. Publishing the two as separate
+   * requests would still play the same clip today (the bus stays busy for
+   * the whole line), but would not be the mechanism under test.
+   */
+  precedingEvents?: readonly PublishedEvent[];
   /**
    * Optional snapshot for the qualifying lap-invalidation scenario (issue #567).
    * When present, the UI POSTs `/api/qualifying-invalidation/snapshot` with this
@@ -125,6 +145,7 @@ export type TelemetrySequenceShortcut = ScenarioShortcutBase & {
   telemetrySequence: readonly TelemetryStep[];
   event?: never;
   data?: never;
+  precedingEvents?: never;
   telemetryPatch?: never;
   qualifyingInvalidationSnapshot?: never;
   raceStartSnapshot?: never;
@@ -231,6 +252,39 @@ const INCIDENT_TYPE_POINTS: Record<string, number> = {
   "collision-car": 4,
 };
 
+/**
+ * The two events one counted, typed incident burst publishes, in the
+ * translator's order (issue #1122): `incident.scored { delta }` first — the
+ * type-blind signal the qualifying lap-invalidation callout and the overtake
+ * gate read — then `incident.occurred`, which the incident callouts read.
+ * `delta` must be positive: the translator emits `incident.scored` only when
+ * the count moved, and it never types a burst the count did not support.
+ */
+function typedIncident(
+  delta: number,
+  points: number,
+  type: string,
+): Pick<BusEventShortcut, "precedingEvents" | "event" | "data"> {
+  if (!(delta > 0)) throw new Error(`a counted incident moves the count: delta=${delta}`);
+
+  return {
+    precedingEvents: [{ event: "incident.scored", data: { delta } }],
+    event: "incident.occurred",
+    data: { delta, points, type },
+  };
+}
+
+/**
+ * An incident shortcut with no `incident.scored` ahead of it — a 0x contact
+ * report the count never moved for. Since #1122 the translator cannot publish
+ * this pair at all (a 0x type is never consistent with a moved count, and a
+ * burst that moved nothing flushes nothing; #1210 decides the contact
+ * callouts' future), so the shortcut auditions the CLIP, not a production path.
+ */
+function uncountedIncident(type: string): Pick<BusEventShortcut, "event" | "data"> {
+  return { event: "incident.occurred", data: { delta: 0, points: 0, type } };
+}
+
 function qualifyingInvalidation(
   id: string,
   label: string,
@@ -238,21 +292,25 @@ function qualifyingInvalidation(
     lapStartedFromPits?: boolean;
     lapCounted?: boolean;
   },
-  options: { description?: string; incidentType?: string; delta?: number; points?: number } = {},
+  options: { description?: string; incidentType?: string; delta?: number; points?: number; untyped?: boolean } = {},
 ): BusEventShortcut {
   const incidentType = options.incidentType ?? "off-track";
+  const delta = options.delta ?? 1;
 
   return {
     id: `qualifying-invalidation-${id}`,
     category: "Qualifying Invalidation",
     label,
     description: options.description,
-    event: "incident.occurred",
-    data: {
-      delta: options.delta ?? 1,
-      points: options.points ?? INCIDENT_TYPE_POINTS[incidentType] ?? 0,
-      type: incidentType,
-    },
+    // Both events, in the translator's order: the qualifying line fires on
+    // `incident.scored` and must hold the bus before the incident contracts
+    // hear `incident.occurred`, so a flying-lap shortcut plays the
+    // lap-invalidated line and an out-lap one plays the generic coaching.
+    // An `untyped` burst — the count moved on a report the count refused —
+    // is `incident.scored` alone, which is the whole point of the event.
+    ...(options.untyped
+      ? { event: "incident.scored" as const, data: { delta } }
+      : typedIncident(delta, options.points ?? INCIDENT_TYPE_POINTS[incidentType] ?? 0, incidentType)),
     qualifyingInvalidationSnapshot: { lapStartedFromPits: false, lapCounted: true, ...snapshot },
   };
 }
@@ -1510,62 +1568,58 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   // vocabulary directly. The spoken count is always composed from `points`
   // — the incident's value as the sim scores it (discipline-resolved:
   // dirt car contact is 2x, not 4x) — never the raw count `delta`, so the
-  // varied buttons exercise count selection without iRacing.
+  // varied buttons exercise count selection without iRacing. Every counted
+  // one leads with `incident.scored`, as the translator does (#1122): with
+  // a qualifying snapshot posted, the lap-invalidated line wins the bus and
+  // the incident line drops, exactly as in the sim.
   {
     id: "incident-off-track",
     category: "Incidents",
     label: "Off Track (1x)",
     description: "Track-limits nudge — `Mind the track limits` etc.",
-    event: "incident.occurred",
-    data: { delta: 1, points: 1, type: "off-track" },
+    ...typedIncident(1, 1, "off-track"),
   },
   {
     id: "incident-out-of-control",
     category: "Incidents",
     label: "Out of Control (2x)",
     description: "Spin / loss of control — composure callout (default off in PI).",
-    event: "incident.occurred",
-    data: { delta: 2, points: 2, type: "out-of-control" },
+    ...typedIncident(2, 2, "out-of-control"),
   },
   {
     id: "incident-contact-world",
     category: "Incidents",
     label: "Contact — Wall (0x)",
     description: "Light wall rub — intro only, no count clause for zero points.",
-    event: "incident.occurred",
-    data: { delta: 0, points: 0, type: "contact-world" },
+    ...uncountedIncident("contact-world"),
   },
   {
     id: "incident-collision-world",
     category: "Incidents",
     label: "Collision — Wall (2x)",
     description: "Heavier wall hit — engineer announces the detected 2-point count.",
-    event: "incident.occurred",
-    data: { delta: 2, points: 2, type: "collision-world" },
+    ...typedIncident(2, 2, "collision-world"),
   },
   {
     id: "incident-contact-car",
     category: "Incidents",
     label: "Contact — Car (0x)",
     description: "Light car-to-car rub — intro only, no count clause for zero points.",
-    event: "incident.occurred",
-    data: { delta: 0, points: 0, type: "contact-car" },
+    ...uncountedIncident("contact-car"),
   },
   {
     id: "incident-collision-car",
     category: "Incidents",
     label: "Collision — Car (4x)",
     description: "Heavier car-to-car hit — engineer announces the detected 4-point count.",
-    event: "incident.occurred",
-    data: { delta: 4, points: 4, type: "collision-car" },
+    ...typedIncident(4, 4, "collision-car"),
   },
   {
     id: "incident-collision-car-2x",
     category: "Incidents",
     label: "Collision — Car (2x, dirt)",
     description: "The issue #922 repro: dirt-road car collision scoring 2x — announces two points, not four.",
-    event: "incident.occurred",
-    data: { delta: 2, points: 2, type: "collision-car" },
+    ...typedIncident(2, 2, "collision-car"),
   },
   {
     id: "incident-collision-car-escalated",
@@ -1573,8 +1627,16 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     label: "Collision — Car (escalated)",
     description:
       "The issue #938 repro: an off-track upgraded to a car collision — the count moved +3 but the incident is worth 4x, so the engineer announces four points, never three.",
-    event: "incident.occurred",
-    data: { delta: 3, points: 4, type: "collision-car" },
+    ...typedIncident(3, 4, "collision-car"),
+  },
+  {
+    id: "incident-scored-untyped",
+    category: "Incidents",
+    label: "Scored, untyped (silent)",
+    description:
+      "The issue #1122 shape: the count moved but no report byte the count could support was seen, so the translator publishes `incident.scored` alone. No incident line — but with a qualifying snapshot posted, the lap-invalidated line still plays.",
+    event: "incident.scored",
+    data: { delta: 1 },
   },
   {
     id: "off-track-started",
@@ -1586,8 +1648,8 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   // ── Qualifying Invalidation ──
   // Issue #567. Each shortcut posts its embedded `qualifyingInvalidationSnapshot`
   // to `/api/qualifying-invalidation/snapshot` before publishing the trigger
-  // event, so a single click drives both the snapshot setup and the
-  // `incident.occurred` fire. Together they cover every code path through the
+  // events, so a single click drives both the snapshot setup and the
+  // `incident.scored` → `incident.occurred` pair (#1122). Together they cover every code path through the
   // scenario: out-of-laps, counted-singular, counted-plural, plenty fallback,
   // time-limited (core only), session gating, the per-lap latch, the
   // pit-exit-lap suppression, and the beyond-counted-laps suppression (#776).
@@ -1602,9 +1664,14 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     "Contact-Car — 1 lap left",
     { sessionType: "qualifying", sessionNum: 1, lapsRemaining: 1, lapLimited: true, lapCompleted: 2 },
     {
-      description: "Qualifying with 1 lap to go — composed singular tail.",
-      incidentType: "contact-car",
-      delta: 0,
+      // The #1122 shape this callout moved to `incident.scored` for: a car
+      // contact the sim reported 0x, yet the count moved. The translator
+      // refuses the 0x type and publishes `incident.scored` alone — no
+      // incident line — and the lap is still invalidated aloud. (The label
+      // is named by the bundled script's `test` note; keep it.)
+      description:
+        "Qualifying with 1 lap to go — composed singular tail. An untyped counted burst: `incident.scored` alone, no incident line behind it.",
+      untyped: true,
     },
   ),
   qualifyingInvalidation(

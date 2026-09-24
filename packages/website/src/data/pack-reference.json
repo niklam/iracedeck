@@ -3199,7 +3199,7 @@
     {
       "id": "pit-crew.qualifying-invalidation-lap-invalidated",
       "family": "qualifying-invalidation",
-      "event": "incident.occurred",
+      "event": "incident.scored",
       "description": "You pick up an incident on a counted flying lap of a qualifying session, at the first incident of that lap.",
       "frame": "radio",
       "weight": 50,

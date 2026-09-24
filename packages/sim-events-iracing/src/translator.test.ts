@@ -2051,6 +2051,54 @@ describe("sim-events-iracing translator", () => {
       expect(data).toEqual({ delta: 1, points: 1, type: "off-track" });
     });
 
+    it("publishes incident.scored before incident.occurred on the same flush, each dispatched to completion (issue #1122)", () => {
+      // The end-to-end order the qualifying lap-invalidation callout rests on:
+      // its fire, on `incident.scored`, must hold the Voice bus before the
+      // incident contracts hear `incident.occurred`. So the first event's
+      // handlers must all have RETURNED before the second is published — a
+      // subscriber that records the other event's arrival inside its own
+      // handler proves it.
+      vi.useFakeTimers();
+      const controller = createMockController();
+      const bus = getEventBus();
+      const order: string[] = [];
+      let occurredSeenInsideScored = false;
+      bus.subscribe("incident.occurred", () => order.push("occurred"));
+      bus.subscribe("incident.scored", (ev) => {
+        occurredSeenInsideScored = order.includes("occurred");
+        order.push(`scored:${(ev as SimEventOf<"incident.scored">).data.delta}`);
+      });
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      controller.__tick(telemetry({ PlayerCarMyIncidentCount: 0 }));
+      controller.__tick(telemetry({ PlayerCarMyIncidentCount: 1, PlayerIncidents: IncidentFlags.RepOffTrack }));
+      vi.advanceTimersByTime(1500);
+      controller.__tick(telemetry({ PlayerCarMyIncidentCount: 1 }));
+
+      expect(order).toEqual(["scored:1", "occurred"]);
+      expect(occurredSeenInsideScored).toBe(false);
+    });
+
+    it("publishes incident.scored alone for a counted burst it could not type (issue #1122)", () => {
+      vi.useFakeTimers();
+      const controller = createMockController();
+      const bus = getEventBus();
+      const scored = vi.fn();
+      const occurred = vi.fn();
+      bus.subscribe("incident.scored", scored);
+      bus.subscribe("incident.occurred", occurred);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      controller.__tick(telemetry({ PlayerCarMyIncidentCount: 0 }));
+      controller.__tick(telemetry({ PlayerCarMyIncidentCount: 1, PlayerIncidents: 0 }));
+      vi.advanceTimersByTime(1500);
+      controller.__tick(telemetry({ PlayerCarMyIncidentCount: 1 }));
+
+      expect(scored).toHaveBeenCalledTimes(1);
+      expect((scored.mock.calls[0]![0] as SimEventOf<"incident.scored">).data).toEqual({ delta: 1 });
+      expect(occurred).not.toHaveBeenCalled();
+    });
+
     it("coalesces a multi-step incident burst into a single emission with the most-recent type", () => {
       vi.useFakeTimers();
       const controller = createMockController();
