@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   emptyLapsSection,
   findLapStartInSection,
+  isNewerLapsSection,
   LAPS_SECTION_VERSION,
+  mergeLapsSectionInto,
   normalizeLapsSection,
   recordLapStartInSection,
   recordLapTimeInSection,
@@ -111,6 +113,102 @@ describe("replay laps section (#1203)", () => {
       expect(section.sessions[0]?.cars["7"]?.userId).toBe(777);
       expect(section.sessions[0]?.cars["7"]?.laps).toHaveLength(3);
     });
+
+    describe("which session a start with no pair match joins", () => {
+      it("a walk's start under a replay's own pair joins the one session with that sessionNum when its frame lies within that session's span", () => {
+        const section = sectionWithLaps(); // (2, 4): car 7, laps at 30821 and 36305
+
+        const { joinedBySessionNum } = recordLapStartInSection(
+          section,
+          start({ sessionUniqueId: 0, carIdx: 8, carNumberRaw: 21, lap: 2, frame: 33000 }),
+        );
+
+        expect(joinedBySessionNum).toBe(true);
+        expect(section.sessions).toHaveLength(1);
+        expect(section.sessions[0]?.cars["8"]?.laps).toEqual([{ lap: 2, frame: 33000, timeMs: null }]);
+        // Every later lookup from that replay still pair-misses and reads the live session by its sessionNum.
+        expect(findLapStartInSection(section, { ...start(), sessionUniqueId: 0, lap: 1 })).toMatchObject({
+          hit: true,
+          frame: 30821,
+          matchedBy: "sessionNum",
+        });
+      });
+
+      it("a restart — session 0 again under a new unique id, its frames past the old span — stays its own session", () => {
+        const section = emptyLapsSection();
+
+        recordLapStartInSection(section, start({ sessionNum: 0, sessionUniqueId: 1, lap: 1, frame: 100 }));
+        recordLapStartInSection(section, start({ sessionNum: 0, sessionUniqueId: 1, lap: 2, frame: 18000 }));
+
+        const { joinedBySessionNum } = recordLapStartInSection(
+          section,
+          start({ sessionNum: 0, sessionUniqueId: 2, lap: 1, frame: 20000 }),
+        );
+
+        expect(joinedBySessionNum).toBe(false);
+        expect(section.sessions.map((s) => s.sessionUniqueId)).toEqual([1, 2]);
+        expect(section.sessions[0]?.cars["7"]?.laps).toHaveLength(2);
+      });
+
+      it("a start outside the span, or with two sessions sharing the sessionNum, opens its own session", () => {
+        const section = sectionWithLaps();
+
+        recordLapStartInSection(section, start({ sessionUniqueId: 0, lap: 3, frame: 40000 })); // past 36305
+        expect(section.sessions.map((s) => s.sessionUniqueId)).toEqual([4, 0]);
+
+        recordLapStartInSection(section, start({ sessionUniqueId: 9, lap: 1, frame: 31000 })); // two hold sessionNum 2
+        expect(section.sessions.map((s) => s.sessionUniqueId)).toEqual([4, 0, 9]);
+      });
+    });
+  });
+
+  describe("mergeLapsSectionInto", () => {
+    it("unions sessions, cars and laps, keeping the target's entry where both have one and filling only a null time", () => {
+      const target = sectionWithLaps(); // (2, 4) car 7: lap 1 @ 30821 timed 91433, lap 2 @ 36305 untimed
+      const source = emptyLapsSection();
+
+      recordLapStartInSection(source, start({ lap: 1, frame: 99999 })); // conflicts: target's frame stays
+      recordLapTimeInSection(source, { sessionNum: 2, sessionUniqueId: 4, carIdx: 7, lap: 1, timeMs: 1 }); // target's time stays
+      recordLapStartInSection(source, start({ lap: 2, frame: 99999 }));
+      recordLapTimeInSection(source, { sessionNum: 2, sessionUniqueId: 4, carIdx: 7, lap: 2, timeMs: 90000 }); // fills the null
+      recordLapStartInSection(source, start({ lap: 3, frame: 41000 })); // new lap
+      recordLapStartInSection(source, start({ carIdx: 8, carNumberRaw: 21, lap: 1, frame: 30900 })); // new car
+      recordLapStartInSection(source, start({ sessionNum: 3, sessionUniqueId: 5, lap: 1, frame: 60000 })); // new session
+      const before = JSON.parse(JSON.stringify(source));
+
+      mergeLapsSectionInto(target, source);
+
+      expect(target.sessions[0]?.cars["7"]?.laps).toEqual([
+        { lap: 1, frame: 30821, timeMs: 91433 },
+        { lap: 2, frame: 36305, timeMs: 90000 },
+        { lap: 3, frame: 41000, timeMs: null },
+      ]);
+      expect(target.sessions[0]?.cars["8"]?.laps).toEqual([{ lap: 1, frame: 30900, timeMs: null }]);
+      expect(target.sessions[1]).toMatchObject({ sessionNum: 3, sessionUniqueId: 5 });
+      expect(source).toEqual(before); // cloned in, not aliased
+      expect(target.sessions[1]).not.toBe(source.sessions[1]);
+    });
+
+    it("does not file a source car's laps under a target car with another number at the same index", () => {
+      const target = sectionWithLaps();
+      const source = emptyLapsSection();
+
+      recordLapStartInSection(source, start({ carNumberRaw: 99, lap: 5, frame: 50000 }));
+      mergeLapsSectionInto(target, source);
+
+      expect(target.sessions[0]?.cars["7"]).toMatchObject({ carNumberRaw: 2 });
+      expect(target.sessions[0]?.cars["7"]?.laps).toHaveLength(2);
+    });
+  });
+
+  describe("isNewerLapsSection", () => {
+    it("is true only for a section whose version is above this build's", () => {
+      expect(isNewerLapsSection({ version: LAPS_SECTION_VERSION + 1, sessions: [] })).toBe(true);
+      expect(isNewerLapsSection({ version: LAPS_SECTION_VERSION, sessions: [] })).toBe(false);
+      expect(isNewerLapsSection({ sessions: [] })).toBe(false);
+      expect(isNewerLapsSection(undefined)).toBe(false);
+      expect(isNewerLapsSection({ version: "2" })).toBe(false);
+    });
   });
 
   describe("recordLapTimeInSection", () => {
@@ -166,11 +264,64 @@ describe("replay laps section (#1203)", () => {
       const section = emptyLapsSection();
 
       recordLapStartInSection(section, start({ sessionNum: 0, sessionUniqueId: 1 }));
-      recordLapStartInSection(section, start({ sessionNum: 0, sessionUniqueId: 2 }));
+      recordLapStartInSection(section, start({ sessionNum: 0, sessionUniqueId: 2, frame: 50000 }));
 
       expect(findLapStartInSection(section, { ...start(), sessionNum: 0, sessionUniqueId: null })).toEqual({
         hit: false,
         reason: "no session",
+      });
+    });
+
+    describe("through a sparse pair-matched session", () => {
+      // The live session (2, 4) has car 7's laps; a walk under the replay's
+      // pair (2, 0) recorded car 9 past the live span, opening a sparse session.
+      const withSparse = (): ReplayLapsSection => {
+        const section = sectionWithLaps();
+
+        recordLapStartInSection(
+          section,
+          start({ sessionUniqueId: 0, carIdx: 9, carNumberRaw: 33, lap: 4, frame: 90000 }),
+        );
+
+        return section;
+      };
+
+      it("reads the one other session with the sessionNum that has the car and the lap", () => {
+        expect(findLapStartInSection(withSparse(), { ...start(), sessionUniqueId: 0, lap: 2 })).toEqual({
+          hit: true,
+          frame: 36305,
+          timeMs: null,
+          matchedBy: "sessionNum",
+        });
+        expect(
+          findLapStartInSection(withSparse(), { ...start(), sessionUniqueId: 0, carIdx: 9, carNumberRaw: 33, lap: 4 }),
+        ).toMatchObject({ hit: true, frame: 90000, matchedBy: "pair" });
+      });
+
+      it("keeps the pair session's miss when no other session has it, or when a car mismatches there", () => {
+        expect(
+          findLapStartInSection(withSparse(), { ...start(), sessionUniqueId: 0, carIdx: 9, carNumberRaw: 33, lap: 9 }),
+        ).toEqual({ hit: false, reason: "lap not recorded" });
+        expect(findLapStartInSection(withSparse(), { ...start(), sessionUniqueId: 0, carIdx: 8, lap: 1 })).toEqual({
+          hit: false,
+          reason: "no car",
+        });
+        expect(
+          findLapStartInSection(withSparse(), { ...start(), sessionUniqueId: 0, carIdx: 9, carNumberRaw: 1, lap: 4 }),
+        ).toEqual({ hit: false, reason: "car mismatch" });
+      });
+
+      it("does not guess between two other sessions that both have it", () => {
+        const section = emptyLapsSection();
+
+        recordLapStartInSection(section, start({ sessionNum: 0, sessionUniqueId: 1, lap: 1, frame: 100 }));
+        recordLapStartInSection(section, start({ sessionNum: 0, sessionUniqueId: 2, lap: 1, frame: 20000 }));
+        recordLapStartInSection(section, start({ sessionNum: 0, sessionUniqueId: 9, carIdx: 9, lap: 1, frame: 30000 }));
+
+        expect(findLapStartInSection(section, { ...start(), sessionNum: 0, sessionUniqueId: 9, lap: 1 })).toEqual({
+          hit: false,
+          reason: "no car",
+        });
       });
     });
 

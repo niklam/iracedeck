@@ -91,8 +91,12 @@ export interface LapStartQuery {
 /**
  * Why a lookup missed, worded as the action logs it: `record MISS (<reason>)`.
  * "no file" is the store's: nothing is recorded for that SubSessionID at all.
+ * "newer format" is the store's too: the file's `laps` section was written by
+ * a build with a higher {@link LAPS_SECTION_VERSION}, so this build carries it
+ * through untouched and neither reads nor writes it.
  */
-export type LapStartMissReason = "no file" | "no session" | "no car" | "car mismatch" | "lap not recorded";
+export type LapStartMissReason =
+  "no file" | "no session" | "no car" | "car mismatch" | "lap not recorded" | "newer format";
 
 export type LapStartLookup =
   | {
@@ -136,6 +140,21 @@ function normalizeCar(raw: unknown): ReplayCarLaps | undefined {
   laps.sort((a, b) => a.lap - b.lap);
 
   return { ...c, carNumberRaw: c.carNumberRaw, userId: isFiniteNumber(c.userId) ? c.userId : 0, laps };
+}
+
+/**
+ * Whether a loaded `laps` section carries a `version` above this build's — a
+ * newer build's reshaped section. The store then treats it as a section it has
+ * no reader for: carried through every write verbatim, never normalized (which
+ * would keep the newer version label over data this build has mangled) and
+ * never written into.
+ */
+export function isNewerLapsSection(raw: unknown): boolean {
+  if (raw === null || typeof raw !== "object") return false;
+
+  const version = (raw as Record<string, unknown>).version;
+
+  return isFiniteNumber(version) && version > LAPS_SECTION_VERSION;
 }
 
 /**
@@ -187,25 +206,37 @@ function findSessionByPair(
   return section.sessions.find((s) => s.sessionNum === sessionNum && s.sessionUniqueId === sessionUniqueId);
 }
 
-/**
- * The session a lookup reads: the `(sessionNum, sessionUniqueId)` pair, else
- * the one session with that `sessionNum` when there is exactly one.
- */
-function resolveSessionForLookup(
-  section: ReplayLapsSection,
-  query: LapStartQuery,
-): { session: ReplayLapsSession; matchedBy: "pair" | "sessionNum" } | undefined {
-  if (query.sessionUniqueId !== null && query.sessionUniqueId !== undefined) {
-    const byPair = findSessionByPair(section, query.sessionNum, query.sessionUniqueId);
+/** The earliest and latest lap-start frame recorded in a session, over every car; undefined with no laps. */
+function frameSpan(session: ReplayLapsSession): { min: number; max: number } | undefined {
+  let min = Number.POSITIVE_INFINITY;
+  let max = Number.NEGATIVE_INFINITY;
 
-    if (byPair !== undefined) return { session: byPair, matchedBy: "pair" };
+  for (const car of Object.values(session.cars)) {
+    for (const entry of car.laps) {
+      if (entry.frame < min) min = entry.frame;
+
+      if (entry.frame > max) max = entry.frame;
+    }
   }
 
-  const bySessionNum = section.sessions.filter((s) => s.sessionNum === query.sessionNum);
+  return min <= max ? { min, max } : undefined;
+}
 
-  return bySessionNum.length === 1 && bySessionNum[0] !== undefined
-    ? { session: bySessionNum[0], matchedBy: "sessionNum" }
-    : undefined;
+/**
+ * Which session a start with no pair match joins — see the rule on
+ * {@link recordLapStartInSection}: the one session with that `sessionNum`,
+ * when there is exactly one and the frame lies within the span of its
+ * recorded lap starts. Undefined means "open a new session".
+ */
+function sessionJoinedByFrame(section: ReplayLapsSection, record: LapStartRecord): ReplayLapsSession | undefined {
+  const sameNum = section.sessions.filter((s) => s.sessionNum === record.sessionNum);
+  const only = sameNum[0];
+
+  if (sameNum.length !== 1 || only === undefined) return undefined;
+
+  const span = frameSpan(only);
+
+  return span !== undefined && record.frame >= span.min && record.frame <= span.max ? only : undefined;
 }
 
 /**
@@ -216,10 +247,45 @@ function resolveSessionForLookup(
  * and the old car's laps must not answer for it. A changed `userId` (a team
  * driver swap) only updates the field.
  *
- * @returns whether the car record was replaced over a `carNumberRaw` mismatch, for the caller's log
+ * **Which session the start goes into.** The `(sessionNum, sessionUniqueId)`
+ * pair when one is recorded. Otherwise a NEW session — except when exactly one
+ * recorded session has the `sessionNum` and the frame lies within the span of
+ * that session's recorded lap starts (its earliest to its latest frame), in
+ * which case the start joins that session. The rule separates two cases that
+ * look alike by their ids:
+ *
+ * - A restart within one sim run is session 0 again under a NEW unique id (the
+ *   2026-09-17 Homestead captures: `SessionNum` 0 under `SessionUniqueID` 1,
+ *   then 0 under 2). Every lap of the new instance is recorded after every lap
+ *   of the old one, because the recording's frames only grow, so its frames
+ *   fall past the old span and it gets its own session, as the spec requires.
+ * - The walk records a lap from INSIDE a replay under the replay's own pair,
+ *   and a saved `.rpy` whose unique ids did not survive the save (or a
+ *   `SessionUniqueID` read off the −1 transient) hands it a pair no live
+ *   recording carries. The lap it walked to lies between laps the live
+ *   recorder saw, so it lands in the live session — instead of opening a
+ *   sparse second session with the same `sessionNum`, which would pair-match
+ *   every later lookup from that replay and leave the `sessionNum` fallback
+ *   unreachable for every other car.
+ *
+ * A walked lap outside the span (past the last recorded crossing) still opens
+ * its own session; {@link findLapStartInSection}'s fallback reads through it.
+ *
+ * @returns whether the car record was replaced over a `carNumberRaw` mismatch,
+ * and whether the start joined a session by `sessionNum` rather than by pair,
+ * both for the caller's log
  */
-export function recordLapStartInSection(section: ReplayLapsSection, record: LapStartRecord): { carReplaced: boolean } {
+export function recordLapStartInSection(
+  section: ReplayLapsSection,
+  record: LapStartRecord,
+): { carReplaced: boolean; joinedBySessionNum: boolean } {
   let session = findSessionByPair(section, record.sessionNum, record.sessionUniqueId);
+  let joinedBySessionNum = false;
+
+  if (session === undefined) {
+    session = sessionJoinedByFrame(section, record);
+    joinedBySessionNum = session !== undefined;
+  }
 
   if (session === undefined) {
     session = { sessionNum: record.sessionNum, sessionUniqueId: record.sessionUniqueId, cars: {} };
@@ -252,7 +318,53 @@ export function recordLapStartInSection(section: ReplayLapsSection, record: LapS
     car.laps.splice(at === -1 ? car.laps.length : at, 0, { lap: record.lap, frame: record.frame, timeMs: null });
   }
 
-  return { carReplaced };
+  return { carReplaced, joinedBySessionNum };
+}
+
+/**
+ * Union `source` into `target` (the store, when a file it could not read at
+ * open becomes readable while the session ran in memory: `target` is what the
+ * disk holds, `source` what was recorded meanwhile). A session is matched by
+ * its pair, a car by its index within the session, a lap by its number within
+ * the car. Where both have an entry the one already in `target` stays — only a
+ * null `timeMs` is filled from `source`, since null means "not known yet". A
+ * car present in both under different `carNumberRaw` values is a different
+ * car in `source`; `target`'s stays and `source`'s laps for that index are not
+ * merged, because filing them under another car's number would be a wrong jump
+ * later. Everything copied in is cloned; `source` is left untouched.
+ */
+export function mergeLapsSectionInto(target: ReplayLapsSection, source: ReplayLapsSection): void {
+  for (const session of source.sessions) {
+    const existing = findSessionByPair(target, session.sessionNum, session.sessionUniqueId);
+
+    if (existing === undefined) {
+      target.sessions.push(structuredClone(session));
+      continue;
+    }
+
+    for (const [carIdx, car] of Object.entries(session.cars)) {
+      const existingCar = existing.cars[carIdx];
+
+      if (existingCar === undefined) {
+        existing.cars[carIdx] = structuredClone(car);
+        continue;
+      }
+
+      if (existingCar.carNumberRaw !== car.carNumberRaw) continue;
+
+      for (const entry of car.laps) {
+        const existingEntry = existingCar.laps.find((e) => e.lap === entry.lap);
+
+        if (existingEntry === undefined) {
+          const at = existingCar.laps.findIndex((e) => e.lap > entry.lap);
+
+          existingCar.laps.splice(at === -1 ? existingCar.laps.length : at, 0, structuredClone(entry));
+        } else if (existingEntry.timeMs === null && entry.timeMs !== null) {
+          existingEntry.timeMs = entry.timeMs;
+        }
+      }
+    }
+  }
 }
 
 /**
@@ -272,18 +384,10 @@ export function recordLapTimeInSection(section: ReplayLapsSection, record: LapTi
   return true;
 }
 
-/**
- * The frame a car started a lap at. A `carNumberRaw` mismatch is a miss, never
- * a wrong jump. `section` undefined means the file has no `laps` section.
- */
-export function findLapStartInSection(section: ReplayLapsSection | undefined, query: LapStartQuery): LapStartLookup {
-  if (section === undefined) return { hit: false, reason: "no session" };
+type LookupInSession = { hit: true; frame: number; timeMs: number | null } | { hit: false; reason: LapStartMissReason };
 
-  const resolved = resolveSessionForLookup(section, query);
-
-  if (resolved === undefined) return { hit: false, reason: "no session" };
-
-  const car = resolved.session.cars[String(query.carIdx)];
+function lookupInSession(session: ReplayLapsSession, query: LapStartQuery): LookupInSession {
+  const car = session.cars[String(query.carIdx)];
 
   if (car === undefined) return { hit: false, reason: "no car" };
 
@@ -293,5 +397,54 @@ export function findLapStartInSection(section: ReplayLapsSection | undefined, qu
 
   if (entry === undefined) return { hit: false, reason: "lap not recorded" };
 
-  return { hit: true, frame: entry.frame, timeMs: entry.timeMs, matchedBy: resolved.matchedBy };
+  return { hit: true, frame: entry.frame, timeMs: entry.timeMs };
+}
+
+/**
+ * The frame a car started a lap at. A `carNumberRaw` mismatch is a miss, never
+ * a wrong jump. `section` undefined means the file has no `laps` section.
+ *
+ * The session is the `(sessionNum, sessionUniqueId)` pair when one is
+ * recorded. When the pair-matched session lacks the car or the lap — a sparse
+ * session the walk opened under a replay's own pair (see the rule on
+ * {@link recordLapStartInSection}) — the lookup falls back to the OTHER
+ * sessions with that `sessionNum`, and hits when exactly one of them has the
+ * car (with the same number) and the lap, `matchedBy: "sessionNum"`; otherwise
+ * the pair session's miss stands. With no pair match at all — the replay's
+ * telemetry offers no `SessionUniqueID`, or none is recorded — a `sessionNum`
+ * held by exactly one recorded session is used, so a file whose unique ids did
+ * not survive the save is still useful.
+ */
+export function findLapStartInSection(section: ReplayLapsSection | undefined, query: LapStartQuery): LapStartLookup {
+  if (section === undefined) return { hit: false, reason: "no session" };
+
+  const byPair =
+    query.sessionUniqueId !== null && query.sessionUniqueId !== undefined
+      ? findSessionByPair(section, query.sessionNum, query.sessionUniqueId)
+      : undefined;
+  const sameNum = section.sessions.filter((s) => s.sessionNum === query.sessionNum);
+
+  if (byPair !== undefined) {
+    const direct = lookupInSession(byPair, query);
+
+    if (direct.hit) return { ...direct, matchedBy: "pair" };
+
+    if (direct.reason === "car mismatch") return direct;
+
+    const elsewhere = sameNum
+      .filter((s) => s !== byPair)
+      .map((s) => lookupInSession(s, query))
+      .filter((r) => r.hit);
+    const only = elsewhere[0];
+
+    return elsewhere.length === 1 && only !== undefined && only.hit ? { ...only, matchedBy: "sessionNum" } : direct;
+  }
+
+  const only = sameNum[0];
+
+  if (sameNum.length !== 1 || only === undefined) return { hit: false, reason: "no session" };
+
+  const result = lookupInSession(only, query);
+
+  return result.hit ? { ...result, matchedBy: "sessionNum" } : result;
 }

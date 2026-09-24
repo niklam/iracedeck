@@ -9,6 +9,7 @@ import {
   MARKER_PREVIOUS_MIN_BEHIND_FRAMES,
   nextMarker,
   normalizeMarkers,
+  partitionMarkers,
   previousMarker,
   type ReplayMarker,
 } from "./replay-markers.js";
@@ -41,6 +42,19 @@ describe("replay markers (#1162)", () => {
     it("reads anything that is not an array as no markers", () => {
       expect(normalizeMarkers(undefined)).toEqual([]);
       expect(normalizeMarkers({ frame: 1 })).toEqual([]);
+    });
+  });
+
+  describe("partitionMarkers", () => {
+    it("keeps the entries it cannot read aside, verbatim and in file order, so the store can re-emit them", () => {
+      const span = { kind: "span", frames: [1, 2] };
+      const raw = [marker(500), span, null, marker(100), { frame: 300, sessionNum: 1 }];
+
+      expect(partitionMarkers(raw)).toEqual({
+        markers: [marker(100), marker(500)],
+        unreadable: [span, null, { frame: 300, sessionNum: 1 }],
+      });
+      expect(partitionMarkers(undefined)).toEqual({ markers: [], unreadable: [] });
     });
   });
 

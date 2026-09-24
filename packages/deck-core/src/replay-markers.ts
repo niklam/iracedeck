@@ -49,17 +49,45 @@ function isMarker(value: unknown): value is ReplayMarker {
 }
 
 /**
- * Read a loaded `markers` section: entries that are not markers are dropped,
- * the rest come back ordered by frame, each with every field it carried.
- * Anything that is not an array reads as no markers.
+ * A loaded `markers` section split into what this build can read and what it
+ * cannot. `markers` is ordered by frame, each with every field it carried;
+ * `unreadable` is every other entry, verbatim and in file order — a newer
+ * build's marker shape, most likely — which the store re-emits after the
+ * markers on every write so an older build never drops it. Anything that is
+ * not an array reads as no markers and nothing to preserve.
+ */
+export interface PartitionedMarkers {
+  markers: ReplayMarker[];
+  unreadable: unknown[];
+}
+
+export function partitionMarkers(raw: unknown): PartitionedMarkers {
+  if (!Array.isArray(raw)) return { markers: [], unreadable: [] };
+
+  const markers: ReplayMarker[] = [];
+  const unreadable: unknown[] = [];
+
+  for (const entry of raw) {
+    if (isMarker(entry)) {
+      markers.push({ ...entry });
+    } else {
+      unreadable.push(entry);
+    }
+  }
+
+  markers.sort((a, b) => a.frame - b.frame);
+
+  return { markers, unreadable };
+}
+
+/**
+ * The readable markers of a loaded `markers` section, ordered by frame, each
+ * with every field it carried. Anything that is not an array reads as no
+ * markers. The store uses {@link partitionMarkers} so the entries this drops
+ * survive its writes.
  */
 export function normalizeMarkers(raw: unknown): ReplayMarker[] {
-  if (!Array.isArray(raw)) return [];
-
-  return raw
-    .filter(isMarker)
-    .map((m) => ({ ...m }))
-    .sort((a, b) => a.frame - b.frame);
+  return partitionMarkers(raw).markers;
 }
 
 /**
