@@ -32,7 +32,7 @@ The rule applies to the byte seen on the same tick as the increment, the latched
 
 Consequences:
 
-- A 0x byte (`contact-car`, `contact-world`) can never type a burst whose count moved.
+- A 0x byte (`contact-car`, `contact-world`) can never type a burst whose count moved. **So the Contact (wall) and Contact (car) callouts go silent** — before, they fired only when a contact byte was paired with an increment it could not have caused, which is this issue's misattribution. Accepted by Niklas (2026-09-24); whether to remove them or redesign them as byte-only announcements is a follow-up issue, not this one.
 - A stale `collision-car` byte cannot type a fresh +1 (total 1 < 4), so the trailing or preceding off-track byte types it instead.
 - Worst-severity-wins stays, now among consistent types only.
 
