@@ -701,6 +701,35 @@ describe("the pickup and pace-car-off calls on a road course (2026-09-18 capture
 });
 
 /**
+ * The opening rolling start (#1200). #1127 left it silent because the start's
+ * green-held line said the pace car was peeling off; that line no longer
+ * places the pace car, so the real exit speaks here too. From the 2026-09-17
+ * Homestead capture: GreenHeld rises at 186.28 s during the parade laps, the
+ * pace car leaves at 196.53 s with it still up, and the green follows at 201.18 s.
+ */
+describe('"Pace car\'s off" at an opening rolling start (#1200)', () => {
+  const PARADE = { ...IN_CAR, SessionState: SessionState.ParadeLaps };
+
+  it("speaks when there is no caution and the green is held", () => {
+    expect(fires("pace-car-off", { ...PARADE, SessionFlags: Flags.GreenHeld }, "none")).toBe(true);
+  });
+
+  it("stays silent when there is no caution and the green is not held", () => {
+    expect(fires("pace-car-off", { ...PARADE, SessionFlags: 0 }, "none")).toBe(false);
+  });
+
+  it("stays silent at a road-course deploy even with GreenHeld up — the caution is still waving", () => {
+    expect(fires("pace-car-off", { ...IN_CAR, SessionFlags: Flags.GreenHeld }, "waving")).toBe(false);
+  });
+
+  it("stays silent out of the car", () => {
+    const spectating = { ...PARADE, IsOnTrack: false, SessionFlags: Flags.GreenHeld };
+
+    expect(fires("pace-car-off", spectating, "none")).toBe(false);
+  });
+});
+
+/**
  * The position call's scheduling beside the calls it shares its lap with
  * (R7), driven through the real engine like the follow call's above: with the
  * one-to-go line in flight, the position call must wait behind it, never cut

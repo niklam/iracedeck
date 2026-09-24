@@ -293,7 +293,7 @@
       "id": "pit-crew.caution-pace-car-off",
       "family": "flag",
       "event": "paceCar.off",
-      "description": "The pace car peels off to pit road on the last caution lap, about five seconds before the green — once the one-to-go flag is up, so its pit-exit surface while deploying on a road course stays silent.",
+      "description": "The pace car peels off to pit road about five seconds before the green — on the last caution lap, or with the green held at an opening rolling start — never while deploying on a road course.",
       "frame": "radio",
       "weight": 70,
       "weightBand": "SAFETY",
@@ -302,7 +302,7 @@
       "speakGate": "Re-checked at speak time: the full-course caution is still out.",
       "base": "voice/{voice}",
       "comment": "The pace car is peeling off — the green is seconds away.",
-      "test": "Harness → Flags → Caution → restart, with the race session and hot-lap presets, hears it a few seconds before the restart line; or inject paceCar.off while a caution is out. In-sim: the pace car heads for pit road on the last caution lap.",
+      "test": "Harness → Flags → Caution → restart, with the race session and hot-lap presets, hears it a few seconds before the restart line; or inject paceCar.off while a caution is out. In-sim: the pace car heads for pit road on the last caution lap, or at an opening rolling start once the green is held.",
       "skip": false,
       "references": {
         "pools": [

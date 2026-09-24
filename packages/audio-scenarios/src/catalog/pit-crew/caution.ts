@@ -55,8 +55,11 @@
  * `SessionState` ParadeLaps) exactly as they do under a caution (264.27 /
  * 488.07, Racing) — the spec made them generic on purpose and left "whether
  * the engineer speaks at a given occurrence" to the callout. The rolling
- * start's pace car belongs to the start, whose own "green's coming" line
- * already owns that moment, so these two ask the translator's caution PHASE
+ * start's pace car belonged to the start, whose own "green's coming" line
+ * owned that moment — until #1200 took the pace car out of that line, since
+ * GreenHeld rises ~10 s before the pace car leaves. So "Pace car's off" now
+ * also speaks with no caution while GreenHeld is up (the rolling start's exit,
+ * 196.53 with GreenHeld up since 186.28); otherwise these two ask the translator's caution PHASE
  * through {@link CautionPhaseResolver}. Asking the phase rather than
  * re-deriving it from `SessionState` or the caution bits is deliberate: the
  * phase is the value `diffStartLights` reads to tell a restart from a race
@@ -182,6 +185,7 @@
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { SimEventName, SimEventOf } from "@iracedeck/event-bus";
+import { Flags, hasFlag, type TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 import type { CautionLineup, CautionPhase } from "@iracedeck/sim-events-iracing";
 
@@ -190,6 +194,10 @@ import { poolRef, WEIGHT } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
 import { liveRaceCar, WAVING_FLAG_COOLDOWN_MS } from "./flag-alerts.js";
 import { type LivePositionResolver, selectLivePosition } from "./position-readout.js";
+
+/** iRacing's GreenHeld bit in the event's own telemetry — false when there is none to read. */
+const greenHeld = (telemetry: TelemetryData | null): boolean =>
+  telemetry !== null && hasFlag(telemetry.SessionFlags ?? 0, Flags.GreenHeld);
 
 /** Stable identifier for each user-toggleable caution callout (issue #1127). */
 export type CautionCalloutId =
@@ -450,7 +458,7 @@ export function buildCautionContracts({
     {
       ...cautionContract("pace-car-off", getCautionPhase),
       description:
-        "The pace car peels off to pit road on the last caution lap, about five seconds before the green — once the one-to-go flag is up, so its pit-exit surface while deploying on a road course stays silent.",
+        "The pace car peels off to pit road about five seconds before the green — on the last caution lap, or with the green held at an opening rolling start — never while deploying on a road course.",
       when: {
         event: "paceCar.off",
         // Finding 5 in the module header: on a road course a parked pace car
@@ -458,8 +466,15 @@ export function buildCautionContracts({
         // are it rolling OUT through pit exit to deploy — an arrival, not a
         // departure, and it lands while the phase is still waving. The real
         // exit is always after one to go, so waiting for that phase costs
-        // nothing.
-        where: (e) => liveRaceCar(e) && getCautionPhase() === "one-to-go",
+        // nothing. At an opening rolling start there is no caution at all;
+        // there the exit comes with iRacing's GreenHeld up (#1200, finding 1).
+        where: (e) => {
+          if (!liveRaceCar(e)) return false;
+
+          const phase = getCautionPhase();
+
+          return phase === "one-to-go" || (phase === "none" && greenHeld(e.telemetry as TelemetryData | null));
+        },
       },
     },
     {
