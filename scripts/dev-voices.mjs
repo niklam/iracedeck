@@ -1,16 +1,21 @@
 #!/usr/bin/env node
 /**
- * `pnpm dev:voices on|off` — the development voice root switch (#1143).
+ * `pnpm dev:voices on|off|auto` — the development voice root switch for this
+ * worktree (#1143, #1214).
  *
- * `on` writes the gitignored `dev.local.json` marker at the repo root, rebuilds
- * the three plugins so the resolved path reaches each `bin/config.json` as
- * `devVoicePacksRoot`, and relinks whichever deck hosts already point at this
- * worktree; `off` removes the marker and does the same. A host linked to
- * another worktree is reported and left alone.
+ * `on` writes the gitignored `dev.local.json` marker at the repo root with the
+ * default root; `off` writes `voicePacksRoot: false`, the explicit per-worktree
+ * off; `auto` removes the marker so the worktree follows the machine-wide
+ * `IRACEDECK_DEV_VOICES` opt-in. Each then rebuilds the three plugins — which
+ * stages the packs into the default root while development mode is on — so the
+ * resolved root reaches each `bin/config.json` as `devVoicePacksRoot`, and
+ * relinks whichever deck hosts already point at this worktree. A host linked
+ * to another worktree is reported and left alone.
  *
- * The loop it exists for: `pnpm dev:voices on` once, then edit the voice,
- * `pnpm --filter @iracedeck/audio-assets pack:voice default --no-catalog`, and
- * press **Rescan voices** in the settings window.
+ * The loop it exists for: set `IRACEDECK_DEV_VOICES=1` once in your user
+ * environment (or `pnpm dev:voices on` in one worktree), then edit the voice,
+ * `pnpm build`, and restart the plugin or press **Rescan voices** in the
+ * settings window.
  *
  * Argument handling only — the behaviour lives in `lib/dev-voices.mjs`.
  */
