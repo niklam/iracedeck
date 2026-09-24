@@ -25,7 +25,8 @@
       "outputs": [".cache/**"]
     },
     "@iracedeck/audio-assets#stage:dev-voices": {
-      "dependsOn": ["^build", "@iracedeck/audio-assets#build"],
+      "dependsOn": ["@iracedeck/callout-script#build", "@iracedeck/audio-assets#build"],
+      "cache": false,
       "env": ["IRACEDECK_DEV_VOICES"],
       "inputs": [
         "voice/**",
@@ -36,8 +37,7 @@
         "src/presets.mjs",
         "$TURBO_ROOT$/dev.local.json",
         "$TURBO_ROOT$/scripts/lib/dev-local.mjs"
-      ],
-      "outputs": ["dist/voice-packs/**"]
+      ]
     },
     "@iracedeck/iracing-plugin-mirabox#build": {
       "dependsOn": ["^build", "@iracedeck/audio-assets#stage:dev-voices"],

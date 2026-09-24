@@ -138,17 +138,24 @@ describe("the development voice root is build-time only (#1143, #1214)", () => {
       expect(task?.inputs).toContain("$TURBO_ROOT$/scripts/lib/dev-local.mjs");
     });
 
-    it("stages into the default root, declared as its output", () => {
-      // DEFAULT_DEV_VOICE_PACKS_ROOT is repo-relative; the task's output is
-      // package-relative, so strip the package prefix.
-      const packageRelative = DEFAULT_DEV_VOICE_PACKS_ROOT.replace(/^packages\/audio-assets\//, "");
-      expect(task?.outputs).toContain(`${packageRelative}/**`);
+    it("is never cached, and so declares no outputs", () => {
+      // The stage writes into dist/voice-packs/, but it does not OWN that
+      // directory: pack:voice leaves its zips there, and a hand-sideloaded pack
+      // may sit beside the staged ones. A cache restore would put back whatever
+      // the cached run saw — including clips the developer has since reverted —
+      // so the task always runs and the packer's own processed-clip cache is
+      // what keeps it quick. Its inputs still feed the hash dependents see.
+      expect(task?.cache, "the stage task must set cache: false").toBe(false);
+      expect(task?.outputs, "an uncached task has nothing to restore").toBeUndefined();
     });
 
-    it("runs after the audio-assets build (the packer shares its processed-clip cache) and its dependencies", () => {
+    it("runs after the audio-assets build (the packer shares its processed-clip cache) and the one package it imports", () => {
       expect(task?.dependsOn).toContain("@iracedeck/audio-assets#build");
-      // The packer imports @iracedeck/callout-script from its built dist.
-      expect(task?.dependsOn).toContain("^build");
+      // The packer's only workspace import is @iracedeck/callout-script, read
+      // from its built dist. `^build` would also wait on deck-core and the
+      // rest of audio-assets' devDependencies, none of which the packer loads.
+      expect(task?.dependsOn).toContain("@iracedeck/callout-script#build");
+      expect(task?.dependsOn).not.toContain("^build");
     });
   });
 
