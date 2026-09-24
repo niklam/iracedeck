@@ -23,7 +23,7 @@
  * so `session_0.json` does not exist.
  */
 import type { ILogger } from "@iracedeck/logger";
-import { copyFileSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, readdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { mkdir, rename, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -77,17 +77,23 @@ export interface SubSessionScoped {
   subSessionId?: number;
 }
 
+/**
+ * Every call takes an optional `scope`: a caller that knows which
+ * `SubSessionID` it is acting for passes it, and a call for another session
+ * than the active record's is ignored (false / null / empty), as the laps
+ * calls are.
+ */
 export interface ReplayMarkersApi {
   /** Insert in frame order; false when a marker is already within `MARKER_DEDUPE_FRAMES`. */
-  add(marker: ReplayMarker): boolean;
+  add(marker: ReplayMarker, scope?: SubSessionScoped): boolean;
   /** Remove the nearest marker within `MARKER_DELETE_WINDOW_FRAMES` of `frame`; null when none. */
-  deleteNearest(frame: number): ReplayMarker | null;
+  deleteNearest(frame: number, scope?: SubSessionScoped): ReplayMarker | null;
   /** The first marker more than `MARKER_NEXT_MIN_AHEAD_FRAMES` ahead; null when none. */
-  next(frame: number): ReplayMarker | null;
+  next(frame: number, scope?: SubSessionScoped): ReplayMarker | null;
   /** The last marker more than `MARKER_PREVIOUS_MIN_BEHIND_FRAMES` behind; null when none. */
-  previous(frame: number): ReplayMarker | null;
-  /** Every marker, ordered by frame. Empty with no active session. */
-  list(): readonly ReplayMarker[];
+  previous(frame: number, scope?: SubSessionScoped): ReplayMarker | null;
+  /** A copy of every marker, ordered by frame. Empty with no active session. */
+  list(scope?: SubSessionScoped): ReplayMarker[];
 }
 
 export interface ReplayLapsApi {
@@ -107,7 +113,12 @@ export interface ReplayLapsApi {
   findLapStart(query: LapStartQuery & SubSessionScoped): LapStartLookup;
 }
 
-/** What the store holds right now; `path` is null for the ephemeral offline record. */
+/**
+ * What the store holds right now. `path` is null for a record that is never
+ * written: the offline (SubSessionID 0) one, and a session whose file could
+ * not be read or whose corrupt file could not be preserved — writing there
+ * would replace bytes the store never saw.
+ */
 export interface ActiveReplaySession {
   subSessionId: number;
   path: string | null;
@@ -153,8 +164,10 @@ export interface ReplaySessionStoreOptions {
 
 interface ActiveRecord {
   file: ReplaySessionFile;
-  /** null: the ephemeral offline record. */
+  /** null: never written — the offline record, or a file that could not be read or preserved. */
   path: string | null;
+  /** The record was read from an existing file (or the write still in the air for it). */
+  loadedFromDisk: boolean;
   markers: ReplayMarker[];
   /** Materialized on first use, so a file with no `laps` section stays without one until a lap is recorded. */
   laps: ReplayLapsSection | undefined;
@@ -169,6 +182,34 @@ function isoStamp(date: Date): string {
   return date.toISOString().replace(/[:.]/g, "-");
 }
 
+/** The temp files the atomic write uses, and nothing else: `session_<id>.json.<pid>.tmp` / `.<pid>.sync.tmp`. */
+const STALE_TEMP_FILE = /^session_\d+\.json\.\d+(?:\.sync)?\.tmp$/;
+
+/**
+ * Remove temp files a crashed process left behind. Only names matching the
+ * store's own temp pattern are touched; a failure is logged and ignored.
+ */
+function removeStaleTempFiles(directory: string, logger: ILogger): void {
+  let names: string[];
+
+  try {
+    names = readdirSync(directory);
+  } catch {
+    return; // no folder yet, or unreadable — nothing to clean
+  }
+
+  for (const name of names) {
+    if (!STALE_TEMP_FILE.test(name)) continue;
+
+    try {
+      unlinkSync(join(directory, name));
+      logger.debug(`Removed a stale replay temp file: ${name}`);
+    } catch (error: unknown) {
+      logger.debug(`Stale replay temp file ${name} could not be removed: ${String(error)}`);
+    }
+  }
+}
+
 function serialize(file: ReplaySessionFile): string {
   return JSON.stringify(file, null, 2) + "\n";
 }
@@ -178,6 +219,8 @@ export function createReplaySessionStore(opts: ReplaySessionStoreOptions): Repla
   const debounceMs = opts.debounceMs ?? REPLAY_STORE_WRITE_DEBOUNCE_MS;
   const retryDelaysMs = opts.writeRetryDelaysMs ?? WRITE_RETRY_DELAYS_MS;
   const now = opts.now ?? (() => new Date());
+
+  removeStaleTempFiles(directory, logger);
 
   let active: ActiveRecord | null = null;
   /** Lap times that arrived before their start; key `sessionNum:sessionUniqueId:carIdx:lap`. Per active session. */
@@ -303,7 +346,8 @@ export function createReplaySessionStore(opts: ReplaySessionStoreOptions): Repla
     if (record.laps !== undefined) record.file.sections[REPLAY_LAPS_SECTION] = record.laps;
   }
 
-  function moveAside(path: string, subSessionId: number, error: unknown): void {
+  /** Whether the corrupt file is now preserved under another name (and so may be written over). */
+  function moveAside(path: string, subSessionId: number, error: unknown): boolean {
     const aside = join(directory, `session_${subSessionId}.corrupt-${isoStamp(now())}.json`);
 
     logger.error("Replay session file is not valid; moving it aside and starting the session fresh");
@@ -311,6 +355,8 @@ export function createReplaySessionStore(opts: ReplaySessionStoreOptions): Repla
 
     try {
       renameSync(path, aside);
+
+      return true;
     } catch (renameError: unknown) {
       // Copy fallback (held open elsewhere, or no rename right on the folder),
       // then try to remove the original so the next start does not preserve it
@@ -325,30 +371,37 @@ export function createReplaySessionStore(opts: ReplaySessionStoreOptions): Repla
         } catch (unlinkError: unknown) {
           logger.debug(`Corrupt original could not be removed: ${String(unlinkError)}`);
         }
+
+        return true;
       } catch (copyError: unknown) {
-        logger.error("Replay session file could not be preserved — moving on with a fresh record");
+        logger.error("Replay session file could not be preserved; the session runs in memory and nothing is written");
         logger.debug(`Copy also failed: ${String(copyError)}`);
+
+        return false;
       }
     }
   }
 
-  /** The record on disk (or still in the air for that path), or undefined for no file. */
-  function loadFile(path: string, subSessionId: number): ReplaySessionFile | undefined {
+  /**
+   * `file`: the record on disk (or still in the air for that path).
+   * `"none"`: no file. `"unwritable"`: a file exists whose bytes the store
+   * could not take responsibility for — unreadable (a lock, a permission), or
+   * corrupt and not preservable — so the session must run in memory: the next
+   * write would otherwise rename a near-empty record over it.
+   */
+  function loadFile(path: string, subSessionId: number): { file: ReplaySessionFile } | "none" | "unwritable" {
     let text = unlandedByPath.get(path);
 
     if (text === undefined) {
       try {
         text = readFileSync(path, "utf-8");
       } catch (error: unknown) {
-        if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return "none";
 
-        // Unreadable for another reason (a lock, a permission): the session
-        // runs on a fresh record and the write path will report its own
-        // failure. Not moved aside — the bytes may be fine.
-        logger.error("Replay session file could not be read; the session runs on a fresh record");
+        logger.error("Replay session file could not be read; the session runs in memory and nothing is written");
         logger.debug(`Read failed for ${path}: ${String(error)}`);
 
-        return undefined;
+        return "unwritable";
       }
     }
 
@@ -365,33 +418,33 @@ export function createReplaySessionStore(opts: ReplaySessionStoreOptions): Repla
       parseError = error;
     }
 
-    if (parsed === undefined) {
-      moveAside(path, subSessionId, parseError);
+    if (parsed === undefined) return moveAside(path, subSessionId, parseError) ? "none" : "unwritable";
 
-      return undefined;
-    }
-
-    return parsed;
+    return { file: parsed };
   }
 
   function open(header: ReplaySessionHeader): ActiveRecord {
     const ephemeral = header.subSessionId === 0;
-    const path = ephemeral ? null : join(directory, replaySessionFileName(header.subSessionId));
-    const loaded = path === null ? undefined : loadFile(path, header.subSessionId);
-    const file: ReplaySessionFile = loaded ?? {
-      version: REPLAY_FILE_VERSION,
-      subSessionId: header.subSessionId,
-      track: "",
-      series: "",
-      sessionStart: "",
-      sections: {},
-    };
+    const filePath = ephemeral ? null : join(directory, replaySessionFileName(header.subSessionId));
+    const loaded = filePath === null ? "none" : loadFile(filePath, header.subSessionId);
+    const file: ReplaySessionFile =
+      typeof loaded === "object"
+        ? loaded.file
+        : {
+            version: REPLAY_FILE_VERSION,
+            subSessionId: header.subSessionId,
+            track: "",
+            series: "",
+            sessionStart: "",
+            sections: {},
+          };
 
     applyHeader(file, header);
 
     const record: ActiveRecord = {
       file,
-      path,
+      path: loaded === "unwritable" ? null : filePath,
+      loadedFromDisk: typeof loaded === "object",
       markers: normalizeMarkers(file.sections[REPLAY_MARKERS_SECTION]),
       laps:
         file.sections[REPLAY_LAPS_SECTION] === undefined
@@ -441,10 +494,12 @@ export function createReplaySessionStore(opts: ReplaySessionStoreOptions): Repla
     `${r.sessionNum}:${r.sessionUniqueId}:${r.carIdx}:${r.lap}`;
 
   const markers: ReplayMarkersApi = {
-    add(marker) {
-      if (active === null) return false;
+    add(marker, scope = {}) {
+      const target = activeFor(scope);
 
-      const added = addMarker(active.markers, marker);
+      if (target === null) return false;
+
+      const added = addMarker(target.markers, marker);
 
       if (added) {
         logger.info("Replay marker added");
@@ -457,10 +512,12 @@ export function createReplaySessionStore(opts: ReplaySessionStoreOptions): Repla
       return added;
     },
 
-    deleteNearest(frame) {
-      if (active === null) return null;
+    deleteNearest(frame, scope = {}) {
+      const target = activeFor(scope);
 
-      const deleted = deleteNearestMarker(active.markers, frame);
+      if (target === null) return null;
+
+      const deleted = deleteNearestMarker(target.markers, frame);
 
       if (deleted !== null) {
         logger.info("Replay marker deleted");
@@ -471,9 +528,11 @@ export function createReplaySessionStore(opts: ReplaySessionStoreOptions): Repla
       return deleted;
     },
 
-    next: (frame) => (active === null ? null : nextMarker(active.markers, frame)),
-    previous: (frame) => (active === null ? null : previousMarker(active.markers, frame)),
-    list: () => (active === null ? [] : active.markers),
+    next: (frame, scope = {}) => nextMarker(activeFor(scope)?.markers ?? [], frame),
+    previous: (frame, scope = {}) => previousMarker(activeFor(scope)?.markers ?? [], frame),
+    // A copy: the live list is the store's, and a caller holding it across a
+    // session change would be reading the wrong session's markers.
+    list: (scope = {}) => (activeFor(scope)?.markers ?? []).map((m) => ({ ...m })),
   };
 
   const laps: ReplayLapsApi = {
@@ -522,6 +581,12 @@ export function createReplaySessionStore(opts: ReplaySessionStoreOptions): Repla
 
       if (target === null) return { hit: false, reason: "no file" };
 
+      // Nothing came from disk and nothing has been recorded: the plugin was
+      // not running for this session (someone else's .rpy, an offline replay
+      // opened later). "no session" is for a record that exists but holds no
+      // matching session.
+      if (!target.loadedFromDisk && target.laps === undefined) return { hit: false, reason: "no file" };
+
       return findLapStartInSection(target.laps, query);
     },
   };
@@ -545,7 +610,11 @@ export function createReplaySessionStore(opts: ReplaySessionStoreOptions): Repla
       pendingLapTimes = new Map();
 
       if (active.path === null) {
-        logger.info("Replay session opened in memory (offline session, nothing is written)");
+        logger.info(
+          header.subSessionId === 0
+            ? "Replay session opened in memory (offline session, nothing is written)"
+            : "Replay session opened in memory (its file cannot be written over)",
+        );
       } else {
         logger.info("Replay session opened");
         logger.debug(

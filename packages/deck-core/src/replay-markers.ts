@@ -25,6 +25,8 @@ export const MARKER_NEXT_MIN_AHEAD_FRAMES = 60;
 export const MARKER_PREVIOUS_MIN_BEHIND_FRAMES = 120;
 
 export interface ReplayMarker {
+  /** Forward compatibility: a field a newer build put on a marker survives this build's writes. */
+  [key: string]: unknown;
   /** Absolute replay frame. */
   frame: number;
   /** `SessionNum` when the marker was set; descriptive only. */
@@ -48,15 +50,15 @@ function isMarker(value: unknown): value is ReplayMarker {
 
 /**
  * Read a loaded `markers` section: entries that are not markers are dropped,
- * the rest come back ordered by frame. Anything that is not an array reads as
- * no markers.
+ * the rest come back ordered by frame, each with every field it carried.
+ * Anything that is not an array reads as no markers.
  */
 export function normalizeMarkers(raw: unknown): ReplayMarker[] {
   if (!Array.isArray(raw)) return [];
 
   return raw
     .filter(isMarker)
-    .map((m) => ({ frame: m.frame, sessionNum: m.sessionNum, sessionTimeMs: m.sessionTimeMs }))
+    .map((m) => ({ ...m }))
     .sort((a, b) => a.frame - b.frame);
 }
 

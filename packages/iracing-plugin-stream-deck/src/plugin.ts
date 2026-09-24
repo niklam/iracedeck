@@ -1223,13 +1223,13 @@ const settingsStore = createFileSettingsStore({
 process.on("exit", () => settingsStore.flushSync());
 
 // The per-session replay store (#1162, #1203): one file per SubSessionID under
-// %LOCALAPPDATA%\iRaceDeck\Replay, holding the replay markers and the lap
+// %LOCALAPPDATA%\iRaceDeck\Replay\<ecosystem>, holding the replay markers and the lap
 // record. Fed the active session by the subscriber wired beside the elevation
 // check below; the actions read it synchronously through getReplaySessionStore().
 // Its writes are debounced like the settings store's, so it gets the same
 // synchronous flush on the way out.
 const replaySessionStore = initializeReplaySessionStore({
-  directory: resolveReplayStoreDirectory({ env: process.env }),
+  directory: resolveReplayStoreDirectory({ platform: getPluginPlatform(), env: process.env }),
   logger: adapter.createLogger("ReplaySessionStore"),
 });
 

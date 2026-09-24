@@ -195,6 +195,25 @@ describe("replay laps section (#1203)", () => {
   });
 
   describe("normalizeLapsSection", () => {
+    it("keeps unknown fields at every level — section, session, car and entry — and never downgrades the section version", () => {
+      const raw = {
+        version: 3,
+        source: "live",
+        sessions: [
+          {
+            sessionNum: 2,
+            sessionUniqueId: 4,
+            weather: "dry",
+            cars: {
+              "7": { carNumberRaw: 2, userId: 1, team: "A", laps: [{ lap: 1, frame: 10, timeMs: null, valid: true }] },
+            },
+          },
+        ],
+      };
+
+      expect(normalizeLapsSection(raw)).toEqual(raw);
+    });
+
     it("round-trips a written section", () => {
       const section = sectionWithLaps();
 

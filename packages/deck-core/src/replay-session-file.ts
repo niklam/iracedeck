@@ -11,7 +11,7 @@
  */
 import { join } from "node:path";
 
-import { nonBlank, resolveLocalAppData } from "./settings-store.js";
+import { nonBlank, resolveLocalAppData, settingsStoreFolderName } from "./settings-store.js";
 
 /** The envelope version this build writes. */
 export const REPLAY_FILE_VERSION = 1;
@@ -42,8 +42,13 @@ export interface ReplaySessionHeader {
   sessionStart?: string;
 }
 
-/** The file as written: the header plus every feature's section. */
+/**
+ * The file as written: the header plus every feature's section. The index
+ * signature is forward compatibility: an envelope field this build does not
+ * know (the spec's future `frameBase`) is carried through every write.
+ */
 export interface ReplaySessionFile {
+  [key: string]: unknown;
   version: number;
   subSessionId: number;
   track: string;
@@ -59,17 +64,26 @@ export function replaySessionFileName(subSessionId: number): string {
 }
 
 export interface ResolveReplayStoreDirectoryOptions {
+  /** `getPluginPlatform()` — "stream-deck" | "mirabox" | "ulanzi". */
+  platform: string;
   env: Record<string, string | undefined>;
 }
 
 /**
- * `%LOCALAPPDATA%\iRaceDeck\Replay`, or the directory in `IRACEDECK_REPLAY_DIR`
- * (development / testing). Deliberately NOT per ecosystem, unlike the settings
- * store: a session's replay is the same recording whichever deck host the
- * plugin ran on, so the three plugins share one folder.
+ * `%LOCALAPPDATA%\iRaceDeck\Replay\<ecosystem>`, the ecosystem folder being
+ * the settings store's (`settingsStoreFolderName`). Per ecosystem for the same
+ * reason the settings file is: two deck hosts run two plugin processes at
+ * once, each holding its own copy of the session's record, and one folder
+ * would have them rename their copies over each other every debounce. The
+ * cost — a marker set from one host is not seen by the other — is the lesser
+ * one. `IRACEDECK_REPLAY_DIR` (development / testing) replaces the
+ * `…\iRaceDeck\Replay` base; the ecosystem folder is still appended, so two
+ * hosts under the same override stay apart too.
  */
-export function resolveReplayStoreDirectory({ env }: ResolveReplayStoreDirectoryOptions): string {
-  return nonBlank(env.IRACEDECK_REPLAY_DIR) ?? join(resolveLocalAppData(env), "iRaceDeck", "Replay");
+export function resolveReplayStoreDirectory({ platform, env }: ResolveReplayStoreDirectoryOptions): string {
+  const base = nonBlank(env.IRACEDECK_REPLAY_DIR) ?? join(resolveLocalAppData(env), "iRaceDeck", "Replay");
+
+  return join(base, settingsStoreFolderName(platform));
 }
 
 /**
@@ -89,6 +103,9 @@ export function parseReplaySessionFile(value: unknown, subSessionId: number): Re
   if (typeof raw.version !== "number" || !Number.isInteger(raw.version) || raw.version < 1) return undefined;
 
   return {
+    // Every envelope field this build does not read rides along, then the
+    // known ones are normalized over it.
+    ...raw,
     // Never downgrade a newer build's envelope on the way through.
     version: Math.max(raw.version, REPLAY_FILE_VERSION),
     subSessionId,

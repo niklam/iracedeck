@@ -34,6 +34,10 @@ describe("replay markers (#1162)", () => {
       expect(normalizeMarkers(raw).map((m) => m.frame)).toEqual([100, 200, 500]);
     });
 
+    it("keeps a field on a marker that this build does not know", () => {
+      expect(normalizeMarkers([{ ...marker(5), label: "lift" }])).toEqual([{ ...marker(5), label: "lift" }]);
+    });
+
     it("reads anything that is not an array as no markers", () => {
       expect(normalizeMarkers(undefined)).toEqual([]);
       expect(normalizeMarkers({ frame: 1 })).toEqual([]);

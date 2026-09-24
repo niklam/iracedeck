@@ -20,6 +20,45 @@ import {
 // trick cannot count how many writes a burst produced.
 const fsState = vi.hoisted(() => ({ renames: 0, failNext: 0 }));
 
+// The synchronous side: the load's read, the corrupt-aside rename/copy and the
+// shutdown flush's rename, each counted and made to fail on demand.
+const syncFs = vi.hoisted(() => ({ renames: 0, failRename: 0, failRead: 0, failCopy: 0 }));
+
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  const fail = (code: string) => Object.assign(new Error(`${code}: simulated`), { code });
+
+  return {
+    ...actual,
+    readFileSync: (path: string, options: "utf-8") => {
+      if (syncFs.failRead > 0) {
+        syncFs.failRead--;
+        throw fail("EBUSY");
+      }
+
+      return actual.readFileSync(path, options);
+    },
+    renameSync: (from: string, to: string) => {
+      syncFs.renames++;
+
+      if (syncFs.failRename > 0) {
+        syncFs.failRename--;
+        throw fail("EPERM");
+      }
+
+      return actual.renameSync(from, to);
+    },
+    copyFileSync: (from: string, to: string) => {
+      if (syncFs.failCopy > 0) {
+        syncFs.failCopy--;
+        throw fail("EPERM");
+      }
+
+      return actual.copyFileSync(from, to);
+    },
+  };
+});
+
 vi.mock("node:fs/promises", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs/promises")>();
 
@@ -64,27 +103,38 @@ const lapStart = (overrides: Record<string, unknown> = {}) => ({
 });
 
 describe("resolveReplayStoreDirectory", () => {
-  it("defaults to %LOCALAPPDATA%\\iRaceDeck\\Replay — one folder for every ecosystem", () => {
-    const p = resolveReplayStoreDirectory({ env: { LOCALAPPDATA: "C:\\Users\\n\\AppData\\Local" } });
+  it("defaults to %LOCALAPPDATA%\\iRaceDeck\\Replay\\<ecosystem> — per ecosystem, like the settings file", () => {
+    const env = { LOCALAPPDATA: "C:\\Users\\n\\AppData\\Local" };
 
-    expect(p.replace(/\\/g, "/")).toBe("C:/Users/n/AppData/Local/iRaceDeck/Replay");
+    expect(resolveReplayStoreDirectory({ platform: "stream-deck", env }).replace(/\\/g, "/")).toBe(
+      "C:/Users/n/AppData/Local/iRaceDeck/Replay/Stream Deck",
+    );
+    expect(resolveReplayStoreDirectory({ platform: "mirabox", env }).replace(/\\/g, "/")).toBe(
+      "C:/Users/n/AppData/Local/iRaceDeck/Replay/Mirabox",
+    );
+    expect(resolveReplayStoreDirectory({ platform: "ulanzi", env }).replace(/\\/g, "/")).toBe(
+      "C:/Users/n/AppData/Local/iRaceDeck/Replay/Ulanzi",
+    );
   });
 
   it("falls back to USERPROFILE, then the OS home directory, and stays absolute", () => {
-    expect(resolveReplayStoreDirectory({ env: { USERPROFILE: "C:\\Users\\n" } }).replace(/\\/g, "/")).toBe(
-      "C:/Users/n/AppData/Local/iRaceDeck/Replay",
-    );
+    expect(
+      resolveReplayStoreDirectory({ platform: "mirabox", env: { USERPROFILE: "C:\\Users\\n" } }).replace(/\\/g, "/"),
+    ).toBe("C:/Users/n/AppData/Local/iRaceDeck/Replay/Mirabox");
 
-    const bare = resolveReplayStoreDirectory({ env: {} });
+    const bare = resolveReplayStoreDirectory({ platform: "mirabox", env: {} });
 
     expect(isAbsolute(bare)).toBe(true);
-    expect(bare.replace(/\\/g, "/")).toBe(`${homedir().replace(/\\/g, "/")}/AppData/Local/iRaceDeck/Replay`);
+    expect(bare.replace(/\\/g, "/")).toBe(`${homedir().replace(/\\/g, "/")}/AppData/Local/iRaceDeck/Replay/Mirabox`);
   });
 
-  it("honours IRACEDECK_REPLAY_DIR as a directory override", () => {
-    expect(resolveReplayStoreDirectory({ env: { LOCALAPPDATA: "C:\\x", IRACEDECK_REPLAY_DIR: "D:\\replay" } })).toBe(
-      "D:\\replay",
-    );
+  it("IRACEDECK_REPLAY_DIR replaces the Replay base; the ecosystem folder is still appended so two hosts stay apart", () => {
+    expect(
+      resolveReplayStoreDirectory({
+        platform: "ulanzi",
+        env: { LOCALAPPDATA: "C:\\x", IRACEDECK_REPLAY_DIR: "D:\\replay" },
+      }).replace(/\\/g, "/"),
+    ).toBe("D:/replay/Ulanzi");
   });
 
   it("names a session's file session_<SubSessionID>.json", () => {
@@ -103,6 +153,10 @@ describe("createReplaySessionStore", () => {
     store = createReplaySessionStore({ directory: dir, logger: silentLogger, debounceMs: 10 });
     fsState.renames = 0;
     fsState.failNext = 0;
+    syncFs.renames = 0;
+    syncFs.failRename = 0;
+    syncFs.failRead = 0;
+    syncFs.failCopy = 0;
   });
 
   afterEach(async () => {
@@ -409,7 +463,195 @@ describe("createReplaySessionStore", () => {
     });
   });
 
+  describe("fail closed: a file the store cannot take responsibility for is never written over", () => {
+    it("an unreadable file (EBUSY, not ENOENT) opens a memory-only record and no write ever touches it", async () => {
+      mkdirSync(dir, { recursive: true });
+      const original = JSON.stringify({
+        version: 1,
+        sections: { markers: [{ frame: 5, sessionNum: 0, sessionTimeMs: 1 }], laps: { version: 1, sessions: [] } },
+      });
+
+      writeFileSync(filePath, original);
+      syncFs.failRead = 1;
+
+      store.setActiveSession(header());
+
+      expect(store.getActiveSession()).toMatchObject({ subSessionId: SUB, path: null });
+      expect(store.markers.list()).toEqual([]); // the bytes were never read
+      expect(store.markers.add({ frame: 100, sessionNum: 0, sessionTimeMs: 0 })).toBe(true);
+      expect(store.laps.recordLapStart(lapStart())).toBe(true);
+
+      await store.flush();
+      store.clearActiveSession();
+      await store.flush();
+      store.flushSync();
+
+      expect(readFileSync(filePath, "utf-8")).toBe(original);
+      expect(fsState.renames).toBe(0);
+      expect(syncFs.renames).toBe(0);
+    });
+
+    it("a corrupt file that can be neither moved nor copied aside opens a memory-only record and stays where it is", async () => {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(filePath, "{ not json");
+      syncFs.failRename = 1;
+      syncFs.failCopy = 1;
+
+      store.setActiveSession(header());
+
+      expect(store.getActiveSession()).toMatchObject({ subSessionId: SUB, path: null });
+      expect(store.markers.add({ frame: 100, sessionNum: 0, sessionTimeMs: 0 })).toBe(true);
+
+      await store.flush();
+      store.flushSync();
+      store.clearActiveSession();
+      await store.flush();
+
+      expect(readFileSync(filePath, "utf-8")).toBe("{ not json");
+      expect(readdirSync(dir)).toEqual([replaySessionFileName(SUB)]);
+    });
+
+    it("a corrupt file whose rename fails but whose copy succeeds is preserved, and the fresh record may be written", async () => {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(filePath, "{ not json");
+      syncFs.failRename = 1;
+
+      store.setActiveSession(header());
+      store.markers.add({ frame: 100, sessionNum: 0, sessionTimeMs: 0 });
+      await store.flush();
+
+      const names = readdirSync(dir).sort();
+
+      expect(names).toHaveLength(2);
+      expect(names.some((f) => f.startsWith(`session_${SUB}.corrupt-`))).toBe(true);
+      expect(JSON.parse(readFileSync(filePath, "utf-8")).sections.markers).toHaveLength(1);
+    });
+  });
+
+  describe("the shutdown flush and the temp files", () => {
+    it("flushSync goes through a temp file and a rename — a refused rename leaves no file and no temp file", () => {
+      store.setActiveSession(header());
+      store.markers.add({ frame: 42, sessionNum: 1, sessionTimeMs: 0 });
+      syncFs.failRename = 1;
+
+      store.flushSync();
+
+      expect(syncFs.renames).toBe(1);
+      expect(existsSync(filePath)).toBe(false);
+      expect(readdirSync(dir)).toEqual([]);
+    });
+
+    it("removes stale temp files of its own naming on init, and nothing else", () => {
+      mkdirSync(dir, { recursive: true });
+      const stale = [`session_${SUB}.json.12345.tmp`, `session_${SUB}.json.12345.sync.tmp`, "session_7.json.1.tmp"];
+      const kept = [
+        replaySessionFileName(SUB),
+        `session_${SUB}.corrupt-2026-09-24T10-11-12-345Z.json`,
+        "session_x.json.1.tmp",
+        "notes.tmp",
+        `session_${SUB}.json.tmp`,
+      ];
+
+      for (const name of [...stale, ...kept]) writeFileSync(join(dir, name), "x");
+
+      createReplaySessionStore({ directory: dir, logger: silentLogger });
+
+      expect(readdirSync(dir).sort()).toEqual([...kept].sort());
+    });
+
+    it("tolerates a missing folder on init", () => {
+      expect(() => createReplaySessionStore({ directory: join(dir, "nope"), logger: silentLogger })).not.toThrow();
+    });
+  });
+
+  describe("forward compatibility: what this build does not read survives its writes", () => {
+    it("carries an unknown envelope field (the spec's future frameBase) through a write", async () => {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(filePath, JSON.stringify({ version: 1, frameBase: 12000, sections: {} }));
+
+      store.setActiveSession(header());
+      store.markers.add({ frame: 1, sessionNum: 0, sessionTimeMs: 0 });
+      await store.flush();
+
+      expect(JSON.parse(readFileSync(filePath, "utf-8")).frameBase).toBe(12000);
+    });
+
+    it("carries unknown fields on a marker, a lap entry, a car record, a laps session and the laps section", async () => {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        filePath,
+        JSON.stringify({
+          version: 1,
+          sections: {
+            markers: [{ frame: 5, sessionNum: 0, sessionTimeMs: 1, label: "lift" }],
+            laps: {
+              version: 1,
+              source: "live",
+              sessions: [
+                {
+                  sessionNum: 2,
+                  sessionUniqueId: 3,
+                  weather: "dry",
+                  cars: {
+                    "7": {
+                      carNumberRaw: 2,
+                      userId: 1,
+                      team: "A",
+                      laps: [{ lap: 1, frame: 10, timeMs: null, valid: true }],
+                    },
+                  },
+                },
+              ],
+            },
+          },
+        }),
+      );
+
+      store.setActiveSession(header());
+      store.markers.add({ frame: 500, sessionNum: 0, sessionTimeMs: 0 });
+      store.laps.recordLapStart(lapStart({ lap: 2, frame: 20 }));
+      store.laps.recordLapTime({ sessionNum: 2, sessionUniqueId: 3, carIdx: 7, lap: 1, timeMs: 90000 });
+      await store.flush();
+
+      const { sections } = JSON.parse(readFileSync(filePath, "utf-8"));
+
+      expect(sections.markers[0]).toEqual({ frame: 5, sessionNum: 0, sessionTimeMs: 1, label: "lift" });
+      expect(sections.laps.source).toBe("live");
+      expect(sections.laps.sessions[0].weather).toBe("dry");
+      expect(sections.laps.sessions[0].cars["7"].team).toBe("A");
+      expect(sections.laps.sessions[0].cars["7"].laps[0]).toEqual({ lap: 1, frame: 10, timeMs: 90000, valid: true });
+      expect(sections.laps.sessions[0].cars["7"].laps[1]).toEqual({ lap: 2, frame: 20, timeMs: null });
+    });
+  });
+
   describe("markers through the store", () => {
+    it("ignores a call whose scope names another session, and takes one naming the active session", () => {
+      store.setActiveSession(header());
+
+      expect(store.markers.add({ frame: 1000, sessionNum: 2, sessionTimeMs: 10 }, { subSessionId: SUB + 1 })).toBe(
+        false,
+      );
+      expect(store.markers.add({ frame: 1000, sessionNum: 2, sessionTimeMs: 10 }, { subSessionId: SUB })).toBe(true);
+      expect(store.markers.deleteNearest(1000, { subSessionId: SUB + 1 })).toBeNull();
+      expect(store.markers.next(0, { subSessionId: SUB + 1 })).toBeNull();
+      expect(store.markers.previous(5000, { subSessionId: SUB + 1 })).toBeNull();
+      expect(store.markers.list({ subSessionId: SUB + 1 })).toEqual([]);
+      expect(store.markers.list({ subSessionId: SUB })).toHaveLength(1);
+      expect(store.markers.deleteNearest(1000, { subSessionId: SUB })?.frame).toBe(1000);
+    });
+
+    it("list() returns a copy the caller cannot mutate the store through", () => {
+      store.setActiveSession(header());
+      store.markers.add({ frame: 1000, sessionNum: 2, sessionTimeMs: 10 });
+
+      const listed = store.markers.list();
+
+      listed.push({ frame: 9, sessionNum: 0, sessionTimeMs: 0 });
+      listed[0]!.frame = 1;
+
+      expect(store.markers.list()).toEqual([{ frame: 1000, sessionNum: 2, sessionTimeMs: 10 }]);
+    });
+
     it("dedupes, deletes within the window, and walks next/previous", async () => {
       store.setActiveSession(header());
 
@@ -447,7 +689,7 @@ describe("createReplaySessionStore", () => {
         hit: false,
         reason: "no file",
       });
-      expect(store.laps.findLapStart(lapStart())).toEqual({ hit: false, reason: "no session" });
+      expect(store.laps.findLapStart(lapStart())).toEqual({ hit: false, reason: "no file" });
     });
 
     it("takes an event carrying the active subSessionId, and one carrying none", () => {
@@ -502,6 +744,31 @@ describe("createReplaySessionStore", () => {
       expect(JSON.parse(readFileSync(filePath, "utf-8")).sections).toEqual({
         markers: [{ frame: 1, sessionNum: 0, sessionTimeMs: 0 }],
       });
+      // Nothing was LOADED and nothing recorded: the plugin has no lap record
+      // for this session, which is "no file" to the action's log.
+      expect(store.laps.findLapStart(lapStart())).toEqual({ hit: false, reason: "no file" });
+    });
+
+    it("misses with 'no file' for a record the plugin neither loaded nor recorded into, and 'no session' for a loaded file without the session", () => {
+      // Someone else's .rpy: no file for its SubSessionID.
+      store.setActiveSession(header(SUB + 5));
+      expect(store.laps.findLapStart({ ...lapStart(), subSessionId: SUB + 5 })).toEqual({
+        hit: false,
+        reason: "no file",
+      });
+
+      // A file this plugin wrote earlier, with markers but no laps section.
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        filePath,
+        JSON.stringify({ version: 1, sections: { markers: [{ frame: 5, sessionNum: 0, sessionTimeMs: 1 }] } }),
+      );
+      store.setActiveSession(header());
+      expect(store.laps.findLapStart(lapStart())).toEqual({ hit: false, reason: "no session" });
+
+      // A live session with a lap recorded for another session number.
+      store.setActiveSession(header(SUB + 6));
+      store.laps.recordLapStart(lapStart({ sessionNum: 9 }));
       expect(store.laps.findLapStart(lapStart())).toEqual({ hit: false, reason: "no session" });
     });
 

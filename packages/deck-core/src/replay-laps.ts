@@ -18,8 +18,14 @@
 /** The section's own version; the file's envelope version does not move for it. */
 export const LAPS_SECTION_VERSION = 1;
 
-/** `{ lap: n, frame, timeMs }`: the car started lap `n` at `frame`; lap `n` took `timeMs`. */
+/**
+ * `{ lap: n, frame, timeMs }`: the car started lap `n` at `frame`; lap `n`
+ * took `timeMs`. The index signatures on this and the three records below are
+ * forward compatibility: a field a newer build adds at any level survives
+ * this build's writes.
+ */
 export interface ReplayLapEntry {
+  [key: string]: unknown;
   lap: number;
   frame: number;
   /** null until the sim publishes it, and forever null for a lap it never timed. */
@@ -27,6 +33,7 @@ export interface ReplayLapEntry {
 }
 
 export interface ReplayCarLaps {
+  [key: string]: unknown;
   carNumberRaw: number;
   userId: number;
   /** Ordered by lap. */
@@ -34,6 +41,7 @@ export interface ReplayCarLaps {
 }
 
 export interface ReplayLapsSession {
+  [key: string]: unknown;
   sessionNum: number;
   sessionUniqueId: number;
   /** Keyed by `carIdx` as a string (JSON object keys). */
@@ -41,6 +49,7 @@ export interface ReplayLapsSession {
 }
 
 export interface ReplayLapsSection {
+  [key: string]: unknown;
   version: number;
   sessions: ReplayLapsSession[];
 }
@@ -110,7 +119,7 @@ function normalizeEntry(raw: unknown): ReplayLapEntry | undefined {
 
   if (!isFiniteNumber(e.lap) || !isFiniteNumber(e.frame)) return undefined;
 
-  return { lap: e.lap, frame: e.frame, timeMs: isFiniteNumber(e.timeMs) ? e.timeMs : null };
+  return { ...e, lap: e.lap, frame: e.frame, timeMs: isFiniteNumber(e.timeMs) ? e.timeMs : null };
 }
 
 function normalizeCar(raw: unknown): ReplayCarLaps | undefined {
@@ -126,7 +135,7 @@ function normalizeCar(raw: unknown): ReplayCarLaps | undefined {
 
   laps.sort((a, b) => a.lap - b.lap);
 
-  return { carNumberRaw: c.carNumberRaw, userId: isFiniteNumber(c.userId) ? c.userId : 0, laps };
+  return { ...c, carNumberRaw: c.carNumberRaw, userId: isFiniteNumber(c.userId) ? c.userId : 0, laps };
 }
 
 /**
@@ -157,10 +166,17 @@ export function normalizeLapsSection(raw: unknown): ReplayLapsSection {
       }
     }
 
-    sessions.push({ sessionNum: s.sessionNum, sessionUniqueId: s.sessionUniqueId, cars });
+    sessions.push({ ...s, sessionNum: s.sessionNum, sessionUniqueId: s.sessionUniqueId, cars });
   }
 
-  return { version: LAPS_SECTION_VERSION, sessions };
+  const rawVersion = (raw as Record<string, unknown>).version;
+
+  return {
+    ...(raw as Record<string, unknown>),
+    // Never downgrade a newer build's section version on the way through.
+    version: isFiniteNumber(rawVersion) ? Math.max(rawVersion, LAPS_SECTION_VERSION) : LAPS_SECTION_VERSION,
+    sessions,
+  };
 }
 
 function findSessionByPair(
