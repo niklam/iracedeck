@@ -117,9 +117,9 @@ export async function stageDevVoices({
     );
   }
 
-  pruneStalePacks({ outputDir, packs, listDirectories, removeDirectory, log });
-
   log(`Development voices: on (${source}) — staging ${packs.length} pack(s) into ${voicePacksRoot}`);
+
+  pruneStalePacks({ outputDir, packs, listDirectories, removeDirectory, log });
 
   const started = now();
   /** @type {string[]} */

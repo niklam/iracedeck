@@ -138,7 +138,8 @@ describe("stage-dev-voices", () => {
     expect((await promise).outcome).toBe("staged");
     expect(listDirectories).toHaveBeenCalledWith(OUTPUT_DIR);
     expect(removeDirectory.mock.calls).toEqual([[path.join(OUTPUT_DIR, "gamma")]]);
-    expect(lines).toContain("  removed gamma/ — not an authored pack, so a stale stage");
+    // Under the "on" line, which says where it is working.
+    expect(lines[1]).toBe("  removed gamma/ — not an authored pack, so a stale stage");
   });
 
   it("on a real directory, removes stale pack directories and leaves files and authored packs alone", async () => {
