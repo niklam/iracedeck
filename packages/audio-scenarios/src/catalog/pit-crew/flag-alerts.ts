@@ -512,7 +512,7 @@ const ONE_PACE_LAP_TO_GO: ScenarioContract = {
 const GREEN_HELD: ScenarioContract = {
   ...flagContract("green-held"),
   description:
-    "iRacing holds the green on the final pace lap of a rolling start or restart, as the pace car pulls in, while you are live in the car; never on a standing-start grid.",
+    "iRacing holds the green seconds before a rolling start or restart goes green, often while the pace car is still on track, with you live in the car; never on a standing-start grid.",
   when: { event: "flag.green-held.raised", where: rollingFormationOnly },
 };
 

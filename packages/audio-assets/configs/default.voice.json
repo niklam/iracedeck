@@ -224,12 +224,12 @@
       },
       {
         "name": "green-held-01",
-        "text": "This is it. Pace car's coming in. Green any second now, so get ready to launch.",
+        "text": "This is it. Green any second now, so get ready to launch.",
         "seed": 8
       },
       {
         "name": "green-held-02",
-        "text": "Pace car's peeling off. Eyes up, pick your gear, and launch clean off the line.",
+        "text": "Nearly time. Eyes up, pick your gear, and launch clean off the line.",
         "seed": 4
       },
       {
@@ -239,7 +239,7 @@
       },
       {
         "name": "green-held-04",
-        "text": "Pace car's gone. Stand by... it's racing the moment that gap opens up.",
+        "text": "Stand by... stand by. It's racing the moment the green drops.",
         "seed": 6
       },
       {
