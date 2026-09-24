@@ -22,14 +22,15 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { runDevVoices } from "./lib/dev-voices.mjs";
-import { loadEnvLocal } from "./lib/env-local.mjs";
+import { loadEnvLocalForDevVoices, runDevVoices } from "./lib/dev-voices.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 // The host plugin directories can be overridden in a gitignored .env.local,
 // exactly as the link scripts allow — the relink step must see the same paths.
-loadEnvLocal(root);
+// IRACEDECK_DEV_VOICES is never taken from it: a plain `pnpm build` would not
+// see it, and the two would disagree about the mode.
+loadEnvLocalForDevVoices(root);
 
 // `process.exitCode` rather than `process.exit`: a Windows TTY's stdout is
 // asynchronous, and exiting outright can truncate the lines naming which hosts

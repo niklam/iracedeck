@@ -47,6 +47,7 @@ import {
   readDevVoicesEnv,
   resolveDevVoicePacksRoot,
 } from "./dev-local.mjs";
+import { loadEnvLocal } from "./env-local.mjs";
 import { linkTargets, REAL_DIRECTORY } from "./plugin-links.mjs";
 
 /**
@@ -127,6 +128,45 @@ export function spawnSyncShell(cmd, args, options) {
   return process.platform === "win32"
     ? spawnSync(shellCommandLine(cmd, args), { shell: true, stdio: "inherit", ...options })
     : spawnSync(cmd, args, { stdio: "inherit", ...options });
+}
+
+/**
+ * Loads `.env.local` into `env` for the switch — every variable EXCEPT
+ * `IRACEDECK_DEV_VOICES`.
+ *
+ * The switch reads `.env.local` for the deck hosts' plugin directories, as the
+ * link scripts do. Letting it supply the machine-wide opt-in too would make
+ * `dev:voices` (and the turbo build it spawns, which inherits this process's
+ * environment) honour a value that a plain `pnpm build` never sees, so the two
+ * would build different plugins from the same worktree. The opt-in belongs in
+ * the user environment; a definition in `.env.local` is ignored with a warning
+ * saying so. The shell still wins for every other variable, exactly as
+ * `loadEnvLocal` has it.
+ *
+ * @param {string} root Repo root containing `.env.local`.
+ * @param {object} [options]
+ * @param {Record<string, string | undefined>} [options.env]
+ * @param {(message: string) => void} [options.warn]
+ * @param {(root: string, env: Record<string, string | undefined>) => void} [options.load]
+ */
+export function loadEnvLocalForDevVoices(
+  root,
+  { env = process.env, warn = (message) => console.warn(message), load = loadEnvLocal } = {},
+) {
+  /** @type {Record<string, string | undefined>} */
+  const fromFile = {};
+  load(root, fromFile);
+
+  for (const [key, value] of Object.entries(fromFile)) {
+    if (key === DEV_VOICES_ENV) {
+      warn(
+        `Warning: .env.local sets ${DEV_VOICES_ENV} — ignored. Set it in your user environment instead, so a ` +
+          "plain pnpm build sees the same value this command does.",
+      );
+      continue;
+    }
+    if (env[key] === undefined) env[key] = value;
+  }
 }
 
 /**

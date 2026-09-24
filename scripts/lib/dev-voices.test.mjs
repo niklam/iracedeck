@@ -19,7 +19,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DEFAULT_DEV_VOICE_PACKS_ROOT, DEV_LOCAL_FILE, DEV_VOICES_ENV } from "./dev-local.mjs";
-import { HOST_RELINKS, runDevVoices, shellCommandLine } from "./dev-voices.mjs";
+import { HOST_RELINKS, loadEnvLocalForDevVoices, runDevVoices, shellCommandLine } from "./dev-voices.mjs";
 import { linkLocations } from "./plugin-links.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -601,6 +601,53 @@ describe("relinking", () => {
 
     expect(hosts.length).toBeGreaterThan(0);
     expect(hosts.sort()).toEqual(HOST_RELINKS.map((entry) => entry.host).sort());
+  });
+});
+
+describe("loadEnvLocalForDevVoices", () => {
+  it(`never takes ${DEV_VOICES_ENV} from .env.local, and warns that it belongs in the user environment`, () => {
+    writeFileSync(join(root, ".env.local"), `${DEV_VOICES_ENV}=1\nMIRABOX_PLUGINS_DIR=C:/mirabox\n`);
+    const env = {};
+    const warn = vi.fn();
+
+    loadEnvLocalForDevVoices(root, { env, warn });
+
+    expect(env).toEqual({ MIRABOX_PLUGINS_DIR: "C:/mirabox" });
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0][0]).toContain(DEV_VOICES_ENV);
+    expect(warn.mock.calls[0][0]).toContain("user environment");
+  });
+
+  it("keeps the value the user environment already has, and still warns about the file", () => {
+    writeFileSync(join(root, ".env.local"), `${DEV_VOICES_ENV}=1\n`);
+    const env = { [DEV_VOICES_ENV]: "0" };
+    const warn = vi.fn();
+
+    loadEnvLocalForDevVoices(root, { env, warn });
+
+    expect(env).toEqual({ [DEV_VOICES_ENV]: "0" });
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  it("loads every other variable, the shell still winning, and warns about nothing", () => {
+    writeFileSync(join(root, ".env.local"), "MIRABOX_PLUGINS_DIR=C:/from-file\nULANZI_PLUGINS_DIR=C:/ulanzi\n");
+    const env = { MIRABOX_PLUGINS_DIR: "C:/from-shell" };
+    const warn = vi.fn();
+
+    loadEnvLocalForDevVoices(root, { env, warn });
+
+    expect(env).toEqual({ MIRABOX_PLUGINS_DIR: "C:/from-shell", ULANZI_PLUGINS_DIR: "C:/ulanzi" });
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("does nothing without a .env.local", () => {
+    const env = {};
+    const warn = vi.fn();
+
+    loadEnvLocalForDevVoices(root, { env, warn });
+
+    expect(env).toEqual({});
+    expect(warn).not.toHaveBeenCalled();
   });
 });
 
