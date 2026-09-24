@@ -428,17 +428,17 @@
             {
               "value": "delete",
               "label": "Delete Marker",
-              "description": "Remove the marker nearest the current frame within 10 s; sends nothing to iRacing"
+              "description": "Remove the marker nearest the current frame within 10 s of its frame or of the frame its Add was pressed at; sends nothing to iRacing"
             },
             {
               "value": "next",
               "label": "Next Marker",
-              "description": "Jump the replay to the next marker more than 1 s ahead"
+              "description": "Jump the replay to the next marker more than 1 s ahead; replay only, sends nothing from the car"
             },
             {
               "value": "previous",
               "label": "Previous Marker",
-              "description": "Jump the replay to the previous marker more than 2 s behind; from the car, opens the replay at the latest marker"
+              "description": "Jump the replay to the previous marker more than 2 s behind; replay only, sends nothing from the car"
             }
           ]
         },

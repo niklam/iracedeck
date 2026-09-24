@@ -7,7 +7,7 @@ sidebar:
     variant: tip
 ---
 
-Replay Markers lets you bookmark moments of a session and come back to them in the replay. Press **Add Marker** from the car the moment something happens — a close call, a pass, a mistake you want to review — and later press **Previous Marker** or **Next Marker** to jump the replay straight there. Markers work the same while driving and while watching a replay, including the replay of the session you are in right now.
+Replay Markers lets you bookmark moments of a session and come back to them in the replay. Press **Add Marker** from the car the moment something happens — a close call, a pass, a mistake you want to review — and later, in the replay, press **Previous Marker** or **Next Marker** to jump straight there. Adding and deleting work the same while driving and while watching a replay, including the replay of the session you are in right now; the jumps work in the replay only, because iRacing accepts replay commands only when you are out of the car.
 
 A marker is a position in iRacing's replay recording. Jumping to one is a single iRacing replay command, so it is instant and needs no key binding.
 
@@ -56,7 +56,7 @@ The setting is per key, so one deck can carry both kinds: a key with a longer va
 
 ### Delete Marker
 
-Removes the marker nearest the current moment, if there is one within 10 seconds of it. From the car that reaches a marker you added moments ago; in a replay it reaches the marker you just jumped to while its moment is playing. There is no confirmation step — the 10-second window already limits what a press can reach.
+Removes the marker nearest the current moment, if there is one within 10 seconds of it — or within 10 seconds of where you pressed **Add Marker** for it. From the car that reaches a marker you added moments ago, however far back it was set; in a replay it reaches the marker you just jumped to while its moment is playing. There is no confirmation step — the 10-second window already limits what a press can reach.
 
 When a marker is deleted, the key briefly shows **MARKER DELETED**; a press with no marker in reach shows nothing.
 
@@ -75,7 +75,7 @@ When a marker is deleted, the key briefly shows **MARKER DELETED**; a press with
 
 ### Next Marker
 
-Jumps the replay to the next marker after the current moment. A marker less than one second ahead is skipped, so pressing again moves on to the one after instead of landing on the marker you just reached. With no marker ahead, nothing happens — which is always the case from the car, since the live moment is the end of the recording.
+Jumps the replay to the next marker after the current moment. A marker less than one second ahead is skipped, so pressing again moves on to the one after instead of landing on the marker you just reached. With no marker ahead, nothing happens. It works in the replay: from the car, open the replay first.
 
 #### Details
 
@@ -92,7 +92,7 @@ Jumps the replay to the next marker after the current moment. A marker less than
 
 ### Previous Marker
 
-Jumps the replay to the previous marker before the current moment. A marker less than two seconds behind is skipped, so pressing it while a marker's moment is still playing goes to the one before, the way a media player's previous-track button does. Pressed from the car, it opens the replay at your most recent marker — the quickest way to review what just happened. With no marker behind, nothing happens.
+Jumps the replay to the previous marker before the current moment. A marker less than two seconds behind is skipped, so pressing it while a marker's moment is still playing goes to the one before, the way a media player's previous-track button does. With no marker behind, nothing happens. It works in the replay: from the car, open the replay first — iRacing accepts replay commands only when you are out of the car, so a press from the car sends nothing.
 
 #### Details
 
