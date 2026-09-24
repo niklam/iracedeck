@@ -224,13 +224,13 @@
       },
       {
         "name": "green-held-01",
-        "text": "This is it. Green any second now, so get ready to launch.",
+        "text": "Green any second now, so get ready to launch.",
         "seed": 8
       },
       {
         "name": "green-held-02",
         "text": "Nearly time. Eyes up, pick your gear, and launch clean off the line.",
-        "seed": 4
+        "seed": 5
       },
       {
         "name": "green-held-03",
@@ -239,7 +239,7 @@
       },
       {
         "name": "green-held-04",
-        "text": "Stand by... stand by. It's racing the moment the green drops.",
+        "text": "Stand by... It's racing the moment the green drops.",
         "seed": 6
       },
       {
