@@ -1226,7 +1226,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     description:
       "Pit entry on a car with no limiter, plus the spoken limit when a number clip exists for it. " +
       "The limit clause skips whole if it does not, leaving a complete sentence.",
-    event: "pitLane.entered",
+    event: "pitLane.approaching",
     data: {},
     telemetryPatch: { dcPitSpeedLimiterToggle: null },
   },

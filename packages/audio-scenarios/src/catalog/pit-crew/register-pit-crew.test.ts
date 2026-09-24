@@ -2035,7 +2035,7 @@ describe("pit-limiter / no-limiter family registration (issue #1051)", () => {
     {
       id: "pit-crew.no-limiter-entry",
       pool: "pit-limiter/entry",
-      event: "pitLane.entered",
+      event: "pitLane.approaching",
       data: {},
       telemetry: LACKS_LIMITER,
     },

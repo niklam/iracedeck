@@ -13,7 +13,7 @@ import {
   type TireWearReport,
   TrackWetness,
 } from "@iracedeck/event-bus";
-import type { GapTrendDirection, ProgressTrace } from "@iracedeck/iracing-sdk";
+import { type GapTrendDirection, type ProgressTrace, TrkLoc } from "@iracedeck/iracing-sdk";
 import type { CornerMarker } from "@iracedeck/track-data";
 
 /**
@@ -51,6 +51,13 @@ export type TranslatorState = {
   pitLaneInitialized: boolean;
   lastOnPitRoad: boolean;
   lastInPitStall: boolean;
+  /**
+   * `PlayerTrackSurface` on the previous tick (issue #1201). The dirt-oval
+   * `pitLane.approaching` path reads it to tell a drive-in from a car that
+   * came out of the garage (`NotInWorld`) straight onto pit road — a spawn,
+   * whichever of the stall signals iRacing happens to raise first.
+   */
+  lastTrackSurface: TrkLoc;
   approachExitingSuppressed: boolean;
   approachAlertFired: boolean;
   /**
@@ -1145,6 +1152,7 @@ export function createInitialState(): TranslatorState {
     lastOnPitRoad: false,
     lapStartedFromPits: false,
     lastInPitStall: false,
+    lastTrackSurface: TrkLoc.NotInWorld,
     approachExitingSuppressed: false,
     approachAlertFired: false,
     pitApproachCooldownUntil: 0,

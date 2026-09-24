@@ -1780,8 +1780,8 @@
     {
       "id": "pit-crew.no-limiter-entry",
       "family": "limiter",
-      "event": "pitLane.entered",
-      "description": "You drive onto pit road in a car that has no pit limiter.",
+      "event": "pitLane.approaching",
+      "description": "You head into the pit lane in a car that has no pit limiter.",
       "frame": "radio",
       "weight": 50,
       "weightBand": "NORMAL",
