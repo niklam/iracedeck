@@ -61,8 +61,8 @@ import type { IScenarioEngine } from "../../interpreter.js";
  * paragraph above says it prevents, and on a car that may well have a limiter.
  *
  * Residual, accepted: telemetry present but `dc*` fields not yet populated
- * during early connection reads as "no limiter". Both triggers only fire on pit
- * road, by which point the snapshot is fully populated.
+ * during early connection reads as "no limiter". Both triggers only fire on or
+ * approaching pit road, by which point the snapshot is fully populated.
  */
 export function lacksPitLimiter(telemetry: TelemetryData | null): boolean {
   return telemetry != null && !hasPitLimiter(telemetry);
@@ -84,11 +84,18 @@ export const NO_LIMITER_SPEEDING: ScenarioContract = {
 
 export const NO_LIMITER_ENTRY: ScenarioContract = {
   id: "pit-crew.no-limiter-entry",
+  // `pitLane.approaching`, not `pitLane.entered` (issue #1201). `entered` is
+  // every `OnPitRoad` false->true edge, and a car placed straight into its pit
+  // stall -- clicking Drive, a tow, a reset -- is one of those edges, so the
+  // reminder played to a driver who had not driven anywhere. `approaching` is
+  // the pit-entry signal the readback already uses: it never fires for a car
+  // that appears in its stall, on any track type, and it lands a few seconds
+  // BEFORE the speed line, which is when a reminder about the limit helps.
   when: {
-    event: "pitLane.entered",
+    event: "pitLane.approaching",
     where: (e) => lacksPitLimiter(e.telemetry as TelemetryData | null),
   },
-  description: "You drive onto pit road in a car that has no pit limiter.",
+  description: "You head into the pit lane in a car that has no pit limiter.",
   channel: AudioChannel.Voice,
   bus: AudioBus.Voice,
   base: "pit-crew",

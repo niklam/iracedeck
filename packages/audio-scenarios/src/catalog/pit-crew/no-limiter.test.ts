@@ -224,7 +224,7 @@ describe("lacksPitLimiter — the negated gate is not a bare negation", () => {
 describe("no-limiter where: predicates", () => {
   for (const [name, contract, event] of [
     ["NO_LIMITER_SPEEDING", NO_LIMITER_SPEEDING, "limiter.speeding"],
-    ["NO_LIMITER_ENTRY", NO_LIMITER_ENTRY, "pitLane.entered"],
+    ["NO_LIMITER_ENTRY", NO_LIMITER_ENTRY, "pitLane.approaching"],
   ] as const) {
     describe(name, () => {
       it("fires on a car with no pit limiter", () => {
@@ -282,7 +282,7 @@ describe("NO_LIMITER_CONTRACTS structure (issue #1065)", () => {
     }
 
     expect(NO_LIMITER_SPEEDING.when?.event).toBe("limiter.speeding");
-    expect(NO_LIMITER_ENTRY.when?.event).toBe("pitLane.entered");
+    expect(NO_LIMITER_ENTRY.when?.event).toBe("pitLane.approaching");
   });
 });
 
@@ -345,7 +345,7 @@ describe("no-limiter through the engine and the bundled script (issue #1065)", (
     it("the entry line speaks the limit — intro, number, unit — when the snapshot names a number the voice can say", () => {
       snapshot = SNAPSHOT_60_KMH;
 
-      bus.publishEvent("pitLane.entered", {} as never, NO_LIMITER);
+      bus.publishEvent("pitLane.approaching", {} as never, NO_LIMITER);
       flush(audio);
 
       expect(voiceClipsPlayed()).toEqual([
@@ -356,10 +356,17 @@ describe("no-limiter through the engine and the bundled script (issue #1065)", (
       ]);
     });
 
+    it("the entry line stays silent on pitLane.entered — a car placed in its stall is on that edge too (issue #1201)", () => {
+      bus.publishEvent("pitLane.entered", {} as never, NO_LIMITER);
+      flush(audio);
+
+      expect(voiceClipsPlayed()).toEqual([]);
+    });
+
     it("the entry line drops the WHOLE limit clause — never a dangling intro — when there is no snapshot", () => {
       snapshot = null;
 
-      bus.publishEvent("pitLane.entered", {} as never, NO_LIMITER);
+      bus.publishEvent("pitLane.approaching", {} as never, NO_LIMITER);
       flush(audio);
 
       expect(voiceClipsPlayed()).toEqual([`voice/${VOICE}/pit-limiter/entry-01.mp3`]);
@@ -368,7 +375,7 @@ describe("no-limiter through the engine and the bundled script (issue #1065)", (
     it("the entry line drops the WHOLE limit clause when the voice has no clip for the number", () => {
       snapshot = { ...SNAPSHOT_60_KMH, pitSpeedLimit: 61 };
 
-      bus.publishEvent("pitLane.entered", {} as never, NO_LIMITER);
+      bus.publishEvent("pitLane.approaching", {} as never, NO_LIMITER);
       flush(audio);
 
       expect(voiceClipsPlayed()).toEqual([`voice/${VOICE}/pit-limiter/entry-01.mp3`]);
