@@ -676,6 +676,21 @@ export type SimEventMap = {
   "damage.repairNeeded.raised": SimEvent<"damage.repairNeeded.raised", EmptySimEventPayload>;
 
   /**
+   * The player's incident count moved (issue #1122). Fires once per
+   * coalesced burst at flush, whether or not the burst resolved a type —
+   * the type-blind "an incident was scored" signal for consumers that never
+   * read the type: the qualifying lap-invalidation callout and the overtake
+   * gate's recent-incident window. `delta` is the burst's raw accumulated
+   * count movement, always positive. A burst that also resolved a type is
+   * followed on the same flush by `incident.occurred`, published AFTER this
+   * event — that publication order is what lets a type-blind consumer take
+   * the Voice bus ahead of the incident callouts. Consumers that need the
+   * type subscribe to `incident.occurred` instead; nothing here says what
+   * kind of incident it was.
+   */
+  "incident.scored": SimEvent<"incident.scored", { delta: number }>;
+
+  /**
    * Player incident announcement (issue #530; value model #938). `points` is
    * the incident's value as the sim scores it — for iRacing, the Sporting
    * Code §3.5.1 table value of the classified type, discipline-resolved
@@ -688,7 +703,9 @@ export type SimEventMap = {
    * the highest-scored classified {@link IncidentType} of the coalesced
    * burst (ties → latest) so audio scenarios can branch one callout per
    * category. Translators must omit emission when the incident type is
-   * unknown — every fire MUST set `type`.
+   * unknown — every fire MUST set `type`. A consumer that only needs to
+   * know an incident was scored, typed or not, subscribes to
+   * `incident.scored` (#1122), which every counted burst emits first.
    */
   "incident.occurred": SimEvent<"incident.occurred", { delta: number; points: number; type: IncidentType }>;
   "offTrack.started": SimEvent<"offTrack.started", EmptySimEventPayload>;

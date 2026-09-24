@@ -202,10 +202,12 @@ When iRacing charges you with an incident, the Race Engineer tells you what it s
 
 - **Off track** — the track-limits nudge ("Watch the curbs.") when four wheels leave the racing surface. No point count — you felt it.
 - **Out of control** — a composure line after a spin. No point count.
-- **Contact (wall)** — a light brush against the wall or an object; it carries no penalty points, so no count is spoken.
+- **Contact (wall)** — a light brush against the wall or an object. It carries no penalty points, so it is currently never announced (see below).
 - **Collision (wall)** — a proper wall hit, with the point count spoken: *"That cost us two penalty points."*
-- **Contact (car)** — light car-to-car contact; no points, no count.
+- **Contact (car)** — light car-to-car contact. No points, so currently never announced either.
 - **Collision (car)** — heavy car-to-car contact, with the point count spoken.
+
+**The engineer only names an incident your incident count can account for.** iRacing reports the kind of incident and moves your count separately, a moment apart, and it also reports light contact that costs you nothing. So before he speaks, the engineer checks the kind against how far the count has moved over the incident so far: a fresh incident that cost you one point is an off-track, never a car collision — while an off-track that turns into a spin a few seconds later still escalates to two points, as iRacing scores it. A light car contact followed a second later by an off-track is announced as the off-track it was scored as. That is also why the two contact lines stay quiet: a contact is worth no points, so a count that moved was moved by something else.
 
 The spoken count is **the value iRacing actually scores for the incident** — the Sporting Code value of the detected incident category, resolved per discipline, so heavy car contact is announced as four points on pavement but two points in dirt racing. iRacing scores a multi-stage crash as one incident that escalates to its worst outcome: go off track and end up in the wall a few seconds later and the whole thing is a single two-point incident, not one plus two. The engineer follows that model — each escalation announces the incident's full current value, and a worse outcome that lands after an earlier stage was already announced corrects it, cutting the earlier line off mid-sentence if it's still playing. If no matching count line exists for the active voice, the engineer describes the contact without naming a number.
 

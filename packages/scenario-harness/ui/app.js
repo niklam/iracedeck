@@ -423,7 +423,15 @@ function renderShortcuts() {
               if (step.holdMs) await new Promise((resolve) => setTimeout(resolve, step.holdMs));
             }
           }
-          if (s.event) {
+          // Issue #1122 — a shortcut standing for "an incident" leads with
+          // `incident.scored`, published in the SAME request as its `event`
+          // so the server publishes the pair back to back and synchronously,
+          // as the translator does on one flush tick. The qualifying line
+          // wins the Voice bus over the incident line only because of that
+          // order, and two requests would not be the mechanism under test.
+          if (s.event && s.precedingEvents) {
+            await post("/api/bus/publish", { events: [...s.precedingEvents, { event: s.event, data: s.data }] });
+          } else if (s.event) {
             await post("/api/bus/publish", { event: s.event, data: s.data });
           }
         } catch (e) {

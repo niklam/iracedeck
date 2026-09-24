@@ -203,6 +203,12 @@ export const EVENT_TEMPLATES = [
 
   // ── Incidents / off-track ──
   {
+    name: "incident.scored",
+    description:
+      "The player's incident count moved (issue #1122) — the type-blind signal every counted burst emits, `delta` the raw count movement; the translator publishes it BEFORE `incident.occurred` on the same flush",
+    data: { delta: 1 },
+  },
+  {
     name: "incident.occurred",
     description:
       "Player picked up an incident — `type` is the IncidentType discriminator (issue #530); `points` is the spoken Sporting Code value of the type, `delta` the raw count movement (issue #938)",

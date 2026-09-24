@@ -1095,7 +1095,8 @@ export type PitCrewDeps = {
   getLivePosition?: LivePositionResolver;
   // Overtake gate (issue #574 follow-up). Plugins compose this from
   // `getOvertakeTelemetryGate()` (`@iracedeck/sim-events-iracing`) plus a
-  // tracked `incident.occurred` timestamp. Read at event time to suppress the
+  // tracked `incident.scored` timestamp (the type-blind signal, #1122 — an
+  // untyped counted burst is still a moment). Read at event time to suppress the
   // WHOLE overtake callout (reaction + position, both directions) when the
   // swap wasn't a clean racing moment — cars alongside, off-track, crawling,
   // pit road, or a recent incident. Default permissive so callers that don't
@@ -1785,10 +1786,8 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   }
 
   // Qualifying lap-invalidation contract (issue #567; scripted since #1065).
-  // MUST be registered BEFORE the incident contracts below — both gate on
-  // `incident.occurred`, share the Voice bus, and run at the default
-  // `WEIGHT.NORMAL` band in different families. The scenario engine
-  // dispatches subscribers in registration order, and a second equal-weight
+  // It shares the Voice bus with the incident contracts below at the default
+  // `WEIGHT.NORMAL` band in a different family, and a second equal-weight
   // fire hitting a busy bus is silently dropped (see `attemptFire` in
   // interpreter.ts). The shape we want:
   //
@@ -1802,9 +1801,18 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   //                                     returns false (sessionType mismatch),
   //                                     incident contract fires normally.
   //
-  // Registration order is the SOLE mechanism here — incidents.ts deliberately
-  // does NOT gate on session type, because doing so would silence incidents
-  // on out-laps too (where the qualifying contract also stays silent).
+  // What decides the first row is PUBLICATION order, not registration order
+  // (#1122): this contract fires on `incident.scored`, the incident contracts
+  // on `incident.occurred`, and the translator emits the two on the same
+  // flush tick in that order (`flushIncidentBurst` in `sim-events-iracing`
+  // `diff/incidents.ts`), each dispatched synchronously through every handler
+  // before the next is published — so the qualifying fire holds the bus
+  // before the incident contracts are even asked. Until #1122 both fired on
+  // the one event and this block had to sit BEFORE the incident loop; it
+  // still does, for the reader, but moving it would change nothing.
+  // incidents.ts deliberately does NOT gate on session type, because doing so
+  // would silence incidents on out-laps too (where the qualifying contract
+  // also stays silent).
   //
   // The per-lap latch is module-scope inside qualifying-invalidation.ts and
   // rolls over naturally as `(sessionNum, lapCompleted)` advances. The tail
@@ -1826,10 +1834,10 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
 
   // Incident contracts (scripted since #1065): the script's count clause
   // reads the `incident.points` var (issue #922) — vocabulary-before-contract
-  // ordering, same as session-start. This loop stays AFTER the qualifying
-  // invalidation registration above: both subscribe to `incident.occurred`,
-  // and the order is what lets the qualifying line win the bus (see the
-  // comment block above).
+  // ordering, same as session-start. They fire on `incident.occurred`, which
+  // the translator publishes AFTER the qualifying contract's `incident.scored`
+  // on the same flush — that publication order is what lets the qualifying
+  // line win the bus (see the comment block above).
   registerIncidentVocabulary(engine);
 
   for (const c of INCIDENT_CONTRACTS) {

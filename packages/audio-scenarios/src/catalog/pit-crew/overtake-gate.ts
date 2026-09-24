@@ -40,7 +40,9 @@ export const OVERTAKE_RECENT_INCIDENT_MS = 10_000;
 /**
  * Live gating context for an overtake callout. Telemetry fields come from
  * `getOvertakeTelemetryGate()`; `msSinceIncident` is the plugin's tracked time
- * since the last `incident.occurred` (`null` = no incident this session).
+ * since the last `incident.scored` (`null` = no incident this session) — the
+ * type-blind signal (#1122), because a counted burst the translator could
+ * not type is still a moment the swap may be a consequence of.
  */
 export type OvertakeGate = {
   carsAlongside: boolean;

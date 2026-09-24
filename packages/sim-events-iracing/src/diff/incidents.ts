@@ -2,6 +2,10 @@
  * Incidents and off-track excursions.
  *
  * Emits:
+ *   - incident.scored — once per counted burst at flush, typed or not
+ *     (issue #1122): the type-blind "the count moved" signal, carrying the
+ *     burst's raw accumulated delta. Emitted BEFORE `incident.occurred` on
+ *     the same flush — see `flushIncidentBurst` for why the order matters.
  *   - incident.occurred — coalesced across a "burst" of count-increment
  *     events. iRacing reports a single physical crash as a stream of
  *     point-by-point increments over seconds. We buffer the latest
@@ -9,7 +13,8 @@
  *     the burst goes quiet for `INCIDENT_BURST_QUIET_MS` (or once
  *     `INCIDENT_BURST_MAX_MS` has elapsed from the first increment,
  *     whichever comes first). The audio scenario then plays one callout
- *     per crash, not three. Issue #530.
+ *     per crash, not three. Issue #530. Only a burst that resolved a type
+ *     emits it; an untyped burst emits `incident.scored` alone.
  *   - offTrack.started — when PlayerTrackSurface transitions to OffTrack.
  *   - offTrack.ended — when PlayerTrackSurface returns from OffTrack.
  *
@@ -39,15 +44,30 @@
  * **Why we latch the type byte.** iRacing sets `PlayerIncidents` (the
  * `irsdk_IncidentFlags` report byte) for exactly one ~16 ms internal
  * frame (capture-confirmed, #938), then clears it. The visible
- * `PlayerCarMyIncidentCount` increment usually lags ~32 ms / 2 frames
- * behind the flag — so the diff caches the last classified type across
- * ticks (with a staleness cap) and hands it to the count-delta consumer.
+ * `PlayerCarMyIncidentCount` increment usually lags ~200 ms behind the
+ * flag (#1122 re-read of the captures) — so the diff keeps the recent
+ * classified types across ticks (with a staleness cap) and hands them to
+ * the count-delta consumer.
  * The capture also showed the OPPOSITE order: the count increment landing
  * ~2 frames BEFORE its report byte. Two rules absorb that: an increment
  * with no resolvable type still extends the pending burst (it must not be
  * dropped), and a classified byte arriving within
  * `INCIDENT_LATE_TYPE_MS` of the burst's latest increment retypes the
  * pending burst (latest wins).
+ *
+ * **The count bounds the type** (issue #1122). The count delta is the one
+ * signal that cannot misreport what the sim scored, so no byte — the
+ * same-tick one, a latched one, or a late one — may type a burst unless
+ * `0 < V(type) <= chain total`, where the chain sums the count deltas of
+ * increments landing within `INCIDENT_SEQUENCE_GAP_MS` of each other
+ * (spanning burst boundaries, so a +3 car collision 4 s after an announced
+ * off-track still totals 4). A 0x contact byte therefore never types a
+ * counted burst, and a stale car-collision byte never turns a fresh +1
+ * into a 4x — the #1122 report, where a light car contact the sim scored
+ * nothing was handed to the next off-track. Because the off-track byte
+ * leads its increment by ~200 ms (every capture), the latch keeps a short
+ * HISTORY of classified bytes and an increment takes the worst consistent
+ * one (ties → latest), so a contact byte landing in that gap cannot overwrite it.
  *
  * `RepOffTrackOngoing` (0x03) and `RepCollisionWithWorldOngoing` (0x06)
  * are suppressed — the iRacing header notes they are never emitted by the
@@ -62,6 +82,7 @@
  */
 import type { IncidentType } from "@iracedeck/event-bus";
 import { INCIDENT_REP_MASK, IncidentFlags, type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
+import { type ILogger, silentLogger } from "@iracedeck/logger";
 
 import type { TranslatorState } from "../state.js";
 import { isDirtTrack } from "../track-type.js";
@@ -71,14 +92,27 @@ import type { EmitFn } from "./types.js";
 /**
  * Maximum age (ms) of a latched incident type before we consider it stale.
  * Sized for the observed iRacing emission pattern: the `PlayerIncidents`
- * byte is set briefly, then `PlayerCarMyIncidentCount` increments ~32 ms
- * later. 1500 ms gives ~50× headroom for slower hardware / framerate
- * spikes while still being short enough that an unrelated future
- * count increment can't pick up a stale type from a previous incident.
+ * byte is set briefly, then `PlayerCarMyIncidentCount` increments ~200 ms
+ * later (captures `20260811-125031-041`, `20260831-215824-076`). 1500 ms
+ * leaves headroom for slower hardware / framerate spikes; a byte inside it
+ * that does not belong to the increment is refused by the count bound
+ * (#1122), not by age.
  *
  * @internal Exported for testing.
  */
 export const PENDING_INCIDENT_STALENESS_MS = 1500;
+
+/**
+ * Longest gap (ms) between two count increments that still belong to one
+ * incident chain (#1122). Captures put iRacing's sequence end between
+ * 4.0 s (an off-track upgraded to a car collision, same sequence) and
+ * 15.5 s (two off-tracks each scored). Erring long only loosens the type
+ * bound; erring short would silence a genuine late escalation. A capture
+ * of off-track-then-contact at increasing delays would refine it.
+ *
+ * @internal Exported for testing.
+ */
+export const INCIDENT_SEQUENCE_GAP_MS = 10_000;
 
 /**
  * Quiet window for the burst coalescer. After the most recent count
@@ -192,6 +226,20 @@ export function classifyIncident(playerIncidents: number): IncidentType | null {
   }
 }
 
+/**
+ * Whether a type can be the worst outcome of a chain whose count moved by
+ * `chainTotal` (#1122): the sequence's score IS its worst outcome's value,
+ * so that value is positive once the count moved and never exceeds what
+ * the count says was scored.
+ *
+ * @internal Exported for testing.
+ */
+export function isTypeConsistent(type: IncidentType, chainTotal: number, collisionCarValue: number): boolean {
+  const value = incidentTypeValue(type, collisionCarValue);
+
+  return value > 0 && value <= chainTotal;
+}
+
 function clearIncidentBurst(state: TranslatorState): void {
   state.incidentBurstType = null;
   state.incidentBurstDelta = 0;
@@ -199,19 +247,44 @@ function clearIncidentBurst(state: TranslatorState): void {
   state.incidentBurstLatestAt = 0;
 }
 
-function flushIncidentBurst(state: TranslatorState, emit: EmitFn, collisionCarValue: number): void {
-  // Only flush when the burst resolved a type — an untyped burst (its
-  // report byte never observed, even via the late-type window) stays
-  // silent so the engineer never announces an unclassified incident.
+function flushIncidentBurst(state: TranslatorState, emit: EmitFn, collisionCarValue: number, logger: ILogger): void {
+  if (state.incidentBurstDelta > 0) {
+    // Every counted burst says the count moved (#1122), typed or not — the
+    // type-blind consumers (the qualifying lap-invalidation callout, the
+    // overtake gate's recent-incident window) read this and nothing else.
+    //
+    // Emitted BEFORE `incident.occurred`, and the order is load-bearing. The
+    // translator publishes the tick's emits in emit order and the bus
+    // dispatches each synchronously, so the qualifying contract's fire has
+    // already taken the Voice bus by the time the incident contracts hear
+    // `incident.occurred` — they then drop on the busy bus, and the driver
+    // hears "this lap will be invalidated" rather than generic coaching.
+    // Before #1122 that race was decided by registration order on ONE shared
+    // event; with two events, publication order is what decides it.
+    emit({ event: "incident.scored", data: { delta: state.incidentBurstDelta } });
+  }
+
+  // Only announce when the burst resolved a type — an untyped burst (its
+  // report byte never observed, even via the late-type window, or every
+  // byte it saw contradicted the count) stays silent so the engineer never
+  // announces an unclassified incident.
   if (state.incidentBurstType !== null && state.incidentBurstDelta > 0) {
+    const points = incidentTypeValue(state.incidentBurstType, collisionCarValue);
+    logger.debug(
+      `Incident flush: type=${state.incidentBurstType} points=${points} delta=${state.incidentBurstDelta} chain=${state.incidentChainTotal}`,
+    );
     emit({
       event: "incident.occurred",
       data: {
         delta: state.incidentBurstDelta,
-        points: incidentTypeValue(state.incidentBurstType, collisionCarValue),
+        points,
         type: state.incidentBurstType,
       },
     });
+  } else if (state.incidentBurstDelta > 0) {
+    logger.debug(
+      `Incident flush silent: no type consistent with delta=${state.incidentBurstDelta} chain=${state.incidentChainTotal}`,
+    );
   }
 
   clearIncidentBurst(state);
@@ -223,6 +296,7 @@ export function diffIncidents(
   now: number,
   emit: EmitFn,
   collisionCarValue: number = COLLISION_CAR_VALUE_PAVEMENT,
+  logger: ILogger = silentLogger,
 ): void {
   const isOnTrack = telemetry.IsOnTrack ?? false;
   const onPitRoad = telemetry.OnPitRoad ?? false;
@@ -263,12 +337,13 @@ export function diffIncidents(
     state.materialHistory = [];
     state.offTrackStartedAt = 0;
     state.offTrackWarnedThisExcursion = false;
-    // Drop any latched incident type and any pending burst — entering pit /
-    // leaving track means in-flight classification + burst data are no
-    // longer relevant. Don't flush — the engineer should not announce a
+    // Drop the latched types, the chain and any pending burst — entering
+    // pit / leaving track means in-flight classification + burst data are
+    // no longer relevant. Don't flush — the engineer should not announce a
     // pit-lane-time incident.
-    state.pendingIncidentType = null;
-    state.pendingIncidentTypeAt = 0;
+    state.incidentTypeHistory = [];
+    state.incidentChainTotal = 0;
+    state.incidentChainLatestAt = 0;
     clearIncidentBurst(state);
 
     return;
@@ -276,15 +351,19 @@ export function diffIncidents(
 
   // Latch every classified non-null read. The byte is set for ~one
   // iRacing frame; this is our only chance to capture the type before
-  // iRacing clears it. Overwriting an existing pending value with a fresh
-  // one is the right behavior for back-to-back incidents (the most
-  // recent classification wins; older count-deltas should already have
-  // consumed their pending entry by now).
+  // iRacing clears it. Every byte inside the staleness window is kept — an
+  // increment picks the worst one its count can support (#1122).
   const currentType = classifyIncident(playerIncidents);
 
+  if (state.incidentTypeHistory.length > 0) {
+    state.incidentTypeHistory = state.incidentTypeHistory.filter(
+      (entry) => now - entry.at <= PENDING_INCIDENT_STALENESS_MS,
+    );
+  }
+
   if (currentType !== null) {
-    state.pendingIncidentType = currentType;
-    state.pendingIncidentTypeAt = now;
+    state.incidentTypeHistory.push({ type: currentType, at: now });
+    logger.debug(`Incident byte: type=${currentType} report=0x${playerIncidents.toString(16)} count=${incidentCount}`);
   }
 
   // Track excursion state + sample material into ring buffer
@@ -308,27 +387,51 @@ export function diffIncidents(
   const delta = incidentCount - state.lastIncidentCount;
   state.lastIncidentCount = incidentCount;
 
-  if (delta > 0) {
-    // Resolve the type: prefer this tick's classification (if non-null);
-    // fall back to the latched value if it's still fresh enough to be
-    // related to this incident. Anything older than the staleness cap is
-    // discarded — it's almost certainly from an unrelated earlier event.
-    let resolvedType: IncidentType | null = currentType;
+  if (delta < 0) {
+    // The count went DOWN — a session change or reset with the car still on
+    // track. Nothing before it can bound what the new count scores.
+    state.incidentTypeHistory = [];
+    state.incidentChainTotal = 0;
+    state.incidentChainLatestAt = 0;
+  }
 
-    if (
-      resolvedType === null &&
-      state.pendingIncidentType !== null &&
-      now - state.pendingIncidentTypeAt <= PENDING_INCIDENT_STALENESS_MS
-    ) {
-      resolvedType = state.pendingIncidentType;
+  if (delta > 0) {
+    // Extend the chain, or open a new one when the previous increment is
+    // further back than the sequence gap (#1122).
+    if (state.incidentChainLatestAt === 0 || now - state.incidentChainLatestAt > INCIDENT_SEQUENCE_GAP_MS) {
+      state.incidentChainTotal = 0;
     }
 
-    // Always clear the latch on a count delta, regardless of whether we
-    // resolved a type. A count delta we couldn't classify shouldn't leave
-    // the latch primed for the next unrelated count change; an unrelated
-    // stale entry would otherwise misattribute.
-    state.pendingIncidentType = null;
-    state.pendingIncidentTypeAt = 0;
+    state.incidentChainTotal += delta;
+    state.incidentChainLatestAt = now;
+
+    // Resolve the type: the WORST latched byte (ties → latest; this tick's,
+    // if any, is last) whose value the chain's count can support — the
+    // sequence's score is its worst outcome's value (#938). A byte the count
+    // contradicts belongs to something the sim did not score this way — a
+    // 0x contact, or a collision report that moved nothing (#1122).
+    let resolvedType: IncidentType | null = null;
+    const rejected: string[] = [];
+
+    for (const { type: candidate } of state.incidentTypeHistory) {
+      const value = incidentTypeValue(candidate, collisionCarValue);
+
+      if (!isTypeConsistent(candidate, state.incidentChainTotal, collisionCarValue)) {
+        rejected.push(`${candidate}(${value})`);
+      } else if (resolvedType === null || value >= incidentTypeValue(resolvedType, collisionCarValue)) {
+        resolvedType = candidate;
+      }
+    }
+
+    const rejectedNote = rejected.length > 0 ? ` rejected=${rejected.join(",")}` : "";
+    logger.debug(
+      `Incident increment: delta=${delta} count=${incidentCount} chain=${state.incidentChainTotal} type=${resolvedType ?? "none"}${rejectedNote}`,
+    );
+
+    // Always clear the history on a count delta, regardless of whether we
+    // resolved a type: every byte seen so far either belonged to this
+    // increment or to nothing the count will ever score.
+    state.incidentTypeHistory = [];
 
     // Start a new burst or extend the in-flight one — for EVERY positive
     // delta, typed or not (#938: the capture showed the report byte can
@@ -355,26 +458,29 @@ export function diffIncidents(
 
     state.incidentBurstDelta += delta;
     state.incidentBurstLatestAt = now;
-  } else if (
-    currentType !== null &&
-    state.incidentBurstFirstAt > 0 &&
-    now - state.incidentBurstLatestAt <= INCIDENT_LATE_TYPE_MS &&
-    (state.incidentBurstType === null ||
-      incidentTypeValue(currentType, collisionCarValue) >=
-        incidentTypeValue(state.incidentBurstType, collisionCarValue))
-  ) {
+  } else if (currentType !== null && state.incidentBurstFirstAt > 0) {
     // The report byte can land 1–2 frames AFTER its count increment
     // (#938 capture, sequence C). Adopt it into the pending burst and
-    // consume the latch — it belongs to the increment just recorded, not
-    // to some future count change. The tight window keeps an unrelated
-    // later report from repainting a burst it doesn't belong to, and the
-    // same worst-severity guard as the increment path keeps a lesser byte
-    // (e.g. a 0x contact that moves no count) from downgrading an
-    // already-typed burst (#938 review); a non-adopted byte simply stays
-    // in the pending latch for a possible future increment of its own.
-    state.incidentBurstType = currentType;
-    state.pendingIncidentType = null;
-    state.pendingIncidentTypeAt = 0;
+    // consume it — it belongs to the increment just recorded, not to some
+    // future count change — when it lands inside the tight late-type
+    // window, the count supports it (#1122), and it does not downgrade an
+    // already-typed burst (#938 review). Otherwise it simply stays in the
+    // history for a possible future increment of its own.
+    const adopted =
+      now - state.incidentBurstLatestAt <= INCIDENT_LATE_TYPE_MS &&
+      isTypeConsistent(currentType, state.incidentChainTotal, collisionCarValue) &&
+      (state.incidentBurstType === null ||
+        incidentTypeValue(currentType, collisionCarValue) >=
+          incidentTypeValue(state.incidentBurstType, collisionCarValue));
+
+    if (adopted) {
+      state.incidentBurstType = currentType;
+      state.incidentTypeHistory = [];
+    }
+
+    logger.debug(
+      `Incident late byte: type=${currentType} ${adopted ? "adopted" : "not adopted"} chain=${state.incidentChainTotal}`,
+    );
   }
 
   // Check the pending burst on every tick — quiet-window or hard-cap
@@ -395,7 +501,7 @@ export function diffIncidents(
       quietElapsed >= INCIDENT_BURST_QUIET_MS ||
       (burstAge >= INCIDENT_BURST_MAX_MS && quietElapsed >= INCIDENT_LATE_TYPE_MS)
     ) {
-      flushIncidentBurst(state, emit, collisionCarValue);
+      flushIncidentBurst(state, emit, collisionCarValue, logger);
     }
   }
 }

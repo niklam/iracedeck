@@ -115,6 +115,38 @@ describe("SCENARIO_SHORTCUTS", () => {
       expect(shortcut.event ?? shortcut.telemetrySequence, `shortcut "${shortcut.id}" drives nothing`).toBeDefined();
     }
   });
+
+  it("leads every counted incident.occurred with incident.scored carrying the same delta, as the translator does (issue #1122)", () => {
+    // The pair is the mechanism the qualifying lap-invalidation line wins the
+    // Voice bus by, so a shortcut standing for a counted incident publishes
+    // both in the translator's order; a 0x report the count never moved for
+    // publishes `incident.occurred` alone, since the translator would publish
+    // neither and the shortcut only auditions the clip.
+    const incidents = SCENARIO_SHORTCUTS.filter((s) => s.event === "incident.occurred");
+
+    expect(incidents.length).toBeGreaterThan(0);
+
+    for (const shortcut of incidents) {
+      const delta = (shortcut.data as { delta: number }).delta;
+
+      if (delta > 0) {
+        expect(shortcut.precedingEvents, `shortcut "${shortcut.id}"`).toEqual([
+          { event: "incident.scored", data: { delta } },
+        ]);
+      } else {
+        expect(shortcut.precedingEvents, `shortcut "${shortcut.id}"`).toBeUndefined();
+      }
+    }
+  });
+
+  it("publishes incident.scored on its own only for a burst the translator could not type (issue #1122)", () => {
+    for (const shortcut of SCENARIO_SHORTCUTS) {
+      if (shortcut.event !== "incident.scored") continue;
+
+      expect(shortcut.precedingEvents, `shortcut "${shortcut.id}"`).toBeUndefined();
+      expect((shortcut.data as { delta: number }).delta, `shortcut "${shortcut.id}"`).toBeGreaterThan(0);
+    }
+  });
 });
 
 describe('the "Caution → restart" shortcut (issue #1127)', () => {

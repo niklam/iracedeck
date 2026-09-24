@@ -2,8 +2,9 @@
  * Harness-side store for the qualifying lap-invalidation snapshot (issue #567).
  *
  * The scenario's snapshot fields (`sessionType`, `sessionNum`, `lapsRemaining`,
- * `lapLimited`, `lapCompleted`) aren't carried on `incident.occurred` itself
- * and aren't easily round-trippable through telemetry mutation (`SessionNum`
+ * `lapLimited`, `lapCompleted`) aren't carried on `incident.scored` (the
+ * callout's trigger since #1122) or `incident.occurred` themselves and aren't
+ * easily round-trippable through telemetry mutation (`SessionNum`
  * change wipes the lap-time baseline, fakery interferes with other scenarios).
  * Same approach as the session-start snapshot: the UI pushes a fully-composed
  * snapshot here via `/api/qualifying-invalidation/snapshot`, `main.ts` wires

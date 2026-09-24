@@ -1330,10 +1330,12 @@ describe("incident callout live gating (issue #530)", () => {
     expect(voiceClipsPlayed().some((p) => p.includes("/incidents/off-track-"))).toBe(true);
   });
 
-  // Issue #567: the qualifying lap-invalidation scenario is registered
-  // BEFORE the incident scenarios in `index.ts`, so when both could fire on
+  // Issue #567: the qualifying lap-invalidation scenario fires on
+  // `incident.scored`, which the translator publishes BEFORE
+  // `incident.occurred` on the same flush (#1122), so when both could fire on
   // a qualifying flying lap the qualifying scenario grabs the Voice bus and
-  // the incident scenario drops. This test setup wires no qualifying-
+  // the incident scenario drops (the race itself is exercised in
+  // qualifying-invalidation.test.ts). This test setup wires no qualifying-
   // invalidation snapshot resolver (default `() => null`), so the qualifying
   // scenario's `where:` short-circuits and the incident scenario fires
   // normally in every session type — confirming there's no spurious

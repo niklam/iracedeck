@@ -9,7 +9,9 @@ import {
   diffIncidents,
   INCIDENT_BURST_QUIET_MS,
   INCIDENT_LATE_TYPE_MS,
+  INCIDENT_SEQUENCE_GAP_MS,
   incidentTypeValue,
+  isTypeConsistent,
   resolveCollisionCarValue,
 } from "./incidents.js";
 import type { PendingEvent } from "./types.js";
@@ -240,7 +242,7 @@ describe("diffIncidents — type-value announcements (issue #938)", () => {
   });
 
   it("announces the discipline-resolved collision-car value", () => {
-    const run = (collisionCarValue: number): Array<{ delta: number; points: number; type: string }> => {
+    const run = (collisionCarValue: number, count: number): Array<{ delta: number; points: number; type: string }> => {
       const state = createInitialState();
       const { events, emit } = collect();
       diffIncidents(state, tick(), 1_000, emit, collisionCarValue);
@@ -251,10 +253,10 @@ describe("diffIncidents — type-value announcements (issue #938)", () => {
         emit,
         collisionCarValue,
       );
-      diffIncidents(state, tick({ PlayerCarMyIncidentCount: 2 }), 2_033, emit, collisionCarValue);
+      diffIncidents(state, tick({ PlayerCarMyIncidentCount: count }), 2_033, emit, collisionCarValue);
       diffIncidents(
         state,
-        tick({ PlayerCarMyIncidentCount: 2 }),
+        tick({ PlayerCarMyIncidentCount: count }),
         2_033 + INCIDENT_BURST_QUIET_MS,
         emit,
         collisionCarValue,
@@ -263,11 +265,13 @@ describe("diffIncidents — type-value announcements (issue #938)", () => {
       return occurred(events);
     };
 
-    expect(run(COLLISION_CAR_VALUE_DIRT)).toEqual([{ delta: 2, points: 2, type: "collision-car" }]);
-    expect(run(COLLISION_CAR_VALUE_PAVEMENT)).toEqual([{ delta: 2, points: 4, type: "collision-car" }]);
+    expect(run(COLLISION_CAR_VALUE_DIRT, 2)).toEqual([{ delta: 2, points: 2, type: "collision-car" }]);
+    expect(run(COLLISION_CAR_VALUE_PAVEMENT, 4)).toEqual([{ delta: 4, points: 4, type: "collision-car" }]);
+    // A pavement car collision the count scored as only 2 is not a 4x (#1122).
+    expect(run(COLLISION_CAR_VALUE_PAVEMENT, 2)).toEqual([]);
   });
 
-  it("announces points 0 for a contact type so audio skips the count clause", () => {
+  it("never types a counted burst with a 0x contact byte (#1122)", () => {
     const state = createInitialState();
     const { events, emit } = collect();
     seed(state, emit);
@@ -276,7 +280,7 @@ describe("diffIncidents — type-value announcements (issue #938)", () => {
     diffIncidents(state, tick({ PlayerCarMyIncidentCount: 1 }), 2_033, emit);
     diffIncidents(state, tick({ PlayerCarMyIncidentCount: 1 }), 2_033 + INCIDENT_BURST_QUIET_MS, emit);
 
-    expect(occurred(events)).toEqual([{ delta: 1, points: 0, type: "contact-car" }]);
+    expect(occurred(events)).toEqual([]);
   });
 
   it("keeps an untyped-only burst silent", () => {
@@ -324,5 +328,302 @@ describe("diffIncidents — type-value announcements (issue #938)", () => {
     diffIncidents(state, tick({ PlayerCarMyIncidentCount: 1 }), 6_000, emit);
 
     expect(occurred(events)).toEqual([]);
+  });
+});
+
+describe("isTypeConsistent (issue #1122)", () => {
+  it("accepts a type whose value is positive and within the chain total", () => {
+    expect(isTypeConsistent("off-track", 1, COLLISION_CAR_VALUE_PAVEMENT)).toBe(true);
+    expect(isTypeConsistent("collision-car", 4, COLLISION_CAR_VALUE_PAVEMENT)).toBe(true);
+    expect(isTypeConsistent("collision-car", 2, COLLISION_CAR_VALUE_DIRT)).toBe(true);
+    expect(isTypeConsistent("off-track", 3, COLLISION_CAR_VALUE_PAVEMENT)).toBe(true);
+  });
+
+  it("rejects a type worth more than the count scored", () => {
+    expect(isTypeConsistent("collision-car", 1, COLLISION_CAR_VALUE_PAVEMENT)).toBe(false);
+    expect(isTypeConsistent("collision-car", 3, COLLISION_CAR_VALUE_PAVEMENT)).toBe(false);
+    expect(isTypeConsistent("out-of-control", 1, COLLISION_CAR_VALUE_PAVEMENT)).toBe(false);
+  });
+
+  it("rejects a 0x type once the count moved", () => {
+    expect(isTypeConsistent("contact-car", 1, COLLISION_CAR_VALUE_PAVEMENT)).toBe(false);
+    expect(isTypeConsistent("contact-world", 4, COLLISION_CAR_VALUE_PAVEMENT)).toBe(false);
+  });
+});
+
+describe("diffIncidents — the count bounds the type (issue #1122)", () => {
+  function seed(state: ReturnType<typeof createInitialState>, emit: (e: PendingEvent) => void): void {
+    diffIncidents(state, tick(), 1_000, emit);
+  }
+
+  it("the reported bug: a stale car-collision byte does not type a later +1 off-track", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    seed(state, emit);
+
+    // Light car contact the sim reports as a collision but scores 0x.
+    diffIncidents(state, tick({ PlayerIncidents: IncidentFlags.RepCollisionWithCar }), 2_000, emit);
+    diffIncidents(state, tick(), 2_016, emit);
+    // An off-track 800 ms later: the +1 lands on a tick with no byte, its
+    // off-track byte trailing by 2 frames.
+    diffIncidents(state, tick({ PlayerCarMyIncidentCount: 1 }), 2_800, emit);
+    diffIncidents(
+      state,
+      tick({ PlayerCarMyIncidentCount: 1, PlayerIncidents: IncidentFlags.RepOffTrack }),
+      2_833,
+      emit,
+    );
+    diffIncidents(state, tick({ PlayerCarMyIncidentCount: 1 }), 2_833 + INCIDENT_BURST_QUIET_MS, emit);
+
+    expect(occurred(events)).toEqual([{ delta: 1, points: 1, type: "off-track" }]);
+  });
+
+  it("keeps an off-track byte that a later contact byte lands on top of before the increment", () => {
+    for (const contact of [IncidentFlags.RepContactWithCar, IncidentFlags.RepCollisionWithCar]) {
+      const state = createInitialState();
+      const { events, emit } = collect();
+      seed(state, emit);
+
+      // The off-track byte leads its increment by ~190 ms (every capture);
+      // a car-contact byte lands in that gap.
+      diffIncidents(state, tick({ PlayerIncidents: IncidentFlags.RepOffTrack }), 2_000, emit);
+      diffIncidents(state, tick({ PlayerIncidents: contact }), 2_100, emit);
+      diffIncidents(state, tick({ PlayerCarMyIncidentCount: 1 }), 2_190, emit);
+      diffIncidents(state, tick({ PlayerCarMyIncidentCount: 1 }), 2_190 + INCIDENT_BURST_QUIET_MS, emit);
+
+      expect(occurred(events)).toEqual([{ delta: 1, points: 1, type: "off-track" }]);
+    }
+  });
+
+  it("does not let a same-tick collision byte type a fresh +1", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    seed(state, emit);
+
+    diffIncidents(state, tick({ PlayerIncidents: IncidentFlags.RepOffTrack }), 2_000, emit);
+    diffIncidents(
+      state,
+      tick({ PlayerCarMyIncidentCount: 1, PlayerIncidents: IncidentFlags.RepCollisionWithCar }),
+      2_190,
+      emit,
+    );
+    diffIncidents(state, tick({ PlayerCarMyIncidentCount: 1 }), 2_190 + INCIDENT_BURST_QUIET_MS, emit);
+
+    expect(occurred(events)).toEqual([{ delta: 1, points: 1, type: "off-track" }]);
+  });
+
+  it("stays silent for a contact byte followed by quiet, and after it for an untyped +1", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    seed(state, emit);
+
+    diffIncidents(state, tick({ PlayerIncidents: IncidentFlags.RepContactWithCar }), 2_000, emit);
+    diffIncidents(state, tick(), 4_000, emit);
+    expect(occurred(events)).toEqual([]);
+
+    diffIncidents(state, tick({ PlayerCarMyIncidentCount: 1 }), 5_000, emit);
+    diffIncidents(state, tick({ PlayerCarMyIncidentCount: 1 }), 5_000 + INCIDENT_BURST_QUIET_MS, emit);
+    expect(occurred(events)).toEqual([]);
+  });
+
+  it("does not adopt a late byte the count contradicts", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    seed(state, emit);
+
+    diffIncidents(state, tick({ PlayerIncidents: IncidentFlags.RepOffTrack }), 2_000, emit);
+    diffIncidents(state, tick({ PlayerCarMyIncidentCount: 1 }), 2_190, emit);
+    diffIncidents(
+      state,
+      tick({ PlayerCarMyIncidentCount: 1, PlayerIncidents: IncidentFlags.RepCollisionWithCar }),
+      2_223,
+      emit,
+    );
+    diffIncidents(state, tick({ PlayerCarMyIncidentCount: 1 }), 2_223 + INCIDENT_BURST_QUIET_MS, emit);
+
+    expect(occurred(events)).toEqual([{ delta: 1, points: 1, type: "off-track" }]);
+  });
+
+  it("still announces a fresh 4x car collision", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    seed(state, emit);
+
+    diffIncidents(state, tick({ PlayerIncidents: IncidentFlags.RepCollisionWithCar }), 2_000, emit);
+    diffIncidents(state, tick({ PlayerCarMyIncidentCount: 4 }), 2_108, emit);
+    diffIncidents(state, tick({ PlayerCarMyIncidentCount: 4 }), 2_108 + INCIDENT_BURST_QUIET_MS, emit);
+
+    expect(occurred(events)).toEqual([{ delta: 4, points: 4, type: "collision-car" }]);
+  });
+
+  it("does not chain an escalation past the sequence gap", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    seed(state, emit);
+
+    diffIncidents(state, tick({ PlayerIncidents: IncidentFlags.RepOffTrack }), 2_000, emit);
+    diffIncidents(state, tick({ PlayerCarMyIncidentCount: 1 }), 2_190, emit);
+    diffIncidents(state, tick({ PlayerCarMyIncidentCount: 1 }), 2_190 + INCIDENT_BURST_QUIET_MS, emit);
+
+    const later = 2_190 + INCIDENT_SEQUENCE_GAP_MS + 1_000;
+    diffIncidents(
+      state,
+      tick({ PlayerCarMyIncidentCount: 1, PlayerIncidents: IncidentFlags.RepCollisionWithCar }),
+      later,
+      emit,
+    );
+    diffIncidents(state, tick({ PlayerCarMyIncidentCount: 4 }), later + 108, emit);
+    diffIncidents(state, tick({ PlayerCarMyIncidentCount: 4 }), later + 108 + INCIDENT_BURST_QUIET_MS, emit);
+
+    // Only the off-track: a +3 outside the chain cannot be a 4x.
+    expect(occurred(events)).toEqual([{ delta: 1, points: 1, type: "off-track" }]);
+  });
+
+  it("types an increment with the worst consistent byte, not the latest", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    seed(state, emit);
+
+    diffIncidents(state, tick({ PlayerIncidents: IncidentFlags.RepCollisionWithWorld }), 2_000, emit);
+    diffIncidents(state, tick({ PlayerIncidents: IncidentFlags.RepOffTrack }), 2_080, emit);
+    diffIncidents(state, tick({ PlayerCarMyIncidentCount: 2 }), 2_200, emit);
+    diffIncidents(state, tick({ PlayerCarMyIncidentCount: 2 }), 2_200 + INCIDENT_BURST_QUIET_MS, emit);
+
+    expect(occurred(events)).toEqual([{ delta: 2, points: 2, type: "collision-world" }]);
+  });
+
+  it("resets the chain when the count goes down", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    diffIncidents(state, tick({ PlayerCarMyIncidentCount: 5 }), 1_000, emit);
+    diffIncidents(
+      state,
+      tick({ PlayerIncidents: IncidentFlags.RepOffTrack, PlayerCarMyIncidentCount: 5 }),
+      2_000,
+      emit,
+    );
+    diffIncidents(state, tick({ PlayerCarMyIncidentCount: 8 }), 2_100, emit);
+    diffIncidents(state, tick({ PlayerCarMyIncidentCount: 8 }), 2_100 + INCIDENT_BURST_QUIET_MS, emit);
+    expect(occurred(events)).toEqual([{ delta: 3, points: 1, type: "off-track" }]);
+
+    // New session: the count drops to 0 with the car on track, then a stale
+    // collision byte and a +1 inside the old chain's gap.
+    diffIncidents(state, tick({ PlayerCarMyIncidentCount: 0 }), 5_000, emit);
+    diffIncidents(state, tick({ PlayerIncidents: IncidentFlags.RepCollisionWithCar }), 5_500, emit);
+    diffIncidents(state, tick({ PlayerCarMyIncidentCount: 1 }), 6_000, emit);
+    diffIncidents(state, tick({ PlayerCarMyIncidentCount: 1 }), 6_000 + INCIDENT_BURST_QUIET_MS, emit);
+
+    expect(occurred(events)).toEqual([{ delta: 3, points: 1, type: "off-track" }]);
+  });
+
+  it("resets the chain on pit-lane entry", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    seed(state, emit);
+
+    diffIncidents(state, tick({ PlayerIncidents: IncidentFlags.RepCollisionWithWorld }), 2_000, emit);
+    diffIncidents(state, tick({ PlayerCarMyIncidentCount: 2 }), 2_100, emit);
+    diffIncidents(state, tick({ PlayerCarMyIncidentCount: 2 }), 2_100 + INCIDENT_BURST_QUIET_MS, emit);
+    diffIncidents(state, tick({ PlayerCarMyIncidentCount: 2, OnPitRoad: true }), 4_000, emit);
+    diffIncidents(
+      state,
+      tick({ PlayerCarMyIncidentCount: 2, PlayerIncidents: IncidentFlags.RepCollisionWithCar }),
+      5_000,
+      emit,
+    );
+    diffIncidents(state, tick({ PlayerCarMyIncidentCount: 4 }), 5_100, emit);
+    diffIncidents(state, tick({ PlayerCarMyIncidentCount: 4 }), 5_100 + INCIDENT_BURST_QUIET_MS, emit);
+
+    expect(occurred(events)).toEqual([{ delta: 2, points: 2, type: "collision-world" }]);
+  });
+});
+
+/** Every incident emit in emit order — the order the translator publishes them in. */
+function incidentEmits(events: PendingEvent[]): Array<{ event: string; data: unknown }> {
+  return events.filter((e) => e.event.startsWith("incident.")).map((e) => ({ event: e.event, data: e.data }));
+}
+
+describe("diffIncidents — incident.scored, the type-blind signal (issue #1122)", () => {
+  function seed(state: ReturnType<typeof createInitialState>, emit: (e: PendingEvent) => void): void {
+    diffIncidents(state, tick(), 1_000, emit);
+  }
+
+  it("emits incident.scored, and not incident.occurred, for a counted burst no byte could type", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    seed(state, emit);
+
+    // A 0x contact byte is never consistent with a moved count, so the burst
+    // stays untyped — yet the count moved, and the lap it moved on is gone.
+    diffIncidents(state, tick({ PlayerIncidents: IncidentFlags.RepContactWithCar }), 2_000, emit);
+    diffIncidents(state, tick({ PlayerCarMyIncidentCount: 1 }), 2_033, emit);
+    diffIncidents(state, tick({ PlayerCarMyIncidentCount: 1 }), 2_033 + INCIDENT_BURST_QUIET_MS, emit);
+
+    expect(incidentEmits(events)).toEqual([{ event: "incident.scored", data: { delta: 1 } }]);
+  });
+
+  it("emits both for a typed burst, incident.scored first", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    seed(state, emit);
+
+    diffIncidents(state, tick({ PlayerIncidents: IncidentFlags.RepOffTrack }), 2_000, emit);
+    diffIncidents(state, tick({ PlayerCarMyIncidentCount: 1 }), 2_033, emit);
+    diffIncidents(state, tick({ PlayerCarMyIncidentCount: 1 }), 2_033 + INCIDENT_BURST_QUIET_MS, emit);
+
+    // The order is the mechanism: the qualifying lap-invalidation contract
+    // fires on the first and must hold the Voice bus before the incident
+    // contracts hear the second.
+    expect(incidentEmits(events)).toEqual([
+      { event: "incident.scored", data: { delta: 1 } },
+      { event: "incident.occurred", data: { delta: 1, points: 1, type: "off-track" } },
+    ]);
+  });
+
+  it("carries the burst's whole accumulated delta", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    seed(state, emit);
+
+    diffIncidents(state, tick({ PlayerIncidents: IncidentFlags.RepOffTrack }), 2_000, emit);
+    diffIncidents(state, tick({ PlayerCarMyIncidentCount: 1 }), 2_033, emit);
+    diffIncidents(
+      state,
+      tick({ PlayerCarMyIncidentCount: 1, PlayerIncidents: IncidentFlags.RepCollisionWithCar }),
+      2_200,
+      emit,
+    );
+    diffIncidents(state, tick({ PlayerCarMyIncidentCount: 4 }), 2_233, emit);
+    diffIncidents(state, tick({ PlayerCarMyIncidentCount: 4 }), 2_233 + INCIDENT_BURST_QUIET_MS, emit);
+
+    expect(incidentEmits(events)).toEqual([
+      { event: "incident.scored", data: { delta: 4 } },
+      { event: "incident.occurred", data: { delta: 4, points: 4, type: "collision-car" } },
+    ]);
+  });
+
+  it("emits nothing while the count does not move, whatever the report byte says", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    seed(state, emit);
+
+    diffIncidents(state, tick({ PlayerIncidents: IncidentFlags.RepCollisionWithCar }), 2_000, emit);
+    diffIncidents(state, tick(), 2_033, emit);
+    diffIncidents(state, tick(), 2_033 + INCIDENT_BURST_QUIET_MS, emit);
+    diffIncidents(state, tick(), 6_000, emit);
+
+    expect(incidentEmits(events)).toEqual([]);
+  });
+
+  it("is cleared by pit-lane entry without emitting", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    seed(state, emit);
+
+    diffIncidents(state, tick({ PlayerCarMyIncidentCount: 1 }), 2_000, emit);
+    diffIncidents(state, tick({ PlayerCarMyIncidentCount: 1, OnPitRoad: true }), 2_100, emit);
+    diffIncidents(state, tick({ PlayerCarMyIncidentCount: 1 }), 6_000, emit);
+
+    expect(incidentEmits(events)).toEqual([]);
   });
 });

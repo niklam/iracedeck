@@ -24,6 +24,7 @@ import {
   initializeAudioScenarios,
   poolMemberPattern,
 } from "../../interpreter.js";
+import { _resetLastIncidentPoints, INCIDENT_SCENARIO_IDS } from "./incidents.js";
 import { registerPitCrew } from "./index.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import {
@@ -208,7 +209,7 @@ let qualifyingEnabled: boolean;
 
 function fire(data: QualifyingInvalidationSnapshot | null): void {
   lastSnapshot = data;
-  bus.publishEvent("incident.occurred", { delta: 1, points: 1, type: "off-track" });
+  bus.publishEvent("incident.scored", { delta: 1 });
   flush(audio);
 }
 
@@ -529,7 +530,7 @@ describe("qualifying-invalidation scenario — per-lap latch", () => {
     getScenarioEngine().fire("test.chatter"); // in flight, not flushed
 
     lastSnapshot = snap({ lapCompleted: 4, lapsRemaining: 2 });
-    bus.publishEvent("incident.occurred", { delta: 1, points: 1, type: "off-track" }); // parked
+    bus.publishEvent("incident.scored", { delta: 1 }); // parked
     lastSnapshot = snap({ lapCompleted: 5, lapsRemaining: 1 }); // S/F crossed while parked
     flush(audio); // the chatter finishes; the parked incident replays
 
@@ -571,12 +572,12 @@ describe("qualifying-invalidation scenario — per-lap latch", () => {
     engine.fire("test.chatter"); // in flight, not flushed
 
     lastSnapshot = snap({ lapCompleted: 4, lapsRemaining: 2 });
-    bus.publishEvent("incident.occurred", { delta: 1, points: 1, type: "off-track" }); // A parked
+    bus.publishEvent("incident.scored", { delta: 1 }); // A parked
 
     engine.fire("test.loud"); // cuts the chatter; the bus now runs at NORMAL
 
     lastSnapshot = snap({ lapCompleted: 5, lapsRemaining: 1 }); // S/F crossed
-    bus.publishEvent("incident.occurred", { delta: 1, points: 1, type: "off-track" }); // B approved, then dropped
+    bus.publishEvent("incident.scored", { delta: 1 }); // B approved, then dropped
 
     flush(audio); // test.loud finishes; A drains
 
@@ -636,7 +637,9 @@ describe("buildQualifyingInvalidationContract (issue #1065)", () => {
     expect("sequence" in c).toBe(false);
     expect(c.id).toBe("pit-crew.qualifying-invalidation-lap-invalidated");
     expect([...QUALIFYING_INVALIDATION_SCENARIO_IDS]).toEqual([c.id]);
-    expect(c.when?.event).toBe("incident.occurred");
+    // The type-blind signal (#1122): a counted burst the translator could
+    // not type never publishes `incident.occurred`, and it still invalidates.
+    expect(c.when?.event).toBe("incident.scored");
     expect(c.channel).toBe(AudioChannel.Voice);
     expect(c.bus).toBe(AudioBus.Voice);
     expect(c.family).toBe("qualifying-invalidation");
@@ -657,7 +660,7 @@ describe("buildQualifyingInvalidationContract (issue #1065)", () => {
   describe("the speak-time gate takes the snapshot the where: approved (issue #1138)", () => {
     /** A fresh event envelope — the object the stash is keyed by. */
     function envelope(): SimEventOf<SimEventName> {
-      return { event: "incident.occurred", timestamp: 0, telemetry: null, data: {} } as never;
+      return { event: "incident.scored", timestamp: 0, telemetry: null, data: { delta: 1 } } as never;
     }
 
     /** The context the engine hands the gate: the very envelope `where:` saw. */
@@ -877,5 +880,111 @@ describe("the bundled script's qualifying-invalidation entry (issue #1065)", () 
       .filter((message) => message.includes("qualifying-invalidation"));
 
     expect(qualifyingWarnings).toEqual([]);
+  });
+});
+
+describe("the Voice-bus race with the incident contracts (issue #1122)", () => {
+  // The bundled voice's incident clips beside this family's, and the script
+  // widened to both families, so the incident contracts have something to
+  // say — the race is only real when the loser would have spoken.
+  const RACE_MANIFEST: AudioAssetsManifest = {
+    ...manifest,
+    clips: [...manifest.clips, ...MANIFEST.clips.filter((clip) => clip.includes(`/${VOICE}/incidents/`))],
+  };
+  const RACE_SCRIPT: CalloutScript = {
+    ...SCRIPT,
+    scenarios: Object.fromEntries(
+      [...QUALIFYING_INVALIDATION_SCENARIO_IDS, ...INCIDENT_SCENARIO_IDS].map((id) => [id, SCRIPT.scenarios[id]]),
+    ),
+    fragments: {},
+  };
+
+  /**
+   * One counted, typed burst as the translator publishes it on a flush tick
+   * (`flushIncidentBurst` in `sim-events-iracing` `diff/incidents.ts`):
+   * `incident.scored` first, `incident.occurred` after it, back to back.
+   */
+  function publishTypedBurst(): void {
+    bus.publishEvent("incident.scored", { delta: 1 });
+    bus.publishEvent("incident.occurred", { delta: 1, points: 1, type: "off-track" });
+    flush(audio);
+  }
+
+  function incidentClips(): string[] {
+    return voicePaths().filter((p) => p.includes("/incidents/"));
+  }
+
+  beforeEach(() => {
+    _resetAudioScenarios();
+    _resetRadarEngine();
+    _resetSpotterEngine();
+    _resetPitSpeedingEngine();
+    _resetLastIncidentPoints();
+    resetQualifyingInvalidationLatch();
+    bus = createMockBus();
+    audio = createFakeAudio();
+    initializeAudioScenarios(bus, audio, RACE_MANIFEST, mockLogger as never, () => VOICE);
+    registerPitCrew(bus, {
+      logger: mockLogger as never,
+      getQualifyingInvalidationCalloutEnabled: () => qualifyingEnabled,
+      getQualifyingInvalidationSnapshot: () => lastSnapshot,
+      getIncidentCalloutEnabled: () => true,
+    });
+    getScenarioEngine().setScripts(new Map([[VOICE, RACE_SCRIPT]]));
+  });
+
+  afterEach(() => {
+    _resetLastIncidentPoints();
+  });
+
+  it("on a counted flying lap the lap-invalidated line takes the bus and the incident line drops", () => {
+    lastSnapshot = snap({ lapsRemaining: 3 });
+
+    publishTypedBurst();
+
+    expect(hasClip("/qualifying-invalidation/invalidated-01.mp3")).toBe(true);
+    expect(hasClip("/qualifying-invalidation/3-laps-left-01.mp3")).toBe(true);
+    expect(incidentClips()).toEqual([]);
+  });
+
+  it("published the other way round the incident line takes the bus instead — the order is the mechanism", () => {
+    // The control for the test above: nothing but publication order keeps
+    // the qualifying line in front, so reversing it must reverse the result.
+    lastSnapshot = snap({ lapsRemaining: 3 });
+
+    bus.publishEvent("incident.occurred", { delta: 1, points: 1, type: "off-track" });
+    bus.publishEvent("incident.scored", { delta: 1 });
+    flush(audio);
+
+    expect(incidentClips().some((p) => p.includes("/incidents/off-track-"))).toBe(true);
+    expect(hasClip("/qualifying-invalidation/invalidated-01.mp3")).toBe(false);
+  });
+
+  it("on a pit-exit lap the qualifying where: refuses, nothing holds the bus, and the incident line plays", () => {
+    lastSnapshot = snap({ lapStartedFromPits: true });
+
+    publishTypedBurst();
+
+    expect(hasClip("/qualifying-invalidation/invalidated-01.mp3")).toBe(false);
+    expect(incidentClips().some((p) => p.includes("/incidents/off-track-"))).toBe(true);
+  });
+
+  it("outside qualifying the incident line plays alone", () => {
+    lastSnapshot = snap({ sessionType: "race" });
+
+    publishTypedBurst();
+
+    expect(hasClip("/qualifying-invalidation/invalidated-01.mp3")).toBe(false);
+    expect(incidentClips().some((p) => p.includes("/incidents/off-track-"))).toBe(true);
+  });
+
+  it("a counted burst the translator could not type — incident.scored alone — still invalidates the lap", () => {
+    lastSnapshot = snap({ lapsRemaining: 3 });
+
+    bus.publishEvent("incident.scored", { delta: 1 });
+    flush(audio);
+
+    expect(hasClip("/qualifying-invalidation/invalidated-01.mp3")).toBe(true);
+    expect(incidentClips()).toEqual([]);
   });
 });

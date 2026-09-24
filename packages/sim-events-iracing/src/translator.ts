@@ -1897,7 +1897,7 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   diffTireWear(self.state, telemetry, emit, pending, replayOnlySession);
   // The discipline-resolved collision-car value (Sporting Code §3.5.1:
   // 4x pavement / 2x dirt) feeds the spoken incident value (#938).
-  diffIncidents(self.state, telemetry, now, emit, resolveCollisionCarValue(sessionInfo));
+  diffIncidents(self.state, telemetry, now, emit, resolveCollisionCarValue(sessionInfo), self.logger);
   diffDamage(self.state, telemetry, now, emit);
   // Overtake gain/loss (issue #574). Track length powers the 10 m physical-gap
   // gate; resolved here so the diff stays out of session-info parsing. `null`

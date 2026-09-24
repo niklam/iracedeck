@@ -622,14 +622,21 @@ export type TranslatorState = {
   offTrackWarnedThisExcursion: boolean;
   materialHistory: MaterialSample[];
   offTrackPending: boolean; // true between offTrack.started and offTrack.ended
-  // Latch for the transient `PlayerIncidents` byte (issue #530). iRacing
-  // sets the IncidentFlags byte for ~one 16 ms tick then clears it, BEFORE
-  // PlayerCarMyIncidentCount visibly increments (~32 ms / 2 frames later).
-  // The diff caches the most recent classified type and consumes it when
-  // the count delta arrives. Stale entries are rejected via timestamp;
-  // `pendingIncidentTypeAt` is 0 when no type is pending.
-  pendingIncidentType: IncidentType | null;
-  pendingIncidentTypeAt: number; // 0 = no pending; >0 = ms timestamp captured at
+  // History of the transient `PlayerIncidents` byte (issue #530; a list
+  // since #1122). iRacing sets the IncidentFlags byte for ~one 16 ms tick
+  // then clears it, usually ~200 ms BEFORE PlayerCarMyIncidentCount visibly
+  // increments. The diff keeps every classified byte for
+  // `PENDING_INCIDENT_STALENESS_MS` and an increment takes the worst one
+  // consistent with the count (ties → latest) — a single slot let a later 0x contact byte
+  // overwrite the off-track byte its increment belonged to (#1122).
+  incidentTypeHistory: Array<{ type: IncidentType; at: number }>;
+  // The incident CHAIN (#1122): count deltas summed while each increment
+  // lands within `INCIDENT_SEQUENCE_GAP_MS` of the previous one. It spans
+  // burst boundaries and bounds the type — a type is accepted only when
+  // 0 < its value <= this total. `incidentChainLatestAt` is 0 when no chain
+  // is open.
+  incidentChainTotal: number;
+  incidentChainLatestAt: number;
   // Burst-coalesce buffer (issue #530; value model #938). A single physical
   // incident in iRacing (one crash) often arrives as a stream of count
   // increments — each step the MARGINAL upgrade toward the sequence's worst
@@ -1242,8 +1249,9 @@ export function createInitialState(): TranslatorState {
     offTrackWarnedThisExcursion: false,
     materialHistory: [],
     offTrackPending: false,
-    pendingIncidentType: null,
-    pendingIncidentTypeAt: 0,
+    incidentTypeHistory: [],
+    incidentChainTotal: 0,
+    incidentChainLatestAt: 0,
     incidentBurstType: null,
     incidentBurstDelta: 0,
     incidentBurstFirstAt: 0,

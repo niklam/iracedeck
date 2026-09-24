@@ -1,7 +1,9 @@
 /**
  * Qualifying lap-invalidation callout — issue #567; scripted since #1065.
  *
- * Fires on `incident.occurred` when the active session is qualifying and the
+ * Fires on `incident.scored` — the type-blind "the count moved" signal
+ * (issue #1122), which every counted burst emits whether or not the
+ * translator could type it — when the active session is qualifying and the
  * driver hasn't already heard the callout for the current lap. In the bundled
  * script the core line ("This lap will be invalidated.") always plays; the
  * tail is one of five per-N pre-recorded clips, or the out-of-laps / plenty /
@@ -58,16 +60,29 @@
  * carried anyway so a future second qualifying-related callout shares
  * preemption with this one.
  *
- * **Bus-race with incident contracts.** Both this contract and the
- * `pit-crew.incident-*` contracts subscribe to `incident.occurred` on the
- * Voice bus at the default weight (`WEIGHT.NORMAL`). The engine drops
- * whichever loses the bus-grab race. Two defenses are in place: (1) the
- * incident contracts suppress themselves via a
- * `getSessionType().includes("Qualify")` gate (the correct production
- * semantic — the lap-status news supersedes generic coaching), and (2) this
- * contract is registered BEFORE the incident contracts in `index.ts`, so
- * subscription order keeps the qualifying callout in front when both gates
- * would pass.
+ * **Bus-race with incident contracts.** This contract and the
+ * `pit-crew.incident-*` contracts both fire onto the Voice bus at the
+ * default weight (`WEIGHT.NORMAL`), in different families, and the engine
+ * drops whichever arrives second. Since #1122 they no longer share an
+ * event: this contract fires on `incident.scored`, the incident contracts on
+ * `incident.occurred`, and the translator emits the two on the same flush
+ * tick in THAT order (`flushIncidentBurst` in `sim-events-iracing`
+ * `diff/incidents.ts`). Publication is synchronous — the translator publishes
+ * its tick's emits in emit order, the bus dispatches each to every handler
+ * before returning, and the engine's immediate path runs `where:` and takes
+ * the bus inside the handler — so by the time the incident contracts hear
+ * `incident.occurred` this contract's fire already holds the bus and theirs
+ * drop as "bus busy". Before #1122 the same race was decided by
+ * registration order on the one shared event; the registration position in
+ * `index.ts` is kept for readability, but it decides nothing now. The
+ * incident contracts deliberately carry no session-type gate of their own:
+ * on out-laps and post-pit laps this `where:` refuses, no fire takes the
+ * bus, and the driver still hears the generic coaching.
+ *
+ * Why the type-blind event: the translator types a burst only when a report
+ * byte the count can support was seen, and leaves it silent otherwise —
+ * which is right for the incident callouts and wrong here, where any
+ * scored incident invalidates the lap whatever kind it was.
  *
  * **The contract names no `base`** — it never did, and the migration keeps
  * the literal verbatim: the script's `pool:qualifying-invalidation/…` steps
@@ -292,7 +307,10 @@ export function buildQualifyingInvalidationContract(
   return {
     id: "pit-crew.qualifying-invalidation-lap-invalidated",
     when: {
-      event: "incident.occurred",
+      // The type-blind signal (#1122): a counted burst the translator could
+      // not type still invalidates the lap, and `incident.occurred` never
+      // fires for one. See the header for the bus race this order wins.
+      event: "incident.scored",
       where: (ev) => {
         const snapshot = getSnapshot();
 
