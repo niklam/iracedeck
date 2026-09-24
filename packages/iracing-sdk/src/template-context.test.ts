@@ -11,7 +11,7 @@ import {
   splitDriverName,
 } from "./template-context.js";
 import { resolveTemplate } from "./template-resolver.js";
-import { IRSDK_UNLIMITED_LAPS, type SessionInfo, type TelemetryData } from "./types.js";
+import { IRSDK_UNLIMITED_LAPS, IRSDK_UNLIMITED_TIME, type SessionInfo, type TelemetryData } from "./types.js";
 
 function makeDriver(overrides: Record<string, unknown> = {}) {
   return {
@@ -478,6 +478,65 @@ describe("buildTemplateContextFromData", () => {
 
     expect(ctx.raw["session.laps_remaining"]).toBe(0);
     expect(ctx.display["session.laps_remaining"]).toBe("0");
+  });
+
+  it("should render session.time_remaining empty when SessionTimeRemain reads the unlimited sentinel (#1186)", () => {
+    // A lap race reports the time side as IRSDK_UNLIMITED_TIME — not a clock,
+    // so a custom template must not render 10080:00.
+    const drivers = [makeDriver({ CarIdx: 0 })];
+    const sessionInfo = makeSessionInfo(drivers, 0);
+    const telemetry = makeTelemetry({ SessionTimeRemain: IRSDK_UNLIMITED_TIME });
+
+    const ctx = buildTemplateContextFromData(telemetry, sessionInfo);
+
+    expect(ctx.raw["session.time_remaining"]).toBe("");
+    expect(ctx.display["session.time_remaining"]).toBe("");
+  });
+
+  it("should render session.time_remaining empty when SessionTimeRemain is missing or NaN", () => {
+    const drivers = [makeDriver({ CarIdx: 0 })];
+    const sessionInfo = makeSessionInfo(drivers, 0);
+
+    const missing = buildTemplateContextFromData(makeTelemetry({ SessionTimeRemain: undefined }), sessionInfo);
+    expect(missing.raw["session.time_remaining"]).toBe("");
+    expect(missing.display["session.time_remaining"]).toBe("");
+
+    const nan = buildTemplateContextFromData(makeTelemetry({ SessionTimeRemain: NaN }), sessionInfo);
+    expect(nan.raw["session.time_remaining"]).toBe("");
+    expect(nan.display["session.time_remaining"]).toBe("");
+  });
+
+  it("should render session.time_remaining empty for a negative or infinite SessionTimeRemain", () => {
+    const drivers = [makeDriver({ CarIdx: 0 })];
+    const sessionInfo = makeSessionInfo(drivers, 0);
+
+    for (const value of [-3.2, Infinity]) {
+      const ctx = buildTemplateContextFromData(makeTelemetry({ SessionTimeRemain: value }), sessionInfo);
+      expect(ctx.display["session.time_remaining"]).toBe("");
+    }
+  });
+
+  it("should still format a clock one second below the unlimited sentinel", () => {
+    const drivers = [makeDriver({ CarIdx: 0 })];
+    const sessionInfo = makeSessionInfo(drivers, 0);
+    const telemetry = makeTelemetry({ SessionTimeRemain: IRSDK_UNLIMITED_TIME - 1 });
+
+    const ctx = buildTemplateContextFromData(telemetry, sessionInfo);
+
+    expect(ctx.display["session.time_remaining"]).toBe("10079:59");
+  });
+
+  it("should keep session.time_remaining as the formatted M:SS string in both maps for a real clock", () => {
+    const drivers = [makeDriver({ CarIdx: 0 })];
+    const sessionInfo = makeSessionInfo(drivers, 0);
+
+    const ctx = buildTemplateContextFromData(makeTelemetry({ SessionTimeRemain: 3661.5 }), sessionInfo);
+    expect(ctx.raw["session.time_remaining"]).toBe("61:01");
+    expect(ctx.display["session.time_remaining"]).toBe("61:01");
+
+    // The clock reaching zero does not end a timed race — 0 is a real reading.
+    const expired = buildTemplateContextFromData(makeTelemetry({ SessionTimeRemain: 0 }), sessionInfo);
+    expect(expired.display["session.time_remaining"]).toBe("0:00");
   });
 
   it("should populate race_ahead and race_behind from race position", () => {
