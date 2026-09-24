@@ -44,7 +44,7 @@ The contract's `description` ("… as the pace car pulls in …") carries the sa
 
 ## Testing
 
-- **Guard:** a test in `@iracedeck/audio-assets` fails if any `green-held` line in any voice config mentions the pace car (case-insensitive `pace car`), so a later rewording cannot bring the claim back.
+- **No wording guard.** A test that rejected any green-held line mentioning the pace car was considered and dropped: `green-held-05` ("Last few seconds behind the pace car") mentions it without placing it, so the test would need a rule for which mentions count as a claim — hard to maintain for a small risk.
 - **Existing guards stay green:** script coverage, the callout-scripts freshness test, the pack-reference freshness test, and the voice-pack catalog entry. The pack's `version` is bumped and its catalog entry regenerated through `pack:voice default`, as #1116 requires.
 - **Manual:** audition the three regenerated clips through the radio filter, then play the harness's *Caution → restart* shortcut and hear a green-held line with no pace-car wording, followed by the pace-car-off line.
 - **Changelog:** a **Bug Fixes** line, since the lines shipped in earlier releases.
