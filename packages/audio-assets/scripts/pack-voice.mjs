@@ -21,12 +21,14 @@
  * Usage: pnpm --filter @iracedeck/audio-assets pack:voice [<pack-id> ...] [--no-catalog | --stage-only]
  *        node packages/audio-assets/scripts/pack-voice.mjs [<pack-id> ...] [--no-catalog | --stage-only]
  *
- * `--no-catalog` is the development loop's flag: it stages and zips without
- * touching `catalog/<id>.json`. That entry is the release contract — its
- * `sha256` is what the installer compares against an installed pack — so a run
- * whose only purpose is a staged tree to point a development voice root at
- * must not rewrite it. It is per run, not a mode: the release workflow keeps
- * calling this script without it.
+ * `--no-catalog` stages and zips without touching `catalog/<id>.json` — for an
+ * archive nobody should commit, such as a sideload or an inspection. That
+ * entry is the release contract — its `sha256` is what the installer compares
+ * against an installed pack — so a run whose only purpose is a staged tree or
+ * a throwaway archive must not rewrite it. It is per run, not a mode: the
+ * release workflow keeps calling this script without it. (Before #1214 it was
+ * the development loop's flag; the build's `stage:dev-voices` task now stages
+ * with `--stage-only`, below.)
  *
  * `--stage-only` is stricter still (#1214): it stages the tree, with every
  * check a full run makes before the zip (the callout script's grammar, the
