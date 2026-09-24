@@ -637,7 +637,7 @@ function buildSessionFields(
   const lapsRemaining = resolveLapsRemaining(telemetry);
   // Blank when the time side does not bind — the unlimited sentinel of a lap
   // race is not a clock (#1186).
-  const timeRemaining = resolveTimeRemainingS(telemetry) ?? undefined;
+  const timeRemaining = resolveTimeRemainingS(telemetry);
 
   const type = (currentSession?.SessionType as string) ?? "";
   // time_remaining keeps the formatted M:SS string in BOTH maps — expressions
@@ -700,8 +700,8 @@ function extractPlayerCarIdx(sessionInfo: SessionInfo | null): number {
 /**
  * @internal Exported for testing
  */
-export function formatTimeRemaining(seconds: number | undefined): string {
-  if (seconds === undefined || seconds < 0) return "";
+export function formatTimeRemaining(seconds: number | null | undefined): string {
+  if (seconds === null || seconds === undefined || seconds < 0) return "";
 
   const totalSeconds = Math.floor(seconds);
   const mins = Math.floor(totalSeconds / 60);

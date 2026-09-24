@@ -13,7 +13,8 @@
  *
  * This module owns exactly three things, shared by every consumer — the fuel
  * laps-left callouts (`sim-events-iracing`), Session Info's Time Remaining
- * key and the template context's `session.laps_remaining`:
+ * key and the template context's `session.laps_remaining` and
+ * `session.time_remaining`:
  *
  *   1. decoding the two sentinels,
  *   2. the rule that `null` means UNKNOWN (missing, sentinel, nonsensical) —

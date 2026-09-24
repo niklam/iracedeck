@@ -506,6 +506,26 @@ describe("buildTemplateContextFromData", () => {
     expect(nan.display["session.time_remaining"]).toBe("");
   });
 
+  it("should render session.time_remaining empty for a negative or infinite SessionTimeRemain", () => {
+    const drivers = [makeDriver({ CarIdx: 0 })];
+    const sessionInfo = makeSessionInfo(drivers, 0);
+
+    for (const value of [-3.2, Infinity]) {
+      const ctx = buildTemplateContextFromData(makeTelemetry({ SessionTimeRemain: value }), sessionInfo);
+      expect(ctx.display["session.time_remaining"]).toBe("");
+    }
+  });
+
+  it("should still format a clock one second below the unlimited sentinel", () => {
+    const drivers = [makeDriver({ CarIdx: 0 })];
+    const sessionInfo = makeSessionInfo(drivers, 0);
+    const telemetry = makeTelemetry({ SessionTimeRemain: IRSDK_UNLIMITED_TIME - 1 });
+
+    const ctx = buildTemplateContextFromData(telemetry, sessionInfo);
+
+    expect(ctx.display["session.time_remaining"]).toBe("10079:59");
+  });
+
   it("should keep session.time_remaining as the formatted M:SS string in both maps for a real clock", () => {
     const drivers = [makeDriver({ CarIdx: 0 })];
     const sessionInfo = makeSessionInfo(drivers, 0);
