@@ -6,6 +6,18 @@
   },
   "releases": [
     {
+      "version": "3.4.0",
+      "date": null,
+      "categories": [
+        {
+          "title": "Bug Fixes",
+          "items": [
+            "The Race Engineer no longer announces heavy contact with another car for an incident iRacing scored as an off-track. He now checks the kind of incident against how far your incident count actually moved, so a light car contact followed a moment later by an off-track is called as the one-point off-track it was. Light contact, which costs no points, is no longer announced at all. See <a href=\"https://iracedeck.com/docs/actions/audio-voice/pit-crew/#incident-callouts\" target=\"_blank\" rel=\"noopener noreferrer\">Pit Crew</a>."
+          ]
+        }
+      ]
+    },
+    {
       "version": "3.3.0",
       "date": "2026-09-23",
       "categories": [
