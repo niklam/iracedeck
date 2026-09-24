@@ -102,6 +102,33 @@ describe("diffPitLane — approach cooldown (road course)", () => {
   });
 });
 
+describe("diffPitLane — spawn into the approach zone (issue #1201)", () => {
+  it("stays silent when the car appears in the approach zone straight out of the garage, and on the ticks after", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+
+    diffPitLane(state, tick({ PlayerTrackSurface: TrkLoc.NotInWorld }), TrackType.Unknown, 1000, emit); // seed: garage
+    diffPitLane(state, approaching, TrackType.Unknown, 1010, emit); // appeared, OnPitRoad not yet up
+    diffPitLane(state, approaching, TrackType.Unknown, 1020, emit); // still there a tick later
+    diffPitLane(state, droveIn, TrackType.Unknown, 1030, emit); // OnPitRoad catches up
+
+    expect(approachEvents(events)).toHaveLength(0);
+    expect(state.pitApproachCooldownUntil).toBe(0);
+  });
+
+  it("still fires on the next genuine approach once the car is back on track", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+
+    diffPitLane(state, tick({ PlayerTrackSurface: TrkLoc.NotInWorld }), TrackType.Unknown, 1000, emit); // seed: garage
+    diffPitLane(state, approaching, TrackType.Unknown, 1010, emit); // appeared — silent
+    diffPitLane(state, onTrack, TrackType.Unknown, 1020, emit); // out on track
+    diffPitLane(state, approaching, TrackType.Unknown, 1030, emit); // real approach
+
+    expect(approachEvents(events)).toHaveLength(1);
+  });
+});
+
 describe("diffPitLane — approach cooldown (dirt oval)", () => {
   it("fires once on the drive-in edge and arms the cooldown", () => {
     const state = createInitialState();

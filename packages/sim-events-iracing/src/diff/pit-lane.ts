@@ -95,7 +95,12 @@ export function diffPitLane(
 
   // ── Approach zone (with exit suppression) ──────────────────────────────
   const isOnTrack = trackSurface === TrkLoc.OnTrack;
-  const isExitingPits = state.lastOnPitRoad || state.approachExitingSuppressed;
+  // A car that appears in the approach zone straight out of the garage
+  // (`NotInWorld` on the previous tick) was placed there, not driven in — treat
+  // it like one leaving pit road, so it stays suppressed until back on track
+  // rather than for a single tick (issue #1201).
+  const appearedInApproach = isApproaching && state.lastTrackSurface === TrkLoc.NotInWorld;
+  const isExitingPits = state.lastOnPitRoad || state.approachExitingSuppressed || appearedInApproach;
 
   if (isApproaching && isExitingPits) {
     // Car is in the approach zone but coming FROM pit road — stay suppressed.
