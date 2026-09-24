@@ -39,9 +39,11 @@ export interface PluginConfig {
   featureFlags?: PlatformFeatures;
   /**
    * Absolute path of a development voice root (#1143). Only a development
-   * build carries it: the three Rollup configs write it from the gitignored
-   * `dev.local.json`, so a release build cannot. The plugin scans it ahead of
-   * the AppData packs root and never installs over what it provides.
+   * build carries it: the three Rollup configs write it when the gitignored
+   * `dev.local.json` or the developer's own `IRACEDECK_DEV_VOICES=1` turns
+   * development mode on (#1214), and CI sets neither, so a release build
+   * cannot. The plugin scans it ahead of the AppData packs root and never
+   * installs over what it provides.
    */
   devVoicePacksRoot?: string;
 }
