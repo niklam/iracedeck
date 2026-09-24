@@ -6,8 +6,10 @@
 </sdpi-item>
 <div class="ird-supporting-text">
   Time the Replay Control "Jump to Fastest Lap" mode waits between each lap-search
-  broadcast while walking the cursor. iRacing resolves the exact lap-boundary
+  broadcast when it has to search the replay — a lap iRaceDeck recorded live is a
+  single jump and needs no search. iRacing resolves the exact lap-boundary
   position asynchronously after each step, so a too-short delay can leave the
-  cursor parked mid-lap. Default 400 ms. Slower computers and longer tracks may
-  need to increase the value.
+  cursor parked mid-lap; each step may also take up to four times this value to
+  settle before the search gives up. Default 400 ms. Slower computers and longer
+  tracks may need to increase the value.
 </div>
