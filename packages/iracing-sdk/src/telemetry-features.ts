@@ -151,6 +151,30 @@ export function isLiveOnTrack(t: TelemetryData | null | undefined): boolean {
 }
 
 /**
+ * The replay frame the moment on screen has — the ONE position read every
+ * replay-marker and lap-record consumer measures against (#1162, #1203).
+ *
+ * In a replay (`IsReplayPlaying === true`, paused included) it is
+ * `ReplayFrameNum`, the absolute position over the whole recording. While
+ * driving, `ReplayFrameNum` reads a constant 0 and the frame the recording is
+ * at is its current length, `ReplayFrameNumEnd` — which grows at 60 frames per
+ * second of session time. Both are frames of the same absolute numbering, so a
+ * marker set from the car and a jump made from the replay agree.
+ *
+ * Returns `null` when the field the mode needs is missing or not a finite
+ * number — a consumer then does nothing, rather than jumping to frame 0.
+ *
+ * @param t - The latest telemetry snapshot, or null when unavailable
+ */
+export function resolveReplayFrame(t: TelemetryData | null | undefined): number | null {
+  if (!t) return null;
+
+  const frame = t.IsReplayPlaying === true ? t.ReplayFrameNum : t.ReplayFrameNumEnd;
+
+  return typeof frame === "number" && Number.isFinite(frame) ? frame : null;
+}
+
+/**
  * Whether the session is in a POST-RACE phase — the checkered flag is out or the
  * field is in cool-down. The mirror image of {@link isPreGreen}: both are
  * defined as EXPLICIT state sets (not a `=== Racing` negation) so a missing

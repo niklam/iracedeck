@@ -658,6 +658,11 @@ export interface TelemetryData {
   CamCameraState?: number;
   IsReplayPlaying?: boolean;
   ReplayFrameNum?: number;
+  // Live: the recording's current length, growing 60/s — the frame the moment
+  // on screen has in the replay, since ReplayFrameNum reads 0 while driving.
+  // In a replay: the frames left to the end (#1162). Read through
+  // resolveReplayFrame in @iracedeck/iracing-sdk, never directly.
+  ReplayFrameNumEnd?: number;
   ReplayPlaySpeed?: number;
   ReplayPlaySlowMotion?: boolean;
   ReplaySessionNum?: number;

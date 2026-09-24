@@ -9,6 +9,7 @@ import {
   isPenaltyFlagActive,
   isPostRace,
   isPreGreen,
+  resolveReplayFrame,
 } from "./telemetry-features.js";
 
 /** Build a minimal TelemetryData mock from a partial set of fields. */
@@ -191,6 +192,49 @@ describe("telemetry-features", () => {
     it("returns false for null/undefined telemetry", () => {
       expect(isPostRace(null)).toBe(false);
       expect(isPostRace(undefined)).toBe(false);
+    });
+  });
+
+  describe("resolveReplayFrame (#1162)", () => {
+    it("reads ReplayFrameNumEnd on a live tick — ReplayFrameNum is a constant 0 while driving", () => {
+      expect(
+        resolveReplayFrame(
+          telemetry({ IsReplayPlaying: false, IsOnTrack: true, ReplayFrameNum: 0, ReplayFrameNumEnd: 30821 }),
+        ),
+      ).toBe(30821);
+    });
+
+    it("reads ReplayFrameNum in a replay — the absolute position over the recording", () => {
+      expect(
+        resolveReplayFrame(telemetry({ IsReplayPlaying: true, ReplayFrameNum: 55657, ReplayFrameNumEnd: 26000 })),
+      ).toBe(55657);
+    });
+
+    it("still reads ReplayFrameNum in a paused replay (speed 0, IsReplayPlaying true)", () => {
+      expect(
+        resolveReplayFrame(
+          telemetry({ IsReplayPlaying: true, ReplayPlaySpeed: 0, ReplayFrameNum: 44373, ReplayFrameNumEnd: 100 }),
+        ),
+      ).toBe(44373);
+    });
+
+    it("treats a missing IsReplayPlaying as live", () => {
+      expect(resolveReplayFrame(telemetry({ ReplayFrameNum: 7, ReplayFrameNumEnd: 900 }))).toBe(900);
+    });
+
+    it("returns null when the field the mode needs is missing", () => {
+      expect(resolveReplayFrame(telemetry({ IsReplayPlaying: false, ReplayFrameNum: 0 }))).toBeNull();
+      expect(resolveReplayFrame(telemetry({ IsReplayPlaying: true, ReplayFrameNumEnd: 100 }))).toBeNull();
+    });
+
+    it("returns null when the field is not a finite number", () => {
+      expect(resolveReplayFrame(telemetry({ IsReplayPlaying: true, ReplayFrameNum: Number.NaN }))).toBeNull();
+      expect(resolveReplayFrame(telemetry({ ReplayFrameNumEnd: "30821" as unknown as number }))).toBeNull();
+    });
+
+    it("returns null for null/undefined telemetry", () => {
+      expect(resolveReplayFrame(null)).toBeNull();
+      expect(resolveReplayFrame(undefined)).toBeNull();
     });
   });
 });
