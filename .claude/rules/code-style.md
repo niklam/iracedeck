@@ -1,4 +1,3 @@
----
 # Code Style & Conventions
 
 - Use consistent formatting and linting. Run `pnpm lint:fix` and `pnpm format:fix` before committing.

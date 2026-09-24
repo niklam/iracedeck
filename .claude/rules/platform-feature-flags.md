@@ -1,3 +1,17 @@
+---
+paths:
+  - "packages/iracing-plugin-*/**"
+  - "feature-flags.local.json*"
+  - "dev.local.json*"
+  - "scripts/lib/dev-local.mjs"
+  - "scripts/dev-voices*"
+  - "packages/deck-core/src/plugin-config.ts"
+  - "packages/deck-core/src/voice-pack-*"
+  - "packages/deck-core/src/rasterizer-service.ts"
+  - "packages/rasterizer/**"
+  - "test-setup.ts"
+---
+
 # Platform Feature Flags
 
 Per-plugin build-time flags that gate platform-specific features and temporary kill-switches. `dialFeedback` strips touch-strip feedback/input code and PI controls from the Mirabox and Ulanzi bundles (neither has a plugin-facing touch strip) while keeping it on Stream Deck. `pngRasterization` is a temporary kill-switch for the in-plugin PNG rasterization pipeline (issue #642) — true on all three platforms today, so nothing is actually stripped by it yet; it exists to let the pipeline be disabled quickly (locally, or via a hotfix) if a rendering regression turns up. `profiles` gates the Stream Deck Profiles PI accordion and profile switching (Elgato-only; #736) and, unlike the other two, is a **runtime-only** flag — read via `getFeatureFlag("profiles")` / `locals.platform`, with no `__FEATURE_*__` compile-time constant (see "Runtime-only flags" below). Since #642 retired the `borderGlow`/`svgFilters`-class flags (icons rasterize to PNG in-plugin now, so QT5-vs-QT6 SVG engine capability is no longer a build-time concern — see `.claude/rules/svg-platform-compatibility.md`), these three are what's left.

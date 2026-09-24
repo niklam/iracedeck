@@ -1,4 +1,13 @@
 ---
+paths:
+  - "packages/iracing-plugin-*/**"
+  - "packages/deck-adapter-*/**"
+  - "packages/deck-core/src/plugin-config.ts"
+  - "scripts/lib/runtime-deps.mjs"
+  - "scripts/lib/rollup-logs.mjs"
+  - "THIRD-PARTY-LICENSES.md"
+---
+
 # Stream Deck Plugin Structure
 
 ## Architecture

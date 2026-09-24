@@ -1,4 +1,12 @@
 ---
+paths:
+  - "packages/icons/**"
+  - "packages/iracing-actions/icons/**"
+  - "packages/icon-composer/**"
+  - "packages/iracing-actions/src/actions/**/*.svg"
+  - "scripts/generate-icon-*"
+---
+
 # Icon Guidelines
 
 ## Icon Types

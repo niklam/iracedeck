@@ -1,4 +1,12 @@
 ---
+paths:
+  - "packages/icons/**"
+  - "packages/iracing-actions/icons/**"
+  - "packages/icon-composer/**"
+  - "packages/rasterizer/**"
+  - "packages/iracing-actions/src/actions/**/*.svg"
+---
+
 # SVG Platform Compatibility
 
 Icons are no longer rendered by each deck host's own SVG engine. Since issue #642, every plugin rasterizes its device-bound SVG icons to PNG **in-plugin** via `@iracedeck/rasterizer` (a thin wrapper over `@resvg/resvg-js`) before the pixels ever reach Elgato, Mirabox, or Ulanzi hardware — see `packages/deck-core/src/rasterizer-service.ts` and `.claude/rules/platform-feature-flags.md`. That means Elgato's QT6.7+ engine and Mirabox/Ulanzi's QT5 engine are no longer the rendering bottleneck: **resvg is the one SVG engine that matters for authoring**, and it renders the same PNG bytes for every platform.

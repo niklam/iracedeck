@@ -1,3 +1,16 @@
+---
+paths:
+  - "packages/iracing-actions/src/actions/**/*dial*"
+  - "packages/iracing-actions/src/shared/dial-*"
+  - "packages/deck-core/src/dial-gesture*"
+  - "packages/deck-core/src/feedback-types.ts"
+  - "packages/deck-core/src/types.ts"
+  - "packages/deck-adapter-*/**"
+  - "packages/iracing-plugin-*/*.sdPlugin/manifest.json"
+  - "packages/iracing-plugin-*/*.sdPlugin/layouts/**"
+  - "docs/reference/stream-deck-plus-encoders.md"
+---
+
 # Encoders (Dials) & Touchscreen
 
 How Stream Deck+ dials and the LCD touch strip work, what Mirabox knobs actually support, and the rules for dial-support actions. Full payload/schema tables and sources live in `docs/reference/stream-deck-plus-encoders.md`.

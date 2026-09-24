@@ -1,4 +1,13 @@
 ---
+paths:
+  - "packages/deck-core/src/**"
+  - "packages/pi-components/src/**"
+  - "packages/pi-components/partials/**"
+  - "packages/iracing-actions/src/actions/settings-window/**"
+  - "packages/iracing-plugin-*/**"
+  - "packages/scenario-harness/src/**"
+---
+
 # Global Settings
 
 ## Overview

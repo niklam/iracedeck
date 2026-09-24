@@ -1,4 +1,15 @@
 ---
+paths:
+  - "packages/iracing-native/**"
+  - "packages/deck-core/src/keyboard-service*"
+  - "packages/deck-core/src/binding-dispatcher*"
+  - "packages/deck-core/src/window-focus-service*"
+  - "packages/deck-core/src/mouse-pointer*"
+  - "packages/iracing-actions/src/actions/**"
+  - "packages/iracing-plugin-*/src/**"
+  - "docs/keyboard-shortcuts.md"
+---
+
 # Keyboard Shortcuts & Hotkey Actions
 
 ## SDK-First Principle

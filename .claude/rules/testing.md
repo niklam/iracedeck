@@ -1,4 +1,3 @@
----
 # Testing Conventions
 
 - All new code must include unit tests. Use Vitest with `describe`/`it`/`expect`.

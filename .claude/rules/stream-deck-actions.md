@@ -1,4 +1,10 @@
 ---
+paths:
+  - "packages/iracing-actions/**"
+  - "packages/pi-components/**"
+  - "packages/deck-core/src/**"
+  - "packages/iracing-plugin-*/**"
+---
 
 # Stream Deck Plugins and Actions
 

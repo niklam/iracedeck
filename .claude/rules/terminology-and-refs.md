@@ -1,4 +1,3 @@
----
 # Terminology & References
 
 - **Property Inspector** - Stream Deck UI for action settings.

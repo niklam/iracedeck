@@ -1,4 +1,11 @@
 ---
+paths:
+  - "**/*.ejs"
+  - "packages/pi-components/**"
+  - "packages/iracing-actions/src/actions/data/**"
+  - "packages/iracing-plugin-*/**"
+---
+
 # Property Inspector Templates
 
 ## Overview

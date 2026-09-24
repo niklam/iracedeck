@@ -1,6 +1,8 @@
 ---
 paths:
-  - docs/plugins/**/actions/**
+  - "docs/plugins/**/actions/**"
+---
+
 # Action Documentation Standards
 
 ## Document Structure

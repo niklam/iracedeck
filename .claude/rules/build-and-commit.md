@@ -1,5 +1,3 @@
----
-
 # Build & Commit Conventions
 
 Build

@@ -1,3 +1,17 @@
+---
+paths:
+  - "packages/deck-core/src/settings-*"
+  - "packages/deck-core/src/open-folder*"
+  - "packages/deck-core/src/chromium-browser*"
+  - "packages/deck-core/src/voice-pack-*"
+  - "packages/deck-core/src/update-check*"
+  - "packages/pi-components/**"
+  - "packages/iracing-actions/src/actions/settings-window/**"
+  - "packages/iracing-actions/src/actions/data/**"
+  - "packages/deck-adapter-*/**"
+  - "packages/iracing-plugin-*/**"
+---
+
 # Settings Window (#992)
 
 The dedicated, full-size settings window that owns the plugin-global settings. It is **not a Property Inspector**: it is a page the plugin process serves over loopback and opens as a chromeless browser app window — but it reuses the PI framework verbatim (`sdpi-components.js`, `pi-components.js`, the `global-*.ejs` partials, every `ird-*` component), so a control that works in a PI works in the window unchanged. Website docs: `docs/getting-started/settings.md`.

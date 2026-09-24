@@ -1,4 +1,8 @@
 ---
+paths:
+  - "packages/*/src/**"
+---
+
 # Logging Conventions
 
 ## Overview
