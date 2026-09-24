@@ -37,14 +37,14 @@ Unknown: whether a recording that exceeds the replay memory limit renumbers its 
 
 ## Storage: one replay file per session, markers its first section
 
-`%LOCALAPPDATA%\iRaceDeck\Replay\session_<SubSessionID>.json`. The file is not a markers file. It is where iRaceDeck keeps anything it learns about one session's replay, and markers are only the first thing in it:
+`%LOCALAPPDATA%\iRaceDeck\Replay\<ecosystem>\session_<SubSessionID>.json`, one folder per deck ecosystem like the settings store's `Settings\<ecosystem>\` (amended 2026-09-24: two deck hosts running at once would otherwise each hold a copy of the same file and overwrite each other's writes every debounce; a merge-on-write was rejected because it resurrects a deleted marker). The file is not a markers file. It is where iRaceDeck keeps anything it learns about one session's replay, and markers are only the first thing in it:
 
 ```json
 {
   "version": 1,
   "subSessionId": 12345678,
   "track": "Watkins Glen International — Boot",
-  "series": "…",
+  "series": "538",
   "sessionStart": "2026-09-13T18:00:00Z",
   "sections": {
     "markers": [{ "frame": 110070, "sessionNum": 2, "sessionTimeMs": 1834500 }]
@@ -52,7 +52,7 @@ Unknown: whether a recording that exceeds the replay memory limit renumbers its 
 }
 ```
 
-The header (track display name, series name, session start date) lets a driver browsing the folder tell the files apart.
+The header (track display name, the `SeriesID` as text — the session YAML carries no series name — and the instant the store first saw the session) lets a driver browsing the folder tell the files apart.
 
 **Extensibility is the reason for the shape:**
 
