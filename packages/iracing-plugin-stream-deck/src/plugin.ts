@@ -220,10 +220,12 @@ import {
   RACE_ADMIN_UUID,
   RaceAdmin,
   REPLAY_CONTROL_UUID,
+  REPLAY_MARKERS_UUID,
   REPLAY_NAVIGATION_UUID,
   REPLAY_SPEED_UUID,
   REPLAY_TRANSPORT_UUID,
   ReplayControl,
+  ReplayMarkers,
   ReplayNavigation,
   ReplaySpeed,
   ReplayTransport,
@@ -1583,6 +1585,7 @@ adapter.registerAction(PIT_CREW_UUID, new PitCrew(adapter.createLogger("PitCrew"
 adapter.registerAction(PIT_QUICK_ACTIONS_UUID, new PitQuickActions(adapter.createLogger("PitQuickActions")));
 adapter.registerAction(RACE_ADMIN_UUID, new RaceAdmin(adapter.createLogger("RaceAdmin")));
 adapter.registerAction(REPLAY_CONTROL_UUID, new ReplayControl(adapter.createLogger("ReplayControl")));
+adapter.registerAction(REPLAY_MARKERS_UUID, new ReplayMarkers(adapter.createLogger("ReplayMarkers")));
 adapter.registerAction(REPLAY_NAVIGATION_UUID, new ReplayNavigation(adapter.createLogger("ReplayNavigation")));
 adapter.registerAction(REPLAY_SPEED_UUID, new ReplaySpeed(adapter.createLogger("ReplaySpeed")));
 adapter.registerAction(REPLAY_TRANSPORT_UUID, new ReplayTransport(adapter.createLogger("ReplayTransport")));

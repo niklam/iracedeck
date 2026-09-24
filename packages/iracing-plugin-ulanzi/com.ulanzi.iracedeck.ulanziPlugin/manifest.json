@@ -296,6 +296,21 @@
       ]
     },
     {
+      "Name": "Replay Markers",
+      "UUID": "com.iracedeck.sd.core.replay-markers",
+      "Icon": "imgs/actions/replay-markers/icon.svg",
+      "Tooltip": "Mark a replay moment and jump back to it",
+      "PropertyInspectorPath": "ui/replay-markers.html",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
+        {
+          "Image": "imgs/actions/replay-markers/key.svg"
+        }
+      ]
+    },
+    {
       "Name": "Replay Navigation",
       "UUID": "com.iracedeck.sd.core.replay-navigation",
       "Icon": "imgs/actions/replay-navigation/icon.svg",
