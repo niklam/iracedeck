@@ -24461,10 +24461,10 @@
         {
           "base": "green-held",
           "texts": [
-            "This is it. Green any second now, so get ready to launch.",
+            "Green any second now, so get ready to launch.",
             "Nearly time. Eyes up, pick your gear, and launch clean off the line.",
             "Here we go, green's coming. Watch the car ahead and get a good run into turn one.",
-            "Stand by... stand by. It's racing the moment the green drops.",
+            "Stand by... It's racing the moment the green drops.",
             "Last few seconds behind the pace car. Get set — clean launch, smart into turn one."
           ],
           "takes": 5,
