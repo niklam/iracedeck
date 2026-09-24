@@ -121,7 +121,9 @@ describe("stage-dev-voices", () => {
     expect(lines[0]).toBe(`Development voices: on (IRACEDECK_DEV_VOICES) — staging 2 pack(s) into ${OUTPUT_DIR}`);
     expect(lines).toContain("  staged alpha@1.0.0: 3 clips, 1 callout script");
     expect(lines).toContain("  staged beta@2.1.0: 3 clips, 1 callout script");
-    expect(lines.at(-1)).toBe("Development voices: staged 2 pack(s) in 1.5 s — restart the plugin or Rescan voices");
+    expect(lines.at(-1)).toBe(
+      "Development voices: staged 2 pack(s) in 1.5 s — press Rescan voices, or restart the plugin",
+    );
   });
 
   it("removes a staged directory that is no longer an authored pack, and only that", async () => {

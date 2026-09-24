@@ -37,6 +37,7 @@
     "restart:stream-deck": "streamdeck restart com.iracedeck.sd.core",
     "dev": "turbo run dev",
     "dev:voices": "node scripts/dev-voices.mjs",
+    "stage:voices": "pnpm --filter @iracedeck/audio-assets stage:dev-voices",
     "clean": "turbo run clean",
     "lint": "eslint \"packages/*/src/**\" \"scripts/**/*.mjs\" vitest.config.ts",
     "lint:pack": "node scripts/lint-pack.mjs",

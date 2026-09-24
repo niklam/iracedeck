@@ -34,7 +34,8 @@
  * processed-clip cache lock anyway, and one pack at a time keeps the log
  * readable.
  *
- * Usage: pnpm --filter @iracedeck/audio-assets stage:dev-voices
+ * Usage: pnpm stage:voices (from the repo root)
+ *        pnpm --filter @iracedeck/audio-assets stage:dev-voices
  *        node packages/audio-assets/scripts/stage-dev-voices.mjs
  */
 import { readdirSync, rmSync } from "node:fs";
@@ -136,7 +137,7 @@ export async function stageDevVoices({
 
   const seconds = ((now() - started) / 1000).toFixed(1);
 
-  log(`Development voices: staged ${staged.length} pack(s) in ${seconds} s — restart the plugin or Rescan voices`);
+  log(`Development voices: staged ${staged.length} pack(s) in ${seconds} s — press Rescan voices, or restart the plugin`);
 
   return { outcome: "staged", staged };
 }
