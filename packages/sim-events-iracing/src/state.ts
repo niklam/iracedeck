@@ -23,6 +23,20 @@ import type { CornerMarker } from "@iracedeck/track-data";
  */
 export type CautionPhase = "none" | "waving" | "caught" | "one-to-go";
 
+/**
+ * One car's open lap-time wait in the replay lap record (issue #1203): the
+ * crossing that started `lap + 1` opened it, and it closes on the first tick
+ * `CarIdxLastLapTime` moves off `baselineS` — or untimed when `ticksLeft` runs out.
+ */
+export type ReplayLapTimeWait = {
+  /** The completed lap the time will belong to. */
+  lap: number;
+  /** `CarIdxLastLapTime` (seconds) the tick before the crossing; the refresh is a change from it. */
+  baselineS: number;
+  /** Ticks left before the wait closes with no time. */
+  ticksLeft: number;
+};
+
 /** Live gap snapshot for one class-standings neighbor (issue #933). */
 export type GapNeighborState = {
   /** The neighbor's car index. */
@@ -909,6 +923,31 @@ export type TranslatorState = {
   /** Whether the aggregate tail already fired for the current episode. */
   opponentPitAggregateAnnounced: boolean;
 
+  // ── Replay lap record (issue #1203) ───────────────────────────────────
+  // Runs PRE-guard (`diff/replay-laps.ts`) and is deliberately NOT preserved
+  // by `wipeStateForReplay`: a replay glance makes every baseline meaningless,
+  // and the diff's own gate re-seeds on the first eligible tick anyway.
+  /**
+   * Whether the per-car baselines below hold a live tick's values. Every
+   * ineligible tick (replay on screen, replay-only session, no session, no
+   * frame) clears it, so the first eligible tick after it re-seeds silently.
+   */
+  replayLapsSeeded: boolean;
+  /** The `SessionNum` the baselines were seeded in; a change re-seeds. */
+  replayLapsSessionNum: number | null;
+  /** The `SessionUniqueID` the baselines were seeded in; a change re-seeds. */
+  replayLapsSessionUniqueId: number | null;
+  /** Previous-tick `CarIdxLapCompleted` per carIdx. */
+  replayLapsLastCompleted: number[];
+  /** Previous-tick `CarIdxLastLapTime` per carIdx (seconds), the lap-time wait's baseline. */
+  replayLapsLastLapTime: number[];
+  /**
+   * Per carIdx, the lap-time wait a crossing opened: the completed lap the
+   * time will belong to, the `CarIdxLastLapTime` it must change from, and the
+   * ticks left before the wait closes untimed. `null` while no wait is open.
+   */
+  replayLapsTimeWait: Array<ReplayLapTimeWait | null>;
+
   // ── Opponent penalty flags (issue #936) ───────────────────────────────
   /** First tick seeds the per-car penalty-bit store silently. */
   opponentFlagsInitialized: boolean;
@@ -1325,6 +1364,13 @@ export function createInitialState(): TranslatorState {
     opponentPitCarCooldownUntil: [],
     opponentPitRecentEntries: [],
     opponentPitAggregateAnnounced: false,
+
+    replayLapsSeeded: false,
+    replayLapsSessionNum: null,
+    replayLapsSessionUniqueId: null,
+    replayLapsLastCompleted: [],
+    replayLapsLastLapTime: [],
+    replayLapsTimeWait: [],
 
     opponentFlagsInitialized: false,
     opponentFlagBits: [],
