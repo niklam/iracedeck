@@ -113,7 +113,7 @@ On a **standing start** the Race Engineer walks you through the gantry sequence 
 
 During the pre-start countdown the engineer also speaks the numeric marks — *"Ninety seconds to race start."*, *"Sixty seconds to race start."*, *"Thirty seconds to race start."*, *"Ten seconds to race start."* — as the clock crosses each threshold. The countdown plays **even while you're out of the car** — in the garage, the session screen, or the in-session replay view — since it's exactly the "get in the car" reminder (watching a saved standalone replay stays silent). The gantry lines above stay in-car only: if you're not in the car when the lights come up, you've missed the start. The countdown is **standing-start only** and announces only the marks that genuinely fall inside the live countdown window, so a compressed procedure (a short pre-start, an AI race) that starts below a mark simply skips the higher numbers rather than blurting a stale burst.
 
-On a **rolling start** there's no light gantry and no numeric countdown — the lead-in comes from the race-progression flags instead: **One pace lap to go**, spoken once when one pace lap remains (the engineer assumes at most two pace laps, so it lands as the pace car begins the final pace lap), then **Green held** as the field bunches up, and *"Go, go, go!"* the moment the field is released.
+On a **rolling start** there's no light gantry and no numeric countdown — the lead-in comes from the race-progression flags instead: **One pace lap to go**, spoken once when one pace lap remains (the engineer assumes at most two pace laps, so it lands as the pace car begins the final pace lap), then **Green held** as the field bunches up, *"Pace car's off."* when the pace car actually peels off to pit road a few seconds later, and *"Go, go, go!"* the moment the field is released. The **Green held** lines only warn that the green is coming: iRacing holds the green several seconds before the pace car leaves, so the pace car's exit gets its own call. That call shares its switch with the caution restart's, **Race Engineer Callouts → Caution → Pace car off**.
 
 *"Go, go, go!"* belongs to the start of the race, and only to it. On the oval we tested, iRacing signals the **restart after a full-course caution** exactly the way it signals a start, which is why the go line used to speak there as well; it now stands down for the length of a caution and the [full-course caution](#full-course-caution) sequence calls the restart in its own words, after its own **Green held** heads-up. The **Green** flag callout stays quiet at both.
 
@@ -626,7 +626,7 @@ Under **Spotter**, two callouts are toggleable, both enabled by default (see [Sp
 - **Repeat reminder while alongside** (`calloutEnabledSpotterStillThere`) — the "Still there." reminder loop. Disabling stops the loop without affecting the transition calls.
 - **Reminder interval (s)** (`spotterStillThereSeconds`, 1–10, default 3) — how often the "still there" reminder repeats while a car is alongside. Read live.
 
-Under **Caution**, nine callouts are toggleable, all enabled by default (see [Full-course caution](#full-course-caution) above for the full behavior). They only ever fire in a race, while you are live in the car, and only as part of a full-course caution:
+Under **Caution**, nine callouts are toggleable, all enabled by default (see [Full-course caution](#full-course-caution) above for the full behavior). They only ever fire in a race, while you are live in the car, and only as part of a full-course caution — with one exception: **Pace car off** also plays at an opening rolling start.
 
 - **Who to follow** (`calloutEnabledCautionFollow`) — the car you line up behind, named a couple of seconds after the caution comes out.
 - **Pace car out** (`calloutEnabledCautionPaceCarOut`) — the pace car reaching the track.
@@ -635,7 +635,7 @@ Under **Caution**, nine callouts are toggleable, all enabled by default (see [Fu
 - **One lap to green** (`calloutEnabledCautionOneToGo`) — the last lap under caution, with the car ahead and (on a double-file oval restart) the lane you form up in.
 - **Car ahead changed** (`calloutEnabledCautionLineupChanged`) — the car you line up behind has changed mid-caution.
 - **Position on the last lap** (`calloutEnabledCautionPosition`) — your race position, about a third of the way around the last caution lap.
-- **Pace car off** (`calloutEnabledCautionPaceCarOff`) — the pace car peeling off to pit road, a few seconds before the green.
+- **Pace car off** (`calloutEnabledCautionPaceCarOff`) — the pace car peeling off to pit road, a few seconds before the green. The same switch covers the pace car's exit at an opening [rolling start](#start-lights).
 - **Restart** (`calloutEnabledCautionRestart`) — the green that releases the field. This is the switch for the restart call; **Start lights** above no longer covers it.
 
 The caution announcement that opens the sequence is not in this group — it keeps its existing **Caution waving** switch under **Flags**.

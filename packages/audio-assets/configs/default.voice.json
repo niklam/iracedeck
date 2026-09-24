@@ -224,13 +224,13 @@
       },
       {
         "name": "green-held-01",
-        "text": "This is it. Pace car's coming in. Green any second now, so get ready to launch.",
+        "text": "Green any second now, so get ready to launch.",
         "seed": 8
       },
       {
         "name": "green-held-02",
-        "text": "Pace car's peeling off. Eyes up, pick your gear, and launch clean off the line.",
-        "seed": 4
+        "text": "Nearly time. Eyes up, pick your gear, and launch clean off the line.",
+        "seed": 5
       },
       {
         "name": "green-held-03",
@@ -239,7 +239,7 @@
       },
       {
         "name": "green-held-04",
-        "text": "Pace car's gone. Stand by... it's racing the moment that gap opens up.",
+        "text": "Stand by... It's racing the moment the green drops.",
         "seed": 6
       },
       {
@@ -18718,8 +18718,8 @@
       "sequence": ["pool:flags/one-pace-lap-to-go"]
     },
     "pit-crew.flag-green-held": {
-      "comment": "The pace car is pulling in and the green is imminent — get ready to launch. Rolling starts and restarts only; a standing-start grid is the start lights' business.",
-      "test": "Harness → Flags → Green Held, with the race session preset and the hot-lap telemetry preset. In-sim: the final pace lap of a rolling start or restart, once the pace car peels off.",
+      "comment": "The green is imminent — get ready to launch. The flag rises several seconds before the pace car leaves, so no line here says where the pace car is; caution/pace-car-off does that at its real exit. Rolling starts and restarts only; a standing-start grid is the start lights' business.",
+      "test": "Harness → Flags → Green Held, with the race session preset and the hot-lap telemetry preset. In-sim: the final pace lap of a rolling start or restart, several seconds before the pace car leaves the track.",
       "sequence": ["pool:flags/green-held"]
     },
     "pit-crew.flag-ten-to-go": {
@@ -18881,7 +18881,7 @@
     },
     "pit-crew.caution-pace-car-off": {
       "comment": "The pace car is peeling off — the green is seconds away.",
-      "test": "Harness → Flags → Caution → restart, with the race session and hot-lap presets, hears it a few seconds before the restart line; or inject paceCar.off while a caution is out. In-sim: the pace car heads for pit road on the last caution lap.",
+      "test": "Harness → Flags → Caution → restart, with the race session and hot-lap presets, hears it a few seconds before the restart line; or inject paceCar.off while a caution is out. In-sim: the pace car heads for pit road on the last caution lap, or at an opening rolling start once the green is held.",
       "sequence": ["pool:caution/pace-car-off"]
     },
     "pit-crew.caution-restart": {

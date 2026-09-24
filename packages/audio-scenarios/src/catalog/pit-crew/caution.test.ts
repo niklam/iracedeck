@@ -60,6 +60,8 @@ import { FLAG_CONTRACTS, WAVING_FLAG_COOLDOWN_MS } from "./flag-alerts.js";
 
 const mockSessionType = vi.fn(() => "Race");
 const mockStandingStart = vi.fn(() => false);
+/** The translator's latest tick, as a speak-time gate reads it — none unless a case sets one. */
+const mockLatestTelemetry = vi.fn((): unknown => null);
 
 // The translator's live readers are stubbed; its PURE lineup resolver is the
 // real one, so the snapshot cases at the end derive their lineup from the
@@ -68,6 +70,7 @@ vi.mock("@iracedeck/sim-events-iracing", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@iracedeck/sim-events-iracing")>()),
   getSessionType: () => mockSessionType(),
   getStandingStart: () => mockStandingStart(),
+  getLatestTelemetry: () => mockLatestTelemetry(),
 }));
 
 /** Driver live in their own car, racing — what every contract's shared gate needs. */
@@ -697,6 +700,74 @@ describe("the pickup and pace-car-off calls on a road course (2026-09-18 capture
 
   it("never asks the phase for the position call — its event already says the flag is up", () => {
     for (const phase of ["caught", "one-to-go"] as const) expect(fires("position", IN_CAR, phase)).toBe(true);
+  });
+});
+
+/**
+ * The opening rolling start (#1200). #1127 left it silent because the start's
+ * green-held line said the pace car was peeling off; that line no longer
+ * places the pace car, so the real exit speaks here too. From the 2026-09-17
+ * Homestead capture: GreenHeld rises at 186.28 s during the parade laps, the
+ * pace car leaves at 196.53 s with it still up, and the green follows at 201.18 s.
+ */
+describe('"Pace car\'s off" at an opening rolling start (#1200)', () => {
+  const PARADE = { ...IN_CAR, SessionState: SessionState.ParadeLaps };
+
+  it("speaks when there is no caution and the green is held", () => {
+    expect(fires("pace-car-off", { ...PARADE, SessionFlags: Flags.GreenHeld }, "none")).toBe(true);
+  });
+
+  it("stays silent when there is no caution and the green is not held", () => {
+    expect(fires("pace-car-off", { ...PARADE, SessionFlags: 0 }, "none")).toBe(false);
+  });
+
+  it("stays silent at a road-course deploy even with GreenHeld up — the caution is still waving", () => {
+    expect(fires("pace-car-off", { ...IN_CAR, SessionFlags: Flags.GreenHeld }, "waving")).toBe(false);
+  });
+
+  it("stays silent out of the car", () => {
+    const spectating = { ...PARADE, IsOnTrack: false, SessionFlags: Flags.GreenHeld };
+
+    expect(fires("pace-car-off", spectating, "none")).toBe(false);
+  });
+
+  // The manual test's miss: the event was admitted, and then the family's
+  // speak-time gate ("the caution is still out") refused it, because at an
+  // opening start there is no caution. The gate asks the translator's LATEST
+  // tick, since a queued fire can drain after the green.
+  describe("at speak time", () => {
+    afterEach(() => {
+      mockLatestTelemetry.mockReset();
+      mockLatestTelemetry.mockReturnValue(null);
+    });
+
+    function admits(): boolean | undefined {
+      cautionPhase = "none";
+
+      return contract("pace-car-off").speakGate?.admit({} as never);
+    }
+
+    it("admits while the green is still held with no caution out", () => {
+      mockLatestTelemetry.mockReturnValue({ ...PARADE, SessionFlags: Flags.GreenHeld });
+
+      expect(admits()).toBe(true);
+    });
+
+    it("refuses once the green has dropped — a queued call must not drain onto a green track", () => {
+      mockLatestTelemetry.mockReturnValue({ ...PARADE, SessionState: SessionState.Racing, SessionFlags: Flags.Green });
+
+      expect(admits()).toBe(false);
+    });
+
+    it("refuses when there is no telemetry to read", () => {
+      expect(admits()).toBe(false);
+    });
+
+    it("still admits under a caution, whatever the flags say", () => {
+      cautionPhase = "one-to-go";
+
+      expect(contract("pace-car-off").speakGate?.admit({} as never)).toBe(true);
+    });
   });
 });
 
