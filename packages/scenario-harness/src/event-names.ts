@@ -291,6 +291,27 @@ export const EVENT_TEMPLATES = [
     data: { position: 3 },
   },
 
+  // ── Replay record (issue #1203) — no callout; the deck-core replay store consumes these ──
+  {
+    name: "replay.lapStarted",
+    description: "A car crossed the line and started a lap at a live replay frame (issue #1203) — no callout",
+    data: {
+      subSessionId: 86697546,
+      sessionNum: 2,
+      sessionUniqueId: 4,
+      carIdx: 7,
+      carNumberRaw: 2,
+      userId: 123456,
+      lap: 2,
+      frame: 36305,
+    },
+  },
+  {
+    name: "replay.lapTimed",
+    description: "The sim published the time of a lap a car completed (issue #1203) — no callout",
+    data: { subSessionId: 86697546, sessionNum: 2, sessionUniqueId: 4, carIdx: 7, lap: 1, timeMs: 91433 },
+  },
+
   // ── Value-change ──
   { name: "radar.changed", description: "Proximity radar state changed", data: { from: "clear", to: "left" } },
   {

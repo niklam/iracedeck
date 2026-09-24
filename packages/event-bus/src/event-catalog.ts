@@ -1009,6 +1009,58 @@ export type SimEventMap = {
     }
   >;
 
+  // ── Replay record (issue #1203) — the session's lap starts and lap times ──
+  // Two events rather than one delayed one: the frame is the value that must
+  // not be lost, so it goes out at the crossing, while the time arrives when
+  // the sim publishes it or never. A replay frame is not an iRacing-only idea
+  // — any sim with a replay has a position in it — so both fit the sim-agnostic
+  // catalog; the deck-core replay store merges them into one file write.
+  /**
+   * A car crossed the start/finish line and started `lap` at replay `frame`
+   * (issue #1203). Emitted only from live, observable telemetry: never while a
+   * replay is on screen, never from a replay-only session, and never for a
+   * counter change the replay cannot show (a tow, a reset, a late join with
+   * laps already scored). The pace car is skipped.
+   */
+  "replay.lapStarted": SimEvent<
+    "replay.lapStarted",
+    {
+      /** `WeekendInfo.SubSessionID`; 0 for an offline session. */
+      subSessionId: number;
+      sessionNum: number;
+      /** `SessionUniqueID` — a restart within one sim run is the same `sessionNum` under a new one. */
+      sessionUniqueId: number;
+      carIdx: number;
+      /** `DriverInfo.Drivers[].CarNumberRaw` — what the record is verified by at lookup. */
+      carNumberRaw: number;
+      /** `DriverInfo.Drivers[].UserID` — stored for a reader of the file, not matched. */
+      userId: number;
+      /** The lap the car just started (`CarIdxLapCompleted + 1`, what `CarIdxLap` reads). */
+      lap: number;
+      /** The live replay frame on the crossing tick, recorded raw. */
+      frame: number;
+    }
+  >;
+  /**
+   * The sim published the time of a lap a car completed (issue #1203). Follows
+   * that car's `replay.lapStarted` for `lap + 1` by a tick or two — or never,
+   * when the sim did not refresh the time within the translator's wait.
+   */
+  "replay.lapTimed": SimEvent<
+    "replay.lapTimed",
+    {
+      /** `WeekendInfo.SubSessionID`; 0 for an offline session. */
+      subSessionId: number;
+      sessionNum: number;
+      sessionUniqueId: number;
+      carIdx: number;
+      /** The lap the time belongs to — the one completed at the crossing that started `lap + 1`. */
+      lap: number;
+      /** Whole milliseconds. */
+      timeMs: number;
+    }
+  >;
+
   // ── Value-change events (§6.2) — emit new state when derived value changes
   "radar.changed": SimEvent<"radar.changed", { from: RadarState; to: RadarState }>;
   /**
