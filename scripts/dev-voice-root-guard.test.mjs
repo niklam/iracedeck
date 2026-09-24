@@ -1,28 +1,34 @@
 /**
- * The development voice root is a BUILD-TIME marker (#1143), and this guard is
- * what keeps it one. `bin/config.json` may carry `devVoicePacksRoot` only when a
- * gitignored `dev.local.json` sits at the repo root, so a release build cannot
- * carry the mechanism at all — there is no file for it to read.
+ * The development voice root is a BUILD-TIME decision (#1143, #1214), and this
+ * guard is what keeps it one. `bin/config.json` may carry `devVoicePacksRoot`
+ * only when a gitignored `dev.local.json` sits at the repo root or the
+ * developer's own environment sets `IRACEDECK_DEV_VOICES=1`, so a release
+ * build cannot carry the mechanism at all — there is no file for it to read,
+ * and CI never sets the variable.
  *
- * Three properties hold that up, and each is one edit away from being lost:
+ * Five properties hold that up, and each is one edit away from being lost:
  * the marker is gitignored (so it can never reach a clone or a tag), the key is
  * emitted through a conditional spread in every plugin's rollup config (never
- * unconditionally), and turbo hashes the marker as a root input (so toggling it
- * cannot be served a stale plugin folder from the cache).
+ * unconditionally), turbo hashes the marker as a root input and the variable as
+ * `env` (so toggling either cannot be served a stale plugin folder from the
+ * cache — and under turbo's strict env mode an undeclared variable never
+ * reaches Rollup at all), no workflow sets the variable, and every plugin build
+ * depends on the stage task that fills the default root (so the plugin never
+ * points at a stage nothing has written).
  *
  * Shaped like `third-party-licenses.test.mjs`: the plugin list is discovered
  * from the committed manifests, so a fourth deck ecosystem is covered the day
  * its package appears instead of needing to be added to a list here.
  */
 import { spawnSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
 
 import { DEV_VOICE_PACKS_ROOT_KEY } from "./lib/assert-release-build.mjs";
-import { DEFAULT_DEV_VOICE_PACKS_ROOT, DEV_LOCAL_FILE, readDevLocal } from "./lib/dev-local.mjs";
+import { DEFAULT_DEV_VOICE_PACKS_ROOT, DEV_LOCAL_FILE, DEV_VOICES_ENV, readDevLocal } from "./lib/dev-local.mjs";
 import { allPluginManifestRelPaths } from "./lib/version-discovery.mjs";
 
 // scripts/dev-voice-root-guard.test.mjs lives in scripts/, so the repo root is one up.
@@ -37,7 +43,10 @@ const EXAMPLE_FILE = `${DEV_LOCAL_FILE}.example`;
  * emitted unconditionally — a textual property.
  */
 const CONDITIONAL_SPREAD =
-  "...(devLocal.voicePacksRoot === undefined ? {} : { devVoicePacksRoot: devLocal.voicePacksRoot })";
+  "...(devVoices.voicePacksRoot === undefined ? {} : { devVoicePacksRoot: devVoices.voicePacksRoot })";
+
+/** The turbo task that stages the authored packs into the default root (#1214 §3). */
+const STAGE_TASK = "@iracedeck/audio-assets#stage:dev-voices";
 
 /** [plugin package dir, package name] pairs, discovered from the committed plugin manifests. */
 const PLUGINS = allPluginManifestRelPaths(repoRoot).map((relPath) => {
@@ -57,7 +66,7 @@ afterAll(() => {
   for (const dir of tempRoots) rmSync(dir, { recursive: true, force: true });
 });
 
-describe("the development voice root is build-time only (#1143)", () => {
+describe("the development voice root is build-time only (#1143, #1214)", () => {
   it("discovers every plugin package (an empty list would silently skip every per-plugin check)", () => {
     expect(PLUGINS.length).toBeGreaterThanOrEqual(3);
   });
@@ -97,6 +106,52 @@ describe("the development voice root is build-time only (#1143)", () => {
     expect(readDevLocal(root)).toEqual({ voicePacksRoot: join(root, ...DEFAULT_DEV_VOICE_PACKS_ROOT.split("/")) });
   });
 
+  it(`no workflow mentions ${DEV_VOICES_ENV} — CI builds are release builds`, () => {
+    const workflowsDir = join(repoRoot, ".github", "workflows");
+    const workflows = readdirSync(workflowsDir).filter((name) => /\.ya?ml$/.test(name));
+    expect(workflows.length, "the workflows directory must be found, or this checks nothing").toBeGreaterThan(0);
+
+    for (const name of workflows) {
+      const text = readFileSync(join(workflowsDir, name), "utf-8");
+      expect(text.includes(DEV_VOICES_ENV), `.github/workflows/${name} must not mention ${DEV_VOICES_ENV}`).toBe(false);
+    }
+  });
+
+  describe(`the stage task ${STAGE_TASK}`, () => {
+    const task = turbo.tasks[STAGE_TASK];
+
+    it("is defined in turbo.json", () => {
+      expect(task, `turbo.json needs a "${STAGE_TASK}" task`).toBeDefined();
+    });
+
+    it("is a script of @iracedeck/audio-assets (turbo refuses a dependsOn on a task no package has)", () => {
+      const { scripts } = JSON.parse(readFileSync(join(repoRoot, "packages", "audio-assets", "package.json"), "utf-8"));
+      expect(scripts?.["stage:dev-voices"]).toBeDefined();
+    });
+
+    it(`declares ${DEV_VOICES_ENV} in env, so the opt-in is hashed and reaches the script`, () => {
+      expect(task?.env).toContain(DEV_VOICES_ENV);
+    });
+
+    it(`hashes ${DEV_LOCAL_FILE} and the resolver, which decide whether it stages anything`, () => {
+      expect(task?.inputs).toContain(`$TURBO_ROOT$/${DEV_LOCAL_FILE}`);
+      expect(task?.inputs).toContain("$TURBO_ROOT$/scripts/lib/dev-local.mjs");
+    });
+
+    it("stages into the default root, declared as its output", () => {
+      // DEFAULT_DEV_VOICE_PACKS_ROOT is repo-relative; the task's output is
+      // package-relative, so strip the package prefix.
+      const packageRelative = DEFAULT_DEV_VOICE_PACKS_ROOT.replace(/^packages\/audio-assets\//, "");
+      expect(task?.outputs).toContain(`${packageRelative}/**`);
+    });
+
+    it("runs after the audio-assets build (the packer shares its processed-clip cache) and its dependencies", () => {
+      expect(task?.dependsOn).toContain("@iracedeck/audio-assets#build");
+      // The packer imports @iracedeck/callout-script from its built dist.
+      expect(task?.dependsOn).toContain("^build");
+    });
+  });
+
   describe.each(PLUGINS)("%s", (pkg, packageName, packScript) => {
     const configSource = readFileSync(join(repoRoot, "packages", pkg, "rollup.config.mjs"), "utf-8");
     const pluginSource = readFileSync(join(repoRoot, "packages", pkg, "src", "plugin.ts"), "utf-8");
@@ -112,9 +167,18 @@ describe("the development voice root is build-time only (#1143)", () => {
       expect(pluginSource, "an unconditional `dir:` would publish it on every row").not.toContain("dir: pack.dir,");
     });
 
-    it("the rollup config reads the marker through the shared helper", () => {
-      expect(configSource).toContain(`import { DEV_LOCAL_FILE, readDevLocal } from "../../scripts/lib/dev-local.mjs";`);
-      expect(configSource).toContain("const devLocal = readDevLocal(repoRoot);");
+    it("the rollup config decides the root through the shared resolver", () => {
+      expect(configSource).toContain(
+        `import { DEV_LOCAL_FILE, resolveDevVoicePacksRoot } from "../../scripts/lib/dev-local.mjs";`,
+      );
+      expect(configSource).toContain("const devVoices = resolveDevVoicePacksRoot(repoRoot);");
+      // The variable is read by the resolver and nowhere else: a config that
+      // consulted process.env itself could disagree with the stage task. The
+      // comment naming the variable is fine; a read of it is not.
+      expect(configSource, `${DEV_VOICES_ENV} must be read only through the resolver`).not.toContain(
+        `process.env.${DEV_VOICES_ENV}`,
+      );
+      expect(configSource, "the resolver owns the variable name").not.toContain("DEV_VOICES_ENV");
     });
 
     it("emits devVoicePacksRoot only through the conditional spread", () => {
@@ -151,6 +215,21 @@ describe("the development voice root is build-time only (#1143)", () => {
       // A package-specific entry REPLACES the base task's outputs; an entry
       // without them would stop caching the plugin folder entirely.
       expect(task.outputs?.length, `"${packageName}#build" must declare its outputs`).toBeGreaterThan(0);
+    });
+
+    it(`turbo declares ${DEV_VOICES_ENV} in this plugin's build env`, () => {
+      // Two reasons, both fatal if missed: the value is part of the cache key
+      // (an undeclared variable is served a stale plugin folder), and turbo's
+      // strict env mode strips an undeclared variable before Rollup runs, so
+      // the opt-in would silently never take.
+      const task = turbo.tasks[`${packageName}#build`];
+      expect(task?.env).toContain(DEV_VOICES_ENV);
+    });
+
+    it("this plugin's build depends on the stage task, and still on ^build", () => {
+      const task = turbo.tasks[`${packageName}#build`];
+      expect(task?.dependsOn).toContain(STAGE_TASK);
+      expect(task?.dependsOn).toContain("^build");
     });
   });
 });

@@ -24,8 +24,24 @@
       "inputs": ["voice/**", "src/build/**", "src/presets.mjs"],
       "outputs": [".cache/**"]
     },
+    "@iracedeck/audio-assets#stage:dev-voices": {
+      "dependsOn": ["^build", "@iracedeck/audio-assets#build"],
+      "env": ["IRACEDECK_DEV_VOICES"],
+      "inputs": [
+        "voice/**",
+        "configs/**",
+        "scripts/pack-voice.mjs",
+        "scripts/stage-dev-voices.mjs",
+        "src/build/**",
+        "src/presets.mjs",
+        "$TURBO_ROOT$/dev.local.json",
+        "$TURBO_ROOT$/scripts/lib/dev-local.mjs"
+      ],
+      "outputs": ["dist/voice-packs/**"]
+    },
     "@iracedeck/iracing-plugin-mirabox#build": {
-      "dependsOn": ["^build"],
+      "dependsOn": ["^build", "@iracedeck/audio-assets#stage:dev-voices"],
+      "env": ["IRACEDECK_DEV_VOICES"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/dev.local.json",
@@ -39,7 +55,8 @@
       "outputs": ["com.iracedeck.sd.*.sdPlugin/**"]
     },
     "@iracedeck/iracing-plugin-stream-deck#build": {
-      "dependsOn": ["^build"],
+      "dependsOn": ["^build", "@iracedeck/audio-assets#stage:dev-voices"],
+      "env": ["IRACEDECK_DEV_VOICES"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/dev.local.json",
@@ -53,7 +70,8 @@
       "outputs": ["com.iracedeck.sd.*.sdPlugin/**"]
     },
     "@iracedeck/iracing-plugin-ulanzi#build": {
-      "dependsOn": ["^build"],
+      "dependsOn": ["^build", "@iracedeck/audio-assets#stage:dev-voices"],
+      "env": ["IRACEDECK_DEV_VOICES"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/dev.local.json",
