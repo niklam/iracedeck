@@ -42,7 +42,7 @@ import path from "node:path";
 import { performance } from "node:perf_hooks";
 import url from "node:url";
 
-import { resolveDevVoicePacksRoot } from "../../../scripts/lib/dev-local.mjs";
+import { isSamePath, resolveDevVoicePacksRoot } from "../../../scripts/lib/dev-local.mjs";
 import { audioAssetsPath, VOICE_PACKS } from "../src/build/index.mjs";
 import { OUTPUT_DIR, packVoice } from "./pack-voice.mjs";
 
@@ -107,7 +107,9 @@ export async function stageDevVoices({
   // The default root and the packer's output directory are one directory by
   // construction; if they ever drift, staging would fill a directory the
   // plugin never scans and the developer would hear the previous clips.
-  if (path.resolve(voicePacksRoot) !== path.resolve(outputDir)) {
+  // Compared as the resolver compares, so a marker spelling the default root in
+  // another case on Windows is not mistaken for a drift.
+  if (!isSamePath(voicePacksRoot, outputDir)) {
     throw new Error(
       `development voice root ${voicePacksRoot} is not the packer's output directory ${outputDir} — ` +
         `DEFAULT_DEV_VOICE_PACKS_ROOT and pack-voice.mjs's OUTPUT_DIR have drifted apart`,

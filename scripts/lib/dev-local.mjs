@@ -107,6 +107,25 @@ export function readDevVoicesEnv(env = process.env) {
 }
 
 /**
+ * Whether two absolute paths name the same directory, as the platform sees it:
+ * case-insensitively on Windows, whose file system is, and exactly elsewhere.
+ * Both are `path.resolve`d first, so separators and a trailing slash never
+ * matter. Exported for every caller that asks "is this the default root?" —
+ * one answer, so the resolver, the stage task and the switch cannot disagree.
+ *
+ * @param {string} a
+ * @param {string} b
+ * @param {NodeJS.Platform} [platform]
+ * @returns {boolean}
+ */
+export function isSamePath(a, b, platform = process.platform) {
+  const ra = path.resolve(a);
+  const rb = path.resolve(b);
+
+  return platform === "win32" ? ra.toLowerCase() === rb.toLowerCase() : ra === rb;
+}
+
+/**
  * Decides the development voice root for a build of `root`. First match wins:
  *
  * | `dev.local.json`           | `IRACEDECK_DEV_VOICES` | Result                                          |
@@ -124,13 +143,14 @@ export function readDevVoicesEnv(env = process.env) {
  * `isDefaultRoot` says whether the resolved root is this worktree's own
  * `DEFAULT_DEV_VOICE_PACKS_ROOT` — the one directory the build stages into. A
  * hand-picked path belongs to whoever picked it, and the stage task leaves it
- * alone (#1214 §3).
+ * alone (#1214 §3). The comparison is {@link isSamePath}'s, so on Windows a
+ * marker spelling the default root in another case still counts as it.
  *
  * @param {string} root Repo root — the worktree being built.
- * @param {{ env?: Record<string, string | undefined>, fs?: DevLocalFs }} [options]
+ * @param {{ env?: Record<string, string | undefined>, fs?: DevLocalFs, platform?: NodeJS.Platform }} [options]
  * @returns {{ voicePacksRoot: string | undefined, source: "dev.local.json" | "IRACEDECK_DEV_VOICES" | undefined, isDefaultRoot: boolean }}
  */
-export function resolveDevVoicePacksRoot(root, { env = process.env, fs } = {}) {
+export function resolveDevVoicePacksRoot(root, { env = process.env, fs, platform = process.platform } = {}) {
   const marker = readDevLocal(root, fs === undefined ? {} : { fs });
   const machineOn = readDevVoicesEnv(env);
   const defaultRoot = path.resolve(root, DEFAULT_DEV_VOICE_PACKS_ROOT);
@@ -142,7 +162,7 @@ export function resolveDevVoicePacksRoot(root, { env = process.env, fs } = {}) {
     return {
       voicePacksRoot: marker.voicePacksRoot,
       source: DEV_LOCAL_FILE,
-      isDefaultRoot: marker.voicePacksRoot === defaultRoot,
+      isDefaultRoot: isSamePath(marker.voicePacksRoot, defaultRoot, platform),
     };
   }
   if (machineOn) {

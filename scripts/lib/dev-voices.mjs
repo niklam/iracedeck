@@ -43,6 +43,7 @@ import {
   DEFAULT_DEV_VOICE_PACKS_ROOT,
   DEV_LOCAL_FILE,
   DEV_VOICES_ENV,
+  isSamePath,
   readDevLocal,
   readDevVoicesEnv,
   resolveDevVoicePacksRoot,
@@ -215,12 +216,12 @@ export function runDevVoices(
   // back exactly as it was — see `restoreMarker`.
   const previous = readMarker(root);
 
-  const marker = VERB_STEPS[mode](root, log);
+  const marker = VERB_STEPS[mode](root, log, platform);
   if (marker.code !== 0) return marker.code;
 
   // What the build about to run will decide — the same resolver the rollup
   // configs and the stage task ask, so this line and the build agree.
-  const resolved = resolveDevVoicePacksRoot(root, { env });
+  const resolved = resolveDevVoicePacksRoot(root, { env, platform });
   log.log(describeResolution(resolved, env));
 
   // Read once and shared by the hint and the relink step: both ask the same
@@ -245,7 +246,9 @@ export function runDevVoices(
   log.log(
     resolved.voicePacksRoot === undefined
       ? "Rebuilding the three plugins so devVoicePacksRoot leaves every bin/config.json …"
-      : "Rebuilding the three plugins so devVoicePacksRoot reaches every bin/config.json (staging the packs on the way) …",
+      : resolved.isDefaultRoot
+        ? "Rebuilding the three plugins so devVoicePacksRoot reaches every bin/config.json (staging the packs on the way) …"
+        : "Rebuilding the three plugins so devVoicePacksRoot reaches every bin/config.json (a hand-picked root is not staged) …",
   );
   if (exec("pnpm", BUILD_ARGS, { cwd: root }).status !== 0) {
     // The marker goes back. It is the build that carries the marker into every
@@ -341,7 +344,7 @@ function restoreMarker(root, previous) {
  *
  * @returns {{ state: "absent" | "off" | "empty" | "default" | "custom", root?: string } | { error: string }}
  */
-function classifyMarker(root) {
+function classifyMarker(root, platform) {
   const file = path.join(root, DEV_LOCAL_FILE);
   if (!existsSync(file)) return { state: "absent" };
 
@@ -357,7 +360,9 @@ function classifyMarker(root) {
 
   if (value === false) return { state: "off" };
   if (value === undefined) return { state: "empty" };
-  if (value === path.resolve(root, DEFAULT_DEV_VOICE_PACKS_ROOT)) return { state: "default", root: value };
+  if (isSamePath(value, path.resolve(root, DEFAULT_DEV_VOICE_PACKS_ROOT), platform)) {
+    return { state: "default", root: value };
+  }
 
   return { state: "custom", root: value };
 }
@@ -371,8 +376,8 @@ function writeMarker(root, voicePacksRoot) {
 }
 
 /** `on`: writes the default root unless the marker already holds a path. */
-function turnOn(root, log) {
-  const marker = classifyMarker(root);
+function turnOn(root, log, platform) {
+  const marker = classifyMarker(root, platform);
   if (marker.error !== undefined) {
     log.error(`Error: ${marker.error}. Nothing written — fix or delete the file.`);
 
@@ -386,7 +391,9 @@ function turnOn(root, log) {
       return { code: 0 };
     case "custom":
       log.log(
-        `${DEV_LOCAL_FILE} already points at ${marker.root} — kept (pnpm dev:voices auto removes the file if you want the default back).`,
+        `${DEV_LOCAL_FILE} already points at ${marker.root} — kept. For the default root instead, delete the file ` +
+          `(or run pnpm dev:voices auto) and then run pnpm dev:voices on again — auto alone leaves this worktree ` +
+          `following ${DEV_VOICES_ENV}, which is off when the variable is unset.`,
       );
 
       return { code: 0 };
@@ -400,8 +407,8 @@ function turnOn(root, log) {
 }
 
 /** `off`: writes `false` — never deletes, because absent now means "follow the machine". */
-function turnOff(root, log) {
-  const marker = classifyMarker(root);
+function turnOff(root, log, platform) {
+  const marker = classifyMarker(root, platform);
   if (marker.error !== undefined) {
     log.error(`Error: ${marker.error}. Nothing written — fix or delete the file.`);
 
@@ -432,8 +439,8 @@ function turnOff(root, log) {
 }
 
 /** `auto`: removes the marker so the worktree follows `IRACEDECK_DEV_VOICES`. */
-function turnAuto(root, log) {
-  const marker = classifyMarker(root);
+function turnAuto(root, log, platform) {
+  const marker = classifyMarker(root, platform);
   if (marker.error !== undefined) {
     log.error(`Error: ${marker.error}. Nothing removed — fix the file, or delete it by hand.`);
 

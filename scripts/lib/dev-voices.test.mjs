@@ -175,6 +175,28 @@ describe("runDevVoices('on')", () => {
     // The RESOLVED directory, not the text in the file: the message names the
     // folder that will be scanned, which is what tells two clones apart.
     expect(output(log)).toContain(join(root, "local", "my-packs"));
+    // `auto` alone does not give the default back: it follows the machine
+    // setting, which is off when the variable is unset. The way back is to
+    // drop the file and run `on` again, and the message says so.
+    expect(output(log)).toContain("then run pnpm dev:voices on again");
+    expect(output(log)).toContain(`following ${DEV_VOICES_ENV}, which is off when the variable is unset`);
+    expect(output(log)).not.toContain("if you want the default back");
+  });
+
+  it("treats the default root spelled in another case as the default on Windows, and as hand-picked elsewhere", () => {
+    const shouted = `${JSON.stringify({ voicePacksRoot: defaultRoot().toUpperCase() }, null, 2)}\n`;
+
+    writeFileSync(marker, shouted);
+    const winLog = fakeLog();
+    expect(runDevVoices("on", options({ log: winLog, platform: "win32" }))).toBe(0);
+    expect(output(winLog)).toContain("left as is");
+    expect(output(winLog)).toContain("(staging the packs on the way)");
+
+    const linuxLog = fakeLog();
+    expect(runDevVoices("on", options({ log: linuxLog, platform: "linux" }))).toBe(0);
+    expect(output(linuxLog)).toContain("— kept.");
+    expect(output(linuxLog)).toContain("(a hand-picked root is not staged)");
+    expect(readFileSync(marker, "utf-8")).toBe(shouted);
   });
 
   // `false` and `{}` hold no choice worth keeping — the first is the explicit
@@ -406,6 +428,18 @@ describe("the build step", () => {
     expect(builds[0].cmd).toBe("pnpm");
     expect(builds[0].args).toEqual(BUILD_ARGS);
     expect(builds[0].options.cwd).toBe(root);
+  });
+
+  it("promises staging only when the build will stage — the default root, not a hand-picked one", () => {
+    const defaultLog = fakeLog();
+    expect(runDevVoices("on", options({ log: defaultLog }))).toBe(0);
+    expect(output(defaultLog)).toContain("(staging the packs on the way)");
+
+    writeFileSync(marker, CUSTOM_MARKER);
+    const customLog = fakeLog();
+    expect(runDevVoices("on", options({ log: customLog }))).toBe(0);
+    expect(output(customLog)).toContain("(a hand-picked root is not staged)");
+    expect(output(customLog)).not.toContain("staging the packs");
   });
 
   it("stops before relinking and fails when the build fails", () => {

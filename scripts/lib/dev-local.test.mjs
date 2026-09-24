@@ -20,6 +20,7 @@ import {
   DEFAULT_DEV_VOICE_PACKS_ROOT,
   DEV_LOCAL_FILE,
   DEV_VOICES_ENV,
+  isSamePath,
   readDevLocal,
   readDevVoicesEnv,
   resolveDevVoicePacksRoot,
@@ -245,6 +246,15 @@ describe("resolveDevVoicePacksRoot", () => {
     expect(resolveDevVoicePacksRoot(root, { env: {} }).isDefaultRoot).toBe(true);
   });
 
+  it("recognises the default root spelled in another case on Windows only", () => {
+    // Windows' file system is case-insensitive, so a marker naming the default
+    // root in upper case still names it, and the stage task must still stage.
+    writeMarker(JSON.stringify({ voicePacksRoot: defaultRoot().toUpperCase() }));
+
+    expect(resolveDevVoicePacksRoot(root, { env: {}, platform: "win32" }).isDefaultRoot).toBe(true);
+    expect(resolveDevVoicePacksRoot(root, { env: {}, platform: "linux" }).isDefaultRoot).toBe(false);
+  });
+
   describe("an invalid marker throws in every variable state", () => {
     it.each([
       ["a non-string, non-false root", JSON.stringify({ voicePacksRoot: 7 })],
@@ -302,5 +312,28 @@ describe("resolveDevVoicePacksRoot", () => {
       if (saved === undefined) delete process.env[DEV_VOICES_ENV];
       else process.env[DEV_VOICES_ENV] = saved;
     }
+  });
+});
+
+describe("isSamePath", () => {
+  it("compares case-insensitively on Windows and exactly elsewhere", () => {
+    const a = path.resolve(root, "Packages", "Voice-Packs");
+    const b = path.resolve(root, "packages", "voice-packs");
+
+    expect(isSamePath(a, b, "win32")).toBe(true);
+    expect(isSamePath(a, b, "linux")).toBe(false);
+    expect(isSamePath(a, b, "darwin")).toBe(false);
+  });
+
+  it("ignores a trailing separator and different spellings of one path on every platform", () => {
+    const a = path.resolve(root, "voice-packs");
+
+    expect(isSamePath(`${a}${path.sep}`, a, "linux")).toBe(true);
+    expect(isSamePath(path.join(root, "x", "..", "voice-packs"), a, "win32")).toBe(true);
+  });
+
+  it("tells two different directories apart on every platform", () => {
+    expect(isSamePath(path.resolve(root, "a"), path.resolve(root, "b"), "win32")).toBe(false);
+    expect(isSamePath(path.resolve(root, "a"), path.resolve(root, "b"), "linux")).toBe(false);
   });
 });
