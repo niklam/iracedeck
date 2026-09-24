@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<%- include('head-common') %>
+	</head>
+	<body>
+		<%- include('section-header', { title: 'Action Settings' }) %>
+
+		<sdpi-item label="Mode">
+			<sdpi-select id="mode-select" setting="mode" default="add">
+				<option value="add">Add Marker</option>
+				<option value="delete">Delete Marker</option>
+				<option value="next">Next Marker</option>
+				<option value="previous">Previous Marker</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<% var __comms = require('./data/action-comms.json')['replay-markers']; %>
+		<ird-binding-status mode-setting="<%= __comms._meta.modeSetting %>" comms='<%= JSON.stringify(__comms) %>'></ird-binding-status>
+
+		<sdpi-item label="Seconds Back" id="seconds-back-item" class="hidden">
+			<sdpi-textfield setting="secondsBack" type="number" min="0" max="60" default="5" placeholder="5"></sdpi-textfield>
+		</sdpi-item>
+
+		<script>
+			function updateVisibility(mode) {
+				const secondsBackItem = document.getElementById("seconds-back-item");
+
+				if (secondsBackItem) {
+					secondsBackItem.classList.toggle("hidden", mode !== "add");
+				}
+			}
+
+			async function initialize() {
+				await customElements.whenDefined("sdpi-select");
+
+				const modeSelect = document.getElementById("mode-select");
+				if (modeSelect) {
+					updateVisibility(modeSelect.value || "add");
+
+					modeSelect.addEventListener("change", (ev) => {
+						updateVisibility(ev.target.value || "add");
+					});
+					modeSelect.addEventListener("input", (ev) => {
+						updateVisibility(ev.target.value || "add");
+					});
+
+					// Polling fallback on the shared page poller — sdpi-select events can be unreliable (#903)
+					let lastMode = modeSelect.value || "add";
+					window.irdPoll(() => {
+						const currentMode = modeSelect.value;
+						if (currentMode && currentMode !== lastMode) {
+							lastMode = currentMode;
+							updateVisibility(currentMode);
+						}
+					});
+				}
+			}
+
+			if (document.readyState === "loading") {
+				document.addEventListener("DOMContentLoaded", initialize);
+			} else {
+				initialize();
+			}
+		</script>
+
+		<%- include('action-settings-footer') %>
+
+		<%- include('title-overrides') %>
+
+		<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color'], defaults: require('./data/icon-defaults.json')['replay-markers'] }) %>
+		<%- include('border-overrides', { defaults: require('./data/icon-defaults.json')['replay-markers'] }) %>
+		<%- include('graphic-overrides') %>
+		<%- include('common-settings') %>
+
+		<%- include('key-bindings-section') %>
+
+		<%- include('docs-link') %>
+
+		<%- include('version') %>
+	</body>
+</html>

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
+  <!-- Main background -->
+  <rect x="0" y="0" width="72" height="72" rx="8" fill="#2a3a4a"/>
+
+  <!-- Bookmark with a green plus -->
+  <path d="M22,10 H38 V38 L30,31.5 L22,38 Z" fill="#ffffff"/>
+  <path d="M43,24 H53 M48,19 V29" fill="none" stroke="#2ecc71" stroke-width="3" stroke-linecap="round"/>
+
+  <!-- Two-line label -->
+  <text x="36" y="52" text-anchor="middle" dominant-baseline="central"
+        fill="#ffffff" font-family="Arial, sans-serif" font-size="10" font-weight="bold">MARKERS</text>
+  <text x="36" y="63" text-anchor="middle" dominant-baseline="central"
+        fill="#ffffff" font-family="Arial, sans-serif" font-size="8">REPLAY</text>
+</svg>

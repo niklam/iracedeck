@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 58">
+  <desc>{"colors":{"backgroundColor":"#1e6b3c","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["backgroundColor"],"title":{"text":"MARKER\nADDED"},"border":{"color":"#2ecc71"}}</desc>
+  <path d="M1,1 H35 V57 L18,43 L1,57 Z" fill="#ffffff"/>
+  <polyline points="9,23 16,30 27,16" fill="none" stroke="#1e6b3c" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

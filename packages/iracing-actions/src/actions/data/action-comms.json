@@ -3330,6 +3330,17 @@
       "method": "api"
     }
   },
+  "replay-markers": {
+    "_meta": {
+      "modeSetting": "mode"
+    },
+    "next": {
+      "method": "api"
+    },
+    "previous": {
+      "method": "api"
+    }
+  },
   "replay-speed": {
     "_meta": {
       "modeSetting": "direction"
