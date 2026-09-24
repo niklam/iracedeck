@@ -39,7 +39,7 @@ A marker within one second of an existing one is not added twice. When a marker 
 
 #### Details
 
-- **Method:** None — the marker is stored by iRaceDeck and nothing is sent to iRacing
+- **Method:** Stored by iRaceDeck — no iRacing command
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
@@ -62,7 +62,7 @@ When a marker is deleted, the key briefly shows **MARKER DELETED**; a press with
 
 #### Details
 
-- **Method:** None — the marker is removed from iRaceDeck's own store and nothing is sent to iRacing
+- **Method:** Stored by iRaceDeck — no iRacing command
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No

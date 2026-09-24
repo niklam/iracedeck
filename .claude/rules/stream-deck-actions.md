@@ -461,7 +461,7 @@ Reference implementation: `packages/iracing-actions/src/actions/fuel-service/fue
 
 ## Per-Mode Communication Method & Binding Status (#612)
 
-Every action mode talks to iRacing through exactly one of three methods — **API** (`getCommands().*`), **key binding** (`tapBinding`/`holdBinding`), or **chat** (`getCommands().chat.sendMessage("#…")`). This is formalized in a per-`(action, mode)` catalog and surfaced in the PI (a status line under the Mode selector) and on the key icon (a centered ⚠️ when a required binding is unset).
+Every action mode that talks to iRacing does so through exactly one of three methods — **API** (`getCommands().*`), **key binding** (`tapBinding`/`holdBinding`), or **chat** (`getCommands().chat.sendMessage("#…")`). A mode that sends nothing to iRacing — Replay Markers' Add / Delete Marker, Fuel Service's dial Switch Mode — is left out of the catalog and shows no status line. This is formalized in a per-`(action, mode)` catalog and surfaced in the PI (a status line under the Mode selector) and on the key icon (a centered ⚠️ when a required binding is unset).
 
 When adding or modifying an action, keep these in sync:
 
