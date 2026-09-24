@@ -14,7 +14,7 @@
           "items": [
             "The Race Engineer no longer announces heavy contact with another car for an incident iRacing scored as an off-track. He now checks the kind of incident against how far your incident count actually moved, so a light car contact followed a moment later by an off-track is called as the one-point off-track it was. Light contact, which costs no points, is no longer announced at all. See <a href=\"https://iracedeck.com/docs/actions/audio-voice/pit-crew/#incident-callouts\" target=\"_blank\" rel=\"noopener noreferrer\">Pit Crew</a>.",
             "The <code>{{session.time_remaining}}</code> template variable is now blank in a session with no time limit instead of showing <code>10080:00</code> — the same way <code>{{session.laps_remaining}}</code> is blank in a session with no lap limit. See <a href=\"https://iracedeck.com/docs/features/template-variables/#session\" target=\"_blank\" rel=\"noopener noreferrer\">Template Variables</a>.",
-            "The Race Engineer no longer says the pace car is coming in, peeling off or gone when iRacing holds the green before a rolling start or restart. That flag goes up several seconds before the pace car actually leaves the track, so those lines now only warn that the green is coming, and the pace car's exit keeps its own <em>&quot;Pace car's off.&quot;</em> call."
+            "The Race Engineer no longer says the pace car is coming in, peeling off or gone when iRacing holds the green before a rolling start or restart. That flag goes up several seconds before the pace car actually leaves the track, so those lines now only warn that the green is coming. On a caution restart the pace car's exit keeps its own <em>&quot;Pace car's off.&quot;</em> call."
           ]
         }
       ]

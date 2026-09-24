@@ -18718,8 +18718,8 @@
       "sequence": ["pool:flags/one-pace-lap-to-go"]
     },
     "pit-crew.flag-green-held": {
-      "comment": "The pace car is pulling in and the green is imminent — get ready to launch. Rolling starts and restarts only; a standing-start grid is the start lights' business.",
-      "test": "Harness → Flags → Green Held, with the race session preset and the hot-lap telemetry preset. In-sim: the final pace lap of a rolling start or restart, once the pace car peels off.",
+      "comment": "The green is imminent — get ready to launch. The flag rises several seconds before the pace car leaves, so no line here says where the pace car is; caution/pace-car-off does that at its real exit. Rolling starts and restarts only; a standing-start grid is the start lights' business.",
+      "test": "Harness → Flags → Green Held, with the race session preset and the hot-lap telemetry preset. In-sim: the final pace lap of a rolling start or restart, several seconds before the pace car leaves the track.",
       "sequence": ["pool:flags/green-held"]
     },
     "pit-crew.flag-ten-to-go": {
