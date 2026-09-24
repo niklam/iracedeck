@@ -26,14 +26,14 @@
 
 ## Features
 
-**32 actions** with **265+ modes** across 9 categories:
+**33 actions** with **265+ modes** across 9 categories:
 
 | Category                | Actions | Modes | Examples                                                              |
 | ----------------------- | ------- | ----- | --------------------------------------------------------------------- |
 | **Display & Session**   | 2       | 10    | Incidents, laps, position, iRating, gaps ahead/behind, fuel, flags    |
 | **Driving Controls**    | 6       | 32    | AI spotter, audio (incl. Race Engineer & Radar volume), black box cycling, look direction, car control, pit crew |
 | **Cockpit & Interface** | 5       | 34    | Wipers, FFB, splits & reference, telemetry, UI toggles                |
-| **View & Camera**       | 5       | 91    | FOV, replay, camera controls, broadcast tools                         |
+| **View & Camera**       | 6       | 95    | FOV, replay, replay markers, camera controls, broadcast tools         |
 | **Media**               | 1       | 7     | Video recording, screenshots                                          |
 | **Pit Service**         | 3       | 15    | Fuel (button and dial), tires, compounds, tearoff, fast repair        |
 | **Car Setup**           | 7       | 44    | Brakes (button and dial), chassis, aero, engine, fuel mix, hybrid/ERS, traction control |

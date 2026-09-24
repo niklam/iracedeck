@@ -68,7 +68,7 @@ src/content/docs/
     │   ├── display-session/         # 2 actions
     │   ├── driving/                 # 5 actions
     │   ├── cockpit/                 # 5 actions
-    │   ├── view-camera/             # 5 actions
+    │   ├── view-camera/             # 6 actions
     │   ├── media/                   # 1 action
     │   ├── pit-service/             # 3 actions
     │   ├── car-setup/               # 7 actions

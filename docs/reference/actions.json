@@ -396,7 +396,7 @@
               "value": "jump-to-fastest-lap",
               "label": "Jump to Fastest Lap",
               "additionalSettings": ["fastestLapTarget"],
-              "description": "Jump the replay cursor to the fastest lap of either the viewed car or always your own car (session-scoped; no dial support)"
+              "description": "Jump the replay to the fastest lap of either the viewed car or always your own car: looked up in the lap record iRaceDeck keeps live (lands about 1 s before the line and plays), falling back to a replay search when the lap was not recorded (session-scoped; no dial support)"
             },
             { "value": "next-car", "label": "Next Car" },
             { "value": "prev-car", "label": "Previous Car" },
@@ -409,6 +409,36 @@
               "value": "prev-car-number",
               "label": "Previous Car (Number Order)",
               "description": "Switch camera to previous car by number order (includes pit cars, excludes the pace car and cars no longer in the sim world, #885)"
+            }
+          ]
+        },
+        {
+          "id": "com.iracedeck.sd.core.replay-markers",
+          "name": "Replay Markers",
+          "file": "replay-markers.ts",
+          "encoder": false,
+          "settingsKey": "mode",
+          "modes": [
+            {
+              "value": "add",
+              "label": "Add Marker",
+              "additionalSettings": ["secondsBack"],
+              "description": "Store a marker secondsBack (default 5, 0-60) before the current replay frame; saved per session under %LOCALAPPDATA%\\iRaceDeck\\Replay\\<ecosystem>\\session_<SubSessionID>.json, offline sessions in memory only; sends nothing to iRacing"
+            },
+            {
+              "value": "delete",
+              "label": "Delete Marker",
+              "description": "Remove the marker nearest the current frame within 10 s; sends nothing to iRacing"
+            },
+            {
+              "value": "next",
+              "label": "Next Marker",
+              "description": "Jump the replay to the next marker more than 1 s ahead"
+            },
+            {
+              "value": "previous",
+              "label": "Previous Marker",
+              "description": "Jump the replay to the previous marker more than 2 s behind; from the car, opens the replay at the latest marker"
             }
           ]
         },
