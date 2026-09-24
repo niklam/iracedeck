@@ -198,6 +198,7 @@ export {
   bindingLapsToGo,
   resolveBindingLimit,
   resolveLapsRemaining,
+  resolveShownTimeRemainingS,
   resolveTimeRemainingS,
 } from "./session-limit.js";
 

@@ -11,15 +11,16 @@
  * "laps whenever a cap exists" answers "how much is left"; only comparing the
  * two does, and that comparison used to live in the fuel callouts alone.
  *
- * This module owns exactly three things, shared by every consumer — the fuel
+ * This module owns exactly four things, shared by every consumer — the fuel
  * laps-left callouts (`sim-events-iracing`), Session Info's Time Remaining
  * key and the template context's `session.laps_remaining` and
  * `session.time_remaining`:
  *
  *   1. decoding the two sentinels,
  *   2. the rule that `null` means UNKNOWN (missing, sentinel, nonsensical) —
- *      and that unknown must never be mistaken for zero, and
- *   3. the whichever-ends-sooner rule, ties to the lap cap.
+ *      and that unknown must never be mistaken for zero,
+ *   3. the whichever-ends-sooner rule, ties to the lap cap, and
+ *   4. the display rule that a clock run past zero shows as `0` (#1221).
  *
  * It deliberately does NOT own a consumer's precision adjustments — the fuel
  * estimate's white-flag clamp, its lap-fraction subtraction, its
@@ -81,6 +82,30 @@ export function resolveTimeRemainingS(t: TelemetryData | null | undefined): numb
   const raw = t?.SessionTimeRemain;
 
   return typeof raw === "number" && Number.isFinite(raw) && raw >= 0 && raw < IRSDK_UNLIMITED_TIME ? raw : null;
+}
+
+/**
+ * The clock as a key SHOWS it: {@link resolveTimeRemainingS}, except that a
+ * clock which has run past zero reads as the `0` it has left rather than as
+ * unknown (#1221).
+ *
+ * `SessionTimeRemain` sits below zero while the leader runs to the flag after
+ * a timed race's clock expires, and iRacing can also blip it negative for a
+ * tick or two mid-race (the transient `leader-white.ts` guards with a
+ * two-tick confirmation). For the fuel estimate a negative duration is
+ * nonsense and is better skipped, which is why {@link resolveTimeRemainingS}
+ * calls it unknown. On a display, unknown renders as `UNLIM` or a blank —
+ * the opposite of an expired clock — so every display of the time side reads
+ * it through here, and the brief `0` on a mid-race blip is the accepted cost.
+ *
+ * @param t - The latest telemetry snapshot, or null/undefined when unavailable
+ * @returns the seconds remaining (≥ 0), 0 for an expired clock, or null when the time side is unknown or unlimited
+ */
+export function resolveShownTimeRemainingS(t: TelemetryData | null | undefined): number | null {
+  const raw = t?.SessionTimeRemain;
+  const clockRanPast = typeof raw === "number" && Number.isFinite(raw) && raw < 0;
+
+  return resolveTimeRemainingS(t) ?? (clockRanPast ? 0 : null);
 }
 
 /**
