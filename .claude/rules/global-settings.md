@@ -59,6 +59,7 @@ const binding = parseBinding((getGlobalSettings() as Record<string, unknown>)["b
 // KeyBindingValue | SimHubBindingValue | undefined
 
 const unsubscribe = onGlobalSettingsChange((settings) => { /* … */ });
+unsubscribe(); // required on cleanup (e.g. onWillDisappear) — a listener stays registered until removed
 ```
 
 ### GlobalSettingsSchema
