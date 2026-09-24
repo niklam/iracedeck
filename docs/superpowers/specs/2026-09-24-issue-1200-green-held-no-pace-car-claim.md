@@ -29,6 +29,16 @@ The three offending lines are reworded in `packages/audio-assets/configs/default
 
 The contract's `description` ("… as the pace car pulls in …") carries the same wrong assumption, and it feeds the generated Voice Packs reference that pack authors read. It is reworded to say the flag rises shortly before the green, while the pace car may still be on track, and the reference is regenerated.
 
+### The opening rolling start gets the pace-car call too
+
+Found in manual testing. #1127 kept `caution-pace-car-off` silent at an opening rolling start on purpose: the start's own green-held line "already owns that moment" (`caution.ts`, module header finding 1). That line was the one saying "Pace car's peeling off". With the pace-car claim gone from it, an opening rolling start would announce the pace car rolling off (`rolling-start-pace-car`) and never announce it leaving.
+
+So `caution-pace-car-off` also speaks at an opening rolling start. Its gate becomes: live in the race car, and either the caution phase is `one-to-go` (unchanged, restarts) **or** there is no caution (`none`) and iRacing's `GreenHeld` bit is up in the event's telemetry. The #1127 Homestead capture measures it: at the rolling start `GreenHeld` rises at 186.28 s, the pace car (car index 64) goes OnTrack → AproachingPits at 196.53 s with `GreenHeld` still up, and the green comes at 201.18 s. The restart repeats the pattern (477.77 / 488.07 / 492.82 s).
+
+The road-course deploy that #1127 guards against stays silent. It happens mid-caution, while the phase is `waving`, never `none`, and `GreenHeld` is not up.
+
+A standing start never raises `GreenHeld` and has no pace car leaving, so it is unaffected.
+
 ## Alternatives rejected
 
 - **Re-trigger green held on `paceCar.off`.** This duplicates `caution-pace-car-off` at the same instant and throws away the ~15 s heads-up, which is the only thing the green-held callout adds.
@@ -37,7 +47,7 @@ The contract's `description` ("… as the pace car pulls in …") carries the sa
 
 ## Out of scope
 
-- The trigger (`flag.green-held.raised`), `rollingFormationOnly`, the `paceCar.off` event and its detection, and the `caution-pace-car-off` callout.
+- The trigger (`flag.green-held.raised`), `rollingFormationOnly`, the `paceCar.off` event and its detection. `caution-pace-car-off` changes only in the gate above; its lines and its restart behaviour stay as they are.
 - The scenario harness's *Caution → restart* shortcut and its test, which assert the event sequence rather than any wording.
 - A new telemetry capture: the #1127 measurement settles the gap. How much wider it gets with dual pit roads does not change the decision, since no green-held line depends on it any more.
 - Other callouts' wording.
@@ -45,6 +55,7 @@ The contract's `description` ("… as the pace car pulls in …") carries the sa
 ## Testing
 
 - **No wording guard.** A test that rejected any green-held line mentioning the pace car was considered and dropped: `green-held-05` ("Last few seconds behind the pace car") mentions it without placing it, so the test would need a rule for which mentions count as a claim — hard to maintain for a small risk.
+- **The pace-car-off gate:** unit tests show that "Pace car's off" speaks when there is no caution and GreenHeld is up (the opening rolling start). It stays silent when there is no caution and GreenHeld is down, and while a caution is still waving even with GreenHeld up. The road-course capture tests from #1127 stay green.
 - **Existing guards stay green:** script coverage, the callout-scripts freshness test, the pack-reference freshness test, and the voice-pack catalog entry. The pack's `version` is bumped and its catalog entry regenerated through `pack:voice default`, as #1116 requires.
 - **Manual:** audition the three regenerated clips through the radio filter, then play the harness's *Caution → restart* shortcut and hear a green-held line with no pace-car wording, followed by the pace-car-off line.
 - **Changelog:** a **Bug Fixes** line, since the lines shipped in earlier releases.
