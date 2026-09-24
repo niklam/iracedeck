@@ -5,20 +5,23 @@ import {
   buildMarker,
   CONFIRMATION_FLASH_MS,
   generateReplayMarkersSvg,
+  pickMarkerToDelete,
   readSubSessionId,
   REPLAY_MARKERS_UUID,
   ReplayMarkers,
   ReplayMarkersSettings,
 } from "./replay-markers.js";
 
+type Marker = { frame: number; sessionNum: number; sessionTimeMs: number; [key: string]: unknown };
+
 const mocks = vi.hoisted(() => ({
   isStoreInitialized: vi.fn(() => true),
   markers: {
     add: vi.fn((): boolean => true),
-    deleteNearest: vi.fn((): { frame: number; sessionNum: number; sessionTimeMs: number } | null => null),
-    next: vi.fn((): { frame: number; sessionNum: number; sessionTimeMs: number } | null => null),
-    previous: vi.fn((): { frame: number; sessionNum: number; sessionTimeMs: number } | null => null),
-    list: vi.fn(() => []),
+    deleteNearest: vi.fn((): Marker | null => null),
+    next: vi.fn((): Marker | null => null),
+    previous: vi.fn((): Marker | null => null),
+    list: vi.fn((): Marker[] => []),
   },
   setPlayPosition: vi.fn((_mode: number, _frame: number) => true),
 }));
@@ -59,6 +62,7 @@ vi.mock("@iracedeck/deck-core", async () => {
     getCommands: vi.fn(() => ({ replay: { setPlayPosition: mocks.setPlayPosition } })),
     getReplaySessionStore: vi.fn(() => ({ markers: mocks.markers })),
     isReplaySessionStoreInitialized: mocks.isStoreInitialized,
+    MARKER_DELETE_WINDOW_FRAMES: 600,
     getGlobalBorderSettings: vi.fn(() => ({})),
     getGlobalColors: vi.fn(() => ({})),
     getGlobalGraphicSettings: vi.fn(() => ({})),
@@ -134,6 +138,7 @@ describe("ReplayMarkers", () => {
     mocks.markers.deleteNearest.mockReturnValue(null);
     mocks.markers.next.mockReturnValue(null);
     mocks.markers.previous.mockReturnValue(null);
+    mocks.markers.list.mockReturnValue([]);
     vi.useFakeTimers();
   });
 
@@ -157,6 +162,9 @@ describe("ReplayMarkers", () => {
       [-3, 0],
       [2.6, 3],
       ["abc", 5],
+      ["", 5],
+      [" ", 5],
+      [null, 5],
     ])("secondsBack %j reads as %j", (input, expected) => {
       expect(ReplayMarkersSettings.parse({ secondsBack: input }).secondsBack).toBe(expected);
     });
@@ -201,11 +209,21 @@ describe("ReplayMarkers", () => {
 
   describe("buildMarker", () => {
     it("live: seconds back from the live edge, with the live session", () => {
-      expect(buildMarker(LIVE, 30_000, 5)).toEqual({ frame: 29_700, sessionNum: 2, sessionTimeMs: 495_000 });
+      expect(buildMarker(LIVE, 30_000, 5)).toEqual({
+        frame: 29_700,
+        pressFrame: 30_000,
+        sessionNum: 2,
+        sessionTimeMs: 495_000,
+      });
     });
 
     it("replay: seconds back from the frame on screen, with the replay's session", () => {
-      expect(buildMarker(REPLAY, 12_000, 0)).toEqual({ frame: 12_000, sessionNum: 1, sessionTimeMs: 200_000 });
+      expect(buildMarker(REPLAY, 12_000, 0)).toEqual({
+        frame: 12_000,
+        pressFrame: 12_000,
+        sessionNum: 1,
+        sessionTimeMs: 200_000,
+      });
     });
 
     it("clamps the frame and the time at 0", () => {
@@ -236,7 +254,7 @@ describe("ReplayMarkers", () => {
       await action.onKeyDown(keyDown({ mode: "add" }));
 
       expect(mocks.markers.add).toHaveBeenCalledWith(
-        { frame: 29_700, sessionNum: 2, sessionTimeMs: 495_000 },
+        { frame: 29_700, pressFrame: 30_000, sessionNum: 2, sessionTimeMs: 495_000 },
         { subSessionId: 86697546 },
       );
       expect(action["updateKeyImage"]).toHaveBeenCalledTimes(1);
@@ -314,23 +332,78 @@ describe("ReplayMarkers", () => {
     });
   });
 
+  describe("pickMarkerToDelete", () => {
+    const m = (frame: number, pressFrame?: number): Marker =>
+      pressFrame === undefined
+        ? { frame, sessionNum: 0, sessionTimeMs: 0 }
+        : { frame, pressFrame, sessionNum: 0, sessionTimeMs: 0 };
+
+    it("reaches a 15 s marker from the car through its press frame", () => {
+      const fifteenBack = m(30_000 - 15 * 60, 30_000);
+
+      expect(pickMarkerToDelete([fifteenBack], 30_000 + 60)).toBe(fifteenBack);
+    });
+
+    it("a marker without a press frame is measured by its frame alone", () => {
+      expect(pickMarkerToDelete([m(30_000 - 15 * 60)], 30_000)).toBeNull();
+      expect(pickMarkerToDelete([m(29_500)], 30_000)).toEqual(m(29_500));
+    });
+
+    it("picks the nearer of two by either distance", () => {
+      const byFrame = m(20_000, 20_300);
+      const byPress = m(19_000, 20_050);
+
+      expect(pickMarkerToDelete([byPress, byFrame], 20_060)).toBe(byPress);
+    });
+
+    it("on a tie the earlier marker goes", () => {
+      const early = m(10_000);
+      const late = m(10_200);
+
+      expect(pickMarkerToDelete([early, late], 10_100)).toBe(early);
+    });
+
+    it("ignores a non-numeric press frame", () => {
+      expect(pickMarkerToDelete([{ ...m(0), pressFrame: "30000" }], 30_000)).toBeNull();
+    });
+  });
+
   describe("Delete", () => {
     it("deletes the marker nearest the current frame and flashes Deleted", async () => {
-      mocks.markers.deleteNearest.mockReturnValue({ frame: 11_800, sessionNum: 1, sessionTimeMs: 0 });
+      const near = { frame: 11_800, sessionNum: 1, sessionTimeMs: 0 };
+      mocks.markers.list.mockReturnValue([near]);
+      mocks.markers.deleteNearest.mockReturnValue(near);
       const { action } = makeAction(REPLAY);
 
       await action.onKeyDown(keyDown({ mode: "delete" }));
 
-      expect(mocks.markers.deleteNearest).toHaveBeenCalledWith(12_000, { subSessionId: 86697546 });
+      expect(mocks.markers.list).toHaveBeenCalledWith({ subSessionId: 86697546 });
+      expect(mocks.markers.deleteNearest).toHaveBeenCalledWith(11_800, { subSessionId: 86697546 });
       expect(action["updateKeyImage"]).toHaveBeenCalledWith("ctx-1", expect.stringContaining("MARKER\nDELETED"));
     });
 
-    it("nothing in reach shows nothing", async () => {
+    it("from the car, deletes a marker just added with 15 seconds back", async () => {
+      const { action } = makeAction(LIVE);
+      await action.onKeyDown(keyDown({ mode: "add", secondsBack: 15 }));
+      const added = mocks.markers.add.mock.calls[0]?.[0] as unknown as Marker;
+      expect(added).toMatchObject({ frame: 29_100, pressFrame: 30_000 });
+
+      mocks.markers.list.mockReturnValue([added]);
+      mocks.markers.deleteNearest.mockReturnValue(added);
+      const later = makeAction({ ...LIVE, ReplayFrameNumEnd: 30_120 } as TelemetryData).action;
+      await later.onKeyDown(keyDown({ mode: "delete" }));
+
+      expect(mocks.markers.deleteNearest).toHaveBeenCalledWith(29_100, { subSessionId: 86697546 });
+      expect(later["updateKeyImage"]).toHaveBeenCalledWith("ctx-1", expect.stringContaining("MARKER\nDELETED"));
+    });
+
+    it("nothing in reach deletes nothing and shows nothing", async () => {
+      mocks.markers.list.mockReturnValue([{ frame: 1_000, sessionNum: 2, sessionTimeMs: 0 }]);
       const { action } = makeAction(LIVE);
 
       await action.onKeyDown(keyDown({ mode: "delete" }));
 
-      expect(mocks.markers.deleteNearest).toHaveBeenCalledWith(30_000, { subSessionId: 86697546 });
+      expect(mocks.markers.deleteNearest).not.toHaveBeenCalled();
       expect(action["updateKeyImage"]).not.toHaveBeenCalled();
     });
   });
@@ -347,14 +420,27 @@ describe("ReplayMarkers", () => {
       expect(action["updateKeyImage"]).not.toHaveBeenCalled();
     });
 
-    it("Previous from the car measures from the live edge", async () => {
-      mocks.markers.previous.mockReturnValue({ frame: 29_000, sessionNum: 2, sessionTimeMs: 0 });
-      const { action } = makeAction(LIVE);
+    it("Previous jumps to the previous marker's frame", async () => {
+      mocks.markers.previous.mockReturnValue({ frame: 9_000, sessionNum: 1, sessionTimeMs: 0 });
+      const { action } = makeAction(REPLAY);
 
       await action.onKeyDown(keyDown({ mode: "previous" }));
 
-      expect(mocks.markers.previous).toHaveBeenCalledWith(30_000, { subSessionId: 86697546 });
-      expect(mocks.setPlayPosition).toHaveBeenCalledWith(ReplayPosMode.Begin, 29_000);
+      expect(mocks.markers.previous).toHaveBeenCalledWith(12_000, { subSessionId: 86697546 });
+      expect(mocks.setPlayPosition).toHaveBeenCalledWith(ReplayPosMode.Begin, 9_000);
+    });
+
+    it.each(["next", "previous"])("%s from the car sends nothing and says why at debug", async (mode) => {
+      mocks.markers.next.mockReturnValue({ frame: 31_000, sessionNum: 2, sessionTimeMs: 0 });
+      mocks.markers.previous.mockReturnValue({ frame: 29_000, sessionNum: 2, sessionTimeMs: 0 });
+      const { action } = makeAction(LIVE);
+
+      await action.onKeyDown(keyDown({ mode }));
+
+      expect(mocks.setPlayPosition).not.toHaveBeenCalled();
+      const logger = action["logger"] as unknown as { info: ReturnType<typeof vi.fn>; debug: ReturnType<typeof vi.fn> };
+      expect(logger.info).not.toHaveBeenCalledWith(expect.stringContaining("Jumped"));
+      expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining("open the replay first"));
     });
 
     it.each(["next", "previous"])("%s with no marker in that direction sends nothing", async (mode) => {

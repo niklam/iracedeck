@@ -13,6 +13,7 @@ import {
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
   isReplaySessionStoreInitialized,
+  MARKER_DELETE_WINDOW_FRAMES,
   type ReplayMarker,
   type ReplaySessionStore,
   resolveBorderSettings,
@@ -64,10 +65,26 @@ function clampSecondsBack(value: number): number {
   return Math.min(SECONDS_BACK_MAX, Math.max(0, Math.round(value)));
 }
 
+/**
+ * A cleared field arrives as "" (or whitespace, or null), which `z.coerce`
+ * would read as 0 — silently marking the press moment itself. Blank reads as
+ * unset, so the default applies.
+ */
+function blankToUndefined(value: unknown): unknown {
+  if (value === null) return undefined;
+
+  if (typeof value === "string" && value.trim() === "") return undefined;
+
+  return value;
+}
+
 /** @internal Exported for testing */
 export const ReplayMarkersSettings = CommonSettings.extend({
   mode: z.enum(REPLAY_MARKERS_MODES).default("add"),
-  secondsBack: z.coerce.number().default(SECONDS_BACK_DEFAULT).transform(clampSecondsBack).catch(SECONDS_BACK_DEFAULT),
+  secondsBack: z
+    .preprocess(blankToUndefined, z.coerce.number().default(SECONDS_BACK_DEFAULT))
+    .transform(clampSecondsBack)
+    .catch(SECONDS_BACK_DEFAULT),
 });
 
 /** @internal Exported for testing */
@@ -147,9 +164,11 @@ export function generateReplayMarkersSvg(
  * @internal Exported for testing
  *
  * The marker an Add press names: `secondsBack` before the current frame,
- * clamped at the recording's start. Session number and time are descriptive
- * only (a person reading the file), taken from the replay's own session while
- * a replay plays and from the live session otherwise.
+ * clamped at the recording's start. `pressFrame` keeps the frame the key was
+ * pressed at, so Delete from the same spot reaches a marker set far back.
+ * Session number and time are descriptive only (a person reading the file),
+ * taken from the replay's own session while a replay plays and from the live
+ * session otherwise.
  */
 export function buildMarker(telemetry: TelemetryData, currentFrame: number, secondsBack: number): ReplayMarker {
   const inReplay = telemetry.IsReplayPlaying === true;
@@ -158,9 +177,42 @@ export function buildMarker(telemetry: TelemetryData, currentFrame: number, seco
 
   return {
     frame: Math.max(0, currentFrame - secondsBack * FRAMES_PER_SECOND),
+    pressFrame: currentFrame,
     sessionNum,
     sessionTimeMs: Math.max(0, Math.round((sessionTime - secondsBack) * 1000)),
   };
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * The marker a Delete press at `current` removes: the nearest one within
+ * {@link MARKER_DELETE_WINDOW_FRAMES}, measured to the marker's frame or to
+ * the frame its Add was pressed at (`pressFrame`), whichever is closer. The
+ * second distance is what lets Delete from the car reach a marker set with a
+ * long Seconds back — the car sits at the live edge, the marker well behind
+ * it. Markers without a numeric `pressFrame` (older files) use the frame
+ * alone. On a tie the earlier marker goes.
+ */
+export function pickMarkerToDelete(markers: readonly ReplayMarker[], current: number): ReplayMarker | null {
+  let best: ReplayMarker | null = null;
+  let bestDistance = Number.POSITIVE_INFINITY;
+
+  for (const marker of markers) {
+    const toFrame = Math.abs(current - marker.frame);
+    const toPress =
+      typeof marker.pressFrame === "number" && Number.isFinite(marker.pressFrame)
+        ? Math.abs(current - marker.pressFrame)
+        : Number.POSITIVE_INFINITY;
+    const distance = Math.min(toFrame, toPress);
+
+    if (distance <= MARKER_DELETE_WINDOW_FRAMES && distance < bestDistance) {
+      best = marker;
+      bestDistance = distance;
+    }
+  }
+
+  return best;
 }
 
 /**
@@ -261,7 +313,10 @@ export class ReplayMarkers extends ConnectionStateAwareAction<ReplayMarkersSetti
         return added ? "added" : undefined;
       }
       case "delete": {
-        const removed = store.markers.deleteNearest(frame, scope);
+        const target = pickMarkerToDelete(store.markers.list(scope), frame);
+        // Deleting at the chosen marker's own frame removes exactly that one:
+        // it is at distance 0, and Add keeps any other more than 1 s away.
+        const removed = target ? store.markers.deleteNearest(target.frame, scope) : null;
         this.logger.info(removed ? "Marker deleted" : "No marker near the current frame");
         this.logger.debug(`current=${frame} removed=${removed?.frame ?? "none"}`);
 
@@ -269,6 +324,17 @@ export class ReplayMarkers extends ConnectionStateAwareAction<ReplayMarkersSetti
       }
       case "next":
       case "previous": {
+        // iRacing honours replay commands only out of the car (irsdk_defines.h:
+        // "camera and replay commands only work when you are out of your car"),
+        // so from the car a jump would be sent, ignored, and logged as done.
+        if (telemetry.IsReplayPlaying !== true) {
+          this.logger.debug(
+            `${settings.mode}: replay not playing, and iRacing ignores replay commands from the car; open the replay first`,
+          );
+
+          return undefined;
+        }
+
         const target =
           settings.mode === "next" ? store.markers.next(frame, scope) : store.markers.previous(frame, scope);
 
