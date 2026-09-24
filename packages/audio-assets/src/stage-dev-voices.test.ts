@@ -1,4 +1,6 @@
 import { spawnSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import url from "node:url";
 import { describe, expect, it, vi } from "vitest";
@@ -25,10 +27,16 @@ function fakePacker() {
   }));
 }
 
-function run(resolved: { voicePacksRoot: string | undefined; source: string | undefined; isDefaultRoot: boolean }) {
+function run(
+  resolved: { voicePacksRoot: string | undefined; source: string | undefined; isDefaultRoot: boolean },
+  existing: string[] = [],
+) {
   const packVoice = fakePacker();
   const lines: string[] = [];
   const resolve = vi.fn(() => resolved);
+  // The real default root is never listed or touched by these tests.
+  const listDirectories = vi.fn((_dir: string) => existing);
+  const removeDirectory = vi.fn((_dir: string) => {});
   let clock = 0;
   const promise = stageDevVoices({
     repoRoot: REPO_ROOT,
@@ -38,9 +46,11 @@ function run(resolved: { voicePacksRoot: string | undefined; source: string | un
     log: (message) => lines.push(message),
     // 1.5 s between the two readings, so the wall-time line is deterministic.
     now: () => (clock += 1500),
+    listDirectories,
+    removeDirectory,
   });
 
-  return { promise, packVoice, lines, resolve };
+  return { promise, packVoice, lines, resolve, listDirectories, removeDirectory };
 }
 
 describe("stage-dev-voices", () => {
@@ -114,6 +124,57 @@ describe("stage-dev-voices", () => {
     expect(lines.at(-1)).toBe("Development voices: staged 2 pack(s) in 1.5 s — restart the plugin or Rescan voices");
   });
 
+  it("removes a staged directory that is no longer an authored pack, and only that", async () => {
+    // `alpha` is authored and stays; `gamma` was dropped from VOICE_PACKS and
+    // would otherwise keep playing. Zips are files, so the listing never
+    // offers them and they are never removed.
+    const { promise, lines, listDirectories, removeDirectory } = run(
+      { voicePacksRoot: OUTPUT_DIR, source: "IRACEDECK_DEV_VOICES", isDefaultRoot: true },
+      ["alpha", "gamma"],
+    );
+
+    expect((await promise).outcome).toBe("staged");
+    expect(listDirectories).toHaveBeenCalledWith(OUTPUT_DIR);
+    expect(removeDirectory.mock.calls).toEqual([[path.join(OUTPUT_DIR, "gamma")]]);
+    expect(lines).toContain("  removed gamma/ — not an authored pack, so a stale stage");
+  });
+
+  it("on a real directory, removes stale pack directories and leaves files and authored packs alone", async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "iracedeck-stage-prune-"));
+
+    try {
+      mkdirSync(path.join(root, "alpha"));
+      mkdirSync(path.join(root, "gamma", "voice"), { recursive: true });
+      writeFileSync(path.join(root, "gamma", "voice", "clip.wav"), "");
+      writeFileSync(path.join(root, "alpha-1.0.0.zip"), "");
+
+      await stageDevVoices({
+        resolve: () => ({ voicePacksRoot: root, source: "IRACEDECK_DEV_VOICES", isDefaultRoot: true }),
+        packVoice: fakePacker(),
+        packs: PACKS,
+        outputDir: root,
+        log: () => {},
+      });
+
+      expect(readdirSync(root).sort()).toEqual(["alpha", "alpha-1.0.0.zip"]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("prunes nothing when off or at a hand-picked root", async () => {
+    for (const resolved of [
+      { voicePacksRoot: undefined, source: undefined, isDefaultRoot: false },
+      { voicePacksRoot: path.join(REPO_ROOT, "..", "my-voices"), source: "dev.local.json", isDefaultRoot: false },
+    ]) {
+      const { promise, listDirectories, removeDirectory } = run(resolved, ["gamma"]);
+
+      await promise;
+      expect(listDirectories).not.toHaveBeenCalled();
+      expect(removeDirectory).not.toHaveBeenCalled();
+    }
+  });
+
   it("refuses to stage when the default root and the packer's output have drifted apart", async () => {
     const { promise, packVoice } = run({
       voicePacksRoot: path.join(REPO_ROOT, "somewhere-else"),
@@ -152,6 +213,8 @@ describe("stage-dev-voices", () => {
         packVoice,
         packs: PACKS,
         log: () => {},
+        listDirectories: () => [],
+        removeDirectory: () => {},
       }),
     ).rejects.toThrow(/staged 2 of 3/);
     expect(packVoice).toHaveBeenCalledTimes(1);

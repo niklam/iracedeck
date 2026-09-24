@@ -20,7 +20,10 @@
  *   (`writeArchive: false`), one after another. Every check a release pack
  *   makes before its zip runs here too; no archive and no catalog entry is
  *   written, so `catalog/` — the release contract — is never touched by a
- *   build.
+ *   build. Before staging, any DIRECTORY in the root that is not an authored
+ *   pack id is removed: a pack deleted or renamed in `VOICE_PACKS` would
+ *   otherwise stay staged and keep playing. Files (the zips `pack:voice`
+ *   leaves beside the stage) are left alone.
  *
  * The default root IS the packer's `OUTPUT_DIR`, which is what makes the
  * stage land where the plugin looks. That is asserted at run time (a drift
@@ -34,6 +37,7 @@
  * Usage: pnpm --filter @iracedeck/audio-assets stage:dev-voices
  *        node packages/audio-assets/scripts/stage-dev-voices.mjs
  */
+import { readdirSync, rmSync } from "node:fs";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 import url from "node:url";
@@ -68,6 +72,8 @@ export const REPO_ROOT = path.resolve(audioAssetsPath, "..", "..");
  * @param {string} [options.outputDir] — where the packer stages; must equal the resolved default root
  * @param {(message: string) => void} [options.log]
  * @param {() => number} [options.now] — milliseconds, for the wall-time line
+ * @param {(dir: string) => string[]} [options.listDirectories] — the directory names directly in `dir`, `[]` when it does not exist
+ * @param {(dir: string) => void} [options.removeDirectory]
  * @returns {Promise<{ outcome: StageOutcome; staged: string[] }>}
  */
 export async function stageDevVoices({
@@ -78,6 +84,8 @@ export async function stageDevVoices({
   outputDir = OUTPUT_DIR,
   log = (message) => console.log(message),
   now = () => performance.now(),
+  listDirectories = listDirectoriesIn,
+  removeDirectory = (dir) => rmSync(dir, { recursive: true, force: true }),
 } = {}) {
   const { voicePacksRoot, source, isDefaultRoot } = resolve(repoRoot);
 
@@ -106,6 +114,8 @@ export async function stageDevVoices({
     );
   }
 
+  pruneStalePacks({ outputDir, packs, listDirectories, removeDirectory, log });
+
   log(`Development voices: on (${source}) — staging ${packs.length} pack(s) into ${voicePacksRoot}`);
 
   const started = now();
@@ -127,6 +137,43 @@ export async function stageDevVoices({
   log(`Development voices: staged ${staged.length} pack(s) in ${seconds} s — restart the plugin or Rescan voices`);
 
   return { outcome: "staged", staged };
+}
+
+/**
+ * Removes every directory in the default root that is not an authored pack id.
+ *
+ * Only reached at the default root, which the build owns: a pack dropped from
+ * `VOICE_PACKS`, or renamed there, would otherwise stay staged from an earlier
+ * build and the plugin would keep scanning it. Directories only — the scanner
+ * lists nothing else, and the files here are the zips `pack:voice` writes,
+ * which are someone's release artifacts rather than stale stages.
+ *
+ * @param {{ outputDir: string; packs: readonly VoicePackDefinition[]; listDirectories: (dir: string) => string[]; removeDirectory: (dir: string) => void; log: (message: string) => void }} options
+ * @returns {string[]} the names removed
+ */
+function pruneStalePacks({ outputDir, packs, listDirectories, removeDirectory, log }) {
+  const authored = new Set(packs.map((pack) => pack.id));
+  const stale = listDirectories(outputDir).filter((name) => !authored.has(name));
+
+  for (const name of stale) {
+    removeDirectory(path.join(outputDir, name));
+    log(`  removed ${name}/ — not an authored pack, so a stale stage`);
+  }
+
+  return stale;
+}
+
+/** @param {string} dir */
+function listDirectoriesIn(dir) {
+  try {
+    return readdirSync(dir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name);
+  } catch (err) {
+    // Absent is the first build of a fresh worktree; anything else is real.
+    if (/** @type {NodeJS.ErrnoException} */ (err).code === "ENOENT") return [];
+    throw err;
+  }
 }
 
 // Direct-exec guard, as in pack-voice.mjs: importing this module (the tests do)
