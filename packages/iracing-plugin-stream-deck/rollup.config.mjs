@@ -21,7 +21,7 @@ import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync } from "
 import path from "node:path";
 import process from "node:process";
 import url from "node:url";
-import { DEV_LOCAL_FILE, readDevLocal } from "../../scripts/lib/dev-local.mjs";
+import { DEV_LOCAL_FILE, resolveDevVoicePacksRoot } from "../../scripts/lib/dev-local.mjs";
 import { pluginBuildOnLog } from "../../scripts/lib/rollup-logs.mjs";
 import { runtimePackageJsonPlugin } from "../../scripts/lib/runtime-deps.mjs";
 
@@ -109,12 +109,18 @@ if (existsSync(localFeaturesPath)) {
   platformFeatures = deepMergeObjects(committedFeatures, known);
 }
 
-// A development voice root (#1143): the gitignored dev.local.json at the repo
-// root, resolved to an absolute path and carried in bin/config.json. Absent in
-// every release build, because the file is not in git.
+// A development voice root (#1143, #1214): the gitignored dev.local.json at
+// the repo root, or the machine-wide IRACEDECK_DEV_VOICES=1 opt-in, resolved to
+// an absolute path and carried in bin/config.json. Absent in every release
+// build: the file is not in git and CI never sets the variable. One line in the
+// build log when it is on, because under a machine-wide opt-in the mistake to
+// catch is being ON by accident.
 const repoRoot = path.resolve(__dirname, "../..");
 const devLocalPath = path.join(repoRoot, DEV_LOCAL_FILE);
-const devLocal = readDevLocal(repoRoot);
+const devVoices = resolveDevVoicePacksRoot(repoRoot);
+if (devVoices.voicePacksRoot !== undefined) {
+  console.log(`[dev-voices] development voice root on via ${devVoices.source}: ${devVoices.voicePacksRoot}`);
+}
 
 /**
  * Rollup plugin to import SVG files as strings.
@@ -339,7 +345,7 @@ const config = {
           version: rootPackageJson.version,
           platform: "stream-deck",
           featureFlags: platformFeatures,
-          ...(devLocal.voicePacksRoot === undefined ? {} : { devVoicePacksRoot: devLocal.voicePacksRoot }),
+          ...(devVoices.voicePacksRoot === undefined ? {} : { devVoicePacksRoot: devVoices.voicePacksRoot }),
         };
         this.emitFile({ fileName: "config.json", source: JSON.stringify(config, null, 2), type: "asset" });
       },

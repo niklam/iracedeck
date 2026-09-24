@@ -21,6 +21,7 @@
     "generate:manifest": "node scripts/generate-audio-manifest.mjs",
     "generate:callout-scripts": "tsx scripts/generate-callout-scripts.mjs",
     "pack:voice": "node scripts/pack-voice.mjs",
+    "stage:dev-voices": "node scripts/stage-dev-voices.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "devDependencies": {

@@ -89,9 +89,15 @@ pnpm test
 pnpm lint:fix
 pnpm format:fix
 
-# Hear a Race Engineer voice edit in the sim: point this worktree's plugins at
-# the packer's staged voice packs (and `off` to go back to the real download path)
-pnpm dev:voices on
+# Hear a Race Engineer voice edit in the sim: opt this machine in once
+# (then open a new terminal), and every `pnpm build` stages the voice packs
+# and points the plugins at them. Build with the deck host stopped; while it
+# runs, restage after a voice edit and press Rescan voices (no restart)
+setx IRACEDECK_DEV_VOICES 1
+pnpm stage:voices
+# Override it for one worktree: `off` plays the real download, `auto` follows
+# the variable again, `on` turns it on without the variable
+pnpm dev:voices off
 ```
 
 ## Project Structure

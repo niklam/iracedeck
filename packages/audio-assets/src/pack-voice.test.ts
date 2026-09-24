@@ -33,6 +33,7 @@ import {
   countSourceClips,
   createArchive,
   MANIFEST_FILE,
+  type PackedPack,
   packVoice,
   parseArgs,
   serializeSortedJson,
@@ -265,8 +266,8 @@ describe("packVoice", () => {
   let root: string;
   let srcRoot: string;
   let configsDir: string;
-  let first: Awaited<ReturnType<typeof packVoice>>;
-  let second: Awaited<ReturnType<typeof packVoice>>;
+  let first: PackedPack;
+  let second: PackedPack;
 
   beforeAll(async () => {
     root = mkdtempSync(path.join(tmpdir(), "ird-pack-voice-"));
@@ -473,6 +474,82 @@ describe("packVoice", () => {
       expect(result.entry).toEqual(first.entry);
     } finally {
       rmSync(catalogDir, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  it("with writeArchive false stages the tree and writes no archive and no catalog entry", async () => {
+    // `--stage-only` (#1214), what the build's `stage:dev-voices` task runs.
+    // The catalog directory EXISTS and is empty, as above, and `writeCatalog`
+    // is left at its default of true: the archive flag alone must withhold
+    // the entry, since there is no archive for it to describe.
+    const catalogDir = mkdtempSync(path.join(tmpdir(), "ird-pack-stage-only-"));
+    const outDir = path.join(root, "out-stage-only");
+
+    try {
+      const result = await packVoice({
+        pack,
+        srcRoot,
+        configsDir,
+        outDir,
+        catalogDir,
+        cacheDir: path.join(root, "cache-1"),
+        writeArchive: false,
+      });
+
+      expect(readdirSync(catalogDir)).toEqual([]);
+      expect(result.catalogPath).toBeUndefined();
+      expect(result.archivePath).toBeUndefined();
+      expect(result.entry).toBeUndefined();
+
+      // The stage directory is the ONLY thing under outDir — no zip beside it.
+      expect(readdirSync(outDir)).toEqual([pack.id]);
+
+      // And the stage is the full run's stage, file for file and byte for byte.
+      expect(result.stageDir).toBe(path.join(outDir, pack.id));
+      expect(listFiles(result.stageDir)).toEqual(listFiles(first.stageDir));
+
+      for (const file of listFiles(result.stageDir)) {
+        expect(sha256(readFileSync(path.join(result.stageDir, file))), file).toBe(
+          sha256(readFileSync(path.join(first.stageDir, file))),
+        );
+      }
+
+      expect(result.clips).toBe(first.clips);
+      expect(result.scripts).toBe(first.scripts);
+
+      // What the plugin will actually do with it: the real scanner, handed
+      // the output directory as its DEVELOPMENT root (#1143) beside an empty
+      // packs root, loads the stage with nothing to report.
+      const emptyPacksRoot = path.join(root, "packs-root-empty");
+      mkdirSync(emptyPacksRoot, { recursive: true });
+      const scan = scanVoicePacks({ root: emptyPacksRoot, devRoot: outDir, fs: createVoicePackFileSystem(noopLogger) });
+      expect(scan.problems).toEqual([]);
+      expect(scan.packs.map((scanned) => [scanned.id, scanned.dir])).toEqual([[pack.id, result.stageDir]]);
+    } finally {
+      rmSync(catalogDir, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  it("with writeArchive false still runs the checks a full run makes before the zip", async () => {
+    // A stage-only run is no laxer than a full one: the clip the scanner
+    // would refuse fails it the same way.
+    const loose = path.join(srcRoot, "testvoice", "loose.mp3");
+    copyFileSync(path.join(srcRoot, "testvoice", "numbers", "1.mp3"), loose);
+
+    try {
+      await expect(
+        packVoice({
+          pack,
+          srcRoot,
+          configsDir,
+          outDir: path.join(root, "out-stage-only-refused"),
+          catalogDir: path.join(root, "catalog-stage-only-refused"),
+          cacheDir: path.join(root, "cache-1"),
+          writeArchive: false,
+        }),
+      ).rejects.toThrow(/is not a clip the engine can play/);
+    } finally {
+      rmSync(loose, { force: true });
     }
   }, 60_000);
 
@@ -687,17 +764,33 @@ describe("packVoice", () => {
 
 describe("parseArgs", () => {
   it("treats bare words as pack ids and --no-catalog as the switch", () => {
-    expect(parseArgs(["default", "--no-catalog"])).toEqual({ ids: ["default"], writeCatalog: false });
+    expect(parseArgs(["default", "--no-catalog"])).toEqual({
+      ids: ["default"],
+      writeCatalog: false,
+      writeArchive: true,
+    });
   });
 
-  it("defaults to writing the catalog", () => {
-    expect(parseArgs([])).toEqual({ ids: [], writeCatalog: true });
+  it("takes --stage-only to withhold both the archive and the catalog entry", () => {
+    expect(parseArgs(["--stage-only", "default"])).toEqual({
+      ids: ["default"],
+      writeCatalog: false,
+      writeArchive: false,
+    });
+    // Given both, the stricter wins.
+    expect(parseArgs(["--no-catalog", "--stage-only"])).toEqual({ ids: [], writeCatalog: false, writeArchive: false });
+  });
+
+  it("defaults to writing the archive and the catalog", () => {
+    expect(parseArgs([])).toEqual({ ids: [], writeCatalog: true, writeArchive: true });
   });
 
   it("refuses an unknown flag rather than taking it for a pack id or ignoring it", () => {
     // A typo silently swallowed would either pack nothing (the id is unknown)
     // or, worse, write the committed entry the author meant to spare.
     expect(() => parseArgs(["--nocatalog"])).toThrow(/unknown option "--nocatalog"/);
+    // And the message names every real option, so the fix is on screen.
+    expect(() => parseArgs(["--stageonly"])).toThrow(/--no-catalog and --stage-only/);
   });
 });
 

@@ -70,6 +70,11 @@ describe("assertReleaseBuild", () => {
     // The remedy, because the person who hits this is packing a release from a
     // worktree they had been developing a voice in.
     expect(output(log)).toContain("pnpm dev:voices off");
+    // Both sources of development mode (#1214), and what `off` actually does
+    // under a machine-wide opt-in: it writes `false`, it does not delete.
+    expect(output(log)).toContain("IRACEDECK_DEV_VOICES");
+    expect(output(log)).toContain("voicePacksRoot: false");
+    expect(output(log)).not.toContain("removes dev.local.json");
   });
 
   it("fails a development build whose value is empty, null or false", () => {

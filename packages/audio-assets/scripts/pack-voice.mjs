@@ -12,20 +12,34 @@
  *      it has passed the grammar the scanner will apply — under
  *      `dist/voice-packs/<id>/` — the exact shape deck-core's scanner accepts,
  *      kept there so a maintainer can inspect it or sideload it by hand;
- *   3. zips that stage, deterministically, to `dist/voice-packs/<id>-<version>.zip`;
+ *   3. zips that stage, deterministically, to `dist/voice-packs/<id>-<version>.zip`
+ *      — unless `--stage-only` is given (#1214), which stops at step 2;
  *   4. writes `catalog/<id>.json` with the archive's byte size and sha-256, the
  *      entry the website build assembles into `voice-catalog.json` — unless
  *      `--no-catalog` is given (#1143), which stops at step 3.
  *
- * Usage: pnpm --filter @iracedeck/audio-assets pack:voice [<pack-id> ...] [--no-catalog]
- *        node packages/audio-assets/scripts/pack-voice.mjs [<pack-id> ...] [--no-catalog]
+ * Usage: pnpm --filter @iracedeck/audio-assets pack:voice [<pack-id> ...] [--no-catalog | --stage-only]
+ *        node packages/audio-assets/scripts/pack-voice.mjs [<pack-id> ...] [--no-catalog | --stage-only]
  *
- * `--no-catalog` is the development loop's flag: it stages and zips without
- * touching `catalog/<id>.json`. That entry is the release contract — its
- * `sha256` is what the installer compares against an installed pack — so a run
- * whose only purpose is a staged tree to point a development voice root at
- * must not rewrite it. It is per run, not a mode: the release workflow keeps
- * calling this script without it.
+ * `--no-catalog` stages and zips without touching `catalog/<id>.json` — for an
+ * archive nobody should commit, such as a sideload or an inspection. That
+ * entry is the release contract — its `sha256` is what the installer compares
+ * against an installed pack — so a run whose only purpose is a staged tree or
+ * a throwaway archive must not rewrite it. It is per run, not a mode: the
+ * release workflow keeps calling this script without it. (Before #1214 it was
+ * the development loop's flag; the build's `stage:dev-voices` task now stages
+ * with `--stage-only`, below.)
+ *
+ * `--stage-only` is stricter still (#1214): it stages the tree, with every
+ * check a full run makes before the zip (the callout script's grammar, the
+ * staged-vs-source clip count, `USABLE_CLIP`, the manifest), and writes no
+ * archive and no catalog entry. It is what the build's `stage:dev-voices` task
+ * runs, because a development root is scanned as a DIRECTORY — the scanner
+ * lists directories only — so the zip would be seconds of deflate nobody
+ * reads. An archive left in `dist/voice-packs/` by an earlier full run is left
+ * alone: it sits beside the stage, not in it, the scanner never opens it, and
+ * deleting a file a maintainer may have built on purpose is not this flag's
+ * business.
  *
  * Only the catalog entry is committed. The archive is a GitHub release asset,
  * attached to the release the entry's `url` names by
@@ -83,6 +97,34 @@ export const RELEASE_DOWNLOAD_BASE = "https://github.com/niklam/iracedeck/releas
  * @typedef {{ id: string; version: string }} PackIdentity
  * @typedef {{ id: string; label: string }} VoiceEntry
  * @typedef {{ path: string; data: Uint8Array }} ArchiveEntry
+ * @typedef {ReturnType<typeof buildCatalogEntry>} CatalogEntry
+ *
+ * @typedef {object} PackVoiceOptions
+ * @property {VoicePackDefinition} pack
+ * @property {string} [srcRoot] — holds `<voice-id>/…` source clip trees
+ * @property {string} [configsDir] — holds `<voice-id>.voice.json`
+ * @property {string} [outDir] — stage directory and archive land here
+ * @property {string} [catalogDir] — `<pack-id>.json` lands here
+ * @property {string} [cacheDir] — processed-clip cache root; see `packVoice`
+ * @property {boolean} [writeCatalog] — false leaves `catalogDir` untouched
+ * @property {boolean} [writeArchive] — false writes no archive and no catalog entry (`--stage-only`)
+ * @property {(message: string) => void} [logger]
+ *
+ * @typedef {object} PackedPack — a full run: stage, archive, and (unless withheld) the catalog entry
+ * @property {string} archivePath
+ * @property {string} stageDir
+ * @property {string | undefined} catalogPath — `undefined` when `writeCatalog` was false
+ * @property {CatalogEntry} entry
+ * @property {number} clips
+ * @property {number} scripts
+ *
+ * @typedef {object} StagedPack — a `--stage-only` run: the stage and nothing else
+ * @property {undefined} archivePath
+ * @property {string} stageDir
+ * @property {undefined} catalogPath
+ * @property {undefined} entry
+ * @property {number} clips
+ * @property {number} scripts
  */
 
 /** @param {PackIdentity} pack */
@@ -426,15 +468,34 @@ export function countSourceClips(dir) {
  * false the entry is still computed and returned — only the FILE is withheld,
  * and `catalogPath` is then `undefined`.
  *
- * @param {object} options
- * @param {VoicePackDefinition} options.pack
- * @param {string} [options.srcRoot] — holds `<voice-id>/…` source clip trees
- * @param {string} [options.configsDir] — holds `<voice-id>.voice.json`
- * @param {string} [options.outDir] — stage directory and archive land here
- * @param {string} [options.catalogDir] — `<pack-id>.json` lands here
- * @param {string} [options.cacheDir] — processed-clip cache root; see above
- * @param {boolean} [options.writeCatalog] — false leaves `catalogDir` untouched
- * @param {(message: string) => void} [options.logger]
+ * With `writeArchive` false (`--stage-only`, #1214) the run stops once the
+ * stage and its manifest are written: no archive, so no entry to compute and
+ * no catalog to write, whatever `writeCatalog` says. `archivePath`, `entry`
+ * and `catalogPath` are then all `undefined`; every check above still runs,
+ * since each is about the stage rather than the zip.
+ *
+ * Typed as three overloads so a caller gets the result shape its
+ * `writeArchive` implies: a literal `false` resolves to a `StagedPack`, `true`
+ * or nothing to a `PackedPack`, and a `boolean` known only at run time to
+ * either, to be told apart by `entry`.
+ *
+ * @overload
+ * @param {PackVoiceOptions & { writeArchive: false }} options
+ * @returns {Promise<StagedPack>}
+ */
+/**
+ * @overload
+ * @param {PackVoiceOptions & { writeArchive?: true }} options
+ * @returns {Promise<PackedPack>}
+ */
+/**
+ * @overload
+ * @param {PackVoiceOptions} options
+ * @returns {Promise<StagedPack | PackedPack>}
+ */
+/**
+ * @param {PackVoiceOptions} options
+ * @returns {Promise<StagedPack | PackedPack>}
  */
 export async function packVoice({
   pack,
@@ -444,6 +505,7 @@ export async function packVoice({
   catalogDir = CATALOG_DIR,
   cacheDir,
   writeCatalog = true,
+  writeArchive = true,
   logger,
 } = {}) {
   if (!pack) throw new Error("packVoice: pack is required");
@@ -537,6 +599,12 @@ export async function packVoice({
   writeFileSync(path.join(stageDir, MANIFEST_FILE), manifestBytes);
   entries.push({ path: MANIFEST_FILE, data: manifestBytes });
 
+  // `--stage-only`: the stage is the product. Nothing under `outDir` beside
+  // the stage and nothing under `catalogDir` is created, opened or removed.
+  if (!writeArchive) {
+    return { archivePath: undefined, stageDir, catalogPath: undefined, entry: undefined, clips, scripts };
+  }
+
   const archive = createArchive(entries);
   const archivePath = path.join(outDir, archiveFileName(pack));
   writeFileSync(archivePath, archive);
@@ -562,7 +630,9 @@ export async function packVoice({
 }
 
 /**
- * The command line: bare words are pack ids, `--no-catalog` is the only option.
+ * The command line: bare words are pack ids; the options are `--no-catalog`
+ * (stage and zip, no catalog entry) and `--stage-only` (stage, no archive and
+ * no catalog entry). Given both, `--stage-only` wins, being the stricter.
  *
  * An unknown option is refused rather than taken for a pack id, because both
  * ways of being lenient are worse than a message. Treating `--nocatalog` as an
@@ -571,20 +641,25 @@ export async function packVoice({
  * flag to spare, silently.
  *
  * @param {readonly string[]} argv — `process.argv.slice(2)`
- * @returns {{ ids: string[]; writeCatalog: boolean }}
+ * @returns {{ ids: string[]; writeCatalog: boolean; writeArchive: boolean }}
  */
 export function parseArgs(argv) {
   /** @type {string[]} */
   const ids = [];
   let writeCatalog = true;
+  let writeArchive = true;
 
   for (const arg of argv) {
     if (arg === "--no-catalog") writeCatalog = false;
-    else if (arg.startsWith("--")) throw new Error(`unknown option "${arg}" — the only option is --no-catalog`);
-    else ids.push(arg);
+    else if (arg === "--stage-only") {
+      writeArchive = false;
+      writeCatalog = false;
+    } else if (arg.startsWith("--")) {
+      throw new Error(`unknown option "${arg}" — the options are --no-catalog and --stage-only`);
+    } else ids.push(arg);
   }
 
-  return { ids, writeCatalog };
+  return { ids, writeCatalog, writeArchive };
 }
 
 function selectPacks(requestedIds) {
@@ -600,10 +675,21 @@ function selectPacks(requestedIds) {
 }
 
 async function main() {
-  const { ids, writeCatalog } = parseArgs(process.argv.slice(2));
+  const { ids, writeCatalog, writeArchive } = parseArgs(process.argv.slice(2));
 
   for (const pack of selectPacks(ids)) {
-    const result = await packVoice({ pack, writeCatalog, logger: (message) => console.log(message) });
+    const result = await packVoice({ pack, writeCatalog, writeArchive, logger: (message) => console.log(message) });
+
+    if (result.entry === undefined) {
+      console.log(
+        `Staged ${pack.id}@${pack.version}: ${result.clips} clips, ${result.scripts} callout ` +
+          `${result.scripts === 1 ? "script" : "scripts"}`,
+      );
+      console.log(`  stage    ${result.stageDir}`);
+      console.log(`  archive  not written (--stage-only)`);
+      console.log(`  catalog  not written (--stage-only)`);
+      continue;
+    }
 
     console.log(
       `Packed ${pack.id}@${pack.version}: ${result.clips} clips, ${result.scripts} callout ` +

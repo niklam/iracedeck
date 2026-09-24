@@ -92,7 +92,7 @@ You can import or reference specific rule files from other markdown using `@.cla
 - `keyboard-shortcuts.md` — SDK-first, binding architecture, atomic sequences, window focus modes, cross-package sync.
 - `logging.md` — log levels, info vs debug, `createScope()`, the `debugLogging` toggle, file logging and retention.
 - `pi-templates.md` — PI EJS templates: layout, partials, shared CSS, Rollup config, key-binding JSON.
-- `platform-feature-flags.md` — build-time flags per plugin, `feature-flags.local.json`, and the `dev.local.json` development voice root.
+- `platform-feature-flags.md` — build-time flags per plugin, `feature-flags.local.json`, and the development voice root (the `IRACEDECK_DEV_VOICES` opt-in, the `dev.local.json` override, the `stage:dev-voices` build task).
 - `plugin-structure.md` — plugin naming, Rollup config and log policy, native externals and the runtime `bin/package.json`, licenses, `plugin.ts` init order.
 - `profiles-and-devices.md` — Stream Deck profiles and devices (Elgato-only).
 - `race-engineer-callouts.md` — adding or modifying a Race Engineer callout end to end.

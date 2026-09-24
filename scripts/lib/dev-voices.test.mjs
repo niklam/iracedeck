@@ -1,13 +1,16 @@
 /**
- * `pnpm dev:voices on|off` (#1143) — the one switch that turns the development
- * voice root on and off for this worktree.
+ * `pnpm dev:voices on|off|auto` (#1143, #1214) — the one switch that decides the
+ * development voice root for this worktree.
  *
  * Everything impure is injected: a temp `root` for the marker file, an `exec`
- * double recording `[cmd, args, options]`, and a `links` double standing in for
- * the deck hosts' junctions. The two things that must never regress are the
- * relink decision (a host linked to ANOTHER worktree is reported and left
- * alone — relinking it would silently switch someone's test environment) and
- * that a failed build never reaches the relink step.
+ * double recording `[cmd, args, options]`, a `links` double standing in for
+ * the deck hosts' junctions, and an `env` carrying (or not) the machine-wide
+ * opt-in. The things that must never regress are the relink decision (a host
+ * linked to ANOTHER worktree is reported and left alone — relinking it would
+ * silently switch someone's test environment), that a failed build never
+ * reaches the relink step and always puts the marker back, that `off` writes
+ * `false` rather than deleting (deleting under the machine opt-in would turn
+ * development mode back ON), and that a hand-picked root is never overwritten.
  */
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -15,8 +18,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { DEFAULT_DEV_VOICE_PACKS_ROOT, DEV_LOCAL_FILE } from "./dev-local.mjs";
-import { HOST_RELINKS, runDevVoices, shellCommandLine } from "./dev-voices.mjs";
+import { DEFAULT_DEV_VOICE_PACKS_ROOT, DEV_LOCAL_FILE, DEV_VOICES_ENV } from "./dev-local.mjs";
+import { HOST_RELINKS, loadEnvLocalForDevVoices, runDevVoices, shellCommandLine } from "./dev-voices.mjs";
 import { linkLocations } from "./plugin-links.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -30,6 +33,10 @@ const BUILD_ARGS = [
   "--filter=@iracedeck/iracing-plugin-mirabox",
   "--filter=@iracedeck/iracing-plugin-ulanzi",
 ];
+
+const DEFAULT_MARKER = `${JSON.stringify({ voicePacksRoot: DEFAULT_DEV_VOICE_PACKS_ROOT }, null, 2)}\n`;
+const OFF_MARKER = `${JSON.stringify({ voicePacksRoot: false }, null, 2)}\n`;
+const CUSTOM_MARKER = `${JSON.stringify({ voicePacksRoot: "local/my-packs" }, null, 2)}\n`;
 
 let root;
 let marker;
@@ -85,6 +92,8 @@ function options(overrides = {}) {
   return { root, env: {}, log: fakeLog(), exec: fakeExec(), links: () => [], ...overrides };
 }
 
+const defaultRoot = () => join(root, ...DEFAULT_DEV_VOICE_PACKS_ROOT.split("/"));
+
 describe("runDevVoices('on')", () => {
   it("writes the marker with exactly the documented contents", () => {
     const log = fakeLog();
@@ -92,7 +101,7 @@ describe("runDevVoices('on')", () => {
     expect(runDevVoices("on", options({ log }))).toBe(0);
     const written = readFileSync(marker, "utf-8");
     expect(JSON.parse(written)).toEqual({ voicePacksRoot: DEFAULT_DEV_VOICE_PACKS_ROOT });
-    expect(written).toBe(`${JSON.stringify({ voicePacksRoot: DEFAULT_DEV_VOICE_PACKS_ROOT }, null, 2)}\n`);
+    expect(written).toBe(DEFAULT_MARKER);
   });
 
   it("writes exactly what dev.local.json.example documents", () => {
@@ -127,13 +136,15 @@ describe("runDevVoices('on')", () => {
     ["an array", "[]"],
     ["null", "null"],
     ["a non-string root", '{ "voicePacksRoot": 7 }'],
+    // `true` is what someone reaching for "on" would type; only `false` means
+    // anything, and `true` must not be read as "on at some default".
+    ["a true root", '{ "voicePacksRoot": true }'],
     // A blank root is the one the hand-rolled validation used to accept: it is
     // a string, so it passed, and the build then resolved it to the repo root
     // and scanned the whole checkout as a voice packs folder. `readDevLocal`
     // has always refused it — sharing the reader is what makes the two agree.
     ["a blank root", '{ "voicePacksRoot": "" }'],
     ["a whitespace-only root", '{ "voicePacksRoot": "   " }'],
-    ["no root at all", "{}"],
   ])("refuses a marker holding %s", (_label, contents) => {
     writeFileSync(marker, contents);
     const log = fakeLog();
@@ -145,40 +156,81 @@ describe("runDevVoices('on')", () => {
   });
 
   it("accepts an identical marker without complaining about a rewrite", () => {
-    const same = `${JSON.stringify({ voicePacksRoot: DEFAULT_DEV_VOICE_PACKS_ROOT }, null, 2)}\n`;
-    writeFileSync(marker, same);
+    writeFileSync(marker, DEFAULT_MARKER);
     const log = fakeLog();
     const exec = fakeExec();
 
     expect(runDevVoices("on", options({ log, exec }))).toBe(0);
-    expect(readFileSync(marker, "utf-8")).toBe(same);
+    expect(readFileSync(marker, "utf-8")).toBe(DEFAULT_MARKER);
     expect(buildCalls(exec)).toHaveLength(1);
     expect(output(log)).not.toMatch(/refus|Error/i);
   });
 
   it("keeps a hand-picked root rather than overwriting it with the default", () => {
-    const custom = `${JSON.stringify({ voicePacksRoot: "local/my-packs" }, null, 2)}\n`;
-    writeFileSync(marker, custom);
+    writeFileSync(marker, CUSTOM_MARKER);
     const log = fakeLog();
 
     expect(runDevVoices("on", options({ log }))).toBe(0);
-    expect(readFileSync(marker, "utf-8")).toBe(custom);
+    expect(readFileSync(marker, "utf-8")).toBe(CUSTOM_MARKER);
     // The RESOLVED directory, not the text in the file: the message names the
     // folder that will be scanned, which is what tells two clones apart.
     expect(output(log)).toContain(join(root, "local", "my-packs"));
+    // `auto` alone does not give the default back: it follows the machine
+    // setting, which is off when the variable is unset. The way back is to
+    // drop the file and run `on` again, and the message says so.
+    expect(output(log)).toContain("then run pnpm dev:voices on again");
+    expect(output(log)).toContain(`following ${DEV_VOICES_ENV}, which is off when the variable is unset`);
+    expect(output(log)).not.toContain("if you want the default back");
   });
 
-  it("names the staging command when the dev root holds no pack yet", () => {
+  it("treats the default root spelled in another case as the default on Windows, and as hand-picked elsewhere", () => {
+    const shouted = `${JSON.stringify({ voicePacksRoot: defaultRoot().toUpperCase() }, null, 2)}\n`;
+
+    writeFileSync(marker, shouted);
+    const winLog = fakeLog();
+    expect(runDevVoices("on", options({ log: winLog, platform: "win32" }))).toBe(0);
+    expect(output(winLog)).toContain("left as is");
+    expect(output(winLog)).toContain("(staging the packs on the way)");
+
+    const linuxLog = fakeLog();
+    expect(runDevVoices("on", options({ log: linuxLog, platform: "linux" }))).toBe(0);
+    expect(output(linuxLog)).toContain("— kept.");
+    expect(output(linuxLog)).toContain("(a hand-picked root is not staged)");
+    expect(readFileSync(marker, "utf-8")).toBe(shouted);
+  });
+
+  // `false` and `{}` hold no choice worth keeping — the first is the explicit
+  // off `on` exists to undo, the second means the same as no file at all.
+  it.each([
+    ["the explicit off", OFF_MARKER],
+    ["an empty object", "{}\n"],
+  ])("overwrites %s with the default root", (_label, contents) => {
+    writeFileSync(marker, contents);
+    const exec = fakeExec();
+
+    expect(runDevVoices("on", options({ exec }))).toBe(0);
+    expect(readFileSync(marker, "utf-8")).toBe(DEFAULT_MARKER);
+    expect(buildCalls(exec)).toHaveLength(1);
+  });
+
+  it("says development mode is on via the marker, naming the root", () => {
+    const log = fakeLog();
+
+    expect(runDevVoices("on", options({ log, env: { [DEV_VOICES_ENV]: "0" } }))).toBe(0);
+    expect(output(log)).toContain(`Development voices: on via ${DEV_LOCAL_FILE} — ${defaultRoot()}`);
+  });
+
+  it("names the stage task when the default root holds no pack after the build", () => {
     const log = fakeLog();
 
     expect(runDevVoices("on", options({ log }))).toBe(0);
     expect(output(log)).toContain("No staged pack under");
-    expect(output(log)).toContain(join(root, ...DEFAULT_DEV_VOICE_PACKS_ROOT.split("/")));
-    expect(output(log)).toContain("pack:voice default --no-catalog");
+    expect(output(log)).toContain(defaultRoot());
+    expect(output(log)).toContain("stage:dev-voices");
   });
 
   it("says nothing about staging when a pack is already staged", () => {
-    mkdirSync(join(root, ...DEFAULT_DEV_VOICE_PACKS_ROOT.split("/"), "default"), { recursive: true });
+    mkdirSync(join(defaultRoot(), "default"), { recursive: true });
     const log = fakeLog();
 
     expect(runDevVoices("on", options({ log }))).toBe(0);
@@ -190,45 +242,184 @@ describe("runDevVoices('on')", () => {
   // and a leftover zip from a run whose tree was since deleted used to suppress
   // the hint while the plugin still warned that the root was empty — the switch
   // and the plugin disagreeing about the same directory.
-  it("still names the staging command when the dev root holds only a stray zip", () => {
-    const voiceRoot = join(root, ...DEFAULT_DEV_VOICE_PACKS_ROOT.split("/"));
-    mkdirSync(voiceRoot, { recursive: true });
-    writeFileSync(join(voiceRoot, "default-1.2.3.zip"), "not a pack");
+  it("still names the stage task when the default root holds only a stray zip", () => {
+    mkdirSync(defaultRoot(), { recursive: true });
+    writeFileSync(join(defaultRoot(), "default-1.2.3.zip"), "not a pack");
     const log = fakeLog();
 
     expect(runDevVoices("on", options({ log }))).toBe(0);
     expect(output(log)).toContain("No staged pack under");
   });
+
+  it("says a hand-picked root is filled by hand, not by the build", () => {
+    writeFileSync(marker, CUSTOM_MARKER);
+    const log = fakeLog();
+
+    expect(runDevVoices("on", options({ log }))).toBe(0);
+    expect(output(log)).toContain(`No pack under ${join(root, "local", "my-packs")}`);
+    expect(output(log)).toContain("stages only the default root");
+    expect(output(log)).not.toContain("stage:dev-voices");
+  });
 });
 
 describe("runDevVoices('off')", () => {
-  it("removes the marker", () => {
-    writeFileSync(marker, `${JSON.stringify({ voicePacksRoot: DEFAULT_DEV_VOICE_PACKS_ROOT }, null, 2)}\n`);
+  it("writes voicePacksRoot: false rather than deleting — deleting would follow the machine opt-in", () => {
+    writeFileSync(marker, DEFAULT_MARKER);
 
-    expect(runDevVoices("off", options())).toBe(0);
+    expect(runDevVoices("off", options({ env: { [DEV_VOICES_ENV]: "1" } }))).toBe(0);
+    expect(readFileSync(marker, "utf-8")).toBe(OFF_MARKER);
+  });
+
+  it.each([
+    ["no marker", undefined],
+    ["an empty object", "{}\n"],
+  ])("writes the explicit off over %s, and rebuilds", (_label, contents) => {
+    if (contents !== undefined) writeFileSync(marker, contents);
+    const exec = fakeExec();
+
+    expect(runDevVoices("off", options({ exec }))).toBe(0);
+    expect(readFileSync(marker, "utf-8")).toBe(OFF_MARKER);
+    // The key lives in the BUILT config.json, so clearing it needs the rebuild
+    // even when nothing said "on" before.
+    expect(buildCalls(exec)).toHaveLength(1);
+  });
+
+  it("is a no-op success over an existing explicit off, and still rebuilds", () => {
+    writeFileSync(marker, OFF_MARKER);
+    const exec = fakeExec();
+    const log = fakeLog();
+
+    expect(runDevVoices("off", options({ exec, log }))).toBe(0);
+    expect(readFileSync(marker, "utf-8")).toBe(OFF_MARKER);
+    expect(buildCalls(exec)).toHaveLength(1);
+    expect(output(log)).not.toMatch(/Error/);
+  });
+
+  it("refuses to overwrite a hand-picked root, writes nothing and does not build", () => {
+    writeFileSync(marker, CUSTOM_MARKER);
+    const exec = fakeExec();
+    const log = fakeLog();
+
+    expect(runDevVoices("off", options({ exec, log }))).toBe(1);
+    expect(readFileSync(marker, "utf-8")).toBe(CUSTOM_MARKER);
+    expect(exec.calls).toHaveLength(0);
+    expect(output(log)).toContain(join(root, "local", "my-packs"));
+    expect(output(log)).toContain("dev:voices auto");
+  });
+
+  it("refuses an invalid marker", () => {
+    writeFileSync(marker, "{ not json");
+    const exec = fakeExec();
+
+    expect(runDevVoices("off", options({ exec }))).toBe(1);
+    expect(readFileSync(marker, "utf-8")).toBe("{ not json");
+    expect(exec.calls).toHaveLength(0);
+  });
+
+  it("says development mode is off for this worktree even with the machine opt-in set", () => {
+    const log = fakeLog();
+
+    expect(runDevVoices("off", options({ log, env: { [DEV_VOICES_ENV]: "1" } }))).toBe(0);
+    expect(output(log)).toContain(`Development voices: off for this worktree via ${DEV_LOCAL_FILE}`);
+    expect(output(log)).toContain(`${DEV_VOICES_ENV}=1`);
+  });
+
+  it("never prints a staging hint", () => {
+    const log = fakeLog();
+
+    expect(runDevVoices("off", options({ log, env: { [DEV_VOICES_ENV]: "1" } }))).toBe(0);
+    expect(output(log)).not.toMatch(/No (staged )?pack under/);
+  });
+});
+
+describe("runDevVoices('auto')", () => {
+  it.each([
+    ["the default root", DEFAULT_MARKER],
+    ["the explicit off", OFF_MARKER],
+    ["an empty object", "{}\n"],
+  ])("removes a marker holding %s", (_label, contents) => {
+    writeFileSync(marker, contents);
+    const exec = fakeExec();
+
+    expect(runDevVoices("auto", options({ exec }))).toBe(0);
     expect(existsSync(marker)).toBe(false);
+    expect(buildCalls(exec)).toHaveLength(1);
+  });
+
+  it("removes a hand-picked root too, but names what it held so the path is not lost silently", () => {
+    writeFileSync(marker, CUSTOM_MARKER);
+    const log = fakeLog();
+
+    expect(runDevVoices("auto", options({ log }))).toBe(0);
+    expect(existsSync(marker)).toBe(false);
+    expect(output(log)).toContain(`Removed ${DEV_LOCAL_FILE}`);
+    expect(output(log)).toContain(join(root, "local", "my-packs"));
   });
 
   it("is a no-op success when there is no marker, and still rebuilds", () => {
     const exec = fakeExec();
-
-    expect(runDevVoices("off", options({ exec }))).toBe(0);
-    expect(existsSync(marker)).toBe(false);
-    // The key lives in the BUILT config.json, so clearing it needs the rebuild
-    // even when the marker was already gone.
-    expect(buildCalls(exec)).toHaveLength(1);
-  });
-
-  it("never prints the staging hint", () => {
     const log = fakeLog();
 
-    expect(runDevVoices("off", options({ log }))).toBe(0);
-    expect(output(log)).not.toContain("No staged pack under");
+    expect(runDevVoices("auto", options({ exec, log }))).toBe(0);
+    expect(existsSync(marker)).toBe(false);
+    expect(buildCalls(exec)).toHaveLength(1);
+    expect(output(log)).toContain(DEV_VOICES_ENV);
+  });
+
+  it("refuses an invalid marker rather than deleting a hand edit in progress", () => {
+    writeFileSync(marker, "{ not json");
+    const exec = fakeExec();
+    const log = fakeLog();
+
+    expect(runDevVoices("auto", options({ exec, log }))).toBe(1);
+    expect(readFileSync(marker, "utf-8")).toBe("{ not json");
+    expect(exec.calls).toHaveLength(0);
+    expect(output(log)).toContain(DEV_LOCAL_FILE);
+  });
+
+  it("reports the machine setting it now follows: on via the variable, at this worktree's default root", () => {
+    writeFileSync(marker, OFF_MARKER);
+    const log = fakeLog();
+
+    expect(runDevVoices("auto", options({ log, env: { [DEV_VOICES_ENV]: "1" } }))).toBe(0);
+    expect(output(log)).toContain(`Development voices: on via ${DEV_VOICES_ENV}=1 — ${defaultRoot()}`);
+    // The stage task fills the default root, so the empty-root line names it.
+    expect(output(log)).toContain("No staged pack under");
+  });
+
+  it("reports the machine setting it now follows: off when the variable is unset", () => {
+    writeFileSync(marker, DEFAULT_MARKER);
+    const log = fakeLog();
+
+    expect(runDevVoices("auto", options({ log }))).toBe(0);
+    expect(output(log)).toContain(`Development voices: off (${DEV_VOICES_ENV} unset`);
+    expect(output(log)).not.toMatch(/No (staged )?pack under/);
+  });
+});
+
+describe("the machine opt-in", () => {
+  it.each(["on", "off", "auto"])("refuses a garbage IRACEDECK_DEV_VOICES before %s writes anything", (mode) => {
+    writeFileSync(marker, DEFAULT_MARKER);
+    const exec = fakeExec();
+    const log = fakeLog();
+
+    expect(runDevVoices(mode, options({ exec, log, env: { [DEV_VOICES_ENV]: "yes" } }))).toBe(1);
+    expect(readFileSync(marker, "utf-8")).toBe(DEFAULT_MARKER);
+    expect(exec.calls).toHaveLength(0);
+    expect(output(log)).toContain(DEV_VOICES_ENV);
+    expect(output(log)).toContain('"yes"');
+  });
+
+  it("accepts 0 as off", () => {
+    const exec = fakeExec();
+
+    expect(runDevVoices("auto", options({ exec, env: { [DEV_VOICES_ENV]: "0" } }))).toBe(0);
+    expect(buildCalls(exec)).toHaveLength(1);
   });
 });
 
 describe("the build step", () => {
-  it.each(["on", "off"])("runs exactly one plugin build for %s", (mode) => {
+  it.each(["on", "off", "auto"])("runs exactly one plugin build for %s", (mode) => {
     const exec = fakeExec();
 
     expect(runDevVoices(mode, options({ exec }))).toBe(0);
@@ -237,6 +428,18 @@ describe("the build step", () => {
     expect(builds[0].cmd).toBe("pnpm");
     expect(builds[0].args).toEqual(BUILD_ARGS);
     expect(builds[0].options.cwd).toBe(root);
+  });
+
+  it("promises staging only when the build will stage — the default root, not a hand-picked one", () => {
+    const defaultLog = fakeLog();
+    expect(runDevVoices("on", options({ log: defaultLog }))).toBe(0);
+    expect(output(defaultLog)).toContain("(staging the packs on the way)");
+
+    writeFileSync(marker, CUSTOM_MARKER);
+    const customLog = fakeLog();
+    expect(runDevVoices("on", options({ log: customLog }))).toBe(0);
+    expect(output(customLog)).toContain("(a hand-picked root is not staged)");
+    expect(output(customLog)).not.toContain("staging the packs");
   });
 
   it("stops before relinking and fails when the build fails", () => {
@@ -264,8 +467,18 @@ describe("the build step", () => {
     expect(output(log)).toMatch(/nothing was relinked/i);
   });
 
+  it("restores an absent marker when the build fails during 'off'", () => {
+    const exec = fakeExec({ [BUILD_ARGS.join(" ")]: 1 });
+
+    expect(runDevVoices("off", options({ exec }))).toBe(1);
+    expect(existsSync(marker)).toBe(false);
+  });
+
   it("restores the exact previous bytes when the build fails during 'off'", () => {
-    const before = `${JSON.stringify({ voicePacksRoot: "local/my-packs" }, null, 2)}\n`;
+    // CRLF, odd indentation and a trailing blank line: what a hand-written
+    // marker may carry, and what a decode-and-re-encode round trip would
+    // quietly normalise away.
+    const before = `{\r\n    "voicePacksRoot":   "${DEFAULT_DEV_VOICE_PACKS_ROOT}"\r\n}\r\n\r\n`;
     writeFileSync(marker, before);
     const exec = fakeExec({ [BUILD_ARGS.join(" ")]: 1 });
     const log = fakeLog();
@@ -275,13 +488,24 @@ describe("the build step", () => {
     expect(output(log)).toMatch(/restored to its previous state/);
   });
 
-  it("restores the exact previous bytes when the build fails over a kept marker", () => {
-    const before = `${JSON.stringify({ voicePacksRoot: "local/my-packs" }, null, 2)}\n`;
+  it.each([
+    ["the default root", DEFAULT_MARKER],
+    ["the explicit off", OFF_MARKER],
+    ["a hand-picked root", CUSTOM_MARKER],
+  ])("restores the exact previous bytes when the build fails during 'auto' over %s", (_label, before) => {
     writeFileSync(marker, before);
     const exec = fakeExec({ [BUILD_ARGS.join(" ")]: 1 });
 
-    expect(runDevVoices("on", options({ exec }))).toBe(1);
+    expect(runDevVoices("auto", options({ exec }))).toBe(1);
     expect(readFileSync(marker, "utf-8")).toBe(before);
+  });
+
+  it("restores the exact previous bytes when the build fails over a kept marker", () => {
+    writeFileSync(marker, CUSTOM_MARKER);
+    const exec = fakeExec({ [BUILD_ARGS.join(" ")]: 1 });
+
+    expect(runDevVoices("on", options({ exec }))).toBe(1);
+    expect(readFileSync(marker, "utf-8")).toBe(CUSTOM_MARKER);
   });
 
   it("names the hosts to stop in the failure message", () => {
@@ -414,6 +638,53 @@ describe("relinking", () => {
   });
 });
 
+describe("loadEnvLocalForDevVoices", () => {
+  it(`never takes ${DEV_VOICES_ENV} from .env.local, and warns that it belongs in the user environment`, () => {
+    writeFileSync(join(root, ".env.local"), `${DEV_VOICES_ENV}=1\nMIRABOX_PLUGINS_DIR=C:/mirabox\n`);
+    const env = {};
+    const warn = vi.fn();
+
+    loadEnvLocalForDevVoices(root, { env, warn });
+
+    expect(env).toEqual({ MIRABOX_PLUGINS_DIR: "C:/mirabox" });
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0][0]).toContain(DEV_VOICES_ENV);
+    expect(warn.mock.calls[0][0]).toContain("user environment");
+  });
+
+  it("keeps the value the user environment already has, and still warns about the file", () => {
+    writeFileSync(join(root, ".env.local"), `${DEV_VOICES_ENV}=1\n`);
+    const env = { [DEV_VOICES_ENV]: "0" };
+    const warn = vi.fn();
+
+    loadEnvLocalForDevVoices(root, { env, warn });
+
+    expect(env).toEqual({ [DEV_VOICES_ENV]: "0" });
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  it("loads every other variable, the shell still winning, and warns about nothing", () => {
+    writeFileSync(join(root, ".env.local"), "MIRABOX_PLUGINS_DIR=C:/from-file\nULANZI_PLUGINS_DIR=C:/ulanzi\n");
+    const env = { MIRABOX_PLUGINS_DIR: "C:/from-shell" };
+    const warn = vi.fn();
+
+    loadEnvLocalForDevVoices(root, { env, warn });
+
+    expect(env).toEqual({ MIRABOX_PLUGINS_DIR: "C:/from-shell", ULANZI_PLUGINS_DIR: "C:/ulanzi" });
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("does nothing without a .env.local", () => {
+    const env = {};
+    const warn = vi.fn();
+
+    loadEnvLocalForDevVoices(root, { env, warn });
+
+    expect(env).toEqual({});
+    expect(warn).not.toHaveBeenCalled();
+  });
+});
+
 describe("shellCommandLine", () => {
   it("space-joins plain arguments with no quoting", () => {
     expect(shellCommandLine("pnpm", ["exec", "turbo", "run", "build"])).toBe("pnpm exec turbo run build");
@@ -431,12 +702,12 @@ describe("shellCommandLine", () => {
 });
 
 describe("argument handling", () => {
-  it.each([undefined, "", "ON", "enable"])("refuses %o with usage and exit code 2", (mode) => {
+  it.each([undefined, "", "ON", "enable", "delete"])("refuses %o with usage and exit code 2", (mode) => {
     const log = fakeLog();
     const exec = fakeExec();
 
     expect(runDevVoices(mode, options({ log, exec }))).toBe(2);
-    expect(output(log)).toContain("pnpm dev:voices");
+    expect(output(log)).toContain("pnpm dev:voices <on|off|auto>");
     expect(exec.calls).toHaveLength(0);
     expect(existsSync(marker)).toBe(false);
   });

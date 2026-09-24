@@ -44,7 +44,8 @@
  * voice the user can actually play.
  *
  * THE DEVELOPMENT BUILD (#1143) is the row a release build can never show. A
- * plugin built from a worktree carrying `dev.local.json` scans a development
+ * plugin built with development mode on — a worktree's `dev.local.json`, or
+ * the machine-wide `IRACEDECK_DEV_VOICES=1` (#1214) — scans a development
  * voice root FIRST, so a pack found there is the one actually playing in the
  * sim — and the row says so, naming the directory in place of a Remove button.
  * Both halves earn their place: the badge is what tells a developer who forgot
