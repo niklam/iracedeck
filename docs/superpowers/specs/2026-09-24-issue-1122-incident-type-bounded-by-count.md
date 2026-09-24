@@ -40,7 +40,7 @@ Consequences:
 
 ### 2. The latch becomes a short history
 
-`pendingIncidentType` / `pendingIncidentTypeAt` become a list of `{ type, at }` for every classified byte within `PENDING_INCIDENT_STALENESS_MS` (1500 ms, unchanged). An increment with no consistent same-tick byte takes the **latest consistent** entry; any increment clears the history, as the single latch was cleared. The off-track-then-contact ordering therefore resolves to off-track.
+`pendingIncidentType` / `pendingIncidentTypeAt` become a list of `{ type, at }` for every classified byte within `PENDING_INCIDENT_STALENESS_MS` (1500 ms, unchanged). An increment takes the **worst consistent** entry, ties going to the latest (the sequence's score is its worst outcome's value, so the same rule as the burst's worst-severity-wins; amended after review — the first draft said latest, which could type a +2 wall hit as the off-track byte that followed it); any increment clears the history, as the single latch was cleared. The off-track-then-contact ordering therefore resolves to off-track.
 
 ### 3. No count-derived type
 
