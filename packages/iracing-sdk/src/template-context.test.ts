@@ -526,6 +526,12 @@ describe("buildTemplateContextFromData", () => {
 
     expect(ctx.raw["session.time_remaining"]).toBe("0:00");
     expect(ctx.display["session.time_remaining"]).toBe("0:00");
+
+    // A hair below zero must clamp before formatting, never floor to "-1:59".
+    for (const value of [-0.0001, -0]) {
+      const edge = buildTemplateContextFromData(makeTelemetry({ SessionTimeRemain: value }), sessionInfo);
+      expect(edge.display["session.time_remaining"]).toBe("0:00");
+    }
   });
 
   it("should still format a clock one second below the unlimited sentinel", () => {
