@@ -626,8 +626,8 @@ export type TranslatorState = {
   // since #1122). iRacing sets the IncidentFlags byte for ~one 16 ms tick
   // then clears it, usually ~200 ms BEFORE PlayerCarMyIncidentCount visibly
   // increments. The diff keeps every classified byte for
-  // `PENDING_INCIDENT_STALENESS_MS` and an increment takes the latest one
-  // consistent with the count — a single slot let a later 0x contact byte
+  // `PENDING_INCIDENT_STALENESS_MS` and an increment takes the worst one
+  // consistent with the count (ties → latest) — a single slot let a later 0x contact byte
   // overwrite the off-track byte its increment belonged to (#1122).
   incidentTypeHistory: Array<{ type: IncidentType; at: number }>;
   // The incident CHAIN (#1122): count deltas summed while each increment

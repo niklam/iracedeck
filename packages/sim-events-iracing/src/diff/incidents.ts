@@ -39,9 +39,10 @@
  * **Why we latch the type byte.** iRacing sets `PlayerIncidents` (the
  * `irsdk_IncidentFlags` report byte) for exactly one ~16 ms internal
  * frame (capture-confirmed, #938), then clears it. The visible
- * `PlayerCarMyIncidentCount` increment usually lags ~32 ms / 2 frames
- * behind the flag — so the diff caches the last classified type across
- * ticks (with a staleness cap) and hands it to the count-delta consumer.
+ * `PlayerCarMyIncidentCount` increment usually lags ~200 ms behind the
+ * flag (#1122 re-read of the captures) — so the diff keeps the recent
+ * classified types across ticks (with a staleness cap) and hands them to
+ * the count-delta consumer.
  * The capture also showed the OPPOSITE order: the count increment landing
  * ~2 frames BEFORE its report byte. Two rules absorb that: an increment
  * with no resolvable type still extends the pending burst (it must not be
@@ -60,8 +61,8 @@
  * into a 4x — the #1122 report, where a light car contact the sim scored
  * nothing was handed to the next off-track. Because the off-track byte
  * leads its increment by ~200 ms (every capture), the latch keeps a short
- * HISTORY of classified bytes and an increment takes the latest consistent
- * one, so a contact byte landing in that gap cannot overwrite it.
+ * HISTORY of classified bytes and an increment takes the worst consistent
+ * one (ties → latest), so a contact byte landing in that gap cannot overwrite it.
  *
  * `RepOffTrackOngoing` (0x03) and `RepCollisionWithWorldOngoing` (0x06)
  * are suppressed — the iRacing header notes they are never emitted by the
@@ -330,12 +331,14 @@ export function diffIncidents(
   // Latch every classified non-null read. The byte is set for ~one
   // iRacing frame; this is our only chance to capture the type before
   // iRacing clears it. Every byte inside the staleness window is kept — an
-  // increment picks the latest one its count can support (#1122).
+  // increment picks the worst one its count can support (#1122).
   const currentType = classifyIncident(playerIncidents);
 
-  state.incidentTypeHistory = state.incidentTypeHistory.filter(
-    (entry) => now - entry.at <= PENDING_INCIDENT_STALENESS_MS,
-  );
+  if (state.incidentTypeHistory.length > 0) {
+    state.incidentTypeHistory = state.incidentTypeHistory.filter(
+      (entry) => now - entry.at <= PENDING_INCIDENT_STALENESS_MS,
+    );
+  }
 
   if (currentType !== null) {
     state.incidentTypeHistory.push({ type: currentType, at: now });
@@ -363,6 +366,14 @@ export function diffIncidents(
   const delta = incidentCount - state.lastIncidentCount;
   state.lastIncidentCount = incidentCount;
 
+  if (delta < 0) {
+    // The count went DOWN — a session change or reset with the car still on
+    // track. Nothing before it can bound what the new count scores.
+    state.incidentTypeHistory = [];
+    state.incidentChainTotal = 0;
+    state.incidentChainLatestAt = 0;
+  }
+
   if (delta > 0) {
     // Extend the chain, or open a new one when the previous increment is
     // further back than the sequence gap (#1122).
@@ -373,22 +384,22 @@ export function diffIncidents(
     state.incidentChainTotal += delta;
     state.incidentChainLatestAt = now;
 
-    // Resolve the type: the latest latched byte (this tick's, if any, is
-    // last) whose value the chain's count can support. A byte the count
+    // Resolve the type: the WORST latched byte (ties → latest; this tick's,
+    // if any, is last) whose value the chain's count can support — the
+    // sequence's score is its worst outcome's value (#938). A byte the count
     // contradicts belongs to something the sim did not score this way — a
     // 0x contact, or a collision report that moved nothing (#1122).
     let resolvedType: IncidentType | null = null;
-    const rejected: IncidentType[] = [];
+    const rejected: string[] = [];
 
-    for (let i = state.incidentTypeHistory.length - 1; i >= 0; i--) {
-      const candidate = state.incidentTypeHistory[i].type;
+    for (const { type: candidate } of state.incidentTypeHistory) {
+      const value = incidentTypeValue(candidate, collisionCarValue);
 
-      if (isTypeConsistent(candidate, state.incidentChainTotal, collisionCarValue)) {
+      if (!isTypeConsistent(candidate, state.incidentChainTotal, collisionCarValue)) {
+        rejected.push(`${candidate}(${value})`);
+      } else if (resolvedType === null || value >= incidentTypeValue(resolvedType, collisionCarValue)) {
         resolvedType = candidate;
-        break;
       }
-
-      rejected.push(candidate);
     }
 
     const rejectedNote = rejected.length > 0 ? ` rejected=${rejected.join(",")}` : "";

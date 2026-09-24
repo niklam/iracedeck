@@ -479,6 +479,43 @@ describe("diffIncidents — the count bounds the type (issue #1122)", () => {
     expect(occurred(events)).toEqual([{ delta: 1, points: 1, type: "off-track" }]);
   });
 
+  it("types an increment with the worst consistent byte, not the latest", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    seed(state, emit);
+
+    diffIncidents(state, tick({ PlayerIncidents: IncidentFlags.RepCollisionWithWorld }), 2_000, emit);
+    diffIncidents(state, tick({ PlayerIncidents: IncidentFlags.RepOffTrack }), 2_080, emit);
+    diffIncidents(state, tick({ PlayerCarMyIncidentCount: 2 }), 2_200, emit);
+    diffIncidents(state, tick({ PlayerCarMyIncidentCount: 2 }), 2_200 + INCIDENT_BURST_QUIET_MS, emit);
+
+    expect(occurred(events)).toEqual([{ delta: 2, points: 2, type: "collision-world" }]);
+  });
+
+  it("resets the chain when the count goes down", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    diffIncidents(state, tick({ PlayerCarMyIncidentCount: 5 }), 1_000, emit);
+    diffIncidents(
+      state,
+      tick({ PlayerIncidents: IncidentFlags.RepOffTrack, PlayerCarMyIncidentCount: 5 }),
+      2_000,
+      emit,
+    );
+    diffIncidents(state, tick({ PlayerCarMyIncidentCount: 8 }), 2_100, emit);
+    diffIncidents(state, tick({ PlayerCarMyIncidentCount: 8 }), 2_100 + INCIDENT_BURST_QUIET_MS, emit);
+    expect(occurred(events)).toEqual([{ delta: 3, points: 1, type: "off-track" }]);
+
+    // New session: the count drops to 0 with the car on track, then a stale
+    // collision byte and a +1 inside the old chain's gap.
+    diffIncidents(state, tick({ PlayerCarMyIncidentCount: 0 }), 5_000, emit);
+    diffIncidents(state, tick({ PlayerIncidents: IncidentFlags.RepCollisionWithCar }), 5_500, emit);
+    diffIncidents(state, tick({ PlayerCarMyIncidentCount: 1 }), 6_000, emit);
+    diffIncidents(state, tick({ PlayerCarMyIncidentCount: 1 }), 6_000 + INCIDENT_BURST_QUIET_MS, emit);
+
+    expect(occurred(events)).toEqual([{ delta: 3, points: 1, type: "off-track" }]);
+  });
+
   it("resets the chain on pit-lane entry", () => {
     const state = createInitialState();
     const { events, emit } = collect();
