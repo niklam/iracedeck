@@ -74,6 +74,7 @@ import z from "zod";
 
 import { computeCarNumberTarget } from "../../shared/car-cycling.js";
 import { RepeatController } from "../../shared/repeat-controller.js";
+import { cancelReplayCursorOwner, claimReplayCursor, type ReplayCursorClaim } from "../../shared/replay-cursor.js";
 
 const REPLAY_CONTROL_MODES = [
   "play-pause",
@@ -355,37 +356,46 @@ const LAP_START_APPROACH_FRAMES = 60;
 const FASTEST_TIME_TOLERANCE_MS = 1000 / 60;
 
 /**
- * One session's frame bounds within the replay buffer. `endFrame` for the
- * LAST session is the recording's total length (`ReplayFrameNum +
- * ReplayFrameNumEnd`) at the time of the map build — it can lag the true live
- * edge if the replay keeps growing, but the fastest lap typically sits well
- * inside the recorded window anyway.
+ * One session instance's frame bounds within the replay buffer, keyed by the
+ * `(SessionNum, SessionUniqueID)` pair: a session restarted within one sim run
+ * keeps its `SessionNum` and gets a new `SessionUniqueID`, and is a second
+ * entry, not the end of the map. `endFrame` is `null` for the LAST instance —
+ * the recording's end, which a live session keeps pushing out — and every walk
+ * reads it fresh as `ReplayFrameNum + ReplayFrameNumEnd` from its own first
+ * stable sample rather than trusting the value at build time (#1203: a frozen
+ * end made the bisection collapse below any lap driven since the build).
  */
 type SessionMapEntry = {
   sessionNum: number;
+  sessionUniqueId: number;
   startFrame: number;
-  endFrame: number;
+  endFrame: number | null;
 };
 
 type FastestLapSessionMap = {
   /**
-   * Every `SessionUniqueID` we observed while building the map (one per
-   * session — iRacing increments SessionUniqueID per session, not per race
-   * weekend, so a single race-weekend has N IDs for N sessions). The cache
-   * is reused whenever the current walk's SessionUniqueID matches ANY of
-   * these — a press in practice and a press in race both reuse the same
-   * map, but starting a new race weekend (all-new IDs) misses cleanly.
+   * `WeekendInfo.SubSessionID` of the replay the map was built in. The
+   * `SessionUniqueID`s alone cannot tell two replays apart — they restart at 1
+   * in every sim run (the 2026-09-17 Homestead captures), so a second `.rpy`
+   * opened in the same process repeats them.
+   */
+  subSessionId: number | undefined;
+  /**
+   * Every `SessionUniqueID` observed while building the map (one per session
+   * instance). A walk reuses the map only when its own `SessionUniqueID` is
+   * one of these AND the `SubSessionID` matches; a session instance the map
+   * has never seen (a restart after the build) misses and rebuilds.
    */
   sessionUniqueIds: Set<number>;
   sessions: SessionMapEntry[];
 };
 
 /**
- * Module-level cache of the session map. Reused whenever the current walk's
- * `SessionUniqueID` is one of the IDs we observed while building, so a
- * single map covers every session in the race weekend. The frames a walk
- * lands on are NOT cached here: they go into the replay record
- * (`store.laps.recordLapStart`), which outlives the process.
+ * Module-level cache of the session map, dropped on SDK disconnect (the
+ * subscriber's null tick) and replaced on a `SubSessionID` or unseen
+ * `SessionUniqueID`. The frames a walk lands on are NOT cached here: they go
+ * into the replay record (`store.laps.recordLapStart`), which outlives the
+ * process.
  */
 let cachedFastestLapSessionMap: FastestLapSessionMap | null = null;
 
@@ -405,7 +415,7 @@ export function _getFastestLapSessionCache(): FastestLapSessionMap | null {
   return cachedFastestLapSessionMap;
 }
 
-/** Thrown inside a walk when another Replay Control command cancelled it; `walkToFastestLap` catches it. */
+/** Thrown inside a walk when a replay command — any action's — took the cursor; `walkToFastestLap` catches it. */
 class FastestLapWalkCancelled extends Error {
   constructor(readonly by: string) {
     super(`walk cancelled by ${by}`);
@@ -413,8 +423,8 @@ class FastestLapWalkCancelled extends Error {
   }
 }
 
-/** The one in-flight walk's cancellation token: set by the command that cancels it, read at the walk's next await. */
-type FastestLapWalkToken = { cancelledBy: string | null };
+/** The owner name the walk claims the replay cursor under (`shared/replay-cursor.ts`). */
+const FASTEST_LAP_WALK_OWNER = "jump-to-fastest-lap walk";
 
 /** What a converged walk writes into the lap record beside the frame it found. */
 type FastestLapRecordIdentity = {
@@ -887,12 +897,14 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
   /**
    * The one in-flight jump-to-fastest-lap walk, per action instance — two
    * keys would otherwise run two walks against one cursor. A second
-   * fastest-lap press while it runs is dropped (the walk is converging on the
-   * same target); any other Replay Control command cancels it through the
-   * token, and the walk unwinds at its next await without sending anything
-   * more, leaving the cursor where the user's command put it.
+   * fastest-lap press while it stands is dropped before any command is sent
+   * (the walk is converging on the same target). Any replay command — this
+   * action's other modes, Replay Markers' jumps — cancels it through the
+   * shared cursor claim, and the walk unwinds at its next await without
+   * sending anything more. A cancelled walk no longer holds the slot: a new
+   * press walks while the old one unwinds.
    */
-  private activeFastestLapWalk: { contextId: string; token: FastestLapWalkToken } | null = null;
+  private activeFastestLapWalk: { contextId: string; claim: ReplayCursorClaim } | null = null;
 
   /** Last rendered state key per context (prevents redundant re-renders) */
   private lastState = new Map<string, string>();
@@ -910,6 +922,10 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
     await this.updateDisplay(ev, settings);
 
     this.sdkController.subscribe(ev.action.id, (telemetry: TelemetryData | null) => {
+      // A disconnect is the one signal that the replay this map described is
+      // gone; the next walk rebuilds against whatever is open then.
+      if (telemetry === null) cachedFastestLapSessionMap = null;
+
       const prevStateKey = this.buildTelemetryStateKey(ev.action.id);
       this.updateTelemetryState(ev.action.id, telemetry);
       const newStateKey = this.buildTelemetryStateKey(ev.action.id);
@@ -1119,18 +1135,18 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
   }
 
   /**
-   * Cancel the in-flight walk, if any, naming the command that did. Idempotent:
-   * the first caller names the reason, later ones find it set. The walk
-   * observes the token at its next await, so a command sent right after this
-   * call is never overridden by a further probe.
+   * Take the replay cursor for a command this action is about to send: cancels
+   * the in-flight walk (this instance's or any other cursor owner's), naming
+   * the mode that did. The walk observes it at its next await, so the command
+   * sent right after this call is never overridden by a further probe.
    */
   private cancelFastestLapWalk(by: string): void {
-    const walk = this.activeFastestLapWalk;
+    cancelReplayCursorOwner(by);
+  }
 
-    if (walk === null || walk.token.cancelledBy !== null) return;
-
-    walk.token.cancelledBy = by;
-    this.logger.info(`Jump to fastest lap: walk cancelled by ${by}`);
+  /** A walk that has not been cancelled holds the slot; one unwinding after a cancel does not. */
+  private isFastestLapWalkInFlight(): boolean {
+    return this.activeFastestLapWalk !== null && this.activeFastestLapWalk.claim.cancelledBy === null;
   }
 
   /**
@@ -1178,32 +1194,43 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
    * car when the record has no frame for it (issue #607, repaired in #1203).
    * Phases:
    *
-   *   1. **Session map.** On the first walk per `SessionUniqueID`, build a
-   *      cache of session bounds by `goToStart` + `nextSession` × N; the
-   *      recording's extent is `ReplayFrameNum + ReplayFrameNumEnd` from the
-   *      first stable read, so the walk never leaves the replay (no `goToEnd`).
-   *      Subsequent walks within the same replay skip straight to phase 2.
-   *   2. **Bisect within target session.** Look up the target session's
-   *      [startFrame, endFrame] from the map and bisect with
+   *   1. **Session map.** On the first walk per replay (`SubSessionID` plus
+   *      the `SessionUniqueID`s seen), build a map of session-instance bounds
+   *      by `goToStart` + `nextSession` × N, one entry per
+   *      `(SessionNum, SessionUniqueID)`; the last entry's end is open and
+   *      every walk reads it live as `ReplayFrameNum + ReplayFrameNumEnd`, so
+   *      the walk never leaves the replay (no `goToEnd`) and a live session
+   *      that grew since the build is bisected to its current edge.
+   *   2. **Bisect within the target session instance.** Look up the entry
+   *      whose pair matches the target and bisect with
    *      `setPlayPosition(Begin, mid)` until the car is within
    *      {@link CLOSE_ENOUGH_LAPS} of the lap before the target.
    *   3. **Lap-step refinement.** `nextLap` / `prevLap` until
    *      `CarIdxLap[carIdx]` is the lap before the target, a distance nudge
    *      to that lap's end, and a {@link FASTEST_LAP_FINAL_BACKSTEP_TICKS}
    *      back-step, so the car is visibly approaching the line.
-   *   4. **Play, and record.** `play()` at 1× (mirrored into the speed cache,
-   *      like the opening `pause()`), and the landed frame — back-adjusted by
-   *      the back-step — goes into the record as the car's start of `targetLap`,
-   *      so the next press for it is a lookup.
+   *   4. **Play, and record what was verified.** `play()` at 1× (mirrored
+   *      into the speed cache, like the opening `pause()`). The landed frame
+   *      goes into the record as the car's start of `targetLap` ONLY when the
+   *      walk converged: the sample before the back-step showed the car on
+   *      `targetLap − 1` at `dist ≥` {@link FASTEST_LAP_DIST_THRESHOLD} in the
+   *      target session instance, and the sample at the back-stepped frame
+   *      agreed on lap and session. Anything less — lap steps exhausted, a
+   *      nudge that did not move, a landing in another lap or session — plays
+   *      from where it got to, warns `walk did not converge`, and records
+   *      nothing: a later press would trust that frame forever.
    *
    * An absolute jump settles when `ReplayFrameNum` reads the sent frame; a
-   * search when the frame has moved from its pre-command value and held across
-   * two reads {@link STABILIZATION_POLL_INTERVAL_MS} apart, with the configured
-   * `fastestLapSearchDelayMs` as the minimum gap before the next command. One
-   * walk runs per action instance; a second fastest-lap press while it runs is
-   * ignored, and any other Replay Control command cancels it. An aborted walk
-   * (a jump that never settled, a missing field) leaves the replay paused with
-   * the cache saying so, so the Play key plays.
+   * search when the frame has moved from its pre-command value and, once the
+   * configured `fastestLapSearchDelayMs` has elapsed, held across two reads
+   * {@link STABILIZATION_POLL_INTERVAL_MS} apart. A search whose frame never
+   * held is "unsettled" and aborts (the build caches nothing); one whose frame
+   * never left its pre-command value is "unmoved" — how the sim says
+   * `nextSession` in the last session. The walk holds the shared replay-cursor
+   * claim; any replay command from any action cancels it, and it sends
+   * nothing more. It refuses to start while `IsReplayPlaying !== true`,
+   * because iRacing ignores replay commands from the car. An aborted walk
+   * leaves the replay paused with the cache saying so, so the Play key plays.
    */
   async walkToFastestLap(
     contextId: string,
@@ -1212,21 +1239,23 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
     targetSessionNum: number,
     identity: FastestLapRecordIdentity,
   ): Promise<void> {
-    if (this.activeFastestLapWalk !== null) {
+    if (this.isFastestLapWalkInFlight()) {
       this.logger.info("Jump to fastest lap: walk already in flight; press ignored");
       this.logger.debug(
-        `In-flight walk context: ${this.activeFastestLapWalk.contextId}, ignored press context: ${contextId}`,
+        `In-flight walk context: ${this.activeFastestLapWalk?.contextId}, ignored press context: ${contextId}`,
       );
 
       return;
     }
 
-    const token: FastestLapWalkToken = { cancelledBy: null };
+    const claim = claimReplayCursor(FASTEST_LAP_WALK_OWNER, (by) => {
+      this.logger.info(`Jump to fastest lap: walk cancelled by ${by}`);
+    });
 
-    this.activeFastestLapWalk = { contextId, token };
+    this.activeFastestLapWalk = { contextId, claim };
 
     try {
-      await this.runFastestLapWalk(token, carIdx, targetLap, targetSessionNum, identity);
+      await this.runFastestLapWalk(claim, carIdx, targetLap, targetSessionNum, identity);
     } catch (error) {
       if (error instanceof FastestLapWalkCancelled) {
         this.logger.debug(`Jump to fastest lap: ${error.message}; cursor left where that command put it`);
@@ -1236,12 +1265,15 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
         );
       }
     } finally {
-      this.activeFastestLapWalk = null;
+      claim.release();
+
+      // A cancelled walk may unwind after a newer one took the slot.
+      if (this.activeFastestLapWalk?.claim === claim) this.activeFastestLapWalk = null;
     }
   }
 
   private async runFastestLapWalk(
-    token: FastestLapWalkToken,
+    claim: ReplayCursorClaim,
     carIdx: number,
     targetLap: number,
     targetSessionNum: number,
@@ -1251,7 +1283,7 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
     const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
     const checkpoint = (): void => {
-      if (token.cancelledBy !== null) throw new FastestLapWalkCancelled(token.cancelledBy);
+      if (claim.cancelledBy !== null) throw new FastestLapWalkCancelled(claim.cancelledBy);
     };
 
     /** Every wait in the walk: a cancellation is observed as soon as the sleep ends. */
@@ -1267,6 +1299,31 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
     const isSettledSample = (tel: TelemetryData | null): tel is TelemetryData =>
       tel != null && typeof tel.SessionNum === "number" && tel.SessionNum >= 0;
 
+    const carLap = (tel: TelemetryData | null): number | undefined =>
+      (tel?.CarIdxLap as number[] | undefined)?.[carIdx];
+    const carDist = (tel: TelemetryData | null): number | undefined =>
+      (tel?.CarIdxLapDistPct as number[] | undefined)?.[carIdx];
+
+    const settleTimeoutMs = (): number => readFastestLapSearchDelayMs() * STABILIZATION_TIMEOUT_MULTIPLIER;
+
+    /**
+     * Poll until the telemetry is out of the `SessionNum = -1` transient, or
+     * null past the settle timeout. Used for the samples no command precedes.
+     */
+    const readSettledSample = async (): Promise<TelemetryData | null> => {
+      const deadline = Date.now() + settleTimeoutMs();
+
+      for (;;) {
+        const tel = this.sdkController.getCurrentTelemetry();
+
+        if (isSettledSample(tel)) return tel;
+
+        if (Date.now() >= deadline) return null;
+
+        await wait(STABILIZATION_POLL_INTERVAL_MS);
+      }
+    };
+
     /**
      * Send an absolute jump and wait until `ReplayFrameNum` reads the frame
      * that was sent. Null past the timeout, with the frame seen logged.
@@ -1275,7 +1332,7 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
       checkpoint();
       replay.setPlayPosition(ReplayPosMode.Begin, frame);
 
-      const timeoutMs = readFastestLapSearchDelayMs() * STABILIZATION_TIMEOUT_MULTIPLIER;
+      const timeoutMs = settleTimeoutMs();
       const deadline = Date.now() + timeoutMs;
       let last: TelemetryData | null = null;
 
@@ -1294,17 +1351,23 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
       return null;
     };
 
+    type SearchOutcome =
+      | { kind: "moved"; telemetry: TelemetryData }
+      | { kind: "unmoved"; telemetry: TelemetryData | null }
+      | { kind: "unsettled"; telemetry: TelemetryData | null };
+
     /**
-     * Send a search and wait until `ReplayFrameNum` has moved from its
-     * pre-command value and held across two reads. Past the timeout the
-     * cursor is taken not to have moved (a search at the buffer's edge is a
-     * no-op the sim never reports). The configured delay is the minimum gap
-     * before the next command either way.
+     * Send a search and wait for its landing. `moved`: the frame left its
+     * pre-command value and, after the configured minimum gap had elapsed,
+     * held across two reads out of the transient — the decision sample is
+     * always taken after the gap and must agree with the read before it, so
+     * an intermediate frame the sim parks on for a moment is never taken as
+     * the landing. `unmoved`: every read to the deadline showed the
+     * pre-command frame (a search at the buffer's edge is a no-op the sim
+     * never reports). `unsettled`: the frame moved but never held, or the
+     * telemetry went away — the cursor is somewhere unverified.
      */
-    const search = async (
-      command: () => boolean,
-      label: string,
-    ): Promise<{ telemetry: TelemetryData | null; moved: boolean }> => {
+    const search = async (command: () => boolean, label: string): Promise<SearchOutcome> => {
       checkpoint();
 
       const before = readFrame(this.sdkController.getCurrentTelemetry());
@@ -1315,108 +1378,145 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
       const gapMs = readFastestLapSearchDelayMs();
       const deadline = sentAt + gapMs * STABILIZATION_TIMEOUT_MULTIPLIER;
       let held: number | null = null;
-      let result: { telemetry: TelemetryData | null; moved: boolean } | null = null;
+      let sawMovement = false;
 
       while (Date.now() < deadline) {
         await wait(STABILIZATION_POLL_INTERVAL_MS);
         const tel = this.sdkController.getCurrentTelemetry();
         const frame = readFrame(tel);
 
-        if (frame === null || frame === before) {
+        if (frame === null) {
+          held = null;
+          sawMovement = true;
+          continue;
+        }
+
+        if (frame === before) {
           held = null;
           continue;
         }
 
-        if (held === frame && isSettledSample(tel)) {
-          result = { telemetry: tel, moved: true };
-          break;
+        sawMovement = true;
+
+        if (held === frame && isSettledSample(tel) && Date.now() - sentAt >= gapMs) {
+          return { kind: "moved", telemetry: tel };
         }
 
         held = frame;
       }
 
-      if (result === null) {
-        result = { telemetry: this.sdkController.getCurrentTelemetry(), moved: false };
+      const telemetry = this.sdkController.getCurrentTelemetry();
+
+      if (!sawMovement) {
         this.logger.debug(`Jump to fastest lap: ${label} did not move the cursor from frame ${before ?? "n/a"}`);
+
+        return { kind: "unmoved", telemetry };
       }
 
-      const remainingGapMs = sentAt + gapMs - Date.now();
+      this.logger.warn(`Jump to fastest lap: ${label} moved the cursor but it never settled; aborting`);
+      this.logger.debug(
+        `${label}: before=${before ?? "n/a"}, last seen frame=${readFrame(telemetry) ?? "n/a"} (SessionNum ${telemetry?.SessionNum ?? "n/a"}) after ${gapMs * STABILIZATION_TIMEOUT_MULTIPLIER} ms`,
+      );
 
-      if (remainingGapMs > 0) await wait(remainingGapMs);
-
-      return result;
+      return { kind: "unsettled", telemetry };
     };
 
-    const buildSessionMap = async (): Promise<FastestLapSessionMap | null> => {
+    /**
+     * The map's frame for the target session instance's end: the next
+     * instance's start, or — for the last one — the recording's current
+     * length, read from this walk's own stable sample.
+     */
+    const resolveEndFrame = (entry: SessionMapEntry, sample: TelemetryData): number | null => {
+      if (entry.endFrame !== null) return entry.endFrame;
+
+      const frame = sample.ReplayFrameNum;
+      const framesToEnd = sample.ReplayFrameNumEnd;
+
+      return typeof frame === "number" && typeof framesToEnd === "number" ? frame + framesToEnd : null;
+    };
+
+    const buildSessionMap = async (subSessionId: number | undefined): Promise<FastestLapSessionMap | null> => {
       const sessionUniqueIds = new Set<number>();
-      const recordUniqueId = (tel: TelemetryData): void => {
-        if (typeof tel.SessionUniqueID === "number") sessionUniqueIds.add(tel.SessionUniqueID);
+      const sessions: SessionMapEntry[] = [];
+
+      /** One settled step of the build: its entry, or null (aborts the build) with the reason logged. */
+      const entryFrom = (tel: TelemetryData, label: string): SessionMapEntry | null => {
+        const frame = tel.ReplayFrameNum;
+        const sessionNum = tel.SessionNum;
+        const sessionUniqueId = tel.SessionUniqueID;
+
+        if (typeof frame !== "number" || typeof sessionNum !== "number" || typeof sessionUniqueId !== "number") {
+          this.logger.warn(`Jump to fastest lap: missing fields after ${label}; aborting map build`);
+          this.logger.debug(`After ${label}: frame=${frame}, session=${sessionNum}, uniqueId=${sessionUniqueId}`);
+
+          return null;
+        }
+
+        sessionUniqueIds.add(sessionUniqueId);
+
+        return { sessionNum, sessionUniqueId, startFrame: frame, endFrame: null };
       };
 
       const first = await search(() => replay.goToStart(), "goToStart");
-      const firstTel = first.telemetry;
 
-      if (!isSettledSample(firstTel)) {
+      if (first.kind === "unsettled") return null;
+
+      if (first.kind === "unmoved" && readFrame(first.telemetry) !== 0) {
+        // Already at the start is the one legitimate no-op, and the start of
+        // a recording is frame 0; anywhere else, the sim did not honour it.
+        this.logger.warn("Jump to fastest lap: goToStart did not move the cursor; aborting map build");
+        this.logger.debug(`goToStart left the cursor at frame ${readFrame(first.telemetry) ?? "n/a"}`);
+
+        return null;
+      }
+
+      if (!isSettledSample(first.telemetry)) {
         this.logger.warn("Jump to fastest lap: telemetry did not settle after goToStart; aborting map build");
 
         return null;
       }
 
-      recordUniqueId(firstTel);
-      const firstFrame = firstTel.ReplayFrameNum;
-      const firstSession = firstTel.SessionNum;
-      const framesToEnd = firstTel.ReplayFrameNumEnd;
+      const firstEntry = entryFrom(first.telemetry, "goToStart");
 
-      if (typeof firstFrame !== "number" || typeof firstSession !== "number" || typeof framesToEnd !== "number") {
-        this.logger.warn("Jump to fastest lap: missing fields after goToStart; aborting map build");
-        this.logger.debug(`After goToStart: frame=${firstFrame}, framesToEnd=${framesToEnd}, session=${firstSession}`);
+      if (firstEntry === null) return null;
 
-        return null;
-      }
-
-      // The recording's total length, constant while a replay is open — the
-      // buffer's end without a `goToEnd`, which in a live session would leave
-      // the replay for the live view.
-      const totalFrames = firstFrame + framesToEnd;
-      const sessions: SessionMapEntry[] = [{ sessionNum: firstSession, startFrame: firstFrame, endFrame: -1 }];
-      let lastSession = firstSession;
+      sessions.push(firstEntry);
 
       for (let i = 0; i < MAX_SESSIONS; i++) {
-        const step = await search(() => replay.nextSession(), `nextSession #${i + 1}`);
+        const label = `nextSession #${i + 1}`;
+        const step = await search(() => replay.nextSession(), label);
 
-        // Not moving is how the sim says "already in the last session".
-        if (!step.moved) break;
+        // Not moving is how the sim says "already in the last session"; a move
+        // that never settled leaves the cursor unverified, and a map built on
+        // it would be trusted by every later press.
+        if (step.kind === "unmoved") break;
 
-        const tel = step.telemetry;
+        if (step.kind === "unsettled") return null;
 
-        if (!isSettledSample(tel)) {
-          this.logger.warn(`Jump to fastest lap: telemetry did not settle after nextSession #${i + 1}; aborting`);
+        const entry = entryFrom(step.telemetry, label);
 
-          return null;
-        }
+        if (entry === null) return null;
 
-        recordUniqueId(tel);
-        const frame = tel.ReplayFrameNum;
-        const session = tel.SessionNum;
+        const last = sessions[sessions.length - 1];
 
-        if (typeof frame !== "number" || typeof session !== "number") {
-          this.logger.warn("Jump to fastest lap: missing fields after nextSession; aborting map build");
+        if (entry.sessionNum === last.sessionNum && entry.sessionUniqueId === last.sessionUniqueId) break;
 
-          return null;
-        }
-
-        if (session === lastSession) break;
-
-        sessions.push({ sessionNum: session, startFrame: frame, endFrame: -1 });
-        lastSession = session;
+        last.endFrame = entry.startFrame - 1;
+        sessions.push(entry);
       }
 
-      for (let i = 0; i < sessions.length; i++) {
-        sessions[i].endFrame = i + 1 < sessions.length ? sessions[i + 1].startFrame - 1 : totalFrames;
-      }
-
-      return { sessionUniqueIds, sessions };
+      return { subSessionId, sessionUniqueIds, sessions };
     };
+
+    // Refuse from the car: iRacing honours replay commands only out of it
+    // (irsdk_defines.h: "camera and replay commands only work when you are out
+    // of your car"), and a map built from ignored commands would describe the
+    // live view, not the replay.
+    if (this.sdkController.getCurrentTelemetry()?.IsReplayPlaying !== true) {
+      this.logger.info("Jump to fastest lap: replay not open; iRacing ignores replay commands from the car");
+
+      return;
+    }
 
     // Pause first so the cursor doesn't drift between commands and the
     // post-settle telemetry sample — and tell the speed cache, so a Play
@@ -1426,9 +1526,17 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
     this.updateAllTelemetryDisplays();
     await wait(readFastestLapSearchDelayMs());
 
-    // Phase 1: session map (cache or build).
-    const initialTel = this.sdkController.getCurrentTelemetry();
-    const sessionUniqueId = initialTel?.SessionUniqueID;
+    // Phase 1: session map (cache or build). The sample that keys it is a
+    // stable one — the `SessionNum = -1` transient carries no usable id.
+    const initialTel = await readSettledSample();
+
+    if (initialTel === null) {
+      this.logger.warn("Jump to fastest lap: telemetry did not settle after pause; aborting");
+
+      return;
+    }
+
+    const sessionUniqueId = initialTel.SessionUniqueID;
 
     if (typeof sessionUniqueId !== "number") {
       this.logger.warn("Jump to fastest lap: SessionUniqueID unavailable; aborting");
@@ -1436,46 +1544,67 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
       return;
     }
 
+    const subSessionId = identity.subSessionId;
     let sessionMap = cachedFastestLapSessionMap;
-    const cacheHit = sessionMap != null && sessionMap.sessionUniqueIds.has(sessionUniqueId);
+    const cacheHit =
+      sessionMap != null &&
+      sessionMap.subSessionId === subSessionId &&
+      sessionMap.sessionUniqueIds.has(sessionUniqueId);
 
     this.logger.info(
-      `Jump to fastest lap: cache ${cacheHit ? "HIT" : "MISS"} (currentUniqueId=${sessionUniqueId}, cachedUniqueIds=${
-        sessionMap == null ? "<none>" : `{${[...sessionMap.sessionUniqueIds].join(",")}}`
+      `Jump to fastest lap: cache ${cacheHit ? "HIT" : "MISS"} (subSession=${subSessionId ?? "n/a"}, currentUniqueId=${sessionUniqueId}, cached=${
+        sessionMap == null
+          ? "<none>"
+          : `subSession ${sessionMap.subSessionId ?? "n/a"} {${[...sessionMap.sessionUniqueIds].join(",")}}`
       })`,
     );
 
     if (sessionMap == null || !cacheHit) {
-      const built = await buildSessionMap();
+      const built = await buildSessionMap(subSessionId);
 
       if (built == null) return;
 
       sessionMap = built;
       cachedFastestLapSessionMap = built;
       this.logger.info(
-        `Jump to fastest lap: session map built — uniqueIds={${[...sessionMap.sessionUniqueIds].join(",")}}, ${sessionMap.sessions
-          .map((s) => `S${s.sessionNum}[${s.startFrame}-${s.endFrame}]`)
+        `Jump to fastest lap: session map built — subSession=${subSessionId ?? "n/a"}, ${sessionMap.sessions
+          .map((s) => `S${s.sessionNum}/${s.sessionUniqueId}[${s.startFrame}-${s.endFrame ?? "end"}]`)
           .join(", ")}`,
       );
     } else {
       this.logger.debug(`Jump to fastest lap: reusing cached session map (${sessionMap.sessions.length} sessions)`);
     }
 
-    // Phase 2: look up target session bounds.
-    const bounds = sessionMap.sessions.find((s) => s.sessionNum === targetSessionNum);
+    // Phase 2: the target session INSTANCE's bounds — the entry whose pair
+    // matches, so a restarted session's earlier instance is never bisected.
+    const bounds = sessionMap.sessions.find(
+      (s) => s.sessionNum === targetSessionNum && s.sessionUniqueId === sessionUniqueId,
+    );
 
     if (bounds == null) {
-      this.logger.warn(`Jump to fastest lap: target session ${targetSessionNum} not in session map; aborting`);
+      this.logger.warn(
+        `Jump to fastest lap: target session ${targetSessionNum}/${sessionUniqueId} not in session map; aborting`,
+      );
+
+      return;
+    }
+
+    const endFrame = resolveEndFrame(bounds, initialTel);
+
+    if (endFrame === null) {
+      this.logger.warn(
+        "Jump to fastest lap: recording length unavailable (ReplayFrameNum + ReplayFrameNumEnd); aborting",
+      );
 
       return;
     }
 
     let loFrame = bounds.startFrame;
-    let hiFrame = bounds.endFrame;
+    let hiFrame = endFrame;
 
     if (hiFrame <= loFrame) {
       this.logger.warn(
-        `Jump to fastest lap: empty session bounds for session ${targetSessionNum} (lo=${loFrame}, hi=${hiFrame}); aborting`,
+        `Jump to fastest lap: empty session bounds for session ${targetSessionNum}/${sessionUniqueId} (lo=${loFrame}, hi=${hiFrame}); aborting`,
       );
 
       return;
@@ -1501,7 +1630,7 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
 
       if (tel == null) return;
 
-      const lap = (tel.CarIdxLap as number[] | undefined)?.[carIdx];
+      const lap = carLap(tel);
 
       if (typeof lap !== "number" || lap < 0) {
         // Car not in world at this probe — assume we're before the target
@@ -1524,12 +1653,15 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
       }
     }
 
+    /** Why the walk did not converge, or null while it still may. Set once; the first reason stands. */
+    let notConverged: string | null = null;
+
     // Phase 4: lap-step until we're on the lap-before-fastest. `tel` is the
     // settled sample of the last command, so each step reads before it sends.
     let lapSteps = 0;
 
     for (let step = 0; step < MAX_LAP_STEPS; step++) {
-      const lap = (tel?.CarIdxLap as number[] | undefined)?.[carIdx];
+      const lap = carLap(tel);
 
       if (typeof lap !== "number" || lap < 0) {
         this.logger.warn(`Jump to fastest lap: CarIdxLap unavailable during lap-step ${step} (lap=${lap}); aborting`);
@@ -1551,43 +1683,77 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
 
       lapSteps = step + 1;
 
-      if (!stepped.moved) {
+      if (stepped.kind === "unmoved") {
         this.logger.warn(`Jump to fastest lap: lap-step ${step} did not move the cursor; aborting`);
 
         return;
       }
 
+      if (stepped.kind === "unsettled") return;
+
       tel = stepped.telemetry;
+    }
+
+    // The loop's last step is never read by the loop itself: the budget may
+    // have run out one lap short, or far off after a corrupted bisection.
+    if (carLap(tel) !== targetLapMinus1) {
+      notConverged = `lap-step budget of ${MAX_LAP_STEPS} exhausted at lap ${carLap(tel) ?? "n/a"}, target ${targetLapMinus1}`;
     }
 
     // Phase 5: dist refinement. We're on the right lap but maybe not at
     // the end. If dist < 0.999, press nextLap to advance to the end; if
-    // that overshoots into the next lap, press prevLap to come back.
-    const refineLap = (tel?.CarIdxLap as number[] | undefined)?.[carIdx];
-    const refineDist = (tel?.CarIdxLapDistPct as number[] | undefined)?.[carIdx];
+    // that overshoots into the next lap, press prevLap to come back. Each
+    // nudge must be seen to land, or nothing about the frame is known.
     let nudges = 0;
 
-    if (
-      typeof refineLap === "number" &&
-      typeof refineDist === "number" &&
-      refineLap === targetLapMinus1 &&
-      refineDist < FASTEST_LAP_DIST_THRESHOLD
-    ) {
-      this.logger.debug(
-        `Jump to fastest lap: nudging via nextLap (currently lap=${refineLap}, dist=${refineDist.toFixed(4)})`,
-      );
-      const forward = await search(() => replay.nextLap(), "nextLap (nudge)");
+    if (notConverged === null) {
+      const refineDist = carDist(tel);
 
-      nudges++;
-      tel = forward.telemetry;
-      const afterLap = (tel?.CarIdxLap as number[] | undefined)?.[carIdx];
-
-      if (typeof afterLap === "number" && afterLap > targetLapMinus1) {
-        this.logger.debug(`Jump to fastest lap: nextLap overshot to lap=${afterLap}; recovering via prevLap`);
-        const back = await search(() => replay.prevLap(), "prevLap (nudge recovery)");
+      if (typeof refineDist === "number" && refineDist < FASTEST_LAP_DIST_THRESHOLD) {
+        this.logger.debug(
+          `Jump to fastest lap: nudging via nextLap (currently lap=${targetLapMinus1}, dist=${refineDist.toFixed(4)})`,
+        );
+        const forward = await search(() => replay.nextLap(), "nextLap (nudge)");
 
         nudges++;
-        tel = back.telemetry;
+
+        if (forward.kind !== "moved") {
+          notConverged = `nudge (nextLap) ${forward.kind}`;
+        } else {
+          tel = forward.telemetry;
+          const afterLap = carLap(tel);
+
+          if (typeof afterLap === "number" && afterLap > targetLapMinus1) {
+            this.logger.debug(`Jump to fastest lap: nextLap overshot to lap=${afterLap}; recovering via prevLap`);
+            const back = await search(() => replay.prevLap(), "prevLap (nudge recovery)");
+
+            nudges++;
+
+            if (back.kind !== "moved") {
+              notConverged = `nudge recovery (prevLap) ${back.kind}`;
+            } else {
+              tel = back.telemetry;
+            }
+          }
+        }
+      }
+    }
+
+    // The frame about to be recorded is the one before the back-step: verify
+    // its sample says what the record will claim.
+    const describeSample = (sample: TelemetryData | null): string =>
+      `lap=${carLap(sample) ?? "n/a"}, dist=${typeof carDist(sample) === "number" ? (carDist(sample) as number).toFixed(4) : "n/a"}, session=${sample?.SessionNum ?? "n/a"}/${sample?.SessionUniqueID ?? "n/a"}`;
+    const inTargetSession = (sample: TelemetryData | null): boolean =>
+      sample?.SessionNum === targetSessionNum && sample?.SessionUniqueID === sessionUniqueId;
+
+    if (notConverged === null) {
+      const preLap = carLap(tel);
+      const preDist = carDist(tel);
+
+      if (!inTargetSession(tel)) {
+        notConverged = `landed outside the target session ${targetSessionNum}/${sessionUniqueId} (${describeSample(tel)})`;
+      } else if (preLap !== targetLapMinus1 || typeof preDist !== "number" || preDist < FASTEST_LAP_DIST_THRESHOLD) {
+        notConverged = `not at the end of lap ${targetLapMinus1} before the back-step (${describeSample(tel)})`;
       }
     }
 
@@ -1606,6 +1772,12 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
 
     if (finalTel == null) return;
 
+    // Two ticks back must still be the same lap of the same session instance
+    // (the distance is allowed to dip under the threshold by those ticks).
+    if (notConverged === null && (!inTargetSession(finalTel) || carLap(finalTel) !== targetLapMinus1)) {
+      notConverged = `back-step landed elsewhere (${describeSample(finalTel)})`;
+    }
+
     // Phase 7: play at 1× — the same end state as a record hit — and tell the
     // speed cache what was sent.
     checkpoint();
@@ -1613,16 +1785,28 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
     this.setLocalSpeed(1, false);
     this.updateAllTelemetryDisplays();
 
-    // The landed frame, back-adjusted by the back-step, is where this car
+    const lapStartFrame = landedFrame + FASTEST_LAP_FINAL_BACKSTEP_TICKS;
+
+    if (notConverged !== null) {
+      this.logger.warn(
+        `Jump to fastest lap: walk did not converge (${notConverged}); replay playing, nothing recorded`,
+      );
+      this.logger.debug(
+        `Jump to fastest lap: gave up after ${bisectionSteps} bisection + ${lapSteps} lap-step + ${nudges} nudge iterations (landed frame=${landedFrame}, target=${targetLap}, session=${targetSessionNum}/${sessionUniqueId})`,
+      );
+
+      return;
+    }
+
+    // The verified frame, back-adjusted by the back-step, is where this car
     // started `targetLap` as far as the walk can tell: into the record it
     // goes, so the next press for this lap is a lookup (and a press after a
     // restart, and a marker-style jump from another feature).
-    const lapStartFrame = landedFrame + FASTEST_LAP_FINAL_BACKSTEP_TICKS;
     let recorded = false;
 
     if (isReplaySessionStoreInitialized()) {
       recorded = getReplaySessionStore().laps.recordLapStart({
-        subSessionId: identity.subSessionId,
+        subSessionId,
         sessionNum: targetSessionNum,
         sessionUniqueId,
         carIdx,
@@ -1633,14 +1817,11 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
       });
     }
 
-    const finalLap = (finalTel.CarIdxLap as number[] | undefined)?.[carIdx];
-    const finalDist = (finalTel.CarIdxLapDistPct as number[] | undefined)?.[carIdx];
-
     this.logger.info(
       `Jump to fastest lap: walk converged; replay playing (lap start ${recorded ? "recorded" : "not recorded"})`,
     );
     this.logger.debug(
-      `Jump to fastest lap: converged after ${bisectionSteps} bisection + ${lapSteps} lap-step + ${nudges} nudge iterations + ${FASTEST_LAP_FINAL_BACKSTEP_TICKS}-tick back-step (landed frame=${landedFrame}, lap start frame=${lapStartFrame}, lap=${finalLap}, dist=${typeof finalDist === "number" ? finalDist.toFixed(4) : "n/a"}, target=${targetLap}, session=${targetSessionNum}/${sessionUniqueId})`,
+      `Jump to fastest lap: converged after ${bisectionSteps} bisection + ${lapSteps} lap-step + ${nudges} nudge iterations + ${FASTEST_LAP_FINAL_BACKSTEP_TICKS}-tick back-step (landed frame=${landedFrame}, lap start frame=${lapStartFrame}, ${describeSample(finalTel)}, target=${targetLap}, session=${targetSessionNum}/${sessionUniqueId})`,
     );
   }
 
@@ -1955,11 +2136,6 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
           break;
         }
 
-        // Switch the replay camera onto the target car so the viewed car is
-        // the one whose lap plays, and so iRacing's lap-search (camera-focus-
-        // relative) walks the right driver. For viewed-car this is usually a
-        // no-op (camera is already there); for always-my-car it actively
-        // re-frames.
         const carNum = this.getCarNumberRawByIdx(targetCarIdx);
 
         if (carNum === null) {
@@ -1967,6 +2143,32 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
           break;
         }
 
+        // A press while a walk stands is ignored BEFORE any command goes out:
+        // a camera switch from a key with another target would re-frame the
+        // car iRacing's camera-relative lap-search is walking (#1203).
+        if (this.isFastestLapWalkInFlight()) {
+          this.logger.info("Jump to fastest lap: walk already in flight; press ignored");
+          this.logger.debug(
+            `In-flight walk context: ${this.activeFastestLapWalk?.contextId}, ignored press context: ${contextId}`,
+          );
+          break;
+        }
+
+        // iRacing honours camera and replay commands only out of the car
+        // (irsdk_defines.h: "camera and replay commands only work when you
+        // are out of your car"): a jump or a walk from the car would be sent,
+        // ignored, and logged as done — and a walk would cache a session map
+        // describing the live view.
+        if (telemetry?.IsReplayPlaying !== true) {
+          this.logger.info("Jump to fastest lap: replay not open; iRacing ignores replay commands from the car");
+          break;
+        }
+
+        // Switch the replay camera onto the target car so the viewed car is
+        // the one whose lap plays, and so iRacing's lap-search (camera-focus-
+        // relative) walks the right driver. For viewed-car this is usually a
+        // no-op (camera is already there); for always-my-car it actively
+        // re-frames.
         const cameraSwitched = getCommands().camera.switchNum(carNum, 0, 0);
 
         if (!cameraSwitched) {
@@ -2002,7 +2204,8 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
         });
 
         if (lookup.hit) {
-          // A walk in flight is converging on a frame the record already has.
+          // A one-shot jump takes the cursor from whatever holds it (a walk
+          // still unwinding after a cancel, another action's claim).
           this.cancelFastestLapWalk(mode);
 
           const approachFrame = Math.max(0, lookup.frame - LAP_START_APPROACH_FRAMES);
