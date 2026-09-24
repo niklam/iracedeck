@@ -299,7 +299,7 @@
       "weightBand": "SAFETY",
       "queueable": true,
       "interrupt": false,
-      "speakGate": "Re-checked at speak time: the full-course caution is still out.",
+      "speakGate": "Re-checked at speak time: the full-course caution is still out, or the green is still held.",
       "base": "voice/{voice}",
       "comment": "The pace car is peeling off — the green is seconds away.",
       "test": "Harness → Flags → Caution → restart, with the race session and hot-lap presets, hears it a few seconds before the restart line; or inject paceCar.off while a caution is out. In-sim: the pace car heads for pit road on the last caution lap, or at an opening rolling start once the green is held.",

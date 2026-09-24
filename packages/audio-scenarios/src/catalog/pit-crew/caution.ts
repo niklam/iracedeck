@@ -187,7 +187,7 @@ import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { Flags, hasFlag, type TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
-import type { CautionLineup, CautionPhase } from "@iracedeck/sim-events-iracing";
+import { type CautionLineup, type CautionPhase, getLatestTelemetry } from "@iracedeck/sim-events-iracing";
 
 import type { ScenarioContract } from "../../dsl.js";
 import { poolRef, WEIGHT } from "../../dsl.js";
@@ -457,6 +457,16 @@ export function buildCautionContracts({
     },
     {
       ...cautionContract("pace-car-off", getCautionPhase),
+      // The family's gate asks "is the caution still out", which an opening
+      // rolling start never answers yes to (#1200). So this call also passes
+      // while iRacing still holds the green, read off the translator's LATEST
+      // tick: a fire queued behind a busy bus that drains after the green
+      // finds GreenHeld down and stays silent. No telemetry fails closed — a
+      // "Pace car's off" on a green track is worse than a missed one.
+      speakGate: {
+        description: "Re-checked at speak time: the full-course caution is still out, or the green is still held.",
+        admit: () => getCautionPhase() !== "none" || greenHeld(getLatestTelemetry() as TelemetryData | null),
+      },
       description:
         "The pace car peels off to pit road about five seconds before the green — on the last caution lap, or with the green held at an opening rolling start — never while deploying on a road course.",
       when: {
