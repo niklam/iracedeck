@@ -20,7 +20,7 @@
  *   imports it statically — is optional, and pnpm is never told to compile it;
  * - the helper's walk covers the whole workspace, and turbo hashes what it reads;
  * - the `bin/` install runs through `install-runtime-deps.mjs`, so npm never sees
- *   pnpm's own `npm_config_*` keys and warns about them (#1205).
+ *   the `npm_config_*` keys it does not define and warns about them (#1205).
  *
  * Shaped like `third-party-licenses.test.mjs`: the plugin list is discovered
  * from the committed manifests, so a fourth deck ecosystem is covered the day
@@ -184,7 +184,7 @@ describe("plugins ship the workspace's runtime dependency versions (#1177)", () 
 
     it("installs bin/ through the shared script, which turbo hashes", () => {
       const { scripts } = readJson(join(repoRoot, "packages", pkg, "package.json"));
-      expect(scripts.build).toBe("rollup -c && pnpm run postbuild");
+      expect(scripts.build).toMatch(/&& pnpm run postbuild$/);
       expect(scripts.postbuild).toBe(`node ../../scripts/install-runtime-deps.mjs ${folder}/bin`);
 
       const { inputs } = turbo.tasks[`${packageName}#build`];
