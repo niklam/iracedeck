@@ -3,7 +3,7 @@
   "ai-spotter-controls/damage-report": "REPORT\nDAMAGE",
   "ai-spotter-controls/louder": "VOL UP\nSPOTTER",
   "ai-spotter-controls/quieter": "VOL DOWN\nSPOTTER",
-  "ai-spotter-controls/silence": "MUTE\nSPOTTER",
+  "ai-spotter-controls/silence": "SKIP CALL\nSPOTTER",
   "ai-spotter-controls/toggle-report-laps": "REPORT\nLAPS",
   "ai-spotter-controls/weather-report": "REPORT\nWEATHER",
 
