@@ -70,7 +70,7 @@ Templates also support `{{= expression }}` evaluation (arithmetic, comparisons, 
 
 ## Encoded values
 
-- **`ReplayPlaySpeed` in slow motion is off by one** (#1202, sim-verified). While `ReplayPlaySlowMotion` is set, a raw value N plays at 1/(N+1)x — raw 4 is 1/5x — and the `ReplaySetPlaySpeed` broadcast reads its speed argument the same way. Never read the raw value as 1/N: go through `replaySpeedFromTelemetry` from `@iracedeck/iracing-sdk`, the counterpart of `ReplayCommand.setPlaySpeed(n, true)`, which takes the divisor.
+- **`ReplayPlaySpeed` in slow motion is off by one** (#1202, sim-verified). While `ReplayPlaySlowMotion` is set, a positive raw value N plays at 1/(N+1)x and a negative one at −1/(|N|+1)x — raw 4 is 1/5x, raw −4 is −1/5x, raw 0 is paused — and the `ReplaySetPlaySpeed` broadcast reads its speed argument the same way. Never read the raw value as 1/N: go through `replaySpeedFromTelemetry` from `@iracedeck/iracing-sdk`, the counterpart of `ReplayCommand.setPlaySpeed(n, true)`, which takes the divisor.
 
 ## Bitfield & Enum Mapping
 

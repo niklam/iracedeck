@@ -1,12 +1,13 @@
 /**
  * Replay speed encoding for iRacing's slow motion (#1202).
  *
- * In slow motion, iRacing plays a raw speed N at 1/(N+1)x — both in the
- * `ReplaySetPlaySpeed` broadcast and in the `ReplayPlaySpeed` telemetry it
- * reports back (verified in the sim: raw 1 → 1/2x, raw 4 → 1/5x, raw 16 → 1/17x).
- * Everything above the SDK speaks the divisor the user sees (1/N), so these two
- * functions are the only place that offset exists. Normal speeds (1x…16x) are
- * not encoded and pass through unchanged, as does 0 (paused).
+ * In slow motion, iRacing plays a positive raw speed N at 1/(N+1)x and a
+ * negative one at -1/(|N|+1)x (reverse) — both in the `ReplaySetPlaySpeed`
+ * broadcast and in the `ReplayPlaySpeed` telemetry it reports back (verified in
+ * the sim: raw 1 → 1/2x, raw 4 → 1/5x, raw 16 → 1/17x). A raw 0 is paused.
+ * Everything above the SDK speaks the divisor the user sees (1/N), so this module
+ * is the only place that offset exists. Normal speeds (1x…16x) are not encoded
+ * and pass through unchanged.
  */
 import type { TelemetryData } from "./types.js";
 
