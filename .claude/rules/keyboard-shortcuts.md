@@ -155,6 +155,8 @@ Some iRacing interactions need two *different* keys pressed back to back with no
 
 Actions reach it through `this.tapBindingSequence(settingKeys, holdMs?)`. The iRacing policy (which box to prime with, and the `holdMs` tuning constant) lives in `packages/iracing-actions/src/shared/black-box.ts`, not in `deck-core`.
 
+That policy also owns the one non-atomic path (#962), and it chooses the path up front from the bindings rather than by reading `tapSequence`'s `false`. The prime is keyboard-first (the first keyboard-bound box, else the first configured one). When the target and the prime are both keyboard-bound it calls `tapSequence`, and a `false` there stays a skip — a keyboard-only setup never falls back to separate taps, so #818's no-flash guarantee holds. When a SimHub role is involved it sends a serialized `tap(prime)` then `tap(target)`, pressing the target only if the prime went out, since a lone target press would toggle an already-shown box off. The building blocks are deck-core's: `IBindingDispatcher.tap` / `tapBinding` return whether the press went out, and `isKeyboardBound` (`isBindingKeyboardBound` on actions) sits beside `isConfigured`. `tapSequence` itself still refuses, never degrades.
+
 ## Direct Keyboard Access (Plugin-Level Only)
 
 Direct `getKeyboard()` calls are reserved for plugin initialization code and infrastructure,
