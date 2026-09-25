@@ -176,7 +176,7 @@ A dial instance has no keypad icon — its display is the self-drawn 200×100 to
 | Manual, fueling on            | Green `REFUEL: ON` band, `+<add> = <total>` or `→ <target>` readout, neutral current segment + green add segment |
 | Manual, fueling off           | Red `REFUEL: OFF` band, readout shown, gray add segment                                                          |
 | Manual Target Amount          | Adds a red vertical target line to the bar (within the bar)                                                      |
-| Autofuel on/off               | Green `AUTOFUEL: ON` band (always, while autofuel is on), `AUTO → <add> <unit>` readout (from `PitSvFuel`), no target line |
+| Autofuel on                   | Green `AUTOFUEL: ON` band (always, while autofuel is on), `AUTO → <add> <unit>` readout (`PitSvFuel`, or 0 while fueling is unchecked), no target line |
 | Autofuel unavailable          | Gray `AUTOFUEL: N/A` band, dash readout, current segment only (`dpFuelAutoFillEnabled` is false)                 |
 | State unknown (no telemetry)  | Gray `REFUEL: N/A` band                                                                                          |
 | Tank capacity unknown         | Readout shown; the bar falls back to the requested span                                                          |
