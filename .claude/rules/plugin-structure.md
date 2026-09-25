@@ -117,7 +117,7 @@ external: ["@iracedeck/audio-native", "@iracedeck/iracing-native", "@resvg/resvg
 
 **Why this matters**: Bundling `keysender` or `@resvg/resvg-js` (native modules) into an ES module output causes runtime errors like "require is not defined". They must be loaded at runtime from `node_modules`. Unlike `keysender`, `@resvg/resvg-js` ships prebuilt binaries for macOS and Linux too, so it needs no mock and no `optionalDependencies` split — it's a plain `dependencies` entry on every platform.
 
-2. **Emit the runtime `package.json` through the shared helper — never type a version** (#1177). The installed plugin's `bin/` runs `npm install` against a `package.json` the build emits beside `plugin.js`. `runtimePackageJsonPlugin` from `scripts/lib/runtime-deps.mjs` produces it, and it is the only thing that may:
+2. **Emit the runtime `package.json` through the shared helper — never type a version** (#1177). The installed plugin's `bin/` runs `npm install` against a `package.json` the build emits beside `plugin.js` — each plugin's `postbuild` does it through `scripts/install-runtime-deps.mjs`, never a bare `cd … && npm install`, so npm does not warn about the pnpm-only `npm_config_*` keys `pnpm run` exports (#1205). `runtimePackageJsonPlugin` from `scripts/lib/runtime-deps.mjs` produces it, and it is the only thing that may:
 ```javascript
 import { runtimePackageJsonPlugin } from "../../scripts/lib/runtime-deps.mjs";
 

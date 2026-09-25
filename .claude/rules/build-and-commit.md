@@ -34,7 +34,7 @@ pnpm 10 runs no dependency's `preinstall` / `install` / `postinstall` unless the
 
 - Run the build and capture all output (do not just check the exit code or tail the last few lines).
 - Search the output for `TS[0-9]+:` patterns (e.g., `TS2345`, `TS2322`). Before #987 these could appear as *warnings* on a build that exited 0 and shipped broken output; they are now fatal, so finding one means the build failed.
-- The plugin builds print no `(!)` line of Rollup's own: their shared log policy drops the known third-party noise (zod's and semver's internal cycles, zod's prose `@__PURE__` comments) and fails the build on a circular dependency among our own sources — see *Rollup Configuration* in `@.claude/rules/plugin-structure.md`. So a `(!)` from a plugin build is new and worth reading. `npm warn Unknown env config` is still known and harmless.
+- The plugin builds print no `(!)` line of Rollup's own: their shared log policy drops the known third-party noise (zod's and semver's internal cycles, zod's prose `@__PURE__` comments) and fails the build on a circular dependency among our own sources — see *Rollup Configuration* in `@.claude/rules/plugin-structure.md`. So a `(!)` from a plugin build is new and worth reading. So is `npm warn Unknown env config`: since #1205 the `bin/` install drops the pnpm-only `npm_config_*` keys that npm rejects (`scripts/lib/runtime-install-env.mjs`), so one appearing means pnpm started exporting a new key — add it to that list.
 - Common cause: `vi.fn(() => null)` in test files infers return type as `null`, making `mockReturnValue({...})` a type error. Fix by widening the return type: `vi.fn((): Record<string, unknown> | null => null)`.
 
 Branching & Worktrees
