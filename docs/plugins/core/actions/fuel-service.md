@@ -49,7 +49,7 @@ The **Toggle Autofuel** gesture taps `fuelServiceToggleAutofuel` to flip between
 - **Long Press** (held dial button past the **Long-press threshold** — the global setting, default 500 ms — with no turn, fires on `dialUp`): Runs the configured **Long Press** action. Default **Toggle Autofuel** (blind-safe for VR).
 - **Push + Turn** (a pressed rotation): Dispatches the configured bidirectional pair (clockwise → `cw` action, counter-clockwise → `ccw`). Offers **Full / No Fuel** (CW fills the tank to full, CCW empties it — no fuel) or **None** (default).
 - Press, long-press, and push+turn are classified at `dialUp` (a duration comparison, with a guard so a push+turn pre-empts both press actions) — there is no mid-hold timer.
-- The touch-strip slot carries a top **status band**: green `REFUEL: ON` / red `REFUEL: OFF` in manual mode, `AUTOFUEL: ON` / `AUTOFUEL: OFF` in autofuel mode, and a gray `AUTOFUEL: N/A` when autofuel is engaged but unavailable (`REFUEL: N/A` when the state is unknown).
+- The touch-strip slot carries a top **status band**: green `REFUEL: ON` / red `REFUEL: OFF` in manual mode, green `AUTOFUEL: ON` in autofuel mode (the band states the autofuel switch, not the fuel-fill checkbox — a 0 L autofuel plan clears that checkbox, #1226), and a gray `AUTOFUEL: N/A` when autofuel is engaged but unavailable (`REFUEL: N/A` when the state is unknown).
 - Rotating always arms fueling (`pit.fuel` checks the box) — the **Auto-enable fueling** global does not apply to the dial (see Global Settings below).
 
 ### Touchscreen (Elgato only)
@@ -176,7 +176,7 @@ A dial instance has no keypad icon — its display is the self-drawn 200×100 to
 | Manual, fueling on            | Green `REFUEL: ON` band, `+<add> = <total>` or `→ <target>` readout, neutral current segment + green add segment |
 | Manual, fueling off           | Red `REFUEL: OFF` band, readout shown, gray add segment                                                          |
 | Manual Target Amount          | Adds a red vertical target line to the bar (within the bar)                                                      |
-| Autofuel on/off               | Green `AUTOFUEL: ON` / red `AUTOFUEL: OFF` band, `AUTO → <add> <unit>` readout (from `PitSvFuel`), no target line |
+| Autofuel on/off               | Green `AUTOFUEL: ON` band (always, while autofuel is on), `AUTO → <add> <unit>` readout (from `PitSvFuel`), no target line |
 | Autofuel unavailable          | Gray `AUTOFUEL: N/A` band, dash readout, current segment only (`dpFuelAutoFillEnabled` is false)                 |
 | State unknown (no telemetry)  | Gray `REFUEL: N/A` band                                                                                          |
 | Tank capacity unknown         | Readout shown; the bar falls back to the requested span                                                          |
