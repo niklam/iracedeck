@@ -518,7 +518,7 @@ All iRacing telemetry variables (excluding per-car arrays and high-frequency sam
 | `{{telemetry.IsReplayPlaying}}` | 0=replay not playing, 1=replay playing |
 | `{{telemetry.ReplayFrameNum}}` | Integer replay frame number (60 per second) |
 | `{{telemetry.ReplayFrameNumEnd}}` | Integer replay frame number from end of tape |
-| `{{telemetry.ReplayPlaySpeed}}` | Replay playback speed |
+| `{{telemetry.ReplayPlaySpeed}}` | Replay playback speed, as iRacing reports it: in slow motion a value of N plays at 1/(N+1)x and −N at −1/(N+1)x, so `4` means 1/5x and `-4` means −1/5x; `0` is paused |
 | `{{telemetry.ReplayPlaySlowMotion}}` | 0=not slow motion, 1=replay is in slow motion |
 | `{{telemetry.ReplaySessionTime}}` | Seconds since replay session start (s) |
 | `{{telemetry.ReplaySessionNum}}` | Replay session number |

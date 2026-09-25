@@ -106,7 +106,7 @@ How much the reverse speed magnitude increases per press after the initial −2x
 
 ### Slow Motion
 
-Progressive slow-motion. The first press jumps to 1/2x; each subsequent press makes playback slower by **Step Rate**, walking down the slow-mo ladder up to the iRacing minimum of 1/16x. Pressing while the replay is rewinding in slow motion resets to 1/2x forward.
+Progressive slow-motion. The first press jumps to 1/2x; each subsequent press makes playback slower by **Step Rate**, walking down the slow-mo ladder down to 1/16x, the slowest speed iRaceDeck sets. Pressing while the replay is rewinding in slow motion resets to 1/2x forward.
 
 #### Details
 
@@ -123,7 +123,7 @@ How much the slow-mo denominator increases per press after the initial 1/2x. `1`
 
 ### Slow Motion Rewind
 
-Progressive slow-motion rewind. The first press jumps to −1/2x; each subsequent press makes the rewind slower by **Step Rate**, up to the iRacing minimum of −1/16x. Pressing while the replay is in forward slow motion resets to −1/2x.
+Progressive slow-motion rewind. The first press jumps to −1/2x; each subsequent press makes the rewind slower by **Step Rate**, down to −1/16x, the slowest speed iRaceDeck sets. Pressing while the replay is in forward slow motion resets to −1/2x.
 
 #### Details
 

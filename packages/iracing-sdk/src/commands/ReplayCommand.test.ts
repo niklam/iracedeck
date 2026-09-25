@@ -37,9 +37,21 @@ describe("ReplayCommand", () => {
     });
 
     it("should send slowMotion=1 when enabled", () => {
-      replayCommand.setPlaySpeed(1, true);
+      replayCommand.setPlaySpeed(2, true);
 
       expect(mockNative.broadcastMsg).toHaveBeenCalledWith(BroadcastMsg.ReplaySetPlaySpeed, 1, 1, 0);
+    });
+
+    it("should send slow-motion 1/N as N - 1, which iRacing plays at 1/N (#1202)", () => {
+      replayCommand.setPlaySpeed(5, true);
+
+      expect(mockNative.broadcastMsg).toHaveBeenCalledWith(BroadcastMsg.ReplaySetPlaySpeed, 4, 1, 0);
+    });
+
+    it("should keep the direction for slow-motion rewind (#1202)", () => {
+      replayCommand.setPlaySpeed(-16, true);
+
+      expect(mockNative.broadcastMsg).toHaveBeenCalledWith(BroadcastMsg.ReplaySetPlaySpeed, -15, 1, 0);
     });
 
     it("should handle negative speeds for reverse", () => {
@@ -255,7 +267,7 @@ describe("ReplayCommand", () => {
   });
 
   describe("slowMotion", () => {
-    it("should call setPlaySpeed with 1 and slowMotion=true", () => {
+    it("should play at 1/2x, sent as raw 1 with slowMotion=true", () => {
       replayCommand.slowMotion();
 
       expect(mockNative.broadcastMsg).toHaveBeenCalledWith(BroadcastMsg.ReplaySetPlaySpeed, 1, 1, 0);

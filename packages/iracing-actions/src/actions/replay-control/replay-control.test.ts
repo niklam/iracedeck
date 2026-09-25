@@ -4,6 +4,7 @@ import {
   getCarNumberFromSessionInfo,
   getCarNumberRawFromSessionInfo,
   type ReplayPosMode,
+  type TelemetryData,
   TrkLoc,
 } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -1106,6 +1107,84 @@ describe("ReplayControl", () => {
       const { getCommands } = await import("@iracedeck/deck-core");
       vi.mocked(getCommands).mockReturnValue({ replay: mockReplay, camera: { switchNum: vi.fn() } } as any);
       action = new ReplayControl();
+    });
+
+    describe("slow-motion telemetry (#1202)", () => {
+      function telemetryCallback(): (telemetry: TelemetryData | null) => void {
+        const calls = vi.mocked(action["sdkController"].subscribe).mock.calls;
+
+        return calls[calls.length - 1][1] as (telemetry: TelemetryData | null) => void;
+      }
+
+      function tick(telemetry: Partial<TelemetryData>): void {
+        telemetryCallback()(telemetry as TelemetryData);
+      }
+
+      it("reads raw slow-motion N on appear as 1/(N+1)", async () => {
+        vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue({
+          ReplayPlaySpeed: 4,
+          ReplayPlaySlowMotion: true,
+        } as TelemetryData);
+
+        await action.onWillAppear(fakeEvent("ctx-1", { mode: "speed-display" }) as any);
+
+        expect(action["replaySpeed"].get("ctx-1")).toBe(5);
+        expect(action["replaySlowMotion"].get("ctx-1")).toBe(true);
+      });
+
+      it("reads raw slow-motion N on each tick as 1/(N+1), keeping direction", async () => {
+        await action.onWillAppear(fakeEvent("ctx-1", { mode: "speed-display" }) as any);
+
+        tick({ ReplayPlaySpeed: -15, ReplayPlaySlowMotion: true });
+        expect(action["replaySpeed"].get("ctx-1")).toBe(-16);
+
+        tick({ ReplayPlaySpeed: 0, ReplayPlaySlowMotion: true });
+        expect(action["replaySpeed"].get("ctx-1")).toBe(0);
+      });
+
+      it("leaves normal speeds unchanged", async () => {
+        await action.onWillAppear(fakeEvent("ctx-1", { mode: "speed-display" }) as any);
+
+        tick({ ReplayPlaySpeed: 4, ReplayPlaySlowMotion: false });
+        expect(action["replaySpeed"].get("ctx-1")).toBe(4);
+      });
+
+      it("never decodes a tick with a slow-motion flag remembered from an earlier tick", async () => {
+        await action.onWillAppear(fakeEvent("ctx-1", { mode: "speed-display" }) as any);
+        tick({ ReplayPlaySpeed: 4, ReplayPlaySlowMotion: true });
+
+        tick({ ReplayPlaySpeed: 4 });
+
+        expect(action["replaySpeed"].get("ctx-1")).toBe(4);
+        expect(action["replaySlowMotion"].get("ctx-1")).toBe(false);
+      });
+
+      it("steps from the real speed: 1/5x in iRacing decreases to 1/6x", async () => {
+        await action.onWillAppear(fakeEvent("ctx-1", { mode: "speed-decrease" }) as any);
+        tick({ ReplayPlaySpeed: 4, ReplayPlaySlowMotion: true });
+
+        await action.onKeyDown(fakeEvent("ctx-1", { mode: "speed-decrease" }) as any);
+
+        expect(mockReplay.setPlaySpeed).toHaveBeenCalledWith(6, true);
+      });
+
+      it("Slow Motion at iRacing's 1/17x holds the speed rather than speeding up", async () => {
+        await action.onWillAppear(fakeEvent("ctx-1", { mode: "slow-motion" }) as any);
+        tick({ ReplayPlaySpeed: 16, ReplayPlaySlowMotion: true });
+
+        await action.onKeyDown(fakeEvent("ctx-1", { mode: "slow-motion", stepRate: 1 }) as any);
+
+        expect(mockReplay.setPlaySpeed).toHaveBeenCalledWith(17, true);
+      });
+
+      it("Slow Motion Rewind at iRacing's -1/17x holds the speed rather than speeding up", async () => {
+        await action.onWillAppear(fakeEvent("ctx-1", { mode: "slow-motion-rewind" }) as any);
+        tick({ ReplayPlaySpeed: -16, ReplayPlaySlowMotion: true });
+
+        await action.onKeyDown(fakeEvent("ctx-1", { mode: "slow-motion-rewind", stepRate: 1 }) as any);
+
+        expect(mockReplay.setPlaySpeed).toHaveBeenCalledWith(-17, true);
+      });
     });
 
     describe("play-pause toggle", () => {
