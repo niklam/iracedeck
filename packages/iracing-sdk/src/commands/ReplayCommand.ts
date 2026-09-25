@@ -6,6 +6,7 @@
 import { ILogger } from "@iracedeck/logger";
 
 import type { INativeSDK } from "../interfaces.js";
+import { replaySpeedToSdk } from "../replay-speed.js";
 import { BroadcastCommand } from "./BroadcastCommand.js";
 import { BroadcastMsg, ReplayPosMode, ReplaySearchMode, ReplayStateMode } from "./constants.js";
 
@@ -19,13 +20,16 @@ export class ReplayCommand extends BroadcastCommand {
 
   /**
    * Set replay playback speed
-   * @param speed Playback speed (negative for reverse)
+   * @param speed Playback speed (negative for reverse). In slow motion this is
+   *   the divisor as the user sees it — 5 plays at 1/5x — and is encoded to
+   *   iRacing's off-by-one raw value by `replaySpeedToSdk` (#1202).
    * @param slowMotion Enable slow motion mode
    */
   setPlaySpeed(speed: number, slowMotion: boolean = false): boolean {
-    this.logger.info(`SetPlaySpeed: speed=${speed}, slowMotion=${slowMotion}`);
+    const raw = replaySpeedToSdk(speed, slowMotion);
+    this.logger.info(`SetPlaySpeed: speed=${speed}, slowMotion=${slowMotion}, raw=${raw}`);
 
-    return this.sendBroadcast(BroadcastMsg.ReplaySetPlaySpeed, speed, slowMotion ? 1 : 0);
+    return this.sendBroadcast(BroadcastMsg.ReplaySetPlaySpeed, raw, slowMotion ? 1 : 0);
   }
 
   /**
@@ -121,10 +125,10 @@ export class ReplayCommand extends BroadcastCommand {
   }
 
   /**
-   * Play in slow motion
+   * Play in slow motion at 1/2x
    */
   slowMotion(): boolean {
-    return this.setPlaySpeed(1, true);
+    return this.setPlaySpeed(2, true);
   }
 
   /**
