@@ -34,10 +34,13 @@ vi.mock("../../../deck-core/src/sdk-singleton.js", () => ({
 
 vi.mock("../../../deck-core/src/binding-dispatcher.js", () => ({
   getBindingDispatcher: vi.fn(() => ({
-    tap: vi.fn().mockResolvedValue(undefined),
+    tap: vi.fn().mockResolvedValue(true),
+    tapSequence: vi.fn().mockResolvedValue(true),
     hold: vi.fn().mockResolvedValue(undefined),
     release: vi.fn().mockResolvedValue(undefined),
     isReady: vi.fn(() => true),
+    isConfigured: vi.fn(() => true),
+    isKeyboardBound: vi.fn(() => true),
   })),
 }));
 
