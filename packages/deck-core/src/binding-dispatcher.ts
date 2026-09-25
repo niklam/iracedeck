@@ -274,8 +274,7 @@ class BindingDispatcher implements IBindingDispatcher {
    * @param iRacingConnected - Current iRacing connection status (caller provides this)
    */
   isReady(settingKey: string, iRacingConnected: boolean): boolean {
-    const globalSettings = getGlobalSettings() as Record<string, unknown>;
-    const binding = parseBinding(globalSettings[settingKey]);
+    const binding = this.peekBinding(settingKey);
 
     if (!binding) return false;
 
@@ -298,9 +297,7 @@ class BindingDispatcher implements IBindingDispatcher {
    * @param settingKey - The global settings key
    */
   isConfigured(settingKey: string): boolean {
-    const globalSettings = getGlobalSettings() as Record<string, unknown>;
-
-    return parseBinding(globalSettings[settingKey]) !== undefined;
+    return this.peekBinding(settingKey) !== undefined;
   }
 
   /**
@@ -310,13 +307,23 @@ class BindingDispatcher implements IBindingDispatcher {
    * @param settingKey - The global settings key
    */
   isKeyboardBound(settingKey: string): boolean {
-    const globalSettings = getGlobalSettings() as Record<string, unknown>;
-    const binding = parseBinding(globalSettings[settingKey]);
+    const binding = this.peekBinding(settingKey);
 
     return binding !== undefined && !isSimHubBinding(binding);
   }
 
   // --- Internal helpers ---
+
+  /**
+   * The parsed binding at a setting key, read silently — the state queries
+   * (`isReady`, `isConfigured`, `isKeyboardBound`) run on every render, so unlike
+   * {@link resolveGlobalBinding} this never logs a missing or corrupt value.
+   */
+  private peekBinding(settingKey: string): BindingValue | undefined {
+    const globalSettings = getGlobalSettings() as Record<string, unknown>;
+
+    return parseBinding(globalSettings[settingKey]);
+  }
 
   private resolveGlobalBinding(settingKey: string): BindingValue | undefined {
     const globalSettings = getGlobalSettings() as Record<string, unknown>;
