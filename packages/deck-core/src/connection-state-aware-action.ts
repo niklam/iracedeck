@@ -244,14 +244,27 @@ export abstract class ConnectionStateAwareAction<T = Record<string, unknown>> ex
     return list.some((key) => !getBindingDispatcher().isConfigured(key));
   }
 
+  /**
+   * Whether the binding at `key` is a keyboard binding — false for a SimHub
+   * role, an unset or a corrupt value (#962). Only keyboard bindings can join
+   * an atomic {@link tapBindingSequence}.
+   *
+   * @param key - The global settings key
+   */
+  protected isBindingKeyboardBound(key: string): boolean {
+    return getBindingDispatcher().isKeyboardBound(key);
+  }
+
   // --- Binding dispatch delegates ---
 
   /**
    * Execute a tap (press + release) binding from global settings.
    *
    * @param settingKey - The global settings key (e.g., "blackBoxLapTiming")
+   * @returns true when the press was dispatched; false when nothing is bound,
+   *   SimHub is not initialized, or the send failed (#962)
    */
-  protected async tapBinding(settingKey: string): Promise<void> {
+  protected async tapBinding(settingKey: string): Promise<boolean> {
     return getBindingDispatcher().tap(settingKey);
   }
 

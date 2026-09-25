@@ -41,16 +41,26 @@ type HeldBinding = { type: "keyboard"; combination: KeyCombination } | { type: "
  * Interface for the binding dispatcher service.
  */
 export interface IBindingDispatcher {
-  /** Execute a tap (press + release) binding from global settings. */
-  tap(settingKey: string): Promise<void>;
+  /**
+   * Execute a tap (press + release) binding from global settings.
+   *
+   * @returns true when the press was dispatched (keyboard: the key combination
+   *   was sent; SimHub: the role started, even if stopping it then failed);
+   *   false when nothing is bound, SimHub is not initialized, or the send failed.
+   */
+  tap(settingKey: string): Promise<boolean>;
 
   /**
    * Execute several bindings as ONE atomic key sequence (issue #818).
    *
    * Sends nothing and returns false when any binding is unset, is a SimHub role
    * (it goes over HTTP and cannot join a SendInput batch), or has no scan code
-   * mapping. Callers must treat false as "skip" — a non-atomic fallback would
-   * reintroduce the visible intermediate state this API exists to prevent.
+   * mapping. It never degrades to separate taps on its own: a non-atomic
+   * fallback would reintroduce the visible intermediate state this API exists
+   * to prevent. Whether a caller may instead run its own serialized path is
+   * that caller's policy, decided from the bindings up front rather than from
+   * this method's false (see `shared/black-box.ts` in `@iracedeck/iracing-actions`,
+   * #962).
    *
    * @param settingKeys - Global settings keys, in press order
    * @param holdMs - Per-chord hold in ms; 0 (default) = one atomic batch
@@ -72,6 +82,14 @@ export interface IBindingDispatcher {
    * setting key — independent of connection/reachability (issue #612).
    */
   isConfigured(settingKey: string): boolean;
+
+  /**
+   * Whether the binding at the given setting key is a keyboard binding — true
+   * only for a parsed keyboard binding; false for a SimHub role, an unset or a
+   * corrupt value (#962). A keyboard binding is the only kind that can join an
+   * atomic {@link IBindingDispatcher.tapSequence}.
+   */
+  isKeyboardBound(settingKey: string): boolean;
 }
 
 /**
@@ -89,19 +107,18 @@ class BindingDispatcher implements IBindingDispatcher {
    * Resolve and execute a tap (press + release) binding from global settings.
    *
    * @param settingKey - The global settings key (e.g., "blackBoxLapTiming")
+   * @returns true when the press was dispatched, false otherwise
    */
-  async tap(settingKey: string): Promise<void> {
+  async tap(settingKey: string): Promise<boolean> {
     const binding = this.resolveGlobalBinding(settingKey);
 
-    if (!binding) return;
+    if (!binding) return false;
 
     if (isSimHubBinding(binding)) {
-      await this.tapSimHub(binding.role);
-
-      return;
+      return this.tapSimHub(binding.role);
     }
 
-    await this.tapKeyboard(binding);
+    return this.tapKeyboard(binding);
   }
 
   /**
@@ -286,6 +303,19 @@ class BindingDispatcher implements IBindingDispatcher {
     return parseBinding(globalSettings[settingKey]) !== undefined;
   }
 
+  /**
+   * Whether the binding at the given setting key is a parsed keyboard binding
+   * (#962). A SimHub role, an unset and a corrupt value all return false.
+   *
+   * @param settingKey - The global settings key
+   */
+  isKeyboardBound(settingKey: string): boolean {
+    const globalSettings = getGlobalSettings() as Record<string, unknown>;
+    const binding = parseBinding(globalSettings[settingKey]);
+
+    return binding !== undefined && !isSimHubBinding(binding);
+  }
+
   // --- Internal helpers ---
 
   private resolveGlobalBinding(settingKey: string): BindingValue | undefined {
@@ -307,29 +337,37 @@ class BindingDispatcher implements IBindingDispatcher {
 
   // SimHub tap = activate then immediately deactivate (momentary press).
   // SimHub Control Mapper handles the duration internally.
-  private async tapSimHub(role: string): Promise<void> {
+  // Returns true once the role has started: the press went out even when the
+  // stop then fails (that failure is logged, and the role may stay active).
+  private async tapSimHub(role: string): Promise<boolean> {
     this.logger.info("Triggering SimHub role");
     this.logger.debug(`SimHub role: ${role}`);
 
     if (!isSimHubInitialized()) {
       this.logger.warn("SimHub service not initialized");
 
-      return;
+      return false;
     }
 
     const simHub = getSimHub();
     const started = await simHub.startRole(role);
 
-    if (started) {
-      const stopped = await simHub.stopRole(role);
+    if (!started) {
+      this.logger.warn("Failed to start SimHub role");
 
-      if (!stopped) {
-        this.logger.warn("SimHub role started but failed to stop — role may remain active");
-      }
+      return false;
     }
+
+    const stopped = await simHub.stopRole(role);
+
+    if (!stopped) {
+      this.logger.warn("SimHub role started but failed to stop — role may remain active");
+    }
+
+    return true;
   }
 
-  private async tapKeyboard(binding: KeyBindingValue): Promise<void> {
+  private async tapKeyboard(binding: KeyBindingValue): Promise<boolean> {
     const combination = this.toKeyCombination(binding);
 
     const success = await getKeyboard().sendKeyCombination(combination);
@@ -341,6 +379,8 @@ class BindingDispatcher implements IBindingDispatcher {
       this.logger.warn("Failed to send key");
       this.logger.debug(`Failed key combination: ${formatKeyBinding(binding)}`);
     }
+
+    return success;
   }
 
   private toKeyCombination(binding: KeyBindingValue): KeyCombination {
