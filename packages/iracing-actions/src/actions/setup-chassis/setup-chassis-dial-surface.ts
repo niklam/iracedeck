@@ -21,6 +21,7 @@ import {
   getDualPressThresholdMs,
   type HoldPreview,
   type IDeckActionContext,
+  isSimHubReachable,
   svgToDataUri,
 } from "@iracedeck/deck-core";
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
@@ -617,6 +618,7 @@ export class SetupChassisDialSurface {
         isKeyboardBound: (key) => this.host.isBindingKeyboardBound(key),
         tapSequence: (keys, holdMs) => this.host.tapBindingSequence(keys, holdMs),
         tap: (key) => this.host.tapBinding(key),
+        isSimHubReachable,
         logger: this.host.logger,
       });
 

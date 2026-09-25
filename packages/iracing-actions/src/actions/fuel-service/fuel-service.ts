@@ -23,6 +23,7 @@ import {
   isAutofuelActive,
   isAutofuelEnabled,
   isFuelFillOn,
+  isSimHubReachable,
   renderIconTemplate,
   resolveBorderSettings,
   resolveGraphicSettings,
@@ -545,6 +546,7 @@ export class FuelService extends ConnectionStateAwareAction<FuelServiceSettings>
         isKeyboardBound: (key) => this.isBindingKeyboardBound(key),
         tapSequence: (keys, holdMs) => this.tapBindingSequence(keys, holdMs),
         tap: (key) => this.tapBinding(key),
+        isSimHubReachable,
         logger: this.logger,
       });
     }

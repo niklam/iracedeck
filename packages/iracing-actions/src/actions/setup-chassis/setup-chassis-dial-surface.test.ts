@@ -15,6 +15,7 @@ const {
   mockTapBindingSequence,
   mockIsBindingMissing,
   mockIsBindingKeyboardBound,
+  mockIsSimHubReachable,
   mockDualPressThreshold,
   globalListeners,
 } = vi.hoisted(() => ({
@@ -23,6 +24,7 @@ const {
   mockTapBindingSequence: vi.fn().mockResolvedValue(true),
   mockIsBindingMissing: vi.fn(() => false),
   mockIsBindingKeyboardBound: vi.fn((_key: string) => true),
+  mockIsSimHubReachable: vi.fn(() => true),
   mockDualPressThreshold: { value: 500 },
   globalListeners: [] as Array<() => void>,
 }));
@@ -82,6 +84,7 @@ vi.mock("@iracedeck/deck-core", async () => {
     },
     getDualPressDirections: vi.fn(() => "tap-increases"),
     getDualPressThresholdMs: () => mockDualPressThreshold.value,
+    isSimHubReachable: mockIsSimHubReachable,
     onGlobalSettingsChange: vi.fn((listener: () => void) => {
       globalListeners.push(listener);
 
@@ -251,6 +254,7 @@ describe("SetupChassis dial surface", () => {
     mockDualPressThreshold.value = 500;
     mockIsBindingMissing.mockReturnValue(false);
     mockIsBindingKeyboardBound.mockImplementation(() => true);
+    mockIsSimHubReachable.mockReturnValue(true);
     mockGetCurrentTelemetry.mockReturnValue({ dcDiffPreload: 3, dcPowerSteering: 2 });
     globalListeners.length = 0;
     action = new SetupChassis();
@@ -406,6 +410,20 @@ describe("SetupChassis dial surface", () => {
 
       expect(mockTapBindingSequence).not.toHaveBeenCalled();
       expect(mockTapBinding.mock.calls).toEqual([["blackBoxLapTiming"], ["blackBoxPitStop"]]);
+    });
+
+    it("presses no black box when the Pit Stop box is a SimHub role and SimHub is unreachable (#962)", async () => {
+      mockIsBindingKeyboardBound.mockImplementation((key: string) => key !== "blackBoxPitStop");
+      mockIsSimHubReachable.mockReturnValue(false);
+      const ctx = dialContext("d1");
+      const settings = dialSettings({ setting: "lr-spring", pressAction: "show-pit-stop-black-box" });
+      await appear(ctx, settings);
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+
+      expect(mockTapBindingSequence).not.toHaveBeenCalled();
+      expect(mockTapBinding).not.toHaveBeenCalled();
     });
   });
 

@@ -15,11 +15,14 @@ import {
 // way the runtime does (via the @iracedeck/deck-core getDualPressDirections reader).
 const mockGetDualPressDirections = getDualPressDirections as unknown as ReturnType<typeof vi.fn>;
 
-const { mockTapBinding, mockTapBindingSequence, mockIsBindingKeyboardBound } = vi.hoisted(() => ({
-  mockTapBinding: vi.fn().mockResolvedValue(true),
-  mockTapBindingSequence: vi.fn().mockResolvedValue(true),
-  mockIsBindingKeyboardBound: vi.fn((_key: string) => true),
-}));
+const { mockTapBinding, mockTapBindingSequence, mockIsBindingKeyboardBound, mockIsSimHubReachable } = vi.hoisted(
+  () => ({
+    mockTapBinding: vi.fn().mockResolvedValue(true),
+    mockTapBindingSequence: vi.fn().mockResolvedValue(true),
+    mockIsBindingKeyboardBound: vi.fn((_key: string) => true),
+    mockIsSimHubReachable: vi.fn(() => true),
+  }),
+);
 
 vi.mock("@iracedeck/icons/setup-chassis/differential-entry-decrease.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">differential-entry-decrease {{mainLabel}} {{subLabel}}</svg>',
@@ -186,6 +189,7 @@ vi.mock("@iracedeck/deck-core", async () => {
       (v: unknown) => v !== null && typeof v === "object" && (v as Record<string, unknown>).type === "simhub",
     ),
     isSimHubInitialized: vi.fn(() => false),
+    isSimHubReachable: mockIsSimHubReachable,
     getSimHub: vi.fn(() => ({
       startRole: vi.fn().mockResolvedValue(true),
       stopRole: vi.fn().mockResolvedValue(true),
@@ -842,6 +846,20 @@ describe("SetupChassis", () => {
   describe("show black box on value change (#953)", () => {
     beforeEach(() => {
       mockIsBindingKeyboardBound.mockImplementation(() => true);
+      mockIsSimHubReachable.mockReturnValue(true);
+    });
+
+    it("presses no black box but still adjusts when SimHub is unreachable (#962)", async () => {
+      mockIsBindingKeyboardBound.mockImplementation((key: string) => key !== "blackBoxPitStop");
+      mockIsSimHubReachable.mockReturnValue(false);
+      const action = new SetupChassis();
+
+      await action.onKeyDown(
+        fakeEvent("action-1", { setting: "lr-spring", direction: "increase", showBlackBox: true }) as any,
+      );
+
+      expect(mockTapBindingSequence).not.toHaveBeenCalled();
+      expect(mockTapBinding.mock.calls).toEqual([["setupChassisLrSpringIncrease"]]);
     });
 
     it("taps prime then target separately when the Pit Stop box is a SimHub role (#962)", async () => {

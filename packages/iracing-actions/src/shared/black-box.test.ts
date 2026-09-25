@@ -5,6 +5,7 @@ import {
   BLACK_BOX_GLOBAL_KEYS,
   BLACK_BOX_SEQUENCE_HOLD_MS,
   PRIME_BLACK_BOX,
+  resetBlackBoxDispatchQueue,
   resolvePrimeKey,
   showBlackBox,
 } from "./black-box.js";
@@ -115,13 +116,22 @@ describe("resolvePrimeKey", () => {
 describe("showBlackBox", () => {
   const tapSequence = vi.fn<(settingKeys: string[], holdMs?: number) => Promise<boolean>>();
   const tap = vi.fn<(settingKey: string) => Promise<boolean>>();
+  const isSimHubReachable = vi.fn<() => boolean>();
 
-  const deps = (map: Record<string, BindingKind>) => ({ ...bindings(map), tapSequence, tap, logger });
+  const deps = (map: Record<string, BindingKind>) => ({
+    ...bindings(map),
+    tapSequence,
+    tap,
+    isSimHubReachable,
+    logger,
+  });
 
   beforeEach(() => {
     vi.clearAllMocks();
+    resetBlackBoxDispatchQueue();
     tapSequence.mockResolvedValue(true);
     tap.mockResolvedValue(true);
+    isSimHubReachable.mockReturnValue(true);
   });
 
   describe("atomic path (target and prime keyboard-bound)", () => {
@@ -194,6 +204,120 @@ describe("showBlackBox", () => {
 
       expect(result).toBe(false);
       expect(tap.mock.calls).toEqual([["blackBoxLapTiming"], ["blackBoxFuel"]]);
+    });
+  });
+
+  describe("SimHub reachability pre-check", () => {
+    it("should press nothing when the SimHub target is unreachable", async () => {
+      isSimHubReachable.mockReturnValue(false);
+
+      const result = await showBlackBox("fuel", deps({ blackBoxLapTiming: "keyboard", blackBoxFuel: "simhub" }));
+
+      expect(result).toBe(false);
+      expect(tap).not.toHaveBeenCalled();
+      expect(tapSequence).not.toHaveBeenCalled();
+    });
+
+    it("should press nothing when the SimHub prime is unreachable", async () => {
+      isSimHubReachable.mockReturnValue(false);
+
+      const result = await showBlackBox("fuel", deps({ blackBoxLapTiming: "simhub", blackBoxFuel: "keyboard" }));
+
+      expect(result).toBe(false);
+      expect(tap).not.toHaveBeenCalled();
+      expect(tapSequence).not.toHaveBeenCalled();
+    });
+
+    it("should leave the atomic keyboard path unaffected when SimHub is unreachable", async () => {
+      isSimHubReachable.mockReturnValue(false);
+
+      const result = await showBlackBox("fuel", deps({ blackBoxLapTiming: "keyboard", blackBoxFuel: "keyboard" }));
+
+      expect(result).toBe(true);
+      expect(tapSequence).toHaveBeenCalledWith(["blackBoxLapTiming", "blackBoxFuel"], BLACK_BOX_SEQUENCE_HOLD_MS);
+    });
+  });
+
+  describe("dispatch queue", () => {
+    /** A promise plus the function that fulfils it. */
+    function deferred<T>() {
+      let resolve!: (value: T) => void;
+      const promise = new Promise<T>((r) => {
+        resolve = r;
+      });
+
+      return { promise, resolve };
+    }
+
+    const events: string[] = [];
+
+    beforeEach(() => {
+      events.length = 0;
+    });
+
+    it("should run two serialized dispatches one after the other, never interleaved", async () => {
+      const firstPrime = deferred<boolean>();
+
+      tap.mockImplementation(async (key) => {
+        events.push(key);
+
+        return events.length === 1 ? firstPrime.promise : true;
+      });
+
+      const map: Record<string, BindingKind> = {
+        blackBoxLapTiming: "simhub",
+        blackBoxFuel: "simhub",
+        blackBoxPitStop: "simhub",
+      };
+      const first = showBlackBox("fuel", deps(map));
+      const second = showBlackBox("pit-stop", deps(map));
+
+      await vi.waitFor(() => expect(events).toEqual(["blackBoxLapTiming"]));
+      firstPrime.resolve(true);
+
+      await expect(first).resolves.toBe(true);
+      await expect(second).resolves.toBe(true);
+      expect(events).toEqual(["blackBoxLapTiming", "blackBoxFuel", "blackBoxLapTiming", "blackBoxPitStop"]);
+    });
+
+    it("should hold an atomic batch until an earlier serialized dispatch settled", async () => {
+      const firstPrime = deferred<boolean>();
+
+      tap.mockImplementation(async (key) => {
+        events.push(`tap:${key}`);
+
+        return key === "blackBoxLapTiming" ? firstPrime.promise : true;
+      });
+      tapSequence.mockImplementation(async (keys) => {
+        events.push(`sequence:${keys.join(",")}`);
+
+        return true;
+      });
+
+      const first = showBlackBox("fuel", deps({ blackBoxLapTiming: "simhub", blackBoxFuel: "simhub" }));
+      const second = showBlackBox(
+        "pit-stop",
+        deps({ blackBoxStandings: "keyboard", blackBoxPitStop: "keyboard", blackBoxLapTiming: "simhub" }),
+      );
+
+      await vi.waitFor(() => expect(events).toEqual(["tap:blackBoxLapTiming"]));
+      firstPrime.resolve(true);
+
+      await Promise.all([first, second]);
+      expect(events).toEqual([
+        "tap:blackBoxLapTiming",
+        "tap:blackBoxFuel",
+        "sequence:blackBoxStandings,blackBoxPitStop",
+      ]);
+    });
+
+    it("should not wedge the queue when a dispatch rejects", async () => {
+      tap.mockRejectedValueOnce(new Error("boom"));
+
+      const map: Record<string, BindingKind> = { blackBoxLapTiming: "simhub", blackBoxFuel: "simhub" };
+
+      await expect(showBlackBox("fuel", deps(map))).rejects.toThrow("boom");
+      await expect(showBlackBox("fuel", deps(map))).resolves.toBe(true);
     });
   });
 

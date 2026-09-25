@@ -22,6 +22,7 @@ const {
   mockTapBinding,
   mockTapBindingSequence,
   mockIsBindingKeyboardBound,
+  mockIsSimHubReachable,
 } = vi.hoisted(() => ({
   mockPitClearFuel: vi.fn(() => true),
   mockPitFuel: vi.fn(() => true),
@@ -36,6 +37,7 @@ const {
   mockTapBinding: vi.fn().mockResolvedValue(true),
   mockTapBindingSequence: vi.fn().mockResolvedValue(true),
   mockIsBindingKeyboardBound: vi.fn((_key: string) => true),
+  mockIsSimHubReachable: vi.fn(() => true),
 }));
 
 vi.mock("@iracedeck/iracing-sdk", () => ({
@@ -139,6 +141,7 @@ vi.mock("@iracedeck/deck-core", async () => {
       (v: unknown) => v !== null && typeof v === "object" && (v as Record<string, unknown>).type === "simhub",
     ),
     isSimHubInitialized: vi.fn(() => false),
+    isSimHubReachable: mockIsSimHubReachable,
     getSimHub: vi.fn(() => ({
       startRole: vi.fn().mockResolvedValue(true),
       stopRole: vi.fn().mockResolvedValue(true),
@@ -1492,6 +1495,7 @@ describe("FuelService", () => {
       mockTapBindingSequence.mockResolvedValue(true);
       mockTapBinding.mockResolvedValue(true);
       mockIsBindingKeyboardBound.mockImplementation(() => true);
+      mockIsSimHubReachable.mockReturnValue(true);
     });
 
     it("should tap prime then target separately when the Fuel box is a SimHub role (#962)", async () => {
@@ -1504,6 +1508,19 @@ describe("FuelService", () => {
       expect(mockTapBindingSequence).not.toHaveBeenCalled();
       expect(mockTapBinding.mock.calls).toEqual([["blackBoxLapTiming"], ["blackBoxFuel"]]);
       expect(mockTapBinding.mock.invocationCallOrder[1]!).toBeLessThan(mockPitFuel.mock.invocationCallOrder[0]!);
+    });
+
+    it("should press no black box but still add fuel when SimHub is unreachable (#962)", async () => {
+      mockIsBindingKeyboardBound.mockImplementation((key: string) => key !== "blackBoxFuel");
+      mockIsSimHubReachable.mockReturnValue(false);
+
+      await action.onKeyDown(
+        fakeEvent("action-1", { mode: "add-fuel", amount: 5, unit: "l", showBlackBox: true }) as any,
+      );
+
+      expect(mockTapBindingSequence).not.toHaveBeenCalled();
+      expect(mockTapBinding).not.toHaveBeenCalled();
+      expect(mockPitFuel).toHaveBeenCalled();
     });
 
     it("should not touch the black box when the setting is off", async () => {

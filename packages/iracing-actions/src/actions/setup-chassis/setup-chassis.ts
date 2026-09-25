@@ -19,6 +19,7 @@ import {
   type IDeckTouchTapEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
+  isSimHubReachable,
   onGlobalSettingsChange,
   resolveBorderSettings,
   resolveGraphicSettings,
@@ -589,6 +590,7 @@ export class SetupChassis extends ConnectionStateAwareAction<SetupChassisSetting
       isKeyboardBound: (key) => this.isBindingKeyboardBound(key),
       tapSequence: (keys, holdMs) => this.tapBindingSequence(keys, holdMs),
       tap: (key) => this.tapBinding(key),
+      isSimHubReachable,
       logger: this.logger,
     });
   }

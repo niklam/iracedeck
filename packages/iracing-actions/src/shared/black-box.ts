@@ -22,7 +22,14 @@
  *   one after the other. The priming box may flash briefly before the target
  *   opens; that is the accepted trade-off for the box opening at all. The target
  *   is pressed only when the prime tap actually went out — pressing it alone
- *   would toggle the box OFF whenever it was already shown.
+ *   would toggle the box OFF whenever it was already shown. Before pressing
+ *   anything, the serialized path checks that SimHub is reachable and skips when
+ *   it is not: a SimHub press would only wait out its HTTP timeout, and a
+ *   keyboard prime would toggle a box the SimHub target then never follows.
+ *
+ * Dispatches are queued: each call runs only after the previous one settled, so
+ * two in flight (a double-press, or two keys) can never interleave their presses
+ * (prime, prime, target, target) and leave the box hidden.
  *
  * `tapSequence` itself never degrades to separate taps; the serialized path is
  * this module's policy, not deck-core's.
@@ -90,6 +97,8 @@ export interface ShowBlackBoxDeps {
   tapSequence: (settingKeys: string[], holdMs?: number) => Promise<boolean>;
   /** Tap one binding (keyboard or SimHub). Returns true when the press went out. */
   tap: (settingKey: string) => Promise<boolean>;
+  /** Whether SimHub is reachable right now (false until its health check has seen it). */
+  isSimHubReachable: () => boolean;
   logger: ILogger;
 }
 
@@ -122,16 +131,41 @@ export function resolvePrimeKey(
 }
 
 /**
+ * Tail of the dispatch queue. Every {@link showBlackBox} call chains onto it, and
+ * it always settles fulfilled, so a rejected dispatch never wedges the next one.
+ */
+let dispatchQueue: Promise<void> = Promise.resolve();
+
+/**
+ * @internal Exported for testing — drop whatever the queue is waiting on.
+ */
+export function resetBlackBoxDispatchQueue(): void {
+  dispatchQueue = Promise.resolve();
+}
+
+/**
  * Show the given black box, whatever is currently on screen.
  *
  * Chooses the atomic or the serialized path from the bindings up front (see the
- * module header), never from `tapSequence` returning false.
+ * module header), never from `tapSequence` returning false. Runs only after every
+ * earlier call has settled, so two dispatches never interleave their presses.
  *
  * @returns true when both presses were dispatched; false when it was skipped
- *   (target unbound, no usable prime, a refused keyboard sequence, or a
- *   serialized tap that did not go out).
+ *   (target unbound, no usable prime, a refused keyboard sequence, SimHub
+ *   unreachable on the serialized path, or a serialized tap that did not go out).
  */
-export async function showBlackBox(targetId: BlackBoxId, deps: ShowBlackBoxDeps): Promise<boolean> {
+export function showBlackBox(targetId: BlackBoxId, deps: ShowBlackBoxDeps): Promise<boolean> {
+  const dispatch = dispatchQueue.then(() => dispatchBlackBox(targetId, deps));
+
+  dispatchQueue = dispatch.then(
+    () => undefined,
+    () => undefined,
+  );
+
+  return dispatch;
+}
+
+async function dispatchBlackBox(targetId: BlackBoxId, deps: ShowBlackBoxDeps): Promise<boolean> {
   const targetKey = BLACK_BOX_GLOBAL_KEYS[targetId];
 
   if (!deps.isConfigured(targetKey)) {
@@ -160,6 +194,15 @@ export async function showBlackBox(targetId: BlackBoxId, deps: ShowBlackBoxDeps)
 
   // A SimHub role is involved: it cannot join a SendInput batch, so the two are
   // tapped one after the other and the priming box may flash briefly (#962).
+  // Check reachability before pressing anything: an offline SimHub would only
+  // wait out its HTTP timeout, and a keyboard prime would toggle a box the
+  // SimHub target never follows.
+  if (!deps.isSimHubReachable()) {
+    deps.logger.debug(`SimHub is not reachable, not showing the ${targetId} black box (${primeKey} -> ${targetKey})`);
+
+    return false;
+  }
+
   const primed = await deps.tap(primeKey);
 
   if (!primed) {
