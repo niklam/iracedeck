@@ -14,6 +14,8 @@ Elgato Stream Deck adapter that implements `IDeckPlatformAdapter` from `@iracede
 - **`openUrl(url)`** — `sd.system.openUrl`. Deliberately a concrete method on the adapter, not on `IDeckPlatformAdapter` (see `.claude/rules/global-settings.md`).
 - **`WillDisappearEvent` special case** — Elgato's `ActionContext` lacks `setImage`/`setTitle`/`isKey` (and dial methods), so `wrapDisappearEvent()` provides no-op stubs
 - **`createLogger(scope)`** — Wraps `streamDeck.logger.createScope()` via `createSDLogger()`
+- **`getGlobalSettings()`** — Awaits the SDK's `settings.getGlobalSettings()` promise and hands the result to every `onDidReceiveGlobalSettings` subscriber (#1208). Since `@elgato/streamdeck` 3.0 the SDK event fires only for a PI's save, so without this the one-time host migration would never get its answer. `useLegacySettingsBehavior` stays off — turning it on would deliver the reply twice. See `.claude/rules/global-settings.md`.
+- **Neo Infobar instances are narrowed out** — SDK 3.0's `WillAppearEvent` / `DidReceiveSettingsEvent` action includes `NeoInfobarAction`, which has no image or title. No manifest entry declares that controller, so the bridge returns early on `ev.action.isNeoInfobar()` rather than casting. Supporting Neo Infobar actions is a separate decision.
 - **Other adapter methods** — Delegate directly to the Elgato SDK (`onDidReceiveGlobalSettings`, `onApplicationDidLaunch`, `connect`, etc.)
 
 ## Also Contains
