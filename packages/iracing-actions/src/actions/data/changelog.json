@@ -16,6 +16,12 @@
           ]
         },
         {
+          "title": "Improvements",
+          "items": [
+            "The Template Variables page now lists what the numbers behind twelve coded telemetry variables mean, such as <code>{{telemetry.SessionState}}</code>, <code>{{telemetry.SessionFlags}}</code> and <code>{{telemetry.EngineWarnings}}</code>, and shows how to test a single flag inside a bitfield. That makes a key title that blanks itself once the session is over a one-line expression: <code>SessionState</code> reads <code>5</code> or <code>6</code> after the checkered flag, so a key can show <code>--</code> instead of the last number from the race (thanks @arbishop11 for the request). See <a href=\"https://iracedeck.com/docs/features/template-variables/#telemetry-value-reference\" target=\"_blank\" rel=\"noopener noreferrer\">Template Variables</a>."
+          ]
+        },
+        {
           "title": "Bug Fixes",
           "items": [
             "Replay Control's <strong>Jump to Fastest Lap</strong> no longer leaves the replay frozen. When iRaceDeck was running while the lap was driven, it now jumps straight to that lap — also in the saved replay opened later — landing just before the car takes the line and playing from there. Without that record it searches the replay as before, and the search now ends playing the lap instead of stuck (thanks @jameslangevin for reporting). See <a href=\"https://iracedeck.com/docs/actions/view-camera/replay-control/#jump-to-fastest-lap\" target=\"_blank\" rel=\"noopener noreferrer\">Replay Control</a>.",

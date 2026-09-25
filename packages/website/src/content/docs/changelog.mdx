@@ -17,6 +17,10 @@ _Unreleased_
 
 - New **Replay Markers** action for bookmarking moments of a session. Press **Add Marker** right after something happens — the marker lands a few seconds earlier, 5 by default and set per key, so it catches the lead-up — then, in the replay, **Previous Marker** or **Next Marker** jumps straight there — the key greys out while there is no marker to jump to — and **Delete Marker** removes the nearest one. Markers are saved per session, so they are still there when you open the saved replay days later; offline sessions keep them only until you leave (thanks @moartl31 for the request). See [Replay Markers](/docs/actions/view-camera/replay-markers/).
 
+**Improvements**
+
+- The Template Variables page now lists what the numbers behind twelve coded telemetry variables mean, such as `{{telemetry.SessionState}}`, `{{telemetry.SessionFlags}}` and `{{telemetry.EngineWarnings}}`, and shows how to test a single flag inside a bitfield. That makes a key title that blanks itself once the session is over a one-line expression: `SessionState` reads `5` or `6` after the checkered flag, so a key can show `--` instead of the last number from the race (thanks @arbishop11 for the request). See [Template Variables](/docs/features/template-variables/#telemetry-value-reference).
+
 **Bug Fixes**
 
 - Replay Control's **Jump to Fastest Lap** no longer leaves the replay frozen. When iRaceDeck was running while the lap was driven, it now jumps straight to that lap — also in the saved replay opened later — landing just before the car takes the line and playing from there. Without that record it searches the replay as before, and the search now ends playing the lap instead of stuck (thanks @jameslangevin for reporting). See [Replay Control](/docs/actions/view-camera/replay-control/#jump-to-fastest-lap).
