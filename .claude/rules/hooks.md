@@ -28,7 +28,7 @@ A **deny** refuses the call and tells the model why. An **ask** forces the permi
 | `git worktree add ../ir-<n>` where `origin/master` carries no `docs/superpowers/specs/*-issue-<n>-*.md` | ask, unless the issue's labels are readable and carry no `enhancement` | a feature gets its spec before its worktree; the exemptions are judgement, so the maintainer confirms |
 | `git commit` with a `package.json` while `pnpm-lock.yaml` is dirty and not included | deny | CI's frozen lockfile |
 | `git worktree add` inside the repo, not named `ir-<issue>`, or from a stale `origin/master` | deny | sibling worktrees; verify the base commit |
-| `git worktree remove` while a deck host's plugin link points into that tree | deny | relink to master first, or leave it if another session holds it |
+| `git worktree remove` while a deck host's plugin link points into that tree | deny | never relink on your own — leave the link and the tree, and tell the maintainer |
 | `gh issue create --milestone/--assignee` | deny | both are set when implementation starts |
 | `updateProjectV2Field` | deny | rewriting the Status options wipes every card's lane |
 | `--fix` on a code-review invocation | deny | report only |

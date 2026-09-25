@@ -308,7 +308,7 @@ export const rules = [
       const resolved = path.resolve(gitCwd(c, ctx.cwd, GIT_WORKTREE_REMOVE), target);
       const held = ctx.linkTargets().filter((l) => l.target && ctx.isInside(l.target, resolved));
       if (held.length)
-        return `${held.map((l) => l.host).join(" and ")} plugin link points into ${resolved}. Relink to master first — or, if another session may be testing there, leave it and say so.`;
+        return `${held.map((l) => l.host).join(" and ")} plugin link points into ${resolved}. Do not relink it yourself, not even to master — leave the link and the worktree as they are and tell Niklas.`;
       return null;
     },
   },
