@@ -526,6 +526,13 @@ export function applyGraphicTransform(
 // Icon Assembly
 // ---------------------------------------------------------------------------
 
+/** Opacity of the artwork and title on a {@link assembleIcon} `dimmed` key. */
+export const DIMMED_OPACITY = 0.35;
+
+function dimContent(content: string): string {
+  return content ? `<g opacity="${DIMMED_OPACITY}">${content}</g>` : "";
+}
+
 /**
  * Assembles a final icon data URI from a graphic SVG, resolved colors, and resolved settings.
  *
@@ -546,6 +553,10 @@ export function applyGraphicTransform(
  * @param options.bindingMissing - When true, draw the centered binding-missing
  *   warning triangle over dimmed artwork (issue #612). Used for keybind modes
  *   that have neither a keyboard binding nor a SimHub role configured.
+ * @param options.dimmed - When true, fade the artwork and the title to
+ *   {@link DIMMED_OPACITY} over the untouched background and border — the key
+ *   is there but a press would do nothing right now (e.g. Replay Markers' Next
+ *   with no marker ahead, #1162). A plain `<g opacity>`, so it needs no filter.
  * @returns SVG data URI string
  */
 export function assembleIcon(options: {
@@ -555,8 +566,9 @@ export function assembleIcon(options: {
   border: ResolvedBorderSettings;
   graphic?: ResolvedGraphicSettings;
   bindingMissing?: boolean;
+  dimmed?: boolean;
 }): string {
-  const { graphicSvg, colors, title, border, graphic, bindingMissing } = options;
+  const { graphicSvg, colors, title, border, graphic, bindingMissing, dimmed } = options;
 
   const rawGraphic = extractGraphicContent(graphicSvg);
   let graphicContent = title.showGraphics ? renderIconTemplate(rawGraphic, colors) : "";
@@ -591,7 +603,7 @@ export function assembleIcon(options: {
     graphicContent = applyBindingWarning(graphicContent);
   }
 
-  const titleContent = title.showTitle
+  const rawTitleContent = title.showTitle
     ? generateTitleText({
         text: title.titleText,
         fontSize: title.fontSize,
@@ -601,6 +613,10 @@ export function assembleIcon(options: {
         fill: colors.textColor ?? "#ffffff",
       })
     : "";
+
+  const titleContent = dimmed ? dimContent(rawTitleContent) : rawTitleContent;
+
+  if (dimmed) graphicContent = dimContent(graphicContent);
 
   const borderSvg = generateBorderParts(border);
   const borderContent = borderSvg.defs + borderSvg.rects;

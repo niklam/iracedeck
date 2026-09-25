@@ -47,6 +47,7 @@ export {
   BORDER_DEFAULTS,
   calculateYPositions,
   computeGraphicArea,
+  DIMMED_OPACITY,
   generateTitleText,
   GRAPHIC_DEFAULTS,
   resolveBorderSettings,
