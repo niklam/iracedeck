@@ -1,22 +1,33 @@
 /**
- * ird-black-box-caveat — explains, in the PI, why "Show black box" will do nothing.
+ * ird-black-box-caveat — explains, in the PI, what "Show black box" can do with
+ * the bindings as configured.
  *
- * Showing a black box needs TWO keyboard bindings: the target box, and a
- * different box to prime the switch with (a black-box hotkey is a toggle, and
- * telemetry never reports which box is shown — see
- * `iracing-actions/src/shared/black-box.ts`). Both must be keyboard bindings:
- * a SimHub role goes over HTTP and cannot join the single atomic SendInput batch
- * that keeps the priming box from flickering, so the plugin skips the box
- * entirely rather than degrading. The value still changes either way.
+ * Showing a black box needs two bindings: the target box, and a different box
+ * to prime the switch with (a black-box hotkey is a toggle, and telemetry never
+ * reports which box is shown — see `iracing-actions/src/shared/black-box.ts`).
+ * The runtime primes keyboard-first: when the target and some other box are
+ * both keyboard-bound, the two presses go out as one atomic SendInput batch and
+ * the priming box never renders. A SimHub role goes over HTTP and cannot join
+ * that batch, so when one is involved the presses are sent one after the other
+ * and the priming box may flash briefly (#962). This component mirrors that
+ * decision, with one of three outcomes (checkbox ticked):
  *
- * Rendered only when the feature checkbox is ticked AND the bindings can't do it.
+ * | Bindings                                                        | Line shown        |
+ * | --------------------------------------------------------------- | ----------------- |
+ * | target unbound, or no other box bound at all                    | `message` (warning) |
+ * | target a SimHub role, or no other box keyboard-bound but one is a SimHub role | `simhub-message` (info) |
+ * | target and at least one other box keyboard-bound                | nothing           |
+ *
+ * The value still changes in every case. Nothing renders while the checkbox is
+ * unticked or before the first global-settings delivery.
  *
  * @example
  * <ird-black-box-caveat
  *   enabled-setting="showBlackBox"
  *   target="blackBoxFuel"
  *   candidates='["blackBoxLapTiming","blackBoxStandings"]'
- *   message="Showing the black box needs keyboard bindings…"
+ *   message="Showing the black box needs black-box bindings…"
+ *   simhub-message="…bound to a SimHub role, so the priming box may flash briefly…"
  * ></ird-black-box-caveat>
  */
 import { parseKeyBinding } from "./key-binding-input.js";
@@ -80,6 +91,48 @@ export function isKeyboardBinding(raw: unknown): boolean {
   return parseKeyBinding(raw) !== null;
 }
 
+/**
+ * Whether a stored global binding value is a usable SIMHUB role binding —
+ * `{ type: "simhub", role }` with a non-empty role, the same shape the runtime's
+ * `SimHubBindingValueSchema` accepts. A keyboard binding, an empty value, or a
+ * corrupt one all return false.
+ */
+export function isSimHubBinding(raw: unknown): boolean {
+  if (typeof raw !== "string" || raw.length === 0) return false;
+
+  try {
+    const parsed = JSON.parse(raw) as { type?: unknown; role?: unknown } | null;
+
+    return parsed?.type === "simhub" && typeof parsed.role === "string" && parsed.role.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * What the caveat shows: the warning (the box can't be shown), the SimHub info
+ * line (it can, but the priming box may flash), or nothing.
+ */
+type CaveatState = "warning" | "simhub-info" | "none";
+
+let styleInjected = false;
+
+/**
+ * The warning is tinted with the same amber `ird-binding-status` uses for its
+ * warnings, so it reads differently from the neutral info line; both keep the
+ * shared `.ird-supporting-text` layout.
+ */
+function injectStyles(): void {
+  if (styleInjected || typeof document === "undefined") return;
+
+  const style = document.createElement("style");
+  style.textContent = `
+    ird-black-box-caveat .ird-black-box-caveat-warning { color: #ffc04d; }
+  `;
+  document.head.appendChild(style);
+  styleInjected = true;
+}
+
 export class BlackBoxCaveat extends HTMLElement {
   private container: HTMLDivElement | null = null;
   private settings: Record<string, unknown> = {};
@@ -113,6 +166,7 @@ export class BlackBoxCaveat extends HTMLElement {
     this.connected = true;
     this.container = document.createElement("div");
     this.container.className = "ird-supporting-text";
+    injectStyles();
     this.container.style.display = "none";
     this.appendChild(this.container);
 
@@ -206,32 +260,48 @@ export class BlackBoxCaveat extends HTMLElement {
     }
   }
 
-  /** True when the bindings as configured cannot show the box. */
-  private bindingsUnusable(): boolean {
+  /**
+   * Mirror the runtime's path choice for the bindings as configured. A prime is
+   * any OTHER bound box, keyboard-bound ones preferred; the presses stay atomic
+   * only when both the target and that prime are keyboard-bound.
+   */
+  private state(): CaveatState {
     const target = this.getAttribute("target");
 
-    if (!target) return false;
+    if (!target) return "none";
 
-    if (!isKeyboardBinding(this.settings[target])) return true;
+    const targetKeyboard = isKeyboardBinding(this.settings[target]);
 
-    // A prime is any OTHER keyboard-bound box.
-    return !this.parseCandidates().some((key) => key !== target && isKeyboardBinding(this.settings[key]));
+    if (!targetKeyboard && !isSimHubBinding(this.settings[target])) return "warning";
+
+    const others = this.parseCandidates()
+      .filter((key) => key !== target)
+      .map((key) => this.settings[key]);
+    const keyboardPrime = others.some(isKeyboardBinding);
+
+    if (!keyboardPrime && !others.some(isSimHubBinding)) return "warning";
+
+    return targetKeyboard && keyboardPrime ? "none" : "simhub-info";
   }
 
   private render(): void {
     if (!this.container) return;
 
     // Never flash the caveat before the first global-settings delivery.
-    const show = this.settingsLoaded && this.isEnabled() && this.bindingsUnusable();
+    const state: CaveatState = this.settingsLoaded && this.isEnabled() ? this.state() : "none";
+    const warning = state === "warning";
 
-    if (!show) {
+    this.container.classList.toggle("ird-black-box-caveat-warning", warning);
+    this.container.classList.toggle("ird-black-box-caveat-info", state === "simhub-info");
+
+    if (state === "none") {
       this.container.style.display = "none";
       this.container.textContent = "";
 
       return;
     }
 
-    this.container.textContent = this.getAttribute("message") ?? "";
+    this.container.textContent = this.getAttribute(warning ? "message" : "simhub-message") ?? "";
     this.container.style.display = "";
   }
 }

@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import "./black-box-caveat.js";
+import { isKeyboardBinding, isSimHubBinding } from "./black-box-caveat.js";
 
 const CANDIDATES = ["blackBoxLapTiming", "blackBoxStandings", "blackBoxFuel"];
-const MESSAGE = "Needs keyboard bindings.";
+const MESSAGE = "Needs black-box bindings.";
+const SIMHUB_MESSAGE = "Bound to a SimHub role, so the priming box may flash.";
 
 const keyboardBinding = (key: string, code: string) => JSON.stringify({ type: "keyboard", key, modifiers: [], code });
 const simhubBinding = (role: string) => JSON.stringify({ type: "simhub", role });
@@ -46,6 +47,7 @@ async function mount(enabled: boolean): Promise<HTMLElement> {
   el.setAttribute("target", "blackBoxFuel");
   el.setAttribute("candidates", JSON.stringify(CANDIDATES));
   el.setAttribute("message", MESSAGE);
+  el.setAttribute("simhub-message", SIMHUB_MESSAGE);
   document.body.appendChild(el);
 
   // Let the getGlobalSettings() promise settle.
@@ -55,7 +57,12 @@ async function mount(enabled: boolean): Promise<HTMLElement> {
   return el;
 }
 
+/** The warning line is showing. */
 const isVisible = (el: HTMLElement) => el.textContent!.includes(MESSAGE);
+/** The SimHub info line is showing. */
+const isInfoVisible = (el: HTMLElement) => el.textContent!.includes(SIMHUB_MESSAGE);
+/** The line's rendered container, for the severity it is styled with. */
+const line = (el: HTMLElement) => el.querySelector("div")!;
 
 describe("ird-black-box-caveat", () => {
   beforeEach(() => {
@@ -93,14 +100,23 @@ describe("ird-black-box-caveat", () => {
     expect(isVisible(el)).toBe(true);
   });
 
-  it("should warn when the target is bound to a SimHub role", async () => {
+  it("should show the SimHub info line when the target is bound to a SimHub role", async () => {
     globalSettings = {
       blackBoxLapTiming: keyboardBinding("f1", "F1"),
       blackBoxFuel: simhubBinding("Fuel Box"),
     };
     const el = await mount(true);
 
+    expect(isVisible(el)).toBe(false);
+    expect(isInfoVisible(el)).toBe(true);
+  });
+
+  it("should warn when the target is a SimHub role but no other box is bound", async () => {
+    globalSettings = { blackBoxFuel: simhubBinding("Fuel Box") };
+    const el = await mount(true);
+
     expect(isVisible(el)).toBe(true);
+    expect(isInfoVisible(el)).toBe(false);
   });
 
   it("should warn when no other box is available to prime with", async () => {
@@ -110,14 +126,88 @@ describe("ird-black-box-caveat", () => {
     expect(isVisible(el)).toBe(true);
   });
 
-  it("should warn when the only other box is a SimHub role", async () => {
+  it("should show the SimHub info line when the only other bound boxes are SimHub roles", async () => {
+    globalSettings = {
+      blackBoxLapTiming: simhubBinding("Lap Timing"),
+      blackBoxStandings: simhubBinding("Standings"),
+      blackBoxFuel: keyboardBinding("f4", "F4"),
+    };
+    const el = await mount(true);
+
+    expect(isVisible(el)).toBe(false);
+    expect(isInfoVisible(el)).toBe(true);
+  });
+
+  // #962: the runtime primes keyboard-first, so a SimHub Lap Timing beside a
+  // keyboard Standings is the atomic path — no flash, so nothing to say.
+  it("should stay silent when a SimHub box sits beside a keyboard-bound prime (#962)", async () => {
+    globalSettings = {
+      blackBoxLapTiming: simhubBinding("Lap Timing"),
+      blackBoxStandings: keyboardBinding("f2", "F2"),
+      blackBoxFuel: keyboardBinding("f4", "F4"),
+    };
+    const el = await mount(true);
+
+    expect(isVisible(el)).toBe(false);
+    expect(isInfoVisible(el)).toBe(false);
+  });
+
+  it("should warn, not inform, when the target is unbound even if SimHub boxes exist", async () => {
+    globalSettings = { blackBoxLapTiming: simhubBinding("Lap Timing") };
+    const el = await mount(true);
+
+    expect(isVisible(el)).toBe(true);
+    expect(isInfoVisible(el)).toBe(false);
+  });
+
+  it("should warn when no black box is bound at all", async () => {
+    const el = await mount(true);
+
+    expect(isVisible(el)).toBe(true);
+    expect(isInfoVisible(el)).toBe(false);
+  });
+
+  it("should stay silent with SimHub bindings when the feature is disabled", async () => {
+    globalSettings = {
+      blackBoxLapTiming: simhubBinding("Lap Timing"),
+      blackBoxFuel: simhubBinding("Fuel Box"),
+    };
+    const el = await mount(false);
+
+    expect(isVisible(el)).toBe(false);
+    expect(isInfoVisible(el)).toBe(false);
+  });
+
+  it("should style the warning and the info line differently", async () => {
+    const el = await mount(true);
+    expect(line(el).classList.contains("ird-black-box-caveat-warning")).toBe(true);
+    expect(line(el).classList.contains("ird-black-box-caveat-info")).toBe(false);
+
+    notify({ blackBoxLapTiming: keyboardBinding("f1", "F1"), blackBoxFuel: simhubBinding("Fuel Box") });
+
+    expect(isInfoVisible(el)).toBe(true);
+    expect(line(el).classList.contains("ird-black-box-caveat-info")).toBe(true);
+    expect(line(el).classList.contains("ird-black-box-caveat-warning")).toBe(false);
+    // Both keep the shared supporting-text layout.
+    expect(line(el).classList.contains("ird-supporting-text")).toBe(true);
+  });
+
+  it("should move from the info line to silence when a keyboard prime is bound", async () => {
     globalSettings = {
       blackBoxLapTiming: simhubBinding("Lap Timing"),
       blackBoxFuel: keyboardBinding("f4", "F4"),
     };
     const el = await mount(true);
+    expect(isInfoVisible(el)).toBe(true);
 
-    expect(isVisible(el)).toBe(true);
+    notify({
+      blackBoxLapTiming: simhubBinding("Lap Timing"),
+      blackBoxStandings: keyboardBinding("f2", "F2"),
+      blackBoxFuel: keyboardBinding("f4", "F4"),
+    });
+
+    expect(isInfoVisible(el)).toBe(false);
+    expect(isVisible(el)).toBe(false);
   });
 
   it("should accept any other keyboard-bound box as the prime", async () => {
@@ -242,5 +332,33 @@ describe("ird-black-box-caveat", () => {
     await Promise.resolve();
 
     expect(isVisible(el)).toBe(false);
+  });
+});
+
+describe("binding classifiers", () => {
+  it("should classify a keyboard binding", () => {
+    const raw = keyboardBinding("f1", "F1");
+
+    expect(isKeyboardBinding(raw)).toBe(true);
+    expect(isSimHubBinding(raw)).toBe(false);
+  });
+
+  it("should classify a SimHub role", () => {
+    const raw = simhubBinding("Fuel Box");
+
+    expect(isSimHubBinding(raw)).toBe(true);
+    expect(isKeyboardBinding(raw)).toBe(false);
+  });
+
+  it("should reject a SimHub value with no role", () => {
+    expect(isSimHubBinding(JSON.stringify({ type: "simhub", role: "" }))).toBe(false);
+    expect(isSimHubBinding(JSON.stringify({ type: "simhub" }))).toBe(false);
+  });
+
+  it("should reject empty, corrupt and non-string values", () => {
+    for (const raw of ["", "not json", "{", undefined, null, 42, { type: "simhub", role: "x" }]) {
+      expect(isSimHubBinding(raw)).toBe(false);
+      expect(isKeyboardBinding(raw)).toBe(false);
+    }
   });
 });
