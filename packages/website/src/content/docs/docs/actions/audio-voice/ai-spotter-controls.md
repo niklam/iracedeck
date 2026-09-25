@@ -7,7 +7,7 @@ sidebar:
     variant: tip
 ---
 
-Manage iRacing's AI spotter directly from your Stream Deck. Trigger reports, toggle announcements, or adjust spotter volume without leaving the track. This action is keypad-only, but the spotter volume is also available on a Stream Deck+ dial: the [Audio Controls dial](/docs/actions/audio-voice/audio-controls/#on-a-dial)'s **Spotter** mode turns through these same Spotter Louder / Spotter Quieter bindings, and its press can tap Spotter Silence.
+Manage iRacing's AI spotter directly from your Stream Deck. Trigger reports, toggle announcements, or adjust spotter volume without leaving the track. This action is keypad-only, but the spotter volume is also available on a Stream Deck+ dial: the [Audio Controls dial](/docs/actions/audio-voice/audio-controls/#on-a-dial)'s **Spotter** mode turns through these same Spotter Louder / Spotter Quieter bindings, and its press can be set to **Skip Spotter Call**.
 
 ## Modes
 
@@ -115,9 +115,11 @@ Lower the spotter volume.
 
 ---
 
-### Spotter Silence
+### Skip Spotter Call
 
-Silence the spotter entirely.
+Stop the spotter call that is playing right now. It is a one-shot: the spotter keeps talking on its next call. iRacing has no control that mutes the spotter permanently — to hear less of it, lower the volume with Spotter Quieter.
+
+The key reads **SKIP CALL / SPOTTER**. It taps iRacing's *Spotter Silence* key binding, which keeps that name in iRacing's controls screen and in this action's Related Key Bindings section.
 
 #### Details
 
