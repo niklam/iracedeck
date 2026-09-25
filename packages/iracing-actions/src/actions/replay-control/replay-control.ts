@@ -63,6 +63,7 @@ import {
   getAllCarNumbers,
   getCarNumberRawFromSessionInfo,
   ReplayPosMode,
+  replaySpeedFromSdk,
   type TelemetryData,
 } from "@iracedeck/iracing-sdk";
 import z from "zod";
@@ -928,13 +929,7 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
   private seedTelemetryState(contextId: string, telemetry: TelemetryData | null): void {
     if (!telemetry) return;
 
-    if (telemetry.ReplayPlaySpeed !== undefined) {
-      this.replaySpeed.set(contextId, telemetry.ReplayPlaySpeed as number);
-    }
-
-    if (telemetry.ReplayPlaySlowMotion !== undefined) {
-      this.replaySlowMotion.set(contextId, telemetry.ReplayPlaySlowMotion as boolean);
-    }
+    this.readReplaySpeed(contextId, telemetry);
   }
 
   private updateTelemetryState(contextId: string, telemetry: TelemetryData | null): void {
@@ -945,12 +940,21 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
       return;
     }
 
-    if (telemetry.ReplayPlaySpeed !== undefined) {
-      this.replaySpeed.set(contextId, telemetry.ReplayPlaySpeed as number);
-    }
+    this.readReplaySpeed(contextId, telemetry);
+  }
 
+  /**
+   * Caches the replay speed in the units the user sees: in slow motion the
+   * speed is the divisor (5 = 1/5x), decoded from iRacing's raw value (#1202).
+   */
+  private readReplaySpeed(contextId: string, telemetry: TelemetryData): void {
     if (telemetry.ReplayPlaySlowMotion !== undefined) {
       this.replaySlowMotion.set(contextId, telemetry.ReplayPlaySlowMotion as boolean);
+    }
+
+    if (telemetry.ReplayPlaySpeed !== undefined) {
+      const slowMotion = this.replaySlowMotion.get(contextId) ?? false;
+      this.replaySpeed.set(contextId, replaySpeedFromSdk(telemetry.ReplayPlaySpeed as number, slowMotion));
     }
   }
 
