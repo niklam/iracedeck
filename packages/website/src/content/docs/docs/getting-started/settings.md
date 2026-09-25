@@ -211,6 +211,19 @@ The first time you start a version that stores settings this way, iRaceDeck copi
 
 To back up your configuration, copy that one file somewhere safe; to restore it, put it back and restart the deck software. Each deck ecosystem gets its own folder, so a Stream Deck and an Ulanzi Deck installation on the same PC never share settings.
 
+### If Your Settings File Can't Be Read
+
+If you edit the settings file by hand and leave a mistake in it — a comma after the last entry is the usual one — iRaceDeck cannot read the file when it next starts. It never throws your file away: it moves it aside, next to the original, as `global-settings.corrupt-<date>.json`, and restores your settings from the copy the deck software keeps. That copy is refreshed every time the plugin starts, so it holds your settings as they were at the last start that went well — which means changes made since then, including the hand edits themselves, are missing.
+
+A red banner at the top of the Settings window and of every key's Property Inspector tells you this happened. It shows exactly what was wrong and where — for example *Expected double-quoted property name in JSON at position 9123 (line 327 column 120)* — and the full path of the file that was set aside. To get your changes back:
+
+1. Open the set-aside file in a text editor and fix the mistake at the line and column the banner names.
+2. Close your deck software.
+3. Rename the fixed file to `global-settings.json`, replacing the one in the same folder.
+4. Start your deck software again.
+
+Like every banner, this one describes only the session you are in: the next start with a file iRaceDeck can read comes up without it.
+
 ## How It Works
 
 The plugin serves the window itself, on your own machine only (`127.0.0.1`), and opens it as a **chromeless app window** in Microsoft Edge or Google Chrome — whichever is installed — so it looks and behaves like a program window rather than a browser tab. If neither browser is found, it opens in your default browser as a normal tab instead; everything works the same, it just has a tab bar.
