@@ -8,6 +8,7 @@
  * functions are the only place that offset exists. Normal speeds (1x…16x) are
  * not encoded and pass through unchanged, as does 0 (paused).
  */
+import type { TelemetryData } from "./types.js";
 
 /**
  * Converts a replay speed as the user sees it into the raw SDK value.
@@ -23,12 +24,29 @@ export function replaySpeedToSdk(speed: number, slowMotion: boolean): number {
 }
 
 /**
- * Converts a raw SDK replay speed (e.g. telemetry `ReplayPlaySpeed`) into the
- * speed the user sees. In slow motion the result is the divisor (raw 4 → 5,
- * meaning 1/5x); a raw 0 stays 0 (paused).
+ * Converts a raw SDK replay speed into the speed the user sees. In slow motion
+ * the result is the divisor (raw 4 → 5, meaning 1/5x); a raw 0 stays 0 (paused).
+ * Telemetry consumers use `replaySpeedFromTelemetry`, which pairs the speed with
+ * the flag from the same tick.
  */
 export function replaySpeedFromSdk(raw: number, slowMotion: boolean): number {
   if (!slowMotion || raw === 0) return raw;
 
   return Math.sign(raw) * (Math.abs(raw) + 1);
+}
+
+/**
+ * Reads the replay speed from one telemetry tick, in the units `setPlaySpeed`
+ * takes: the read-side counterpart of `replaySpeedToSdk`, and the one place a
+ * telemetry consumer should get the speed from. The speed is decoded with the
+ * slow-motion flag of the SAME tick — a missing flag reads as normal speed, never
+ * a flag remembered from an earlier tick. Returns null when the tick carries no
+ * `ReplayPlaySpeed`.
+ */
+export function replaySpeedFromTelemetry(telemetry: TelemetryData): { speed: number; slowMotion: boolean } | null {
+  if (telemetry.ReplayPlaySpeed === undefined) return null;
+
+  const slowMotion = telemetry.ReplayPlaySlowMotion === true;
+
+  return { speed: replaySpeedFromSdk(telemetry.ReplayPlaySpeed, slowMotion), slowMotion };
 }

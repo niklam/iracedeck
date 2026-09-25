@@ -1,6 +1,31 @@
 import { describe, expect, it } from "vitest";
 
-import { replaySpeedFromSdk, replaySpeedToSdk } from "./replay-speed.js";
+import { replaySpeedFromSdk, replaySpeedFromTelemetry, replaySpeedToSdk } from "./replay-speed.js";
+import type { TelemetryData } from "./types.js";
+
+describe("replaySpeedFromTelemetry", () => {
+  it("decodes a slow-motion tick into the divisor iRacing plays", () => {
+    const telemetry = { ReplayPlaySpeed: 4, ReplayPlaySlowMotion: true } as TelemetryData;
+
+    expect(replaySpeedFromTelemetry(telemetry)).toEqual({ speed: 5, slowMotion: true });
+  });
+
+  it("passes a normal-speed tick through", () => {
+    const telemetry = { ReplayPlaySpeed: -8, ReplayPlaySlowMotion: false } as TelemetryData;
+
+    expect(replaySpeedFromTelemetry(telemetry)).toEqual({ speed: -8, slowMotion: false });
+  });
+
+  it("reads a tick without the slow-motion flag as normal speed, never decoding it", () => {
+    const telemetry = { ReplayPlaySpeed: 4 } as TelemetryData;
+
+    expect(replaySpeedFromTelemetry(telemetry)).toEqual({ speed: 4, slowMotion: false });
+  });
+
+  it("returns null when the tick carries no replay speed", () => {
+    expect(replaySpeedFromTelemetry({ ReplayPlaySlowMotion: true } as TelemetryData)).toBeNull();
+  });
+});
 
 describe("replaySpeedToSdk", () => {
   it("sends slow-motion divisor N as N - 1, which iRacing plays at 1/N", () => {

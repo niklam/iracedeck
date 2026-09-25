@@ -63,7 +63,7 @@ import {
   getAllCarNumbers,
   getCarNumberRawFromSessionInfo,
   ReplayPosMode,
-  replaySpeedFromSdk,
+  replaySpeedFromTelemetry,
   type TelemetryData,
 } from "@iracedeck/iracing-sdk";
 import z from "zod";
@@ -948,14 +948,12 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
    * speed is the divisor (5 = 1/5x), decoded from iRacing's raw value (#1202).
    */
   private readReplaySpeed(contextId: string, telemetry: TelemetryData): void {
-    if (telemetry.ReplayPlaySlowMotion !== undefined) {
-      this.replaySlowMotion.set(contextId, telemetry.ReplayPlaySlowMotion as boolean);
-    }
+    const current = replaySpeedFromTelemetry(telemetry);
 
-    if (telemetry.ReplayPlaySpeed !== undefined) {
-      const slowMotion = this.replaySlowMotion.get(contextId) ?? false;
-      this.replaySpeed.set(contextId, replaySpeedFromSdk(telemetry.ReplayPlaySpeed as number, slowMotion));
-    }
+    if (!current) return;
+
+    this.replaySpeed.set(contextId, current.speed);
+    this.replaySlowMotion.set(contextId, current.slowMotion);
   }
 
   /**
@@ -1514,7 +1512,8 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
         let nextSpeed: number;
 
         if (current.slowMotion && current.speed >= 2) {
-          nextSpeed = Math.min(current.speed + step, 16);
+          // Never faster than now: iRacing itself can sit below our 1/16x floor (1/17x)
+          nextSpeed = Math.max(current.speed, Math.min(current.speed + step, 16));
         } else {
           nextSpeed = 2;
         }
@@ -1531,7 +1530,8 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
         let nextSpeed: number;
 
         if (current.slowMotion && current.speed <= -2) {
-          nextSpeed = Math.max(current.speed - step, -16);
+          // Never faster than now: iRacing itself can sit below our 1/16x floor (-1/17x)
+          nextSpeed = Math.min(current.speed, Math.max(current.speed - step, -16));
         } else {
           nextSpeed = -2;
         }

@@ -122,7 +122,7 @@ export { carInWorld, findNearestCarOnTrack, type FindNearestCarOptions, nearestC
 export { calculateRacePositions, classPositionFromOrder } from "./position-utils.js";
 
 // Replay speed encoding (#1202)
-export { replaySpeedFromSdk, replaySpeedToSdk } from "./replay-speed.js";
+export { replaySpeedFromTelemetry, replaySpeedToSdk } from "./replay-speed.js";
 
 // Gap utilities (#933)
 export {
