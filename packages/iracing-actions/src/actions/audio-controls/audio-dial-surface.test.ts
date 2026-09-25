@@ -206,8 +206,11 @@ describe("renderAudioStripSvg", () => {
   });
 
   it("sizes the binding warning for the 200x100 strip canvas, not the 144x144 key", () => {
-    renderAudioStripSvg({ category: "voice-chat", pttHeld: false, bindingMissing: true });
-    expect(vi.mocked(applyBindingWarning)).toHaveBeenLastCalledWith(expect.any(String), { width: 200, height: 100 });
+    vi.mocked(applyBindingWarning).mockClear();
+    const svg = renderAudioStripSvg({ category: "voice-chat", pttHeld: false, bindingMissing: true });
+    expect(vi.mocked(applyBindingWarning)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(applyBindingWarning)).toHaveBeenCalledWith(expect.any(String), { width: 200, height: 100 });
+    expect(svg).toContain('viewBox="0 0 200 100" width="200" height="100"');
   });
 });
 
