@@ -30,6 +30,7 @@ import z from "zod";
 import { showBlackBox } from "../../shared/black-box.js";
 import { dialAppearanceFields, renderDialBox, resolveDialBoxColors } from "../../shared/dial-box.js";
 import { renderDialNameIcon } from "../../shared/dial-name-icon.js";
+import { persistDialPatch } from "../../shared/dial-persist.js";
 import type { DialPendingPreview } from "../../shared/dial-preview.js";
 import {
   formatViewValue,
@@ -624,29 +625,12 @@ export class SetupChassisDialSurface {
       this.host.logger.info("Setup chassis dial switched spring side");
       this.host.logger.debug(`${ctx.dial.setting} -> ${next}`);
 
-      // Persist by merging over the RAW settings so the keypad half of the
-      // instance's settings object survives untouched. The host never echoes
-      // plugin-side setSettings back as didReceiveSettings, so the local dial
-      // state and the strip are updated here.
-      const raw =
-        rawSettings && typeof rawSettings === "object" && !Array.isArray(rawSettings)
-          ? (rawSettings as Record<string, unknown>)
-          : null;
-
-      if (raw) {
-        const rawDial =
-          raw.dial && typeof raw.dial === "object" && !Array.isArray(raw.dial)
-            ? (raw.dial as Record<string, unknown>)
-            : {};
-        await ctx.action.setSettings({ ...raw, dial: { ...rawDial, setting: next } });
-      } else {
-        // No settings in the event payload — flip only in memory. Persisting a
-        // merge over {} would replace the whole stored object with just the
-        // dial half, wiping the keypad settings.
-        this.host.logger.warn("Dial event carried no settings; spring-side flip not persisted");
-      }
-
+      // The host never echoes plugin-side setSettings back as
+      // didReceiveSettings, so the local dial state and the strip are updated
+      // here — BEFORE the write is awaited, so a second press landing while it
+      // is in flight flips back rather than repeating this one (#957).
       ctx.dial = { ...ctx.dial, setting: next };
+      await persistDialPatch(ctx.action, rawSettings, { setting: next }, this.host.logger, "spring-side flip");
       ctx.lastRenderSig = null;
       await this.applyTriggerDescription(ctx);
       await this.renderFeedback(ctx);

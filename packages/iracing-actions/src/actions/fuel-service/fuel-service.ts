@@ -566,12 +566,14 @@ export class FuelService extends ConnectionStateAwareAction<FuelServiceSettings>
   }
 
   override async onDialUp(ev: IDeckDialUpEvent<FuelServiceSettings>): Promise<void> {
-    await this.dialSurface.up(ev.action.id);
+    // The raw payload is only the merge base for a persisting gesture; the
+    // surface reads the gesture itself from its context (#957).
+    await this.dialSurface.up(ev.action.id, ev.payload.settings);
   }
 
   override async onTouchTap(ev: IDeckTouchTapEvent<FuelServiceSettings>): Promise<void> {
     const settings = this.parseSettings(ev.payload.settings);
-    await this.dialSurface.touchTap(ev.action, settings, ev.payload.hold === true);
+    await this.dialSurface.touchTap(ev.action, settings, ev.payload.hold === true, ev.payload.settings);
   }
 
   private parseSettings(settings: unknown): FuelServiceSettings {

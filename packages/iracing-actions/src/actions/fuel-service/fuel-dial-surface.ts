@@ -38,6 +38,7 @@ import type { ILogger } from "@iracedeck/logger";
 
 import { borderColorForState, type ToggleState } from "../../icons/status-bar.js";
 import { renderDialNameIcon } from "../../shared/dial-name-icon.js";
+import { persistDialPatch } from "../../shared/dial-persist.js";
 import { type DialPendingPreview, renderPendingBar } from "../../shared/dial-preview.js";
 import type { FuelPipeline } from "./fuel-pipeline.js";
 import {
@@ -933,6 +934,7 @@ export class FuelDialSurface {
 
   async willAppear(action: IDeckActionContext, settings: FuelServiceSettings): Promise<void> {
     const ctx = this.ensureContext(action, settings);
+    ctx.settings = settings;
     // Seed the dialed value from current pit fuel request on appear.
     this.seedFromTelemetry(ctx, true);
 
@@ -981,7 +983,8 @@ export class FuelDialSurface {
     pressed: boolean,
   ): Promise<void> {
     const ctx = this.ensureContext(action, settings);
-    ctx.settings = settings;
+    // Everything below reads ctx.settings, never the event payload (see ensureContext).
+    const dial = ctx.settings.dial;
 
     // Push + Turn: a pressed rotation dispatches the configured bidirectional
     // pair (cw on a positive tick sign, ccw on a negative one) and sets the guard
@@ -995,7 +998,7 @@ export class FuelDialSurface {
       // before the zero-tick resolve below, so a zero-tick pressed rotate —
       // which already makes the release a no-op — also takes the preview down.
       ctx.holdPreview.rotated();
-      const gesture = resolvePairedAction(PUSH_TURN_PAIRS[settings.dial.pushTurnAction], ticks);
+      const gesture = resolvePairedAction(PUSH_TURN_PAIRS[dial.pushTurnAction], ticks);
 
       if (gesture) {
         await this.doPress(gesture, ctx);
@@ -1025,18 +1028,18 @@ export class FuelDialSurface {
     // span the full tank range [0, capacity]; fill-to snaps to a whole display
     // value on every rotate. ticks is a SIGNED DELTA (may be >1).
     const displayUnits = this.effectiveDisplayUnits(ctx);
-    const stepLtr = fuelFromDisplayUnits(settings.dial.stepSize, displayUnits);
+    const stepLtr = fuelFromDisplayUnits(dial.stepSize, displayUnits);
     const upperBound = this.effectiveMaxLtr();
     let nextValue = ctx.dialValueLtr + ticks * stepLtr;
 
-    if (settings.dial.mode === "fill-to") {
+    if (dial.mode === "fill-to") {
       nextValue = roundToWholeDisplayLtr(nextValue, displayUnits);
     }
 
     ctx.dialValueLtr = clampTargetLtr(nextValue, upperBound);
     ctx.lastUserActivity = Date.now();
     this.host.logger.debug(
-      `Dial=${ctx.dialValueLtr.toFixed(2)}L (${settings.dial.mode}), ticks=${ticks}, step=${stepLtr.toFixed(2)}L`,
+      `Dial=${ctx.dialValueLtr.toFixed(2)}L (${dial.mode}), ticks=${ticks}, step=${stepLtr.toFixed(2)}L`,
     );
 
     // Rotating issues pit.fuel (auto-arm). The touch-strip feedback (and the
@@ -1048,7 +1051,6 @@ export class FuelDialSurface {
 
   down(action: IDeckActionContext, settings: FuelServiceSettings): void {
     const ctx = this.ensureContext(action, settings);
-    ctx.settings = settings;
 
     // Record the press start and clear the push+turn guard. Fire NOTHING and
     // start NO dispatch timer — press vs long-press is classified once at dialUp.
@@ -1060,7 +1062,7 @@ export class FuelDialSurface {
     ctx.holdPreview.down();
   }
 
-  async up(actionId: string): Promise<void> {
+  async up(actionId: string, rawSettings?: unknown): Promise<void> {
     const ctx = this.contextsState.get(actionId);
 
     if (!ctx) return;
@@ -1097,21 +1099,27 @@ export class FuelDialSurface {
     if (gesture === "none") return;
 
     this.host.logger.info(kind === "long" ? "Fuel dial long-pressed" : "Fuel dial pressed");
-    await this.doPress(gesture, ctx);
+    await this.doPress(gesture, ctx, rawSettings);
   }
 
-  async touchTap(action: IDeckActionContext, settings: FuelServiceSettings, hold: boolean): Promise<void> {
+  async touchTap(
+    action: IDeckActionContext,
+    settings: FuelServiceSettings,
+    hold: boolean,
+    rawSettings?: unknown,
+  ): Promise<void> {
     if (!__FEATURE_DIAL_FEEDBACK__) return;
 
+    // Read the gesture from ctx.settings, not the event payload — the same
+    // stale-settings model `up()` follows (see ensureContext).
+    const ctx = this.ensureContext(action, settings);
     // hold === true → Long Touch slot; hold === false → Tap Display slot.
-    const gesture = hold ? settings.dial.longTouchAction : settings.dial.tapAction;
+    const gesture = hold ? ctx.settings.dial.longTouchAction : ctx.settings.dial.tapAction;
 
     if (gesture === "none") return;
 
-    const ctx = this.ensureContext(action, settings);
-    ctx.settings = settings;
     this.host.logger.info(hold ? "Fuel dial long touch" : "Fuel dial tap");
-    await this.doPress(gesture, ctx);
+    await this.doPress(gesture, ctx, rawSettings);
   }
 
   /**
@@ -1119,7 +1127,7 @@ export class FuelDialSurface {
    * re-renders. Toggle reads the real checkbox each time so it correctly
    * alternates between requesting fuel and clearing it.
    */
-  private async doPress(gesture: GestureAction, ctx: FuelDialContext): Promise<void> {
+  private async doPress(gesture: GestureAction, ctx: FuelDialContext, rawSettings?: unknown): Promise<void> {
     // Toggle autofuel mode: flip iRacing's autofuel via its key binding. The dial
     // re-derives manual vs autofuel from the resulting dpFuelAutoFillActive
     // telemetry, so there is no local mode flag to keep in sync.
@@ -1137,11 +1145,17 @@ export class FuelDialSurface {
     if (gesture === "switch-mode") {
       const next = ctx.settings.dial.mode === "fill-to" ? "add-amount" : "fill-to";
       this.host.logger.info(`Fuel dial switched mode to ${next}`);
+
+      // The host never echoes a plugin-side setSettings back as
+      // didReceiveSettings, so ctx.settings is what the next gesture flips
+      // from — and it flips BEFORE the write is awaited, so a second press
+      // landing while the write is in flight flips back rather than repeating
+      // this one (#957).
       ctx.settings = { ...ctx.settings, dial: { ...ctx.settings.dial, mode: next } };
+      await persistDialPatch(ctx.action, rawSettings, { mode: next }, this.host.logger, "mode switch");
       this.seedFromTelemetry(ctx, true);
       await this.applyTriggerDescription(ctx);
       await this.renderFeedback(ctx);
-      await ctx.action.setSettings({ ...ctx.settings });
 
       return;
     }
@@ -1295,6 +1309,14 @@ export class FuelDialSurface {
     void this.renderFeedback(ctx);
   }
 
+  /**
+   * Look up or create the per-context state. An EXISTING context keeps its
+   * `settings` — settings changes only flow in through `willAppear` /
+   * `didReceiveSettings` (which assign `ctx.settings` explicitly). Event
+   * payloads must not refresh it: hosts with per-context settings caches can
+   * deliver stale settings in dial events, which would silently undo the
+   * `switch-mode` gesture's plugin-side setSettings (#957, the #953 model).
+   */
   private ensureContext(action: IDeckActionContext, settings: FuelServiceSettings): FuelDialContext {
     let ctx = this.contextsState.get(action.id);
 
@@ -1331,7 +1353,6 @@ export class FuelDialSurface {
       this.contextsState.set(action.id, ctx);
     } else {
       ctx.action = action;
-      ctx.settings = settings;
     }
 
     return ctx;
