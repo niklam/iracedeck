@@ -5,9 +5,9 @@
   "type": "module",
   "packageManager": "pnpm@10.34.5",
   "scripts": {
-    "build": "rollup -c && npm run postbuild",
+    "build": "rollup -c && pnpm run postbuild",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "postbuild": "cd com.iracedeck.sd.core.sdPlugin/bin && npm install",
+    "postbuild": "node ../../scripts/install-runtime-deps.mjs com.iracedeck.sd.core.sdPlugin/bin",
     "watch": "rollup -c -w",
     "clean": "rimraf com.iracedeck.sd.core.sdPlugin/bin/plugin.js com.iracedeck.sd.core.sdPlugin/bin/plugin.js.map",
     "pack:plugin": "node ../../scripts/assert-release-build.mjs com.iracedeck.sd.core.sdPlugin/bin/config.json && streamdeck pack com.iracedeck.sd.core.sdPlugin --force --ignore-validation -o ../../local && mv ../../local/com.iracedeck.sd.core.streamDeckPlugin ../../local/com.iracedeck.sd.core.sdPlugin && rimraf com.iracedeck.sd.core.sdPlugin/assets/audio",

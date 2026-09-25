@@ -5,9 +5,9 @@
   "type": "module",
   "packageManager": "pnpm@10.34.5",
   "scripts": {
-    "build": "rollup -c && npm run postbuild",
+    "build": "rollup -c && pnpm run postbuild",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "postbuild": "cd com.ulanzi.iracedeck.ulanziPlugin/bin && npm install",
+    "postbuild": "node ../../scripts/install-runtime-deps.mjs com.ulanzi.iracedeck.ulanziPlugin/bin",
     "watch": "rollup -c -w",
     "clean": "rimraf com.ulanzi.iracedeck.ulanziPlugin/bin/plugin.js com.ulanzi.iracedeck.ulanziPlugin/bin/plugin.js.map",
     "test": "vitest run",
