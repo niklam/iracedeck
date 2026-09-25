@@ -62,20 +62,26 @@ describe("resolvePrimeKey", () => {
     ).toBe("blackBoxStandings");
   });
 
-  it("should prefer any keyboard box over SimHub boxes earlier in the scan order", () => {
+  it("should prefer any keyboard box over SimHub boxes earlier in the scan order for a keyboard target", () => {
     expect(
       prime("fuel", {
         blackBoxLapTiming: "simhub",
         blackBoxStandings: "simhub",
         blackBoxWeather: "keyboard",
-        blackBoxFuel: "simhub",
+        blackBoxFuel: "keyboard",
       }),
     ).toBe("blackBoxWeather");
   });
 
-  it("should still prefer a keyboard prime when the target is a SimHub role", () => {
-    expect(prime("fuel", { blackBoxLapTiming: "simhub", blackBoxRelative: "keyboard", blackBoxFuel: "simhub" })).toBe(
+  it("should prefer a SimHub prime when the target is a SimHub role", () => {
+    expect(prime("fuel", { blackBoxLapTiming: "keyboard", blackBoxRelative: "simhub", blackBoxFuel: "simhub" })).toBe(
       "blackBoxRelative",
+    );
+  });
+
+  it("should fall back to a keyboard prime for a SimHub target when no other box is a SimHub role", () => {
+    expect(prime("fuel", { blackBoxLapTiming: "keyboard", blackBoxRelative: "keyboard", blackBoxFuel: "simhub" })).toBe(
+      "blackBoxLapTiming",
     );
   });
 

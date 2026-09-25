@@ -105,14 +105,18 @@ export interface ShowBlackBoxDeps {
 /**
  * Pick the box to press before the target.
  *
- * Scans in two tiers (#962): first the keyboard-bound boxes, then any configured
- * box (so a SimHub role). Within each tier Lap Timing is preferred, then
- * {@link BLACK_BOX_GLOBAL_KEYS} declaration order, never the target itself.
+ * Scans in two tiers (#962), matching the target's own binding kind first:
  *
- * The keyboard tier comes first even when the target is a SimHub role: the path
- * is serialized then anyway, but a keyboard prime is a local SendInput with no
- * network in it, so the gap before the target press is shorter and has no HTTP
- * failure mode.
+ * - Keyboard target: keyboard-bound boxes first, so both keys can leave as one
+ *   atomic batch; SimHub-bound boxes only when no other box has a key.
+ * - SimHub target: SimHub-bound boxes first, then keyboard-bound ones. The path
+ *   is serialized either way and SimHub must already be reachable for the
+ *   target, so a SimHub prime adds no failure mode — and it is the faster one:
+ *   a keyboard tap focuses iRacing and holds the key ~100 ms natively, while a
+ *   local SimHub start/stop is a few milliseconds (measured in the sim).
+ *
+ * Within each tier Lap Timing is preferred, then {@link BLACK_BOX_GLOBAL_KEYS}
+ * declaration order, never the target itself.
  *
  * Returns null when no other box is bound. Pressing the target alone would then
  * toggle the box OFF whenever it happened to already be shown — worse than doing
@@ -127,7 +131,17 @@ export function resolvePrimeKey(
   const preferredKey = BLACK_BOX_GLOBAL_KEYS[PRIME_BLACK_BOX];
   const candidates = [preferredKey, ...Object.values(BLACK_BOX_GLOBAL_KEYS)].filter((key) => key !== targetKey);
 
-  return candidates.find((key) => isKeyboardBound(key)) ?? candidates.find((key) => isConfigured(key)) ?? null;
+  const keyboardBound = (key: string) => isKeyboardBound(key);
+  const simHubBound = (key: string) => isConfigured(key) && !isKeyboardBound(key);
+  const tiers = isKeyboardBound(targetKey) ? [keyboardBound, simHubBound] : [simHubBound, keyboardBound];
+
+  for (const inTier of tiers) {
+    const key = candidates.find(inTier);
+
+    if (key) return key;
+  }
+
+  return null;
 }
 
 /**
