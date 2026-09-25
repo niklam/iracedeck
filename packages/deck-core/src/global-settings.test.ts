@@ -2540,7 +2540,7 @@ describe("a settings file rejected as invalid JSON raises a banner (issue #1036)
     const cached = warnings(getGlobalSettings() as Record<string, unknown>);
 
     expect(cached.map((w) => w.id)).toEqual([SETTINGS_FILE_REJECTED_WARNING_ID]);
-    expect(cached[0].message).toContain("line 3 column 1");
+    expect(cached[0].message).toContain("line 3, column 1");
     expect(cached[0].message).toContain("global-settings.corrupt-");
     expect(warnings(hostMirrorPayload()).map((w) => w.id)).toEqual([SETTINGS_FILE_REJECTED_WARNING_ID]);
 

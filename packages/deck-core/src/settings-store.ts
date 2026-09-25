@@ -17,6 +17,8 @@ import { copyFile, mkdir, readdir, readFile, rename, unlink, writeFile } from "n
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 
+import { type JsonErrorLocation, locateJsonError } from "./json-error-location.js";
+
 const FOLDER_NAMES: Record<string, string> = {
   "stream-deck": "Stream Deck",
   mirabox: "Mirabox",
@@ -111,10 +113,32 @@ export interface SettingsFileRejection {
    */
   reason: string;
   /**
-   * Full path of the preserved copy — the new aside, or an identical one an
-   * earlier start already made. Undefined when nothing could be preserved.
+   * Where the text first stops being JSON, from `locateJsonError` — never from
+   * `reason`, whose wording differs between the Node versions the three hosts
+   * run. Absent when the text is valid JSON that is not a settings object.
    */
-  preservedAt: string | undefined;
+  location?: JsonErrorLocation;
+  /**
+   * Full path of the preserved copy — the new aside, or an identical one an
+   * earlier start already made. Always set: a file that cannot be preserved is
+   * not rejected but fails the read, so it is never overwritten.
+   */
+  preservedAt: string;
+}
+
+/**
+ * The settings file's bytes as text, byte-order mark removed. Hand-editing is
+ * an expected input class, and the encoding is not the user's mistake: Windows
+ * PowerShell 5.1's `Set-Content` writes a UTF-8 BOM, its `Out-File` and `>`
+ * write UTF-16LE with a BOM, and so do some editors. Both decode to the same
+ * document; only a BOM-less file is taken as UTF-8.
+ */
+export function decodeSettingsText(bytes: Buffer): string {
+  if (bytes[0] === 0xff && bytes[1] === 0xfe) return bytes.subarray(2).toString("utf16le");
+
+  if (bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) return bytes.subarray(3).toString("utf-8");
+
+  return bytes.toString("utf-8");
 }
 
 const DEFAULT_DEBOUNCE_MS = 250;
@@ -134,8 +158,10 @@ export const WRITE_RETRY_DELAYS_MS: readonly number[] = [1_000, 2_000, 5_000, 10
  * recording don't hammer the disk, and RETRIED on failure (a transient
  * Windows file lock must not lose the newest change — see
  * {@link WRITE_RETRY_DELAYS_MS}). A malformed file is moved aside as
- * `global-settings.corrupt-<iso>.json` and reported as "no file" — a user's
- * file is never silently discarded; a UTF-8 BOM is tolerated.
+ * `global-settings.corrupt-<iso>.json`, reported through `onRejected` and
+ * returned as "no file"; one that cannot be preserved fails the read instead,
+ * so a user's file is never silently discarded. A UTF-8 or UTF-16LE BOM is
+ * tolerated.
  */
 /**
  * The name of an existing `<file>.corrupt-*.json` sibling whose bytes equal the
@@ -151,7 +177,11 @@ async function findIdenticalAside(path: string): Promise<string | undefined> {
   for (const name of await readdir(dir)) {
     if (!name.startsWith(prefix) || !name.endsWith(".json")) continue;
 
-    if (original.equals(await readFile(join(dir, name)))) return name;
+    // An older aside that cannot be read (locked, or a directory by that
+    // name) is simply not a match; it must not stop this file being copied.
+    const candidate = await readFile(join(dir, name)).catch(() => undefined);
+
+    if (candidate !== undefined && original.equals(candidate)) return name;
   }
 
   return undefined;
@@ -269,17 +299,12 @@ export function createFileSettingsStore(opts: FileSettingsStoreOptions): Setting
       let text: string;
 
       try {
-        text = await readFile(path, "utf-8");
+        text = decodeSettingsText(await readFile(path));
       } catch (error: unknown) {
         if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
 
         throw error;
       }
-
-      // Node keeps a UTF-8 byte-order mark in the decoded string and JSON.parse
-      // rejects it — and PowerShell 5.1's Set-Content/Out-File and several
-      // editors write one. A BOM must not make a user's backup "corrupt".
-      if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
 
       try {
         const parsed: unknown = JSON.parse(text);
@@ -291,9 +316,9 @@ export function createFileSettingsStore(opts: FileSettingsStoreOptions): Setting
         return parsed as Record<string, unknown>;
       } catch (error: unknown) {
         const aside = path.replace(/\.json$/, "") + `.corrupt-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
-        let preservedAt: string | undefined = aside;
+        let preservedAt = aside;
 
-        logger.error("Settings file is not valid JSON; moving it aside and starting fresh");
+        logger.error("Settings file could not be parsed; moving it aside and migrating from the deck host");
         logger.debug(`Corrupt settings file ${path} → ${aside}: ${String(error)}`);
 
         try {
@@ -327,14 +352,27 @@ export function createFileSettingsStore(opts: FileSettingsStoreOptions): Setting
               logger.debug(`Corrupt original could not be removed: ${String(unlinkError)}`);
             }
           } catch (copyError: unknown) {
-            preservedAt = undefined;
-            logger.error("Settings file could not be preserved — moving on with fresh defaults");
+            // Fail closed (#1036): reporting "no file" here would send the
+            // store through the migration to a save that replaces the only
+            // copy of the user's file. A failed READ is what it is instead —
+            // retried on the load back-off (the lock may clear), and on
+            // exhaustion the store never becomes ready and never saves.
+            logger.error("Settings file could not be preserved; treating it as unreadable so it is never overwritten");
             logger.debug(`Copy also failed: ${String(copyError)}`);
+
+            throw copyError;
           }
         }
 
+        const location = locateJsonError(text);
+
         try {
-          opts.onRejected?.({ path, reason: error instanceof Error ? error.message : String(error), preservedAt });
+          opts.onRejected?.({
+            path,
+            reason: error instanceof Error ? error.message : String(error),
+            ...(location === undefined ? {} : { location }),
+            preservedAt,
+          });
         } catch (reportError: unknown) {
           logger.error("Could not report the rejected settings file");
           logger.debug(`Report error: ${String(reportError)}`);
