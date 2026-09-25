@@ -19,7 +19,7 @@ _Unreleased_
 
 **Improvements**
 
-- The Template Variables page now lists what the numbers behind twelve coded telemetry variables mean, such as `{{telemetry.SessionState}}`, `{{telemetry.SessionFlags}}` and `{{telemetry.EngineWarnings}}`, and shows how to test a single flag inside a bitfield. That makes a key title that blanks itself once the session is over a one-line expression: `SessionState` reads `5` or `6` after the checkered flag, so a key can show `--` instead of the last number from the race (thanks @arbishop11 for the request). See [Template Variables](/docs/features/template-variables/#telemetry-value-reference).
+- The Template Variables page now lists what the numbers behind twelve coded telemetry variables mean, such as `{{telemetry.SessionState}}`, `{{telemetry.SessionFlags}}` and `{{telemetry.EngineWarnings}}`, and shows how to test a single flag inside a bitfield. That makes a key title that blanks itself after the checkered flag a one-line expression: `SessionState` reads `5` or `6` once the leader has finished, so a key can show `--` instead of the last number from the race (thanks @arbishop11 for the request). See [Template Variables](/docs/features/template-variables/#telemetry-value-reference).
 
 **Bug Fixes**
 

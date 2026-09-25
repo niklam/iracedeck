@@ -87,7 +87,7 @@ Fuel level with one decimal and a unit suffix (renders e.g. `42.4 L`):
 {{= round(telemetry.FuelLevel, 1) + ' L' }}
 ```
 
-Show `--` once the session is over instead of the last time remaining (see [SessionState](#sessionstate)):
+Show `--` once the checkered flag is out instead of the last time remaining (see [SessionState](#sessionstate)):
 
 ```text
 {{= telemetry.SessionState >= 5 ? '--' : telemetry.SessionTimeRemain }}
@@ -155,7 +155,7 @@ All iRacing telemetry variables (excluding per-car arrays and high-frequency sam
 | `{{telemetry.SessionTime}}` | Seconds since session start (s) |
 | `{{telemetry.SessionTick}}` | Current update number |
 | `{{telemetry.SessionNum}}` | Session number |
-| `{{telemetry.SessionState}}` | Session state; `5` and `6` mean the session is over — see [values](#sessionstate) |
+| `{{telemetry.SessionState}}` | Session state; `5` and `6` mean the checkered flag is out — see [values](#sessionstate) |
 | `{{telemetry.SessionUniqueID}}` | Session ID |
 | `{{telemetry.SessionFlags}}` | Session flags (a bitfield) — see [values](#sessionflags) |
 | `{{telemetry.SessionTimeRemain}}` | Seconds left till session ends (s) |
@@ -631,10 +631,10 @@ There are two kinds:
 | `2` | Warm-up |
 | `3` | Parade laps |
 | `4` | Racing |
-| `5` | Checkered flag |
+| `5` | Checkered flag out (the leader has finished) |
 | `6` | Cool-down |
 
-Values `5` and `6` mean the session is over, which makes `SessionState` the way to blank or replace values that would otherwise keep showing the last number on the results screen:
+Values `5` and `6` mean the checkered flag is out, which makes `SessionState` the way to blank or replace values that would otherwise keep showing the last number on the results screen. In a race the state turns `5` when the **leader** takes the flag, so you may still be finishing your last lap — keep that in mind before blanking a position, gap or lap value this way:
 
 ```text
 {{= telemetry.SessionState >= 5 ? '--' : telemetry.SessionTimeRemain }}
