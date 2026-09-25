@@ -74,39 +74,52 @@ function streamDeckClient(): StreamDeckClient | null {
 }
 
 /**
- * Whether a stored global binding value is a usable KEYBOARD binding.
- * A SimHub role, an empty value, or a corrupt one all return false.
+ * A stored global binding value as an object. The value is usually a JSON
+ * string, but — like deck-core's runtime `parseBinding` — an already-parsed
+ * object is accepted too. Anything else (empty, corrupt, a JSON scalar or
+ * array) returns null.
  */
-export function isKeyboardBinding(raw: unknown): boolean {
-  if (typeof raw !== "string" || raw.length === 0) return false;
+function bindingObject(raw: unknown): Record<string, unknown> | null {
+  let value = raw;
 
-  try {
-    const parsed = JSON.parse(raw) as { type?: string };
+  if (typeof raw === "string") {
+    if (raw.length === 0) return null;
 
-    if (parsed.type === "simhub") return false;
-  } catch {
-    // Not JSON — fall through; parseKeyBinding rejects it below.
+    try {
+      value = JSON.parse(raw) as unknown;
+    } catch {
+      return null;
+    }
   }
 
-  return parseKeyBinding(raw) !== null;
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
 }
 
 /**
- * Whether a stored global binding value is a usable SIMHUB role binding —
- * `{ type: "simhub", role }` with a non-empty role, the same shape the runtime's
- * `SimHubBindingValueSchema` accepts. A keyboard binding, an empty value, or a
+ * Whether a stored global binding value (a JSON string or an already-parsed
+ * object) is a usable KEYBOARD binding. A SimHub role, an empty value, or a
  * corrupt one all return false.
  */
+export function isKeyboardBinding(raw: unknown): boolean {
+  const binding = bindingObject(raw);
+
+  if (!binding || binding.type === "simhub") return false;
+
+  return parseKeyBinding(typeof raw === "string" ? raw : JSON.stringify(binding)) !== null;
+}
+
+/**
+ * Whether a stored global binding value (a JSON string or an already-parsed
+ * object) is a usable SIMHUB role binding — `{ type: "simhub", role }` with a
+ * non-empty role, the same shape the runtime's `SimHubBindingValueSchema`
+ * accepts. A keyboard binding, an empty value, or a corrupt one all return false.
+ */
 export function isSimHubBinding(raw: unknown): boolean {
-  if (typeof raw !== "string" || raw.length === 0) return false;
+  const binding = bindingObject(raw);
 
-  try {
-    const parsed = JSON.parse(raw) as { type?: unknown; role?: unknown } | null;
-
-    return parsed?.type === "simhub" && typeof parsed.role === "string" && parsed.role.length > 0;
-  } catch {
-    return false;
-  }
+  return binding?.type === "simhub" && typeof binding.role === "string" && binding.role.length > 0;
 }
 
 /**

@@ -355,8 +355,20 @@ describe("binding classifiers", () => {
     expect(isSimHubBinding(JSON.stringify({ type: "simhub" }))).toBe(false);
   });
 
-  it("should reject empty, corrupt and non-string values", () => {
-    for (const raw of ["", "not json", "{", undefined, null, 42, { type: "simhub", role: "x" }]) {
+  it("should accept already-parsed object values, like the runtime's parseBinding", () => {
+    const keyboard = JSON.parse(keyboardBinding("f1", "F1")) as unknown;
+    const simhub = JSON.parse(simhubBinding("Fuel Box")) as unknown;
+
+    expect(isKeyboardBinding(keyboard)).toBe(true);
+    expect(isSimHubBinding(keyboard)).toBe(false);
+    expect(isSimHubBinding(simhub)).toBe(true);
+    expect(isKeyboardBinding(simhub)).toBe(false);
+    expect(isSimHubBinding({ type: "simhub", role: "" })).toBe(false);
+    expect(isKeyboardBinding({ key: "f1" })).toBe(false);
+  });
+
+  it("should reject empty, corrupt and non-binding values", () => {
+    for (const raw of ["", "not json", "{", "42", "null", undefined, null, 42, true, [], {}]) {
       expect(isSimHubBinding(raw)).toBe(false);
       expect(isKeyboardBinding(raw)).toBe(false);
     }
