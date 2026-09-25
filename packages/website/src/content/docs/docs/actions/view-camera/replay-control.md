@@ -405,6 +405,8 @@ The replay lands just **before** the car takes the line — so you see the cross
 
 How it gets there depends on whether iRaceDeck saw the lap happen. While the plugin runs during a live session it records the frame at which every car starts every lap into the session's replay record, so a press in the in-session replay — or in the saved replay opened days later — is a single jump straight to the recorded frame. Without a record (the plugin wasn't running, someone else's replay, an offline session's replay opened later) the button searches the replay instead: it pauses, maps the sessions in the recording, bisects within the current one (≈ log₂ N jumps) and steps lap by lap to the line, then plays. Each search is followed by a settle gap before the next command, tunable in the [Settings window](/docs/getting-started/settings/#delays) on the **Delays** tab as **Fastest Lap Search Delay** (default 400 ms, range 50–1000 ms in 50 ms steps); slower computers and longer tracks may need a longer gap. The search remembers the frame it found, so the next press for that lap is a single jump, and pressing any other Replay Control key while it runs stops it and leaves the replay where your command put it.
 
+The lap record lives in the same per-app file as [Replay Markers](/docs/actions/view-camera/replay-markers/#where-markers-are-kept), so a record made while one deck app was running is used only by that app; another deck app has no record of that session and falls back to searching the replay.
+
 #### Details
 
 - **Method:** iRacing API

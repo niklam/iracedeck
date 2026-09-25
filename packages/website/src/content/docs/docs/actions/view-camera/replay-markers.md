@@ -21,6 +21,8 @@ iRaceDeck saves each session's markers to its own file, so they are still there 
 
 `<ecosystem>` is `Stream Deck`, `Mirabox` or `Ulanzi`, depending on which app runs the plugin, and `<SubSessionID>` is iRacing's id for the session. A saved replay file reports the same id as the live session it was recorded from, which is how its markers are found again. Each file names the track, series and session start, so you can tell the files apart when browsing the folder.
 
+Each deck app keeps its own file, so markers set from one app are not seen by another: a marker added from the Stream Deck app does not show up in Ulanzi Studio, and the other way round. That is deliberate — with two deck apps running at the same time, a shared file would have each overwrite the other's markers.
+
 A marker set live lands about one second earlier than its moment when you watch the saved replay file. That is deliberate: every jump arrives a little before the moment, never after it.
 
 :::note
