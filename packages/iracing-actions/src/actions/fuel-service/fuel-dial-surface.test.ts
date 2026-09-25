@@ -19,6 +19,8 @@ import {
   readPitSvFuel,
   renderFuelBarSvg,
   renderStripCanvasSvg,
+  resolveAutofuelAddLtr,
+  resolveBandState,
   resolveDialDisplayMode,
   resolveFuelFillState,
   resolveHoldPreview,
@@ -758,9 +760,9 @@ describe("fuel-dial-surface pure helpers", () => {
       expect(buildRefuelBandText("manual", "na")).toBe("REFUEL: N/A");
     });
 
-    it("reads AUTOFUEL: ON / AUTOFUEL: OFF in autofuel mode", () => {
+    it("reads AUTOFUEL: ON in autofuel mode whatever the fuel-fill checkbox says (#1226)", () => {
       expect(buildRefuelBandText("autofuel", "on")).toBe("AUTOFUEL: ON");
-      expect(buildRefuelBandText("autofuel", "off")).toBe("AUTOFUEL: OFF");
+      expect(buildRefuelBandText("autofuel", "off")).toBe("AUTOFUEL: ON");
     });
 
     it("reads AUTOFUEL: N/A when autofuel is engaged but unavailable", () => {
@@ -803,6 +805,42 @@ describe("fuel-dial-surface pure helpers", () => {
     it("is n/a when autofuel is engaged but unavailable, regardless of the checkbox", () => {
       expect(resolveFuelFillState("autofuel-off", { PitSvFlags: FUEL_FILL } as never)).toBe("na");
       expect(resolveFuelFillState("autofuel-off", { PitSvFlags: 0 } as never)).toBe("na");
+    });
+  });
+
+  describe("resolveBandState", () => {
+    it("follows the fueling state in manual mode", () => {
+      expect(resolveBandState("manual", "on")).toBe("on");
+      expect(resolveBandState("manual", "off")).toBe("off");
+      expect(resolveBandState("manual", "na")).toBe("na");
+    });
+
+    it("is on in autofuel mode whatever the fuel-fill checkbox says (#1226)", () => {
+      expect(resolveBandState("autofuel", "on")).toBe("on");
+      expect(resolveBandState("autofuel", "off")).toBe("on");
+    });
+
+    it("is on in autofuel mode even when the fueling state is unknown — the switch itself is read from telemetry", () => {
+      expect(resolveBandState("autofuel", "na")).toBe("on");
+    });
+
+    it("is n/a when autofuel is engaged but unavailable", () => {
+      expect(resolveBandState("autofuel-off", "na")).toBe("na");
+    });
+  });
+
+  describe("resolveAutofuelAddLtr", () => {
+    it("is autofuel's requested add while fueling is on", () => {
+      expect(resolveAutofuelAddLtr({ PitSvFlags: FUEL_FILL, PitSvFuel: 30 } as never)).toBe(30);
+    });
+
+    it("is 0 while fueling is unchecked, whatever autofuel requested (#1226)", () => {
+      expect(resolveAutofuelAddLtr({ PitSvFlags: 0, PitSvFuel: 30 } as never)).toBe(0);
+    });
+
+    it("is 0 without telemetry or a requested add", () => {
+      expect(resolveAutofuelAddLtr(null)).toBe(0);
+      expect(resolveAutofuelAddLtr({ PitSvFlags: FUEL_FILL } as never)).toBe(0);
     });
   });
 
@@ -857,6 +895,18 @@ describe("fuel-dial-surface pure helpers", () => {
 
       expect(svg).toContain("AUTOFUEL: ON");
       expect(svg).toContain(">AUTO → 30 L<");
+    });
+
+    it("keeps a green AUTOFUEL: ON band when autofuel plans no fuel (#1226)", () => {
+      // Autofuel armed with a 0 L plan clears the fuel-fill checkbox; the band
+      // must still say autofuel is on — the readout carries the amount.
+      const svg = renderStripCanvasSvg("autofuel", "add-amount", "off", 45, 0, 45, 45, 90, 1);
+
+      expect(svg).toContain("AUTOFUEL: ON");
+      expect(svg).not.toContain("AUTOFUEL: OFF");
+      expect(svg).toMatch(/<path[^>]*fill="#2ecc71"/);
+      expect(svg).not.toMatch(/<path[^>]*fill="#e74c3c"/);
+      expect(svg).toContain(">AUTO → 0 L<");
     });
 
     it("shows a gray AUTOFUEL: N/A band and dash readout when autofuel is unavailable", () => {
@@ -3082,6 +3132,31 @@ describe("FuelService dial surface", () => {
 
       expect(canvas).toContain("AUTOFUEL: ON");
       expect(canvas).toContain(">AUTO → 30 L<");
+    });
+
+    it("with fueling unchecked under autofuel, keeps AUTOFUEL: ON but reads AUTO → 0 (#1226)", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      const ctx = dialContext("af6");
+      mockGetSessionInfo.mockReturnValue(SESSION_90L);
+      mockGetCurrentTelemetry.mockReturnValue({
+        DisplayUnits: 1,
+        PitSvFuel: 30,
+        FuelLevel: 40,
+        PitSvFlags: 0,
+        dpFuelAutoFillActive: 1,
+        dpFuelAutoFillEnabled: 1,
+      });
+      const settings = { unitMode: "liters", stepSize: 1, dialMode: "add-amount" };
+      await appear(ctx, settings);
+
+      ctx.setFeedback.mockClear();
+      vi.advanceTimersByTime(5000);
+
+      const canvas = stripCanvas(ctx.setFeedback.mock.calls.at(-1)?.[0]);
+
+      expect(canvas).toContain("AUTOFUEL: ON");
+      expect(canvas).not.toContain("AUTOFUEL: OFF");
+      expect(canvas).toContain(">AUTO → 0 L<");
     });
   });
 

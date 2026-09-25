@@ -328,9 +328,10 @@ export function buildValueText(
 export type DialDisplayMode = "manual" | "autofuel" | "autofuel-off";
 
 /**
- * Tri-state fueling indication shown on the key icon and touch strip (#728):
- * green ON / red OFF / gray N-A — the shared {@link ToggleState} language of
- * the toggle buttons' status bars and state borders.
+ * Tri-state fueling indication (#728): green ON / red OFF / gray N-A — the
+ * shared {@link ToggleState} language of the toggle buttons' status bars and
+ * state borders. It colours the bar's add segment in every mode, but drives the
+ * status band only in manual mode — see {@link resolveBandState} (#1226).
  */
 export type FuelFillState = ToggleState;
 
@@ -369,18 +370,40 @@ export function resolveDialDisplayMode(telemetry: TelemetryData | null): DialDis
 /**
  * @internal Exported for testing
  *
- * The status-band text on the key icon, mirrored as the touch-strip title
- * (#728): the fuel subsystem a bare turn controls (`REFUEL` in manual mode,
- * `AUTOFUEL` when iRacing's autofuel is engaged) plus the live tri-state —
- * `ON` / `OFF` / `N/A`. Text, never colour alone, so VR drivers catching a
- * peripheral look can read the state.
+ * The state the status band shows (text and colour). In manual mode that is the
+ * fueling state — whether the next stop takes fuel. In autofuel mode the band
+ * states the autofuel switch itself, which is on by definition of the mode: the
+ * fuel-fill checkbox there only says whether autofuel's plan adds fuel, and a
+ * 0 L plan clears it, so reading it would show `AUTOFUEL: OFF` while autofuel
+ * is on (#1226). What the stop adds stays visible in the `AUTO → <add>` readout
+ * and the bar's add segment, which follow the fueling state through
+ * {@link resolveAutofuelAddLtr}. The switch is read from telemetry, so the band
+ * is ON here even when the fueling state is unknown.
+ */
+export function resolveBandState(mode: DialDisplayMode, fillState: FuelFillState): FuelFillState {
+  if (mode === "autofuel") return "on";
+
+  return fillState;
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * The touch-strip status-band text (#728): the fuel subsystem a bare turn
+ * controls (`REFUEL` in manual mode, `AUTOFUEL` when iRacing's autofuel is
+ * engaged) plus the band's tri-state from {@link resolveBandState} — `ON` /
+ * `OFF` / `N/A`. It takes the raw fueling state and resolves the band state
+ * itself, so no caller can print the checkbox as the autofuel switch (#1226).
+ * Text, never colour alone, so VR drivers catching a peripheral look can read
+ * the state.
  */
 export function buildRefuelBandText(mode: DialDisplayMode, fillState: FuelFillState): string {
   const subject = mode === "manual" ? "REFUEL" : "AUTOFUEL";
+  const bandState = resolveBandState(mode, fillState);
 
-  if (mode === "autofuel-off" || fillState === "na") return `${subject}: N/A`;
+  if (mode === "autofuel-off" || bandState === "na") return `${subject}: N/A`;
 
-  return `${subject}: ${fillState === "on" ? "ON" : "OFF"}`;
+  return `${subject}: ${bandState === "on" ? "ON" : "OFF"}`;
 }
 
 /**
@@ -434,6 +457,22 @@ export function readPitSvFuel(telemetry: TelemetryData | null): number | undefin
   const value = telemetry.PitSvFuel;
 
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * The fuel the next stop will add under autofuel, for the `AUTO → <add>`
+ * readout and the bar's add segment: autofuel's requested add (`PitSvFuel`)
+ * while the fuel-fill checkbox is on, and 0 while it is unchecked — the stop
+ * then adds nothing whatever autofuel requested. The status band says
+ * `AUTOFUEL: ON` in both cases, so this readout is the only place the dial
+ * shows that fueling is off (#1226).
+ */
+export function resolveAutofuelAddLtr(telemetry: TelemetryData | null): number {
+  if (!isFuelFillOn(telemetry)) return 0;
+
+  return Math.max(0, readPitSvFuel(telemetry) ?? 0);
 }
 
 /**
@@ -761,7 +800,7 @@ export function renderFuelBarSvg(
  * (`layouts/fuel-service.json`) is a single full-canvas pixmap, drawn ourselves
  * because the built-in layout text items cannot have a colored background
  * (#728): the status band across the top (green `REFUEL: ON` / red
- * `REFUEL: OFF` / `AUTOFUEL` variants / gray N-A), the per-mode readout, and
+ * `REFUEL: OFF` / green `AUTOFUEL: ON` / gray N-A), the per-mode readout, and
  * the two-segment fuel bar (with the red target line in manual fill-to mode).
  *
  * While a hold preview is `pending` (#1120) the readout slot shows the pending
@@ -782,6 +821,7 @@ export function renderStripCanvasSvg(
   bindingMissing = false,
   pending: DialPendingPreview | null = null,
 ): string {
+  const bandState = resolveBandState(mode, fillState);
   const bandText = buildRefuelBandText(mode, fillState);
   const readout = buildDialReadout(mode, dialMode, addLtr, totalLtr, targetLtr, displayUnits);
   const valueText = pending ? pending.text : readout;
@@ -797,7 +837,7 @@ export function renderStripCanvasSvg(
   const content = [
     // Status band with rounded top corners (the strip slot itself is square,
     // the small radius just softens the band edge).
-    `<path d="M 0 ${bandHeight} L 0 8 A 8 8 0 0 1 8 0 L 192 0 A 8 8 0 0 1 200 8 L 200 ${bandHeight} Z" fill="${borderColorForState(fillState)}"/>`,
+    `<path d="M 0 ${bandHeight} L 0 8 A 8 8 0 0 1 8 0 L 192 0 A 8 8 0 0 1 200 8 L 200 ${bandHeight} Z" fill="${borderColorForState(bandState)}"/>`,
     `<text x="100" y="21" text-anchor="middle" fill="${WHITE}" font-family="Arial, sans-serif" font-size="17" font-weight="bold">${bandText}</text>`,
     `<text x="100" y="${READOUT_BASELINE_Y}" text-anchor="middle" fill="${valueColor}" font-family="Arial, sans-serif" font-size="24" font-weight="bold">${valueText}</text>`,
     pending ? renderPendingBar({ centerX: 100, y: PENDING_BAR_TOP_Y, width: 200, color: pending.color }) : "",
@@ -1347,7 +1387,7 @@ export class FuelDialSurface {
   /**
    * The liters value used for the bar's add segment and the readout, by mode:
    *
-   * - autofuel: the live requested add (`PitSvFuel`).
+   * - autofuel: what the next stop will add — {@link resolveAutofuelAddLtr}.
    * - manual add-amount: ALSO the live requested add (`PitSvFuel`), clamped to the
    *   dial's domain `[0, capacity]` — the display follows what iRacing actually
    *   banked, never the optimistically-dialed guess, so the readout matches the
@@ -1366,7 +1406,7 @@ export class FuelDialSurface {
   private displayAddLtr(ctx: FuelDialContext, mode: DialDisplayMode): number {
     if (mode === "autofuel-off") return 0;
 
-    if (mode === "autofuel") return Math.max(0, readPitSvFuel(this.host.getTelemetry()) ?? 0);
+    if (mode === "autofuel") return resolveAutofuelAddLtr(this.host.getTelemetry());
 
     if (ctx.settings.dial.mode === "add-amount") {
       return clampTargetLtr(readPitSvFuel(this.host.getTelemetry()) ?? 0, this.effectiveMaxLtr());
