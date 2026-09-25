@@ -4,7 +4,13 @@
  */
 import { describe, expect, it, vi } from "vitest";
 
-import { installRuntimeDeps, npmConfigKey, runtimeInstallEnv, withoutNpmConfig } from "./runtime-install-env.mjs";
+import {
+  installRuntimeDeps,
+  isKnownNpmKey,
+  npmConfigKey,
+  runtimeInstallEnv,
+  withoutNpmConfig,
+} from "./runtime-install-env.mjs";
 
 /** A slice of what `npm config ls -l --json` lists. */
 const DEFINED = new Set(["fund", "globalconfig", "registry", "save-exact"]);
@@ -20,9 +26,34 @@ describe("npmConfigKey", () => {
     expect(npmConfigKey("NPM_CONFIG_AUTO_INSTALL_PEERS")).toBe("auto-install-peers");
   });
 
+  it("leaves a registry-scoped key exactly as written, as npm does", () => {
+    expect(npmConfigKey("npm_config_//registry.example/:_authToken")).toBe("//registry.example/:_authToken");
+  });
+
   it("is null for any other variable", () => {
     expect(npmConfigKey("PATH")).toBeNull();
     expect(npmConfigKey("npm_package_name")).toBeNull();
+  });
+});
+
+describe("isKnownNpmKey", () => {
+  it("knows the keys npm lists, and the ones it accepts without listing", () => {
+    expect(isKnownNpmKey("registry", DEFINED)).toBe(true);
+    expect(isKnownNpmKey("_auth", DEFINED)).toBe(true);
+    expect(isKnownNpmKey("npm-version", DEFINED)).toBe(true);
+    expect(isKnownNpmKey("auto-install-peers", DEFINED)).toBe(false);
+  });
+
+  it("judges a scoped key by the part after its last colon", () => {
+    expect(isKnownNpmKey("@example:registry", DEFINED)).toBe(true);
+    expect(isKnownNpmKey("//registry.example/:_authToken", DEFINED)).toBe(true);
+    expect(isKnownNpmKey("@example:auto-install-peers", DEFINED)).toBe(false);
+  });
+
+  it("compares scoped credential keys case-sensitively, as npm does", () => {
+    // An unscoped key is lowercased first, so `_authToken` arrives as `_authtoken` and npm warns.
+    expect(isKnownNpmKey("_authtoken", DEFINED)).toBe(false);
+    expect(isKnownNpmKey("//registry.example/:_authtoken", DEFINED)).toBe(false);
   });
 });
 
@@ -35,17 +66,19 @@ describe("runtimeInstallEnv", () => {
       npm_config_verify_deps_before_run: "false",
       npm_config_auto_install_peers: "true",
       NPM_CONFIG_SHAMEFULLY_HOIST: "true",
+      "npm_config_@example:auto_install_peers": "true",
     };
 
     expect(runtimeInstallEnv(env, DEFINED)).toEqual({});
   });
 
-  it("keeps the keys npm defines, credentials, scoped keys and every other variable", () => {
+  it("keeps the keys npm defines, supported scoped keys and every other variable", () => {
     const env = {
       npm_config_registry: "https://registry.npmjs.org/",
       npm_config_fund: "",
       npm_config_globalconfig: "C:\\pnpm\\config\\rc",
-      npm_config__authToken: "t",
+      npm_config__auth: "a",
+      "npm_config_@example:registry": "https://registry.example/",
       "npm_config_//registry.example/:_authToken": "t",
       npm_package_name: "@iracedeck/plugin",
       PATH: "/usr/bin",
@@ -66,16 +99,24 @@ describe("withoutNpmConfig", () => {
 describe("installRuntimeDeps", () => {
   const listing = JSON.stringify(Object.fromEntries([...DEFINED].map((key) => [key, null])));
 
-  function io({ exists = true, list = { status: 0, stdout: listing }, install = { status: 0 } } = {}) {
+  const LIST_COMMAND = 'npm config ls -l --json --global --userconfig="/tmp/no-user" --globalconfig="/tmp/no-global"';
+
+  function io({ existing = ["bin"], list = { status: 0, stdout: listing }, install = { status: 0 } } = {}) {
     const run = vi.fn((command) => (command === "npm install" ? install : list));
-    return { env: { npm_config_registry: "r", npm_config_reporter: "silent", PATH: "p" }, exists: () => exists, run, log: vi.fn() };
+    return {
+      env: { npm_config_registry: "r", npm_config_reporter: "silent", PATH: "p" },
+      exists: (file) => existing.includes(file),
+      missingPath: (label) => `/tmp/no-${label}`,
+      run,
+      log: vi.fn(),
+    };
   }
 
-  it("installs in the bin folder with only npm's keys, listing them with none", () => {
+  it("installs in the bin folder with only npm's keys, listing them from no config at all", () => {
     const deps = io();
 
     expect(installRuntimeDeps("bin", deps)).toBe(0);
-    expect(deps.run).toHaveBeenNthCalledWith(1, "npm config ls -l --json", { env: { PATH: "p" }, capture: true });
+    expect(deps.run).toHaveBeenNthCalledWith(1, LIST_COMMAND, { env: { PATH: "p" }, capture: true });
     expect(deps.run).toHaveBeenNthCalledWith(2, "npm install", {
       cwd: "bin",
       env: { npm_config_registry: "r", PATH: "p" },
@@ -88,11 +129,18 @@ describe("installRuntimeDeps", () => {
   });
 
   it("names a missing bin folder instead of spawning", () => {
-    const deps = io({ exists: false });
+    const deps = io({ existing: [] });
 
     expect(installRuntimeDeps("bin", deps)).toBe(1);
     expect(deps.run).not.toHaveBeenCalled();
     expect(deps.log).toHaveBeenCalledWith(expect.stringContaining("bin does not exist"));
+  });
+
+  it("refuses a stand-in config path that exists, since npm would read it", () => {
+    const deps = io({ existing: ["bin", "/tmp/no-global"] });
+
+    expect(installRuntimeDeps("bin", deps)).toBe(1);
+    expect(deps.run).not.toHaveBeenCalled();
   });
 
   it("fails rather than installing with an unfiltered environment when npm cannot list its keys", () => {

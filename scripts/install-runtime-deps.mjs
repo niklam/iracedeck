@@ -11,12 +11,15 @@
  */
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 
 import { installRuntimeDeps } from "./lib/runtime-install-env.mjs";
 
 process.exitCode = installRuntimeDeps(process.argv[2], {
   env: process.env,
   exists: existsSync,
+  missingPath: (label) => path.join(tmpdir(), `iracedeck-${process.pid}-no-${label}-npmrc`),
   run: (command, { cwd, env, capture }) =>
     spawnSync(command, { cwd, env, shell: true, encoding: "utf8", stdio: capture ? ["ignore", "pipe", "inherit"] : "inherit" }),
   log: (message) => console.error(message),
