@@ -27,6 +27,12 @@
             "The Fuel Service dial no longer shows a red <code>AUTOFUEL: OFF</code> while iRacing's autofuel is on. When autofuel planned no fuel for the next stop, the dial read that as autofuel being off and disagreed with the Toggle Autofuel key and the in-sim black box. It now shows a green <code>AUTOFUEL: ON</code> whenever autofuel is on, and the <code>AUTO → &lt;add&gt;</code> readout below it shows how much fuel the next stop will add. See <a href=\"https://iracedeck.com/docs/actions/pit-service/fuel-service/\" target=\"_blank\" rel=\"noopener noreferrer\">Fuel Service</a>.",
             "On a Stream Deck+ dial, Audio Controls' missing-key warning is now centered on the touch strip like every other dial's. The triangle used to sit left of centre and against the bottom edge, over the readout. See <a href=\"https://iracedeck.com/docs/actions/audio-voice/audio-controls/\" target=\"_blank\" rel=\"noopener noreferrer\">Audio Controls</a>."
           ]
+        },
+        {
+          "title": "Maintenance",
+          "items": [
+            "The Stream Deck plugin now runs on version 3.0 of Elgato's plugin SDK. Settings kept by the Stream Deck app from an older iRaceDeck still carry over into iRaceDeck's own settings file on first start, as before."
+          ]
         }
       ]
     },
