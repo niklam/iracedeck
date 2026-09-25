@@ -2565,8 +2565,9 @@ describe("FuelService dial surface", () => {
       await action.onDialUp({ action: ctx, payload: {} } as never);
 
       expect(ctx.setSettings).not.toHaveBeenCalled();
-      const logger = (action as unknown as { logger: { warn: ReturnType<typeof vi.fn> } }).logger;
-      expect(logger.warn).toHaveBeenCalledWith("Dial event carried no settings; mode switch not persisted");
+      expect(vi.mocked(action["logger"].warn)).toHaveBeenCalledWith(
+        "Dial event carried no settings; mode switch not persisted",
+      );
       // The in-memory flip still happened: the trigger description now names the target mode.
       expect(ctx.setTriggerDescription).toHaveBeenLastCalledWith(
         expect.objectContaining({ rotate: "Adjust target / autofuel margin" }),
@@ -2578,12 +2579,35 @@ describe("FuelService dial surface", () => {
       const ctx = dialContext("sm6");
       await appear(ctx, { tapAction: "switch-mode", dialMode: "add-amount" });
       ctx.setSettings.mockClear();
+      mockPitFuel.mockClear();
       mockPitClearFuel.mockClear();
 
+      // Fuel fill is off (the suite's default telemetry), so a stale
+      // toggle-fueling would ARM fuel — pit.fuel is the call that proves it.
       await action.onTouchTap(touchTapEvent(ctx, { tapAction: "toggle-fueling" }, false) as never);
 
+      expect(mockPitFuel).not.toHaveBeenCalled();
       expect(mockPitClearFuel).not.toHaveBeenCalled();
       expect(ctx.setSettings).toHaveBeenCalledTimes(1);
+    });
+
+    it("a second press while the first write is in flight flips back, not the same way (#957)", async () => {
+      const ctx = dialContext("sm8");
+      const settings = { dialMode: "add-amount", pressAction: "switch-mode" };
+      await appear(ctx, settings);
+      ctx.setSettings.mockClear();
+      // The first write never settles until released, like a slow host.
+      let release: () => void = () => {};
+      ctx.setSettings.mockImplementationOnce(() => new Promise<void>((resolve) => (release = resolve)));
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      const first = action.onDialUp(basicEvent(ctx, settings) as never);
+      await pressDial(ctx, settings);
+      release();
+      await first;
+
+      const modes = ctx.setSettings.mock.calls.map((call) => (call[0] as { dial: { mode: string } }).dial.mode);
+      expect(modes).toEqual(["fill-to", "add-amount"]);
     });
 
     it("a Property Inspector change still wins over the in-memory flip (#957)", async () => {

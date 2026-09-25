@@ -38,6 +38,7 @@ import type { ILogger } from "@iracedeck/logger";
 
 import { borderColorForState, type ToggleState } from "../../icons/status-bar.js";
 import { renderDialNameIcon } from "../../shared/dial-name-icon.js";
+import { persistDialPatch } from "../../shared/dial-persist.js";
 import { type DialPendingPreview, renderPendingBar } from "../../shared/dial-preview.js";
 import type { FuelPipeline } from "./fuel-pipeline.js";
 import {
@@ -1105,30 +1106,13 @@ export class FuelDialSurface {
       const next = ctx.settings.dial.mode === "fill-to" ? "add-amount" : "fill-to";
       this.host.logger.info(`Fuel dial switched mode to ${next}`);
 
-      // Persist by merging over the RAW settings, so the keypad half and every
-      // key the user never set stay as stored — writing the parsed settings
-      // would bank today's defaults into them. The host never echoes a
-      // plugin-side setSettings back as didReceiveSettings, so ctx.settings is
-      // updated here and is what the next gesture flips from (#957).
-      const raw =
-        rawSettings && typeof rawSettings === "object" && !Array.isArray(rawSettings)
-          ? (rawSettings as Record<string, unknown>)
-          : null;
-
-      if (raw) {
-        const rawDial =
-          raw.dial && typeof raw.dial === "object" && !Array.isArray(raw.dial)
-            ? (raw.dial as Record<string, unknown>)
-            : {};
-        await ctx.action.setSettings({ ...raw, dial: { ...rawDial, mode: next } });
-      } else {
-        // No settings in the event payload — flip only in memory. Persisting a
-        // merge over {} would replace the whole stored object with just the
-        // dial half, wiping the keypad settings.
-        this.host.logger.warn("Dial event carried no settings; mode switch not persisted");
-      }
-
+      // The host never echoes a plugin-side setSettings back as
+      // didReceiveSettings, so ctx.settings is what the next gesture flips
+      // from — and it flips BEFORE the write is awaited, so a second press
+      // landing while the write is in flight flips back rather than repeating
+      // this one (#957).
       ctx.settings = { ...ctx.settings, dial: { ...ctx.settings.dial, mode: next } };
+      await persistDialPatch(ctx.action, rawSettings, { mode: next }, this.host.logger, "mode switch");
       this.seedFromTelemetry(ctx, true);
       await this.applyTriggerDescription(ctx);
       await this.renderFeedback(ctx);
