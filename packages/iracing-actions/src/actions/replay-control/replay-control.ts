@@ -2128,6 +2128,19 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
           break;
         }
 
+        // iRacing publishes SessionNum -1 for ~500 ms after the cursor lands
+        // (see STABILIZATION_TIMEOUT_MULTIPLIER). A press in that window would
+        // find a lap through the CarIdxBestLapNum fallback and walk toward session -1, which no session map
+        // holds: the walk would pause the replay, move the cursor to the start
+        // of the recording, and abort. Refuse it before any command is sent.
+        const targetSessionNum = telemetry?.SessionNum;
+
+        if (typeof targetSessionNum !== "number" || targetSessionNum < 0) {
+          this.logger.info("Jump to fastest lap: replay session not settled yet; press ignored");
+          this.logger.debug(`SessionNum=${String(targetSessionNum)}`);
+          break;
+        }
+
         const targetLap = findFastestLapForCar(sessionInfo, telemetry, targetCarIdx);
 
         if (targetLap === null) {
@@ -2183,7 +2196,6 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
         // + race). `findFastestLapForCar` already used the same `SessionNum`
         // to look the lap number up; the `SessionUniqueID` pair tells two
         // instances of one `SessionNum` apart (a restart within a sim run).
-        const targetSessionNum = typeof telemetry?.SessionNum === "number" ? telemetry.SessionNum : 0;
         const sessionUniqueId = typeof telemetry?.SessionUniqueID === "number" ? telemetry.SessionUniqueID : null;
         const subSessionId = readSubSessionId(sessionInfo);
 

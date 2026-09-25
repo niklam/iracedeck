@@ -3146,6 +3146,32 @@ describe("ReplayControl", () => {
           expect(_getFastestLapSessionCache()).toBeNull();
         });
 
+        it.each([-1, undefined])(
+          "refuses a press while SessionNum is %s (the post-jump transient) before any command",
+          async (sessionNum) => {
+            singleSessionBuffer(4, 4);
+            const settled = action["sdkController"].getCurrentTelemetry;
+
+            action["sdkController"].getCurrentTelemetry = vi.fn(() => ({
+              ...(settled() as any),
+              SessionNum: sessionNum,
+              // The CarIdxBestLapNum fallback still names a lap in the transient.
+              CarIdxBestLapNum: new Array(64).fill(4),
+            }));
+
+            await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+            await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+
+            expect(action["logger"].info).toHaveBeenCalledWith(
+              "Jump to fastest lap: replay session not settled yet; press ignored",
+            );
+            expect(mockCamera.switchNum).not.toHaveBeenCalled();
+            expect(mockStore.laps.findLapStart).not.toHaveBeenCalled();
+            expect(countReplayCommands()).toBe(0);
+            expect(_getFastestLapSessionCache()).toBeNull();
+          },
+        );
+
         it("a goToStart that leaves the cursor away from frame 0 aborts the map build and caches nothing", async () => {
           vi.useFakeTimers();
 
