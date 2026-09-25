@@ -238,6 +238,7 @@ When key bindings should be shared across all instances of an action type (e.g.,
 // plugin.ts - MUST pass adapter + settings store, and call BEFORE connect()
 import {
   createFileSettingsStore,
+  createSettingsFileRejectionReporter,
   getPluginPlatform,
   getPluginVersion,
   initGlobalSettings,
@@ -247,6 +248,7 @@ import {
 const settingsStore = createFileSettingsStore({
   path: resolveSettingsStorePath({ platform: getPluginPlatform(), env: process.env }),
   logger: adapter.createLogger("SettingsStore"),
+  onRejected: createSettingsFileRejectionReporter(), // the rejected-file banner (#1036)
 });
 
 initGlobalSettings(adapter, adapter.createLogger("GlobalSettings"), settingsStore, {

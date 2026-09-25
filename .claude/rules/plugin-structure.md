@@ -176,6 +176,7 @@ import { MY_ACTION_UUID, MyAction } from "@iracedeck/iracing-actions";
 import { ElgatoPlatformAdapter } from "@iracedeck/deck-adapter-elgato";
 import {
   createFileSettingsStore,
+  createSettingsFileRejectionReporter,
   focusIRacingIfEnabled,
   getController,
   getPluginPlatform,
@@ -275,6 +276,7 @@ adapter.registerAction(MY_ACTION_UUID, new MyAction(adapter.createLogger("MyActi
 const settingsStore = createFileSettingsStore({
   path: resolveSettingsStorePath({ platform: getPluginPlatform(), env: process.env }),
   logger: adapter.createLogger("SettingsStore"),
+  onRejected: createSettingsFileRejectionReporter(), // the rejected-file banner (#1036)
 });
 
 // Land the last debounced save on the way out: "exit" handlers run synchronously
