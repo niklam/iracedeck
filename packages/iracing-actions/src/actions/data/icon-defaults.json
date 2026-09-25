@@ -113,6 +113,12 @@
     "graphic1Color": "#ffffff",
     "borderColor": "#5a6a7a"
   },
+  "replay-markers": {
+    "backgroundColor": "#2a3a4a",
+    "textColor": "#ffffff",
+    "graphic1Color": "#ffffff",
+    "borderColor": "#5a6a7a"
+  },
   "replay-navigation": {
     "backgroundColor": "#2a3a4a",
     "textColor": "#ffffff",

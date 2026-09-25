@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 71 58">
+  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"MARKER\nDELETE"},"border":{"color":"#5a6a7a"}}</desc>
+  <path d="M1,1 H35 V57 L18,43 L1,57 Z" fill="#ffffff"/>
+  <path d="M49,20 L67,38 M67,20 L49,38" fill="none" stroke="#e74c3c" stroke-width="6" stroke-linecap="round"/>
+</svg>

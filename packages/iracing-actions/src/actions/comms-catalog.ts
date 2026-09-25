@@ -789,6 +789,12 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     ]),
   ),
 
+  // Replay Markers (#1162): Next / Previous jump with one setPlayPosition
+  // broadcast. Add and Delete are intentionally omitted — they only write the
+  // plugin's own replay store and send nothing to iRacing, so the status line
+  // renders nothing for them (like Fuel Service's "switch-mode").
+  "replay-markers": entry("mode", allApi(["next", "previous"])),
+
   "replay-speed": entry("direction", allApi(["increase", "decrease"])),
 
   "replay-transport": entry(

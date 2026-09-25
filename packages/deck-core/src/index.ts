@@ -55,6 +55,7 @@ export {
   BORDER_DEFAULTS,
   calculateYPositions,
   computeGraphicArea,
+  DIMMED_OPACITY,
   generateTitleText,
   getGlobalBorderSettings,
   getGlobalGraphicSettings,
@@ -200,6 +201,73 @@ export {
   type ResolveSettingsStorePathOptions,
   type SettingsStore,
 } from "./settings-store.js";
+
+// Per-session replay store: markers (#1162) and the lap record (#1203)
+export {
+  parseReplaySessionFile,
+  REPLAY_FILE_FRAME_LAG,
+  REPLAY_FILE_VERSION,
+  replaySessionFileName,
+  resolveReplayStoreDirectory,
+  type ReplaySessionFile,
+  type ReplaySessionHeader,
+  type ResolveReplayStoreDirectoryOptions,
+} from "./replay-session-file.js";
+export {
+  addMarker,
+  deleteNearestMarker,
+  MARKER_DEDUPE_FRAMES,
+  MARKER_DELETE_WINDOW_FRAMES,
+  MARKER_NEXT_MIN_AHEAD_FRAMES,
+  MARKER_PREVIOUS_MIN_BEHIND_FRAMES,
+  nextMarker,
+  normalizeMarkers,
+  partitionMarkers,
+  previousMarker,
+  type PartitionedMarkers,
+  type ReplayMarker,
+} from "./replay-markers.js";
+export {
+  emptyLapsSection,
+  findLapStartInSection,
+  isNewerLapsSection,
+  LAPS_SECTION_VERSION,
+  mergeLapsSectionInto,
+  normalizeLapsSection,
+  recordLapStartInSection,
+  recordLapTimeInSection,
+  type LapStartLookup,
+  type LapStartMissReason,
+  type LapStartQuery,
+  type LapStartRecord,
+  type LapTimeRecord,
+  type ReplayCarLaps,
+  type ReplayLapEntry,
+  type ReplayLapsSection,
+  type ReplayLapsSession,
+} from "./replay-laps.js";
+export {
+  _resetReplaySessionStore,
+  createReplaySessionStore,
+  getReplaySessionStore,
+  initializeReplaySessionStore,
+  isReplaySessionStoreInitialized,
+  REPLAY_LAPS_SECTION,
+  REPLAY_MARKERS_SECTION,
+  REPLAY_STORE_WRITE_DEBOUNCE_MS,
+  REPLAY_STORE_WRITE_MAX_WAIT_MS,
+  type ActiveReplaySession,
+  type ReplayLapsApi,
+  type ReplayMarkersApi,
+  type ReplaySessionStore,
+  type ReplaySessionStoreOptions,
+  type SubSessionScoped,
+} from "./replay-session-store.js";
+export {
+  createReplaySessionSubscriber,
+  replaySessionHeaderFromSessionInfo,
+  type ReplaySessionSubscriberOptions,
+} from "./replay-session-subscriber.js";
 
 // Downloadable Race Engineer voice packs (issue #1034)
 export { resolveVoicePacksPath, type ResolveVoicePacksPathOptions } from "./voice-packs-path.js";

@@ -13,8 +13,13 @@ Release notes for each version of iRaceDeck. The newest release is listed first.
 
 _Unreleased_
 
+**Features**
+
+- New **Replay Markers** action for bookmarking moments of a session. Press **Add Marker** right after something happens — the marker lands a few seconds earlier, 5 by default and set per key, so it catches the lead-up — then, in the replay, **Previous Marker** or **Next Marker** jumps straight there — the key greys out while there is no marker to jump to — and **Delete Marker** removes the nearest one. Markers are saved per session, so they are still there when you open the saved replay days later; offline sessions keep them only until you leave (thanks @moartl31 for the request). See [Replay Markers](/docs/actions/view-camera/replay-markers/).
+
 **Bug Fixes**
 
+- Replay Control's **Jump to Fastest Lap** no longer leaves the replay frozen. When iRaceDeck was running while the lap was driven, it now jumps straight to that lap — also in the saved replay opened later — landing just before the car takes the line and playing from there. Without that record it searches the replay as before, and the search now ends playing the lap instead of stuck (thanks @jameslangevin for reporting). See [Replay Control](/docs/actions/view-camera/replay-control/#jump-to-fastest-lap).
 - The Race Engineer no longer announces heavy contact with another car for an incident iRacing scored as an off-track. He now checks the kind of incident against how far your incident count actually moved, so a light car contact followed a moment later by an off-track is called as the one-point off-track it was. Light contact, which costs no points, is no longer announced at all. See [Pit Crew](/docs/actions/audio-voice/pit-crew/#incident-callouts).
 - The `{{session.time_remaining}}` template variable is now blank in a session with no time limit instead of showing `10080:00` — the same way `{{session.laps_remaining}}` is blank in a session with no lap limit — and shows `0:00` once a timed race's clock has run out, where it used to go blank, the way Session Info's Time / Laps Remaining key shows zero. See [Template Variables](/docs/features/template-variables/#session).
 - The Race Engineer no longer says the pace car is coming in, peeling off or gone when iRacing holds the green before a rolling start or restart. That flag goes up several seconds before the pace car actually leaves the track, so those lines now only warn that the green is coming, and *"Pace car's off."* plays when the pace car actually leaves. That call now also plays at an opening rolling start, not only at a caution restart.

@@ -5,6 +5,7 @@ import {
   assembleIcon,
   BORDER_DEFAULTS,
   computeGraphicArea,
+  DIMMED_OPACITY,
   GRAPHIC_DEFAULTS,
   resolveGraphicSettings,
   resolveTitleSettings,
@@ -443,5 +444,30 @@ describe("resolveTitleSettings locked fields", () => {
     const svg = `<svg><desc>{"colors":{},"title":{"text":"DRS","locked":["bold"]}}</desc></svg>`;
     const result = resolveTitleSettings(svg, { bold: false });
     expect(result.bold).toBe(TITLE_DEFAULTS.bold);
+  });
+});
+
+describe("assembleIcon dimmed", () => {
+  const dim = `<g opacity="${DIMMED_OPACITY}">`;
+  const build = (dimmed?: boolean, title = DEFAULT_TITLE) =>
+    decodeDataUri(
+      assembleIcon({ graphicSvg: MOCK_GRAPHIC_TRIMMED, colors: COLORS, title, border: BORDER_DEFAULTS, dimmed }),
+    );
+
+  it("fades the artwork and the title, not the background", () => {
+    const svg = build(true);
+
+    expect(svg.split(dim).length - 1).toBe(2);
+    expect(svg.indexOf("#2a3444")).toBeLessThan(svg.indexOf(dim));
+    expect(svg).toContain(">TEST<");
+  });
+
+  it("leaves an undimmed icon unchanged", () => {
+    expect(build(false)).toBe(build(undefined));
+    expect(build(false)).not.toContain(dim);
+  });
+
+  it("adds no empty group when the title is hidden", () => {
+    expect(build(true, { ...DEFAULT_TITLE, showTitle: false }).split(dim).length - 1).toBe(1);
   });
 });

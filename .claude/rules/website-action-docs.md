@@ -80,6 +80,7 @@ Each mode section must include a `#### Details` subheader containing a bullet li
    - `iRacing API` — sends an iRacing SDK/broadcast command (`getCommands().*`). Most reliable, no binding needed.
    - `Key binding` — triggers a configurable key binding (keyboard OR SimHub role) via `tapBinding`/`holdBinding`. Requires the binding to be set.
    - `Chat command` — types an iRacing chat/text command, e.g. a `#…` pit macro, via `getCommands().chat.sendMessage(...)`.
+   - A mode that sends nothing to iRacing names what it does instead and ends `— no iRacing command`, e.g. `Stored by iRaceDeck — no iRacing command` for Replay Markers' Add Marker. Such a mode is left out of `action-comms.json`, like Fuel Service's dial Switch Mode.
 2. **Dial:** rotation behavior, or `No rotation support`
 3. **Default binding:** one of:
    - `` `Key` `` — action ships with a default keyboard binding (e.g., `` `F1` ``, `` `Ctrl+Shift+R` ``)

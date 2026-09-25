@@ -3901,6 +3901,231 @@ describe("sim-events-iracing translator", () => {
     });
   });
 
+  // Issue #1203: the replay lap record runs BEFORE the replay guard, for the
+  // opposite reason from the countdown above — it must SEE the ticks it cannot
+  // record (a replay on screen, a replay-only session) and mark itself
+  // unseeded, so the first live tick back re-seeds from the field as it is
+  // then rather than fabricating the crossings it missed. Its state is in
+  // `wipeStateForReplay`'s wiped set by design.
+  describe("replay lap record (issue #1203)", () => {
+    const SUB_SESSION = 86697546;
+
+    /** Three cars at 0–2 (the player is 0) and the pace car at 3. */
+    function liveSession(simMode = "full"): Record<string, unknown> {
+      return {
+        SessionInfo: { Sessions: [{ SessionType: "Race" }] },
+        WeekendInfo: { TrackID: 42, SimMode: simMode, SubSessionID: SUB_SESSION },
+        DriverInfo: {
+          DriverCarIdx: 0,
+          PaceCarIdx: 3,
+          Drivers: [
+            { CarIdx: 0, CarNumberRaw: 7, UserID: 100 },
+            { CarIdx: 1, CarNumberRaw: 42, UserID: 200 },
+            { CarIdx: 2, CarNumberRaw: 3042, UserID: 300 },
+            { CarIdx: 3, CarNumberRaw: 0, UserID: -1, CarIsPaceCar: 1 },
+          ],
+        },
+      };
+    }
+
+    function lapTick(o: {
+      completed: number[];
+      frame?: number;
+      replay?: boolean;
+      lastLapTime?: number[];
+      uniqueId?: number;
+    }): TelemetryData {
+      return telemetry({
+        SessionNum: 0,
+        SessionUniqueID: o.uniqueId ?? 1,
+        SessionState: SessionState.Racing,
+        IsReplayPlaying: o.replay ?? false,
+        IsOnTrack: !(o.replay ?? false),
+        CarIdxLapCompleted: o.completed,
+        CarIdxLastLapTime: o.lastLapTime ?? [-1, -1, -1, -1],
+        ReplayFrameNumEnd: o.frame ?? 30_000,
+      });
+    }
+
+    type Recorded = { event: string; carIdx: number; lap: number; frame?: number; timeMs?: number };
+
+    /** Records both record events in publish order, reduced to what the assertions read. */
+    function recordLaps(): Recorded[] {
+      const seen: Recorded[] = [];
+      const bus = getEventBus();
+
+      bus.subscribe("replay.lapStarted", (ev) => {
+        seen.push({ event: ev.event, carIdx: ev.data.carIdx, lap: ev.data.lap, frame: ev.data.frame });
+      });
+      bus.subscribe("replay.lapTimed", (ev) => {
+        seen.push({ event: ev.event, carIdx: ev.data.carIdx, lap: ev.data.lap, timeMs: ev.data.timeMs });
+      });
+
+      return seen;
+    }
+
+    it("publishes a crossing and its lap time through the real tick loop, with the session identity", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(liveSession());
+      const started = vi.fn();
+      const timed = vi.fn();
+      getEventBus().subscribe("replay.lapStarted", started);
+      getEventBus().subscribe("replay.lapTimed", timed);
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(lapTick({ completed: [4, 4, 4, -1], lastLapTime: [91.5, 92.5, 93.5, -1] })); // seed
+      controller.__tick(lapTick({ completed: [5, 4, 4, -1], lastLapTime: [91.5, 92.5, 93.5, -1], frame: 36_305 }));
+      controller.__tick(lapTick({ completed: [5, 4, 4, -1], lastLapTime: [91.5, 92.5, 93.5, -1] }));
+      controller.__tick(lapTick({ completed: [5, 4, 4, -1], lastLapTime: [91.433, 92.5, 93.5, -1] }));
+
+      expect(started).toHaveBeenCalledTimes(1);
+      expect((started.mock.calls[0]![0] as SimEventOf<"replay.lapStarted">).data).toEqual({
+        subSessionId: SUB_SESSION,
+        sessionNum: 0,
+        sessionUniqueId: 1,
+        carIdx: 0,
+        carNumberRaw: 7,
+        userId: 100,
+        lap: 6,
+        frame: 36_305,
+      });
+      expect(timed).toHaveBeenCalledTimes(1);
+      expect((timed.mock.calls[0]![0] as SimEventOf<"replay.lapTimed">).data).toEqual({
+        subSessionId: SUB_SESSION,
+        sessionNum: 0,
+        sessionUniqueId: 1,
+        carIdx: 0,
+        lap: 5,
+        timeMs: 91_433,
+      });
+    });
+
+    it("runs before the replay guard: a crossing seen from the replay view is never fabricated on the way back", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(liveSession());
+      const seen = recordLaps();
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(lapTick({ completed: [4, 4, 4, -1] })); // seed
+      controller.__tick(lapTick({ completed: [4, 4, 4, -1] }));
+      // Into the in-session replay; the per-car arrays now follow the cursor.
+      controller.__tick(lapTick({ completed: [4, 5, 4, -1], replay: true }));
+      controller.__tick(lapTick({ completed: [2, 2, 2, -1], replay: true }));
+      // Back live: the field crossed meanwhile. The first tick re-seeds without
+      // emitting, and — the pre-guard-and-wiped signature this test pins — the
+      // replay-exit wipe that follows it re-seeds once more, so a crossing on
+      // the second live tick is absorbed too. Moving the diff behind the guard,
+      // or preserving its state in `wipeStateForReplay`, would emit that one.
+      controller.__tick(lapTick({ completed: [5, 5, 5, -1] }));
+      controller.__tick(lapTick({ completed: [5, 6, 5, -1] }));
+      expect(seen).toEqual([]);
+      // From the third tick the record is live again.
+      controller.__tick(lapTick({ completed: [6, 6, 5, -1], frame: 40_000 }));
+
+      expect(seen).toEqual([{ event: "replay.lapStarted", carIdx: 0, lap: 7, frame: 40_000 }]);
+    });
+
+    it("stays silent in a replay-only session (SimMode=replay), even on live-looking ticks", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(liveSession("replay"));
+      const seen = recordLaps();
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(lapTick({ completed: [4, 4, 4, -1] }));
+      controller.__tick(lapTick({ completed: [5, 4, 4, -1] }));
+      controller.__tick(lapTick({ completed: [5, 5, 4, -1] }));
+
+      expect(seen).toEqual([]);
+    });
+
+    it("skips the pace car through the real tick loop", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(liveSession());
+      const seen = recordLaps();
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(lapTick({ completed: [4, 4, 4, -1] }));
+      controller.__tick(lapTick({ completed: [4, 4, 4, 0] }));
+      controller.__tick(lapTick({ completed: [4, 4, 4, 1] }));
+
+      expect(seen).toEqual([]);
+    });
+
+    describe("the 2026-09-17 crossings capture, through the translator", () => {
+      type FixtureTick = { t: number; CarIdxLapCompleted: number[] };
+
+      const ticks = JSON.parse(
+        readFileSync(new URL("./diff/__fixtures__/replay-laps-crossings-20260917.json", import.meta.url), "utf-8"),
+      ) as FixtureTick[];
+
+      /** 20 cars at their indices; the pace car is slot 20 (raw index 64 in the capture). */
+      function fixtureSession(): Record<string, unknown> {
+        const drivers: Array<Record<string, unknown>> = [];
+
+        for (let carIdx = 0; carIdx < 20; carIdx++) {
+          drivers.push({ CarIdx: carIdx, CarNumberRaw: carIdx + 1, UserID: 1000 + carIdx });
+        }
+
+        drivers.push({ CarIdx: 20, CarNumberRaw: 0, UserID: -1, CarIsPaceCar: 1 });
+
+        return {
+          SessionInfo: { Sessions: [{ SessionType: "Race" }] },
+          WeekendInfo: { TrackID: 42, SimMode: "full", SubSessionID: 0 },
+          DriverInfo: { DriverCarIdx: 0, PaceCarIdx: 20, Drivers: drivers },
+        };
+      }
+
+      /** The capture carries no frame counter; the live one advances 60 per second. */
+      const frameOf = (t: number): number => Math.round(t * 60);
+
+      // The order the field first took the line, read off the capture (203.70 →
+      // 206.55 s): car 17 first, car 13 last, with 0/15 and 3/8 on shared ticks.
+      const FIRST_CROSSING_ORDER = [17, 16, 18, 7, 11, 6, 1, 4, 12, 14, 9, 0, 15, 5, 19, 10, 3, 8, 2, 13];
+      // Laps 2 and 3 were taken in the same order both times (239.5 → 244.48 s, 278.5 → 291.73 s).
+      const RACING_ORDER = [17, 16, 7, 11, 18, 6, 1, 4, 0, 9, 12, 14, 3, 19, 15, 10, 5, 2, 8, 13];
+
+      it("publishes exactly the capture's crossings, in capture order, and nothing for the pace car", () => {
+        const controller = createMockController();
+        controller.__setSessionInfo(fixtureSession());
+        const seen = recordLaps();
+        initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+        for (const tick of ticks) {
+          controller.__tick(lapTick({ completed: tick.CarIdxLapCompleted, frame: frameOf(tick.t) }));
+        }
+
+        expect(seen).toHaveLength(60);
+        expect(seen.every((e) => e.event === "replay.lapStarted")).toBe(true); // no times in the capture
+        expect(seen.some((e) => e.carIdx === 20)).toBe(false);
+        expect(seen.slice(0, 20).map((e) => e.carIdx)).toEqual(FIRST_CROSSING_ORDER);
+        expect(seen.slice(0, 20).every((e) => e.lap === 1)).toBe(true);
+        expect(seen.slice(20, 40).map((e) => e.carIdx)).toEqual(RACING_ORDER);
+        expect(seen.slice(20, 40).every((e) => e.lap === 2)).toBe(true);
+        expect(seen.slice(40).map((e) => e.carIdx)).toEqual(RACING_ORDER);
+        expect(seen.slice(40).every((e) => e.lap === 3)).toBe(true);
+      });
+
+      it("stamps each crossing with the frame of its own tick", () => {
+        const controller = createMockController();
+        controller.__setSessionInfo(fixtureSession());
+        const seen = recordLaps();
+        initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+        for (const tick of ticks) {
+          controller.__tick(lapTick({ completed: tick.CarIdxLapCompleted, frame: frameOf(tick.t) }));
+        }
+
+        expect(seen[0]).toEqual({ event: "replay.lapStarted", carIdx: 17, lap: 1, frame: frameOf(203.7) });
+        expect(seen[20]).toEqual({ event: "replay.lapStarted", carIdx: 17, lap: 2, frame: frameOf(239.5) });
+        expect(seen[59]).toEqual({ event: "replay.lapStarted", carIdx: 13, lap: 3, frame: frameOf(291.73) });
+
+        for (let i = 1; i < seen.length; i++) {
+          expect(seen[i].frame).toBeGreaterThanOrEqual(seen[i - 1].frame!);
+        }
+      });
+    });
+  });
+
   describe("full-course caution wiring (issue #1127)", () => {
     /** car0 is the player, car1 the rival, car2 the pace car, car3 the car behind the rival on the outside line. */
     const PLAYER = 0;

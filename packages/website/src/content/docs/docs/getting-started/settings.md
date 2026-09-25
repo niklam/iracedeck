@@ -116,7 +116,7 @@ Timing for the actions that drive iRacing's own interface rather than talking to
 
 The three **Chat** delays space out the steps of sending a chat message: opening the box, pasting, pressing Enter, closing. Two symptoms worth recognising: text arriving empty or half-typed usually means the paste-to-Enter delay is too short, and the chat box keeping focus after you send means the Enter-to-close delay is. Raise them on a slower machine, or if a clipboard manager gets in the way.
 
-**Fastest Lap Search Delay** is how long Replay Control's *Jump to Fastest Lap* waits between steps while it walks the cursor. iRacing resolves each lap boundary after the fact, so too short a delay leaves the cursor parked mid-lap. Longer tracks and slower machines may need more than the default.
+**Fastest Lap Search Delay** is how long Replay Control's *Jump to Fastest Lap* waits between steps when it has to search the replay for the lap — a lap iRaceDeck recorded while it was driven is a single jump and needs no search. iRacing resolves each lap boundary after the fact, so too short a delay leaves the cursor parked mid-lap, and each step may take up to four times the delay to settle before the search gives up. Longer tracks and slower machines may need more than the default.
 
 ### SimHub
 

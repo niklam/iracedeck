@@ -57,6 +57,7 @@ export { stopRaceEngineerPlayback } from "./audio/audio-volume.js";
 export { PIT_QUICK_ACTIONS_UUID, PitQuickActions } from "./actions/pit-quick-actions/pit-quick-actions.js";
 export { RACE_ADMIN_UUID, RaceAdmin } from "./actions/race-admin/race-admin.js";
 export { REPLAY_CONTROL_UUID, ReplayControl } from "./actions/replay-control/replay-control.js";
+export { REPLAY_MARKERS_UUID, ReplayMarkers } from "./actions/replay-markers/replay-markers.js";
 export { REPLAY_NAVIGATION_UUID, ReplayNavigation } from "./actions/replay-navigation/replay-navigation.js";
 export { REPLAY_SPEED_UUID, ReplaySpeed } from "./actions/replay-speed/replay-speed.js";
 export { REPLAY_TRANSPORT_UUID, ReplayTransport } from "./actions/replay-transport/replay-transport.js";

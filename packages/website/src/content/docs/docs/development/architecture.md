@@ -90,10 +90,10 @@ This is why a button "knows" a yellow is out: it never reads telemetry itself �
 `event-bus` is the contract every consumer codes against. It gives them three things:
 
 - **A typed, sim-agnostic event catalog** — the vocabulary of things that can happen (`flag.yellow.raised`, an overtake, a laps-of-fuel-left crossing, a pit-lane transition). It's a plain pub/sub package that imports no simulator SDK, so the vocabulary stays the same no matter which sim feeds it.
-- **Decoupled fan-out** — publishers and subscribers never reference each other. The translator publishes; the actions and the Race Engineer each subscribe independently. You can add a consumer without touching the producer, and — in principle — swap the producer without touching the consumers.
+- **Decoupled fan-out** — publishers and subscribers never reference each other. The translator publishes; the actions, the Race Engineer and — for the replay lap record — the plugin itself each subscribe independently. You can add a consumer without touching the producer, and — in principle — swap the producer without touching the consumers.
 - **A generic telemetry snapshot on the envelope** — alongside the semantic payload, each event carries the latest raw telemetry in a generic field. This is the sim-specific escape hatch: the Race Engineer's radar and spotter engines read it (via `getLatestTelemetry`) because their job needs the full per-car picture, not a single event. It is also the part of this seam that is **not** sim-agnostic yet — see the leaks below.
 
-The catalog spans around 60 events grouped into families — pit lane and stops, flags, start lights, rolling start, pit service, tires, car control, pit limiter, incidents and off-tracks, overtakes and position changes, laps, fuel, proximity radar, track wetness, damage, and session lifecycle. Payloads range from empty (pure transitions like `pitLane.entered`) to rich records:
+The catalog spans around 60 events grouped into families — pit lane and stops, flags, start lights, rolling start, pit service, tires, car control, pit limiter, incidents and off-tracks, overtakes and position changes, laps, fuel, proximity radar, track wetness, damage, session lifecycle, and the replay lap record. Payloads range from empty (pure transitions like `pitLane.entered`) to rich records:
 
 ```text
 flag.yellow.raised          → { scope: "local" | "full" }
@@ -185,6 +185,35 @@ flowchart LR
 The window is the PI framework re-hosted: the same `sdpi-components.js`, `pi-components.js`, and `global-*.ejs` partials, talking to a **fake host** inside the plugin that speaks the global-settings subset of the Elgato PI protocol. Anything the plugin does on the window's behalf — persist its bounds, switch a deck's profile, play an audio preview, reveal the settings file in Explorer, answer SimHub reachability (a direct fetch from the window's origin is cross-origin) — arrives as a `sendToPlugin` command and is validated in `deck-core`. The same cross-origin constraint gives the window's What's New tab its one runtime (#1016): the plugin fetches the changelog artifact the website publishes, keeps only the dated releases newer than the running build, sanitizes their bullets to a four-tag allow-list, and serves the verdict at `GET /updates/status` — cached for an hour, gated on a setting, and silent about every failure, so the compiled-in release notes never depend on it. That is the only request the plugin makes to anything but iRacing and SimHub. The page is opened as a chromeless app window in a Chromium browser with a dedicated profile, and closes itself when its socket to the plugin dies. The server is no longer started on demand: it comes up from the plugin's store-ready startup block and stays up, so its address is known before any UI asks for it — and that same block, in each plugin's `plugin.ts` rather than `deck-core`'s global-settings module, is what mirrors the store, plus the server's `_settingsChannel`, to the deck host for the PIs to bootstrap from — the channel itself is never persisted in the plugin's own file. If the settings file can't be read, the block never runs: no server, no channel.
 
 Property Inspectors reach the same server through a bridge script the build injects ahead of `sdpi-components.js` (`pi-settings-bridge.js` on Elgato and Mirabox, the Ulanzi PI bridge on Ulanzi). Both run one shared state machine: when the PI's host socket opens it makes a single plain `getGlobalSettings` read, takes `_settingsChannel` out of the answer, opens the loopback socket, and from then on global-settings frames go to the plugin and the plugin's pushes go to sdpi — the host's are dropped, because the file is truth. Everything else a PI does (per-action settings, `sendToPlugin`, `openUrl`) still goes to the deck host untouched. If there is no channel, the socket is refused, or a phase doesn't settle within three seconds, the PI falls back to the host path with a console warning — it keeps displaying and per-action settings keep working, but global-settings edits made there stay in the deck host's copy, which the plugin no longer reads; a later push carrying a channel it hasn't tried switches it over. So the loopback server is the one writer's front door for every surface, and the guard that protects it accepts a valid token whatever the request's `Origin` — Property Inspectors are `file://` or host-served pages — while a token-less request must still match the loopback origin before its `SameSite=Strict` cookie counts. Details, security model, and rules: `.claude/rules/settings-window.md` and `.claude/rules/global-settings.md`.
+
+## The replay record
+
+Since #1162 and #1203 the plugin also keeps a small record of its own for each session it sees: the **replay session store** in `deck-core`, one JSON file per `SubSessionID` under `%LOCALAPPDATA%\iRaceDeck\Replay\<Stream Deck | Mirabox | Ulanzi>\`. It has two sections, the user's replay **markers** and the **lap record** — the replay frame at which every car started every lap, and each lap's time — and it is what lets a saved replay opened days later find both again, because the `.rpy` reports the same `SubSessionID` as the live session. It is fed from two directions. A subscriber each `plugin.ts` wires onto the SDK controller opens the store's record whenever the session identity first appears or changes, live or in a replay, and closes it when the SDK disconnects; it knows nothing about what happens inside a session. What happens inside — a car crossing the line, a lap time being posted — is the translator's to detect like any other sim fact, so `sim-events-iracing`'s replay-laps diff publishes `replay.lapStarted` and `replay.lapTimed`, and each `plugin.ts` subscribes to them and hands them to the store, which drops an event for any session but the open one. The actions then read the store synchronously: Replay Markers adds, deletes and walks its markers, and Replay Control's Jump to Fastest Lap looks up the recorded frame before it falls back to searching the replay. Both read the current replay position through `iracing-sdk`'s `resolveReplayFrame`, the one place that knows how to turn telemetry into a frame. Writes are debounced and atomic like the settings store's, with the same synchronous flush on exit; an offline session, which has no `SubSessionID`, is kept in memory only, a corrupt file is moved aside before a fresh one is written, and a file that cannot be read at all is never written over. The folder is per ecosystem because each plugin process holds a whole copy of the session's record and writes it back whole, so two deck hosts running at once on one file would overwrite each other's changes; a merge-on-write was rejected because it would bring back markers the other host had deleted.
+
+```mermaid
+flowchart LR
+  sdk["iracing-sdk<br/>sdkController"]:::sim
+  trans["sim-events-iracing<br/>replay-laps diff"]:::sim
+  bus(["event-bus<br/>SEAM 1"]):::seam
+  plugin["plugin.ts<br/>session subscriber + lap subscriptions"]:::core
+  store["deck-core<br/>replay session store<br/>markers · laps"]:::core
+  file["session_&lt;SubSessionID&gt;.json<br/>(per ecosystem, under LOCALAPPDATA)"]:::ext
+  actions["iracing-actions<br/>Replay Markers · Replay Control"]:::core
+
+  sdk -->|"tick: session identity"| plugin
+  sdk -->|"tick: snapshot"| trans
+  trans -->|"replay.lapStarted · replay.lapTimed"| bus
+  bus -->|"subscribe"| plugin
+  plugin -->|"open / close session · record laps"| store
+  store -->|"save (debounced, atomic)"| file
+  file -->|"load on session open"| store
+  actions -->|"markers · fastest-lap frame"| store
+
+  classDef ext fill:#33404d,color:#fff,stroke:#1d262e;
+  classDef sim fill:#d9822b,color:#fff,stroke:#9c5e1f;
+  classDef seam fill:#8e44ad,color:#fff,stroke:#5e2d73,stroke-width:3px;
+  classDef core fill:#2d7dd2,color:#fff,stroke:#1f5793;
+```
 
 ## The Race Engineer branch
 

@@ -43,17 +43,29 @@ export function resolveSettingsStorePath({ platform, env }: ResolveSettingsStore
 
   if (override !== undefined) return override;
 
-  // A set-but-blank variable must count as unset, same as the override above:
-  // `join("", "iRaceDeck", …)` would be a RELATIVE path resolved against the
-  // deck host's working directory (Program Files, the plugin bundle, …). The
-  // last resort is the OS's own answer for the home directory, so the path
-  // stays absolute even with both variables missing.
-  const base = nonBlank(env.LOCALAPPDATA) ?? join(nonBlank(env.USERPROFILE) ?? homedir(), "AppData", "Local");
-
-  return join(base, "iRaceDeck", "Settings", settingsStoreFolderName(platform), "global-settings.json");
+  return join(
+    resolveLocalAppData(env),
+    "iRaceDeck",
+    "Settings",
+    settingsStoreFolderName(platform),
+    "global-settings.json",
+  );
 }
 
-function nonBlank(value: string | undefined): string | undefined {
+/**
+ * `%LOCALAPPDATA%`, always absolute. A set-but-blank variable counts as unset:
+ * `join("", "iRaceDeck", …)` would be a RELATIVE path resolved against the
+ * deck host's working directory (Program Files, the plugin bundle, …). The
+ * last resort is the OS's own answer for the home directory, so the path stays
+ * absolute even with both variables missing. Shared by every plugin-owned file
+ * under `iRaceDeck\` (the settings store, the replay session store, #1162).
+ */
+export function resolveLocalAppData(env: Record<string, string | undefined>): string {
+  return nonBlank(env.LOCALAPPDATA) ?? join(nonBlank(env.USERPROFILE) ?? homedir(), "AppData", "Local");
+}
+
+/** The value when it is set and not whitespace-only; otherwise undefined. */
+export function nonBlank(value: string | undefined): string | undefined {
   return value !== undefined && value.trim().length > 0 ? value : undefined;
 }
 

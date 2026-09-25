@@ -81,6 +81,7 @@ import { diffPitStatus } from "./diff/pit-status.js";
 import { diffPitsOpen } from "./diff/pits-open.js";
 import { updatePositionTracking } from "./diff/race-finish.js";
 import { diffRadar, resolveRadarState } from "./diff/radar.js";
+import { diffReplayLaps } from "./diff/replay-laps.js";
 import { diffRollingStart } from "./diff/rolling-start.js";
 import { diffStartCountdown, diffStartLights } from "./diff/start-lights.js";
 import { diffTireWear } from "./diff/tire-wear.js";
@@ -1464,6 +1465,10 @@ function wipeStateForReplay(self: TranslatorInstance): void {
     lapCautionLatchLap: self.state.lapCautionLatchLap,
     lapCautionSeen: self.state.lapCautionSeen,
     lapCompletedWasCaution: self.state.lapCompletedWasCaution,
+    // The replay lap record's baselines (issue #1203, `replayLaps*`) are
+    // pointedly NOT preserved: they are previous-tick counters a replay view
+    // makes meaningless, and the pre-guard diff re-seeds them from the first
+    // live tick back — which is exactly what a return from a replay needs.
   };
 
   self.state = createInitialState();
@@ -1742,6 +1747,24 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
       (ev) => publish(self, ev, telemetry, Date.now()),
     );
   }
+
+  // The replay lap record (issue #1203) runs on every tick BEFORE the replay
+  // guard for the opposite reason from the countdown: it must SEE the ticks it
+  // cannot record. Its gate marks the recorder unseeded on every replay-view /
+  // replay-only / no-session tick and re-seeds silently on the first eligible
+  // tick after, so a driver coming back from the garage or the replay view to
+  // a field that crossed the line meanwhile produces no fabricated crossing.
+  // Behind the guard the early return would hide exactly those ticks. Its
+  // state is deliberately in `wipeStateForReplay`'s wiped set — a re-seed is
+  // what the return from a replay needs. Published directly, like the
+  // countdown: the post-guard `pending` list does not exist yet on these ticks.
+  diffReplayLaps(
+    self.state,
+    telemetry,
+    self.controller.getSessionInfo() as Record<string, unknown> | null,
+    replayOnlySession,
+    (ev) => publish(self, ev, telemetry, Date.now()),
+  );
 
   // `driver.firstOnTrack` is detected on every tick — including replay ticks
   // — so the genuine garage/replay → live-on-track transition is never

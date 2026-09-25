@@ -191,6 +191,7 @@ export {
   isPenaltyFlagActive,
   isPostRace,
   isPreGreen,
+  resolveReplayFrame,
   type TireChangeGranularity,
 } from "./telemetry-features.js";
 

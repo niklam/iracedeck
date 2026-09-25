@@ -95,6 +95,7 @@ import {
   clearWarning,
   createElevationCheckSubscriber,
   createFileSettingsStore,
+  createReplaySessionSubscriber,
   createSettingsChannelPublisher,
   createSettingsWindowCommandHandler,
   createSettingsWindowController,
@@ -129,6 +130,7 @@ import {
   initializeClipboard,
   initializeKeyboard,
   initializeRasterizer,
+  initializeReplaySessionStore,
   initializeSDK,
   initializeSimHub,
   initMousePointer,
@@ -153,6 +155,7 @@ import {
   readInstalledVoicePackSha,
   resolveActiveDriverName,
   resolveActiveRaceEngineerVoice,
+  resolveReplayStoreDirectory,
   resolveSettingsStorePath,
   resolveVoicePackCatalogUrl,
   resolveVoicePacksPath,
@@ -217,10 +220,12 @@ import {
   RACE_ADMIN_UUID,
   RaceAdmin,
   REPLAY_CONTROL_UUID,
+  REPLAY_MARKERS_UUID,
   REPLAY_NAVIGATION_UUID,
   REPLAY_SPEED_UUID,
   REPLAY_TRANSPORT_UUID,
   ReplayControl,
+  ReplayMarkers,
   ReplayNavigation,
   ReplaySpeed,
   ReplayTransport,
@@ -1219,6 +1224,29 @@ const settingsStore = createFileSettingsStore({
 // anything, so a <=250 ms window remains there by construction.
 process.on("exit", () => settingsStore.flushSync());
 
+// The per-session replay store (#1162, #1203): one file per SubSessionID under
+// %LOCALAPPDATA%\iRaceDeck\Replay\<ecosystem>, holding the replay markers and the lap
+// record. Fed the active session by the subscriber wired beside the elevation
+// check below; the actions read it synchronously through getReplaySessionStore().
+// Its writes are debounced like the settings store's, so it gets the same
+// synchronous flush on the way out.
+const replaySessionStore = initializeReplaySessionStore({
+  directory: resolveReplayStoreDirectory({ platform: getPluginPlatform(), env: process.env }),
+  logger: adapter.createLogger("ReplaySessionStore"),
+});
+
+process.on("exit", () => replaySessionStore.flushSync());
+
+// The translator's lap recorder (#1203) publishes each live lap start and lap
+// time; the store keeps them in the session's replay file for the fastest-lap
+// lookup. The store ignores an event whose subSessionId is not the open one.
+eventBus.subscribe("replay.lapStarted", (ev) => {
+  replaySessionStore.laps.recordLapStart(ev.data);
+});
+eventBus.subscribe("replay.lapTimed", (ev) => {
+  replaySessionStore.laps.recordLapTime(ev.data);
+});
+
 // Settings window (#992): the plugin serves ui/settings-window.html (compiled
 // from settings-window.ejs, with settings-window-bridge.js injected before
 // sdpi-components.js) over a loopback server started at plugin startup (#993 —
@@ -1567,6 +1595,7 @@ adapter.registerAction(PIT_CREW_UUID, new PitCrew(adapter.createLogger("PitCrew"
 adapter.registerAction(PIT_QUICK_ACTIONS_UUID, new PitQuickActions(adapter.createLogger("PitQuickActions")));
 adapter.registerAction(RACE_ADMIN_UUID, new RaceAdmin(adapter.createLogger("RaceAdmin")));
 adapter.registerAction(REPLAY_CONTROL_UUID, new ReplayControl(adapter.createLogger("ReplayControl")));
+adapter.registerAction(REPLAY_MARKERS_UUID, new ReplayMarkers(adapter.createLogger("ReplayMarkers")));
 adapter.registerAction(REPLAY_NAVIGATION_UUID, new ReplayNavigation(adapter.createLogger("ReplayNavigation")));
 adapter.registerAction(REPLAY_SPEED_UUID, new ReplaySpeed(adapter.createLogger("ReplaySpeed")));
 adapter.registerAction(REPLAY_TRANSPORT_UUID, new ReplayTransport(adapter.createLogger("ReplayTransport")));
@@ -1656,6 +1685,19 @@ getController().subscribe(
   createElevationCheckSubscriber({
     getStatus: () => native.getElevationStatus(),
     logger: adapter.createLogger("Elevation"),
+  }),
+);
+
+// Follow the session the SDK is connected to into the replay session store
+// (#1162): open session_<SubSessionID>.json when the id appears or changes —
+// live or in a replay, so a .rpy opened days later finds its markers — and
+// close it on disconnect.
+getController().subscribe(
+  "replay-session",
+  createReplaySessionSubscriber({
+    store: replaySessionStore,
+    getSessionInfo: () => getController().getSessionInfo(),
+    logger: adapter.createLogger("ReplaySession"),
   }),
 );
 

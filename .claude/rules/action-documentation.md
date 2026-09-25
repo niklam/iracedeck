@@ -33,11 +33,13 @@ Action documentation follows this section order:
 
 ## Communication Method (issue #612)
 
-Every mode talks to iRacing through exactly one of three mechanisms — state it explicitly:
+Every mode that talks to iRacing does so through exactly one of three mechanisms — state it explicitly:
 
 - **iRacing API** — sends an iRacing SDK/broadcast command (`getCommands().*`). Most reliable, needs no binding.
 - **Key binding** — triggers a configurable key binding (keyboard OR SimHub role) via `tapBinding`/`holdBinding`. Requires a binding to be set.
 - **Chat command** — types an iRacing chat/text command, e.g. a `#…` pit macro, via `getCommands().chat.sendMessage(...)`.
+
+A mode that sends nothing to iRacing (Replay Markers' Add / Delete Marker, Telemetry Control's snapshot) states what it does instead, ending `— no iRacing command`, and has no `action-comms.json` entry.
 
 The value is sourced from the generated `packages/iracing-actions/src/actions/data/action-comms.json` (authored in `comms-catalog.ts`): `"api"` → iRacing API, `"keybind"` → Key binding, `"chat"` → Chat command. For a single-behavior doc page use the **Communication Method** row above. For a multi-mode action, state the method **per mode** (a row in the modes table or a line in each mode's section) — an action can mix methods (e.g. Fuel Service: API for every fuel value since #759, Key binding for autofuel/lap-margin; Tire Service: API for clear/compound, Chat for the `#t` tire macros).
 

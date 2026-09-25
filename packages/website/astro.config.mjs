@@ -204,6 +204,7 @@ export default defineConfig({
               items: [
                 { slug: "docs/actions/view-camera/view-adjustment" },
                 { slug: "docs/actions/view-camera/replay-control" },
+                { slug: "docs/actions/view-camera/replay-markers" },
                 { slug: "docs/actions/view-camera/camera-focus" },
                 { slug: "docs/actions/view-camera/camera-editor-controls" },
                 { slug: "docs/actions/view-camera/camera-editor-adjustments" },

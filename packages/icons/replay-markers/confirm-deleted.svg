@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 58">
+  <desc>{"colors":{"backgroundColor":"#7a1f1f","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["backgroundColor"],"title":{"text":"MARKER\nDELETED"},"border":{"color":"#e74c3c"}}</desc>
+  <path d="M3,3 H33 V53 L18,41.5 L3,53 Z" fill="none" stroke="{{graphic1Color}}" stroke-width="4" stroke-linejoin="round"/>
+</svg>
