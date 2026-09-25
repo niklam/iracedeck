@@ -76,14 +76,32 @@ vi.mock("@iracedeck/deck-core", async () => {
         titleText: overrides?.titleText ?? defaultTitle ?? "",
       }),
     ),
+    hexToGrayscale: vi.fn((hex: string) => `grey(${hex})`),
+    IconUpdateThrottle: class {
+      schedule = vi.fn((_id: string, render: () => unknown) => {
+        void render();
+      });
+      clear = vi.fn();
+    },
     assembleIcon: vi.fn(
-      ({ graphicSvg, title, colors }: { graphicSvg: string; title: { titleText: string }; colors: unknown }) =>
-        `icon|${graphicSvg}|${title.titleText}|${JSON.stringify(colors)}`,
+      ({
+        graphicSvg,
+        title,
+        colors,
+        dimmed,
+      }: {
+        graphicSvg: string;
+        title: { titleText: string };
+        colors: unknown;
+        dimmed?: boolean;
+      }) => `icon|${graphicSvg}|${title.titleText}|${JSON.stringify(colors)}${dimmed ? "|dimmed" : ""}`,
     ),
   };
 });
 
 type Sdk = {
+  subscribe: ReturnType<typeof vi.fn>;
+  unsubscribe: ReturnType<typeof vi.fn>;
   getConnectionStatus: ReturnType<typeof vi.fn>;
   getCurrentTelemetry: ReturnType<typeof vi.fn>;
   getSessionInfo: ReturnType<typeof vi.fn>;
@@ -503,6 +521,220 @@ describe("ReplayMarkers", () => {
       await action.onKeyDown(keyDown({ mode: "add" }));
 
       expectUntouched(action);
+    });
+  });
+
+  describe("Next / Previous availability", () => {
+    const AHEAD = { frame: 15_000, sessionNum: 1, sessionTimeMs: 0 };
+    const BEHIND = { frame: 9_000, sessionNum: 1, sessionTimeMs: 0 };
+
+    /** The store's own windows: next is > 60 frames ahead, previous > 120 behind. */
+    function storeWith(markers: Marker[]): void {
+      mocks.markers.next.mockImplementation(
+        ((frame: number) => markers.find((m) => m.frame - frame > 60) ?? null) as never,
+      );
+      mocks.markers.previous.mockImplementation(
+        ((frame: number) => [...markers].reverse().find((m) => frame - m.frame > 120) ?? null) as never,
+      );
+    }
+
+    function tick(action: ReplayMarkers, id = "ctx-1"): void {
+      const sdk = action["sdkController"] as unknown as Sdk;
+      const call = sdk.subscribe.mock.calls.find(([subId]) => subId === id);
+      (call![1] as () => void)();
+    }
+
+    function atFrame(sdk: Sdk, frame: number): void {
+      sdk.getCurrentTelemetry.mockReturnValue({ ...REPLAY, ReplayFrameNum: frame } as TelemetryData);
+    }
+
+    const shown = (action: ReplayMarkers) => vi.mocked(action["setKeyImage"]).mock.calls.at(-1)![1] as string;
+    const redrawn = (action: ReplayMarkers) => vi.mocked(action["updateKeyImage"]).mock.calls;
+
+    it("renders the unavailable look with the key's own icon, greyed and dimmed", () => {
+      const settings = ReplayMarkersSettings.parse({ mode: "next", titleOverrides: { titleText: "MINE" } });
+      const result = generateReplayMarkersSvg(settings, "unavailable");
+
+      expect(result).toContain("|<svg>next</svg>|MINE|");
+      expect(result).toContain("grey(");
+      expect(result).toMatch(/\|dimmed$/);
+      expect(generateReplayMarkersSvg(settings)).not.toContain("dimmed");
+    });
+
+    it.each(["next", "previous"])("%s is unavailable from the car, even with a marker in reach", async (mode) => {
+      storeWith([
+        { frame: 1_000, sessionNum: 2, sessionTimeMs: 0 },
+        { frame: 60_000, sessionNum: 2, sessionTimeMs: 0 },
+      ]);
+      const { action } = makeAction(LIVE);
+
+      await appear(action, { mode });
+
+      expect(shown(action)).toMatch(/\|dimmed$/);
+    });
+
+    it.each(["next", "previous"])("%s in a replay with a marker in that direction is available", async (mode) => {
+      storeWith([BEHIND, AHEAD]);
+      const { action } = makeAction(REPLAY);
+
+      await appear(action, { mode });
+
+      expect(shown(action)).not.toContain("dimmed");
+      expect(mocks.markers[mode as "next" | "previous"]).toHaveBeenCalledWith(12_000, { subSessionId: 86697546 });
+    });
+
+    it.each([
+      ["not connected", (sdk: Sdk) => sdk.getConnectionStatus.mockReturnValue(false)],
+      ["no telemetry", (sdk: Sdk) => sdk.getCurrentTelemetry.mockReturnValue(null)],
+      ["no store", () => mocks.isStoreInitialized.mockReturnValue(false)],
+    ])("is unavailable with %s", async (_label, breakIt) => {
+      storeWith([AHEAD]);
+      const { action, sdk } = makeAction(REPLAY);
+      breakIt(sdk);
+
+      await appear(action, { mode: "next" });
+
+      expect(shown(action)).toMatch(/\|dimmed$/);
+    });
+
+    it("Next flips to unavailable as the replay plays into the marker's window, and back after a rewind", async () => {
+      storeWith([AHEAD]);
+      const { action, sdk } = makeAction(REPLAY);
+      await appear(action, { mode: "next" });
+      expect(shown(action)).not.toContain("dimmed");
+
+      atFrame(sdk, 14_900);
+      tick(action);
+      expect(redrawn(action)).toHaveLength(0);
+
+      atFrame(sdk, 14_940);
+      tick(action);
+      expect(redrawn(action)).toHaveLength(1);
+      expect(redrawn(action)[0]).toEqual(["ctx-1", expect.stringMatching(/\|dimmed$/)]);
+
+      atFrame(sdk, 10_000);
+      tick(action);
+      expect(redrawn(action)).toHaveLength(2);
+      expect(redrawn(action)[1]![1]).not.toContain("dimmed");
+    });
+
+    it("Previous flips to available once the replay is past the marker's window", async () => {
+      storeWith([AHEAD]);
+      const { action, sdk } = makeAction({ ...REPLAY, ReplayFrameNum: 15_100 } as TelemetryData);
+      await appear(action, { mode: "previous" });
+      expect(shown(action)).toMatch(/\|dimmed$/);
+
+      atFrame(sdk, 15_121);
+      tick(action);
+
+      expect(redrawn(action)).toHaveLength(1);
+      expect(redrawn(action)[0]![1]).not.toContain("dimmed");
+    });
+
+    it("does not re-render, or even schedule, while the state is unchanged", async () => {
+      storeWith([AHEAD]);
+      const { action, sdk } = makeAction(REPLAY);
+      await appear(action, { mode: "next" });
+
+      for (let frame = 12_000; frame < 14_000; frame += 100) {
+        atFrame(sdk, frame);
+        tick(action);
+      }
+
+      expect(redrawn(action)).toHaveLength(0);
+      expect(vi.mocked(action["imageThrottle"].schedule)).not.toHaveBeenCalled();
+    });
+
+    it("a marker added from another key flips Next to available on the next tick", async () => {
+      const markers: Marker[] = [];
+      storeWith(markers);
+      const { action } = makeAction(REPLAY);
+      await appear(action, { mode: "next" });
+      expect(shown(action)).toMatch(/\|dimmed$/);
+
+      markers.push(AHEAD);
+      tick(action);
+
+      expect(redrawn(action)).toHaveLength(1);
+      expect(redrawn(action)[0]![1]).not.toContain("dimmed");
+    });
+
+    it("the regenerate callback computes the state fresh", async () => {
+      const markers: Marker[] = [];
+      storeWith(markers);
+      const { action } = makeAction(REPLAY);
+      await appear(action, { mode: "next" });
+      const regenerate = vi.mocked(action["setRegenerateCallback"]).mock.calls[0]![1] as () => string;
+      expect(regenerate()).toMatch(/\|dimmed$/);
+
+      markers.push(AHEAD);
+
+      expect(regenerate()).not.toContain("dimmed");
+    });
+
+    it.each(["add", "delete"])("%s is never greyed and never redrawn by a tick", async (mode) => {
+      storeWith([]);
+      const { action, sdk } = makeAction(LIVE);
+      await appear(action, { mode });
+      expect(shown(action)).not.toContain("dimmed");
+
+      sdk.getConnectionStatus.mockReturnValue(false);
+      tick(action);
+
+      expect(redrawn(action)).toHaveLength(0);
+    });
+
+    it("a tick during the Added flash does not clobber it", async () => {
+      storeWith([AHEAD]);
+      const { action, sdk } = makeAction(REPLAY);
+      await appear(action, { mode: "add" });
+      await action.onKeyDown(keyDown({ mode: "add" }));
+      expect(redrawn(action)).toHaveLength(1);
+
+      sdk.getConnectionStatus.mockReturnValue(false);
+      tick(action);
+      vi.advanceTimersByTime(CONFIRMATION_FLASH_MS / 2);
+      tick(action);
+      expect(redrawn(action)).toHaveLength(1);
+
+      vi.advanceTimersByTime(CONFIRMATION_FLASH_MS / 2);
+      expect(redrawn(action)).toHaveLength(2);
+      expect(redrawn(action)[1]![1]).toContain("MARKER\nADD|");
+    });
+
+    it("a mode change to Next starts tracking; one away from Next stops it", async () => {
+      storeWith([AHEAD]);
+      const { action, sdk } = makeAction(REPLAY);
+      await appear(action, { mode: "add" });
+
+      await action.onDidReceiveSettings(keyDown({ mode: "next" }));
+      expect(shown(action)).not.toContain("dimmed");
+      sdk.getConnectionStatus.mockReturnValue(false);
+      tick(action);
+      expect(redrawn(action)).toHaveLength(1);
+
+      await action.onDidReceiveSettings(keyDown({ mode: "add" }));
+      sdk.getConnectionStatus.mockReturnValue(true);
+      tick(action);
+      expect(redrawn(action)).toHaveLength(1);
+    });
+
+    it("willDisappear unsubscribes and clears that context only", async () => {
+      storeWith([AHEAD]);
+      const { action, sdk } = makeAction(REPLAY);
+      await appear(action, { mode: "next" }, "ctx-1");
+      await appear(action, { mode: "next" }, "ctx-2");
+
+      await action.onWillDisappear(keyDown({ mode: "next" }, "ctx-1"));
+
+      expect(sdk.unsubscribe).toHaveBeenCalledWith("ctx-1");
+      expect(sdk.unsubscribe).not.toHaveBeenCalledWith("ctx-2");
+      expect(vi.mocked(action["imageThrottle"].clear)).toHaveBeenCalledWith("ctx-1");
+
+      sdk.getConnectionStatus.mockReturnValue(false);
+      tick(action, "ctx-1");
+      tick(action, "ctx-2");
+      expect(redrawn(action)).toEqual([["ctx-2", expect.stringMatching(/\|dimmed$/)]]);
     });
   });
 });

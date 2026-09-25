@@ -8,6 +8,8 @@ import {
   getGlobalGraphicSettings,
   getGlobalTitleSettings,
   getReplaySessionStore,
+  hexToGrayscale,
+  IconUpdateThrottle,
   type IDeckDidReceiveSettingsEvent,
   type IDeckKeyDownEvent,
   type IDeckWillAppearEvent,
@@ -43,6 +45,13 @@ import { cancelReplayCursorOwner } from "../../shared/replay-cursor.js";
 const REPLAY_MARKERS_MODES = ["add", "delete", "next", "previous"] as const;
 
 type ReplayMarkersMode = (typeof REPLAY_MARKERS_MODES)[number];
+
+/** The modes that jump, and so grey out when there is nowhere to jump to. */
+type ReplayMarkersJumpMode = Extract<ReplayMarkersMode, "next" | "previous">;
+
+function isJumpMode(mode: ReplayMarkersMode): mode is ReplayMarkersJumpMode {
+  return mode === "next" || mode === "previous";
+}
 
 /** Replay frames per second — the recording's fixed rate. */
 const FRAMES_PER_SECOND = 60;
@@ -121,18 +130,26 @@ const CONFIRMATION_TITLES: Record<ReplayMarkerConfirmation, string> = {
 };
 
 /**
+ * What a key shows besides its plain mode icon: the brief Added / Deleted
+ * flash, or `"unavailable"` — a Next / Previous key whose press would send
+ * nothing right now.
+ */
+export type ReplayMarkersKeyState = ReplayMarkerConfirmation | "unavailable";
+
+/**
  * @internal Exported for testing
  *
- * The key icon for a mode, or — with `confirmation` — the brief Added / Deleted
- * flash. The flash keeps the key's title styling but not its colour or title
- * text overrides: it is a fixed green / red signal, so it reads the same on
- * every key.
+ * The key icon for a mode, or — with `state` — the brief Added / Deleted
+ * flash or the greyed "unavailable" look. The flash keeps the key's title
+ * styling but not its colour or title text overrides: it is a fixed green /
+ * red signal, so it reads the same on every key. The unavailable look is the
+ * key's own icon, overrides and all, with every colour but the background
+ * (border included) turned grey and the artwork and title faded (`assembleIcon`'s `dimmed`), so
+ * a customised key still reads as itself, only switched off.
  */
-export function generateReplayMarkersSvg(
-  settings: ReplayMarkersSettings,
-  confirmation?: ReplayMarkerConfirmation,
-): string {
-  if (confirmation) {
+export function generateReplayMarkersSvg(settings: ReplayMarkersSettings, state?: ReplayMarkersKeyState): string {
+  if (state === "added" || state === "deleted") {
+    const confirmation = state;
     const iconSvg = CONFIRMATION_ICONS[confirmation];
     const colors = resolveIconColors(iconSvg, getGlobalColors(), undefined);
     const { titleText: _ignored, ...titleStyle } = settings.titleOverrides ?? {};
@@ -148,18 +165,40 @@ export function generateReplayMarkersSvg(
     return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic });
   }
 
+  const unavailable = state === "unavailable";
   const iconSvg = REPLAY_MARKERS_ICONS[settings.mode] ?? REPLAY_MARKERS_ICONS.add;
-  const colors = resolveIconColors(iconSvg, getGlobalColors(), settings.colorOverrides);
+  const resolved = resolveIconColors(iconSvg, getGlobalColors(), settings.colorOverrides);
+  const colors = unavailable ? greyForeground(resolved) : resolved;
   const title = resolveTitleSettings(
     iconSvg,
     getGlobalTitleSettings(),
     settings.titleOverrides,
     REPLAY_MARKERS_TITLES[settings.mode] ?? REPLAY_MARKERS_TITLES.add,
   );
-  const border = resolveBorderSettings(iconSvg, getGlobalBorderSettings(), settings.borderOverrides);
+  const resolvedBorder = resolveBorderSettings(iconSvg, getGlobalBorderSettings(), settings.borderOverrides);
+  const border = unavailable
+    ? { ...resolvedBorder, borderColor: hexToGrayscale(resolvedBorder.borderColor) }
+    : resolvedBorder;
   const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), settings.graphicOverrides);
 
-  return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic });
+  return assembleIcon({
+    graphicSvg: iconSvg,
+    colors,
+    title,
+    border,
+    graphic,
+    ...(unavailable && { dimmed: true }),
+  });
+}
+
+/**
+ * Every colour slot but the background in grey, so a coloured override turns
+ * grey rather than only fading.
+ */
+function greyForeground(colors: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(colors).map(([slot, value]) => [slot, slot === "backgroundColor" ? value : hexToGrayscale(value)]),
+  );
 }
 
 /**
@@ -237,17 +276,28 @@ export const REPLAY_MARKERS_UUID = "com.iracedeck.sd.core.replay-markers" as con
 export class ReplayMarkers extends ConnectionStateAwareAction<ReplayMarkersSettings> {
   private readonly activeContexts = new Map<string, ReplayMarkersSettings>();
   private readonly flashTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private readonly imageThrottle = new IconUpdateThrottle();
+  /** Per Next / Previous context: whether the icon on the key shows the jump as available. */
+  private readonly shownAvailable = new Map<string, boolean>();
 
   override async onWillAppear(ev: IDeckWillAppearEvent<ReplayMarkersSettings>): Promise<void> {
     await super.onWillAppear(ev);
+    const contextId = ev.action.id;
     const settings = this.parseSettings(ev.payload.settings);
-    this.activeContexts.set(ev.action.id, settings);
+    this.activeContexts.set(contextId, settings);
     await this.updateDisplay(ev, settings);
+    // Next / Previous follow the replay as it plays and the marker list as any
+    // key edits it; a tick only compares, and renders on a flip.
+    this.sdkController.subscribe(contextId, () => this.refreshAvailability(contextId));
   }
 
   override async onWillDisappear(ev: IDeckWillDisappearEvent<ReplayMarkersSettings>): Promise<void> {
-    this.cancelFlash(ev.action.id);
-    this.activeContexts.delete(ev.action.id);
+    const contextId = ev.action.id;
+    this.imageThrottle.clear(contextId);
+    this.sdkController.unsubscribe(contextId);
+    this.cancelFlash(contextId);
+    this.activeContexts.delete(contextId);
+    this.shownAvailable.delete(contextId);
     await super.onWillDisappear(ev);
   }
 
@@ -280,30 +330,15 @@ export class ReplayMarkers extends ConnectionStateAwareAction<ReplayMarkersSetti
    * nothing shows nothing.
    */
   private execute(settings: ReplayMarkersSettings): ReplayMarkerConfirmation | undefined {
-    if (!this.sdkController.getConnectionStatus()) {
-      this.logger.debug("Not connected to iRacing; ignoring");
+    const context = this.readReplayContext();
+
+    if (!context.ok) {
+      this.logger.debug(`${context.reason}; ignoring`);
 
       return undefined;
     }
 
-    if (!isReplaySessionStoreInitialized()) {
-      this.logger.debug("Replay session store not initialized; ignoring");
-
-      return undefined;
-    }
-
-    const telemetry = this.sdkController.getCurrentTelemetry();
-    const frame = resolveReplayFrame(telemetry);
-
-    if (!telemetry || frame === null) {
-      this.logger.debug("No replay frame in telemetry; ignoring");
-
-      return undefined;
-    }
-
-    const store: ReplaySessionStore = getReplaySessionStore();
-    const subSessionId = readSubSessionId(this.sdkController.getSessionInfo());
-    const scope: SubSessionScoped | undefined = subSessionId === undefined ? undefined : { subSessionId };
+    const { telemetry, frame, store, scope } = context;
 
     switch (settings.mode) {
       case "add": {
@@ -337,8 +372,7 @@ export class ReplayMarkers extends ConnectionStateAwareAction<ReplayMarkersSetti
           return undefined;
         }
 
-        const target =
-          settings.mode === "next" ? store.markers.next(frame, scope) : store.markers.previous(frame, scope);
+        const target = jumpTarget(settings.mode, store, frame, scope);
 
         if (!target) {
           this.logger.info(`No ${settings.mode} marker`);
@@ -358,6 +392,89 @@ export class ReplayMarkers extends ConnectionStateAwareAction<ReplayMarkersSetti
     }
   }
 
+  /**
+   * Everything a press reads before it acts: connection, store, telemetry and
+   * frame, and the SubSessionID scope. `reason` names what was missing.
+   */
+  private readReplayContext(): ReplayContext | { ok: false; reason: string } {
+    if (!this.sdkController.getConnectionStatus()) return { ok: false, reason: "Not connected to iRacing" };
+
+    if (!isReplaySessionStoreInitialized()) return { ok: false, reason: "Replay session store not initialized" };
+
+    const telemetry = this.sdkController.getCurrentTelemetry();
+    const frame = resolveReplayFrame(telemetry);
+
+    if (!telemetry || frame === null) return { ok: false, reason: "No replay frame in telemetry" };
+
+    const subSessionId = readSubSessionId(this.sdkController.getSessionInfo());
+
+    return {
+      ok: true,
+      telemetry,
+      frame,
+      store: getReplaySessionStore(),
+      scope: subSessionId === undefined ? undefined : { subSessionId },
+    };
+  }
+
+  /**
+   * Whether a Next / Previous press would jump now — the same gates the press
+   * applies, read fresh: connected, a store and a frame, a replay on screen
+   * (iRacing ignores replay commands from the car), and a marker outside the
+   * mode's window in that direction.
+   */
+  private isJumpAvailable(mode: ReplayMarkersJumpMode): boolean {
+    const context = this.readReplayContext();
+
+    if (!context.ok || context.telemetry.IsReplayPlaying !== true) return false;
+
+    return jumpTarget(mode, context.store, context.frame, context.scope) !== null;
+  }
+
+  /**
+   * The icon a context shows at rest, computed fresh. For Next / Previous it
+   * also records which look went out, so a tick renders only on a flip.
+   */
+  private restingSvg(contextId: string, settings: ReplayMarkersSettings): string {
+    if (!isJumpMode(settings.mode)) {
+      this.shownAvailable.delete(contextId);
+
+      return generateReplayMarkersSvg(settings);
+    }
+
+    const available = this.isJumpAvailable(settings.mode);
+    this.shownAvailable.set(contextId, available);
+
+    return generateReplayMarkersSvg(settings, available ? undefined : "unavailable");
+  }
+
+  /**
+   * Per tick: re-read a Next / Previous key's availability and redraw it, at
+   * most 10 Hz, only when it differs from what the key shows. A key in its
+   * confirmation flash is left alone; the flash's own end redraws it.
+   */
+  private refreshAvailability(contextId: string): void {
+    if (!this.needsRedraw(contextId)) return;
+
+    this.imageThrottle.schedule(contextId, async () => {
+      // Re-checked at flush time: the state may have flipped back, or the key
+      // changed mode, went away or started a flash since the tick.
+      if (!this.needsRedraw(contextId)) return;
+
+      const settings = this.activeContexts.get(contextId);
+
+      if (settings) await this.updateKeyImage(contextId, this.restingSvg(contextId, settings));
+    });
+  }
+
+  private needsRedraw(contextId: string): boolean {
+    const settings = this.activeContexts.get(contextId);
+
+    if (!settings || !isJumpMode(settings.mode) || this.flashTimers.has(contextId)) return false;
+
+    return this.shownAvailable.get(contextId) !== this.isJumpAvailable(settings.mode);
+  }
+
   private flash(contextId: string, settings: ReplayMarkersSettings, confirmation: ReplayMarkerConfirmation): void {
     this.cancelFlash(contextId);
     void this.updateKeyImage(contextId, generateReplayMarkersSvg(settings, confirmation));
@@ -366,7 +483,7 @@ export class ReplayMarkers extends ConnectionStateAwareAction<ReplayMarkersSetti
       this.flashTimers.delete(contextId);
       const current = this.activeContexts.get(contextId);
 
-      if (current) void this.updateKeyImage(contextId, generateReplayMarkersSvg(current));
+      if (current) void this.updateKeyImage(contextId, this.restingSvg(contextId, current));
     }, CONFIRMATION_FLASH_MS);
 
     this.flashTimers.set(contextId, timer);
@@ -385,10 +502,29 @@ export class ReplayMarkers extends ConnectionStateAwareAction<ReplayMarkersSetti
     ev: IDeckWillAppearEvent<ReplayMarkersSettings> | IDeckDidReceiveSettingsEvent<ReplayMarkersSettings>,
     settings: ReplayMarkersSettings,
   ): Promise<void> {
+    const contextId = ev.action.id;
     await ev.action.setTitle("");
-    await this.setKeyImage(ev, generateReplayMarkersSvg(settings));
-    this.setRegenerateCallback(ev.action.id, () =>
-      generateReplayMarkersSvg(this.activeContexts.get(ev.action.id) ?? settings),
+    await this.setKeyImage(ev, this.restingSvg(contextId, settings));
+    this.setRegenerateCallback(contextId, () =>
+      this.restingSvg(contextId, this.activeContexts.get(contextId) ?? settings),
     );
   }
+}
+
+type ReplayContext = {
+  ok: true;
+  telemetry: TelemetryData;
+  frame: number;
+  store: ReplaySessionStore;
+  scope: SubSessionScoped | undefined;
+};
+
+/** The marker a Next / Previous press at `frame` jumps to, or null. */
+function jumpTarget(
+  mode: ReplayMarkersJumpMode,
+  store: ReplaySessionStore,
+  frame: number,
+  scope: SubSessionScoped | undefined,
+): ReplayMarker | null {
+  return mode === "next" ? store.markers.next(frame, scope) : store.markers.previous(frame, scope);
 }
