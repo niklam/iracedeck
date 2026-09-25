@@ -1,4 +1,7 @@
-import type { ILogger } from "@iracedeck/logger";
+import { type ILogger, silentLogger } from "@iracedeck/logger";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -26,7 +29,9 @@ import {
   whenSettingsStoreSettled,
 } from "./global-settings.js";
 import { PI_WARNINGS_KEY, setWarning } from "./pi-warnings.js";
-import { createMemorySettingsStore } from "./settings-store.js";
+import { createSettingsFileRejectionReporter } from "./settings-file-rejection-reporter.js";
+import { SETTINGS_FILE_REJECTED_WARNING_ID } from "./settings-file-rejection-warning.js";
+import { createFileSettingsStore, createMemorySettingsStore } from "./settings-store.js";
 import type { IDeckPlatformAdapter } from "./types.js";
 import { CHANGELOG_NOTIFICATION_POLICIES } from "./version-check.js";
 
@@ -2483,5 +2488,66 @@ describe("whenSettingsStoreSettled (#1034 stage 3)", () => {
     await tick();
 
     expect(settled).not.toHaveBeenCalled();
+  });
+});
+
+describe("a settings file rejected as invalid JSON raises a banner (issue #1036)", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    _resetGlobalSettings();
+    dir = mkdtempSync(join(tmpdir(), "ird-settings-rejected-"));
+  });
+
+  afterEach(() => {
+    _resetGlobalSettings();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  const warnings = (source: Record<string, unknown> | undefined): Array<{ id: string; message: string }> => {
+    const raw = source?.[PI_WARNINGS_KEY];
+
+    return typeof raw === "string" ? JSON.parse(raw) : [];
+  };
+
+  it("survives the host migration into the ready cache and rides the deck-host mirror, but never the file", async () => {
+    const path = join(dir, "global-settings.json");
+
+    writeFileSync(path, '{\n  "driverName": "edited",\n}\n', "utf-8");
+    const store = createFileSettingsStore({
+      path,
+      logger: silentLogger,
+      debounceMs: 1,
+      onRejected: createSettingsFileRejectionReporter(),
+    });
+    const mock = createMockAdapter();
+
+    initGlobalSettings(mock.adapter, createMockLogger(), store);
+    // The rejection reads "no file", so the host is asked for the migration.
+    await vi.waitFor(() => expect(mock.getGlobalSettings).toHaveBeenCalled());
+    expect(isSettingsStoreReady()).toBe(false);
+
+    // The host copy is the previous run's mirror — its own stale banner included.
+    mock.echo?.({
+      driverName: "host-nick",
+      [PI_WARNINGS_KEY]: JSON.stringify([{ id: "elevation-mismatch", level: "error", message: "an earlier run" }]),
+    });
+    await tick();
+
+    expect(getSettingsStoreSource()).toBe("host");
+    expect(getGlobalSettings().driverName).toBe("host-nick");
+
+    const cached = warnings(getGlobalSettings() as Record<string, unknown>);
+
+    expect(cached.map((w) => w.id)).toEqual([SETTINGS_FILE_REJECTED_WARNING_ID]);
+    expect(cached[0].message).toContain("line 3 column 1");
+    expect(cached[0].message).toContain("global-settings.corrupt-");
+    expect(warnings(hostMirrorPayload()).map((w) => w.id)).toEqual([SETTINGS_FILE_REJECTED_WARNING_ID]);
+
+    await store.flush();
+    const reloaded = await store.load();
+
+    expect(reloaded).toMatchObject({ driverName: "host-nick" });
+    expect(reloaded).not.toHaveProperty(PI_WARNINGS_KEY);
   });
 });

@@ -8,6 +8,7 @@ import {
   createFileSettingsStore,
   createMemorySettingsStore,
   resolveSettingsStorePath,
+  type SettingsFileRejection,
   type SettingsStore,
   settingsStoreFolderName,
 } from "./settings-store.js";
@@ -158,6 +159,63 @@ describe("createFileSettingsStore", () => {
     const aside = readdirSync(dirty).filter((f) => /^global-settings\.corrupt-.*\.json$/.test(f));
     expect(aside).toHaveLength(1);
     expect(existsSync(store.path)).toBe(false);
+  });
+
+  describe("onRejected (issue #1036)", () => {
+    const rejectingStore = (onRejected: (rejection: SettingsFileRejection) => void) =>
+      createFileSettingsStore({ path: store.path, logger: silentLogger, debounceMs: 10, onRejected });
+
+    it("reports the parser's reason, position included, and the aside it preserved", async () => {
+      mkdirSync(join(dir, "sub"), { recursive: true });
+      writeFileSync(store.path, '{\n  "a": 1,\n}\n', "utf-8");
+      const onRejected = vi.fn<(rejection: SettingsFileRejection) => void>();
+
+      expect(await rejectingStore(onRejected).load()).toBeUndefined();
+
+      expect(onRejected).toHaveBeenCalledTimes(1);
+      const rejection = onRejected.mock.calls[0][0];
+      const aside = readdirSync(join(dir, "sub")).filter((f) => /^global-settings\.corrupt-.*\.json$/.test(f));
+
+      expect(rejection.path).toBe(store.path);
+      expect(rejection.reason).toContain("line 3 column 1");
+      expect(rejection.preservedAt).toBe(join(dir, "sub", aside[0]));
+      expect(existsSync(rejection.preservedAt as string)).toBe(true);
+    });
+
+    it("reports valid JSON that is not a settings object in words, not as a parse error", async () => {
+      mkdirSync(join(dir, "sub"), { recursive: true });
+      writeFileSync(store.path, "[1, 2]", "utf-8");
+      const onRejected = vi.fn<(rejection: SettingsFileRejection) => void>();
+
+      await rejectingStore(onRejected).load();
+
+      expect(onRejected.mock.calls[0][0].reason).toBe("It is valid JSON but does not hold a settings object");
+    });
+
+    it("is not called for a missing file, a valid file or a BOM-prefixed one", async () => {
+      const onRejected = vi.fn<(rejection: SettingsFileRejection) => void>();
+      const quiet = rejectingStore(onRejected);
+
+      expect(await quiet.load()).toBeUndefined();
+      mkdirSync(join(dir, "sub"), { recursive: true });
+      writeFileSync(store.path, JSON.stringify({ a: 1 }), "utf-8");
+      expect(await quiet.load()).toEqual({ a: 1 });
+      writeFileSync(store.path, String.fromCharCode(0xfeff) + JSON.stringify({ a: 2 }), "utf-8");
+      expect(await quiet.load()).toEqual({ a: 2 });
+
+      expect(onRejected).not.toHaveBeenCalled();
+    });
+
+    it("a throwing handler still leaves load() reporting 'no file', never a failed read", async () => {
+      mkdirSync(join(dir, "sub"), { recursive: true });
+      writeFileSync(store.path, "{ not json", "utf-8");
+
+      await expect(
+        rejectingStore(() => {
+          throw new Error("reporter blew up");
+        }).load(),
+      ).resolves.toBeUndefined();
+    });
   });
 
   it("load() tolerates a UTF-8 BOM (PowerShell 5.1 Set-Content / BOM-writing editors) instead of calling the file corrupt", async () => {
@@ -404,7 +462,13 @@ describe("createFileSettingsStore", () => {
 
     vi.resetModules();
     const { createFileSettingsStore: createStoreMocked } = await import("./settings-store.js");
-    const lockedStore = createStoreMocked({ path: store.path, logger: silentLogger, debounceMs: 10 });
+    const rejections: SettingsFileRejection[] = [];
+    const lockedStore = createStoreMocked({
+      path: store.path,
+      logger: silentLogger,
+      debounceMs: 10,
+      onRejected: (rejection) => rejections.push(rejection),
+    });
 
     // Three "starts" reading the same stuck file.
     expect(await lockedStore.load()).toBeUndefined();
@@ -417,6 +481,8 @@ describe("createFileSettingsStore", () => {
     const asides = readdirSync(dirname(store.path)).filter((f) => /^global-settings\.corrupt-.*\.json$/.test(f));
     expect(asides).toHaveLength(1);
     expect(readFileSync(join(dirname(store.path), asides[0]), "utf-8")).toBe(corruptText);
+    // Every start names the one copy that exists, not an aside it never wrote (#1036).
+    expect(rejections.map((r) => r.preservedAt)).toEqual(Array(3).fill(join(dirname(store.path), asides[0])));
 
     // A DIFFERENT corruption is a new aside, not deduplicated against the old one.
     writeFileSync(store.path, "{ still not json, but different", "utf-8");

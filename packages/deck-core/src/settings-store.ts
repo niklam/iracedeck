@@ -90,6 +90,31 @@ export interface FileSettingsStoreOptions {
   debounceMs?: number;
   /** Retry schedule after a failed write; default {@link WRITE_RETRY_DELAYS_MS} (test hook). */
   writeRetryDelaysMs?: readonly number[];
+  /**
+   * Called when `load()` rejects the file, after the move-aside has been
+   * attempted (issue #1036). `load()` itself still reports the rejection as
+   * "no file", which is what sends the plugin to the deck host's copy; this is
+   * the only route by which the user can learn that happened. A throw from it
+   * is logged and swallowed — it must never turn a rejection into a failed
+   * read, which would retry and then refuse to save.
+   */
+  onRejected?: (rejection: SettingsFileRejection) => void;
+}
+
+/** What `load()` knew when it rejected the settings file (issue #1036). */
+export interface SettingsFileRejection {
+  /** The settings file that was rejected. */
+  path: string;
+  /**
+   * Why, in the parser's own words — V8's message carries the position, e.g.
+   * `Expected double-quoted property name in JSON at position 11 (line 3 column 1)`.
+   */
+  reason: string;
+  /**
+   * Full path of the preserved copy — the new aside, or an identical one an
+   * earlier start already made. Undefined when nothing could be preserved.
+   */
+  preservedAt: string | undefined;
 }
 
 const DEFAULT_DEBOUNCE_MS = 250;
@@ -259,11 +284,14 @@ export function createFileSettingsStore(opts: FileSettingsStoreOptions): Setting
       try {
         const parsed: unknown = JSON.parse(text);
 
-        if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("not an object");
+        if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+          throw new Error("It is valid JSON but does not hold a settings object");
+        }
 
         return parsed as Record<string, unknown>;
       } catch (error: unknown) {
         const aside = path.replace(/\.json$/, "") + `.corrupt-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
+        let preservedAt: string | undefined = aside;
 
         logger.error("Settings file is not valid JSON; moving it aside and starting fresh");
         logger.debug(`Corrupt settings file ${path} → ${aside}: ${String(error)}`);
@@ -286,6 +314,7 @@ export function createFileSettingsStore(opts: FileSettingsStoreOptions): Setting
               await copyFile(path, aside);
               logger.error("Settings file could not be moved; preserving as copy instead");
             } else {
+              preservedAt = join(dirname(path), existing);
               logger.error("Settings file could not be moved; an identical copy is already preserved");
               logger.debug(`Identical aside: ${existing}`);
             }
@@ -298,9 +327,17 @@ export function createFileSettingsStore(opts: FileSettingsStoreOptions): Setting
               logger.debug(`Corrupt original could not be removed: ${String(unlinkError)}`);
             }
           } catch (copyError: unknown) {
+            preservedAt = undefined;
             logger.error("Settings file could not be preserved — moving on with fresh defaults");
             logger.debug(`Copy also failed: ${String(copyError)}`);
           }
+        }
+
+        try {
+          opts.onRejected?.({ path, reason: error instanceof Error ? error.message : String(error), preservedAt });
+        } catch (reportError: unknown) {
+          logger.error("Could not report the rejected settings file");
+          logger.debug(`Report error: ${String(reportError)}`);
         }
 
         return undefined;
