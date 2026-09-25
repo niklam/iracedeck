@@ -211,18 +211,18 @@ The first time you start a version that stores settings this way, iRaceDeck copi
 
 To back up your configuration, copy that one file somewhere safe; to restore it, put it back and restart the deck software. Each deck ecosystem gets its own folder, so a Stream Deck and an Ulanzi Deck installation on the same PC never share settings.
 
-### If Your Settings File Can't Be Read
+### If Your Settings File Has a Mistake in It
 
-If you edit the settings file by hand and leave a mistake in it — a comma after the last entry is the usual one — iRaceDeck cannot read the file when it next starts. It never throws your file away: it moves it aside, next to the original, as `global-settings.corrupt-<date>.json`, and restores your settings from the copy the deck software keeps. That copy is refreshed every time the plugin starts, so it holds your settings as they were at the last start that went well — which means changes made since then, including the hand edits themselves, are missing.
+If you edit the settings file by hand and leave a mistake in it — a comma after the last entry is the usual one — iRaceDeck cannot use the file when it next starts. It does not throw your file away: it moves it aside, next to the original, as `global-settings.corrupt-<date>.json`, and replaces your settings with the copy the deck software keeps. That copy is normally refreshed every time the plugin starts, so it usually holds your settings as they were at the last start that went well — which means changes made since then, including the hand edits themselves, are missing. If the deck software has no copy, you get the defaults instead.
 
-A red banner at the top of the Settings window and of every key's Property Inspector tells you this happened. It shows exactly what was wrong and where — for example *Expected double-quoted property name in JSON at position 9123 (line 327 column 120)* — and the full path of the file that was set aside. To get your changes back:
+A red banner at the top of the Settings window and of every key's Property Inspector tells you this happened. It names the line and column where the mistake is — for a stray comma that is the line just after it, where the closing brace sits — along with the full path of the file that was set aside. To get your changes back:
 
-1. Open the set-aside file in a text editor and fix the mistake at the line and column the banner names.
-2. Close your deck software.
-3. Rename the fixed file to `global-settings.json`, replacing the one in the same folder.
+1. Open the set-aside file in a text editor and fix the mistake at, or just before, the line and column the banner names.
+2. Quit your deck software completely, including from the system tray — closing its window leaves it running, and it would overwrite your fix.
+3. Rename the fixed file to `global-settings.json`, replacing the one already in that folder.
 4. Start your deck software again.
 
-Like every banner, this one describes only the session you are in: the next start with a file iRaceDeck can read comes up without it.
+The banner only describes the start that found the mistake. If you restart before fixing the file, the next start finds a valid settings file — the one iRaceDeck just wrote — and shows no banner, but your set-aside file stays in the same folder until you delete it.
 
 ## How It Works
 
