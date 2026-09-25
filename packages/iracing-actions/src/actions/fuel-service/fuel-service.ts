@@ -542,7 +542,9 @@ export class FuelService extends ConnectionStateAwareAction<FuelServiceSettings>
     if (settings.showBlackBox) {
       await showBlackBox(FUEL_BLACK_BOX_ID, {
         isConfigured: (key) => !this.isBindingMissing(key),
+        isKeyboardBound: (key) => this.isBindingKeyboardBound(key),
         tapSequence: (keys, holdMs) => this.tapBindingSequence(keys, holdMs),
+        tap: (key) => this.tapBinding(key),
         logger: this.logger,
       });
     }

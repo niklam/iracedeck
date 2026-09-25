@@ -15,9 +15,10 @@ import {
 // way the runtime does (via the @iracedeck/deck-core getDualPressDirections reader).
 const mockGetDualPressDirections = getDualPressDirections as unknown as ReturnType<typeof vi.fn>;
 
-const { mockTapBinding, mockTapBindingSequence } = vi.hoisted(() => ({
-  mockTapBinding: vi.fn().mockResolvedValue(undefined),
+const { mockTapBinding, mockTapBindingSequence, mockIsBindingKeyboardBound } = vi.hoisted(() => ({
+  mockTapBinding: vi.fn().mockResolvedValue(true),
   mockTapBindingSequence: vi.fn().mockResolvedValue(true),
+  mockIsBindingKeyboardBound: vi.fn((_key: string) => true),
 }));
 
 vi.mock("@iracedeck/icons/setup-chassis/differential-entry-decrease.svg", () => ({
@@ -141,6 +142,7 @@ vi.mock("@iracedeck/deck-core", async () => {
       setActiveBinding = vi.fn();
       isActiveBindingMissing = vi.fn(() => false);
       isBindingMissing = vi.fn(() => false);
+      isBindingKeyboardBound = mockIsBindingKeyboardBound;
       async onWillAppear() {}
       async onDidReceiveSettings() {}
       async onWillDisappear() {}
@@ -838,6 +840,23 @@ describe("SetupChassis", () => {
   });
 
   describe("show black box on value change (#953)", () => {
+    beforeEach(() => {
+      mockIsBindingKeyboardBound.mockImplementation(() => true);
+    });
+
+    it("taps prime then target separately when the Pit Stop box is a SimHub role (#962)", async () => {
+      mockIsBindingKeyboardBound.mockImplementation((key: string) => key !== "blackBoxPitStop");
+      const action = new SetupChassis();
+
+      await action.onKeyDown(
+        fakeEvent("action-1", { setting: "lr-spring", direction: "increase", showBlackBox: true }) as any,
+      );
+
+      expect(mockTapBindingSequence).not.toHaveBeenCalled();
+      expect(mockTapBinding.mock.calls.slice(0, 2)).toEqual([["blackBoxLapTiming"], ["blackBoxPitStop"]]);
+      expect(mockTapBinding).toHaveBeenCalledWith("setupChassisLrSpringIncrease");
+    });
+
     it("maps each mode to the box its value lives in", () => {
       expect(blackBoxForSetting("lr-spring")).toBe("pit-stop");
       expect(blackBoxForSetting("rr-spring")).toBe("pit-stop");

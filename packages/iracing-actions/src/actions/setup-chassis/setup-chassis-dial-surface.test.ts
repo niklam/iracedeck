@@ -14,13 +14,15 @@ const {
   mockTapBinding,
   mockTapBindingSequence,
   mockIsBindingMissing,
+  mockIsBindingKeyboardBound,
   mockDualPressThreshold,
   globalListeners,
 } = vi.hoisted(() => ({
   mockGetCurrentTelemetry: vi.fn<() => unknown>(() => null),
-  mockTapBinding: vi.fn().mockResolvedValue(undefined),
+  mockTapBinding: vi.fn().mockResolvedValue(true),
   mockTapBindingSequence: vi.fn().mockResolvedValue(true),
   mockIsBindingMissing: vi.fn(() => false),
+  mockIsBindingKeyboardBound: vi.fn((_key: string) => true),
   mockDualPressThreshold: { value: 500 },
   globalListeners: [] as Array<() => void>,
 }));
@@ -68,6 +70,7 @@ vi.mock("@iracedeck/deck-core", async () => {
       tapBinding = mockTapBinding;
       tapBindingSequence = mockTapBindingSequence;
       isBindingMissing = mockIsBindingMissing;
+      isBindingKeyboardBound = mockIsBindingKeyboardBound;
       async onWillAppear() {}
       async onDidReceiveSettings() {}
       async onWillDisappear() {}
@@ -247,6 +250,7 @@ describe("SetupChassis dial surface", () => {
     vi.useFakeTimers();
     mockDualPressThreshold.value = 500;
     mockIsBindingMissing.mockReturnValue(false);
+    mockIsBindingKeyboardBound.mockImplementation(() => true);
     mockGetCurrentTelemetry.mockReturnValue({ dcDiffPreload: 3, dcPowerSteering: 2 });
     globalListeners.length = 0;
     action = new SetupChassis();
@@ -389,6 +393,19 @@ describe("SetupChassis dial surface", () => {
       await action.onTouchTap({ action: ctx, payload: { settings, hold: false } } as never);
 
       expect(mockTapBindingSequence).toHaveBeenCalledWith(["blackBoxLapTiming", "blackBoxPitStop"], 0);
+    });
+
+    it("taps prime then target separately when the Pit Stop box is a SimHub role (#962)", async () => {
+      mockIsBindingKeyboardBound.mockImplementation((key: string) => key !== "blackBoxPitStop");
+      const ctx = dialContext("d1");
+      const settings = dialSettings({ setting: "lr-spring", pressAction: "show-pit-stop-black-box" });
+      await appear(ctx, settings);
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+
+      expect(mockTapBindingSequence).not.toHaveBeenCalled();
+      expect(mockTapBinding.mock.calls).toEqual([["blackBoxLapTiming"], ["blackBoxPitStop"]]);
     });
   });
 

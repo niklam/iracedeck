@@ -21,6 +21,7 @@ const {
   mockGetGlobalSettings,
   mockTapBinding,
   mockTapBindingSequence,
+  mockIsBindingKeyboardBound,
 } = vi.hoisted(() => ({
   mockPitClearFuel: vi.fn(() => true),
   mockPitFuel: vi.fn(() => true),
@@ -32,8 +33,9 @@ const {
   })),
   mockParseKeyBinding: vi.fn(),
   mockGetGlobalSettings: vi.fn(() => ({})),
-  mockTapBinding: vi.fn().mockResolvedValue(undefined),
+  mockTapBinding: vi.fn().mockResolvedValue(true),
   mockTapBindingSequence: vi.fn().mockResolvedValue(true),
+  mockIsBindingKeyboardBound: vi.fn((_key: string) => true),
 }));
 
 vi.mock("@iracedeck/iracing-sdk", () => ({
@@ -103,6 +105,7 @@ vi.mock("@iracedeck/deck-core", async () => {
       setActiveBinding = vi.fn();
       isActiveBindingMissing = vi.fn(() => false);
       isBindingMissing = vi.fn(() => false);
+      isBindingKeyboardBound = mockIsBindingKeyboardBound;
       async onWillAppear() {}
       async onDidReceiveSettings() {}
       async onWillDisappear() {}
@@ -1487,6 +1490,20 @@ describe("FuelService", () => {
       action = new FuelService();
       internals(action).sdkController.getCurrentTelemetry.mockReturnValue(METRIC_TELEMETRY);
       mockTapBindingSequence.mockResolvedValue(true);
+      mockTapBinding.mockResolvedValue(true);
+      mockIsBindingKeyboardBound.mockImplementation(() => true);
+    });
+
+    it("should tap prime then target separately when the Fuel box is a SimHub role (#962)", async () => {
+      mockIsBindingKeyboardBound.mockImplementation((key: string) => key !== "blackBoxFuel");
+
+      await action.onKeyDown(
+        fakeEvent("action-1", { mode: "add-fuel", amount: 5, unit: "l", showBlackBox: true }) as any,
+      );
+
+      expect(mockTapBindingSequence).not.toHaveBeenCalled();
+      expect(mockTapBinding.mock.calls).toEqual([["blackBoxLapTiming"], ["blackBoxFuel"]]);
+      expect(mockTapBinding.mock.invocationCallOrder[1]!).toBeLessThan(mockPitFuel.mock.invocationCallOrder[0]!);
     });
 
     it("should not touch the black box when the setting is off", async () => {

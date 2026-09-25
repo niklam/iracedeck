@@ -415,6 +415,7 @@ export class SetupChassis extends ConnectionStateAwareAction<SetupChassisSetting
     tapBinding: (settingKey) => this.tapBinding(settingKey),
     tapBindingSequence: (settingKeys, holdMs) => this.tapBindingSequence(settingKeys, holdMs),
     isBindingMissing: (keys) => this.isBindingMissing(keys),
+    isBindingKeyboardBound: (key) => this.isBindingKeyboardBound(key),
   });
 
   /** Keeps the dial strips' #612 missing-binding warning live while iRacing is offline (#800). */
@@ -585,7 +586,9 @@ export class SetupChassis extends ConnectionStateAwareAction<SetupChassisSetting
   private async showValueBlackBox(setting: string): Promise<void> {
     await showBlackBox(blackBoxForSetting(setting), {
       isConfigured: (key) => !this.isBindingMissing(key),
+      isKeyboardBound: (key) => this.isBindingKeyboardBound(key),
       tapSequence: (keys, holdMs) => this.tapBindingSequence(keys, holdMs),
+      tap: (key) => this.tapBinding(key),
       logger: this.logger,
     });
   }

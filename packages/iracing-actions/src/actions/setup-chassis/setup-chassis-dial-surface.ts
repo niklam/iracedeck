@@ -365,10 +365,13 @@ interface SetupChassisDialContext {
 export interface SetupChassisDialHost {
   readonly logger: ILogger;
   getTelemetry(): TelemetryData | null;
-  tapBinding(settingKey: string): Promise<void>;
-  /** Atomic multi-chord sequence (#818) — the show-black-box gesture's dispatch. */
+  /** Resolves true when the press went out — the serialized show-black-box path reads it (#962). */
+  tapBinding(settingKey: string): Promise<boolean>;
+  /** Atomic multi-chord sequence (#818) — the show-black-box gesture's keyboard dispatch. */
   tapBindingSequence(settingKeys: string[], holdMs?: number): Promise<boolean>;
   isBindingMissing(keys: string | string[] | null | undefined): boolean;
+  /** Whether a key is keyboard-bound, so show-black-box can choose atomic vs serialized (#962). */
+  isBindingKeyboardBound(key: string): boolean;
 }
 
 export class SetupChassisDialSurface {
@@ -611,7 +614,9 @@ export class SetupChassisDialSurface {
       this.host.logger.info("Setup chassis dial showing Pit Stop black box");
       await showBlackBox("pit-stop", {
         isConfigured: (key) => !this.host.isBindingMissing(key),
+        isKeyboardBound: (key) => this.host.isBindingKeyboardBound(key),
         tapSequence: (keys, holdMs) => this.host.tapBindingSequence(keys, holdMs),
+        tap: (key) => this.host.tapBinding(key),
         logger: this.host.logger,
       });
 
