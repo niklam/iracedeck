@@ -193,7 +193,7 @@ interface SplitsDeltaCycleDialContext {
  */
 export interface SplitsDeltaCycleDialHost {
   readonly logger: ILogger;
-  tapBinding(settingKey: string): Promise<void>;
+  tapBinding(settingKey: string): Promise<boolean>;
   isBindingMissing(keys: string | string[] | null | undefined): boolean;
 }
 
