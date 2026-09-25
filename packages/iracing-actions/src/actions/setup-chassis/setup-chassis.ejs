@@ -92,7 +92,8 @@
 				enabled-setting="showBlackBox"
 				target="blackBoxInCar"
 				candidates='<%= JSON.stringify(__primeCandidates) %>'
-				message="Showing the black box needs keyboard bindings for the In-Car black box and at least one other black box. Set them under Related Key Bindings. The value still changes without them."
+				message="Showing the black box needs black-box bindings for the In-Car box and at least one other box. Set them under Related Key Bindings. The value still changes without them."
+				simhub-message="The In-Car box or its priming box is bound to a SimHub role, so the priming box may flash briefly before the In-Car box opens. Bind the In-Car box and one other box to keys to avoid it."
 			></ird-black-box-caveat>
 		</div>
 
@@ -269,7 +270,11 @@
 					caveat.setAttribute("target", pitStop ? "blackBoxPitStop" : "blackBoxInCar");
 					caveat.setAttribute(
 						"message",
-						"Showing the black box needs keyboard bindings for the " + boxName + " black box and at least one other black box. Set them under Related Key Bindings. The value still changes without them.",
+						"Showing the black box needs black-box bindings for the " + boxName + " box and at least one other box. Set them under Related Key Bindings. The value still changes without them.",
+					);
+					caveat.setAttribute(
+						"simhub-message",
+						"The " + boxName + " box or its priming box is bound to a SimHub role, so the priming box may flash briefly before the " + boxName + " box opens. Bind the " + boxName + " box and one other box to keys to avoid it.",
 					);
 				}
 			}
