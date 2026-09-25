@@ -156,10 +156,11 @@ export function renderAudioStripSvg(state: AudioStripState): string {
 
   const content = parts.join("");
 
-  // Missing binding: dim the slot and draw the centered #612 warning triangle
-  // over it (same convention as the Fuel Service strip box).
+  // Missing binding: dim the slot and draw the #612 warning triangle over it,
+  // centred on the strip canvas — without the canvas the glyph keeps its
+  // 144x144 key placement (same convention as the Fuel Service strip box).
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 100" width="200" height="100">${
-    state.bindingMissing ? applyBindingWarning(content) : content
+    state.bindingMissing ? applyBindingWarning(content, { width: 200, height: 100 }) : content
   }</svg>`;
 }
 
