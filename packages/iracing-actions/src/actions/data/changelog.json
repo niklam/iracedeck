@@ -12,7 +12,7 @@
         {
           "title": "Features",
           "items": [
-            "New <strong>Replay Markers</strong> action for bookmarking moments of a session. Press <strong>Add Marker</strong> right after something happens — the marker lands a few seconds earlier, 5 by default and set per key, so it catches the lead-up — then, in the replay, <strong>Previous Marker</strong> or <strong>Next Marker</strong> jumps straight there, and <strong>Delete Marker</strong> removes the nearest one. Markers are saved per session, so they are still there when you open the saved replay days later; offline sessions keep them only until you leave (thanks @moartl31 for the request). See <a href=\"https://iracedeck.com/docs/actions/view-camera/replay-markers/\" target=\"_blank\" rel=\"noopener noreferrer\">Replay Markers</a>."
+            "New <strong>Replay Markers</strong> action for bookmarking moments of a session. Press <strong>Add Marker</strong> right after something happens — the marker lands a few seconds earlier, 5 by default and set per key, so it catches the lead-up — then, in the replay, <strong>Previous Marker</strong> or <strong>Next Marker</strong> jumps straight there — the key greys out while there is no marker to jump to — and <strong>Delete Marker</strong> removes the nearest one. Markers are saved per session, so they are still there when you open the saved replay days later; offline sessions keep them only until you leave (thanks @moartl31 for the request). See <a href=\"https://iracedeck.com/docs/actions/view-camera/replay-markers/\" target=\"_blank\" rel=\"noopener noreferrer\">Replay Markers</a>."
           ]
         },
         {

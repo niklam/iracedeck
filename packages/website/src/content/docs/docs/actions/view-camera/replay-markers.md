@@ -77,12 +77,14 @@ When a marker is deleted, the key briefly shows **MARKER DELETED**; a press with
 
 Jumps the replay to the next marker after the current moment. A marker less than one second ahead is skipped, so pressing again moves on to the one after instead of landing on the marker you just reached. With no marker ahead, nothing happens. It works in the replay: from the car, open the replay first.
 
+The key turns grey whenever a press would do nothing — no marker ahead, not in a replay, or iRacing not running — and comes back as the replay plays or a marker is added. The grey look keeps your colour and title overrides, only faded.
+
 #### Details
 
 - **Method:** iRacing API
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
-- **Telemetry-aware icon:** No
+- **Telemetry-aware icon:** Yes — greyed out while there is no marker to jump to
 
 #### Settings
 
@@ -94,12 +96,14 @@ Jumps the replay to the next marker after the current moment. A marker less than
 
 Jumps the replay to the previous marker before the current moment. A marker less than two seconds behind is skipped, so pressing it while a marker's moment is still playing goes to the one before, the way a media player's previous-track button does. With no marker behind, nothing happens. It works in the replay: from the car, open the replay first — iRacing accepts replay commands only when you are out of the car, so a press from the car sends nothing.
 
+Like **Next Marker**, the key turns grey whenever a press would do nothing: no marker behind, not in a replay, or iRacing not running.
+
 #### Details
 
 - **Method:** iRacing API
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
-- **Telemetry-aware icon:** No
+- **Telemetry-aware icon:** Yes — greyed out while there is no marker to jump to
 
 #### Settings
 
