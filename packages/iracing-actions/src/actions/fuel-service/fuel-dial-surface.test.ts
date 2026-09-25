@@ -2521,6 +2521,86 @@ describe("FuelService dial surface", () => {
         expect.objectContaining({ dial: expect.objectContaining({ mode: "add-amount" }) }),
       );
     });
+
+    it("persists by merging over the raw payload, writing no parsed defaults (#957)", async () => {
+      const ctx = dialContext("sm3");
+      const raw = { unit: "l", mode: "toggle-fuel-fill", dial: { mode: "add-amount", pressAction: "switch-mode" } };
+      await action.onWillAppear({ action: ctx, payload: { settings: raw } } as never);
+      ctx.setSettings.mockClear();
+
+      await action.onDialDown({ action: ctx, payload: { settings: raw } } as never);
+      await action.onDialUp({ action: ctx, payload: { settings: raw } } as never);
+
+      expect(ctx.setSettings).toHaveBeenCalledTimes(1);
+      expect(ctx.setSettings).toHaveBeenCalledWith({
+        unit: "l",
+        mode: "toggle-fuel-fill",
+        dial: { mode: "fill-to", pressAction: "switch-mode" },
+      });
+    });
+
+    it("a stale event after the flip does not revert the mode (#957)", async () => {
+      const ctx = dialContext("sm4");
+      // The host keeps delivering the pre-flip settings on every dial event.
+      const stale = { dialMode: "add-amount", pressAction: "switch-mode" };
+      await appear(ctx, stale);
+      ctx.setSettings.mockClear();
+
+      await pressDial(ctx, stale);
+      await action.onDialRotate(rotateEvent(ctx, stale, 1) as never);
+      await pressDial(ctx, stale);
+
+      const modes = ctx.setSettings.mock.calls.map((call) => (call[0] as { dial: { mode: string } }).dial.mode);
+      // Flipped to fill-to, then — from the REMEMBERED fill-to, not the stale
+      // add-amount — back to add-amount.
+      expect(modes).toEqual(["fill-to", "add-amount"]);
+    });
+
+    it("an event without settings flips in memory only and never persists (#957)", async () => {
+      const ctx = dialContext("sm5");
+      await appear(ctx, { dialMode: "add-amount", pressAction: "switch-mode" });
+      ctx.setSettings.mockClear();
+
+      await action.onDialDown({ action: ctx, payload: {} } as never);
+      await action.onDialUp({ action: ctx, payload: {} } as never);
+
+      expect(ctx.setSettings).not.toHaveBeenCalled();
+      const logger = (action as unknown as { logger: { warn: ReturnType<typeof vi.fn> } }).logger;
+      expect(logger.warn).toHaveBeenCalledWith("Dial event carried no settings; mode switch not persisted");
+      // The in-memory flip still happened: the trigger description now names the target mode.
+      expect(ctx.setTriggerDescription).toHaveBeenLastCalledWith(
+        expect.objectContaining({ rotate: "Adjust target / autofuel margin" }),
+      );
+    });
+
+    it("fires the gesture stored in the context, not one named by a stale payload (#957)", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      const ctx = dialContext("sm6");
+      await appear(ctx, { tapAction: "switch-mode", dialMode: "add-amount" });
+      ctx.setSettings.mockClear();
+      mockPitClearFuel.mockClear();
+
+      await action.onTouchTap(touchTapEvent(ctx, { tapAction: "toggle-fueling" }, false) as never);
+
+      expect(mockPitClearFuel).not.toHaveBeenCalled();
+      expect(ctx.setSettings).toHaveBeenCalledTimes(1);
+    });
+
+    it("a Property Inspector change still wins over the in-memory flip (#957)", async () => {
+      const ctx = dialContext("sm7");
+      const settings = { dialMode: "add-amount", pressAction: "switch-mode" };
+      await appear(ctx, settings);
+      await pressDial(ctx, settings); // → fill-to in memory
+      ctx.setSettings.mockClear();
+
+      // The PI sets add-amount explicitly; the next press flips from THAT.
+      await action.onDidReceiveSettings(basicEvent(ctx, settings) as never);
+      await pressDial(ctx, settings);
+
+      expect(ctx.setSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ dial: expect.objectContaining({ mode: "fill-to" }) }),
+      );
+    });
   });
 
   describe("onTouchTap routing (Tap Display vs Long Touch)", () => {
