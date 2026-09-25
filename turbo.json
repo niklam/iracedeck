@@ -50,7 +50,9 @@
         "$TURBO_ROOT$/packages/*/package.json",
         "$TURBO_ROOT$/scripts/lib/dev-local.mjs",
         "$TURBO_ROOT$/scripts/lib/rollup-logs.mjs",
-        "$TURBO_ROOT$/scripts/lib/runtime-deps.mjs"
+        "$TURBO_ROOT$/scripts/install-runtime-deps.mjs",
+        "$TURBO_ROOT$/scripts/lib/runtime-deps.mjs",
+        "$TURBO_ROOT$/scripts/lib/runtime-install-env.mjs"
       ],
       "outputs": ["com.iracedeck.sd.*.sdPlugin/**"]
     },
@@ -65,7 +67,9 @@
         "$TURBO_ROOT$/packages/*/package.json",
         "$TURBO_ROOT$/scripts/lib/dev-local.mjs",
         "$TURBO_ROOT$/scripts/lib/rollup-logs.mjs",
-        "$TURBO_ROOT$/scripts/lib/runtime-deps.mjs"
+        "$TURBO_ROOT$/scripts/install-runtime-deps.mjs",
+        "$TURBO_ROOT$/scripts/lib/runtime-deps.mjs",
+        "$TURBO_ROOT$/scripts/lib/runtime-install-env.mjs"
       ],
       "outputs": ["com.iracedeck.sd.*.sdPlugin/**"]
     },
@@ -80,7 +84,9 @@
         "$TURBO_ROOT$/packages/*/package.json",
         "$TURBO_ROOT$/scripts/lib/dev-local.mjs",
         "$TURBO_ROOT$/scripts/lib/rollup-logs.mjs",
-        "$TURBO_ROOT$/scripts/lib/runtime-deps.mjs"
+        "$TURBO_ROOT$/scripts/install-runtime-deps.mjs",
+        "$TURBO_ROOT$/scripts/lib/runtime-deps.mjs",
+        "$TURBO_ROOT$/scripts/lib/runtime-install-env.mjs"
       ],
       "outputs": ["com.ulanzi.*.ulanziPlugin/**"]
     },
