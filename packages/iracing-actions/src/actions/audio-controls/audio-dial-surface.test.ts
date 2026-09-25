@@ -618,13 +618,43 @@ describe("AudioDialSurface (through AudioControls)", () => {
       });
     });
 
-    it("persists the migrated settings on didReceiveSettings", async () => {
+    it("never persists on didReceiveSettings — the PI produces the legacy pair transiently on a Mode switch", async () => {
+      // Voice Chat + Mute / Unmute → Spotter: sdpi saves dial.category first,
+      // so {spotter, mute-unmute} arrives for up to one poll tick before the
+      // PI falls the press back to None. Rewriting it would pick a press the
+      // user never chose.
       const ctx = dialAction();
-      await action.onDidReceiveSettings(ev(ctx, legacy()));
+      await action.onDidReceiveSettings(ev(ctx, { dial: { category: "spotter", pressAction: "mute-unmute" } }));
       await flush();
 
-      expect(ctx.setSettings).toHaveBeenCalledTimes(1);
-      expect(ctx.setSettings).toHaveBeenCalledWith(migrated);
+      expect(ctx.setSettings).not.toHaveBeenCalled();
+    });
+
+    it("migrates before the base class stamps addedWithVersion, so the stamp write lands last and keeps the migration", async () => {
+      // Stand in for BaseAction.onWillAppear: stamp a missing addedWithVersion
+      // with a setSettings built from the payload it is handed.
+      type StampEvent = { action: { setSettings(s: unknown): Promise<void> }; payload: { settings: object } };
+      const base = Object.getPrototypeOf(AudioControls.prototype) as { onWillAppear(e: StampEvent): Promise<void> };
+      const stamp = vi.spyOn(base, "onWillAppear").mockImplementation(async (e: StampEvent) => {
+        const settings = e.payload.settings as Record<string, unknown>;
+
+        if (!settings.addedWithVersion) await e.action.setSettings({ ...settings, addedWithVersion: "3.4.0" });
+      });
+
+      try {
+        const ctx = dialAction();
+        const event = ev(ctx, legacy()) as { payload: { settings: unknown } };
+        await action.onWillAppear(event as never);
+        await flush();
+
+        expect(stamp).toHaveBeenCalledTimes(1);
+        expect(ctx.setSettings).toHaveBeenCalledTimes(2);
+        expect(ctx.setSettings.mock.calls[0][0]).toEqual(migrated);
+        expect(ctx.setSettings.mock.calls[1][0]).toEqual({ ...migrated, addedWithVersion: "3.4.0" });
+        expect(event.payload.settings).toEqual(migrated);
+      } finally {
+        stamp.mockRestore();
+      }
     });
 
     it("persists the migration from a keypad instance's stored dial half too", async () => {

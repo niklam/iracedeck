@@ -267,9 +267,11 @@
 			// Which categories offer Mute / Unmute, derived from the same comms entry
 			// the plugin generates from its dial tables: a category with a mute
 			// binding (voice chat) plus the iRaceDeck-internal ones (they
-			// flip a feature gate, so they mute with no binding at all). Master is
-			// absent - iRacing has no master-mute keybind - and for it the option is
-			// detached (same sdpi-select re-render caveat as the keypad mute option).
+			// flip a feature gate, so they mute with no binding at all). Master and
+			// Spotter are absent - iRacing has no master-mute keybind, and Spotter's
+			// Spotter Silence binding is Skip Spotter Call, not a mute (#1015) - and
+			// for them the option is detached (same sdpi-select re-render caveat as
+			// the keypad mute option).
 			// The press status line is hidden for internal-category Mute / Unmute:
 			// that mute is plugin-internal, there is nothing to configure.
 			const DIAL_MUTABLE_CATEGORIES = new Set(
