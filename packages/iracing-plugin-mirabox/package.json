@@ -33,7 +33,7 @@
     "zod": "4.6.1"
   },
   "devDependencies": {
-    "@elgato/cli": "1.9.0",
+    "@elgato/cli": "1.10.0",
     "@rollup/plugin-commonjs": "29.0.3",
     "@rollup/plugin-json": "6.1.0",
     "@rollup/plugin-node-resolve": "16.0.3",

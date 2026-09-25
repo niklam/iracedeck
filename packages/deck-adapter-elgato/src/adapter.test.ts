@@ -1,13 +1,19 @@
 import type StreamDeck from "@elgato/streamdeck";
 import {
+  _resetGlobalSettings,
   _resetProfileSwitcher,
   _resetRasterizer,
+  createMemorySettingsStore,
+  getGlobalSettings,
   type IDeckActionHandler,
+  initGlobalSettings,
   initializeRasterizer,
   initProfileSwitcher,
+  isSettingsStoreReady,
   requestProfileSwitchBack,
   svgToDataUri,
 } from "@iracedeck/deck-core";
+import type { ILogger } from "@iracedeck/logger";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ElgatoPlatformAdapter } from "./adapter.js";
@@ -68,6 +74,7 @@ function createMockDialAction(id: string) {
     setSettings: vi.fn().mockResolvedValue(undefined),
     isKey: vi.fn().mockReturnValue(false),
     isDial: vi.fn().mockReturnValue(true),
+    isNeoInfobar: vi.fn().mockReturnValue(false),
     setFeedback: vi.fn().mockResolvedValue(undefined),
     setFeedbackLayout: vi.fn().mockResolvedValue(undefined),
     setTriggerDescription: vi.fn().mockResolvedValue(undefined),
@@ -82,6 +89,7 @@ function createMockKeyAction(id: string) {
     setTitle: vi.fn().mockResolvedValue(undefined),
     setSettings: vi.fn().mockResolvedValue(undefined),
     isKey: vi.fn().mockReturnValue(true),
+    isNeoInfobar: vi.fn().mockReturnValue(false),
   };
 }
 
@@ -173,6 +181,29 @@ describe("ElgatoPlatformAdapter", () => {
       await expect(ev.action.setFeedbackLayout("$B1")).resolves.toBeUndefined();
       await expect(ev.action.setTriggerDescription({ rotate: "Adjust" })).resolves.toBeUndefined();
       expect(ev.action.isDial()).toBe(false);
+    });
+  });
+
+  describe("Neo Infobar instances (#1208)", () => {
+    it("does not hand a Neo Infobar instance to the handler on willAppear or didReceiveSettings", async () => {
+      const handler: IDeckActionHandler = { onWillAppear: vi.fn(), onDidReceiveSettings: vi.fn() };
+      const bridge = registerAndGetBridge(handler);
+      const action = { id: "ctx-infobar", isNeoInfobar: vi.fn().mockReturnValue(true) };
+
+      await bridge.onWillAppear({ action, payload: { settings: {} } });
+      await bridge.onDidReceiveSettings({ action, payload: { settings: {} } });
+
+      expect(handler.onWillAppear).not.toHaveBeenCalled();
+      expect(handler.onDidReceiveSettings).not.toHaveBeenCalled();
+    });
+
+    it("still hands a key instance to the handler on didReceiveSettings", async () => {
+      const handler: IDeckActionHandler = { onDidReceiveSettings: vi.fn() };
+      const bridge = registerAndGetBridge(handler);
+
+      await bridge.onDidReceiveSettings({ action: createMockKeyAction("ctx-key"), payload: { settings: { a: 1 } } });
+
+      expect(handler.onDidReceiveSettings).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -522,5 +553,155 @@ describe("ElgatoPlatformAdapter sendToPlugin → openSettings routing (#992)", (
     emitSendToPlugin("dev-1", { event: "switchToProfile", profile: "iRaceDeck Default" });
 
     expect(listener).not.toHaveBeenCalled();
+  });
+});
+
+describe("ElgatoPlatformAdapter global settings read (#1208)", () => {
+  /**
+   * The SDK 3.0 shape: `getGlobalSettings()` returns a promise carrying the
+   * answer, and `onDidReceiveGlobalSettings` fires only for a PI's save.
+   */
+  function createSettingsMock(read: () => Promise<unknown>) {
+    let sdkListener: ((ev: { settings: unknown }) => void) | undefined;
+    const errorLog = vi.fn();
+    const sd = {
+      logger: {
+        createScope: vi.fn(() => ({
+          trace: vi.fn(),
+          debug: vi.fn(),
+          info: vi.fn(),
+          warn: vi.fn(),
+          error: errorLog,
+          createScope: vi.fn(),
+          setLevel: vi.fn(),
+        })),
+      },
+      settings: {
+        onDidReceiveGlobalSettings: vi.fn((listener: (ev: { settings: unknown }) => void) => {
+          sdkListener = listener;
+        }),
+        getGlobalSettings: vi.fn(read),
+        setGlobalSettings: vi.fn(),
+      },
+      ui: { onSendToPlugin: vi.fn() },
+    };
+
+    return {
+      sd: sd as unknown as typeof StreamDeck,
+      read: sd.settings.getGlobalSettings,
+      errorLog,
+      /** Simulate a Property Inspector saving global settings. */
+      emitPiSave(settings: unknown) {
+        sdkListener?.({ settings });
+      },
+    };
+  }
+
+  it("delivers the read's answer to the subscriber exactly once", async () => {
+    const { sd, read } = createSettingsMock(() => Promise.resolve({ focusIRacingWindow: true }));
+    const adapter = new ElgatoPlatformAdapter(sd);
+    const callback = vi.fn();
+
+    adapter.onDidReceiveGlobalSettings(callback);
+    adapter.getGlobalSettings();
+    await vi.waitFor(() => expect(callback).toHaveBeenCalled());
+    await Promise.resolve();
+
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(callback).toHaveBeenCalledTimes(1);
+    expect(callback).toHaveBeenCalledWith({ focusIRacingWindow: true });
+  });
+
+  it("delivers the answer to every subscriber", async () => {
+    const { sd } = createSettingsMock(() => Promise.resolve({ a: 1 }));
+    const adapter = new ElgatoPlatformAdapter(sd);
+    const first = vi.fn();
+    const second = vi.fn();
+
+    adapter.onDidReceiveGlobalSettings(first);
+    adapter.onDidReceiveGlobalSettings(second);
+    adapter.getGlobalSettings();
+    await vi.waitFor(() => expect(second).toHaveBeenCalled());
+
+    expect(first).toHaveBeenCalledExactlyOnceWith({ a: 1 });
+    expect(second).toHaveBeenCalledExactlyOnceWith({ a: 1 });
+  });
+
+  it("still forwards a Property Inspector save through the event", () => {
+    const { sd, emitPiSave } = createSettingsMock(() => new Promise(() => {}));
+    const adapter = new ElgatoPlatformAdapter(sd);
+    const callback = vi.fn();
+
+    adapter.onDidReceiveGlobalSettings(callback);
+    emitPiSave({ debugLogging: true });
+
+    expect(callback).toHaveBeenCalledExactlyOnceWith({ debugLogging: true });
+  });
+
+  it("logs a rejected read instead of leaving an unhandled rejection", async () => {
+    const { sd, errorLog } = createSettingsMock(() => Promise.reject(new Error("socket closed")));
+    const adapter = new ElgatoPlatformAdapter(sd);
+    const callback = vi.fn();
+
+    adapter.onDidReceiveGlobalSettings(callback);
+    adapter.getGlobalSettings();
+    await vi.waitFor(() => expect(errorLog).toHaveBeenCalled());
+
+    expect(errorLog.mock.calls[0][0]).toContain("socket closed");
+    expect(callback).not.toHaveBeenCalled();
+  });
+});
+
+describe("Elgato fresh-install migration through the SDK 3.0 read path (#1208)", () => {
+  afterEach(() => {
+    _resetGlobalSettings();
+  });
+
+  it("migrates the host's settings exactly once, and a later PI save echo is not ingested", async () => {
+    let sdkListener: ((ev: { settings: unknown }) => void) | undefined;
+    const hostSettings = {
+      driverName: "host-nick",
+      blackBoxLapTiming: JSON.stringify({ type: "keyboard", key: "f1", modifiers: [] }),
+    };
+    const sd = {
+      logger: {
+        createScope: vi.fn(() => ({ trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() })),
+      },
+      settings: {
+        // SDK 3.0: the event carries PI saves only; the read's reply goes to the promise.
+        onDidReceiveGlobalSettings: vi.fn((listener: (ev: { settings: unknown }) => void) => {
+          sdkListener = listener;
+        }),
+        getGlobalSettings: vi.fn(() => Promise.resolve({ ...hostSettings })),
+        setGlobalSettings: vi.fn(),
+      },
+      ui: { onSendToPlugin: vi.fn() },
+    };
+    const adapter = new ElgatoPlatformAdapter(sd as unknown as typeof StreamDeck);
+    const info = vi.fn();
+    const log = {
+      trace: vi.fn(),
+      debug: vi.fn(),
+      info,
+      warn: vi.fn(),
+      error: vi.fn(),
+      createScope: vi.fn(),
+    } as unknown as ILogger;
+    const store = createMemorySettingsStore(); // no settings file: a fresh install of the file-backed store
+
+    initGlobalSettings(adapter, log, store, { migrationTimeoutMs: 5_000 });
+    await vi.waitFor(() => expect(isSettingsStoreReady()).toBe(true));
+
+    expect(sd.settings.getGlobalSettings).toHaveBeenCalledTimes(1);
+    expect(info.mock.calls.filter(([line]) => line === "Settings received from host for migration")).toHaveLength(1);
+    expect(getGlobalSettings().driverName).toBe("host-nick");
+    expect(store.saved.at(-1)).toMatchObject(hostSettings);
+
+    const savesAfterMigration = store.saved.length;
+
+    sdkListener?.({ settings: { driverName: "pi-echo" } });
+
+    expect(getGlobalSettings().driverName).toBe("host-nick");
+    expect(store.saved).toHaveLength(savesAfterMigration);
   });
 });

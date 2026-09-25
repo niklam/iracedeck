@@ -263,6 +263,7 @@ function wrapTouchTapEvent<T>(ev: TouchTapEvent<T & JsonObject>): IDeckTouchTapE
  */
 export class ElgatoPlatformAdapter implements IDeckPlatformAdapter {
   private openSettingsListeners: Array<() => void> = [];
+  private globalSettingsListeners: Array<(settings: unknown) => void> = [];
 
   constructor(private readonly sd: typeof StreamDeck) {
     // Route "Stream Deck Profiles" settings-accordion button presses — sent from
@@ -341,13 +342,40 @@ export class ElgatoPlatformAdapter implements IDeckPlatformAdapter {
   }
 
   onDidReceiveGlobalSettings(callback: (settings: unknown) => void): void {
+    this.globalSettingsListeners.push(callback);
     this.sd.settings.onDidReceiveGlobalSettings((ev: { settings: unknown }) => {
       callback(ev.settings);
     });
   }
 
+  /**
+   * Request the host's global settings and deliver the answer to every
+   * {@link onDidReceiveGlobalSettings} subscriber (#1208).
+   *
+   * Since `@elgato/streamdeck` 3.0 the SDK's `onDidReceiveGlobalSettings` fires
+   * only for a Property Inspector's save: the reply to a read carries a request
+   * id, and the SDK hands it to the promise `getGlobalSettings()` returns and
+   * drops it from the event. So the answer is delivered here, through the same
+   * callbacks the event feeds — exactly once per read, which is what deck-core's
+   * one-time host migration (#993) waits for. Leaving `useLegacySettingsBehavior`
+   * off is deliberate: turning it on would deliver the reply twice, once through
+   * each path.
+   *
+   * One edge is inherited rather than introduced: the SDK resolves the promise
+   * on the NEXT `didReceiveGlobalSettings` frame, correlated by nothing, so a PI
+   * save landing between the request and its reply resolves it and also fires
+   * the event. deck-core takes the first payload while its migration window is
+   * open and ignores the rest (#1053), so the duplicate is dropped there.
+   */
   getGlobalSettings(): void {
-    this.sd.settings.getGlobalSettings();
+    this.sd.settings.getGlobalSettings().then(
+      (settings: unknown) => {
+        for (const listener of this.globalSettingsListeners) listener(settings);
+      },
+      (error: unknown) => {
+        this.createLogger("GlobalSettings").error(`Global settings read failed: ${String(error)}`);
+      },
+    );
   }
 
   setGlobalSettings(settings: Record<string, unknown>): void {
@@ -386,8 +414,14 @@ export class ElgatoPlatformAdapter implements IDeckPlatformAdapter {
     class BridgeAction extends SingletonAction<T & JsonObject> {
       override manifestId = uuid;
 
+      // `@elgato/streamdeck` 3.0 widened these two events' action to include
+      // `NeoInfobarAction`, which has no image or title (#1208). No manifest
+      // entry declares the Neo Infobar controller, so the host never sends one;
+      // narrowing it out keeps the wrapper honest without a cast.
       override async onWillAppear(ev: WillAppearEvent<T & JsonObject>): Promise<void> {
-        await handler.onWillAppear?.(wrapEvent(ev) as IDeckWillAppearEvent<T>);
+        if (ev.action.isNeoInfobar()) return;
+
+        await handler.onWillAppear?.(wrapEvent({ action: ev.action, payload: ev.payload }) as IDeckWillAppearEvent<T>);
       }
 
       override async onWillDisappear(ev: WillDisappearEvent<T & JsonObject>): Promise<void> {
@@ -395,7 +429,11 @@ export class ElgatoPlatformAdapter implements IDeckPlatformAdapter {
       }
 
       override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<T & JsonObject>): Promise<void> {
-        await handler.onDidReceiveSettings?.(wrapEvent(ev) as IDeckDidReceiveSettingsEvent<T>);
+        if (ev.action.isNeoInfobar()) return;
+
+        await handler.onDidReceiveSettings?.(
+          wrapEvent({ action: ev.action, payload: ev.payload }) as IDeckDidReceiveSettingsEvent<T>,
+        );
       }
 
       override async onKeyDown(ev: KeyDownEvent<T & JsonObject>): Promise<void> {
