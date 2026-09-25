@@ -233,9 +233,15 @@ describe("buildAudioTriggerDescription", () => {
   });
 
   it("describes spotter rotation (#809)", () => {
-    expect(buildAudioTriggerDescription({ category: "spotter", pressAction: "mute-unmute" })).toEqual({
+    expect(buildAudioTriggerDescription({ category: "spotter", pressAction: "none" })).toEqual({
       rotate: "Adjust spotter volume",
-      push: "Mute / unmute",
+    });
+  });
+
+  it("labels the Skip Spotter Call press (#1015)", () => {
+    expect(buildAudioTriggerDescription({ category: "spotter", pressAction: "skip-call" })).toEqual({
+      rotate: "Adjust spotter volume",
+      push: "Skip spotter call",
     });
   });
 
@@ -288,12 +294,12 @@ describe("AudioDialSurface (through AudioControls)", () => {
   describe("willAppear (spotter, #809)", () => {
     it("shows the SPOTTER identity strip and the spotter trigger description", async () => {
       const ctx = dialAction();
-      await action.onWillAppear(ev(ctx, { dial: { category: "spotter", pressAction: "mute-unmute" } }));
+      await action.onWillAppear(ev(ctx, { dial: { category: "spotter", pressAction: "skip-call" } }));
       await flush();
 
       expect(ctx.setTriggerDescription).toHaveBeenCalledWith({
         rotate: "Adjust spotter volume",
-        push: "Mute / unmute",
+        push: "Skip spotter call",
       });
       expect(lastFeedbackSvg(ctx)).toContain(">SPOTTER<");
       expect(lastFeedbackSvg(ctx)).not.toContain("<binding-warning/>");
@@ -304,7 +310,7 @@ describe("AudioDialSurface (through AudioControls)", () => {
         Array.isArray(keys) ? keys.includes("spotterSilence") : keys === "spotterSilence",
       );
       const ctx = dialAction();
-      await action.onWillAppear(ev(ctx, { dial: { category: "spotter", pressAction: "mute-unmute" } }));
+      await action.onWillAppear(ev(ctx, { dial: { category: "spotter", pressAction: "skip-call" } }));
       await flush();
 
       expect(mockIsBindingMissing).toHaveBeenCalledWith(["spotterLouder", "spotterQuieter", "spotterSilence"]);
@@ -416,26 +422,6 @@ describe("AudioDialSurface (through AudioControls)", () => {
       await action.onDialDown(ev(ctx, { dial: { category: "voice-chat", pressAction: "mute-unmute" } }));
       expect(mockTapBinding).toHaveBeenCalledWith("audioVoiceChatMute");
       await flush();
-    });
-
-    it("taps the spotter silence binding for spotter Mute / Unmute (#809)", async () => {
-      const ctx = dialAction();
-      await action.onDialDown(ev(ctx, { dial: { category: "spotter", pressAction: "mute-unmute" } }));
-      expect(mockTapBinding).toHaveBeenCalledTimes(1);
-      expect(mockTapBinding).toHaveBeenCalledWith("spotterSilence");
-      expect(mockToggleRaceEngineerFeature).not.toHaveBeenCalled();
-      expect(mockToggleRadarFeature).not.toHaveBeenCalled();
-      await flush();
-    });
-
-    it("skips spotter Mute / Unmute when the silence binding is unset (#809)", async () => {
-      mockIsBindingMissing.mockReturnValue(true);
-      const ctx = dialAction();
-      await action.onDialDown(ev(ctx, { dial: { category: "spotter", pressAction: "mute-unmute" } }));
-      expect(mockTapBinding).not.toHaveBeenCalled();
-      expect((action as unknown as { logger: { warn: ReturnType<typeof vi.fn> } }).logger.warn).toHaveBeenCalledWith(
-        expect.stringContaining("not configured"),
-      );
     });
 
     it("toggles the Race Engineer feature gate for Mute / Unmute", async () => {
@@ -562,6 +548,127 @@ describe("AudioDialSurface (through AudioControls)", () => {
 
       expect(lastFeedbackSvg(ctx)).toContain("VOICE CHAT");
       expect(lastFeedbackSvg(ctx)).not.toContain("<binding-warning/>");
+    });
+  });
+
+  describe("press: Skip Spotter Call (#1015)", () => {
+    const warn = () => (action as unknown as { logger: { warn: ReturnType<typeof vi.fn> } }).logger.warn;
+
+    it("taps the spotter silence binding on dialDown", async () => {
+      const ctx = dialAction();
+      const settings = { dial: { category: "spotter", pressAction: "skip-call" } };
+      await action.onDialDown(ev(ctx, settings));
+      await action.onDialUp(ev(ctx, settings));
+
+      expect(mockTapBinding).toHaveBeenCalledTimes(1);
+      expect(mockTapBinding).toHaveBeenCalledWith("spotterSilence");
+      expect(mockHoldBinding).not.toHaveBeenCalled();
+      expect(mockReleaseBinding).not.toHaveBeenCalled();
+      expect(mockToggleRaceEngineerFeature).not.toHaveBeenCalled();
+      expect(mockToggleRadarFeature).not.toHaveBeenCalled();
+      expect(warn()).not.toHaveBeenCalled();
+      await flush();
+    });
+
+    it.each(["voice-chat", "master", "race-engineer", "radar"])(
+      "logs + no-ops a stale %s Skip Spotter Call value (the PI offers it for spotter only)",
+      async (category) => {
+        const ctx = dialAction();
+        await action.onDialDown(ev(ctx, { dial: { category, pressAction: "skip-call" } }));
+
+        expect(mockTapBinding).not.toHaveBeenCalled();
+        expect(mockToggleRaceEngineerFeature).not.toHaveBeenCalled();
+        expect(mockToggleRadarFeature).not.toHaveBeenCalled();
+        expect(warn()).toHaveBeenCalledWith(expect.stringContaining("not available"));
+        await flush();
+      },
+    );
+
+    it("logs + no-ops when the spotter silence binding is not configured", async () => {
+      mockIsBindingMissing.mockReturnValue(true);
+      const ctx = dialAction();
+      await action.onDialDown(ev(ctx, { dial: { category: "spotter", pressAction: "skip-call" } }));
+
+      expect(mockIsBindingMissing).toHaveBeenCalledWith("spotterSilence");
+      expect(mockTapBinding).not.toHaveBeenCalled();
+      expect(warn()).toHaveBeenCalledWith(expect.stringContaining("not configured"));
+      await flush();
+    });
+  });
+
+  describe("legacy spotter Mute / Unmute migration (#1015)", () => {
+    const legacy = () => ({
+      category: "voice-chat",
+      futureKey: 1,
+      dial: { category: "spotter", pressAction: "mute-unmute" },
+    });
+    const migrated = { category: "voice-chat", futureKey: 1, dial: { category: "spotter", pressAction: "skip-call" } };
+    const warn = () => (action as unknown as { logger: { warn: ReturnType<typeof vi.fn> } }).logger.warn;
+
+    it("persists the migrated settings on willAppear and shows Skip spotter call", async () => {
+      const ctx = dialAction();
+      await action.onWillAppear(ev(ctx, legacy()));
+      await flush();
+
+      expect(ctx.setSettings).toHaveBeenCalledTimes(1);
+      expect(ctx.setSettings).toHaveBeenCalledWith(migrated);
+      expect(ctx.setTriggerDescription).toHaveBeenCalledWith({
+        rotate: "Adjust spotter volume",
+        push: "Skip spotter call",
+      });
+    });
+
+    it("persists the migrated settings on didReceiveSettings", async () => {
+      const ctx = dialAction();
+      await action.onDidReceiveSettings(ev(ctx, legacy()));
+      await flush();
+
+      expect(ctx.setSettings).toHaveBeenCalledTimes(1);
+      expect(ctx.setSettings).toHaveBeenCalledWith(migrated);
+    });
+
+    it("persists the migration from a keypad instance's stored dial half too", async () => {
+      const ctx = keypadAction();
+      await action.onWillAppear(ev(ctx, legacy()));
+
+      expect(ctx.setSettings).toHaveBeenCalledWith(migrated);
+    });
+
+    it.each([
+      ["spotter skip-call", { dial: { category: "spotter", pressAction: "skip-call" } }],
+      ["voice-chat mute-unmute", { dial: { category: "voice-chat", pressAction: "mute-unmute" } }],
+      ["keypad-only settings", { category: "voice-chat", action: "mute" }],
+      ["empty settings", {}],
+    ])("does not call setSettings for %s", async (_label, settings) => {
+      const ctx = dialAction();
+      await action.onWillAppear(ev(ctx, settings));
+      await action.onDidReceiveSettings(ev(ctx, settings));
+      await flush();
+
+      expect(ctx.setSettings).not.toHaveBeenCalled();
+    });
+
+    it("logs and swallows a failed persist, and still renders the migrated press", async () => {
+      const ctx = dialAction();
+      ctx.setSettings.mockRejectedValueOnce(new Error("host gone"));
+      await action.onWillAppear(ev(ctx, legacy()));
+      await flush();
+
+      expect(warn()).toHaveBeenCalledWith(expect.stringContaining("host gone"));
+      expect(ctx.setTriggerDescription).toHaveBeenCalledWith({
+        rotate: "Adjust spotter volume",
+        push: "Skip spotter call",
+      });
+    });
+
+    it("dispatches a legacy value as Skip Spotter Call even before the persist lands", async () => {
+      const ctx = dialAction();
+      await action.onDialDown(ev(ctx, legacy()));
+
+      expect(mockTapBinding).toHaveBeenCalledTimes(1);
+      expect(mockTapBinding).toHaveBeenCalledWith("spotterSilence");
+      expect(warn()).not.toHaveBeenCalled();
+      await flush();
     });
   });
 

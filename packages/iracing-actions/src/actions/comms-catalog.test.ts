@@ -2,7 +2,7 @@ import type { CommDescriptor } from "@iracedeck/deck-core";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import { DIAL_CATEGORIES } from "./audio-controls/audio-controls-settings.js";
+import { DIAL_CATEGORIES, DIAL_PRESS_ACTIONS } from "./audio-controls/audio-controls-settings.js";
 import { type ActionCommMeta, COMMS_CATALOG } from "./comms-catalog.js";
 
 const JSON_PATH = new URL("./data/action-comms.json", import.meta.url);
@@ -111,5 +111,23 @@ describe("action-comms catalog", () => {
     const dial = COMMS_CATALOG["audio-controls-dial"];
 
     for (const category of DIAL_CATEGORIES) expect(dial[category], category).toBeDefined();
+  });
+
+  it("describes every Audio Controls dial press but none (#863, #1015)", () => {
+    const dial = COMMS_CATALOG["audio-controls-dial"];
+
+    for (const press of DIAL_PRESS_ACTIONS) {
+      if (press === "none") expect(dial[press]).toBeUndefined();
+      else expect(dial[press], press).toBeDefined();
+    }
+  });
+
+  it("offers Skip Spotter Call for spotter only and Mute / Unmute no longer for spotter (#1015)", () => {
+    const dial = COMMS_CATALOG["audio-controls-dial"];
+    const keyByMap = (mode: string) =>
+      (dial[mode] as { binding?: { keyBy?: { setting: string; map: Record<string, string> } } }).binding?.keyBy;
+
+    expect(keyByMap("skip-call")).toEqual({ setting: "dial.category", map: { spotter: "spotterSilence" } });
+    expect(keyByMap("mute-unmute")).toEqual({ setting: "dial.category", map: { "voice-chat": "audioVoiceChatMute" } });
   });
 });

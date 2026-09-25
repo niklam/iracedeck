@@ -69,6 +69,7 @@
 					<option value="push-to-talk">Push to Talk</option>
 					<option value="mute-unmute" id="dial-mute-option">Mute / Unmute</option>
 					<option value="mute-driver">Mute a Driver</option>
+					<option value="skip-call">Skip Spotter Call</option>
 					<option value="none">None</option>
 				</sdpi-select>
 			</sdpi-item>
@@ -265,7 +266,7 @@
 
 			// Which categories offer Mute / Unmute, derived from the same comms entry
 			// the plugin generates from its dial tables: a category with a mute
-			// binding (voice chat, spotter) plus the iRaceDeck-internal ones (they
+			// binding (voice chat) plus the iRaceDeck-internal ones (they
 			// flip a feature gate, so they mute with no binding at all). Master is
 			// absent - iRacing has no master-mute keybind - and for it the option is
 			// detached (same sdpi-select re-render caveat as the keypad mute option).
@@ -286,6 +287,12 @@
 			// Its status line is never hidden - the driver mute is a real binding.
 			const DIAL_MUTE_DRIVER_CATEGORIES = new Set(
 				<%- JSON.stringify(Object.keys((__dialComms['mute-driver'].binding.keyBy || {}).map || {})) %>
+			);
+			// Which categories offer Skip Spotter Call (#1015): only those with a
+			// skip-call binding in the dial tables (spotter). Derived the same way;
+			// its status line is never hidden - Spotter Silence is a real binding.
+			const DIAL_SKIP_CALL_CATEGORIES = new Set(
+				<%- JSON.stringify(Object.keys((__dialComms['skip-call'].binding.keyBy || {}).map || {})) %>
 			);
 			let dialConditionalOptions = [];
 
@@ -350,6 +357,10 @@
 					conditionalOption(
 						document.querySelector('#dial-press-select option[value="mute-driver"]'),
 						DIAL_MUTE_DRIVER_CATEGORIES,
+					),
+					conditionalOption(
+						document.querySelector('#dial-press-select option[value="skip-call"]'),
+						DIAL_SKIP_CALL_CATEGORIES,
 					),
 				];
 

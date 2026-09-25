@@ -4,8 +4,9 @@
  * The spotter has no SDK surface — every control is a keyboard/SimHub binding
  * stored in global settings. Two actions dispatch them: AI Spotter Controls
  * (every control, on a keypad button) and the Audio Controls dial (louder /
- * quieter on rotation, silence on press — the spotter volume dial lives on
- * the one audio dial rather than growing a second dial surface). This module
+ * quieter on rotation, silence on press as Skip Spotter Call, #1015 — the
+ * spotter volume dial lives on the one audio dial rather than growing a
+ * second dial surface). This module
  * is the single source of truth for the binding keys so neither action
  * duplicates the literals nor imports the other.
  */

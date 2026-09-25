@@ -3,8 +3,9 @@
  *
  * The encoder half of the Audio Controls action, following the Fuel Service
  * dial-surface pattern (#759). Rotating adjusts the selected category's
- * volume; the press is configurable as Push to Talk (hold), Mute/Unmute, or
- * Mute a Driver (#863, voice chat only). The touch strip shows a live 0–100
+ * volume; the press is configurable as Push to Talk (hold), Mute/Unmute,
+ * Mute a Driver (#863, voice chat only), or Skip Spotter Call (#1015, spotter
+ * only). The touch strip shows a live 0–100
  * level bar for the iRaceDeck-internal categories (Race Engineer, Radar) —
  * their volumes are plugin-owned globals.
  * The iRacing categories (voice chat, master, spotter — #809) go through blind
@@ -27,6 +28,7 @@ import {
   type AudioDialSettings,
   DIAL_MUTE_BINDINGS,
   DIAL_MUTE_DRIVER_BINDINGS,
+  DIAL_SKIP_CALL_BINDINGS,
   type DialCategory,
   type DialPressAction,
   isInternalAudioCategory,
@@ -77,6 +79,7 @@ const PRESS_LABELS: Record<DialPressAction, string | undefined> = {
   "push-to-talk": "Push to talk (hold)",
   "mute-unmute": "Mute / unmute",
   "mute-driver": "Mute a driver",
+  "skip-call": "Skip spotter call",
   none: undefined,
 };
 
@@ -306,6 +309,14 @@ export class AudioDialSurface {
       return;
     }
 
+    // Skip Spotter Call (#1015) fires immediately on dialDown, like the mutes.
+    if (press === "skip-call") {
+      this.host.logger.info("Audio dial skip-call pressed");
+      await this.doSkipCall(ctx);
+
+      return;
+    }
+
     // Mute / Unmute fires immediately on dialDown (no long-press slot exists,
     // so no release-time classification is needed).
     this.host.logger.info("Audio dial mute pressed");
@@ -326,10 +337,11 @@ export class AudioDialSurface {
   /**
    * Runs Mute / Unmute for the current category: the internal categories flip
    * their feature gate with semantics identical to the Pit Crew toggle keys
-   * (shared pathway); the iRacing categories tap their mute binding blind
-   * (voice chat mute, spotter silence — #809). Master has no mute (no iRacing
-   * keybind exists) — the PI never offers it, so a reached master here is a
-   * stale persisted value: log + no-op.
+   * (shared pathway); voice chat taps its mute binding blind. Master has no
+   * mute (no iRacing keybind exists) and spotter's silence binding is Skip
+   * Spotter Call, not a mute (#1015) — the PI offers Mute / Unmute for neither,
+   * so a reached master or spotter here is a stale persisted value (a spotter
+   * one is normally rewritten by the #1015 migration first): log + no-op.
    */
   private async doMute(ctx: AudioDialContext): Promise<void> {
     const category = ctx.settings.dial.category;
@@ -385,6 +397,34 @@ export class AudioDialSurface {
     }
 
     await this.host.tapBinding(muteDriverKey);
+  }
+
+  /**
+   * Runs Skip Spotter Call (#1015) for the current category: a blind tap of
+   * iRacing's *Spotter Silence*, which cuts the spotter call currently playing
+   * — a one-shot, since iRacing has no permanent spotter mute. Only spotter
+   * has the binding and the PI offers the press for that Mode alone, so any
+   * other category reached here is a stale persisted value: log + no-op.
+   */
+  private async doSkipCall(ctx: AudioDialContext): Promise<void> {
+    const category = ctx.settings.dial.category;
+    const skipCallKey = isInternalAudioCategory(category) ? undefined : DIAL_SKIP_CALL_BINDINGS[category];
+
+    if (!skipCallKey) {
+      this.host.logger.warn(`Skip Spotter Call is not available for the ${category} category`);
+
+      return;
+    }
+
+    if (this.host.isBindingMissing(skipCallKey)) {
+      this.host.logger.warn(
+        `Skip Spotter Call press ignored — the ${category} skip-call binding (${skipCallKey}) is not configured`,
+      );
+
+      return;
+    }
+
+    await this.host.tapBinding(skipCallKey);
   }
 
   private ensureContext(action: IDeckActionContext, settings: AudioControlsSettings): AudioDialContext {

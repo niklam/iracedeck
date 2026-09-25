@@ -83,12 +83,14 @@ const DIAL_ROTATION_BINDINGS: Record<KeybindDialCategory, RotationBindings> = {
 
 /**
  * Mute / Unmute binding per keybind category — a blind one-way tap, since
- * iRacing exposes no mute state for either. Master has no entry: iRacing has
- * no master-mute keybind, so the PI never offers Mute / Unmute for it.
+ * iRacing exposes no mute state. Voice chat is the only entry: iRacing has no
+ * master-mute keybind, and its Spotter Silence binding skips the call
+ * currently playing rather than muting the spotter (#1015), so it is the
+ * separate Skip Spotter Call press ({@link DIAL_SKIP_CALL_BINDINGS}). The PI
+ * never offers Mute / Unmute for master or spotter.
  */
 export const DIAL_MUTE_BINDINGS: Partial<Record<KeybindDialCategory, string>> = {
   "voice-chat": VOICE_CHAT_MUTE_KEY,
-  spotter: SPOTTER_GLOBAL_KEYS.silence,
 };
 
 /**
@@ -129,14 +131,39 @@ export function dialMuteDriverBindingMap(): Record<string, string> {
 }
 
 /**
+ * Skip Spotter Call binding per keybind category (#1015) — iRacing's
+ * *Spotter Silence*, which cuts the spotter call currently playing. A one-shot,
+ * not a mute: iRacing has no control that silences the spotter permanently.
+ * Its own table beside {@link DIAL_MUTE_BINDINGS} for the #863 reason (one
+ * press value must not mean different things per Mode), in the same shape so
+ * the comms catalog derives the PI's availability from the table the surface
+ * dispatches from. One entry: only the spotter has such a control.
+ */
+export const DIAL_SKIP_CALL_BINDINGS: Partial<Record<KeybindDialCategory, string>> = {
+  spotter: SPOTTER_GLOBAL_KEYS.silence,
+};
+
+/**
+ * The skip-call map as a total record, for callers that can't accept the
+ * optional values of {@link DIAL_SKIP_CALL_BINDINGS} (the comms catalog builds
+ * its `keyBy` map from this) — the {@link dialMuteBindingMap} twin.
+ */
+export function dialSkipCallBindingMap(): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(DIAL_SKIP_CALL_BINDINGS).filter((entry): entry is [string, string] => entry[1] !== undefined),
+  );
+}
+
+/**
  * What the dial PRESS runs. `push-to-talk` holds the PTT binding for the
  * duration of the press; `mute-unmute` taps the category's mute binding
  * (`DIAL_MUTE_BINDINGS`) or toggles the internal category's feature gate;
  * `mute-driver` taps the category's driver-mute binding
- * (`DIAL_MUTE_DRIVER_BINDINGS`, voice chat only — #863). Default `none`
- * (blind-safe).
+ * (`DIAL_MUTE_DRIVER_BINDINGS`, voice chat only — #863); `skip-call` taps the
+ * category's skip-call binding (`DIAL_SKIP_CALL_BINDINGS`, spotter only —
+ * #1015). Default `none` (blind-safe).
  */
-export const DIAL_PRESS_ACTIONS = ["push-to-talk", "mute-unmute", "mute-driver", "none"] as const;
+export const DIAL_PRESS_ACTIONS = ["push-to-talk", "mute-unmute", "mute-driver", "skip-call", "none"] as const;
 export type DialPressAction = (typeof DIAL_PRESS_ACTIONS)[number];
 
 /**
@@ -207,7 +234,8 @@ export function resolveRotationBinding(category: KeybindDialCategory, ticks: num
  * Mute / Unmute needs the keybind category's mute binding when it has one —
  * the internal categories toggle their feature gate (no binding) and master
  * has no mute at all; Mute a Driver (#863) needs the category's driver-mute
- * binding when it has one (voice chat only).
+ * binding when it has one (voice chat only); Skip Spotter Call (#1015) needs
+ * the category's skip-call binding when it has one (spotter only).
  */
 export function pressBindingKeys(dial: AudioDialSettings): string[] {
   if (dial.pressAction === "push-to-talk") return [PUSH_TO_TALK_KEY];
@@ -224,6 +252,12 @@ export function pressBindingKeys(dial: AudioDialSettings): string[] {
     const muteDriverKey = DIAL_MUTE_DRIVER_BINDINGS[dial.category];
 
     return muteDriverKey ? [muteDriverKey] : [];
+  }
+
+  if (dial.pressAction === "skip-call" && !isInternalAudioCategory(dial.category)) {
+    const skipCallKey = DIAL_SKIP_CALL_BINDINGS[dial.category];
+
+    return skipCallKey ? [skipCallKey] : [];
   }
 
   return [];

@@ -1721,8 +1721,7 @@
         "keyBy": {
           "setting": "dial.category",
           "map": {
-            "voice-chat": "audioVoiceChatMute",
-            "spotter": "spotterSilence"
+            "voice-chat": "audioVoiceChatMute"
           }
         }
       }
@@ -1735,6 +1734,18 @@
           "setting": "dial.category",
           "map": {
             "voice-chat": "audioVoiceChatMuteDriver"
+          }
+        }
+      }
+    },
+    "skip-call": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "dial.category",
+          "map": {
+            "spotter": "spotterSilence"
           }
         }
       }

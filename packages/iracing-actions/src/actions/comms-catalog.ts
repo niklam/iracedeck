@@ -37,6 +37,7 @@ import { SPOTTER_GLOBAL_KEYS } from "../shared/spotter-bindings.js";
 import {
   dialMuteBindingMap,
   dialMuteDriverBindingMap,
+  dialSkipCallBindingMap,
   type KeybindDialCategory,
   rotationBindingKeys,
 } from "./audio-controls/audio-controls-settings.js";
@@ -493,13 +494,14 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
   // the same category values need different descriptors per surface (keypad
   // resolves one key via the `action` setting; dial rotation needs the pair).
   // The spotter category (#809) reuses the AI Spotter Controls bindings —
-  // louder/quieter for rotation, silence for Mute / Unmute. Every keybind
+  // louder/quieter for rotation, silence for Skip Spotter Call. Every keybind
   // descriptor here is DERIVED from the settings module's tables, so the PI
   // status line and the surface's dispatch can't disagree. The PI hides the
   // press status line for internal-category Mute / Unmute (plugin audio,
   // nothing to configure); "none" is omitted so its line renders nothing.
-  // Mute a Driver (#863) is its own press with its own table — the PI derives
-  // which categories offer it (voice chat only) from this entry's keyBy map.
+  // Mute a Driver (#863) and Skip Spotter Call (#1015) are presses with their
+  // own tables — the PI derives which categories offer each (voice chat only,
+  // spotter only) from this entry's keyBy maps.
   "audio-controls-dial": entry("dial.category", {
     "voice-chat": dialRotation("voice-chat"),
     master: dialRotation("master"),
@@ -509,6 +511,7 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     "push-to-talk": keybind("audioControlsPushToTalk"),
     "mute-unmute": keybindBy("dial.category", dialMuteBindingMap()),
     "mute-driver": keybindBy("dial.category", dialMuteDriverBindingMap()),
+    "skip-call": keybindBy("dial.category", dialSkipCallBindingMap()),
   }),
 
   "toggle-ui-elements": entry("element", {
