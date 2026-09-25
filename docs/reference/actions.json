@@ -438,7 +438,7 @@
             {
               "value": "previous",
               "label": "Previous Marker",
-              "description": "Jump the replay to the previous marker more than 2 s behind; replay only, sends nothing from the car"
+              "description": "Jump the replay to the previous marker, or to the one before it while a marker's first 2 s are playing; replay only, sends nothing from the car"
             }
           ]
         },

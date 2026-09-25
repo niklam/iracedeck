@@ -145,11 +145,31 @@ describe("replay markers (#1162)", () => {
   describe("previousMarker", () => {
     const markers = [marker(100), marker(880), marker(1000), marker(5000)];
 
-    it("is the last marker more than 120 frames behind, so a press during a marker's moment goes to the one before", () => {
-      expect(previousMarker(markers, 1000)?.frame).toBe(100); // 880 is exactly 120 behind: not "more than"
-      expect(previousMarker(markers, 1001)?.frame).toBe(880);
+    it("goes to the marker before the one whose moment is playing, and to that marker once it is over 120 frames behind", () => {
+      expect(previousMarker(markers, 1000)?.frame).toBe(880);
       expect(previousMarker(markers, 1120)?.frame).toBe(880);
       expect(previousMarker(markers, 1121)?.frame).toBe(1000);
+      expect(previousMarker(markers, 999)?.frame).toBe(100); // on 880's moment
+      expect(previousMarker(markers, 1001)?.frame).toBe(880);
+    });
+
+    it("reaches every marker in turn when markers sit less than two seconds apart (maintainer's report)", () => {
+      const close = [marker(10_000), marker(20_000), marker(20_090)];
+      const visited: number[] = [];
+      let at = 20_090;
+
+      for (let target = previousMarker(close, at); target !== null; target = previousMarker(close, at)) {
+        visited.push(target.frame);
+        at = target.frame;
+      }
+
+      expect(visited).toEqual([20_000, 10_000]);
+    });
+
+    it("is null on or before the first marker's moment", () => {
+      expect(previousMarker(markers, 100)).toBeNull();
+      expect(previousMarker(markers, 220)).toBeNull();
+      expect(previousMarker(markers, 50)).toBeNull();
     });
 
     it("opens the replay at the last marker from the live edge", () => {

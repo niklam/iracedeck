@@ -96,7 +96,7 @@ The key turns grey whenever a press would do nothing — no marker ahead, not in
 
 ### Previous Marker
 
-Jumps the replay to the previous marker before the current moment. A marker less than two seconds behind is skipped, so pressing it while a marker's moment is still playing goes to the one before, the way a media player's previous-track button does. With no marker behind, nothing happens. It works in the replay: from the car, open the replay first — iRacing accepts replay commands only when you are out of the car, so a press from the car sends nothing.
+Jumps the replay to the previous marker before the current moment. Pressed within two seconds of reaching a marker, while its moment is still playing, it goes to the marker before that one, the way a media player's previous-track button does, so markers set close together are each reached in turn. With no marker behind, nothing happens. It works in the replay: from the car, open the replay first — iRacing accepts replay commands only when you are out of the car, so a press from the car sends nothing.
 
 Like **Next Marker**, the key turns grey whenever a press would do nothing: no marker behind, not in a replay, or iRacing not running.
 

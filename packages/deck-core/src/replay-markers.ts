@@ -132,13 +132,30 @@ export function nextMarker(markers: readonly ReplayMarker[], frame: number): Rep
   return markers.find((m) => m.frame - frame > MARKER_NEXT_MIN_AHEAD_FRAMES) ?? null;
 }
 
-/** The last marker more than {@link MARKER_PREVIOUS_MIN_BEHIND_FRAMES} behind `frame`, or null. */
+/**
+ * The marker a previous-track press means, or null. The anchor is the last
+ * marker at or before `frame`: while its moment is still playing (no more than
+ * {@link MARKER_PREVIOUS_MIN_BEHIND_FRAMES} behind) the press goes to the
+ * marker before the anchor, otherwise to the anchor itself. Measuring the
+ * window from the anchor rather than from `frame` is what keeps two markers
+ * set less than two seconds apart both reachable: standing on the later one,
+ * the earlier one is the target, not skipped.
+ */
 export function previousMarker(markers: readonly ReplayMarker[], frame: number): ReplayMarker | null {
+  let anchor = -1;
+
   for (let i = markers.length - 1; i >= 0; i--) {
     const m = markers[i];
 
-    if (m !== undefined && frame - m.frame > MARKER_PREVIOUS_MIN_BEHIND_FRAMES) return m;
+    if (m !== undefined && m.frame <= frame) {
+      anchor = i;
+      break;
+    }
   }
 
-  return null;
+  if (anchor === -1) return null;
+
+  const onAnchor = frame - (markers[anchor]?.frame ?? frame) <= MARKER_PREVIOUS_MIN_BEHIND_FRAMES;
+
+  return (onAnchor ? markers[anchor - 1] : markers[anchor]) ?? null;
 }
