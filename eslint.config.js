@@ -53,6 +53,22 @@ export default [
   },
   prettier,
   {
+    // The Elgato adapter delivers a global-settings read's answer from the SDK
+    // promise (#1208). SDK 3.0's legacy flag would ALSO fire the event for it,
+    // handing deck-core's one-time host migration the answer twice.
+    files: ['**/*.ts'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "MemberExpression[property.name='useLegacySettingsBehavior']",
+          message:
+            'Leave the Elgato SDK on its default settings behaviour: the adapter answers getGlobalSettings() from the promise, and the legacy flag would deliver the reply twice (#1208).',
+        },
+      ],
+    },
+  },
+  {
     // The root Vitest config is loaded with `configLoader: 'native'` (see
     // .claude/rules/testing.md), so Node strips its types itself: CommonJS
     // globals do not exist there, and a type-only import missing the `type`

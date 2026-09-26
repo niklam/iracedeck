@@ -1,13 +1,19 @@
 import type StreamDeck from "@elgato/streamdeck";
 import {
+  _resetGlobalSettings,
   _resetProfileSwitcher,
   _resetRasterizer,
+  createMemorySettingsStore,
+  getGlobalSettings,
   type IDeckActionHandler,
+  initGlobalSettings,
   initializeRasterizer,
   initProfileSwitcher,
+  isSettingsStoreReady,
   requestProfileSwitchBack,
   svgToDataUri,
 } from "@iracedeck/deck-core";
+import type { ILogger } from "@iracedeck/logger";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ElgatoPlatformAdapter } from "./adapter.js";
@@ -68,6 +74,7 @@ function createMockDialAction(id: string) {
     setSettings: vi.fn().mockResolvedValue(undefined),
     isKey: vi.fn().mockReturnValue(false),
     isDial: vi.fn().mockReturnValue(true),
+    isNeoInfobar: vi.fn().mockReturnValue(false),
     setFeedback: vi.fn().mockResolvedValue(undefined),
     setFeedbackLayout: vi.fn().mockResolvedValue(undefined),
     setTriggerDescription: vi.fn().mockResolvedValue(undefined),
@@ -82,6 +89,7 @@ function createMockKeyAction(id: string) {
     setTitle: vi.fn().mockResolvedValue(undefined),
     setSettings: vi.fn().mockResolvedValue(undefined),
     isKey: vi.fn().mockReturnValue(true),
+    isNeoInfobar: vi.fn().mockReturnValue(false),
   };
 }
 
@@ -173,6 +181,39 @@ describe("ElgatoPlatformAdapter", () => {
       await expect(ev.action.setFeedbackLayout("$B1")).resolves.toBeUndefined();
       await expect(ev.action.setTriggerDescription({ rotate: "Adjust" })).resolves.toBeUndefined();
       expect(ev.action.isDial()).toBe(false);
+    });
+  });
+
+  describe("Neo Infobar instances (#1208)", () => {
+    it("does not hand a Neo Infobar instance to the handler on willAppear or didReceiveSettings", async () => {
+      const handler: IDeckActionHandler = { onWillAppear: vi.fn(), onDidReceiveSettings: vi.fn() };
+      const bridge = registerAndGetBridge(handler);
+      const action = { id: "ctx-infobar", isNeoInfobar: vi.fn().mockReturnValue(true) };
+
+      await bridge.onWillAppear({ action, payload: { settings: {} } });
+      await bridge.onDidReceiveSettings({ action, payload: { settings: {} } });
+
+      expect(handler.onWillAppear).not.toHaveBeenCalled();
+      expect(handler.onDidReceiveSettings).not.toHaveBeenCalled();
+    });
+
+    it("does not hand a Neo Infobar instance to the handler on willDisappear", async () => {
+      const handler: IDeckActionHandler = { onWillDisappear: vi.fn() };
+      const bridge = registerAndGetBridge(handler);
+
+      await bridge.onWillDisappear({ action: { id: "ctx-infobar", controllerType: "Neo" }, payload: { settings: {} } });
+      await bridge.onWillDisappear({ action: { id: "ctx-key", controllerType: "Keypad" }, payload: { settings: {} } });
+
+      expect(handler.onWillDisappear).toHaveBeenCalledTimes(1);
+    });
+
+    it("still hands a key instance to the handler on didReceiveSettings", async () => {
+      const handler: IDeckActionHandler = { onDidReceiveSettings: vi.fn() };
+      const bridge = registerAndGetBridge(handler);
+
+      await bridge.onDidReceiveSettings({ action: createMockKeyAction("ctx-key"), payload: { settings: { a: 1 } } });
+
+      expect(handler.onDidReceiveSettings).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -522,5 +563,326 @@ describe("ElgatoPlatformAdapter sendToPlugin → openSettings routing (#992)", (
     emitSendToPlugin("dev-1", { event: "switchToProfile", profile: "iRaceDeck Default" });
 
     expect(listener).not.toHaveBeenCalled();
+  });
+});
+
+describe("ElgatoPlatformAdapter global settings read (#1208)", () => {
+  /**
+   * The SDK 3.0 shape: `getGlobalSettings()` returns a promise carrying the
+   * answer, and `onDidReceiveGlobalSettings` fires only for a PI's save.
+   */
+  function createSettingsMock(read: () => Promise<unknown>) {
+    let sdkListener: ((ev: { settings: unknown }) => void) | undefined;
+    const errorLog = vi.fn();
+    const sd = {
+      logger: {
+        createScope: vi.fn(() => ({
+          trace: vi.fn(),
+          debug: vi.fn(),
+          info: vi.fn(),
+          warn: vi.fn(),
+          error: errorLog,
+          createScope: vi.fn(),
+          setLevel: vi.fn(),
+        })),
+      },
+      settings: {
+        onDidReceiveGlobalSettings: vi.fn((listener: (ev: { settings: unknown }) => void) => {
+          sdkListener = listener;
+        }),
+        getGlobalSettings: vi.fn(read),
+        setGlobalSettings: vi.fn(),
+      },
+      ui: { onSendToPlugin: vi.fn() },
+    };
+
+    return {
+      sd: sd as unknown as typeof StreamDeck,
+      read: sd.settings.getGlobalSettings,
+      errorLog,
+      /** Simulate a Property Inspector saving global settings. */
+      emitPiSave(settings: unknown) {
+        expect(sdkListener).toBeDefined();
+        sdkListener!({ settings });
+      },
+    };
+  }
+
+  it("delivers the read's answer to the subscriber exactly once", async () => {
+    const { sd, read } = createSettingsMock(() => Promise.resolve({ focusIRacingWindow: true }));
+    const adapter = new ElgatoPlatformAdapter(sd);
+    const callback = vi.fn();
+
+    adapter.onDidReceiveGlobalSettings(callback);
+    adapter.getGlobalSettings();
+    await vi.waitFor(() => expect(callback).toHaveBeenCalled());
+    await Promise.resolve();
+
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(callback).toHaveBeenCalledTimes(1);
+    expect(callback).toHaveBeenCalledWith({ focusIRacingWindow: true });
+  });
+
+  it("delivers the answer to every subscriber", async () => {
+    const { sd } = createSettingsMock(() => Promise.resolve({ a: 1 }));
+    const adapter = new ElgatoPlatformAdapter(sd);
+    const first = vi.fn();
+    const second = vi.fn();
+
+    adapter.onDidReceiveGlobalSettings(first);
+    adapter.onDidReceiveGlobalSettings(second);
+    adapter.getGlobalSettings();
+    await vi.waitFor(() => expect(second).toHaveBeenCalled());
+
+    expect(first).toHaveBeenCalledExactlyOnceWith({ a: 1 });
+    expect(second).toHaveBeenCalledExactlyOnceWith({ a: 1 });
+  });
+
+  it("still forwards a Property Inspector save through the event", () => {
+    const { sd, emitPiSave } = createSettingsMock(() => new Promise(() => {}));
+    const adapter = new ElgatoPlatformAdapter(sd);
+    const callback = vi.fn();
+
+    adapter.onDidReceiveGlobalSettings(callback);
+    emitPiSave({ debugLogging: true });
+
+    expect(callback).toHaveBeenCalledExactlyOnceWith({ debugLogging: true });
+  });
+
+  it("logs a rejected read instead of leaving an unhandled rejection", async () => {
+    const { sd, errorLog } = createSettingsMock(() => Promise.reject(new Error("socket closed")));
+    const adapter = new ElgatoPlatformAdapter(sd);
+    const callback = vi.fn();
+
+    adapter.onDidReceiveGlobalSettings(callback);
+    adapter.getGlobalSettings();
+    await vi.waitFor(() => expect(errorLog).toHaveBeenCalled());
+
+    expect(errorLog.mock.calls[0][0]).toContain("socket closed");
+    expect(callback).not.toHaveBeenCalled();
+  });
+});
+
+describe("Elgato fresh-install migration through the SDK 3.0 read path (#1208)", () => {
+  afterEach(() => {
+    _resetGlobalSettings();
+  });
+
+  it("migrates the host's settings exactly once, and a later PI save echo is not ingested", async () => {
+    let sdkListener: ((ev: { settings: unknown }) => void) | undefined;
+    const hostSettings = {
+      driverName: "host-nick",
+      blackBoxLapTiming: JSON.stringify({ type: "keyboard", key: "f1", modifiers: [] }),
+    };
+    const sd = {
+      logger: {
+        createScope: vi.fn(() => ({ trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() })),
+      },
+      settings: {
+        // SDK 3.0: the event carries PI saves only; the read's reply goes to the promise.
+        onDidReceiveGlobalSettings: vi.fn((listener: (ev: { settings: unknown }) => void) => {
+          sdkListener = listener;
+        }),
+        getGlobalSettings: vi.fn(() => Promise.resolve({ ...hostSettings })),
+        setGlobalSettings: vi.fn(),
+      },
+      ui: { onSendToPlugin: vi.fn() },
+    };
+    const adapter = new ElgatoPlatformAdapter(sd as unknown as typeof StreamDeck);
+    const info = vi.fn();
+    const log = {
+      trace: vi.fn(),
+      debug: vi.fn(),
+      info,
+      warn: vi.fn(),
+      error: vi.fn(),
+      createScope: vi.fn(),
+    } as unknown as ILogger;
+    const store = createMemorySettingsStore(); // no settings file: a fresh install of the file-backed store
+
+    initGlobalSettings(adapter, log, store, { migrationTimeoutMs: 5_000 });
+    await vi.waitFor(() => expect(isSettingsStoreReady()).toBe(true));
+
+    expect(sd.settings.getGlobalSettings).toHaveBeenCalledTimes(1);
+    expect(info.mock.calls.filter(([line]) => line === "Settings received from host for migration")).toHaveLength(1);
+    expect(getGlobalSettings().driverName).toBe("host-nick");
+    expect(store.saved.at(-1)).toMatchObject(hostSettings);
+
+    const savesAfterMigration = store.saved.length;
+
+    expect(sdkListener).toBeDefined();
+    sdkListener!({ settings: { driverName: "pi-echo" } });
+
+    expect(getGlobalSettings().driverName).toBe("host-nick");
+    expect(store.saved).toHaveLength(savesAfterMigration);
+  });
+});
+
+/**
+ * A model of SDK 3.0's settings module, close enough to its `settings.js` to
+ * exercise the double-delivery edge: every host frame resolves every pending
+ * read (`connection.once`, uncorrelated), and only a frame WITHOUT a request id
+ * reaches the event (a PI's save). Both are handed the frame's own
+ * `payload.settings` object, the event listener first.
+ */
+function createSdkModel() {
+  const eventListeners: Array<(ev: { settings: unknown }) => void> = [];
+  let pending: Array<(settings: unknown) => void> = [];
+  const errorLog = vi.fn();
+  const info = vi.fn();
+  const sd = {
+    logger: {
+      createScope: vi.fn(() => ({ trace: vi.fn(), debug: vi.fn(), info, warn: vi.fn(), error: errorLog })),
+    },
+    settings: {
+      onDidReceiveGlobalSettings: vi.fn((listener: (ev: { settings: unknown }) => void) => {
+        eventListeners.push(listener);
+      }),
+      getGlobalSettings: vi.fn(() => new Promise<unknown>((resolve) => pending.push(resolve))),
+      setGlobalSettings: vi.fn(),
+    },
+    ui: { onSendToPlugin: vi.fn() },
+  };
+
+  function frame(settings: unknown, hasRequestId: boolean): void {
+    if (!hasRequestId) for (const listener of eventListeners) listener({ settings });
+
+    const waiting = pending;
+
+    pending = [];
+
+    for (const resolve of waiting) resolve(settings);
+  }
+
+  return {
+    sd: sd as unknown as typeof StreamDeck,
+    sdkSubscriptions: () => eventListeners.length,
+    errorLog,
+    /** The host's reply to a read (carries the request id: promise only). */
+    reply: (settings: unknown) => frame(settings, true),
+    /** A Property Inspector's save (no id: the event, and any pending read). */
+    piSave: (settings: unknown) => frame(settings, false),
+  };
+}
+
+/** Let resolved promises' handlers run. */
+const flushMicrotasks = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+describe("ElgatoPlatformAdapter global settings fan-out against the SDK 3.0 model (#1208)", () => {
+  it("subscribes to the SDK event once however many subscribers there are", () => {
+    const model = createSdkModel();
+    const adapter = new ElgatoPlatformAdapter(model.sd);
+
+    adapter.onDidReceiveGlobalSettings(vi.fn());
+    adapter.onDidReceiveGlobalSettings(vi.fn());
+
+    expect(model.sdkSubscriptions()).toBe(1);
+  });
+
+  it("delivers a read's reply once", async () => {
+    const model = createSdkModel();
+    const adapter = new ElgatoPlatformAdapter(model.sd);
+    const callback = vi.fn();
+
+    adapter.onDidReceiveGlobalSettings(callback);
+    adapter.getGlobalSettings();
+    model.reply({ driverName: "host" });
+    await flushMicrotasks();
+
+    expect(callback).toHaveBeenCalledExactlyOnceWith({ driverName: "host" });
+  });
+
+  it("delivers an empty reply that arrives before any event", async () => {
+    const model = createSdkModel();
+    const adapter = new ElgatoPlatformAdapter(model.sd);
+    const callback = vi.fn();
+
+    adapter.onDidReceiveGlobalSettings(callback);
+    adapter.getGlobalSettings();
+    model.reply(undefined);
+    await flushMicrotasks();
+
+    expect(callback).toHaveBeenCalledExactlyOnceWith(undefined);
+  });
+
+  it("delivers a PI save that lands while a read is pending once, not once per path", async () => {
+    const model = createSdkModel();
+    const adapter = new ElgatoPlatformAdapter(model.sd);
+    const callback = vi.fn();
+
+    adapter.onDidReceiveGlobalSettings(callback);
+    adapter.getGlobalSettings();
+    model.piSave({ debugLogging: true });
+    await flushMicrotasks();
+
+    expect(callback).toHaveBeenCalledExactlyOnceWith({ debugLogging: true });
+  });
+
+  it("still delivers a genuine reply that follows an earlier PI save", async () => {
+    const model = createSdkModel();
+    const adapter = new ElgatoPlatformAdapter(model.sd);
+    const callback = vi.fn();
+
+    adapter.onDidReceiveGlobalSettings(callback);
+    model.piSave({ a: 1 });
+    adapter.getGlobalSettings();
+    model.reply({ a: 1 }); // equal, but a different frame
+    await flushMicrotasks();
+
+    expect(callback).toHaveBeenCalledTimes(2);
+  });
+
+  it("logs a throwing subscriber and still delivers to the others, on both paths", async () => {
+    const model = createSdkModel();
+    const adapter = new ElgatoPlatformAdapter(model.sd);
+    const after = vi.fn();
+
+    adapter.onDidReceiveGlobalSettings(() => {
+      throw new Error("listener blew up");
+    });
+    adapter.onDidReceiveGlobalSettings(after);
+
+    adapter.getGlobalSettings();
+    model.reply({ a: 1 });
+    await flushMicrotasks();
+    model.piSave({ b: 2 });
+
+    expect(after).toHaveBeenNthCalledWith(1, { a: 1 });
+    expect(after).toHaveBeenNthCalledWith(2, { b: 2 });
+    expect(model.errorLog).toHaveBeenCalledTimes(2);
+    expect(model.errorLog.mock.calls[0][0]).toContain("listener blew up");
+  });
+});
+
+describe("Elgato migration when a PI save lands while the read is pending (#1208)", () => {
+  afterEach(() => {
+    _resetGlobalSettings();
+  });
+
+  it("takes the first payload as the answer once and asks nothing more", async () => {
+    const model = createSdkModel();
+    const adapter = new ElgatoPlatformAdapter(model.sd);
+    const info = vi.fn();
+    const log = {
+      trace: vi.fn(),
+      debug: vi.fn(),
+      info,
+      warn: vi.fn(),
+      error: vi.fn(),
+      createScope: vi.fn(),
+    } as unknown as ILogger;
+    const store = createMemorySettingsStore();
+
+    initGlobalSettings(adapter, log, store, { migrationTimeoutMs: 5_000 });
+    await vi.waitFor(() => expect(model.sd.settings.getGlobalSettings).toHaveBeenCalledTimes(1));
+
+    model.piSave({ driverName: "pi-save" });
+    await vi.waitFor(() => expect(isSettingsStoreReady()).toBe(true));
+    model.reply({ driverName: "late-reply" });
+    await flushMicrotasks();
+
+    expect(info.mock.calls.filter(([line]) => line === "Settings received from host for migration")).toHaveLength(1);
+    expect(getGlobalSettings().driverName).toBe("pi-save");
+    expect(model.sd.settings.getGlobalSettings).toHaveBeenCalledTimes(1);
   });
 });
