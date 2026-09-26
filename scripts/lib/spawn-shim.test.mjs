@@ -2,11 +2,10 @@
  * The `.cmd` shim spawn (#1149): one quoted command line through the shell on
  * Windows, no shell elsewhere, and never an args array beside `shell: true`.
  */
-import { fileURLToPath, pathToFileURL } from "node:url";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// The real `spawnSync`, recorded: the shape tests read the calls, the
-// deprecation test needs a real child process.
+// The real `spawnSync`, recorded: the shape tests stub a return and read the
+// call, the deprecation tests need a real child process.
 vi.mock("node:child_process", async (importOriginal) => {
   const actual = await importOriginal();
   return { ...actual, spawnSync: vi.fn(actual.spawnSync) };
@@ -15,7 +14,7 @@ vi.mock("node:child_process", async (importOriginal) => {
 const { spawnSync } = await import("node:child_process");
 const { shellCommandLine, spawnSyncShim } = await import("./spawn-shim.mjs");
 
-const HELPER_URL = pathToFileURL(fileURLToPath(new URL("./spawn-shim.mjs", import.meta.url))).href;
+const HELPER_URL = new URL("./spawn-shim.mjs", import.meta.url).href;
 
 beforeEach(() => {
   vi.mocked(spawnSync).mockClear();
@@ -38,18 +37,28 @@ describe("shellCommandLine", () => {
     );
   });
 
-  it("quotes and escapes an argument containing a double quote", () => {
-    expect(shellCommandLine("pnpm", ['say "hi"'])).toBe('pnpm "say \\"hi\\""');
+  it("quotes an empty argument so it is not lost", () => {
+    expect(shellCommandLine("pnpm", ["--name", "", "x"])).toBe('pnpm --name "" x');
   });
 
   it.each(["a&b", "a|b", "a<b", "a>b", "a^b", "(a)"])("quotes %o so cmd.exe does not read its operator", (arg) => {
     expect(shellCommandLine("pnpm", [arg])).toBe(`pnpm "${arg}"`);
   });
 
-  it.each(["%PATH%", "50%", "a\nb", "a\r\nb", 'say "&" now'])(
+  it("doubles trailing backslashes in a quoted argument, so the closing quote is not escaped", () => {
+    expect(shellCommandLine("pnpm", ["C:\\Program Files\\", "x"])).toBe('pnpm "C:\\Program Files\\\\" x');
+  });
+
+  it("leaves backslashes that precede no quote alone", () => {
+    expect(shellCommandLine("pnpm", ["C:\\a b\\c", "C:\\plain\\"])).toBe('pnpm "C:\\a b\\c" C:\\plain\\');
+  });
+
+  // A double quote flips cmd.exe's quote state, which can leave an operator in
+  // a LATER argument unquoted — so it is refused on its own, not only beside one.
+  it.each(['say "hi"', 'a"b', "%PATH%", "50%", "a\nb", "a\r\nb"])(
     "refuses %o, which cmd.exe would not pass intact",
     (arg) => {
-      expect(() => shellCommandLine("pnpm", [arg])).toThrow(TypeError);
+      expect(() => shellCommandLine("pnpm", [arg, "x&y"])).toThrow(TypeError);
     },
   );
 
@@ -60,6 +69,8 @@ describe("shellCommandLine", () => {
 
 describe("spawnSyncShim", () => {
   it("hands Windows ONE command line with shell: true and no args array", () => {
+    vi.mocked(spawnSync).mockReturnValueOnce({ status: 0 });
+
     spawnSyncShim("pnpm", ["--version"], { encoding: "utf8", shell: false }, "win32");
 
     const [file, argsOrOptions, maybeOptions] = vi.mocked(spawnSync).mock.calls[0];
@@ -70,6 +81,8 @@ describe("spawnSyncShim", () => {
   });
 
   it.each(["linux", "darwin"])("spawns directly with no shell on %s", (platform) => {
+    vi.mocked(spawnSync).mockReturnValueOnce({ status: 0 });
+
     spawnSyncShim("pnpm", ["--version"], { encoding: "utf8", shell: true }, platform);
 
     expect(vi.mocked(spawnSync).mock.calls[0]).toEqual(["pnpm", ["--version"], { encoding: "utf8", shell: false }]);
@@ -88,7 +101,7 @@ import { spawnSyncShim } from ${JSON.stringify(HELPER_URL)};
 ${body}
 if (r.error) throw r.error;
 if (r.status !== 0) process.exit(r.status ?? 1);
-process.stdout.write("pnpm " + r.stdout.trim());`;
+process.stdout.write(r.stdout);`;
     return spawnSync(process.execPath, ["--throw-deprecation", "--input-type=module", "-e", script], {
       encoding: "utf8",
       timeout: 60_000,
@@ -100,7 +113,7 @@ process.stdout.write("pnpm " + r.stdout.trim());`;
 
     expect(child.stderr).not.toContain("DEP0190");
     expect(child.status).toBe(0);
-    expect(child.stdout).toMatch(/^pnpm \d+\.\d+\.\d+$/);
+    expect(child.stdout).toMatch(/\d+\.\d+\.\d+/);
   });
 
   // Positive control: the shape the helper replaced must FAIL this harness, or

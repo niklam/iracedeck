@@ -99,11 +99,6 @@ const BUILD_ARGS = [
 const VERBS = ["on", "off", "auto"];
 const USAGE = `Usage: pnpm dev:voices <${VERBS.join("|")}>`;
 
-/** The shared `.cmd`-shim spawn (#1149), with the child's output on this terminal. */
-function spawnSyncShell(cmd, args, options) {
-  return spawnSyncShim(cmd, args, { stdio: "inherit", ...options });
-}
-
 /**
  * Loads `.env.local` into `env` for the switch — every variable EXCEPT
  * `IRACEDECK_DEV_VOICES`.
@@ -162,7 +157,7 @@ export function runDevVoices(
     root,
     env = process.env,
     log = console,
-    exec = spawnSyncShell,
+    exec = (cmd, args, options) => spawnSyncShim(cmd, args, { stdio: "inherit", ...options }),
     platform = process.platform,
     links = (e) => linkTargets(e),
   } = {},

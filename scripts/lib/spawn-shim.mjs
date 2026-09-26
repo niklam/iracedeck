@@ -19,8 +19,8 @@
  *
  * The join is safe for the arguments this repo passes — fixed literals, plus
  * the maintainer's own `pnpm release` flags. It is not a general escaper for
- * untrusted input: an argument `cmd.exe` would still reinterpret inside double
- * quotes is refused rather than mangled (see {@link shellCommandLine}).
+ * untrusted input: an argument it cannot carry through `cmd.exe` intact is
+ * refused rather than mangled (see {@link shellCommandLine}).
  */
 import { spawnSync } from "node:child_process";
 
@@ -29,24 +29,31 @@ const CMD_METACHARACTERS = /[&|<>^()]/;
 
 /**
  * Joins a command and its arguments into ONE `cmd.exe` command line. An
- * argument containing whitespace, a double quote or a `cmd.exe` operator is
- * wrapped in double quotes, an inner `"` escaped as `\"` for the program's own
- * argument parser. Pure — exported so the quoting is tested without spawning.
+ * argument that is empty or contains whitespace or a `cmd.exe` operator is
+ * wrapped in double quotes, with any trailing backslashes doubled so the
+ * program's own argument parser does not read the closing quote as escaped.
+ * Pure — exported so the quoting is tested without spawning.
  *
- * Throws on an argument the quoting cannot carry: `%` (`cmd.exe` expands
- * `%NAME%` even inside quotes), a line break, and a `"` in the same argument as
- * an operator (`cmd.exe` does not read `\"` as an escape, so the operator would
- * land outside its quotes).
+ * Throws on an argument the quoting cannot carry:
+ *
+ * - a double quote — `cmd.exe` does not read `\"` as an escape, so every inner
+ *   quote flips its quote state and leaves an operator, in this argument or
+ *   any later one, outside quotes, where it splits or redirects the line;
+ * - `%`, which `cmd.exe` expands as `%NAME%` even inside quotes;
+ * - a line break, which ends the command.
  */
 export function shellCommandLine(cmd, args) {
   return [cmd, ...args].map((arg) => quoteShellArg(String(arg))).join(" ");
 }
 
 function quoteShellArg(arg) {
-  if (/[%\r\n]/.test(arg) || (arg.includes('"') && CMD_METACHARACTERS.test(arg))) {
+  if (/["%\r\n]/.test(arg)) {
     throw new TypeError(`Cannot pass ${JSON.stringify(arg)} through cmd.exe intact.`);
   }
-  return /[\s"]/.test(arg) || CMD_METACHARACTERS.test(arg) ? `"${arg.replace(/"/g, '\\"')}"` : arg;
+  if (arg !== "" && !/\s/.test(arg) && !CMD_METACHARACTERS.test(arg)) return arg;
+  // Backslashes are literal to the program's parser except in a run that
+  // precedes a quote; the only quote left is the closing one.
+  return `"${arg.replace(/\\+$/, (run) => run + run)}"`;
 }
 
 /**

@@ -1,10 +1,21 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { readIndexFile, SPEC_DIR, specFilenames } from "./lib.mjs";
+import { spawnSyncShim } from "../lib/spawn-shim.mjs";
+import { readIndexFile, run, SPEC_DIR, specFilenames } from "./lib.mjs";
+
+// `run()` routes between the two spawns. `spawnSync` stays real — the fixture
+// repos below reach git through `run()` — except where the `run` tests stub it.
+vi.mock("node:child_process", async (importOriginal) => {
+  const actual = await importOriginal();
+  return { ...actual, spawnSync: vi.fn(actual.spawnSync) };
+});
+vi.mock("../lib/spawn-shim.mjs", () => ({ spawnSyncShim: vi.fn() }));
+
+const { spawnSync: realSpawnSync } = await vi.importActual("node:child_process");
 
 let root;
 const git = (...args) =>
@@ -61,5 +72,50 @@ describe("readIndexFile", () => {
   it("is undefined — the side that passes — for a path the index does not hold", () => {
     writeSpec("2026-01-01-issue-7-a.md");
     expect(readIndexFile(root, rel)).toBeUndefined();
+  });
+});
+
+// #1149: `.exe` binaries spawn directly, anything else is a `.cmd` shim and goes
+// through the shared helper (no args array beside `shell: true`).
+describe("run", () => {
+  const done = { status: 0, stdout: "out", stderr: "" };
+
+  beforeEach(() => {
+    vi.mocked(spawnSync).mockReset().mockReturnValue(done);
+    vi.mocked(spawnSyncShim).mockReset().mockReturnValue(done);
+  });
+
+  afterEach(() => {
+    vi.mocked(spawnSync).mockReset().mockImplementation(realSpawnSync);
+  });
+
+  it.each(["git", "gh", "node"])("spawns %s directly", (cmd) => {
+    expect(run(cmd, ["--version"])).toEqual({ ok: true, out: "out", err: "", code: 0 });
+    expect(spawnSync).toHaveBeenCalledWith(cmd, ["--version"], expect.objectContaining({ encoding: "utf8" }));
+    expect(spawnSyncShim).not.toHaveBeenCalled();
+  });
+
+  it("sends a shim through the shared helper", () => {
+    expect(run("pnpm", ["generate:action-comms"]).ok).toBe(true);
+    expect(spawnSyncShim).toHaveBeenCalledWith("pnpm", ["generate:action-comms"], expect.any(Object));
+    expect(spawnSync).not.toHaveBeenCalled();
+  });
+
+  it("spawns another .exe directly with shim: false", () => {
+    run("powershell", ["-NoProfile"], { shim: false });
+    expect(spawnSync).toHaveBeenCalledWith("powershell", ["-NoProfile"], expect.any(Object));
+    expect(spawnSyncShim).not.toHaveBeenCalled();
+  });
+
+  it("returns a failed run, not a throw, for an argument the helper refuses", () => {
+    vi.mocked(spawnSyncShim).mockImplementation(() => {
+      throw new TypeError("Cannot pass through cmd.exe intact.");
+    });
+    expect(run("pnpm", ["50%"])).toEqual({
+      ok: false,
+      out: "",
+      err: "Cannot pass through cmd.exe intact.",
+      code: null,
+    });
   });
 });

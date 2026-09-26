@@ -79,17 +79,23 @@ function emit(obj) {
  * intact. Anything else is taken for a `.cmd` shim (pnpm, tsx, streamdeck) and
  * goes through `spawnSyncShim` (#1149), which gives it the shell Windows needs
  * without the args array Node deprecates beside one; `shim: false` spawns an
- * `.exe` outside that list (powershell) directly too.
+ * `.exe` outside that list (powershell) directly too. An argument the shim
+ * refuses comes back as a failed run, never a throw.
  */
 export function run(cmd, args, { cwd, timeoutMs = 60_000, shim } = {}) {
   const spawn = (shim ?? !/^(git|gh|node)$/.test(cmd)) ? spawnSyncShim : spawnSync;
-  const res = spawn(cmd, args, {
-    cwd,
-    encoding: "utf8",
-    timeout: timeoutMs,
-    windowsHide: true,
-    env: { ...process.env, GH_PROMPT_DISABLED: "1", GIT_TERMINAL_PROMPT: "0" },
-  });
+  let res;
+  try {
+    res = spawn(cmd, args, {
+      cwd,
+      encoding: "utf8",
+      timeout: timeoutMs,
+      windowsHide: true,
+      env: { ...process.env, GH_PROMPT_DISABLED: "1", GIT_TERMINAL_PROMPT: "0" },
+    });
+  } catch (error) {
+    return { ok: false, out: "", err: String(error.message), code: null };
+  }
   return {
     ok: res.status === 0 && !res.error,
     out: (res.stdout ?? "").toString(),
