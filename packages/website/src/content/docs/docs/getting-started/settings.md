@@ -211,6 +211,19 @@ The first time you start a version that stores settings this way, iRaceDeck copi
 
 To back up your configuration, copy that one file somewhere safe; to restore it, put it back and restart the deck software. Each deck ecosystem gets its own folder, so a Stream Deck and an Ulanzi Deck installation on the same PC never share settings.
 
+### If Your Settings File Has a Mistake in It
+
+If you edit the settings file by hand and leave a mistake in it — a comma after the last entry is the usual one — iRaceDeck cannot use the file when it next starts. It does not throw your file away: it moves it aside, next to the original, as `global-settings.corrupt-<date>.json`, and replaces your settings with the copy the deck software keeps. That copy is normally refreshed every time the plugin starts, so it usually holds your settings as they were at the last start that went well — which means changes made since then, including the hand edits themselves, are missing. If the deck software has no copy, you get the defaults instead.
+
+A red banner at the top of the Settings window and of every key's Property Inspector tells you this happened. It names the line and column where the mistake is — for a stray comma that is the line just after it, where the closing brace sits — along with the full path of the file that was set aside. To get your changes back:
+
+1. Open the set-aside file in a text editor and fix the mistake at, or just before, the line and column the banner names.
+2. Quit your deck software completely, including from the system tray — closing its window leaves it running, and it would overwrite your fix.
+3. Rename the fixed file to `global-settings.json`, replacing the one already in that folder.
+4. Start your deck software again.
+
+The banner only describes the start that found the mistake. If you restart before fixing the file, the next start finds a valid settings file — the one iRaceDeck just wrote — and shows no banner, but your set-aside file stays in the same folder until you delete it.
+
 ## How It Works
 
 The plugin serves the window itself, on your own machine only (`127.0.0.1`), and opens it as a **chromeless app window** in Microsoft Edge or Google Chrome — whichever is installed — so it looks and behaves like a program window rather than a browser tab. If neither browser is found, it opens in your default browser as a normal tab instead; everything works the same, it just has a tab bar.

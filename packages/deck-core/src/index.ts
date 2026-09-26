@@ -199,8 +199,15 @@ export {
   WRITE_RETRY_DELAYS_MS,
   type FileSettingsStoreOptions,
   type ResolveSettingsStorePathOptions,
+  type SettingsFileRejection,
   type SettingsStore,
 } from "./settings-store.js";
+// The banner for a settings file the store rejected (issue #1036)
+export {
+  evaluateSettingsFileRejectionWarning,
+  SETTINGS_FILE_REJECTED_WARNING_ID,
+} from "./settings-file-rejection-warning.js";
+export { createSettingsFileRejectionReporter } from "./settings-file-rejection-reporter.js";
 
 // Per-session replay store: markers (#1162) and the lap record (#1203)
 export {

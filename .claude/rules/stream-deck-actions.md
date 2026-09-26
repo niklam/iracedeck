@@ -359,6 +359,7 @@ Global settings are plugin-level settings shared across all action instances. Us
 import { ElgatoPlatformAdapter } from "@iracedeck/deck-adapter-elgato";
 import {
   createFileSettingsStore,
+  createSettingsFileRejectionReporter,
   getPluginPlatform,
   getPluginVersion,
   initGlobalSettings,
@@ -369,6 +370,7 @@ import {
 const settingsStore = createFileSettingsStore({
   path: resolveSettingsStorePath({ platform: getPluginPlatform(), env: process.env }),
   logger: adapter.createLogger("SettingsStore"),
+  onRejected: createSettingsFileRejectionReporter(), // the rejected-file banner (#1036)
 });
 
 // MUST call BEFORE adapter.connect() - handlers must be registered first

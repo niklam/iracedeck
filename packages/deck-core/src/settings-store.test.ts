@@ -8,6 +8,7 @@ import {
   createFileSettingsStore,
   createMemorySettingsStore,
   resolveSettingsStorePath,
+  type SettingsFileRejection,
   type SettingsStore,
   settingsStoreFolderName,
 } from "./settings-store.js";
@@ -158,6 +159,108 @@ describe("createFileSettingsStore", () => {
     const aside = readdirSync(dirty).filter((f) => /^global-settings\.corrupt-.*\.json$/.test(f));
     expect(aside).toHaveLength(1);
     expect(existsSync(store.path)).toBe(false);
+  });
+
+  describe("onRejected (issue #1036)", () => {
+    const rejectingStore = (onRejected: (rejection: SettingsFileRejection) => void) =>
+      createFileSettingsStore({ path: store.path, logger: silentLogger, debounceMs: 10, onRejected });
+
+    it("reports the parser's reason, its own location for the mistake, and the aside it preserved", async () => {
+      mkdirSync(join(dir, "sub"), { recursive: true });
+      writeFileSync(store.path, '{\n  "a": 1,\n}\n', "utf-8");
+      const onRejected = vi.fn<(rejection: SettingsFileRejection) => void>();
+
+      expect(await rejectingStore(onRejected).load()).toBeUndefined();
+
+      expect(onRejected).toHaveBeenCalledTimes(1);
+      const rejection = onRejected.mock.calls[0][0];
+      const aside = readdirSync(join(dir, "sub")).filter((f) => /^global-settings\.corrupt-.*\.json$/.test(f));
+
+      expect(rejection.path).toBe(store.path);
+      expect(rejection.reason).toContain("Expected double-quoted property name");
+      // From the store's own locator, not the message: Node 20 (Mirabox, Ulanzi) prints no line or column.
+      expect(rejection.location).toEqual({ line: 3, column: 1 });
+      expect(rejection.preservedAt).toBe(join(dir, "sub", aside[0]));
+      expect(existsSync(rejection.preservedAt)).toBe(true);
+    });
+
+    it("puts the location in the error log line, which is logged before debugLogging can be on", async () => {
+      mkdirSync(join(dir, "sub"), { recursive: true });
+      writeFileSync(store.path, '{\n  "a": 1,\n}\n', "utf-8");
+      const logger = { ...silentLogger, error: vi.fn() };
+
+      await createFileSettingsStore({ path: store.path, logger, debounceMs: 10 }).load();
+
+      expect(logger.error).toHaveBeenCalledWith(
+        "Settings file could not be parsed at line 3, column 1; moving it aside and migrating from the deck host",
+      );
+    });
+
+    it("locates a mistake V8 gives no position for at all", async () => {
+      mkdirSync(join(dir, "sub"), { recursive: true });
+      writeFileSync(store.path, '{\n  "debugLogging": True\n}\n', "utf-8");
+      const onRejected = vi.fn<(rejection: SettingsFileRejection) => void>();
+
+      await rejectingStore(onRejected).load();
+
+      expect(onRejected.mock.calls[0][0].reason).not.toMatch(/position|line/);
+      expect(onRejected.mock.calls[0][0].location).toEqual({ line: 2, column: 19 });
+    });
+
+    it("reports valid JSON that is not a settings object in words, not as a parse error", async () => {
+      mkdirSync(join(dir, "sub"), { recursive: true });
+      writeFileSync(store.path, "[1, 2]", "utf-8");
+      const onRejected = vi.fn<(rejection: SettingsFileRejection) => void>();
+
+      await rejectingStore(onRejected).load();
+
+      expect(onRejected.mock.calls[0][0].reason).toBe("It is valid JSON but does not hold a settings object");
+      expect(onRejected.mock.calls[0][0]).not.toHaveProperty("location");
+    });
+
+    it("rejects a UTF-16LE file with a dangling final byte instead of silently dropping it", async () => {
+      mkdirSync(join(dir, "sub"), { recursive: true });
+      const complete = Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from('{"a": 3}', "utf16le")]);
+      const truncatedByOne = Buffer.concat([complete, Buffer.from([0x20])]);
+      writeFileSync(store.path, truncatedByOne);
+      const onRejected = vi.fn<(rejection: SettingsFileRejection) => void>();
+
+      expect(await rejectingStore(onRejected).load()).toBeUndefined();
+
+      expect(onRejected).toHaveBeenCalledTimes(1);
+      expect(readFileSync(onRejected.mock.calls[0][0].preservedAt)).toEqual(truncatedByOne);
+    });
+
+    it("is not called for a missing file, a valid file, or a UTF-8 or UTF-16LE BOM-prefixed one", async () => {
+      const onRejected = vi.fn<(rejection: SettingsFileRejection) => void>();
+      const quiet = rejectingStore(onRejected);
+
+      expect(await quiet.load()).toBeUndefined();
+      mkdirSync(join(dir, "sub"), { recursive: true });
+      writeFileSync(store.path, JSON.stringify({ a: 1 }), "utf-8");
+      expect(await quiet.load()).toEqual({ a: 1 });
+      writeFileSync(store.path, String.fromCharCode(0xfeff) + JSON.stringify({ a: 2 }), "utf-8");
+      expect(await quiet.load()).toEqual({ a: 2 });
+      // Windows PowerShell 5.1's Out-File and `>`: FF FE, then UTF-16LE.
+      writeFileSync(
+        store.path,
+        Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from('{\r\n  "a": 3\r\n}', "utf16le")]),
+      );
+      expect(await quiet.load()).toEqual({ a: 3 });
+
+      expect(onRejected).not.toHaveBeenCalled();
+    });
+
+    it("a throwing handler still leaves load() reporting 'no file', never a failed read", async () => {
+      mkdirSync(join(dir, "sub"), { recursive: true });
+      writeFileSync(store.path, "{ not json", "utf-8");
+
+      await expect(
+        rejectingStore(() => {
+          throw new Error("reporter blew up");
+        }).load(),
+      ).resolves.toBeUndefined();
+    });
   });
 
   it("load() tolerates a UTF-8 BOM (PowerShell 5.1 Set-Content / BOM-writing editors) instead of calling the file corrupt", async () => {
@@ -404,7 +507,13 @@ describe("createFileSettingsStore", () => {
 
     vi.resetModules();
     const { createFileSettingsStore: createStoreMocked } = await import("./settings-store.js");
-    const lockedStore = createStoreMocked({ path: store.path, logger: silentLogger, debounceMs: 10 });
+    const rejections: SettingsFileRejection[] = [];
+    const lockedStore = createStoreMocked({
+      path: store.path,
+      logger: silentLogger,
+      debounceMs: 10,
+      onRejected: (rejection) => rejections.push(rejection),
+    });
 
     // Three "starts" reading the same stuck file.
     expect(await lockedStore.load()).toBeUndefined();
@@ -417,6 +526,8 @@ describe("createFileSettingsStore", () => {
     const asides = readdirSync(dirname(store.path)).filter((f) => /^global-settings\.corrupt-.*\.json$/.test(f));
     expect(asides).toHaveLength(1);
     expect(readFileSync(join(dirname(store.path), asides[0]), "utf-8")).toBe(corruptText);
+    // Every start names the one copy that exists, not an aside it never wrote (#1036).
+    expect(rejections.map((r) => r.preservedAt)).toEqual(Array(3).fill(join(dirname(store.path), asides[0])));
 
     // A DIFFERENT corruption is a new aside, not deduplicated against the old one.
     writeFileSync(store.path, "{ still not json, but different", "utf-8");
@@ -425,6 +536,69 @@ describe("createFileSettingsStore", () => {
     expect(readdirSync(dirname(store.path)).filter((f) => /^global-settings\.corrupt-.*\.json$/.test(f))).toHaveLength(
       2,
     );
+
+    vi.doUnmock("node:fs/promises");
+  });
+
+  it("fails the read — never reports 'no file' — when the corrupt file cannot be preserved at all (#1036)", async () => {
+    store.save({ ok: true });
+    await store.flush();
+    writeFileSync(store.path, "{ not json", "utf-8");
+
+    // Nothing can be moved or copied: reporting "no file" would send the
+    // plugin through a migration to a save that replaces the only copy.
+    await vi.doMock("node:fs/promises", async () => {
+      const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+      const refused = async () => {
+        throw Object.assign(new Error("EPERM: operation not permitted"), { code: "EPERM" });
+      };
+
+      return { ...actual, rename: refused, copyFile: refused };
+    });
+
+    vi.resetModules();
+    const { createFileSettingsStore: createStoreMocked } = await import("./settings-store.js");
+    const onRejected = vi.fn();
+    const stuck = createStoreMocked({ path: store.path, logger: silentLogger, debounceMs: 10, onRejected });
+
+    await expect(stuck.load()).rejects.toThrow("EPERM");
+    expect(onRejected).not.toHaveBeenCalled();
+    expect(readFileSync(store.path, "utf-8")).toBe("{ not json");
+
+    vi.doUnmock("node:fs/promises");
+  });
+
+  it("copy fallback is not stopped by an older aside it cannot read (#1036)", async () => {
+    store.save({ ok: true });
+    await store.flush();
+    writeFileSync(store.path, "{ not json", "utf-8");
+    // A directory with an aside's name: reading it throws EISDIR.
+    mkdirSync(join(dirname(store.path), "global-settings.corrupt-older.json"));
+
+    await vi.doMock("node:fs/promises", async () => {
+      const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+
+      return {
+        ...actual,
+        rename: async () => {
+          throw Object.assign(new Error("EBUSY: resource busy or locked"), { code: "EBUSY" });
+        },
+      };
+    });
+
+    vi.resetModules();
+    const { createFileSettingsStore: createStoreMocked } = await import("./settings-store.js");
+    const rejections: SettingsFileRejection[] = [];
+    const lockedStore = createStoreMocked({
+      path: store.path,
+      logger: silentLogger,
+      debounceMs: 10,
+      onRejected: (rejection) => rejections.push(rejection),
+    });
+
+    expect(await lockedStore.load()).toBeUndefined();
+    expect(rejections).toHaveLength(1);
+    expect(readFileSync(rejections[0].preservedAt, "utf-8")).toBe("{ not json");
 
     vi.doUnmock("node:fs/promises");
   });

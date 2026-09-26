@@ -104,6 +104,7 @@ import {
   createFileSettingsStore,
   createReplaySessionSubscriber,
   createSettingsChannelPublisher,
+  createSettingsFileRejectionReporter,
   createSettingsWindowCommandHandler,
   createSettingsWindowController,
   createSettingsWindowWarningReporter,
@@ -1192,6 +1193,9 @@ onIRacingTerminated(() => {
 const settingsStore = createFileSettingsStore({
   path: resolveSettingsStorePath({ platform: getPluginPlatform(), env: process.env }),
   logger: adapter.createLogger("SettingsStore"),
+  // A file rejected as invalid JSON is moved aside and the settings restored
+  // from the deck host's copy; this banner is how the user learns that (#1036).
+  onRejected: createSettingsFileRejectionReporter(),
 });
 
 // Land the last debounced save on the way out. Node runs "exit" handlers
