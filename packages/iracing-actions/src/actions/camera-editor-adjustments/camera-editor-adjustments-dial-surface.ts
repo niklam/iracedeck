@@ -26,8 +26,9 @@ import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 import z from "zod";
 
-import { dialAppearanceFields, renderDialBox, resolveDialBoxColors } from "../../shared/dial-box.js";
+import { dialAppearanceFields, resolveDialBoxColors } from "../../shared/dial-box.js";
 import { renderDialNameIcon } from "../../shared/dial-name-icon.js";
+import { renderStripBox } from "../../shared/dial-strip-box.js";
 
 const CHANGE_RENDER_MIN_INTERVAL_MS = 100;
 
@@ -579,7 +580,7 @@ export class CameraEditorDialSurface {
     const setting = ctx.dial.setting;
     const label = MODE_LABEL[setting];
     const colors = resolveDialBoxColors(ctx.dial.colors, MODE_COLOR[setting]);
-    const boxSvg = renderDialBox({
+    const boxSvg = renderStripBox({
       width: 200,
       height: 100,
       // The full mixed-case name, centered, scaled down for longer names.

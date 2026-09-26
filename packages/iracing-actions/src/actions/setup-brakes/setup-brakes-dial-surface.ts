@@ -23,9 +23,10 @@ import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 
 import { toggleStateFromLevel } from "../../icons/status-bar.js";
-import { renderDialBox, resolveDialBoxColors } from "../../shared/dial-box.js";
+import { resolveDialBoxColors } from "../../shared/dial-box.js";
 import { renderDialNameIcon } from "../../shared/dial-name-icon.js";
 import type { DialPendingPreview } from "../../shared/dial-preview.js";
+import { renderStripBox } from "../../shared/dial-strip-box.js";
 import { formatViewValue, type ViewSettingId } from "../../shared/setup-view.js";
 import {
   type GestureSlot,
@@ -558,7 +559,7 @@ export class SetupBrakesDialSurface {
     if (!ctx.action.isDial()) return;
 
     const setting = ctx.settings.dial.setting;
-    const boxSvg = renderDialBox({
+    const boxSvg = renderStripBox({
       width: 200,
       height: 100,
       abbr: MODE_ABBR[setting],

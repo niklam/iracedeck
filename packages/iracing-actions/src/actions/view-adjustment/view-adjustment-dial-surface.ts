@@ -32,8 +32,9 @@ import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 import z from "zod";
 
-import { dialAppearanceFields, renderDialBox, resolveDialBoxColors } from "../../shared/dial-box.js";
+import { dialAppearanceFields, resolveDialBoxColors } from "../../shared/dial-box.js";
 import { renderDialNameIcon } from "../../shared/dial-name-icon.js";
+import { renderStripBox } from "../../shared/dial-strip-box.js";
 import { bringPointerToSim } from "../../shared/mouse-to-sim.js";
 
 /** Minimum gap (ms) between change-driven feedback pushes (≤10 setFeedback/s/dial). */
@@ -461,7 +462,7 @@ export class ViewAdjustmentDialSurface {
     if (!ctx.action.isDial()) return;
 
     const setting = ctx.dial.setting;
-    const boxSvg = renderDialBox({
+    const boxSvg = renderStripBox({
       width: 200,
       height: 100,
       abbr: MODE_ABBR[setting],

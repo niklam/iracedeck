@@ -32,8 +32,9 @@ import {
 import type { ILogger } from "@iracedeck/logger";
 import z from "zod";
 
-import { dialAppearanceFields, renderDialBox, resolveDialBoxColors } from "../../shared/dial-box.js";
+import { dialAppearanceFields, resolveDialBoxColors } from "../../shared/dial-box.js";
 import { renderDialNameIcon } from "../../shared/dial-name-icon.js";
+import { renderStripBox } from "../../shared/dial-strip-box.js";
 
 /**
  * The global-settings binding keys the dial taps — shared verbatim with the
@@ -375,7 +376,7 @@ export class SplitsDeltaCycleDialSurface {
 
     if (!ctx.action.isDial()) return;
 
-    const boxSvg = renderDialBox({
+    const boxSvg = renderStripBox({
       width: 200,
       height: 100,
       abbr: IDENTITY_ABBR,

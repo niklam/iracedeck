@@ -32,9 +32,10 @@ import type { ILogger } from "@iracedeck/logger";
 import z from "zod";
 
 import { toggleStateFromLevel } from "../../icons/status-bar.js";
-import { dialAppearanceFields, renderDialBox, resolveDialBoxColors } from "../../shared/dial-box.js";
+import { dialAppearanceFields, resolveDialBoxColors } from "../../shared/dial-box.js";
 import { renderDialNameIcon } from "../../shared/dial-name-icon.js";
 import type { DialPendingPreview } from "../../shared/dial-preview.js";
+import { renderStripBox } from "../../shared/dial-strip-box.js";
 import { formatViewValue, type ViewSettingId } from "../../shared/setup-view.js";
 
 /** Minimum gap (ms) between change-driven feedback pushes (≤10 setFeedback/s/dial). */
@@ -562,7 +563,7 @@ export class SetupTractionDialSurface {
     if (!ctx.action.isDial()) return;
 
     const setting = ctx.dial.setting;
-    const boxSvg = renderDialBox({
+    const boxSvg = renderStripBox({
       width: 200,
       height: 100,
       abbr: MODE_ABBR[setting],
