@@ -1035,8 +1035,10 @@ Napi::Value SetAudioDeviceById(const Napi::CallbackInfo &info)
  * reapplied on reroute. Refused while an engine exists — the live session was
  * named when its engine was created, and a later change would leave it under
  * the old name — so call it before the first play. An empty display name
- * clears the identity (the icon with it), leaving the Windows default.
- * DestroyAudioEngine clears it too. A no-op off Windows.
+ * clears the identity (the icon with it): engines created afterwards are not
+ * named, though Windows keeps a name already set on this process's session for
+ * as long as that session lives. DestroyAudioEngine clears it too. A no-op off
+ * Windows.
  *
  * @param displayName - The session's display name (UTF-8); empty for none
  * @param iconPath - Optional absolute path to an .ico (UTF-8)
