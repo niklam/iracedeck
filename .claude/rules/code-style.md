@@ -16,7 +16,7 @@ TypeScript configuration
 Formatting
 
 - Project formatter/linter configuration is authoritative. Don’t reformat unrelated files in a single change.
-- No raw control bytes in a text file — tab, LF and CR only. Write any other as an escape (`\x00`, `\u001f`). A literal NUL makes git classify the file as binary, so `git diff`, `gh pr diff` and CodeRabbit show no content and every change to it ships unreviewed (#1103). `scripts/no-control-bytes.test.mjs` scans every file not on its binary-extension list; a new binary type is added to that list, never skipped some other way.
+- No raw control bytes in a text file — tab, LF and CR only. Write any other as an escape (`\x00`, `\u001f`). A literal NUL makes git classify the file as binary, so `git diff`, `gh pr diff` and CodeRabbit show no content and every change to it ships unreviewed (#1103). The PreToolUse hook refuses the byte in an Edit or Write, and `scripts/no-control-bytes.test.mjs` scans every tracked file that `.gitattributes` does not declare `binary` — the explicit attribute, never git's content sniffing. A new binary type gets its `binary` line there (by path for a one-off), never an exemption in the test.
 
 Markdown
 

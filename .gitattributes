@@ -27,3 +27,7 @@
 *.woff2 binary
 *.ttf binary
 *.eot binary
+*.mp3 binary
+*.wav binary
+*.psd binary
+*.streamDeckProfile binary
