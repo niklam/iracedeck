@@ -5,6 +5,7 @@ import {
   initializeRasterizer,
   svgToDataUri,
 } from "@iracedeck/deck-core";
+import type { ILogger } from "@iracedeck/logger";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { VSDPlatformAdapter } from "./adapter.js";
@@ -424,6 +425,101 @@ describe("VSDPlatformAdapter", () => {
       });
 
       expect(callOrder).toEqual(["broadcast", "handler"]);
+    });
+  });
+
+  // Measured on a Mirabox device (#1013): a knob push sends a lone dialDown and
+  // never a dialUp; a screen tap sends dialDown + dialUp ~50 ms apart; the two
+  // dialDown messages are identical. The adapter completes the press at dialDown.
+  describe("atomic knob press (#1013)", () => {
+    const dialFrame = (event: "dialDown" | "dialUp", context: string) => ({
+      event,
+      action: "com.test.action",
+      context,
+      payload: { settings: {}, controller: "Knob", coordinates: { column: 0, row: 0 } },
+    });
+
+    const recordingHandler = (calls: string[]): IDeckActionHandler => ({
+      onDialDown: vi.fn(async (ev: { action: { id: string } }) => {
+        calls.push(`down:${ev.action.id}`);
+      }),
+      onDialUp: vi.fn(async (ev: { action: { id: string } }) => {
+        calls.push(`up:${ev.action.id}`);
+      }),
+    });
+
+    it("completes a lone host dialDown (a knob push) with one onDialDown then one onDialUp for that context", async () => {
+      const calls: string[] = [];
+      adapter.registerAction("com.test.action", recordingHandler(calls));
+
+      await actionEventHandler("dialDown")(dialFrame("dialDown", "ctx-knob"));
+
+      expect(calls).toEqual(["down:ctx-knob", "up:ctx-knob"]);
+    });
+
+    it("drops the host dialUp of a down+up pair (a screen tap), so it is the same single press", async () => {
+      const calls: string[] = [];
+      adapter.registerAction("com.test.action", recordingHandler(calls));
+
+      await actionEventHandler("dialDown")(dialFrame("dialDown", "ctx-knob"));
+      await actionEventHandler("dialUp")(dialFrame("dialUp", "ctx-knob"));
+
+      expect(calls).toEqual(["down:ctx-knob", "up:ctx-knob"]);
+    });
+
+    it("drops a host dialUp even when no dialDown preceded it", async () => {
+      const calls: string[] = [];
+      adapter.registerAction("com.test.action", recordingHandler(calls));
+
+      await actionEventHandler("dialUp")(dialFrame("dialUp", "ctx-knob"));
+
+      expect(calls).toEqual([]);
+    });
+
+    it("fires the dialDown broadcast callbacks exactly once per press, before the handler", async () => {
+      const calls: string[] = [];
+      adapter.onDialDown(() => calls.push("broadcast"));
+      adapter.registerAction("com.test.action", recordingHandler(calls));
+
+      await actionEventHandler("dialDown")(dialFrame("dialDown", "ctx-knob"));
+      await actionEventHandler("dialUp")(dialFrame("dialUp", "ctx-knob"));
+
+      expect(calls).toEqual(["broadcast", "down:ctx-knob", "up:ctx-knob"]);
+    });
+
+    it("logs the dropped host dialUp at debug", async () => {
+      const debug = vi.fn();
+      const scoped = { debug, createScope: () => scoped } as unknown as ILogger;
+      mockInstances.length = 0;
+      const logged = new VSDPlatformAdapter(scoped);
+      const loggedClient = mockInstances[0];
+      logged.registerAction("com.test.action", {});
+
+      const dialUpCall = (loggedClient.onActionEvent.mock.calls as ActionEventCall[]).find((c) => c[1] === "dialUp");
+      await dialUpCall?.[2](dialFrame("dialUp", "ctx-knob"));
+
+      expect(debug).toHaveBeenCalledOnce();
+      expect(debug.mock.calls[0][0]).toContain("ctx-knob");
+    });
+
+    it("leaves dialRotate unchanged: one onDialRotate, no press", async () => {
+      const calls: string[] = [];
+      const handler: IDeckActionHandler = {
+        ...recordingHandler(calls),
+        onDialRotate: vi.fn(async () => {
+          calls.push("rotate");
+        }),
+      };
+      adapter.registerAction("com.test.action", handler);
+
+      await actionEventHandler("dialRotate")({
+        event: "dialRotate",
+        action: "com.test.action",
+        context: "ctx-knob",
+        payload: { settings: {}, ticks: -2, pressed: false },
+      });
+
+      expect(calls).toEqual(["rotate"]);
     });
   });
 

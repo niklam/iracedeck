@@ -214,10 +214,14 @@ export class VSDPlatformAdapter implements IDeckPlatformAdapter {
    */
   private fileSink: FileSink | null = null;
 
+  /** Scope for the adapter's own protocol normalisation (the dropped host `dialUp`). */
+  private readonly dialLogger: ILogger;
+
   constructor(logger?: ILogger, logDir?: string) {
     this.fileSink = logDir ? new FileSink(logDir) : null;
     const log = logger ?? this.buildLogger("VSD");
     this.client = new VSDClient(parseConnectionParams(), log.createScope("WebSocket"));
+    this.dialLogger = log.createScope("Dial");
   }
 
   /**
@@ -391,23 +395,34 @@ export class VSDPlatformAdapter implements IDeckPlatformAdapter {
       );
     });
 
-    // dialDown — fire broadcast callbacks first, then handler
+    // A knob press is delivered atomically (#1013). On the Mirabox host, pushing
+    // the knob sends a lone `dialDown` and never a `dialUp`, however long it is
+    // held, while tapping the screen above the knob sends `dialDown` + `dialUp`
+    // ~50 ms apart. The two `dialDown` messages are byte-identical, so nothing
+    // tells them apart when one arrives. The adapter therefore turns every host
+    // `dialDown` into a complete press (`onDialDown` then, at once, `onDialUp`
+    // for the same context) and drops every host `dialUp`. Both inputs fire the
+    // Press gesture exactly once, at the moment of pressing, and no surface
+    // changes. No timer: a push has no release to wait for. See "The Mirabox
+    // adapter makes a knob press atomic" in
+    // docs/superpowers/specs/2026-09-26-issue-1013-mirabox-knob-dials.md.
+
+    // dialDown — fire broadcast callbacks first, then the handler's down and up
     this.client.onActionEvent(uuid, "dialDown", async (data) => {
       if (!data.context) return;
 
       for (const cb of this.dialDownCallbacks) cb();
 
-      await handler.onDialDown?.(
-        wrapEvent<T>(this.client, data as VSDEvent & { context: string }, getControllerType(data.context)),
-      );
+      const event = data as VSDEvent & { context: string };
+
+      await handler.onDialDown?.(wrapEvent<T>(this.client, event, getControllerType(event.context)));
+      await handler.onDialUp?.(wrapEvent<T>(this.client, event, getControllerType(event.context)));
     });
 
-    // dialUp
+    // dialUp — dropped: the press was already completed at its dialDown
     this.client.onActionEvent(uuid, "dialUp", async (data) => {
-      if (!data.context) return;
-
-      await handler.onDialUp?.(
-        wrapEvent<T>(this.client, data as VSDEvent & { context: string }, getControllerType(data.context)),
+      this.dialLogger.debug(
+        `Dropped host dialUp for ${data.context ?? "(no context)"}: the knob press was delivered atomically at dialDown`,
       );
     });
   }

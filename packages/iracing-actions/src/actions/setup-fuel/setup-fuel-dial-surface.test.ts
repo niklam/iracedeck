@@ -274,7 +274,7 @@ describe("SetupFuel dial surface", () => {
       expect(mockTapBinding).not.toHaveBeenCalledWith("setupFuelFcyModeToggle");
     });
 
-    it("a lone dialDown (a Mirabox hold) fires nothing and does not poison the next short press (#1013)", async () => {
+    it("a lone dialDown fires nothing and does not poison the next short press (#1013)", async () => {
       vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
       const ctx = dialContext("ld1", KNOB);
       const settings = dialSettings({ setting: "fuel-mixture", pressAction: "toggle-fcy", longPressAction: "none" });
@@ -282,14 +282,16 @@ describe("SetupFuel dial surface", () => {
       mockTapBinding.mockClear();
       const framesBefore = ctx.setDialCanvas.mock.calls.length;
 
-      // The hold: a dialDown whose dialUp never comes.
+      // A dialDown whose dialUp never comes. The Mirabox adapter completes every
+      // knob press, so a surface there never sees one; this guards any host that
+      // drops a release.
       await action.onDialDown(basicEvent(ctx, settings) as never);
       vi.advanceTimersByTime(5000);
 
       expect(mockTapBinding).not.toHaveBeenCalled();
       expect(ctx.setDialCanvas.mock.calls.length).toBe(framesBefore); // no preview frame
 
-      // Then a real click: down + up 50 ms apart.
+      // Then an ordinary press: down, then up 50 ms later.
       await action.onDialDown(basicEvent(ctx, settings) as never);
       vi.advanceTimersByTime(50);
       await action.onDialUp(basicEvent(ctx, settings) as never);
@@ -486,6 +488,22 @@ describe("SetupFuel dial surface", () => {
       vi.advanceTimersByTime(2000);
       await action.onDialUp(basicEvent(ctx, settings) as never);
 
+      expect(mockTapBinding).toHaveBeenCalledWith("setupFuelFcyModeToggle");
+    });
+
+    // The Mirabox adapter delivers a knob press atomically: dialDown and dialUp
+    // back to back, with no time between them (#1013).
+    it("fires the Press gesture exactly once for the adapter's atomic down-then-up", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
+      const ctx = dialContext("x4", KNOB);
+      const settings = dialSettings({ setting: "fuel-mixture", pressAction: "toggle-fcy", longPressAction: "none" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+
+      expect(mockTapBinding).toHaveBeenCalledOnce();
       expect(mockTapBinding).toHaveBeenCalledWith("setupFuelFcyModeToggle");
     });
 
