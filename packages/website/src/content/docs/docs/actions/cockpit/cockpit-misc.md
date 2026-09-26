@@ -121,7 +121,7 @@ Toggle in-lap mode (used for practice and qualifying to mark the return to pit).
 
 ## On a dial
 
-Placed on a Stream Deck+ dial, Cockpit Misc becomes a dash-page dial. Pick which dashboard display the dial controls with its **Mode** dropdown; turning the dial cycles that display's pages, and the touch strip shows the page the car is currently on as a big, color-coded number. It uses the same key bindings as the keypad Dash Page modes, so no extra configuration is needed if you already use them. The Property Inspector automatically shows the dial settings below (instead of the keypad Mode and Direction) when the instance sits on a dial. See [Dials](/docs/features/dials/) for how the shared dial gestures work.
+Placed on a Stream Deck+ dial or a Mirabox knob, Cockpit Misc becomes a dash-page dial. Pick which dashboard display the dial controls with its **Mode** dropdown; turning the dial cycles that display's pages, and the touch strip shows the page the car is currently on as a big, color-coded number. It uses the same key bindings as the keypad Dash Page modes, so no extra configuration is needed if you already use them. The Property Inspector automatically shows the dial settings below (instead of the keypad Mode and Direction) when the instance sits on a dial. See [Dials](/docs/features/dials/) for how the shared dial gestures work.
 
 #### Details
 
@@ -133,8 +133,7 @@ Placed on a Stream Deck+ dial, Cockpit Misc becomes a dash-page dial. Pick which
 #### Controls
 
 - **Elgato Stream Deck+** — dial rotation, a press (short or long), and a touchscreen readout that always shows. A touchscreen tap or long tap runs its own configured Tap Display / Long Touch action.
-
-Dials are currently Stream Deck+ only — the action can't be placed on Mirabox knobs or Ulanzi dials yet (see [Dials](/docs/features/dials/)).
+- **Mirabox knob** — turn and push, with the same live readout drawn on the screen above the knob; the Push slot only (see [Dials](/docs/features/dials/#mirabox-knobs)).
 
 #### Setting: Mode
 

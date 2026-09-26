@@ -30,7 +30,8 @@ import { renderBlackBoxStrip } from "../../iracing-actions/src/actions/black-box
 import { renderCarCarousel } from "../../iracing-actions/src/actions/camera-controls/camera-dial-surface.ts";
 import { renderStripCanvasSvg } from "../../iracing-actions/src/actions/fuel-service/fuel-dial-surface.ts";
 import { statusBarOn } from "../../iracing-actions/src/icons/status-bar.ts";
-import { renderDialBox, resolveDialBoxColors } from "../../iracing-actions/src/shared/dial-box.ts";
+import { resolveDialBoxColors } from "../../iracing-actions/src/shared/dial-box.ts";
+import { renderStripBox } from "../../iracing-actions/src/shared/dial-strip-box.ts";
 import {
   DYNAMIC_SAMPLE_DATA,
   extractColorSlots,
@@ -474,7 +475,7 @@ for (const dirent of readdirSync(ACTIONS_ROOT, { withFileTypes: true })) {
 
 // 6. Dial touch-strip dash-box samples — one per Setup dial surface plus five
 // of the seven post-merge (#802–#807) dial surfaces (all twelve render
-// through the shared renderDialBox), plus one representative frame each for
+// through the shared strip renderer, renderStripBox), plus one representative frame each for
 // the Fuel Service, Audio Controls, Camera Controls (camera-focus-dash), and
 // Black Box Selector dial surfaces, which draw their own custom pixmaps but
 // expose a pure, tsx-importable render function that needs no live
@@ -484,7 +485,7 @@ for (const spec of [...SETUP_DIAL_SAMPLES, ...DIAL_BOX_SAMPLES]) {
   const sourcePath = path.join(ACTIONS_ROOT, spec.key, `${spec.key}-dial-surface.ts`);
   const dashSvg = bakeDialScreenBackground(
     toRawSvg(
-      renderDialBox({
+      renderStripBox({
         width: 200,
         height: 100,
         abbr: spec.abbr,

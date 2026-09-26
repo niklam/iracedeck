@@ -1,7 +1,5 @@
 {
   "features": {
-    "dialFeedback": true,
-    "profiles": true,
     "pngRasterization": true
   }
 }

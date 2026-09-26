@@ -59,14 +59,23 @@
 					</optgroup>
 				</sdpi-select>
 			</sdpi-item>
+			<% if (locals.platform?.features?.dialExtendedGestures !== false) { %>
 			<div class="ird-supporting-text hidden" id="dial-internal-note">
 				Adjusts iRaceDeck's own audio level — the touch display shows the live level.
 			</div>
+			<% } else { %>
+			<div class="ird-supporting-text hidden" id="dial-internal-note">
+				Adjusts iRaceDeck's own audio level — the knob's screen shows the live level.
+			</div>
+			<% } %>
 			<ird-binding-status mode-setting="dial.category" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
 
 			<sdpi-item label="Press Action">
 				<sdpi-select id="dial-press-select" setting="dial.pressAction" default="none">
+					<%# Push to Talk holds its key until the release, which a Mirabox knob never sends (#1013). %>
+					<% if (locals.platform?.features?.dialExtendedGestures !== false) { %>
 					<option value="push-to-talk">Push to Talk</option>
+					<% } %>
 					<option value="mute-unmute" id="dial-mute-option">Mute / Unmute</option>
 					<option value="mute-driver">Mute a Driver</option>
 					<option value="skip-call">Skip Spotter Call</option>

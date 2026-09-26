@@ -61,7 +61,7 @@ The **Toggle Autofuel** gesture taps `fuelServiceToggleAutofuel` to flip between
 
 ### Platform availability (dial)
 
-The dial surface is **Elgato Stream Deck+ only** (#786): the Mirabox and Ulanzi manifests declare no dial controllers, so the action registers keypad-only there until knob/dial input is verified on real hardware (`docs/reference/stream-deck-plus-encoders.md` §8).
+On a **Mirabox knob** (#1013) the same dial surface runs with its live readout drawn for the 176×112 screen above the knob (the same band, readout and two-segment bar, with a larger readout and a taller full-width bar); a knob has turn and push only (pushing the knob, however long, or tapping its screen fires Press once, at the moment of pressing), so the dial PI shows only the rotation settings, the appearance colours and the Push slot. The Ulanzi manifest declares no dial controllers. See `docs/reference/stream-deck-plus-encoders.md` §8. The fixed push+turn behaviours — clockwise fill-to-full among them — have no knob equivalent.
 
 ## Settings
 
@@ -169,7 +169,7 @@ With Unit set to **Auto**, the amount-mode labels re-render when iRacing's displ
 
 ### Dial (touch strip)
 
-A dial instance has no keypad icon — its display is the self-drawn 200×100 touch-strip slot (Elgato Stream Deck+ only). A full-width **status band** across the top carries the tri-state fueling cue — green / red / gray fill with white text, the same color language as the toggle buttons' status bars but at the top of the slot (#728). Color is always paired with the band text, never color alone. Below the band sit the per-mode readout and a continuous two-segment fuel bar (current fuel + fuel-to-add over capacity, deliberately subtle) with on-bar labels. Text is positioned by explicit baselines — the deck app's QT SVG renderer ignores `dominant-baseline`.
+A dial instance has no keypad icon — its display is the self-drawn 200×100 touch-strip slot on a Stream Deck+ (described below), or a separate 176×112 knob drawing on the screen above a Mirabox knob. A full-width **status band** across the top carries the tri-state fueling cue — green / red / gray fill with white text, the same color language as the toggle buttons' status bars but at the top of the slot (#728). Color is always paired with the band text, never color alone. Below the band sit the per-mode readout and a continuous two-segment fuel bar (current fuel + fuel-to-add over capacity, deliberately subtle) with on-bar labels. Text is positioned by explicit baselines — the deck app's QT SVG renderer ignores `dominant-baseline`.
 
 | State                         | Strip slot                                                                                                      |
 | ----------------------------- | --------------------------------------------------------------------------------------------------------------- |
@@ -194,6 +194,6 @@ A dial instance has no keypad icon — its display is the self-drawn 200×100 to
 
 - All fuel values go through the iRacing SDK (`pit.fuel` / `pit.clearFuel`) — the former `#fuel` chat macros are gone, so nothing opens the chat window and sends are effectively instant. Both surfaces share one fuel-request pipeline, so "the request was deliberately cleared" is tracked action-wide (a dial's continuous top-up never re-arms fueling that a button just cleared, and vice versa).
 - `pit.fuel(0)` means "keep the existing amount" to iRacing, so an intended zero request is sent as 1 L followed by `pit.clearFuel`.
-- Press, long-press, and push+turn on the dial are classified at `dialUp` (a duration comparison plus a rotate guard), with no mid-hold timer. If a dial reports release instantly, the hold simply degrades to a short press; the Long Press default (Toggle Autofuel) and the touch-slot defaults (None) are chosen so this degradation is harmless.
-- The Tap Display and Long Touch settings are hidden on Mirabox, which has no plugin touch strip.
+- Press, long-press, and push+turn on the dial are classified at `dialUp` (a duration comparison plus a rotate guard), with no mid-hold timer. On a Mirabox knob only the press exists: a knob push sends a lone `dialDown` with no `dialUp`, so the adapter completes every knob press at its `dialDown`, and a push of any length, a push+turn or a screen tap each fire Press once.
+- The Long Press, Push + Turn, Tap Display and Long Touch settings are hidden on Mirabox, whose knob has turn and push only.
 - The touch slots default to **None** for VR drivers who cannot see the touch strip — the dial and presses still work, and the readout still renders.

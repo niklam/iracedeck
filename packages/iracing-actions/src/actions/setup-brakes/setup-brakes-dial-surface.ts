@@ -5,14 +5,13 @@
  *
  * Rotating adjusts one brake setup parameter (brake bias, peak bias, bias
  * fine, brake misc, engine braking, ABS adjust) via the same key bindings as
- * the keypad surface; the touch strip shows the live telemetry value in a
- * color-coded "dash box". Pressing runs a configurable gesture (default:
+ * the keypad surface; the dial's own screen — the Stream Deck+ strip or the
+ * Stream Dock knob segment — shows the live telemetry value in a color-coded
+ * "dash box". Pressing runs a configurable gesture (default:
  * toggle ABS).
  */
 import {
-  classifyDialRelease,
   createHoldPreview,
-  type DeckFeedbackPayload,
   type DeckTriggerDescription,
   getDualPressThresholdMs,
   type HoldPreview,
@@ -24,8 +23,9 @@ import type { ILogger } from "@iracedeck/logger";
 
 import { toggleStateFromLevel } from "../../icons/status-bar.js";
 import { renderDialBox, resolveDialBoxColors } from "../../shared/dial-box.js";
-import { renderDialNameIcon } from "../../shared/dial-name-icon.js";
+import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
 import type { DialPendingPreview } from "../../shared/dial-preview.js";
+import { classifyDialReleaseForHost } from "../../shared/dial-release.js";
 import { formatViewValue, type ViewSettingId } from "../../shared/setup-view.js";
 import {
   type GestureSlot,
@@ -40,7 +40,8 @@ import {
  * Minimum gap (ms) between change-driven feedback pushes. A fast spin moves the
  * telemetry value rapidly; the display re-renders the moment the value changes,
  * but no more than once per this window so a burst of telemetry can't exceed the
- * documented ≤10 `setFeedback`/sec/dial cap (mirrors the Fuel Service dial).
+ * documented ≤10 pushes/sec/dial cap of the Stream Deck+ strip (mirrors the
+ * Fuel Service dial).
  */
 const CHANGE_RENDER_MIN_INTERVAL_MS = 100;
 
@@ -153,8 +154,8 @@ function gestureLabel(action: GestureSlot): string | undefined {
 }
 
 /**
- * The hold preview compiled out on the hosts with no plugin touch strip. Every
- * call site stays unconditional and `__FEATURE_DIAL_FEEDBACK__` folds to `false`
+ * The hold preview compiled out on the hosts with no long press. Every
+ * call site stays unconditional and `__FEATURE_DIAL_EXTENDED_GESTURES__` folds to `false`
  * there, so terser drops this object's users and `createHoldPreview` with them.
  */
 const NOOP_HOLD_PREVIEW: HoldPreview = {
@@ -242,7 +243,7 @@ export interface SetupBrakesDialHost {
 
 /**
  * Owns all per-dial-context state, dispatches rotations and gestures, and
- * renders the touch-strip feedback. The owning action routes every dial
+ * renders the dial-screen feedback. The owning action routes every dial
  * lifecycle/input event here and forwards telemetry ticks per subscribed
  * context.
  */
@@ -256,11 +257,7 @@ export class SetupBrakesDialSurface {
 
     // The deck-app image for the dial: just the action name (#775). Without
     // this the app falls back to keypad iconography for the dial slot.
-    action
-      .setImage(renderDialNameIcon({ line1: "SETUP", line2: "BRAKES", backgroundColor: "#3a2a1a" }))
-      .catch((err) => {
-        this.host.logger.debug(`Dial name icon push failed: ${String(err)}`);
-      });
+    pushDialNameIcon(action, { line1: "SETUP", line2: "BRAKES", backgroundColor: "#3a2a1a" }, this.host.logger);
 
     await this.applyTriggerDescription(ctx);
     await this.renderFeedback(ctx);
@@ -339,7 +336,9 @@ export class SetupBrakesDialSurface {
 
     if (pressStartMs === 0) return;
 
-    const kind = classifyDialRelease({
+    // Where the extended gestures are compiled out a release is never long: a
+    // knob press never reports its release (`classifyDialReleaseForHost`).
+    const kind = classifyDialReleaseForHost({
       pressStartMs,
       nowMs: Date.now(),
       rotatedWhilePressed: ctx.rotatedWhilePressed,
@@ -357,7 +356,7 @@ export class SetupBrakesDialSurface {
   }
 
   async touchTap(action: IDeckActionContext, settings: SetupBrakesSettings, hold: boolean): Promise<void> {
-    if (!__FEATURE_DIAL_FEEDBACK__) return;
+    if (!__FEATURE_DIAL_EXTENDED_GESTURES__) return;
 
     // hold === true → Long Touch slot; hold === false → Tap Display slot.
     const gesture = hold ? settings.dial.longTouchAction : settings.dial.tapAction;
@@ -383,9 +382,9 @@ export class SetupBrakesDialSurface {
     if (Date.now() - ctx.lastChangeRenderAt < CHANGE_RENDER_MIN_INTERVAL_MS) return;
 
     // Advance the baseline SYNCHRONOUSLY before the async render: 60 Hz ticks
-    // arriving while the setFeedback push is still in flight would otherwise
+    // arriving while the dial-canvas push is still in flight would otherwise
     // each fire another push inside the same 100 ms window, defeating the
-    // ≤10 setFeedback/sec/dial throttle.
+    // ≤10 pushes/sec/dial throttle.
     ctx.lastRenderSig = sig;
     ctx.lastChangeRenderAt = Date.now();
     this.renderFeedback(ctx).catch((err) => {
@@ -421,7 +420,7 @@ export class SetupBrakesDialSurface {
         lastChangeRenderAt: 0,
         preview: null,
         // Replaced immediately below — the preview's callbacks close over the
-        // very context being built. On a host with no plugin touch strip the
+        // very context being built. On a host with no long press the
         // no-op is what stays.
         holdPreview: NOOP_HOLD_PREVIEW,
       };
@@ -435,9 +434,9 @@ export class SetupBrakesDialSurface {
     return ctx;
   }
 
-  /** The per-context hold preview, or the no-op where there is no touch strip. */
+  /** The per-context hold preview, or the no-op where there is no long press. */
   private createPreview(ctx: SetupBrakesDialContext): HoldPreview {
-    if (!__FEATURE_DIAL_FEEDBACK__) return NOOP_HOLD_PREVIEW;
+    if (!__FEATURE_DIAL_EXTENDED_GESTURES__) return NOOP_HOLD_PREVIEW;
 
     return createHoldPreview({
       // The same value the release classifier reads, so the strip changes at
@@ -546,21 +545,21 @@ export class SetupBrakesDialSurface {
 
   /** Pushes the encoder trigger descriptions for a dial (Elgato only). */
   private async applyTriggerDescription(ctx: SetupBrakesDialContext): Promise<void> {
-    if (!__FEATURE_DIAL_FEEDBACK__ || !ctx.action.isDial()) return;
+    if (!__FEATURE_DIAL_EXTENDED_GESTURES__ || !ctx.action.isDial()) return;
 
     await ctx.action.setTriggerDescription(buildTriggerDescription(ctx.settings));
   }
 
-  /** Pushes the touch-strip feedback (the full-cell dash box) when this is a dial. */
+  /** Pushes the dash box to the dial's own screen, when it has one (#1013). */
   private async renderFeedback(ctx: SetupBrakesDialContext): Promise<void> {
-    if (!__FEATURE_DIAL_FEEDBACK__) return;
+    // The dial's own screen decides the drawing; a key or a host with no dial
+    // screen has nothing to draw on (#1013).
+    const canvas = ctx.action.dialCanvas();
 
-    if (!ctx.action.isDial()) return;
+    if (!canvas) return;
 
     const setting = ctx.settings.dial.setting;
-    const boxSvg = renderDialBox({
-      width: 200,
-      height: 100,
+    const boxSvg = renderDialBox(canvas, {
       abbr: MODE_ABBR[setting],
       value: formatDialValue(setting, this.host.getTelemetry()),
       colors: resolveDialBoxColors(ctx.settings.dial.colors, MODE_COLOR[setting]),
@@ -569,8 +568,7 @@ export class SetupBrakesDialSurface {
       // global-settings refresh mid-hold redraws it instead of wiping it.
       pending: ctx.preview,
     });
-    const feedback: DeckFeedbackPayload = { box: svgToDataUri(boxSvg) };
-    await ctx.action.setFeedback(feedback);
+    await ctx.action.setDialCanvas(svgToDataUri(boxSvg));
 
     // Reset the change-detector baseline so this pushed feedback doesn't
     // immediately re-fire the render-on-change path on the next telemetry tick.

@@ -24,6 +24,8 @@ import {
   type DeckFeedbackPayload,
   type DeckTriggerDescription,
   deviceProfileName,
+  DIAL_CANVAS_KEY,
+  type DialCanvasProfile,
   type IDeckActionContext,
   type IDeckActionHandler,
   type IDeckDialDownEvent,
@@ -39,6 +41,7 @@ import {
   isDataUri,
   keyImageSizeForDevice,
   requestProfileSwitch,
+  SD_PLUS_STRIP_CANVAS,
   toDeviceImage,
   TOUCH_STRIP_SLOT_WIDTH,
 } from "@iracedeck/deck-core";
@@ -116,11 +119,12 @@ class ElgatoActionContext implements IDeckActionContext {
   // SVG render for the same key (#642). Plain-text string values (e.g. a
   // `title` field) are never data URIs and skip the image pipeline entirely.
   //
-  // Assumes at most one image value per feedback payload (today's only
-  // caller, fuel-service/fuel-dial-surface.ts, sends a single full-slot
-  // pixmap): a superseded value drops the WHOLE payload via the early return
-  // below, and if a payload ever carried multiple image values they would
-  // rasterize serially (one toDeviceImage await at a time), not in parallel.
+  // Assumes at most one image value per feedback payload (every dial surface
+  // reaches this through setDialCanvas, which sends a single full-slot pixmap
+  // under DIAL_CANVAS_KEY): a superseded value drops the WHOLE payload via the
+  // early return below, and if a payload ever carried multiple image values
+  // they would rasterize serially (one toDeviceImage await at a time), not in
+  // parallel.
   async setFeedback(feedback: DeckFeedbackPayload): Promise<void> {
     if (!this.sdAction.setFeedback) return;
 
@@ -147,6 +151,18 @@ class ElgatoActionContext implements IDeckActionContext {
 
   async setTriggerDescription(descriptions: DeckTriggerDescription): Promise<void> {
     if (this.sdAction.setTriggerDescription) await this.sdAction.setTriggerDescription(descriptions);
+  }
+
+  dialCanvas(): DialCanvasProfile | null {
+    return this.isDial() ? SD_PLUS_STRIP_CANVAS : null;
+  }
+
+  // The strip is the `box` pixmap of every dial layout under layouts/; the
+  // feedback path rasterizes it at the slot width and keeps its supersede key.
+  async setDialCanvas(dataUri: string): Promise<void> {
+    if (!this.isDial()) return;
+
+    await this.setFeedback({ [DIAL_CANVAS_KEY]: dataUri });
   }
 
   async showAlert(): Promise<void> {
@@ -221,6 +237,12 @@ function wrapDisappearEvent<T>(ev: WillDisappearEvent<T & JsonObject>): IDeckWil
         /* no-op: action is disappearing */
       },
       async setTriggerDescription() {
+        /* no-op: action is disappearing */
+      },
+      dialCanvas() {
+        return null;
+      },
+      async setDialCanvas() {
         /* no-op: action is disappearing */
       },
     },

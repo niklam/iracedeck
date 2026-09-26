@@ -182,6 +182,43 @@ describe("ElgatoPlatformAdapter", () => {
       await expect(ev.action.setTriggerDescription({ rotate: "Adjust" })).resolves.toBeUndefined();
       expect(ev.action.isDial()).toBe(false);
     });
+
+    it("reports the Stream Deck+ strip profile on a dial and null on a key (#1013)", async () => {
+      const handler: IDeckActionHandler = { onWillAppear: vi.fn() };
+      const bridge = registerAndGetBridge(handler);
+
+      await bridge.onWillAppear({ action: createMockDialAction("ctx-dial"), payload: { settings: {} } });
+      await bridge.onWillAppear({ action: createMockKeyAction("ctx-key"), payload: { settings: {} } });
+
+      const calls = (handler.onWillAppear as ReturnType<typeof vi.fn>).mock.calls;
+      expect(calls[0][0].action.dialCanvas()).toEqual({ id: "sd-plus-strip", width: 200, height: 100 });
+      expect(calls[1][0].action.dialCanvas()).toBeNull();
+    });
+
+    it("pushes a dial-canvas image as the `box` feedback item", async () => {
+      const handler: IDeckActionHandler = { onWillAppear: vi.fn() };
+      const bridge = registerAndGetBridge(handler);
+      const action = createMockDialAction("ctx-dial");
+
+      await bridge.onWillAppear({ action, payload: { settings: {} } });
+
+      const ev = (handler.onWillAppear as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      await ev.action.setDialCanvas("data:image/png;base64,AAAA");
+
+      expect(action.setFeedback).toHaveBeenCalledWith({ box: "data:image/png;base64,AAAA" });
+    });
+
+    it("setDialCanvas on a key is a no-op that never reaches setFeedback", async () => {
+      const handler: IDeckActionHandler = { onWillAppear: vi.fn() };
+      const bridge = registerAndGetBridge(handler);
+      const action = { ...createMockKeyAction("ctx-key"), setFeedback: vi.fn() };
+
+      await bridge.onWillAppear({ action, payload: { settings: {} } });
+
+      const ev = (handler.onWillAppear as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      await expect(ev.action.setDialCanvas("data:image/png;base64,AAAA")).resolves.toBeUndefined();
+      expect(action.setFeedback).not.toHaveBeenCalled();
+    });
   });
 
   describe("Neo Infobar instances (#1208)", () => {

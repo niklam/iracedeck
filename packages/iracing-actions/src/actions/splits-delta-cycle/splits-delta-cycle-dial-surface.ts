@@ -10,9 +10,10 @@
  * capped per event so a fast spin steps several detents without runaway.
  *
  * iRacing exposes no telemetry for the currently selected splits mode, so the
- * touch strip is IDENTITY-ONLY (a static label, never a live value — the #782
- * compromise) and the surface never subscribes to telemetry. The only dynamic
- * part of the strip is the #612 missing-binding warning, refreshed by the
+ * dial's own screen — the Stream Deck+ strip or the Stream Dock knob segment —
+ * is IDENTITY-ONLY (a static label, never a live value — the #782 compromise)
+ * and the surface never subscribes to telemetry. The only dynamic part of the
+ * drawing is the #612 missing-binding warning, refreshed by the
  * owning action via `refreshAll()` on global-settings changes.
  *
  * Pressing runs a configurable gesture — defaulting to Toggle Reference Car,
@@ -22,8 +23,6 @@
  * press is unreachable from the dial (#807 follow-up).
  */
 import {
-  classifyDialRelease,
-  type DeckFeedbackPayload,
   type DeckTriggerDescription,
   getDualPressThresholdMs,
   type IDeckActionContext,
@@ -33,7 +32,8 @@ import type { ILogger } from "@iracedeck/logger";
 import z from "zod";
 
 import { dialAppearanceFields, renderDialBox, resolveDialBoxColors } from "../../shared/dial-box.js";
-import { renderDialNameIcon } from "../../shared/dial-name-icon.js";
+import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
+import { classifyDialReleaseForHost } from "../../shared/dial-release.js";
 
 /**
  * The global-settings binding keys the dial taps — shared verbatim with the
@@ -199,7 +199,7 @@ export interface SplitsDeltaCycleDialHost {
 
 /**
  * Owns all per-dial-context state, dispatches rotations and gestures, and
- * renders the touch-strip feedback. The owning action routes every dial
+ * renders the dial screen. The owning action routes every dial
  * lifecycle/input event here.
  */
 export class SplitsDeltaCycleDialSurface {
@@ -210,13 +210,10 @@ export class SplitsDeltaCycleDialSurface {
   async willAppear(action: IDeckActionContext, dial: DialSettings): Promise<void> {
     const ctx = this.ensureContext(action, dial);
 
-    // The deck-app image for the dial: just the action name. Without this the
-    // app falls back to keypad iconography for the dial slot.
-    action
-      .setImage(renderDialNameIcon({ line1: "SPLITS", line2: "DELTA", backgroundColor: "#412244" }))
-      .catch((err) => {
-        this.host.logger.debug(`Dial name icon push failed: ${String(err)}`);
-      });
+    // The deck-app image for the dial: just the action name, on the Stream
+    // Deck+ strip profile only (#1013). Without this the app falls back to
+    // keypad iconography for the dial slot.
+    pushDialNameIcon(action, { line1: "SPLITS", line2: "DELTA", backgroundColor: "#412244" }, this.host.logger);
 
     await this.applyTriggerDescription(ctx);
     await this.renderFeedback(ctx);
@@ -279,7 +276,9 @@ export class SplitsDeltaCycleDialSurface {
 
     if (pressStartMs === 0) return;
 
-    const kind = classifyDialRelease({
+    // Where the extended gestures are compiled out a release is never long: a
+    // knob press never reports its release (`classifyDialReleaseForHost`).
+    const kind = classifyDialReleaseForHost({
       pressStartMs,
       nowMs: Date.now(),
       rotatedWhilePressed: ctx.rotatedWhilePressed,
@@ -297,7 +296,7 @@ export class SplitsDeltaCycleDialSurface {
   }
 
   async touchTap(action: IDeckActionContext, dial: DialSettings, hold: boolean): Promise<void> {
-    if (!__FEATURE_DIAL_FEEDBACK__) return;
+    if (!__FEATURE_DIAL_EXTENDED_GESTURES__) return;
 
     // hold === true → Long Touch slot; hold === false → Tap Display slot.
     const gesture = hold ? dial.longTouchAction : dial.tapAction;
@@ -364,27 +363,26 @@ export class SplitsDeltaCycleDialSurface {
 
   /** Pushes the encoder trigger descriptions for a dial (Elgato only). */
   private async applyTriggerDescription(ctx: SplitsDeltaCycleDialContext): Promise<void> {
-    if (!__FEATURE_DIAL_FEEDBACK__ || !ctx.action.isDial()) return;
+    if (!__FEATURE_DIAL_EXTENDED_GESTURES__ || !ctx.action.isDial()) return;
 
     await ctx.action.setTriggerDescription(buildTriggerDescription(ctx.dial));
   }
 
-  /** Pushes the identity-only touch-strip feedback (the full-cell dash box) when this is a dial. */
+  /** Pushes the identity-only dash box to the dial's own screen, whichever it is (#1013). */
   private async renderFeedback(ctx: SplitsDeltaCycleDialContext): Promise<void> {
-    if (!__FEATURE_DIAL_FEEDBACK__) return;
+    // The dial's own screen decides the drawing; a key or a host with no dial
+    // screen has nothing to draw on (#1013).
+    const canvas = ctx.action.dialCanvas();
 
-    if (!ctx.action.isDial()) return;
+    if (!canvas) return;
 
-    const boxSvg = renderDialBox({
-      width: 200,
-      height: 100,
+    const boxSvg = renderDialBox(canvas, {
       abbr: IDENTITY_ABBR,
       // Identity-only: no readback exists, so the box draws just the label.
       value: "",
       colors: resolveDialBoxColors(ctx.dial.colors, ACCENT_COLOR),
       bindingMissing: this.computeBindingMissing(),
     });
-    const feedback: DeckFeedbackPayload = { box: svgToDataUri(boxSvg) };
-    await ctx.action.setFeedback(feedback);
+    await ctx.action.setDialCanvas(svgToDataUri(boxSvg));
   }
 }

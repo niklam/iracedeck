@@ -1,13 +1,13 @@
 <!--
   Dial Dash-Box Appearance (issue #811)
 
-  Per-dial-instance colors for the Stream Deck+ touch-strip dash box shared by
-  the Setup dial surfaces. Every color picker starts "not set" (empty), meaning
-  inherit the setting's accent (border/label/value) or the dark default
-  (background).
+  Per-dial-instance colors for the dash box the dial surfaces draw on the dial's
+  own screen. Every color picker starts "not set" (empty), meaning inherit the
+  setting's accent (border/label/value) or the dark default (background).
 
-  Include this inside the `#dial-settings` block, gated on the `dialFeedback`
-  feature — the touch strip (and therefore these controls) is Elgato-only.
+  Include this inside the `#dial-settings` block, outside the
+  `dialExtendedGestures` gate: it is shown on every host with a dial screen —
+  the Stream Deck+ strip and the Mirabox knob both take these colours (#1013).
 -->
 <%- include('accordion', {
   title: 'Dash Box Appearance',

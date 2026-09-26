@@ -76,11 +76,16 @@ vi.mock("@iracedeck/deck-core", async () => {
   };
 });
 
-function dialContext(id: string) {
+const STRIP = { id: "sd-plus-strip", width: 200, height: 100 } as const;
+const KNOB = { id: "stream-dock-knob", width: 176, height: 112 } as const;
+
+function dialContext(id: string, canvas: typeof STRIP | typeof KNOB | null = STRIP) {
   return {
     id,
     isKey: () => false,
     isDial: () => true,
+    dialCanvas: () => canvas,
+    setDialCanvas: vi.fn().mockResolvedValue(undefined),
     setImage: vi.fn().mockResolvedValue(undefined),
     setTitle: vi.fn().mockResolvedValue(undefined),
     setSettings: vi.fn().mockResolvedValue(undefined),
@@ -268,6 +273,47 @@ describe("SetupFuel dial surface", () => {
 
       expect(mockTapBinding).not.toHaveBeenCalledWith("setupFuelFcyModeToggle");
     });
+
+    it("a lone dialDown fires nothing and does not poison the next short press (#1013)", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
+      const ctx = dialContext("ld1", KNOB);
+      const settings = dialSettings({ setting: "fuel-mixture", pressAction: "toggle-fcy", longPressAction: "none" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+      const framesBefore = ctx.setDialCanvas.mock.calls.length;
+
+      // A dialDown whose dialUp never comes. The Mirabox adapter completes every
+      // knob press, so a surface there never sees one; this guards any host that
+      // drops a release.
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      vi.advanceTimersByTime(5000);
+
+      expect(mockTapBinding).not.toHaveBeenCalled();
+      expect(ctx.setDialCanvas.mock.calls.length).toBe(framesBefore); // no preview frame
+
+      // Then an ordinary press: down, then up 50 ms later.
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      vi.advanceTimersByTime(50);
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+
+      expect(mockTapBinding).toHaveBeenCalledTimes(1);
+      expect(mockTapBinding).toHaveBeenCalledWith("setupFuelFcyModeToggle");
+    });
+
+    it("the same sequence on the Stream Deck+ (extended gestures on) still classifies the click as short", async () => {
+      const ctx = dialContext("ld2", STRIP);
+      const settings = dialSettings({ setting: "fuel-mixture", pressAction: "toggle-fcy", longPressAction: "none" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      vi.advanceTimersByTime(5000);
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      vi.advanceTimersByTime(50);
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+
+      expect(mockTapBinding).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe("onTouchTap", () => {
@@ -294,7 +340,7 @@ describe("SetupFuel dial surface", () => {
     });
 
     it("does nothing when dial feedback is disabled", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", false);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
       const ctx = dialContext("t3");
       const settings = dialSettings({ setting: "fuel-mixture", tapAction: "toggle-fcy" });
       await appear(ctx, settings);
@@ -307,18 +353,57 @@ describe("SetupFuel dial surface", () => {
   });
 
   describe("feedback rendering", () => {
-    it("pushes the dash box as a single touch-strip pixmap on a dial", async () => {
+    it("pushes the dash box as a single dial-canvas pixmap on a dial", async () => {
       const ctx = dialContext("f1");
       await appear(ctx, dialSettings({ setting: "fuel-mixture" }));
 
-      expect(ctx.setFeedback).toHaveBeenCalled();
-      const feedback = ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string };
+      expect(ctx.setDialCanvas).toHaveBeenCalled();
+      const box = ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string;
 
-      expect(feedback.box).toContain("data:image/svg+xml");
-      const decoded = decodeURIComponent(feedback.box);
+      expect(box).toContain("data:image/svg+xml");
+      const decoded = decodeURIComponent(box);
 
       expect(decoded).toContain(">MIX<");
       expect(decoded).toContain(">3<");
+    });
+
+    it("pushes the strip box through setDialCanvas on the Stream Deck+ profile (#1013)", async () => {
+      const ctx = dialContext("c1", STRIP);
+      await appear(ctx, dialSettings({ setting: "fuel-mixture" }));
+
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
+
+      expect(decoded).toContain('viewBox="0 0 200 100"');
+      expect(decoded).toContain(">MIX<");
+      expect(ctx.setFeedback).not.toHaveBeenCalled();
+    });
+
+    it("pushes the knob box on the Stream Dock profile and never a name card there", async () => {
+      const ctx = dialContext("c2", KNOB);
+      await appear(ctx, dialSettings({ setting: "fuel-mixture" }));
+
+      expect(ctx.setImage).not.toHaveBeenCalled();
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls[0][0] as string);
+
+      expect(decoded).toContain('viewBox="0 0 176 112"');
+      expect(decoded).toContain(">MIX<");
+      expect(decoded).toContain(">3<");
+    });
+
+    it("pushes nothing at all when the context has no dial canvas", async () => {
+      const ctx = dialContext("c3", null);
+      await appear(ctx, dialSettings({ setting: "fuel-mixture" }));
+
+      expect(ctx.setDialCanvas).not.toHaveBeenCalled();
+      expect(ctx.setFeedback).not.toHaveBeenCalled();
+      expect(ctx.setImage).not.toHaveBeenCalled();
+    });
+
+    it("keeps pushing the name card on the strip profile (the app's dial-slot image)", async () => {
+      const ctx = dialContext("c4", STRIP);
+      await appear(ctx, dialSettings({ setting: "fuel-mixture" }));
+
+      expect(decodeURIComponent(ctx.setImage.mock.calls.at(-1)?.[0] as string)).toContain(">FUEL<");
     });
 
     it("applies dash-box color overrides from dial settings (#811)", async () => {
@@ -331,7 +416,7 @@ describe("SetupFuel dial surface", () => {
         }),
       );
 
-      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
 
       expect(decoded).toContain('stroke="#112233"');
       expect(decoded).toContain('fill="#445566"');
@@ -352,7 +437,7 @@ describe("SetupFuel dial surface", () => {
       const ctx = dialContext("f6");
       await appear(ctx, dialSettings({ setting: "fuel-mixture" }));
 
-      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
 
       expect(mockIsBindingMissing).toHaveBeenCalledWith([
         "setupFuelFuelMixtureIncrease",
@@ -365,14 +450,75 @@ describe("SetupFuel dial surface", () => {
       const ctx = dialContext("f5");
       mockGetCurrentTelemetry.mockReturnValue({ dcFuelMixture: 3, dcFuelCutPosition: 5 });
       await appear(ctx, dialSettings({ setting: "fuel-mixture" }));
-      ctx.setFeedback.mockClear();
+      ctx.setDialCanvas.mockClear();
 
       await action.onDidReceiveSettings(basicEvent(ctx, dialSettings({ setting: "fuel-cut-position" })) as never);
 
-      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
 
       expect(decoded).toContain(">CUT<");
       expect(decoded).toContain(">5<");
+    });
+  });
+
+  describe("extended gestures off (Mirabox / Ulanzi)", () => {
+    it("still renders the knob, but pushes no trigger description and ignores touch", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
+      const ctx = dialContext("x1", KNOB);
+      const settings = dialSettings({ setting: "fuel-mixture", tapAction: "toggle-fcy" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      expect(ctx.setDialCanvas).toHaveBeenCalled();
+      expect(ctx.setTriggerDescription).not.toHaveBeenCalled();
+
+      await action.onTouchTap(touchTapEvent(ctx, settings, false) as never);
+
+      expect(mockTapBinding).not.toHaveBeenCalled();
+    });
+
+    it("classifies every release as a short press, however long the hold", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
+      const ctx = dialContext("x2", KNOB);
+      const settings = dialSettings({ setting: "fuel-mixture", pressAction: "toggle-fcy", longPressAction: "none" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      vi.advanceTimersByTime(2000);
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+
+      expect(mockTapBinding).toHaveBeenCalledWith("setupFuelFcyModeToggle");
+    });
+
+    // The Mirabox adapter delivers a knob press atomically: dialDown and dialUp
+    // back to back, with no time between them (#1013).
+    it("fires the Press gesture exactly once for the adapter's atomic down-then-up", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
+      const ctx = dialContext("x4", KNOB);
+      const settings = dialSettings({ setting: "fuel-mixture", pressAction: "toggle-fcy", longPressAction: "none" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+
+      expect(mockTapBinding).toHaveBeenCalledOnce();
+      expect(mockTapBinding).toHaveBeenCalledWith("setupFuelFcyModeToggle");
+    });
+
+    it("never fires a long-press action a knob cannot reach", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
+      const ctx = dialContext("x3", KNOB);
+      const settings = dialSettings({ setting: "fuel-mixture", pressAction: "none", longPressAction: "toggle-fcy" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      vi.advanceTimersByTime(2000);
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+
+      expect(mockTapBinding).not.toHaveBeenCalled();
     });
   });
 

@@ -9,12 +9,15 @@ import {
   type DeckFeedbackPayload,
   type DeckTriggerDescription,
   DEFAULT_KEY_IMAGE_SIZE,
+  type DeviceImageSize,
+  type DialCanvasProfile,
   type IDeckActionContext,
   type IDeckActionHandler,
   type IDeckDialRotateEvent,
   type IDeckEvent,
   type IDeckPlatformAdapter,
   type IDeckWillDisappearEvent,
+  STREAM_DOCK_KNOB_CANVAS,
   toDeviceImage,
 } from "@iracedeck/deck-core";
 import type { ILogger } from "@iracedeck/logger";
@@ -38,12 +41,7 @@ class VSDActionContext implements IDeckActionContext {
   ) {}
 
   async setImage(dataUri: string): Promise<void> {
-    const image = await toDeviceImage(this.id, dataUri, DEFAULT_KEY_IMAGE_SIZE);
-
-    // null = superseded by a newer image for this context — skip the send.
-    if (image === null) return;
-
-    this.client.setImage(this.id, image);
+    await this.sendImage(dataUri, DEFAULT_KEY_IMAGE_SIZE);
   }
 
   async setTitle(title: string): Promise<void> {
@@ -72,6 +70,36 @@ class VSDActionContext implements IDeckActionContext {
 
   // Stream Dock knobs have no trigger descriptions, so this is a no-op too.
   async setTriggerDescription(_descriptions: DeckTriggerDescription): Promise<void> {}
+
+  /** Knob (and the Encoder spelling some hosts use) — the LCD segment above the knob. */
+  dialCanvas(): DialCanvasProfile | null {
+    return this.isDial() ? STREAM_DOCK_KNOB_CANVAS : null;
+  }
+
+  // The knob's segment is addressed by setImage, so the live drawing and a
+  // key image go through the same `sendImage` and share one supersede key
+  // (`this.id`): a slow render of either can never land over a fresher frame
+  // of the other.
+  async setDialCanvas(dataUri: string): Promise<void> {
+    const canvas = this.dialCanvas();
+
+    if (!canvas) return;
+
+    await this.sendImage(dataUri, { width: canvas.width, height: canvas.height });
+  }
+
+  /**
+   * Rasterizes for the device and sends it with `setImage`, keyed by this
+   * context — the one path for key images and the knob's live drawing.
+   */
+  private async sendImage(dataUri: string, target: number | DeviceImageSize): Promise<void> {
+    const image = await toDeviceImage(this.id, dataUri, target);
+
+    // null = superseded by a newer image for this context — skip the send.
+    if (image === null) return;
+
+    this.client.setImage(this.id, image);
+  }
 }
 
 /**
@@ -123,6 +151,12 @@ function wrapDisappearEvent<T>(data: VSDEvent & { context: string }): IDeckWillD
         /* no-op: action is disappearing */
       },
       async setTriggerDescription() {
+        /* no-op: action is disappearing */
+      },
+      dialCanvas() {
+        return null;
+      },
+      async setDialCanvas() {
         /* no-op: action is disappearing */
       },
     },
@@ -180,10 +214,14 @@ export class VSDPlatformAdapter implements IDeckPlatformAdapter {
    */
   private fileSink: FileSink | null = null;
 
+  /** Scope for the adapter's own protocol normalisation (the dropped host `dialUp`). */
+  private readonly dialLogger: ILogger;
+
   constructor(logger?: ILogger, logDir?: string) {
     this.fileSink = logDir ? new FileSink(logDir) : null;
     const log = logger ?? this.buildLogger("VSD");
     this.client = new VSDClient(parseConnectionParams(), log.createScope("WebSocket"));
+    this.dialLogger = log.createScope("Dial");
   }
 
   /**
@@ -357,23 +395,34 @@ export class VSDPlatformAdapter implements IDeckPlatformAdapter {
       );
     });
 
-    // dialDown — fire broadcast callbacks first, then handler
+    // A knob press is delivered atomically (#1013). On the Mirabox host, pushing
+    // the knob sends a lone `dialDown` and never a `dialUp`, however long it is
+    // held, while tapping the screen above the knob sends `dialDown` + `dialUp`
+    // ~50 ms apart. The two `dialDown` messages are byte-identical, so nothing
+    // tells them apart when one arrives. The adapter therefore turns every host
+    // `dialDown` into a complete press (`onDialDown` then, at once, `onDialUp`
+    // for the same context) and drops every host `dialUp`. Both inputs fire the
+    // Press gesture exactly once, at the moment of pressing, and no surface
+    // changes. No timer: a push has no release to wait for. See "The Mirabox
+    // adapter makes a knob press atomic" in
+    // docs/superpowers/specs/2026-09-26-issue-1013-mirabox-knob-dials.md.
+
+    // dialDown — fire broadcast callbacks first, then the handler's down and up
     this.client.onActionEvent(uuid, "dialDown", async (data) => {
       if (!data.context) return;
 
       for (const cb of this.dialDownCallbacks) cb();
 
-      await handler.onDialDown?.(
-        wrapEvent<T>(this.client, data as VSDEvent & { context: string }, getControllerType(data.context)),
-      );
+      const event = data as VSDEvent & { context: string };
+
+      await handler.onDialDown?.(wrapEvent<T>(this.client, event, getControllerType(event.context)));
+      await handler.onDialUp?.(wrapEvent<T>(this.client, event, getControllerType(event.context)));
     });
 
-    // dialUp
+    // dialUp — dropped: the press was already completed at its dialDown
     this.client.onActionEvent(uuid, "dialUp", async (data) => {
-      if (!data.context) return;
-
-      await handler.onDialUp?.(
-        wrapEvent<T>(this.client, data as VSDEvent & { context: string }, getControllerType(data.context)),
+      this.dialLogger.debug(
+        `Dropped host dialUp for ${data.context ?? "(no context)"}: the knob press was delivered atomically at dialDown`,
       );
     });
   }

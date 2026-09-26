@@ -342,7 +342,7 @@ describe("piTemplatePlugin", () => {
     writeFileSync(
       path.join(templatesDir, "flags.ejs"),
       "<!DOCTYPE html><html><body>" +
-        "<% if (locals.platform?.features?.dialFeedback !== false) { %>DIAL<% } %>" +
+        "<% if (locals.platform?.features?.dialExtendedGestures !== false) { %>DIAL<% } %>" +
         "|<%= locals.platform?.features?.pngRasterization %>" +
         "</body></html>",
     );
@@ -353,7 +353,7 @@ describe("piTemplatePlugin", () => {
       partialsDir,
       version: "1.0.0",
       platformFeatures: {
-        features: { dialFeedback: false, pngRasterization: false },
+        features: { dialExtendedGestures: false, pngRasterization: false },
       },
     });
 
@@ -380,7 +380,7 @@ describe("piTemplatePlugin", () => {
     writeFileSync(
       path.join(templatesDir, "no-flags.ejs"),
       "<!DOCTYPE html><html><body>" +
-        "<% if (locals.platform?.features?.dialFeedback !== false) { %>DIAL<% } %>" +
+        "<% if (locals.platform?.features?.dialExtendedGestures !== false) { %>DIAL<% } %>" +
         "</body></html>",
     );
 
@@ -405,7 +405,7 @@ describe("piTemplatePlugin", () => {
       await (plugin.generateBundle as AnyFunction).call(context);
     }
 
-    // With default platformFeatures = { features: {} }, features.dialFeedback is
+    // With default platformFeatures = { features: {} }, features.dialExtendedGestures is
     // undefined (!== false), so DIAL is emitted — preserving backward-compatible
     // behavior for templates without platform gating.
     const content = readFileSync(path.join(outputDir, "no-flags.html"), "utf-8");

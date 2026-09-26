@@ -5,15 +5,14 @@
  *
  * Self-contained leaf (owns the `dial` schema + dial key bindings; operates on
  * the `dial` sub-object). Rotating adjusts front wing, rear wing, or qualifying
- * tape via the same key bindings as the keypad surface; the touch strip shows
- * the live value. The press gesture can toggle the RF brake ducts.
+ * tape via the same key bindings as the keypad surface; the dial's own screen —
+ * the Stream Deck+ strip or the Stream Dock knob segment — shows the live value.
+ * The press gesture can toggle the RF brake ducts.
  *
  * `qualifying-tape` has no `dc*` telemetry, so it renders label-only via the
  * dash box's identity-only branch (#782). Front/rear wing show the live value.
  */
 import {
-  classifyDialRelease,
-  type DeckFeedbackPayload,
   type DeckTriggerDescription,
   getDualPressThresholdMs,
   type IDeckActionContext,
@@ -24,7 +23,8 @@ import type { ILogger } from "@iracedeck/logger";
 import z from "zod";
 
 import { dialAppearanceFields, renderDialBox, resolveDialBoxColors } from "../../shared/dial-box.js";
-import { renderDialNameIcon } from "../../shared/dial-name-icon.js";
+import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
+import { classifyDialReleaseForHost } from "../../shared/dial-release.js";
 import { formatViewValue, type ViewSettingId } from "../../shared/setup-view.js";
 
 const CHANGE_RENDER_MIN_INTERVAL_MS = 100;
@@ -179,9 +179,7 @@ export class SetupAeroDialSurface {
   async willAppear(action: IDeckActionContext, dial: DialSettings): Promise<void> {
     const ctx = this.ensureContext(action, dial);
 
-    action.setImage(renderDialNameIcon({ line1: "SETUP", line2: "AERO", backgroundColor: "#1a3a3a" })).catch((err) => {
-      this.host.logger.debug(`Dial name icon push failed: ${String(err)}`);
-    });
+    pushDialNameIcon(action, { line1: "SETUP", line2: "AERO", backgroundColor: "#1a3a3a" }, this.host.logger);
 
     await this.applyTriggerDescription(ctx);
     await this.renderFeedback(ctx);
@@ -227,7 +225,9 @@ export class SetupAeroDialSurface {
 
     if (pressStartMs === 0) return;
 
-    const kind = classifyDialRelease({
+    // Where the extended gestures are compiled out a release is never long: a
+    // knob press never reports its release (`classifyDialReleaseForHost`).
+    const kind = classifyDialReleaseForHost({
       pressStartMs,
       nowMs: Date.now(),
       rotatedWhilePressed: ctx.rotatedWhilePressed,
@@ -245,7 +245,7 @@ export class SetupAeroDialSurface {
   }
 
   async touchTap(action: IDeckActionContext, dial: DialSettings, hold: boolean): Promise<void> {
-    if (!__FEATURE_DIAL_FEEDBACK__) return;
+    if (!__FEATURE_DIAL_EXTENDED_GESTURES__) return;
 
     const gesture = hold ? dial.longTouchAction : dial.tapAction;
 
@@ -342,28 +342,27 @@ export class SetupAeroDialSurface {
   }
 
   private async applyTriggerDescription(ctx: SetupAeroDialContext): Promise<void> {
-    if (!__FEATURE_DIAL_FEEDBACK__ || !ctx.action.isDial()) return;
+    if (!__FEATURE_DIAL_EXTENDED_GESTURES__ || !ctx.action.isDial()) return;
 
     await ctx.action.setTriggerDescription(buildTriggerDescription(ctx.dial));
   }
 
   private async renderFeedback(ctx: SetupAeroDialContext): Promise<void> {
-    if (!__FEATURE_DIAL_FEEDBACK__) return;
+    // The dial's own screen decides the drawing; a key or a host with no dial
+    // screen has nothing to draw on (#1013).
+    const canvas = ctx.action.dialCanvas();
 
-    if (!ctx.action.isDial()) return;
+    if (!canvas) return;
 
     const setting = ctx.dial.setting;
-    const boxSvg = renderDialBox({
-      width: 200,
-      height: 100,
+    const boxSvg = renderDialBox(canvas, {
       abbr: MODE_ABBR[setting],
       value: formatDialValue(setting, this.host.getTelemetry()),
       colors: resolveDialBoxColors(ctx.dial.colors, MODE_COLOR[setting]),
       identityLabelScale: 0.24,
       bindingMissing: this.computeBindingMissing(ctx.dial),
     });
-    const feedback: DeckFeedbackPayload = { box: svgToDataUri(boxSvg) };
-    await ctx.action.setFeedback(feedback);
+    await ctx.action.setDialCanvas(svgToDataUri(boxSvg));
 
     ctx.lastRenderSig = this.displayedSignature(ctx);
     ctx.lastChangeRenderAt = Date.now();

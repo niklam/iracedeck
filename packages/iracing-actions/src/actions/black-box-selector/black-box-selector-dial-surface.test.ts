@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { buildTriggerDescription, DialSettings, renderBlackBoxStrip } from "./black-box-selector-dial-surface.js";
+import {
+  buildTriggerDescription,
+  DialSettings,
+  renderBlackBoxKnob,
+  renderBlackBoxStrip,
+} from "./black-box-selector-dial-surface.js";
 import { BlackBoxSelector } from "./black-box-selector.js";
 
 const { mockTapBinding, mockIsBindingMissing, mockDualPressThreshold, mockRotatedClassifier, globalListeners } =
@@ -63,11 +68,16 @@ vi.mock("@iracedeck/deck-core", async () => {
   };
 });
 
-function dialContext(id: string) {
+const STRIP = { id: "sd-plus-strip", width: 200, height: 100 } as const;
+const KNOB = { id: "stream-dock-knob", width: 176, height: 112 } as const;
+
+function dialContext(id: string, canvas: typeof STRIP | typeof KNOB | null = STRIP) {
   return {
     id,
     isKey: () => false,
     isDial: () => true,
+    dialCanvas: () => canvas,
+    setDialCanvas: vi.fn().mockResolvedValue(undefined),
     setImage: vi.fn().mockResolvedValue(undefined),
     setTitle: vi.fn().mockResolvedValue(undefined),
     setSettings: vi.fn().mockResolvedValue(undefined),
@@ -161,6 +171,43 @@ describe("black-box-selector dial-surface pure helpers", () => {
 
     it("dims under the #612 warning when the rotation binding is missing", () => {
       const svg = renderBlackBoxStrip({ colors, bindingMissing: true });
+
+      expect(svg).toContain("binding-warning");
+    });
+  });
+
+  describe("renderBlackBoxKnob (#1013)", () => {
+    const colors = { border: "#d4a017", label: "#d4a017", value: "#d4a017", background: "#0d0d0d" };
+
+    it("draws the same identity on the 176x112 knob screen", () => {
+      const svg = renderBlackBoxKnob({ colors, bindingMissing: false });
+
+      expect(svg).toContain('viewBox="0 0 176 112"');
+      expect(svg).toContain(">BB<");
+      expect(svg).toContain(">BLACK BOX<");
+      expect(svg).not.toContain("binding-warning");
+    });
+
+    it("uses the knob box's panel frame (inset 5, stroke 6, radius 13)", () => {
+      const svg = renderBlackBoxKnob({ colors, bindingMissing: false });
+
+      expect(svg).toContain('<rect x="5" y="5" width="166" height="102" rx="13"');
+      expect(svg).toContain('stroke-width="6"');
+    });
+
+    it("applies the resolved colors", () => {
+      const svg = renderBlackBoxKnob({
+        colors: { border: "#112233", label: "#445566", value: "#445566", background: "#778899" },
+        bindingMissing: false,
+      });
+
+      expect(svg).toContain('stroke="#112233"');
+      expect(svg).toContain('fill="#778899"');
+      expect(svg).toContain('fill="#445566"');
+    });
+
+    it("dims under the #612 warning when the rotation binding is missing", () => {
+      const svg = renderBlackBoxKnob({ colors, bindingMissing: true });
 
       expect(svg).toContain("binding-warning");
     });
@@ -314,7 +361,7 @@ describe("BlackBoxSelector dial surface", () => {
       const ctx = dialContext("f1");
       await appear(ctx, withDial({}));
 
-      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
 
       expect(decoded).toContain(">BB<");
       expect(decoded).toContain(">BLACK BOX<");
@@ -324,7 +371,7 @@ describe("BlackBoxSelector dial surface", () => {
       const ctx = dialContext("f2");
       await appear(ctx, withDial({ colors: { borderColor: "#112233", backgroundColor: "#445566" } }));
 
-      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
 
       expect(decoded).toContain('stroke="#112233"');
       expect(decoded).toContain('fill="#445566"');
@@ -335,10 +382,42 @@ describe("BlackBoxSelector dial surface", () => {
       const ctx = dialContext("f3");
       await appear(ctx, withDial({}));
 
-      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
 
       expect(mockIsBindingMissing).toHaveBeenCalledWith(["blackBoxCycleNext", "blackBoxCyclePrevious"]);
       expect(decoded).toContain("binding-warning");
+    });
+
+    it("pushes the strip drawing through setDialCanvas on the Stream Deck+ profile (#1013)", async () => {
+      const ctx = dialContext("f5", STRIP);
+      await appear(ctx, withDial({}));
+
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
+
+      expect(decoded).toContain('viewBox="0 0 200 100"');
+      expect(decoded).toContain(">BLACK BOX<");
+      expect(ctx.setFeedback).not.toHaveBeenCalled();
+    });
+
+    it("draws a knob version of the identity strip on the Stream Dock profile (#1013)", async () => {
+      const ctx = dialContext("k1", KNOB);
+      await appear(ctx, withDial({}));
+
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls[0][0] as string);
+
+      expect(decoded).toContain('viewBox="0 0 176 112"');
+      expect(decoded).toContain(">BB<");
+      expect(decoded).toContain(">BLACK BOX<");
+      expect(ctx.setImage).not.toHaveBeenCalled();
+    });
+
+    it("pushes nothing at all when the context has no dial canvas", async () => {
+      const ctx = dialContext("f6", null);
+      await appear(ctx, withDial({}));
+
+      expect(ctx.setDialCanvas).not.toHaveBeenCalled();
+      expect(ctx.setFeedback).not.toHaveBeenCalled();
+      expect(ctx.setImage).not.toHaveBeenCalled();
     });
 
     it("pushes the two-line BLACK BOX name icon as the deck-app dial image", async () => {
@@ -352,23 +431,67 @@ describe("BlackBoxSelector dial surface", () => {
     });
   });
 
-  describe("__FEATURE_DIAL_FEEDBACK__ = false", () => {
-    it("pushes no touch-strip feedback", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", false);
-      const ctx = dialContext("g1");
-      await appear(ctx, withDial({}));
+  describe("extended gestures off (Mirabox / Ulanzi)", () => {
+    it("still renders the knob, but pushes no trigger description", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
+      const ctx = dialContext("g1", KNOB);
+      await appear(ctx, withDial({ pressAction: "open-selected-box" }));
 
+      expect(ctx.setDialCanvas).toHaveBeenCalled();
+      expect(ctx.setTriggerDescription).not.toHaveBeenCalled();
       expect(ctx.setFeedback).not.toHaveBeenCalled();
     });
 
     it("runs no touch-tap gesture", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", false);
-      const ctx = dialContext("g2");
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
+      const ctx = dialContext("g2", KNOB);
       const settings = withDial({ tapAction: "open-selected-box", pressBox: "fuel" });
       await appear(ctx, settings);
       mockTapBinding.mockClear();
 
       await action.onTouchTap(touchEvent(ctx, settings, false) as never);
+
+      expect(mockTapBinding).not.toHaveBeenCalled();
+    });
+
+    it("classifies every release as a short press, however long the hold", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
+      const ctx = dialContext("g3", KNOB);
+      const settings = withDial({ pressAction: "open-selected-box", longPressAction: "none", pressBox: "fuel" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      await action.onDialDown(eventFor(ctx, settings) as never);
+      vi.advanceTimersByTime(2000);
+      await action.onDialUp(eventFor(ctx, settings) as never);
+
+      expect(mockTapBinding).toHaveBeenCalledWith("blackBoxFuel");
+    });
+
+    it("never fires a long-press action a knob cannot reach", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
+      const ctx = dialContext("g4", KNOB);
+      const settings = withDial({ pressAction: "none", longPressAction: "open-selected-box", pressBox: "fuel" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      await action.onDialDown(eventFor(ctx, settings) as never);
+      vi.advanceTimersByTime(2000);
+      await action.onDialUp(eventFor(ctx, settings) as never);
+
+      expect(mockTapBinding).not.toHaveBeenCalled();
+    });
+
+    it("fires nothing on a release after a rotation while pressed", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
+      const ctx = dialContext("g5", KNOB);
+      const settings = withDial({ pressAction: "open-selected-box", pressBox: "fuel" });
+      await appear(ctx, settings);
+
+      await action.onDialDown(eventFor(ctx, settings) as never);
+      await action.onDialRotate(rotateEvent(ctx, settings, 1, true) as never);
+      mockTapBinding.mockClear();
+      await action.onDialUp(eventFor(ctx, settings) as never);
 
       expect(mockTapBinding).not.toHaveBeenCalled();
     });

@@ -314,6 +314,8 @@ function fakeDialEvent(actionId: string, settings: Record<string, unknown> = {})
       id: actionId,
       isKey: () => false,
       isDial: () => true,
+      dialCanvas: () => ({ id: "sd-plus-strip", width: 200, height: 100 }) as const,
+      setDialCanvas: vi.fn().mockResolvedValue(undefined),
       setTitle: vi.fn(),
       setImage: vi.fn().mockResolvedValue(undefined),
       setSettings: vi.fn().mockResolvedValue(undefined),
@@ -846,8 +848,8 @@ describe("FuelService", () => {
 
       await action.onWillAppear(ev as any);
 
-      // Dial path: feedback rendered, trigger description set, telemetry subscribed…
-      expect(ev.action.setFeedback).toHaveBeenCalled();
+      // Dial path: dial canvas rendered, trigger description set, telemetry subscribed…
+      expect(ev.action.setDialCanvas).toHaveBeenCalled();
       expect(ev.action.setTriggerDescription).toHaveBeenCalled();
       expect(internals(action).sdkController.subscribe).toHaveBeenCalledWith("dial-1", expect.any(Function));
       // …and NONE of the keypad bookkeeping.
@@ -860,7 +862,7 @@ describe("FuelService", () => {
 
       await action.onDidReceiveSettings(ev as any);
 
-      expect(ev.action.setFeedback).toHaveBeenCalled();
+      expect(ev.action.setDialCanvas).toHaveBeenCalled();
       expect(internals(action).setActiveBinding).not.toHaveBeenCalled();
     });
 

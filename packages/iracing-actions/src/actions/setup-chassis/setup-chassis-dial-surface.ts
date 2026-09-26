@@ -5,8 +5,8 @@
  *
  * Self-contained leaf (owns the `dial` schema + dial key bindings; operates on
  * the `dial` sub-object). Rotating adjusts one of the 13 chassis setup values
- * via the same key bindings as the keypad surface; the touch strip shows the
- * live value. The press/touch gestures can open the Pit Stop black box (#953).
+ * via the same key bindings as the keypad surface; the dial's own screen — the
+ * Stream Deck+ strip or the Stream Dock knob segment — shows the live value. The press/touch gestures can open the Pit Stop black box (#953).
  *
  * Four settings (the four shocks) have no telemetry, so they render label-only
  * via the dash box's identity-only branch (#782). The seven diff/ARB/
@@ -14,9 +14,7 @@
  * show the pending next-pit-stop offset from `dpWeightJacker*` (#953).
  */
 import {
-  classifyDialRelease,
   createHoldPreview,
-  type DeckFeedbackPayload,
   type DeckTriggerDescription,
   getDualPressThresholdMs,
   type HoldPreview,
@@ -30,9 +28,10 @@ import z from "zod";
 
 import { showBlackBox } from "../../shared/black-box.js";
 import { dialAppearanceFields, renderDialBox, resolveDialBoxColors } from "../../shared/dial-box.js";
-import { renderDialNameIcon } from "../../shared/dial-name-icon.js";
+import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
 import { persistDialPatch } from "../../shared/dial-persist.js";
 import type { DialPendingPreview } from "../../shared/dial-preview.js";
+import { classifyDialReleaseForHost } from "../../shared/dial-release.js";
 import {
   formatViewValue,
   type UnitsPreference,
@@ -289,8 +288,8 @@ export function nextSpringSide(setting: SetupChassisDialSetting): SetupChassisDi
 }
 
 /**
- * The hold preview compiled out on the hosts with no plugin touch strip. Every
- * call site stays unconditional and `__FEATURE_DIAL_FEEDBACK__` folds to `false`
+ * The hold preview compiled out on the hosts with no long press. Every
+ * call site stays unconditional and `__FEATURE_DIAL_EXTENDED_GESTURES__` folds to `false`
  * there, so terser drops this object's users and `createHoldPreview` with them.
  */
 const NOOP_HOLD_PREVIEW: HoldPreview = {
@@ -384,11 +383,7 @@ export class SetupChassisDialSurface {
     const ctx = this.ensureContext(action, dial);
     ctx.dial = dial;
 
-    action
-      .setImage(renderDialNameIcon({ line1: "SETUP", line2: "CHASSIS", backgroundColor: "#3a1a2a" }))
-      .catch((err) => {
-        this.host.logger.debug(`Dial name icon push failed: ${String(err)}`);
-      });
+    pushDialNameIcon(action, { line1: "SETUP", line2: "CHASSIS", backgroundColor: "#3a1a2a" }, this.host.logger);
 
     await this.applyTriggerDescription(ctx);
     await this.renderFeedback(ctx);
@@ -456,7 +451,9 @@ export class SetupChassisDialSurface {
 
     if (pressStartMs === 0) return;
 
-    const kind = classifyDialRelease({
+    // Where the extended gestures are compiled out a release is never long: a
+    // knob press never reports its release (`classifyDialReleaseForHost`).
+    const kind = classifyDialReleaseForHost({
       pressStartMs,
       nowMs: Date.now(),
       rotatedWhilePressed: ctx.rotatedWhilePressed,
@@ -474,7 +471,7 @@ export class SetupChassisDialSurface {
   }
 
   async touchTap(action: IDeckActionContext, dial: DialSettings, hold: boolean, rawSettings?: unknown): Promise<void> {
-    if (!__FEATURE_DIAL_FEEDBACK__) return;
+    if (!__FEATURE_DIAL_EXTENDED_GESTURES__) return;
 
     // Read the gesture from ctx.dial, not the event payload — the same
     // stale-settings model `up()` follows (see ensureContext).
@@ -536,7 +533,7 @@ export class SetupChassisDialSurface {
         preview: null,
         previewSetting: null,
         // Replaced immediately below — the preview's callbacks close over the
-        // very context being built. On a host with no plugin touch strip the
+        // very context being built. On a host with no long press the
         // no-op is what stays.
         holdPreview: NOOP_HOLD_PREVIEW,
       };
@@ -549,9 +546,9 @@ export class SetupChassisDialSurface {
     return ctx;
   }
 
-  /** The per-context hold preview, or the no-op where there is no touch strip. */
+  /** The per-context hold preview, or the no-op where there is no long press. */
   private createPreview(ctx: SetupChassisDialContext): HoldPreview {
-    if (!__FEATURE_DIAL_FEEDBACK__) return NOOP_HOLD_PREVIEW;
+    if (!__FEATURE_DIAL_EXTENDED_GESTURES__) return NOOP_HOLD_PREVIEW;
 
     return createHoldPreview({
       // The same value the release classifier reads, so the strip changes at
@@ -670,20 +667,20 @@ export class SetupChassisDialSurface {
   }
 
   private async applyTriggerDescription(ctx: SetupChassisDialContext): Promise<void> {
-    if (!__FEATURE_DIAL_FEEDBACK__ || !ctx.action.isDial()) return;
+    if (!__FEATURE_DIAL_EXTENDED_GESTURES__ || !ctx.action.isDial()) return;
 
     await ctx.action.setTriggerDescription(buildTriggerDescription(ctx.dial));
   }
 
   private async renderFeedback(ctx: SetupChassisDialContext): Promise<void> {
-    if (!__FEATURE_DIAL_FEEDBACK__) return;
+    // The dial's own screen decides the drawing; a key or a host with no dial
+    // screen has nothing to draw on (#1013).
+    const canvas = ctx.action.dialCanvas();
 
-    if (!ctx.action.isDial()) return;
+    if (!canvas) return;
 
     const setting = ctx.dial.setting;
-    const boxSvg = renderDialBox({
-      width: 200,
-      height: 100,
+    const boxSvg = renderDialBox(canvas, {
       abbr: MODE_ABBR[setting],
       value: formatDialValue(setting, this.host.getTelemetry(), ctx.dial.units),
       colors: resolveDialBoxColors(ctx.dial.colors, MODE_COLOR[setting]),
@@ -696,8 +693,7 @@ export class SetupChassisDialSurface {
       // `refreshAll()` mid-hold redraws it instead of wiping it.
       pending: ctx.preview,
     });
-    const feedback: DeckFeedbackPayload = { box: svgToDataUri(boxSvg) };
-    await ctx.action.setFeedback(feedback);
+    await ctx.action.setDialCanvas(svgToDataUri(boxSvg));
 
     ctx.lastRenderSig = this.displayedSignature(ctx);
     ctx.lastChangeRenderAt = Date.now();

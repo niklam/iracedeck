@@ -283,7 +283,7 @@ Adjust the power steering assist level.
 
 ## On a dial
 
-Placed on a Stream Deck+ dial, Setup Chassis becomes a chassis-setup dial. Pick one component with the dial's **Mode** dropdown; turning the dial steps it up or down in the car, and the touch strip shows that value live as a big, color-coded number. It uses the same key bindings as the keypad modes, so no extra configuration is needed if you already use them. The Property Inspector automatically shows the dial settings below (instead of the keypad Mode and Direction) when the instance sits on a dial. See [Dials](/docs/features/dials/) for how the shared dial gestures work.
+Placed on a Stream Deck+ dial or a Mirabox knob, Setup Chassis becomes a chassis-setup dial. Pick one component with the dial's **Mode** dropdown; turning the dial steps it up or down in the car, and the touch strip shows that value live as a big, color-coded number. It uses the same key bindings as the keypad modes, so no extra configuration is needed if you already use them. The Property Inspector automatically shows the dial settings below (instead of the keypad Mode and Direction) when the instance sits on a dial. See [Dials](/docs/features/dials/) for how the shared dial gestures work.
 
 #### Details
 
@@ -294,8 +294,7 @@ Placed on a Stream Deck+ dial, Setup Chassis becomes a chassis-setup dial. Pick 
 #### Controls
 
 - **Elgato Stream Deck+** — dial rotation and a touchscreen readout that always shows.
-
-Dials are currently Stream Deck+ only — the action can't be placed on Mirabox knobs or Ulanzi dials yet (see [Dials](/docs/features/dials/)).
+- **Mirabox knob** — turn and push, with the same live readout drawn on the screen above the knob; the Push slot only (see [Dials](/docs/features/dials/#mirabox-knobs)).
 
 #### Setting: Mode
 

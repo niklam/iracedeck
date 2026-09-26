@@ -6,10 +6,11 @@
  * `vi.unstubAllGlobals()` restores these defaults.
  */
 interface FeatureFlagGlobals {
-  __FEATURE_DIAL_FEEDBACK__: boolean;
+  /** the Stream Deck+ extended-gesture flag */
+  __FEATURE_DIAL_EXTENDED_GESTURES__: boolean;
   __FEATURE_PNG_RASTERIZATION__: boolean;
 }
 
 const featureFlagGlobals = globalThis as unknown as FeatureFlagGlobals;
-featureFlagGlobals.__FEATURE_DIAL_FEEDBACK__ = true;
+featureFlagGlobals.__FEATURE_DIAL_EXTENDED_GESTURES__ = true;
 featureFlagGlobals.__FEATURE_PNG_RASTERIZATION__ = true;

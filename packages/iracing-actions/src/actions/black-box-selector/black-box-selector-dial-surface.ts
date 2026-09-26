@@ -11,18 +11,20 @@
  * bindings and the same single-tap dispatch the keypad Direct mode uses.
  *
  * iRacing exposes no telemetry for which black box is currently open (the
- * documented #782 identity-only compromise), so the touch strip is STATIC: it
- * shows action identity — a "BB" badge and the "BLACK BOX" wordmark — with no
- * open-box readback. Its only live element is the #612 missing-binding warning,
- * which dims the strip when the Cycle bindings aren't set; that refreshes on
+ * documented #782 identity-only compromise), so the dial's own screen — the
+ * Stream Deck+ strip or the Stream Dock knob segment — is STATIC: it shows
+ * action identity — a "BB" badge and the "BLACK BOX" wordmark — with no
+ * open-box readback, drawn by this surface itself for each screen
+ * (`renderBlackBoxStrip` / `renderBlackBoxKnob`, #1013). Its only live element
+ * is the #612 missing-binding warning, which dims the drawing when the Cycle
+ * bindings aren't set; that refreshes on
  * global-settings changes (`refreshAll`), not from telemetry, so this surface
  * never subscribes to the telemetry tick.
  */
 import {
   applyBindingWarning,
-  classifyDialRelease,
-  type DeckFeedbackPayload,
   type DeckTriggerDescription,
+  type DialCanvasProfile,
   getDualPressThresholdMs,
   type IDeckActionContext,
   svgToDataUri,
@@ -32,7 +34,9 @@ import z from "zod";
 
 import { BLACK_BOX_GLOBAL_KEYS, type BlackBoxId } from "../../shared/black-box.js";
 import { dialAppearanceFields, type DialBoxColors, resolveDialBoxColors } from "../../shared/dial-box.js";
-import { renderDialNameIcon } from "../../shared/dial-name-icon.js";
+import { KNOB_BOX_HEIGHT, KNOB_BOX_WIDTH } from "../../shared/dial-knob-box.js";
+import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
+import { classifyDialReleaseForHost } from "../../shared/dial-release.js";
 
 /** Cap on binding taps dispatched for one rotate event (a fast spin coalesces ticks). */
 const MAX_TAPS_PER_EVENT = 5;
@@ -156,6 +160,59 @@ export function renderBlackBoxStrip(args: { colors: DialBoxColors; bindingMissin
   );
 }
 
+/**
+ * @internal Exported for testing
+ *
+ * The knob-screen version of {@link renderBlackBoxStrip} (#1013): the same
+ * badge and wordmark, composed for the squarer 176×112 segment — the badge
+ * larger and higher, the wordmark on its own line beneath. The panel frame is
+ * the shared knob box's (inset 5, stroke 6, outer radius 18 → rx 13), so Black
+ * Box sits in the same frame as every other knob surface.
+ */
+export function renderBlackBoxKnob(args: { colors: DialBoxColors; bindingMissing: boolean }): string {
+  const { colors, bindingMissing } = args;
+  const w = KNOB_BOX_WIDTH;
+  const h = KNOB_BOX_HEIGHT;
+  const inset = 5;
+  const strokeWidth = 6;
+
+  const panel = `<rect x="${inset}" y="${inset}" width="${w - 2 * inset}" height="${h - 2 * inset}" rx="13" fill="${colors.background}" stroke="${colors.border}" stroke-width="${strokeWidth}"/>`;
+  const badge =
+    `<rect x="56" y="18" width="64" height="40" rx="8" fill="none" stroke="${colors.border}" stroke-width="3"/>` +
+    `<text x="88" y="47" text-anchor="middle" fill="${colors.label}" font-family="Arial, sans-serif" font-size="26" font-weight="bold">BB</text>`;
+  const label = `<text x="88" y="90" text-anchor="middle" fill="${colors.label}" font-family="Arial, sans-serif" font-size="18" font-weight="bold">BLACK BOX</text>`;
+  const content = badge + label;
+
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">` +
+    panel +
+    `${bindingMissing ? applyBindingWarning(content, { width: w, height: h }) : content}</svg>`
+  );
+}
+
+/**
+ * Picks Black Box's own drawing for the dial's screen — exhaustive over the
+ * profile ids, like `renderDialBox`, so a new canvas cannot silently get the
+ * strip drawing.
+ */
+function renderBlackBoxFor(
+  canvas: DialCanvasProfile,
+  args: { colors: DialBoxColors; bindingMissing: boolean },
+): string {
+  switch (canvas.id) {
+    case "sd-plus-strip":
+      return renderBlackBoxStrip(args);
+    case "stream-dock-knob":
+      return renderBlackBoxKnob(args);
+    default: {
+      // A new DialCanvasId must get its own drawing here: this line stops compiling until it does.
+      const unhandled: never = canvas.id;
+
+      throw new Error(`Black Box Selector: no drawing for dial canvas "${String(unhandled)}"`);
+    }
+  }
+}
+
 interface BlackBoxDialContext {
   dial: DialSettings;
   action: IDeckActionContext;
@@ -179,9 +236,7 @@ export class BlackBoxSelectorDialSurface {
   async willAppear(action: IDeckActionContext, dial: DialSettings): Promise<void> {
     const ctx = this.ensureContext(action, dial);
 
-    action.setImage(renderDialNameIcon({ line1: "BLACK", line2: "BOX", backgroundColor: "#2a2a2a" })).catch((err) => {
-      this.host.logger.debug(`Dial name icon push failed: ${String(err)}`);
-    });
+    pushDialNameIcon(action, { line1: "BLACK", line2: "BOX", backgroundColor: "#2a2a2a" }, this.host.logger);
 
     await this.applyTriggerDescription(ctx);
     await this.renderFeedback(ctx);
@@ -235,7 +290,9 @@ export class BlackBoxSelectorDialSurface {
 
     if (pressStartMs === 0) return;
 
-    const kind = classifyDialRelease({
+    // Where the extended gestures are compiled out a release is never long: a
+    // knob press never reports its release (`classifyDialReleaseForHost`).
+    const kind = classifyDialReleaseForHost({
       pressStartMs,
       nowMs: Date.now(),
       rotatedWhilePressed: ctx.rotatedWhilePressed,
@@ -253,7 +310,7 @@ export class BlackBoxSelectorDialSurface {
   }
 
   async touchTap(action: IDeckActionContext, dial: DialSettings, hold: boolean): Promise<void> {
-    if (!__FEATURE_DIAL_FEEDBACK__) return;
+    if (!__FEATURE_DIAL_EXTENDED_GESTURES__) return;
 
     const gesture = hold ? dial.longTouchAction : dial.tapAction;
 
@@ -267,7 +324,7 @@ export class BlackBoxSelectorDialSurface {
   refreshAll(): void {
     for (const ctx of this.contextsState.values()) {
       // Only the missing-binding warning can change from global settings; skip
-      // an echo that leaves it unchanged so the strip stays under ≤10 setFeedback/s.
+      // an echo that leaves it unchanged so the dial screen stays under ≤10 pushes/s.
       if (this.computeBindingMissing() === ctx.lastWarn) continue;
 
       this.renderFeedback(ctx).catch((err) => {
@@ -310,23 +367,21 @@ export class BlackBoxSelectorDialSurface {
   }
 
   private async applyTriggerDescription(ctx: BlackBoxDialContext): Promise<void> {
-    if (!__FEATURE_DIAL_FEEDBACK__ || !ctx.action.isDial()) return;
+    if (!__FEATURE_DIAL_EXTENDED_GESTURES__ || !ctx.action.isDial()) return;
 
     await ctx.action.setTriggerDescription(buildTriggerDescription(ctx.dial));
   }
 
   private async renderFeedback(ctx: BlackBoxDialContext): Promise<void> {
-    if (!__FEATURE_DIAL_FEEDBACK__) return;
+    // The dial's own screen decides the drawing; a key or a host with no dial
+    // screen has nothing to draw on (#1013).
+    const canvas = ctx.action.dialCanvas();
 
-    if (!ctx.action.isDial()) return;
+    if (!canvas) return;
 
     const bindingMissing = this.computeBindingMissing();
-    const boxSvg = renderBlackBoxStrip({
-      colors: resolveDialBoxColors(ctx.dial.colors, ACCENT),
-      bindingMissing,
-    });
-    const feedback: DeckFeedbackPayload = { box: svgToDataUri(boxSvg) };
-    await ctx.action.setFeedback(feedback);
+    const args = { colors: resolveDialBoxColors(ctx.dial.colors, ACCENT), bindingMissing };
+    await ctx.action.setDialCanvas(svgToDataUri(renderBlackBoxFor(canvas, args)));
 
     ctx.lastWarn = bindingMissing;
   }

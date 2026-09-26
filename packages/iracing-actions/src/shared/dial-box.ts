@@ -11,18 +11,18 @@
  * abbreviation label + live value sit on top. Actions resolve their per-setting
  * accent + any user overrides via `resolveDialBoxColors`, spread
  * `dialAppearanceFields` into their dial settings schema, and route rendering
- * through `renderDialBox`.
+ * through `renderDialBox`. Since #1013 this module is the dispatcher; the strip
+ * drawing lives in `dial-strip-box.ts`, the knob drawing in `dial-knob-box.ts`.
  */
-import { applyBindingWarning } from "@iracedeck/deck-core";
+import type { DialCanvasProfile } from "@iracedeck/deck-core";
 import { z } from "zod";
 
-import { type DialPendingPreview, PENDING_BAR_HEIGHT, renderPendingBar } from "./dial-preview.js";
+import { renderKnobBox } from "./dial-knob-box.js";
+import type { DialPendingPreview } from "./dial-preview.js";
+import { renderStripBox } from "./dial-strip-box.js";
 
 /** Default panel background — near-black, ≈ the device screen, so the default look is unchanged. */
 export const DIAL_BOX_BACKGROUND = "#0d0d0d";
-
-/** The default identity-only (valueless) label scale, as a fraction of the box's shorter side. */
-const DEFAULT_IDENTITY_LABEL_SCALE = 0.24;
 
 /**
  * User color overrides for the dash box; an empty/absent slot inherits the
@@ -63,25 +63,8 @@ export function resolveDialBoxColors(overrides: DialBoxColorOverrides | undefine
   };
 }
 
-/**
- * Bold Arial digits + "." average ~0.6 em wide; shrink the value font so the
- * number fits the box width, capped so short values (e.g. "3") stay sensible.
- */
-function fitValueFontSize(text: string, maxWidth: number, cap: number): number {
-  const approx = maxWidth / Math.max(1, text.length * 0.6);
-
-  return Math.round(Math.min(cap, approx));
-}
-
-/**
- * Renders the dash-box SVG. The background fills the panel INSIDE the border and
- * the border strokes it. An empty `value` (identity-only setting) draws just the
- * centered label. When the rotation binding is missing the content dims under
- * the centered #612 warning triangle.
- */
-export function renderDialBox(args: {
-  width: number;
-  height: number;
+/** What every dash-box surface hands the renderer; the canvas decides the drawing. */
+export interface DialBoxArgs {
   abbr: string;
   value: string;
   colors: DialBoxColors;
@@ -97,95 +80,32 @@ export function renderDialBox(args: {
   /**
    * The pending long-press outcome (issue #1120). While set, the value slot
    * shows this instead of the live value, underlined by the shared pending bar —
-   * so a hold past the threshold visibly changes the strip and the driver can
-   * release on the change rather than on a guess. An identity-only box (no live
-   * value) borrows the value slot for the duration.
+   * so a hold past the threshold visibly changes the dial's screen and the
+   * driver can release on the change rather than on a guess. An identity-only
+   * box (no live value) borrows the value slot for the duration.
    */
   pending?: DialPendingPreview | null;
-}): string {
-  const {
-    width: w,
-    height: h,
-    abbr,
-    value,
-    colors,
-    identityLabelScale = DEFAULT_IDENTITY_LABEL_SCALE,
-    bindingMissing = false,
-    sideMarker,
-    pending = null,
-  } = args;
+}
 
-  const minSide = Math.min(w, h);
-  const radius = Math.round(minSide * 0.16);
-  const inset = Math.max(5, Math.round(minSide * 0.045));
-  const strokeWidth = Math.max(5, Math.round(minSide * 0.05));
-  const displayValue = pending ? pending.text : value;
-  const valueColor = pending ? pending.color : colors.value;
-  const identityOnly = displayValue === "";
+/**
+ * Renders the dash box for the dial's own screen: the Stream Deck+ strip
+ * drawing (`renderStripBox`, unchanged since #811) or the Stream Dock knob
+ * drawing (`renderKnobBox`, #1013). Two renderers, one vocabulary — selected
+ * by the profile's id, never by the platform.
+ */
+export function renderDialBox(canvas: DialCanvasProfile, args: DialBoxArgs): string {
+  switch (canvas.id) {
+    case "sd-plus-strip":
+      return renderStripBox({ ...args, width: canvas.width, height: canvas.height });
+    case "stream-dock-knob":
+      return renderKnobBox(args);
+    default: {
+      // A new DialCanvasId must get its own drawing here: this line stops compiling until it does.
+      const unhandled: never = canvas.id;
 
-  const labelFontSize = identityOnly ? Math.round(minSide * identityLabelScale) : Math.round(minSide * 0.15);
-  // SVG <text> y is the BASELINE and resvg ignores dominant-baseline, so a
-  // centered identity-only label must add the baseline offset (~0.36em for bold
-  // Arial) — otherwise it renders visibly ABOVE center (#804). The
-  // label-above-value layout keeps its historic baseline (0.28h).
-  const labelY = identityOnly ? Math.round(h * 0.5) + Math.round(labelFontSize * 0.36) : Math.round(h * 0.28);
-
-  const labelText = `<text x="${w / 2}" y="${labelY}" text-anchor="middle" fill="${colors.label}" font-family="Arial, sans-serif" font-size="${labelFontSize}" font-weight="bold">${abbr}</text>`;
-
-  let valueText = "";
-
-  if (!identityOnly) {
-    const valueFontSize = fitValueFontSize(
-      displayValue,
-      w - 2 * (inset + strokeWidth + Math.round(w * 0.05)),
-      Math.round(h * 0.52),
-    );
-    const valueY = Math.round(h * 0.64) + 13;
-    valueText = `<text x="${w / 2}" y="${valueY}" text-anchor="middle" fill="${valueColor}" font-family="Arial, sans-serif" font-size="${valueFontSize}" font-weight="bold">${displayValue}</text>`;
-
-    // The pending underline sits just under the value's baseline, clamped so it
-    // stays inside the panel — the border strokes ON the inset rect, so half of
-    // it eats inward. Every caller draws at 200×100, where the clamp never
-    // binds; it is there so a smaller box can never push the mark off the panel.
-    if (pending) {
-      const barTop = Math.min(valueY + 4, h - inset - Math.round(strokeWidth / 2) - PENDING_BAR_HEIGHT);
-      valueText += renderPendingBar({ centerX: w / 2, y: barTop, width: w, color: pending.color });
+      throw new Error(`renderDialBox: no renderer for dial canvas "${String(unhandled)}"`);
     }
   }
-
-  let markerContent = "";
-
-  if (sideMarker) {
-    const markerH = Math.round(labelFontSize * 0.9);
-    const markerW = Math.round(markerH * 0.7);
-    // The label's visual center (its baseline minus the ~0.36em bold-Arial offset).
-    const markerCy = labelY - Math.round(labelFontSize * 0.36);
-    const offset = Math.round(w * 0.3);
-    const leftCx = w / 2 - offset;
-    const rightCx = w / 2 + offset;
-    const dim = ' opacity="0.22"';
-    const leftPoints = `${leftCx - markerW / 2},${markerCy} ${leftCx + markerW / 2},${markerCy - markerH / 2} ${leftCx + markerW / 2},${markerCy + markerH / 2}`;
-    const rightPoints = `${rightCx + markerW / 2},${markerCy} ${rightCx - markerW / 2},${markerCy - markerH / 2} ${rightCx - markerW / 2},${markerCy + markerH / 2}`;
-    markerContent =
-      `<polygon data-side="left" points="${leftPoints}" fill="${colors.label}"${sideMarker === "left" ? "" : dim}/>` +
-      `<polygon data-side="right" points="${rightPoints}" fill="${colors.label}"${sideMarker === "right" ? "" : dim}/>`;
-  }
-
-  const content = labelText + valueText + markerContent;
-
-  const innerW = w - 2 * inset;
-  const innerH = h - 2 * inset;
-  const innerRx = Math.max(0, radius - inset);
-
-  // The background fills the panel INSIDE the border; a single filled+stroked
-  // inset rect leaves the outer margin transparent (device black).
-  const panelRect = `<rect x="${inset}" y="${inset}" width="${innerW}" height="${innerH}" rx="${innerRx}" fill="${colors.background}" stroke="${colors.border}" stroke-width="${strokeWidth}"/>`;
-
-  return (
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">` +
-    panelRect +
-    `${bindingMissing ? applyBindingWarning(content, { width: w, height: h }) : content}</svg>`
-  );
 }
 
 /**

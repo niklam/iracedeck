@@ -15,13 +15,13 @@ paths:
 
 # Platform Feature Flags
 
-Per-plugin build-time flags that gate platform-specific features and temporary kill-switches. `dialFeedback` strips touch-strip feedback/input code and PI controls from the Mirabox and Ulanzi bundles (neither has a plugin-facing touch strip) while keeping it on Stream Deck. `pngRasterization` is a temporary kill-switch for the in-plugin PNG rasterization pipeline (issue #642) — true on all three platforms today, so nothing is actually stripped by it yet; it exists to let the pipeline be disabled quickly (locally, or via a hotfix) if a rendering regression turns up. `profiles` gates the Stream Deck Profiles PI accordion and profile switching (Elgato-only; #736) and, unlike the other two, is a **runtime-only** flag — read via `getFeatureFlag("profiles")` / `locals.platform`, with no `__FEATURE_*__` compile-time constant (see "Runtime-only flags" below). Since #642 retired the `borderGlow`/`svgFilters`-class flags (icons rasterize to PNG in-plugin now, so QT5-vs-QT6 SVG engine capability is no longer a build-time concern — see `.claude/rules/svg-platform-compatibility.md`), these three are what's left.
+Per-plugin build-time flags that gate platform-specific features and temporary kill-switches. `dialExtendedGestures` strips the Stream Deck+ dial gestures beyond rotate and press — touch input, trigger descriptions, long-press and push+turn classification, the #1120 hold preview — and their PI controls from the Mirabox and Ulanzi bundles while keeping them on Stream Deck; it does not gate the dial display, which every host with a dial screen draws (#1013). `pngRasterization` is a temporary kill-switch for the in-plugin PNG rasterization pipeline (issue #642) — true on all three platforms today, so nothing is actually stripped by it yet; it exists to let the pipeline be disabled quickly (locally, or via a hotfix) if a rendering regression turns up. `profiles` gates the Stream Deck Profiles PI accordion and profile switching (Elgato-only; #736) and, unlike the other two, is a **runtime-only** flag — read via `getFeatureFlag("profiles")` / `locals.platform`, with no `__FEATURE_*__` compile-time constant (see "Runtime-only flags" below). Since #642 retired the `borderGlow`/`svgFilters`-class flags (icons rasterize to PNG in-plugin now, so QT5-vs-QT6 SVG engine capability is no longer a build-time concern — see `.claude/rules/svg-platform-compatibility.md`), these three are what's left.
 
 ## Layout
 
-- `packages/iracing-plugin-stream-deck/platform-features.json` — committed Stream Deck flags (`dialFeedback`, `profiles`, and `pngRasterization` all true).
-- `packages/iracing-plugin-mirabox/platform-features.json` — committed Mirabox flags (`dialFeedback` and `profiles` off — no plugin touch strip and no profile system on the Mirabox host; `pngRasterization` on, same as Elgato).
-- `packages/iracing-plugin-ulanzi/platform-features.json` — committed Ulanzi flags, identical shape to Mirabox today (`dialFeedback` and `profiles` off, `pngRasterization` on) — widen `dialFeedback`/`profiles` only once dial/profile support is verified on Ulanzi hardware.
+- `packages/iracing-plugin-stream-deck/platform-features.json` — committed Stream Deck flags (`dialExtendedGestures`, `profiles`, and `pngRasterization` all true).
+- `packages/iracing-plugin-mirabox/platform-features.json` — committed Mirabox flags (`dialExtendedGestures` and `profiles` off — a Mirabox knob has only rotate and press, and the host has no profile system; `pngRasterization` on, same as Elgato).
+- `packages/iracing-plugin-ulanzi/platform-features.json` — committed Ulanzi flags, identical shape to Mirabox today (`dialExtendedGestures` and `profiles` off, `pngRasterization` on) — widen `dialExtendedGestures`/`profiles` only once dial/profile support is verified on Ulanzi hardware.
 - `feature-flags.local.json` — **optional, gitignored** developer override at repo root. Deep-merges over every plugin's committed flags at build time.
 - `feature-flags.local.json.example` — committed example showing the file shape.
 - `dev.local.json` — **optional, gitignored** developer marker at repo root, holding the single key `voicePacksRoot` (#1143): a path turns development voice mode on for this worktree, `false` turns it off, and an absent file follows the machine-wide `IRACEDECK_DEV_VOICES` opt-in (#1214). Not a feature flag: it names a development voice root the plugin scans ahead of the user's packs folder, and it lands in `bin/config.json` as `devVoicePacksRoot` rather than anywhere under `features`. It is documented in this file because it is the same _kind_ of thing — a gitignored root-level marker the same three Rollup configs read at the same point, hashed by turbo the same way, and impossible for a release build to carry. See _`IRACEDECK_DEV_VOICES` and `dev.local.json` — the development voice root_ below.
@@ -31,9 +31,9 @@ Per-plugin build-time flags that gate platform-specific features and temporary k
 
 `platform-features.json` has a single top-level `features` object (the former `capabilities` object — `svgFilters`/`svgMasks`/`svgPatterns` — was retired in #642 along with `borderGlow`; PNG rasterization means no code branches on raw SVG engine capability anymore). Current flags:
 
-- `dialFeedback` — Stream Deck+ touch-strip feedback + touch-tap input (Elgato-only; Mirabox/Ulanzi have no plugin touch strip). Elgato `true`, Mirabox `false`, Ulanzi `false`.
-- `pngRasterization` — temporary kill-switch for in-plugin PNG rasterization (`@iracedeck/rasterizer`, issue #642). Gates a single call site: `initializeRasterizer(...)` in each plugin's `plugin.ts` (see `.claude/rules/plugin-structure.md`). `true` on Elgato, Mirabox, **and** Ulanzi — it isn't a per-platform capability split like `dialFeedback`, it's a temporary escape hatch for the whole rasterization pipeline. Force it `false` locally to fall back to raw SVG data URIs for comparison/debugging (see `.claude/rules/svg-platform-compatibility.md` for what that fallback means for filter/mask/pattern icons).
-- `profiles` — the "Stream Deck Profiles" PI accordion (bundled-profile install buttons) plus profile switching (Race Admin car selector, Camera Focus's `focus-select-car` mode). Elgato-only — Mirabox/Ulanzi hosts have no profile system, so `switchToProfile` is a no-op there regardless of the flag. Elgato `true`, Mirabox `false`, Ulanzi `false`. See `.claude/rules/profiles-and-devices.md`. Unlike `dialFeedback`/`pngRasterization`, `profiles` has **no compile-time constant** — see "Runtime-only flags" below.
+- `dialExtendedGestures` — the Stream Deck+ dial gestures beyond rotate and press: touch input (`touchTap`), trigger descriptions, long-press and push+turn classification, and the #1120 hold preview (#1013). Elgato `true`, Mirabox `false`, Ulanzi `false`. It no longer gates the dial display: every host with a dial screen renders through `IDeckActionContext.dialCanvas()`.
+- `pngRasterization` — temporary kill-switch for in-plugin PNG rasterization (`@iracedeck/rasterizer`, issue #642). Gates a single call site: `initializeRasterizer(...)` in each plugin's `plugin.ts` (see `.claude/rules/plugin-structure.md`). `true` on Elgato, Mirabox, **and** Ulanzi — it isn't a per-platform capability split like `dialExtendedGestures`, it's a temporary escape hatch for the whole rasterization pipeline. Force it `false` locally to fall back to raw SVG data URIs for comparison/debugging (see `.claude/rules/svg-platform-compatibility.md` for what that fallback means for filter/mask/pattern icons).
+- `profiles` — the "Stream Deck Profiles" PI accordion (bundled-profile install buttons) plus profile switching (Race Admin car selector, Camera Focus's `focus-select-car` mode). Elgato-only — Mirabox/Ulanzi hosts have no profile system, so `switchToProfile` is a no-op there regardless of the flag. Elgato `true`, Mirabox `false`, Ulanzi `false`. See `.claude/rules/profiles-and-devices.md`. Unlike `dialExtendedGestures`/`pngRasterization`, `profiles` has **no compile-time constant** — see "Runtime-only flags" below.
 
   > **Note.** There is no dial long-press flag. Dial press / long-press / push+turn are classified at `dialUp` by a duration comparison (`classifyDialRelease` in `packages/deck-core/src/dial-gesture.ts`), with no `setTimeout` to gate, so they work cross-platform with no feature flag. The former `dialLongPress` / `__FEATURE_DIAL_LONG_PRESS__` flag has been removed.
 
@@ -44,13 +44,13 @@ All three plugins' `rollup.config.mjs`:
 1. Read their `platform-features.json`.
 2. If `feature-flags.local.json` exists at the repo root, deep-merge it on top.
 3. Feed the merged object to three consumers:
-   - `@rollup/plugin-replace` — injects `__FEATURE_DIAL_FEEDBACK__` and `__FEATURE_PNG_RASTERIZATION__` as JSON-stringified boolean literals. Terser then tree-shakes the dead branches. `profiles` is **not** in this list — it has no compile-time constant (see "Runtime-only flags" below).
+   - `@rollup/plugin-replace` — injects `__FEATURE_DIAL_EXTENDED_GESTURES__` and `__FEATURE_PNG_RASTERIZATION__` as JSON-stringified boolean literals. Terser then tree-shakes the dead branches. `profiles` is **not** in this list — it has no compile-time constant (see "Runtime-only flags" below).
    - `emit-plugin-config` — writes the merged object as `featureFlags` in `/bin/config.json` (readable via `getFeatureFlag()` / `getPlatformFeatures()`). This is the **only** runtime path for `profiles`.
    - `piTemplatePlugin` — passes the object to EJS render context as `platform` (and `locals.platform`). All three flags, including `profiles`, reach PI templates this way.
 
 ## Using a flag in code
 
-`dialFeedback` and `pngRasterization` are declared as ambient globals in **each plugin's own** `src/platform-features.d.ts` (mirroring `src/svg.d.ts`) — there is no longer a shared `icon-composer`-level declaration file, because no icon-rendering code branches on a flag anymore (border glow is unconditional since #642; see `packages/icon-composer/CLAUDE.md`). Reference the `__FEATURE_*__` constant directly:
+`dialExtendedGestures` and `pngRasterization` are declared as ambient globals in **each plugin's own** `src/platform-features.d.ts` (mirroring `src/svg.d.ts`) — there is no longer a shared `icon-composer`-level declaration file, because no icon-rendering code branches on a flag anymore (border glow is unconditional since #642; see `packages/icon-composer/CLAUDE.md`). Reference the `__FEATURE_*__` constant directly:
 
 ```ts
 // packages/iracing-plugin-stream-deck/src/plugin.ts
@@ -64,20 +64,20 @@ if (__FEATURE_PNG_RASTERIZATION__) {
 
 `__FEATURE_PNG_RASTERIZATION__` gates exactly that one call site, in each plugin's own `plugin.ts`. When the flag is `false`, `initializeRasterizer()` is never called, `deck-core`'s rasterizer service stays uninitialized, and its `toDeviceImage()` passes every image through unchanged (see `packages/deck-core/src/rasterizer-service.ts`) — so every adapter's `setImage`/`setFeedback` call falls back to sending the raw SVG data URI exactly as before #642.
 
-**Dial touch-strip gating.** `__FEATURE_DIAL_FEEDBACK__` is gated directly in action code (not a shared utility) because the per-platform touch-strip difference is action logic, not shared rendering: an action calls it directly (touch-strip feedback + touch-tap, Elgato-only) because Mirabox/Ulanzi have no plugin touch strip. Dial press / long-press / push+turn are **not** gated — they are classified at `dialUp` and work cross-platform. Reference: `packages/iracing-actions/src/actions/fuel-service/fuel-dial-surface.ts`. See `.claude/rules/encoders-and-touchscreen.md` for why.
+**Dial extended-gesture gating.** `__FEATURE_DIAL_EXTENDED_GESTURES__` is gated directly in action code (not a shared utility) because the per-platform gesture difference is action logic, not shared rendering. It gates touch input, trigger descriptions, long-press and push+turn classification (flag off → every release classifies as `short`) and the #1120 hold preview, which has nothing to show on a Mirabox knob, whose press never reports its release. Rotation and press are **not** gated, and neither is the dial display — every surface draws through `dialCanvas()` / `setDialCanvas()` on every host (#1013). Reference: `packages/iracing-actions/src/actions/fuel-service/fuel-dial-surface.ts`. See `.claude/rules/encoders-and-touchscreen.md` for why.
 
-**Per-plugin ambient declarations for bundled action sources.** The shared `@iracedeck/iracing-actions` sources are compiled as part of each plugin's TypeScript program, so `__FEATURE_DIAL_FEEDBACK__` must be declared there too — that's why each plugin's own `src/platform-features.d.ts` declares both constants even though `__FEATURE_PNG_RASTERIZATION__` is only ever referenced in that plugin's own `plugin.ts`, not in the bundled action sources.
+**Per-plugin ambient declarations for bundled action sources.** The shared `@iracedeck/iracing-actions` sources are compiled as part of each plugin's TypeScript program, so `__FEATURE_DIAL_EXTENDED_GESTURES__` must be declared there too — that's why each plugin's own `src/platform-features.d.ts` declares both constants even though `__FEATURE_PNG_RASTERIZATION__` is only ever referenced in that plugin's own `plugin.ts`, not in the bundled action sources.
 
 **Runtime-only flags.** `profiles` has no ambient declaration and no `__FEATURE_*__` constant — it's checked at runtime instead, either via `getFeatureFlag("profiles")` (TS) or `locals.platform?.features?.profiles` (PI templates, see below). This is a deliberate choice, not an oversight: `profiles` gates a PI accordion and a couple of conditional PI sections, none of which are hot enough to need tree-shaking, so there was no reason to also thread it through `@rollup/plugin-replace` and a per-plugin `.d.ts`.
 
 ## Using a flag in PI templates
 
-`pngRasterization` gates no PI content (it gates a single plugin-startup call, not any rendering or control). `dialFeedback` and `profiles` both have PI-visible effects — gate `sdpi-item` controls and any related JS in the shared partial:
+`pngRasterization` gates no PI content (it gates a single plugin-startup call, not any rendering or control). `dialExtendedGestures` and `profiles` both have PI-visible effects — gate `sdpi-item` controls and any related JS in the shared partial:
 
 ```ejs
-<% var dialFeedbackEnabled = (locals.platform?.features?.dialFeedback !== false); %>
-<% if (dialFeedbackEnabled) { %>
-  <sdpi-item id="some-touch-strip-control" class="hidden" label="Touch Strip Behavior">...</sdpi-item>
+<% var dialExtendedGesturesEnabled = (locals.platform?.features?.dialExtendedGestures !== false); %>
+<% if (dialExtendedGesturesEnabled) { %>
+  <sdpi-item id="some-long-press-control" class="hidden" label="Long Press">...</sdpi-item>
 <% } %>
 ```
 
@@ -105,13 +105,13 @@ Runtime checks don't participate in tree-shaking — prefer the compile-time con
 
 ## Testing
 
-Root `test-setup.ts` sets `globalThis.__FEATURE_DIAL_FEEDBACK__ = true` and `globalThis.__FEATURE_PNG_RASTERIZATION__ = true` so tests see the defaults. Cover both paths with `vi.stubGlobal`:
+Root `test-setup.ts` sets `globalThis.__FEATURE_DIAL_EXTENDED_GESTURES__ = true` and `globalThis.__FEATURE_PNG_RASTERIZATION__ = true` so tests see the defaults. Cover both paths with `vi.stubGlobal`:
 
 ```ts
 afterEach(() => vi.unstubAllGlobals());
 
-it("skips the touch strip when dialFeedback is false", () => {
-  vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", false);
+it("skips touch and long-press when dialExtendedGestures is false", () => {
+  vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
   // ... assertion
 });
 ```
@@ -128,7 +128,7 @@ it("skips the touch strip when dialFeedback is false", () => {
    - Add default to `test-setup.ts` and true/false path tests that `vi.stubGlobal` the constant.
    - A flag that only gates a PI control or a rarely-hit runtime branch (like `profiles`) can skip all three of the above and read `getFeatureFlag(...)` / `locals.platform?.features?.…` instead — see "Runtime-only flags" above.
 4. Gate the relevant code (plugin init, `deck-core`, or an action file for a per-platform behavioral difference) and any relevant PI partial.
-5. Update the example file (`feature-flags.local.json.example`).
+5. Update the example file (`feature-flags.local.json.example`) — but only with a flag whose value is the same on every plugin. The local file deep-merges over **every** plugin's flags, so a platform-varying flag in the example (`dialExtendedGestures`, `profiles`) would switch that feature on for the platforms where it is off as soon as someone copies the file (#1013).
 
 ## Watch mode caveat
 

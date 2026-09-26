@@ -9,7 +9,8 @@
  * `dial.svg` copies of the same design back the Elgato manifest `Encoder.Icon`
  * default.
  */
-import { escapeXml, svgToDataUri } from "@iracedeck/deck-core";
+import { escapeXml, type IDeckActionContext, svgToDataUri } from "@iracedeck/deck-core";
+import type { ILogger } from "@iracedeck/logger";
 
 /**
  * Renders the 72×72 two-line name icon as an SVG data URI. Matches the
@@ -31,4 +32,24 @@ export function renderDialNameIcon(args: { line1: string; line2: string; backgro
     `</svg>`;
 
   return svgToDataUri(svg);
+}
+
+/**
+ * Pushes the name card where it belongs and nowhere else (#1013): only on the
+ * Stream Deck+ strip profile, where `setImage` is the app's dial-slot image and
+ * the live drawing goes to the strip. On a Stream Dock knob `setImage` IS the
+ * live screen — a card pushed there would flash before, or land after, the
+ * first live frame — and a context with no dial canvas has no slot to fill.
+ * Fire-and-forget: a failed push is logged at debug, as before.
+ */
+export function pushDialNameIcon(
+  action: IDeckActionContext,
+  args: { line1: string; line2: string; backgroundColor: string },
+  logger: ILogger,
+): void {
+  if (action.dialCanvas()?.id !== "sd-plus-strip") return;
+
+  action.setImage(renderDialNameIcon(args)).catch((err) => {
+    logger.debug(`Dial name icon push failed: ${String(err)}`);
+  });
 }

@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { computeCarNumberTarget } from "../../shared/car-cycling.js";
+import { resolveDialBoxColors } from "../../shared/dial-box.js";
 import {
   buildTriggerDescription,
   CameraDialSurface,
@@ -12,6 +13,7 @@ import {
   DialSettings,
   renderCameraCarousel,
   renderCarCarousel,
+  renderKnobCarousel,
   renderRacePositionCarousel,
   renderSubCameraCarousel,
   wrapPosition,
@@ -67,6 +69,7 @@ vi.mock("@iracedeck/deck-core", async () => {
       return args.nowMs - args.pressStartMs >= (args.thresholdMs ?? 500) ? "long" : "short";
     },
     getDualPressThresholdMs: () => 500,
+    STREAM_DOCK_KNOB_CANVAS: { id: "stream-dock-knob", width: 176, height: 112 },
     applyBindingWarning: vi.fn((content: string) => `${content}<binding-warning/>`),
     escapeXml: (str: string) => str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"),
     svgToDataUri: (svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`,
@@ -96,12 +99,17 @@ vi.mock("@iracedeck/iracing-sdk", async (importOriginal) => {
   };
 });
 
-/** Fake dial (encoder) action context. */
-function dialContext(id: string) {
+const STRIP = { id: "sd-plus-strip", width: 200, height: 100 } as const;
+const KNOB = { id: "stream-dock-knob", width: 176, height: 112 } as const;
+
+/** Fake dial action context; `canvas` is the dial screen the host reports (#1013). */
+function dialContext(id: string, canvas: typeof STRIP | typeof KNOB | null = STRIP) {
   return {
     id,
     isKey: () => false,
     isDial: () => true,
+    dialCanvas: () => canvas,
+    setDialCanvas: vi.fn().mockResolvedValue(undefined),
     setImage: vi.fn().mockResolvedValue(undefined),
     setTitle: vi.fn().mockResolvedValue(undefined),
     setSettings: vi.fn().mockResolvedValue(undefined),
@@ -1227,8 +1235,8 @@ describe("CameraDialSurface", () => {
       expect(host.focusOnMostExciting).toHaveBeenCalled();
     });
 
-    it("does nothing on touch when dial feedback is disabled", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", false);
+    it("does nothing on touch when the extended gestures are off", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
       const host = makeHost();
       const surface = new CameraDialSurface(host as never);
       await surface.touchTap(dialContext("t2") as never, dial({ tapAction: "focus-my-car" }), false);
@@ -1244,7 +1252,7 @@ describe("CameraDialSurface", () => {
       const ctx = dialContext("f1");
       await surface.willAppear(ctx as never, dial({ mode: "camera" }));
 
-      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
 
       expect(decoded).toContain(">CAMERA<"); // mode-name title
       expect(decoded).toContain(">COCKPIT<"); // current group
@@ -1261,7 +1269,7 @@ describe("CameraDialSurface", () => {
       const ctx = dialContext("f1b");
       await surface.willAppear(ctx as never, dial({ mode: "camera", reverseRotation: true }));
 
-      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
 
       // Reversed: clockwise cycles to the PREVIOUS group (Nose), so it previews
       // on the right; the next group (Chase) moves to the left.
@@ -1275,7 +1283,7 @@ describe("CameraDialSurface", () => {
       const ctx = dialContext("f2");
       await surface.willAppear(ctx as never, dial({ mode: "car-number" }));
 
-      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
 
       expect(decoded).toContain(">CAR #<"); // mode-name title
       expect(decoded).toContain(">#42<"); // focused car
@@ -1289,7 +1297,7 @@ describe("CameraDialSurface", () => {
       const ctx = dialContext("f2b");
       await surface.willAppear(ctx as never, dial({ mode: "car-number", reverseRotation: true }));
 
-      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
 
       // Reversed: clockwise goes UP the number order again, so #99 previews right.
       expect(decoded).toMatch(sideText(0.84, "#99"));
@@ -1303,7 +1311,7 @@ describe("CameraDialSurface", () => {
       const ctx = dialContext("f2t");
       await surface.willAppear(ctx as never, dial({ mode: "track-order" }));
 
-      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
 
       expect(decoded).toContain(">TRACK ORDER<"); // mode-name title
       expect(decoded).toContain(">#42<"); // focused car
@@ -1319,7 +1327,7 @@ describe("CameraDialSurface", () => {
       const ctx = dialContext("f2u");
       await surface.willAppear(ctx as never, dial({ mode: "track-order", reverseRotation: true }));
 
-      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
 
       // Clockwise now goes to the car BEHIND, so it (and its caption) previews right.
       expect(decoded).toMatch(sideText(0.84, "#99"));
@@ -1338,7 +1346,7 @@ describe("CameraDialSurface", () => {
       const ctx = dialContext("f2v");
       const nowSpy = vi.spyOn(Date, "now").mockReturnValue(10_000);
       await surface.willAppear(ctx as never, dial({ mode: "track-order" }));
-      const pushesAfterAppear = ctx.setFeedback.mock.calls.length;
+      const pushesAfterAppear = ctx.setDialCanvas.mock.calls.length;
 
       // #3 falls behind #42, #99 is now the car ahead.
       telemetry.value = { ...telemetry.value, CarIdxLapDistPct: [-1, 0.2, -1, 0.3, -1, 0.5] };
@@ -1346,8 +1354,8 @@ describe("CameraDialSurface", () => {
       surface.onTelemetry("f2v", telemetry.value as never);
       await Promise.resolve();
 
-      expect(ctx.setFeedback.mock.calls.length).toBe(pushesAfterAppear + 1);
-      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+      expect(ctx.setDialCanvas.mock.calls.length).toBe(pushesAfterAppear + 1);
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
       expect(decoded).toMatch(sideText(0.84, "#99"));
       expect(decoded).toMatch(sideText(0.16, "#3"));
       nowSpy.mockRestore();
@@ -1359,7 +1367,7 @@ describe("CameraDialSurface", () => {
       const ctx = dialContext("f5t");
       await surface.willAppear(ctx as never, dial({ mode: "track-order" }));
 
-      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
 
       expect(decoded).toContain(">TRACK ORDER<");
       expect(decoded).not.toMatch(/>#/); // no car number readout without a focused car
@@ -1381,7 +1389,7 @@ describe("CameraDialSurface", () => {
       const ctx = dialContext("f2w");
       await surface.willAppear(ctx as never, dial({ mode: "track-order" }));
 
-      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
 
       expect(decoded).toContain(">#42<");
       expect(decoded).toMatch(sideText(0.16, "#99"));
@@ -1400,7 +1408,7 @@ describe("CameraDialSurface", () => {
       const ctx = dialContext("f3");
       await surface.willAppear(ctx as never, dial({ mode: "race-position" }));
 
-      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
 
       expect(decoded).toContain(">POSITION<"); // mode-name title
       expect(decoded).toContain(">P2<"); // primary: focused car is P2
@@ -1418,7 +1426,7 @@ describe("CameraDialSurface", () => {
       const ctx = dialContext("f3r");
       await surface.willAppear(ctx as never, dial({ mode: "race-position", reverseRotation: true }));
 
-      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
 
       // Reversed: clockwise → P# increases again, so P3 previews on the RIGHT.
       expect(decoded).toMatch(sideText(0.84, "P3"));
@@ -1441,7 +1449,7 @@ describe("CameraDialSurface", () => {
       const ctx = dialContext("f3b");
       await surface.willAppear(ctx as never, dial({ mode: "race-position" }));
 
-      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
 
       expect(decoded).toContain(">#0<"); // number-only centre for the unclassified pace car
       expect(decoded).toMatch(sideText(0.84, "P3")); // clockwise detent → last place
@@ -1473,7 +1481,7 @@ describe("CameraDialSurface", () => {
       const ctx = dialContext("f885");
       await surface.willAppear(ctx as never, dial({ mode: "race-position" }));
 
-      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
 
       expect(decoded).toMatch(sideText(0.84, "P5")); // clockwise walks past dead P1 to P5
       expect(decoded).toMatch(sideText(0.16, "P4")); // counter-clockwise walks past dead P3 to P4
@@ -1489,7 +1497,7 @@ describe("CameraDialSurface", () => {
       const ctx = dialContext("d-warn");
       await surface.willAppear(ctx as never, dial({ mode: "sub-camera" }));
 
-      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
       expect(decoded).toContain("binding-warning");
       // Both rotation directions tap a binding, so either missing must warn.
       expect(host.isBindingMissing).toHaveBeenCalledWith(SUB_CAMERA_BINDING_KEY_LIST);
@@ -1508,7 +1516,7 @@ describe("CameraDialSurface", () => {
       for (const mode of ["camera", "car-number", "race-position", "driving"] as const) {
         const ctx = dialContext(`d-nowarn-${mode}`);
         await surface.willAppear(ctx as never, dial({ mode }));
-        const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+        const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
         expect(decoded).not.toContain("binding-warning");
       }
     });
@@ -1529,7 +1537,7 @@ describe("CameraDialSurface", () => {
       const ctx = dialContext("f4");
       await surface.willAppear(ctx as never, dial({ mode: "sub-camera" }));
 
-      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
 
       expect(decoded).toContain(">SUB-CAMERA<"); // mode-name title
       expect(decoded).toContain(">ROLL BAR<"); // current camera (cameraNum 2)
@@ -1552,7 +1560,7 @@ describe("CameraDialSurface", () => {
       const ctx = dialContext("f4r");
       await surface.willAppear(ctx as never, dial({ mode: "sub-camera", reverseRotation: true }));
 
-      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
 
       expect(decoded).toMatch(sideText(0.85, "COCKPIT")); // clockwise now steps to the previous camera
       expect(decoded).toMatch(sideText(0.15, "GYRO"));
@@ -1572,7 +1580,7 @@ describe("CameraDialSurface", () => {
       const ctx = dialContext("f4b");
       await surface.willAppear(ctx as never, dial({ mode: "sub-camera" }));
 
-      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
 
       expect(decoded).toContain(">GYRO<"); // current (cameraNum 3)
       expect(decoded).toContain(">ROLL BAR<"); // prev (cameraNum 2)
@@ -1587,7 +1595,7 @@ describe("CameraDialSurface", () => {
       const ctx = dialContext("f4c");
       await surface.willAppear(ctx as never, dial({ mode: "driving" }));
 
-      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
 
       expect(decoded).toContain(">DRIVING CAM<"); // mode-name title
       expect(decoded).toContain(">COCKPIT<"); // current group (group 9)
@@ -1603,7 +1611,7 @@ describe("CameraDialSurface", () => {
       const ctx = dialContext("f5");
       await surface.willAppear(ctx as never, dial({ mode: "car-number" }));
 
-      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
 
       expect(decoded).toContain(">CAR #<");
     });
@@ -1617,7 +1625,7 @@ describe("CameraDialSurface", () => {
         dial({ mode: "car-number", colors: { borderColor: "#112233", backgroundColor: "#445566" } }),
       );
 
-      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
 
       expect(decoded).toContain('stroke="#112233"');
       expect(decoded).toContain('fill="#445566"');
@@ -1636,26 +1644,26 @@ describe("CameraDialSurface", () => {
       expect(img).toContain(">CONTROLS<");
     });
 
-    it("throttles feedback to the change-render window so the setFeedback cap holds", async () => {
+    it("throttles feedback to the change-render window so the ≤10 pushes/sec cap holds", async () => {
       vi.useFakeTimers();
       const host = makeHost();
       const surface = new CameraDialSurface(host as never);
       const ctx = dialContext("f8");
       await surface.willAppear(ctx as never, dial({ mode: "car-number" }));
-      ctx.setFeedback.mockClear();
+      ctx.setDialCanvas.mockClear();
 
       vi.advanceTimersByTime(50);
       mockCarNumber.value = "7"; // focused car number (getCarNumberFromSessionInfo)
       surface.onTelemetry("f8", TELEMETRY as never);
 
-      expect(ctx.setFeedback).not.toHaveBeenCalled();
+      expect(ctx.setDialCanvas).not.toHaveBeenCalled();
 
       vi.advanceTimersByTime(100);
       mockCarNumber.value = "9";
       surface.onTelemetry("f8", TELEMETRY as never);
 
-      expect(ctx.setFeedback).toHaveBeenCalledTimes(1);
-      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+      expect(ctx.setDialCanvas).toHaveBeenCalledTimes(1);
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
 
       expect(decoded).toContain(">#9<");
       vi.useRealTimers();
@@ -1667,17 +1675,17 @@ describe("CameraDialSurface", () => {
       const surface = new CameraDialSurface(host as never);
       const ctx = dialContext("f8b");
       await surface.willAppear(ctx as never, dial({ mode: "car-number" }));
-      ctx.setFeedback.mockClear();
+      ctx.setDialCanvas.mockClear();
 
       // Defer the next push so telemetry can advance while it is in flight.
       let resolvePush: () => void = () => {};
-      ctx.setFeedback.mockImplementationOnce(() => new Promise<void>((resolve) => (resolvePush = resolve)));
+      ctx.setDialCanvas.mockImplementationOnce(() => new Promise<void>((resolve) => (resolvePush = resolve)));
 
       vi.advanceTimersByTime(200);
       mockCarNumber.value = "7";
       surface.onTelemetry("f8b", TELEMETRY as never); // renders #7; push pending
 
-      expect(ctx.setFeedback).toHaveBeenCalledTimes(1);
+      expect(ctx.setDialCanvas).toHaveBeenCalledTimes(1);
 
       // Telemetry advances to #9 WHILE the #7 push is still in flight — the
       // baseline must stay at the rendered #7, or #9's render is suppressed.
@@ -1689,8 +1697,8 @@ describe("CameraDialSurface", () => {
       vi.advanceTimersByTime(200);
       surface.onTelemetry("f8b", TELEMETRY as never);
 
-      expect(ctx.setFeedback).toHaveBeenCalledTimes(2);
-      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+      expect(ctx.setDialCanvas).toHaveBeenCalledTimes(2);
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
 
       expect(decoded).toContain(">#9<");
       vi.useRealTimers();
@@ -1701,23 +1709,23 @@ describe("CameraDialSurface", () => {
       const surface = new CameraDialSurface(host as never);
       const ctx = dialContext("f9");
       await surface.willAppear(ctx as never, dial({ mode: "car-number" }));
-      ctx.setFeedback.mockClear();
+      ctx.setDialCanvas.mockClear();
       ctx.setTriggerDescription.mockClear();
 
       await surface.didReceiveSettings(ctx as never, dial({ mode: "camera" }));
 
       expect(ctx.setTriggerDescription).toHaveBeenCalled();
-      expect(ctx.setFeedback).toHaveBeenCalled();
+      expect(ctx.setDialCanvas).toHaveBeenCalled();
     });
 
-    it("does not push feedback when dial feedback is disabled", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", false);
+    it("keeps rendering with the extended gestures off, but pushes no trigger description", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
       const host = makeHost();
       const surface = new CameraDialSurface(host as never);
-      const ctx = dialContext("f10");
+      const ctx = dialContext("f10", KNOB);
       await surface.willAppear(ctx as never, dial({ mode: "camera" }));
 
-      expect(ctx.setFeedback).not.toHaveBeenCalled();
+      expect(ctx.setDialCanvas).toHaveBeenCalled();
       expect(ctx.setTriggerDescription).not.toHaveBeenCalled();
     });
 
@@ -1726,11 +1734,11 @@ describe("CameraDialSurface", () => {
       const surface = new CameraDialSurface(host as never);
       const ctx = dialContext("f11");
       await surface.willAppear(ctx as never, dial({ mode: "camera" }));
-      ctx.setFeedback.mockClear();
+      ctx.setDialCanvas.mockClear();
 
       surface.refreshAll();
 
-      expect(ctx.setFeedback).toHaveBeenCalled();
+      expect(ctx.setDialCanvas).toHaveBeenCalled();
     });
 
     it("computes the carousel preview from the same enabled subset the rotation honors", async () => {
@@ -1741,7 +1749,7 @@ describe("CameraDialSurface", () => {
       await surface.willAppear(ctx as never, dial({ mode: "camera" }));
 
       expect(getEnabledCameraGroups).toHaveBeenCalled();
-      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
 
       // Current (Cockpit, group 9) still renders even though it is not enabled;
       // the neighbours come from the enabled subset (Nose < 9 < Chase).
@@ -1756,7 +1764,7 @@ describe("CameraDialSurface", () => {
     const PLAYER_TELEMETRY = { CamGroupNumber: 9, CamCarIdx: 3, PlayerCarIdx: 5 };
 
     function decodeLast(ctx: ReturnType<typeof dialContext>): string {
-      return decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+      return decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
     }
 
     /** A dial on the strip, past willAppear, with the push log cleared. */
@@ -1765,7 +1773,7 @@ describe("CameraDialSurface", () => {
       const ctx = dialContext(id);
       const settings = dial({ mode: "car-number", longPressAction: "focus-my-car", ...over });
       await surface.willAppear(ctx as never, settings);
-      ctx.setFeedback.mockClear();
+      ctx.setDialCanvas.mockClear();
 
       return { surface, ctx, settings, host };
     }
@@ -1790,11 +1798,11 @@ describe("CameraDialSurface", () => {
       surface.down(ctx as never, settings);
       vi.advanceTimersByTime(499);
 
-      expect(ctx.setFeedback).not.toHaveBeenCalled();
+      expect(ctx.setDialCanvas).not.toHaveBeenCalled();
 
       vi.advanceTimersByTime(1);
 
-      expect(ctx.setFeedback).toHaveBeenCalledTimes(1);
+      expect(ctx.setDialCanvas).toHaveBeenCalledTimes(1);
       const preview = decodeLast(ctx);
 
       expect(preview).toContain(">#99<"); // the player's own car, not the focused #42
@@ -1804,7 +1812,7 @@ describe("CameraDialSurface", () => {
       await surface.up("hp1");
 
       expect(host.focusMyCar).toHaveBeenCalledTimes(1);
-      expect(ctx.setFeedback).toHaveBeenCalledTimes(2);
+      expect(ctx.setDialCanvas).toHaveBeenCalledTimes(2);
       const reverted = decodeLast(ctx);
 
       expect(reverted).toContain(">#42<");
@@ -1842,18 +1850,18 @@ describe("CameraDialSurface", () => {
       surface.down(ctx as never, settings);
       vi.advanceTimersByTime(600);
 
-      expect(ctx.setFeedback).toHaveBeenCalledTimes(1);
+      expect(ctx.setDialCanvas).toHaveBeenCalledTimes(1);
 
       surface.rotate(ctx as never, settings, 1, true);
 
       expect(host.focusCarNumber).toHaveBeenCalled(); // the rotation still cycles
-      expect(ctx.setFeedback).toHaveBeenCalledTimes(2);
+      expect(ctx.setDialCanvas).toHaveBeenCalledTimes(2);
       expect(decodeLast(ctx)).not.toContain("data-pending-bar");
 
       await surface.up("hp3");
 
       expect(host.focusMyCar).not.toHaveBeenCalled();
-      expect(ctx.setFeedback).toHaveBeenCalledTimes(2); // no second revert
+      expect(ctx.setDialCanvas).toHaveBeenCalledTimes(2); // no second revert
     });
 
     it("pushes neither a preview nor a revert for a release before the threshold", async () => {
@@ -1868,7 +1876,7 @@ describe("CameraDialSurface", () => {
       await surface.up("hp4");
       vi.advanceTimersByTime(1000); // the disarmed timer never fires
 
-      expect(ctx.setFeedback).not.toHaveBeenCalled();
+      expect(ctx.setDialCanvas).not.toHaveBeenCalled();
       expect(host.focusMyCar).not.toHaveBeenCalled(); // pressAction defaults to none
     });
 
@@ -1915,11 +1923,11 @@ describe("CameraDialSurface", () => {
         surface.down(ctx as never, settings);
         vi.advanceTimersByTime(600);
 
-        expect(ctx.setFeedback, c.name).not.toHaveBeenCalled();
+        expect(ctx.setDialCanvas, c.name).not.toHaveBeenCalled();
 
         await surface.up(`hp6-${i}`);
 
-        expect(ctx.setFeedback, c.name).not.toHaveBeenCalled(); // nothing shown → nothing to revert
+        expect(ctx.setDialCanvas, c.name).not.toHaveBeenCalled(); // nothing shown → nothing to revert
       }
     });
 
@@ -1934,13 +1942,13 @@ describe("CameraDialSurface", () => {
       surface.down(ctx as never, settings);
       vi.advanceTimersByTime(600);
 
-      expect(ctx.setFeedback).not.toHaveBeenCalled();
+      expect(ctx.setDialCanvas).not.toHaveBeenCalled();
       expect(host.getRacePositions).not.toHaveBeenCalled();
 
       await surface.up("hp7");
 
       expect(host.focusOnLeader).toHaveBeenCalledTimes(1); // the release still fires it
-      expect(ctx.setFeedback).not.toHaveBeenCalled();
+      expect(ctx.setDialCanvas).not.toHaveBeenCalled();
     });
 
     it("previews nothing for the next-camera and director gestures", async () => {
@@ -1955,7 +1963,7 @@ describe("CameraDialSurface", () => {
         vi.advanceTimersByTime(600);
         await surface.up(`hp8-${gesture}`);
 
-        expect(ctx.setFeedback, gesture).not.toHaveBeenCalled();
+        expect(ctx.setDialCanvas, gesture).not.toHaveBeenCalled();
       }
     });
 
@@ -1970,14 +1978,14 @@ describe("CameraDialSurface", () => {
       surface.down(ctx as never, settings);
       vi.advanceTimersByTime(500);
 
-      expect(ctx.setFeedback).toHaveBeenCalledTimes(1);
+      expect(ctx.setDialCanvas).toHaveBeenCalledTimes(1);
 
       // The camera moves to #3 (carIdx 1) while the button is still held.
       vi.advanceTimersByTime(200);
       telemetry.value = { ...PLAYER_TELEMETRY, CamCarIdx: 1 };
       surface.onTelemetry("hp9", telemetry.value as never);
 
-      expect(ctx.setFeedback).toHaveBeenCalledTimes(2);
+      expect(ctx.setDialCanvas).toHaveBeenCalledTimes(2);
       const frame = decodeLast(ctx);
 
       expect(frame).toContain(">#99<");
@@ -1996,12 +2004,12 @@ describe("CameraDialSurface", () => {
       vi.advanceTimersByTime(500);
       surface.refreshAll();
 
-      expect(ctx.setFeedback).toHaveBeenCalledTimes(2);
+      expect(ctx.setDialCanvas).toHaveBeenCalledTimes(2);
       expect(decodeLast(ctx)).toContain('data-pending-bar="true"');
 
       await surface.up("hp10");
 
-      expect(ctx.setFeedback).toHaveBeenCalledTimes(3);
+      expect(ctx.setDialCanvas).toHaveBeenCalledTimes(3);
       expect(decodeLast(ctx)).not.toContain("data-pending-bar");
     });
 
@@ -2017,12 +2025,12 @@ describe("CameraDialSurface", () => {
 
       await surface.didReceiveSettings(ctx as never, dial({ mode: "camera", longPressAction: "focus-my-car" }));
 
-      expect(ctx.setFeedback).toHaveBeenCalledTimes(2);
+      expect(ctx.setDialCanvas).toHaveBeenCalledTimes(2);
       expect(decodeLast(ctx)).not.toContain("data-pending-bar");
 
       await surface.up("hp11");
 
-      expect(ctx.setFeedback).toHaveBeenCalledTimes(2);
+      expect(ctx.setDialCanvas).toHaveBeenCalledTimes(2);
     });
 
     it("disposes the timer on willDisappear so nothing is pushed at a gone context", async () => {
@@ -2036,11 +2044,11 @@ describe("CameraDialSurface", () => {
       surface.willDisappear("hp12");
       vi.advanceTimersByTime(1000);
 
-      expect(ctx.setFeedback).not.toHaveBeenCalled();
+      expect(ctx.setDialCanvas).not.toHaveBeenCalled();
     });
 
-    it("arms no preview when dial feedback is disabled", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", false);
+    it("arms no preview when the extended gestures are off", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
       const { surface, ctx, settings } = await heldDial(
         "hp13",
         {},
@@ -2050,8 +2058,207 @@ describe("CameraDialSurface", () => {
       surface.down(ctx as never, settings);
       vi.advanceTimersByTime(1000);
 
-      expect(ctx.setFeedback).not.toHaveBeenCalled();
+      expect(ctx.setDialCanvas).not.toHaveBeenCalled();
+      expect(ctx.setTriggerDescription).not.toHaveBeenCalled();
       expect(surface["contextsState"].get("hp13")?.holdPreview.showing).toBe(false);
+    });
+
+    it("treats a long hold as the press when the extended gestures are off (#1013)", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
+      const { surface, ctx, settings, host } = await heldDial(
+        "hp13b",
+        { pressAction: "change-camera", longPressAction: "focus-my-car" },
+        makeHost({ getTelemetry: vi.fn(() => PLAYER_TELEMETRY as never) }),
+      );
+
+      surface.down(ctx as never, settings);
+      vi.advanceTimersByTime(1000);
+      await surface.up("hp13b");
+
+      expect(host.changeCamera).toHaveBeenCalledTimes(1);
+      expect(host.focusMyCar).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("the knob screen (#1013)", () => {
+    const PLAYER_TELEMETRY = { CamGroupNumber: 9, CamCarIdx: 3, PlayerCarIdx: 5 };
+
+    it("draws the car-number carousel for the knob with the neighbours in the bottom corners", async () => {
+      const host = makeHost({ getTelemetry: vi.fn(() => PLAYER_TELEMETRY as never) });
+      const surface = new CameraDialSurface(host as never);
+      const ctx = dialContext("k1", KNOB);
+      await surface.willAppear(ctx as never, dial({ mode: "car-number" }));
+
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls[0][0] as string);
+
+      expect(decoded).toContain('viewBox="0 0 176 112"');
+      expect(decoded).toMatch(/font-size="44"[^>]*>#\d+</);
+      expect(ctx.setImage).not.toHaveBeenCalled();
+    });
+
+    it("falls back to the identity label out of a session", async () => {
+      const host = makeHost({ getTelemetry: vi.fn(() => null) });
+      const surface = new CameraDialSurface(host as never);
+      const ctx = dialContext("k2", KNOB);
+      await surface.willAppear(ctx as never, dial({ mode: "camera" }));
+
+      expect(decodeURIComponent(ctx.setDialCanvas.mock.calls[0][0] as string)).toContain(">CAMERA<");
+    });
+
+    it("shows the hold preview in the centre of the knob carousel", () => {
+      const svg = renderKnobCarousel({
+        colors: resolveDialBoxColors(undefined, "#3498db"),
+        title: "CAR #",
+        identityLabel: "CAR",
+        centre: { text: "#12" },
+        left: { text: "#9" },
+        right: { text: "#14" },
+        pending: { text: "#77", color: "#f1c40f" },
+      });
+
+      expect(svg).toContain(">#77</text>");
+      expect(svg).not.toContain(">#12</text>");
+      expect(svg).toContain('data-pending-bar="true"');
+    });
+
+    it("draws the corner numbers at 16 px, anchored to the edges, and fits them so three digits stay clear", () => {
+      const colors = resolveDialBoxColors(undefined, "#1abc9c");
+      const short = renderKnobCarousel({
+        colors,
+        title: "CAR #",
+        identityLabel: "CAR",
+        centre: { text: "#12" },
+        left: { text: "#9" },
+        right: { text: "#14" },
+      });
+      const long = renderKnobCarousel({
+        colors,
+        title: "CAR #",
+        identityLabel: "CAR",
+        centre: { text: "#123" },
+        left: { text: "#12345" },
+        right: { text: "#404" },
+      });
+
+      expect(short).toMatch(/text-anchor="start"[^>]*font-size="16"[^>]*>#9</);
+      expect(short).toMatch(/text-anchor="end"[^>]*font-size="16"[^>]*>#14</);
+      expect(long).toMatch(/text-anchor="end"[^>]*font-size="16"[^>]*>#404</);
+      // Wider than a corner owns: shrunk to fit rather than run into the centre.
+      const fitted = Number(/text-anchor="start"[^>]*font-size="(\d+)"[^>]*>#12345</.exec(long)?.[1]);
+
+      expect(fitted).toBeGreaterThan(0);
+      expect(fitted).toBeLessThan(16);
+    });
+
+    it("draws the track-order corners as numbers only, with no AHEAD / BEHIND captions", async () => {
+      const surface = new CameraDialSurface(makeHost() as never);
+      const ctx = dialContext("k8", KNOB);
+      await surface.willAppear(ctx as never, dial({ mode: "track-order" }));
+
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls[0][0] as string);
+
+      expect(decoded).toContain(">TRACK ORDER<");
+      expect(decoded).not.toContain("AHEAD");
+      expect(decoded).not.toContain("BEHIND");
+    });
+
+    it("draws the sub-camera knob as the title and the current camera only", async () => {
+      mockCameras.value = [
+        { cameraNum: 1, cameraName: "Cam One" },
+        { cameraNum: 2, cameraName: "Cam Two" },
+        { cameraNum: 3, cameraName: "Cam Three" },
+      ];
+      const surface = new CameraDialSurface(
+        makeHost({ getTelemetry: vi.fn(() => ({ ...TELEMETRY, CamCameraNumber: 2 }) as never) }) as never,
+      );
+      const ctx = dialContext("k9", KNOB);
+      await surface.willAppear(ctx as never, dial({ mode: "sub-camera" }));
+
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls[0][0] as string);
+
+      expect(decoded).toContain(">SUB-CAMERA<");
+      expect(decoded).toContain(">CAM TWO<");
+      expect(decoded).not.toContain("CAM ONE");
+      expect(decoded).not.toContain("CAM THREE");
+    });
+
+    it("lets a pending preview outrank the sub-camera binding warning, as on the strip", () => {
+      const view = {
+        colors: resolveDialBoxColors(undefined, "#9b59b6"),
+        title: "SUB-CAMERA",
+        identityLabel: "SUB CAM",
+        centre: { text: "CAM ONE" },
+        left: null,
+        right: null,
+        bindingMissing: true,
+      };
+
+      expect(renderKnobCarousel(view)).toContain("<binding-warning/>");
+      expect(renderKnobCarousel({ ...view, pending: { text: "#77", color: "#f1c40f" } })).not.toContain(
+        "<binding-warning/>",
+      );
+    });
+
+    it("pushes nothing without a dial canvas", async () => {
+      const surface = new CameraDialSurface(makeHost() as never);
+      const ctx = dialContext("k3", null);
+      await surface.willAppear(ctx as never, dial({ mode: "camera" }));
+
+      expect(ctx.setDialCanvas).not.toHaveBeenCalled();
+      expect(ctx.setFeedback).not.toHaveBeenCalled();
+    });
+
+    it("keeps the name card on the strip profile only", async () => {
+      const strip = dialContext("k4", STRIP);
+      await new CameraDialSurface(makeHost() as never).willAppear(strip as never, dial({ mode: "camera" }));
+
+      expect(decodeURIComponent(strip.setImage.mock.calls[0][0] as string)).toContain(">CONTROLS<");
+      expect(decodeURIComponent(strip.setDialCanvas.mock.calls[0][0] as string)).toContain('viewBox="0 0 200 100"');
+    });
+
+    it("draws the camera group glyph with its name beneath, and the neighbours' glyphs in the corners", async () => {
+      const surface = new CameraDialSurface(makeHost() as never);
+      const ctx = dialContext("k5", KNOB);
+      await surface.willAppear(ctx as never, dial({ mode: "camera" }));
+
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls[0][0] as string);
+
+      expect(decoded).toContain(">COCKPIT<");
+      expect(decoded).toContain('data-group="Cockpit"');
+      expect(decoded).toContain('data-group="Nose"');
+      expect(decoded).toContain('data-group="Chase"');
+    });
+
+    it("draws the race position large with the car number beneath", async () => {
+      const surface = new CameraDialSurface(
+        makeHost({
+          getTelemetry: vi.fn(() => PLAYER_TELEMETRY as never),
+          getRacePositions: vi.fn(() => [0, 1, 0, 2, 0, 3]),
+        }) as never,
+      );
+      mockCarNumberByIdx.value = { 1: "3", 3: "42", 5: "99" };
+      const ctx = dialContext("k6", KNOB);
+      await surface.willAppear(ctx as never, dial({ mode: "race-position" }));
+
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls[0][0] as string);
+
+      expect(decoded).toMatch(/font-size="44"[^>]*>P2</);
+      expect(decoded).toContain(">#42<");
+    });
+
+    it("draws the sub-camera warning on the knob when its bindings are unset", async () => {
+      mockCameras.value = [
+        { cameraNum: 1, cameraName: "Cam One" },
+        { cameraNum: 2, cameraName: "Cam Two" },
+      ];
+      const surface = new CameraDialSurface(makeHost({ isBindingMissing: vi.fn(() => true) }) as never);
+      const ctx = dialContext("k7", KNOB);
+      await surface.willAppear(ctx as never, dial({ mode: "sub-camera" }));
+
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls[0][0] as string);
+
+      expect(decoded).toContain('viewBox="0 0 176 112"');
+      expect(decoded).toContain("<binding-warning/>");
     });
   });
 

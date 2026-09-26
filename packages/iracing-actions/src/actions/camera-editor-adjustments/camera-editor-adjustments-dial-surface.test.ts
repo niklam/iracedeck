@@ -107,11 +107,16 @@ vi.mock("@iracedeck/icons/camera-editor-adjustments/f-number-decrease.svg", () =
 vi.mock("@iracedeck/icons/camera-editor-adjustments/focus-depth-increase.svg", () => ({ default: "<svg/>" }));
 vi.mock("@iracedeck/icons/camera-editor-adjustments/focus-depth-decrease.svg", () => ({ default: "<svg/>" }));
 
-function dialContext(id: string) {
+const STRIP = { id: "sd-plus-strip", width: 200, height: 100 } as const;
+const KNOB = { id: "stream-dock-knob", width: 176, height: 112 } as const;
+
+function dialContext(id: string, canvas: typeof STRIP | typeof KNOB | null = STRIP) {
   return {
     id,
     isKey: () => false,
     isDial: () => true,
+    dialCanvas: () => canvas,
+    setDialCanvas: vi.fn().mockResolvedValue(undefined),
     setImage: vi.fn().mockResolvedValue(undefined),
     setTitle: vi.fn().mockResolvedValue(undefined),
     setSettings: vi.fn().mockResolvedValue(undefined),
@@ -466,7 +471,7 @@ describe("CameraEditorAdjustments dial surface", () => {
     });
 
     it("does nothing when dial feedback is disabled", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", false);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
       const ctx = dialContext("t3");
       const settings = dialSettings({ setting: "latitude", tapAction: "auto-mic-gain" });
       await appear(ctx, settings);
@@ -483,8 +488,8 @@ describe("CameraEditorAdjustments dial surface", () => {
       const ctx = dialContext("f1");
       await appear(ctx, dialSettings({ setting: "latitude" }));
 
-      expect(ctx.setFeedback).toHaveBeenCalled();
-      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+      expect(ctx.setDialCanvas).toHaveBeenCalled();
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
 
       // Full name, not the old "LAT" abbreviation.
       expect(decoded).toContain(">Latitude<");
@@ -497,12 +502,12 @@ describe("CameraEditorAdjustments dial surface", () => {
     it("scales long names down so they fit the frame", async () => {
       const ctx = dialContext("f-scale");
       await appear(ctx, dialSettings({ setting: "latitude" }));
-      const lat = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+      const lat = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
       const latFont = Number(/<text[^>]*font-size="(\d+)"[^>]*>Latitude</.exec(lat)?.[1]);
 
-      ctx.setFeedback.mockClear();
+      ctx.setDialCanvas.mockClear();
       await action.onDidReceiveSettings(basicEvent(ctx, dialSettings({ setting: "blimp-velocity" })) as never);
-      const vel = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+      const vel = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
       const velFont = Number(/<text[^>]*font-size="(\d+)"[^>]*>Blimp Velocity</.exec(vel)?.[1]);
 
       expect(vel).toContain(">Blimp Velocity<");
@@ -520,10 +525,43 @@ describe("CameraEditorAdjustments dial surface", () => {
         }),
       );
 
-      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
 
       expect(decoded).toContain('stroke="#112233"');
       expect(decoded).toContain('fill="#445566"');
+    });
+
+    it("pushes the strip box through setDialCanvas on the Stream Deck+ profile (#1013)", async () => {
+      const ctx = dialContext("c1", STRIP);
+      await appear(ctx, dialSettings({ setting: "latitude" }));
+
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
+
+      expect(decoded).toContain('viewBox="0 0 200 100"');
+      expect(decoded).toContain(">Latitude<");
+      expect(ctx.setFeedback).not.toHaveBeenCalled();
+    });
+
+    it("pushes the knob box on the Stream Dock profile and never a name card there", async () => {
+      const ctx = dialContext("c2", KNOB);
+      await appear(ctx, dialSettings({ setting: "latitude" }));
+
+      expect(ctx.setImage).not.toHaveBeenCalled();
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls[0][0] as string);
+
+      expect(decoded).toContain('viewBox="0 0 176 112"');
+      expect(decoded).toContain(">Latitude<");
+      // Identity-only on the knob too: the label is the only text.
+      expect((decoded.match(/<text/g) ?? []).length).toBe(1);
+    });
+
+    it("pushes nothing at all when the context has no dial canvas", async () => {
+      const ctx = dialContext("c3", null);
+      await appear(ctx, dialSettings({ setting: "latitude" }));
+
+      expect(ctx.setDialCanvas).not.toHaveBeenCalled();
+      expect(ctx.setFeedback).not.toHaveBeenCalled();
+      expect(ctx.setImage).not.toHaveBeenCalled();
     });
 
     it("pushes the two-line name icon as the deck-app dial image (#804)", async () => {
@@ -541,7 +579,7 @@ describe("CameraEditorAdjustments dial surface", () => {
       const ctx = dialContext("f6");
       await appear(ctx, dialSettings({ setting: "latitude" }));
 
-      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
 
       expect(mockIsBindingMissing).toHaveBeenCalledWith(["camEditLatitudeIncrease", "camEditLatitudeDecrease"]);
       expect(decoded).toContain("binding-warning");
@@ -550,13 +588,58 @@ describe("CameraEditorAdjustments dial surface", () => {
     it("re-renders the box when the setting changes", async () => {
       const ctx = dialContext("f5");
       await appear(ctx, dialSettings({ setting: "latitude" }));
-      ctx.setFeedback.mockClear();
+      ctx.setDialCanvas.mockClear();
 
       await action.onDidReceiveSettings(basicEvent(ctx, dialSettings({ setting: "pitch" })) as never);
 
-      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
 
       expect(decoded).toContain(">Pitch<");
+    });
+  });
+
+  describe("extended gestures off (Mirabox / Ulanzi)", () => {
+    it("still renders the knob, but pushes no trigger description and ignores touch", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
+      const ctx = dialContext("x1", KNOB);
+      const settings = dialSettings({ setting: "latitude", tapAction: "auto-mic-gain" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      expect(ctx.setDialCanvas).toHaveBeenCalled();
+      expect(ctx.setTriggerDescription).not.toHaveBeenCalled();
+
+      await action.onTouchTap(touchTapEvent(ctx, settings, false) as never);
+
+      expect(mockTapBinding).not.toHaveBeenCalled();
+    });
+
+    it("classifies every release as a short press, however long the hold", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
+      const ctx = dialContext("x2", KNOB);
+      const settings = dialSettings({ setting: "latitude", pressAction: "auto-mic-gain", longPressAction: "none" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      vi.advanceTimersByTime(2000);
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+
+      expect(mockTapBinding).toHaveBeenCalledWith("camEditAutoSetMicGain");
+    });
+
+    it("never fires a long-press action a knob cannot reach", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
+      const ctx = dialContext("x3", KNOB);
+      const settings = dialSettings({ setting: "latitude", pressAction: "none", longPressAction: "auto-mic-gain" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      vi.advanceTimersByTime(2000);
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+
+      expect(mockTapBinding).not.toHaveBeenCalled();
     });
   });
 

@@ -125,7 +125,7 @@ That makes a held reset much less jarring than being dropped straight back into 
 
 ## On a dial
 
-Placed on a Stream Deck+ dial, Splits & Reference becomes a splits-delta cycle dial. Turning the dial steps through iRacing's delta display modes — one detent per mode — using the same **Next** and **Previous** key bindings the keypad **Cycle Splits Delta** mode uses, so no extra configuration is needed if you already use them. It has a single rotation behaviour, so there is no dial **Mode** dropdown; the Property Inspector automatically shows the dial gesture options (instead of the keypad Mode and Direction) when the instance sits on a dial. See [Dials](/docs/features/dials/) for how the shared dial gestures work.
+Placed on a Stream Deck+ dial or a Mirabox knob, Splits & Reference becomes a splits-delta cycle dial. Turning the dial steps through iRacing's delta display modes — one detent per mode — using the same **Next** and **Previous** key bindings the keypad **Cycle Splits Delta** mode uses, so no extra configuration is needed if you already use them. It has a single rotation behaviour, so there is no dial **Mode** dropdown; the Property Inspector automatically shows the dial gesture options (instead of the keypad Mode and Direction) when the instance sits on a dial. See [Dials](/docs/features/dials/) for how the shared dial gestures work.
 
 #### Details
 
@@ -136,8 +136,7 @@ Placed on a Stream Deck+ dial, Splits & Reference becomes a splits-delta cycle d
 #### Controls
 
 - **Elgato Stream Deck+** — dial rotation, a configurable press, and a static touchscreen label.
-
-Dials are currently Stream Deck+ only — the action can't be placed on Mirabox knobs or Ulanzi dials yet (see [Dials](/docs/features/dials/)).
+- **Mirabox knob** — turn and push, with the same label drawn on the screen above the knob; the Push slot only (see [Dials](/docs/features/dials/#mirabox-knobs)).
 
 #### Touch strip
 

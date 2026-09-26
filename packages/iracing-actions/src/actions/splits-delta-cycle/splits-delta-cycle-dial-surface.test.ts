@@ -59,11 +59,16 @@ vi.mock("@iracedeck/deck-core", async () => {
   };
 });
 
-function dialContext(id: string) {
+const STRIP = { id: "sd-plus-strip", width: 200, height: 100 } as const;
+const KNOB = { id: "stream-dock-knob", width: 176, height: 112 } as const;
+
+function dialContext(id: string, canvas: typeof STRIP | typeof KNOB | null = STRIP) {
   return {
     id,
     isKey: () => false,
     isDial: () => true,
+    dialCanvas: () => canvas,
+    setDialCanvas: vi.fn().mockResolvedValue(undefined),
     setImage: vi.fn().mockResolvedValue(undefined),
     setTitle: vi.fn().mockResolvedValue(undefined),
     setSettings: vi.fn().mockResolvedValue(undefined),
@@ -91,9 +96,9 @@ function dialSettings(dial: Record<string, unknown> = {}) {
 }
 
 function lastFeedbackBox(ctx: DialContext): string {
-  const call = ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string } | undefined;
+  const call = ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string | undefined;
 
-  return decodeURIComponent(call?.box ?? "");
+  return decodeURIComponent(call ?? "");
 }
 
 describe("splits-delta-cycle dial-surface pure helpers", () => {
@@ -359,7 +364,7 @@ describe("SplitsDeltaCycle dial surface", () => {
     });
 
     it("ignores touch taps when the touch strip is unavailable", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", false);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
       const ctx = dialContext("t3");
       const settings = dialSettings({ tapAction: "toggle-ref-car" });
       await appear(ctx, settings);
@@ -414,23 +419,92 @@ describe("SplitsDeltaCycle dial surface", () => {
       expect(img).toContain(">DELTA<");
     });
 
-    it("skips feedback when the touch strip is unavailable", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", false);
-      const ctx = dialContext("f5");
-      await appear(ctx);
-
-      expect(ctx.setFeedback).not.toHaveBeenCalled();
-      expect(ctx.setTriggerDescription).not.toHaveBeenCalled();
-    });
-
     it("re-renders every context on a global-settings change", async () => {
       const ctx = dialContext("f6");
       await appear(ctx);
-      ctx.setFeedback.mockClear();
+      ctx.setDialCanvas.mockClear();
 
       for (const listener of globalListeners) listener();
 
-      expect(ctx.setFeedback).toHaveBeenCalled();
+      expect(ctx.setDialCanvas).toHaveBeenCalled();
+    });
+
+    it("pushes the strip box through setDialCanvas on the Stream Deck+ profile (#1013)", async () => {
+      const ctx = dialContext("c1", STRIP);
+      await appear(ctx);
+
+      const decoded = lastFeedbackBox(ctx);
+
+      expect(decoded).toContain('viewBox="0 0 200 100"');
+      expect(decoded).toContain(">DELTA<");
+      expect(ctx.setFeedback).not.toHaveBeenCalled();
+    });
+
+    it("pushes the knob box on the Stream Dock profile and never a name card there", async () => {
+      const ctx = dialContext("c2", KNOB);
+      await appear(ctx);
+
+      expect(ctx.setImage).not.toHaveBeenCalled();
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls[0][0] as string);
+
+      expect(decoded).toContain('viewBox="0 0 176 112"');
+      expect(decoded).toContain(">DELTA<");
+      // Identity-only on the knob too: the label is the only text.
+      expect((decoded.match(/<text/g) ?? []).length).toBe(1);
+    });
+
+    it("pushes nothing at all when the context has no dial canvas", async () => {
+      const ctx = dialContext("c3", null);
+      await appear(ctx);
+
+      expect(ctx.setDialCanvas).not.toHaveBeenCalled();
+      expect(ctx.setFeedback).not.toHaveBeenCalled();
+      expect(ctx.setImage).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("extended gestures off (Mirabox / Ulanzi)", () => {
+    it("still renders the knob, but pushes no trigger description and ignores touch", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
+      const ctx = dialContext("x1", KNOB);
+      const settings = dialSettings({ tapAction: "toggle-ref-car" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      expect(ctx.setDialCanvas).toHaveBeenCalled();
+      expect(ctx.setTriggerDescription).not.toHaveBeenCalled();
+
+      await action.onTouchTap(touchEvent(ctx, settings, false) as never);
+
+      expect(mockTapBinding).not.toHaveBeenCalled();
+    });
+
+    it("classifies every release as a short press, however long the hold", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
+      const ctx = dialContext("x2", KNOB);
+      const settings = dialSettings({ pressAction: "toggle-ref-car", longPressAction: "none" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      vi.advanceTimersByTime(2000);
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+
+      expect(mockTapBinding).toHaveBeenCalledWith("toggleUiDisplayRefCar");
+    });
+
+    it("never fires a long-press action a knob cannot reach", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
+      const ctx = dialContext("x3", KNOB);
+      const settings = dialSettings({ pressAction: "none", longPressAction: "toggle-ref-car" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      vi.advanceTimersByTime(2000);
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+
+      expect(mockTapBinding).not.toHaveBeenCalled();
     });
   });
 

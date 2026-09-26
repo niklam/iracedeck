@@ -9,7 +9,7 @@
 import { renderAsync } from "@resvg/resvg-js";
 import { existsSync } from "node:fs";
 
-export type SvgRasterizer = (svg: string, widthPx: number) => Promise<Buffer>;
+export type SvgRasterizer = (svg: string, widthPx: number, heightPx?: number) => Promise<Buffer>;
 
 export interface SvgRasterizerOptions {
   /** Directory containing the bundled Arimo font files. */
@@ -29,19 +29,28 @@ export function createSvgRasterizer(options: SvgRasterizerOptions): SvgRasterize
     );
   }
 
-  return async (svg: string, widthPx: number): Promise<Buffer> => {
-    const rendered = await renderAsync(svg, {
-      fitTo: { mode: "width", value: widthPx },
-      font: {
-        // Never loadSystemFonts: true — it rescans the system font dir on
-        // EVERY render (~130 ms). fontFiles is silently broken; use fontDirs.
-        loadSystemFonts: false,
-        fontDirs: [fontsDir],
-        defaultFontFamily: "Arimo",
-        sansSerifFamily: "Arimo",
-      },
-    });
+  const font = {
+    // Never loadSystemFonts: true — it rescans the system font dir on
+    // EVERY render (~130 ms). fontFiles is silently broken; use fontDirs.
+    loadSystemFonts: false,
+    fontDirs: [fontsDir],
+    defaultFontFamily: "Arimo",
+    sansSerifFamily: "Arimo",
+  };
 
-    return rendered.asPng();
+  return async (svg: string, widthPx: number, heightPx?: number): Promise<Buffer> => {
+    const byWidth = await renderAsync(svg, { fitTo: { mode: "width", value: widthPx }, font });
+
+    // A non-square target (a Stream Dock knob's 176×112 screen, #1013): resvg
+    // fits one axis, so a drawing too tall for the box at that width is
+    // re-fitted by height. Every dial renderer draws at the profile's own
+    // size, so this branch is a guard, not the path a knob frame takes.
+    if (heightPx !== undefined && byWidth.height > heightPx) {
+      const byHeight = await renderAsync(svg, { fitTo: { mode: "height", value: heightPx }, font });
+
+      return byHeight.asPng();
+    }
+
+    return byWidth.asPng();
   };
 }

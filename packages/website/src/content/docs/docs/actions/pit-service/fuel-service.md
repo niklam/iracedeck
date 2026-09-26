@@ -212,7 +212,7 @@ Requires bindings for the **Fuel** black box and at least one other black box �
 
 ## On a dial
 
-Placed on a Stream Deck+ dial, Fuel Service becomes a fuel controller: a bare turn adjusts fuel — and when autofuel is engaged in iRacing, it adjusts the autofuel lap margin instead. Five configurable gesture slots (Push, Long Press, Push + Turn, Tap Display, Long Touch) each run a fuel action, and you watch the live readout with a continuous two-segment fuel bar on the touch strip. The Property Inspector automatically shows the dial settings below (instead of the keypad Mode settings) when the instance sits on a dial.
+Placed on a Stream Deck+ dial or a Mirabox knob, Fuel Service becomes a fuel controller: a bare turn adjusts fuel — and when autofuel is engaged in iRacing, it adjusts the autofuel lap margin instead. On a Stream Deck+ dial, five configurable gesture slots (Push, Long Press, Push + Turn, Tap Display, Long Touch) each run a fuel action, and you watch the live readout with a continuous two-segment fuel bar on the touch strip. On a Mirabox knob only **Push** is offered — the knob reports no long press, push + turn or touch — and the same readout is drawn on the screen above the knob. The Property Inspector automatically shows the dial settings below (instead of the keypad Mode settings) when the instance sits on a dial.
 
 The dial is **modal**, read live from iRacing — never a stored setting. In **manual** mode a bare turn sets fuel; in **autofuel** mode (iRacing's autofuel is on) a bare turn adjusts the autofuel lap margin. The two manual sub-modes are deliberately distinct: **Add Amount** dials a fixed amount to add over the full tank range and shows `+<add> = <total>`, where the displayed add is the fuel iRacing actually banked (read live from telemetry, not the dialed value) and the total reflects live fuel burn; **Target Amount** dials the whole-number total you want after the stop, marks it with a red target line on the bar, and recomputes the request continuously as fuel burns. Whether fueling is armed is unmistakable at a glance: in manual mode a full-width status band across the top of the dial's touch-strip display reads `REFUEL: ON` on green when the next stop takes fuel and `REFUEL: OFF` on red when it won't. In autofuel mode the band reads a green `AUTOFUEL: ON` (a gray `AUTOFUEL: N/A` when autofuel is unavailable), and the `AUTO → <add>` readout below it shows what the next stop will add — `0` when it adds nothing, including when fueling is unchecked.
 
@@ -232,8 +232,7 @@ The touch-strip slot is drawn by the plugin as one full pixmap: a full-width **s
 #### Controls
 
 - **Elgato Stream Deck+** — dial rotation, Push + Turn, a touchscreen readout that always shows, and a press (short or long). A touchscreen tap or long tap runs its own configured Tap Display / Long Touch action.
-
-Dials are currently Stream Deck+ only — the action can't be placed on Mirabox knobs or Ulanzi dials yet (see [Dials](/docs/features/dials/)).
+- **Mirabox knob** — turn and push, with the same live readout drawn on the screen above the knob; the Push slot only, so Push + Turn's clockwise fill-to-full has no knob equivalent (see [Dials](/docs/features/dials/#mirabox-knobs)).
 
 #### Setting: Mode
 

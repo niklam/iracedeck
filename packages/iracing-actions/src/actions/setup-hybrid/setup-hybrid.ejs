@@ -57,7 +57,7 @@
 				</sdpi-select>
 			</sdpi-item>
 			<ird-binding-status mode-setting="<%= __dialComms._meta.modeSetting %>" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
-			<% if (locals.platform?.features?.dialFeedback !== false) { %>
+			<% if (locals.platform?.features?.dialExtendedGestures !== false) { %>
 			<div class="ird-supporting-text">
 				Turn the dial to adjust the selected hybrid setting; the touch strip shows
 				its live value. Both the increase and decrease key bindings must be set
@@ -70,9 +70,7 @@
 			</div>
 			<% } %>
 
-			<% if (locals.platform?.features?.dialFeedback !== false) { %>
 			<%- include('dial-appearance') %>
-			<% } %>
 		</div>
 
 		<%- include('action-settings-footer') %>

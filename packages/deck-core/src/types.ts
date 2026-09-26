@@ -7,6 +7,7 @@
  */
 import type { ILogger } from "@iracedeck/logger";
 
+import type { DialCanvasProfile } from "./dial-canvas.js";
 import type { DeckFeedbackPayload } from "./feedback-types.js";
 
 /**
@@ -52,6 +53,20 @@ export interface IDeckActionContext {
    * unsupported.
    */
   setTriggerDescription(descriptions: DeckTriggerDescription): Promise<void>;
+  /**
+   * The dial's own screen — the Stream Deck+ touch-strip slot, or the Stream
+   * Dock knob's LCD segment — or `null` when this context has none: a key, an
+   * Information area, or a dial on a host with no plugin-drawable dial screen
+   * (Ulanzi). Renderers branch on `profile.id`, never on the platform (#1013).
+   */
+  dialCanvas(): DialCanvasProfile | null;
+  /**
+   * Push one full-canvas image (a data URI drawn at `dialCanvas()`'s size) to
+   * that screen. A no-op when `dialCanvas()` is `null`. On a Mirabox knob this
+   * addresses the same pixels as `setImage`; on Elgato it is the strip and
+   * `setImage` stays the app-UI dial canvas.
+   */
+  setDialCanvas(dataUri: string): Promise<void>;
   /**
    * Briefly flash the host's warning indicator on the key (Elgato: the yellow
    * warning triangle). Optional — adapters whose host has no equivalent omit

@@ -15,10 +15,9 @@
  */
 import {
   applyBindingWarning,
-  classifyDialRelease,
   createHoldPreview,
-  type DeckFeedbackPayload,
   type DeckTriggerDescription,
+  type DialCanvasProfile,
   type DirectionalPair,
   fuelFromDisplayUnits,
   fuelToDisplayUnits,
@@ -37,9 +36,12 @@ import type { SessionInfo, TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 
 import { borderColorForState, type ToggleState } from "../../icons/status-bar.js";
-import { renderDialNameIcon } from "../../shared/dial-name-icon.js";
+import { fitValueFontSize } from "../../shared/dial-fit.js";
+import { KNOB_BOX_HEIGHT, KNOB_BOX_WIDTH } from "../../shared/dial-knob-box.js";
+import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
 import { persistDialPatch } from "../../shared/dial-persist.js";
 import { type DialPendingPreview, renderPendingBar } from "../../shared/dial-preview.js";
+import { classifyDialReleaseForHost } from "../../shared/dial-release.js";
 import type { FuelPipeline } from "./fuel-pipeline.js";
 import {
   type DialGestureSlot,
@@ -140,7 +142,7 @@ export const FUEL_BAR_TOP_Y = 66;
  * The hold preview for a non-Elgato build (#1120): Mirabox and Ulanzi have no
  * plugin touch strip, so there is nothing to preview on. The surface's call
  * sites stay unconditional (`ctx.holdPreview.down()`) and the real helper is
- * constructed only under `__FEATURE_DIAL_FEEDBACK__`, so terser drops the
+ * constructed only under `__FEATURE_DIAL_EXTENDED_GESTURES__`, so terser drops the
  * helper and its draw closures from those bundles.
  */
 const NOOP_HOLD_PREVIEW: HoldPreview = {
@@ -854,6 +856,85 @@ export function renderStripCanvasSvg(
   }</svg>`;
 }
 
+/**
+ * The Stream Dock knob rendering of the strip canvas (#1013), drawn for the
+ * 176×112 LCD segment above the knob rather than scaled from the strip: the
+ * same band / readout / two-segment bar vocabulary, with the squarer canvas
+ * spent on a larger readout (up to 30 px) and a taller full-width bar. Approved
+ * on the device by the maintainer; change the geometry only with a new preview.
+ */
+export function renderKnobCanvasSvg(
+  mode: DialDisplayMode,
+  dialMode: DialSettings["mode"],
+  fillState: FuelFillState,
+  currentLtr: number,
+  addLtr: number,
+  totalLtr: number,
+  targetLtr: number,
+  maxLtr: number | undefined,
+  displayUnits: number,
+  bindingMissing = false,
+  pending: DialPendingPreview | null = null,
+): string {
+  const w = KNOB_BOX_WIDTH;
+  const h = KNOB_BOX_HEIGHT;
+  const bandHeight = 30;
+  const margin = 6;
+  const barHeight = 30;
+  const barTop = h - margin - barHeight;
+  const readoutBaseline = 63;
+  const bandState = resolveBandState(mode, fillState);
+  const bandText = buildRefuelBandText(mode, fillState);
+  const readout = buildDialReadout(mode, dialMode, addLtr, totalLtr, targetLtr, displayUnits);
+  const valueText = pending ? pending.text : readout;
+  const valueColor = pending ? pending.color : WHITE;
+  // Shrink the readout to fit the width inside the margins, capped at 30 — the
+  // same fitting every dash-box renderer uses.
+  const readoutFontSize = fitValueFontSize(valueText, w - 2 * margin, 30);
+  const barTarget = mode === "manual" && dialMode === "fill-to" ? targetLtr : undefined;
+  const barSvg = renderFuelBarSvg(
+    currentLtr,
+    addLtr,
+    maxLtr,
+    fillState,
+    w - 2 * margin,
+    barHeight,
+    displayUnits,
+    barTarget,
+  );
+
+  const content = [
+    `<path d="M 0 ${bandHeight} L 0 8 A 8 8 0 0 1 8 0 L ${w - 8} 0 A 8 8 0 0 1 ${w} 8 L ${w} ${bandHeight} Z" fill="${borderColorForState(bandState)}"/>`,
+    `<text x="${w / 2}" y="21" text-anchor="middle" fill="${WHITE}" font-family="Arial, sans-serif" font-size="17" font-weight="bold">${bandText}</text>`,
+    `<text x="${w / 2}" y="${readoutBaseline}" text-anchor="middle" fill="${valueColor}" font-family="Arial, sans-serif" font-size="${readoutFontSize}" font-weight="bold">${valueText}</text>`,
+    pending ? renderPendingBar({ centerX: w / 2, y: readoutBaseline + 4, width: w, color: pending.color }) : "",
+    `<g transform="translate(${margin}, ${barTop})">${stripSvgWrapper(barSvg)}</g>`,
+  ].join("");
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">${
+    bindingMissing ? applyBindingWarning(content, { width: w, height: h }) : content
+  }</svg>`;
+}
+
+/** Picks the drawing for the dial's own screen by its profile (#1013). */
+function renderFuelCanvasFor(
+  canvas: DialCanvasProfile,
+  args: Readonly<Parameters<typeof renderStripCanvasSvg>>,
+): string {
+  switch (canvas.id) {
+    case "sd-plus-strip":
+      return renderStripCanvasSvg(...args);
+    case "stream-dock-knob":
+      return renderKnobCanvasSvg(...args);
+    default: {
+      // A new DialCanvasId must get its own drawing here: this line stops compiling until it does.
+      const unhandled: never = canvas.id;
+
+      throw new Error(`Fuel Service: no drawing for dial canvas "${String(unhandled)}"`);
+    }
+  }
+}
+
 /** Strips the outer `<svg …>…</svg>` wrapper, returning only the inner markup. */
 function stripSvgWrapper(svg: string): string {
   const open = svg.indexOf(">");
@@ -940,11 +1021,7 @@ export class FuelDialSurface {
 
     // The deck-app image for the dial: just the action name (#775). Without
     // this the app falls back to keypad iconography for the dial slot.
-    action
-      .setImage(renderDialNameIcon({ line1: "FUEL", line2: "SERVICE", backgroundColor: "#3a2a2a" }))
-      .catch((err) => {
-        this.host.logger.debug(`Dial name icon push failed: ${String(err)}`);
-      });
+    pushDialNameIcon(action, { line1: "FUEL", line2: "SERVICE", backgroundColor: "#3a2a2a" }, this.host.logger);
 
     // Start the periodic display refresh so the bar + value track live burn.
     this.startDisplayTimer(ctx);
@@ -998,6 +1075,12 @@ export class FuelDialSurface {
       // before the zero-tick resolve below, so a zero-tick pressed rotate —
       // which already makes the release a no-op — also takes the preview down.
       ctx.holdPreview.rotated();
+
+      // Push+turn is an extended gesture: where those are compiled out (Mirabox,
+      // Ulanzi) a pressed rotation keeps only the guard above — its release
+      // fires nothing — and dispatches no pair.
+      if (!__FEATURE_DIAL_EXTENDED_GESTURES__) return;
+
       const gesture = resolvePairedAction(PUSH_TURN_PAIRS[dial.pushTurnAction], ticks);
 
       if (gesture) {
@@ -1082,8 +1165,10 @@ export class FuelDialSurface {
     if (pressStartMs === 0) return;
 
     // Classify the release with full information (duration + the rotated guard),
-    // so long-press never races push+turn. No timer fired mid-hold.
-    const kind = classifyDialRelease({
+    // so long-press never races push+turn. No timer fired mid-hold. Where
+    // the extended gestures are compiled out a release is never long: a knob
+    // press never reports its release (`classifyDialReleaseForHost`).
+    const kind = classifyDialReleaseForHost({
       pressStartMs,
       nowMs: Date.now(),
       rotatedWhilePressed: ctx.rotatedWhilePressed,
@@ -1108,7 +1193,7 @@ export class FuelDialSurface {
     hold: boolean,
     rawSettings?: unknown,
   ): Promise<void> {
-    if (!__FEATURE_DIAL_FEEDBACK__) return;
+    if (!__FEATURE_DIAL_EXTENDED_GESTURES__) return;
 
     // Read the gesture from ctx.settings, not the event payload — the same
     // stale-settings model `up()` follows (see ensureContext).
@@ -1340,7 +1425,7 @@ export class FuelDialSurface {
       // The real helper only under the touch-strip flag (#1120): its closures
       // draw on the strip, and the non-Elgato bundles have no strip to draw on,
       // so terser folds the constant and drops them there.
-      created.holdPreview = __FEATURE_DIAL_FEEDBACK__
+      created.holdPreview = __FEATURE_DIAL_EXTENDED_GESTURES__
         ? createHoldPreview({
             // The SAME value the release classifier reads, read at press time —
             // the preview appears at exactly the instant a release counts as long.
@@ -1759,19 +1844,21 @@ export class FuelDialSurface {
 
   /** Pushes the encoder trigger descriptions for a dial (Elgato only). */
   private async applyTriggerDescription(ctx: FuelDialContext): Promise<void> {
-    if (!__FEATURE_DIAL_FEEDBACK__ || !ctx.action.isDial()) return;
+    if (!__FEATURE_DIAL_EXTENDED_GESTURES__ || !ctx.action.isDial()) return;
 
     await ctx.action.setTriggerDescription(buildTriggerDescription(ctx.settings.dial));
   }
 
   /**
-   * Pushes the touch-strip feedback when this is a dial — the dial surface's
-   * only render path (keypad instances render through the keypad icon code).
+   * Pushes the dial's own screen — the Stream Deck+ strip or the Stream Dock
+   * knob, whichever the context reports (#1013); nothing when it has none. The
+   * dial surface's only render path (keypad instances render through the
+   * keypad icon code).
    */
   private async renderFeedback(ctx: FuelDialContext): Promise<void> {
-    if (!__FEATURE_DIAL_FEEDBACK__) return;
+    const canvas = ctx.action.dialCanvas();
 
-    if (!ctx.action.isDial()) return;
+    if (!canvas) return;
 
     const displayUnits = this.effectiveDisplayUnits(ctx);
     const maxLtr = this.effectiveMaxLtr();
@@ -1780,11 +1867,11 @@ export class FuelDialSurface {
     const addLtr = this.displayAddLtr(ctx, mode);
     const totalLtr = computeTotalLtr(currentLtr, addLtr, maxLtr);
     const fillState = this.fuelFillState(mode);
-    // The whole strip slot is ONE self-drawn pixmap (band + readout + bar) — the
+    // The whole dial screen is ONE self-drawn pixmap (band + readout + bar) — the
     // built-in layout text items can't have the colored band background (#728).
     // `ctx.preview` rides every render, so the 5 s heartbeat and a change-driven
     // tick mid-hold keep drawing the pending outcome rather than wiping it (#1120).
-    const canvasSvg = renderStripCanvasSvg(
+    const renderArgs = [
       mode,
       ctx.settings.dial.mode,
       fillState,
@@ -1796,9 +1883,9 @@ export class FuelDialSurface {
       displayUnits,
       this.autofuelBindingMissing(ctx.settings),
       ctx.preview,
-    );
-    const feedback: DeckFeedbackPayload = { box: svgToDataUri(canvasSvg) };
-    await ctx.action.setFeedback(feedback);
+    ] as const;
+
+    await ctx.action.setDialCanvas(svgToDataUri(renderFuelCanvasFor(canvas, renderArgs)));
 
     // Reset the change-detector baseline so a pushed feedback (rotate/press/
     // heartbeat) doesn't immediately re-fire the render-on-change path next tick.
