@@ -2,7 +2,7 @@ import type { DialBoxColors } from "./dial-box.js";
 
 /**
  * Representative `renderDialBox` inputs at the Stream Deck+ strip size, one per
- * shape the thirteen dash-box surfaces draw. `__fixtures__/dial-strip-box.json`
+ * shape the twelve dash-box surfaces draw. `__fixtures__/dial-strip-box.json`
  * holds the exact markup today's renderer produced for each, captured BEFORE
  * the strip/knob split (#1013); `dial-strip-box.test.ts` asserts the split
  * renderer still produces those bytes. Add a case here only together with a

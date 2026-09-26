@@ -11,6 +11,7 @@
 import { applyBindingWarning } from "@iracedeck/deck-core";
 
 import type { DialBoxArgs } from "./dial-box.js";
+import { fitValueFontSize } from "./dial-fit.js";
 import { PENDING_BAR_HEIGHT, renderPendingBar } from "./dial-preview.js";
 
 /**
@@ -46,11 +47,6 @@ const PANEL_INNER_BOTTOM = H - INSET - Math.round(STROKE / 2); // 104
 const VALUE_CENTER_Y = Math.round((LABEL_Y + PANEL_INNER_BOTTOM) / 2); // 66
 const DEFAULT_IDENTITY_LABEL_SCALE = 0.24;
 const FONT = 'font-family="Arial, sans-serif" font-weight="bold"';
-
-/** Bold Arial averages ~0.6 em per glyph; shrink the value to fit, capped. */
-function fitValueFontSize(text: string, maxWidth: number, cap: number): number {
-  return Math.round(Math.min(cap, maxWidth / Math.max(1, text.length * 0.6)));
-}
 
 export function renderKnobBox(args: DialBoxArgs): string {
   const {

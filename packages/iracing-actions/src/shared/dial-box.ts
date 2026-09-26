@@ -94,9 +94,18 @@ export interface DialBoxArgs {
  * by the profile's id, never by the platform.
  */
 export function renderDialBox(canvas: DialCanvasProfile, args: DialBoxArgs): string {
-  if (canvas.id === "stream-dock-knob") return renderKnobBox(args);
+  switch (canvas.id) {
+    case "sd-plus-strip":
+      return renderStripBox({ ...args, width: canvas.width, height: canvas.height });
+    case "stream-dock-knob":
+      return renderKnobBox(args);
+    default: {
+      // A new DialCanvasId must get its own drawing here: this line stops compiling until it does.
+      const unhandled: never = canvas.id;
 
-  return renderStripBox({ ...args, width: canvas.width, height: canvas.height });
+      throw new Error(`renderDialBox: no renderer for dial canvas "${String(unhandled)}"`);
+    }
+  }
 }
 
 /**

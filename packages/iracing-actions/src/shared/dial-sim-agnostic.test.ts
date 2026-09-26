@@ -20,6 +20,7 @@ describe("shared/dial-* stays free of sim imports", () => {
     expect(dialModules).toEqual(
       expect.arrayContaining([
         "dial-box.ts",
+        "dial-fit.ts",
         "dial-strip-box.ts",
         "dial-knob-box.ts",
         "dial-name-icon.ts",

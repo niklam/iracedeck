@@ -31,6 +31,13 @@ describe("renderDialBox", () => {
     expect(renderDialBox({ id: "sd-plus-strip", width: 200, height: 100 }, args)).toContain('viewBox="0 0 200 100"');
     expect(renderDialBox({ id: "stream-dock-knob", width: 176, height: 112 }, args)).toContain('viewBox="0 0 176 112"');
   });
+
+  it("refuses a canvas id it has no renderer for instead of drawing the strip", () => {
+    const args = { abbr: "BB", value: "62.2", colors: accentColors() };
+    const unknown = { id: "future-dial", width: 100, height: 100 } as unknown as Parameters<typeof renderDialBox>[0];
+
+    expect(() => renderDialBox(unknown, args)).toThrow('no renderer for dial canvas "future-dial"');
+  });
 });
 
 describe("resolveDialBoxColors", () => {

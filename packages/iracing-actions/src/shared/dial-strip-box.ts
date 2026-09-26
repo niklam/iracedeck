@@ -6,20 +6,11 @@
 import { applyBindingWarning } from "@iracedeck/deck-core";
 
 import type { DialBoxArgs } from "./dial-box.js";
+import { fitValueFontSize } from "./dial-fit.js";
 import { PENDING_BAR_HEIGHT, renderPendingBar } from "./dial-preview.js";
 
 /** The default identity-only (valueless) label scale, as a fraction of the box's shorter side. */
 const DEFAULT_IDENTITY_LABEL_SCALE = 0.24;
-
-/**
- * Bold Arial digits + "." average ~0.6 em wide; shrink the value font so the
- * number fits the box width, capped so short values (e.g. "3") stay sensible.
- */
-function fitValueFontSize(text: string, maxWidth: number, cap: number): number {
-  const approx = maxWidth / Math.max(1, text.length * 0.6);
-
-  return Math.round(Math.min(cap, approx));
-}
 
 /**
  * Renders the dash-box SVG. The background fills the panel INSIDE the border and
