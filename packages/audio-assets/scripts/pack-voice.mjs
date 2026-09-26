@@ -62,11 +62,14 @@
 import {
   CALLOUT_SCRIPT_FILE,
   calloutScriptPath,
+  dedupeDeclaredVoices,
   displayLabel,
   isSemverVersion,
   packId,
   parseCalloutScriptText,
   USABLE_VOICE_CLIP,
+  validateVoicePackManifest,
+  VOICE_PACK_MANIFEST_SCHEMA_VERSION,
 } from "@iracedeck/callout-script";
 import { zipSync } from "fflate";
 import { createHash } from "node:crypto";
@@ -179,45 +182,115 @@ const ZIP_ENTRY_MTIME = new Date(1980, 0, 1, 0, 0, 0);
 const ZIP_ENTRY_OPTIONS = Object.freeze({ level: 9, mtime: ZIP_ENTRY_MTIME, os: 0, attrs: 0 });
 
 /**
- * The rules a pack definition is checked against before anything is staged:
- * the scanner's own, imported from `@iracedeck/callout-script` (#1134) rather
- * than restated — `packId`, `displayLabel` and `isSemverVersion` are the very
- * checks `VoicePackManifestSchema` makes, and `USABLE_VOICE_CLIP` (used per
- * staged clip, below) is the scanner's grammar for a clip the engine can reach.
- * The schemas remain the authority (the test parses this script's output with
- * them); checking here means a typo in `voice-packs.mjs` fails naming the
- * field, instead of surfacing as a pack the scanner refuses after it has been
- * uploaded. `minPluginVersion` goes through the same `isSemverVersion`, since
- * the catalog schema's version fields accept what `semver.valid` does.
+ * Is `value` a version this script may write verbatim?
  *
- * The one rule still restated is the description's 300-character bound: that
- * is `VoicePackCatalogEntrySchema`'s (deck-core), which this plain-node script
- * cannot import, and the catalog entry is what the test parses with it.
+ * Stricter than the scanner, on purpose. `isSemverVersion` is exactly what the
+ * plugin ACCEPTS — `semver.valid`, which trims and allows one leading `v` — but
+ * the packer does not only hand a version to the plugin: it writes it verbatim
+ * into the release tag (`voices-<id>-<version>`), the archive's file name, the
+ * catalog entry's `url` and the manifest. `" 1.1.2"` or `"v1.1.2"` would be a
+ * version the plugin reads fine and a tag, a file name and a download url
+ * nobody meant. So the definition must hold the CANONICAL spelling: a string
+ * the plugin accepts, with no surrounding whitespace and no leading `v`.
  *
- * A clip `USABLE_VOICE_CLIP` refuses is a build FAILURE, never a warning. A
- * pack carrying it would install cleanly, list its voice, and then be silent
- * for that clip — with the only trace at debug level on the user's machine.
+ * @param {unknown} value
+ */
+function isCanonicalVersion(value) {
+  return typeof value === "string" && isSemverVersion(value) && value === value.trim() && !value.startsWith("v");
+}
+
+/** @param {import("zod").ZodType} schema @param {unknown} value */
+function firstProblem(schema, value) {
+  const parsed = schema.safeParse(value);
+
+  return parsed.success ? undefined : (parsed.error.issues[0]?.message ?? "invalid");
+}
+
+/**
+ * The checks a pack DEFINITION needs before anything is read from disk — the
+ * ones the manifest cannot make for it. Everything the manifest carries is
+ * judged afterwards by the plugin's own schema, on the very object this script
+ * will write (`assertPackManifest`), so the packer holds no copy of those rules.
+ *
+ * What stays here, and why each:
+ *
+ * - `id` and every voice id, through the schema's own `packId` — because they
+ *   become PATHS (the stage directory, `configs/<voice-id>.voice.json`, the
+ *   voice's source tree) before there is a manifest to validate, and an id the
+ *   plugin would refuse must never reach the filesystem.
+ * - `version` and `minPluginVersion` in their canonical spelling
+ *   ({@link isCanonicalVersion}) — a rule the plugin does not have, because only
+ *   the packer writes a version into a tag, a file name and a url. Each is
+ *   checked for being a string first, so a number fails naming the field.
+ * - `description`'s 300-character bound — `VoicePackCatalogEntrySchema`'s
+ *   (deck-core), which this plain-node script cannot import, for a field the
+ *   manifest does not carry; the test parses the catalog entry with it.
+ * - `voices` being a non-empty list, since everything after iterates it.
+ *
+ * Each message names the pack.
  */
 function assertPackDefinition(pack) {
   const where = `pack "${pack?.id ?? "?"}"`;
+  const idProblem = firstProblem(packId, pack?.id);
 
-  if (!packId.safeParse(pack?.id).success) throw new Error(`${where}: id must be lowercase kebab-case`);
-  if (!displayLabel.safeParse(pack.label).success) {
-    throw new Error(`${where}: label must be 1-60 characters with no control characters`);
-  }
-  if (typeof pack.version !== "string" || !isSemverVersion(pack.version)) {
-    throw new Error(`${where}: version must be semver`);
+  if (idProblem !== undefined) throw new Error(`${where}: id ${idProblem}`);
+  if (!isCanonicalVersion(pack.version)) {
+    throw new Error(
+      `${where}: version must be a canonical semver version such as 1.2.3 — a string, no leading "v", ` +
+        `no surrounding whitespace — since it names the release tag, the archive and the catalog url`,
+    );
   }
   if (pack.description !== undefined && (typeof pack.description !== "string" || pack.description.length > 300)) {
     throw new Error(`${where}: description must be 300 characters or fewer`);
   }
-  if (pack.minPluginVersion !== undefined && !isSemverVersion(pack.minPluginVersion)) {
-    throw new Error(`${where}: minPluginVersion must be semver`);
+  if (pack.minPluginVersion !== undefined && !isCanonicalVersion(pack.minPluginVersion)) {
+    throw new Error(
+      `${where}: minPluginVersion must be a canonical semver version such as 1.2.3 — a string, no leading "v", ` +
+        `no surrounding whitespace`,
+    );
   }
-  if (!Array.isArray(pack.voices) || pack.voices.length === 0)
+  if (!Array.isArray(pack.voices) || pack.voices.length === 0) {
     throw new Error(`${where}: voices must name at least one voice`);
+  }
   for (const voice of pack.voices) {
-    if (!packId.safeParse(voice).success) throw new Error(`${where}: voice id "${voice}" must be lowercase kebab-case`);
+    const voiceProblem = firstProblem(packId, voice);
+
+    if (voiceProblem !== undefined) throw new Error(`${where}: voice id "${voice}" ${voiceProblem}`);
+  }
+}
+
+/**
+ * Refuse to build a `voice-pack.json` the plugin would refuse, or one that
+ * repeats a voice — judged on the very object this script is about to write,
+ * by the plugin's own rules from `@iracedeck/callout-script` (#1134).
+ *
+ * `validateVoicePackManifest` is the schema the scanner admits a pack by, so a
+ * field the packer does not check itself — an empty `author`, a pack label
+ * over 60 characters or holding a control character — fails here, naming the
+ * field in the plugin's words, instead of surfacing as a pack the scanner
+ * refuses after it has been uploaded. A repeated voice is a build FAILURE,
+ * where the scanner only keeps the first and says so: a definition that lists
+ * a voice twice is a typo, and nobody should ship one.
+ *
+ * Run before anything is staged, so a refused pack leaves no stage behind.
+ *
+ * @param {VoicePackDefinition} pack
+ * @param {ReturnType<typeof buildVoicePackManifest>} manifest
+ */
+function assertPackManifest(pack, manifest) {
+  const where = `pack "${pack.id}"`;
+  const validated = validateVoicePackManifest(manifest);
+
+  if (!validated.ok) {
+    throw new Error(
+      `${where}: the ${MANIFEST_FILE} it would write is one the plugin refuses:\n  ${validated.problems.join("\n  ")}`,
+    );
+  }
+
+  const { repeated } = dedupeDeclaredVoices(manifest.voices);
+
+  if (repeated.length > 0) {
+    throw new Error(`${where}: voice "${repeated[0]}" is listed more than once in voices`);
   }
 }
 
@@ -331,7 +404,7 @@ function readVoiceLabel(configsDir, voiceId) {
  */
 export function buildVoicePackManifest(pack, voices) {
   return {
-    schema: 1,
+    schema: VOICE_PACK_MANIFEST_SCHEMA_VERSION,
     id: pack.id,
     label: pack.label,
     version: pack.version,
@@ -512,20 +585,22 @@ export async function packVoice({
   if (!pack) throw new Error("packVoice: pack is required");
   assertPackDefinition(pack);
 
+  /** @type {VoiceEntry[]} */
+  const voices = pack.voices.map((voiceId) => ({ id: voiceId, label: readVoiceLabel(configsDir, voiceId) }));
+  const manifest = buildVoicePackManifest(pack, voices);
+
+  assertPackManifest(pack, manifest);
+
   const stageDir = path.join(outDir, pack.id);
   rmSync(stageDir, { recursive: true, force: true });
   mkdirSync(stageDir, { recursive: true });
 
   /** @type {ArchiveEntry[]} */
   const entries = [];
-  /** @type {VoiceEntry[]} */
-  const voices = [];
   let clips = 0;
   let scripts = 0;
 
   for (const voiceId of pack.voices) {
-    voices.push({ id: voiceId, label: readVoiceLabel(configsDir, voiceId) });
-
     const srcDir = path.join(srcRoot, voiceId);
 
     if (!existsSync(srcDir)) throw new Error(`pack "${pack.id}": voice "${voiceId}" has no clips at ${srcDir}`);
@@ -568,6 +643,11 @@ export async function packVoice({
     for (const file of files) {
       const entryPath = `${VOICE_ROOT}/${voiceId}/${file}`;
 
+      // The scanner's grammar for a clip the engine can reach, imported from
+      // `@iracedeck/callout-script`. A clip it refuses is a build FAILURE, never
+      // a warning: a pack carrying it would install cleanly, list its voice,
+      // and then be silent for that clip — with the only trace at debug level
+      // on the user's machine.
       if (!USABLE_VOICE_CLIP.test(entryPath)) {
         throw new Error(
           `pack "${pack.id}": ${entryPath} is not a clip the engine can play — ` +
@@ -596,7 +676,7 @@ export async function packVoice({
     }
   }
 
-  const manifestBytes = new TextEncoder().encode(serializeSortedJson(buildVoicePackManifest(pack, voices)));
+  const manifestBytes = new TextEncoder().encode(serializeSortedJson(manifest));
   writeFileSync(path.join(stageDir, MANIFEST_FILE), manifestBytes);
   entries.push({ path: MANIFEST_FILE, data: manifestBytes });
 
