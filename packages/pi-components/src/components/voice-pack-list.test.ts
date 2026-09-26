@@ -689,6 +689,176 @@ describe("ird-voice-pack-list", () => {
     });
   });
 
+  describe("row layout (#1145)", () => {
+    // Four sideloaded packs sharing one label, each providing different voices,
+    // is the case the issue was reopened for (2026-09-26).
+    const SHARED_LABEL = scan([
+      {
+        id: "tixer-ryan",
+        label: "Tixer87's Voice Packs",
+        version: "1.0.1",
+        voices: [{ id: "ryan", label: "Ryan" }],
+        provenance: "sideload",
+      },
+      {
+        id: "tixer-griffins",
+        label: "Tixer87's Voice Packs",
+        version: "1.0.5",
+        voices: [
+          { id: "peter", label: "Peter Griffin" },
+          { id: "stewie", label: "Stewie Griffin" },
+        ],
+        provenance: "sideload",
+      },
+    ]);
+
+    function lineClasses(row: Element): string[] {
+      return Array.from(row.children).map((child) => child.className);
+    }
+
+    it("renders a removable pack as three lines: head, voices, action", () => {
+      publish(SHARED_LABEL);
+
+      const row = el.querySelector(".ird-vp-row")!;
+
+      expect(lineClasses(row)).toEqual(["ird-vp-head", "ird-vp-voices", "ird-vp-action"]);
+      expect(row.querySelector(".ird-vp-action > .ird-vp-remove-button")).not.toBeNull();
+    });
+
+    it("puts the label first, then the version pill before the provenance badge", () => {
+      publish(SHARED_LABEL);
+
+      const head = el.querySelector(".ird-vp-head")!;
+
+      expect(head.children[0].className).toBe("ird-vp-label");
+      expect(head.children[0].textContent).toBe("Tixer87's Voice Packs");
+
+      const pills = head.querySelector(".ird-vp-pills")!;
+
+      expect(Array.from(pills.children).map((pill) => pill.textContent)).toEqual(["1.0.1", "Installed by hand"]);
+      expect(pills.children[0].classList.contains("ird-vp-badge")).toBe(false);
+      expect(el.querySelector(".ird-vp-row")!.querySelectorAll(".ird-vp-badge")).toHaveLength(1);
+    });
+
+    it("names a single voice", () => {
+      publish(SHARED_LABEL);
+
+      expect(el.querySelectorAll(".ird-vp-voices")[0].textContent).toBe("Voice: Ryan");
+    });
+
+    it("names several voices in manifest order", () => {
+      publish(SHARED_LABEL);
+
+      expect(el.querySelectorAll(".ird-vp-voices")[1].textContent).toBe("Voices: Peter Griffin, Stewie Griffin");
+    });
+
+    it("names the voice even when it shares the pack's label", () => {
+      publish(PACKS);
+
+      expect(el.querySelectorAll(".ird-vp-voices")[0].textContent).toBe("Voice: Luca");
+    });
+
+    it("tells two packs sharing a label apart by the voices they provide", () => {
+      publish(SHARED_LABEL);
+
+      const voices = Array.from(el.querySelectorAll(".ird-vp-voices")).map((line) => line.textContent);
+
+      expect(new Set(voices).size).toBe(2);
+    });
+
+    it("renders a voice label as text, never as markup — a sideloaded pack authors it", () => {
+      publish(
+        scan([
+          {
+            id: "evil",
+            label: "Evil",
+            version: "1.0.0",
+            voices: [{ id: "x", label: "<img src=x onerror=alert(1)>" }],
+            provenance: "sideload",
+          },
+        ]),
+      );
+
+      expect(el.querySelector("img")).toBeNull();
+      expect(el.querySelector(".ird-vp-voices")!.textContent).toContain("<img");
+    });
+
+    it("renders no voices line for a pack that provides none", () => {
+      publish(scan([{ id: "seed", label: "Seed", version: "1.0.0", voices: [], provenance: "bundled-seed" }]));
+
+      const row = el.querySelector(".ird-vp-row")!;
+
+      expect(lineClasses(row)).toEqual(["ird-vp-head", "ird-vp-action"]);
+      expect(row.querySelector(".ird-vp-action > .ird-vp-note")!.textContent).toBe("Included with the plugin");
+    });
+
+    it("puts the managed pack's note on the action line, with no Remove", () => {
+      publish(
+        scan([
+          {
+            id: "default",
+            label: "Default",
+            version: "1.1.0",
+            voices: [{ id: "default", label: "Default" }],
+            provenance: "catalog",
+            managed: true,
+          },
+        ]),
+      );
+
+      const row = el.querySelector(".ird-vp-row")!;
+
+      expect(lineClasses(row)).toEqual(["ird-vp-head", "ird-vp-voices", "ird-vp-action"]);
+      expect(row.querySelector(".ird-vp-action > .ird-vp-note")!.textContent).toBe("Kept up to date by iRaceDeck");
+      expect(row.querySelector(".ird-vp-remove-button")).toBeNull();
+    });
+
+    it("puts a development pack's directory on the action line, with the full path as its title", () => {
+      const dir = "C:\\src\\iracedeck\\packages\\audio-assets\\dist\\voices\\default";
+
+      publish(
+        scan([
+          {
+            id: "default",
+            label: "Default",
+            version: "1.1.0",
+            voices: [{ id: "default", label: "Default" }],
+            provenance: "development",
+            dir,
+          },
+        ]),
+      );
+
+      const note = el.querySelector(".ird-vp-action > .ird-vp-note") as HTMLElement;
+
+      expect(note.textContent).toBe(dir);
+      expect(note.title).toBe(dir);
+    });
+
+    // The voices line is a cell the row now displays, so it joins the arm's
+    // identity: a folder edited in place to provide a different voice is a
+    // different pack to the person reading the row, whatever its id, version
+    // and label say.
+    it("disarms when only the voices a pack provides change", () => {
+      const ryan = {
+        id: "tixer-ryan",
+        label: "Tixer87's Voice Packs",
+        version: "1.0.1",
+        voices: [{ id: "ryan", label: "Ryan" }],
+        provenance: "sideload",
+      };
+
+      publish(scan([ryan]));
+      el.querySelector<HTMLButtonElement>(".ird-vp-remove-button")?.click();
+
+      expect(el.querySelector(".ird-vp-remove-button")?.textContent).toBe("Remove — are you sure?");
+
+      publish(scan([{ ...ryan, voices: [{ id: "lois", label: "Lois Griffin" }] }]));
+
+      expect(el.querySelector(".ird-vp-remove-button")?.textContent).toBe("Remove");
+    });
+  });
+
   it("issues no extra settings read in response to a DOM event", () => {
     // A regression pin mirroring ird-enable-feature's: this component only
     // ever learns about settings through the useGlobalSettings push
