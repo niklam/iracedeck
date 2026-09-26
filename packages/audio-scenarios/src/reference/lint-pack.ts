@@ -346,7 +346,7 @@ function readManifest(read: LintFileRead, packDirName: string): DeclaredVoices {
   const validated = validateVoicePackManifest(json);
   const problems = validated.ok
     ? []
-    : firstPerField(validated.problems).map((problem) => `${VOICE_PACK_MANIFEST_FILE}: ${problem} — ${REFUSED}`);
+    : firstPerField(validated.problems).map((problem) => `${VOICE_PACK_MANIFEST_FILE}: ${problem}; ${REFUSED}`);
   const raw: { id?: unknown; voices?: unknown } = json !== null && typeof json === "object" ? json : {};
 
   // Only an id the schema accepts is compared with the folder: a malformed id

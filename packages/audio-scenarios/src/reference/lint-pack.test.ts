@@ -433,7 +433,7 @@ describe("lintPack", () => {
     );
 
     expect(messages(noIds.problems)).toEqual([
-      "(pack) manifest: voice-pack.json: voices: Invalid input: expected array, received string — the plugin refuses the manifest; the voices under voice/ were linted anyway",
+      "(pack) manifest: voice-pack.json: voices: Invalid input: expected array, received string; the plugin refuses the manifest; the voices under voice/ were linted anyway",
     ]);
     expect(noIds.voices.map((v) => v.id)).toEqual([VOICE]);
   });
@@ -452,7 +452,7 @@ describe("lintPack", () => {
     );
 
     expect(messages(report.problems)).toEqual([
-      "(pack) manifest: voice-pack.json: voices.0.id: must be lowercase kebab-case (a-z, 0-9, dashes) — the plugin refuses the manifest; the voices under voice/ were linted anyway",
+      "(pack) manifest: voice-pack.json: voices.0.id: must be lowercase kebab-case (a-z, 0-9, dashes); the plugin refuses the manifest; the voices under voice/ were linted anyway",
     ]);
     expect(report.voices.map((v) => v.id)).toEqual([VOICE]);
   });
@@ -476,11 +476,11 @@ describe("lintPack", () => {
 
     expect(messages(report.problems)).toEqual([
       // A NUMBER above 1 is a pack from a newer toolchain, and says so.
-      "(pack) manifest: voice-pack.json: built for a newer version of iRaceDeck — update the plugin to use this pack — the plugin refuses the manifest",
+      "(pack) manifest: voice-pack.json: built for a newer version of iRaceDeck — update the plugin to use this pack; the plugin refuses the manifest",
       // The empty label fails two checks; one line per field.
-      "(pack) manifest: voice-pack.json: label: Too small: expected string to have >=1 characters — the plugin refuses the manifest",
-      "(pack) manifest: voice-pack.json: version: must be a valid semver version — the plugin refuses the manifest",
-      "(pack) manifest: voice-pack.json: voices.0.label: Invalid input: expected string, received undefined — the plugin refuses the manifest",
+      "(pack) manifest: voice-pack.json: label: Too small: expected string to have >=1 characters; the plugin refuses the manifest",
+      "(pack) manifest: voice-pack.json: version: must be a valid semver version; the plugin refuses the manifest",
+      "(pack) manifest: voice-pack.json: voices.0.label: Invalid input: expected string, received undefined; the plugin refuses the manifest",
       `(pack) manifest: voice-pack.json: id "other-pack" does not match the pack folder name "${PACK_DIR_NAME}" — the plugin refuses the pack`,
     ]);
     // The voice itself is still linted, so the author gets the clip and script feedback too.
@@ -495,10 +495,10 @@ describe("lintPack", () => {
     // A missing schema is the author's mistake, not a newer pack: the
     // ordinary line, never the update-the-plugin sentence (#1134).
     expect(messages(report.problems)).toEqual([
-      "(pack) manifest: voice-pack.json: schema: Invalid input: expected 1 — the plugin refuses the manifest",
-      "(pack) manifest: voice-pack.json: id: Invalid input: expected string, received undefined — the plugin refuses the manifest",
-      "(pack) manifest: voice-pack.json: label: Invalid input: expected string, received undefined — the plugin refuses the manifest",
-      "(pack) manifest: voice-pack.json: version: Invalid input: expected string, received undefined — the plugin refuses the manifest",
+      "(pack) manifest: voice-pack.json: schema: Invalid input: expected 1; the plugin refuses the manifest",
+      "(pack) manifest: voice-pack.json: id: Invalid input: expected string, received undefined; the plugin refuses the manifest",
+      "(pack) manifest: voice-pack.json: label: Invalid input: expected string, received undefined; the plugin refuses the manifest",
+      "(pack) manifest: voice-pack.json: version: Invalid input: expected string, received undefined; the plugin refuses the manifest",
     ]);
     // So is a zero.
     const zero = JSON.stringify({
@@ -509,7 +509,7 @@ describe("lintPack", () => {
       voices: [{ id: VOICE, label: "Demo voice" }],
     });
     expect(messages(lint(packFiles({ manifest: zero })).problems)).toEqual([
-      "(pack) manifest: voice-pack.json: schema: Invalid input: expected 1 — the plugin refuses the manifest",
+      "(pack) manifest: voice-pack.json: schema: Invalid input: expected 1; the plugin refuses the manifest",
     ]);
 
     // The folder is `Demo/` on disk: the scanner compares case-insensitively, and the id rule is what refuses the capital.
@@ -519,8 +519,8 @@ describe("lintPack", () => {
     );
 
     expect(messages(capital.problems)).toEqual([
-      "(pack) manifest: voice-pack.json: id: must be lowercase kebab-case (a-z, 0-9, dashes) — the plugin refuses the manifest",
-      "(pack) manifest: voice-pack.json: voices: Too small: expected array to have >=1 items — the plugin refuses the manifest; the voices under voice/ were linted anyway",
+      "(pack) manifest: voice-pack.json: id: must be lowercase kebab-case (a-z, 0-9, dashes); the plugin refuses the manifest",
+      "(pack) manifest: voice-pack.json: voices: Too small: expected array to have >=1 items; the plugin refuses the manifest; the voices under voice/ were linted anyway",
     ]);
   });
 
@@ -532,7 +532,7 @@ describe("lintPack", () => {
 
     expect(lint(packFiles({ manifest: manifest("v1.2.3") })).problems).toEqual([]);
     expect(messages(lint(packFiles({ manifest: manifest("01.2.3") })).problems)).toEqual([
-      "(pack) manifest: voice-pack.json: version: must be a valid semver version — the plugin refuses the manifest",
+      "(pack) manifest: voice-pack.json: version: must be a valid semver version; the plugin refuses the manifest",
     ]);
   });
 
@@ -555,8 +555,8 @@ describe("lintPack", () => {
     ]);
     // The linter keeps the first of each, in the schema's order.
     expect(messages(lint(packFiles({ manifest: JSON.stringify(json) })).problems)).toEqual([
-      '(pack) manifest: voice-pack.json: id: must not contain "::" — iRaceDeck joins a pack id and a voice id with it — the plugin refuses the manifest',
-      "(pack) manifest: voice-pack.json: label: Too small: expected string to have >=1 characters — the plugin refuses the manifest",
+      '(pack) manifest: voice-pack.json: id: must not contain "::" — iRaceDeck joins a pack id and a voice id with it; the plugin refuses the manifest',
+      "(pack) manifest: voice-pack.json: label: Too small: expected string to have >=1 characters; the plugin refuses the manifest",
     ]);
   });
 
@@ -622,9 +622,9 @@ describe("lintPack", () => {
 
     // `Other::Matt` breaks the kebab-case rule too; the separator is named, once.
     expect(messages(report.problems)).toEqual([
-      '(pack) manifest: voice-pack.json: id: must not contain "::" — iRaceDeck joins a pack id and a voice id with it — the plugin refuses the manifest',
-      '(pack) manifest: voice-pack.json: voices.1.id: must not contain "::" — iRaceDeck joins a pack id and a voice id with it — the plugin refuses the manifest',
-      '(pack) manifest: voice-pack.json: voices.2.id: must not contain "::" — iRaceDeck joins a pack id and a voice id with it — the plugin refuses the manifest',
+      '(pack) manifest: voice-pack.json: id: must not contain "::" — iRaceDeck joins a pack id and a voice id with it; the plugin refuses the manifest',
+      '(pack) manifest: voice-pack.json: voices.1.id: must not contain "::" — iRaceDeck joins a pack id and a voice id with it; the plugin refuses the manifest',
+      '(pack) manifest: voice-pack.json: voices.2.id: must not contain "::" — iRaceDeck joins a pack id and a voice id with it; the plugin refuses the manifest',
     ]);
     // Like any other refused id, a voice id with the separator is never used as a path.
     expect(report.voices.map((v) => v.id)).toEqual([VOICE]);
@@ -641,8 +641,8 @@ describe("lintPack", () => {
     const report = lint(packFiles({ manifest }));
 
     expect(messages(report.problems)).toEqual([
-      "(pack) manifest: voice-pack.json: voices.1.id: must be lowercase kebab-case (a-z, 0-9, dashes) — the plugin refuses the manifest",
-      "(pack) manifest: voice-pack.json: voices.2.id: Invalid input: expected string, received undefined — the plugin refuses the manifest",
+      "(pack) manifest: voice-pack.json: voices.1.id: must be lowercase kebab-case (a-z, 0-9, dashes); the plugin refuses the manifest",
+      "(pack) manifest: voice-pack.json: voices.2.id: Invalid input: expected string, received undefined; the plugin refuses the manifest",
     ]);
     expect(report.voices.map((v) => v.id)).toEqual([VOICE]);
   });
