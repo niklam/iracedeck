@@ -232,7 +232,7 @@ Add entry to the `Actions` array:
 }
 ```
 
-- Most actions are Keypad-only — use `"Controllers": ["Keypad"]` with no `Encoder` block. A **dial-capable** action may instead declare `"Controllers": ["Keypad", "Encoder"]` with an `Encoder` block (a `layout` pointing at a committed custom touch layout under `<sdPlugin>/layouts/` — currently audio-controls, fuel-service, and setup-brakes — plus a `TriggerDescription`). `fuel-service` is the reference (#759). The Mirabox and Ulanzi manifests stay `["Keypad"]` for dial-capable actions (#786). See `.claude/rules/encoders-and-touchscreen.md` for the action-side mechanics and gating rules.
+- Most actions are Keypad-only — use `"Controllers": ["Keypad"]` with no `Encoder` block. A **dial-capable** action may instead declare `"Controllers": ["Keypad", "Encoder"]` with an `Encoder` block (a `layout` pointing at a committed custom touch layout under `<sdPlugin>/layouts/` — one per dial action, each a single full-canvas 200×100 `box` pixmap — plus a `TriggerDescription`). `fuel-service` is the reference (#759). The Mirabox manifest declares the same action as `["Keypad", "Knob"]` with no config block (#1013), and `scripts/manifest-actions-order.test.mjs` fails until both sets match; the Ulanzi manifest stays `["Keypad"]`. See `.claude/rules/encoders-and-touchscreen.md` for the action-side mechanics and gating rules.
 
 #### 9. Add key bindings — `packages/iracing-actions/src/actions/data/key-bindings.json`
 

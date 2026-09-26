@@ -15,12 +15,12 @@ paths:
 
 # Platform Feature Flags
 
-Per-plugin build-time flags that gate platform-specific features and temporary kill-switches. `dialExtendedGestures` strips touch-strip feedback/input code and PI controls from the Mirabox and Ulanzi bundles (neither has a plugin-facing touch strip) while keeping it on Stream Deck. `pngRasterization` is a temporary kill-switch for the in-plugin PNG rasterization pipeline (issue #642) — true on all three platforms today, so nothing is actually stripped by it yet; it exists to let the pipeline be disabled quickly (locally, or via a hotfix) if a rendering regression turns up. `profiles` gates the Stream Deck Profiles PI accordion and profile switching (Elgato-only; #736) and, unlike the other two, is a **runtime-only** flag — read via `getFeatureFlag("profiles")` / `locals.platform`, with no `__FEATURE_*__` compile-time constant (see "Runtime-only flags" below). Since #642 retired the `borderGlow`/`svgFilters`-class flags (icons rasterize to PNG in-plugin now, so QT5-vs-QT6 SVG engine capability is no longer a build-time concern — see `.claude/rules/svg-platform-compatibility.md`), these three are what's left.
+Per-plugin build-time flags that gate platform-specific features and temporary kill-switches. `dialExtendedGestures` strips the Stream Deck+ dial gestures beyond rotate and press — touch input, trigger descriptions, long-press and push+turn classification, the #1120 hold preview — and their PI controls from the Mirabox and Ulanzi bundles while keeping them on Stream Deck; it does not gate the dial display, which every host with a dial screen draws (#1013). `pngRasterization` is a temporary kill-switch for the in-plugin PNG rasterization pipeline (issue #642) — true on all three platforms today, so nothing is actually stripped by it yet; it exists to let the pipeline be disabled quickly (locally, or via a hotfix) if a rendering regression turns up. `profiles` gates the Stream Deck Profiles PI accordion and profile switching (Elgato-only; #736) and, unlike the other two, is a **runtime-only** flag — read via `getFeatureFlag("profiles")` / `locals.platform`, with no `__FEATURE_*__` compile-time constant (see "Runtime-only flags" below). Since #642 retired the `borderGlow`/`svgFilters`-class flags (icons rasterize to PNG in-plugin now, so QT5-vs-QT6 SVG engine capability is no longer a build-time concern — see `.claude/rules/svg-platform-compatibility.md`), these three are what's left.
 
 ## Layout
 
 - `packages/iracing-plugin-stream-deck/platform-features.json` — committed Stream Deck flags (`dialExtendedGestures`, `profiles`, and `pngRasterization` all true).
-- `packages/iracing-plugin-mirabox/platform-features.json` — committed Mirabox flags (`dialExtendedGestures` and `profiles` off — no plugin touch strip and no profile system on the Mirabox host; `pngRasterization` on, same as Elgato).
+- `packages/iracing-plugin-mirabox/platform-features.json` — committed Mirabox flags (`dialExtendedGestures` and `profiles` off — a Mirabox knob has only rotate and press, and the host has no profile system; `pngRasterization` on, same as Elgato).
 - `packages/iracing-plugin-ulanzi/platform-features.json` — committed Ulanzi flags, identical shape to Mirabox today (`dialExtendedGestures` and `profiles` off, `pngRasterization` on) — widen `dialExtendedGestures`/`profiles` only once dial/profile support is verified on Ulanzi hardware.
 - `feature-flags.local.json` — **optional, gitignored** developer override at repo root. Deep-merges over every plugin's committed flags at build time.
 - `feature-flags.local.json.example` — committed example showing the file shape.
@@ -31,7 +31,7 @@ Per-plugin build-time flags that gate platform-specific features and temporary k
 
 `platform-features.json` has a single top-level `features` object (the former `capabilities` object — `svgFilters`/`svgMasks`/`svgPatterns` — was retired in #642 along with `borderGlow`; PNG rasterization means no code branches on raw SVG engine capability anymore). Current flags:
 
-- `dialExtendedGestures` — Stream Deck+ touch-strip feedback + touch-tap input (Elgato-only; Mirabox/Ulanzi have no plugin touch strip). Elgato `true`, Mirabox `false`, Ulanzi `false`.
+- `dialExtendedGestures` — the Stream Deck+ dial gestures beyond rotate and press: touch input (`touchTap`), trigger descriptions, long-press and push+turn classification, and the #1120 hold preview (#1013). Elgato `true`, Mirabox `false`, Ulanzi `false`. It no longer gates the dial display: every host with a dial screen renders through `IDeckActionContext.dialCanvas()`.
 - `pngRasterization` — temporary kill-switch for in-plugin PNG rasterization (`@iracedeck/rasterizer`, issue #642). Gates a single call site: `initializeRasterizer(...)` in each plugin's `plugin.ts` (see `.claude/rules/plugin-structure.md`). `true` on Elgato, Mirabox, **and** Ulanzi — it isn't a per-platform capability split like `dialExtendedGestures`, it's a temporary escape hatch for the whole rasterization pipeline. Force it `false` locally to fall back to raw SVG data URIs for comparison/debugging (see `.claude/rules/svg-platform-compatibility.md` for what that fallback means for filter/mask/pattern icons).
 - `profiles` — the "Stream Deck Profiles" PI accordion (bundled-profile install buttons) plus profile switching (Race Admin car selector, Camera Focus's `focus-select-car` mode). Elgato-only — Mirabox/Ulanzi hosts have no profile system, so `switchToProfile` is a no-op there regardless of the flag. Elgato `true`, Mirabox `false`, Ulanzi `false`. See `.claude/rules/profiles-and-devices.md`. Unlike `dialExtendedGestures`/`pngRasterization`, `profiles` has **no compile-time constant** — see "Runtime-only flags" below.
 
@@ -64,7 +64,7 @@ if (__FEATURE_PNG_RASTERIZATION__) {
 
 `__FEATURE_PNG_RASTERIZATION__` gates exactly that one call site, in each plugin's own `plugin.ts`. When the flag is `false`, `initializeRasterizer()` is never called, `deck-core`'s rasterizer service stays uninitialized, and its `toDeviceImage()` passes every image through unchanged (see `packages/deck-core/src/rasterizer-service.ts`) — so every adapter's `setImage`/`setFeedback` call falls back to sending the raw SVG data URI exactly as before #642.
 
-**Dial touch-strip gating.** `__FEATURE_DIAL_EXTENDED_GESTURES__` is gated directly in action code (not a shared utility) because the per-platform touch-strip difference is action logic, not shared rendering: an action calls it directly (touch-strip feedback + touch-tap, Elgato-only) because Mirabox/Ulanzi have no plugin touch strip. Dial press / long-press / push+turn are **not** gated — they are classified at `dialUp` and work cross-platform. Reference: `packages/iracing-actions/src/actions/fuel-service/fuel-dial-surface.ts`. See `.claude/rules/encoders-and-touchscreen.md` for why.
+**Dial extended-gesture gating.** `__FEATURE_DIAL_EXTENDED_GESTURES__` is gated directly in action code (not a shared utility) because the per-platform gesture difference is action logic, not shared rendering. It gates touch input, trigger descriptions, long-press and push+turn classification (flag off → every release classifies as `short`) and the #1120 hold preview, which a Mirabox hold would arm on a `dialDown` whose `dialUp` never comes. Rotation and press are **not** gated, and neither is the dial display — every surface draws through `dialCanvas()` / `setDialCanvas()` on every host (#1013). Reference: `packages/iracing-actions/src/actions/fuel-service/fuel-dial-surface.ts`. See `.claude/rules/encoders-and-touchscreen.md` for why.
 
 **Per-plugin ambient declarations for bundled action sources.** The shared `@iracedeck/iracing-actions` sources are compiled as part of each plugin's TypeScript program, so `__FEATURE_DIAL_EXTENDED_GESTURES__` must be declared there too — that's why each plugin's own `src/platform-features.d.ts` declares both constants even though `__FEATURE_PNG_RASTERIZATION__` is only ever referenced in that plugin's own `plugin.ts`, not in the bundled action sources.
 
@@ -77,7 +77,7 @@ if (__FEATURE_PNG_RASTERIZATION__) {
 ```ejs
 <% var dialExtendedGesturesEnabled = (locals.platform?.features?.dialExtendedGestures !== false); %>
 <% if (dialExtendedGesturesEnabled) { %>
-  <sdpi-item id="some-touch-strip-control" class="hidden" label="Touch Strip Behavior">...</sdpi-item>
+  <sdpi-item id="some-long-press-control" class="hidden" label="Long Press">...</sdpi-item>
 <% } %>
 ```
 
@@ -110,7 +110,7 @@ Root `test-setup.ts` sets `globalThis.__FEATURE_DIAL_EXTENDED_GESTURES__ = true`
 ```ts
 afterEach(() => vi.unstubAllGlobals());
 
-it("skips the touch strip when dialExtendedGestures is false", () => {
+it("skips touch and long-press when dialExtendedGestures is false", () => {
   vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
   // ... assertion
 });
