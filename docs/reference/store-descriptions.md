@@ -22,7 +22,7 @@ Check these descriptions for drift as part of **every release's** release-notes 
 Wording traps:
 
 - Only **one** Race Engineer voice ships. The driver names (Dean, Alex, Robbie, …) are what the engineer calls the *user* — say "the engineer addresses you by name", never "multiple engineer voices".
-- The Mirabox description must claim **no dial support** (#786) and **no profiles** (no profile system on Stream Dock hosts).
+- The Mirabox description may claim **knob support** for the dial actions (#1013), but only turn and push — never long press, push + turn or touch, which a Stream Dock knob does not report — and must claim **no profiles** (no profile system on Stream Dock hosts).
 
 ## Format constraints
 

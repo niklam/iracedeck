@@ -1,6 +1,6 @@
 # Black Box Selector
 
-Cycles through or directly selects iRacing black box screens, from a keypad button or a Stream Deck+ dial (#808).
+Cycles through or directly selects iRacing black box screens, from a keypad button, a Stream Deck+ dial (#808) or a Mirabox knob (#1013).
 
 ## Properties
 
@@ -9,7 +9,7 @@ Cycles through or directly selects iRacing black box screens, from a keypad butt
 | Action ID | `com.iracedeck.sd.core.black-box-selector` |
 | Type | Multi-toggle (keypad) / +/- (dial) |
 | SDK Support | No |
-| Encoder Support | Yes (Elgato Stream Deck+ only) |
+| Encoder Support | Yes (Elgato Stream Deck+ dial; Mirabox knob — turn and push only) |
 | Communication Method | Key binding |
 
 > Every path — keypad and dial alike — is key-binding-backed; black box selection has no SDK support.
@@ -38,7 +38,7 @@ Cycles through or directly selects iRacing black box screens, from a keypad butt
 
 ### Platform availability (dial)
 
-The dial surface is **Elgato Stream Deck+ only** (#786): the Mirabox and Ulanzi manifests declare no dial controllers, so the action registers keypad-only there until knob/dial input is verified on real hardware (`docs/reference/stream-deck-plus-encoders.md` §8).
+On a **Mirabox knob** (#1013) the same dial surface runs with its identity drawing on the 176×112 screen above the knob; a knob has turn and push only (a hold or a push+turn sends a lone `dialDown` and fires nothing, a screen tap is a push), so the dial PI shows only the rotation settings, the appearance colours and the Push slot. The Ulanzi manifest declares no dial controllers. See `docs/reference/stream-deck-plus-encoders.md` §8.
 
 ## Settings
 
@@ -134,7 +134,7 @@ All Direct mode icons include a small "BB" label in the corner to distinguish th
 
 ### Dial (touch strip)
 
-A dial instance has no keypad icon — its display is the self-drawn 200×100 touch-strip slot (Elgato Stream Deck+ only). Unlike other dials, the strip shows **identity only**: iRacing exposes no telemetry for which black box is open, so there is no live readback to render.
+A dial instance has no keypad icon — its display is the self-drawn 200×100 touch-strip slot on a Stream Deck+, or a separate knob drawing at 176×112 on the screen above a Mirabox knob (`renderBlackBoxStrip` / `renderBlackBoxKnob`). Unlike other dials, the strip shows **identity only**: iRacing exposes no telemetry for which black box is open, so there is no live readback to render.
 
 | State | Strip slot |
 |-------|------------|
@@ -149,4 +149,4 @@ A dial instance has no keypad icon — its display is the self-drawn 200×100 to
 - Rotation coalesces a fast spin into up to 5 binding taps per rotate event rather than tapping once per detent regardless of speed
 - Press and long-press are classified at `dialUp` (a duration comparison against the **Long-press threshold** global setting, default 500 ms, with a guard so a rotation while held pre-empts both press actions) — there is no mid-hold timer
 - The touch slots default to **None** for VR drivers who cannot see the touch strip — rotation and press still work
-- The Tap Display and Long Touch settings are hidden on Mirabox, which has no plugin touch strip
+- The Long Press, Tap Display and Long Touch settings are hidden on Mirabox, whose knob has turn and push only

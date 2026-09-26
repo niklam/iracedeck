@@ -2,7 +2,7 @@
 
 Authoritative reference for how Stream Deck+ dials (encoders) and the LCD touch strip actually work, plus the verified state of Mirabox knob/touch support. Produced for issue #640 as the foundation for rebuilding dial support; researched against the official Elgato SDK docs/schemas/Node SDK (v2.1.0, 2026-06-11) and the Mirabox Stream Dock plugin SDK. Project-facing conventions live in `.claude/rules/encoders-and-touchscreen.md`.
 
-**Current project state (rebuild begun, #681):** the dial-support rebuild has started. The **Fuel Service dial surface** (the former standalone `fuel-dial` action, merged into Fuel Service in #759) is the first/reference dial implementation — Elgato declares `["Keypad", "Encoder"]` with a custom touch layout (`com.iracedeck.sd.core.sdPlugin/layouts/fuel-service.json`) and `setFeedback` wiring. The Mirabox and Ulanzi manifests declare **no dial controllers** (#786): dial actions are Elgato-only until knob/dial input is verified on real hardware (§8 below); when re-enabling, Mirabox declares `["Keypad", "Knob"]` with no layout/feedback. deck-core now carries `IDeckActionContext.isDial/setFeedback/setFeedbackLayout`, `IDeckTouchTapEvent` + `onTouchTap`, and the `DeckFeedbackPayload` model (`feedback-types.ts`); the Elgato adapter bridges these to `DialAction` and the Mirabox adapter no-ops feedback. Project-facing conventions and the gating rules live in `.claude/rules/encoders-and-touchscreen.md`; the reference implementation is `packages/iracing-actions/src/actions/fuel-service/fuel-dial-surface.ts`.
+**Current project state (rebuild begun, #681):** the dial-support rebuild has started. The **Fuel Service dial surface** (the former standalone `fuel-dial` action, merged into Fuel Service in #759) is the first/reference dial implementation — Elgato declares `["Keypad", "Encoder"]` with a custom touch layout (`com.iracedeck.sd.core.sdPlugin/layouts/fuel-service.json`) and `setFeedback` wiring. Since #1013 the Mirabox manifest declares `["Keypad", "Knob"]` on every dial action (no config block), after knob input was observed on real hardware (§8 below); the Ulanzi manifest still declares **no dial controllers**. deck-core carries `IDeckActionContext.isDial/setFeedback/setFeedbackLayout`, `IDeckTouchTapEvent` + `onTouchTap`, the `DeckFeedbackPayload` model (`feedback-types.ts`), and the dial-canvas seam (`dialCanvas()` / `setDialCanvas()` over a `DialCanvasProfile` from `dial-canvas.ts`: the 200×100 strip slot on Elgato, the 176×112 screen above a Mirabox knob); the Elgato adapter bridges these to `DialAction`, and the Mirabox adapter no-ops feedback and draws the knob screen through `setImage`. Project-facing conventions and the gating rules live in `.claude/rules/encoders-and-touchscreen.md`; the reference implementation is `packages/iracing-actions/src/actions/fuel-service/fuel-dial-surface.ts`.
 
 ## 1. Hardware reality
 
@@ -27,7 +27,7 @@ Authoritative reference for how Stream Deck+ dials (encoders) and the LCD touch 
 | N4 / N4 Pro / N4E | 10 LCD keys | 4 | LCD strip (host-managed: shows knob icons, swipes pages) |
 | M18 | 15 LCD keys + 3 buttons | none | no |
 
-The only Mirabox hardware iRaceDeck has been confirmed on is the 293-class (PR #473 added 293S `Information`-area sizing) — i.e. devices **without** knobs.
+iRaceDeck was first confirmed on the 293-class (PR #473 added 293S `Information`-area sizing) — devices **without** knobs. Knobs were confirmed in #1013 on the maintainer's Mirabox knob device and on a Soomfon CN003 (an N4-class clone); §8 has what they send.
 
 ### Image dimensions (Mirabox)
 
@@ -124,45 +124,37 @@ The Stream Dock events-sent docs define only `setImage`, `setTitle`, `setSetting
 - Type narrowing: `action.isDial(): this is DialAction<T>` / `action.isKey()` — needed in `onWillAppear` where the action is a union; in `onDialRotate` etc. it is already a `DialAction`.
 - Version notes: `@elgato/streamdeck` v2 README requires Node 24 and Stream Deck 7.1+ (`resources` payload field is 7.1+); the underlying encoder protocol features are much older (6.0–6.5).
 
-## 8. Mirabox knobs & touch — the verified answer (#640)
+## 8. Mirabox knobs & touch — the observed answer (#1013)
 
-**Question:** do Mirabox knobs/touch actually function for third-party plugins via the VSD Craft / Stream Dock plugin WebSocket protocol?
+The #1013 reporter tested Fuel Service on a Soomfon CN003 (an N4-class clone), and the maintainer then ran a raw-event probe build (every host event logged, settings stripped) on his own Mirabox knob device on 2026-09-26. The two devices agreed.
 
-| Claim | Verdict | Basis |
-| ----- | ------- | ----- |
-| Protocol defines `dialRotate` (`ticks`, `pressed`), `dialDown`, `dialUp`, `Controllers: ["Knob"]` | **Verified from docs** | Official SDK reference (sdk.key123.vip) + SDK headers |
-| Host delivers knob events to WebSocket plugins | **Verified from docs / strongly inferred** | Mirabox's own store-shipped VoiceMeeter and Discord plugins are knob-driven over this exact protocol; a Mirabox collaborator confirmed the shipped Discord knob feature; an independent plugin author reports receiving the events on real hardware |
-| A real `dialUp` is delivered on release | **Verified from docs / SDK** | `kESDSDKEventDialUp` exists in the StreamDock C++ SDK and the Qt SDK, and our `deck-adapter-mirabox` wires `dialUp` (not just `dialDown`). Press AND release are part of the protocol — `dialUp` is not synthesized immediately after `dialDown` at the protocol level |
-| Press-and-hold gestures work on knobs | **Yes at the protocol level; one device-specific report says otherwise** | Press/long-press are classified at `dialUp` (held duration ≥ threshold), so any real release timing supports them. One unverified third-party report claims `dialUp` arrives immediately after `dialDown` on N4-class hardware (Bitfocus Companion's N4 docs phrase it as "rotary encoders do not provide individual press and release events"); treat that as a device-specific, unconfirmed report, not protocol truth. Even if true on a given knob, it only degrades a hold to a short press — it cannot break a long-press whose default is non-essential |
-| Our adapter's dial wiring is protocol-correct | **Verified from code** | `deck-adapter-mirabox/src/adapter.ts` registers `dialRotate`/`dialDown`/`dialUp`, passes `ticks` through, tracks `controller: "Knob"`; unit-tested against a mocked client |
-| Our plugin receives knob events through VSD Craft on real knob hardware | **Unknown — needs hardware test** | All in-repo Mirabox hardware evidence is 293-class (no knobs); no commit/test ever recorded an observed knob event |
-| Plugin-drawable touch strip (`touchTap` with position, `setFeedback`, layouts) | **Not supported (verified from docs)** | Absent from the official events docs; zero usages in Mirabox's own plugins; Mirabox's porting guide states `setFeedback`/layouts don't exist and the N4 strip is host-managed (knob icons via `setImage`, built-in swipe paging) |
+| Input on the knob | What the host sent |
+| --- | --- |
+| Placing Fuel Service on a knob | `willAppear` with `payload.controller: "Knob"` |
+| Rotate | `dialRotate`, `ticks` ±1 per detent, `pressed: false` |
+| Short click | `dialDown` + `dialUp`, 50 ms apart every time |
+| Hold 5 s | a lone `dialDown`, **no `dialUp` ever** |
+| Push and turn | a lone `dialDown`, **no `dialRotate`**, no `dialUp` |
+| Tap the screen above the knob | `dialDown` + `dialUp`, 50 ms apart — a knob press |
+| Touch-hold the screen 2 s | `dialDown` + `dialUp`, 50 ms apart — same as a tap |
+
+So on Mirabox the knob has exactly two gestures, rotate and press, and a screen tap is the same press. Long-press, push+turn and touch never reach the plugin as anything distinguishable. `setImage` on a Knob context draws on the LCD segment above the knob, and a 176×112 drawing reads comfortably on the device — that is what `setDialCanvas` targets. No plugin-facing touch strip API exists (unchanged).
+
+This corrects two earlier readings of the protocol: a Mirabox hold does **not** "degrade to a short press" (it fires nothing, because the classifier waits for a `dialUp` that never comes), and `dialRotate.pressed` is **never** `true` on Mirabox (a push+turn sends no rotation at all). The third-party report the old verdict set aside — Bitfocus Companion's N4 docs saying the "rotary encoders do not provide individual press and release events" — is consistent with what was measured: the fixed 50 ms gap suggests the host synthesizes the pair on a click rather than reporting the physical release.
 
 **On the event names & the native touch bar.** The Mirabox plugin SDK *does* define a `touchTap` handler in its TypeScript defs (`_streamdock.d.ts`), but it carries the key-area payload (`coordinates {column,row}`, **no** `controller` field) — the Stream Deck+-heritage *key tap*, not a strip surface — and is unused/unverified through VSD Craft. `touchBarTap`/`touchBarSlide` (named in a VSDinside blog post) are **not** real protocol events (zero code hits anywhere in MiraboxSpace). The N4 Pro's genuine analog touch bar — absolute `x`/`y` touch points (`EventType.TOUCH_POINT`, `set_touch_bar_callback`) — exists **only** in the native Device SDK (`StreamDockN4Pro`), i.e. USB/HID; it is not exposed over the plugin WebSocket, so iRaceDeck cannot consume it without a different (non-VSD-Craft) integration.
-
-**Practical implication:** Mirabox dial **rotation, press, and release** are worth rebuilding — the protocol delivers `dialRotate`/`dialDown`/`dialUp` and our adapter already speaks them. Press / long-press / push+turn are classified at `dialUp` (no timer), so they are cross-platform; a long-press default should still be non-essential (a knob that reported release instantly would silently downgrade it to a short press). Mirabox **touchscreen feedback should be written off** — no plugin-facing touch strip exists, so Tap Display / Long Touch / bar feedback only function on Elgato.
-
-### Hardware-test checklist (needs an N3/N4-class device owner)
-
-1. Can an action declaring `"Knob"` be dragged onto a knob slot in VSD Craft / Mirabox Space, and does a `Knob` config block (layout/TriggerDescription) break anything? (First-party plugins omit the block.)
-2. On placement, does the plugin log `willAppear` with `payload.controller: "Knob"`? (Enable `debugLogging`; check `<plugin>/log/<date>.log`.)
-3. Rotation: do `dialRotate` events arrive; what is `ticks` per detent; do fast spins coalesce into |ticks| > 1; is `pressed` present?
-4. Press: do `dialDown`/`dialUp` arrive, and does `dialUp` fire at physical release (hold for 2+ seconds and confirm the gap)? The protocol delivers a real `dialUp`; this check confirms the timing on a specific knob. Even if a device synthesizes `dialUp` early, long-press merely downgrades to a short press — it doesn't break the action.
-5. Does `setImage` on a Knob context render to the N4 LCD strip segment above the knob?
-6. Does tapping the LCD strip deliver any event (`touchTap` or otherwise) to the plugin, and with what payload?
-7. Regression check on 293S: `Information` contexts still behave as today.
 
 ## 9. Implementation patterns & pitfalls for the rebuild
 
 - **Treat `ticks` as a signed delta, not ±1.** Multiply the step size by `ticks`; never count events.
-- **Rotate-while-pressed** is delivered on **both** Elgato and Mirabox via `dialRotate.pressed` — no manual `dialDown` state tracking needed for that. But if `dialUp` also triggers a "click" action, suppress the click when a rotation occurred between down and up (the `rotatedWhilePressed` guard, classified as a push+turn).
-- **No native dial long-press event** exists (the trigger vocabulary for the dial is only Rotate/Push on Elgato; Mirabox has none) — classify it at `dialUp` by comparing the held duration against a threshold (`classifyDialRelease` / `DIAL_LONG_PRESS_THRESHOLD_MS` in `deck-core`), **not** by counting a mid-hold `setTimeout`. This works cross-platform: a knob that reported release instantly simply downgrades a hold to a short press. The touchscreen's long-touch IS native (`touchTap` with `hold: true`) but is Elgato-only.
+- **Rotate-while-pressed** is delivered on Elgato via `dialRotate.pressed` — no manual `dialDown` state tracking needed for that. A Mirabox knob never sends it: a push+turn there is a lone `dialDown` with no rotation (§8). But if `dialUp` also triggers a "click" action, suppress the click when a rotation occurred between down and up (the `rotatedWhilePressed` guard, classified as a push+turn).
+- **No native dial long-press event** exists (the trigger vocabulary for the dial is only Rotate/Push on Elgato; Mirabox has none) — classify it at `dialUp` by comparing the held duration against a threshold (`classifyDialRelease` / `DIAL_LONG_PRESS_THRESHOLD_MS` in `deck-core`), **not** by counting a mid-hold `setTimeout`. It only works where the host reports the physical release: a Mirabox hold sends a lone `dialDown` and no `dialUp` (§8), so a hold fires nothing there and the plugin compiles long-press out on Mirabox (`__FEATURE_DIAL_EXTENDED_GESTURES__`). The touchscreen's long-touch IS native (`touchTap` with `hold: true`) but is Elgato-only.
 - **Touch hit-testing**: `tapPos` is relative to the action's 200×100 slot, so hit-test directly against layout item `rect`s. Elgato guideline: interactive touch targets ≥ 35×35 px.
-- **Throttle feedback**: official guideline is a maximum of **10 `setFeedback` calls per second** per dial (same as key images). Coalesce telemetry-driven updates.
+- **Throttle feedback**: official guideline is a maximum of **10 `setFeedback` calls per second** per dial (same as key images). Coalesce telemetry-driven updates. The plugin applies the same cap to every `setDialCanvas` push, strip or knob.
 - **Branch on `controller`** in `willAppear` — an action declaring `["Keypad", "Encoder"]` can be on either surface, and `setImage`/`setFeedback` address different things per surface.
 - **Keypad-only actions on dials**: users can wrap them via Stream Deck's "Action Trigger" feature (rotate/press each fire a key action); the plugin just sees normal key events and cannot detect the wrapping.
 - **Layout authoring traps**: same-`zOrder` overlap is invalid; one out-of-bounds rect kills the whole layout; `key`/`rect`/`type` are immutable — restructure via `enabled`/`opacity`/`zOrder` or `setFeedbackLayout`; name the user-stylable text item exactly `title`.
-- **Platform-agnostic action code**: keep dial behavior in shared `iracing-actions` handlers consuming `IDeck*` events; gate Elgato-only surfaces (touch, feedback layouts) behind platform feature flags per `.claude/rules/platform-feature-flags.md` so the Mirabox bundle never ships dead touch code.
+- **Platform-agnostic action code**: keep dial behavior in shared `iracing-actions` handlers consuming `IDeck*` events; gate the Elgato-only gestures (touch, trigger descriptions, long-press, push+turn, the hold preview) behind `__FEATURE_DIAL_EXTENDED_GESTURES__` per `.claude/rules/platform-feature-flags.md`, and draw the dial's screen through `setDialCanvas()` on every host.
 
 ## Sources
 
