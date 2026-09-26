@@ -3,6 +3,7 @@ import {
   FragmentDefinitionSchema,
   FrameDefinitionSchema,
   NO_FRAME,
+  packId,
   POOL_DEFINITION_NAME_PATTERN,
   PoolDefinitionSchema,
   RESERVED_FRAME_NAME_MESSAGE,
@@ -16,8 +17,10 @@ import { z } from "zod";
 import type { SynthesizeOptions } from "./elevenlabs.ts";
 import type { Manifest } from "./manifest.ts";
 
-// Voice and group keys must start with a letter — they're category labels and
-// never purely numeric in practice.
+// Group keys (and frame and fragment names, below) must start with a letter —
+// they're category labels and never purely numeric in practice. A VOICE id is
+// not held to this copy: it becomes the pack's voice id, so it takes the pack
+// format's own `packId` rule (`loadVoiceConfigs`).
 const kebab = z.string().regex(/^[a-z][a-z0-9-]*$/, "must be lowercase kebab-case (a-z, 0-9, dashes)");
 
 // The keys of the four callout-script maps (#1064, #1065). Each is the rule
@@ -181,8 +184,10 @@ export type PronunciationDictionaryLocator = z.infer<typeof PronunciationDiction
 export type ApplyTextNormalization = z.infer<typeof ApplyTextNormalizationSchema>;
 
 // Filenames in `configs/` follow `<voice-id>.voice.json`; the stem becomes
-// the runtime voice id (kebab-case, matches the on-disk `voice/<id>/...`
-// directory).
+// the runtime voice id (matches the on-disk `voice/<id>/...` directory) and
+// the voice's id in its pack's `voice-pack.json`, so it is held to the pack
+// format's `packId` rule from `@iracedeck/callout-script` — the one the
+// plugin's scanner admits a voice id by, not a copy of it (#1134).
 const VOICE_FILE_SUFFIX = ".voice.json";
 
 /**
@@ -200,9 +205,13 @@ export function loadVoiceConfigs(configsDir: string): Map<string, VoiceConfig> {
   const map = new Map<string, VoiceConfig>();
 
   for (const voiceId of ids) {
-    kebab.parse(voiceId);
-
     const fileName = `${voiceId}${VOICE_FILE_SUFFIX}`;
+    const id = packId.safeParse(voiceId);
+
+    if (!id.success) {
+      throw new Error(`Invalid voice id "${voiceId}" (from ${fileName}): ${id.error.issues[0]?.message ?? "invalid"}`);
+    }
+
     const raw = readFileSync(path.join(configsDir, fileName), "utf-8");
     let json: unknown;
 
