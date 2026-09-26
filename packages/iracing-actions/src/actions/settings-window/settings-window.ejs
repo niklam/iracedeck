@@ -135,6 +135,10 @@
 			.sw-grid.single { grid-template-columns: minmax(0, 1fr); }
 			/* A second block under a pane's first grid (another grid, the links row). */
 			.sw-grid + .sw-grid, .sw-grid + .sw-links { margin-top: 14px; }
+			/* Two cards sharing one grid column (#1145: Voice Packs above Setup
+			   Warning Patterns). Same vertical gap as the grid's rows; min-width:0 so
+			   the column can still shrink to the grid's floor. */
+			.sw-stack { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 			/* accordion.ejs in settingsWindow mode renders these */
 			.ird-sw-card {
 				background: var(--sw-bg-alt); border: 1px solid var(--sw-line); border-radius: 6px;
@@ -367,13 +371,16 @@
 				</div>
 			</section>
 
-			<%# ---- Race Engineer: the three partials pit-crew.ejs wraps in its accordions ---- %>
+			<%# ---- Race Engineer: the three Race Engineer partials, plus the settings-window-only Voice Packs card (#1145) ---- %>
 			<section class="sw-pane" id="pane-engineer" hidden>
 				<h2>Race Engineer</h2>
-				<p class="sw-sub">Voice, radar, per-callout opt-ins and setup warnings — plugin-wide, the same settings the Pit Crew action's inspector shows.</p>
+				<p class="sw-sub">Voice, voice packs, radar, per-callout opt-ins and setup warnings — all plugin-wide.</p>
 				<div class="sw-grid">
-					<%- include('accordion', { title: 'Race Engineer & Radar', content: include('race-engineer-settings', { settingsWindow: true }), settingsWindow: true }) %>
-					<%- include('accordion', { title: 'Setup Warning Patterns', content: include('setup-warning-patterns'), settingsWindow: true }) %>
+					<%- include('accordion', { title: 'Race Engineer & Radar', content: include('race-engineer-settings'), settingsWindow: true }) %>
+					<div class="sw-stack">
+						<%- include('accordion', { title: 'Voice Packs', content: include('voice-packs', { settingsWindow: true }), settingsWindow: true }) %>
+						<%- include('accordion', { title: 'Setup Warning Patterns', content: include('setup-warning-patterns'), settingsWindow: true }) %>
+					</div>
 				</div>
 				<div class="sw-grid single">
 					<%- include('accordion', { title: 'Callouts', content: include('race-engineer-callouts'), settingsWindow: true }) %>
