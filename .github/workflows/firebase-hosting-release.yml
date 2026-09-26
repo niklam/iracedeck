@@ -64,7 +64,8 @@ jobs:
       # the action to read — see #386.
       - name: Read the checkout's pnpm pin
         id: pnpm-pin
-        run: echo "version=$(node -p "require('./package.json').packageManager.split('@')[1]")" >> "$GITHUB_OUTPUT"
+        # `pnpm@x.y.z` or corepack's `pnpm@x.y.z+sha512.…`; the action compares the bare version.
+        run: echo "version=$(node -p "require('./package.json').packageManager.split('@')[1].split('+')[0]")" >> "$GITHUB_OUTPUT"
 
       - uses: pnpm/action-setup@v6
         with:
