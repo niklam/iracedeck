@@ -32,14 +32,14 @@ Two facts in the current docs are wrong and are corrected by this change: a Mira
 
 ## What the code looks like today
 
-- **All sixteen surfaces push the same thing.** Each ends its render path in `setFeedback({ box: svgToDataUri(svg) })`: one full-canvas 200×100 pixmap keyed `box`, the only item in every Elgato layout under `layouts/`. Thirteen build the SVG through `renderDialBox` in `shared/dial-box.ts`; Fuel Service, Audio Controls and Camera Controls draw their own.
+- **All sixteen surfaces push the same thing.** Each ends its render path in `setFeedback({ box: svgToDataUri(svg) })`: one full-canvas 200×100 pixmap keyed `box`, the only item in every Elgato layout under `layouts/`. Twelve build the SVG through `renderDialBox` in `shared/dial-box.ts`; Fuel Service, Audio Controls, Camera Controls and Black Box Selector draw their own.
 - **`__FEATURE_DIAL_FEEDBACK__` gates four things at once:** the `touchTap` handler, the #1120 hold preview, `setTriggerDescription`, and the render. The `dialFeedback` key in each plugin's `platform-features.json` also hides Tap Display / Long Touch in the PI templates.
 - **The Mirabox adapter has no image size per controller.** `setImage` rasterizes every context to the flat square `DEFAULT_KEY_IMAGE_SIZE` (144).
 
 ## Approaches weighed
 
 - **Translate `setFeedback` into `setImage` inside the Mirabox adapter.** Rejected: the 200×100 drawing letterboxes into 176×112 and the adapter learns the Elgato layout's `box` key.
-- **Reflow one layout at each canvas size** (`renderDialBox` already takes `width`/`height`). Rejected by the maintainer: one design stretched to a squarer screen is not a design for the knob, and the three self-drawn surfaces have 200×100 geometry written in.
+- **Reflow one layout at each canvas size** (`renderDialBox` already takes `width`/`height`). Rejected by the maintainer: one design stretched to a squarer screen is not a design for the knob, and the self-drawn surfaces have 200×100 geometry written in.
 - **Branch on the platform in every surface.** Rejected: sixteen copies of one routing decision.
 - **A dial-canvas seam in deck-core, with a separate renderer per device over shared primitives (chosen).**
 
@@ -82,8 +82,8 @@ The profile is a description of **hardware**, so it lives in deck-core beside th
 Every dial drawing has a strip renderer and a knob renderer, selected by `profile.id`. They are deliberately separate functions — similar vocabulary, independent composition — so the knob design can drop, enlarge or rearrange elements without touching the strip.
 
 - **Shared primitives** stay in one place and are used by both: the colour resolution (`resolveDialBoxColors`, `dialAppearanceFields`), the pending bar (`renderPendingBar`), the binding warning, value-fitting, and the self-drawn pieces a surface reuses across its two renderers (Fuel Service's `renderFuelBarSvg`).
-- **`renderDialBox`** becomes a dispatcher over `renderStripBox` (today's drawing, byte-identical output at 200×100) and `renderKnobBox` (new), serving the thirteen surfaces that use it.
-- **Fuel Service, Audio Controls and Camera Controls** each gain a knob renderer beside their strip renderer. Fuel Service's is the proof-of-concept drawing the maintainer approved on the device: the same band, readout and two-segment bar, with a larger readout (up to 30 px) and a taller full-width bar.
+- **`renderDialBox`** becomes a dispatcher over `renderStripBox` (today's drawing, byte-identical output at 200×100) and `renderKnobBox` (new), serving the twelve surfaces that use it.
+- **Fuel Service, Audio Controls, Camera Controls and Black Box Selector** each gain a knob renderer beside their strip renderer. Fuel Service's is the proof-of-concept drawing the maintainer approved on the device: the same band, readout and two-segment bar, with a larger readout (up to 30 px) and a taller full-width bar.
 - **The primitives and `renderDialBox` stay free of sim imports** — they import only deck-core and zod today. A guard test fails if any file under `shared/dial-*` imports `@iracedeck/iracing-sdk` or `@iracedeck/sim-events-iracing`, so they remain liftable into a sim-neutral package when a second action package exists. Moving them now is not part of this change.
 
 ### Surfaces
