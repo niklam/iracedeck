@@ -11,8 +11,8 @@
  * Its methods operate on the `dial` sub-object (a {@link DialSettings}).
  *
  * Rotating adjusts one TC slot (TC1–TC4) via the same key bindings as the keypad
- * surface; the touch strip shows the live telemetry value in a color-coded "dash
- * box". Pressing runs a configurable gesture (default: toggle TC). The dash box
+ * surface; the dial's own screen — the Stream Deck+ strip or the Stream Dock
+ * knob segment — shows the live telemetry value in a color-coded "dash box". Pressing runs a configurable gesture (default: toggle TC). The dash box
  * also ships a label-only (identity-only) branch — an empty value draws just the
  * centered label — for family uniformity with the setup dials whose values
  * iRacing exposes no `dc*` telemetry for. No Traction setting triggers it.
@@ -20,8 +20,8 @@
 import {
   classifyDialRelease,
   createHoldPreview,
-  type DeckFeedbackPayload,
   type DeckTriggerDescription,
+  type DialReleaseKind,
   getDualPressThresholdMs,
   type HoldPreview,
   type IDeckActionContext,
@@ -32,13 +32,12 @@ import type { ILogger } from "@iracedeck/logger";
 import z from "zod";
 
 import { toggleStateFromLevel } from "../../icons/status-bar.js";
-import { dialAppearanceFields, resolveDialBoxColors } from "../../shared/dial-box.js";
-import { renderDialNameIcon } from "../../shared/dial-name-icon.js";
+import { dialAppearanceFields, renderDialBox, resolveDialBoxColors } from "../../shared/dial-box.js";
+import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
 import type { DialPendingPreview } from "../../shared/dial-preview.js";
-import { renderStripBox } from "../../shared/dial-strip-box.js";
 import { formatViewValue, type ViewSettingId } from "../../shared/setup-view.js";
 
-/** Minimum gap (ms) between change-driven feedback pushes (≤10 setFeedback/s/dial). */
+/** Minimum gap (ms) between change-driven feedback pushes (≤10 pushes/s/dial on the strip). */
 const CHANGE_RENDER_MIN_INTERVAL_MS = 100;
 
 /**
@@ -213,7 +212,7 @@ function gestureLabel(action: GestureSlot): string | undefined {
 }
 
 /**
- * The hold preview compiled out on the hosts with no plugin touch strip. Every
+ * The hold preview compiled out on the hosts with no long press. Every
  * call site stays unconditional and `__FEATURE_DIAL_EXTENDED_GESTURES__` folds to `false`
  * there, so terser drops this object's users and `createHoldPreview` with them.
  */
@@ -295,7 +294,7 @@ export interface SetupTractionDialHost {
 
 /**
  * Owns all per-dial-context state, dispatches rotations and gestures, and renders
- * the touch-strip feedback. The owning action routes every dial lifecycle/input
+ * the dial-screen feedback. The owning action routes every dial lifecycle/input
  * event here and forwards telemetry ticks per subscribed context.
  */
 export class SetupTractionDialSurface {
@@ -306,11 +305,7 @@ export class SetupTractionDialSurface {
   async willAppear(action: IDeckActionContext, dial: DialSettings): Promise<void> {
     const ctx = this.ensureContext(action, dial);
 
-    action
-      .setImage(renderDialNameIcon({ line1: "SETUP", line2: "TRACTION", backgroundColor: "#1a3a2a" }))
-      .catch((err) => {
-        this.host.logger.debug(`Dial name icon push failed: ${String(err)}`);
-      });
+    pushDialNameIcon(action, { line1: "SETUP", line2: "TRACTION", backgroundColor: "#1a3a2a" }, this.host.logger);
 
     await this.applyTriggerDescription(ctx);
     await this.renderFeedback(ctx);
@@ -376,12 +371,16 @@ export class SetupTractionDialSurface {
 
     if (pressStartMs === 0) return;
 
-    const kind = classifyDialRelease({
-      pressStartMs,
-      nowMs: Date.now(),
-      rotatedWhilePressed: ctx.rotatedWhilePressed,
-      thresholdMs: getDualPressThresholdMs(),
-    });
+    // A knob reports no long hold (its dialUp never comes) and no push+turn, so
+    // where the extended gestures are compiled out every release is a press.
+    const kind: DialReleaseKind = __FEATURE_DIAL_EXTENDED_GESTURES__
+      ? classifyDialRelease({
+          pressStartMs,
+          nowMs: Date.now(),
+          rotatedWhilePressed: ctx.rotatedWhilePressed,
+          thresholdMs: getDualPressThresholdMs(),
+        })
+      : "short";
 
     if (kind === "push-turn") return;
 
@@ -446,7 +445,7 @@ export class SetupTractionDialSurface {
         lastChangeRenderAt: 0,
         preview: null,
         // Replaced immediately below — the preview's callbacks close over the
-        // very context being built. On a host with no plugin touch strip the
+        // very context being built. On a host with no long press the
         // no-op is what stays.
         holdPreview: NOOP_HOLD_PREVIEW,
       };
@@ -460,7 +459,7 @@ export class SetupTractionDialSurface {
     return ctx;
   }
 
-  /** The per-context hold preview, or the no-op where there is no touch strip. */
+  /** The per-context hold preview, or the no-op where there is no long press. */
   private createPreview(ctx: SetupTractionDialContext): HoldPreview {
     if (!__FEATURE_DIAL_EXTENDED_GESTURES__) return NOOP_HOLD_PREVIEW;
 
@@ -558,14 +557,14 @@ export class SetupTractionDialSurface {
   }
 
   private async renderFeedback(ctx: SetupTractionDialContext): Promise<void> {
-    if (!__FEATURE_DIAL_EXTENDED_GESTURES__) return;
+    // The dial's own screen decides the drawing; a key or a host with no dial
+    // screen has nothing to draw on (#1013).
+    const canvas = ctx.action.dialCanvas();
 
-    if (!ctx.action.isDial()) return;
+    if (!canvas) return;
 
     const setting = ctx.dial.setting;
-    const boxSvg = renderStripBox({
-      width: 200,
-      height: 100,
+    const boxSvg = renderDialBox(canvas, {
       abbr: MODE_ABBR[setting],
       value: formatDialValue(setting, this.host.getTelemetry()),
       colors: resolveDialBoxColors(ctx.dial.colors, MODE_COLOR[setting]),
@@ -575,8 +574,7 @@ export class SetupTractionDialSurface {
       // global-settings refresh mid-hold redraws it instead of wiping it.
       pending: ctx.preview,
     });
-    const feedback: DeckFeedbackPayload = { box: svgToDataUri(boxSvg) };
-    await ctx.action.setFeedback(feedback);
+    await ctx.action.setDialCanvas(svgToDataUri(boxSvg));
 
     ctx.lastRenderSig = this.displayedSignature(ctx);
     ctx.lastChangeRenderAt = Date.now();

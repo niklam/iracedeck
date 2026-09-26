@@ -219,6 +219,8 @@ function fakeDialEvent(actionId: string, settings: Record<string, unknown> = {})
       id: actionId,
       isKey: () => false,
       isDial: () => true,
+      dialCanvas: () => ({ id: "sd-plus-strip", width: 200, height: 100 }) as const,
+      setDialCanvas: vi.fn().mockResolvedValue(undefined),
       setTitle: vi.fn(),
       setImage: vi.fn().mockResolvedValue(undefined),
       setFeedback: vi.fn().mockResolvedValue(undefined),
@@ -539,12 +541,13 @@ describe("SetupBrakes", () => {
       expect(mockTapBinding).toHaveBeenCalledWith("setupBrakesAbsToggle");
     });
 
-    it("renders the touch strip but no key image or active binding for a dial instance", async () => {
+    it("renders the dial canvas but no key image or active binding for a dial instance", async () => {
       const ev = fakeDialEvent("dial-1", { dial: { setting: "brake-bias" } });
 
       await action.onWillAppear(ev as any);
 
-      expect(ev.action.setFeedback).toHaveBeenCalled();
+      expect(ev.action.setDialCanvas).toHaveBeenCalled();
+      expect(ev.action.setFeedback).not.toHaveBeenCalled();
       expect((action as any).setKeyImage).not.toHaveBeenCalled();
       expect((action as any).setActiveBinding).not.toHaveBeenCalled();
     });

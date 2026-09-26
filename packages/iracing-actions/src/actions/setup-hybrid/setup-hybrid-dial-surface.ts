@@ -10,15 +10,16 @@
  * operate on the `dial` sub-object.
  *
  * Rotating adjusts one MGU-K setting (deploy mode, regen gain, fixed deploy) via
- * the same key bindings as the keypad surface; the touch strip shows the live
- * value. Setup Hybrid has no natural toggle, so no press gesture is offered. The
+ * the same key bindings as the keypad surface; the dial's own screen — the
+ * Stream Deck+ strip or the Stream Dock knob segment — shows the live value.
+ * Setup Hybrid has no natural toggle, so no press gesture is offered. The
  * HYS boost/regen hold modes stay keypad-only. The dash box ships a label-only
  * (identity-only) branch for family uniformity; no Hybrid setting triggers it.
  */
 import {
   classifyDialRelease,
-  type DeckFeedbackPayload,
   type DeckTriggerDescription,
+  type DialReleaseKind,
   getDualPressThresholdMs,
   type IDeckActionContext,
   svgToDataUri,
@@ -27,9 +28,8 @@ import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 import z from "zod";
 
-import { dialAppearanceFields, resolveDialBoxColors } from "../../shared/dial-box.js";
-import { renderDialNameIcon } from "../../shared/dial-name-icon.js";
-import { renderStripBox } from "../../shared/dial-strip-box.js";
+import { dialAppearanceFields, renderDialBox, resolveDialBoxColors } from "../../shared/dial-box.js";
+import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
 import { formatViewValue, type ViewSettingId } from "../../shared/setup-view.js";
 
 const CHANGE_RENDER_MIN_INTERVAL_MS = 100;
@@ -190,11 +190,7 @@ export class SetupHybridDialSurface {
   async willAppear(action: IDeckActionContext, dial: DialSettings): Promise<void> {
     const ctx = this.ensureContext(action, dial);
 
-    action
-      .setImage(renderDialNameIcon({ line1: "SETUP", line2: "HYBRID", backgroundColor: "#2a1a3a" }))
-      .catch((err) => {
-        this.host.logger.debug(`Dial name icon push failed: ${String(err)}`);
-      });
+    pushDialNameIcon(action, { line1: "SETUP", line2: "HYBRID", backgroundColor: "#2a1a3a" }, this.host.logger);
 
     await this.applyTriggerDescription(ctx);
     await this.renderFeedback(ctx);
@@ -240,12 +236,16 @@ export class SetupHybridDialSurface {
 
     if (pressStartMs === 0) return;
 
-    const kind = classifyDialRelease({
-      pressStartMs,
-      nowMs: Date.now(),
-      rotatedWhilePressed: ctx.rotatedWhilePressed,
-      thresholdMs: getDualPressThresholdMs(),
-    });
+    // A knob reports no long hold (its dialUp never comes) and no push+turn, so
+    // where the extended gestures are compiled out every release is a press.
+    const kind: DialReleaseKind = __FEATURE_DIAL_EXTENDED_GESTURES__
+      ? classifyDialRelease({
+          pressStartMs,
+          nowMs: Date.now(),
+          rotatedWhilePressed: ctx.rotatedWhilePressed,
+          thresholdMs: getDualPressThresholdMs(),
+        })
+      : "short";
 
     if (kind === "push-turn") return;
 
@@ -360,22 +360,21 @@ export class SetupHybridDialSurface {
   }
 
   private async renderFeedback(ctx: SetupHybridDialContext): Promise<void> {
-    if (!__FEATURE_DIAL_EXTENDED_GESTURES__) return;
+    // The dial's own screen decides the drawing; a key or a host with no dial
+    // screen has nothing to draw on (#1013).
+    const canvas = ctx.action.dialCanvas();
 
-    if (!ctx.action.isDial()) return;
+    if (!canvas) return;
 
     const setting = ctx.dial.setting;
-    const boxSvg = renderStripBox({
-      width: 200,
-      height: 100,
+    const boxSvg = renderDialBox(canvas, {
       abbr: MODE_ABBR[setting],
       value: formatDialValue(setting, this.host.getTelemetry()),
       colors: resolveDialBoxColors(ctx.dial.colors, MODE_COLOR[setting]),
       identityLabelScale: 0.24,
       bindingMissing: this.computeBindingMissing(ctx.dial),
     });
-    const feedback: DeckFeedbackPayload = { box: svgToDataUri(boxSvg) };
-    await ctx.action.setFeedback(feedback);
+    await ctx.action.setDialCanvas(svgToDataUri(boxSvg));
 
     ctx.lastRenderSig = this.displayedSignature(ctx);
     ctx.lastChangeRenderAt = Date.now();

@@ -106,11 +106,16 @@ vi.mock("@iracedeck/deck-core", async () => {
   };
 });
 
-function dialContext(id: string) {
+const STRIP = { id: "sd-plus-strip", width: 200, height: 100 } as const;
+const KNOB = { id: "stream-dock-knob", width: 176, height: 112 } as const;
+
+function dialContext(id: string, canvas: typeof STRIP | typeof KNOB | null = STRIP) {
   return {
     id,
     isKey: () => false,
     isDial: () => true,
+    dialCanvas: () => canvas,
+    setDialCanvas: vi.fn().mockResolvedValue(undefined),
     setImage: vi.fn().mockResolvedValue(undefined),
     setTitle: vi.fn().mockResolvedValue(undefined),
     setSettings: vi.fn().mockResolvedValue(undefined),
@@ -275,7 +280,7 @@ describe("SetupChassis dial surface", () => {
       const ctx = dialContext("d1");
       await appear(ctx, dialSettings({ setting: "lr-spring", units: "imperial" }));
 
-      const feedback = (ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box;
+      const feedback = ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string;
 
       expect(decodeURIComponent(feedback)).toContain('>0.125"<');
     });
@@ -310,12 +315,12 @@ describe("SetupChassis dial surface", () => {
       const ctx = dialContext("d1");
       const settings = { dial: { setting: "lr-spring", pressAction: "toggle-spring-side" } };
       await appear(ctx, settings);
-      ctx.setFeedback.mockClear();
+      ctx.setDialCanvas.mockClear();
 
       await action.onDialDown(basicEvent(ctx, settings) as never);
       await action.onDialUp(basicEvent(ctx, settings) as never);
 
-      const feedback = (ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box;
+      const feedback = ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string;
       const svg = decodeURIComponent(feedback);
       const litRight = /<polygon data-side="right"[^>]*>/.exec(svg)?.[0];
       expect(litRight).toBeDefined();
@@ -354,7 +359,7 @@ describe("SetupChassis dial surface", () => {
       const ctx = dialContext("d1");
       await appear(ctx, dialSettings({ setting: "lr-spring" }));
 
-      const feedback = (ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box;
+      const feedback = ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string;
       const svg = decodeURIComponent(feedback);
 
       expect(svg).toContain('data-side="left"');
@@ -365,7 +370,7 @@ describe("SetupChassis dial surface", () => {
       const ctx = dialContext("d1");
       await appear(ctx, dialSettings({ setting: "differential-preload" }));
 
-      const feedback = (ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box;
+      const feedback = ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string;
 
       expect(decodeURIComponent(feedback)).not.toContain("data-side");
     });
@@ -466,11 +471,50 @@ describe("SetupChassis dial surface", () => {
   });
 
   describe("feedback rendering", () => {
+    it("pushes the strip box through setDialCanvas on the Stream Deck+ profile (#1013)", async () => {
+      const ctx = dialContext("c1", STRIP);
+      await appear(ctx, dialSettings({ setting: "differential-preload" }));
+
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
+
+      expect(decoded).toContain('viewBox="0 0 200 100"');
+      expect(decoded).toContain(">PRELD<");
+      expect(ctx.setFeedback).not.toHaveBeenCalled();
+    });
+
+    it("pushes the knob box on the Stream Dock profile and never a name card there", async () => {
+      const ctx = dialContext("c2", KNOB);
+      await appear(ctx, dialSettings({ setting: "differential-preload" }));
+
+      expect(ctx.setImage).not.toHaveBeenCalled();
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls[0][0] as string);
+
+      expect(decoded).toContain('viewBox="0 0 176 112"');
+      expect(decoded).toContain(">PRELD<");
+      expect(decoded).toContain(">3<");
+    });
+
+    it("pushes nothing at all when the context has no dial canvas", async () => {
+      const ctx = dialContext("c3", null);
+      await appear(ctx, dialSettings({ setting: "differential-preload" }));
+
+      expect(ctx.setDialCanvas).not.toHaveBeenCalled();
+      expect(ctx.setFeedback).not.toHaveBeenCalled();
+      expect(ctx.setImage).not.toHaveBeenCalled();
+    });
+
+    it("keeps pushing the name card on the strip profile (the app's dial-slot image)", async () => {
+      const ctx = dialContext("c4", STRIP);
+      await appear(ctx, dialSettings({ setting: "differential-preload" }));
+
+      expect(decodeURIComponent(ctx.setImage.mock.calls.at(-1)?.[0] as string)).toContain(">CHASSIS<");
+    });
+
     it("pushes the dash box with the live value on a readback setting", async () => {
       const ctx = dialContext("f1");
       await appear(ctx, dialSettings({ setting: "differential-preload" }));
 
-      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
 
       expect(decoded).toContain(">PRELD<");
       expect(decoded).toContain(">3<");
@@ -486,7 +530,7 @@ describe("SetupChassis dial surface", () => {
         }),
       );
 
-      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
 
       expect(decoded).toContain('stroke="#112233"');
       expect(decoded).toContain('fill="#445566"');
@@ -496,7 +540,7 @@ describe("SetupChassis dial surface", () => {
       const ctx = dialContext("fb");
       await appear(ctx, dialSettings({ setting: "rf-shock" }));
 
-      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
 
       expect(decoded).toContain(">RF<");
       expect((decoded.match(/<text/g) ?? []).length).toBe(1);
@@ -517,7 +561,7 @@ describe("SetupChassis dial surface", () => {
       const ctx = dialContext("f6");
       await appear(ctx, dialSettings({ setting: "differential-preload" }));
 
-      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
 
       expect(mockIsBindingMissing).toHaveBeenCalledWith([
         "setupChassisDifferentialPreloadIncrease",
@@ -528,9 +572,9 @@ describe("SetupChassis dial surface", () => {
   });
 
   describe("hold preview (#1120)", () => {
-    /** The last pushed touch-strip pixmap, decoded back to SVG. */
+    /** The last pushed dial-canvas pixmap, decoded back to SVG. */
     function lastBox(ctx: DialContext): string {
-      return decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+      return decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
     }
 
     /** The `<polygon>` for one side marker, or undefined when the box draws none. */
@@ -546,16 +590,16 @@ describe("SetupChassis dial surface", () => {
       const settings = held();
       mockGetCurrentTelemetry.mockReturnValue({ dpWeightJackerLeft: 2.54, DisplayUnits: 1 });
       await appear(ctx, settings);
-      ctx.setFeedback.mockClear();
+      ctx.setDialCanvas.mockClear();
 
       await action.onDialDown(basicEvent(ctx, settings) as never);
       vi.advanceTimersByTime(499);
 
-      expect(ctx.setFeedback).not.toHaveBeenCalled();
+      expect(ctx.setDialCanvas).not.toHaveBeenCalled();
 
       vi.advanceTimersByTime(1);
 
-      expect(ctx.setFeedback).toHaveBeenCalledTimes(1);
+      expect(ctx.setDialCanvas).toHaveBeenCalledTimes(1);
       const decoded = lastBox(ctx);
 
       expect(decoded).toContain(">RR SPR<");
@@ -609,7 +653,7 @@ describe("SetupChassis dial surface", () => {
       await action.onDialDown(basicEvent(ctx, settings) as never);
       vi.advanceTimersByTime(500);
       const promised = lastBox(ctx).includes(">RR SPR<") ? "rr-spring" : "lr-spring";
-      ctx.setFeedback.mockClear();
+      ctx.setDialCanvas.mockClear();
 
       await action.onDialUp(basicEvent(ctx, settings) as never);
 
@@ -628,12 +672,12 @@ describe("SetupChassis dial surface", () => {
       const ctx = dialContext("hp5");
       const settings = held();
       await appear(ctx, settings);
-      ctx.setFeedback.mockClear();
+      ctx.setDialCanvas.mockClear();
 
       await action.onDialDown(basicEvent(ctx, settings) as never);
       vi.advanceTimersByTime(800);
 
-      expect(ctx.setFeedback).not.toHaveBeenCalled();
+      expect(ctx.setDialCanvas).not.toHaveBeenCalled();
 
       vi.advanceTimersByTime(100);
 
@@ -649,11 +693,11 @@ describe("SetupChassis dial surface", () => {
       vi.advanceTimersByTime(500);
 
       expect(lastBox(ctx)).toContain("data-pending-bar");
-      ctx.setFeedback.mockClear();
+      ctx.setDialCanvas.mockClear();
 
       await action.onDialRotate(rotateEvent(ctx, settings, 1, true) as never);
 
-      expect(ctx.setFeedback).toHaveBeenCalled();
+      expect(ctx.setDialCanvas).toHaveBeenCalled();
       const decoded = lastBox(ctx);
 
       expect(decoded).not.toContain("data-pending-bar");
@@ -661,11 +705,11 @@ describe("SetupChassis dial surface", () => {
       expect(marker(decoded, "left")).not.toContain("opacity");
 
       // A push+turn fires no gesture on release and needs no second revert.
-      ctx.setFeedback.mockClear();
+      ctx.setDialCanvas.mockClear();
       ctx.setSettings.mockClear();
       await action.onDialUp(basicEvent(ctx, settings) as never);
 
-      expect(ctx.setFeedback).not.toHaveBeenCalled();
+      expect(ctx.setDialCanvas).not.toHaveBeenCalled();
       expect(ctx.setSettings).not.toHaveBeenCalled();
     });
 
@@ -673,34 +717,34 @@ describe("SetupChassis dial surface", () => {
       const ctx = dialContext("hp7");
       const settings = held();
       await appear(ctx, settings);
-      ctx.setFeedback.mockClear();
+      ctx.setDialCanvas.mockClear();
 
       await action.onDialDown(basicEvent(ctx, settings) as never);
       vi.advanceTimersByTime(200);
       await action.onDialUp(basicEvent(ctx, settings) as never);
 
-      expect(ctx.setFeedback).not.toHaveBeenCalled();
+      expect(ctx.setDialCanvas).not.toHaveBeenCalled();
 
       // The disarmed timer must not fire after the release either.
       vi.advanceTimersByTime(1000);
 
-      expect(ctx.setFeedback).not.toHaveBeenCalled();
+      expect(ctx.setDialCanvas).not.toHaveBeenCalled();
     });
 
     it("previews NOTHING for the black box, whose outcome telemetry never reports", async () => {
       const ctx = dialContext("hp8");
       const settings = held({ longPressAction: "show-pit-stop-black-box" });
       await appear(ctx, settings);
-      ctx.setFeedback.mockClear();
+      ctx.setDialCanvas.mockClear();
 
       await action.onDialDown(basicEvent(ctx, settings) as never);
       vi.advanceTimersByTime(600);
 
-      expect(ctx.setFeedback).not.toHaveBeenCalled();
+      expect(ctx.setDialCanvas).not.toHaveBeenCalled();
 
       await action.onDialUp(basicEvent(ctx, settings) as never);
 
-      expect(ctx.setFeedback).not.toHaveBeenCalled();
+      expect(ctx.setDialCanvas).not.toHaveBeenCalled();
       expect(mockTapBindingSequence).toHaveBeenCalled();
     });
 
@@ -708,12 +752,12 @@ describe("SetupChassis dial surface", () => {
       const ctx = dialContext("hp9");
       const settings = held({ longPressAction: "none" });
       await appear(ctx, settings);
-      ctx.setFeedback.mockClear();
+      ctx.setDialCanvas.mockClear();
 
       await action.onDialDown(basicEvent(ctx, settings) as never);
       vi.advanceTimersByTime(600);
 
-      expect(ctx.setFeedback).not.toHaveBeenCalled();
+      expect(ctx.setDialCanvas).not.toHaveBeenCalled();
     });
 
     it("keeps the preview up when telemetry ticks mid-hold", async () => {
@@ -728,7 +772,7 @@ describe("SetupChassis dial surface", () => {
 
       await action.onDialDown(basicEvent(ctx, settings) as never);
       vi.advanceTimersByTime(500);
-      ctx.setFeedback.mockClear();
+      ctx.setDialCanvas.mockClear();
 
       // Past the change-render throttle window, with a moved live value.
       vi.advanceTimersByTime(150);
@@ -749,7 +793,7 @@ describe("SetupChassis dial surface", () => {
 
       await action.onDialDown(basicEvent(ctx, settings) as never);
       vi.advanceTimersByTime(500);
-      ctx.setFeedback.mockClear();
+      ctx.setDialCanvas.mockClear();
 
       for (const listener of globalListeners) listener();
 
@@ -771,18 +815,80 @@ describe("SetupChassis dial surface", () => {
       expect(lastBox(ctx)).not.toContain("data-pending-bar");
     });
 
-    it("pushes nothing when dial feedback is disabled", async () => {
+    it("with the extended gestures compiled out, arms no timer and pushes no preview frame", async () => {
       vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
-      const ctx = dialContext("hp13");
+      const ctx = dialContext("hp13", KNOB);
       const settings = held();
       await appear(ctx, settings);
-      ctx.setFeedback.mockClear();
+      ctx.setDialCanvas.mockClear();
 
+      const timersBefore = vi.getTimerCount();
       await action.onDialDown(basicEvent(ctx, settings) as never);
+
+      expect(vi.getTimerCount()).toBe(timersBefore);
+
       vi.advanceTimersByTime(600);
       await action.onDialUp(basicEvent(ctx, settings) as never);
 
-      expect(ctx.setFeedback).not.toHaveBeenCalled();
+      expect(ctx.setDialCanvas).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("extended gestures off (Mirabox / Ulanzi)", () => {
+    it("still renders the knob, but pushes no trigger description and ignores touch", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
+      const ctx = dialContext("x1", KNOB);
+      const settings = dialSettings({ setting: "lr-spring", tapAction: "show-pit-stop-black-box" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+      mockTapBindingSequence.mockClear();
+
+      expect(ctx.setDialCanvas).toHaveBeenCalled();
+      expect(ctx.setTriggerDescription).not.toHaveBeenCalled();
+
+      await action.onTouchTap({ action: ctx, payload: { settings, hold: false } } as never);
+
+      expect(mockTapBindingSequence).not.toHaveBeenCalled();
+      expect(mockTapBinding).not.toHaveBeenCalled();
+    });
+
+    it("classifies every release as a short press, however long the hold", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
+      const ctx = dialContext("x2", KNOB);
+      const settings = dialSettings({
+        setting: "lr-spring",
+        pressAction: "show-pit-stop-black-box",
+        longPressAction: "none",
+      });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+      mockTapBindingSequence.mockClear();
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      vi.advanceTimersByTime(2000);
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+
+      expect(mockTapBindingSequence).toHaveBeenCalledWith(["blackBoxLapTiming", "blackBoxPitStop"], 0);
+    });
+
+    it("never fires a long-press action a knob cannot reach", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
+      const ctx = dialContext("x3", KNOB);
+      const settings = dialSettings({
+        setting: "lr-spring",
+        pressAction: "none",
+        longPressAction: "show-pit-stop-black-box",
+      });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+      mockTapBindingSequence.mockClear();
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      vi.advanceTimersByTime(2000);
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+
+      expect(mockTapBindingSequence).not.toHaveBeenCalled();
+      expect(mockTapBinding).not.toHaveBeenCalled();
     });
   });
 
