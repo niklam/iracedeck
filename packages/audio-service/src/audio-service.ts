@@ -406,17 +406,14 @@ class AudioService implements IAudioService {
   private deviceRunning = false;
   private idleStopTimer: ReturnType<typeof setTimeout> | null = null;
 
+  // The Volume Mixer identity (#1253), handed to the native layer by init().
+  private readonly identity: AudioSessionIdentity | null;
+
   constructor(logger: ILogger, native: AudioNative, roots: readonly AudioRootInput[], identity?: AudioSessionIdentity) {
     this.logger = logger;
     this.native = native;
     this.roots = normalizeRoots(roots);
-
-    // Name the session before any engine exists: the native layer refuses
-    // while one does, and applies the identity to every engine it creates
-    // from here on, reroutes included (#1253).
-    if (identity && !this.native.setSessionIdentity(identity.displayName, identity.iconPath)) {
-      this.logger.warn("Audio session identity was not accepted; the Volume Mixer keeps its default name");
-    }
+    this.identity = identity ?? null;
 
     // Register persistent native end callbacks for all channels.
     // These dispatch to the JS-level one-shot callbacks.
@@ -433,6 +430,8 @@ class AudioService implements IAudioService {
   init(): boolean {
     if (this.engineReady) return true;
 
+    this.applySessionIdentity();
+
     const ok = this.native.initAudioEngine();
 
     if (ok) {
@@ -443,6 +442,22 @@ class AudioService implements IAudioService {
     }
 
     return ok;
+  }
+
+  /**
+   * Hand the session identity to the native layer (#1253). Runs from
+   * `init()`, before `initAudioEngine`: no engine can exist until the native
+   * context does, so the native layer cannot refuse for that reason, and it
+   * applies the identity to every engine it creates from here on, reroutes
+   * included. `destroyAudioEngine` clears it natively, which is why each
+   * `init()` after a `destroy()` sets it again.
+   */
+  private applySessionIdentity(): void {
+    if (!this.identity) return;
+
+    if (!this.native.setSessionIdentity(this.identity.displayName, this.identity.iconPath)) {
+      this.logger.warn("Audio session identity was not accepted; the Volume Mixer keeps its default name");
+    }
   }
 
   destroy(): void {
@@ -1078,8 +1093,9 @@ let audioService: AudioService | null = null;
  * care where the path points).
  *
  * `identity` is the name and icon the Windows Volume Mixer shows for our audio
- * session (issue #1253). It is handed to the native layer here, before any
- * engine exists. Omit it to keep the Windows default (the host executable's).
+ * session (issue #1253). It is handed to the native layer by `init()`, before
+ * any engine can exist. Omit it to keep the Windows default (the host
+ * executable's).
  */
 export function initializeAudio(
   logger: ILogger = silentLogger,

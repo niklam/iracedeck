@@ -800,9 +800,43 @@ describe("AudioService", () => {
       expect(identityOrder).toBeLessThan(vi.mocked(native.startAudioEngine).mock.invocationCallOrder[0]);
     });
 
+    it("touches nothing native from the constructor — init() hands the identity over", () => {
+      const native = createMockNative();
+      initializeAudio(mockLogger as never, native, [], identity);
+
+      expect(native.setSessionIdentity).not.toHaveBeenCalled();
+
+      getAudio().init();
+
+      expect(native.setSessionIdentity).toHaveBeenCalledTimes(1);
+    });
+
+    it("hands it over once however often init() is called while the engine is ready", () => {
+      const native = createMockNative();
+      initializeAudio(mockLogger as never, native, [], identity);
+      getAudio().init();
+      getAudio().init();
+
+      expect(native.setSessionIdentity).toHaveBeenCalledTimes(1);
+    });
+
+    it("hands it over again on the init() after a destroy(), which clears it natively", () => {
+      const native = createMockNative();
+      initializeAudio(mockLogger as never, native, [], identity);
+      getAudio().init();
+      getAudio().destroy();
+      getAudio().init();
+
+      expect(native.setSessionIdentity).toHaveBeenCalledTimes(2);
+      const secondIdentity = vi.mocked(native.setSessionIdentity).mock.invocationCallOrder[1];
+      expect(secondIdentity).toBeGreaterThan(vi.mocked(native.destroyAudioEngine).mock.invocationCallOrder[0]);
+      expect(secondIdentity).toBeLessThan(vi.mocked(native.initAudioEngine).mock.invocationCallOrder[1]);
+    });
+
     it("passes a display name without an icon through unchanged", () => {
       const native = createMockNative();
       initializeAudio(mockLogger as never, native, [], { displayName: "iRaceDeck" });
+      getAudio().init();
 
       expect(native.setSessionIdentity).toHaveBeenCalledWith("iRaceDeck", undefined);
     });
@@ -821,8 +855,8 @@ describe("AudioService", () => {
       vi.mocked(native.setSessionIdentity).mockReturnValue(false);
       initializeAudio(mockLogger as never, native, [], identity);
 
-      expect(mockLogger.warn).toHaveBeenCalledWith(expect.stringContaining("session identity"));
       expect(getAudio().init()).toBe(true);
+      expect(mockLogger.warn).toHaveBeenCalledWith(expect.stringContaining("session identity"));
     });
   });
 
