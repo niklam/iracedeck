@@ -6,7 +6,7 @@
 import type { AudioDeviceInfo } from "./index.js";
 
 export class AudioNativeMock {
-  /** The last identity passed to {@link setSessionIdentity}, or null if none. */
+  /** The identity last passed to {@link setSessionIdentity}, or null if none is set. */
   sessionIdentity: { displayName: string; iconPath?: string } | null = null;
 
   initAudioEngine(): boolean {
@@ -17,6 +17,8 @@ export class AudioNativeMock {
 
   destroyAudioEngine(): void {
     console.debug("[AudioNativeMock] destroyAudioEngine()");
+    // Destroying the engine clears the session identity, as it does natively.
+    this.sessionIdentity = null;
   }
 
   startAudioEngine(): boolean {
@@ -60,8 +62,13 @@ export class AudioNativeMock {
   }
 
   setSessionIdentity(displayName: string, iconPath?: string): boolean {
-    // Recorded for tests; there is no mixer to name.
-    this.sessionIdentity = iconPath === undefined ? { displayName } : { displayName, iconPath };
+    // Recorded for tests; there is no mixer to name. An empty name clears the
+    // identity, as it does natively.
+    if (displayName === "") {
+      this.sessionIdentity = null;
+    } else {
+      this.sessionIdentity = iconPath === undefined ? { displayName } : { displayName, iconPath };
+    }
 
     return true;
   }
