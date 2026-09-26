@@ -66,7 +66,7 @@ if (platform() === "win32" && !forceMock) {
  * returns success for every call but produces no audio.
  *
  * The method surface is the one consumed by `@iracedeck/audio-service`'s
- * `initializeAudio(logger, native)` — any shape-compatible object can be
+ * `initializeAudio(logger, native, …)` — any shape-compatible object can be
  * passed in its place for testing.
  */
 export class AudioNative {
@@ -249,5 +249,24 @@ export class AudioNative {
     }
 
     return this.getMock().setAudioDeviceById(deviceId);
+  }
+
+  /**
+   * Set the name, and optionally the icon, that the Windows Volume Mixer
+   * shows for our audio session instead of the host executable's ("Node")
+   * (issue #1253). Applied to every engine created afterwards and reapplied
+   * when the output follows a default-device change. Refused while an engine
+   * exists, so call it before the first play. A no-op off Windows.
+   *
+   * @param displayName - The session's display name
+   * @param iconPath - Optional absolute path to an `.ico` file
+   * @returns true if the identity was stored; false while an engine exists
+   */
+  setSessionIdentity(displayName: string, iconPath?: string): boolean {
+    if (addon) {
+      return addon.setSessionIdentity(displayName, iconPath);
+    }
+
+    return this.getMock().setSessionIdentity(displayName, iconPath);
   }
 }

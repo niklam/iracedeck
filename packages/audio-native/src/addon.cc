@@ -13,6 +13,15 @@
 #define MINIAUDIO_IMPLEMENTATION
 #include "miniaudio.h"
 
+// The Core Audio session API, for naming our session in the Windows Volume
+// Mixer (#1253). miniaudio declares its own `ma_`-prefixed COM interfaces and
+// never includes these headers, so including them after it does not clash.
+#if defined(_WIN32) && defined(MA_SUPPORT_WASAPI)
+#define IRD_SESSION_IDENTITY_SUPPORTED 1
+#include <audioclient.h>
+#include <audiopolicy.h>
+#endif
+
 // ============================================================================
 // Stable device-id encoding
 // ============================================================================
@@ -119,6 +128,111 @@ static bool g_tsfnRegistered[IRD_MAX_CHANNELS] = {};
 static ma_device_id g_selectedDeviceId = {};
 static bool g_useSelectedDevice = false;
 
+// ============================================================================
+// Audio session identity (#1253)
+// ============================================================================
+//
+// Windows' Volume Mixer labels a session with the name and icon its owner set,
+// falling back to the executable's (the deck host's node.exe — "Node"). We set
+// ours on the playback IAudioClient's session after every engine creation and
+// after every reroute: a session belongs to one endpoint, and the IAudioClient
+// miniaudio opens on the new endpoint carries an unnamed one.
+//
+// The strings are written only by SetSessionIdentity, which refuses while an
+// engine exists, so the reroute callback (on a Windows device-notification
+// thread) never reads them while they change — no lock needed.
+
+#if defined(IRD_SESSION_IDENTITY_SUPPORTED)
+static std::wstring g_sessionDisplayName;
+static std::wstring g_sessionIconPath;
+static bool g_hasSessionIdentity = false;
+
+/**
+ * Convert a UTF-8 string to UTF-16. Returns false on invalid input.
+ */
+static bool Utf8ToWide(const std::string &utf8, std::wstring &out)
+{
+    out.clear();
+    if (utf8.empty())
+    {
+        return true;
+    }
+
+    int len = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8.data(), static_cast<int>(utf8.size()), NULL, 0);
+    if (len <= 0)
+    {
+        return false;
+    }
+
+    out.resize(static_cast<size_t>(len));
+    int written =
+        MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8.data(), static_cast<int>(utf8.size()), &out[0], len);
+    if (written != len)
+    {
+        out.clear();
+        return false;
+    }
+    return true;
+}
+#endif
+
+/**
+ * Apply the stored session identity to a device's WASAPI session. A no-op
+ * when no identity was set, on any backend other than WASAPI, and off
+ * Windows. Every failure is silent: the session keeps the Windows default
+ * name, and playback is never affected.
+ */
+static void applySessionIdentity(ma_device *device)
+{
+#if defined(IRD_SESSION_IDENTITY_SUPPORTED)
+    if (!g_hasSessionIdentity || device == nullptr || device->pContext == nullptr ||
+        device->pContext->backend != ma_backend_wasapi)
+    {
+        return;
+    }
+
+    IAudioClient *client = static_cast<IAudioClient *>(device->wasapi.pAudioClientPlayback);
+    if (client == nullptr)
+    {
+        return;
+    }
+
+    IAudioSessionControl *session = nullptr;
+    HRESULT hr = client->GetService(__uuidof(IAudioSessionControl), reinterpret_cast<void **>(&session));
+    if (FAILED(hr) || session == nullptr)
+    {
+        return;
+    }
+
+    // The event-context GUID is NULL: nothing of ours listens for session events.
+    hr = session->SetDisplayName(g_sessionDisplayName.c_str(), NULL);
+    (void)hr; // A failure leaves the default name; the icon is still worth trying.
+
+    if (!g_sessionIconPath.empty())
+    {
+        hr = session->SetIconPath(g_sessionIconPath.c_str(), NULL);
+        (void)hr; // A failure leaves the default icon.
+    }
+
+    session->Release();
+#else
+    (void)device;
+#endif
+}
+
+/**
+ * Engine device notification: reapply the session identity after miniaudio
+ * follows a default-device change onto a new endpoint (a fresh, unnamed
+ * session). Runs on the thread miniaudio reroutes from.
+ */
+static void maNotificationCallback(const ma_device_notification *pNotification)
+{
+    if (pNotification != nullptr && pNotification->type == ma_device_notification_type_rerouted)
+    {
+        applySessionIdentity(pNotification->pDevice);
+    }
+}
+
 // Serializes access to g_completionTSFN[] / g_tsfnRegistered[].
 // Without it, maEndCallback runs on miniaudio's audio thread while
 // DestroyAudioEngine and SetChannelEndCallback mutate those slots on the
@@ -213,6 +327,7 @@ static bool ensureEngineCreated()
     ma_engine_config config = ma_engine_config_init();
     config.pContext = g_audioContext;
     config.noAutoStart = MA_TRUE;
+    config.notificationCallback = maNotificationCallback;
     if (g_useSelectedDevice)
     {
         config.pPlaybackDeviceID = &g_selectedDeviceId;
@@ -225,6 +340,7 @@ static bool ensureEngineCreated()
         ma_engine_config fallbackConfig = ma_engine_config_init();
         fallbackConfig.pContext = g_audioContext;
         fallbackConfig.noAutoStart = MA_TRUE;
+        fallbackConfig.notificationCallback = maNotificationCallback;
         result = ma_engine_init(&fallbackConfig, g_engine);
     }
 
@@ -234,6 +350,9 @@ static bool ensureEngineCreated()
         g_engine = nullptr;
         return false;
     }
+
+    // Both init paths land here, so no engine can skip the identity (#1253).
+    applySessionIdentity(ma_engine_get_device(g_engine));
 
     return true;
 }
@@ -803,6 +922,54 @@ Napi::Value SetAudioDeviceById(const Napi::CallbackInfo &info)
     return Napi::Boolean::New(env, true);
 }
 
+/**
+ * Set the name (and optionally the icon) the Windows Volume Mixer shows for
+ * our audio session (#1253). Applied to every engine created afterwards and
+ * reapplied on reroute. Refused while an engine exists, so the reroute
+ * callback never reads the strings while they change — call it before the
+ * first play. A no-op off Windows.
+ *
+ * @param displayName - The session's display name (UTF-8)
+ * @param iconPath - Optional absolute path to an .ico (UTF-8)
+ * @returns true if the identity was stored (always true off Windows while
+ *          no engine exists); false while an engine exists or on invalid text
+ */
+Napi::Value SetSessionIdentity(const Napi::CallbackInfo &info)
+{
+    Napi::Env env = info.Env();
+
+    bool hasIcon = info.Length() >= 2 && !info[1].IsUndefined() && !info[1].IsNull();
+    if (info.Length() < 1 || !info[0].IsString() || (hasIcon && !info[1].IsString()))
+    {
+        Napi::TypeError::New(env, "Expected (displayName: string, iconPath?: string)").ThrowAsJavaScriptException();
+        return Napi::Boolean::New(env, false);
+    }
+
+    if (g_engine)
+    {
+        return Napi::Boolean::New(env, false);
+    }
+
+#if defined(IRD_SESSION_IDENTITY_SUPPORTED)
+    std::wstring displayName;
+    std::wstring iconPath;
+    if (!Utf8ToWide(info[0].As<Napi::String>().Utf8Value(), displayName))
+    {
+        return Napi::Boolean::New(env, false);
+    }
+    if (hasIcon && !Utf8ToWide(info[1].As<Napi::String>().Utf8Value(), iconPath))
+    {
+        return Napi::Boolean::New(env, false);
+    }
+
+    g_sessionDisplayName = std::move(displayName);
+    g_sessionIconPath = std::move(iconPath);
+    g_hasSessionIdentity = true;
+#endif
+
+    return Napi::Boolean::New(env, true);
+}
+
 // ============================================================================
 // Module Initialization
 // ============================================================================
@@ -823,6 +990,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports)
     exports.Set("getAudioDevices", Napi::Function::New(env, GetAudioDevices));
     exports.Set("setAudioDevice", Napi::Function::New(env, SetAudioDevice));
     exports.Set("setAudioDeviceById", Napi::Function::New(env, SetAudioDeviceById));
+    exports.Set("setSessionIdentity", Napi::Function::New(env, SetSessionIdentity));
 
     return exports;
 }
