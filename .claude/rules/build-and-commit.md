@@ -19,14 +19,21 @@ pnpm relink:stream-deck     # Unlink + link (useful when switching worktrees)
 
 ### Dependency build scripts
 
-pnpm 10 runs no dependency's `preinstall` / `install` / `postinstall` unless the package is named, so every dependency that has one is an explicit decision in the root `package.json`'s `pnpm` block — `pnpm install` names any that are not, and that notice is a question to answer, not noise (#1176). `onlyBuiltDependencies` is for a script something here needs: `ffmpeg-static`, whose install downloads the ffmpeg binary the voice-clip radio pipeline runs. `ignoredBuiltDependencies` declines the rest silently, and each entry has a reason:
+pnpm runs no dependency's `preinstall` / `install` / `postinstall` unless the package is named, so every dependency that has one is an explicit decision in `allowBuilds` in `pnpm-workspace.yaml` (#1176, #1245). Since pnpm 11 an undeclared one fails the install with `ERR_PNPM_IGNORED_BUILDS` rather than printing a notice, so a new dependency with a script is decided in the same change that adds it. `true` is for a script something here needs: `ffmpeg-static`, whose install downloads the ffmpeg binary the voice-clip radio pipeline runs. `false` declines the rest, and each entry has a reason:
 
 - `esbuild` (via `tsx`, `vite`): the script only re-fetches the platform binary when the optional `@esbuild/<platform>` package is missing, which pnpm installs, and swaps the JS shim for the binary off Windows, a speed-up nothing relies on.
 - `keysender` (declared by `deck-core`, #1177): its script is a `node-gyp rebuild` of Windows-only code, and nothing in the workspace loads it — the copy that runs is the one each plugin's `postbuild` `npm install` compiles in `bin/`. See *Native Module Dependencies* in `@.claude/rules/plugin-structure.md`.
 - `protobufjs` (via `firebase-tools`): the script only prints a version-scheme advisory.
 - `re2` (via `firebase-tools` → `superstatic`, an optional dependency): a native `node-gyp` build. `superstatic` falls back to `RegExp` without it, it is only used by `firebase serve` / the emulators, and `firebase.json` has no `regex` rules.
 
-`ignoredBuiltDependencies` needs pnpm 10.1 or later (10.0.0 ignores the key and keeps asking), which is why #1176 moved every pin off 10.0.0 at once: `packageManager` in the root and the five packages that carry one, and `version` in the seven workflows that run `pnpm/action-setup`. Move them together — the action refuses a `version` that differs from the root `packageManager`.
+### The pnpm version and its settings
+
+pnpm is pinned to one exact version (12.6.0 since #1245): `packageManager` in the root and the five packages that carry one, and `version` in the seven workflows that run `pnpm/action-setup`. Move them together — the action refuses a `version` that differs from the root `packageManager`. A pnpm 10 or later on PATH switches to the pinned version by itself.
+
+Since pnpm 11 every pnpm setting lives in `pnpm-workspace.yaml`. The `pnpm` field of `package.json` is not read, and `.npmrc` is read for auth and registry keys only — a setting put in either is dropped without a word, which is how `save-exact` would have stopped applying. The reverse holds too: pnpm 12 fails every command on a key it does not recognise in `pnpm-workspace.yaml` (`ERR_PNPM_UNRECOGNIZED_WORKSPACE_SETTINGS`), so a misspelling is caught. Two settings there are decisions rather than housekeeping:
+
+- `saveExact: true` — `pnpm add` writes exact versions (`@.claude/rules/code-style.md`).
+- `minimumReleaseAge: 1440` — pnpm's own default, written out: a version published less than a day ago does not resolve, so a compromised release has a day to be caught before it can land here. The cost is that a fix published today cannot be installed until tomorrow. When one cannot wait, name that package under `minimumReleaseAgeExclude` in the same change and drop the entry once the version is a day old — never lower the age itself. A one-off command-line override is no way round it: the lockfile is checked against the policy on every install, CI's frozen one included.
 
 ### Build verification
 

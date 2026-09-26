@@ -2,20 +2,22 @@
  * The `npm install` a plugin's `bin/` folder runs at build time, in an
  * environment npm does not warn about (#1205).
  *
- * The plugin builds run under `pnpm run`, which exports its settings as
+ * The plugin builds run under `pnpm run`. pnpm 10 exported its settings as
  * `npm_config_*` variables: its own (`verify-deps-before-run`, `_jsr-registry`,
  * `npm-globalconfig`, `reporter` under `--silent`) and every key of any `.npmrc`
  * it read, pnpm-only ones such as `auto-install-peers` included. npm warns once
  * per key it does not define, on every install — eighteen identical lines per
- * full build on a stock machine, burying the warnings that matter.
+ * full build on a stock machine, burying the warnings that matter. pnpm 11 and
+ * later export only well-known keys (#1245), but not only npm's: a pnpm 10 on
+ * PATH that hands over to the pinned version still sets
+ * `manage-package-manager-versions`, and a contributor may run an older pnpm.
  *
  * So the install keeps only the keys npm itself defines, and asks npm for that
  * list (`npm config ls -l --json`, reading no `.npmrc` at all, so a stray key in
  * one cannot pass itself off as defined) rather than carrying one: a hand-kept list
  * missed whatever a contributor's own `.npmrc` held, and would drift with every
- * npm release. Keys npm defines stay exactly as pnpm passed them — `bin/` has no
- * `.npmrc` of its own, so settings such as `registry` or a proxy reach npm only
- * through this environment, and the install is otherwise the one it always was.
+ * npm release. Keys npm defines stay exactly as pnpm passed them, and the install
+ * is otherwise the one it always was.
  */
 
 /**
