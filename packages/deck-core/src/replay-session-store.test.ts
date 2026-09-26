@@ -107,6 +107,25 @@ async function waitUntil(condition: () => boolean, timeoutMs = 5_000): Promise<v
   }
 }
 
+/**
+ * For the fake-timer tests: the store's debounce and retry timers fire only
+ * when the test advances them, but its writes are real I/O no timer drives.
+ * Spin the event loop on `setImmediate` (left real) until that I/O brings the
+ * store to `condition`. Fake time stands still meanwhile, so no timer can fire
+ * between two states the test observes — which is what a real-timer poll could
+ * not promise on a slow runner (#1249). The deadline reads `performance.now()`,
+ * which the fake timers leave real; it only turns a hang into a named failure.
+ */
+async function ioUntil(condition: () => boolean, timeoutMs = 4_000): Promise<void> {
+  const deadline = performance.now() + timeoutMs;
+
+  while (!condition()) {
+    if (performance.now() > deadline) throw new Error(`Timed out after ${timeoutMs} ms waiting for the store's I/O`);
+
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+}
+
 const header = (subSessionId = SUB) => ({ subSessionId, track: "Talladega Superspeedway", series: "167" });
 
 const lapStart = (overrides: Record<string, unknown> = {}) => ({
@@ -394,49 +413,77 @@ describe("createReplaySessionStore", () => {
       await store.flush();
     });
 
-    it("keeps a failed write and retries it on the schedule; flushSync lands it at shutdown", async () => {
+    // The three retry tests below step the store's debounce and retry on fake
+    // timers and wait for its real I/O with `ioUntil`. A refused write has
+    // settled once its retry timer is armed — the `.tmp` cleanup runs before
+    // the failure handler that arms it — so `vi.getTimerCount()` marks that
+    // state. On real timers a slow runner let the next timer fire before a
+    // poll saw the state in between (#1249).
+    it("keeps a failed write, leaves no temp file, and retries it when the retry timer fires", async () => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
       const retrying = createReplaySessionStore({
         directory: dir,
         logger: silentLogger,
         debounceMs: 10,
         writeRetryDelaysMs: [20],
       });
-      fsState.failNext = 1;
 
-      retrying.setActiveSession(header());
-      retrying.markers.add({ frame: 1, sessionNum: 0, sessionTimeMs: 0 });
+      try {
+        fsState.failNext = 1;
+        retrying.setActiveSession(header());
+        retrying.markers.add({ frame: 1, sessionNum: 0, sessionTimeMs: 0 });
 
-      await waitUntil(() => fsState.renames >= 1);
-      expect(existsSync(filePath)).toBe(false);
-      expect(readdirSync(dir).filter((f) => f.endsWith(".tmp"))).toEqual([]);
+        await vi.advanceTimersByTimeAsync(10); // the debounce hands it to a write, which is refused
+        await ioUntil(() => fsState.renames === 1 && vi.getTimerCount() === 1);
+        expect(existsSync(filePath)).toBe(false);
+        expect(readdirSync(dir).filter((f) => f.endsWith(".tmp"))).toEqual([]);
 
-      // The retry TIMER lands it — flush() is not the signal, it would enqueue at once.
-      await waitUntil(() => existsSync(filePath));
-      expect(fsState.renames).toBe(2);
-      expect(JSON.parse(readFileSync(filePath, "utf-8")).sections.markers).toHaveLength(1);
+        // The retry TIMER lands it — flush() is not the signal, it would enqueue at once.
+        await vi.advanceTimersByTimeAsync(19);
+        expect(fsState.handedOff).toBe(1); // 1 ms short of the retry delay: nothing new started
+
+        await vi.advanceTimersByTimeAsync(1);
+        expect(fsState.handedOff).toBe(2);
+        await ioUntil(() => fsState.landed === 1);
+        expect(fsState.renames).toBe(2);
+        expect(JSON.parse(readFileSync(filePath, "utf-8")).sections.markers).toHaveLength(1);
+      } finally {
+        vi.useRealTimers();
+      }
+
       await retrying.flush();
     });
 
     it("a failed write's retry never overwrites a newer write for the same file that landed meanwhile", async () => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
       const retrying = createReplaySessionStore({
         directory: dir,
         logger: silentLogger,
         debounceMs: 10,
         writeRetryDelaysMs: [30],
       });
-      fsState.failNext = 1;
 
-      retrying.setActiveSession(header());
-      retrying.markers.add({ frame: 1, sessionNum: 0, sessionTimeMs: 0 });
-      await waitUntil(() => fsState.renames === 1); // A: refused
-      expect(existsSync(filePath)).toBe(false);
+      try {
+        fsState.failNext = 1;
+        retrying.setActiveSession(header());
+        retrying.markers.add({ frame: 1, sessionNum: 0, sessionTimeMs: 0 });
+        await vi.advanceTimersByTimeAsync(10);
+        await ioUntil(() => fsState.renames === 1 && vi.getTimerCount() === 1); // A: refused, its retry due at t = 40
+        expect(existsSync(filePath)).toBe(false);
 
-      retrying.markers.add({ frame: 5000, sessionNum: 0, sessionTimeMs: 0 });
-      await waitUntil(() => existsSync(filePath)); // B: landed, carrying both markers
-      expect(fsState.renames).toBe(2);
+        retrying.markers.add({ frame: 5000, sessionNum: 0, sessionTimeMs: 0 });
+        await vi.advanceTimersByTimeAsync(10);
+        await ioUntil(() => fsState.landed === 1); // B: landed at t = 20, carrying both markers
+        expect(fsState.renames).toBe(2);
 
-      // Past A's retry delay: A's payload is stale and must not come back.
-      await new Promise((resolve) => setTimeout(resolve, 80));
+        // Past A's retry delay: A's payload is stale and must not come back.
+        await vi.advanceTimersByTimeAsync(80);
+        expect(fsState.handedOff).toBe(2);
+        expect(vi.getTimerCount()).toBe(0);
+      } finally {
+        vi.useRealTimers();
+      }
+
       await retrying.flush();
 
       expect(fsState.renames).toBe(2);
@@ -446,6 +493,7 @@ describe("createReplaySessionStore", () => {
     });
 
     it("retries a failed write for each session on its own — one session's failure does not drop another's", async () => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
       const retrying = createReplaySessionStore({
         directory: dir,
         logger: silentLogger,
@@ -454,14 +502,30 @@ describe("createReplaySessionStore", () => {
       });
       const otherPath = join(dir, replaySessionFileName(SUB + 1));
 
-      fsState.failNext = 2;
-      retrying.setActiveSession(header());
-      retrying.markers.add({ frame: 1, sessionNum: 0, sessionTimeMs: 0 });
-      retrying.setActiveSession(header(SUB + 1)); // A's write goes out now and is refused
-      retrying.markers.add({ frame: 2, sessionNum: 0, sessionTimeMs: 0 }); // B's is refused after its debounce
-      await waitUntil(() => fsState.renames === 2);
+      try {
+        fsState.failNext = 2;
+        retrying.setActiveSession(header());
+        retrying.markers.add({ frame: 1, sessionNum: 0, sessionTimeMs: 0 });
+        retrying.setActiveSession(header(SUB + 1)); // A's write goes out now and is refused
+        retrying.markers.add({ frame: 2, sessionNum: 0, sessionTimeMs: 0 }); // B's is refused after its debounce
+        await ioUntil(() => fsState.renames === 1 && vi.getTimerCount() === 2); // A's retry (t = 30) + B's debounce
 
-      await waitUntil(() => existsSync(filePath) && existsSync(otherPath));
+        await vi.advanceTimersByTimeAsync(10);
+        await ioUntil(() => fsState.renames === 2 && vi.getTimerCount() === 2); // A's retry + B's (t = 40)
+        expect(existsSync(filePath)).toBe(false);
+        expect(existsSync(otherPath)).toBe(false);
+
+        await vi.advanceTimersByTimeAsync(20);
+        await ioUntil(() => fsState.landed === 1); // t = 30: A's retry lands A alone
+        expect(existsSync(filePath)).toBe(true);
+        expect(existsSync(otherPath)).toBe(false);
+
+        await vi.advanceTimersByTimeAsync(10);
+        await ioUntil(() => fsState.landed === 2); // t = 40: B's retry lands B
+      } finally {
+        vi.useRealTimers();
+      }
+
       await retrying.flush();
 
       expect(fsState.renames).toBe(4);
@@ -482,11 +546,6 @@ describe("createReplaySessionStore", () => {
           busy.laps.recordLapStart(lapStart({ carIdx: lap % 60, carNumberRaw: lap % 60, lap: 1, frame: lap * 30 }));
           await vi.advanceTimersByTimeAsync(50);
         };
-        // Writes are chained, so the next can only start once the real I/O of
-        // the last has landed; setImmediate is not faked and lets it.
-        const landed = async (writes: number): Promise<void> => {
-          while (fsState.landed < writes) await new Promise((resolve) => setImmediate(resolve));
-        };
 
         // A crossing every 50 ms never lets a 100 ms debounce go idle …
         for (let i = 0; i < 5; i++) await crossing();
@@ -495,7 +554,8 @@ describe("createReplaySessionStore", () => {
 
         await crossing(); // t = 300 ms: the max wait from the first change at t = 0
         expect(fsState.handedOff).toBe(1);
-        await landed(1);
+        // Writes are chained, so the next can only start once the last has landed.
+        await ioUntil(() => fsState.landed === 1);
 
         // … and the next window counts from the first change after that write.
         for (let i = 0; i < 5; i++) await crossing();
@@ -503,7 +563,7 @@ describe("createReplaySessionStore", () => {
         expect(fsState.handedOff).toBe(1); // t = 550 ms: the window opened at t = 300
         await crossing();
         expect(fsState.handedOff).toBe(2); // t = 600 ms
-        await landed(2);
+        await ioUntil(() => fsState.landed === 2);
 
         // Left alone, the trailing debounce lands the rest.
         await crossing();
