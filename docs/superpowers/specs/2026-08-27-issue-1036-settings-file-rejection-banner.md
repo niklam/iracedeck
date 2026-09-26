@@ -76,7 +76,7 @@ Deliberate, and forced by the constraint below rather than chosen for convenienc
 
 ## The constraint that sets the scope
 
-**On the unreadable path, a banner has no route to any surface.** The chain is structural: out of read attempts, the store deliberately never becomes ready (so that `save` cannot overwrite a file it merely failed to read) → each plugin's store-ready block never runs → `settingsWindow.ensureStarted()` is never called, so the loopback server never starts and no `_settingsChannel` is published → and `hostMirrorPayload` returns `undefined` for a not-ready store, so the once-per-start deck-host mirror is skipped too. With neither the loopback channel nor the mirror, a `_warnings` record reaches no Property Inspector and no settings window.
+**On the unreadable path, a banner has no route to any surface.** The chain is structural: out of read attempts, the store deliberately never becomes ready (so that `save` cannot overwrite a file it merely failed to read) → each plugin's store-ready block never runs → `settingsWindow.ensureStarted()` is never called, so the loopback server never starts and no `_settingsChannel` is published → and `hostMirrorPayload` returns `undefined` for a not-ready store, so the once-per-start deck-host mirror is skipped too. With neither the loopback channel nor the mirror, a `_warnings` record reaches no Property Inspector. (Corrected during implementation: a press on *iRaceDeck Settings* still starts the server and opens the window, which reads the live cache — so a settings window opened by hand is one surface that could show it. That does not change the scope below, only its wording.)
 
 That is the worse of the two failures — settings look reset *and* every subsequent edit is silently discarded until a restart — and it cannot be fixed by adding a producer. It needs the settings server to start independently of store readiness, which is a startup-ordering change with its own blast radius. It belongs in its own issue, not smuggled into this one.
 
@@ -89,6 +89,16 @@ The corrupt path has no such problem: it proceeds through migration to ready, so
 - **Stop a corrupt file re-triggering the migration.** Decision 2 — it would replace a working restore with schema defaults.
 - **Cover the unreadable path in the same change.** Structurally impossible without a startup-ordering change; see above.
 - **Put the detail only in the log and keep the banner generic.** Halves the value. The parse position is the actionable part, and it already exists.
+
+## Amended during implementation
+
+What the code review and the manual test changed, recorded so the decisions above are read with them:
+
+- **The location is computed, never read from the parser's message.** The quoted `line 327 column 120` came from Python; V8 prints a line and column only on Node 22+, the Mirabox and Ulanzi hosts run Node 20 (a bare offset), and an `Unexpected token` message has no position on any version. A small validator (`json-error-location.ts`) finds the first error, and both the banner and the `error` log line carry its line and column — the log line because `debugLogging` is not loaded yet when the rejection happens. For a trailing comma the position is the token after it, so the banner says "at, or just before".
+- **A file that cannot be preserved fails the read instead of being rejected.** Reporting it as "no file" ran the migration into a save that replaced the only copy. It now takes the unreadable path (retry, then never save), so a rejection always has a preserved copy to name.
+- **The banner names both possible replacements** — the deck software's copy, or defaults if it had none — because it is raised before the host's answer is known. This supersedes the "restored from the deck host" wording in Decision 2.
+- **A UTF-16LE file is decoded, not rejected.** Windows PowerShell 5.1's `Out-File` and `>` write one; like the UTF-8 BOM it is an encoding, not a mistake, so Decision 1 does not apply to it.
+- **The banner stays one-run** (maintainer, 2026-09-26). After a restart the migrated file loads cleanly and nothing points at the set-aside file again; re-raising it while an aside newer than the settings file exists was considered and declined. The website says the aside stays in the folder.
 
 ## Open question
 
