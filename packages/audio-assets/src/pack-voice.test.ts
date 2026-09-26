@@ -1,4 +1,9 @@
-import { CALLOUT_SCRIPT_FILE, type CalloutScript, calloutScriptPath } from "@iracedeck/callout-script";
+import {
+  CALLOUT_SCRIPT_FILE,
+  type CalloutScript,
+  calloutScriptPath,
+  VoicePackManifestSchema,
+} from "@iracedeck/callout-script";
 import { unzipSync } from "fflate";
 import { createHash } from "node:crypto";
 import {
@@ -19,12 +24,14 @@ import path from "node:path";
 import url from "node:url";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-// The REAL contracts, from deck-core's source rather than a copy: the packer's
-// output must satisfy the schemas the plugin parses with and lay clips out where
-// its scanner walks, so if either format moves these tests break with it.
+// The REAL contracts, never a copy: the packer's output must satisfy the
+// schemas the plugin parses with and lay clips out where its scanner walks, so
+// if either format moves these tests break with it. The manifest schema is the
+// leaf's (`@iracedeck/callout-script`, above — the scanner validates through
+// the same one since #1134); the catalog schema and the scanner are deck-core's,
+// imported from its source.
 import { VoicePackCatalogEntrySchema } from "../../deck-core/src/voice-pack-catalog.ts";
 import { createVoicePackFileSystem } from "../../deck-core/src/voice-pack-fs.ts";
-import { VoicePackManifestSchema } from "../../deck-core/src/voice-pack-manifest.ts";
 import { scanVoicePacks } from "../../deck-core/src/voice-pack-scanner.ts";
 import {
   archiveUrl,

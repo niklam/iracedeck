@@ -32,7 +32,7 @@
  *
  * `--stage-only` is stricter still (#1214): it stages the tree, with every
  * check a full run makes before the zip (the callout script's grammar, the
- * staged-vs-source clip count, `USABLE_CLIP`, the manifest), and writes no
+ * staged-vs-source clip count, `USABLE_VOICE_CLIP`, the manifest), and writes no
  * archive and no catalog entry. It is what the build's `stage:dev-voices` task
  * runs, because a development root is scanned as a DIRECTORY — the scanner
  * lists directories only — so the zip would be seconds of deflate nobody
@@ -59,7 +59,15 @@
  * proves it by packing twice and comparing hashes rather than by trusting the
  * reasoning here.
  */
-import { CALLOUT_SCRIPT_FILE, calloutScriptPath, parseCalloutScriptText } from "@iracedeck/callout-script";
+import {
+  CALLOUT_SCRIPT_FILE,
+  calloutScriptPath,
+  displayLabel,
+  isSemverVersion,
+  packId,
+  parseCalloutScriptText,
+  USABLE_VOICE_CLIP,
+} from "@iracedeck/callout-script";
 import { zipSync } from "fflate";
 import { createHash } from "node:crypto";
 import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -171,54 +179,45 @@ const ZIP_ENTRY_MTIME = new Date(1980, 0, 1, 0, 0, 0);
 const ZIP_ENTRY_OPTIONS = Object.freeze({ level: 9, mtime: ZIP_ENTRY_MTIME, os: 0, attrs: 0 });
 
 /**
- * The scanner's own grammar for a clip the engine can reach — `USABLE_CLIP` in
- * deck-core's `voice-pack-scanner.ts`, restated because that module is
- * TypeScript and this script runs under plain node. Exactly four segments:
- * `voice/<voice-id>/<group>/<name>.mp3`, lowercase extension. The test keeps
- * the two in agreement by running the REAL scanner over a staged pack rather
- * than trusting this copy.
+ * The rules a pack definition is checked against before anything is staged:
+ * the scanner's own, imported from `@iracedeck/callout-script` (#1134) rather
+ * than restated — `packId`, `displayLabel` and `isSemverVersion` are the very
+ * checks `VoicePackManifestSchema` makes, and `USABLE_VOICE_CLIP` (used per
+ * staged clip, below) is the scanner's grammar for a clip the engine can reach.
+ * The schemas remain the authority (the test parses this script's output with
+ * them); checking here means a typo in `voice-packs.mjs` fails naming the
+ * field, instead of surfacing as a pack the scanner refuses after it has been
+ * uploaded. `minPluginVersion` goes through the same `isSemverVersion`, since
+ * the catalog schema's version fields accept what `semver.valid` does.
  *
- * A clip this refuses is a build FAILURE, never a warning. A pack carrying it
- * would install cleanly, list its voice, and then be silent for that clip —
- * with the only trace at debug level on the user's machine.
+ * The one rule still restated is the description's 300-character bound: that
+ * is `VoicePackCatalogEntrySchema`'s (deck-core), which this plain-node script
+ * cannot import, and the catalog entry is what the test parses with it.
+ *
+ * A clip `USABLE_VOICE_CLIP` refuses is a build FAILURE, never a warning. A
+ * pack carrying it would install cleanly, list its voice, and then be silent
+ * for that clip — with the only trace at debug level on the user's machine.
  */
-const USABLE_CLIP = /^voice\/[^/]+\/[^/]+\/[^/]+\.mp3$/;
-
-/**
- * Light, plain-node versions of the rules deck-core's `VoicePackManifestSchema`
- * and `VoicePackCatalogEntrySchema` enforce. Those schemas are the authority
- * (the test parses this script's output with them); these exist so a typo in
- * `voice-packs.mjs` fails HERE, naming the field, instead of surfacing as a
- * pack the scanner refuses after it has been uploaded.
- */
-const PACK_ID = /^[a-z][a-z0-9-]*$/;
-const SEMVER = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
-// eslint-disable-next-line no-control-regex
-const CONTROL_CHARS = /[\u0000-\u001f\u007f]/;
-
 function assertPackDefinition(pack) {
   const where = `pack "${pack?.id ?? "?"}"`;
 
-  if (!PACK_ID.test(pack?.id ?? "")) throw new Error(`${where}: id must be lowercase kebab-case`);
-  if (
-    typeof pack.label !== "string" ||
-    pack.label.length === 0 ||
-    pack.label.length > 60 ||
-    CONTROL_CHARS.test(pack.label)
-  ) {
+  if (!packId.safeParse(pack?.id).success) throw new Error(`${where}: id must be lowercase kebab-case`);
+  if (!displayLabel.safeParse(pack.label).success) {
     throw new Error(`${where}: label must be 1-60 characters with no control characters`);
   }
-  if (!SEMVER.test(pack.version ?? "")) throw new Error(`${where}: version must be semver`);
+  if (typeof pack.version !== "string" || !isSemverVersion(pack.version)) {
+    throw new Error(`${where}: version must be semver`);
+  }
   if (pack.description !== undefined && (typeof pack.description !== "string" || pack.description.length > 300)) {
     throw new Error(`${where}: description must be 300 characters or fewer`);
   }
-  if (pack.minPluginVersion !== undefined && !SEMVER.test(pack.minPluginVersion)) {
+  if (pack.minPluginVersion !== undefined && !isSemverVersion(pack.minPluginVersion)) {
     throw new Error(`${where}: minPluginVersion must be semver`);
   }
   if (!Array.isArray(pack.voices) || pack.voices.length === 0)
     throw new Error(`${where}: voices must name at least one voice`);
   for (const voice of pack.voices) {
-    if (!PACK_ID.test(voice)) throw new Error(`${where}: voice id "${voice}" must be lowercase kebab-case`);
+    if (!packId.safeParse(voice).success) throw new Error(`${where}: voice id "${voice}" must be lowercase kebab-case`);
   }
 }
 
@@ -313,7 +312,9 @@ function readVoiceLabel(configsDir, voiceId) {
 
   const label = JSON.parse(readFileSync(file, "utf-8")).label;
 
-  if (typeof label !== "string" || label.length === 0 || label.length > 60 || CONTROL_CHARS.test(label)) {
+  // The manifest schema's own `displayLabel` rule, so a label this accepts is
+  // one the scanner accepts.
+  if (!displayLabel.safeParse(label).success) {
     throw new Error(`voice "${voiceId}": ${file} needs a "label" of 1-60 characters with no control characters`);
   }
 
@@ -567,7 +568,7 @@ export async function packVoice({
     for (const file of files) {
       const entryPath = `${VOICE_ROOT}/${voiceId}/${file}`;
 
-      if (!USABLE_CLIP.test(entryPath)) {
+      if (!USABLE_VOICE_CLIP.test(entryPath)) {
         throw new Error(
           `pack "${pack.id}": ${entryPath} is not a clip the engine can play — ` +
             `clips must be voice/<voice-id>/<group>/<name>.mp3, with a lowercase .mp3 extension`,
