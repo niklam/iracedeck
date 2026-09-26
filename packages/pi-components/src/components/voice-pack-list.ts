@@ -22,6 +22,12 @@
  * happens in the plugin, and the row disappears only once the next scan says
  * so, the same as it would for a pack deleted by hand and rescanned.
  *
+ * ROW LAYOUT (#1145). Each pack is three lines: its label with the version and
+ * provenance as a right-aligned pair of pills, then the voices it provides,
+ * then the Remove button or the note that stands in its place. The voices line
+ * is what tells apart packs that share a label, and the action gets a line of
+ * its own because the armed Remove is too wide to share one.
+ *
  * PROVENANCE BADGE. Each row now names where its pack came from: downloaded
  * from iRaceDeck's own catalog, put there by iRaceDeck itself, installed by
  * hand, or — on a repo developer's build only (#1143) — found in the
@@ -318,26 +324,30 @@ export class VoicePackList extends HTMLElement {
       ird-voice-pack-list { display: block; }
       ird-voice-pack-list .ird-vp-row {
         display: flex;
-        align-items: center;
-        gap: 8px;
-        padding: 3px 0;
+        flex-direction: column;
+        gap: 3px;
+        padding: 6px 0;
         color: #d8d8d8;
         font-size: 9pt;
         font-family: "Segoe UI", Arial, Roboto, Helvetica, sans-serif;
       }
       ird-voice-pack-list .ird-vp-row + .ird-vp-row { border-top: 1px solid #3d3d3d; }
-      ird-voice-pack-list .ird-vp-label { flex: 1; }
-      ird-voice-pack-list .ird-vp-version { color: #969696; font-size: 8pt; }
-      ird-voice-pack-list .ird-vp-empty { color: #969696; font-size: 9pt; padding: 3px 0; }
-      /* Stands where a Remove button would be on a row that offers none — the
-         pack iRaceDeck manages (#1034 stage 3), a bundled seed (#1100), or a
-         development build showing its directory (#1143).
-         Muted and unclickable-looking on purpose: a statement, not a control. */
-      ird-voice-pack-list .ird-vp-note { flex: none; color: #969696; font-size: 8pt; }
-      /* Provenance badge (#1100) — informational, not a warning: colours stay
-         calm and distinct rather than using red/amber alarm colours anywhere. */
-      ird-voice-pack-list .ird-vp-badge {
-        flex: none;
+      /* Line one (#1145). Wraps as a whole: when label and pills do not fit side
+         by side, the pills drop beneath and margin-left:auto keeps them on the
+         right edge, so every row's badge still lines up. min-width:0 plus
+         overflow-wrap:anywhere let a label with no spaces break instead of
+         overflowing the card. */
+      ird-voice-pack-list .ird-vp-head {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 3px 8px;
+      }
+      ird-voice-pack-list .ird-vp-label { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; color: #ffffff; }
+      ird-voice-pack-list .ird-vp-pills { flex: none; display: flex; gap: 4px; margin-left: auto; }
+      /* Version and provenance are one visual family (#1145): two facts about the
+         same pack, not a number floating beside a badge. */
+      ird-voice-pack-list .ird-vp-pill {
         padding: 1px 6px;
         border-radius: 3px;
         font-size: 7.5pt;
@@ -345,6 +355,18 @@ export class VoicePackList extends HTMLElement {
         white-space: nowrap;
         font-family: "Segoe UI", Arial, Roboto, Helvetica, sans-serif;
       }
+      ird-voice-pack-list .ird-vp-version { background: #2e2e2e; color: #b4b4b4; }
+      ird-voice-pack-list .ird-vp-voices { color: #b4b4b4; font-size: 8pt; overflow-wrap: anywhere; }
+      ird-voice-pack-list .ird-vp-action { display: flex; align-items: center; min-width: 0; }
+      ird-voice-pack-list .ird-vp-empty { color: #969696; font-size: 9pt; padding: 3px 0; }
+      /* Stands on line three (#1145) where a Remove button would be on a row
+         that offers none — the pack iRaceDeck manages (#1034 stage 3), a
+         bundled seed (#1100), or a development build showing its directory
+         (#1143), which wraps anywhere rather than overflowing the card.
+         Muted and unclickable-looking on purpose: a statement, not a control. */
+      ird-voice-pack-list .ird-vp-note { color: #969696; font-size: 8pt; overflow-wrap: anywhere; min-width: 0; }
+      /* Provenance badge (#1100) — informational, not a warning: colours stay
+         calm and distinct rather than using red/amber alarm colours anywhere. */
       ird-voice-pack-list .ird-vp-badge-catalog { background: #1f3a52; color: #8ec9ff; }
       ird-voice-pack-list .ird-vp-badge-bundled-seed { background: #34343a; color: #c8c8c8; }
       ird-voice-pack-list .ird-vp-badge-sideload { background: #3a331f; color: #e0c07a; }
@@ -457,14 +479,23 @@ export class VoicePackList extends HTMLElement {
    * scan that turned the pack managed and back, and the returning button would
    * render pre-confirmed.
    *
-   * `voices` is excluded because no row renders it; the rule is what the user
-   * can SEE change. `dir` (#1143) is excluded for a different reason: it is
-   * rendered, but only on a development row, which offers no Remove and so can
-   * never hold an arm — and `provenance`, which is what makes a row that kind
-   * of row, is already here.
+   * The voices' labels join them since #1145, when the row began naming the
+   * voices a pack provides; the rule is what the user can SEE change, and for
+   * packs sharing a label that line is the one cell that tells them apart. Their
+   * ids stay out, because no row renders an id. `dir` (#1143) is excluded for a
+   * different reason: it is rendered, but only on a development row, which
+   * offers no Remove and so can never hold an arm — and `provenance`, which is
+   * what makes a row that kind of row, is already here.
    */
   private static identityOf(pack: VoicePackEntry): string {
-    return JSON.stringify([pack.id, pack.version, pack.label, pack.provenance, pack.managed === true]);
+    return JSON.stringify([
+      pack.id,
+      pack.version,
+      pack.label,
+      pack.provenance,
+      pack.managed === true,
+      pack.voices.map((voice) => voice.label),
+    ]);
   }
 
   /**
@@ -520,8 +551,181 @@ export class VoicePackList extends HTMLElement {
   }
 
   /**
-   * Rendered with `textContent` per cell rather than innerHTML: `label` comes
-   * from a pack's own `voice-pack.json`, and a problem row is built from a
+   * Line one (#1145): the pack's label, then its version and provenance as a
+   * right-aligned pair of pills, version first. The line wraps as a whole when a
+   * long label leaves no room, and the pills keep their right edge on the line
+   * they wrap to, so every row's badge still lines up.
+   */
+  private static headLine(entry: VoicePackEntry): HTMLDivElement {
+    const head = document.createElement("div");
+    head.className = "ird-vp-head";
+
+    const label = document.createElement("span");
+    label.className = "ird-vp-label";
+    label.textContent = entry.label;
+
+    const pills = document.createElement("span");
+    pills.className = "ird-vp-pills";
+
+    const version = document.createElement("span");
+    version.className = "ird-vp-pill ird-vp-version";
+    version.textContent = entry.version;
+
+    const badge = document.createElement("span");
+    badge.className = `ird-vp-pill ird-vp-badge ird-vp-badge-${entry.provenance}`;
+    badge.textContent = PROVENANCE_LABELS[entry.provenance];
+
+    pills.append(version, badge);
+    head.append(label, pills);
+
+    return head;
+  }
+
+  /**
+   * Line two (#1145): the voices the pack provides, by the labels the dropdown
+   * puts after the pack prefix. It is what tells apart two packs that share a
+   * label — the dropdown already names them `<pack>: <voice>`, and without this
+   * line the list offered no way to see which row a dropdown entry belongs to.
+   *
+   * Always shown, even for `Voice: Default` under a pack called Default: a line
+   * that appears only sometimes would make its absence a question. A pack with no
+   * voices gets no line — the scanner lists none since #1144, and the one branch
+   * that could (a bundled seed) is kept only for robustness.
+   */
+  private static voicesLine(entry: VoicePackEntry): HTMLDivElement | null {
+    if (entry.voices.length === 0) return null;
+
+    const line = document.createElement("div");
+    const names = entry.voices.map((voice) => voice.label).join(", ");
+
+    line.className = "ird-vp-voices";
+    line.textContent = `${entry.voices.length === 1 ? "Voice" : "Voices"}: ${names}`;
+
+    return line;
+  }
+
+  private static note(text: string): HTMLSpanElement {
+    const note = document.createElement("span");
+
+    note.className = "ird-vp-note";
+    note.textContent = text;
+
+    return note;
+  }
+
+  /**
+   * Line three (#1145): what the user can do with the pack, or why they cannot.
+   * Its own line because the armed "Remove — are you sure?" is wide enough to
+   * push the voices into a wrap on a shared one.
+   */
+  private actionFor(entry: VoicePackEntry): HTMLElement {
+    // A pack from the development voice root (#1143): what is playing is a
+    // checkout, not an install, and the row names the directory in place of a
+    // button. No Remove, because the plugin never deletes from a directory it
+    // did not create.
+    //
+    // FIRST, ahead of both rules below. A development row is decided by WHERE
+    // the plugin found the pack — the plugin also clears `managed` for it, so
+    // the two should never both be true, but the page's own rule stands on its
+    // own feet rather than on that: whatever else a row claims, iRaceDeck does
+    // not keep a folder in somebody's checkout current, and the note has to
+    // name the directory that is actually playing.
+    if (entry.provenance === "development") {
+      const note = VoicePackList.note(entry.dir ?? "From the development voice root");
+
+      // The path wraps on its own line rather than overflowing the card, but a
+      // wrapped path is still hard to read, so it is repeated as a title — the
+      // one place a full path is always readable on one line.
+      if (entry.dir !== undefined) note.title = entry.dir;
+
+      return note;
+    }
+
+    // The pack iRaceDeck manages (#1034 stage 3): the launch step installs
+    // and refreshes it, so a Remove would only be undone at the next start.
+    // The row says so in place of the button. Keyed by the plugin-published
+    // flag, never by provenance — the flag is the plugin's statement.
+    //
+    // Ahead of the bundled-seed rule below: this is the case with a
+    // live reason, and the two would otherwise both be true of one row on an
+    // installation upgraded from a bundling release, whose note would then
+    // say the audio ships with the plugin when it no longer does.
+    if (entry.managed === true) return VoicePackList.note("Kept up to date by iRaceDeck");
+
+    // A pack the PLUGIN provides gets no Remove, and what stands in its
+    // place is a STATEMENT rather than a disabled button (#1100).
+    //
+    // The condition is deliberately "bundled seed AND provides nothing", not
+    // provenance alone. `voices` is empty exactly while the plugin's own
+    // audio owns every voice this pack declares — so the row is describing
+    // something the user cannot meaningfully delete: removing the folder
+    // changes nothing they can hear, because the bundle keeps playing the
+    // voice.
+    //
+    // That condition is also what retires the branch, and #1034 stage 3 is
+    // the release that does it: with nothing bundled the scanner reserves no
+    // voice ids, so it emits no such row and the case stops arising by
+    // itself, rather than leaving a working, user-owned pack permanently
+    // unremovable and mislabelled. Since #1144 the scanner cannot emit one
+    // at all: it drops no voice to the bundle, and lists no pack without a
+    // voice. Kept rather than deleted because it describes a ROW, not a
+    // release: a row that provides nothing earns a statement instead of a
+    // button whenever one turns up, and that is decided by the plugin, not
+    // here.
+    //
+    // NOT because it would be undone on the next start — that reason is
+    // false often enough to be worth naming, and it belongs to the managed
+    // branch above rather than to this one. `VoicePackInstaller.seed()`
+    // skips with `packs-present` whenever any pack directory exists, and its
+    // own comment calls removing the seeded copy a choice the plugin must not
+    // argue with. So with a second pack installed a removal WOULD stick. The
+    // button is withheld because its effect would be invisible, not because
+    // it would be reverted.
+    //
+    // A DISABLED button would be worse than none: it still invites the click
+    // and still has to explain itself, where a line of text simply answers
+    // the question a missing button raises.
+    if (entry.provenance === "bundled-seed" && entry.voices.length === 0) {
+      return VoicePackList.note("Included with the plugin");
+    }
+
+    // Two-step, in the state-driven shape `ird-enable-feature` establishes:
+    // the button renders the CURRENT state rather than firing and hoping. A
+    // first press arms it, a second removes. See `armRemove` for what cancels.
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "ird-vp-remove-button";
+    VoicePackList.dressButton(remove, false);
+
+    // A genuine scan change can rebuild the list while a confirmation is
+    // open, so the armed pack's NEW button has to be dressed and adopted —
+    // the old element is gone and clearing state through it would be a no-op.
+    if (this.armed === entry.id) {
+      this.armedButton = remove;
+      VoicePackList.dressButton(remove, true);
+    }
+
+    remove.addEventListener("click", () => {
+      if (this.armed === entry.id) {
+        // Resets the button in place on the way out, so a removal that FAILS
+        // leaves it reading "Remove" rather than a red button with no armed
+        // state behind it.
+        this.clearArmedState();
+        sendToPlugin({ event: "voicePackRemove", id: entry.id });
+
+        return;
+      }
+
+      this.armRemove(entry, remove);
+    });
+
+    return remove;
+  }
+
+  /**
+   * Rendered with `textContent` per cell rather than innerHTML: a pack's
+   * `label` and its voices' labels (#1145) come from its own
+   * `voice-pack.json`, and a problem row is built from a
    * folder name and a manifest field — on the sideload path, all of it is a
    * file some third party wrote. `provenance` is the one field NOT taken from
    * that file (see `voice-pack-provenance.ts`: a pack cannot declare its own
@@ -572,155 +776,17 @@ export class VoicePackList extends HTMLElement {
     for (const entry of scan.packs) {
       const row = document.createElement("div");
       row.className = "ird-vp-row";
+      row.appendChild(VoicePackList.headLine(entry));
 
-      const label = document.createElement("span");
-      label.className = "ird-vp-label";
-      label.textContent = entry.label;
+      const voices = VoicePackList.voicesLine(entry);
 
-      const badge = document.createElement("span");
-      badge.className = `ird-vp-badge ird-vp-badge-${entry.provenance}`;
-      badge.textContent = PROVENANCE_LABELS[entry.provenance];
+      if (voices !== null) row.appendChild(voices);
 
-      const version = document.createElement("span");
-      version.className = "ird-vp-version";
-      version.textContent = entry.version;
+      const action = document.createElement("div");
+      action.className = "ird-vp-action";
+      action.appendChild(this.actionFor(entry));
+      row.appendChild(action);
 
-      // A pack from the development voice root (#1143): what is playing is a
-      // checkout, not an install, and the row names the directory in place of a
-      // button. No Remove, because the plugin never deletes from a directory it
-      // did not create.
-      //
-      // FIRST, ahead of both rules below. A development row is decided by WHERE
-      // the plugin found the pack — the plugin also clears `managed` for it, so
-      // the two should never both be true, but the page's own rule stands on its
-      // own feet rather than on that: whatever else a row claims, iRaceDeck does
-      // not keep a folder in somebody's checkout current, and the note has to
-      // name the directory that is actually playing.
-      if (entry.provenance === "development") {
-        const note = document.createElement("span");
-
-        note.className = "ird-vp-note";
-        // The path is long enough to be truncated by the row's layout, so it is
-        // repeated as a title — the one place a full path is always readable.
-        note.textContent = entry.dir ?? "From the development voice root";
-
-        if (entry.dir !== undefined) note.title = entry.dir;
-
-        row.appendChild(label);
-        row.appendChild(badge);
-        row.appendChild(version);
-        row.appendChild(note);
-        this.list.appendChild(row);
-
-        continue;
-      }
-
-      // The pack iRaceDeck manages (#1034 stage 3): the launch step installs
-      // and refreshes it, so a Remove would only be undone at the next start.
-      // The row says so in place of the button. Keyed by the plugin-published
-      // flag, never by provenance — the flag is the plugin's statement.
-      //
-      // Ahead of the bundled-seed rule below: this is the case with a
-      // live reason, and the two would otherwise both be true of one row on an
-      // installation upgraded from a bundling release, whose note would then
-      // say the audio ships with the plugin when it no longer does.
-      if (entry.managed === true) {
-        const note = document.createElement("span");
-
-        note.className = "ird-vp-note";
-        note.textContent = "Kept up to date by iRaceDeck";
-
-        row.appendChild(label);
-        row.appendChild(badge);
-        row.appendChild(version);
-        row.appendChild(note);
-        this.list.appendChild(row);
-
-        continue;
-      }
-
-      // A pack the PLUGIN provides gets no Remove, and what stands in its
-      // place is a STATEMENT rather than a disabled button (#1100).
-      //
-      // The condition is deliberately "bundled seed AND provides nothing", not
-      // provenance alone. `voices` is empty exactly while the plugin's own
-      // audio owns every voice this pack declares — so the row is describing
-      // something the user cannot meaningfully delete: removing the folder
-      // changes nothing they can hear, because the bundle keeps playing the
-      // voice.
-      //
-      // That condition is also what retires the branch, and #1034 stage 3 is
-      // the release that does it: with nothing bundled the scanner reserves no
-      // voice ids, so it emits no such row and the case stops arising by
-      // itself, rather than leaving a working, user-owned pack permanently
-      // unremovable and mislabelled. Since #1144 the scanner cannot emit one
-      // at all: it drops no voice to the bundle, and lists no pack without a
-      // voice. Kept rather than deleted because it describes a ROW, not a
-      // release: a row that provides nothing earns a statement instead of a
-      // button whenever one turns up, and that is decided by the plugin, not
-      // here.
-      //
-      // NOT because it would be undone on the next start — that reason is
-      // false often enough to be worth naming, and it belongs to the managed
-      // branch above rather than to this one. `VoicePackInstaller.seed()`
-      // skips with `packs-present` whenever any pack directory exists, and its
-      // own comment calls removing the seeded copy a choice the plugin must not
-      // argue with. So with a second pack installed a removal WOULD stick. The
-      // button is withheld because its effect would be invisible, not because
-      // it would be reverted.
-      //
-      // A DISABLED button would be worse than none: it still invites the click
-      // and still has to explain itself, where a line of text simply answers
-      // the question a missing button raises.
-      if (entry.provenance === "bundled-seed" && entry.voices.length === 0) {
-        const note = document.createElement("span");
-
-        note.className = "ird-vp-note";
-        note.textContent = "Included with the plugin";
-
-        row.appendChild(label);
-        row.appendChild(badge);
-        row.appendChild(version);
-        row.appendChild(note);
-        this.list.appendChild(row);
-
-        continue;
-      }
-
-      // Two-step, in the state-driven shape `ird-enable-feature` establishes:
-      // the button renders the CURRENT state rather than firing and hoping. A
-      // first press arms it, a second removes. See `armRemove` for what cancels.
-      const remove = document.createElement("button");
-      remove.type = "button";
-      remove.className = "ird-vp-remove-button";
-      VoicePackList.dressButton(remove, false);
-
-      // A genuine scan change can rebuild the list while a confirmation is
-      // open, so the armed pack's NEW button has to be dressed and adopted —
-      // the old element is gone and clearing state through it would be a no-op.
-      if (this.armed === entry.id) {
-        this.armedButton = remove;
-        VoicePackList.dressButton(remove, true);
-      }
-
-      remove.addEventListener("click", () => {
-        if (this.armed === entry.id) {
-          // Resets the button in place on the way out, so a removal that FAILS
-          // leaves it reading "Remove" rather than a red button with no armed
-          // state behind it.
-          this.clearArmedState();
-          sendToPlugin({ event: "voicePackRemove", id: entry.id });
-
-          return;
-        }
-
-        this.armRemove(entry, remove);
-      });
-
-      row.appendChild(label);
-      row.appendChild(badge);
-      row.appendChild(version);
-      row.appendChild(remove);
       this.list.appendChild(row);
     }
 
