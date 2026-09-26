@@ -30,8 +30,6 @@
  *   simhub-message="…bound to a SimHub role, so the priming box may flash briefly…"
  * ></ird-black-box-caveat>
  */
-import { parseKeyBinding } from "./key-binding-input.js";
-
 /**
  * The feature checkbox is a per-action setting whose live value is only reliably
  * readable from the DOM (the same reason ird-binding-status polls). Global
@@ -99,15 +97,23 @@ function bindingObject(raw: unknown): Record<string, unknown> | null {
 
 /**
  * Whether a stored global binding value (a JSON string or an already-parsed
- * object) is a usable KEYBOARD binding. A SimHub role, an empty value, or a
- * corrupt one all return false.
+ * object) is a usable KEYBOARD binding — the shape deck-core's
+ * `KeyBindingValueSchema` accepts, so the caveat and the runtime agree: `type`
+ * absent or "keyboard", a non-empty `key`, and `modifiers` absent or an array of
+ * strings. A SimHub role, an empty value, or a corrupt one all return false.
  */
 export function isKeyboardBinding(raw: unknown): boolean {
   const binding = bindingObject(raw);
 
-  if (!binding || binding.type === "simhub") return false;
+  if (!binding) return false;
 
-  return parseKeyBinding(typeof raw === "string" ? raw : JSON.stringify(binding)) !== null;
+  if (binding.type !== undefined && binding.type !== "keyboard") return false;
+
+  if (typeof binding.key !== "string" || binding.key.length === 0) return false;
+
+  const { modifiers } = binding;
+
+  return modifiers === undefined || (Array.isArray(modifiers) && modifiers.every((m) => typeof m === "string"));
 }
 
 /**

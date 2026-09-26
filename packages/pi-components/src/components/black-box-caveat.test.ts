@@ -364,7 +364,18 @@ describe("binding classifiers", () => {
     expect(isSimHubBinding(simhub)).toBe(true);
     expect(isKeyboardBinding(simhub)).toBe(false);
     expect(isSimHubBinding({ type: "simhub", role: "" })).toBe(false);
-    expect(isKeyboardBinding({ key: "f1" })).toBe(false);
+    expect(isKeyboardBinding({ key: "f1" })).toBe(true);
+  });
+
+  it("should match the runtime's KeyBindingValueSchema for keyboard bindings", () => {
+    // Accepted: modifiers default to [] and type defaults to "keyboard".
+    expect(isKeyboardBinding(JSON.stringify({ key: "f1" }))).toBe(true);
+    expect(isKeyboardBinding(JSON.stringify({ type: "keyboard", key: "f1", modifiers: ["ctrl"] }))).toBe(true);
+    // Rejected, as parseBinding rejects them.
+    expect(isKeyboardBinding(JSON.stringify({ key: "", modifiers: [] }))).toBe(false);
+    expect(isKeyboardBinding(JSON.stringify({ type: "gamepad", key: "f1", modifiers: [] }))).toBe(false);
+    expect(isKeyboardBinding(JSON.stringify({ key: "f1", modifiers: ["ctrl", 3] }))).toBe(false);
+    expect(isKeyboardBinding(JSON.stringify({ key: "f1", modifiers: "ctrl" }))).toBe(false);
   });
 
   it("should reject empty, corrupt and non-binding values", () => {
