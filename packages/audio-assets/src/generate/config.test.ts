@@ -284,6 +284,17 @@ describe("loadVoiceConfigs", () => {
 
     expect(() => loadVoiceConfigs(dir)).toThrow(/Failed to parse alpha\.voice\.json/);
   });
+
+  it("holds the voice id to the pack format's own id rule, naming the file", () => {
+    // The stem becomes the voice's id in its pack's voice-pack.json, so it is
+    // judged by `packId` from @iracedeck/callout-script — the rule the plugin's
+    // scanner admits a voice id by — in that rule's words.
+    const dir = configsDir({ "Alpha.voice.json": valid });
+
+    expect(() => loadVoiceConfigs(dir)).toThrow(
+      'Invalid voice id "Alpha" (from Alpha.voice.json): must be lowercase kebab-case (a-z, 0-9, dashes)',
+    );
+  });
 });
 
 describe("EntrySchema per-entry overrides", () => {

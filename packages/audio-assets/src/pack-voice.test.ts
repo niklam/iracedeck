@@ -1,4 +1,9 @@
-import { CALLOUT_SCRIPT_FILE, type CalloutScript, calloutScriptPath } from "@iracedeck/callout-script";
+import {
+  CALLOUT_SCRIPT_FILE,
+  type CalloutScript,
+  calloutScriptPath,
+  VoicePackManifestSchema,
+} from "@iracedeck/callout-script";
 import { unzipSync } from "fflate";
 import { createHash } from "node:crypto";
 import {
@@ -19,12 +24,14 @@ import path from "node:path";
 import url from "node:url";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-// The REAL contracts, from deck-core's source rather than a copy: the packer's
-// output must satisfy the schemas the plugin parses with and lay clips out where
-// its scanner walks, so if either format moves these tests break with it.
+// The REAL contracts, never a copy: the packer's output must satisfy the
+// schemas the plugin parses with and lay clips out where its scanner walks, so
+// if either format moves these tests break with it. The manifest schema is the
+// leaf's (`@iracedeck/callout-script`, above — the scanner validates through
+// the same one since #1134); the catalog schema and the scanner are deck-core's,
+// imported from its source.
 import { VoicePackCatalogEntrySchema } from "../../deck-core/src/voice-pack-catalog.ts";
 import { createVoicePackFileSystem } from "../../deck-core/src/voice-pack-fs.ts";
-import { VoicePackManifestSchema } from "../../deck-core/src/voice-pack-manifest.ts";
 import { scanVoicePacks } from "../../deck-core/src/voice-pack-scanner.ts";
 import {
   archiveUrl,
@@ -756,9 +763,82 @@ describe("packVoice", () => {
       });
 
     await expect(attempt({ id: "Test Voice" })).rejects.toThrow(/kebab-case/);
+    await expect(attempt({ id: "test::voice" })).rejects.toThrow(/pack "test::voice": id must not contain "::"/);
     await expect(attempt({ version: "1.2" })).rejects.toThrow(/semver/);
-    await expect(attempt({ label: "x".repeat(61) })).rejects.toThrow(/1-60 characters/);
+    await expect(attempt({ label: "x".repeat(61) })).rejects.toThrow(/label: must be 60 characters or fewer/);
     await expect(attempt({ voices: [] })).rejects.toThrow(/at least one voice/);
+  });
+
+  // `isSemverVersion` is what the plugin ACCEPTS, trim and leading `v`
+  // included; the packer writes the version verbatim into the release tag, the
+  // archive name and the catalog url, so it holds the canonical spelling only.
+  it.each([
+    ["with a leading space, which the plugin would trim", " 1.1.2"],
+    ["with a trailing newline", "1.1.2\n"],
+    ["with a leading v, which the plugin would accept", "v1.1.2"],
+    ["given as a number, naming the field rather than throwing a TypeError", 1],
+  ])("refuses a version %s", async (_label, version) => {
+    await expect(
+      packVoice({
+        pack: { ...pack, version } as unknown as typeof pack,
+        srcRoot,
+        configsDir,
+        outDir: path.join(root, "out-5"),
+        cacheDir: path.join(root, "cache-5"),
+      }),
+    ).rejects.toThrow(/pack "testvoice": version must be a canonical semver version/);
+  });
+
+  it.each([
+    ["with a leading v", "v3.4.0"],
+    ["with a trailing space", "3.4.0 "],
+    ["given as a number, naming the field rather than throwing a TypeError", 3],
+  ])("refuses a minPluginVersion %s", async (_label, minPluginVersion) => {
+    await expect(
+      packVoice({
+        pack: { ...pack, minPluginVersion } as unknown as typeof pack,
+        srcRoot,
+        configsDir,
+        outDir: path.join(root, "out-5"),
+        cacheDir: path.join(root, "cache-5"),
+      }),
+    ).rejects.toThrow(/pack "testvoice": minPluginVersion must be a canonical semver version/);
+  });
+
+  it("refuses a pack whose manifest the plugin's schema would refuse, naming the field in its words, before staging", async () => {
+    const outDir = path.join(root, "out-6");
+
+    await expect(
+      packVoice({ pack: { ...pack, author: "" }, srcRoot, configsDir, outDir, cacheDir: path.join(root, "cache-6") }),
+    ).rejects.toThrow(
+      /pack "testvoice": the voice-pack\.json it would write is one the plugin refuses:\n {2}author: Too small/,
+    );
+    await expect(
+      packVoice({
+        pack: { ...pack, label: "Two\nlines" },
+        srcRoot,
+        configsDir,
+        outDir,
+        cacheDir: path.join(root, "cache-6"),
+      }),
+    ).rejects.toThrow(/label: must not contain control characters/);
+    // Refused before anything was staged.
+    expect(existsSync(path.join(outDir, "testvoice"))).toBe(false);
+  });
+
+  it("refuses a pack that lists a voice twice, which the scanner would only de-duplicate", async () => {
+    const outDir = path.join(root, "out-7");
+
+    await expect(
+      packVoice({
+        pack: { ...pack, voices: ["testvoice", "testvoice"] },
+        srcRoot,
+        configsDir,
+        outDir,
+        cacheDir: path.join(root, "cache-7"),
+      }),
+    ).rejects.toThrow(/pack "testvoice": voice "testvoice" is listed more than once in voices/);
+    expect(existsSync(path.join(outDir, "testvoice"))).toBe(false);
   });
 });
 

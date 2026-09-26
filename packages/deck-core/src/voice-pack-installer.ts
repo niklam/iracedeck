@@ -46,7 +46,15 @@
  * banner read, and nothing else. `voice-pack-no-window.test.ts` enforces this
  * structurally over every module of the feature, this one included.
  */
-import { calloutScriptPath } from "@iracedeck/callout-script";
+import {
+  calloutScriptPath,
+  packId,
+  parseVoicePackManifest,
+  USABLE_VOICE_CLIP,
+  VOICE_PACK_MANIFEST_FILE,
+  VOICE_PACK_MANIFEST_SCHEMA_VERSION,
+  type VoicePackManifest,
+} from "@iracedeck/callout-script";
 import type { ILogger } from "@iracedeck/logger";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
@@ -59,7 +67,6 @@ import type { VoicePackCatalogGetOptions } from "./voice-pack-catalog-service.js
 import { isVoicePackOfferable, type VoicePackCatalogEntry } from "./voice-pack-catalog.js";
 import { VOICE_PACK_PROVENANCE_FILE } from "./voice-pack-constants.js";
 import { downloadVoicePack, type VoicePackDownloadFailure } from "./voice-pack-download.js";
-import { packId, parseVoicePackManifest, type VoicePackManifest } from "./voice-pack-manifest.js";
 import { parseVoicePackProvenance, type VoicePackProvenance } from "./voice-pack-provenance.js";
 import type { VoicePackFileRead, VoicePackFileSystem } from "./voice-pack-scanner.js";
 import type { VoicePackCatalogState, VoicePackInstallState, VoicePackStatus } from "./voice-pack-status.js";
@@ -69,14 +76,6 @@ import type {
   SweepVoicePacksResult,
   VoicePackStorage,
 } from "./voice-pack-storage.js";
-
-/**
- * The pack manifest's file name, as the archive carries it and the scanner
- * opens it. The scanner keeps a private copy of the same string; the shared
- * home for it would be `voice-pack-constants.ts`, which is not this change's
- * to edit — the two are one string and this comment is the link between them.
- */
-export const VOICE_PACK_MANIFEST_FILE = "voice-pack.json";
 
 /**
  * How often download progress reaches the status setter, at most.
@@ -102,15 +101,18 @@ export const VOICE_PACK_PROGRESS_INTERVAL_MS = 1_000;
 const SEED_FILES_PER_TURN = 64;
 
 /**
- * A clip the scenario engine can reach: `voice/<voice-id>/<group>/<name>.mp3`,
- * exactly that depth, lowercase extension. This is the scanner's own
- * `USABLE_CLIP` grammar, mirrored rather than imported because the scanner
- * does not export it. It has to be checked HERE, before the swap, and not left
- * to the scanner afterwards: the scanner would report a pack with no reachable
- * clip as a problem, correctly — but by then the pack it replaced would be in
- * the trash. A working voice must never be swapped for a mute one.
+ * The voice a clip belongs to, for a clip the scenario engine can reach —
+ * `voice/<voice-id>/<group>/<name>.mp3`, exactly that depth, lowercase
+ * extension (`USABLE_VOICE_CLIP`, the scanner's own grammar, shared through
+ * `@iracedeck/callout-script` since #1134) — and `undefined` for anything else.
+ * It has to be checked HERE, before the swap, and not left to the scanner
+ * afterwards: the scanner would report a pack with no reachable clip as a
+ * problem, correctly — but by then the pack it replaced would be in the trash.
+ * A working voice must never be swapped for a mute one.
  */
-const USABLE_CLIP = /^voice\/([^/]+)\/[^/]+\/[^/]+\.mp3$/;
+function reachableVoiceOf(path: string): string | undefined {
+  return USABLE_VOICE_CLIP.test(path) ? path.split("/")[1] : undefined;
+}
 
 export type VoicePackInstallOutcome =
   /** The pack was not installed before. */
@@ -413,7 +415,7 @@ export function validateStagedVoicePack(
   const reachable = new Set<string>();
 
   for (const path of written) {
-    const voice = USABLE_CLIP.exec(path)?.[1];
+    const voice = reachableVoiceOf(path);
 
     if (voice !== undefined) reachable.add(voice);
   }
@@ -434,7 +436,7 @@ export function validateStagedVoicePack(
  */
 function seedManifestText(entry: VoicePackCatalogEntry): string {
   const manifest: VoicePackManifest = {
-    schema: 1,
+    schema: VOICE_PACK_MANIFEST_SCHEMA_VERSION,
     id: entry.id,
     label: entry.label,
     version: entry.version,

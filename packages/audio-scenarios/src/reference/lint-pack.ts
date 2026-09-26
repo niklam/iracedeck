@@ -16,38 +16,53 @@
  * pack with, and applies the same coverage rules the reference voice is
  * held to (`@iracedeck/callout-script`'s `coverage.ts`).
  *
- * The manifest (`voice-pack.json`) is read as PLAIN JSON — deck-core's
- * schema, which the plugin validates the whole file with at install time,
- * is unreachable from this package, and moving it into the leaf beside the
- * script schema is a follow-up. What IS checked is every field the scanner
- * refuses a pack over that plain JSON can read, in the scanner's own terms:
- * `schema` exactly `1`; `id` lowercase kebab-case and equal to the pack
- * folder's name lowercased (the scanner's rule — the filesystem is
- * case-insensitive, the id regex is not); `label` a non-empty string of at
- * most 60 characters; `version` semver by shape (the scanner uses `semver`;
- * a regex is what plain JSON affords here); and each `voices[]` entry a
- * kebab-case `id` with a `label`. An id holding `::` is reported with the
- * separator named, ahead of the kebab-case rule, as the scanner does: the
- * plugin names a voice `<pack id>::<voice id>` (#1144), and an author who
- * qualified an id by hand should hear why. A voice id only has to be unique
- * within its pack — another pack's `matt` is a different voice — so nothing
- * is said about one any other pack declares, while one declared twice in the
- * same pack is reported in the scanner's words (the first wins) and linted
- * once. The separator's reason is `VOICE_ID_SEPARATOR_REASON`, the very
- * sentence deck-core's schemas report. A field problem is reported and the
- * voice is linted anyway; when the manifest is missing, unparseable or
- * carries no usable id at all, that is reported AND the voices are taken
- * from the directories under `voice/` instead, so the author still gets
- * clip and script feedback.
+ * The manifest (`voice-pack.json`) is validated by the very schema the
+ * plugin's scanner admits a pack by: `@iracedeck/callout-script`'s
+ * `voice-pack.ts` (#1134) holds the manifest schema, the id-vs-folder rule,
+ * the voice de-duplication, the usable-clip grammar and the script size cap;
+ * this module and the scanner import all of them and the packer the ones it
+ * applies, so none of the three can drift from the others. Until #1134 the
+ * schema lived in deck-core, out of reach from here, and this module
+ * restated each rule as a plain-JSON check beside a comment saying so —
+ * nothing pinned the copies, and they had already drifted (the regex here
+ * refused a `v1.2.3` the scanner's `semver` accepted).
+ * `scripts/lib/lint-pack-scanner-parity.test.mjs` now runs both over the
+ * same packs.
+ *
+ * The manifest is read through the leaf's one text stage,
+ * `readVoicePackManifestText` — the BOM strip, the `JSON.parse` and the
+ * schema the scanner's `parseVoicePackManifest` wraps — so what counts as a
+ * readable manifest is decided once. What stays this module's is the
+ * PRESENTATION: the scanner shows a user the first problem of a refused
+ * manifest, one line per pack, while an author here gets every one — the
+ * leaf's list, which already holds the first problem per field only (zod
+ * reports every failing check of a field, so an id holding `::` would
+ * otherwise read twice). The separator's sentence is
+ * `VOICE_ID_SEPARATOR_REASON`, first because the schema checks it first:
+ * the plugin names a voice `<pack id>::<voice id>` (#1144), and an author
+ * who qualified an id by hand should hear why. The folder comparison is
+ * `packIdMatchesFolder` — case-insensitive, as the filesystem is — asked
+ * only of an id the schema accepts. A voice id only has to be unique within
+ * its pack — another pack's `matt` is a different voice — so nothing is
+ * said about one any other pack declares, while one declared twice in a
+ * manifest the schema ACCEPTS is reported in the scanner's words (the first
+ * wins) and linted once; a manifest the schema refuses loads nothing, so
+ * there is no first to win and its repeats are folded away silently. A field
+ * problem is reported and the voices are linted anyway — the declared ones
+ * whose id the schema's `packId` accepts; when the manifest is missing,
+ * unparseable or declares no such id at all, that is reported AND the voices
+ * are taken from the directories under `voice/` instead, so the author still
+ * gets clip and script feedback — the note saying so on the last problem
+ * that explains why.
  *
  * Per voice, in this order: the clip files under `voice/<id>/` (every one
- * must be `voice/<id>/<group>/<name>.mp3`, lowercase extension — deck-core's
- * `USABLE_CLIP` rule, restated); the script — missing means a clips-only
- * voice, which the plugin accepts and which is silent for every callout, so
- * it is reported (the plugin raises the missing-script banner for exactly
- * this); one larger than the scanner accepts (`VOICE_SCRIPT_MAX_BYTES`,
- * restated) is reported as the scanner treats it — read, then refused before
- * it is parsed; a script that does not parse is reported with the grammar's
+ * must be `voice/<id>/<group>/<name>.mp3`, lowercase extension — the shared
+ * `USABLE_VOICE_CLIP`); the script — missing means a clips-only voice, which
+ * the plugin accepts and which is silent for every callout, so it is
+ * reported (the plugin raises the missing-script banner for exactly this);
+ * one larger than the scanner accepts (the shared `VOICE_SCRIPT_MAX_BYTES`)
+ * is reported as the scanner treats it — read, then refused before it is
+ * parsed; a script that does not parse is reported with the grammar's
  * own problems; a script that parses is compiled, and every skip the pack
  * did NOT mean is reported with the compiler's reason, as are frames and
  * fragments that fail; then the coverage rules over the clip files — bases
@@ -78,10 +93,15 @@ import {
   type CalloutScript,
   calloutScriptPath,
   checkCoverage,
+  dedupeDeclaredVoices,
+  packId,
+  packIdMatchesFolder,
   parseCalloutScriptText,
+  readVoicePackManifestText,
+  USABLE_VOICE_CLIP,
   type VarDrivenGroup,
-  VOICE_ID_SEPARATOR,
-  VOICE_ID_SEPARATOR_REASON,
+  VOICE_PACK_MANIFEST_FILE,
+  VOICE_SCRIPT_MAX_BYTES,
 } from "@iracedeck/callout-script";
 
 import type { ContractReport, VocabularyReport } from "../interpreter.js";
@@ -207,7 +227,6 @@ export type LintPackInput = {
 
 // ─── Linting ─────────────────────────────────────────────────────────────────
 
-const MANIFEST_FILE = "voice-pack.json";
 const VOICE_ROOT = "voice";
 
 export function lintPack({
@@ -227,28 +246,36 @@ export function lintPack({
   };
 
   const onDisk = [...fs.listDirectories(`${packDir}/${VOICE_ROOT}`)].sort();
-  const declared = readManifest(fs.readTextFile(`${packDir}/${MANIFEST_FILE}`), packDirName);
+  const declared = readManifest(fs.readTextFile(`${packDir}/${VOICE_PACK_MANIFEST_FILE}`), packDirName);
   let voiceIds: readonly string[];
 
   if (declared.ids !== null) {
     voiceIds = declared.ids;
 
-    for (const message of declared.problems) packProblem(message);
+    for (const message of [...declared.refusal, ...declared.others]) packProblem(message);
 
     for (const folder of onDisk) {
       if (!voiceIds.includes(folder)) {
-        packProblem(`${VOICE_ROOT}/${folder}/ exists but ${MANIFEST_FILE} does not declare it — the plugin ignores it`);
+        packProblem(
+          `${VOICE_ROOT}/${folder}/ exists but ${VOICE_PACK_MANIFEST_FILE} does not declare it — the plugin ignores it`,
+        );
       }
     }
   } else {
-    // Every problem is reported; the last carries the fallback note.
-    declared.problems.forEach((message, index) => {
+    // Every problem is reported. The fallback note rides on the last one that
+    // explains WHY the manifest gave no voices — a read or schema problem —
+    // never on the folder line that may follow it, which is about something
+    // else entirely.
+    declared.refusal.forEach((message, index) => {
       packProblem(
-        index === declared.problems.length - 1
+        index === declared.refusal.length - 1
           ? `${message}; the voices under ${VOICE_ROOT}/ were linted anyway`
           : message,
       );
     });
+
+    for (const message of declared.others) packProblem(message);
+
     voiceIds = onDisk;
   }
 
@@ -282,155 +309,94 @@ export function lintPack({
 /**
  * The manifest as the linter read it: the voice ids to lint — `null` when
  * the file gave none and the `voice/` directories stand in — and every
- * problem found on the way, in manifest order.
+ * problem found on the way, in the order the scanner meets them, in two
+ * lists. `refusal` is why the plugin would not read the manifest at all (it
+ * could not be read, is not JSON, or the schema refuses it); `others` are the
+ * checks after it — the folder, the repeats. Kept apart because only a
+ * refusal can explain a fallback to the directories, so only a refusal may
+ * carry the note that says so.
  */
-type DeclaredVoices = { ids: readonly string[] | null; problems: readonly string[] };
-
-/**
- * Pack and voice ids are lowercase kebab-case — deck-core's `packId` rule,
- * restated. Checked here for two reasons: the plugin refuses a manifest with
- * any other id, which an author should hear before installing; and a voice
- * id becomes a directory segment (`voice/<id>/`) below, so an id that is not
- * one is never used as a path.
- */
-const PACK_ID = /^[a-z][a-z0-9-]*$/;
-
-/** deck-core's `displayLabel` bound, restated: a third party's string rendered straight into a dropdown row. */
-const LABEL_MAX_LENGTH = 60;
-
-/**
- * Semver by shape — `major.minor.patch`, an optional pre-release and build —
- * the regex semver.org publishes. The scanner asks the `semver` package
- * instead (`semverValid`); this package has no such dependency, and a version
- * the regex accepts that `semver` would not is not a case the format has met.
- */
-const SEMVER =
-  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/;
+type DeclaredVoices = { ids: readonly string[] | null; refusal: readonly string[]; others: readonly string[] };
 
 const REFUSED = "the plugin refuses the manifest";
 
 /**
- * The manifest read as plain JSON, checked for what the scanner refuses a
- * pack over (see the header). An entry with no usable id is reported (the
- * plugin refuses such a manifest whole) and the others are kept; no usable id
- * at all falls back to the directories, the per-entry problems intact.
+ * The manifest checked by the scanner's own rules (see the header): the
+ * shared text stage and schema, then the folder, then the repeats — the
+ * scanner's order, with every problem reported where the scanner stops at the
+ * first.
+ *
+ * When the schema refuses the file, the voices are still linted wherever the
+ * manifest names them usably: each entry whose `id` the schema's `packId`
+ * accepts. That is the same rule that keeps an id off the filesystem — a
+ * voice id becomes a directory segment (`voice/<id>/`) below, so an id the
+ * plugin would refuse is never used as a path. No such entry at all falls
+ * back to the directories, the schema's problems intact.
  */
 function readManifest(read: LintFileRead, packDirName: string): DeclaredVoices {
   if (!read.ok) {
     return {
       ids: null,
-      problems: [
+      refusal: [
         read.missing
-          ? `${MANIFEST_FILE} is missing — the plugin will not see this folder as a pack`
-          : `${MANIFEST_FILE} could not be read (${read.reason})`,
+          ? `${VOICE_PACK_MANIFEST_FILE} is missing — the plugin will not see this folder as a pack`
+          : `${VOICE_PACK_MANIFEST_FILE} could not be read (${read.reason})`,
       ],
+      others: [],
     };
   }
 
-  let json: unknown;
+  const manifest = readVoicePackManifestText(read.text);
+  const refusal = manifest.ok
+    ? []
+    : manifest.problems.map((problem) => `${VOICE_PACK_MANIFEST_FILE}: ${problem}; ${REFUSED}`);
+  const raw: { id?: unknown; voices?: unknown } =
+    manifest.json !== null && typeof manifest.json === "object" ? manifest.json : {};
+  const others: string[] = [];
 
-  try {
-    json = JSON.parse(read.text.charCodeAt(0) === 0xfeff ? read.text.slice(1) : read.text);
-  } catch (err) {
-    return {
-      ids: null,
-      problems: [`${MANIFEST_FILE} is not valid JSON: ${err instanceof Error ? err.message : String(err)}`],
-    };
-  }
+  // Only an id the schema accepts is compared with the folder: a malformed id
+  // already has its line above, and a second telling the author it also
+  // misses the folder would send them to the wrong fix first.
+  const id = packId.safeParse(raw.id);
 
-  const manifest: Record<string, unknown> = json !== null && typeof json === "object" ? (json as never) : {};
-  const problems: string[] = [];
-
-  if (manifest.schema === undefined) {
-    problems.push(`${MANIFEST_FILE}: schema is missing — must be the number 1; ${REFUSED}`);
-  } else if (manifest.schema !== 1) {
-    problems.push(
-      `${MANIFEST_FILE}: schema must be the number 1 (got ${JSON.stringify(manifest.schema)}) — ${REFUSED}`,
+  if (id.success && !packIdMatchesFolder(id.data, packDirName)) {
+    others.push(
+      `${VOICE_PACK_MANIFEST_FILE}: id "${id.data}" does not match the pack folder name "${packDirName}" — the plugin refuses the pack`,
     );
   }
 
-  if (typeof manifest.id !== "string" || manifest.id === "") {
-    problems.push(`${MANIFEST_FILE}: id is missing — ${REFUSED}`);
-  } else if (manifest.id.includes(VOICE_ID_SEPARATOR)) {
-    problems.push(`${MANIFEST_FILE}: id "${manifest.id}" ${VOICE_ID_SEPARATOR_REASON}; ${REFUSED}`);
-  } else if (!PACK_ID.test(manifest.id)) {
-    problems.push(`${MANIFEST_FILE}: id "${manifest.id}" is not lowercase kebab-case (a-z, 0-9, dashes) — ${REFUSED}`);
-  } else if (manifest.id !== packDirName.toLowerCase()) {
-    // The scanner's comparison, case-insensitive on the folder side: the
-    // filesystem underneath is, and the id regex already forbids capitals.
-    problems.push(
-      `${MANIFEST_FILE}: id "${manifest.id}" does not match the pack folder name "${packDirName}" — the plugin refuses the pack`,
-    );
+  if (!manifest.ok) {
+    // The scanner loads nothing from a manifest its schema refuses, so no
+    // repeat is "the first wins" there — saying so would describe a load that
+    // never happens. The usable ids are de-duplicated silently, only so each
+    // voice is linted once.
+    const { voices } = dedupeDeclaredVoices(usableEntries(raw.voices));
+
+    return { ids: voices.length === 0 ? null : voices.map((voice) => voice.id), refusal, others };
   }
 
-  if (!isLabel(manifest.label)) {
-    problems.push(
-      `${MANIFEST_FILE}: label must be a non-empty string of at most ${LABEL_MAX_LENGTH} characters — ${REFUSED}`,
-    );
+  // The scanner's words for a repeat: it keeps the first entry and reports
+  // the rest, and the pack still loads — so no REFUSED. Said here rather than
+  // folded away, because unique within the pack is the one rule a voice id
+  // still has.
+  const { voices, repeated } = dedupeDeclaredVoices(manifest.manifest.voices);
+
+  for (const repeat of repeated) {
+    others.push(`${VOICE_PACK_MANIFEST_FILE}: voice "${repeat}" is declared more than once; the first wins`);
   }
 
-  if (typeof manifest.version !== "string" || manifest.version === "") {
-    problems.push(`${MANIFEST_FILE}: version is missing — ${REFUSED}`);
-  } else if (!SEMVER.test(manifest.version)) {
-    problems.push(
-      `${MANIFEST_FILE}: version "${manifest.version}" is not a semver version (major.minor.patch) — ${REFUSED}`,
-    );
-  }
-
-  const voices = manifest.voices;
-
-  if (!Array.isArray(voices) || voices.length === 0) {
-    return {
-      ids: null,
-      problems: [...problems, `${MANIFEST_FILE} has no voices[].id list — the plugin reads the voices from it`],
-    };
-  }
-
-  const ids: string[] = [];
-
-  voices.forEach((entry: unknown, index) => {
-    const voice: Record<string, unknown> = entry !== null && typeof entry === "object" ? (entry as never) : {};
-    const id = voice.id;
-
-    if (typeof id !== "string" || id === "") {
-      problems.push(`${MANIFEST_FILE}: voices[${index}] has no string id — ${REFUSED}`);
-
-      return;
-    }
-
-    if (id.includes(VOICE_ID_SEPARATOR)) {
-      problems.push(`${MANIFEST_FILE}: voices[${index}].id "${id}" ${VOICE_ID_SEPARATOR_REASON}; ${REFUSED}`);
-
-      return;
-    }
-
-    if (!PACK_ID.test(id)) {
-      problems.push(
-        `${MANIFEST_FILE}: voices[${index}].id "${id}" is not lowercase kebab-case (a-z, 0-9, dashes) — ${REFUSED}`,
-      );
-
-      return;
-    }
-
-    if (!isLabel(voice.label)) problems.push(`${MANIFEST_FILE}: voices[${index}] has no label — ${REFUSED}`);
-
-    // The scanner's words: it keeps the first entry and reports the rest, and
-    // the pack still loads — so no REFUSED. Said here rather than folded away,
-    // because unique within the pack is the one rule a voice id still has.
-    if (ids.includes(id)) {
-      problems.push(`${MANIFEST_FILE}: voices[${index}].id "${id}" is declared more than once; the first wins`);
-
-      return;
-    }
-
-    ids.push(id);
-  });
-
-  return { ids: ids.length === 0 ? null : ids, problems };
+  return { ids: voices.map((voice) => voice.id), refusal, others };
 }
 
-function isLabel(value: unknown): boolean {
-  return typeof value === "string" && value.length > 0 && value.length <= LABEL_MAX_LENGTH;
+/** The declared entries of a manifest the schema refused, kept where their `id` is one the schema accepts. */
+function usableEntries(voices: unknown): { id: string }[] {
+  if (!Array.isArray(voices)) return [];
+
+  return voices.flatMap((entry: unknown) => {
+    const id = packId.safeParse((entry as { id?: unknown } | null)?.id);
+
+    return id.success ? [{ id: id.data }] : [];
+  });
 }
 
 type VoiceContext = {
@@ -450,14 +416,6 @@ type VoiceContext = {
 
 const MP3 = ".mp3";
 
-/**
- * The largest `callouts.json` the plugin will read — deck-core's
- * `VOICE_SCRIPT_MAX_BYTES` (`voice-pack-scanner.ts`), restated: the scanner
- * refuses a bigger file before parsing it and drops the voice, so a pack
- * that lints clean here must be one the scanner would read.
- */
-const VOICE_SCRIPT_MAX_BYTES = 1024 * 1024;
-
 function lintVoice(id: string, ctx: VoiceContext): VoiceLintSummary {
   const total = ctx.contractIds.length;
   const prefix = `${VOICE_ROOT}/${id}/`;
@@ -465,13 +423,13 @@ function lintVoice(id: string, ctx: VoiceContext): VoiceLintSummary {
     ctx.problems.push({ voice: id, kind, message });
   };
 
-  // Clips: exactly `voice/<id>/<group>/<name>.mp3`, the way the engine's
-  // pool pattern and deck-core's usable-clip gate both read them.
-  const usableClip = new RegExp(`^${escapeRegExp(prefix)}[^/]+/[^/]+\\${MP3}$`);
+  // Clips: exactly `voice/<id>/<group>/<name>.mp3` — the shared
+  // `USABLE_VOICE_CLIP`, the gate the scanner admits a voice's clips by and
+  // the grammar the engine's pool pattern reads, under this voice's prefix.
   const own = ctx.clips.filter((clip) => clip.startsWith(prefix));
-  const usable = own.filter((clip) => usableClip.test(clip));
+  const usable = own.filter((clip) => USABLE_VOICE_CLIP.test(clip));
 
-  for (const clip of own.filter((clip) => !usableClip.test(clip)).sort()) {
+  for (const clip of own.filter((clip) => !USABLE_VOICE_CLIP.test(clip)).sort()) {
     problem("clips", `${clip} is not ${prefix}<group>/<name>${MP3} (lowercase ${MP3}) — the engine cannot play it`);
   }
 
@@ -505,7 +463,8 @@ function lintVoice(id: string, ctx: VoiceContext): VoiceLintSummary {
   }
 
   // The scanner's size gate, applied BEFORE parsing as the scanner applies
-  // it — the same `length` comparison, so the two agree on the boundary.
+  // it — the same shared cap and the same `length` comparison, so the two
+  // agree on the boundary.
   if (read.text.length > VOICE_SCRIPT_MAX_BYTES) {
     problem(
       "script",
@@ -678,8 +637,4 @@ function compare(a: string, b: string): number {
 
 function sortedEntries(map: ReadonlyMap<string, string>): [string, string][] {
   return [...map].sort(([a], [b]) => compare(a, b));
-}
-
-function escapeRegExp(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

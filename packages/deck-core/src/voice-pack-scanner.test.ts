@@ -1,6 +1,7 @@
+import { VOICE_SCRIPT_MAX_BYTES } from "@iracedeck/callout-script";
 import { describe, expect, it } from "vitest";
 
-import { scanVoicePacks, VOICE_SCRIPT_MAX_BYTES, type VoicePackFileSystem } from "./voice-pack-scanner.js";
+import { scanVoicePacks, type VoicePackFileSystem } from "./voice-pack-scanner.js";
 
 const ROOT = "/packs";
 /** The development root (#1143) — deliberately no shared path segment with {@link ROOT}. */
@@ -179,6 +180,35 @@ describe("scanVoicePacks", () => {
 
     expect(result.packs).toEqual([]);
     expect(result.problems[0].reason).toContain("does not match");
+  });
+
+  it("tells a user to update the plugin for a pack whose schema is above the one it reads", () => {
+    const result = scanVoicePacks({
+      root: ROOT,
+      fs: fakeFs({ luca: { manifest: { ...luca, schema: 2 }, clips: ["voice/luca/flags/blue-01.mp3"] } }),
+    });
+
+    expect(result.packs).toEqual([]);
+    expect(result.problems).toEqual([
+      { pack: "luca", reason: "built for a newer version of iRaceDeck — update the plugin to use this pack" },
+    ]);
+  });
+
+  it("reports a missing or malformed schema field as that field's problem, not as a newer pack (#1134)", () => {
+    // Before #1134 any issue at `schema` got the newer-version sentence, so an
+    // author who forgot the field was told to update a plugin that was fine.
+    const { schema: _dropped, ...noSchema } = luca;
+
+    for (const manifest of [noSchema, { ...luca, schema: 0 }]) {
+      const result = scanVoicePacks({
+        root: ROOT,
+        fs: fakeFs({ luca: { manifest, clips: ["voice/luca/flags/blue-01.mp3"] } }),
+      });
+
+      expect(result.packs).toEqual([]);
+      expect(result.problems).toEqual([{ pack: "luca", reason: expect.stringMatching(/^schema: /) }]);
+      expect(result.problems[0].reason).not.toContain("newer version");
+    }
   });
 
   it("refuses a manifest whose id carries the voice-id separator, naming the separator (#1144)", () => {

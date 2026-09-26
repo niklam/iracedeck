@@ -1,13 +1,16 @@
 /**
  * @iracedeck/callout-script
  *
- * The JSON grammar for Race Engineer voice-pack callout scripts
- * (`voice/<voice-id>/callouts.json`, issue #1064): the types, the Zod schema,
- * a never-throwing parser whose problems a pack author can read, and a
- * reference collector for consumers that check a script against what they
- * hold. A leaf package — `zod` is its only dependency — so the engine, the
- * pack scanner and the asset generator can all validate the same contract
- * without depending on each other.
+ * The shared contract of a Race Engineer voice pack. The JSON grammar for its
+ * callout scripts (`voice/<voice-id>/callouts.json`, issue #1064): the types,
+ * the Zod schema, a never-throwing parser whose problems a pack author can
+ * read, and a reference collector for consumers that check a script against
+ * what they hold. And, since #1134, the pack FORMAT's own rules
+ * (`voice-pack.ts`): the `voice-pack.json` schema and reader, which clip paths
+ * the engine can reach, the script size cap, the id-vs-folder rule and the
+ * voice de-duplication. A leaf package — `zod` is its only dependency — so the
+ * engine, the pack scanner, the pack linter and the asset packer can all
+ * validate the same contract without depending on each other.
  */
 export {
   AMBIENT_ACTIONS,
@@ -79,3 +82,24 @@ export {
   VOICE_ID_SEPARATOR,
   VOICE_ID_SEPARATOR_REASON,
 } from "./voice-id.js";
+export {
+  dedupeDeclaredVoices,
+  displayLabel,
+  isSemverVersion,
+  packId,
+  packIdMatchesFolder,
+  type ParseVoicePackManifestResult,
+  parseVoicePackManifest,
+  readVoicePackManifestText,
+  USABLE_VOICE_CLIP,
+  validateVoicePackManifest,
+  VOICE_PACK_MANIFEST_FILE,
+  VOICE_PACK_MANIFEST_SCHEMA_VERSION,
+  VOICE_PACK_NEWER_SCHEMA_REASON,
+  VOICE_SCRIPT_MAX_BYTES,
+  voiceEntry,
+  type VoicePackManifest,
+  VoicePackManifestSchema,
+  type VoicePackManifestTextRead,
+  type VoicePackManifestValidation,
+} from "./voice-pack.js";

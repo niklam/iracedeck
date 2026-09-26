@@ -278,16 +278,22 @@ export {
 
 // Downloadable Race Engineer voice packs (issue #1034)
 export { resolveVoicePacksPath, type ResolveVoicePacksPathOptions } from "./voice-packs-path.js";
+// The pack format's shared rules live in `@iracedeck/callout-script` since
+// #1134 (its `voice-pack.ts`), so the scanner, `lint:pack` and the packer hold
+// one implementation. Re-exported here so deck-core's public surface did not
+// move: a plugin or the harness that named these keeps importing them from
+// deck-core.
 export {
-  parseVoicePackManifest,
-  VoicePackManifestSchema,
   type ParseVoicePackManifestResult,
+  parseVoicePackManifest,
+  VOICE_PACK_MANIFEST_FILE,
+  VOICE_SCRIPT_MAX_BYTES,
   type VoicePackManifest,
-} from "./voice-pack-manifest.js";
+  VoicePackManifestSchema,
+} from "@iracedeck/callout-script";
 export {
   readVoiceScript,
   scanVoicePacks,
-  VOICE_SCRIPT_MAX_BYTES,
   type InstalledVoice,
   type InstalledVoicePack,
   type ScanVoicePacksOptions,
@@ -347,7 +353,6 @@ export {
   createVoicePackInstallerFileSystem,
   readInstalledVoicePackSha,
   VOICE_PACK_INSTALL_FAILURE_CODES,
-  VOICE_PACK_MANIFEST_FILE,
   VOICE_PACK_PROGRESS_INTERVAL_MS,
   type VoicePackInstallFailureCode,
   type VoicePackInstaller,

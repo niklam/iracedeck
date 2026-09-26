@@ -13,7 +13,8 @@
  * by sideload, and the scanner already tells the two apart by whether the
  * installer left an `.install.json` behind.
  *
- * Identity primitives are imported from `voice-pack-manifest.ts` rather than
+ * Identity primitives are imported from `@iracedeck/callout-script`'s
+ * `voice-pack.ts` — the manifest schema's home since #1134 — rather than
  * restated. A catalog entry's `id` and a pack manifest's `id` are the SAME id —
  * the installer compares them after extracting, and refuses a pack that
  * disagrees with the entry that offered it. Two copies of the kebab-case rule
@@ -21,11 +22,11 @@
  * verifies, extracts and is then rejected by the scanner, which is the most
  * expensive place to discover a spelling disagreement.
  */
+import { displayLabel, packId, voiceEntry } from "@iracedeck/callout-script";
 import { coerce, gt, valid as semverValid } from "semver";
 import { z } from "zod";
 
 import { SHA256_HEX_MESSAGE, SHA256_HEX_PATTERN } from "./voice-pack-constants.js";
-import { displayLabel, packId, voiceEntry } from "./voice-pack-manifest.js";
 
 const semverString = z.string().refine((value) => semverValid(value) !== null, "must be a valid semver version");
 

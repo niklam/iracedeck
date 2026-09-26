@@ -22,13 +22,13 @@
  * only code in this module that can throw an I/O error — every method on the
  * storage itself returns a discriminated result.
  */
+import { packId } from "@iracedeck/callout-script";
 import type { ILogger } from "@iracedeck/logger";
 import { type FileHandle, mkdir, open, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { SHA256_HEX_PATTERN, VOICE_PACK_PROVENANCE_FILE } from "./voice-pack-constants.js";
 import type { VoicePackDownloadSink } from "./voice-pack-download.js";
-import { packId } from "./voice-pack-manifest.js";
 import { serializeVoicePackProvenance, type VoicePackProvenance } from "./voice-pack-provenance.js";
 
 export const VOICE_PACK_TMP_DIR = ".tmp";
