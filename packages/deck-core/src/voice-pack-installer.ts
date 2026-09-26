@@ -52,6 +52,7 @@ import {
   parseVoicePackManifest,
   USABLE_VOICE_CLIP,
   VOICE_PACK_MANIFEST_FILE,
+  VOICE_PACK_MANIFEST_SCHEMA_VERSION,
   type VoicePackManifest,
 } from "@iracedeck/callout-script";
 import type { ILogger } from "@iracedeck/logger";
@@ -435,7 +436,7 @@ export function validateStagedVoicePack(
  */
 function seedManifestText(entry: VoicePackCatalogEntry): string {
   const manifest: VoicePackManifest = {
-    schema: 1,
+    schema: VOICE_PACK_MANIFEST_SCHEMA_VERSION,
     id: entry.id,
     label: entry.label,
     version: entry.version,

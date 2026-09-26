@@ -145,7 +145,10 @@ export interface ScanVoicePacksResult {
 // id-vs-folder rule and the voice de-duplication — live in
 // `@iracedeck/callout-script`'s `voice-pack.ts` (#1134), the leaf `lint:pack`
 // and the packer reach too, so the three cannot disagree about what a pack is.
-// The WORDING of every problem stays here: the leaf decides, this file phrases.
+// A refused manifest's reason is the leaf's own text (`parseVoicePackManifest`,
+// `VOICE_PACK_NEWER_SCHEMA_REASON` included), so the linter and this scan say
+// the same words; every OTHER problem — a folder that does not match the id, a
+// repeated voice, a voice with no usable clip or a bad script — is phrased here.
 
 export type VoiceScriptRead = { ok: true; script: CalloutScript | null } | { ok: false; reason: string };
 

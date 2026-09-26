@@ -1,5 +1,5 @@
-import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 
 /**
@@ -33,6 +33,19 @@ import { describe, expect, it } from "vitest";
 
 const SRC_DIR = join(process.cwd(), "packages/deck-core/src");
 
+/**
+ * The feature's modules that live OUTSIDE deck-core, enrolled by path.
+ *
+ * Since #1134 the rules a pack is admitted by — the manifest schema and its
+ * reader, the usable-clip grammar, the script size cap, the id-vs-folder rule
+ * and the voice de-duplication — live in `@iracedeck/callout-script`'s
+ * `voice-pack.ts`, and the scanner runs them on every scan, install and
+ * rescan. A window opened on one of their failure branches would be opened by
+ * this feature, so they are held to the same rule; the `voice*` glob below
+ * cannot reach another package's directory, which is why they are named.
+ */
+const SHARED_MODULES: readonly string[] = [join(process.cwd(), "packages/callout-script/src/voice-pack.ts")];
+
 /** Names that put something on the user's screen, and the module each lives in. */
 const FORBIDDEN: readonly { pattern: RegExp; what: string }[] = [
   { pattern: /\bopenUrl\b/, what: "the deck host's openUrl (opens a browser tab)" },
@@ -62,6 +75,14 @@ function voicePackModules(): string[] {
     .filter((name) => name.endsWith(".ts") && !name.endsWith(".test.ts"));
 }
 
+/** Every file the assertions read: deck-core's `voice*` modules by name, then the shared ones by path. */
+function guardedFiles(): { name: string; file: string }[] {
+  return [
+    ...voicePackModules().map((name) => ({ name, file: join(SRC_DIR, name) })),
+    ...SHARED_MODULES.map((file) => ({ name: relative(process.cwd(), file).replaceAll("\\", "/"), file })),
+  ];
+}
+
 describe("voice-pack modules open no window (#1034)", () => {
   const modules = voicePackModules();
 
@@ -84,8 +105,19 @@ describe("voice-pack modules open no window (#1034)", () => {
     expect(modules).toContain("voice-pack-launch.ts");
   });
 
-  it.each(voicePackModules())("%s reaches nothing that opens a window", (name) => {
-    const source = readFileSync(join(SRC_DIR, name), "utf-8");
+  // The same control for the modules enrolled by path: a moved or renamed file
+  // would make its assertion throw ENOENT rather than pass, but only if it is
+  // still in the list the assertions read — so check the list and the disk.
+  it("finds the shared voice-pack modules it is supposed to be guarding (#1134)", () => {
+    const names = guardedFiles().map(({ name }) => name);
+
+    expect(names).toContain("packages/callout-script/src/voice-pack.ts");
+
+    for (const file of SHARED_MODULES) expect(existsSync(file), `${file} exists`).toBe(true);
+  });
+
+  it.each(guardedFiles())("$name reaches nothing that opens a window", ({ name, file }) => {
+    const source = readFileSync(file, "utf-8");
 
     for (const { pattern, what } of FORBIDDEN) {
       expect(pattern.test(source), `${name} references ${what}`).toBe(false);
