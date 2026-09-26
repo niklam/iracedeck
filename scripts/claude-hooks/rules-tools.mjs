@@ -1,6 +1,7 @@
 /**
  * PreToolUse rules for the non-Bash tools: Skill (`/code-review`), Agent
- * (model choice, worktree isolation) and AskUserQuestion (option wording).
+ * (model choice, worktree isolation), AskUserQuestion (option wording) and
+ * Edit / Write (no raw control bytes).
  * Pure: each takes the tool input and returns a deny reason or `null`.
  */
 import path from "node:path";
@@ -39,6 +40,29 @@ export function checkAgent({ subagent_type: type, model, isolation } = {}) {
   if (type === "fork") return null;
   if (!model)
     return "Choose the agent's model for THIS task (fable / opus / sonnet / haiku) — an omitted model inherits the coordinator's. Say the choice and the reason in one line.";
+  return null;
+}
+
+// Every C0 control byte except tab, LF and CR, plus DEL. Written with escapes,
+// which is the whole point: see checkEdit.
+// eslint-disable-next-line no-control-regex
+const CONTROL_BYTE = /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/;
+
+/**
+ * Edit and Write never put a raw control byte into a file: a literal NUL makes
+ * git classify the file as binary, and every later change to it then ships
+ * with no visible diff (#1103). `scripts/no-control-bytes.test.mjs` guards the
+ * committed tree; this stops the byte when it is typed.
+ */
+export function checkEdit({ content, new_string: newString } = {}) {
+  for (const text of [content, newString]) {
+    if (typeof text !== "string") continue;
+    const at = text.search(CONTROL_BYTE);
+    if (at === -1) continue;
+    const code = text.charCodeAt(at).toString(16).padStart(2, "0");
+    const line = text.slice(0, at).split("\n").length;
+    return `Raw control byte 0x${code} on line ${line} of the text being written. Write it as an escape (\\x${code}) instead — a literal NUL makes git treat the file as binary and hide every diff of it (#1103).`;
+  }
   return null;
 }
 

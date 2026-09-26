@@ -57,7 +57,7 @@
         ]
       },
       {
-        "matcher": "Skill|Agent|AskUserQuestion",
+        "matcher": "Skill|Agent|AskUserQuestion|Edit|Write",
         "hooks": [
           {
             "type": "command",

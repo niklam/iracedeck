@@ -2,7 +2,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { generatorsFor, issueFromWorktreePath, missingWorkflows, prRefFrom, remindersFor } from "./rules-post.mjs";
-import { checkAgent, checkAsk, checkSkill } from "./rules-tools.mjs";
+import { checkAgent, checkAsk, checkEdit, checkSkill } from "./rules-tools.mjs";
 
 const MASTER = "C:\\repo\\iRaceDeck\\master";
 const TREE = "C:/repo/iRaceDeck/ir-1100";
@@ -47,6 +47,24 @@ describe("checkAsk", () => {
   it("does not trip on the word I inside other words or on lower-case i", () =>
     expect(checkAsk(q("Install it", "with iRacing running"))).toBeNull());
   it("tolerates a missing questions array", () => expect(checkAsk({})).toBeNull());
+});
+
+describe("checkEdit (raw control bytes)", () => {
+  // Built with fromCharCode so this file carries no raw control byte itself.
+  const NUL = String.fromCharCode(0);
+  const ETX = String.fromCharCode(3);
+  const DEL = String.fromCharCode(0x7f);
+
+  it("refuses a NUL in a Write's content, naming the byte and line", () =>
+    expect(checkEdit({ content: `a\nconst re = /[^${NUL}-x]/;\n` })).toMatch(/0x00 on line 2/));
+  it("refuses one in an Edit's new_string", () =>
+    expect(checkEdit({ old_string: "x", new_string: `"PK${ETX}"` })).toMatch(/0x03 on line 1/));
+  it("refuses DEL", () => expect(checkEdit({ content: DEL })).toMatch(/0x7f/));
+  it("ignores the old_string, which only has to match what is already there", () =>
+    expect(checkEdit({ old_string: NUL, new_string: "clean" })).toBeNull());
+  it("accepts tab, LF, CR and escapes written as text", () =>
+    expect(checkEdit({ content: "a\tb\r\nc /[\\x00-\\x1f]/ – ✓\n" })).toBeNull());
+  it("tolerates missing fields", () => expect(checkEdit({})).toBeNull());
 });
 
 describe("post rules", () => {
