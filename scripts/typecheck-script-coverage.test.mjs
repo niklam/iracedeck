@@ -1,10 +1,11 @@
-import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
+
+import { spawnSyncShim } from "./lib/spawn-shim.mjs";
 
 // scripts/typecheck-script-coverage.test.mjs lives in scripts/, so the repo root is one up.
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -280,13 +281,12 @@ const SCRIPT_TIMEOUT_MS = 120_000;
 // script passes. A cached green would be this guard's own failure mode arriving
 // through the back door, so the invocation must stay direct.
 //
-// `shell: true` because pnpm is a `.cmd` shim on Windows; the arguments are
-// fixed literals, so nothing user-supplied reaches the shell.
+// pnpm is a `.cmd` shim on Windows, so it goes through the shared shim spawn
+// (#1149) rather than `shell: true` beside an args array (DEP0190).
 function runTypecheck(cwd) {
-  const result = spawnSync("pnpm", ["run", "typecheck"], {
+  const result = spawnSyncShim("pnpm", ["run", "typecheck"], {
     cwd,
     encoding: "utf-8",
-    shell: true,
     timeout: SCRIPT_TIMEOUT_MS,
     // Default is 1 MiB. A truncated capture would fail the marker assertions for
     // a reason other than the one they report — the exact confusion this file is
