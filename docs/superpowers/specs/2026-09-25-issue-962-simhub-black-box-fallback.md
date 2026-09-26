@@ -17,16 +17,16 @@ Two problems follow from that, and the issue has both:
 
 ## Decision
 
-### 1. Prime selection is keyboard-first
+### 1. Prime selection matches the target's binding kind
 
 `resolvePrimeKey(targetId, isConfigured, isKeyboardBound)` scans in two tiers and keeps the existing order within each tier (Lap Timing preferred, then `BLACK_BOX_GLOBAL_KEYS` declaration order, never the target):
 
-1. the first **keyboard-bound** box;
-2. otherwise the first **configured** box (so a SimHub role).
+1. the first box bound the **same kind** as the target — keyboard-bound for a keyboard target, a SimHub role for a SimHub target;
+2. otherwise the first box of the other kind.
 
 It returns `null` only when no other box has any binding, as today.
 
-The keyboard tier comes first even when the target is itself a SimHub role. The path is serialized anyway then, but a keyboard prime is a local `SendInput` with no network in it, so the gap before the target press is shorter and has no HTTP failure mode.
+A keyboard target puts keyboard boxes first, so both keys can batch atomically. A SimHub target puts SimHub boxes first. The first draft preferred a keyboard prime there too, reasoning that a local `SendInput` would shorten the gap. The manual test in the sim showed the opposite: an all-SimHub sequence was noticeably faster than a keyboard prime before a SimHub target. A keyboard tap focuses iRacing and holds the key for about 100 ms natively, while a local SimHub start/stop takes milliseconds. A SimHub target already needs SimHub reachable, so a SimHub prime adds no failure mode.
 
 ### 2. `showBlackBox` chooses the path up front
 
