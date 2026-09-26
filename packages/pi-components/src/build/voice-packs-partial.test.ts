@@ -74,6 +74,13 @@ describe("voice-packs partial (#1145)", () => {
     expect(html).not.toMatch(/<sdpi-item[^>]*label="Available to Download"/);
   });
 
+  it("drops the help text's label-column indent, since the card has no label column", () => {
+    const html = render({ settingsWindow: true });
+
+    expect(html.match(/class="ird-supporting-text ird-supporting-text-full"/g)).toHaveLength(2);
+    expect(html).not.toContain('class="ird-supporting-text"');
+  });
+
   it("renders NOTHING voice-pack related outside the settings window", () => {
     const html = render({});
 

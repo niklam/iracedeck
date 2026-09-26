@@ -14,7 +14,7 @@
 <% if (locals.settingsWindow) { %>
 <%- include('section-header', { title: 'Installed Voices' }) %>
 <ird-voice-pack-list packs="_voicePacks"></ird-voice-pack-list>
-<div class="ird-supporting-text">
+<div class="ird-supporting-text ird-supporting-text-full">
   Voice packs live in <code>%LOCALAPPDATA%\iRaceDeck\Race Engineer\Voices</code> and survive plugin updates.
   Add a pack folder there, then rescan. A pack that cannot be loaded is listed with the reason. A pack you no
   longer want can be removed here too.
@@ -25,7 +25,7 @@
 </div>
 <%- include('section-header', { title: 'Available to Download' }) %>
 <ird-voice-pack-catalog status="_voicePackStatus"></ird-voice-pack-catalog>
-<div class="ird-supporting-text">
+<div class="ird-supporting-text ird-supporting-text-full">
   Packs iRaceDeck publishes itself. Press Install (or Update, once a newer version is out) and iRaceDeck
   downloads, verifies and installs it for you — this can happen while iRacing is running.
 </div>
