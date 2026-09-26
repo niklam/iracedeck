@@ -30,13 +30,15 @@ The `install` script in `package.json` is a no-op `echo`, so `pnpm install` neve
 - `isChannelPlaying()` always returns `false` (nothing ever actually plays).
 - `setAudioDeviceById()` returns `true` only for the synthetic id `mock-device-0` — the id of the single `Mock Audio Device` entry returned by `getAudioDevices()`. Any other id returns `false`, mirroring the unknown-device case on real hardware; tests rely on this distinction.
 
+`setSessionIdentity()` also records its arguments on the mock's public `sessionIdentity` field (`null` until called, and again after an empty display name or `destroyAudioEngine()`, as natively), so tests can assert what reached the native layer.
+
 ### When adding new native methods
 
 1. Update `addon.cc` — C++ implementation + register in `Init()`
 2. Update `src/index.ts` — add corresponding TypeScript method to `AudioNative` class
 3. Update `src/mock-impl.ts` — add matching no-op in `AudioNativeMock`
 4. Update `src/mock-impl.test.ts`
-5. `@iracedeck/audio-service` consumes the `AudioNative` class directly by type (`initializeAudio(logger, native)` in `packages/audio-service/src/audio-service.ts`), so a new method is visible there automatically — add the `AudioService` usage there if the method is meant to be consumed by the audio service
+5. `@iracedeck/audio-service` consumes the `AudioNative` class directly by type (`initializeAudio(logger, native, …)` in `packages/audio-service/src/audio-service.ts`), so a new method is visible there automatically — add the `AudioService` usage there if the method is meant to be consumed by the audio service
 
 ## Audio engine functions
 
@@ -67,6 +69,9 @@ Enumerates available audio playback devices. `id` is a hex-encoded `ma_device_id
 
 ### `setAudioDevice(deviceIndex: number): boolean`
 Selects the output device by enumeration index (-1 for system default): validates, remembers the selection, and tears down any live engine — the next play recreates it on the new device (issue #849; recreating eagerly would hold the sleep-blocking power request while idle). Selection identity is compared on stable `ma_device_id` bytes (never the volatile index), so re-selecting the already-active physical device is a no-op. Prefer `setAudioDeviceById` for persisted selections.
+
+### `setSessionIdentity(displayName: string, iconPath?: string): boolean`
+Names our audio session in the Windows Volume Mixer, which otherwise shows the host executable's name — "Node" (issue #1253, spec `docs/superpowers/specs/2026-09-26-issue-1253-audio-session-name.md`). Stores UTF-16 copies; `applySessionIdentity` then takes the playback `IAudioClient`'s `IAudioSessionControl` and calls `SetDisplayName` / `SetIconPath` (icon only when given; it must be an absolute `.ico` path). It runs after every successful `ma_engine_init` in `ensureEngineCreated` (the selected-device path and the system-default fallback both), and again after `ma_device_notification_type_rerouted`, because a session belongs to one endpoint and the client miniaudio opens on a new default device carries an unnamed one. **Everything but the notification runs on the JS thread.** miniaudio fires the reroute notification synchronously from its `IMMNotificationClient` handler while holding its reroute lock, and COM work on an `IAudioClient` there can deadlock (its own comment in `ma_device_reinit__wasapi`), so `maNotificationCallback` reads only the notification type and posts through an `Unref`'d `ThreadSafeFunction` (`g_rerouteTSFN`, mutex-guarded like the channel end TSFNs); the JS-thread handler names the session of whatever engine exists by then. So the identity strings and the device are never touched off the JS thread, and `teardownEngine` cannot free a device the handler is reading. The TSFN is created by `setSessionIdentity`, released by `destroyAudioEngine`, and disarmed by an env cleanup hook if Node tears the environment down first. An empty `displayName` clears the identity, icon included, for engines created afterwards (Windows keeps a name already applied to the process's session while that session lives — measured: set, play, clear, replay still shows the name; set, clear, play shows the default); `destroyAudioEngine` clears it too, and `@iracedeck/audio-service` sets it again from `init()`, before any engine can exist. Returns `false` while an engine exists — the live session was named at creation and would keep the old name — and the TypeScript wrapper also returns `false` when the loaded binary predates the method (`pnpm build:ts` and a locked rebuild both leave an older `.node`), so a stale binary degrades the feature instead of aborting startup. Every HRESULT failure is silent and leaves the Windows default; engine creation never fails because of it. A no-op on any backend other than WASAPI.
 
 ### `setAudioDeviceById(deviceId: string): boolean`
 Same as `setAudioDevice` but looks the device up by its stable `id` from `getAudioDevices`. Returns `false` if the id is malformed or not found in the current enumeration (e.g. unplugged device). Should the selected device vanish before the next play, the lazy engine creation falls back to the system default so the mixer remains usable. Use this for any selection that needs to survive replug or driver reset.

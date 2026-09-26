@@ -13,6 +13,15 @@
 #define MINIAUDIO_IMPLEMENTATION
 #include "miniaudio.h"
 
+// The Core Audio session API, for naming our session in the Windows Volume
+// Mixer (#1253). miniaudio declares its own `ma_`-prefixed COM interfaces and
+// never includes these headers, so including them after it does not clash.
+#if defined(_WIN32) && defined(MA_SUPPORT_WASAPI)
+#define IRD_SESSION_IDENTITY_SUPPORTED 1
+#include <audioclient.h>
+#include <audiopolicy.h>
+#endif
+
 // ============================================================================
 // Stable device-id encoding
 // ============================================================================
@@ -119,6 +128,210 @@ static bool g_tsfnRegistered[IRD_MAX_CHANNELS] = {};
 static ma_device_id g_selectedDeviceId = {};
 static bool g_useSelectedDevice = false;
 
+// ============================================================================
+// Audio session identity (#1253)
+// ============================================================================
+//
+// Windows' Volume Mixer labels a session with the name and icon its owner set,
+// falling back to the executable's (the deck host's node.exe — "Node"). We set
+// ours on the playback IAudioClient's session after every engine creation and
+// after every reroute: a session belongs to one endpoint, and the IAudioClient
+// miniaudio opens on the new endpoint carries an unnamed one.
+//
+// Threading: the identity strings and applySessionIdentity are touched on the
+// JS thread only. miniaudio fires the reroute notification synchronously from
+// its IMMNotificationClient handler while it holds its reroute lock, and
+// releasing an IAudioClient there deadlocks (see ma_device_reinit__wasapi), so
+// the notification callback does no COM work and does not touch the device: it
+// only posts to the JS thread through g_rerouteTSFN, whose handler names the
+// session of whatever engine exists by then. That also means teardownEngine
+// (on the JS thread) can never free a device the handler is still reading.
+
+#if defined(IRD_SESSION_IDENTITY_SUPPORTED)
+// The identity is "set" while the display name is non-empty.
+static std::wstring g_sessionDisplayName;
+static std::wstring g_sessionIconPath;
+
+// Marshals reroute notifications to the JS thread. Created by
+// SetSessionIdentity on the JS thread, Unref'd so it never keeps the Node
+// event loop alive, and released by DestroyAudioEngine (or cleared by the env
+// cleanup hook when Node tears the environment down first). The mutex
+// serializes the notification thread's NonBlockingCall with the JS thread
+// creating or releasing the handle — the same pattern as g_completionTSFN.
+static Napi::ThreadSafeFunction g_rerouteTSFN;
+static bool g_rerouteTSFNRegistered = false;
+static napi_env g_rerouteTSFNEnv = nullptr;
+static std::mutex g_rerouteTSFNMutex;
+
+/**
+ * Convert a UTF-8 string to UTF-16. Returns false on invalid input.
+ */
+static bool Utf8ToWide(const std::string &utf8, std::wstring &out)
+{
+    out.clear();
+    if (utf8.empty())
+    {
+        return true;
+    }
+
+    int len = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8.data(), static_cast<int>(utf8.size()), NULL, 0);
+    if (len <= 0)
+    {
+        return false;
+    }
+
+    out.resize(static_cast<size_t>(len));
+    int written =
+        MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8.data(), static_cast<int>(utf8.size()), &out[0], len);
+    if (written != len)
+    {
+        out.clear();
+        return false;
+    }
+    return true;
+}
+#endif
+
+/**
+ * Apply the stored session identity to a device's WASAPI session. JS thread
+ * only. A no-op when no identity is set, on any backend other than WASAPI,
+ * and off Windows. Every failure is silent: the session keeps the Windows
+ * default name, and playback is never affected.
+ */
+static void applySessionIdentity(ma_device *device)
+{
+#if defined(IRD_SESSION_IDENTITY_SUPPORTED)
+    if (g_sessionDisplayName.empty() || device == nullptr || device->pContext == nullptr ||
+        device->pContext->backend != ma_backend_wasapi)
+    {
+        return;
+    }
+
+    IAudioClient *client = static_cast<IAudioClient *>(device->wasapi.pAudioClientPlayback);
+    if (client == nullptr)
+    {
+        return;
+    }
+
+    IAudioSessionControl *session = nullptr;
+    HRESULT hr = client->GetService(__uuidof(IAudioSessionControl), reinterpret_cast<void **>(&session));
+    if (FAILED(hr) || session == nullptr)
+    {
+        return;
+    }
+
+    // The event-context GUID is NULL: nothing of ours listens for session events.
+    hr = session->SetDisplayName(g_sessionDisplayName.c_str(), NULL);
+    (void)hr; // A failure leaves the default name; the icon is still worth trying.
+
+    if (!g_sessionIconPath.empty())
+    {
+        hr = session->SetIconPath(g_sessionIconPath.c_str(), NULL);
+        (void)hr; // A failure leaves the default icon.
+    }
+
+    session->Release();
+#else
+    (void)device;
+#endif
+}
+
+#if defined(IRD_SESSION_IDENTITY_SUPPORTED)
+/**
+ * JS-thread end of a reroute notification: name the session of the engine
+ * that exists now. It may be a different engine from the one that rerouted
+ * (torn down and recreated in between), or none at all; naming a session
+ * twice is harmless.
+ */
+static Napi::Value OnSessionRerouted(const Napi::CallbackInfo &info)
+{
+    if (g_engine)
+    {
+        applySessionIdentity(ma_engine_get_device(g_engine));
+    }
+    return info.Env().Undefined();
+}
+
+/**
+ * Env cleanup hook: Node closes the TSFN itself when the environment goes
+ * away, so stop the notification thread from calling into it. Registered
+ * after the TSFN is created, so it runs before the TSFN's own cleanup.
+ */
+static void RerouteTSFNCleanupHook(void * /*arg*/)
+{
+    std::lock_guard<std::mutex> lock(g_rerouteTSFNMutex);
+    g_rerouteTSFNRegistered = false;
+    g_rerouteTSFNEnv = nullptr;
+}
+
+/**
+ * Create the reroute TSFN if it does not exist yet. JS thread only.
+ */
+static void ensureRerouteTSFN(Napi::Env env)
+{
+    std::lock_guard<std::mutex> lock(g_rerouteTSFNMutex);
+    if (g_rerouteTSFNRegistered)
+    {
+        return;
+    }
+
+    g_rerouteTSFN = Napi::ThreadSafeFunction::New(env,
+                                                  Napi::Function::New(env, OnSessionRerouted),
+                                                  "maRerouted",
+                                                  0,  // unlimited queue
+                                                  1); // one thread (miniaudio's notification thread)
+    g_rerouteTSFN.Unref(env);
+    napi_add_env_cleanup_hook(env, RerouteTSFNCleanupHook, nullptr);
+    g_rerouteTSFNEnv = env;
+    g_rerouteTSFNRegistered = true;
+}
+#endif
+
+/**
+ * Release the reroute TSFN, if any. JS thread only; call it once no device
+ * exists, so no further notification can arrive.
+ */
+static void releaseRerouteTSFN()
+{
+#if defined(IRD_SESSION_IDENTITY_SUPPORTED)
+    std::lock_guard<std::mutex> lock(g_rerouteTSFNMutex);
+    if (!g_rerouteTSFNRegistered)
+    {
+        return;
+    }
+
+    g_rerouteTSFN.Release();
+    napi_remove_env_cleanup_hook(g_rerouteTSFNEnv, RerouteTSFNCleanupHook, nullptr);
+    g_rerouteTSFNEnv = nullptr;
+    g_rerouteTSFNRegistered = false;
+#endif
+}
+
+/**
+ * Engine device notification. Runs on the thread miniaudio reroutes from,
+ * inside miniaudio's reroute lock: it reads nothing but the notification type
+ * and posts to the JS thread, which reapplies the session identity after
+ * miniaudio has followed a default-device change onto a new endpoint (a
+ * fresh, unnamed session).
+ */
+static void maNotificationCallback(const ma_device_notification *pNotification)
+{
+#if defined(IRD_SESSION_IDENTITY_SUPPORTED)
+    if (pNotification == nullptr || pNotification->type != ma_device_notification_type_rerouted)
+    {
+        return;
+    }
+
+    std::lock_guard<std::mutex> lock(g_rerouteTSFNMutex);
+    if (g_rerouteTSFNRegistered)
+    {
+        g_rerouteTSFN.NonBlockingCall();
+    }
+#else
+    (void)pNotification;
+#endif
+}
+
 // Serializes access to g_completionTSFN[] / g_tsfnRegistered[].
 // Without it, maEndCallback runs on miniaudio's audio thread while
 // DestroyAudioEngine and SetChannelEndCallback mutate those slots on the
@@ -213,6 +426,7 @@ static bool ensureEngineCreated()
     ma_engine_config config = ma_engine_config_init();
     config.pContext = g_audioContext;
     config.noAutoStart = MA_TRUE;
+    config.notificationCallback = maNotificationCallback;
     if (g_useSelectedDevice)
     {
         config.pPlaybackDeviceID = &g_selectedDeviceId;
@@ -225,6 +439,7 @@ static bool ensureEngineCreated()
         ma_engine_config fallbackConfig = ma_engine_config_init();
         fallbackConfig.pContext = g_audioContext;
         fallbackConfig.noAutoStart = MA_TRUE;
+        fallbackConfig.notificationCallback = maNotificationCallback;
         result = ma_engine_init(&fallbackConfig, g_engine);
     }
 
@@ -234,6 +449,9 @@ static bool ensureEngineCreated()
         g_engine = nullptr;
         return false;
     }
+
+    // Both init paths land here, so no engine can skip the identity (#1253).
+    applySessionIdentity(ma_engine_get_device(g_engine));
 
     return true;
 }
@@ -318,7 +536,8 @@ Napi::Value StopAudioEngine(const Napi::CallbackInfo &info)
 }
 
 /**
- * Destroy the miniaudio engine and all active sounds.
+ * Destroy the miniaudio engine and all active sounds, and clear the session
+ * identity (#1253) — set it again before the next engine.
  */
 Napi::Value DestroyAudioEngine(const Napi::CallbackInfo &info)
 {
@@ -340,6 +559,13 @@ Napi::Value DestroyAudioEngine(const Napi::CallbackInfo &info)
     }
 
     teardownEngine();
+
+    // No device exists any more, so no reroute notification can arrive.
+    releaseRerouteTSFN();
+#if defined(IRD_SESSION_IDENTITY_SUPPORTED)
+    g_sessionDisplayName.clear();
+    g_sessionIconPath.clear();
+#endif
 
     if (g_audioContext)
     {
@@ -803,6 +1029,67 @@ Napi::Value SetAudioDeviceById(const Napi::CallbackInfo &info)
     return Napi::Boolean::New(env, true);
 }
 
+/**
+ * Set the name (and optionally the icon) the Windows Volume Mixer shows for
+ * our audio session (#1253). Applied to every engine created afterwards and
+ * reapplied on reroute. Refused while an engine exists — the live session was
+ * named when its engine was created, and a later change would leave it under
+ * the old name — so call it before the first play. An empty display name
+ * clears the identity (the icon with it): engines created afterwards are not
+ * named, though Windows keeps a name already set on this process's session for
+ * as long as that session lives. DestroyAudioEngine clears it too. A no-op off
+ * Windows.
+ *
+ * @param displayName - The session's display name (UTF-8); empty for none
+ * @param iconPath - Optional absolute path to an .ico (UTF-8)
+ * @returns true if the identity was stored (always true off Windows while
+ *          no engine exists); false while an engine exists or on invalid text
+ */
+Napi::Value SetSessionIdentity(const Napi::CallbackInfo &info)
+{
+    Napi::Env env = info.Env();
+
+    bool hasIcon = info.Length() >= 2 && !info[1].IsUndefined() && !info[1].IsNull();
+    if (info.Length() < 1 || !info[0].IsString() || (hasIcon && !info[1].IsString()))
+    {
+        Napi::TypeError::New(env, "Expected (displayName: string, iconPath?: string)").ThrowAsJavaScriptException();
+        return Napi::Boolean::New(env, false);
+    }
+
+    if (g_engine)
+    {
+        return Napi::Boolean::New(env, false);
+    }
+
+#if defined(IRD_SESSION_IDENTITY_SUPPORTED)
+    std::wstring displayName;
+    std::wstring iconPath;
+    if (!Utf8ToWide(info[0].As<Napi::String>().Utf8Value(), displayName))
+    {
+        return Napi::Boolean::New(env, false);
+    }
+    if (hasIcon && !Utf8ToWide(info[1].As<Napi::String>().Utf8Value(), iconPath))
+    {
+        return Napi::Boolean::New(env, false);
+    }
+
+    if (displayName.empty())
+    {
+        // No name, no identity: the icon alone would never be applied.
+        g_sessionDisplayName.clear();
+        g_sessionIconPath.clear();
+        releaseRerouteTSFN();
+        return Napi::Boolean::New(env, true);
+    }
+
+    g_sessionDisplayName = std::move(displayName);
+    g_sessionIconPath = std::move(iconPath);
+    ensureRerouteTSFN(env);
+#endif
+
+    return Napi::Boolean::New(env, true);
+}
+
 // ============================================================================
 // Module Initialization
 // ============================================================================
@@ -823,6 +1110,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports)
     exports.Set("getAudioDevices", Napi::Function::New(env, GetAudioDevices));
     exports.Set("setAudioDevice", Napi::Function::New(env, SetAudioDevice));
     exports.Set("setAudioDeviceById", Napi::Function::New(env, SetAudioDeviceById));
+    exports.Set("setSessionIdentity", Napi::Function::New(env, SetSessionIdentity));
 
     return exports;
 }

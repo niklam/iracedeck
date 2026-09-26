@@ -87,4 +87,35 @@ describe("AudioNativeMock", () => {
       expect(mock.setAudioDeviceById("")).toBe(false);
     });
   });
+
+  describe("session identity", () => {
+    it("records nothing until setSessionIdentity is called", () => {
+      expect(mock.sessionIdentity).toBeNull();
+    });
+
+    it("records the display name and icon path", () => {
+      expect(mock.setSessionIdentity("iRaceDeck", "C:\\plugin\\imgs\\plugin\\iracedeck.ico")).toBe(true);
+      expect(mock.sessionIdentity).toEqual({
+        displayName: "iRaceDeck",
+        iconPath: "C:\\plugin\\imgs\\plugin\\iracedeck.ico",
+      });
+    });
+
+    it("records a display name without an icon", () => {
+      expect(mock.setSessionIdentity("iRaceDeck")).toBe(true);
+      expect(mock.sessionIdentity).toEqual({ displayName: "iRaceDeck" });
+    });
+
+    it("treats an empty display name as no identity", () => {
+      mock.setSessionIdentity("iRaceDeck", "C:/plugin/imgs/plugin/iracedeck.ico");
+      expect(mock.setSessionIdentity("", "C:/plugin/imgs/plugin/iracedeck.ico")).toBe(true);
+      expect(mock.sessionIdentity).toBeNull();
+    });
+
+    it("clears the identity when the engine is destroyed", () => {
+      mock.setSessionIdentity("iRaceDeck");
+      mock.destroyAudioEngine();
+      expect(mock.sessionIdentity).toBeNull();
+    });
+  });
 });
