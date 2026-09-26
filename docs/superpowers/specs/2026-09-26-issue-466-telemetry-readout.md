@@ -63,11 +63,11 @@ On key down, with telemetry present:
 - **Track / air temperature** — `TrackTempCrew` and `AirTemp`, the fields the session-start brief reads, converted by a new `celsiusToFahrenheit` beside the fuel helpers in `deck-core/src/unit-conversion.ts`.
 - `DisplayUnits` unset counts as metric, the translator's convention.
 
-With no telemetry (not connected) nothing is published — there is nothing true to say, and the Race Engineer is idle then anyway.
+With no telemetry (not connected) nothing is published — there is nothing true to say, and the Race Engineer is idle then anyway. The same holds for a temperature kind whose field is missing from the tick: the session-start brief reads a missing field as `0`, but a readout the driver asked for must never say "zero degrees" for a reading that does not exist.
 
 The key shows a per-kind title and a readout glyph designed under `icons.md`. It shows no live value: the mode exists for drivers who cannot see the key, and Session Info already displays these figures.
 
-### 3. Five contracts in a new `readout` family
+### 3. Five contracts in a new catalog file
 
 `packages/audio-scenarios/src/catalog/pit-crew/telemetry-readout.ts`, all `when: "telemetryReadout.requested"` with a `where` on `kind`:
 
@@ -95,7 +95,9 @@ Rounding happens once, to 0.1, before the split, so 2.44 → `2` + `liters-4`, 2
 
 **Gating is the Race Engineer master only.** There is no per-callout opt-in and no `calloutEnabled*` key: pressing the key is the opt-in, and a checkbox that could leave a key doing nothing is a trap. Turning the Race Engineer off silences readouts, and they play at its volume on its bus with its walkie bed — the issue's out-of-scope line on independent mute and volume.
 
-**Scheduling:** normal weight. A readout pressed while the bus is busy queues behind what is playing rather than being dropped — the driver asked for it — and a newer readout replaces a still-pending one, so hammering the key never builds a backlog. Which interpreter options express that (`queueBehind`, family, frame) is the implementation plan's to settle against the #652 interpreter; the behaviour is this spec's.
+**Scheduling:** normal weight. A readout pressed while the bus is busy queues behind what is playing rather than being dropped — the driver asked for it — and a newer readout replaces a still-pending one, so hammering the key never builds a backlog. In the #652 interpreter that is `queueable: true` and nothing else: no `family` (a same-family fire replaces the one playing whatever its weight, so a second press would cut the readout being heard), no `queueBehind` (it would chain a new readout behind the waiting one — the backlog), no `interrupt`. The bus keeps one pending slot (#1185), so a readout pressed while a heavier queueable line is already waiting is dropped; that is the engine's limit, not this feature's, and the website says so.
+
+**Wiring:** with no opt-in key the contracts are registered master-gated only, as the opponent-flag aggregate already is — no callout id, settings-key map or `PitCrewDeps` entry.
 
 ### 4. The figure is an integer clip plus a unit-bearing tail
 
@@ -108,11 +110,11 @@ The `default` voice gains, in `configs/default.voice.json`:
 | `numbers-fuel-decimal` | `liters-0` … `liters-9`, `gallons-0` … `gallons-9` | "point zero liters." … "point nine gallons.", each with `previous_request_ids` sampling three `numbers-fuel` clips |
 | `readout-laps` | `1` … `20` | "lap," for 1, "<n> laps," above |
 
-That is 172 clips. The shape is the lap-time one (`lap-time-second` carries `next_text: " point."`, `lap-time-decimal` samples three predecessors), which is proven on this voice. It was preferred over one clip per figure (1,210 per unit) and over a bare figure plus a separate unit clip (the join #1187 removed from temperatures): the one remaining seam is integer → "point", which the `next_text` conditioning exists for, and the unit is recorded inside the tail. The integer range reaches 120 so the group also serves readouts a later issue may add (a tank level); per-lap use today stays far below it.
+That is 166 clips. The shape is the lap-time one (`lap-time-second` carries `next_text: " point."`, `lap-time-decimal` samples three predecessors), which is proven on this voice. It was preferred over one clip per figure (1,210 per unit) and over a bare figure plus a separate unit clip (the join #1187 removed from temperatures): the one remaining seam is integer → "point", which the `next_text` conditioning exists for, and the unit is recorded inside the tail. The integer range reaches 120 so the group also serves readouts a later issue may add (a tank level); per-lap use today stays far below it.
 
 Temperatures reuse `numbers-degrees` unchanged — no new temperature clips. The readout intros are the readout's own lines rather than the session-start ones, so a pack can phrase a mid-stint readout differently from the session brief (the session-start air intro is also lowercase mid-sentence prosody).
 
-The voice pack's version is bumped and its catalog entry and `pack-reference.json` regenerated, per the release rules.
+The voice pack's catalog entry and `pack-reference.json` are regenerated. Its version is bumped only if the current one has been published by then — an unpublished version's bytes may still change, per the release rules.
 
 ## Artifacts beyond the code
 
