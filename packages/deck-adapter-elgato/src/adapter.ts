@@ -24,6 +24,8 @@ import {
   type DeckFeedbackPayload,
   type DeckTriggerDescription,
   deviceProfileName,
+  DIAL_CANVAS_KEY,
+  type DialCanvasProfile,
   type IDeckActionContext,
   type IDeckActionHandler,
   type IDeckDialDownEvent,
@@ -39,6 +41,7 @@ import {
   isDataUri,
   keyImageSizeForDevice,
   requestProfileSwitch,
+  SD_PLUS_STRIP_CANVAS,
   toDeviceImage,
   TOUCH_STRIP_SLOT_WIDTH,
 } from "@iracedeck/deck-core";
@@ -149,6 +152,18 @@ class ElgatoActionContext implements IDeckActionContext {
     if (this.sdAction.setTriggerDescription) await this.sdAction.setTriggerDescription(descriptions);
   }
 
+  dialCanvas(): DialCanvasProfile | null {
+    return this.isDial() ? SD_PLUS_STRIP_CANVAS : null;
+  }
+
+  // The strip is the `box` pixmap of every dial layout under layouts/; the
+  // feedback path rasterizes it at the slot width and keeps its supersede key.
+  async setDialCanvas(dataUri: string): Promise<void> {
+    if (!this.isDial()) return;
+
+    await this.setFeedback({ [DIAL_CANVAS_KEY]: dataUri });
+  }
+
   async showAlert(): Promise<void> {
     await this.sdAction.showAlert?.();
   }
@@ -221,6 +236,12 @@ function wrapDisappearEvent<T>(ev: WillDisappearEvent<T & JsonObject>): IDeckWil
         /* no-op: action is disappearing */
       },
       async setTriggerDescription() {
+        /* no-op: action is disappearing */
+      },
+      dialCanvas() {
+        return null;
+      },
+      async setDialCanvas() {
         /* no-op: action is disappearing */
       },
     },

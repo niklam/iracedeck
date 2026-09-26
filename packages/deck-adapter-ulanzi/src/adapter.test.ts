@@ -583,6 +583,19 @@ describe("UlanziPlatformAdapter", () => {
       return (handler.onWillAppear as ReturnType<typeof vi.fn>).mock.calls[0][0];
     };
 
+    // One context per test: fireWillAppear dispatches to the FIRST registered
+    // willAppear handler, so a loop inside one test would never reach the rest.
+    it.each([undefined, "Keypad", "Information", "Encoder"])(
+      "has no dial canvas on a %s context and setDialCanvas sends nothing (#1013)",
+      async (controller) => {
+        const ev = await fireWillAppear(`ctx-${controller ?? "default"}`, controller);
+
+        expect(ev.action.dialCanvas()).toBeNull();
+        await expect(ev.action.setDialCanvas("data:image/svg+xml,x")).resolves.toBeUndefined();
+        expect(client.setImage).not.toHaveBeenCalled();
+      },
+    );
+
     it("should delegate setImage to UlanziClient", async () => {
       const ev = await fireWillAppear("ctx-img");
       await ev.action.setImage("data:image/svg+xml,test");

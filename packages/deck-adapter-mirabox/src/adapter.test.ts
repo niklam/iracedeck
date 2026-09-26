@@ -554,6 +554,27 @@ describe("VSDPlatformAdapter", () => {
       expect(action.isDial()).toBe(false);
     });
 
+    // One context per test: getContextForController reads the FIRST registered
+    // willAppear handler, so a second call in the same test would never fire.
+    it("reports the knob profile on a Knob context (#1013)", async () => {
+      expect((await getContextForController("Knob")).dialCanvas()).toEqual({
+        id: "stream-dock-knob",
+        width: 176,
+        height: 112,
+      });
+    });
+
+    it.each(["Keypad", "Information"])("reports no dial canvas on a %s context (#1013)", async (controller) => {
+      expect((await getContextForController(controller)).dialCanvas()).toBeNull();
+    });
+
+    it("setDialCanvas on a Keypad context sends nothing", async () => {
+      const action = await getContextForController("Keypad");
+
+      await expect(action.setDialCanvas("data:image/svg+xml,x")).resolves.toBeUndefined();
+      expect(client.setImage).not.toHaveBeenCalled();
+    });
+
     it("should treat setFeedback and setFeedbackLayout as safe no-ops", async () => {
       const action = await getContextForController("Knob");
 
@@ -620,6 +641,54 @@ describe("VSDPlatformAdapter", () => {
         "ctx-img",
         `data:image/png;base64,${Buffer.from("png").toString("base64")}`,
       );
+    });
+
+    it("rasterizes a knob-canvas image at 176×112 and sends it through setImage (#1013)", async () => {
+      const rendered: Array<[number, number | undefined]> = [];
+      initializeRasterizer(async (_svg, w, h) => {
+        rendered.push([w, h]);
+
+        return Buffer.from("png");
+      });
+      const handler: IDeckActionHandler = { onWillAppear: vi.fn() };
+      adapter.registerAction("com.test.action", handler);
+      await actionEventHandler("willAppear")({
+        event: "willAppear",
+        action: "com.test.action",
+        context: "ctx-knob",
+        payload: { settings: {}, controller: "Knob" },
+      });
+
+      const ev = (handler.onWillAppear as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      await ev.action.setDialCanvas(svgUri);
+
+      expect(rendered).toEqual([[176, 112]]);
+      expect(client.setImage).toHaveBeenCalledWith(
+        "ctx-knob",
+        `data:image/png;base64,${Buffer.from("png").toString("base64")}`,
+      );
+    });
+
+    it("still rasterizes a plain setImage on a Knob context at the key size (the spike's 176 hack is gone)", async () => {
+      const rendered: number[] = [];
+      initializeRasterizer(async (_svg, px) => {
+        rendered.push(px);
+
+        return Buffer.from("png");
+      });
+      const handler: IDeckActionHandler = { onWillAppear: vi.fn() };
+      adapter.registerAction("com.test.action", handler);
+      await actionEventHandler("willAppear")({
+        event: "willAppear",
+        action: "com.test.action",
+        context: "ctx-knob",
+        payload: { settings: {}, controller: "Knob" },
+      });
+
+      const ev = (handler.onWillAppear as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      await ev.action.setImage(svgUri);
+
+      expect(rendered).toEqual([DEFAULT_KEY_IMAGE_SIZE]);
     });
   });
 });

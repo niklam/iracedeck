@@ -9,12 +9,14 @@ import {
   type DeckFeedbackPayload,
   type DeckTriggerDescription,
   DEFAULT_KEY_IMAGE_SIZE,
+  type DialCanvasProfile,
   type IDeckActionContext,
   type IDeckActionHandler,
   type IDeckDialRotateEvent,
   type IDeckEvent,
   type IDeckPlatformAdapter,
   type IDeckWillDisappearEvent,
+  STREAM_DOCK_KNOB_CANVAS,
   toDeviceImage,
 } from "@iracedeck/deck-core";
 import type { ILogger } from "@iracedeck/logger";
@@ -38,9 +40,7 @@ class VSDActionContext implements IDeckActionContext {
   ) {}
 
   async setImage(dataUri: string): Promise<void> {
-    // PROOF OF CONCEPT (#1013): a knob's LCD segment is 176×112 on the N4, so
-    // rasterize at its width (height follows the SVG's own aspect).
-    const image = await toDeviceImage(this.id, dataUri, this.isDial() ? 176 : DEFAULT_KEY_IMAGE_SIZE);
+    const image = await toDeviceImage(this.id, dataUri, DEFAULT_KEY_IMAGE_SIZE);
 
     // null = superseded by a newer image for this context — skip the send.
     if (image === null) return;
@@ -74,6 +74,27 @@ class VSDActionContext implements IDeckActionContext {
 
   // Stream Dock knobs have no trigger descriptions, so this is a no-op too.
   async setTriggerDescription(_descriptions: DeckTriggerDescription): Promise<void> {}
+
+  /** Knob (and the Encoder spelling some hosts use) — the LCD segment above the knob. */
+  dialCanvas(): DialCanvasProfile | null {
+    return this.isDial() ? STREAM_DOCK_KNOB_CANVAS : null;
+  }
+
+  // The knob's segment is addressed by setImage, so the live drawing and a
+  // key image share one supersede key (`this.id`): a slow render of either can
+  // never land over a fresher frame of the other.
+  async setDialCanvas(dataUri: string): Promise<void> {
+    const canvas = this.dialCanvas();
+
+    if (!canvas) return;
+
+    const image = await toDeviceImage(this.id, dataUri, { width: canvas.width, height: canvas.height });
+
+    // null = superseded by a newer image for this context — skip the send.
+    if (image === null) return;
+
+    this.client.setImage(this.id, image);
+  }
 }
 
 /**
@@ -125,6 +146,12 @@ function wrapDisappearEvent<T>(data: VSDEvent & { context: string }): IDeckWillD
         /* no-op: action is disappearing */
       },
       async setTriggerDescription() {
+        /* no-op: action is disappearing */
+      },
+      dialCanvas() {
+        return null;
+      },
+      async setDialCanvas() {
         /* no-op: action is disappearing */
       },
     },

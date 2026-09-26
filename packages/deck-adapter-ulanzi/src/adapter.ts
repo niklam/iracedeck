@@ -14,6 +14,7 @@ import {
   type DeckFeedbackPayload,
   type DeckTriggerDescription,
   DEFAULT_KEY_IMAGE_SIZE,
+  type DialCanvasProfile,
   type IDeckActionContext,
   type IDeckActionHandler,
   type IDeckDialRotateEvent,
@@ -81,6 +82,14 @@ class UlanziActionContext implements IDeckActionContext {
 
   // Ulanzi encoders have no trigger descriptions, so this is a no-op too.
   async setTriggerDescription(_descriptions: DeckTriggerDescription): Promise<void> {}
+
+  // UlanziStudio exposes no plugin-drawable dial screen (#1013 leaves Ulanzi
+  // dials out of scope), so no context here has a dial canvas.
+  dialCanvas(): DialCanvasProfile | null {
+    return null;
+  }
+
+  async setDialCanvas(_dataUri: string): Promise<void> {}
 }
 
 /** Create a deck-core event from a Ulanzi event with full action context. */
@@ -127,6 +136,12 @@ function wrapDisappearEvent<T>(
         /* no-op: action is disappearing */
       },
       async setTriggerDescription() {
+        /* no-op: action is disappearing */
+      },
+      dialCanvas() {
+        return null;
+      },
+      async setDialCanvas() {
         /* no-op: action is disappearing */
       },
     },
