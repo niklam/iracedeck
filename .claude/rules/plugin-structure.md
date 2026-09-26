@@ -62,7 +62,7 @@ packages/iracing-plugin-stream-deck-{name}/
     ├── LICENSE                            # Copied at build time from the repo root (#905)
     ├── THIRD-PARTY-LICENSES.md            # Copied at build time from the repo root (#905)
     ├── imgs/
-    │   ├── plugin/                        # category-icon.png, marketplace.png (@1x and @2x)
+    │   ├── plugin/                        # category-icon.png, marketplace.png (@1x and @2x); iracedeck.ico (Volume Mixer, #1253)
     │   └── actions/{action-name}/         # icon.svg, key.svg for each action
     └── ui/
         ├── settings.html                  # Global settings (disableWhenDisconnected) — compiled from @iracedeck/pi-components
@@ -249,9 +249,13 @@ if (__FEATURE_PNG_RASTERIZATION__) {
 //    unrestricted root, which is what the plugin's own assets/audio is; the
 //    voice-pack service appends one { dir, clips, voices } root per installed
 //    pack later via setRoots, each limited to the clips its scan admitted and
-//    bound to its own voices (#1144).
+//    bound to its own voices (#1144). Fourth arg = the session identity the
+//    Windows Volume Mixer shows instead of "Node" (#1253).
 const audioNative = new AudioNative();
-initializeAudio(adapter.createLogger("Audio"), audioNative, [join(__binDir, "..", "assets", "audio")]);
+initializeAudio(adapter.createLogger("Audio"), audioNative, [join(__binDir, "..", "assets", "audio")], {
+  displayName: "iRaceDeck",
+  iconPath: join(__binDir, "..", "imgs", "plugin", "iracedeck.ico"),
+});
 getAudio().init();
 
 // 9. Initialize the window service: focus + mouse-pointer placement (#926).
@@ -325,7 +329,7 @@ adapter.connect();
 - All init calls must be BEFORE `adapter.connect()` (handlers must register first)
 - `initializeEventBus()` must come before any publisher (e.g. `initializeSimEventsIracing`) or subscriber (actions via `getEventBus().subscribe(...)`)
 - `initializeSimEventsIracing()` must come after `initializeSDK()` (requires `getController()`) and after `initializeEventBus()`; it's the only package that reads `sdkController` ticks on behalf of action consumers
-- `initializeAudio()` creates the audio service singleton (third argument = the ordered audio roots, an ARRAY since #1034 — a bare string entry is an unrestricted root, and installed voice packs are appended later as `{ dir, clips, voices }` roots limited to the clips the scan admitted; since #1144 each pack root is BOUND by its `voices` map — composite `<pack id>::<voice id>` → the bare voice folder — so a `voice/<pack>::<voice>/…` path resolves only inside that pack's root, and the ordered walk, which still serves the sfx, never reaches a bound root); `getAudio().init()` starts the miniaudio engine. Both must be called before actions that use audio (e.g., Pit Engineer)
+- `initializeAudio()` creates the audio service singleton (third argument = the ordered audio roots, an ARRAY since #1034 — a bare string entry is an unrestricted root, and installed voice packs are appended later as `{ dir, clips, voices }` roots limited to the clips the scan admitted; since #1144 each pack root is BOUND by its `voices` map — composite `<pack id>::<voice id>` → the bare voice folder — so a `voice/<pack>::<voice>/…` path resolves only inside that pack's root, and the ordered walk, which still serves the sfx, never reaches a bound root; the optional fourth argument, `{ displayName, iconPath? }`, names our session in the Windows Volume Mixer and is handed to the native layer before any engine exists (#1253) — `iconPath` must be absolute, so it is resolved from `__binDir`, and the icon is the Elgato plugin's committed `imgs/plugin/iracedeck.ico`, which the Mirabox and Ulanzi builds copy with the rest of that folder); `getAudio().init()` starts the miniaudio engine. Both must be called before actions that use audio (e.g., Pit Engineer)
 - `initWindowFocus` / `focusIRacingIfEnabled` / `focusIRacingNow` come from `@iracedeck/deck-core` (moved there in #930; the unconditional variant added in #926). The focuser is injected, exactly like `initializeKeyboard`'s callbacks, so deck-core stays free of a native import; so is its third argument, `isIRacingActive` (#1176), which the service imported from `app-monitor` until that closed the cycle `sdk-singleton` → `window-focus-service` → `app-monitor` → `sdk-singleton`; deck-core mirrors the native `FocusResult` codes and `focus-result.test.ts` in the Stream Deck plugin guards that mirror. Since #977 the service also exports `focusIRacingBeforeInput`, the keystroke-side site the keyboard service calls before every native key emit and (via `createSDK`'s `beforeKeystrokes` hook, injected by `initializeSDK`) the chat command calls before it types — the mode gate lives in the service, so the three hook registrations are identical in every mode.
 - `initMousePointer` / `movePointerToSim` (#926) are the sibling pointer service, injected the same way and mirrored the same way (`pointer-move-result.test.ts`). Kept separate from the focus service: one owns the foreground, the other owns where the pointer goes
 - `initializeRasterizer()` is gated by `__FEATURE_PNG_RASTERIZATION__` and must come before any code that renders a device image (it can run anywhere before `adapter.connect()`, since `toDeviceImage()` passes images through unchanged until it's called); see `@.claude/rules/platform-feature-flags.md`
