@@ -61,7 +61,7 @@ The **Toggle Autofuel** gesture taps `fuelServiceToggleAutofuel` to flip between
 
 ### Platform availability (dial)
 
-On a **Mirabox knob** (#1013) the same dial surface runs with its live readout drawn for the 176×112 screen above the knob (the same band, readout and two-segment bar, with a larger readout and a taller full-width bar); a knob has turn and push only (a hold or a push+turn sends a lone `dialDown` and fires nothing, a screen tap is a push), so the dial PI shows only the rotation settings, the appearance colours and the Push slot. The Ulanzi manifest declares no dial controllers. See `docs/reference/stream-deck-plus-encoders.md` §8. The fixed push+turn behaviours — clockwise fill-to-full among them — have no knob equivalent.
+On a **Mirabox knob** (#1013) the same dial surface runs with its live readout drawn for the 176×112 screen above the knob (the same band, readout and two-segment bar, with a larger readout and a taller full-width bar); a knob has turn and push only (pushing the knob, however long, or tapping its screen fires Press once, at the moment of pressing), so the dial PI shows only the rotation settings, the appearance colours and the Push slot. The Ulanzi manifest declares no dial controllers. See `docs/reference/stream-deck-plus-encoders.md` §8. The fixed push+turn behaviours — clockwise fill-to-full among them — have no knob equivalent.
 
 ## Settings
 
@@ -194,6 +194,6 @@ A dial instance has no keypad icon — its display is the self-drawn 200×100 to
 
 - All fuel values go through the iRacing SDK (`pit.fuel` / `pit.clearFuel`) — the former `#fuel` chat macros are gone, so nothing opens the chat window and sends are effectively instant. Both surfaces share one fuel-request pipeline, so "the request was deliberately cleared" is tracked action-wide (a dial's continuous top-up never re-arms fueling that a button just cleared, and vice versa).
 - `pit.fuel(0)` means "keep the existing amount" to iRacing, so an intended zero request is sent as 1 L followed by `pit.clearFuel`.
-- Press, long-press, and push+turn on the dial are classified at `dialUp` (a duration comparison plus a rotate guard), with no mid-hold timer. On a Mirabox knob only the press exists: a hold or a push+turn sends a lone `dialDown` with no `dialUp`, so it fires nothing, and every knob release is a press.
+- Press, long-press, and push+turn on the dial are classified at `dialUp` (a duration comparison plus a rotate guard), with no mid-hold timer. On a Mirabox knob only the press exists: a knob push sends a lone `dialDown` with no `dialUp`, so the adapter completes every knob press at its `dialDown`, and a push of any length, a push+turn or a screen tap each fire Press once.
 - The Long Press, Push + Turn, Tap Display and Long Touch settings are hidden on Mirabox, whose knob has turn and push only.
 - The touch slots default to **None** for VR drivers who cannot see the touch strip — the dial and presses still work, and the readout still renders.

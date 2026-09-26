@@ -127,7 +127,7 @@ While **Push to Talk** is held, the strip's top band turns red and reads **ON AI
 #### Controls
 
 - **Elgato Stream Deck+** — dial rotation, press, and the touchscreen level display.
-- **Mirabox knob** — turn and push, with the same live readout drawn on the screen above the knob; the Push slot only (see [Dials](/docs/features/dials/#mirabox-knobs)). **Push to Talk** is not offered on a knob, because the knob never reports the release that would stop transmitting. The other press actions fire the moment the knob goes down, so holding the knob fires them too.
+- **Mirabox knob** — turn and push, with the same live readout drawn on the screen above the knob; the Push slot only (see [Dials](/docs/features/dials/#mirabox-knobs)). **Push to Talk** is not offered on a knob, because the knob never reports the release that would stop transmitting. The other press actions fire once, the moment you push the knob or tap its screen.
 
 #### Setting: Mode
 

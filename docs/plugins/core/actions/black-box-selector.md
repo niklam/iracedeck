@@ -38,7 +38,7 @@ Cycles through or directly selects iRacing black box screens, from a keypad butt
 
 ### Platform availability (dial)
 
-On a **Mirabox knob** (#1013) the same dial surface runs with its identity drawing on the 176×112 screen above the knob; a knob has turn and push only (a hold or a push+turn sends a lone `dialDown` and fires nothing, a screen tap is a push), so the dial PI shows only the rotation settings, the appearance colours and the Push slot. The Ulanzi manifest declares no dial controllers. See `docs/reference/stream-deck-plus-encoders.md` §8.
+On a **Mirabox knob** (#1013) the same dial surface runs with its identity drawing on the 176×112 screen above the knob; a knob has turn and push only (pushing the knob, however long, or tapping its screen fires Press once, at the moment of pressing), so the dial PI shows only the rotation settings, the appearance colours and the Push slot. The Ulanzi manifest declares no dial controllers. See `docs/reference/stream-deck-plus-encoders.md` §8.
 
 ## Settings
 
