@@ -274,7 +274,8 @@ export class VoicePackList extends HTMLElement {
   private armed: string | null = null;
   private armedTimer: number | null = null;
   /**
-   * The armed pack's identity when it was armed — id, version and label.
+   * The armed pack's identity when it was armed — see {@link identityOf} for
+   * what that covers.
    *
    * Presence of the id alone is not enough. The pack at a given id is the
    * FOLDER at that name, and its manifest can be edited in place: same id, new
@@ -347,13 +348,21 @@ export class VoicePackList extends HTMLElement {
          same pack, not a number floating beside a badge. */
       ird-voice-pack-list .ird-vp-pill {
         padding: 1px 6px;
+        border: 1px solid transparent;
         border-radius: 3px;
         font-size: 7.5pt;
         letter-spacing: 0.2px;
         white-space: nowrap;
         font-family: "Segoe UI", Arial, Roboto, Helvetica, sans-serif;
       }
-      ird-voice-pack-list .ird-vp-version { background: #2e2e2e; color: #b4b4b4; }
+      /* An outline, not a fill: a grey fill all but vanished into the card
+         (#262626) and read as one blob beside the grey bundled-seed badge. */
+      ird-voice-pack-list .ird-vp-version { border-color: #555555; color: #b4b4b4; }
+      /* Fixed width, text centred: the pills are right-aligned, so without it
+         only the badges' RIGHT edges line up and "Downloaded" starts further
+         right than "Installed by hand". Sized to the longest label, "Installed
+         by iRaceDeck"; a longer one would only widen its own badge. */
+      ird-voice-pack-list .ird-vp-badge { min-width: 12em; text-align: center; }
       ird-voice-pack-list .ird-vp-voices { color: #b4b4b4; font-size: 8pt; overflow-wrap: anywhere; }
       ird-voice-pack-list .ird-vp-action { display: flex; align-items: center; min-width: 0; }
       ird-voice-pack-list .ird-vp-empty { color: #969696; font-size: 9pt; padding: 3px 0; }
@@ -427,9 +436,9 @@ export class VoicePackList extends HTMLElement {
    * - **Arming another pack's Remove**, which follows from `armed` being a
    *   single id rather than a flag per row.
    * - **A successful removal**, since `render` drops an armed pack the scan no
-   *   longer lists — or one whose id is still there under a different version
-   *   or label, which is a folder edited in place rather than the pack the arm
-   *   was given to.
+   *   longer lists — or one whose id is still there under a different version,
+   *   label, badge or set of voices, which is a folder edited in place rather
+   *   than the pack the arm was given to.
    *
    * What deliberately does NOT cancel: blur, and a click elsewhere on the page.
    * The settings window is one long scrolling page a user clicks around in —
@@ -465,8 +474,8 @@ export class VoicePackList extends HTMLElement {
   /**
    * What makes an armed pack the SAME pack on a later scan.
    *
-   * Id plus every pack-derived cell a row displays: label, version and the
-   * provenance badge. A folder replaced at the same id keeps the id and changes
+   * Id plus every pack-derived cell a row displays: label, version, the
+   * provenance badge and the voice labels (#1145). A folder replaced at the same id keeps the id and changes
    * some of these, and a row the user reads as different must not inherit an
    * arm they gave to what was there before — including the case where only the
    * badge flips, a catalog copy swapped for a hand-placed one.

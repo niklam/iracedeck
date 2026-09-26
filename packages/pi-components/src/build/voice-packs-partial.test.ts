@@ -81,6 +81,12 @@ describe("voice-packs partial (#1145)", () => {
     expect(html).not.toContain('class="ird-supporting-text"');
   });
 
+  it("styles the modifier beside the base help-text class, so any page including the partial gets it", () => {
+    const headCommon = readFileSync(path.join(partialsDir, "head-common.ejs"), "utf-8");
+
+    expect(headCommon).toMatch(/\.ird-supporting-text\.ird-supporting-text-full\s*\{[^}]*padding-left:\s*0/);
+  });
+
   it("renders NOTHING voice-pack related outside the settings window", () => {
     const html = render({});
 
