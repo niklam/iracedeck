@@ -15,6 +15,8 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
+import { spawnSyncShim } from "../lib/spawn-shim.mjs";
+
 // The deck-host link readers moved to `scripts/lib/plugin-links.mjs` in #1143,
 // where `pnpm dev:voices` also needs them. Re-exported so every hook caller and
 // test that imports them from here keeps working.
@@ -73,15 +75,16 @@ function emit(obj) {
 
 /**
  * Runs a command synchronously and returns `{ ok, out, err, code }`.
- * `.cmd` shims (pnpm, tsx, streamdeck) need a shell on Windows; `.exe`
- * binaries (git, gh, node) do not, and spawning them without one keeps
- * arguments intact.
+ * `.exe` binaries (git, gh, node) are spawned directly, which keeps arguments
+ * intact. Anything else is taken for a `.cmd` shim (pnpm, tsx, streamdeck) and
+ * goes through `spawnSyncShim` (#1149), which gives it the shell Windows needs
+ * without the args array Node deprecates beside one; `shim: false` spawns an
+ * `.exe` outside that list (powershell) directly too.
  */
-export function run(cmd, args, { cwd, timeoutMs = 60_000, shell } = {}) {
-  const needsShell = shell ?? (process.platform === "win32" && !/^(git|gh|node)$/.test(cmd));
-  const res = spawnSync(cmd, args, {
+export function run(cmd, args, { cwd, timeoutMs = 60_000, shim } = {}) {
+  const spawn = (shim ?? !/^(git|gh|node)$/.test(cmd)) ? spawnSyncShim : spawnSync;
+  const res = spawn(cmd, args, {
     cwd,
-    shell: needsShell,
     encoding: "utf8",
     timeout: timeoutMs,
     windowsHide: true,

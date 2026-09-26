@@ -1,4 +1,6 @@
-import { execSync, spawnSync } from "node:child_process";
+import { execSync } from "node:child_process";
+
+import { spawnSyncShim } from "./lib/spawn-shim.mjs";
 
 if (!process.env.GITHUB_TOKEN) {
   try {
@@ -8,9 +10,9 @@ if (!process.env.GITHUB_TOKEN) {
   }
 }
 
-// Forward args as an array (not a joined string) so flags like
-// --preRelease=alpha and --dry-run survive cross-shell quoting on Windows.
-// pnpm forwards a literal "--" separator when users invoke
+// Forward args through the shared shim spawn (#1149), which quotes each one on
+// Windows — Node never did, it space-joined an array handed over with
+// `shell: true` — and passes them untouched elsewhere. pnpm forwards a literal "--" separator when users invoke
 // `pnpm release -- minor --preRelease=alpha`; release-it treats that
 // sentinel as a positional arg and silently drops everything after it,
 // so strip it before forwarding.
@@ -24,10 +26,9 @@ if (args.some((a) => a === "--dry-run" || a === "-d" || a === "--dry-run=true"))
   process.env.RELEASE_IT_DRY_RUN = "1";
 }
 
-const result = spawnSync("npx", ["release-it", ...args], {
+const result = spawnSyncShim("npx", ["release-it", ...args], {
   stdio: "inherit",
   env: process.env,
-  shell: true,
 });
 
 if (result.error) {

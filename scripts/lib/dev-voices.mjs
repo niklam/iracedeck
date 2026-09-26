@@ -35,7 +35,6 @@
  * and every path returns an exit code rather than calling `process.exit`, the
  * shape the other `scripts/lib` helpers use.
  */
-import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
@@ -50,6 +49,7 @@ import {
 } from "./dev-local.mjs";
 import { loadEnvLocal } from "./env-local.mjs";
 import { linkTargets, REAL_DIRECTORY } from "./plugin-links.mjs";
+import { spawnSyncShim } from "./spawn-shim.mjs";
 
 /**
  * Per deck host: the plugin folder a link must point at for it to be OURS, and
@@ -99,36 +99,9 @@ const BUILD_ARGS = [
 const VERBS = ["on", "off", "auto"];
 const USAGE = `Usage: pnpm dev:voices <${VERBS.join("|")}>`;
 
-/**
- * Joins a command and its arguments into ONE shell command line, quoting any
- * argument that contains whitespace or a double quote (escaping an inner `"`
- * as `\"`). Pure — exported so the quoting can be tested without spawning
- * anything.
- */
-export function shellCommandLine(cmd, args) {
-  return [cmd, ...args].map((arg) => quoteShellArg(String(arg))).join(" ");
-}
-
-function quoteShellArg(arg) {
-  return /[\s"]/.test(arg) ? `"${arg.replace(/"/g, '\\"')}"` : arg;
-}
-
-/**
- * `pnpm` is a `.cmd` shim on Windows and needs a shell there — Node refuses to
- * spawn a `.cmd` without one (the CVE-2024-27980 hardening) — but Node 24
- * deprecates (DEP0190) passing an args ARRAY alongside `shell: true`, and that
- * deprecation is slated to become a hard error. So on Windows the shell stays
- * and the args array goes: `cmd`/`args` are joined into one string via
- * {@link shellCommandLine} and handed to `spawnSync` with no `args` array.
- * Every argument this module passes through here is a fixed literal ("exec",
- * "turbo", "run", "build", "--filter=…", "relink:…") — nothing user-supplied
- * ever reaches the shell, so the join is safe. On other platforms spawning
- * `cmd`/`args` directly (no shell) keeps the arguments intact.
- */
-export function spawnSyncShell(cmd, args, options) {
-  return process.platform === "win32"
-    ? spawnSync(shellCommandLine(cmd, args), { shell: true, stdio: "inherit", ...options })
-    : spawnSync(cmd, args, { stdio: "inherit", ...options });
+/** The shared `.cmd`-shim spawn (#1149), with the child's output on this terminal. */
+function spawnSyncShell(cmd, args, options) {
+  return spawnSyncShim(cmd, args, { stdio: "inherit", ...options });
 }
 
 /**

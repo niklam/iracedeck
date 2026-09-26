@@ -19,7 +19,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DEFAULT_DEV_VOICE_PACKS_ROOT, DEV_LOCAL_FILE, DEV_VOICES_ENV } from "./dev-local.mjs";
-import { HOST_RELINKS, loadEnvLocalForDevVoices, runDevVoices, shellCommandLine } from "./dev-voices.mjs";
+import { HOST_RELINKS, loadEnvLocalForDevVoices, runDevVoices } from "./dev-voices.mjs";
 import { linkLocations } from "./plugin-links.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -682,22 +682,6 @@ describe("loadEnvLocalForDevVoices", () => {
 
     expect(env).toEqual({});
     expect(warn).not.toHaveBeenCalled();
-  });
-});
-
-describe("shellCommandLine", () => {
-  it("space-joins plain arguments with no quoting", () => {
-    expect(shellCommandLine("pnpm", ["exec", "turbo", "run", "build"])).toBe("pnpm exec turbo run build");
-  });
-
-  it("quotes an argument containing a space", () => {
-    expect(shellCommandLine("pnpm", ["--filter=@iracedeck/iracing-plugin-stream-deck", "with space"])).toBe(
-      'pnpm --filter=@iracedeck/iracing-plugin-stream-deck "with space"',
-    );
-  });
-
-  it("quotes and escapes an argument containing a double quote", () => {
-    expect(shellCommandLine("pnpm", ['say "hi"'])).toBe('pnpm "say \\"hi\\""');
   });
 });
 

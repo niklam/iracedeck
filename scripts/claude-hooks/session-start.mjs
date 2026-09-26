@@ -67,7 +67,7 @@ function nodeWatchers() {
       "-Command",
       "Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | ForEach-Object { $_.CommandLine }",
     ],
-    { timeoutMs: 15_000, shell: false },
+    { timeoutMs: 15_000, shim: false },
   );
   if (!r.ok) return [];
   return r.out
