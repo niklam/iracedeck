@@ -16,18 +16,21 @@
  */
 import { z } from "zod";
 
+import { declaresNewerSchema } from "./schema-version.js";
 import { VOICE_ID_SEPARATOR, VOICE_ID_SEPARATOR_REASON } from "./voice-id.js";
 
 /** The pack manifest's file name, as the archive carries it and the scanner opens it. */
 export const VOICE_PACK_MANIFEST_FILE = "voice-pack.json";
 
 /**
- * The manifest format's version — the value `schema` must hold. A higher
- * number is a pack written by a newer toolchain, reported as such
- * ({@link VOICE_PACK_NEWER_SCHEMA_REASON}); anything else at that key is an
- * author's mistake and is reported as one.
+ * The manifest format's version — the value `schema` must hold, and the one
+ * every writer of a `voice-pack.json` stamps (the packer, and deck-core's
+ * installer when it seeds a bundled pack), so a writer and the schema cannot
+ * name two versions. A higher number is a pack written by a newer toolchain,
+ * reported as such ({@link VOICE_PACK_NEWER_SCHEMA_REASON}); anything else at
+ * that key is an author's mistake and is reported as one.
  */
-const MANIFEST_SCHEMA_VERSION = 1;
+export const VOICE_PACK_MANIFEST_SCHEMA_VERSION = 1;
 
 /** `semver`'s `MAX_LENGTH`. */
 const SEMVER_MAX_LENGTH = 256;
@@ -143,7 +146,7 @@ export const VoicePackManifestSchema = z.object({
   // predecessor nobody can find, and would answer a hand-made test pack with
   // "expected 2" where staying at 1 fails on `voices.0` and names the field
   // that actually moved.
-  schema: z.literal(MANIFEST_SCHEMA_VERSION),
+  schema: z.literal(VOICE_PACK_MANIFEST_SCHEMA_VERSION),
   id: packId,
   label: displayLabel,
   version: z.string().refine(isSemverVersion, "must be a valid semver version"),
@@ -179,14 +182,22 @@ export type VoicePackManifestValidation =
   { ok: true; manifest: VoicePackManifest } | { ok: false; problems: readonly string[] };
 
 /**
- * Validate an already-parsed `voice-pack.json` and report EVERY problem, one
+ * Validate an already-parsed `voice-pack.json` and report its problems, one
  * string each, in the form `<path>: <message>` — `(root)` for a document that
- * is not an object at all.
+ * is not an object at all — and ONE per field: the first problem at each path.
+ *
+ * zod reports every check a field fails, in the order the schema declares
+ * them, so an id holding `::` would come back twice — the separator, then the
+ * kebab-case rule it breaks as well — and an empty label twice too. The first
+ * is what names the fix; the rest would turn one mistake into a list. The
+ * de-duplication is keyed on the issue's own `path`, never on the formatted
+ * string, so no message text can make two fields collide or one field split.
  *
  * This is the list `lint:pack` shows an author in full; the scanner shows its
- * first entry ({@link parseVoicePackManifest}). One walk serves both, so the
- * linter's list is the scanner's reason followed by the rest, never a second
- * reading of the same file.
+ * first entry ({@link parseVoicePackManifest}), which keeping the first per
+ * field does not change. One walk serves both, so the linter's list is the
+ * scanner's reason followed by the rest, never a second reading of the same
+ * file.
  *
  * The newer-version sentence is used only when `schema` is a NUMBER ABOVE the
  * current version — the same rule the callout-script grammar applies to its
@@ -199,23 +210,77 @@ export function validateVoicePackManifest(json: unknown): VoicePackManifestValid
 
   if (parsed.success) return { ok: true, manifest: parsed.data };
 
-  const problems = parsed.error.issues.map((issue) => {
-    if (issue.path.length === 1 && issue.path[0] === "schema" && isNewerSchema(json)) {
-      return VOICE_PACK_NEWER_SCHEMA_REASON;
-    }
+  const seen = new Set<string>();
+  const problems: string[] = [];
 
-    return `${issue.path.join(".") || "(root)"}: ${issue.message}`;
-  });
+  for (const issue of parsed.error.issues) {
+    // Keyed on the segments themselves, serialised: two different paths can
+    // never produce the same key, whatever their keys spell.
+    const key = JSON.stringify(issue.path.map(String));
+
+    if (seen.has(key)) continue;
+
+    seen.add(key);
+
+    if (
+      issue.path.length === 1 &&
+      issue.path[0] === "schema" &&
+      declaresNewerSchema(json, VOICE_PACK_MANIFEST_SCHEMA_VERSION)
+    ) {
+      problems.push(VOICE_PACK_NEWER_SCHEMA_REASON);
+    } else {
+      problems.push(`${issue.path.join(".") || "(root)"}: ${issue.message}`);
+    }
+  }
 
   return { ok: false, problems: problems.length > 0 ? problems : ["invalid shape"] };
 }
 
-function isNewerSchema(json: unknown): boolean {
-  if (json === null || typeof json !== "object") return false;
+/**
+ * A `voice-pack.json` read from its text. `json` is the parsed document —
+ * `undefined` only when the text is not JSON at all — handed back on a refusal
+ * too, so a caller that reports every problem can still read what the author
+ * wrote (`lint:pack` lints the voices a refused manifest names usably).
+ */
+export type VoicePackManifestTextRead =
+  { ok: true; manifest: VoicePackManifest; json: unknown } | { ok: false; problems: readonly string[]; json: unknown };
 
-  const schema = (json as { schema?: unknown }).schema;
+/**
+ * The manifest's one TEXT stage — BOM strip, `JSON.parse`, then
+ * {@link validateVoicePackManifest} — shared by the scanner (through
+ * {@link parseVoicePackManifest}) and `lint:pack`, so what counts as a readable
+ * manifest is decided in exactly one place. Text that is not JSON is the one
+ * problem `not valid JSON: <message>`, with `json` left `undefined`.
+ *
+ * A leading UTF-8 BOM is stripped before parsing: `JSON.parse` throws on it,
+ * and several Windows editors write one. Hand-editing `voice-pack.json` on
+ * Windows is the ADVERTISED install path for this feature, so a BOM would
+ * reject a pack that is correct in every way a user can see, with "not valid
+ * JSON" as the only clue. deck-core's `settings-store.ts` strips one for the
+ * same reason — "a BOM must not make a user's backup corrupt" — and the pack
+ * format should not be stricter than the settings file about the same
+ * accident.
+ *
+ * Never throws, for the reason {@link parseVoicePackManifest} gives.
+ */
+export function readVoicePackManifestText(raw: string): VoicePackManifestTextRead {
+  let json: unknown;
 
-  return typeof schema === "number" && schema > MANIFEST_SCHEMA_VERSION;
+  try {
+    json = JSON.parse(raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw);
+  } catch (err) {
+    return {
+      ok: false,
+      problems: [`not valid JSON: ${err instanceof Error ? err.message : String(err)}`],
+      json: undefined,
+    };
+  }
+
+  const validated = validateVoicePackManifest(json);
+
+  return validated.ok
+    ? { ok: true, manifest: validated.manifest, json }
+    : { ok: false, problems: validated.problems, json };
 }
 
 export type ParseVoicePackManifestResult = { ok: true; manifest: VoicePackManifest } | { ok: false; reason: string };
@@ -227,31 +292,15 @@ export type ParseVoicePackManifestResult = { ok: true; manifest: VoicePackManife
  * pack is a first-class install path — so a malformed manifest is a reportable
  * problem with that one pack, never a plugin-startup failure. The reason names
  * the offending field so a sideloader can fix it without guessing, and it is
- * the FIRST problem {@link validateVoicePackManifest} finds: one line per
+ * the FIRST problem {@link readVoicePackManifestText} finds: one line per
  * refused pack in the Installed Voices list.
  */
 export function parseVoicePackManifest(raw: string): ParseVoicePackManifestResult {
-  let json: unknown;
+  const read = readVoicePackManifestText(raw);
 
-  try {
-    // A leading UTF-8 BOM is stripped before parsing: `JSON.parse` throws on it,
-    // and several Windows editors write one. Hand-editing `voice-pack.json` on
-    // Windows is the ADVERTISED install path for this feature, so a BOM would
-    // reject a pack that is correct in every way a user can see, with "not valid
-    // JSON" as the only clue. deck-core's `settings-store.ts` strips one for the
-    // same reason — "a BOM must not make a user's backup corrupt" — and the pack
-    // format should not be stricter than the settings file about the same
-    // accident.
-    json = JSON.parse(raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw);
-  } catch (err) {
-    return { ok: false, reason: `not valid JSON: ${err instanceof Error ? err.message : String(err)}` };
-  }
+  if (!read.ok) return { ok: false, reason: read.problems[0] ?? "invalid shape" };
 
-  const validated = validateVoicePackManifest(json);
-
-  if (!validated.ok) return { ok: false, reason: validated.problems[0] ?? "invalid shape" };
-
-  return { ok: true, manifest: validated.manifest };
+  return { ok: true, manifest: read.manifest };
 }
 
 /**

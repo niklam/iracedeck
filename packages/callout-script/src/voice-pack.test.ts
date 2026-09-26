@@ -7,9 +7,11 @@ import {
   packId,
   packIdMatchesFolder,
   parseVoicePackManifest,
+  readVoicePackManifestText,
   USABLE_VOICE_CLIP,
   validateVoicePackManifest,
   VOICE_PACK_MANIFEST_FILE,
+  VOICE_PACK_MANIFEST_SCHEMA_VERSION,
   VOICE_PACK_NEWER_SCHEMA_REASON,
   VOICE_SCRIPT_MAX_BYTES,
   VoicePackManifestSchema,
@@ -77,6 +79,12 @@ describe("isSemverVersion", () => {
 describe("the format constants", () => {
   it("names the manifest file the scanner opens", () => {
     expect(VOICE_PACK_MANIFEST_FILE).toBe("voice-pack.json");
+  });
+
+  it("is version 1 of the manifest format, the one value the schema accepts", () => {
+    expect(VOICE_PACK_MANIFEST_SCHEMA_VERSION).toBe(1);
+    expect(VoicePackManifestSchema.shape.schema.safeParse(VOICE_PACK_MANIFEST_SCHEMA_VERSION).success).toBe(true);
+    expect(VoicePackManifestSchema.shape.schema.safeParse(VOICE_PACK_MANIFEST_SCHEMA_VERSION + 1).success).toBe(false);
   });
 
   it("caps a script at a megabyte", () => {
@@ -152,16 +160,42 @@ describe("validateVoicePackManifest", () => {
     ]);
   });
 
-  it("lists every check a field fails, not only the first", () => {
+  it("reports the first problem per field only — the one that names the fix", () => {
     // zod runs a string's checks without aborting at the first, so an id that
-    // carries the separator fails the separator rule AND the kebab-case rule.
-    // Both are listed: the scanner reads only the first (the better reason),
-    // and the linter shows the author the whole account.
-    const result = validateVoicePackManifest(JSON.parse(manifestWith({ voices: [{ id: "a::b", label: "A" }] })));
+    // carries the separator fails the separator rule AND the kebab-case rule,
+    // and an empty label fails both its minimum and its character rule. The
+    // first of each is kept, in the schema's order: the separator's sentence,
+    // because the schema checks it first.
+    const json = { schema: 1, id: "My::Pack", label: "", version: "1.0.0", voices: [{ id: "a", label: "A" }] };
+
+    // Positive control: zod really does report two issues at each field.
+    const issues = VoicePackManifestSchema.safeParse(json).error?.issues ?? [];
+    expect(issues.map((issue) => issue.path.join("."))).toEqual(["id", "id", "label", "label"]);
+
+    expect(validateVoicePackManifest(json)).toEqual({
+      ok: false,
+      problems: [
+        'id: must not contain "::" — iRaceDeck joins a pack id and a voice id with it',
+        "label: Too small: expected string to have >=1 characters",
+      ],
+    });
+  });
+
+  it("keeps the first problem of each field apart, nested paths included", () => {
+    const result = validateVoicePackManifest(
+      JSON.parse(
+        manifestWith({
+          voices: [
+            { id: "a::b", label: "A" },
+            { id: "c::d", label: "C" },
+          ],
+        }),
+      ),
+    );
 
     expect(result.ok === false && result.problems).toEqual([
       expect.stringMatching(/^voices\.0\.id: must not contain "::"/),
-      "voices.0.id: must be lowercase kebab-case (a-z, 0-9, dashes)",
+      expect.stringMatching(/^voices\.1\.id: must not contain "::"/),
     ]);
   });
 
@@ -197,7 +231,54 @@ describe("validateVoicePackManifest", () => {
   });
 });
 
+describe("readVoicePackManifestText", () => {
+  it("returns the manifest and the parsed document for a well-formed text", () => {
+    const result = readVoicePackManifestText(valid);
+
+    expect(result).toEqual({ ok: true, manifest: JSON.parse(valid), json: JSON.parse(valid) });
+  });
+
+  it("strips a leading UTF-8 BOM before parsing", () => {
+    // Written as an escape, not a literal BOM, for the reason the parse test below gives.
+    expect(readVoicePackManifestText("﻿" + valid).ok).toBe(true);
+  });
+
+  it("reports text that is not JSON as one problem, with no document", () => {
+    const result = readVoicePackManifestText("{");
+
+    expect(result.ok).toBe(false);
+    expect(result.json).toBeUndefined();
+    expect(result.ok === false && result.problems).toEqual([expect.stringMatching(/^not valid JSON: /)]);
+  });
+
+  it("hands back the parsed document with the problems when the schema refuses it", () => {
+    // What lets `lint:pack` still lint the voices a refused manifest names usably.
+    const raw = manifestWith({ version: "one" });
+
+    expect(readVoicePackManifestText(raw)).toEqual({
+      ok: false,
+      problems: ["version: must be a valid semver version"],
+      json: JSON.parse(raw),
+    });
+  });
+
+  it("reports exactly what validateVoicePackManifest reports for the same document", () => {
+    const raw = JSON.stringify({ schema: 2, id: "A::b", label: "", voices: [] });
+    const read = readVoicePackManifestText(raw);
+    const validated = validateVoicePackManifest(JSON.parse(raw));
+
+    expect(validated.ok).toBe(false);
+    expect(read.ok === false && read.problems).toEqual(validated.ok === false && validated.problems);
+  });
+});
+
 describe("parseVoicePackManifest", () => {
+  it("reports text that is not JSON as its reason", () => {
+    const result = parseVoicePackManifest("{");
+
+    expect(result.ok === false && result.reason).toMatch(/^not valid JSON: /);
+  });
+
   it("accepts a well-formed manifest", () => {
     const result = parseVoicePackManifest(valid);
 

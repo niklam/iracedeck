@@ -23,6 +23,7 @@ import {
   STEP_OBJECT_KEYS,
   type StepObjectKey,
 } from "./grammar.js";
+import { declaresNewerSchema } from "./schema-version.js";
 
 // ---------------------------------------------------------------------------
 // Leaf value schemas. Every message is written for the person who typed the
@@ -325,7 +326,11 @@ function problemsFor(json: unknown, issues: readonly z.core.$ZodIssue[]): string
       problems.push(`${path}: ${detail}`);
     } else if (issue.path.length === 0) {
       problems.push(`${ROOT_PREFIX}: the script must be a JSON object, not ${describeValue(json)}`);
-    } else if (issue.path.length === 1 && issue.path[0] === "schema" && isNewerSchema(json)) {
+    } else if (
+      issue.path.length === 1 &&
+      issue.path[0] === "schema" &&
+      declaresNewerSchema(json, CALLOUT_SCRIPT_SCHEMA_VERSION)
+    ) {
       // The version literal earns its keep here: a higher number means a newer
       // toolchain wrote the file, and "must be 1" tells that author nothing.
       problems.push(`${path}: written for a newer version of iRaceDeck — update the plugin to use this voice`);
@@ -346,14 +351,6 @@ function problemsFor(json: unknown, issues: readonly z.core.$ZodIssue[]): string
   }
 
   return problems;
-}
-
-function isNewerSchema(json: unknown): boolean {
-  if (json === null || typeof json !== "object") return false;
-
-  const schema = (json as { schema?: unknown }).schema;
-
-  return typeof schema === "number" && schema > CALLOUT_SCRIPT_SCHEMA_VERSION;
 }
 
 const TOO_DEEP_MESSAGE = `${ROOT_PREFIX}: the script is nested too deeply to read`;
