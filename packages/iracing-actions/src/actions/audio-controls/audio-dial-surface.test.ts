@@ -2,7 +2,7 @@ import { applyBindingWarning } from "@iracedeck/deck-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AudioControls } from "./audio-controls.js";
-import { buildAudioTriggerDescription, renderAudioStripSvg } from "./audio-dial-surface.js";
+import { buildAudioTriggerDescription, renderAudioKnobSvg, renderAudioStripSvg } from "./audio-dial-surface.js";
 
 const {
   mockTapBinding,
@@ -112,11 +112,16 @@ vi.mock("@iracedeck/deck-core", async () => {
 });
 
 /** Fake dial-surface action context. */
-function dialAction(id = "dial-1") {
+const STRIP = { id: "sd-plus-strip", width: 200, height: 100 } as const;
+const KNOB = { id: "stream-dock-knob", width: 176, height: 112 } as const;
+
+function dialAction(id = "dial-1", canvas: typeof STRIP | typeof KNOB | null = STRIP) {
   return {
     id,
     isDial: () => true,
     isKey: () => false,
+    dialCanvas: () => canvas,
+    setDialCanvas: vi.fn().mockResolvedValue(undefined),
     setFeedback: vi.fn().mockResolvedValue(undefined),
     setFeedbackLayout: vi.fn().mockResolvedValue(undefined),
     setTriggerDescription: vi.fn().mockResolvedValue(undefined),
@@ -128,7 +133,7 @@ function dialAction(id = "dial-1") {
 
 /** Fake keypad action context (regression guard for the isDial branch). */
 function keypadAction(id = "key-1") {
-  return { ...dialAction(id), isDial: () => false, isKey: () => true };
+  return { ...dialAction(id, null), isDial: () => false, isKey: () => true };
 }
 
 function ev(
@@ -139,12 +144,12 @@ function ev(
   return { action, payload: { settings, ...extra } } as never;
 }
 
-/** The raw SVG of the LAST feedback pushed to the context. */
+/** The raw SVG of the LAST dial canvas pushed to the context. */
 function lastFeedbackSvg(action: ReturnType<typeof dialAction>): string {
-  const calls = action.setFeedback.mock.calls;
+  const calls = action.setDialCanvas.mock.calls;
   expect(calls.length).toBeGreaterThan(0);
 
-  return (calls[calls.length - 1][0] as { box: string }).box;
+  return calls[calls.length - 1][0] as string;
 }
 
 describe("renderAudioStripSvg", () => {
@@ -211,6 +216,61 @@ describe("renderAudioStripSvg", () => {
     expect(vi.mocked(applyBindingWarning)).toHaveBeenCalledTimes(1);
     expect(vi.mocked(applyBindingWarning)).toHaveBeenCalledWith(expect.any(String), { width: 200, height: 100 });
     expect(svg).toContain('viewBox="0 0 200 100" width="200" height="100"');
+  });
+});
+
+describe("renderAudioKnobSvg (#1013)", () => {
+  it("draws the category band on the 176x112 knob canvas", () => {
+    const svg = renderAudioKnobSvg({ category: "voice-chat", pttHeld: false, bindingMissing: false });
+    expect(svg).toContain('viewBox="0 0 176 112" width="176" height="112"');
+    expect(svg).toContain(">VOICE CHAT<");
+  });
+
+  it("draws the taller level bar and a larger value for internal categories", () => {
+    const svg = renderAudioKnobSvg({
+      category: "race-engineer",
+      volume: 50,
+      enabled: true,
+      pttHeld: false,
+      bindingMissing: false,
+    });
+    expect(svg).toContain(">RACE ENGINEER<");
+    expect(svg).toMatch(/<rect x="8" y="58" width="160" height="36" rx="8" fill="#1a1f26"\/>/);
+    expect(svg).toContain('width="80.0" height="36" rx="8" fill="#2ecc71"');
+    expect(svg).toMatch(/font-size="22"[^>]*>50</);
+  });
+
+  it("draws the OFF state in gray", () => {
+    const svg = renderAudioKnobSvg({
+      category: "radar",
+      volume: 40,
+      enabled: false,
+      pttHeld: false,
+      bindingMissing: false,
+    });
+    expect(svg).toContain(">OFF<");
+    expect(svg).toContain("#888888");
+    expect(svg).not.toContain("#2ecc71");
+  });
+
+  it("draws the turn hint, not a bar, for the keybind categories", () => {
+    const svg = renderAudioKnobSvg({ category: "spotter", pttHeld: false, bindingMissing: false });
+    expect(svg).toContain(">SPOTTER<");
+    expect(svg).toContain("Turn to adjust volume");
+    expect(svg).not.toContain('rx="8"');
+  });
+
+  it("draws the ON AIR band while PTT is held", () => {
+    const svg = renderAudioKnobSvg({ category: "voice-chat", pttHeld: true, bindingMissing: false });
+    expect(svg).toContain(">ON AIR<");
+    expect(svg).toContain("#e74c3c");
+  });
+
+  it("sizes the binding warning for the knob canvas", () => {
+    vi.mocked(applyBindingWarning).mockClear();
+    const svg = renderAudioKnobSvg({ category: "voice-chat", pttHeld: false, bindingMissing: true });
+    expect(svg).toContain("<binding-warning/>");
+    expect(vi.mocked(applyBindingWarning)).toHaveBeenCalledWith(expect.any(String), { width: 176, height: 112 });
   });
 });
 
@@ -283,7 +343,7 @@ describe("AudioDialSurface (through AudioControls)", () => {
       await flush();
 
       expect(ctx.setTriggerDescription).toHaveBeenCalledWith({ rotate: "Adjust Race Engineer volume" });
-      expect(ctx.setFeedback).toHaveBeenCalledTimes(1);
+      expect(ctx.setDialCanvas).toHaveBeenCalledTimes(1);
       expect(lastFeedbackSvg(ctx)).toContain("RACE ENGINEER");
       // Keypad path skipped: no key icon, no title write.
       expect(ctx.setTitle).not.toHaveBeenCalled();
@@ -718,7 +778,7 @@ describe("AudioDialSurface (through AudioControls)", () => {
     it("re-renders live dial contexts on a global-settings change, throttled", async () => {
       const ctx = dialAction();
       await action.onWillAppear(ev(ctx, { dial: { category: "radar" } }));
-      expect(ctx.setFeedback).toHaveBeenCalledTimes(1);
+      expect(ctx.setDialCanvas).toHaveBeenCalledTimes(1);
       expect(capturedGlobalListener.value).not.toBeNull();
 
       // Three rapid echoes inside the throttle window coalesce into ONE
@@ -728,14 +788,14 @@ describe("AudioDialSurface (through AudioControls)", () => {
       capturedGlobalListener.value?.();
       await flush();
 
-      expect(ctx.setFeedback).toHaveBeenCalledTimes(2);
+      expect(ctx.setDialCanvas).toHaveBeenCalledTimes(2);
     });
   });
 
-  describe("feedback flag off (Mirabox/Ulanzi)", () => {
-    it("still rotates and presses but never touches feedback or trigger descriptions", async () => {
+  describe("extended gestures off (Mirabox / Ulanzi)", () => {
+    it("still rotates, presses and renders, but pushes no trigger description", async () => {
       vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
-      const ctx = dialAction();
+      const ctx = dialAction("dial-1", KNOB);
       await action.onWillAppear(ev(ctx, { dial: { category: "race-engineer", pressAction: "mute-unmute" } }));
       await action.onDialRotate(ev(ctx, { dial: { category: "race-engineer" } }, { ticks: 2 }));
       await action.onDialDown(ev(ctx, { dial: { category: "race-engineer", pressAction: "mute-unmute" } }));
@@ -743,8 +803,30 @@ describe("AudioDialSurface (through AudioControls)", () => {
 
       expect(mockStepRaceEngineerVolumeBy).toHaveBeenCalledWith(2);
       expect(mockToggleRaceEngineerFeature).toHaveBeenCalledTimes(1);
-      expect(ctx.setFeedback).not.toHaveBeenCalled();
       expect(ctx.setTriggerDescription).not.toHaveBeenCalled();
+      expect(decodeURIComponent(ctx.setDialCanvas.mock.calls[0][0] as string)).toContain('viewBox="0 0 176 112"');
+    });
+  });
+
+  describe("the knob screen (#1013)", () => {
+    it("draws the level bar and value on the knob profile", async () => {
+      const ctx = dialAction("dial-k", KNOB);
+      await action.onWillAppear(ev(ctx, { dial: { category: "race-engineer" } }));
+      await flush();
+
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls[0][0] as string);
+
+      expect(decoded).toContain("RACE ENGINEER");
+      expect(decoded).toMatch(/<rect[^>]*rx="8"/);
+      expect(ctx.setImage).not.toHaveBeenCalled();
+    });
+
+    it("pushes nothing without a dial canvas", async () => {
+      const ctx = dialAction("dial-n", null);
+      await action.onWillAppear(ev(ctx, { dial: { category: "race-engineer" } }));
+      await flush();
+
+      expect(ctx.setDialCanvas).not.toHaveBeenCalled();
     });
   });
 
@@ -755,6 +837,7 @@ describe("AudioDialSurface (through AudioControls)", () => {
 
       expect(mockTapBinding).toHaveBeenCalledWith("audioVoiceChatVolumeUp");
       expect(ctx.setFeedback).not.toHaveBeenCalled();
+      expect(ctx.setDialCanvas).not.toHaveBeenCalled();
     });
   });
 });

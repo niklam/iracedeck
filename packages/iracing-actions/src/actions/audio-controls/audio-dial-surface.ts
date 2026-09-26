@@ -5,7 +5,8 @@
  * dial-surface pattern (#759). Rotating adjusts the selected category's
  * volume; the press is configurable as Push to Talk (hold), Mute/Unmute,
  * Mute a Driver (#863, voice chat only), or Skip Spotter Call (#1015, spotter
- * only). The touch strip shows a live 0–100
+ * only). The dial's own screen — the Stream Deck+ touch strip or the Stream
+ * Dock knob screen (#1013), each with its own drawing — shows a live 0–100
  * level bar for the iRaceDeck-internal categories (Race Engineer, Radar) —
  * their volumes are plugin-owned globals.
  * The iRacing categories (voice chat, master, spotter — #809) go through blind
@@ -14,7 +15,6 @@
  */
 import {
   applyBindingWarning,
-  type DeckFeedbackPayload,
   type DeckTriggerDescription,
   type IDeckActionContext,
   onGlobalSettingsChange,
@@ -50,6 +50,9 @@ const RENDER_THROTTLE_MS = 100;
 
 /** The touch-strip slot; the SVG envelope and the #612 warning's canvas must agree on it. */
 const STRIP = { width: 200, height: 100 } as const;
+
+/** The Stream Dock knob screen (#1013) — deck-core's `STREAM_DOCK_KNOB_CANVAS`; the same agreement holds. */
+const KNOB = { width: 176, height: 112 } as const;
 
 const WHITE = "#ffffff";
 const GREEN = "#2ecc71";
@@ -167,6 +170,56 @@ export function renderAudioStripSvg(state: AudioStripState): string {
   // 144x144 key placement (same convention as the Fuel Service strip box).
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${STRIP.width} ${STRIP.height}" width="${STRIP.width}" height="${STRIP.height}">${
     state.bindingMissing ? applyBindingWarning(content, STRIP) : content
+  }</svg>`;
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * The knob-screen version of {@link renderAudioStripSvg} (#1013): the same
+ * band / bar / value vocabulary on the 176×112 segment — the band keeps its
+ * 30 px, the bar grows to 36 px and the value to 22 px.
+ */
+export function renderAudioKnobSvg(state: AudioStripState): string {
+  const w = KNOB.width;
+  const h = KNOB.height;
+  const bandColor = state.pttHeld ? RED : BAND_BG;
+  const bandText = state.pttHeld ? "ON AIR" : CATEGORY_LABELS[state.category];
+  const parts = [
+    `<rect x="0" y="0" width="${w}" height="30" fill="${bandColor}"/>`,
+    `<text x="${w / 2}" y="21" text-anchor="middle" fill="${WHITE}" font-family="Arial, sans-serif" font-size="16" font-weight="bold">${bandText}</text>`,
+  ];
+
+  if (state.volume !== undefined) {
+    const barX = 8;
+    const barY = 58;
+    const barW = w - 16;
+    const barH = 36;
+    const on = state.enabled !== false;
+    const fillW = Math.max(0, Math.min(barW, (state.volume / 100) * barW));
+    const valueText = on ? String(Math.round(state.volume)) : "OFF";
+
+    parts.push(`<rect x="${barX}" y="${barY}" width="${barW}" height="${barH}" rx="8" fill="${BAR_TRACK}"/>`);
+
+    if (fillW > 0) {
+      parts.push(
+        `<rect x="${barX}" y="${barY}" width="${fillW.toFixed(1)}" height="${barH}" rx="8" fill="${on ? GREEN : GRAY}"/>`,
+      );
+    }
+
+    parts.push(
+      `<text x="${w / 2}" y="${barY + barH / 2 + 8}" text-anchor="middle" fill="${WHITE}" font-family="Arial, sans-serif" font-size="22" font-weight="bold">${valueText}</text>`,
+    );
+  } else {
+    parts.push(
+      `<text x="${w / 2}" y="78" text-anchor="middle" fill="${GRAY}" font-family="Arial, sans-serif" font-size="14">Turn to adjust volume</text>`,
+    );
+  }
+
+  const content = parts.join("");
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">${
+    state.bindingMissing ? applyBindingWarning(content, KNOB) : content
   }</svg>`;
 }
 
@@ -455,8 +508,6 @@ export class AudioDialSurface {
    * under the ≤10 setFeedback/sec/dial cap.
    */
   private scheduleRender(ctx: AudioDialContext): void {
-    if (!__FEATURE_DIAL_EXTENDED_GESTURES__) return;
-
     if (ctx.renderTimer !== null) {
       ctx.renderQueued = true;
 
@@ -498,10 +549,14 @@ export class AudioDialSurface {
     };
   }
 
+  /** Pushes the dial's own screen — the strip or the knob drawing (#1013); nothing when it has none. */
   private async renderFeedback(ctx: AudioDialContext): Promise<void> {
-    if (!__FEATURE_DIAL_EXTENDED_GESTURES__ || !ctx.action.isDial()) return;
+    const canvas = ctx.action.dialCanvas();
 
-    const feedback: DeckFeedbackPayload = { box: svgToDataUri(renderAudioStripSvg(this.stripState(ctx))) };
-    await ctx.action.setFeedback(feedback);
+    if (!canvas) return;
+
+    const state = this.stripState(ctx);
+    const svg = canvas.id === "stream-dock-knob" ? renderAudioKnobSvg(state) : renderAudioStripSvg(state);
+    await ctx.action.setDialCanvas(svgToDataUri(svg));
   }
 }
