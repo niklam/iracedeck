@@ -218,6 +218,19 @@ describe("createFileSettingsStore", () => {
       expect(onRejected.mock.calls[0][0]).not.toHaveProperty("location");
     });
 
+    it("rejects a UTF-16LE file with a dangling final byte instead of silently dropping it", async () => {
+      mkdirSync(join(dir, "sub"), { recursive: true });
+      const complete = Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from('{"a": 3}', "utf16le")]);
+      const truncatedByOne = Buffer.concat([complete, Buffer.from([0x20])]);
+      writeFileSync(store.path, truncatedByOne);
+      const onRejected = vi.fn<(rejection: SettingsFileRejection) => void>();
+
+      expect(await rejectingStore(onRejected).load()).toBeUndefined();
+
+      expect(onRejected).toHaveBeenCalledTimes(1);
+      expect(readFileSync(onRejected.mock.calls[0][0].preservedAt)).toEqual(truncatedByOne);
+    });
+
     it("is not called for a missing file, a valid file, or a UTF-8 or UTF-16LE BOM-prefixed one", async () => {
       const onRejected = vi.fn<(rejection: SettingsFileRejection) => void>();
       const quiet = rejectingStore(onRejected);

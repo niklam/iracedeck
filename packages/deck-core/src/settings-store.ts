@@ -134,7 +134,14 @@ export interface SettingsFileRejection {
  * document; only a BOM-less file is taken as UTF-8.
  */
 export function decodeSettingsText(bytes: Buffer): string {
-  if (bytes[0] === 0xff && bytes[1] === 0xfe) return bytes.subarray(2).toString("utf16le");
+  if (bytes[0] === 0xff && bytes[1] === 0xfe) {
+    const payload = bytes.subarray(2);
+
+    // `toString("utf16le")` silently drops a dangling final byte, which would
+    // let a truncated file parse and then be re-saved without it. Decode it as
+    // U+FFFD instead, so the parse fails and the file is set aside and reported.
+    return payload.toString("utf16le") + (payload.length % 2 === 1 ? "�" : "");
+  }
 
   if (bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) return bytes.subarray(3).toString("utf-8");
 
