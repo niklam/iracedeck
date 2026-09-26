@@ -854,6 +854,66 @@ export function renderStripCanvasSvg(
   }</svg>`;
 }
 
+/**
+ * PROOF OF CONCEPT (#1013) — not production code; refactor before shipping.
+ *
+ * The Mirabox knob-screen version of {@link renderStripCanvasSvg}, drawn for
+ * the N4's 176×112 LCD segment above the knob rather than scaled from the
+ * 200×100 strip: same band / readout / bar vocabulary, but the squarer canvas
+ * buys a larger readout and a taller bar.
+ */
+export function renderKnobCanvasSvg(
+  mode: DialDisplayMode,
+  dialMode: DialSettings["mode"],
+  fillState: FuelFillState,
+  currentLtr: number,
+  addLtr: number,
+  totalLtr: number,
+  targetLtr: number,
+  maxLtr: number | undefined,
+  displayUnits: number,
+  bindingMissing = false,
+  pending: DialPendingPreview | null = null,
+): string {
+  const w = 176;
+  const h = 112;
+  const bandHeight = 30;
+  const margin = 6;
+  const barHeight = 30;
+  const barTop = h - margin - barHeight;
+  const readoutBaseline = 63;
+  const bandState = resolveBandState(mode, fillState);
+  const bandText = buildRefuelBandText(mode, fillState);
+  const readout = buildDialReadout(mode, dialMode, addLtr, totalLtr, targetLtr, displayUnits);
+  const valueText = pending ? pending.text : readout;
+  const valueColor = pending ? pending.color : WHITE;
+  // Bold Arial averages ~0.6 em per glyph; shrink the readout to fit, capped at 30.
+  const readoutFontSize = Math.min(30, Math.floor((w - 2 * margin) / Math.max(1, valueText.length * 0.6)));
+  const barTarget = mode === "manual" && dialMode === "fill-to" ? targetLtr : undefined;
+  const barSvg = renderFuelBarSvg(
+    currentLtr,
+    addLtr,
+    maxLtr,
+    fillState,
+    w - 2 * margin,
+    barHeight,
+    displayUnits,
+    barTarget,
+  );
+
+  const content = [
+    `<path d="M 0 ${bandHeight} L 0 8 A 8 8 0 0 1 8 0 L ${w - 8} 0 A 8 8 0 0 1 ${w} 8 L ${w} ${bandHeight} Z" fill="${borderColorForState(bandState)}"/>`,
+    `<text x="${w / 2}" y="21" text-anchor="middle" fill="${WHITE}" font-family="Arial, sans-serif" font-size="17" font-weight="bold">${bandText}</text>`,
+    `<text x="${w / 2}" y="${readoutBaseline}" text-anchor="middle" fill="${valueColor}" font-family="Arial, sans-serif" font-size="${readoutFontSize}" font-weight="bold">${valueText}</text>`,
+    pending ? renderPendingBar({ centerX: w / 2, y: readoutBaseline + 4, width: w, color: pending.color }) : "",
+    `<g transform="translate(${margin}, ${barTop})">${stripSvgWrapper(barSvg)}</g>`,
+  ].join("");
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">${
+    bindingMissing ? applyBindingWarning(content, { width: w, height: h }) : content
+  }</svg>`;
+}
+
 /** Strips the outer `<svg …>…</svg>` wrapper, returning only the inner markup. */
 function stripSvgWrapper(svg: string): string {
   const open = svg.indexOf(">");
@@ -940,11 +1000,15 @@ export class FuelDialSurface {
 
     // The deck-app image for the dial: just the action name (#775). Without
     // this the app falls back to keypad iconography for the dial slot.
-    action
-      .setImage(renderDialNameIcon({ line1: "FUEL", line2: "SERVICE", backgroundColor: "#3a2a2a" }))
-      .catch((err) => {
-        this.host.logger.debug(`Dial name icon push failed: ${String(err)}`);
-      });
+    // PROOF OF CONCEPT (#1013): on Mirabox setImage IS the knob screen, which
+    // the live render owns, so the name card is Elgato-only there.
+    if (__FEATURE_DIAL_FEEDBACK__) {
+      action
+        .setImage(renderDialNameIcon({ line1: "FUEL", line2: "SERVICE", backgroundColor: "#3a2a2a" }))
+        .catch((err) => {
+          this.host.logger.debug(`Dial name icon push failed: ${String(err)}`);
+        });
+    }
 
     // Start the periodic display refresh so the bar + value track live burn.
     this.startDisplayTimer(ctx);
@@ -1769,8 +1833,6 @@ export class FuelDialSurface {
    * only render path (keypad instances render through the keypad icon code).
    */
   private async renderFeedback(ctx: FuelDialContext): Promise<void> {
-    if (!__FEATURE_DIAL_FEEDBACK__) return;
-
     if (!ctx.action.isDial()) return;
 
     const displayUnits = this.effectiveDisplayUnits(ctx);
@@ -1784,7 +1846,7 @@ export class FuelDialSurface {
     // built-in layout text items can't have the colored band background (#728).
     // `ctx.preview` rides every render, so the 5 s heartbeat and a change-driven
     // tick mid-hold keep drawing the pending outcome rather than wiping it (#1120).
-    const canvasSvg = renderStripCanvasSvg(
+    const renderArgs = [
       mode,
       ctx.settings.dial.mode,
       fillState,
@@ -1796,9 +1858,16 @@ export class FuelDialSurface {
       displayUnits,
       this.autofuelBindingMissing(ctx.settings),
       ctx.preview,
-    );
-    const feedback: DeckFeedbackPayload = { box: svgToDataUri(canvasSvg) };
-    await ctx.action.setFeedback(feedback);
+    ] as const;
+
+    if (__FEATURE_DIAL_FEEDBACK__) {
+      const feedback: DeckFeedbackPayload = { box: svgToDataUri(renderStripCanvasSvg(...renderArgs)) };
+      await ctx.action.setFeedback(feedback);
+    } else {
+      // PROOF OF CONCEPT (#1013): no touch strip on Mirabox, so the knob's own
+      // LCD segment gets a knob-specific drawing through setImage.
+      await ctx.action.setImage(svgToDataUri(renderKnobCanvasSvg(...renderArgs)));
+    }
 
     // Reset the change-detector baseline so a pushed feedback (rotate/press/
     // heartbeat) doesn't immediately re-fire the render-on-change path next tick.

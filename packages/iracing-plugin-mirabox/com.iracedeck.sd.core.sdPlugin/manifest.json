@@ -198,7 +198,8 @@
       "Tooltip": "Fuel management for pit stops (add/reduce fuel, autofuel, lap margin)",
       "PropertyInspectorPath": "ui/fuel-service.html",
       "Controllers": [
-        "Keypad"
+        "Keypad",
+        "Knob"
       ],
       "States": [
         {

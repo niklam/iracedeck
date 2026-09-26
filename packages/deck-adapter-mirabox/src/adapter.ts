@@ -38,7 +38,9 @@ class VSDActionContext implements IDeckActionContext {
   ) {}
 
   async setImage(dataUri: string): Promise<void> {
-    const image = await toDeviceImage(this.id, dataUri, DEFAULT_KEY_IMAGE_SIZE);
+    // PROOF OF CONCEPT (#1013): a knob's LCD segment is 176×112 on the N4, so
+    // rasterize at its width (height follows the SVG's own aspect).
+    const image = await toDeviceImage(this.id, dataUri, this.isDial() ? 176 : DEFAULT_KEY_IMAGE_SIZE);
 
     // null = superseded by a newer image for this context — skip the send.
     if (image === null) return;
