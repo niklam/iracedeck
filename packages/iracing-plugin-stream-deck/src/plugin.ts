@@ -413,7 +413,13 @@ const audioRootDir = join(__binDir, "..", "assets", "audio");
 // The plugin's own assets are always the first, highest-precedence audio root;
 // `voicePacks.refresh()` below extends the list with one root per installed
 // voice pack (issue #1034).
-initializeAudio(adapter.createLogger("Audio"), audioNative, [audioRootDir]);
+// The Windows Volume Mixer otherwise lists our audio session under the deck
+// host's executable ("Node"); name it and give it our logo (#1253). The icon
+// path must be absolute, so it is resolved from __binDir like audioRootDir.
+initializeAudio(adapter.createLogger("Audio"), audioNative, [audioRootDir], {
+  displayName: "iRaceDeck",
+  iconPath: join(__binDir, "..", "imgs", "plugin", "iracedeck.ico"),
+});
 getAudio().init();
 
 const featureGateLogger = adapter.createLogger("FeatureGates");
