@@ -76,11 +76,16 @@ vi.mock("@iracedeck/deck-core", async () => {
   };
 });
 
-function dialContext(id: string) {
+const STRIP = { id: "sd-plus-strip", width: 200, height: 100 } as const;
+const KNOB = { id: "stream-dock-knob", width: 176, height: 112 } as const;
+
+function dialContext(id: string, canvas: typeof STRIP | typeof KNOB | null = STRIP) {
   return {
     id,
     isKey: () => false,
     isDial: () => true,
+    dialCanvas: () => canvas,
+    setDialCanvas: vi.fn().mockResolvedValue(undefined),
     setImage: vi.fn().mockResolvedValue(undefined),
     setTitle: vi.fn().mockResolvedValue(undefined),
     setSettings: vi.fn().mockResolvedValue(undefined),
@@ -412,11 +417,11 @@ describe("ViewAdjustment dial surface", () => {
       const ctx = dialContext("f1");
       await appear(ctx, dialSettings({ setting: "fov" }));
 
-      expect(ctx.setFeedback).toHaveBeenCalled();
-      const feedback = ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string };
+      expect(ctx.setDialCanvas).toHaveBeenCalled();
+      const uri = ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string;
 
-      expect(feedback.box).toContain("data:image/svg+xml");
-      const decoded = decodeURIComponent(feedback.box);
+      expect(uri).toContain("data:image/svg+xml");
+      const decoded = decodeURIComponent(uri);
 
       expect(decoded).toContain(">FOV<");
       // Identity-only: exactly one text node (the label), no value number.
@@ -427,7 +432,7 @@ describe("ViewAdjustment dial surface", () => {
       const ctx = dialContext("f1b");
       await appear(ctx, dialSettings({ setting: "driver-height" }));
 
-      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
 
       expect(decoded).toContain(">HEIGHT<");
     });
@@ -442,7 +447,7 @@ describe("ViewAdjustment dial surface", () => {
         }),
       );
 
-      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
 
       expect(decoded).toContain('stroke="#112233"');
       expect(decoded).toContain('fill="#445566"');
@@ -470,7 +475,7 @@ describe("ViewAdjustment dial surface", () => {
       const ctx = dialContext("f6");
       await appear(ctx, dialSettings({ setting: "fov" }));
 
-      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
 
       expect(mockIsBindingMissing).toHaveBeenCalledWith(["viewAdjustFovIncrease", "viewAdjustFovDecrease"]);
       expect(decoded).toContain("binding-warning");
@@ -479,24 +484,93 @@ describe("ViewAdjustment dial surface", () => {
     it("re-renders the box and trigger description when the setting changes", async () => {
       const ctx = dialContext("f5");
       await appear(ctx, dialSettings({ setting: "fov" }));
-      ctx.setFeedback.mockClear();
+      ctx.setDialCanvas.mockClear();
       ctx.setTriggerDescription.mockClear();
 
       await action.onDidReceiveSettings(basicEvent(ctx, dialSettings({ setting: "ui-size" })) as never);
 
       expect(ctx.setTriggerDescription).toHaveBeenCalled();
-      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
 
       expect(decoded).toContain(">UI SIZE<");
     });
 
-    it("skips feedback and touch when dial feedback is disabled", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
-      const ctx = dialContext("f8");
+    it("pushes the strip box through setDialCanvas on the Stream Deck+ profile (#1013)", async () => {
+      const ctx = dialContext("c1", STRIP);
       await appear(ctx, dialSettings({ setting: "fov" }));
 
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
+
+      expect(decoded).toContain('viewBox="0 0 200 100"');
+      expect(decoded).toContain(">FOV<");
       expect(ctx.setFeedback).not.toHaveBeenCalled();
+    });
+
+    it("pushes the knob box on the Stream Dock profile and never a name card there", async () => {
+      const ctx = dialContext("c2", KNOB);
+      await appear(ctx, dialSettings({ setting: "fov" }));
+
+      expect(ctx.setImage).not.toHaveBeenCalled();
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls[0][0] as string);
+
+      expect(decoded).toContain('viewBox="0 0 176 112"');
+      expect(decoded).toContain(">FOV<");
+      // Identity-only on the knob too: the label is the only text.
+      expect((decoded.match(/<text/g) ?? []).length).toBe(1);
+    });
+
+    it("pushes nothing at all when the context has no dial canvas", async () => {
+      const ctx = dialContext("c3", null);
+      await appear(ctx, dialSettings({ setting: "fov" }));
+
+      expect(ctx.setDialCanvas).not.toHaveBeenCalled();
+      expect(ctx.setFeedback).not.toHaveBeenCalled();
+      expect(ctx.setImage).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("extended gestures off (Mirabox / Ulanzi)", () => {
+    it("still renders the knob, but pushes no trigger description and ignores touch", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
+      const ctx = dialContext("x1", KNOB);
+      const settings = dialSettings({ setting: "fov", tapAction: "recenter-vr" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      expect(ctx.setDialCanvas).toHaveBeenCalled();
       expect(ctx.setTriggerDescription).not.toHaveBeenCalled();
+
+      await action.onTouchTap(touchTapEvent(ctx, settings, false) as never);
+
+      expect(mockTapBinding).not.toHaveBeenCalled();
+    });
+
+    it("classifies every release as a short press, however long the hold", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
+      const ctx = dialContext("x2", KNOB);
+      const settings = dialSettings({ setting: "fov", pressAction: "recenter-vr", longPressAction: "none" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      vi.advanceTimersByTime(2000);
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+
+      expect(mockTapBinding).toHaveBeenCalledWith("viewAdjustRecenterVr");
+    });
+
+    it("never fires a long-press action a knob cannot reach", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
+      const ctx = dialContext("x3", KNOB);
+      const settings = dialSettings({ setting: "fov", pressAction: "none", longPressAction: "recenter-vr" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      vi.advanceTimersByTime(2000);
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+
+      expect(mockTapBinding).not.toHaveBeenCalled();
     });
   });
 
@@ -540,14 +614,14 @@ describe("ViewAdjustment dial surface", () => {
       await appear(ctx, dialSettings({ setting: "fov" }));
 
       expect(globalListeners.length).toBeGreaterThan(0);
-      ctx.setFeedback.mockClear();
+      ctx.setDialCanvas.mockClear();
 
       mockIsBindingMissing.mockReturnValue(true);
 
       for (const listener of globalListeners) listener();
 
-      expect(ctx.setFeedback).toHaveBeenCalled();
-      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+      expect(ctx.setDialCanvas).toHaveBeenCalled();
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
 
       expect(decoded).toContain("binding-warning");
     });

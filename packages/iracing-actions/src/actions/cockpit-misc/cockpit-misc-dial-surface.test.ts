@@ -72,11 +72,16 @@ vi.mock("@iracedeck/deck-core", async () => {
 });
 
 /** Fake dial (encoder) action context. */
-function dialContext(id: string) {
+const STRIP = { id: "sd-plus-strip", width: 200, height: 100 } as const;
+const KNOB = { id: "stream-dock-knob", width: 176, height: 112 } as const;
+
+function dialContext(id: string, canvas: typeof STRIP | typeof KNOB | null = STRIP) {
   return {
     id,
     isKey: () => false,
     isDial: () => true,
+    dialCanvas: () => canvas,
+    setDialCanvas: vi.fn().mockResolvedValue(undefined),
     setImage: vi.fn().mockResolvedValue(undefined),
     setTitle: vi.fn().mockResolvedValue(undefined),
     setSettings: vi.fn().mockResolvedValue(undefined),
@@ -444,15 +449,15 @@ describe("CockpitMisc dial surface", () => {
   });
 
   describe("feedback rendering", () => {
-    it("pushes the dash box as a single touch-strip pixmap on a dial", async () => {
+    it("pushes the dash box as a single dial-screen pixmap on a dial", async () => {
       const ctx = dialContext("f1");
       await appear(ctx, dialSettings({ setting: "dash-page-1" }));
 
-      expect(ctx.setFeedback).toHaveBeenCalled();
-      const feedback = ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string };
+      expect(ctx.setDialCanvas).toHaveBeenCalled();
+      const uri = ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string;
 
-      expect(feedback.box).toContain("data:image/svg+xml");
-      const decoded = decodeURIComponent(feedback.box);
+      expect(uri).toContain("data:image/svg+xml");
+      const decoded = decodeURIComponent(uri);
 
       expect(decoded).toContain(">DASH 1<");
       expect(decoded).toContain(">2<"); // live page number from dcDashPage
@@ -463,7 +468,7 @@ describe("CockpitMisc dial surface", () => {
       const ctx = dialContext("f0");
       await appear(ctx, dialSettings({ setting: "dash-page-1" }));
 
-      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
 
       expect(decoded).toContain(">DASH 1<");
       expect(decoded).toContain(">---<");
@@ -479,7 +484,7 @@ describe("CockpitMisc dial surface", () => {
         }),
       );
 
-      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
 
       expect(decoded).toContain('stroke="#112233"'); // border override
       expect(decoded).toContain('fill="#445566"'); // background override, filling inside the border
@@ -492,6 +497,39 @@ describe("CockpitMisc dial surface", () => {
       expect(ctx.setTriggerDescription).toHaveBeenCalled();
     });
 
+    it("pushes the strip box through setDialCanvas on the Stream Deck+ profile (#1013)", async () => {
+      const ctx = dialContext("c1", STRIP);
+      await appear(ctx, dialSettings({ setting: "dash-page-1" }));
+
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
+
+      expect(decoded).toContain('viewBox="0 0 200 100"');
+      expect(decoded).toContain(">DASH 1<");
+      expect(ctx.setFeedback).not.toHaveBeenCalled();
+    });
+
+    it("pushes the knob box on the Stream Dock profile and never a name card there", async () => {
+      mockGetCurrentTelemetry.mockReturnValue({ dcDashPage: 3 });
+      const ctx = dialContext("c2", KNOB);
+      await appear(ctx, dialSettings({ setting: "dash-page-1" }));
+
+      expect(ctx.setImage).not.toHaveBeenCalled();
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls[0][0] as string);
+
+      expect(decoded).toContain('viewBox="0 0 176 112"');
+      expect(decoded).toContain(">DASH 1<");
+      expect(decoded).toContain(">3<");
+    });
+
+    it("pushes nothing at all when the context has no dial canvas", async () => {
+      const ctx = dialContext("c3", null);
+      await appear(ctx, dialSettings({ setting: "dash-page-1" }));
+
+      expect(ctx.setDialCanvas).not.toHaveBeenCalled();
+      expect(ctx.setFeedback).not.toHaveBeenCalled();
+      expect(ctx.setImage).not.toHaveBeenCalled();
+    });
+
     it("pushes the two-line name icon as the deck-app dial image (#805)", async () => {
       const ctx = dialContext("f7");
       await appear(ctx, dialSettings({ setting: "dash-page-1" }));
@@ -502,7 +540,7 @@ describe("CockpitMisc dial surface", () => {
       expect(img).toContain(">MISC<");
     });
 
-    it("throttles feedback to the change-render window so the setFeedback cap holds", async () => {
+    it("throttles feedback to the change-render window so the push cap holds", async () => {
       const ctx = dialContext("f4");
       mockGetCurrentTelemetry.mockReturnValue({ dcDashPage: 2 });
       await appear(ctx, dialSettings({ setting: "dash-page-1" }));
@@ -510,23 +548,23 @@ describe("CockpitMisc dial surface", () => {
       const onTick = (
         action as unknown as { sdkController: { subscribe: ReturnType<typeof vi.fn> } }
       ).sdkController.subscribe.mock.calls.at(-1)?.[1] as (telemetry: unknown) => void;
-      ctx.setFeedback.mockClear();
+      ctx.setDialCanvas.mockClear();
 
       // Within the 100 ms window: the value changes but the feedback push is throttled.
       vi.advanceTimersByTime(50);
       mockGetCurrentTelemetry.mockReturnValue({ dcDashPage: 3 });
       onTick({ dcDashPage: 3 });
 
-      expect(ctx.setFeedback).not.toHaveBeenCalled();
+      expect(ctx.setDialCanvas).not.toHaveBeenCalled();
 
       // Past the window: the next change flushes one feedback push.
       vi.advanceTimersByTime(100);
       mockGetCurrentTelemetry.mockReturnValue({ dcDashPage: 4 });
       onTick({ dcDashPage: 4 });
 
-      expect(ctx.setFeedback).toHaveBeenCalledTimes(1);
+      expect(ctx.setDialCanvas).toHaveBeenCalledTimes(1);
       // The flushed push carries the latest value (4), not the throttled-over one.
-      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
 
       expect(decoded).toContain(">4<");
     });
@@ -536,7 +574,7 @@ describe("CockpitMisc dial surface", () => {
       const ctx = dialContext("f6");
       await appear(ctx, dialSettings({ setting: "dash-page-1" }));
 
-      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
 
       expect(mockIsBindingMissing).toHaveBeenCalledWith([
         "cockpitMiscDashPage1Increase",
@@ -549,16 +587,61 @@ describe("CockpitMisc dial surface", () => {
       const ctx = dialContext("f5");
       mockGetCurrentTelemetry.mockReturnValue({ dcDashPage: 2, dcDashPage2: 4 });
       await appear(ctx, dialSettings({ setting: "dash-page-1" }));
-      ctx.setFeedback.mockClear();
+      ctx.setDialCanvas.mockClear();
       ctx.setTriggerDescription.mockClear();
 
       await action.onDidReceiveSettings(basicEvent(ctx, dialSettings({ setting: "dash-page-2" })) as never);
 
       expect(ctx.setTriggerDescription).toHaveBeenCalled();
-      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
 
       expect(decoded).toContain(">DASH 2<");
       expect(decoded).toContain(">4<");
+    });
+  });
+
+  describe("extended gestures off (Mirabox / Ulanzi)", () => {
+    it("still renders the knob, but pushes no trigger description and ignores touch", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
+      const ctx = dialContext("x1", KNOB);
+      const settings = dialSettings({ setting: "dash-page-1", tapAction: "toggle-wipers" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      expect(ctx.setDialCanvas).toHaveBeenCalled();
+      expect(ctx.setTriggerDescription).not.toHaveBeenCalled();
+
+      await action.onTouchTap(touchTapEvent(ctx, settings, false) as never);
+
+      expect(mockTapBinding).not.toHaveBeenCalled();
+    });
+
+    it("classifies every release as a short press, however long the hold", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
+      const ctx = dialContext("x2", KNOB);
+      const settings = dialSettings({ setting: "dash-page-1", pressAction: "toggle-wipers", longPressAction: "none" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      vi.advanceTimersByTime(2000);
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+
+      expect(mockTapBinding).toHaveBeenCalledWith("cockpitMiscToggleWipers");
+    });
+
+    it("never fires a long-press action a knob cannot reach", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
+      const ctx = dialContext("x3", KNOB);
+      const settings = dialSettings({ setting: "dash-page-1", pressAction: "none", longPressAction: "in-lap-mode" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      vi.advanceTimersByTime(2000);
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+
+      expect(mockTapBinding).not.toHaveBeenCalled();
     });
   });
 
@@ -601,15 +684,15 @@ describe("CockpitMisc dial surface", () => {
       await appear(ctx, dialSettings({ setting: "dash-page-1" }));
 
       expect(globalListeners.length).toBeGreaterThan(0);
-      ctx.setFeedback.mockClear();
+      ctx.setDialCanvas.mockClear();
 
       // The binding was configured while iRacing is offline (no telemetry ticks).
       mockIsBindingMissing.mockReturnValue(true);
 
       for (const listener of globalListeners) listener();
 
-      expect(ctx.setFeedback).toHaveBeenCalled();
-      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+      expect(ctx.setDialCanvas).toHaveBeenCalled();
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
 
       expect(decoded).toContain("binding-warning");
     });

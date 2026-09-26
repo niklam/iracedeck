@@ -10,14 +10,15 @@
  * press gesture can tap Auto Set Mic Gain.
  *
  * iRacing exposes NO camera-tool state (no telemetry for any parameter), so
- * every value is identity-only: the touch strip shows the selected parameter's
- * full name only, never a live number — the documented #782 voice-chat/master
- * compromise, not an implementation gap.
+ * every value is identity-only: the dial's own screen — the Stream Deck+ strip
+ * or the Stream Dock knob segment — shows the selected parameter's full name
+ * only, never a live number — the documented #782 voice-chat/master compromise,
+ * not an implementation gap.
  */
 import {
   classifyDialRelease,
-  type DeckFeedbackPayload,
   type DeckTriggerDescription,
+  type DialReleaseKind,
   getDualPressThresholdMs,
   type IDeckActionContext,
   svgToDataUri,
@@ -26,9 +27,8 @@ import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 import z from "zod";
 
-import { dialAppearanceFields, resolveDialBoxColors } from "../../shared/dial-box.js";
-import { renderDialNameIcon } from "../../shared/dial-name-icon.js";
-import { renderStripBox } from "../../shared/dial-strip-box.js";
+import { dialAppearanceFields, renderDialBox, resolveDialBoxColors } from "../../shared/dial-box.js";
+import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
 
 const CHANGE_RENDER_MIN_INTERVAL_MS = 100;
 
@@ -393,11 +393,7 @@ export class CameraEditorDialSurface {
   async willAppear(action: IDeckActionContext, dial: DialSettings): Promise<void> {
     const ctx = this.ensureContext(action, dial);
 
-    action
-      .setImage(renderDialNameIcon({ line1: "CAM EDIT", line2: "ADJUST", backgroundColor: "#1a2a3a" }))
-      .catch((err) => {
-        this.host.logger.debug(`Dial name icon push failed: ${String(err)}`);
-      });
+    pushDialNameIcon(action, { line1: "CAM EDIT", line2: "ADJUST", backgroundColor: "#1a2a3a" }, this.host.logger);
 
     await this.applyTriggerDescription(ctx);
     await this.renderFeedback(ctx);
@@ -446,12 +442,16 @@ export class CameraEditorDialSurface {
 
     if (pressStartMs === 0) return;
 
-    const kind = classifyDialRelease({
-      pressStartMs,
-      nowMs: Date.now(),
-      rotatedWhilePressed: ctx.rotatedWhilePressed,
-      thresholdMs: getDualPressThresholdMs(),
-    });
+    // A knob reports no long hold (its dialUp never comes) and no push+turn, so
+    // where the extended gestures are compiled out every release is a press.
+    const kind: DialReleaseKind = __FEATURE_DIAL_EXTENDED_GESTURES__
+      ? classifyDialRelease({
+          pressStartMs,
+          nowMs: Date.now(),
+          rotatedWhilePressed: ctx.rotatedWhilePressed,
+          thresholdMs: getDualPressThresholdMs(),
+        })
+      : "short";
 
     if (kind === "push-turn") return;
 
@@ -573,16 +573,16 @@ export class CameraEditorDialSurface {
   }
 
   private async renderFeedback(ctx: CameraEditorDialContext): Promise<void> {
-    if (!__FEATURE_DIAL_EXTENDED_GESTURES__) return;
+    // The dial's own screen decides the drawing; a key or a host with no dial
+    // screen has nothing to draw on (#1013).
+    const canvas = ctx.action.dialCanvas();
 
-    if (!ctx.action.isDial()) return;
+    if (!canvas) return;
 
     const setting = ctx.dial.setting;
     const label = MODE_LABEL[setting];
     const colors = resolveDialBoxColors(ctx.dial.colors, MODE_COLOR[setting]);
-    const boxSvg = renderStripBox({
-      width: 200,
-      height: 100,
+    const boxSvg = renderDialBox(canvas, {
       // The full mixed-case name, centered, scaled down for longer names.
       abbr: label,
       value: formatDialValue(setting, this.host.getTelemetry()),
@@ -590,8 +590,7 @@ export class CameraEditorDialSurface {
       identityLabelScale: identityLabelScaleFor(label),
       bindingMissing: this.computeBindingMissing(ctx.dial),
     });
-    const feedback: DeckFeedbackPayload = { box: svgToDataUri(boxSvg) };
-    await ctx.action.setFeedback(feedback);
+    await ctx.action.setDialCanvas(svgToDataUri(boxSvg));
 
     ctx.lastRenderSig = this.displayedSignature(ctx);
     ctx.lastChangeRenderAt = Date.now();

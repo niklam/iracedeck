@@ -7,8 +7,9 @@
  * operates on the `dial` sub-object). Flipping through in-car dash pages to find
  * the right screen suits a detent-per-page rotary: `dial.setting` picks dash page
  * 1 or dash page 2 and turning taps the same `cockpitMiscDashPage*Increase` /
- * `Decrease` bindings as the keypad surface. The touch strip shows the live page
- * number iRacing reports for that display (`dcDashPage` / `dcDashPage2`), or
+ * `Decrease` bindings as the keypad surface. The dial's own screen — the Stream
+ * Deck+ strip or the Stream Dock knob segment — shows the live page number
+ * iRacing reports for that display (`dcDashPage` / `dcDashPage2`), or
  * `---` when the car exposes no dash pages (dc*-presence is the capability
  * signal). Pressing runs a configurable gesture — any of the keypad's one-shot
  * controls (toggle wipers / trigger wipers / in-lap mode / report latency) or
@@ -28,8 +29,8 @@
  */
 import {
   classifyDialRelease,
-  type DeckFeedbackPayload,
   type DeckTriggerDescription,
+  type DialReleaseKind,
   getDualPressThresholdMs,
   type IDeckActionContext,
   svgToDataUri,
@@ -38,9 +39,8 @@ import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 import z from "zod";
 
-import { dialAppearanceFields, resolveDialBoxColors } from "../../shared/dial-box.js";
-import { renderDialNameIcon } from "../../shared/dial-name-icon.js";
-import { renderStripBox } from "../../shared/dial-strip-box.js";
+import { dialAppearanceFields, renderDialBox, resolveDialBoxColors } from "../../shared/dial-box.js";
+import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
 import { formatInteger } from "../../shared/setup-view.js";
 
 const CHANGE_RENDER_MIN_INTERVAL_MS = 100;
@@ -263,7 +263,7 @@ export interface CockpitMiscDialHost {
 
 /**
  * Owns all per-dial-context state, dispatches rotations and gestures, and
- * renders the touch-strip feedback. The owning action routes every dial
+ * renders the dial screen. The owning action routes every dial
  * lifecycle/input event here and forwards telemetry ticks per subscribed
  * context.
  */
@@ -275,13 +275,10 @@ export class CockpitMiscDialSurface {
   async willAppear(action: IDeckActionContext, dial: DialSettings): Promise<void> {
     const ctx = this.ensureContext(action, dial);
 
-    // The deck-app image for the dial: just the action name. Without this the
-    // app falls back to keypad iconography for the dial slot.
-    action
-      .setImage(renderDialNameIcon({ line1: "COCKPIT", line2: "MISC", backgroundColor: "#2a2a3a" }))
-      .catch((err) => {
-        this.host.logger.debug(`Dial name icon push failed: ${String(err)}`);
-      });
+    // The deck-app image for the dial: just the action name, on the Stream
+    // Deck+ strip profile only (#1013). Without this the app falls back to
+    // keypad iconography for the dial slot.
+    pushDialNameIcon(action, { line1: "COCKPIT", line2: "MISC", backgroundColor: "#2a2a3a" }, this.host.logger);
 
     await this.applyTriggerDescription(ctx);
     await this.renderFeedback(ctx);
@@ -356,12 +353,16 @@ export class CockpitMiscDialSurface {
 
     if (pressStartMs === 0) return;
 
-    const kind = classifyDialRelease({
-      pressStartMs,
-      nowMs: Date.now(),
-      rotatedWhilePressed: ctx.rotatedWhilePressed,
-      thresholdMs: getDualPressThresholdMs(),
-    });
+    // A knob reports no long hold (its dialUp never comes) and no push+turn, so
+    // where the extended gestures are compiled out every release is a press.
+    const kind: DialReleaseKind = __FEATURE_DIAL_EXTENDED_GESTURES__
+      ? classifyDialRelease({
+          pressStartMs,
+          nowMs: Date.now(),
+          rotatedWhilePressed: ctx.rotatedWhilePressed,
+          thresholdMs: getDualPressThresholdMs(),
+        })
+      : "short";
 
     if (kind === "push-turn") return;
 
@@ -400,9 +401,9 @@ export class CockpitMiscDialSurface {
     if (Date.now() - ctx.lastChangeRenderAt < CHANGE_RENDER_MIN_INTERVAL_MS) return;
 
     // Advance the baseline SYNCHRONOUSLY before the async render: 60 Hz ticks
-    // arriving while the setFeedback push is still in flight would otherwise each
+    // arriving while the dial-screen push is still in flight would otherwise each
     // fire another push inside the same 100 ms window, defeating the
-    // ≤10 setFeedback/sec/dial throttle.
+    // ≤10 pushes/sec/dial throttle.
     ctx.lastRenderSig = sig;
     ctx.lastChangeRenderAt = Date.now();
     this.renderFeedback(ctx).catch((err) => {
@@ -489,23 +490,22 @@ export class CockpitMiscDialSurface {
     await ctx.action.setTriggerDescription(buildTriggerDescription(ctx.dial));
   }
 
-  /** Pushes the touch-strip feedback (the full-cell dash box) when this is a dial. */
+  /** Pushes the dash box to the dial's own screen, whichever it is (#1013). */
   private async renderFeedback(ctx: CockpitMiscDialContext): Promise<void> {
-    if (!__FEATURE_DIAL_EXTENDED_GESTURES__) return;
+    // The dial's own screen decides the drawing; a key or a host with no dial
+    // screen has nothing to draw on (#1013).
+    const canvas = ctx.action.dialCanvas();
 
-    if (!ctx.action.isDial()) return;
+    if (!canvas) return;
 
     const setting = ctx.dial.setting;
-    const boxSvg = renderStripBox({
-      width: 200,
-      height: 100,
+    const boxSvg = renderDialBox(canvas, {
       abbr: MODE_ABBR[setting],
       value: formatDialValue(setting, this.host.getTelemetry()),
       colors: resolveDialBoxColors(ctx.dial.colors, MODE_COLOR[setting]),
       bindingMissing: this.computeBindingMissing(ctx.dial),
     });
-    const feedback: DeckFeedbackPayload = { box: svgToDataUri(boxSvg) };
-    await ctx.action.setFeedback(feedback);
+    await ctx.action.setDialCanvas(svgToDataUri(boxSvg));
 
     // Reset the change-detector baseline so this pushed feedback doesn't
     // immediately re-fire the render-on-change path on the next telemetry tick.
