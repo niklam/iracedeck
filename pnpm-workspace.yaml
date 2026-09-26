@@ -1,2 +1,19 @@
 packages:
   - "packages/*"
+
+# `pnpm add` writes exact versions (.claude/rules/code-style.md). Since pnpm 11
+# this is only honoured here, not in `.npmrc`.
+saveExact: true
+
+# Every dependency with an install script is a decision (#1176, #1245); the
+# reasons are in .claude/rules/build-and-commit.md under "Dependency build scripts".
+allowBuilds:
+  ffmpeg-static: true
+  esbuild: false
+  keysender: false
+  protobufjs: false
+  re2: false
+
+# pnpm's own default, stated so it reads as a decision: a version published less
+# than a day ago does not resolve.
+minimumReleaseAge: 1440
