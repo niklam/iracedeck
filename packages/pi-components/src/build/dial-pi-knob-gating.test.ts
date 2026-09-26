@@ -145,6 +145,13 @@ describe("dial Property Inspectors on a knob (#1013)", () => {
     it.each(withAppearance)("%s: keeps the Dash Box Appearance colours", (name) => {
       expect(dialSettingsSlice(knob.get(name) ?? "")).toContain('setting="dial.colors.borderColor"');
     });
+
+    it("offers no Push to Talk on Audio Controls' Press Action: a knob never sends the release that ends it", () => {
+      const dial = dialSettingsSlice(knob.get("audio-controls") ?? "");
+
+      expect(dial).toContain('setting="dial.pressAction"');
+      expect(dial).not.toContain('value="push-to-talk"');
+    });
   });
 
   describe("with dialExtendedGestures on (a Stream Deck+ dial)", () => {
@@ -164,6 +171,10 @@ describe("dial Property Inspectors on a knob (#1013)", () => {
 
     it("offers Fuel Service's Push + Turn", () => {
       expect(strip.get("fuel-service")).toContain('setting="dial.pushTurnAction"');
+    });
+
+    it("offers Push to Talk on Audio Controls' Press Action", () => {
+      expect(dialSettingsSlice(strip.get("audio-controls") ?? "")).toContain('value="push-to-talk"');
     });
   });
 });

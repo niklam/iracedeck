@@ -20,9 +20,11 @@ A dial exposes more than one gesture. In an action's Property Inspector, each co
 
 On a Mirabox knob the action draws its live readout on the screen above the knob, sized for it rather than scaled from the Stream Deck+ strip, and the knob has two gestures: **Turn** and **Push**. That is a limit of what the Stream Dock software tells plugins — a hold and a push + turn never arrive as anything a plugin can tell apart from nothing, and a tap on the screen arrives as a push — so Long Press, Push + Turn, Tap Display and Long Touch are not offered on a knob and its Property Inspector shows only the Turn settings, the display colours and the Push slot. Everything an action offers on those other slots can be put on Push, so nothing is out of reach; what you lose is capacity — one gesture per knob instead of up to four — and the fixed push + turn behaviours (Fuel Service's clockwise fill-to-full) have no knob equivalent.
 
+One press action is Stream Deck+ only: Audio Controls' **Push to Talk**. It holds the talk key for as long as you hold the dial and lets go when you release it, and a knob never reports the release — so on a knob it is not offered, and a knob set up with it elsewhere does nothing when pushed.
+
 ## How presses are classified
 
-Push, Long Press, and Push + Turn are all decided **when you release** the dial button, from how long it was held (compared against the Long-press threshold) and whether you turned the dial while holding it. Nothing fires mid-hold, so the three gestures never conflict with one another. On a Mirabox knob every push is a plain Push; holding the knob or turning it while pushed does nothing (see [Mirabox knobs](#mirabox-knobs)).
+Push, Long Press, and Push + Turn are all decided **when you release** the dial button, from how long it was held (compared against the Long-press threshold) and whether you turned the dial while holding it. Nothing fires mid-hold, so the three gestures never conflict with one another. On a Mirabox knob every push is a plain Push. Because the knob never reports the release of a hold or of a turn while pushed, those fire nothing on actions that act on release. Audio Controls is the exception: its press actions (Mute / Unmute, Mute a Driver, Skip Spotter Call) fire the moment the knob goes down, so holding the knob fires them too (see [Mirabox knobs](#mirabox-knobs)).
 
 ## Seeing the outcome before you let go
 

@@ -806,6 +806,18 @@ describe("AudioDialSurface (through AudioControls)", () => {
       expect(ctx.setTriggerDescription).not.toHaveBeenCalled();
       expect(decodeURIComponent(ctx.setDialCanvas.mock.calls[0][0] as string)).toContain('viewBox="0 0 176 112"');
     });
+
+    it("never holds the Push to Talk binding, which a knob would leave held (no dialUp)", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
+      const ctx = dialAction("dial-1", KNOB);
+      const settings = { dial: { category: "voice-chat", pressAction: "push-to-talk" } };
+      await action.onWillAppear(ev(ctx, settings));
+      await action.onDialDown(ev(ctx, settings));
+      await flush();
+
+      expect(mockHoldBinding).not.toHaveBeenCalled();
+      expect(lastFeedbackSvg(ctx)).not.toContain("ON AIR");
+    });
   });
 
   describe("the knob screen (#1013)", () => {

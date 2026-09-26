@@ -339,6 +339,16 @@ export class AudioDialSurface {
     if (press === "none") return;
 
     if (press === "push-to-talk") {
+      // Push to Talk holds a key until the release, and a Mirabox knob held down
+      // never sends its dialUp — the binding would stay held. The PI does not
+      // offer it where the extended gestures are compiled out; a value stored
+      // before (or copied from a Stream Deck+ profile) does nothing.
+      if (!__FEATURE_DIAL_EXTENDED_GESTURES__) {
+        this.host.logger.info("PTT press ignored — push-to-talk needs a release this host does not send");
+
+        return;
+      }
+
       if (this.host.isBindingMissing(PUSH_TO_TALK_KEY)) {
         this.host.logger.warn("PTT press ignored — push-to-talk binding not configured");
 
