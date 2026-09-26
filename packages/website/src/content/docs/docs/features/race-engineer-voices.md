@@ -51,7 +51,7 @@ If iRaceDeck can't reach the catalog — no connection, or a bad one — nothing
 
 A downloaded pack is verified against a checksum before it replaces anything, so a corrupted or incomplete download is discarded rather than installed. A pack you no longer want can be removed from the same Voice Packs card — every pack except Default, which iRaceDeck keeps current.
 
-The **Available to Download** list shows only what you do not already have. Once a pack is installed it moves to **Installed Voices** and leaves that list, so a pack never appears twice. When you have every voice iRaceDeck publishes, the section says so rather than sitting empty.
+The **Available to Download** list shows only what you can act on. A pack you do not have is listed with **Install**; once it is installed and up to date it moves to **Installed Voices** and leaves that list. A pack you have that has a newer version published stays in both places — under **Installed Voices** as the version you have, and under **Available to Download** with **Update**. When you have every voice iRaceDeck publishes, all up to date, the section says so rather than sitting empty.
 
 ## Installing a Voice Pack by Hand
 
