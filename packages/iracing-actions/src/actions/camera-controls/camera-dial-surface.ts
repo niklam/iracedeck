@@ -104,12 +104,14 @@ import {
   applyBindingWarning,
   classifyDialRelease,
   createHoldPreview,
-  type DeckFeedbackPayload,
   type DeckTriggerDescription,
+  type DialCanvasProfile,
+  type DialReleaseKind,
   escapeXml,
   getDualPressThresholdMs,
   type HoldPreview,
   type IDeckActionContext,
+  STREAM_DOCK_KNOB_CANVAS,
   svgToDataUri,
 } from "@iracedeck/deck-core";
 import {
@@ -132,7 +134,8 @@ import {
   type TrackOrderTarget,
 } from "../../shared/car-cycling.js";
 import { dialAppearanceFields, type DialBoxColors, resolveDialBoxColors } from "../../shared/dial-box.js";
-import { renderDialNameIcon } from "../../shared/dial-name-icon.js";
+import { fitValueFontSize } from "../../shared/dial-fit.js";
+import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
 import { type DialPendingPreview, PENDING_BAR_HEIGHT, renderPendingBar } from "../../shared/dial-preview.js";
 import {
   computeCameraCarousel,
@@ -878,6 +881,138 @@ export function renderRacePositionCarousel(args: {
   return svgWrap(w, h, parts.join(""));
 }
 
+// --- Knob carousel (#1013) ----------------------------------------------------
+
+/** The knob carousel's mode title: the knob dash box's label line (16 px on a top line). */
+const KNOB_TITLE_FONT = 16;
+const KNOB_TITLE_Y = 28;
+/** The centre readout: capped at 44 px and centred on this line, above the bottom row. */
+const KNOB_VALUE_CAP = 44;
+const KNOB_VALUE_CENTER_Y = 62;
+/** The centre glyph (camera modes) and the group name beneath it. */
+const KNOB_GLYPH_CY = 52;
+const KNOB_GLYPH_SIZE = 40;
+const KNOB_GLYPH_NAME_Y = 84;
+const KNOB_GLYPH_NAME_CAP = 14;
+/** The bottom row: the two detent targets in the corners, and race-position's car number between them. */
+const KNOB_SIDE_FONT = 16;
+const KNOB_SIDE_GLYPH_SIZE = 24;
+const KNOB_SIDE_OPACITY = 0.45;
+const KNOB_SUB_FONT = 13;
+
+/**
+ * @internal Exported for testing
+ *
+ * What the knob carousel draws, resolved from the same per-mode view the strip
+ * carousels draw: the centre target (a glyph with its name beneath for the
+ * camera modes, a secondary line beneath for race-position) and the two detent
+ * targets — `left` the counter-clockwise one, `right` the clockwise one (#884)
+ * — each a number, or a glyph where the strip shows one. The knob's corners
+ * are deliberately simpler than the strip's sides (design gate, #1013): no
+ * track-order captions and no sub-camera names, only numbers and glyphs.
+ */
+export interface KnobCarouselView {
+  colors: DialBoxColors;
+  title: string;
+  identityLabel: string;
+  centre: { text: string; glyph?: CarouselGlyph | null; sub?: string } | null;
+  left: { text: string; glyph?: CarouselGlyph | null } | null;
+  right: { text: string; glyph?: CarouselGlyph | null } | null;
+  bindingMissing?: boolean;
+  pending?: DialPendingPreview | null;
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * The knob-screen carousel (#1013): the mode title on the knob dash box's top
+ * line, the current target large in the centre (a glyph with its name beneath
+ * for the camera modes), and the two detent targets dimmed in the bottom
+ * corners, each fitted to its corner so a three-digit number stays legible
+ * and clear of the centre and the border — the strip's left/centre/right
+ * composed for a screen that is nearly square. With
+ * `pending` the centre shows the hold preview; the corners are unchanged. Out
+ * of a session (no centre, no preview) the identity label; with
+ * `bindingMissing` (and no preview, as on the strip) the #612 warning.
+ */
+export function renderKnobCarousel(view: KnobCarouselView): string {
+  const w = STREAM_DOCK_KNOB_CANVAS.width;
+  const h = STREAM_DOCK_KNOB_CANVAS.height;
+  const { colors } = view;
+  const { inset, strokeWidth } = panelFrame(w, h);
+  const font = 'font-family="Arial, sans-serif" font-weight="bold"';
+  const title = `<text x="${w / 2}" y="${KNOB_TITLE_Y}" text-anchor="middle" fill="${colors.label}" ${font} font-size="${KNOB_TITLE_FONT}">${escapeXml(view.title)}</text>`;
+
+  if (view.bindingMissing && !view.pending) {
+    return svgWrap(w, h, applyBindingWarning(dialPanel(w, h, colors) + title, { width: w, height: h }));
+  }
+
+  if (!view.centre && !view.pending) return identityBox(w, h, view.identityLabel, colors);
+
+  const parts: string[] = [dialPanel(w, h, colors), title];
+  // The bottom row sits just inside the panel's inner edge; the corners hug the sides.
+  const rowY = h - 14;
+  const edge = inset + strokeWidth + 7;
+  // Each corner owns under a third of the row, so the two can never meet in the middle.
+  const sideMaxWidth = Math.round(w * 0.3);
+
+  for (const [slot, side] of [
+    [view.left, "left"],
+    [view.right, "right"],
+  ] as const) {
+    if (!slot) continue;
+
+    if (slot.glyph) {
+      const cx = side === "left" ? edge + KNOB_SIDE_GLYPH_SIZE / 2 : w - edge - KNOB_SIDE_GLYPH_SIZE / 2;
+      parts.push(placeGlyph(slot.glyph, cx, rowY - 8, KNOB_SIDE_GLYPH_SIZE, 0.4));
+      continue;
+    }
+
+    const size = fitValueFontSize(slot.text, sideMaxWidth, KNOB_SIDE_FONT);
+    const x = side === "left" ? edge : w - edge;
+    const anchor = side === "left" ? "start" : "end";
+
+    parts.push(
+      `<text x="${x}" y="${rowY}" text-anchor="${anchor}" fill="${colors.label}" ${font} font-size="${size}" opacity="${KNOB_SIDE_OPACITY}">${escapeXml(slot.text)}</text>`,
+    );
+  }
+
+  const valueMaxWidth = w - 2 * (inset + strokeWidth + 8);
+
+  if (view.pending) {
+    const size = fitValueFontSize(view.pending.text, valueMaxWidth, KNOB_VALUE_CAP);
+    const valueY = KNOB_VALUE_CENTER_Y + Math.round(size * 0.36);
+    parts.push(
+      `<text x="${w / 2}" y="${valueY}" text-anchor="middle" fill="${view.pending.color}" ${font} font-size="${size}">${escapeXml(view.pending.text)}</text>`,
+    );
+    parts.push(renderPendingBar({ centerX: w / 2, y: valueY + 4, width: w, color: view.pending.color }));
+  } else if (view.centre) {
+    if (view.centre.glyph) {
+      // Between the corner glyphs, so a long group name shrinks rather than overlapping them.
+      const nameMaxWidth = w - 2 * (edge + KNOB_SIDE_GLYPH_SIZE + 6);
+      const nameSize = fitValueFontSize(view.centre.text, nameMaxWidth, KNOB_GLYPH_NAME_CAP);
+      parts.push(placeGlyph(view.centre.glyph, w / 2, KNOB_GLYPH_CY, KNOB_GLYPH_SIZE, 1));
+      parts.push(
+        `<text x="${w / 2}" y="${KNOB_GLYPH_NAME_Y}" text-anchor="middle" fill="${colors.value}" ${font} font-size="${nameSize}">${escapeXml(view.centre.text)}</text>`,
+      );
+    } else {
+      const size = fitValueFontSize(view.centre.text, valueMaxWidth, KNOB_VALUE_CAP);
+      const valueY = KNOB_VALUE_CENTER_Y + Math.round(size * 0.36);
+      parts.push(
+        `<text x="${w / 2}" y="${valueY}" text-anchor="middle" fill="${colors.value}" ${font} font-size="${size}">${escapeXml(view.centre.text)}</text>`,
+      );
+
+      if (view.centre.sub) {
+        parts.push(
+          `<text x="${w / 2}" y="${rowY}" text-anchor="middle" fill="${colors.label}" ${font} font-size="${KNOB_SUB_FONT}">${escapeXml(view.centre.sub)}</text>`,
+        );
+      }
+    }
+  }
+
+  return svgWrap(w, h, parts.join(""));
+}
+
 // --- Runtime state -----------------------------------------------------------
 
 /** Per-context runtime state. */
@@ -976,11 +1111,7 @@ export class CameraDialSurface {
 
     // The deck-app image for the dial: just the action name. Without this the
     // app falls back to keypad iconography for the dial slot.
-    action
-      .setImage(renderDialNameIcon({ line1: "CAMERA", line2: "CONTROLS", backgroundColor: "#2a3a4a" }))
-      .catch((err) => {
-        this.host.logger.debug(`Dial name icon push failed: ${String(err)}`);
-      });
+    pushDialNameIcon(action, { line1: "CAMERA", line2: "CONTROLS", backgroundColor: "#2a3a4a" }, this.host.logger);
 
     await this.applyTriggerDescription(ctx);
     await this.renderFeedback(ctx);
@@ -1063,12 +1194,16 @@ export class CameraDialSurface {
 
     if (pressStartMs === 0) return;
 
-    const kind = classifyDialRelease({
-      pressStartMs,
-      nowMs: Date.now(),
-      rotatedWhilePressed: ctx.rotatedWhilePressed,
-      thresholdMs: getDualPressThresholdMs(),
-    });
+    // A knob reports no long hold (its dialUp never comes) and no push+turn, so
+    // where the extended gestures are compiled out every release is a press.
+    const kind: DialReleaseKind = __FEATURE_DIAL_EXTENDED_GESTURES__
+      ? classifyDialRelease({
+          pressStartMs,
+          nowMs: Date.now(),
+          rotatedWhilePressed: ctx.rotatedWhilePressed,
+          thresholdMs: getDualPressThresholdMs(),
+        })
+      : "short";
 
     if (kind === "push-turn") return;
 
@@ -1662,20 +1797,87 @@ export class CameraDialSurface {
     });
   }
 
-  /** Pushes the touch-strip feedback (the full-cell carousel/readout) when this is a dial. */
-  private async renderFeedback(ctx: CameraDialContext): Promise<void> {
-    if (!__FEATURE_DIAL_EXTENDED_GESTURES__) return;
+  /**
+   * Builds the drawing for the dial's own screen (#1013): the strip carousels,
+   * or the knob carousel over the same resolved view.
+   */
+  private renderCanvas(canvas: DialCanvasProfile, dial: DialSettings, pending: DialPendingPreview | null): string {
+    if (canvas.id === "sd-plus-strip") return this.renderStrip(dial, pending);
 
-    if (!ctx.action.isDial()) return;
+    const colors = resolveDialBoxColors(dial.colors, MODE_COLOR[dial.mode]);
+    const telemetry = this.host.getTelemetry();
+    const base = { colors, title: MODE_TITLE[dial.mode], identityLabel: MODE_IDENTITY[dial.mode], pending } as const;
+    const slotOf = (slot: CarouselSlot | null) => (slot ? { text: slot.name.toUpperCase(), glyph: slot.glyph } : null);
+
+    if (dial.mode === "camera") {
+      const slots = this.cameraCarouselSlots(telemetry, dial);
+
+      return renderKnobCarousel({
+        ...base,
+        centre: slotOf(slots.current),
+        left: slotOf(slots.left),
+        right: slotOf(slots.right),
+      });
+    }
+
+    if (dial.mode === "car-number" || dial.mode === "track-order") {
+      const view = this.carCarouselView(telemetry, dial);
+
+      return renderKnobCarousel({
+        ...base,
+        // The strip's AHEAD / BEHIND captions stay on the strip: the knob's corners carry numbers only.
+        centre: view.center ? { text: `#${view.center}` } : null,
+        left: view.left ? { text: `#${view.left}` } : null,
+        right: view.right ? { text: `#${view.right}` } : null,
+      });
+    }
+
+    if (dial.mode === "race-position") {
+      const view = this.racePositionCarouselView(telemetry, dial);
+
+      return renderKnobCarousel({
+        ...base,
+        // Unclassified (the pace / safety car): the number alone, never a lying P badge.
+        centre: view.centerCarNumber
+          ? view.centerPosition !== null
+            ? { text: `P${view.centerPosition}`, sub: `#${view.centerCarNumber}` }
+            : { text: `#${view.centerCarNumber}` }
+          : null,
+        left: view.leftPosition !== null ? { text: `P${view.leftPosition}` } : null,
+        right: view.rightPosition !== null ? { text: `P${view.rightPosition}` } : null,
+      });
+    }
+
+    if (dial.mode === "sub-camera") {
+      const view = this.subCameraView(telemetry, dial);
+
+      // Title and the current camera only: neighbouring camera names do not fit a knob corner.
+      return renderKnobCarousel({
+        ...base,
+        centre: view.current ? { text: view.current.toUpperCase() } : null,
+        left: null,
+        right: null,
+        bindingMissing: this.host.isBindingMissing(SUB_CAMERA_BINDING_KEY_LIST),
+      });
+    }
+
+    // driving: the current group only, as on the strip (no coherent neighbour).
+    return renderKnobCarousel({ ...base, centre: slotOf(this.drivingCurrentSlot(telemetry)), left: null, right: null });
+  }
+
+  /** Pushes the dial's own screen — the strip or the knob carousel (#1013); nothing when it has none. */
+  private async renderFeedback(ctx: CameraDialContext): Promise<void> {
+    const canvas = ctx.action.dialCanvas();
+
+    if (!canvas) return;
 
     // Snapshot the signature of the state being RENDERED before the push:
     // recomputing it after the await would record whatever telemetry arrived
-    // while setFeedback was in flight as "rendered", leaving the strip showing
+    // while the push was in flight as "rendered", leaving the screen showing
     // stale state A while the baseline says B — suppressing B's render until
     // yet another change.
     const renderedSignature = this.displayedSignature(ctx);
-    const feedback: DeckFeedbackPayload = { box: svgToDataUri(this.renderStrip(ctx.dial, ctx.preview)) };
-    await ctx.action.setFeedback(feedback);
+    await ctx.action.setDialCanvas(svgToDataUri(this.renderCanvas(canvas, ctx.dial, ctx.preview)));
 
     // Reset the change-detector baseline so this pushed feedback doesn't
     // immediately re-fire the render-on-change path on the next telemetry tick.
