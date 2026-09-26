@@ -29,7 +29,7 @@ Off by default. When enabled, pressing the key opens iRacing's Fuel black box so
 
 iRacing never reveals which black box is open, and a black box hotkey is a toggle, so iRaceDeck presses a different box first and then the Fuel box. With keyboard bindings, both keypresses are sent together as one keystroke, so iRacing almost always applies them in the same frame and you never see the first box. Very occasionally a single frame slips through and it flashes for an instant.
 
-Requires bindings for the **Fuel** black box and at least one other black box — a key or a SimHub role, set under **Related Key Bindings**. When a SimHub role is involved, the two presses go out one after the other, so the first box may flash briefly before the Fuel box opens. If either binding is missing, or SimHub is unreachable, the fuel value still changes but no black box opens.
+Requires bindings for the **Fuel** black box and at least one other black box — a key or a SimHub role, set under **Related Key Bindings**. When a SimHub role is involved, the two presses go out one after the other, so the first box may flash briefly before the Fuel box opens. If either binding is missing, or a SimHub role is involved while SimHub is unreachable, no black box opens; the fuel change itself goes out as usual.
 
 ---
 
@@ -60,7 +60,7 @@ Off by default. When enabled, pressing the key opens iRacing's Fuel black box so
 
 iRacing never reveals which black box is open, and a black box hotkey is a toggle, so iRaceDeck presses a different box first and then the Fuel box. With keyboard bindings, both keypresses are sent together as one keystroke, so iRacing almost always applies them in the same frame and you never see the first box. Very occasionally a single frame slips through and it flashes for an instant.
 
-Requires bindings for the **Fuel** black box and at least one other black box — a key or a SimHub role, set under **Related Key Bindings**. When a SimHub role is involved, the two presses go out one after the other, so the first box may flash briefly before the Fuel box opens. If either binding is missing, or SimHub is unreachable, the fuel value still changes but no black box opens.
+Requires bindings for the **Fuel** black box and at least one other black box — a key or a SimHub role, set under **Related Key Bindings**. When a SimHub role is involved, the two presses go out one after the other, so the first box may flash briefly before the Fuel box opens. If either binding is missing, or a SimHub role is involved while SimHub is unreachable, no black box opens; the fuel change itself goes out as usual.
 
 ---
 
@@ -91,7 +91,7 @@ Off by default. When enabled, pressing the key opens iRacing's Fuel black box so
 
 iRacing never reveals which black box is open, and a black box hotkey is a toggle, so iRaceDeck presses a different box first and then the Fuel box. With keyboard bindings, both keypresses are sent together as one keystroke, so iRacing almost always applies them in the same frame and you never see the first box. Very occasionally a single frame slips through and it flashes for an instant.
 
-Requires bindings for the **Fuel** black box and at least one other black box — a key or a SimHub role, set under **Related Key Bindings**. When a SimHub role is involved, the two presses go out one after the other, so the first box may flash briefly before the Fuel box opens. If either binding is missing, or SimHub is unreachable, the fuel value still changes but no black box opens.
+Requires bindings for the **Fuel** black box and at least one other black box — a key or a SimHub role, set under **Related Key Bindings**. When a SimHub role is involved, the two presses go out one after the other, so the first box may flash briefly before the Fuel box opens. If either binding is missing, or a SimHub role is involved while SimHub is unreachable, no black box opens; the fuel change itself goes out as usual.
 
 ---
 
@@ -126,7 +126,7 @@ Off by default. When enabled, pressing the key opens iRacing's Fuel black box so
 
 iRacing never reveals which black box is open, and a black box hotkey is a toggle, so iRaceDeck presses a different box first and then the Fuel box. With keyboard bindings, both keypresses are sent together as one keystroke, so iRacing almost always applies them in the same frame and you never see the first box. Very occasionally a single frame slips through and it flashes for an instant.
 
-Requires bindings for the **Fuel** black box and at least one other black box — a key or a SimHub role, set under **Related Key Bindings**. When a SimHub role is involved, the two presses go out one after the other, so the first box may flash briefly before the Fuel box opens. If either binding is missing, or SimHub is unreachable, the fuel value still changes but no black box opens.
+Requires bindings for the **Fuel** black box and at least one other black box — a key or a SimHub role, set under **Related Key Bindings**. When a SimHub role is involved, the two presses go out one after the other, so the first box may flash briefly before the Fuel box opens. If either binding is missing, or a SimHub role is involved while SimHub is unreachable, no black box opens; the fuel change itself goes out as usual.
 
 ---
 
@@ -146,7 +146,7 @@ Off by default. When enabled, pressing the key opens iRacing's Fuel black box so
 
 iRacing never reveals which black box is open, and a black box hotkey is a toggle, so iRaceDeck presses a different box first and then the Fuel box. With keyboard bindings, both keypresses are sent together as one keystroke, so iRacing almost always applies them in the same frame and you never see the first box. Very occasionally a single frame slips through and it flashes for an instant.
 
-Requires bindings for the **Fuel** black box and at least one other black box — a key or a SimHub role, set under **Related Key Bindings**. When a SimHub role is involved, the two presses go out one after the other, so the first box may flash briefly before the Fuel box opens. If either binding is missing, or SimHub is unreachable, the fuel value still changes but no black box opens.
+Requires bindings for the **Fuel** black box and at least one other black box — a key or a SimHub role, set under **Related Key Bindings**. When a SimHub role is involved, the two presses go out one after the other, so the first box may flash briefly before the Fuel box opens. If either binding is missing, or a SimHub role is involved while SimHub is unreachable, no black box opens; the fuel change itself goes out as usual.
 
 ---
 
@@ -166,7 +166,7 @@ Off by default. When enabled, pressing the key opens iRacing's Fuel black box so
 
 iRacing never reveals which black box is open, and a black box hotkey is a toggle, so iRaceDeck presses a different box first and then the Fuel box. With keyboard bindings, both keypresses are sent together as one keystroke, so iRacing almost always applies them in the same frame and you never see the first box. Very occasionally a single frame slips through and it flashes for an instant.
 
-Requires bindings for the **Fuel** black box and at least one other black box — a key or a SimHub role, set under **Related Key Bindings**. When a SimHub role is involved, the two presses go out one after the other, so the first box may flash briefly before the Fuel box opens. If either binding is missing, or SimHub is unreachable, the fuel value still changes but no black box opens.
+Requires bindings for the **Fuel** black box and at least one other black box — a key or a SimHub role, set under **Related Key Bindings**. When a SimHub role is involved, the two presses go out one after the other, so the first box may flash briefly before the Fuel box opens. If either binding is missing, or a SimHub role is involved while SimHub is unreachable, no black box opens; the fuel change itself goes out as usual.
 
 ---
 
@@ -186,7 +186,7 @@ Off by default. When enabled, pressing the key opens iRacing's Fuel black box so
 
 iRacing never reveals which black box is open, and a black box hotkey is a toggle, so iRaceDeck presses a different box first and then the Fuel box. With keyboard bindings, both keypresses are sent together as one keystroke, so iRacing almost always applies them in the same frame and you never see the first box. Very occasionally a single frame slips through and it flashes for an instant.
 
-Requires bindings for the **Fuel** black box and at least one other black box — a key or a SimHub role, set under **Related Key Bindings**. When a SimHub role is involved, the two presses go out one after the other, so the first box may flash briefly before the Fuel box opens. If either binding is missing, or SimHub is unreachable, the fuel value still changes but no black box opens.
+Requires bindings for the **Fuel** black box and at least one other black box — a key or a SimHub role, set under **Related Key Bindings**. When a SimHub role is involved, the two presses go out one after the other, so the first box may flash briefly before the Fuel box opens. If either binding is missing, or a SimHub role is involved while SimHub is unreachable, no black box opens; the fuel change itself goes out as usual.
 
 ---
 
@@ -206,7 +206,7 @@ Off by default. When enabled, pressing the key opens iRacing's Fuel black box so
 
 iRacing never reveals which black box is open, and a black box hotkey is a toggle, so iRaceDeck presses a different box first and then the Fuel box. With keyboard bindings, both keypresses are sent together as one keystroke, so iRacing almost always applies them in the same frame and you never see the first box. Very occasionally a single frame slips through and it flashes for an instant.
 
-Requires bindings for the **Fuel** black box and at least one other black box — a key or a SimHub role, set under **Related Key Bindings**. When a SimHub role is involved, the two presses go out one after the other, so the first box may flash briefly before the Fuel box opens. If either binding is missing, or SimHub is unreachable, the fuel value still changes but no black box opens.
+Requires bindings for the **Fuel** black box and at least one other black box — a key or a SimHub role, set under **Related Key Bindings**. When a SimHub role is involved, the two presses go out one after the other, so the first box may flash briefly before the Fuel box opens. If either binding is missing, or a SimHub role is involved while SimHub is unreachable, no black box opens; the fuel change itself goes out as usual.
 
 ---
 

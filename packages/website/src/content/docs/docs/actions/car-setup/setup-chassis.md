@@ -41,9 +41,9 @@ The tap direction is a single plugin-wide setting, **Dual-Press → Directions**
 
 Off by default. When enabled, pressing the key opens the iRacing black box the adjusted value lives in, so you can watch it change: **In-Car Adjustments** (F8) for the differential, ARBs, power steering, and weight jackers; **Pit Stop Adjustments** (F7) for the springs and shocks. One checkbox covers every mode of the key, including dual-press adjustments from a View key; hold-to-repeat shows the box once per press, not on every step.
 
-iRacing never reveals which black box is open, and a black box hotkey is a toggle, so iRaceDeck presses a different box first and then the target box. With keyboard bindings, both keypresses are sent together as one keystroke, so iRacing almost always applies them in the same frame and you never see the first box.
+iRacing never reveals which black box is open, and a black box hotkey is a toggle, so iRaceDeck presses a different box first and then the target box. With keyboard bindings, both keypresses are sent together as one keystroke, so iRacing almost always applies them in the same frame and you never see the first box. Very occasionally a single frame slips through and it flashes for an instant.
 
-Requires bindings for the target black box and at least one other black box — a key or a SimHub role, set under **Related Key Bindings** (the In-Car, Pit Stop, and Lap Timing rows are listed there). When a SimHub role is involved, the two presses go out one after the other, so the first box may flash briefly before the target box opens. If either binding is missing, or SimHub is unreachable, the value still changes but no black box opens.
+Requires bindings for the target black box and at least one other black box — a key or a SimHub role, set under **Related Key Bindings** (the In-Car, Pit Stop, and Lap Timing rows are listed there). When a SimHub role is involved, the two presses go out one after the other, so the first box may flash briefly before the target box opens. If either binding is missing, or a SimHub role is involved while SimHub is unreachable, no black box opens; the value change itself goes out as usual.
 
 ## Modes
 
