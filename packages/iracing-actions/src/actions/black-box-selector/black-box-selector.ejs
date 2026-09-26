@@ -42,12 +42,20 @@
 		     always cycles next/previous; there is no rotation Setting to pick. -->
 		<div id="dial-settings" class="hidden">
 			<ird-binding-status mode-setting="<%= __dialComms._meta.modeSetting %>" default-mode="cycle" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
+			<% if (locals.platform?.features?.dialExtendedGestures !== false) { %>
 			<div class="ird-supporting-text">
 				Turn the dial to step through iRacing's black boxes — clockwise for the next
 				box, counter-clockwise for the previous. Set the Cycle Next and Cycle Previous
 				bindings below. iRacing reports no open-box state, so the touch strip shows the
 				action's identity only.
 			</div>
+			<% } else { %>
+			<div class="ird-supporting-text">
+				Turn the knob to step through iRacing's black boxes — clockwise for the next
+				box, counter-clockwise for the previous. Set the Cycle Next and Cycle Previous
+				bindings below.
+			</div>
+			<% } %>
 
 			<sdpi-item label="Box to Open">
 				<sdpi-select setting="dial.pressBox" default="lap-timing">
@@ -78,6 +86,7 @@
 			</sdpi-item>
 			<ird-binding-status mode-setting="dial.pressAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
 
+			<% if (locals.platform?.features?.dialExtendedGestures !== false) { %>
 			<sdpi-item label="Long Press">
 				<sdpi-select setting="dial.longPressAction" default="none">
 					<option value="none">None</option>
@@ -86,7 +95,6 @@
 			</sdpi-item>
 			<ird-binding-status mode-setting="dial.longPressAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
 
-			<% if (locals.platform?.features?.dialExtendedGestures !== false) { %>
 			<sdpi-item label="Tap Display">
 				<sdpi-select setting="dial.tapAction" default="none">
 					<option value="none">None</option>
@@ -102,9 +110,9 @@
 				</sdpi-select>
 			</sdpi-item>
 			<ird-binding-status mode-setting="dial.longTouchAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
+			<% } %>
 
 			<%- include('dial-appearance') %>
-			<% } %>
 		</div>
 
 		<%- include('action-settings-footer') %>

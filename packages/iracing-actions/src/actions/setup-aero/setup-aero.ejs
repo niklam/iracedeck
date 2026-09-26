@@ -74,6 +74,7 @@
 			</sdpi-item>
 			<ird-binding-status mode-setting="dial.pressAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
 
+			<% if (locals.platform?.features?.dialExtendedGestures !== false) { %>
 			<sdpi-item label="Long Press">
 				<sdpi-select setting="dial.longPressAction" default="none">
 					<option value="none">None</option>
@@ -82,7 +83,6 @@
 			</sdpi-item>
 			<ird-binding-status mode-setting="dial.longPressAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
 
-			<% if (locals.platform?.features?.dialExtendedGestures !== false) { %>
 			<sdpi-item label="Tap Display">
 				<sdpi-select setting="dial.tapAction" default="none">
 					<option value="none">None</option>
@@ -98,9 +98,9 @@
 				</sdpi-select>
 			</sdpi-item>
 			<ird-binding-status mode-setting="dial.longTouchAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
+			<% } %>
 
 			<%- include('dial-appearance') %>
-			<% } %>
 		</div>
 
 		<%- include('action-settings-footer') %>

@@ -59,9 +59,15 @@
 					</optgroup>
 				</sdpi-select>
 			</sdpi-item>
+			<% if (locals.platform?.features?.dialExtendedGestures !== false) { %>
 			<div class="ird-supporting-text hidden" id="dial-internal-note">
 				Adjusts iRaceDeck's own audio level — the touch display shows the live level.
 			</div>
+			<% } else { %>
+			<div class="ird-supporting-text hidden" id="dial-internal-note">
+				Adjusts iRaceDeck's own audio level — the knob's screen shows the live level.
+			</div>
+			<% } %>
 			<ird-binding-status mode-setting="dial.category" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
 
 			<sdpi-item label="Press Action">
