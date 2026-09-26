@@ -29,6 +29,23 @@ export default defineConfig({
       // the site sets `layout: "dagre"` or mermaid stops bundling ELK, and to
       // the default once the parser chunk goes too.
       chunkSizeWarningLimit: 1500,
+      rolldownOptions: {
+        // Drops ONE warning (#1252): rolldown's MODULE_LEVEL_DIRECTIVE for
+        // the `"use astro:head-inject"` directive Astro prepends to every
+        // `?astroPropagatedAssets` MDX module — one per MDX page importing a
+        // component, eight today. Nothing reads that directive any more; it
+        // is dead code Astro left behind when head propagation moved to
+        // module-id detection, and rolldown 1.2.9 started warning on it.
+        // Upstream: withastro/astro#18087, fix in #18088. Delete this hook
+        // once the Astro release carrying that fix is installed. Every other
+        // warning, and this code for any other directive, still prints.
+        onwarn(warning, defaultHandler) {
+          if (warning.code === "MODULE_LEVEL_DIRECTIVE" && warning.message.includes('"use astro:head-inject"')) {
+            return;
+          }
+          defaultHandler(warning);
+        },
+      },
     },
   },
   integrations: [
