@@ -30,7 +30,7 @@
     "@iracedeck/rasterizer": "workspace:*",
     "@iracedeck/sim-events-iracing": "workspace:*",
     "ws": "8.21.3",
-    "zod": "4.6.1"
+    "zod": "4.6.5"
   },
   "devDependencies": {
     "@elgato/cli": "1.10.0",
@@ -41,9 +41,9 @@
     "@rollup/plugin-terser": "1.0.0",
     "@rollup/plugin-typescript": "12.3.0",
     "@tsconfig/node22": "22.0.6",
-    "@types/node": "26.5.1",
+    "@types/node": "26.6.2",
     "rimraf": "6.1.3",
-    "rollup": "4.63.1",
+    "rollup": "4.63.4",
     "tslib": "2.8.1",
     "typescript": "5.9.3",
     "vitest": "5.0.1"

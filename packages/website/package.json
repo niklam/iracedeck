@@ -15,8 +15,8 @@
     "deploy": "pnpm build && firebase deploy --only hosting"
   },
   "dependencies": {
-    "@astrojs/starlight": "0.42.0",
-    "astro": "7.3.2",
+    "@astrojs/starlight": "0.42.3",
+    "astro": "7.3.4",
     "astro-mermaid": "2.1.0",
     "mermaid": "11.17.2",
     "sharp": "0.35.4"
@@ -27,7 +27,7 @@
     "@iracedeck/audio-service": "workspace:*",
     "@iracedeck/deck-core": "workspace:*",
     "@iracedeck/icon-composer": "workspace:*",
-    "firebase-tools": "15.30.0",
-    "tsx": "4.23.13"
+    "firebase-tools": "15.30.2",
+    "tsx": "4.23.15"
   }
 }
