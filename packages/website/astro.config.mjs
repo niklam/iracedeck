@@ -13,20 +13,22 @@ export default defineConfig({
   site: "https://iracedeck.com",
   vite: {
     build: {
-      // Raised from Vite's 500 kB for ONE chunk (#1176): `chunk-FOHPRMQF`,
-      // ~662 kB, which is `@mermaid-js/parser`'s pre-bundled Langium runtime
-      // (langium, chevrotain, lodash-es, vscode-jsonrpc and every Langium
-      // grammar). It ships as a single module, so Rolldown cannot split it,
-      // and it is lazily loaded: only the Langium-parsed diagram types (pie,
-      // gitGraph, info, packet, architecture, radar, treemap, …) import it,
-      // behind astro-mermaid's own `import('mermaid')`, which runs only on a
-      // page holding a diagram. The site draws flowcharts only, so no page
-      // downloads it today. The limit is set just above that chunk rather than
-      // switched off: the cost is that a new chunk between 500 and 700 kB goes
-      // unflagged (the next-largest today is cytoscape at ~435 kB, also lazy),
-      // and anything past 700 kB still warns. Drop this back to the default if
-      // mermaid ever stops shipping the parser as one chunk.
-      chunkSizeWarningLimit: 700,
+      // Raised from Vite's 500 kB for ONE chunk (#1184): `elk-*`, ~1,456 kB,
+      // the ELK layout engine that mermaid 12 bundles and uses as its default
+      // flowchart layout. It is a single pre-built module, so Rolldown cannot
+      // split it, and it is lazily loaded behind astro-mermaid's own
+      // `import('mermaid')`, which runs only on a page holding a diagram —
+      // today the Architecture page, which downloads it (~448 kB compressed)
+      // as the price of the ELK layout. The limit is set just above that
+      // chunk rather than switched off. The cost is that a new chunk under
+      // 1,500 kB goes unflagged: the next-largest today are
+      // `@mermaid-js/parser`'s Langium runtime (`chunk-FOHPRMQF`, ~662 kB,
+      // loaded only by Langium-parsed diagram types the site does not draw,
+      // and why this limit was first raised in #1176) and cytoscape (~435 kB,
+      // also lazy). Anything past 1,500 kB still warns. Lower this to 700 if
+      // the site sets `layout: "dagre"` or mermaid stops bundling ELK, and to
+      // the default once the parser chunk goes too.
+      chunkSizeWarningLimit: 1500,
     },
   },
   integrations: [
