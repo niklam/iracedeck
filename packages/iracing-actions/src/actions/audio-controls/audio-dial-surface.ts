@@ -455,7 +455,7 @@ export class AudioDialSurface {
    * under the ≤10 setFeedback/sec/dial cap.
    */
   private scheduleRender(ctx: AudioDialContext): void {
-    if (!__FEATURE_DIAL_FEEDBACK__) return;
+    if (!__FEATURE_DIAL_EXTENDED_GESTURES__) return;
 
     if (ctx.renderTimer !== null) {
       ctx.renderQueued = true;
@@ -476,7 +476,7 @@ export class AudioDialSurface {
 
   /** Pushes the encoder trigger descriptions for a dial (Elgato only). */
   private async applyTriggerDescription(ctx: AudioDialContext): Promise<void> {
-    if (!__FEATURE_DIAL_FEEDBACK__ || !ctx.action.isDial()) return;
+    if (!__FEATURE_DIAL_EXTENDED_GESTURES__ || !ctx.action.isDial()) return;
 
     await ctx.action.setTriggerDescription(buildAudioTriggerDescription(ctx.settings.dial));
   }
@@ -499,7 +499,7 @@ export class AudioDialSurface {
   }
 
   private async renderFeedback(ctx: AudioDialContext): Promise<void> {
-    if (!__FEATURE_DIAL_FEEDBACK__ || !ctx.action.isDial()) return;
+    if (!__FEATURE_DIAL_EXTENDED_GESTURES__ || !ctx.action.isDial()) return;
 
     const feedback: DeckFeedbackPayload = { box: svgToDataUri(renderAudioStripSvg(this.stripState(ctx))) };
     await ctx.action.setFeedback(feedback);

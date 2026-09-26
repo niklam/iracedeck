@@ -1312,7 +1312,7 @@ describe("FuelService dial surface", () => {
     }
 
     it("fill-to does NOT drift the target as fuel burns past the grace window", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
       const ctx = dialContext("ts1");
       // current 45, fuel ON, stale PitSvFuel 20 -> seed target = 65.
       mockGetSessionInfo.mockReturnValue(SESSION_110L);
@@ -1340,7 +1340,7 @@ describe("FuelService dial surface", () => {
     });
 
     it("add-amount STILL re-seeds the dialed add from telemetry past the grace window", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
       const ctx = dialContext("ts2");
       mockGetSessionInfo.mockReturnValue(SESSION_110L);
       mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 20, FuelLevel: 45, PitSvFlags: 0 });
@@ -1362,7 +1362,7 @@ describe("FuelService dial surface", () => {
 
   describe("target-mode round-up on send (issue #681)", () => {
     it("rounds the add UP so current + add reaches at least the integer target (no buffer)", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
       const ctx = dialContext("ru1");
       // capacity 110, current 45.3, target 65 -> rawAdd 19.7 -> rounds up to 20.
       mockGetSessionInfo.mockReturnValue(SESSION_110L);
@@ -1688,7 +1688,7 @@ describe("FuelService dial surface", () => {
 
     it("re-sends only when the whole-unit add changes as fuel burns (fuel-fill ON)", async () => {
       const ctx = dialContext("cm1");
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
       const settings = { stepSize: 1, unitMode: "liters", dialMode: "fill-to", pressAction: "toggle-fueling" };
       // Fuel ON, current 44.0, requested add 46 -> seed target = current + add = 90.
       mockGetCurrentTelemetry.mockReturnValue({
@@ -1737,7 +1737,7 @@ describe("FuelService dial surface", () => {
       // sends the unclamped ceil (49). Continuous monitor at fuel 41.9, target 90,
       // fuel-fill ON must broadcast 49.
       const ctx = dialContext("cm-unclamped");
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
       // 90L tank, target == capacity (90). Fuel ON, current 41.9.
       mockGetSessionInfo.mockReturnValue(SESSION_90L);
       mockGetCurrentTelemetry.mockReturnValue({
@@ -1762,7 +1762,7 @@ describe("FuelService dial surface", () => {
       // ctx.lastSentWholeAdd, else the first telemetry tick after a rotate sees a
       // stale gate value and emits ONE redundant pit.fuel for the same whole-unit add.
       const ctx = dialContext("cm-rotate");
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
       // Fuel ON, current 44.0, target above current. seed target = 44.0 + 0 = 44.
       mockGetSessionInfo.mockReturnValue(SESSION_110L);
       mockGetCurrentTelemetry.mockReturnValue({
@@ -1797,7 +1797,7 @@ describe("FuelService dial surface", () => {
       // stays constant, so the whole-unit gate broadcasts at most once per litre —
       // no ~60×/sec spam.
       const ctx = dialContext("cm-full");
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
       // 90L tank, target == capacity (90). Fuel ON, current 43.92.
       mockGetSessionInfo.mockReturnValue(SESSION_90L);
       mockGetCurrentTelemetry.mockReturnValue({
@@ -1849,7 +1849,7 @@ describe("FuelService dial surface", () => {
 
     it("does NOT re-send on ticks where the whole-unit add is unchanged", async () => {
       const ctx = dialContext("cm2");
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
       const settings = { stepSize: 1, unitMode: "liters", dialMode: "fill-to", pressAction: "toggle-fueling" };
       // Fuel ON, current 44.0, target 90 (seed = 44.0 + 46).
       mockGetCurrentTelemetry.mockReturnValue({
@@ -1882,7 +1882,7 @@ describe("FuelService dial surface", () => {
 
     it("clears (not pit.fuel(0)) when the add hits 0 as fuel reaches the target", async () => {
       const ctx = dialContext("cm3");
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
       const settings = { stepSize: 1, unitMode: "liters", dialMode: "fill-to", pressAction: "toggle-fueling" };
       // Fuel ON, current 64, target 65 (seed = 64 + 1).
       mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 1, FuelLevel: 64, PitSvFlags: FUEL_FILL });
@@ -1905,7 +1905,7 @@ describe("FuelService dial surface", () => {
 
     it("does NOT re-send when fuel-fill is OFF (respects toggle-off)", async () => {
       const ctx = dialContext("cm4");
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
       // stepSize is schema-capped at 50 (the old mock let 65 through unvalidated).
       const settings = { stepSize: 50, unitMode: "liters", dialMode: "fill-to" };
       // Fuel OFF.
@@ -1928,7 +1928,7 @@ describe("FuelService dial surface", () => {
 
     it("add-amount: the add stays fixed as fuel burns (no continuous re-send)", async () => {
       const ctx = dialContext("cm5");
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
       const settings = { stepSize: 20, unitMode: "liters", dialMode: "add-amount" };
       // Fuel ON, current 45, add 20.
       mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 20, FuelLevel: 45, PitSvFlags: FUEL_FILL });
@@ -1956,7 +1956,7 @@ describe("FuelService dial surface", () => {
 
   describe("toggle-off is not re-armed by the continuous fill-to monitor (telemetry lag)", () => {
     it("a toggle-off press in fill-to mode is NOT undone by a lagging fuel-fill-on tick", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
       const ctx = dialContext("toff1");
       // Fill-to, fuel ON, current 45, requested add 20 -> seed target = 65.
       mockGetSessionInfo.mockReturnValue(SESSION_110L);
@@ -1994,7 +1994,7 @@ describe("FuelService dial surface", () => {
     });
 
     it("resumes continuous re-sends once fueling is genuinely re-armed", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
       const ctx = dialContext("toff2");
       // Fill-to, fuel ON, current 45, requested add 20 -> seed target = 65.
       mockGetSessionInfo.mockReturnValue(SESSION_110L);
@@ -2033,7 +2033,7 @@ describe("FuelService dial surface", () => {
     const SETTINGS = { unitMode: "liters", stepSize: 1, dialMode: "fill-to", pressAction: "toggle-fueling" };
 
     async function appearAndPrime(id: string) {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
       const ctx = dialContext(id);
       mockGetSessionInfo.mockReturnValue(SESSION_110L);
       mockGetCurrentTelemetry.mockReturnValue(PRE_STOP);
@@ -2302,7 +2302,7 @@ describe("FuelService dial surface", () => {
     }
 
     async function appearHeld(id: string, held: Record<string, unknown> = settings) {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
       const ctx = dialContext(id);
       await appear(ctx, held);
       ctx.setFeedback.mockClear();
@@ -2522,7 +2522,7 @@ describe("FuelService dial surface", () => {
     });
 
     it("with the touch strip compiled out, arms no timer and pushes nothing", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", false);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
       const ctx = dialContext("hp15");
       await appear(ctx, settings);
       ctx.setFeedback.mockClear();
@@ -2625,7 +2625,7 @@ describe("FuelService dial surface", () => {
     });
 
     it("fires the gesture stored in the context, not one named by a stale payload (#957)", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
       const ctx = dialContext("sm6");
       await appear(ctx, { tapAction: "switch-mode", dialMode: "add-amount" });
       ctx.setSettings.mockClear();
@@ -2679,7 +2679,7 @@ describe("FuelService dial surface", () => {
 
   describe("onTouchTap routing (Tap Display vs Long Touch)", () => {
     it("routes a tap (hold === false) to tapAction", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
       const ctx = dialContext("tt1");
       await appear(ctx, { tapAction: "toggle-fueling" });
 
@@ -2689,7 +2689,7 @@ describe("FuelService dial surface", () => {
     });
 
     it("routes a long touch (hold === true) to longTouchAction", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
       const ctx = dialContext("tt1b");
       const settings = { tapAction: "none", longTouchAction: "toggle-fueling" };
       await appear(ctx, settings);
@@ -2700,7 +2700,7 @@ describe("FuelService dial surface", () => {
     });
 
     it("a tap does nothing when tapAction is none (VR-safe default)", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
       const ctx = dialContext("tt2");
       await appear(ctx, { tapAction: "none" });
 
@@ -2711,7 +2711,7 @@ describe("FuelService dial surface", () => {
     });
 
     it("a long touch does nothing when longTouchAction is none", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
       const ctx = dialContext("tt2b");
       await appear(ctx, { longTouchAction: "none" });
 
@@ -2721,7 +2721,7 @@ describe("FuelService dial surface", () => {
     });
 
     it("is ignored when the feedback feature flag is off", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", false);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
       const ctx = dialContext("tt4");
       await appear(ctx, { tapAction: "toggle-fueling" });
 
@@ -2731,7 +2731,7 @@ describe("FuelService dial surface", () => {
     });
 
     it("routes a tap to fill-to-max", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
       const ctx = dialContext("tt5");
       await appear(ctx, { tapAction: "fill-to-max" });
 
@@ -2743,7 +2743,7 @@ describe("FuelService dial surface", () => {
 
   describe("touch feedback — continuous two-segment bar", () => {
     it("pushes a pixmap bar and the +add = total readout (add mode) for a dial", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
       const ctx = dialContext("f1");
       // current 45, max 90; dial +20 -> broadcasts pit.fuel(20).
       mockGetSessionInfo.mockReturnValue(SESSION_90L);
@@ -2779,7 +2779,7 @@ describe("FuelService dial surface", () => {
     });
 
     it("mirrors the OFF state on the touch strip: red REFUEL: OFF band + gray add segment (#728)", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
       const ctx = dialContext("f1off");
       mockGetSessionInfo.mockReturnValue(SESSION_90L);
       // Fuel-fill OFF with a pending 20 L request.
@@ -2797,7 +2797,7 @@ describe("FuelService dial surface", () => {
     });
 
     it("pushes the target readout and a target line in fill-to mode", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
       const ctx = dialContext("f1t");
       // current 45, max 90; seed target = 45, rotate +20 -> target 65 -> add 20
       mockGetSessionInfo.mockReturnValue(SESSION_90L);
@@ -2816,7 +2816,7 @@ describe("FuelService dial surface", () => {
     });
 
     it("renders the readout when capacity unknown (add mode, no cap)", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
       const ctx = dialContext("f1b");
       mockGetSessionInfo.mockReturnValue(null);
       mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 0, FuelLevel: 45, PitSvFlags: FUEL_FILL });
@@ -2837,7 +2837,7 @@ describe("FuelService dial surface", () => {
     });
 
     it("coalesces setFeedback across rapid rotations within one throttle window", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
       const ctx = dialContext("f3");
       mockGetSessionInfo.mockReturnValue(SESSION_110L);
       mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 0, FuelLevel: 0, PitSvFlags: 0 });
@@ -2868,7 +2868,7 @@ describe("FuelService dial surface", () => {
 
   describe("display follows telemetry, not the dialed guess (issue #726)", () => {
     it("add-amount: the readout follows the live PitSvFuel, not the optimistic dialed amount", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
       const ctx = dialContext("disp726");
       mockGetSessionInfo.mockReturnValue(SESSION_110L);
       // Fuel ON, current 45, nothing requested yet.
@@ -2892,7 +2892,7 @@ describe("FuelService dial surface", () => {
     });
 
     it("add-amount: a PitSvFuel above tank capacity is clamped in the readout (never +95 = 90)", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
       const ctx = dialContext("disp726-cap");
       // 90 L tank, current 45, but the live pit request is 95 (e.g. set externally or
       // by a #fuel macro above the dial's max). The displayed add must clamp to the
@@ -2905,7 +2905,7 @@ describe("FuelService dial surface", () => {
     });
 
     it("add-amount: a null-telemetry frame shows +0 (display follows telemetry, no stale dialed value)", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
       const ctx = dialContext("disp726-null");
       mockGetSessionInfo.mockReturnValue(SESSION_110L);
       mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 20, FuelLevel: 45, PitSvFlags: FUEL_FILL });
@@ -2932,7 +2932,7 @@ describe("FuelService dial surface", () => {
     }
 
     it("re-renders the bar + value on the 5s display timer to track live burn", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
       const ctx = dialContext("dr1");
       // current 45, max 90; fill-to seed 45, fuel off
       mockGetSessionInfo.mockReturnValue(SESSION_90L);
@@ -2953,7 +2953,7 @@ describe("FuelService dial surface", () => {
     });
 
     it("does NOT push setFeedback on every telemetry tick", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
       const ctx = dialContext("dr2");
       mockGetSessionInfo.mockReturnValue(SESSION_90L);
       mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 20, FuelLevel: 45, PitSvFlags: 0 });
@@ -2972,7 +2972,7 @@ describe("FuelService dial surface", () => {
     });
 
     it("pushes feedback on CHANGE when the displayed signature moves (fuel-fill flip)", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
       const ctx = dialContext("dr-change1");
       mockGetSessionInfo.mockReturnValue(SESSION_90L);
       // Start fuel OFF.
@@ -2995,7 +2995,7 @@ describe("FuelService dial surface", () => {
     });
 
     it("does NOT push feedback on a tick that leaves the displayed signature unchanged", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
       const ctx = dialContext("dr-change2");
       mockGetSessionInfo.mockReturnValue(SESSION_90L);
       mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 20, FuelLevel: 45, PitSvFlags: 0 });
@@ -3014,7 +3014,7 @@ describe("FuelService dial surface", () => {
     });
 
     it("throttles change-driven pushes to at most once per ~100ms", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
       const ctx = dialContext("dr-change3");
       mockGetSessionInfo.mockReturnValue(SESSION_90L);
       mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 20, FuelLevel: 45, PitSvFlags: 0 });
@@ -3049,7 +3049,7 @@ describe("FuelService dial surface", () => {
       // resolved add stays 0 (target dialed at/below current fuel). The signature
       // must include the target in fill-to mode so the readout refreshes promptly
       // instead of waiting up to 5 s for the heartbeat (issue #681).
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
       const ctx = dialContext("dr-target-sig");
       // 110L tank, current 50, fuel ON. Seed target = current + PitSvFuel = 50.
       mockGetSessionInfo.mockReturnValue(SESSION_110L);
@@ -3084,7 +3084,7 @@ describe("FuelService dial surface", () => {
       // at/below current fuel the resolved add stays 0, but the readout/target line
       // must still refresh promptly rather than waiting up to 5 s. Assert the
       // feedback is pushed with the new target without advancing the 5 s heartbeat.
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
       const ctx = dialContext("dr-target-push");
       // 110L tank, current 50, fuel ON. Seed target = 50; add resolves to 0.
       mockGetSessionInfo.mockReturnValue(SESSION_110L);
@@ -3105,7 +3105,7 @@ describe("FuelService dial surface", () => {
     });
 
     it("clears the display timer on disappear (no leaks, no re-render after)", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
       const ctx = dialContext("dr3");
       mockGetSessionInfo.mockReturnValue(SESSION_90L);
       mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 20, FuelLevel: 45, PitSvFlags: FUEL_FILL });
@@ -3136,7 +3136,7 @@ describe("FuelService dial surface", () => {
     };
 
     it("a bare turn clockwise taps the lap-margin increase keybind (coalesced leading edge)", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
       const ctx = dialContext("af1");
       mockGetCurrentTelemetry.mockReturnValue(AUTOFUEL_ON);
       const settings = { unitMode: "liters", stepSize: 1, dialMode: "add-amount" };
@@ -3152,7 +3152,7 @@ describe("FuelService dial surface", () => {
     });
 
     it("a bare turn counter-clockwise taps the lap-margin decrease keybind", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
       const ctx = dialContext("af2");
       mockGetCurrentTelemetry.mockReturnValue(AUTOFUEL_ON);
       const settings = { unitMode: "liters", stepSize: 1, dialMode: "add-amount" };
@@ -3165,7 +3165,7 @@ describe("FuelService dial surface", () => {
     });
 
     it("coalesces a fast spin into a leading + trailing margin tap (not one per detent)", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
       const ctx = dialContext("af3");
       mockGetCurrentTelemetry.mockReturnValue(AUTOFUEL_ON);
       const settings = { unitMode: "liters", stepSize: 1, dialMode: "add-amount" };
@@ -3185,7 +3185,7 @@ describe("FuelService dial surface", () => {
     });
 
     it("does NOT continuously re-send pit.fuel while in autofuel mode (fill-to + fuel-fill on)", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
       const ctx = dialContext("af4");
       const tel = {
         DisplayUnits: 1,
@@ -3215,7 +3215,7 @@ describe("FuelService dial surface", () => {
     });
 
     it("the autofuel readout reads the add from PitSvFuel (AUTO → readout, AUTOFUEL band title)", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
       const ctx = dialContext("af5");
       mockGetSessionInfo.mockReturnValue(SESSION_90L);
       mockGetCurrentTelemetry.mockReturnValue({
@@ -3239,7 +3239,7 @@ describe("FuelService dial surface", () => {
     });
 
     it("with fueling unchecked under autofuel, keeps AUTOFUEL: ON but reads AUTO → 0 (#1226)", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
       const ctx = dialContext("af6");
       mockGetSessionInfo.mockReturnValue(SESSION_90L);
       mockGetCurrentTelemetry.mockReturnValue({
@@ -3266,7 +3266,7 @@ describe("FuelService dial surface", () => {
 
   describe("dynamic trigger descriptions", () => {
     it("sets trigger descriptions on appear for a dial (add mode)", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
       const ctx = dialContext("tr1");
       await appear(ctx, {
         dialMode: "add-amount",
@@ -3289,7 +3289,7 @@ describe("FuelService dial surface", () => {
     });
 
     it("appends the long-press hold hint to push", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
       const ctx = dialContext("tr1b");
       await appear(ctx, {
         dialMode: "add-amount",
@@ -3306,7 +3306,7 @@ describe("FuelService dial surface", () => {
     });
 
     it("maps the Long Touch slot to the SDK longTouch field", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
       const ctx = dialContext("tr-lt");
       await appear(ctx, {
         dialMode: "add-amount",
@@ -3324,7 +3324,7 @@ describe("FuelService dial surface", () => {
     });
 
     it("sets trigger descriptions on settings change (target mode)", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
       const ctx = dialContext("tr2");
       await appear(ctx, { dialMode: "add-amount" });
       ctx.setTriggerDescription.mockClear();
@@ -3349,7 +3349,7 @@ describe("FuelService dial surface", () => {
     });
 
     it("does not set trigger descriptions when feedback flag is off", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", false);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
       const ctx = dialContext("tr4");
       await appear(ctx, {});
 

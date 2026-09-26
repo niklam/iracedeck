@@ -359,7 +359,7 @@ describe("SplitsDeltaCycle dial surface", () => {
     });
 
     it("ignores touch taps when the touch strip is unavailable", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", false);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
       const ctx = dialContext("t3");
       const settings = dialSettings({ tapAction: "toggle-ref-car" });
       await appear(ctx, settings);
@@ -415,7 +415,7 @@ describe("SplitsDeltaCycle dial surface", () => {
     });
 
     it("skips feedback when the touch strip is unavailable", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", false);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
       const ctx = dialContext("f5");
       await appear(ctx);
 

@@ -352,9 +352,9 @@ describe("BlackBoxSelector dial surface", () => {
     });
   });
 
-  describe("__FEATURE_DIAL_FEEDBACK__ = false", () => {
+  describe("__FEATURE_DIAL_EXTENDED_GESTURES__ = false", () => {
     it("pushes no touch-strip feedback", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", false);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
       const ctx = dialContext("g1");
       await appear(ctx, withDial({}));
 
@@ -362,7 +362,7 @@ describe("BlackBoxSelector dial surface", () => {
     });
 
     it("runs no touch-tap gesture", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", false);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
       const ctx = dialContext("g2");
       const settings = withDial({ tapAction: "open-selected-box", pressBox: "fuel" });
       await appear(ctx, settings);

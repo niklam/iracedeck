@@ -13,11 +13,11 @@ import {
 } from "./plugin-config.js";
 
 const ALL_TRUE_FEATURES: PlatformFeatures = {
-  features: { dialFeedback: true, profiles: true, pngRasterization: true },
+  features: { dialExtendedGestures: true, profiles: true, pngRasterization: true },
 };
 
 const ALL_FALSE_FEATURES: PlatformFeatures = {
-  features: { dialFeedback: false, profiles: false, pngRasterization: false },
+  features: { dialExtendedGestures: false, profiles: false, pngRasterization: false },
 };
 
 describe("plugin-config", () => {
@@ -113,17 +113,17 @@ describe("plugin-config", () => {
   describe("getFeatureFlag", () => {
     it("should return undefined when featureFlags not provided", () => {
       initPluginConfig({ version: "1.0.0", platform: "stream-deck" });
-      expect(getFeatureFlag("dialFeedback")).toBeUndefined();
+      expect(getFeatureFlag("dialExtendedGestures")).toBeUndefined();
     });
 
     it("should return true when flag is enabled", () => {
       initPluginConfig({ version: "1.0.0", platform: "stream-deck", featureFlags: ALL_TRUE_FEATURES });
-      expect(getFeatureFlag("dialFeedback")).toBe(true);
+      expect(getFeatureFlag("dialExtendedGestures")).toBe(true);
     });
 
     it("should return false when flag is disabled", () => {
       initPluginConfig({ version: "1.0.0", platform: "mirabox", featureFlags: ALL_FALSE_FEATURES });
-      expect(getFeatureFlag("dialFeedback")).toBe(false);
+      expect(getFeatureFlag("dialExtendedGestures")).toBe(false);
     });
   });
 

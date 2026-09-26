@@ -140,7 +140,7 @@ export const FUEL_BAR_TOP_Y = 66;
  * The hold preview for a non-Elgato build (#1120): Mirabox and Ulanzi have no
  * plugin touch strip, so there is nothing to preview on. The surface's call
  * sites stay unconditional (`ctx.holdPreview.down()`) and the real helper is
- * constructed only under `__FEATURE_DIAL_FEEDBACK__`, so terser drops the
+ * constructed only under `__FEATURE_DIAL_EXTENDED_GESTURES__`, so terser drops the
  * helper and its draw closures from those bundles.
  */
 const NOOP_HOLD_PREVIEW: HoldPreview = {
@@ -1002,7 +1002,7 @@ export class FuelDialSurface {
     // this the app falls back to keypad iconography for the dial slot.
     // PROOF OF CONCEPT (#1013): on Mirabox setImage IS the knob screen, which
     // the live render owns, so the name card is Elgato-only there.
-    if (__FEATURE_DIAL_FEEDBACK__) {
+    if (__FEATURE_DIAL_EXTENDED_GESTURES__) {
       action
         .setImage(renderDialNameIcon({ line1: "FUEL", line2: "SERVICE", backgroundColor: "#3a2a2a" }))
         .catch((err) => {
@@ -1172,7 +1172,7 @@ export class FuelDialSurface {
     hold: boolean,
     rawSettings?: unknown,
   ): Promise<void> {
-    if (!__FEATURE_DIAL_FEEDBACK__) return;
+    if (!__FEATURE_DIAL_EXTENDED_GESTURES__) return;
 
     // Read the gesture from ctx.settings, not the event payload — the same
     // stale-settings model `up()` follows (see ensureContext).
@@ -1404,7 +1404,7 @@ export class FuelDialSurface {
       // The real helper only under the touch-strip flag (#1120): its closures
       // draw on the strip, and the non-Elgato bundles have no strip to draw on,
       // so terser folds the constant and drops them there.
-      created.holdPreview = __FEATURE_DIAL_FEEDBACK__
+      created.holdPreview = __FEATURE_DIAL_EXTENDED_GESTURES__
         ? createHoldPreview({
             // The SAME value the release classifier reads, read at press time —
             // the preview appears at exactly the instant a release counts as long.
@@ -1823,7 +1823,7 @@ export class FuelDialSurface {
 
   /** Pushes the encoder trigger descriptions for a dial (Elgato only). */
   private async applyTriggerDescription(ctx: FuelDialContext): Promise<void> {
-    if (!__FEATURE_DIAL_FEEDBACK__ || !ctx.action.isDial()) return;
+    if (!__FEATURE_DIAL_EXTENDED_GESTURES__ || !ctx.action.isDial()) return;
 
     await ctx.action.setTriggerDescription(buildTriggerDescription(ctx.settings.dial));
   }
@@ -1860,7 +1860,7 @@ export class FuelDialSurface {
       ctx.preview,
     ] as const;
 
-    if (__FEATURE_DIAL_FEEDBACK__) {
+    if (__FEATURE_DIAL_EXTENDED_GESTURES__) {
       const feedback: DeckFeedbackPayload = { box: svgToDataUri(renderStripCanvasSvg(...renderArgs)) };
       await ctx.action.setFeedback(feedback);
     } else {

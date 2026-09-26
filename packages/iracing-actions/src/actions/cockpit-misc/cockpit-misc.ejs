@@ -45,7 +45,7 @@
 				</sdpi-select>
 			</sdpi-item>
 			<ird-binding-status mode-setting="dial.setting" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
-			<% if (locals.platform?.features?.dialFeedback !== false) { %>
+			<% if (locals.platform?.features?.dialExtendedGestures !== false) { %>
 			<div class="ird-supporting-text">
 				Turn the dial to cycle the selected dashboard page; the touch strip shows
 				the live page number. Both the increase and decrease key bindings must be
@@ -80,7 +80,7 @@
 			</sdpi-item>
 			<ird-binding-status mode-setting="dial.longPressAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
 
-			<% if (locals.platform?.features?.dialFeedback !== false) { %>
+			<% if (locals.platform?.features?.dialExtendedGestures !== false) { %>
 			<sdpi-item label="Tap Display">
 				<sdpi-select setting="dial.tapAction" default="none">
 					<option value="none">None</option>

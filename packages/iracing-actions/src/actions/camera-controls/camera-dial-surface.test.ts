@@ -1228,7 +1228,7 @@ describe("CameraDialSurface", () => {
     });
 
     it("does nothing on touch when dial feedback is disabled", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", false);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
       const host = makeHost();
       const surface = new CameraDialSurface(host as never);
       await surface.touchTap(dialContext("t2") as never, dial({ tapAction: "focus-my-car" }), false);
@@ -1711,7 +1711,7 @@ describe("CameraDialSurface", () => {
     });
 
     it("does not push feedback when dial feedback is disabled", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", false);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
       const host = makeHost();
       const surface = new CameraDialSurface(host as never);
       const ctx = dialContext("f10");
@@ -2040,7 +2040,7 @@ describe("CameraDialSurface", () => {
     });
 
     it("arms no preview when dial feedback is disabled", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", false);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
       const { surface, ctx, settings } = await heldDial(
         "hp13",
         {},

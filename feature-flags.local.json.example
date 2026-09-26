@@ -1,6 +1,6 @@
 {
   "features": {
-    "dialFeedback": true,
+    "dialExtendedGestures": true,
     "profiles": true,
     "pngRasterization": true
   }

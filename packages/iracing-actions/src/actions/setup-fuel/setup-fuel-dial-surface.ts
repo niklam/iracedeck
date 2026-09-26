@@ -238,7 +238,7 @@ export class SetupFuelDialSurface {
   }
 
   async touchTap(action: IDeckActionContext, dial: DialSettings, hold: boolean): Promise<void> {
-    if (!__FEATURE_DIAL_FEEDBACK__) return;
+    if (!__FEATURE_DIAL_EXTENDED_GESTURES__) return;
 
     const gesture = hold ? dial.longTouchAction : dial.tapAction;
 
@@ -335,13 +335,13 @@ export class SetupFuelDialSurface {
   }
 
   private async applyTriggerDescription(ctx: SetupFuelDialContext): Promise<void> {
-    if (!__FEATURE_DIAL_FEEDBACK__ || !ctx.action.isDial()) return;
+    if (!__FEATURE_DIAL_EXTENDED_GESTURES__ || !ctx.action.isDial()) return;
 
     await ctx.action.setTriggerDescription(buildTriggerDescription(ctx.dial));
   }
 
   private async renderFeedback(ctx: SetupFuelDialContext): Promise<void> {
-    if (!__FEATURE_DIAL_FEEDBACK__) return;
+    if (!__FEATURE_DIAL_EXTENDED_GESTURES__) return;
 
     if (!ctx.action.isDial()) return;
 

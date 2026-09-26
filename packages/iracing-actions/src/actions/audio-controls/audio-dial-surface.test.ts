@@ -734,7 +734,7 @@ describe("AudioDialSurface (through AudioControls)", () => {
 
   describe("feedback flag off (Mirabox/Ulanzi)", () => {
     it("still rotates and presses but never touches feedback or trigger descriptions", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", false);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
       const ctx = dialAction();
       await action.onWillAppear(ev(ctx, { dial: { category: "race-engineer", pressAction: "mute-unmute" } }));
       await action.onDialRotate(ev(ctx, { dial: { category: "race-engineer" } }, { ticks: 2 }));

@@ -153,7 +153,7 @@ const CHANGE_RENDER_MIN_INTERVAL_MS = 100;
 
 /**
  * The hold preview the Mirabox / Ulanzi bundles get (issue #1120): no timer,
- * nothing drawn. Chosen at context creation behind `__FEATURE_DIAL_FEEDBACK__`
+ * nothing drawn. Chosen at context creation behind `__FEATURE_DIAL_EXTENDED_GESTURES__`
  * so every call site stays unconditional and terser folds the real helper out
  * of the builds that have no touch strip to draw on.
  */
@@ -1081,7 +1081,7 @@ export class CameraDialSurface {
   }
 
   async touchTap(action: IDeckActionContext, dial: DialSettings, hold: boolean): Promise<void> {
-    if (!__FEATURE_DIAL_FEEDBACK__) return;
+    if (!__FEATURE_DIAL_EXTENDED_GESTURES__) return;
 
     // hold === true → Long Touch slot; hold === false → Tap Display slot.
     const gesture = hold ? dial.longTouchAction : dial.tapAction;
@@ -1148,7 +1148,7 @@ export class CameraDialSurface {
       };
       // The real helper only where there is a strip to draw on; the constant
       // folds at build time, so the other bundles never carry the timer.
-      created.holdPreview = __FEATURE_DIAL_FEEDBACK__
+      created.holdPreview = __FEATURE_DIAL_EXTENDED_GESTURES__
         ? createHoldPreview({
             onThreshold: () => this.showHoldPreview(created),
             onCancel: () => this.hideHoldPreview(created),
@@ -1608,7 +1608,7 @@ export class CameraDialSurface {
 
   /** Pushes the encoder trigger descriptions for a dial (Elgato only). */
   private async applyTriggerDescription(ctx: CameraDialContext): Promise<void> {
-    if (!__FEATURE_DIAL_FEEDBACK__ || !ctx.action.isDial()) return;
+    if (!__FEATURE_DIAL_EXTENDED_GESTURES__ || !ctx.action.isDial()) return;
 
     await ctx.action.setTriggerDescription(buildTriggerDescription(ctx.dial));
   }
@@ -1664,7 +1664,7 @@ export class CameraDialSurface {
 
   /** Pushes the touch-strip feedback (the full-cell carousel/readout) when this is a dial. */
   private async renderFeedback(ctx: CameraDialContext): Promise<void> {
-    if (!__FEATURE_DIAL_FEEDBACK__) return;
+    if (!__FEATURE_DIAL_EXTENDED_GESTURES__) return;
 
     if (!ctx.action.isDial()) return;
 

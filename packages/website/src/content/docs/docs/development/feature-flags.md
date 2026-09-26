@@ -22,7 +22,7 @@ Example (Mirabox):
 ```json
 {
   "features": {
-    "dialFeedback": false,
+    "dialExtendedGestures": false,
     "profiles": false,
     "pngRasterization": true
   }
@@ -33,8 +33,8 @@ Example (Mirabox):
 
 The plugin build pipeline reads the merged flags once and fans them out to three places:
 
-1. **Bundle code** — `@rollup/plugin-replace` substitutes `__FEATURE_DIAL_FEEDBACK__` and `__FEATURE_PNG_RASTERIZATION__` with `true` / `false` at compile time. Terser then drops unreachable branches, so disabled code doesn't ship. `pngRasterization` gates a single call, `initializeRasterizer(...)` in each plugin's `plugin.ts` — when it's `false`, the call (and everything it would have pulled in) is dropped. `profiles` is **not** substituted here — it has no compile-time constant, so it never tree-shakes anything (see the table below).
-2. **Property Inspector HTML** — the same flags are passed into EJS templates as `locals.platform`. Controls wrapped in `<% if (locals.platform?.features?.dialFeedback !== false) { %>` disappear from the compiled HTML. `profiles` gates PI content the same way — the "Stream Deck Profiles" accordion and the Race Admin / Camera Focus car-selector sections. `pngRasterization` gates no PI content — it only guards a plugin-startup call.
+1. **Bundle code** — `@rollup/plugin-replace` substitutes `__FEATURE_DIAL_EXTENDED_GESTURES__` and `__FEATURE_PNG_RASTERIZATION__` with `true` / `false` at compile time. Terser then drops unreachable branches, so disabled code doesn't ship. `pngRasterization` gates a single call, `initializeRasterizer(...)` in each plugin's `plugin.ts` — when it's `false`, the call (and everything it would have pulled in) is dropped. `profiles` is **not** substituted here — it has no compile-time constant, so it never tree-shakes anything (see the table below).
+2. **Property Inspector HTML** — the same flags are passed into EJS templates as `locals.platform`. Controls wrapped in `<% if (locals.platform?.features?.dialExtendedGestures !== false) { %>` disappear from the compiled HTML. `profiles` gates PI content the same way — the "Stream Deck Profiles" accordion and the Race Admin / Camera Focus car-selector sections. `pngRasterization` gates no PI content — it only guards a plugin-startup call.
 3. **Runtime `config.json`** — the merged flags are written to `com.iracedeck.sd.core.sdPlugin/bin/config.json` as a `featureFlags` field. Readable at runtime via `getFeatureFlag("pngRasterization")` / `getPlatformFeatures()` from `@iracedeck/deck-core` if a dynamic check is ever needed. This is the **only** way to read `profiles`, since it skips the compile-time path entirely.
 
 ## Overriding flags locally
@@ -61,7 +61,7 @@ A committed `feature-flags.local.json.example` at the repo root documents the sh
 
 ## Typical use cases
 
-- **Test a Mirabox-only scenario on your Stream Deck build.** Set `features.dialFeedback: false` in the local file, rebuild Stream Deck — the touch-strip feedback code and controls disappear from your Stream Deck build too. Flip it back and they return.
+- **Test a Mirabox-only scenario on your Stream Deck build.** Set `features.dialExtendedGestures: false` in the local file, rebuild Stream Deck — the touch-strip feedback code and controls disappear from your Stream Deck build too. Flip it back and they return.
 - **Compare PNG rasterization against the raw SVG path.** Set `features.pngRasterization: false` in the local file and rebuild — the plugin falls back to sending SVG data URIs straight to the host, exactly as every build did before issue #642. Useful for isolating whether a rendering issue is in the rasterizer or elsewhere.
 - **Develop a beta feature locally without shipping it.** (Once issue #363 lands.) Commit the feature with its flag defaulting to `false` everywhere. Testers opt in via `feature-flags.local.json`.
 
@@ -69,7 +69,7 @@ A committed `feature-flags.local.json.example` at the repo root documents the sh
 
 | Flag | Stream Deck | Mirabox | Ulanzi | Purpose |
 |------|-------------|---------|--------|---------|
-| `dialFeedback` | `true` | `false` | `false` | Stream Deck+ touch-strip feedback + touch-tap input — only Elgato hardware has a plugin-facing touch strip |
+| `dialExtendedGestures` | `true` | `false` | `false` | Stream Deck+ touch-strip feedback + touch-tap input — only Elgato hardware has a plugin-facing touch strip |
 | `profiles` | `true` | `false` | `false` | Stream Deck Profiles PI accordion + profile switching (Race Admin selector, Camera Focus) — Elgato-only, since Mirabox/Ulanzi hosts have no profile system. **Runtime-only**: read via `getFeatureFlag("profiles")` / `locals.platform`, with no `__FEATURE_*__` compile-time constant (unlike the other two flags) |
 | `pngRasterization` | `true` | `true` | `true` | Temporary kill-switch for in-plugin PNG rasterization (`@iracedeck/rasterizer`, issue #642) — `true` everywhere; force it `false` locally to fall back to raw SVG data URIs |
 

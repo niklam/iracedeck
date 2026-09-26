@@ -373,7 +373,7 @@ export class CockpitMiscDialSurface {
   }
 
   async touchTap(action: IDeckActionContext, dial: DialSettings, hold: boolean): Promise<void> {
-    if (!__FEATURE_DIAL_FEEDBACK__) return;
+    if (!__FEATURE_DIAL_EXTENDED_GESTURES__) return;
 
     // hold === true → Long Touch slot; hold === false → Tap Display slot.
     const gesture = hold ? dial.longTouchAction : dial.tapAction;
@@ -483,14 +483,14 @@ export class CockpitMiscDialSurface {
 
   /** Pushes the encoder trigger descriptions for a dial (Elgato only). */
   private async applyTriggerDescription(ctx: CockpitMiscDialContext): Promise<void> {
-    if (!__FEATURE_DIAL_FEEDBACK__ || !ctx.action.isDial()) return;
+    if (!__FEATURE_DIAL_EXTENDED_GESTURES__ || !ctx.action.isDial()) return;
 
     await ctx.action.setTriggerDescription(buildTriggerDescription(ctx.dial));
   }
 
   /** Pushes the touch-strip feedback (the full-cell dash box) when this is a dial. */
   private async renderFeedback(ctx: CockpitMiscDialContext): Promise<void> {
-    if (!__FEATURE_DIAL_FEEDBACK__) return;
+    if (!__FEATURE_DIAL_EXTENDED_GESTURES__) return;
 
     if (!ctx.action.isDial()) return;
 

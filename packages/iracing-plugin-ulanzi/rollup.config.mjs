@@ -243,7 +243,7 @@ const config = {
     replace({
       preventAssignment: true,
       values: {
-        __FEATURE_DIAL_FEEDBACK__: JSON.stringify(platformFeatures.features.dialFeedback),
+        __FEATURE_DIAL_EXTENDED_GESTURES__: JSON.stringify(platformFeatures.features.dialExtendedGestures),
         __FEATURE_PNG_RASTERIZATION__: JSON.stringify(platformFeatures.features.pngRasterization),
       },
     }),

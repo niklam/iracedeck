@@ -287,7 +287,7 @@ describe("ForceFeedback dial surface", () => {
     });
 
     it("does nothing when dial feedback is disabled", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", false);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
       const ctx = dialContext("t3");
       const settings = dialSettings({ setting: "ffb-force", tapAction: "auto-ffb" });
       await appear(ctx, settings);

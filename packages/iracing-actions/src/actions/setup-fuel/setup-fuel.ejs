@@ -53,7 +53,7 @@
 				</sdpi-select>
 			</sdpi-item>
 			<ird-binding-status mode-setting="<%= __dialComms._meta.modeSetting %>" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
-			<% if (locals.platform?.features?.dialFeedback !== false) { %>
+			<% if (locals.platform?.features?.dialExtendedGestures !== false) { %>
 			<div class="ird-supporting-text">
 				Turn the dial to adjust the selected fuel setting; the touch strip shows its
 				live value. Both the increase and decrease key bindings must be set below.
@@ -81,7 +81,7 @@
 			</sdpi-item>
 			<ird-binding-status mode-setting="dial.longPressAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
 
-			<% if (locals.platform?.features?.dialFeedback !== false) { %>
+			<% if (locals.platform?.features?.dialExtendedGestures !== false) { %>
 			<sdpi-item label="Tap Display">
 				<sdpi-select setting="dial.tapAction" default="none">
 					<option value="none">None</option>

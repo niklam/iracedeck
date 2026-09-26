@@ -251,7 +251,7 @@ describe("SetupAero dial surface", () => {
     });
 
     it("does nothing when dial feedback is disabled", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", false);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
       const ctx = dialContext("t3");
       const settings = dialSettings({ setting: "front-wing", tapAction: "toggle-rf-brake" });
       await appear(ctx, settings);

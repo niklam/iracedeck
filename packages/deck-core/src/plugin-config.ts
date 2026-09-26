@@ -13,7 +13,8 @@
  * Product-level feature flags that gate user-visible features.
  */
 export interface PlatformFeatureFlags {
-  dialFeedback: boolean;
+  /** Stream Deck+-only dial gestures: touch, long-press, push+turn, trigger descriptions, the hold preview (#1013). */
+  dialExtendedGestures: boolean;
   /** "Stream Deck Profiles" settings accordion + profile switching (Elgato-only; #736). */
   profiles: boolean;
   /** Rasterize device-bound SVG icons to PNG in-plugin (#642). Temporary kill-switch. */

@@ -772,7 +772,7 @@ describe("SetupChassis dial surface", () => {
     });
 
     it("pushes nothing when dial feedback is disabled", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", false);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
       const ctx = dialContext("hp13");
       const settings = held();
       await appear(ctx, settings);

@@ -395,7 +395,7 @@ describe("ViewAdjustment dial surface", () => {
     });
 
     it("does nothing when dial feedback is disabled", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", false);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
       const ctx = dialContext("t3");
       const settings = dialSettings({ setting: "fov", tapAction: "recenter-vr" });
       await appear(ctx, settings);
@@ -491,7 +491,7 @@ describe("ViewAdjustment dial surface", () => {
     });
 
     it("skips feedback and touch when dial feedback is disabled", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", false);
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
       const ctx = dialContext("f8");
       await appear(ctx, dialSettings({ setting: "fov" }));
 

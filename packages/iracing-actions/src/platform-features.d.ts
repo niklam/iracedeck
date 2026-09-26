@@ -6,5 +6,5 @@
  * program as well as in each plugin's — see the note in `svg.d.ts` for why the
  * duplication is necessary rather than lazy.
  */
-declare const __FEATURE_DIAL_FEEDBACK__: boolean;
+declare const __FEATURE_DIAL_EXTENDED_GESTURES__: boolean;
 declare const __FEATURE_PNG_RASTERIZATION__: boolean;

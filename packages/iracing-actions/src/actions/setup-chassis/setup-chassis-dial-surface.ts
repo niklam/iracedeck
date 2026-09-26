@@ -290,7 +290,7 @@ export function nextSpringSide(setting: SetupChassisDialSetting): SetupChassisDi
 
 /**
  * The hold preview compiled out on the hosts with no plugin touch strip. Every
- * call site stays unconditional and `__FEATURE_DIAL_FEEDBACK__` folds to `false`
+ * call site stays unconditional and `__FEATURE_DIAL_EXTENDED_GESTURES__` folds to `false`
  * there, so terser drops this object's users and `createHoldPreview` with them.
  */
 const NOOP_HOLD_PREVIEW: HoldPreview = {
@@ -474,7 +474,7 @@ export class SetupChassisDialSurface {
   }
 
   async touchTap(action: IDeckActionContext, dial: DialSettings, hold: boolean, rawSettings?: unknown): Promise<void> {
-    if (!__FEATURE_DIAL_FEEDBACK__) return;
+    if (!__FEATURE_DIAL_EXTENDED_GESTURES__) return;
 
     // Read the gesture from ctx.dial, not the event payload — the same
     // stale-settings model `up()` follows (see ensureContext).
@@ -551,7 +551,7 @@ export class SetupChassisDialSurface {
 
   /** The per-context hold preview, or the no-op where there is no touch strip. */
   private createPreview(ctx: SetupChassisDialContext): HoldPreview {
-    if (!__FEATURE_DIAL_FEEDBACK__) return NOOP_HOLD_PREVIEW;
+    if (!__FEATURE_DIAL_EXTENDED_GESTURES__) return NOOP_HOLD_PREVIEW;
 
     return createHoldPreview({
       // The same value the release classifier reads, so the strip changes at
@@ -670,13 +670,13 @@ export class SetupChassisDialSurface {
   }
 
   private async applyTriggerDescription(ctx: SetupChassisDialContext): Promise<void> {
-    if (!__FEATURE_DIAL_FEEDBACK__ || !ctx.action.isDial()) return;
+    if (!__FEATURE_DIAL_EXTENDED_GESTURES__ || !ctx.action.isDial()) return;
 
     await ctx.action.setTriggerDescription(buildTriggerDescription(ctx.dial));
   }
 
   private async renderFeedback(ctx: SetupChassisDialContext): Promise<void> {
-    if (!__FEATURE_DIAL_FEEDBACK__) return;
+    if (!__FEATURE_DIAL_EXTENDED_GESTURES__) return;
 
     if (!ctx.action.isDial()) return;
 

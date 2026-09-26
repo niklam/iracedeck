@@ -154,7 +154,7 @@ function gestureLabel(action: GestureSlot): string | undefined {
 
 /**
  * The hold preview compiled out on the hosts with no plugin touch strip. Every
- * call site stays unconditional and `__FEATURE_DIAL_FEEDBACK__` folds to `false`
+ * call site stays unconditional and `__FEATURE_DIAL_EXTENDED_GESTURES__` folds to `false`
  * there, so terser drops this object's users and `createHoldPreview` with them.
  */
 const NOOP_HOLD_PREVIEW: HoldPreview = {
@@ -357,7 +357,7 @@ export class SetupBrakesDialSurface {
   }
 
   async touchTap(action: IDeckActionContext, settings: SetupBrakesSettings, hold: boolean): Promise<void> {
-    if (!__FEATURE_DIAL_FEEDBACK__) return;
+    if (!__FEATURE_DIAL_EXTENDED_GESTURES__) return;
 
     // hold === true → Long Touch slot; hold === false → Tap Display slot.
     const gesture = hold ? settings.dial.longTouchAction : settings.dial.tapAction;
@@ -437,7 +437,7 @@ export class SetupBrakesDialSurface {
 
   /** The per-context hold preview, or the no-op where there is no touch strip. */
   private createPreview(ctx: SetupBrakesDialContext): HoldPreview {
-    if (!__FEATURE_DIAL_FEEDBACK__) return NOOP_HOLD_PREVIEW;
+    if (!__FEATURE_DIAL_EXTENDED_GESTURES__) return NOOP_HOLD_PREVIEW;
 
     return createHoldPreview({
       // The same value the release classifier reads, so the strip changes at
@@ -546,14 +546,14 @@ export class SetupBrakesDialSurface {
 
   /** Pushes the encoder trigger descriptions for a dial (Elgato only). */
   private async applyTriggerDescription(ctx: SetupBrakesDialContext): Promise<void> {
-    if (!__FEATURE_DIAL_FEEDBACK__ || !ctx.action.isDial()) return;
+    if (!__FEATURE_DIAL_EXTENDED_GESTURES__ || !ctx.action.isDial()) return;
 
     await ctx.action.setTriggerDescription(buildTriggerDescription(ctx.settings));
   }
 
   /** Pushes the touch-strip feedback (the full-cell dash box) when this is a dial. */
   private async renderFeedback(ctx: SetupBrakesDialContext): Promise<void> {
-    if (!__FEATURE_DIAL_FEEDBACK__) return;
+    if (!__FEATURE_DIAL_EXTENDED_GESTURES__) return;
 
     if (!ctx.action.isDial()) return;
 

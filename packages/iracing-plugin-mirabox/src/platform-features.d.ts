@@ -8,5 +8,5 @@
  * bundled action sources need in their own program (#1078). The former
  * icon-composer copy was removed with the icon feature flags in #642.
  */
-declare const __FEATURE_DIAL_FEEDBACK__: boolean;
+declare const __FEATURE_DIAL_EXTENDED_GESTURES__: boolean;
 declare const __FEATURE_PNG_RASTERIZATION__: boolean;

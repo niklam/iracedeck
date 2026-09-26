@@ -213,7 +213,7 @@ function gestureLabel(action: GestureSlot): string | undefined {
 
 /**
  * The hold preview compiled out on the hosts with no plugin touch strip. Every
- * call site stays unconditional and `__FEATURE_DIAL_FEEDBACK__` folds to `false`
+ * call site stays unconditional and `__FEATURE_DIAL_EXTENDED_GESTURES__` folds to `false`
  * there, so terser drops this object's users and `createHoldPreview` with them.
  */
 const NOOP_HOLD_PREVIEW: HoldPreview = {
@@ -393,7 +393,7 @@ export class SetupTractionDialSurface {
   }
 
   async touchTap(action: IDeckActionContext, dial: DialSettings, hold: boolean): Promise<void> {
-    if (!__FEATURE_DIAL_FEEDBACK__) return;
+    if (!__FEATURE_DIAL_EXTENDED_GESTURES__) return;
 
     const gesture = hold ? dial.longTouchAction : dial.tapAction;
 
@@ -461,7 +461,7 @@ export class SetupTractionDialSurface {
 
   /** The per-context hold preview, or the no-op where there is no touch strip. */
   private createPreview(ctx: SetupTractionDialContext): HoldPreview {
-    if (!__FEATURE_DIAL_FEEDBACK__) return NOOP_HOLD_PREVIEW;
+    if (!__FEATURE_DIAL_EXTENDED_GESTURES__) return NOOP_HOLD_PREVIEW;
 
     return createHoldPreview({
       // The same value the release classifier reads, so the strip changes at
@@ -551,13 +551,13 @@ export class SetupTractionDialSurface {
   }
 
   private async applyTriggerDescription(ctx: SetupTractionDialContext): Promise<void> {
-    if (!__FEATURE_DIAL_FEEDBACK__ || !ctx.action.isDial()) return;
+    if (!__FEATURE_DIAL_EXTENDED_GESTURES__ || !ctx.action.isDial()) return;
 
     await ctx.action.setTriggerDescription(buildTriggerDescription(ctx.dial));
   }
 
   private async renderFeedback(ctx: SetupTractionDialContext): Promise<void> {
-    if (!__FEATURE_DIAL_FEEDBACK__) return;
+    if (!__FEATURE_DIAL_EXTENDED_GESTURES__) return;
 
     if (!ctx.action.isDial()) return;
 
