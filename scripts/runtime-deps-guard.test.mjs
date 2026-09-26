@@ -30,6 +30,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { parse as parseYaml } from "yaml";
 
 import { DECLARING_SECTIONS, runtimePackageJson, WORKSPACE_SCOPE } from "./lib/runtime-deps.mjs";
 import { allPluginManifestRelPaths } from "./lib/version-discovery.mjs";
@@ -50,7 +51,7 @@ const NATIVE_LINKS = {
   "@iracedeck/iracing-native": "file:../../../iracing-native",
 };
 
-const rootManifest = readJson(join(repoRoot, "package.json"));
+const workspaceConfig = parseYaml(readFileSync(join(repoRoot, "pnpm-workspace.yaml"), "utf-8"));
 const turbo = readJson(join(repoRoot, "turbo.json"));
 
 /**
@@ -104,9 +105,8 @@ describe("plugins ship the workspace's runtime dependency versions (#1177)", () 
   it("the helper's walk (root + packages/*) is the whole pnpm workspace", () => {
     // runtime-deps.mjs reads the root package.json and packages/*/package.json.
     // A second workspace glob would hold declarations it never sees.
-    const workspace = readFileSync(join(repoRoot, "pnpm-workspace.yaml"), "utf-8");
-    const globs = [...workspace.matchAll(/^\s*-\s*["']?([^"'\s]+)["']?\s*$/gm)].map((m) => m[1]);
-    expect(globs).toEqual(["packages/*"]);
+    // Parsed, not scanned: the file also holds lists that are not globs (`minimumReleaseAgeExclude`).
+    expect(workspaceConfig.packages).toEqual(["packages/*"]);
   });
 
   it("the independent declaration scan reads the same sections the helper does", () => {
@@ -125,7 +125,8 @@ describe("plugins ship the workspace's runtime dependency versions (#1177)", () 
     });
 
     it("is never built by pnpm (a workspace install must not compile it — it failed Linux CI before)", () => {
-      expect(rootManifest.pnpm?.onlyBuiltDependencies ?? []).not.toContain("keysender");
+      // `true` compiles it; left out, pnpm fails every install on the undeclared build script.
+      expect(workspaceConfig.allowBuilds?.keysender).toBe(false);
     });
   });
 

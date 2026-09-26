@@ -100,9 +100,10 @@ describe("installRuntimeDeps", () => {
   const listing = JSON.stringify(Object.fromEntries([...DEFINED].map((key) => [key, null])));
 
   const LIST_COMMAND = 'npm config ls -l --json --global --userconfig="/tmp/no-user" --globalconfig="/tmp/no-global"';
+  const INSTALL_COMMAND = "npm install --no-fund";
 
   function io({ existing = ["bin"], list = { status: 0, stdout: listing }, install = { status: 0 } } = {}) {
-    const run = vi.fn((command) => (command === "npm install" ? install : list));
+    const run = vi.fn((command) => (command === INSTALL_COMMAND ? install : list));
     return {
       env: { npm_config_registry: "r", npm_config_reporter: "silent", PATH: "p" },
       exists: (file) => existing.includes(file),
@@ -117,7 +118,7 @@ describe("installRuntimeDeps", () => {
 
     expect(installRuntimeDeps("bin", deps)).toBe(0);
     expect(deps.run).toHaveBeenNthCalledWith(1, LIST_COMMAND, { env: { PATH: "p" }, capture: true });
-    expect(deps.run).toHaveBeenNthCalledWith(2, "npm install", {
+    expect(deps.run).toHaveBeenNthCalledWith(2, INSTALL_COMMAND, {
       cwd: "bin",
       env: { npm_config_registry: "r", PATH: "p" },
       capture: false,

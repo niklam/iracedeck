@@ -2,22 +2,11 @@
   "name": "iracedeck",
   "version": "3.4.0-dev.0",
   "private": true,
-  "packageManager": "pnpm@10.34.5",
+  "packageManager": "pnpm@12.6.0",
   "engines": {
     "node": ">=24"
   },
   "type": "module",
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "ffmpeg-static"
-    ],
-    "ignoredBuiltDependencies": [
-      "esbuild",
-      "keysender",
-      "protobufjs",
-      "re2"
-    ]
-  },
   "scripts": {
     "build": "node scripts/build.mjs",
     "install:stream-deck": "pnpm --filter \"@iracedeck/iracing-sdk\" --filter \"@iracedeck/iracing-plugin-stream-deck\" install",
@@ -101,7 +90,8 @@
     "tsx": "4.23.15",
     "turbo": "2.11.3",
     "typescript": "5.9.3",
-    "vitest": "5.0.1"
+    "vitest": "5.0.1",
+    "yaml": "2.9.1"
   },
   "lint-staged": {
     "*.ts": [

@@ -62,7 +62,7 @@
 
 - Windows 10+ (iRacing is Windows-only)
 - [Node.js](https://nodejs.org/) 24+
-- [pnpm](https://pnpm.io/) 10+
+- [pnpm](https://pnpm.io/) 10+ — it switches itself to the version pinned in `package.json`
 - Python 3.x and [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) with the C++ workload (for the native addon)
 - [Elgato Stream Deck](https://docs.elgato.com/sdk/) software
 
