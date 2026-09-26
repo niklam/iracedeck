@@ -2394,7 +2394,7 @@ describe("FuelService dial surface", () => {
     // frame" and "the click was not read as long" are both observable.
     const loneDownSettings = { pressAction: "toggle-fueling", longPressAction: "fill-to-max", dialMode: "add-amount" };
 
-    it("a lone dialDown (a Mirabox hold) fires nothing and does not poison the next short press (#1013)", async () => {
+    it("a lone dialDown fires nothing and does not poison the next short press (#1013)", async () => {
       vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
       const ctx = dialContext("ld1", KNOB);
       await appear(ctx, loneDownSettings);
@@ -2403,7 +2403,9 @@ describe("FuelService dial surface", () => {
       const framesBefore = ctx.setDialCanvas.mock.calls.length;
       const timersBefore = vi.getTimerCount();
 
-      // The hold: a dialDown whose dialUp never comes.
+      // A dialDown whose dialUp never comes. The Mirabox adapter completes every
+      // knob press, so a surface there never sees one; this guards any host that
+      // drops a release.
       await action.onDialDown(basicEvent(ctx, loneDownSettings) as never);
       expect(vi.getTimerCount()).toBe(timersBefore); // no preview timer armed
       vi.advanceTimersByTime(5000);
@@ -2415,7 +2417,7 @@ describe("FuelService dial surface", () => {
 
       expect(holdFrames.some((call) => stripCanvas(call[0] as string).includes("data-pending-bar"))).toBe(false);
 
-      // Then a real click: down + up 50 ms apart.
+      // Then an ordinary press: down, then up 50 ms later.
       await action.onDialDown(basicEvent(ctx, loneDownSettings) as never);
       vi.advanceTimersByTime(50);
       await action.onDialUp(basicEvent(ctx, loneDownSettings) as never);

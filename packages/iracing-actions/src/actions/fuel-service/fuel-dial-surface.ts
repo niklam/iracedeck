@@ -1166,8 +1166,8 @@ export class FuelDialSurface {
 
     // Classify the release with full information (duration + the rotated guard),
     // so long-press never races push+turn. No timer fired mid-hold. Where
-    // the extended gestures are compiled out a release is never long: a held
-    // knob never sends its dialUp (`classifyDialReleaseForHost`).
+    // the extended gestures are compiled out a release is never long: a knob
+    // press never reports its release (`classifyDialReleaseForHost`).
     const kind = classifyDialReleaseForHost({
       pressStartMs,
       nowMs: Date.now(),

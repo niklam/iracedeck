@@ -226,7 +226,7 @@ export class SetupAeroDialSurface {
     if (pressStartMs === 0) return;
 
     // Where the extended gestures are compiled out a release is never long: a
-    // held knob never sends its dialUp (`classifyDialReleaseForHost`).
+    // knob press never reports its release (`classifyDialReleaseForHost`).
     const kind = classifyDialReleaseForHost({
       pressStartMs,
       nowMs: Date.now(),

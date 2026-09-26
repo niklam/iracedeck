@@ -357,8 +357,9 @@ export class AudioDialSurface {
     if (press === "none") return;
 
     if (press === "push-to-talk") {
-      // Push to Talk holds a key until the release, and a Mirabox knob held down
-      // never sends its dialUp — the binding would stay held. The PI does not
+      // Push to Talk holds a key until the release, and a Mirabox knob press
+      // never reports its release (the adapter completes the press at its
+      // dialDown), so there is no hold to transmit for. The PI does not
       // offer it where the extended gestures are compiled out; a value stored
       // before (or copied from a Stream Deck+ profile) does nothing.
       if (!__FEATURE_DIAL_EXTENDED_GESTURES__) {
