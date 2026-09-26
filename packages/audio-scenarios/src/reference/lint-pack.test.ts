@@ -1,4 +1,4 @@
-import { type CalloutScript, validateVoicePackManifest } from "@iracedeck/callout-script";
+import type { CalloutScript } from "@iracedeck/callout-script";
 import { describe, expect, it } from "vitest";
 
 import type { ContractReport, VocabularyReport } from "../interpreter.js";
@@ -422,9 +422,12 @@ describe("lintPack", () => {
   });
 
   it("reports a manifest that is not valid JSON, and one whose voices carry no ids, then scans voice/*/", () => {
-    expect(messages(lint(packFiles({ manifest: "{" })).problems)[0]).toMatch(
-      /^\(pack\) manifest: voice-pack\.json is not valid JSON: /,
-    );
+    // The leaf's text stage words the JSON failure, as it does for the scanner.
+    expect(messages(lint(packFiles({ manifest: "{" })).problems)).toEqual([
+      expect.stringMatching(
+        /^\(pack\) manifest: voice-pack\.json: not valid JSON: .+; the plugin refuses the manifest; the voices under voice\/ were linted anyway$/,
+      ),
+    ]);
 
     const noIds = lint(
       packFiles({
@@ -537,6 +540,9 @@ describe("lintPack", () => {
   });
 
   it("reports the first problem per field only — the one the scanner would show for it", () => {
+    // zod fails two checks at `id` and two at `label`; the leaf keeps the
+    // first of each (its own test holds the positive control), and the
+    // linter prints that list as it is, in the schema's order.
     const json = {
       schema: 1,
       id: "My::Pack",
@@ -544,16 +550,7 @@ describe("lintPack", () => {
       version: "1.0.0",
       voices: [{ id: VOICE, label: "Demo voice" }],
     };
-    const shared = validateVoicePackManifest(json);
 
-    // The schema reports each failing check: two at `id`, two at `label`.
-    expect(shared.ok ? [] : shared.problems.map((problem) => problem.split(": ")[0])).toEqual([
-      "id",
-      "id",
-      "label",
-      "label",
-    ]);
-    // The linter keeps the first of each, in the schema's order.
     expect(messages(lint(packFiles({ manifest: JSON.stringify(json) })).problems)).toEqual([
       '(pack) manifest: voice-pack.json: id: must not contain "::" — iRaceDeck joins a pack id and a voice id with it; the plugin refuses the manifest',
       "(pack) manifest: voice-pack.json: label: Too small: expected string to have >=1 characters; the plugin refuses the manifest",
@@ -602,6 +599,37 @@ describe("lintPack", () => {
 
     expect(messages(report.problems)).toEqual([
       `(pack) manifest: voice-pack.json: voice "${VOICE}" is declared more than once; the first wins`,
+    ]);
+    expect(report.voices.map((v) => v.id)).toEqual([VOICE]);
+  });
+
+  it("reports no repeat for a manifest the schema refused — the scanner loads nothing from it, so nothing wins — and lints the voice once", () => {
+    const manifest = JSON.stringify({
+      schema: 1,
+      id: "demo",
+      label: "Demo",
+      version: "1.0",
+      voices: [
+        { id: VOICE, label: "Demo voice" },
+        { id: VOICE, label: "Same voice, other name" },
+      ],
+    });
+    const report = lint(packFiles({ manifest }));
+
+    expect(messages(report.problems)).toEqual([
+      "(pack) manifest: voice-pack.json: version: must be a valid semver version; the plugin refuses the manifest",
+    ]);
+    expect(report.voices.map((v) => v.id)).toEqual([VOICE]);
+  });
+
+  it("puts the fallback note on the schema problem that caused it, never on the folder line after it", () => {
+    const report = lint(
+      packFiles({ manifest: JSON.stringify({ schema: 1, id: "other", label: "Demo", version: "1.0.0", voices: [] }) }),
+    );
+
+    expect(messages(report.problems)).toEqual([
+      "(pack) manifest: voice-pack.json: voices: Too small: expected array to have >=1 items; the plugin refuses the manifest; the voices under voice/ were linted anyway",
+      `(pack) manifest: voice-pack.json: id "other" does not match the pack folder name "${PACK_DIR_NAME}" — the plugin refuses the pack`,
     ]);
     expect(report.voices.map((v) => v.id)).toEqual([VOICE]);
   });

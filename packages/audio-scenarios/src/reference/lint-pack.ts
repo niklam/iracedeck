@@ -29,25 +29,31 @@
  * `scripts/lib/lint-pack-scanner-parity.test.mjs` now runs both over the
  * same packs.
  *
- * What stays this module's is the PRESENTATION: the scanner shows a user the
- * first problem of a refused manifest, one line per pack, while an author
- * here gets every one — `validateVoicePackManifest`'s list, the first
- * problem per field (zod reports every failing check of a field, so an id
- * holding `::` would otherwise read twice: the separator, then the
- * kebab-case rule it also breaks). The separator's sentence is
+ * The manifest is read through the leaf's one text stage,
+ * `readVoicePackManifestText` — the BOM strip, the `JSON.parse` and the
+ * schema the scanner's `parseVoicePackManifest` wraps — so what counts as a
+ * readable manifest is decided once. What stays this module's is the
+ * PRESENTATION: the scanner shows a user the first problem of a refused
+ * manifest, one line per pack, while an author here gets every one — the
+ * leaf's list, which already holds the first problem per field only (zod
+ * reports every failing check of a field, so an id holding `::` would
+ * otherwise read twice). The separator's sentence is
  * `VOICE_ID_SEPARATOR_REASON`, first because the schema checks it first:
  * the plugin names a voice `<pack id>::<voice id>` (#1144), and an author
  * who qualified an id by hand should hear why. The folder comparison is
  * `packIdMatchesFolder` — case-insensitive, as the filesystem is — asked
  * only of an id the schema accepts. A voice id only has to be unique within
  * its pack — another pack's `matt` is a different voice — so nothing is
- * said about one any other pack declares, while one declared twice in the
- * same pack is reported in the scanner's words (the first wins) and linted
- * once. A field problem is reported and the voices are linted anyway — the
- * declared ones whose id the schema's `packId` accepts; when the manifest is
- * missing, unparseable or declares no such id at all, that is reported AND
- * the voices are taken from the directories under `voice/` instead, so the
- * author still gets clip and script feedback.
+ * said about one any other pack declares, while one declared twice in a
+ * manifest the schema ACCEPTS is reported in the scanner's words (the first
+ * wins) and linted once; a manifest the schema refuses loads nothing, so
+ * there is no first to win and its repeats are folded away silently. A field
+ * problem is reported and the voices are linted anyway — the declared ones
+ * whose id the schema's `packId` accepts; when the manifest is missing,
+ * unparseable or declares no such id at all, that is reported AND the voices
+ * are taken from the directories under `voice/` instead, so the author still
+ * gets clip and script feedback — the note saying so on the last problem
+ * that explains why.
  *
  * Per voice, in this order: the clip files under `voice/<id>/` (every one
  * must be `voice/<id>/<group>/<name>.mp3`, lowercase extension — the shared
@@ -91,8 +97,8 @@ import {
   packId,
   packIdMatchesFolder,
   parseCalloutScriptText,
+  readVoicePackManifestText,
   USABLE_VOICE_CLIP,
-  validateVoicePackManifest,
   type VarDrivenGroup,
   VOICE_PACK_MANIFEST_FILE,
   VOICE_SCRIPT_MAX_BYTES,
@@ -246,7 +252,7 @@ export function lintPack({
   if (declared.ids !== null) {
     voiceIds = declared.ids;
 
-    for (const message of declared.problems) packProblem(message);
+    for (const message of [...declared.refusal, ...declared.others]) packProblem(message);
 
     for (const folder of onDisk) {
       if (!voiceIds.includes(folder)) {
@@ -256,14 +262,20 @@ export function lintPack({
       }
     }
   } else {
-    // Every problem is reported; the last carries the fallback note.
-    declared.problems.forEach((message, index) => {
+    // Every problem is reported. The fallback note rides on the last one that
+    // explains WHY the manifest gave no voices — a read or schema problem —
+    // never on the folder line that may follow it, which is about something
+    // else entirely.
+    declared.refusal.forEach((message, index) => {
       packProblem(
-        index === declared.problems.length - 1
+        index === declared.refusal.length - 1
           ? `${message}; the voices under ${VOICE_ROOT}/ were linted anyway`
           : message,
       );
     });
+
+    for (const message of declared.others) packProblem(message);
+
     voiceIds = onDisk;
   }
 
@@ -297,16 +309,22 @@ export function lintPack({
 /**
  * The manifest as the linter read it: the voice ids to lint — `null` when
  * the file gave none and the `voice/` directories stand in — and every
- * problem found on the way, in the order the scanner meets them.
+ * problem found on the way, in the order the scanner meets them, in two
+ * lists. `refusal` is why the plugin would not read the manifest at all (it
+ * could not be read, is not JSON, or the schema refuses it); `others` are the
+ * checks after it — the folder, the repeats. Kept apart because only a
+ * refusal can explain a fallback to the directories, so only a refusal may
+ * carry the note that says so.
  */
-type DeclaredVoices = { ids: readonly string[] | null; problems: readonly string[] };
+type DeclaredVoices = { ids: readonly string[] | null; refusal: readonly string[]; others: readonly string[] };
 
 const REFUSED = "the plugin refuses the manifest";
 
 /**
  * The manifest checked by the scanner's own rules (see the header): the
- * shared schema, then the folder, then the repeats — the scanner's order,
- * with every problem reported where the scanner stops at the first.
+ * shared text stage and schema, then the folder, then the repeats — the
+ * scanner's order, with every problem reported where the scanner stops at the
+ * first.
  *
  * When the schema refuses the file, the voices are still linted wherever the
  * manifest names them usably: each entry whose `id` the schema's `packId`
@@ -319,35 +337,22 @@ function readManifest(read: LintFileRead, packDirName: string): DeclaredVoices {
   if (!read.ok) {
     return {
       ids: null,
-      problems: [
+      refusal: [
         read.missing
           ? `${VOICE_PACK_MANIFEST_FILE} is missing — the plugin will not see this folder as a pack`
           : `${VOICE_PACK_MANIFEST_FILE} could not be read (${read.reason})`,
       ],
+      others: [],
     };
   }
 
-  let json: unknown;
-
-  try {
-    // A leading BOM is stripped as the scanner's reader strips it
-    // (`parseVoicePackManifest`, which has the reason): several Windows
-    // editors write one, and hand-editing this file is an advertised path.
-    // Parsed here rather than through that reader because it returns the
-    // FIRST problem only, and an author is owed the list.
-    json = JSON.parse(read.text.charCodeAt(0) === 0xfeff ? read.text.slice(1) : read.text);
-  } catch (err) {
-    return {
-      ids: null,
-      problems: [`${VOICE_PACK_MANIFEST_FILE} is not valid JSON: ${err instanceof Error ? err.message : String(err)}`],
-    };
-  }
-
-  const validated = validateVoicePackManifest(json);
-  const problems = validated.ok
+  const manifest = readVoicePackManifestText(read.text);
+  const refusal = manifest.ok
     ? []
-    : firstPerField(validated.problems).map((problem) => `${VOICE_PACK_MANIFEST_FILE}: ${problem}; ${REFUSED}`);
-  const raw: { id?: unknown; voices?: unknown } = json !== null && typeof json === "object" ? json : {};
+    : manifest.problems.map((problem) => `${VOICE_PACK_MANIFEST_FILE}: ${problem}; ${REFUSED}`);
+  const raw: { id?: unknown; voices?: unknown } =
+    manifest.json !== null && typeof manifest.json === "object" ? manifest.json : {};
+  const others: string[] = [];
 
   // Only an id the schema accepts is compared with the folder: a malformed id
   // already has its line above, and a second telling the author it also
@@ -355,48 +360,32 @@ function readManifest(read: LintFileRead, packDirName: string): DeclaredVoices {
   const id = packId.safeParse(raw.id);
 
   if (id.success && !packIdMatchesFolder(id.data, packDirName)) {
-    problems.push(
+    others.push(
       `${VOICE_PACK_MANIFEST_FILE}: id "${id.data}" does not match the pack folder name "${packDirName}" — the plugin refuses the pack`,
     );
+  }
+
+  if (!manifest.ok) {
+    // The scanner loads nothing from a manifest its schema refuses, so no
+    // repeat is "the first wins" there — saying so would describe a load that
+    // never happens. The usable ids are de-duplicated silently, only so each
+    // voice is linted once.
+    const { voices } = dedupeDeclaredVoices(usableEntries(raw.voices));
+
+    return { ids: voices.length === 0 ? null : voices.map((voice) => voice.id), refusal, others };
   }
 
   // The scanner's words for a repeat: it keeps the first entry and reports
   // the rest, and the pack still loads — so no REFUSED. Said here rather than
   // folded away, because unique within the pack is the one rule a voice id
   // still has.
-  const { voices, repeated } = dedupeDeclaredVoices(
-    validated.ok ? validated.manifest.voices : usableEntries(raw.voices),
-  );
+  const { voices, repeated } = dedupeDeclaredVoices(manifest.manifest.voices);
 
   for (const repeat of repeated) {
-    problems.push(`${VOICE_PACK_MANIFEST_FILE}: voice "${repeat}" is declared more than once; the first wins`);
+    others.push(`${VOICE_PACK_MANIFEST_FILE}: voice "${repeat}" is declared more than once; the first wins`);
   }
 
-  return { ids: voices.length === 0 ? null : voices.map((voice) => voice.id), problems };
-}
-
-/**
- * The first problem per field. zod reports every check a field fails, in the
- * order the schema declares them, so an id holding `::` comes back twice —
- * the separator, then the kebab-case rule it breaks as well — and an empty
- * label twice too. The first is what the scanner would show were that field
- * the only one wrong, and the one that names the fix; the rest would turn one
- * mistake into a list. A problem reads `<path>: <message>` and a path holds
- * no `": "`; the newer-schema sentence carries no path and is kept whole.
- */
-function firstPerField(problems: readonly string[]): string[] {
-  const seen = new Set<string>();
-
-  return problems.filter((problem) => {
-    const colon = problem.indexOf(": ");
-    const field = colon === -1 ? problem : problem.slice(0, colon);
-
-    if (seen.has(field)) return false;
-
-    seen.add(field);
-
-    return true;
-  });
+  return { ids: voices.map((voice) => voice.id), refusal, others };
 }
 
 /** The declared entries of a manifest the schema refused, kept where their `id` is one the schema accepts. */
