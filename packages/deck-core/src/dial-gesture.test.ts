@@ -210,6 +210,16 @@ describe("createHoldPreview", () => {
 });
 
 describe("a dialDown with no dialUp (#1013)", () => {
+  // The surface-level overwrite (a real lone dialDown, then a click) is pinned
+  // in the Fuel Service and Setup Fuel dial-surface tests; these cover the primitives.
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("is overwritten by the next dialDown — the second press is timed from its own start", () => {
     // Surfaces store pressStart on every dialDown; a hold that never released
     // leaves an old start behind, and the next down must replace it, not add
@@ -226,7 +236,6 @@ describe("a dialDown with no dialUp (#1013)", () => {
   });
 
   it("createHoldPreview: a second down() re-arms from scratch and a dispose() leaves no timer", () => {
-    vi.useFakeTimers();
     const onThreshold = vi.fn(() => true);
     const preview = createHoldPreview({ onThreshold, onCancel: vi.fn(), thresholdMs: () => 500 });
 
@@ -242,7 +251,6 @@ describe("a dialDown with no dialUp (#1013)", () => {
 
     expect(onThreshold).not.toHaveBeenCalled();
     expect(vi.getTimerCount()).toBe(0);
-    vi.useRealTimers();
   });
 });
 
