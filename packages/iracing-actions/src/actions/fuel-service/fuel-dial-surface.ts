@@ -17,6 +17,7 @@ import {
   applyBindingWarning,
   createHoldPreview,
   type DeckTriggerDescription,
+  type DialCanvasProfile,
   type DirectionalPair,
   fuelFromDisplayUnits,
   fuelToDisplayUnits,
@@ -35,6 +36,7 @@ import type { SessionInfo, TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 
 import { borderColorForState, type ToggleState } from "../../icons/status-bar.js";
+import { KNOB_BOX_HEIGHT, KNOB_BOX_WIDTH } from "../../shared/dial-knob-box.js";
 import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
 import { persistDialPatch } from "../../shared/dial-persist.js";
 import { type DialPendingPreview, renderPendingBar } from "../../shared/dial-preview.js";
@@ -873,8 +875,8 @@ export function renderKnobCanvasSvg(
   bindingMissing = false,
   pending: DialPendingPreview | null = null,
 ): string {
-  const w = 176;
-  const h = 112;
+  const w = KNOB_BOX_WIDTH;
+  const h = KNOB_BOX_HEIGHT;
   const bandHeight = 30;
   const margin = 6;
   const barHeight = 30;
@@ -910,6 +912,25 @@ export function renderKnobCanvasSvg(
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">${
     bindingMissing ? applyBindingWarning(content, { width: w, height: h }) : content
   }</svg>`;
+}
+
+/** Picks the drawing for the dial's own screen by its profile (#1013). */
+function renderFuelCanvasFor(
+  canvas: DialCanvasProfile,
+  args: Readonly<Parameters<typeof renderStripCanvasSvg>>,
+): string {
+  switch (canvas.id) {
+    case "sd-plus-strip":
+      return renderStripCanvasSvg(...args);
+    case "stream-dock-knob":
+      return renderKnobCanvasSvg(...args);
+    default: {
+      // A new DialCanvasId must get its own drawing here: this line stops compiling until it does.
+      const unhandled: never = canvas.id;
+
+      throw new Error(`Fuel Service: no drawing for dial canvas "${String(unhandled)}"`);
+    }
+  }
 }
 
 /** Strips the outer `<svg …>…</svg>` wrapper, returning only the inner markup. */
@@ -1862,9 +1883,7 @@ export class FuelDialSurface {
       ctx.preview,
     ] as const;
 
-    const svg =
-      canvas.id === "stream-dock-knob" ? renderKnobCanvasSvg(...renderArgs) : renderStripCanvasSvg(...renderArgs);
-    await ctx.action.setDialCanvas(svgToDataUri(svg));
+    await ctx.action.setDialCanvas(svgToDataUri(renderFuelCanvasFor(canvas, renderArgs)));
 
     // Reset the change-detector baseline so a pushed feedback (rotate/press/
     // heartbeat) doesn't immediately re-fire the render-on-change path next tick.

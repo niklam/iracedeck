@@ -34,6 +34,7 @@ import z from "zod";
 
 import { BLACK_BOX_GLOBAL_KEYS, type BlackBoxId } from "../../shared/black-box.js";
 import { dialAppearanceFields, type DialBoxColors, resolveDialBoxColors } from "../../shared/dial-box.js";
+import { KNOB_BOX_HEIGHT, KNOB_BOX_WIDTH } from "../../shared/dial-knob-box.js";
 import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
 import { classifyDialReleaseForHost } from "../../shared/dial-release.js";
 
@@ -170,8 +171,8 @@ export function renderBlackBoxStrip(args: { colors: DialBoxColors; bindingMissin
  */
 export function renderBlackBoxKnob(args: { colors: DialBoxColors; bindingMissing: boolean }): string {
   const { colors, bindingMissing } = args;
-  const w = 176;
-  const h = 112;
+  const w = KNOB_BOX_WIDTH;
+  const h = KNOB_BOX_HEIGHT;
   const inset = 5;
   const strokeWidth = 6;
 

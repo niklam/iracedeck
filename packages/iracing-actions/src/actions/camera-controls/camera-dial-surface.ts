@@ -1799,67 +1799,92 @@ export class CameraDialSurface {
    * or the knob carousel over the same resolved view.
    */
   private renderCanvas(canvas: DialCanvasProfile, dial: DialSettings, pending: DialPendingPreview | null): string {
-    if (canvas.id === "sd-plus-strip") return this.renderStrip(dial, pending);
+    switch (canvas.id) {
+      case "sd-plus-strip":
+        return this.renderStrip(dial, pending);
+      case "stream-dock-knob":
+        return this.renderKnob(dial, pending);
+      default: {
+        // A new DialCanvasId must get its own drawing here: this line stops compiling until it does.
+        const unhandled: never = canvas.id;
 
+        throw new Error(`Camera Controls: no drawing for dial canvas "${String(unhandled)}"`);
+      }
+    }
+  }
+
+  /** The knob carousel (#1013) for the dial's mode, over the same resolved view as the strip. */
+  private renderKnob(dial: DialSettings, pending: DialPendingPreview | null): string {
     const colors = resolveDialBoxColors(dial.colors, MODE_COLOR[dial.mode]);
     const telemetry = this.host.getTelemetry();
     const base = { colors, title: MODE_TITLE[dial.mode], identityLabel: MODE_IDENTITY[dial.mode], pending } as const;
     const slotOf = (slot: CarouselSlot | null) => (slot ? { text: slot.name.toUpperCase(), glyph: slot.glyph } : null);
 
-    if (dial.mode === "camera") {
-      const slots = this.cameraCarouselSlots(telemetry, dial);
+    switch (dial.mode) {
+      case "camera": {
+        const slots = this.cameraCarouselSlots(telemetry, dial);
 
-      return renderKnobCarousel({
-        ...base,
-        centre: slotOf(slots.current),
-        left: slotOf(slots.left),
-        right: slotOf(slots.right),
-      });
+        return renderKnobCarousel({
+          ...base,
+          centre: slotOf(slots.current),
+          left: slotOf(slots.left),
+          right: slotOf(slots.right),
+        });
+      }
+      case "car-number":
+      case "track-order": {
+        const view = this.carCarouselView(telemetry, dial);
+
+        return renderKnobCarousel({
+          ...base,
+          // The strip's AHEAD / BEHIND captions stay on the strip: the knob's corners carry numbers only.
+          centre: view.center ? { text: `#${view.center}` } : null,
+          left: view.left ? { text: `#${view.left}` } : null,
+          right: view.right ? { text: `#${view.right}` } : null,
+        });
+      }
+      case "race-position": {
+        const view = this.racePositionCarouselView(telemetry, dial);
+
+        return renderKnobCarousel({
+          ...base,
+          // Unclassified (the pace / safety car): the number alone, never a lying P badge.
+          centre: view.centerCarNumber
+            ? view.centerPosition !== null
+              ? { text: `P${view.centerPosition}`, sub: `#${view.centerCarNumber}` }
+              : { text: `#${view.centerCarNumber}` }
+            : null,
+          left: view.leftPosition !== null ? { text: `P${view.leftPosition}` } : null,
+          right: view.rightPosition !== null ? { text: `P${view.rightPosition}` } : null,
+        });
+      }
+      case "sub-camera": {
+        const view = this.subCameraView(telemetry, dial);
+
+        // Title and the current camera only: neighbouring camera names do not fit a knob corner.
+        return renderKnobCarousel({
+          ...base,
+          centre: view.current ? { text: view.current.toUpperCase() } : null,
+          left: null,
+          right: null,
+          bindingMissing: this.host.isBindingMissing(SUB_CAMERA_BINDING_KEY_LIST),
+        });
+      }
+      case "driving":
+        // The current group only, as on the strip (no coherent neighbour).
+        return renderKnobCarousel({
+          ...base,
+          centre: slotOf(this.drivingCurrentSlot(telemetry)),
+          left: null,
+          right: null,
+        });
+      default: {
+        // A new camera mode must get its own knob drawing here: this line stops compiling until it does.
+        const unhandled: never = dial.mode;
+
+        throw new Error(`Camera Controls: no knob drawing for dial mode "${String(unhandled)}"`);
+      }
     }
-
-    if (dial.mode === "car-number" || dial.mode === "track-order") {
-      const view = this.carCarouselView(telemetry, dial);
-
-      return renderKnobCarousel({
-        ...base,
-        // The strip's AHEAD / BEHIND captions stay on the strip: the knob's corners carry numbers only.
-        centre: view.center ? { text: `#${view.center}` } : null,
-        left: view.left ? { text: `#${view.left}` } : null,
-        right: view.right ? { text: `#${view.right}` } : null,
-      });
-    }
-
-    if (dial.mode === "race-position") {
-      const view = this.racePositionCarouselView(telemetry, dial);
-
-      return renderKnobCarousel({
-        ...base,
-        // Unclassified (the pace / safety car): the number alone, never a lying P badge.
-        centre: view.centerCarNumber
-          ? view.centerPosition !== null
-            ? { text: `P${view.centerPosition}`, sub: `#${view.centerCarNumber}` }
-            : { text: `#${view.centerCarNumber}` }
-          : null,
-        left: view.leftPosition !== null ? { text: `P${view.leftPosition}` } : null,
-        right: view.rightPosition !== null ? { text: `P${view.rightPosition}` } : null,
-      });
-    }
-
-    if (dial.mode === "sub-camera") {
-      const view = this.subCameraView(telemetry, dial);
-
-      // Title and the current camera only: neighbouring camera names do not fit a knob corner.
-      return renderKnobCarousel({
-        ...base,
-        centre: view.current ? { text: view.current.toUpperCase() } : null,
-        left: null,
-        right: null,
-        bindingMissing: this.host.isBindingMissing(SUB_CAMERA_BINDING_KEY_LIST),
-      });
-    }
-
-    // driving: the current group only, as on the strip (no coherent neighbour).
-    return renderKnobCarousel({ ...base, centre: slotOf(this.drivingCurrentSlot(telemetry)), left: null, right: null });
   }
 
   /** Pushes the dial's own screen — the strip or the knob carousel (#1013); nothing when it has none. */

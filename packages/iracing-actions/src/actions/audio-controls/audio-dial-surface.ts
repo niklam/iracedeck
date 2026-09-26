@@ -16,12 +16,14 @@
 import {
   applyBindingWarning,
   type DeckTriggerDescription,
+  type DialCanvasProfile,
   type IDeckActionContext,
   onGlobalSettingsChange,
   svgToDataUri,
 } from "@iracedeck/deck-core";
 import type { ILogger } from "@iracedeck/logger";
 
+import { KNOB_BOX_HEIGHT, KNOB_BOX_WIDTH } from "../../shared/dial-knob-box.js";
 import { INTERNAL_AUDIO_BUSES } from "./audio-buses.js";
 import {
   type AudioControlsSettings,
@@ -51,8 +53,8 @@ const RENDER_THROTTLE_MS = 100;
 /** The touch-strip slot; the SVG envelope and the #612 warning's canvas must agree on it. */
 const STRIP = { width: 200, height: 100 } as const;
 
-/** The Stream Dock knob screen (#1013) — deck-core's `STREAM_DOCK_KNOB_CANVAS`; the same agreement holds. */
-const KNOB = { width: 176, height: 112 } as const;
+/** The Stream Dock knob screen (#1013) — the shared knob size; the same agreement holds. */
+const KNOB = { width: KNOB_BOX_WIDTH, height: KNOB_BOX_HEIGHT } as const;
 
 const WHITE = "#ffffff";
 const GREEN = "#2ecc71";
@@ -221,6 +223,22 @@ export function renderAudioKnobSvg(state: AudioStripState): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">${
     state.bindingMissing ? applyBindingWarning(content, KNOB) : content
   }</svg>`;
+}
+
+/** Picks the drawing for the dial's own screen by its profile (#1013). */
+function renderAudioCanvasFor(canvas: DialCanvasProfile, state: AudioStripState): string {
+  switch (canvas.id) {
+    case "sd-plus-strip":
+      return renderAudioStripSvg(state);
+    case "stream-dock-knob":
+      return renderAudioKnobSvg(state);
+    default: {
+      // A new DialCanvasId must get its own drawing here: this line stops compiling until it does.
+      const unhandled: never = canvas.id;
+
+      throw new Error(`Audio Controls: no drawing for dial canvas "${String(unhandled)}"`);
+    }
+  }
 }
 
 /** Per-context runtime state. */
@@ -566,7 +584,6 @@ export class AudioDialSurface {
     if (!canvas) return;
 
     const state = this.stripState(ctx);
-    const svg = canvas.id === "stream-dock-knob" ? renderAudioKnobSvg(state) : renderAudioStripSvg(state);
-    await ctx.action.setDialCanvas(svgToDataUri(svg));
+    await ctx.action.setDialCanvas(svgToDataUri(renderAudioCanvasFor(canvas, state)));
   }
 }

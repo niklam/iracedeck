@@ -16,7 +16,9 @@ import { PENDING_BAR_HEIGHT, renderPendingBar } from "./dial-preview.js";
 
 /**
  * The knob screen's size — deck-core's `STREAM_DOCK_KNOB_CANVAS` (176×112),
- * which a test pins these to. Literals rather than a module-scope read of that
+ * which a test pins these to. The one source of the knob size for every knob
+ * drawing: the self-drawn surfaces (Fuel Service, Audio Controls, Black Box
+ * Selector) import these rather than repeating the literals. Literals rather than a module-scope read of that
  * export: every surface test mocks `@iracedeck/deck-core` with only what it
  * uses, and `dial-box.ts` imports this module, so a module-scope read would
  * throw on import in all of them. The layout constants below are tuned for
