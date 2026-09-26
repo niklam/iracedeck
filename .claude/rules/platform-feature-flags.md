@@ -128,7 +128,7 @@ it("skips touch and long-press when dialExtendedGestures is false", () => {
    - Add default to `test-setup.ts` and true/false path tests that `vi.stubGlobal` the constant.
    - A flag that only gates a PI control or a rarely-hit runtime branch (like `profiles`) can skip all three of the above and read `getFeatureFlag(...)` / `locals.platform?.features?.…` instead — see "Runtime-only flags" above.
 4. Gate the relevant code (plugin init, `deck-core`, or an action file for a per-platform behavioral difference) and any relevant PI partial.
-5. Update the example file (`feature-flags.local.json.example`).
+5. Update the example file (`feature-flags.local.json.example`) — but only with a flag whose value is the same on every plugin. The local file deep-merges over **every** plugin's flags, so a platform-varying flag in the example (`dialExtendedGestures`, `profiles`) would switch that feature on for the platforms where it is off as soon as someone copies the file (#1013).
 
 ## Watch mode caveat
 

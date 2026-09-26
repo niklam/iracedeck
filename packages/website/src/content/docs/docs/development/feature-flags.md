@@ -57,7 +57,7 @@ Each plugin's build deep-merges this file on top of its own committed `platform-
 
 Unknown keys in the local file are **ignored with a warning** during the build — watch the console for `[platform-features] feature-flags.local.json has unknown keys (ignored): …` to catch typos.
 
-A committed `feature-flags.local.json.example` at the repo root documents the shape; copy it if you'd like a starting point.
+A committed `feature-flags.local.json.example` at the repo root documents the shape; copy it if you'd like a starting point. It deliberately lists only flags that are the same on every plugin: the local file overrides all three plugins at once, so adding a platform-specific flag such as `dialExtendedGestures` or `profiles` to your copy turns that feature on (or off) everywhere.
 
 ## Typical use cases
 
