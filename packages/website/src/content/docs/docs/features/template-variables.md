@@ -87,6 +87,12 @@ Fuel level with one decimal and a unit suffix (renders e.g. `42.4 L`):
 {{= round(telemetry.FuelLevel, 1) + ' L' }}
 ```
 
+Show `--` once the checkered flag is out instead of the last time remaining (see [SessionState](#sessionstate)):
+
+```text
+{{= telemetry.SessionState >= 5 ? '--' : telemetry.SessionTimeRemain }}
+```
+
 ## Driver Info
 
 Available prefixes: `self`, `track_ahead`, `track_behind`, `race_ahead`, `race_behind`, `focused`
@@ -149,9 +155,9 @@ All iRacing telemetry variables (excluding per-car arrays and high-frequency sam
 | `{{telemetry.SessionTime}}` | Seconds since session start (s) |
 | `{{telemetry.SessionTick}}` | Current update number |
 | `{{telemetry.SessionNum}}` | Session number |
-| `{{telemetry.SessionState}}` | Session state (irsdk_SessionState) |
+| `{{telemetry.SessionState}}` | Session state; `5` and `6` mean the checkered flag is out — see [values](#sessionstate) |
 | `{{telemetry.SessionUniqueID}}` | Session ID |
-| `{{telemetry.SessionFlags}}` | Session flags (irsdk_Flags) |
+| `{{telemetry.SessionFlags}}` | Session flags (a bitfield) — see [values](#sessionflags) |
 | `{{telemetry.SessionTimeRemain}}` | Seconds left till session ends (s) |
 | `{{telemetry.SessionLapsRemain}}` | Old laps left till session ends use SessionLapsRemainEx |
 | `{{telemetry.SessionLapsRemainEx}}` | New improved laps left till session ends |
@@ -200,8 +206,8 @@ All iRacing telemetry variables (excluding per-car arrays and high-frequency sam
 | `{{telemetry.PlayerCarPosition}}` | Players position in race |
 | `{{telemetry.PlayerCarClassPosition}}` | Players class position in race |
 | `{{telemetry.PlayerCarClass}}` | Player car class id |
-| `{{telemetry.PlayerTrackSurface}}` | Players car track surface type (irsdk_TrkLoc) |
-| `{{telemetry.PlayerTrackSurfaceMaterial}}` | Players car track surface material type (irsdk_TrkSurf) |
+| `{{telemetry.PlayerTrackSurface}}` | Players car track surface type — see [values](#playertracksurface) |
+| `{{telemetry.PlayerTrackSurfaceMaterial}}` | Players car track surface material type — see [values](#playertracksurfacematerial) |
 | `{{telemetry.PlayerCarTeamIncidentCount}}` | Players team incident count for this session |
 | `{{telemetry.PlayerCarMyIncidentCount}}` | Players own incident count for this session |
 | `{{telemetry.PlayerCarDriverIncidentCount}}` | Teams current drivers incident count for this session |
@@ -210,16 +216,16 @@ All iRacing telemetry variables (excluding per-car arrays and high-frequency sam
 | `{{telemetry.PlayerCarDryTireSetLimit}}` | Players dry tire set limit |
 | `{{telemetry.PlayerCarTowTime}}` | Players car is being towed if time is greater than zero (s) |
 | `{{telemetry.PlayerCarInPitStall}}` | Players car is properly in their pitstall |
-| `{{telemetry.PlayerCarPitSvStatus}}` | Players car pit service status bits (irsdk_PitSvStatus) |
+| `{{telemetry.PlayerCarPitSvStatus}}` | Players car pit service status — see [values](#playercarpitsvstatus) |
 | `{{telemetry.PlayerTireCompound}}` | Players car current tire compound |
 | `{{telemetry.PlayerFastRepairsUsed}}` | Players car number of fast repairs used |
-| `{{telemetry.PlayerIncidents}}` | Log incidents that the player received (irsdk_IncidentFlags) |
+| `{{telemetry.PlayerIncidents}}` | Log incidents that the player received — see [values](#playerincidents) |
 | `{{telemetry.IsOnTrack}}` | 1=Car on track physics running with player in car |
 | `{{telemetry.IsOnTrackCar}}` | 1=Car on track physics running |
 | `{{telemetry.IsInGarage}}` | 1=Car in garage physics running |
 | `{{telemetry.OnPitRoad}}` | Is the player car on pit road between the cones |
-| `{{telemetry.PaceMode}}` | Are we pacing or not (irsdk_PaceMode) |
-| `{{telemetry.CarLeftRight}}` | Notify if car is to the left or right of driver (irsdk_CarLeftRight) |
+| `{{telemetry.PaceMode}}` | Are we pacing or not — see [values](#pacemode) |
+| `{{telemetry.CarLeftRight}}` | Notify if car is to the left or right of driver — see [values](#carleftright) |
 
 ### Driving Inputs
 
@@ -320,7 +326,7 @@ All iRacing telemetry variables (excluding per-car arrays and high-frequency sam
 |----------|-------------|
 | `{{telemetry.TrackTempCrew}}` | Temperature of track measured by crew (C) |
 | `{{telemetry.AirTemp}}` | Temperature of air at start/finish line (C) |
-| `{{telemetry.TrackWetness}}` | How wet is the average track surface (irsdk_TrackWetness) |
+| `{{telemetry.TrackWetness}}` | How wet is the average track surface — see [values](#trackwetness) |
 | `{{telemetry.Skies}}` | Skies (0=clear, 1=p cloudy, 2=m cloudy, 3=overcast) |
 | `{{telemetry.AirDensity}}` | Density of air at start/finish line (kg/m^3) |
 | `{{telemetry.AirPressure}}` | Pressure of air at start/finish line (Pa) |
@@ -350,7 +356,7 @@ All iRacing telemetry variables (excluding per-car arrays and high-frequency sam
 | `{{telemetry.ManifoldPress}}` | Engine manifold pressure (bar) |
 | `{{telemetry.Engine0_RPM}}` | Engine0 engine rpm (revs/min) |
 | `{{telemetry.Engine1_RPM}}` | Engine1 engine rpm (revs/min) |
-| `{{telemetry.EngineWarnings}}` | Bitfield for warning lights (irsdk_EngineWarnings) |
+| `{{telemetry.EngineWarnings}}` | Bitfield for warning lights — see [values](#enginewarnings) |
 
 ### Tires — Temperature & Wear
 
@@ -487,7 +493,7 @@ All iRacing telemetry variables (excluding per-car arrays and high-frequency sam
 | `{{telemetry.PitOptRepairLeft}}` | Time left for optional repairs (s) |
 | `{{telemetry.FastRepairUsed}}` | How many fast repairs used so far |
 | `{{telemetry.FastRepairAvailable}}` | How many fast repairs left (255 = unlimited) |
-| `{{telemetry.PitSvFlags}}` | Bitfield of pit service checkboxes (irsdk_PitSvFlags) |
+| `{{telemetry.PitSvFlags}}` | Bitfield of pit service checkboxes — see [values](#pitsvflags) |
 | `{{telemetry.PitSvLFP}}` | Pit service left front tire pressure (kPa) |
 | `{{telemetry.PitSvRFP}}` | Pit service right front tire pressure (kPa) |
 | `{{telemetry.PitSvLRP}}` | Pit service left rear tire pressure (kPa) |
@@ -525,7 +531,7 @@ All iRacing telemetry variables (excluding per-car arrays and high-frequency sam
 | `{{telemetry.CamCarIdx}}` | Active camera's focus car index |
 | `{{telemetry.CamCameraNumber}}` | Active camera number |
 | `{{telemetry.CamGroupNumber}}` | Active camera group number |
-| `{{telemetry.CamCameraState}}` | State of camera system (irsdk_CameraState) |
+| `{{telemetry.CamCameraState}}` | State of camera system (a bitfield) — see [values](#camcamerastate) |
 
 ### In-Car Adjustments
 
@@ -606,6 +612,213 @@ All iRacing telemetry variables (excluding per-car arrays and high-frequency sam
 | `{{telemetry.dpPowerSteering}}` | Pitstop power steering adjustment |
 | `{{telemetry.dpWeightJackerLeft}}` | Pitstop left wedge/weight jacker adjustment |
 | `{{telemetry.dpWeightJackerRight}}` | Pitstop right wedge/weight jacker adjustment |
+
+## Telemetry value reference
+
+Some telemetry variables hold a code rather than a measurement. A plain `{{telemetry.X}}` placeholder shows the number; to show your own text instead, compare against it in an [expression](#expressions).
+
+There are two kinds:
+
+- **Codes** hold one value at a time. Compare them with `==`, `!=`, `>=` and so on: `{{= telemetry.TrackWetness >= 4 ? 'WET' : 'DRY' }}`.
+- **Bitfields** add several flags into one number, so more than one can be on at once. Each flag has a value in the tables below (`1`, `2`, `4`, `8`, …); a flag is on when `floor(value / flag) % 2 != 0`. For example, `{{= floor(telemetry.EngineWarnings / 16) % 2 != 0 ? 'LIMITER' : '' }}` shows `LIMITER` while the pit speed limiter is on. Use `!= 0` rather than `== 1`: while the start-lights "go" flag is set, `SessionFlags` is a negative number, and the remainder then comes out as `-1`.
+
+### SessionState
+
+| Value | Meaning |
+|-------|---------|
+| `0` | Invalid |
+| `1` | Get in car |
+| `2` | Warm-up |
+| `3` | Parade laps |
+| `4` | Racing |
+| `5` | Checkered flag out (the leader has finished) |
+| `6` | Cool-down |
+
+Values `5` and `6` mean the checkered flag is out, which makes `SessionState` the way to blank or replace values that would otherwise keep showing the last number on the results screen. In a race the state turns `5` when the **leader** takes the flag, so you may still be finishing your last lap — keep that in mind before blanking a position, gap or lap value this way:
+
+```text
+{{= telemetry.SessionState >= 5 ? '--' : telemetry.SessionTimeRemain }}
+```
+
+### SessionFlags
+
+A bitfield.
+
+| Flag | Meaning |
+|------|---------|
+| `1` | Checkered |
+| `2` | White |
+| `4` | Green |
+| `8` | Yellow |
+| `16` | Red |
+| `32` | Blue |
+| `64` | Debris |
+| `128` | Crossed |
+| `256` | Yellow waving |
+| `512` | One lap to green |
+| `1024` | Green held |
+| `2048` | Ten to go |
+| `4096` | Five to go |
+| `8192` | Random waving |
+| `16384` | Caution |
+| `32768` | Caution waving |
+| `65536` | Black |
+| `131072` | Disqualify |
+| `262144` | Servicible (the car may be serviced; not a flag shown to the driver) |
+| `524288` | Furled |
+| `1048576` | Repair (meatball) |
+| `2097152` | Disqualified, scoring invalid |
+| `268435456` | Start lights hidden |
+| `536870912` | Start lights ready |
+| `1073741824` | Start lights set |
+| `2147483648` | Start lights go (makes the whole value negative) |
+
+### PlayerTrackSurface
+
+| Value | Meaning |
+|-------|---------|
+| `-1` | Not in world |
+| `0` | Off track |
+| `1` | In pit stall |
+| `2` | Approaching pits |
+| `3` | On track |
+
+### PlayerTrackSurfaceMaterial
+
+| Value | Meaning |
+|-------|---------|
+| `-1` | Not in world |
+| `0` | Undefined |
+| `1`–`4` | Asphalt |
+| `5`–`6` | Concrete |
+| `7`–`8` | Racing dirt |
+| `9`–`10` | Paint |
+| `11`–`14` | Rumble strip |
+| `15`–`18` | Grass |
+| `19`–`22` | Dirt |
+| `23` | Sand |
+| `24`–`25` | Gravel |
+| `26` | Grasscrete |
+| `27` | Astroturf |
+
+### PlayerCarPitSvStatus
+
+| Value | Meaning |
+|-------|---------|
+| `0` | None |
+| `1` | In progress |
+| `2` | Complete |
+| `100` | Too far left |
+| `101` | Too far right |
+| `102` | Too far forward |
+| `103` | Too far back |
+| `104` | Bad angle |
+| `105` | Can't fix that |
+
+### PlayerIncidents
+
+Two codes packed into one number: the report type is `telemetry.PlayerIncidents % 256`, and the penalty is `floor(telemetry.PlayerIncidents / 256) % 256`.
+
+| Report type | Meaning |
+|-------------|---------|
+| `0` | No report |
+| `1` | Loss of control |
+| `2` | Off track |
+| `3` | Off track (ongoing) |
+| `4` | Contact with world |
+| `5` | Collision with world |
+| `6` | Collision with world (ongoing) |
+| `7` | Contact with car |
+| `8` | Collision with car |
+
+| Penalty | Meaning |
+|---------|---------|
+| `0` | No penalty |
+| `1` | 0x |
+| `2` | 1x |
+| `3` | 2x |
+| `4` | 4x |
+
+### PaceMode
+
+| Value | Meaning |
+|-------|---------|
+| `0` | Single-file start |
+| `1` | Double-file start |
+| `2` | Single-file restart |
+| `3` | Double-file restart |
+| `4` | Not pacing |
+
+### CarLeftRight
+
+| Value | Meaning |
+|-------|---------|
+| `0` | Off |
+| `1` | Clear |
+| `2` | Car left |
+| `3` | Car right |
+| `4` | Cars left and right |
+| `5` | Two cars left |
+| `6` | Two cars right |
+
+### TrackWetness
+
+| Value | Meaning |
+|-------|---------|
+| `0` | Unknown |
+| `1` | Dry |
+| `2` | Mostly dry |
+| `3` | Very lightly wet |
+| `4` | Lightly wet |
+| `5` | Moderately wet |
+| `6` | Very wet |
+| `7` | Extremely wet |
+
+### EngineWarnings
+
+A bitfield.
+
+| Flag | Meaning |
+|------|---------|
+| `1` | Water temperature warning |
+| `2` | Fuel pressure warning |
+| `4` | Oil pressure warning |
+| `8` | Engine stalled |
+| `16` | Pit speed limiter on |
+| `32` | Rev limiter active |
+| `64` | Oil temperature warning |
+| `128` | Mandatory repair needed |
+| `256` | Optional repair needed |
+
+### PitSvFlags
+
+A bitfield.
+
+| Flag | Meaning |
+|------|---------|
+| `1` | Change left-front tire |
+| `2` | Change right-front tire |
+| `4` | Change left-rear tire |
+| `8` | Change right-rear tire |
+| `16` | Add fuel |
+| `32` | Windshield tearoff |
+| `64` | Fast repair |
+
+### CamCameraState
+
+A bitfield.
+
+| Flag | Meaning |
+|------|---------|
+| `1` | Session screen is showing |
+| `2` | Scenic camera active |
+| `4` | Camera tool active |
+| `8` | UI hidden |
+| `16` | Automatic shot selection |
+| `32` | Temporary edits |
+| `64` | Key acceleration |
+| `128` | Key 10x acceleration |
+| `256` | Mouse aim mode |
 
 ## Session Info
 
