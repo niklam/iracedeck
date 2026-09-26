@@ -9,6 +9,7 @@ export {
   _resetAudio,
   AudioBus,
   AudioChannel,
+  type AudioSessionIdentity,
   getAudio,
   type IAudioService,
   initializeAudio,

@@ -203,6 +203,13 @@ export type AudioRoot = {
 /** A bare string is an unrestricted root — shorthand for `{ dir }`. */
 export type AudioRootInput = string | AudioRoot;
 
+/**
+ * What the Windows Volume Mixer shows for our audio session instead of the
+ * host executable's name and icon ("Node") — issue #1253. `iconPath` must be
+ * an absolute path to an `.ico` file.
+ */
+export type AudioSessionIdentity = { displayName: string; iconPath?: string };
+
 // ─── Public interface ────────────────────────────────────────────────────────
 
 export interface IAudioService {
@@ -399,10 +406,17 @@ class AudioService implements IAudioService {
   private deviceRunning = false;
   private idleStopTimer: ReturnType<typeof setTimeout> | null = null;
 
-  constructor(logger: ILogger, native: AudioNative, roots: readonly AudioRootInput[]) {
+  constructor(logger: ILogger, native: AudioNative, roots: readonly AudioRootInput[], identity?: AudioSessionIdentity) {
     this.logger = logger;
     this.native = native;
     this.roots = normalizeRoots(roots);
+
+    // Name the session before any engine exists: the native layer refuses
+    // while one does, and applies the identity to every engine it creates
+    // from here on, reroutes included (#1253).
+    if (identity && !this.native.setSessionIdentity(identity.displayName, identity.iconPath)) {
+      this.logger.warn("Audio session identity was not accepted; the Volume Mixer keeps its default name");
+    }
 
     // Register persistent native end callbacks for all channels.
     // These dispatch to the JS-level one-shot callbacks.
@@ -1062,17 +1076,22 @@ let audioService: AudioService | null = null;
  * authorised for the clip and has the file wins. Pass an empty list to disable
  * resolution entirely (useful in tests that inject a fake AudioNative and don't
  * care where the path points).
+ *
+ * `identity` is the name and icon the Windows Volume Mixer shows for our audio
+ * session (issue #1253). It is handed to the native layer here, before any
+ * engine exists. Omit it to keep the Windows default (the host executable's).
  */
 export function initializeAudio(
   logger: ILogger = silentLogger,
   native: AudioNative,
   roots: readonly AudioRootInput[] = [],
+  identity?: AudioSessionIdentity,
 ): IAudioService {
   if (audioService) {
     throw new Error("Audio service already initialized. initializeAudio() should only be called once.");
   }
 
-  audioService = new AudioService(logger, native, roots);
+  audioService = new AudioService(logger, native, roots, identity);
   logger.info("Audio service initialized");
 
   return audioService;

@@ -27,6 +27,7 @@ function createMockNative(): AudioNative {
     setAudioDeviceById: vi.fn(() => true),
     startAudioEngine: vi.fn(() => true),
     stopAudioEngine: vi.fn(() => true),
+    setSessionIdentity: vi.fn(() => true),
   } as unknown as AudioNative;
 }
 
@@ -774,6 +775,54 @@ describe("AudioService", () => {
       const ok = getAudio().setAudioDeviceById("STALE-ID");
 
       expect(ok).toBe(false);
+    });
+  });
+
+  describe("session identity (#1253 — the Volume Mixer names our session)", () => {
+    const identity = { displayName: "iRaceDeck", iconPath: "C:/plugin/imgs/plugin/iracedeck.ico" };
+
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    it("hands the identity to the native layer before the engine is created or started", () => {
+      const native = createMockNative();
+      initializeAudio(mockLogger as never, native, [], identity);
+      getAudio().init();
+      getAudio().playOnChannel(AudioChannel.Voice, "/msg.mp3");
+
+      expect(native.setSessionIdentity).toHaveBeenCalledTimes(1);
+      expect(native.setSessionIdentity).toHaveBeenCalledWith("iRaceDeck", identity.iconPath);
+
+      const identityOrder = vi.mocked(native.setSessionIdentity).mock.invocationCallOrder[0];
+      expect(identityOrder).toBeLessThan(vi.mocked(native.initAudioEngine).mock.invocationCallOrder[0]);
+      expect(identityOrder).toBeLessThan(vi.mocked(native.playOnChannel).mock.invocationCallOrder[0]);
+      expect(identityOrder).toBeLessThan(vi.mocked(native.startAudioEngine).mock.invocationCallOrder[0]);
+    });
+
+    it("passes a display name without an icon through unchanged", () => {
+      const native = createMockNative();
+      initializeAudio(mockLogger as never, native, [], { displayName: "iRaceDeck" });
+
+      expect(native.setSessionIdentity).toHaveBeenCalledWith("iRaceDeck", undefined);
+    });
+
+    it("passes nothing to the native layer when no identity is given", () => {
+      const native = createMockNative();
+      initializeAudio(mockLogger as never, native, []);
+      getAudio().init();
+      getAudio().playOnChannel(AudioChannel.Voice, "/msg.mp3");
+
+      expect(native.setSessionIdentity).not.toHaveBeenCalled();
+    });
+
+    it("warns and carries on when the native layer refuses the identity", () => {
+      const native = createMockNative();
+      vi.mocked(native.setSessionIdentity).mockReturnValue(false);
+      initializeAudio(mockLogger as never, native, [], identity);
+
+      expect(mockLogger.warn).toHaveBeenCalledWith(expect.stringContaining("session identity"));
+      expect(getAudio().init()).toBe(true);
     });
   });
 
