@@ -40,6 +40,30 @@ describe("createSvgRasterizer", () => {
     expect(withText.equals(withoutText)).toBe(false);
   });
 
+  const KNOB_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 176 112" width="176" height="112"><rect width="176" height="112" fill="#123"/></svg>`;
+
+  it("renders a non-square target at exactly its width and height when the drawing has that aspect (#1013)", async () => {
+    const rasterize = createSvgRasterizer({ fontsDir });
+    const png = await rasterize(KNOB_SVG, 176, 112);
+    expect(png.readUInt32BE(16)).toBe(176);
+    expect(png.readUInt32BE(20)).toBe(112);
+  });
+
+  it("fits a drawing of the wrong aspect inside the target box instead of overflowing it", async () => {
+    const rasterize = createSvgRasterizer({ fontsDir });
+    // A square icon into a 176×112 box: the height is the binding dimension.
+    const png = await rasterize(ICON_SVG, 176, 112);
+    expect(png.readUInt32BE(16)).toBe(112);
+    expect(png.readUInt32BE(20)).toBe(112);
+  });
+
+  it("keeps the width-only call exactly as before", async () => {
+    const rasterize = createSvgRasterizer({ fontsDir });
+    const png = await rasterize(KNOB_SVG, 176);
+    expect(png.readUInt32BE(16)).toBe(176);
+    expect(png.readUInt32BE(20)).toBe(112);
+  });
+
   it("throws when the fonts directory is missing", () => {
     const missingFontsDir = fileURLToPath(new URL("../fonts-does-not-exist", import.meta.url));
     expect(() => createSvgRasterizer({ fontsDir: missingFontsDir })).toThrow(/fonts directory not found/i);

@@ -608,6 +608,7 @@ export {
   isSvgDataUri,
   TOUCH_STRIP_SLOT_WIDTH,
   toDeviceImage,
+  type DeviceImageSize,
   type SvgRenderFn,
 } from "./rasterizer-service.js";
 
@@ -743,6 +744,16 @@ export {
   type ProfileTemplate,
   type ProfileTemplateStatus,
 } from "./device-profiles.js";
+
+// The dial's own screen: hardware profiles the adapters hand out and the
+// renderers branch on (issue #1013)
+export {
+  DIAL_CANVAS_KEY,
+  SD_PLUS_STRIP_CANVAS,
+  STREAM_DOCK_KNOB_CANVAS,
+  type DialCanvasId,
+  type DialCanvasProfile,
+} from "./dial-canvas.js";
 
 // Profile switcher singleton (issue #736)
 export {

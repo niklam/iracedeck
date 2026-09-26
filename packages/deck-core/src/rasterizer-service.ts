@@ -12,12 +12,25 @@
 import { dataUriToSvg } from "@iracedeck/icon-composer";
 import { type ILogger, silentLogger } from "@iracedeck/logger";
 
-export type SvgRenderFn = (svg: string, widthPx: number) => Promise<Buffer>;
+import { SD_PLUS_STRIP_CANVAS } from "./dial-canvas.js";
+
+/** A device-bound image's target box. A bare number is the legacy square/width-only form. */
+export interface DeviceImageSize {
+  width: number;
+  height: number;
+}
+
+/**
+ * Renders `svg` to a PNG. With `heightPx` omitted the width alone drives the
+ * scale (every key icon; the SVG's own aspect decides the height). With it
+ * given the result FITS the width×height box — see `@iracedeck/rasterizer`.
+ */
+export type SvgRenderFn = (svg: string, widthPx: number, heightPx?: number) => Promise<Buffer>;
 
 const SVG_DATA_URI_PREFIX = "data:image/svg+xml";
 
 /** Elgato touch-strip slot width in px — dial pixmaps rasterize at this width. */
-export const TOUCH_STRIP_SLOT_WIDTH = 200;
+export const TOUCH_STRIP_SLOT_WIDTH = SD_PLUS_STRIP_CANVAS.width;
 
 /**
  * LRU cap: 512 entries — worst case ~15-25 MB (240px PNGs, base64-encoded, keys
@@ -31,7 +44,7 @@ export function isSvgDataUri(value: string): boolean {
 }
 
 class RasterizerService {
-  /** LRU cache keyed by `${targetPx}|${svgDataUri}` (Map preserves insertion order). */
+  /** LRU cache keyed by `${targetPx}|${svgDataUri}` or `${width}x${height}|${svgDataUri}` (Map preserves insertion order). */
   private readonly cache = new Map<string, Promise<string>>();
 
   /** Monotonic per-contextKey sequence for supersede detection. */
@@ -44,7 +57,7 @@ class RasterizerService {
     private readonly logger: ILogger,
   ) {}
 
-  async toDeviceImage(contextKey: string, image: string, targetPx: number): Promise<string | null> {
+  async toDeviceImage(contextKey: string, image: string, target: number | DeviceImageSize): Promise<string | null> {
     // Bump the sequence BEFORE the non-SVG early return: a non-SVG image for
     // this context must still supersede any in-flight SVG render, otherwise
     // a slow render started before it could land after it (stale-over-fresh).
@@ -56,7 +69,7 @@ class RasterizerService {
     let result: string;
 
     try {
-      result = await this.rasterizeCached(image, targetPx);
+      result = await this.rasterizeCached(image, target);
     } catch (err) {
       // Render failure: ship the SVG as before. Warn once, then debug.
       if (this.failureLogged) {
@@ -76,8 +89,8 @@ class RasterizerService {
     return result;
   }
 
-  private rasterizeCached(svgDataUri: string, targetPx: number): Promise<string> {
-    const key = `${targetPx}|${svgDataUri}`;
+  private rasterizeCached(svgDataUri: string, target: number | DeviceImageSize): Promise<string> {
+    const key = `${typeof target === "number" ? target : `${target.width}x${target.height}`}|${svgDataUri}`;
     const hit = this.cache.get(key);
 
     if (hit) {
@@ -88,9 +101,11 @@ class RasterizerService {
       return hit;
     }
 
-    const pending = this.render(dataUriToSvg(svgDataUri), targetPx).then(
-      (png) => `data:image/png;base64,${png.toString("base64")}`,
-    );
+    const svg = dataUriToSvg(svgDataUri);
+    // A number keeps the legacy width-only call exactly (no third argument).
+    const pending = (
+      typeof target === "number" ? this.render(svg, target) : this.render(svg, target.width, target.height)
+    ).then((png) => `data:image/png;base64,${png.toString("base64")}`);
 
     this.cache.set(key, pending);
 
@@ -132,11 +147,18 @@ export function isRasterizerInitialized(): boolean {
  * image still bumps the per-contextKey sequence before returning, so it can
  * supersede — and never be superseded-past by — an in-flight SVG render for
  * the same context.
+ *
+ * `target` is the legacy square/width-only px count, or a `DeviceImageSize`
+ * for a non-square screen such as a Stream Dock knob (#1013).
  */
-export async function toDeviceImage(contextKey: string, image: string, targetPx: number): Promise<string | null> {
+export async function toDeviceImage(
+  contextKey: string,
+  image: string,
+  target: number | DeviceImageSize,
+): Promise<string | null> {
   if (!rasterizerService) return image;
 
-  return rasterizerService.toDeviceImage(contextKey, image, targetPx);
+  return rasterizerService.toDeviceImage(contextKey, image, target);
 }
 
 /**

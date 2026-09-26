@@ -107,6 +107,8 @@ function createTestContext(): TestContext {
     setFeedback: vi.fn().mockResolvedValue(undefined),
     setFeedbackLayout: vi.fn().mockResolvedValue(undefined),
     setTriggerDescription: vi.fn().mockResolvedValue(undefined),
+    dialCanvas: () => null,
+    setDialCanvas: vi.fn().mockResolvedValue(undefined),
   };
 
   const willAppear = {
@@ -252,6 +254,8 @@ describe("BaseAction regenerate-callback reconciliation (issue #642)", () => {
       setFeedback: vi.fn().mockResolvedValue(undefined),
       setFeedbackLayout: vi.fn().mockResolvedValue(undefined),
       setTriggerDescription: vi.fn().mockResolvedValue(undefined),
+      dialCanvas: () => null,
+      setDialCanvas: vi.fn().mockResolvedValue(undefined),
     };
 
     return { action, fakeAction, setImageSpy };
@@ -368,6 +372,8 @@ describe("BaseAction title template live updates (issue #899)", () => {
       setFeedback: vi.fn().mockResolvedValue(undefined),
       setFeedbackLayout: vi.fn().mockResolvedValue(undefined),
       setTriggerDescription: vi.fn().mockResolvedValue(undefined),
+      dialCanvas: () => null,
+      setDialCanvas: vi.fn().mockResolvedValue(undefined),
     };
     const willAppear = {
       action: fakeAction,

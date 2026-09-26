@@ -103,4 +103,33 @@ describe("toDeviceImage", () => {
     initializeRasterizer(vi.fn());
     expect(() => initializeRasterizer(vi.fn())).toThrow(/already initialized/);
   });
+
+  it("hands a non-square target's width AND height to the render fn (#1013)", async () => {
+    const render = vi.fn().mockResolvedValue(FAKE_PNG);
+    initializeRasterizer(render);
+
+    await toDeviceImage("knob", SVG_URI, { width: 176, height: 112 });
+
+    expect(render).toHaveBeenCalledWith(SVG, 176, 112);
+  });
+
+  it("keeps a square number target on the legacy width-only call", async () => {
+    const render = vi.fn().mockResolvedValue(FAKE_PNG);
+    initializeRasterizer(render);
+
+    await toDeviceImage("key", SVG_URI, 144);
+
+    expect(render).toHaveBeenCalledWith(SVG, 144);
+  });
+
+  it("caches a non-square render separately from a square one of the same width", async () => {
+    const render = vi.fn().mockResolvedValue(FAKE_PNG);
+    initializeRasterizer(render);
+
+    await toDeviceImage("a", SVG_URI, 176);
+    await toDeviceImage("b", SVG_URI, { width: 176, height: 112 });
+    await toDeviceImage("c", SVG_URI, { width: 176, height: 112 });
+
+    expect(render).toHaveBeenCalledTimes(2);
+  });
 });
