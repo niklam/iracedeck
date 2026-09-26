@@ -186,7 +186,7 @@ interface AudioDialContext {
  */
 export interface AudioDialHost {
   readonly logger: ILogger;
-  tapBinding(settingKey: string): Promise<void>;
+  tapBinding(settingKey: string): Promise<boolean>;
   holdBinding(actionId: string, settingKey: string): Promise<void>;
   releaseBinding(actionId: string): Promise<void>;
   isBindingMissing(keys: string | string[] | null | undefined): boolean;

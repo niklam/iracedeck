@@ -271,6 +271,63 @@ describe("BindingDispatcher", () => {
     });
   });
 
+  // --- tap result (#962) ---
+
+  describe("tap result", () => {
+    beforeEach(() => {
+      initializeBindingDispatcher(mockLogger);
+    });
+
+    const keyboard = JSON.stringify({ key: "f1", modifiers: [], code: "F1" });
+    const simhub = JSON.stringify({ type: "simhub", role: "My Role" });
+
+    it("returns true when the keyboard send succeeds", async () => {
+      mockGetGlobalSettings.mockReturnValue({ myKey: keyboard });
+
+      await expect(getBindingDispatcher().tap("myKey")).resolves.toBe(true);
+    });
+
+    it("returns false when the keyboard send fails", async () => {
+      mockGetGlobalSettings.mockReturnValue({ myKey: keyboard });
+      mockSendKeyCombination.mockResolvedValue(false);
+
+      await expect(getBindingDispatcher().tap("myKey")).resolves.toBe(false);
+    });
+
+    it("returns true when the SimHub role starts and stops", async () => {
+      mockGetGlobalSettings.mockReturnValue({ myKey: simhub });
+
+      await expect(getBindingDispatcher().tap("myKey")).resolves.toBe(true);
+    });
+
+    it("returns true when the SimHub role starts but fails to stop (the press went out)", async () => {
+      mockGetGlobalSettings.mockReturnValue({ myKey: simhub });
+      mockStopRole.mockResolvedValue(false);
+
+      await expect(getBindingDispatcher().tap("myKey")).resolves.toBe(true);
+    });
+
+    it("returns false when the SimHub role fails to start", async () => {
+      mockGetGlobalSettings.mockReturnValue({ myKey: simhub });
+      mockStartRole.mockResolvedValue(false);
+
+      await expect(getBindingDispatcher().tap("myKey")).resolves.toBe(false);
+    });
+
+    it("returns false when SimHub is not initialized", async () => {
+      mockGetGlobalSettings.mockReturnValue({ myKey: simhub });
+      mockIsSimHubInitialized.mockReturnValue(false);
+
+      await expect(getBindingDispatcher().tap("myKey")).resolves.toBe(false);
+    });
+
+    it("returns false when nothing is bound", async () => {
+      mockGetGlobalSettings.mockReturnValue({});
+
+      await expect(getBindingDispatcher().tap("myKey")).resolves.toBe(false);
+    });
+  });
+
   // --- hold ---
 
   describe("hold", () => {
@@ -582,6 +639,39 @@ describe("BindingDispatcher", () => {
       mockGetGlobalSettings.mockReturnValue({ myKey: "" });
 
       expect(getBindingDispatcher().isConfigured("myKey")).toBe(false);
+    });
+  });
+
+  // --- isKeyboardBound (#962) ---
+
+  describe("isKeyboardBound", () => {
+    beforeEach(() => {
+      initializeBindingDispatcher(mockLogger);
+    });
+
+    it("returns true for a keyboard binding", () => {
+      mockGetGlobalSettings.mockReturnValue({ myKey: JSON.stringify({ key: "f1", modifiers: [], code: "F1" }) });
+
+      expect(getBindingDispatcher().isKeyboardBound("myKey")).toBe(true);
+    });
+
+    it("returns false for a SimHub role", () => {
+      mockGetGlobalSettings.mockReturnValue({ myKey: JSON.stringify({ type: "simhub", role: "MyRole" }) });
+
+      expect(getBindingDispatcher().isKeyboardBound("myKey")).toBe(false);
+    });
+
+    it("returns false when no binding is set", () => {
+      mockGetGlobalSettings.mockReturnValue({ myKey: "" });
+
+      expect(getBindingDispatcher().isKeyboardBound("myKey")).toBe(false);
+      expect(getBindingDispatcher().isKeyboardBound("otherKey")).toBe(false);
+    });
+
+    it("returns false for a corrupt binding value", () => {
+      mockGetGlobalSettings.mockReturnValue({ myKey: "{not json" });
+
+      expect(getBindingDispatcher().isKeyboardBound("myKey")).toBe(false);
     });
   });
 

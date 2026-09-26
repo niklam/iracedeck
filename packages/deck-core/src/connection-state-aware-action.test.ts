@@ -11,17 +11,19 @@ const {
   mockRelease,
   mockIsReady,
   mockIsConfigured,
+  mockIsKeyboardBound,
   mockOnGlobalSettingsChange,
   mockOnSimHubReachabilityChange,
 } = vi.hoisted(() => ({
   mockGetConnectionStatus: vi.fn(() => true),
   mockSubscribe: vi.fn(),
   mockUnsubscribe: vi.fn(),
-  mockTap: vi.fn().mockResolvedValue(undefined),
+  mockTap: vi.fn().mockResolvedValue(true),
   mockHold: vi.fn().mockResolvedValue(undefined),
   mockRelease: vi.fn().mockResolvedValue(undefined),
   mockIsReady: vi.fn(() => true),
   mockIsConfigured: vi.fn((_key: string) => true),
+  mockIsKeyboardBound: vi.fn((_key: string) => true),
   mockOnGlobalSettingsChange: vi.fn(() => vi.fn()),
   mockOnSimHubReachabilityChange: vi.fn(() => vi.fn()),
 }));
@@ -41,6 +43,7 @@ vi.mock("./binding-dispatcher.js", () => ({
     release: mockRelease,
     isReady: mockIsReady,
     isConfigured: mockIsConfigured,
+    isKeyboardBound: mockIsKeyboardBound,
   }),
 }));
 
@@ -89,7 +92,7 @@ class TestAction extends ConnectionStateAwareAction {
     this.setActiveBinding(key);
   }
 
-  async callTapBinding(key: string): Promise<void> {
+  async callTapBinding(key: string): Promise<boolean> {
     return this.tapBinding(key);
   }
 
@@ -107,6 +110,10 @@ class TestAction extends ConnectionStateAwareAction {
 
   callIsBindingMissing(keys: string | string[] | null | undefined): boolean {
     return this.isBindingMissing(keys);
+  }
+
+  callIsBindingKeyboardBound(key: string): boolean {
+    return this.isBindingKeyboardBound(key);
   }
 }
 
@@ -261,6 +268,24 @@ describe("ConnectionStateAwareAction", () => {
       await action.callTapBinding("settingKey");
 
       expect(mockTap).toHaveBeenCalledWith("settingKey");
+    });
+
+    it("passes the dispatcher's success result through (#962)", async () => {
+      mockTap.mockResolvedValueOnce(true);
+      await expect(action.callTapBinding("settingKey")).resolves.toBe(true);
+
+      mockTap.mockResolvedValueOnce(false);
+      await expect(action.callTapBinding("settingKey")).resolves.toBe(false);
+    });
+  });
+
+  describe("isBindingKeyboardBound (#962)", () => {
+    it("delegates to the dispatcher's isKeyboardBound", () => {
+      mockIsKeyboardBound.mockImplementation((k: string) => k === "keyboardKey");
+
+      expect(action.callIsBindingKeyboardBound("keyboardKey")).toBe(true);
+      expect(action.callIsBindingKeyboardBound("simHubKey")).toBe(false);
+      expect(mockIsKeyboardBound).toHaveBeenCalledWith("simHubKey");
     });
   });
 

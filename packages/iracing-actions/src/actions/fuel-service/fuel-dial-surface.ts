@@ -246,7 +246,7 @@ export interface FuelDialHost {
   readonly logger: ILogger;
   getTelemetry(): TelemetryData | null;
   getSessionInfo(): SessionInfo | null;
-  tapBinding(settingKey: string): Promise<void>;
+  tapBinding(settingKey: string): Promise<boolean>;
   isBindingMissing(keys: string | string[] | null | undefined): boolean;
 }
 

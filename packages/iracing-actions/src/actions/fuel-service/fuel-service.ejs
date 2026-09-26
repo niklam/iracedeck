@@ -71,8 +71,9 @@
 			<div class="ird-supporting-text">
 				Lets you see the value change in iRacing — including the autofuel lap margin,
 				which no telemetry reports. iRacing never says which black box is open, so
-				iRaceDeck switches through another box first; both keypresses are sent
-				together, so you effectively never see it.
+				iRaceDeck switches through another box first. With key bindings both
+				keypresses are sent together, so you effectively never see it; with a
+				SimHub role it may flash briefly.
 			</div>
 			<%
 			// Prime candidates = the 11 direct black boxes only. The two cycle keys are
@@ -87,7 +88,8 @@
 				enabled-setting="showBlackBox"
 				target="blackBoxFuel"
 				candidates='<%= JSON.stringify(__primeCandidates) %>'
-				message="Showing the black box needs keyboard bindings for the Fuel black box and at least one other black box. Set them under Related Key Bindings. The fuel value still changes without them."
+				message="Showing the black box needs black-box bindings for the Fuel box and at least one other box. Set them under Related Key Bindings. The fuel value still changes without them."
+				simhub-message="The Fuel box or its priming box is bound to a SimHub role, so the priming box may flash briefly before the Fuel box opens. Bind the Fuel box and one other box to keys to avoid it."
 			></ird-black-box-caveat>
 		</div>
 

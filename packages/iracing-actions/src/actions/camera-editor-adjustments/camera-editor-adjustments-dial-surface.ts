@@ -380,7 +380,7 @@ interface CameraEditorDialContext {
 export interface CameraEditorDialHost {
   readonly logger: ILogger;
   getTelemetry(): TelemetryData | null;
-  tapBinding(settingKey: string): Promise<void>;
+  tapBinding(settingKey: string): Promise<boolean>;
   isBindingMissing(keys: string | string[] | null | undefined): boolean;
 }
 

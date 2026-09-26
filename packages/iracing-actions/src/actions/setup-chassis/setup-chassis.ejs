@@ -79,8 +79,9 @@
 				Lets you see the value change in iRacing — In-Car Adjustments for the
 				differential, ARBs, power steering, and weight jackers; Pit Stop Adjustments
 				for the springs and shocks. iRacing never says which black box is open, so
-				iRaceDeck switches through another box first; both keypresses are sent
-				together, so you effectively never see it.
+				iRaceDeck switches through another box first. With key bindings both
+				keypresses are sent together, so you effectively never see it; with a
+				SimHub role it may flash briefly.
 			</div>
 			<%
 			var __primeCandidates = require('./data/key-bindings.json').blackBox
@@ -92,7 +93,8 @@
 				enabled-setting="showBlackBox"
 				target="blackBoxInCar"
 				candidates='<%= JSON.stringify(__primeCandidates) %>'
-				message="Showing the black box needs keyboard bindings for the In-Car black box and at least one other black box. Set them under Related Key Bindings. The value still changes without them."
+				message="Showing the black box needs black-box bindings for the In-Car box and at least one other box. Set them under Related Key Bindings. The value still changes without them."
+				simhub-message="The In-Car box or its priming box is bound to a SimHub role, so the priming box may flash briefly before the In-Car box opens. Bind the In-Car box and one other box to keys to avoid it."
 			></ird-black-box-caveat>
 		</div>
 
@@ -269,7 +271,11 @@
 					caveat.setAttribute("target", pitStop ? "blackBoxPitStop" : "blackBoxInCar");
 					caveat.setAttribute(
 						"message",
-						"Showing the black box needs keyboard bindings for the " + boxName + " black box and at least one other black box. Set them under Related Key Bindings. The value still changes without them.",
+						"Showing the black box needs black-box bindings for the " + boxName + " box and at least one other box. Set them under Related Key Bindings. The value still changes without them.",
+					);
+					caveat.setAttribute(
+						"simhub-message",
+						"The " + boxName + " box or its priming box is bound to a SimHub role, so the priming box may flash briefly before the " + boxName + " box opens. Bind the " + boxName + " box and one other box to keys to avoid it.",
 					);
 				}
 			}

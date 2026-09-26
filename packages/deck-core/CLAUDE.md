@@ -18,7 +18,7 @@ Platform-agnostic core interfaces, base classes, and utilities for deck device p
 ### Base Classes
 
 - `BaseAction<T>` — Abstract base with SVG image management, flag overlay, inactive state tracking, and the title-template live watcher (#899): contexts whose user-entered `titleOverrides.titleText` contains `{{` share one telemetry subscription that re-resolves the template per tick, string-compares, and re-runs the context's regenerate callback through a 10 Hz `IconUpdateThrottle` — so any action that registers `setRegenerateCallback` gets live templated titles for free. Accepts logger via constructor. Implements `IDeckActionHandler<T>`.
-- `ConnectionStateAwareAction<T>` — Extends `BaseAction` with automatic iRacing connection tracking via `sdkController`. Also home of the binding-dispatch delegates: `setActiveBinding`, `tapBinding`, `tapBindingSequence` (atomic multi-chord sequence, #818), `holdBinding`, `releaseBinding`, and `isBindingMissing` (per-context missing-binding check — prefer it over the shared `isActiveBindingMissing()`).
+- `ConnectionStateAwareAction<T>` — Extends `BaseAction` with automatic iRacing connection tracking via `sdkController`. Also home of the binding-dispatch delegates: `setActiveBinding`, `tapBinding` (resolves to whether the press went out, #962), `tapBindingSequence` (atomic multi-chord sequence, #818), `holdBinding`, `releaseBinding`, `isBindingMissing` (per-context missing-binding check — prefer it over the shared `isActiveBindingMissing()`), and `isBindingKeyboardBound` (keyboard binding, not a SimHub role, #962).
 
 ### Icon Assembly (re-exported from `@iracedeck/icon-composer`)
 
