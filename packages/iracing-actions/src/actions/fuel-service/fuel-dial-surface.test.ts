@@ -2355,6 +2355,63 @@ describe("FuelService dial surface", () => {
 
       expect(mockTapBinding).toHaveBeenCalledWith("fuelServiceToggleAutofuel");
     });
+
+    // A long press with a previewable outcome (fill-to-max), so "no preview
+    // frame" and "the click was not read as long" are both observable.
+    const loneDownSettings = { pressAction: "toggle-fueling", longPressAction: "fill-to-max", dialMode: "add-amount" };
+
+    it("a lone dialDown (a Mirabox hold) fires nothing and does not poison the next short press (#1013)", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
+      const ctx = dialContext("ld1", KNOB);
+      await appear(ctx, loneDownSettings);
+      mockPitClearFuel.mockClear();
+      mockPitFuel.mockClear();
+      const framesBefore = ctx.setDialCanvas.mock.calls.length;
+      const timersBefore = vi.getTimerCount();
+
+      // The hold: a dialDown whose dialUp never comes.
+      await action.onDialDown(basicEvent(ctx, loneDownSettings) as never);
+      expect(vi.getTimerCount()).toBe(timersBefore); // no preview timer armed
+      vi.advanceTimersByTime(5000);
+
+      expect(mockPitClearFuel).not.toHaveBeenCalled();
+      expect(mockPitFuel).not.toHaveBeenCalled();
+      // The 5 s heartbeat still redraws the knob; none of its frames is a preview.
+      const holdFrames = ctx.setDialCanvas.mock.calls.slice(framesBefore);
+
+      expect(holdFrames.some((call) => stripCanvas(call[0] as string).includes("data-pending-bar"))).toBe(false);
+
+      // Then a real click: down + up 50 ms apart.
+      await action.onDialDown(basicEvent(ctx, loneDownSettings) as never);
+      vi.advanceTimersByTime(50);
+      await action.onDialUp(basicEvent(ctx, loneDownSettings) as never);
+
+      expect(mockPitClearFuel).toHaveBeenCalledTimes(1);
+      expect(mockPitFuel).not.toHaveBeenCalled();
+    });
+
+    it("the same sequence on the Stream Deck+ (extended gestures on) still classifies the click as short", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
+      const ctx = dialContext("ld2", STRIP);
+      await appear(ctx, loneDownSettings);
+      mockPitClearFuel.mockClear();
+      mockPitFuel.mockClear();
+
+      await action.onDialDown(basicEvent(ctx, loneDownSettings) as never);
+      vi.advanceTimersByTime(5000);
+      await action.onDialDown(basicEvent(ctx, loneDownSettings) as never);
+      vi.advanceTimersByTime(50);
+      await action.onDialUp(basicEvent(ctx, loneDownSettings) as never);
+
+      expect(mockPitClearFuel).toHaveBeenCalledTimes(1);
+      expect(mockPitFuel).not.toHaveBeenCalled();
+      const contexts = (
+        action as unknown as { dialSurface: { contextsState: Map<string, { holdPreview: { showing: boolean } }> } }
+      ).dialSurface.contextsState;
+      const surfaceHoldPreviewShowing = contexts.get("ld2")?.holdPreview.showing;
+
+      expect(surfaceHoldPreviewShowing).toBe(false);
+    });
   });
 
   describe("hold preview on the touch strip (#1120)", () => {

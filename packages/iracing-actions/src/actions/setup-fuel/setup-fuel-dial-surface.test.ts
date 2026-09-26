@@ -273,6 +273,45 @@ describe("SetupFuel dial surface", () => {
 
       expect(mockTapBinding).not.toHaveBeenCalledWith("setupFuelFcyModeToggle");
     });
+
+    it("a lone dialDown (a Mirabox hold) fires nothing and does not poison the next short press (#1013)", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
+      const ctx = dialContext("ld1", KNOB);
+      const settings = dialSettings({ setting: "fuel-mixture", pressAction: "toggle-fcy", longPressAction: "none" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+      const framesBefore = ctx.setDialCanvas.mock.calls.length;
+
+      // The hold: a dialDown whose dialUp never comes.
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      vi.advanceTimersByTime(5000);
+
+      expect(mockTapBinding).not.toHaveBeenCalled();
+      expect(ctx.setDialCanvas.mock.calls.length).toBe(framesBefore); // no preview frame
+
+      // Then a real click: down + up 50 ms apart.
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      vi.advanceTimersByTime(50);
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+
+      expect(mockTapBinding).toHaveBeenCalledTimes(1);
+      expect(mockTapBinding).toHaveBeenCalledWith("setupFuelFcyModeToggle");
+    });
+
+    it("the same sequence on the Stream Deck+ (extended gestures on) still classifies the click as short", async () => {
+      const ctx = dialContext("ld2", STRIP);
+      const settings = dialSettings({ setting: "fuel-mixture", pressAction: "toggle-fcy", longPressAction: "none" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      vi.advanceTimersByTime(5000);
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      vi.advanceTimersByTime(50);
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+
+      expect(mockTapBinding).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe("onTouchTap", () => {

@@ -209,6 +209,43 @@ describe("createHoldPreview", () => {
   });
 });
 
+describe("a dialDown with no dialUp (#1013)", () => {
+  it("is overwritten by the next dialDown — the second press is timed from its own start", () => {
+    // Surfaces store pressStart on every dialDown; a hold that never released
+    // leaves an old start behind, and the next down must replace it, not add
+    // to it. Modelled here on the classifier's inputs.
+    const firstDown = 1_000;
+    const secondDown = 6_000;
+    const secondUp = 6_050;
+
+    expect(classifyDialRelease({ pressStartMs: secondDown, nowMs: secondUp, rotatedWhilePressed: false })).toBe(
+      "short",
+    );
+    // The failure mode the surfaces guard against: timing from the stale start.
+    expect(classifyDialRelease({ pressStartMs: firstDown, nowMs: secondUp, rotatedWhilePressed: false })).toBe("long");
+  });
+
+  it("createHoldPreview: a second down() re-arms from scratch and a dispose() leaves no timer", () => {
+    vi.useFakeTimers();
+    const onThreshold = vi.fn(() => true);
+    const preview = createHoldPreview({ onThreshold, onCancel: vi.fn(), thresholdMs: () => 500 });
+
+    preview.down();
+    vi.advanceTimersByTime(400);
+    preview.down();
+    vi.advanceTimersByTime(400);
+
+    expect(onThreshold).not.toHaveBeenCalled();
+
+    preview.dispose();
+    vi.advanceTimersByTime(1000);
+
+    expect(onThreshold).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+    vi.useRealTimers();
+  });
+});
+
 describe("createHoldPreview — a failed draw must not take the plugin down", () => {
   beforeEach(() => {
     vi.useFakeTimers();
