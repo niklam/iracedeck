@@ -69,3 +69,47 @@ describe("plugin manifest action lists", () => {
     expect(names).toEqual(reference);
   });
 });
+
+// Dial parity (#1013): every action that declares "Encoder" on Elgato declares
+// "Knob" on Mirabox and vice versa, so a new dial surface cannot silently stay
+// Elgato-only; and a Mirabox knob entry carries no config block, because the
+// Stream Dock host has no layouts or trigger descriptions to configure.
+const ELGATO_MANIFEST = "packages/iracing-plugin-stream-deck/com.iracedeck.sd.core.sdPlugin/manifest.json";
+const MIRABOX_MANIFEST = "packages/iracing-plugin-mirabox/com.iracedeck.sd.core.sdPlugin/manifest.json";
+
+function actions(manifestRelPath) {
+  return JSON.parse(readFileSync(join(repoRoot, manifestRelPath), "utf-8")).Actions;
+}
+
+function uuidsDeclaring(manifestRelPath, controller) {
+  return actions(manifestRelPath)
+    .filter((action) => (action.Controllers ?? []).includes(controller))
+    .map((action) => action.UUID)
+    .sort();
+}
+
+describe("dial controller parity between Elgato and Mirabox (#1013)", () => {
+  it("declares Knob on Mirabox for exactly the actions that declare Encoder on Elgato", () => {
+    const encoders = uuidsDeclaring(ELGATO_MANIFEST, "Encoder");
+
+    expect(encoders.length).toBeGreaterThanOrEqual(16);
+    expect(uuidsDeclaring(MIRABOX_MANIFEST, "Knob")).toEqual(encoders);
+  });
+
+  it("gives a Mirabox Knob action no Knob or Encoder config block", () => {
+    const withBlock = actions(MIRABOX_MANIFEST)
+      .filter((action) => (action.Controllers ?? []).includes("Knob"))
+      .filter((action) => action.Knob !== undefined || action.Encoder !== undefined)
+      .map((action) => action.Name);
+
+    expect(withBlock).toEqual([]);
+  });
+
+  it("keeps Ulanzi Keypad-only until its dials are verified (out of scope in #1013)", () => {
+    const ulanzi = manifests.find((rel) => rel.includes("iracing-plugin-ulanzi"));
+
+    expect(ulanzi).toBeDefined();
+    expect(uuidsDeclaring(ulanzi, "Encoder")).toEqual([]);
+    expect(uuidsDeclaring(ulanzi, "Knob")).toEqual([]);
+  });
+});
