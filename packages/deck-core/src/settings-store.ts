@@ -317,8 +317,14 @@ export function createFileSettingsStore(opts: FileSettingsStoreOptions): Setting
       } catch (error: unknown) {
         const aside = path.replace(/\.json$/, "") + `.corrupt-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
         let preservedAt = aside;
+        const location = locateJsonError(text);
 
-        logger.error("Settings file could not be parsed; moving it aside and migrating from the deck host");
+        // The location goes in the ERROR line itself, not only the debug one:
+        // this runs before the settings (and so `debugLogging`) have loaded,
+        // so the debug detail never reaches a support log (#1036).
+        logger.error(
+          `Settings file could not be parsed${location === undefined ? "" : ` at line ${location.line}, column ${location.column}`}; moving it aside and migrating from the deck host`,
+        );
         logger.debug(`Corrupt settings file ${path} → ${aside}: ${String(error)}`);
 
         try {
@@ -363,8 +369,6 @@ export function createFileSettingsStore(opts: FileSettingsStoreOptions): Setting
             throw copyError;
           }
         }
-
-        const location = locateJsonError(text);
 
         try {
           opts.onRejected?.({

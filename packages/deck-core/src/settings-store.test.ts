@@ -184,6 +184,18 @@ describe("createFileSettingsStore", () => {
       expect(existsSync(rejection.preservedAt)).toBe(true);
     });
 
+    it("puts the location in the error log line, which is logged before debugLogging can be on", async () => {
+      mkdirSync(join(dir, "sub"), { recursive: true });
+      writeFileSync(store.path, '{\n  "a": 1,\n}\n', "utf-8");
+      const logger = { ...silentLogger, error: vi.fn() };
+
+      await createFileSettingsStore({ path: store.path, logger, debounceMs: 10 }).load();
+
+      expect(logger.error).toHaveBeenCalledWith(
+        "Settings file could not be parsed at line 3, column 1; moving it aside and migrating from the deck host",
+      );
+    });
+
     it("locates a mistake V8 gives no position for at all", async () => {
       mkdirSync(join(dir, "sub"), { recursive: true });
       writeFileSync(store.path, '{\n  "debugLogging": True\n}\n', "utf-8");
