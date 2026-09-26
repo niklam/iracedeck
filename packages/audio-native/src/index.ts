@@ -256,17 +256,40 @@ export class AudioNative {
    * shows for our audio session instead of the host executable's ("Node")
    * (issue #1253). Applied to every engine created afterwards and reapplied
    * when the output follows a default-device change. Refused while an engine
-   * exists, so call it before the first play. A no-op off Windows.
+   * exists, so call it before the first play; {@link destroyAudioEngine}
+   * clears it. A no-op off Windows.
    *
-   * @param displayName - The session's display name
+   * @param displayName - The session's display name; empty clears the identity
    * @param iconPath - Optional absolute path to an `.ico` file
-   * @returns true if the identity was stored; false while an engine exists
+   * @returns true if the identity was stored; false while an engine exists,
+   *          or when the loaded native binary predates this method
    */
   setSessionIdentity(displayName: string, iconPath?: string): boolean {
     if (addon) {
-      return addon.setSessionIdentity(displayName, iconPath);
+      return callAddonSetSessionIdentity(addon, displayName, iconPath);
     }
 
     return this.getMock().setSessionIdentity(displayName, iconPath);
   }
+}
+
+/**
+ * Call the addon's `setSessionIdentity`, or report false when the loaded
+ * binary predates it. A TypeScript build can run against an older
+ * `audio_native.node` — `pnpm build:ts` skips the native build, and a locked
+ * binary survives a rebuild — and a missing function must not throw inside
+ * `initializeAudio` and abort plugin startup over a cosmetic feature (#1253).
+ *
+ * @internal Exported for testing
+ */
+export function callAddonSetSessionIdentity(
+  nativeAddon: { setSessionIdentity?: unknown },
+  displayName: string,
+  iconPath?: string,
+): boolean {
+  if (typeof nativeAddon.setSessionIdentity !== "function") {
+    return false;
+  }
+
+  return nativeAddon.setSessionIdentity(displayName, iconPath) === true;
 }
