@@ -556,8 +556,9 @@ describe("VSDPlatformAdapter", () => {
 
     // One context per test: getContextForController reads the FIRST registered
     // willAppear handler, so a second call in the same test would never fire.
-    it("reports the knob profile on a Knob context (#1013)", async () => {
-      expect((await getContextForController("Knob")).dialCanvas()).toEqual({
+    // Both spellings, because isDial() accepts both and dialCanvas() rides on it.
+    it.each(["Knob", "Encoder"])("reports the knob profile on the %s controller (#1013)", async (controller) => {
+      expect((await getContextForController(controller)).dialCanvas()).toEqual({
         id: "stream-dock-knob",
         width: 176,
         height: 112,
@@ -669,7 +670,44 @@ describe("VSDPlatformAdapter", () => {
       );
     });
 
-    it("still rasterizes a plain setImage on a Knob context at the key size (the spike's 176 hack is gone)", async () => {
+    it("a slow setImage cannot land over a later setDialCanvas on a Knob context (#1013)", async () => {
+      // The first render (the key image) hangs until released; the second (the
+      // dial frame) resolves at once. Both address the same segment, so they
+      // must share one supersede key or the stale key image lands last.
+      let releaseKeyRender: (png: Buffer) => void = () => {};
+      initializeRasterizer(async (_svg, _w, h) => {
+        if (h === undefined) {
+          return new Promise<Buffer>((resolve) => {
+            releaseKeyRender = resolve;
+          });
+        }
+
+        return Buffer.from("dial");
+      });
+      const handler: IDeckActionHandler = { onWillAppear: vi.fn() };
+      adapter.registerAction("com.test.action", handler);
+      await actionEventHandler("willAppear")({
+        event: "willAppear",
+        action: "com.test.action",
+        context: "ctx-knob",
+        payload: { settings: {}, controller: "Knob" },
+      });
+      const ev = (handler.onWillAppear as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      const dialSvg = svgToDataUri(SVG.replace("#123", "#456"));
+
+      const slowKeyImage = ev.action.setImage(svgUri);
+      await ev.action.setDialCanvas(dialSvg);
+      releaseKeyRender(Buffer.from("key"));
+      await slowKeyImage;
+
+      expect(client.setImage).toHaveBeenCalledTimes(1);
+      expect(client.setImage).toHaveBeenCalledWith(
+        "ctx-knob",
+        `data:image/png;base64,${Buffer.from("dial").toString("base64")}`,
+      );
+    });
+
+    it("still rasterizes a plain setImage on a Knob context at the key size, not the knob canvas size (#1013)", async () => {
       const rendered: number[] = [];
       initializeRasterizer(async (_svg, px) => {
         rendered.push(px);
