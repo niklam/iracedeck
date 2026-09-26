@@ -1,3 +1,4 @@
+import { VOICE_PACK_MANIFEST_FILE } from "@iracedeck/callout-script";
 import { zipSync } from "fflate";
 import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -14,7 +15,6 @@ import {
   createVoicePackInstallerFileSystem,
   readInstalledVoicePackSha,
   validateStagedVoicePack,
-  VOICE_PACK_MANIFEST_FILE,
   VOICE_PACK_PROGRESS_INTERVAL_MS,
   type VoicePackInstallerDeps,
   type VoicePackInstallerFileSystem,

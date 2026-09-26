@@ -16,10 +16,10 @@
  * cannot be forgotten the way a version bump can, which is why the comparison
  * is on the hash and the version is carried for humans.
  */
+import { packId } from "@iracedeck/callout-script";
 import { z } from "zod";
 
 import { SHA256_HEX_MESSAGE, SHA256_HEX_PATTERN } from "./voice-pack-constants.js";
-import { packId } from "./voice-pack-manifest.js";
 
 /**
  * How the pack got here.

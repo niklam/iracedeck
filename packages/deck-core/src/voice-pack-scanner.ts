@@ -2,13 +2,18 @@ import {
   CALLOUT_SCRIPT_FILE,
   type CalloutScript,
   calloutScriptPath,
+  dedupeDeclaredVoices,
+  packIdMatchesFolder,
   parseCalloutScriptText,
+  parseVoicePackManifest,
   qualifiedVoiceId,
+  USABLE_VOICE_CLIP,
+  VOICE_PACK_MANIFEST_FILE,
+  VOICE_SCRIPT_MAX_BYTES,
 } from "@iracedeck/callout-script";
 import { join } from "node:path";
 
 import { VOICE_PACK_PROVENANCE_FILE } from "./voice-pack-constants.js";
-import { parseVoicePackManifest } from "./voice-pack-manifest.js";
 import { parseVoicePackProvenance, type VoicePackSource } from "./voice-pack-provenance.js";
 
 /**
@@ -135,42 +140,12 @@ export interface ScanVoicePacksResult {
   problems: readonly VoicePackProblem[];
 }
 
-const MANIFEST_FILE = "voice-pack.json";
-
-/**
- * A clip the scenario engine can actually reach.
- *
- * Deliberately the SAME grammar `buildManifestPool` compiles —
- * `^voice/<id>/<group>/<base>(-NN)?\.mp3$` — minus the per-pool group and base,
- * because this is where the two are kept in agreement. Two ways a file under the
- * right prefix is nonetheless unreachable, both of which a pack hits by accident:
- *
- * - **A missing `<group>` segment.** `voice/luca/sample.mp3` is one level short
- *   of anything a pool can match, and no scenario references a clip that shape.
- * - **A non-lowercase extension.** `listMp3Files` matches `.mp3` case-INSENSITIVELY
- *   and records the name verbatim, which is right for finding files; the pool
- *   regex and the `clipSet` lookup are both case-SENSITIVE. `blue-01.MP3` — what
- *   plenty of Windows tools emit — would otherwise install, list its voice and
- *   play nothing.
- *
- * `VOICE_PACK_MAX_DEPTH` already reasons from this grammar for the depth CEILING.
- * This is the same reasoning applied to the floor and to the extension, so a pack
- * that cannot work is refused with a reason instead of being silently mute.
- */
-const USABLE_CLIP = /^voice\/[^/]+\/[^/]+\/[^/]+\.mp3$/;
-
-/**
- * The most text a `callouts.json` may hold before it is refused unread
- * (#1064). The reference voice's script is under 200 KB and the largest JSON
- * anywhere in the audio pipeline is 480 KB (the numbers
- * `VOICE_PACK_ARCHIVE_LIMITS` was calibrated against), so a megabyte is
- * headroom for any pack an author would write and a bound on what a
- * sideloaded file can make the grammar validate — the pack folder is
- * user-writable, and the schema walk is not free. Measured in UTF-16 code
- * units of the decoded text, which never exceeds the file's byte count, so a
- * file this check refuses is always larger than the cap in bytes as well.
- */
-export const VOICE_SCRIPT_MAX_BYTES = 1024 * 1024;
+// The rules this scan admits a pack by — the manifest schema and reader, the
+// usable-clip grammar (`USABLE_VOICE_CLIP`), the script size cap, the
+// id-vs-folder rule and the voice de-duplication — live in
+// `@iracedeck/callout-script`'s `voice-pack.ts` (#1134), the leaf `lint:pack`
+// and the packer reach too, so the three cannot disagree about what a pack is.
+// The WORDING of every problem stays here: the leaf decides, this file phrases.
 
 export type VoiceScriptRead = { ok: true; script: CalloutScript | null } | { ok: false; reason: string };
 
@@ -313,12 +288,14 @@ function scanRoot(root: string, kind: ScanRootKind, state: ScanState): void {
     }
 
     const dir = join(root, folder);
-    const read = fs.readTextFile(join(dir, MANIFEST_FILE));
+    const read = fs.readTextFile(join(dir, VOICE_PACK_MANIFEST_FILE));
 
     if (!read.ok) {
       problems.push({
         pack: folder,
-        reason: read.missing ? `no ${MANIFEST_FILE}` : `${MANIFEST_FILE} could not be read (${read.reason})`,
+        reason: read.missing
+          ? `no ${VOICE_PACK_MANIFEST_FILE}`
+          : `${VOICE_PACK_MANIFEST_FILE} could not be read (${read.reason})`,
       });
       continue;
     }
@@ -334,16 +311,10 @@ function scanRoot(root: string, kind: ScanRootKind, state: ScanState): void {
 
     // The folder name is how a pack is addressed on disk, so a mismatch would
     // make "the pack called luca" and "the folder called luca" two different
-    // things — an ambiguity the installer would later have to guess about.
-    //
-    // Compared case-INSENSITIVELY, because the filesystem underneath is. The id
-    // regex forces lowercase but a folder name never goes through it, so `Luca/`
-    // holding `"id": "luca"` would otherwise be refused — on Windows, the only
-    // platform the manifests declare (#994), those ARE one directory: the user
-    // cannot create both, and the manifest was just read through the capitalised
-    // path. Refusing it would reject a working pack over a distinction the OS
-    // does not make, with a message that reads as satisfied.
-    if (manifest.id !== folder.toLowerCase()) {
+    // things — an ambiguity the installer would later have to guess about. The
+    // comparison is the leaf's (`packIdMatchesFolder`), case-insensitive
+    // because the filesystem underneath is; the reasoning is on that function.
+    if (!packIdMatchesFolder(manifest.id, folder)) {
       problems.push({ pack: folder, reason: `declared id "${manifest.id}" does not match its folder name` });
       continue;
     }
@@ -359,28 +330,17 @@ function scanRoot(root: string, kind: ScanRootKind, state: ScanState): void {
     const provenanceRead = kind === "packs" ? fs.readTextFile(join(dir, VOICE_PACK_PROVENANCE_FILE)) : undefined;
     const provenance = provenanceRead?.ok ? parseVoicePackProvenance(provenanceRead.text) : undefined;
 
-    // De-duplicated within the pack — a manifest repeating a voice id would
-    // otherwise duplicate its clips and list it twice in the settings window.
-    // Keyed on `id`, never the label: two entries naming the same voice under
-    // different labels are still one voice, and the first wins.
-    const seen = new Set<string>();
-    const declared = manifest.voices.filter((voice) => {
-      if (seen.has(voice.id)) {
-        // Reported, not silently swallowed. Every other malformation in this
-        // scan says something; a repeat would otherwise be the one that does
-        // not — the author sees their pack install, sees ONE of the two names
-        // they wrote, and has nothing anywhere telling them the other was
-        // dropped. More likely now that a voice carries a label, since two
-        // entries differing only by label look like two things.
-        problems.push({ pack: folder, reason: `voice "${voice.id}" is declared more than once; the first wins` });
+    // De-duplicated within the pack by the leaf's rule (`dedupeDeclaredVoices`:
+    // keyed on `id`, first wins), and every repeat REPORTED, not silently
+    // swallowed. Every other malformation in this scan says something; a repeat
+    // would otherwise be the one that does not — the author sees their pack
+    // install, sees ONE of the two names they wrote, and has nothing anywhere
+    // telling them the other was dropped.
+    const { voices: declared, repeated } = dedupeDeclaredVoices(manifest.voices);
 
-        return false;
-      }
-
-      seen.add(voice.id);
-
-      return true;
-    });
+    for (const id of repeated) {
+      problems.push({ pack: folder, reason: `voice "${id}" is declared more than once; the first wins` });
+    }
 
     // Clip presence is checked PER VOICE, not per pack. A pack that declares a
     // voice but ships nothing under it would register an empty pool for every
@@ -388,9 +348,9 @@ function scanRoot(root: string, kind: ScanRootKind, state: ScanState): void {
     // put a voice in the dropdown that can never make a sound.
     //
     // "Ships something" means something the ENGINE CAN REACH, not merely a file
-    // under the right prefix — see USABLE_CLIP. A gate looser than what the pool
-    // builder consumes lets a pack install cleanly, enter the dropdown and then
-    // be completely silent, with the only trace at debug level.
+    // under the right prefix — see `USABLE_VOICE_CLIP`. A gate looser than what
+    // the pool builder consumes lets a pack install cleanly, enter the dropdown
+    // and then be completely silent, with the only trace at debug level.
     const found = fs.listMp3Files(dir);
     const voices: InstalledVoice[] = [];
     const clips: string[] = [];
@@ -403,7 +363,7 @@ function scanRoot(root: string, kind: ScanRootKind, state: ScanState): void {
       // That check is not replaced by the declaration — it is what validates it.
       const prefix = `voice/${voice.id}/`;
       const own = found.filter((clip) => clip.startsWith(prefix));
-      const usable = own.filter((clip) => USABLE_CLIP.test(clip));
+      const usable = own.filter((clip) => USABLE_VOICE_CLIP.test(clip));
 
       if (usable.length === 0) {
         unusable.push(

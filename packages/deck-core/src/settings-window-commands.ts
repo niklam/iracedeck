@@ -7,12 +7,12 @@
  * those commands are validated and routed — pure over injected delegates so
  * the three plugins share it and it is tested without a socket.
  */
+import { packId } from "@iracedeck/callout-script";
 import { z } from "zod";
 
 import { FEATURE_STARTUP_GATES } from "./feature-startup-policy.js";
 import { DEFAULT_FOCUS_IRACING_MODE, parseFocusIRacingMode } from "./focus-iracing-mode.js";
 import type { SettingsWindowBounds } from "./settings-window-launcher.js";
-import { packId } from "./voice-pack-manifest.js";
 
 /** Passthrough global-settings key holding the last window bounds. */
 export const SETTINGS_WINDOW_BOUNDS_KEY = "_settingsWindowBounds";
