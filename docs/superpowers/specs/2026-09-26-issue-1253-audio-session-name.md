@@ -27,7 +27,7 @@ The name is a constant, not a setting, and not per ecosystem: the product is iRa
 
 ### The icon
 
-`assets/favicon/favicon.ico` already exists (the website favicon, from the rebrand in `feb02e8fd`): 16, 32 and 48 px, 32-bit with alpha, which covers the mixer at 100–200 % scaling (Windows scales 32 → 24 for 150 %). It is copied verbatim into each plugin as `imgs/plugin/iracedeck.ico`, next to the committed `marketplace.png` that follows the same per-plugin pattern. A test asserts all three copies are byte-identical to the source, so a logo change cannot update one plugin and not the others. At about 15 KB it is irrelevant to Mirabox's distributable cap.
+`assets/favicon/favicon.ico` already exists (the website favicon, from the rebrand in `feb02e8fd`): 16, 32 and 48 px, 32-bit with alpha, which covers the mixer at 100–200 % scaling (Windows scales 32 → 24 for 150 %). It is committed once, verbatim, as the Elgato plugin's `imgs/plugin/iracedeck.ico`, next to `marketplace.png`. The Mirabox and Ulanzi plugins' `imgs/` folders are gitignored build outputs: their rollup `copy-assets` step copies the Elgato plugin's whole `imgs/plugin/` folder, which is how `marketplace.png` reaches them too, so the icon arrives there the same way. A test asserts the committed copy is byte-identical to the source, that both rollup configs copy that folder, and (once built) that the Mirabox and Ulanzi copies match, so a logo change cannot reach one plugin and not the others. At about 15 KB it is irrelevant to Mirabox's distributable cap.
 
 ## Alternatives rejected
 
@@ -44,5 +44,5 @@ The name is a constant, not a setting, and not per ecosystem: the product is iRa
 
 ## Testing
 
-- **Unit:** `audio-service` passes the identity to the native layer before the first `startEngine`, and passes nothing when none is given; the mock records `setSessionIdentity`. The icon-copy guard compares each plugin's `imgs/plugin/iracedeck.ico` with `assets/favicon/favicon.ico`.
+- **Unit:** `audio-service` passes the identity to the native layer before the first `startEngine`, and passes nothing when none is given; the mock records `setSessionIdentity`. The icon guard compares the committed `imgs/plugin/iracedeck.ico` and each built plugin's copy with `assets/favicon/favicon.ico`.
 - **Manual (Windows, each host the maintainer has):** trigger a callout, then check the row reads "iRaceDeck" with the logo in both the classic mixer (`sndvol.exe`) and Windows 11 Settings → System → Sound → Volume mixer. Then (1) let the idle teardown release the device and play again; (2) change the default output device while audio plays; (3) pick a specific device in the plugin's audio settings. The name and icon must survive all three.
