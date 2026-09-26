@@ -275,12 +275,17 @@ function toMergedSettings(flat: Record<string, unknown> = {}): Record<string, un
   return merged;
 }
 
-/** Fake dial (encoder) action context. */
-function dialContext(id: string) {
+const STRIP = { id: "sd-plus-strip", width: 200, height: 100 } as const;
+const KNOB = { id: "stream-dock-knob", width: 176, height: 112 } as const;
+
+/** Fake dial action context; `canvas` is the dial screen the host reports (#1013). */
+function dialContext(id: string, canvas: typeof STRIP | typeof KNOB | null = STRIP) {
   return {
     id,
     isKey: () => false,
     isDial: () => true,
+    dialCanvas: () => canvas,
+    setDialCanvas: vi.fn().mockResolvedValue(undefined),
     setImage: vi.fn().mockResolvedValue(undefined),
     setTitle: vi.fn().mockResolvedValue(undefined),
     setSettings: vi.fn().mockResolvedValue(undefined),
@@ -307,9 +312,9 @@ function touchTapEvent(action: ReturnType<typeof dialContext>, settings: Record<
   return { action, payload: { settings: toMergedSettings(settings), tapPos: [0, 0] as [number, number], hold } };
 }
 
-/** Decodes the strip's full-canvas pixmap (the `box` feedback key) to raw SVG. */
-function stripCanvas(payload: { box?: string } | undefined): string {
-  return decodeURIComponent(String(payload?.box ?? ""));
+/** Decodes a pushed dial-canvas data URI to raw SVG. */
+function stripCanvas(dataUri: string | undefined): string {
+  return decodeURIComponent(String(dataUri ?? ""));
 }
 
 /** Pulls the telemetry callback registered by onWillAppear via the mocked subscribe. */
@@ -1201,6 +1206,68 @@ describe("FuelService dial surface", () => {
 
       expect(img).toContain(">FUEL<");
       expect(img).toContain(">SERVICE<");
+    });
+  });
+
+  describe("the knob screen (#1013)", () => {
+    it("draws the approved knob canvas on the Stream Dock profile, with no name card", async () => {
+      const ctx = dialContext("k1", KNOB);
+      await appear(ctx, {});
+
+      expect(ctx.setImage).not.toHaveBeenCalled();
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls[0][0] as string);
+
+      expect(decoded).toContain('viewBox="0 0 176 112"');
+      expect(decoded).toContain("REFUEL");
+    });
+
+    it("draws the strip canvas and the name card on the Stream Deck+ profile", async () => {
+      const ctx = dialContext("k2", STRIP);
+      await appear(ctx, {});
+
+      expect(decodeURIComponent(ctx.setDialCanvas.mock.calls[0][0] as string)).toContain('viewBox="0 0 200 100"');
+      expect(decodeURIComponent(ctx.setImage.mock.calls[0][0] as string)).toContain(">SERVICE<");
+    });
+
+    it("pushes nothing without a dial canvas", async () => {
+      const ctx = dialContext("k3", null);
+      await appear(ctx, {});
+      vi.advanceTimersByTime(6000);
+
+      expect(ctx.setDialCanvas).not.toHaveBeenCalled();
+      expect(ctx.setFeedback).not.toHaveBeenCalled();
+    });
+
+    it("keeps rendering with the extended gestures off, and treats a long hold as the press", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
+      const ctx = dialContext("k4", KNOB);
+      const settings = { pressAction: "toggle-fueling", longPressAction: "fill-to-max" };
+      await appear(ctx, settings);
+      ctx.setDialCanvas.mockClear();
+
+      const timersBefore = vi.getTimerCount();
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      expect(vi.getTimerCount()).toBe(timersBefore);
+      vi.advanceTimersByTime(2000);
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+
+      // The PRESS slot fired (toggle-fueling clears the request), not the hold slot.
+      expect(mockPitClearFuel).toHaveBeenCalled();
+      expect(mockPitFuel).not.toHaveBeenCalledWith(110);
+      expect(ctx.setDialCanvas).toHaveBeenCalled();
+    });
+
+    it("a switch-mode press persists over the raw settings, keeping a stored tapAction the knob PI hides", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
+      const ctx = dialContext("k5", KNOB);
+      const settings = { dialMode: "add-amount", pressAction: "switch-mode", tapAction: "toggle-fueling" };
+      await appear(ctx, settings);
+
+      await pressDial(ctx, settings);
+
+      expect(ctx.setSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ dial: expect.objectContaining({ mode: "fill-to", tapAction: "toggle-fueling" }) }),
+      );
     });
   });
 
@@ -2298,14 +2365,14 @@ describe("FuelService dial surface", () => {
 
     /** Whether a pushed feedback frame carries the pending mark. */
     function isPending(call: unknown[] | undefined): boolean {
-      return stripCanvas(call?.[0] as { box?: string }).includes("data-pending-bar");
+      return stripCanvas(call?.[0] as string).includes("data-pending-bar");
     }
 
     async function appearHeld(id: string, held: Record<string, unknown> = settings) {
       vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
       const ctx = dialContext(id);
       await appear(ctx, held);
-      ctx.setFeedback.mockClear();
+      ctx.setDialCanvas.mockClear();
       await action.onDialDown(basicEvent(ctx, held) as never);
 
       return ctx;
@@ -2315,11 +2382,11 @@ describe("FuelService dial surface", () => {
       const ctx = await appearHeld("hp1");
 
       vi.advanceTimersByTime(499);
-      expect(ctx.setFeedback).not.toHaveBeenCalled();
+      expect(ctx.setDialCanvas).not.toHaveBeenCalled();
 
       vi.advanceTimersByTime(1);
-      expect(ctx.setFeedback).toHaveBeenCalledTimes(1);
-      const canvas = stripCanvas(ctx.setFeedback.mock.calls[0]?.[0]);
+      expect(ctx.setDialCanvas).toHaveBeenCalledTimes(1);
+      const canvas = stripCanvas(ctx.setDialCanvas.mock.calls[0]?.[0]);
 
       expect(canvas).toContain(">FULL<");
       expect(canvas).toContain('data-pending-bar="true"');
@@ -2335,43 +2402,43 @@ describe("FuelService dial surface", () => {
       const ctx = await appearHeld("hp1b");
 
       vi.advanceTimersByTime(500);
-      expect(ctx.setFeedback).not.toHaveBeenCalled();
+      expect(ctx.setDialCanvas).not.toHaveBeenCalled();
 
       vi.advanceTimersByTime(300);
-      expect(ctx.setFeedback).toHaveBeenCalledTimes(1);
-      expect(isPending(ctx.setFeedback.mock.calls[0])).toBe(true);
+      expect(ctx.setDialCanvas).toHaveBeenCalledTimes(1);
+      expect(isPending(ctx.setDialCanvas.mock.calls[0])).toBe(true);
     });
 
     it("pushes the normal frame at release, and the release fires the gesture as before", async () => {
       const ctx = await appearHeld("hp2");
       vi.advanceTimersByTime(500);
-      expect(isPending(ctx.setFeedback.mock.calls[0])).toBe(true);
+      expect(isPending(ctx.setDialCanvas.mock.calls[0])).toBe(true);
 
       await action.onDialUp(basicEvent(ctx, settings) as never);
 
       // Frame 2 is the revert (normal readout, no mark); the gesture's own
       // render follows it and carries no mark either.
-      expect(ctx.setFeedback.mock.calls.length).toBeGreaterThanOrEqual(2);
-      expect(isPending(ctx.setFeedback.mock.calls[1])).toBe(false);
-      expect(isPending(ctx.setFeedback.mock.calls.at(-1))).toBe(false);
+      expect(ctx.setDialCanvas.mock.calls.length).toBeGreaterThanOrEqual(2);
+      expect(isPending(ctx.setDialCanvas.mock.calls[1])).toBe(false);
+      expect(isPending(ctx.setDialCanvas.mock.calls.at(-1))).toBe(false);
       expect(mockPitFuel).toHaveBeenCalledWith(110);
     });
 
     it("a push+turn mid-hold reverts at once, and the release then fires nothing", async () => {
       const ctx = await appearHeld("hp3");
       vi.advanceTimersByTime(500);
-      expect(ctx.setFeedback).toHaveBeenCalledTimes(1);
+      expect(ctx.setDialCanvas).toHaveBeenCalledTimes(1);
 
       await action.onDialRotate(rotateEvent(ctx, settings, 1, true) as never); // pressed rotation
 
-      expect(ctx.setFeedback).toHaveBeenCalledTimes(2);
-      expect(isPending(ctx.setFeedback.mock.calls[1])).toBe(false);
+      expect(ctx.setDialCanvas).toHaveBeenCalledTimes(2);
+      expect(isPending(ctx.setDialCanvas.mock.calls[1])).toBe(false);
 
       vi.advanceTimersByTime(300);
       await action.onDialUp(basicEvent(ctx, settings) as never);
 
       // No second revert, no gesture.
-      expect(ctx.setFeedback).toHaveBeenCalledTimes(2);
+      expect(ctx.setDialCanvas).toHaveBeenCalledTimes(2);
       expect(mockPitFuel).not.toHaveBeenCalled();
       expect(mockPitClearFuel).not.toHaveBeenCalled();
     });
@@ -2382,8 +2449,8 @@ describe("FuelService dial surface", () => {
 
       await action.onDialRotate(rotateEvent(ctx, settings, 0, true) as never);
 
-      expect(ctx.setFeedback).toHaveBeenCalledTimes(2);
-      expect(isPending(ctx.setFeedback.mock.calls[1])).toBe(false);
+      expect(ctx.setDialCanvas).toHaveBeenCalledTimes(2);
+      expect(isPending(ctx.setDialCanvas.mock.calls[1])).toBe(false);
 
       await action.onDialUp(basicEvent(ctx, settings) as never);
 
@@ -2397,26 +2464,26 @@ describe("FuelService dial surface", () => {
       await action.onDialUp(basicEvent(ctx, settings) as never);
       vi.advanceTimersByTime(1000);
 
-      expect(ctx.setFeedback).not.toHaveBeenCalled();
+      expect(ctx.setDialCanvas).not.toHaveBeenCalled();
       expect(mockPitFuel).not.toHaveBeenCalled();
     });
 
     it("the 5 s heartbeat mid-hold still shows the preview (a preview-aware render, not a one-off frame)", async () => {
       const ctx = await appearHeld("hp5");
       vi.advanceTimersByTime(500);
-      ctx.setFeedback.mockClear();
+      ctx.setDialCanvas.mockClear();
 
       vi.advanceTimersByTime(5000);
 
-      expect(ctx.setFeedback).toHaveBeenCalled();
-      expect(ctx.setFeedback.mock.calls.every((call) => isPending(call))).toBe(true);
-      expect(stripCanvas(ctx.setFeedback.mock.calls.at(-1)?.[0])).toContain(">FULL<");
+      expect(ctx.setDialCanvas).toHaveBeenCalled();
+      expect(ctx.setDialCanvas.mock.calls.every((call) => isPending(call))).toBe(true);
+      expect(stripCanvas(ctx.setDialCanvas.mock.calls.at(-1)?.[0])).toContain(">FULL<");
     });
 
     it("a change-driven telemetry tick mid-hold keeps the preview too", async () => {
       const ctx = await appearHeld("hp5t");
       vi.advanceTimersByTime(500);
-      ctx.setFeedback.mockClear();
+      ctx.setDialCanvas.mockClear();
 
       // Fuel burns (well, appears): the displayed current value moves, so the
       // render-on-change path pushes — with the preview still on it.
@@ -2425,15 +2492,15 @@ describe("FuelService dial surface", () => {
       mockGetCurrentTelemetry.mockReturnValue(tick);
       getTelemetryCallback(action)(tick);
 
-      expect(ctx.setFeedback).toHaveBeenCalledTimes(1);
-      expect(isPending(ctx.setFeedback.mock.calls[0])).toBe(true);
+      expect(ctx.setDialCanvas).toHaveBeenCalledTimes(1);
+      expect(isPending(ctx.setDialCanvas.mock.calls[0])).toBe(true);
     });
 
     it("previews the default long press (toggle autofuel) as AUTO ON in green", async () => {
       const ctx = await appearHeld("hp6", {});
       vi.advanceTimersByTime(500);
 
-      const canvas = stripCanvas(ctx.setFeedback.mock.calls[0]?.[0]);
+      const canvas = stripCanvas(ctx.setDialCanvas.mock.calls[0]?.[0]);
 
       expect(canvas).toContain(">AUTO ON<");
       expect(canvas).toMatch(/fill="#2ecc71"[^>]*font-size="24"/);
@@ -2444,7 +2511,7 @@ describe("FuelService dial surface", () => {
       const ctx = await appearHeld("hp7", { pressAction: "none", longPressAction: "switch-mode", dialMode: "fill-to" });
       vi.advanceTimersByTime(500);
 
-      expect(stripCanvas(ctx.setFeedback.mock.calls[0]?.[0])).toContain(">ADD AMOUNT<");
+      expect(stripCanvas(ctx.setDialCanvas.mock.calls[0]?.[0])).toContain(">ADD AMOUNT<");
     });
 
     it("arms nothing when the long-press gesture is none", async () => {
@@ -2453,7 +2520,7 @@ describe("FuelService dial surface", () => {
       vi.advanceTimersByTime(600);
       await action.onDialUp(basicEvent(ctx, {}) as never);
 
-      expect(ctx.setFeedback).not.toHaveBeenCalled();
+      expect(ctx.setDialCanvas).not.toHaveBeenCalled();
     });
 
     it("shows nothing when the outcome is not knowable: unknown tank capacity", async () => {
@@ -2461,11 +2528,11 @@ describe("FuelService dial surface", () => {
       const ctx = await appearHeld("hp9");
 
       vi.advanceTimersByTime(600);
-      expect(ctx.setFeedback).not.toHaveBeenCalled();
+      expect(ctx.setDialCanvas).not.toHaveBeenCalled();
 
       // And the release pushes no revert for a preview that never showed.
       await action.onDialUp(basicEvent(ctx, settings) as never);
-      expect(ctx.setFeedback).not.toHaveBeenCalled();
+      expect(ctx.setDialCanvas).not.toHaveBeenCalled();
     });
 
     it("shows nothing when the outcome is not knowable: toggle-fueling whose add resolves to 0", async () => {
@@ -2474,7 +2541,7 @@ describe("FuelService dial surface", () => {
 
       vi.advanceTimersByTime(600);
 
-      expect(ctx.setFeedback).not.toHaveBeenCalled();
+      expect(ctx.setDialCanvas).not.toHaveBeenCalled();
     });
 
     it("shows nothing when the outcome is not knowable: autofuel unavailable, or its binding unset", async () => {
@@ -2487,29 +2554,29 @@ describe("FuelService dial surface", () => {
       });
       const unavailable = await appearHeld("hp11", {});
       vi.advanceTimersByTime(600);
-      expect(unavailable.setFeedback).not.toHaveBeenCalled();
+      expect(unavailable.setDialCanvas).not.toHaveBeenCalled();
       await action.onDialUp(basicEvent(unavailable, {}) as never);
 
       mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 0, FuelLevel: 0, PitSvFlags: 0 });
       vi.mocked((action as unknown as { isBindingMissing: () => boolean }).isBindingMissing).mockReturnValue(true);
       const unbound = await appearHeld("hp12", {});
       vi.advanceTimersByTime(600);
-      expect(unbound.setFeedback).not.toHaveBeenCalled();
+      expect(unbound.setDialCanvas).not.toHaveBeenCalled();
     });
 
     it("settings arriving mid-hold drop the preview — their own re-render is the revert", async () => {
       const ctx = await appearHeld("hp13");
       vi.advanceTimersByTime(500);
-      ctx.setFeedback.mockClear();
+      ctx.setDialCanvas.mockClear();
 
       await action.onDidReceiveSettings(basicEvent(ctx, { ...settings, longPressAction: "none" }) as never);
 
-      expect(ctx.setFeedback).toHaveBeenCalledTimes(1);
-      expect(isPending(ctx.setFeedback.mock.calls[0])).toBe(false);
+      expect(ctx.setDialCanvas).toHaveBeenCalledTimes(1);
+      expect(isPending(ctx.setDialCanvas.mock.calls[0])).toBe(false);
 
       // The release finds nothing showing: no extra revert frame.
       await action.onDialUp(basicEvent(ctx, { ...settings, longPressAction: "none" }) as never);
-      expect(ctx.setFeedback).toHaveBeenCalledTimes(1);
+      expect(ctx.setDialCanvas).toHaveBeenCalledTimes(1);
     });
 
     it("willDisappear mid-hold tears the timer down without a frame", async () => {
@@ -2518,14 +2585,14 @@ describe("FuelService dial surface", () => {
       await action.onWillDisappear(basicEvent(ctx, settings) as never);
       vi.advanceTimersByTime(1000);
 
-      expect(ctx.setFeedback).not.toHaveBeenCalled();
+      expect(ctx.setDialCanvas).not.toHaveBeenCalled();
     });
 
-    it("with the touch strip compiled out, arms no timer and pushes nothing", async () => {
+    it("with the extended gestures compiled out, arms no timer and pushes no preview frame", async () => {
       vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
       const ctx = dialContext("hp15");
       await appear(ctx, settings);
-      ctx.setFeedback.mockClear();
+      ctx.setDialCanvas.mockClear();
 
       const timersBefore = vi.getTimerCount();
       await action.onDialDown(basicEvent(ctx, settings) as never);
@@ -2535,9 +2602,10 @@ describe("FuelService dial surface", () => {
       vi.advanceTimersByTime(600);
       await action.onDialUp(basicEvent(ctx, settings) as never);
 
-      expect(ctx.setFeedback).not.toHaveBeenCalled();
-      // The gesture itself is untouched by the flag.
-      expect(mockPitFuel).toHaveBeenCalledWith(110);
+      expect(ctx.setDialCanvas).not.toHaveBeenCalled();
+      // A knob has no long press: the release is the (disabled) press, so the
+      // long-press slot's fill-to-max never fires.
+      expect(mockPitFuel).not.toHaveBeenCalled();
     });
   });
 
@@ -2751,7 +2819,7 @@ describe("FuelService dial surface", () => {
       const settings = { unitMode: "liters", stepSize: 20, dialMode: "add-amount" };
       await appear(ctx, settings);
 
-      ctx.setFeedback.mockClear();
+      ctx.setDialCanvas.mockClear();
       await action.onDialRotate(rotateEvent(ctx, settings, 1) as never); // dial +20
 
       // iRacing confirms the 20 L request a tick later; the readout follows
@@ -2764,12 +2832,12 @@ describe("FuelService dial surface", () => {
       mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 20, FuelLevel: 45, PitSvFlags: FUEL_FILL });
       onTick({ DisplayUnits: 1, PitSvFuel: 20, FuelLevel: 45, PitSvFlags: FUEL_FILL });
 
-      expect(ctx.setFeedback).toHaveBeenCalled();
-      const payload = ctx.setFeedback.mock.calls.at(-1)?.[0];
+      expect(ctx.setDialCanvas).toHaveBeenCalled();
+      const dataUri = ctx.setDialCanvas.mock.calls.at(-1)?.[0];
 
-      expect(typeof payload.box).toBe("string");
-      expect(payload.box).toContain("data:image/svg+xml");
-      const canvas = stripCanvas(payload);
+      expect(typeof dataUri).toBe("string");
+      expect(dataUri).toContain("data:image/svg+xml");
+      const canvas = stripCanvas(dataUri);
 
       expect(canvas).toContain(">+20 = 65 L<");
       // Band + bar are green because fuel-fill is on
@@ -2786,7 +2854,7 @@ describe("FuelService dial surface", () => {
       mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 20, FuelLevel: 45, PitSvFlags: 0 });
       await appear(ctx, { unitMode: "liters", dialMode: "add-amount" });
 
-      const canvas = stripCanvas(ctx.setFeedback.mock.calls.at(-1)?.[0]);
+      const canvas = stripCanvas(ctx.setDialCanvas.mock.calls.at(-1)?.[0]);
 
       // The strip's self-drawn canvas shows the same red band as the keypad icon.
       expect(canvas).toContain("REFUEL: OFF");
@@ -2805,10 +2873,10 @@ describe("FuelService dial surface", () => {
       const settings = { unitMode: "liters", stepSize: 20, dialMode: "fill-to" };
       await appear(ctx, settings);
 
-      ctx.setFeedback.mockClear();
+      ctx.setDialCanvas.mockClear();
       await action.onDialRotate(rotateEvent(ctx, settings, 1) as never);
 
-      const canvas = stripCanvas(ctx.setFeedback.mock.calls.at(-1)?.[0]);
+      const canvas = stripCanvas(ctx.setDialCanvas.mock.calls.at(-1)?.[0]);
 
       expect(canvas).toContain(">→ 65 L<");
       // Red target line present in fill-to mode.
@@ -2823,7 +2891,7 @@ describe("FuelService dial surface", () => {
       const settings = { unitMode: "liters", stepSize: 20, dialMode: "add-amount" };
       await appear(ctx, settings);
 
-      ctx.setFeedback.mockClear();
+      ctx.setDialCanvas.mockClear();
       await action.onDialRotate(rotateEvent(ctx, settings, 1) as never); // dial +20
 
       // The readout follows the confirmed PitSvFuel (#726); total = 45 + 20 (no cap).
@@ -2833,10 +2901,10 @@ describe("FuelService dial surface", () => {
       mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 20, FuelLevel: 45, PitSvFlags: FUEL_FILL });
       onTick({ DisplayUnits: 1, PitSvFuel: 20, FuelLevel: 45, PitSvFlags: FUEL_FILL });
 
-      expect(stripCanvas(ctx.setFeedback.mock.calls.at(-1)?.[0])).toContain(">+20 = 65 L<");
+      expect(stripCanvas(ctx.setDialCanvas.mock.calls.at(-1)?.[0])).toContain(">+20 = 65 L<");
     });
 
-    it("coalesces setFeedback across rapid rotations within one throttle window", async () => {
+    it("coalesces dial-canvas pushes across rapid rotations within one throttle window", async () => {
       vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
       const ctx = dialContext("f3");
       mockGetSessionInfo.mockReturnValue(SESSION_110L);
@@ -2844,25 +2912,25 @@ describe("FuelService dial surface", () => {
       const settings = { unitMode: "liters", stepSize: 1, dialMode: "add-amount" };
       await appear(ctx, settings);
 
-      ctx.setFeedback.mockClear();
+      ctx.setDialCanvas.mockClear();
 
       await action.onDialRotate(rotateEvent(ctx, settings, 1) as never); // leading -> 1 feedback
       await action.onDialRotate(rotateEvent(ctx, settings, 1) as never); // coalesced
       await action.onDialRotate(rotateEvent(ctx, settings, 1) as never); // coalesced
 
-      expect(ctx.setFeedback).toHaveBeenCalledTimes(1);
+      expect(ctx.setDialCanvas).toHaveBeenCalledTimes(1);
 
       vi.advanceTimersByTime(100);
 
       // The trailing flush is the second (and only other) push — coalescing
-      // setFeedback into one-per-window is the subject here.
-      expect(ctx.setFeedback).toHaveBeenCalledTimes(2);
+      // dial-canvas pushes into one-per-window is the subject here.
+      expect(ctx.setDialCanvas).toHaveBeenCalledTimes(2);
 
       // The coalesced readout follows TELEMETRY (PitSvFuel 0 -> "+0 = 0 L"), NOT the
       // dialed +3 — proving the displayed value stays telemetry-driven through a
       // coalesced spin (#726). The "last value wins" SEND semantics are covered by
       // the throttle-coalescing send tests.
-      expect(stripCanvas(ctx.setFeedback.mock.calls.at(-1)?.[0])).toContain(">+0 = 0 L<");
+      expect(stripCanvas(ctx.setDialCanvas.mock.calls.at(-1)?.[0])).toContain(">+0 = 0 L<");
     });
   });
 
@@ -2888,7 +2956,7 @@ describe("FuelService dial surface", () => {
       mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 18, FuelLevel: 45, PitSvFlags: FUEL_FILL });
       onTick({ DisplayUnits: 1, PitSvFuel: 18, FuelLevel: 45, PitSvFlags: FUEL_FILL });
 
-      expect(stripCanvas(ctx.setFeedback.mock.calls.at(-1)?.[0])).toContain(">+18 = 63 L<");
+      expect(stripCanvas(ctx.setDialCanvas.mock.calls.at(-1)?.[0])).toContain(">+18 = 63 L<");
     });
 
     it("add-amount: a PitSvFuel above tank capacity is clamped in the readout (never +95 = 90)", async () => {
@@ -2901,7 +2969,7 @@ describe("FuelService dial surface", () => {
       mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 95, FuelLevel: 45, PitSvFlags: FUEL_FILL });
       await appear(ctx, { unitMode: "liters", stepSize: 1, dialMode: "add-amount" });
 
-      expect(stripCanvas(ctx.setFeedback.mock.calls.at(-1)?.[0])).toContain(">+90 = 90 L<");
+      expect(stripCanvas(ctx.setDialCanvas.mock.calls.at(-1)?.[0])).toContain(">+90 = 90 L<");
     });
 
     it("add-amount: a null-telemetry frame shows +0 (display follows telemetry, no stale dialed value)", async () => {
@@ -2914,10 +2982,10 @@ describe("FuelService dial surface", () => {
       // Telemetry drops to null; the heartbeat repaints. With no pit request to read,
       // the add follows telemetry to +0 rather than holding a stale dialed value.
       mockGetCurrentTelemetry.mockReturnValue(null);
-      ctx.setFeedback.mockClear();
+      ctx.setDialCanvas.mockClear();
       vi.advanceTimersByTime(5000); // display heartbeat
 
-      expect(stripCanvas(ctx.setFeedback.mock.calls.at(-1)?.[0])).toContain(">+0 = 0 L<");
+      expect(stripCanvas(ctx.setDialCanvas.mock.calls.at(-1)?.[0])).toContain(">+0 = 0 L<");
     });
   });
 
@@ -2940,19 +3008,19 @@ describe("FuelService dial surface", () => {
       const settings = { unitMode: "liters", stepSize: 1, dialMode: "fill-to" };
       await appear(ctx, settings);
 
-      ctx.setFeedback.mockClear();
+      ctx.setDialCanvas.mockClear();
 
       // No event fires; only the 5s timer should push feedback.
       vi.advanceTimersByTime(5000);
 
-      expect(ctx.setFeedback).toHaveBeenCalledTimes(1);
+      expect(ctx.setDialCanvas).toHaveBeenCalledTimes(1);
 
       vi.advanceTimersByTime(5000);
 
-      expect(ctx.setFeedback).toHaveBeenCalledTimes(2);
+      expect(ctx.setDialCanvas).toHaveBeenCalledTimes(2);
     });
 
-    it("does NOT push setFeedback on every telemetry tick", async () => {
+    it("does NOT push the dial canvas on every telemetry tick", async () => {
       vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
       const ctx = dialContext("dr2");
       mockGetSessionInfo.mockReturnValue(SESSION_90L);
@@ -2961,14 +3029,14 @@ describe("FuelService dial surface", () => {
 
       const onTick = telemetryCallback();
 
-      ctx.setFeedback.mockClear();
+      ctx.setDialCanvas.mockClear();
 
       // Simulate many telemetry ticks (no time advance — no timer should fire).
       for (let i = 0; i < 60; i++) {
         onTick({ DisplayUnits: 1, PitSvFuel: 20, FuelLevel: 45 - i * 0.1, PitSvFlags: 0 });
       }
 
-      expect(ctx.setFeedback).not.toHaveBeenCalled();
+      expect(ctx.setDialCanvas).not.toHaveBeenCalled();
     });
 
     it("pushes feedback on CHANGE when the displayed signature moves (fuel-fill flip)", async () => {
@@ -2983,15 +3051,15 @@ describe("FuelService dial surface", () => {
 
       // Advance past the change-render throttle window so a change can push.
       vi.advanceTimersByTime(200);
-      ctx.setFeedback.mockClear();
+      ctx.setDialCanvas.mockClear();
 
       // Fuel-fill flips ON — the displayed signature changes -> push immediately.
       mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 20, FuelLevel: 45, PitSvFlags: FUEL_FILL });
       onTick({ DisplayUnits: 1, PitSvFuel: 20, FuelLevel: 45, PitSvFlags: FUEL_FILL });
 
-      expect(ctx.setFeedback).toHaveBeenCalledTimes(1);
+      expect(ctx.setDialCanvas).toHaveBeenCalledTimes(1);
       // Band + bar reflect the new ON color (green).
-      expect(stripCanvas(ctx.setFeedback.mock.calls.at(-1)?.[0])).toContain("#2ecc71");
+      expect(stripCanvas(ctx.setDialCanvas.mock.calls.at(-1)?.[0])).toContain("#2ecc71");
     });
 
     it("does NOT push feedback on a tick that leaves the displayed signature unchanged", async () => {
@@ -3004,13 +3072,13 @@ describe("FuelService dial surface", () => {
       const onTick = telemetryCallback();
 
       vi.advanceTimersByTime(200);
-      ctx.setFeedback.mockClear();
+      ctx.setDialCanvas.mockClear();
 
       // Identical telemetry -> same rounded signature -> no feedback push.
       onTick({ DisplayUnits: 1, PitSvFuel: 20, FuelLevel: 45, PitSvFlags: 0 });
       onTick({ DisplayUnits: 1, PitSvFuel: 20, FuelLevel: 45, PitSvFlags: 0 });
 
-      expect(ctx.setFeedback).not.toHaveBeenCalled();
+      expect(ctx.setDialCanvas).not.toHaveBeenCalled();
     });
 
     it("throttles change-driven pushes to at most once per ~100ms", async () => {
@@ -3026,7 +3094,7 @@ describe("FuelService dial surface", () => {
       // displayed add follows the live PitSvFuel (#726), so each tick also updates
       // the telemetry the action reads back via getCurrentTelemetry.
       vi.advanceTimersByTime(3100);
-      ctx.setFeedback.mockClear();
+      ctx.setDialCanvas.mockClear();
 
       // First changing tick pushes; an immediate second changing tick is throttled.
       mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 21, FuelLevel: 45, PitSvFlags: 0 });
@@ -3034,14 +3102,14 @@ describe("FuelService dial surface", () => {
       mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 22, FuelLevel: 45, PitSvFlags: 0 });
       onTick({ DisplayUnits: 1, PitSvFuel: 22, FuelLevel: 45, PitSvFlags: 0 });
 
-      expect(ctx.setFeedback).toHaveBeenCalledTimes(1);
+      expect(ctx.setDialCanvas).toHaveBeenCalledTimes(1);
 
       // After the throttle window, another change pushes again.
       vi.advanceTimersByTime(100);
       mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 23, FuelLevel: 45, PitSvFlags: 0 });
       onTick({ DisplayUnits: 1, PitSvFuel: 23, FuelLevel: 45, PitSvFlags: 0 });
 
-      expect(ctx.setFeedback).toHaveBeenCalledTimes(2);
+      expect(ctx.setDialCanvas).toHaveBeenCalledTimes(2);
     });
 
     it("fill-to: a target change at/below current fuel (add stays 0) refreshes the signature", async () => {
@@ -3092,7 +3160,7 @@ describe("FuelService dial surface", () => {
       const settings = { unitMode: "liters", stepSize: 5, dialMode: "fill-to" };
       await appear(ctx, settings);
 
-      ctx.setFeedback.mockClear();
+      ctx.setDialCanvas.mockClear();
 
       // Dial the target DOWN below current fuel (50 -> 30). add stays 0.
       await action.onDialRotate(rotateEvent(ctx, settings, -4) as never); // target -> 30
@@ -3100,8 +3168,8 @@ describe("FuelService dial surface", () => {
 
       // Feedback was pushed without any 5 s heartbeat advance, and shows the new
       // target (proving the displayed target tracks the dial even at add 0).
-      expect(ctx.setFeedback).toHaveBeenCalled();
-      expect(stripCanvas(ctx.setFeedback.mock.calls.at(-1)?.[0])).toContain(">→ 30 L<");
+      expect(ctx.setDialCanvas).toHaveBeenCalled();
+      expect(stripCanvas(ctx.setDialCanvas.mock.calls.at(-1)?.[0])).toContain(">→ 30 L<");
     });
 
     it("clears the display timer on disappear (no leaks, no re-render after)", async () => {
@@ -3114,13 +3182,13 @@ describe("FuelService dial surface", () => {
 
       await action.onWillDisappear(basicEvent(ctx, settings) as never);
 
-      ctx.setFeedback.mockClear();
+      ctx.setDialCanvas.mockClear();
       mockPitFuel.mockClear();
 
       // Past the 5s display refresh — the cleared timer must not re-render.
       vi.advanceTimersByTime(60000);
 
-      expect(ctx.setFeedback).not.toHaveBeenCalled();
+      expect(ctx.setDialCanvas).not.toHaveBeenCalled();
       expect(mockPitFuel).not.toHaveBeenCalled();
     });
   });
@@ -3229,10 +3297,10 @@ describe("FuelService dial surface", () => {
       const settings = { unitMode: "liters", stepSize: 1, dialMode: "add-amount" };
       await appear(ctx, settings);
 
-      ctx.setFeedback.mockClear();
+      ctx.setDialCanvas.mockClear();
       vi.advanceTimersByTime(5000); // display heartbeat pushes feedback
 
-      const canvas = stripCanvas(ctx.setFeedback.mock.calls.at(-1)?.[0]);
+      const canvas = stripCanvas(ctx.setDialCanvas.mock.calls.at(-1)?.[0]);
 
       expect(canvas).toContain("AUTOFUEL: ON");
       expect(canvas).toContain(">AUTO → 30 L<");
@@ -3253,10 +3321,10 @@ describe("FuelService dial surface", () => {
       const settings = { unitMode: "liters", stepSize: 1, dialMode: "add-amount" };
       await appear(ctx, settings);
 
-      ctx.setFeedback.mockClear();
+      ctx.setDialCanvas.mockClear();
       vi.advanceTimersByTime(5000);
 
-      const canvas = stripCanvas(ctx.setFeedback.mock.calls.at(-1)?.[0]);
+      const canvas = stripCanvas(ctx.setDialCanvas.mock.calls.at(-1)?.[0]);
 
       expect(canvas).toContain("AUTOFUEL: ON");
       expect(canvas).not.toContain("AUTOFUEL: OFF");

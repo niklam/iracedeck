@@ -17,8 +17,8 @@ import {
   applyBindingWarning,
   classifyDialRelease,
   createHoldPreview,
-  type DeckFeedbackPayload,
   type DeckTriggerDescription,
+  type DialReleaseKind,
   type DirectionalPair,
   fuelFromDisplayUnits,
   fuelToDisplayUnits,
@@ -37,7 +37,7 @@ import type { SessionInfo, TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 
 import { borderColorForState, type ToggleState } from "../../icons/status-bar.js";
-import { renderDialNameIcon } from "../../shared/dial-name-icon.js";
+import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
 import { persistDialPatch } from "../../shared/dial-persist.js";
 import { type DialPendingPreview, renderPendingBar } from "../../shared/dial-preview.js";
 import type { FuelPipeline } from "./fuel-pipeline.js";
@@ -855,12 +855,11 @@ export function renderStripCanvasSvg(
 }
 
 /**
- * PROOF OF CONCEPT (#1013) — not production code; refactor before shipping.
- *
- * The Mirabox knob-screen version of {@link renderStripCanvasSvg}, drawn for
- * the N4's 176×112 LCD segment above the knob rather than scaled from the
- * 200×100 strip: same band / readout / bar vocabulary, but the squarer canvas
- * buys a larger readout and a taller bar.
+ * The Stream Dock knob rendering of the strip canvas (#1013), drawn for the
+ * 176×112 LCD segment above the knob rather than scaled from the strip: the
+ * same band / readout / two-segment bar vocabulary, with the squarer canvas
+ * spent on a larger readout (up to 30 px) and a taller full-width bar. Approved
+ * on the device by the maintainer; change the geometry only with a new preview.
  */
 export function renderKnobCanvasSvg(
   mode: DialDisplayMode,
@@ -1000,15 +999,7 @@ export class FuelDialSurface {
 
     // The deck-app image for the dial: just the action name (#775). Without
     // this the app falls back to keypad iconography for the dial slot.
-    // PROOF OF CONCEPT (#1013): on Mirabox setImage IS the knob screen, which
-    // the live render owns, so the name card is Elgato-only there.
-    if (__FEATURE_DIAL_EXTENDED_GESTURES__) {
-      action
-        .setImage(renderDialNameIcon({ line1: "FUEL", line2: "SERVICE", backgroundColor: "#3a2a2a" }))
-        .catch((err) => {
-          this.host.logger.debug(`Dial name icon push failed: ${String(err)}`);
-        });
-    }
+    pushDialNameIcon(action, { line1: "FUEL", line2: "SERVICE", backgroundColor: "#3a2a2a" }, this.host.logger);
 
     // Start the periodic display refresh so the bar + value track live burn.
     this.startDisplayTimer(ctx);
@@ -1146,15 +1137,19 @@ export class FuelDialSurface {
     if (pressStartMs === 0) return;
 
     // Classify the release with full information (duration + the rotated guard),
-    // so long-press never races push+turn. No timer fired mid-hold.
-    const kind = classifyDialRelease({
-      pressStartMs,
-      nowMs: Date.now(),
-      rotatedWhilePressed: ctx.rotatedWhilePressed,
-      // Honor the plugin-wide "Long-press threshold" global setting (shared with
-      // the dual-press feature); falls back to DIAL_LONG_PRESS_THRESHOLD_MS.
-      thresholdMs: getDualPressThresholdMs(),
-    });
+    // so long-press never races push+turn. No timer fired mid-hold. A knob
+    // reports no long hold (its dialUp never comes) and no push+turn, so where
+    // the extended gestures are compiled out every release is a press.
+    const kind: DialReleaseKind = __FEATURE_DIAL_EXTENDED_GESTURES__
+      ? classifyDialRelease({
+          pressStartMs,
+          nowMs: Date.now(),
+          rotatedWhilePressed: ctx.rotatedWhilePressed,
+          // Honor the plugin-wide "Long-press threshold" global setting (shared with
+          // the dual-press feature); falls back to DIAL_LONG_PRESS_THRESHOLD_MS.
+          thresholdMs: getDualPressThresholdMs(),
+        })
+      : "short";
 
     if (kind === "push-turn") return;
 
@@ -1829,11 +1824,15 @@ export class FuelDialSurface {
   }
 
   /**
-   * Pushes the touch-strip feedback when this is a dial — the dial surface's
-   * only render path (keypad instances render through the keypad icon code).
+   * Pushes the dial's own screen — the Stream Deck+ strip or the Stream Dock
+   * knob, whichever the context reports (#1013); nothing when it has none. The
+   * dial surface's only render path (keypad instances render through the
+   * keypad icon code).
    */
   private async renderFeedback(ctx: FuelDialContext): Promise<void> {
-    if (!ctx.action.isDial()) return;
+    const canvas = ctx.action.dialCanvas();
+
+    if (!canvas) return;
 
     const displayUnits = this.effectiveDisplayUnits(ctx);
     const maxLtr = this.effectiveMaxLtr();
@@ -1842,7 +1841,7 @@ export class FuelDialSurface {
     const addLtr = this.displayAddLtr(ctx, mode);
     const totalLtr = computeTotalLtr(currentLtr, addLtr, maxLtr);
     const fillState = this.fuelFillState(mode);
-    // The whole strip slot is ONE self-drawn pixmap (band + readout + bar) — the
+    // The whole dial screen is ONE self-drawn pixmap (band + readout + bar) — the
     // built-in layout text items can't have the colored band background (#728).
     // `ctx.preview` rides every render, so the 5 s heartbeat and a change-driven
     // tick mid-hold keep drawing the pending outcome rather than wiping it (#1120).
@@ -1860,14 +1859,9 @@ export class FuelDialSurface {
       ctx.preview,
     ] as const;
 
-    if (__FEATURE_DIAL_EXTENDED_GESTURES__) {
-      const feedback: DeckFeedbackPayload = { box: svgToDataUri(renderStripCanvasSvg(...renderArgs)) };
-      await ctx.action.setFeedback(feedback);
-    } else {
-      // PROOF OF CONCEPT (#1013): no touch strip on Mirabox, so the knob's own
-      // LCD segment gets a knob-specific drawing through setImage.
-      await ctx.action.setImage(svgToDataUri(renderKnobCanvasSvg(...renderArgs)));
-    }
+    const svg =
+      canvas.id === "stream-dock-knob" ? renderKnobCanvasSvg(...renderArgs) : renderStripCanvasSvg(...renderArgs);
+    await ctx.action.setDialCanvas(svgToDataUri(svg));
 
     // Reset the change-detector baseline so a pushed feedback (rotate/press/
     // heartbeat) doesn't immediately re-fire the render-on-change path next tick.
