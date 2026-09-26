@@ -1,3 +1,4 @@
+import { applyBindingWarning } from "@iracedeck/deck-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AudioControls } from "./audio-controls.js";
@@ -202,6 +203,14 @@ describe("renderAudioStripSvg", () => {
   it("applies the binding warning overlay when a required binding is missing", () => {
     const svg = renderAudioStripSvg({ category: "voice-chat", pttHeld: false, bindingMissing: true });
     expect(svg).toContain("<binding-warning/>");
+  });
+
+  it("sizes the binding warning for the 200x100 strip canvas, not the 144x144 key", () => {
+    vi.mocked(applyBindingWarning).mockClear();
+    const svg = renderAudioStripSvg({ category: "voice-chat", pttHeld: false, bindingMissing: true });
+    expect(vi.mocked(applyBindingWarning)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(applyBindingWarning)).toHaveBeenCalledWith(expect.any(String), { width: 200, height: 100 });
+    expect(svg).toContain('viewBox="0 0 200 100" width="200" height="100"');
   });
 });
 
