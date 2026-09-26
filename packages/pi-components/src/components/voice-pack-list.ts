@@ -273,8 +273,6 @@ export class VoicePackList extends HTMLElement {
    */
   private armed: string | null = null;
   private armedTimer: number | null = null;
-  /** The last scan rendered, so a disarm can redraw without waiting for a push. */
-  private lastScan: VoicePackScan = EMPTY_SCAN;
   /**
    * The armed pack's identity when it was armed — id, version and label.
    *
@@ -739,8 +737,6 @@ export class VoicePackList extends HTMLElement {
    */
   private render(scan: VoicePackScan): void {
     if (!this.list) return;
-
-    this.lastScan = scan;
 
     // A pack that is gone cannot be armed. Without this, a removal that
     // succeeded elsewhere — or a pack deleted by hand — would leave the id
