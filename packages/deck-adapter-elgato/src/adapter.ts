@@ -119,11 +119,12 @@ class ElgatoActionContext implements IDeckActionContext {
   // SVG render for the same key (#642). Plain-text string values (e.g. a
   // `title` field) are never data URIs and skip the image pipeline entirely.
   //
-  // Assumes at most one image value per feedback payload (today's only
-  // caller, fuel-service/fuel-dial-surface.ts, sends a single full-slot
-  // pixmap): a superseded value drops the WHOLE payload via the early return
-  // below, and if a payload ever carried multiple image values they would
-  // rasterize serially (one toDeviceImage await at a time), not in parallel.
+  // Assumes at most one image value per feedback payload (every dial surface
+  // reaches this through setDialCanvas, which sends a single full-slot pixmap
+  // under DIAL_CANVAS_KEY): a superseded value drops the WHOLE payload via the
+  // early return below, and if a payload ever carried multiple image values
+  // they would rasterize serially (one toDeviceImage await at a time), not in
+  // parallel.
   async setFeedback(feedback: DeckFeedbackPayload): Promise<void> {
     if (!this.sdAction.setFeedback) return;
 

@@ -9,6 +9,7 @@ import {
   type DeckFeedbackPayload,
   type DeckTriggerDescription,
   DEFAULT_KEY_IMAGE_SIZE,
+  type DeviceImageSize,
   type DialCanvasProfile,
   type IDeckActionContext,
   type IDeckActionHandler,
@@ -40,12 +41,7 @@ class VSDActionContext implements IDeckActionContext {
   ) {}
 
   async setImage(dataUri: string): Promise<void> {
-    const image = await toDeviceImage(this.id, dataUri, DEFAULT_KEY_IMAGE_SIZE);
-
-    // null = superseded by a newer image for this context — skip the send.
-    if (image === null) return;
-
-    this.client.setImage(this.id, image);
+    await this.sendImage(dataUri, DEFAULT_KEY_IMAGE_SIZE);
   }
 
   async setTitle(title: string): Promise<void> {
@@ -81,14 +77,23 @@ class VSDActionContext implements IDeckActionContext {
   }
 
   // The knob's segment is addressed by setImage, so the live drawing and a
-  // key image share one supersede key (`this.id`): a slow render of either can
-  // never land over a fresher frame of the other.
+  // key image go through the same `sendImage` and share one supersede key
+  // (`this.id`): a slow render of either can never land over a fresher frame
+  // of the other.
   async setDialCanvas(dataUri: string): Promise<void> {
     const canvas = this.dialCanvas();
 
     if (!canvas) return;
 
-    const image = await toDeviceImage(this.id, dataUri, { width: canvas.width, height: canvas.height });
+    await this.sendImage(dataUri, { width: canvas.width, height: canvas.height });
+  }
+
+  /**
+   * Rasterizes for the device and sends it with `setImage`, keyed by this
+   * context — the one path for key images and the knob's live drawing.
+   */
+  private async sendImage(dataUri: string, target: number | DeviceImageSize): Promise<void> {
+    const image = await toDeviceImage(this.id, dataUri, target);
 
     // null = superseded by a newer image for this context — skip the send.
     if (image === null) return;
