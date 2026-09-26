@@ -105,9 +105,8 @@ describe("plugins ship the workspace's runtime dependency versions (#1177)", () 
   it("the helper's walk (root + packages/*) is the whole pnpm workspace", () => {
     // runtime-deps.mjs reads the root package.json and packages/*/package.json.
     // A second workspace glob would hold declarations it never sees.
-    const workspace = readFileSync(join(repoRoot, "pnpm-workspace.yaml"), "utf-8");
-    const globs = [...workspace.matchAll(/^\s*-\s*["']?([^"'\s]+)["']?\s*$/gm)].map((m) => m[1]);
-    expect(globs).toEqual(["packages/*"]);
+    // Parsed, not scanned: the file also holds lists that are not globs (`minimumReleaseAgeExclude`).
+    expect(workspaceConfig.packages).toEqual(["packages/*"]);
   });
 
   it("the independent declaration scan reads the same sections the helper does", () => {

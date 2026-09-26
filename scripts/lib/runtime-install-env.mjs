@@ -18,6 +18,12 @@
  * missed whatever a contributor's own `.npmrc` held, and would drift with every
  * npm release. Keys npm defines stay exactly as pnpm passed them, and the install
  * is otherwise the one it always was.
+ *
+ * Where npm's settings come from: `bin/` has no `.npmrc` of its own, so npm reads
+ * the user's `~/.npmrc` and its global config itself. A registry or proxy set only
+ * in pnpm's own config (`pnpm-workspace.yaml`, `config.yaml`, `pnpm_config_*`) does
+ * not reach it — pnpm 11+ no longer exports those — so a contributor behind a proxy
+ * or a mirror needs it in `~/.npmrc` for the plugin builds.
  */
 
 /**
@@ -148,7 +154,9 @@ export function installRuntimeDeps(binDir, { env, exists, missingPath, run, log 
     return 1;
   }
 
-  const installed = run("npm install", { cwd: binDir, env: runtimeInstallEnv(env, definedKeys), capture: false });
+  // `--no-fund`: the repo's `.npmrc` `fund=false` used to reach npm through pnpm 10's
+  // exported keys; pnpm 11+ exports none of them (#1245).
+  const installed = run("npm install --no-fund", { cwd: binDir, env: runtimeInstallEnv(env, definedKeys), capture: false });
   if (installed.error) {
     log(`install-runtime-deps: \`npm install\` in ${binDir} failed: ${installed.error.message}`);
     return 1;

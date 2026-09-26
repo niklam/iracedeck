@@ -4,6 +4,10 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    # Matches `minimumReleaseAge` in pnpm-workspace.yaml: a version under a day
+    # old fails the lockfile policy check on every CI install (#1245).
+    cooldown:
+      default-days: 1
     groups:
       minor-and-patch:
         update-types:
