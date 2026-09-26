@@ -111,7 +111,7 @@ Adjust iRaceDeck's own proximity **Radar** tick level — the same level as the 
 
 ## On a dial
 
-Placed on a Stream Deck+ dial, Audio Controls becomes a volume dial: rotating adjusts the selected audio category, and the press is configurable as **Push to Talk**, **Mute / Unmute**, **Mute a Driver** (while the dial's Mode is Voice Chat), or **Skip Spotter Call** (while the dial's Mode is Spotter). The Property Inspector automatically shows the dial settings below (instead of the keypad Mode settings) when the instance sits on a dial.
+Placed on a Stream Deck+ dial or a Mirabox knob, Audio Controls becomes a volume dial: rotating adjusts the selected audio category, and the press is configurable as **Push to Talk**, **Mute / Unmute**, **Mute a Driver** (while the dial's Mode is Voice Chat), or **Skip Spotter Call** (while the dial's Mode is Spotter). The Property Inspector automatically shows the dial settings below (instead of the keypad Mode settings) when the instance sits on a dial.
 
 Rotate the dial to adjust the volume of the category selected in the dial's **Mode** setting. For **Voice Chat**, **Master**, and **Spotter**, each detent taps the matching iRacing volume key binding — iRacing steps its volume a fixed amount per press, and it exposes no current volume state, so the touch strip shows the category name only (there is no level to display; this is an iRacing limitation, not a missing feature). The **Spotter** mode drives iRacing's AI spotter through the same *Spotter Louder* / *Spotter Quieter* / *Spotter Silence* key bindings as the [AI Spotter Controls](/docs/actions/audio-voice/ai-spotter-controls/) action — they are shared plugin-wide, so configure them once (in either action's Related Key Bindings section) and both actions use them; the spotter volume dial lives here, on the audio dial, rather than on a separate AI Spotter dial. For **Race Engineer** and **Radar**, each detent steps iRaceDeck's own level by 5% — and because these levels are iRaceDeck's, the touch strip shows a **live level bar** with the current value, updating immediately when the level changes anywhere (the dial itself, the keypad buttons, the Pit Crew sliders). When the Race Engineer or Radar feature is disabled, the bar dims and reads **OFF**.
 
@@ -127,8 +127,7 @@ While **Push to Talk** is held, the strip's top band turns red and reads **ON AI
 #### Controls
 
 - **Elgato Stream Deck+** — dial rotation, press, and the touchscreen level display.
-
-Dials are currently Stream Deck+ only — the action can't be placed on Mirabox knobs or Ulanzi dials yet (see [Dials](/docs/features/dials/)).
+- **Mirabox knob** — turn and push, with the same live readout drawn on the screen above the knob; the Push slot only (see [Dials](/docs/features/dials/#mirabox-knobs)).
 
 #### Setting: Mode
 

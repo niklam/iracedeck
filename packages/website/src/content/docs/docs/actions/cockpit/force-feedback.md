@@ -88,7 +88,7 @@ Adjust the bass shaker LFE loudness — the control iRacing's Options pages call
 
 ## On a dial
 
-Placed on a Stream Deck+ dial, Force Feedback becomes a force-feedback dial. Pick one value with the dial's **Mode** dropdown; turning the dial steps it up or down in iRacing, and for **FFB Force** the touch strip shows the live max force in Nm. It uses the same key bindings as the keypad modes, so no extra configuration is needed if you already use them. The Property Inspector automatically shows the dial settings below (instead of the keypad Mode and Direction) when the instance sits on a dial. See [Dials](/docs/features/dials/) for how the shared dial gestures work.
+Placed on a Stream Deck+ dial or a Mirabox knob, Force Feedback becomes a force-feedback dial. Pick one value with the dial's **Mode** dropdown; turning the dial steps it up or down in iRacing, and for **FFB Force** the touch strip shows the live max force in Nm. It uses the same key bindings as the keypad modes, so no extra configuration is needed if you already use them. The Property Inspector automatically shows the dial settings below (instead of the keypad Mode and Direction) when the instance sits on a dial. See [Dials](/docs/features/dials/) for how the shared dial gestures work.
 
 #### Details
 
@@ -99,8 +99,7 @@ Placed on a Stream Deck+ dial, Force Feedback becomes a force-feedback dial. Pic
 #### Controls
 
 - **Elgato Stream Deck+** — dial rotation, a press (short or long), and a touchscreen readout that always shows. A touchscreen tap or long tap runs its own configured Tap Display / Long Touch action.
-
-Dials are currently Stream Deck+ only — the action can't be placed on Mirabox knobs or Ulanzi dials yet (see [Dials](/docs/features/dials/)).
+- **Mirabox knob** — turn and push, with the same live readout drawn on the screen above the knob; the Push slot only (see [Dials](/docs/features/dials/#mirabox-knobs)).
 
 #### Setting: Mode
 

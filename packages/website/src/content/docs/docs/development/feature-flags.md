@@ -3,7 +3,7 @@ title: Feature Flags
 description: How iRaceDeck gates platform-specific features at build time, and how to override flags locally for testing.
 ---
 
-iRaceDeck ships three plugins — the Elgato Stream Deck plugin, the Mirabox VSD Craft plugin, and the Ulanzi Deck plugin. They share most code, but there are two kinds of reason a feature might need gating: a genuine hardware difference (only Stream Deck+ has a touch strip), or a temporary in-development kill-switch. Icon rendering itself no longer differs by host — since issue #642, every plugin rasterizes its SVG icons to PNG in-plugin (`@iracedeck/rasterizer`, wrapping `@resvg/resvg-js`) before sending pixels to the device, so the old QT5-vs-QT6.7+ SVG engine split that used to justify most of these flags is gone. See [Architecture](/docs/development/architecture/) and `.claude/rules/svg-platform-compatibility.md` (in-repo) for what changed.
+iRaceDeck ships three plugins — the Elgato Stream Deck plugin, the Mirabox VSD Craft plugin, and the Ulanzi Deck plugin. They share most code, but there are two kinds of reason a feature might need gating: a genuine hardware difference (only a Stream Deck+ dial reports touch, long press and push + turn; a Mirabox knob has turn and press alone), or a temporary in-development kill-switch. Icon rendering itself no longer differs by host — since issue #642, every plugin rasterizes its SVG icons to PNG in-plugin (`@iracedeck/rasterizer`, wrapping `@resvg/resvg-js`) before sending pixels to the device, so the old QT5-vs-QT6.7+ SVG engine split that used to justify most of these flags is gone. See [Architecture](/docs/development/architecture/) and `.claude/rules/svg-platform-compatibility.md` (in-repo) for what changed.
 
 Feature flags let us gate those features at **build time**: unsupported code is stripped from the bundle, and Property Inspector controls that would have no effect are hidden. Flags also provide a lightweight way for contributors to test in-development features locally without shipping them to everyone, or to kill a risky in-development pipeline quickly.
 
@@ -61,7 +61,7 @@ A committed `feature-flags.local.json.example` at the repo root documents the sh
 
 ## Typical use cases
 
-- **Test a Mirabox-only scenario on your Stream Deck build.** Set `features.dialExtendedGestures: false` in the local file, rebuild Stream Deck — the touch-strip feedback code and controls disappear from your Stream Deck build too. Flip it back and they return.
+- **Test a Mirabox-only scenario on your Stream Deck build.** Set `features.dialExtendedGestures: false` in the local file, rebuild Stream Deck — touch, trigger descriptions, long press, push + turn and the hold preview disappear from your Stream Deck build too, along with their Property Inspector controls, while the dial display keeps drawing. Flip it back and they return.
 - **Compare PNG rasterization against the raw SVG path.** Set `features.pngRasterization: false` in the local file and rebuild — the plugin falls back to sending SVG data URIs straight to the host, exactly as every build did before issue #642. Useful for isolating whether a rendering issue is in the rasterizer or elsewhere.
 - **Develop a beta feature locally without shipping it.** (Once issue #363 lands.) Commit the feature with its flag defaulting to `false` everywhere. Testers opt in via `feature-flags.local.json`.
 
@@ -69,7 +69,7 @@ A committed `feature-flags.local.json.example` at the repo root documents the sh
 
 | Flag | Stream Deck | Mirabox | Ulanzi | Purpose |
 |------|-------------|---------|--------|---------|
-| `dialExtendedGestures` | `true` | `false` | `false` | Stream Deck+ touch-strip feedback + touch-tap input — only Elgato hardware has a plugin-facing touch strip |
+| `dialExtendedGestures` | `true` | `false` | `false` | The Stream Deck+ dial gestures beyond turn and press — touch input, trigger descriptions, long press and push + turn, and the hold preview. Does not gate the dial display, which every host with a dial screen draws |
 | `profiles` | `true` | `false` | `false` | Stream Deck Profiles PI accordion + profile switching (Race Admin selector, Camera Focus) — Elgato-only, since Mirabox/Ulanzi hosts have no profile system. **Runtime-only**: read via `getFeatureFlag("profiles")` / `locals.platform`, with no `__FEATURE_*__` compile-time constant (unlike the other two flags) |
 | `pngRasterization` | `true` | `true` | `true` | Temporary kill-switch for in-plugin PNG rasterization (`@iracedeck/rasterizer`, issue #642) — `true` everywhere; force it `false` locally to fall back to raw SVG data URIs |
 

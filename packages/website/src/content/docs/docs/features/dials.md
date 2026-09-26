@@ -1,9 +1,9 @@
 ---
 title: Dials
-description: How rotary dial (encoder) actions work in iRaceDeck — turn, press, long press, push + turn, and touch gestures.
+description: How rotary dial actions work in iRaceDeck on a Stream Deck+ dial and a Mirabox knob — turn, press, long press, push + turn, and touch gestures.
 ---
 
-Some iRaceDeck actions are built for a **rotary dial** (encoder) — currently the dials on an Elgato **Stream Deck+**. A dial action also works as a plain keypad button where no dial is present. Mirabox knobs and Ulanzi dials are not supported yet, so dial actions don't appear on those devices for now; support will return once it has been verified on that hardware. This page explains the gestures every dial action shares; each action's own page describes what those gestures do for it.
+Some iRaceDeck actions are built for a **rotary dial** — the dials on an Elgato **Stream Deck+** and the knobs on a **Mirabox** Stream Dock. A dial action also works as a plain keypad button where no dial is present. Ulanzi dials are not supported yet. This page explains the gestures every dial action shares; each action's own page describes what those gestures do for it.
 
 ## Gestures
 
@@ -16,13 +16,17 @@ A dial exposes more than one gesture. In an action's Property Inspector, each co
 - **Tap Display** — a tap on the touch strip. Stream Deck+ only.
 - **Long Touch** — a long press on the touch strip. Stream Deck+ only.
 
+## Mirabox knobs
+
+On a Mirabox knob the action draws its live readout on the screen above the knob, sized for it rather than scaled from the Stream Deck+ strip, and the knob has two gestures: **Turn** and **Push**. That is a limit of what the Stream Dock software tells plugins — a hold and a push + turn never arrive as anything a plugin can tell apart from nothing, and a tap on the screen arrives as a push — so Long Press, Push + Turn, Tap Display and Long Touch are not offered on a knob and its Property Inspector shows only the Turn settings, the display colours and the Push slot. Everything an action offers on those other slots can be put on Push, so nothing is out of reach; what you lose is capacity — one gesture per knob instead of up to four — and the fixed push + turn behaviours (Fuel Service's clockwise fill-to-full) have no knob equivalent.
+
 ## How presses are classified
 
-Push, Long Press, and Push + Turn are all decided **when you release** the dial button, from how long it was held (compared against the Long-press threshold) and whether you turned the dial while holding it. Nothing fires mid-hold, so the three gestures never conflict with one another. This also means a dial that reports its release instantly simply treats a hold as a short press, degrading gracefully where the hardware can't distinguish a hold.
+Push, Long Press, and Push + Turn are all decided **when you release** the dial button, from how long it was held (compared against the Long-press threshold) and whether you turned the dial while holding it. Nothing fires mid-hold, so the three gestures never conflict with one another. On a Mirabox knob every push is a plain Push; holding the knob or turning it while pushed does nothing (see [Mirabox knobs](#mirabox-knobs)).
 
 ## Seeing the outcome before you let go
 
-Hold the dial button past the Long-press threshold and, where the plugin can tell what will happen, the touch strip shows you — the outcome appears in place of the value, with a small bar under it. So you can hold until you see the change and then release, instead of holding "long enough" and hoping. Turning the dial while still holding it cancels the press as usual, and the strip goes straight back to normal.
+On a Stream Deck+, hold the dial button past the Long-press threshold and, where the plugin can tell what will happen, the touch strip shows you — the outcome appears in place of the value, with a small bar under it. So you can hold until you see the change and then release, instead of holding "long enough" and hoping. Turning the dial while still holding it cancels the press as usual, and the strip goes straight back to normal.
 
 Nothing about *when* the action runs has changed: it still runs when you release, and only then. The preview is a display.
 
