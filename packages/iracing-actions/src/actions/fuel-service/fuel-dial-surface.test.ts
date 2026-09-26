@@ -1257,6 +1257,40 @@ describe("FuelService dial surface", () => {
       expect(ctx.setDialCanvas).toHaveBeenCalled();
     });
 
+    it("with the extended gestures off, a pressed rotation dispatches no push+turn pair", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
+      mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 0, FuelLevel: 0, PitSvFlags: 0 });
+      const ctx = dialContext("k6", KNOB);
+      const settings = { pushTurnAction: "full-empty", dialMode: "add-amount" };
+      await appear(ctx, settings);
+      mockPitFuel.mockClear();
+      mockPitClearFuel.mockClear();
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      await action.onDialRotate(rotateEvent(ctx, settings, 1, true) as never);
+      await action.onDialRotate(rotateEvent(ctx, settings, -1, true) as never);
+      vi.advanceTimersByTime(100);
+
+      expect(mockPitFuel).not.toHaveBeenCalled();
+      expect(mockPitClearFuel).not.toHaveBeenCalled();
+    });
+
+    it("with the extended gestures off, a rotation while pressed makes the release fire nothing", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
+      const ctx = dialContext("k7", KNOB);
+      const settings = { pressAction: "toggle-fueling", longPressAction: "fill-to-max" };
+      await appear(ctx, settings);
+      mockPitClearFuel.mockClear();
+      mockPitFuel.mockClear();
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      await action.onDialRotate(rotateEvent(ctx, settings, 1, true) as never);
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+
+      expect(mockPitClearFuel).not.toHaveBeenCalled();
+      expect(mockPitFuel).not.toHaveBeenCalled();
+    });
+
     it("a switch-mode press persists over the raw settings, keeping a stored tapAction the knob PI hides", async () => {
       vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
       const ctx = dialContext("k5", KNOB);

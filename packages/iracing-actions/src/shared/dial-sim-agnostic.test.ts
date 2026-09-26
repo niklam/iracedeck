@@ -25,6 +25,7 @@ describe("shared/dial-* stays free of sim imports", () => {
         "dial-knob-box.ts",
         "dial-name-icon.ts",
         "dial-preview.ts",
+        "dial-release.ts",
       ]),
     );
   });

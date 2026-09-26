@@ -46,6 +46,7 @@ icons/                                   # Dynamic SVG templates (telemetry-driv
 - `dial-knob-box.ts` — `renderKnobBox`, the Stream Dock knob drawing at 176×112 (#1013): designed for that screen rather than scaled from the strip, with the same vocabulary (label, value, pending bar, binding warning)
 - `dial-fit.ts` — `fitValueFontSize`, the value-fitting both dash-box renderers share
 - `dial-preview.ts` — `renderPendingBar`, the one #1120 hold-preview mark every renderer draws
+- `dial-release.ts` — `classifyDialReleaseForHost`, the one release rule every dial surface calls: deck-core's `classifyDialRelease` where `__FEATURE_DIAL_EXTENDED_GESTURES__` is on; never `long` where it is off (`"push-turn"` after a pressed rotation, `"short"` otherwise) (#1013)
 - `dial-name-icon.ts` — plain two-line action-name image for dial contexts (#775); push it with `pushDialNameIcon`, which sends it only on the `sd-plus-strip` profile — on a Stream Dock knob `setImage` IS the live screen (#1013). The `shared/dial-*` modules import deck-core and zod only; `dial-sim-agnostic.test.ts` keeps them free of `@iracedeck/iracing-sdk` / `@iracedeck/sim-events-iracing`
 - `profile-entries.ts` — shared `_deviceProfiles` PI-dropdown entry building + echo-loop change guard (#790)
 - `repeat-controller.ts` — long-press hold-to-repeat timing controller

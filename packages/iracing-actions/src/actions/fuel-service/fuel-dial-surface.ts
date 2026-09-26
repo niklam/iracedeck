@@ -15,10 +15,8 @@
  */
 import {
   applyBindingWarning,
-  classifyDialRelease,
   createHoldPreview,
   type DeckTriggerDescription,
-  type DialReleaseKind,
   type DirectionalPair,
   fuelFromDisplayUnits,
   fuelToDisplayUnits,
@@ -40,6 +38,7 @@ import { borderColorForState, type ToggleState } from "../../icons/status-bar.js
 import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
 import { persistDialPatch } from "../../shared/dial-persist.js";
 import { type DialPendingPreview, renderPendingBar } from "../../shared/dial-preview.js";
+import { classifyDialReleaseForHost } from "../../shared/dial-release.js";
 import type { FuelPipeline } from "./fuel-pipeline.js";
 import {
   type DialGestureSlot,
@@ -1053,6 +1052,12 @@ export class FuelDialSurface {
       // before the zero-tick resolve below, so a zero-tick pressed rotate —
       // which already makes the release a no-op — also takes the preview down.
       ctx.holdPreview.rotated();
+
+      // Push+turn is an extended gesture: where those are compiled out (Mirabox,
+      // Ulanzi) a pressed rotation keeps only the guard above — its release
+      // fires nothing — and dispatches no pair.
+      if (!__FEATURE_DIAL_EXTENDED_GESTURES__) return;
+
       const gesture = resolvePairedAction(PUSH_TURN_PAIRS[dial.pushTurnAction], ticks);
 
       if (gesture) {
@@ -1137,19 +1142,17 @@ export class FuelDialSurface {
     if (pressStartMs === 0) return;
 
     // Classify the release with full information (duration + the rotated guard),
-    // so long-press never races push+turn. No timer fired mid-hold. A knob
-    // reports no long hold (its dialUp never comes) and no push+turn, so where
-    // the extended gestures are compiled out every release is a press.
-    const kind: DialReleaseKind = __FEATURE_DIAL_EXTENDED_GESTURES__
-      ? classifyDialRelease({
-          pressStartMs,
-          nowMs: Date.now(),
-          rotatedWhilePressed: ctx.rotatedWhilePressed,
-          // Honor the plugin-wide "Long-press threshold" global setting (shared with
-          // the dual-press feature); falls back to DIAL_LONG_PRESS_THRESHOLD_MS.
-          thresholdMs: getDualPressThresholdMs(),
-        })
-      : "short";
+    // so long-press never races push+turn. No timer fired mid-hold. Where
+    // the extended gestures are compiled out a release is never long: a held
+    // knob never sends its dialUp (`classifyDialReleaseForHost`).
+    const kind = classifyDialReleaseForHost({
+      pressStartMs,
+      nowMs: Date.now(),
+      rotatedWhilePressed: ctx.rotatedWhilePressed,
+      // Honor the plugin-wide "Long-press threshold" global setting (shared with
+      // the dual-press feature); falls back to DIAL_LONG_PRESS_THRESHOLD_MS.
+      thresholdMs: getDualPressThresholdMs(),
+    });
 
     if (kind === "push-turn") return;
 

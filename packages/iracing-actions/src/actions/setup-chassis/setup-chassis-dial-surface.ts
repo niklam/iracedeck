@@ -14,10 +14,8 @@
  * show the pending next-pit-stop offset from `dpWeightJacker*` (#953).
  */
 import {
-  classifyDialRelease,
   createHoldPreview,
   type DeckTriggerDescription,
-  type DialReleaseKind,
   getDualPressThresholdMs,
   type HoldPreview,
   type IDeckActionContext,
@@ -33,6 +31,7 @@ import { dialAppearanceFields, renderDialBox, resolveDialBoxColors } from "../..
 import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
 import { persistDialPatch } from "../../shared/dial-persist.js";
 import type { DialPendingPreview } from "../../shared/dial-preview.js";
+import { classifyDialReleaseForHost } from "../../shared/dial-release.js";
 import {
   formatViewValue,
   type UnitsPreference,
@@ -452,16 +451,14 @@ export class SetupChassisDialSurface {
 
     if (pressStartMs === 0) return;
 
-    // A knob reports no long hold (its dialUp never comes) and no push+turn, so
-    // where the extended gestures are compiled out every release is a press.
-    const kind: DialReleaseKind = __FEATURE_DIAL_EXTENDED_GESTURES__
-      ? classifyDialRelease({
-          pressStartMs,
-          nowMs: Date.now(),
-          rotatedWhilePressed: ctx.rotatedWhilePressed,
-          thresholdMs: getDualPressThresholdMs(),
-        })
-      : "short";
+    // Where the extended gestures are compiled out a release is never long: a
+    // held knob never sends its dialUp (`classifyDialReleaseForHost`).
+    const kind = classifyDialReleaseForHost({
+      pressStartMs,
+      nowMs: Date.now(),
+      rotatedWhilePressed: ctx.rotatedWhilePressed,
+      thresholdMs: getDualPressThresholdMs(),
+    });
 
     if (kind === "push-turn") return;
 

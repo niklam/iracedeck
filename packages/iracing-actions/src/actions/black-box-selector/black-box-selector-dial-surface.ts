@@ -23,10 +23,8 @@
  */
 import {
   applyBindingWarning,
-  classifyDialRelease,
   type DeckTriggerDescription,
   type DialCanvasProfile,
-  type DialReleaseKind,
   getDualPressThresholdMs,
   type IDeckActionContext,
   svgToDataUri,
@@ -37,6 +35,7 @@ import z from "zod";
 import { BLACK_BOX_GLOBAL_KEYS, type BlackBoxId } from "../../shared/black-box.js";
 import { dialAppearanceFields, type DialBoxColors, resolveDialBoxColors } from "../../shared/dial-box.js";
 import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
+import { classifyDialReleaseForHost } from "../../shared/dial-release.js";
 
 /** Cap on binding taps dispatched for one rotate event (a fast spin coalesces ticks). */
 const MAX_TAPS_PER_EVENT = 5;
@@ -290,16 +289,14 @@ export class BlackBoxSelectorDialSurface {
 
     if (pressStartMs === 0) return;
 
-    // A knob reports no long hold (its dialUp never comes) and no push+turn, so
-    // where the extended gestures are compiled out every release is a press.
-    const kind: DialReleaseKind = __FEATURE_DIAL_EXTENDED_GESTURES__
-      ? classifyDialRelease({
-          pressStartMs,
-          nowMs: Date.now(),
-          rotatedWhilePressed: ctx.rotatedWhilePressed,
-          thresholdMs: getDualPressThresholdMs(),
-        })
-      : "short";
+    // Where the extended gestures are compiled out a release is never long: a
+    // held knob never sends its dialUp (`classifyDialReleaseForHost`).
+    const kind = classifyDialReleaseForHost({
+      pressStartMs,
+      nowMs: Date.now(),
+      rotatedWhilePressed: ctx.rotatedWhilePressed,
+      thresholdMs: getDualPressThresholdMs(),
+    });
 
     if (kind === "push-turn") return;
 

@@ -481,6 +481,20 @@ describe("BlackBoxSelector dial surface", () => {
 
       expect(mockTapBinding).not.toHaveBeenCalled();
     });
+
+    it("fires nothing on a release after a rotation while pressed", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
+      const ctx = dialContext("g5", KNOB);
+      const settings = withDial({ pressAction: "open-selected-box", pressBox: "fuel" });
+      await appear(ctx, settings);
+
+      await action.onDialDown(eventFor(ctx, settings) as never);
+      await action.onDialRotate(rotateEvent(ctx, settings, 1, true) as never);
+      mockTapBinding.mockClear();
+      await action.onDialUp(eventFor(ctx, settings) as never);
+
+      expect(mockTapBinding).not.toHaveBeenCalled();
+    });
   });
 
   describe("lifecycle", () => {

@@ -28,9 +28,7 @@
  * missing value).
  */
 import {
-  classifyDialRelease,
   type DeckTriggerDescription,
-  type DialReleaseKind,
   getDualPressThresholdMs,
   type IDeckActionContext,
   svgToDataUri,
@@ -41,6 +39,7 @@ import z from "zod";
 
 import { dialAppearanceFields, renderDialBox, resolveDialBoxColors } from "../../shared/dial-box.js";
 import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
+import { classifyDialReleaseForHost } from "../../shared/dial-release.js";
 import { formatInteger } from "../../shared/setup-view.js";
 
 const CHANGE_RENDER_MIN_INTERVAL_MS = 100;
@@ -353,16 +352,14 @@ export class CockpitMiscDialSurface {
 
     if (pressStartMs === 0) return;
 
-    // A knob reports no long hold (its dialUp never comes) and no push+turn, so
-    // where the extended gestures are compiled out every release is a press.
-    const kind: DialReleaseKind = __FEATURE_DIAL_EXTENDED_GESTURES__
-      ? classifyDialRelease({
-          pressStartMs,
-          nowMs: Date.now(),
-          rotatedWhilePressed: ctx.rotatedWhilePressed,
-          thresholdMs: getDualPressThresholdMs(),
-        })
-      : "short";
+    // Where the extended gestures are compiled out a release is never long: a
+    // held knob never sends its dialUp (`classifyDialReleaseForHost`).
+    const kind = classifyDialReleaseForHost({
+      pressStartMs,
+      nowMs: Date.now(),
+      rotatedWhilePressed: ctx.rotatedWhilePressed,
+      thresholdMs: getDualPressThresholdMs(),
+    });
 
     if (kind === "push-turn") return;
 

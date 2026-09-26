@@ -18,10 +18,8 @@
  * iRacing exposes no `dc*` telemetry for. No Traction setting triggers it.
  */
 import {
-  classifyDialRelease,
   createHoldPreview,
   type DeckTriggerDescription,
-  type DialReleaseKind,
   getDualPressThresholdMs,
   type HoldPreview,
   type IDeckActionContext,
@@ -35,6 +33,7 @@ import { toggleStateFromLevel } from "../../icons/status-bar.js";
 import { dialAppearanceFields, renderDialBox, resolveDialBoxColors } from "../../shared/dial-box.js";
 import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
 import type { DialPendingPreview } from "../../shared/dial-preview.js";
+import { classifyDialReleaseForHost } from "../../shared/dial-release.js";
 import { formatViewValue, type ViewSettingId } from "../../shared/setup-view.js";
 
 /** Minimum gap (ms) between change-driven feedback pushes (≤10 pushes/s/dial on the strip). */
@@ -371,16 +370,14 @@ export class SetupTractionDialSurface {
 
     if (pressStartMs === 0) return;
 
-    // A knob reports no long hold (its dialUp never comes) and no push+turn, so
-    // where the extended gestures are compiled out every release is a press.
-    const kind: DialReleaseKind = __FEATURE_DIAL_EXTENDED_GESTURES__
-      ? classifyDialRelease({
-          pressStartMs,
-          nowMs: Date.now(),
-          rotatedWhilePressed: ctx.rotatedWhilePressed,
-          thresholdMs: getDualPressThresholdMs(),
-        })
-      : "short";
+    // Where the extended gestures are compiled out a release is never long: a
+    // held knob never sends its dialUp (`classifyDialReleaseForHost`).
+    const kind = classifyDialReleaseForHost({
+      pressStartMs,
+      nowMs: Date.now(),
+      rotatedWhilePressed: ctx.rotatedWhilePressed,
+      thresholdMs: getDualPressThresholdMs(),
+    });
 
     if (kind === "push-turn") return;
 
