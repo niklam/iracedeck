@@ -158,6 +158,7 @@ import {
   openDirectoryInExplorer,
   openFolderInExplorer,
   parseSettingsWindowBounds,
+  pluginAudioSessionIdentity,
   type PluginConfig,
   readInstalledVoicePackSha,
   resolveActiveDriverName,
@@ -421,12 +422,8 @@ const audioRootDir = join(__binDir, "..", "assets", "audio");
 // `voicePacks.refresh()` below extends the list with one root per installed
 // voice pack (issue #1034).
 // The Windows Volume Mixer otherwise lists our audio session under the deck
-// host's executable ("Node"); name it and give it our logo (#1253). The icon
-// path must be absolute, so it is resolved from __binDir like audioRootDir.
-initializeAudio(adapter.createLogger("Audio"), audioNative, [audioRootDir], {
-  displayName: "iRaceDeck",
-  iconPath: join(__binDir, "..", "imgs", "plugin", "iracedeck.ico"),
-});
+// host's executable ("Node"); name it and give it our logo (#1253).
+initializeAudio(adapter.createLogger("Audio"), audioNative, [audioRootDir], pluginAudioSessionIdentity(__binDir));
 getAudio().init();
 
 const featureGateLogger = adapter.createLogger("FeatureGates");
