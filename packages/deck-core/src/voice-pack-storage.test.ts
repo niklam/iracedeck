@@ -880,7 +880,7 @@ describe("download into storage", () => {
     }) as unknown as typeof fetch;
   }
 
-  const ARCHIVE = [new TextEncoder().encode("PK"), new TextEncoder().encode("payload")];
+  const ARCHIVE = [new TextEncoder().encode("PK\x03\x04"), new TextEncoder().encode("payload")];
   const ARCHIVE_SHA = createHash("sha256")
     .update(Buffer.concat(ARCHIVE.map((c) => Buffer.from(c))))
     .digest("hex");
@@ -900,7 +900,7 @@ describe("download into storage", () => {
     await opened.close();
 
     expect(result).toEqual({ ok: true, sha256: ARCHIVE_SHA, bytes: 11 });
-    expect(fs.read(opened.path)).toBe("PKpayload");
+    expect(fs.read(opened.path)).toBe("PK\x03\x04payload");
     expect(fs.has(join(ROOT, "luca"))).toBe(false);
   });
 
