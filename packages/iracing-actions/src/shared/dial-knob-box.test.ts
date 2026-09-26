@@ -10,11 +10,13 @@ vi.mock("@iracedeck/deck-core", () => ({
 const KNOB = { id: "stream-dock-knob", width: 176, height: 112 } as const;
 const colors = resolveDialBoxColors(undefined, "#e74c3c");
 
-describe("renderKnobBox (#1013)", () => {
-  it("draws at the size of deck-core's stream-dock-knob profile", async () => {
-    const { STREAM_DOCK_KNOB_CANVAS } =
-      await vi.importActual<typeof import("@iracedeck/deck-core")>("@iracedeck/deck-core");
+// Loaded at collection rather than inside the test: the real deck-core barrel is
+// slow to import, and under a full-suite run it overran the 5 s per-test timeout.
+const { STREAM_DOCK_KNOB_CANVAS } =
+  await vi.importActual<typeof import("@iracedeck/deck-core")>("@iracedeck/deck-core");
 
+describe("renderKnobBox (#1013)", () => {
+  it("draws at the size of deck-core's stream-dock-knob profile", () => {
     expect({ width: KNOB_BOX_WIDTH, height: KNOB_BOX_HEIGHT }).toEqual({
       width: STREAM_DOCK_KNOB_CANVAS.width,
       height: STREAM_DOCK_KNOB_CANVAS.height,
