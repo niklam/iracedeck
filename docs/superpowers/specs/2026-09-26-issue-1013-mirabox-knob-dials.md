@@ -18,17 +18,18 @@ Two devices, same result. The #1013 reporter tested Fuel Service on a Soomfon CN
 | --- | --- |
 | Placing Fuel Service on a knob | `willAppear` with `payload.controller: "Knob"` |
 | Rotate | `dialRotate`, `ticks` ±1 per detent, `pressed: false` |
-| Short click | `dialDown` + `dialUp`, 50 ms apart every time |
-| Hold 5 s | a lone `dialDown`, **no `dialUp` ever** |
+| Push the knob (any duration, a quick click included) | a lone `dialDown`, **no `dialUp` ever** |
 | Push and turn | a lone `dialDown`, **no `dialRotate`**, no `dialUp` |
 | Tap the screen above the knob | `dialDown` + `dialUp`, 50 ms apart — a knob press |
 | Touch-hold the screen 2 s | `dialDown` + `dialUp`, 50 ms apart — same as a tap |
 
 The CN003 matched it: every release classified short and `pressed` was always false.
 
-So on Mirabox the knob has exactly two gestures, **rotate and press**, and a screen tap is the same press. Long-press, push+turn and touch never reach the plugin as anything distinguishable. The proof of concept also showed that `setImage` on a Knob context draws on the LCD segment above the knob, and that a 176×112 drawing reads comfortably on the device.
+**Correction after the manual test (2026-09-26).** The first probe read the down + up pairs as knob clicks; they were screen taps. Pushing the knob on Fuel Service fired nothing during the maintainer's test, while a screen tap fired the Press action, and the plugin log showed a lone `dialDown` for every knob push. A second probe logging each whole message (top-level fields included, settings stripped) showed a knob push and a screen tap send byte-identical `dialDown` messages — same `action`, `context`, `device`, `controller` and `coordinates` — so the plugin cannot tell them apart when the `dialDown` arrives; only the `dialUp` 50 ms later distinguishes the tap.
 
-Two facts in the current docs are wrong and are corrected by this change: a Mirabox hold does **not** "degrade to a short press" (it fires nothing, because the classifier waits for a `dialUp` that never comes), and `dialRotate.pressed` is **not** delivered on Mirabox.
+So on Mirabox the knob has exactly two gestures, **rotate and press**, and a screen tap is the same press. A knob push never reports its release, whatever its length. Long-press, push+turn and touch never reach the plugin as anything distinguishable. The proof of concept also showed that `setImage` on a Knob context draws on the LCD segment above the knob, and that a 176×112 drawing reads comfortably on the device.
+
+Two facts in the current docs are wrong and are corrected by this change: a Mirabox knob push does **not** reach a release-time classifier at all (without the adapter fix below it fires nothing, because the classifier waits for a `dialUp` that never comes), and `dialRotate.pressed` is **not** delivered on Mirabox.
 
 ## What the code looks like today
 
@@ -89,7 +90,11 @@ Every dial drawing has a strip renderer and a knob renderer, selected by `profil
 ### Surfaces
 
 - All sixteen replace `setFeedback({ box })` with `setDialCanvas(render(profile, …))` and render only when `dialCanvas()` is non-null. The existing ≤ 10 renders/s throttles apply unchanged to both targets.
-- **A lone `dialDown` fires nothing**, and must leave nothing behind that a later short press could misread. The classifier already overwrites `pressStart` on the next `dialDown`; a test pins it.
+- **A lone `dialDown` at a surface fires nothing**, and must leave nothing behind that a later short press could misread. The classifier already overwrites `pressStart` on the next `dialDown`; a test pins it. On Mirabox a surface never sees a lone `dialDown`: the adapter makes every knob press atomic (below).
+
+### The Mirabox adapter makes a knob press atomic
+
+Because a knob push sends only `dialDown` and a screen tap sends `dialDown` + `dialUp`, and the two `dialDown` messages are identical, the Mirabox adapter normalises both into one atomic press: on `dialDown` it delivers `onDialDown` and then, immediately, `onDialUp` for the same context, and it drops every `dialUp` the host sends. A knob push and a screen tap therefore both fire the Press action exactly once, at the moment of pressing. This is protocol normalisation, the same kind as the Ulanzi client mapping `hold-left`/`hold-right` to `pressed`, so it lives in the adapter and no surface changes: with the extended gestures off, every surface already classifies a down-then-up as a short press. It deliberately uses no timer.
 
 ### The Stream Deck+ gesture set stays behind one flag
 
@@ -132,9 +137,10 @@ Every gesture a surface offers on Long-press or a touch slot is also assignable 
 - `renderStripBox` output is byte-identical to today's `renderDialBox` at 200×100 for the existing fixtures, so no Stream Deck+ drawing moves.
 - Each surface renders through the right renderer for each profile and pushes nothing when `dialCanvas()` is `null`; flag-off tests assert no touch handling, no trigger description and no hold preview while rendering continues. Setup Engine and Setup Hybrid gain the flag-off tests they lack today.
 - A lone `dialDown` followed by a short press classifies that press as short and fires only it.
+- Mirabox adapter: a host `dialDown` alone produces one `onDialDown` then one `onDialUp`; a host `dialDown` + `dialUp` pair produces exactly the same (the host `dialUp` is dropped); the `onDialDown` broadcast callbacks still fire once per press.
 - The manifest parity test and the sim-import guard above.
 
 **Manual.**
 
 - The maintainer, on a Stream Deck+: every dial surface draws on the strip exactly as before; touch, long-press, push+turn, trigger descriptions and the hold preview all still work.
-- The maintainer, on his Mirabox knob device: all sixteen actions can be placed on a knob; each knob screen shows its live knob drawing; rotate and press work; a hold and a push+turn fire nothing and leave nothing on the screen; the dial PI shows only the Press gesture slot.
+- The maintainer, on his Mirabox knob device: all sixteen actions can be placed on a knob; each knob screen shows its live knob drawing; rotate works; pushing the knob and tapping its screen each fire the Press action once; the dial PI shows only the Press gesture slot.
