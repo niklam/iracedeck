@@ -36,6 +36,7 @@ import type { SessionInfo, TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 
 import { borderColorForState, type ToggleState } from "../../icons/status-bar.js";
+import { fitValueFontSize } from "../../shared/dial-fit.js";
 import { KNOB_BOX_HEIGHT, KNOB_BOX_WIDTH } from "../../shared/dial-knob-box.js";
 import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
 import { persistDialPatch } from "../../shared/dial-persist.js";
@@ -887,8 +888,9 @@ export function renderKnobCanvasSvg(
   const readout = buildDialReadout(mode, dialMode, addLtr, totalLtr, targetLtr, displayUnits);
   const valueText = pending ? pending.text : readout;
   const valueColor = pending ? pending.color : WHITE;
-  // Bold Arial averages ~0.6 em per glyph; shrink the readout to fit, capped at 30.
-  const readoutFontSize = Math.min(30, Math.floor((w - 2 * margin) / Math.max(1, valueText.length * 0.6)));
+  // Shrink the readout to fit the width inside the margins, capped at 30 — the
+  // same fitting every dash-box renderer uses.
+  const readoutFontSize = fitValueFontSize(valueText, w - 2 * margin, 30);
   const barTarget = mode === "manual" && dialMode === "fill-to" ? targetLtr : undefined;
   const barSvg = renderFuelBarSvg(
     currentLtr,
