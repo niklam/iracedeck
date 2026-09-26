@@ -168,6 +168,12 @@ export class VSDClient {
     this.ws.on("message", (raw: Buffer | string) => {
       try {
         const data = JSON.parse(raw.toString()) as VSDEvent;
+        // PROOF OF CONCEPT (#1013): log every event the host sends, settings
+        // stripped, so knob-screen taps and dialDown/dialUp timing are visible.
+        const { settings: _settings, ...probePayload } = (data.payload ?? {}) as Record<string, unknown>;
+        this.logger.debug(
+          `[#1013 probe] ${data.event} action=${data.action ?? "-"} context=${data.context ?? "-"} payload=${JSON.stringify(probePayload)}`,
+        );
         this.routeEvent(data);
       } catch (error) {
         this.logger.error(`Failed to parse WebSocket message: ${error}`);
