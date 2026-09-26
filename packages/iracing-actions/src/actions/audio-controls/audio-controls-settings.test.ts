@@ -6,8 +6,10 @@ import {
   DIAL_MUTE_BINDINGS,
   DIAL_MUTE_DRIVER_BINDINGS,
   DIAL_PRESS_ACTIONS,
+  DIAL_SKIP_CALL_BINDINGS,
   dialMuteBindingMap,
   dialMuteDriverBindingMap,
+  dialSkipCallBindingMap,
   isInternalAudioCategory,
   parseAudioControlsSettings,
   pressBindingKeys,
@@ -60,11 +62,11 @@ describe("audio-controls settings", () => {
     // (e.g. a profile written by a newer build) must not wipe the dial half.
     const s = parseAudioControlsSettings({
       category: "not-a-category",
-      dial: { category: "spotter", pressAction: "mute-unmute" },
+      dial: { category: "spotter", pressAction: "skip-call" },
     });
     expect(s.category).toBe("push-to-talk");
     expect(s.dial.category).toBe("spotter");
-    expect(s.dial.pressAction).toBe("mute-unmute");
+    expect(s.dial.pressAction).toBe("skip-call");
   });
 
   it("keeps the rest of the instance when a dial field holds an unknown value", () => {
@@ -82,8 +84,8 @@ describe("audio-controls settings", () => {
   });
 
   it("accepts the spotter dial category (#809)", () => {
-    const s = parseAudioControlsSettings({ dial: { category: "spotter", pressAction: "mute-unmute" } });
-    expect(s.dial).toEqual({ category: "spotter", pressAction: "mute-unmute" });
+    const s = parseAudioControlsSettings({ dial: { category: "spotter", pressAction: "skip-call" } });
+    expect(s.dial).toEqual({ category: "spotter", pressAction: "skip-call" });
   });
 
   it("keeps the keypad global-key map intact", () => {
@@ -135,10 +137,25 @@ describe("audio-controls settings", () => {
     it("keeps the driver-mute table symmetric with the mute table's shape and offers it for voice chat only", () => {
       expect(DIAL_MUTE_DRIVER_BINDINGS).toEqual({ "voice-chat": "audioVoiceChatMuteDriver" });
       expect(dialMuteDriverBindingMap()).toEqual({ "voice-chat": "audioVoiceChatMuteDriver" });
-      // The twin table is untouched: spotter still mutes but has no driver mute.
-      expect(DIAL_MUTE_BINDINGS.spotter).toBe("spotterSilence");
-      expect(dialMuteBindingMap()).toEqual({ "voice-chat": "audioVoiceChatMute", spotter: "spotterSilence" });
       expect(dialMuteDriverBindingMap().spotter).toBeUndefined();
+    });
+  });
+
+  describe("Skip Spotter Call (#1015)", () => {
+    it("parses skip-call on the dial press axis", () => {
+      expect(DIAL_PRESS_ACTIONS).toContain("skip-call");
+      const s = parseAudioControlsSettings({ dial: { category: "spotter", pressAction: "skip-call" } });
+      expect(s.dial).toEqual({ category: "spotter", pressAction: "skip-call" });
+    });
+
+    it("offers skip-call for spotter only, bound to iRacing's Spotter Silence", () => {
+      expect(DIAL_SKIP_CALL_BINDINGS).toEqual({ spotter: "spotterSilence" });
+      expect(dialSkipCallBindingMap()).toEqual({ spotter: "spotterSilence" });
+    });
+
+    it("no longer offers Mute / Unmute for spotter — the silence binding is not a mute", () => {
+      expect(DIAL_MUTE_BINDINGS.spotter).toBeUndefined();
+      expect(dialMuteBindingMap()).toEqual({ "voice-chat": "audioVoiceChatMute" });
     });
   });
 
@@ -178,8 +195,17 @@ describe("audio-controls settings", () => {
       expect(pressBindingKeys({ category: "master", pressAction: "mute-unmute" })).toEqual([]);
     });
 
-    it("requires the spotter silence key for spotter mute (#809)", () => {
-      expect(pressBindingKeys({ category: "spotter", pressAction: "mute-unmute" })).toEqual(["spotterSilence"]);
+    it("requires the spotter silence key for spotter Skip Spotter Call and nothing elsewhere (#1015)", () => {
+      expect(pressBindingKeys({ category: "spotter", pressAction: "skip-call" })).toEqual(["spotterSilence"]);
+      // Fail-soft: a category with no skip-call binding (a stale value).
+      expect(pressBindingKeys({ category: "voice-chat", pressAction: "skip-call" })).toEqual([]);
+      expect(pressBindingKeys({ category: "master", pressAction: "skip-call" })).toEqual([]);
+      expect(pressBindingKeys({ category: "race-engineer", pressAction: "skip-call" })).toEqual([]);
+      expect(pressBindingKeys({ category: "radar", pressAction: "skip-call" })).toEqual([]);
+    });
+
+    it("no longer resolves a binding for spotter Mute / Unmute (#1015)", () => {
+      expect(pressBindingKeys({ category: "spotter", pressAction: "mute-unmute" })).toEqual([]);
     });
 
     it("requires nothing for none", () => {

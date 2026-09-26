@@ -57,7 +57,7 @@ export const SPOTTER_TITLES: Record<SpotterControl, string> = {
   "announce-leader": "SPOTTER\nLEADER",
   louder: "VOL UP\nSPOTTER",
   quieter: "VOL DOWN\nSPOTTER",
-  silence: "MUTE\nSPOTTER",
+  silence: "SKIP CALL\nSPOTTER",
 };
 
 /**
@@ -92,7 +92,7 @@ export function generateAiSpotterControlsSvg(settings: AiSpotterControlsSettings
 /**
  * AI Spotter Controls Action
  * Provides controls for the iRacing AI spotter: damage/weather reports, lap reporting,
- * leader announcements, and volume/silence controls.
+ * leader announcements, volume controls, and skipping the spotter call currently playing.
  */
 export const AI_SPOTTER_CONTROLS_UUID = "com.iracedeck.sd.core.ai-spotter-controls" as const;
 

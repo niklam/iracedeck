@@ -40,6 +40,7 @@ import {
   parseAudioControlsSettings,
 } from "./audio-controls-settings.js";
 import { AudioDialSurface } from "./audio-dial-surface.js";
+import { migrateSpotterMuteToSkipCall } from "./migrate-spotter-mute-to-skip-call.js";
 
 // Re-export for test back-compat (@internal, tests import from this path).
 export { AUDIO_CONTROLS_GLOBAL_KEYS };
@@ -119,7 +120,7 @@ export function generateAudioControlsSvg(settings: AudioControlsSettings, bindin
  * Engineer, Radar) audio categories — Voice Chat also offers Mute a Driver
  * (#863), a blind tap of iRacing's per-driver mute; on a dial/knob it routes
  * every event to the {@link AudioDialSurface} (rotate = volume, press = PTT /
- * Mute–Unmute / Mute a Driver).
+ * Mute–Unmute / Mute a Driver / Skip Spotter Call).
  */
 export const AUDIO_CONTROLS_UUID = "com.iracedeck.sd.core.audio-controls" as const;
 
@@ -134,6 +135,11 @@ export class AudioControls extends ConnectionStateAwareAction<AudioControlsSetti
   });
 
   override async onWillAppear(ev: IDeckWillAppearEvent<AudioControlsSettings>): Promise<void> {
+    // BEFORE super: the base stamps a missing `addedWithVersion` with its own
+    // setSettings({...payload, addedWithVersion}). Migrating first (and handing
+    // the base the migrated payload) makes that stamp write land last AND carry
+    // the migrated dial — the other order would drop the stamp.
+    await this.persistMigratedSettings(ev);
     await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
 
@@ -154,6 +160,8 @@ export class AudioControls extends ConnectionStateAwareAction<AudioControlsSetti
 
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<AudioControlsSettings>): Promise<void> {
     await super.onDidReceiveSettings(ev);
+    // No persistMigratedSettings here — see its doc comment. parseSettings
+    // still migrates the read, which is harmless for a transient pair.
     const settings = this.parseSettings(ev.payload.settings);
 
     if (ev.action.isDial()) {
@@ -226,8 +234,48 @@ export class AudioControls extends ConnectionStateAwareAction<AudioControlsSetti
     await this.dialSurface.up(ev.action.id);
   }
 
+  /**
+   * Every read goes through the #1015 migration, so a legacy spotter
+   * Mute / Unmute dial dispatches as Skip Spotter Call even before (or
+   * without) the persisted rewrite landing.
+   */
   private parseSettings(settings: unknown): AudioControlsSettings {
-    return parseAudioControlsSettings(settings);
+    return parseAudioControlsSettings(migrateSpotterMuteToSkipCall(settings).migrated);
+  }
+
+  /**
+   * Persist the #1015 migration (a legacy spotter `mute-unmute` press becomes
+   * `skip-call`) so the legacy pair is dropped from the stored settings before
+   * the PI can open on this instance — its "unavailable press falls back to
+   * None" rule would otherwise overwrite the user's choice — and hand the
+   * migrated object on as `ev.payload.settings`, so the base class's
+   * `addedWithVersion` stamp (which writes from the payload) keeps it.
+   *
+   * willAppear ONLY, never didReceiveSettings. The PI cannot open before
+   * willAppear, so this one point catches every stored legacy dial; and the PI
+   * itself produces the legacy pair transiently during an ordinary Mode switch
+   * (e.g. Voice Chat + Mute / Unmute → Spotter: sdpi saves `dial.category`
+   * first, and the press falls back to None up to one poll tick later).
+   * Persisting on that echo would rewrite it to a Skip Spotter Call the user
+   * never chose.
+   *
+   * Logs and swallows a failed persist: {@link parseSettings} migrates every
+   * read, so dispatch stays right either way.
+   */
+  private async persistMigratedSettings(ev: IDeckWillAppearEvent<AudioControlsSettings>): Promise<void> {
+    const { migrated, changed } = migrateSpotterMuteToSkipCall(ev.payload.settings);
+
+    if (!changed) return;
+
+    try {
+      await ev.action.setSettings(migrated);
+    } catch (err) {
+      this.logger.warn(
+        `Failed to persist migrated audio-controls settings: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+
+    ev.payload.settings = migrated as AudioControlsSettings;
   }
 
   /**

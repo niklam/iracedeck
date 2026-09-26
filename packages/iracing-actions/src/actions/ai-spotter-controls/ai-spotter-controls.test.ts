@@ -195,7 +195,7 @@ describe("AiSpotterControls", () => {
       expect(SPOTTER_TITLES["announce-leader"].split("\n")[0]).toBe("SPOTTER");
       expect(SPOTTER_TITLES["louder"].split("\n")[0]).toBe("VOL UP");
       expect(SPOTTER_TITLES["quieter"].split("\n")[0]).toBe("VOL DOWN");
-      expect(SPOTTER_TITLES["silence"].split("\n")[0]).toBe("MUTE");
+      expect(SPOTTER_TITLES["silence"].split("\n")[0]).toBe("SKIP CALL");
     });
 
     it("should have correct second-line labels (mainLabel) for all controls", () => {
@@ -257,8 +257,9 @@ describe("AiSpotterControls", () => {
       const result = generateAiSpotterControlsSvg(AiSpotterControlsSettings.parse({ control: "silence" }));
       const decoded = decodeURIComponent(result);
 
-      expect(decoded).toContain("MUTE");
+      expect(decoded).toContain("SKIP CALL");
       expect(decoded).toContain("SPOTTER");
+      expect(decoded).not.toContain("MUTE");
     });
 
     it("should include correct labels for all controls", () => {

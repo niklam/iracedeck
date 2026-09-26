@@ -28,7 +28,7 @@
       "Name": "AI Spotter Controls",
       "UUID": "com.iracedeck.sd.core.ai-spotter-controls",
       "Icon": "imgs/actions/ai-spotter-controls/icon.svg",
-      "Tooltip": "AI spotter controls (damage/weather reports, lap reporting, volume, silence)",
+      "Tooltip": "AI spotter controls (damage/weather reports, lap reporting, volume, skip call)",
       "PropertyInspectorPath": "ui/ai-spotter-controls.html",
       "Controllers": [
         "Keypad"
