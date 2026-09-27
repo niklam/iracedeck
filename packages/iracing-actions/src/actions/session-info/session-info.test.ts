@@ -17,6 +17,7 @@ import {
   resolveLeaderLapTimeS,
 } from "@iracedeck/sim-events-iracing";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 
 import {
   countActiveDrivers,
@@ -24,6 +25,7 @@ import {
   formatFuelAmount,
   formatGapValue,
   formatSessionTime,
+  formatTemperature,
   generateGapsGraphic,
   generateSessionInfoSvg,
   generateTrackWetnessGraphic,
@@ -36,6 +38,20 @@ import {
   trackWetnessLabel,
   WIND_ARROW_STEP_DEG,
 } from "./session-info.js";
+
+// Speak value on press (issue #466): the bus the press publishes to, and the
+// real field shape CommonSettings.extend receives, so the schema's own parsing
+// is testable beside the stand-in schema the rest of this file uses.
+const hoisted = vi.hoisted(() => ({
+  busPublish: vi.fn(),
+  isEventBusInitialized: vi.fn(() => true),
+  settingsShape: {} as Record<string, unknown>,
+}));
+
+vi.mock("@iracedeck/event-bus", () => ({
+  getEventBus: () => ({ publish: hoisted.busPublish }),
+  isEventBusInitialized: hoisted.isEventBusInitialized,
+}));
 
 vi.mock("@iracedeck/iracing-sdk", async () => {
   const actual = await vi.importActual<typeof import("@iracedeck/iracing-sdk")>("@iracedeck/iracing-sdk");
@@ -60,7 +76,12 @@ vi.mock("@iracedeck/sim-events-iracing", () => ({
   resolveLeaderLapTimeS: vi.fn(() => null),
 }));
 
-vi.mock("@iracedeck/deck-core", () => ({
+vi.mock("@iracedeck/deck-core", async () => ({
+  // Real conversions from deck-core's source: the temperature items and the
+  // readout builder convert with them.
+  ...(await vi.importActual<typeof import("../../../../deck-core/src/unit-conversion.js")>(
+    "../../../../deck-core/src/unit-conversion.js",
+  )),
   // Pass-through stand-in: renders immediately so tests observe pushes without
   // waiting on the 10 Hz coalescing window.
   IconUpdateThrottle: class {
@@ -71,7 +92,8 @@ vi.mock("@iracedeck/deck-core", () => ({
     clearAll() {}
   },
   CommonSettings: {
-    extend: () => {
+    extend: (shape: Record<string, unknown>) => {
+      hoisted.settingsShape = shape;
       const defaults = {
         mode: "incidents",
         positionType: "class",
@@ -84,6 +106,7 @@ vi.mock("@iracedeck/deck-core", () => ({
         gapShowBehind: true,
         windDirectionMode: "relative",
         windSpeedUnit: "kmh",
+        speakOnPress: true,
       };
       const validModes = [
         "incidents",
@@ -97,6 +120,8 @@ vi.mock("@iracedeck/deck-core", () => ({
         "track-wetness",
         "laps-to-empty",
         "wind",
+        "track-temp",
+        "air-temp",
       ];
       const coerceBool = (v: unknown): boolean => v === true || v === "true";
       const merge = (data: Record<string, unknown>) => {
@@ -109,6 +134,8 @@ vi.mock("@iracedeck/deck-core", () => ({
         if ("gapShowAhead" in merged) merged.gapShowAhead = coerceBool(merged.gapShowAhead);
 
         if ("gapShowBehind" in merged) merged.gapShowBehind = coerceBool(merged.gapShowBehind);
+
+        if ("speakOnPress" in merged) merged.speakOnPress = coerceBool(merged.speakOnPress);
 
         if ("fuelLapWindow" in merged) {
           // Mirrors the real schema: round + clamp, never hard-fail.
@@ -136,7 +163,13 @@ vi.mock("@iracedeck/deck-core", () => ({
   },
   ConnectionStateAwareAction: class MockConnectionStateAwareAction {
     logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
-    sdkController = { subscribe: vi.fn(), unsubscribe: vi.fn(), getCurrentTelemetry: vi.fn(), getSessionInfo: vi.fn() };
+    sdkController = {
+      subscribe: vi.fn(),
+      unsubscribe: vi.fn(),
+      getConnectionStatus: vi.fn(() => true),
+      getCurrentTelemetry: vi.fn(),
+      getSessionInfo: vi.fn(),
+    };
     updateConnectionState = vi.fn();
     setKeyImage = vi.fn();
     setRegenerateCallback = vi.fn();
@@ -197,7 +230,9 @@ function defaultSettings(
       | "flags"
       | "track-wetness"
       | "laps-to-empty"
-      | "wind";
+      | "wind"
+      | "track-temp"
+      | "air-temp";
     fontSize: number;
     positionType: "class" | "overall";
     positionShowTotal: boolean;
@@ -209,6 +244,7 @@ function defaultSettings(
     gapShowBehind: boolean;
     windDirectionMode: "relative" | "absolute";
     windSpeedUnit: "ms" | "kmh" | "mph";
+    speakOnPress: boolean;
   }> = {},
 ) {
   return {
@@ -224,6 +260,7 @@ function defaultSettings(
     gapShowBehind: true,
     windDirectionMode: "relative" as const,
     windSpeedUnit: "kmh" as const,
+    speakOnPress: true,
     ...overrides,
   };
 }
@@ -2481,6 +2518,241 @@ describe("time-remaining mode (issue #1109)", () => {
       const race = telemetry({ Lap: 5, SessionLapsTotal: 20 });
 
       expect(action["extractDisplayValue"](defaultSettings({ mode: "laps" }), race)).toBe("5/20");
+    });
+  });
+});
+
+describe("temperature items (issue #466)", () => {
+  it("formats a reading as a whole number with its unit, per the display units", () => {
+    expect(formatTemperature(41.3, 1)).toBe("41°C");
+    expect(formatTemperature(41.3, 0)).toBe("106°F");
+    expect(formatTemperature(-3.6, 1)).toBe("-4°C");
+  });
+
+  it("an unset DisplayUnits counts as metric", () => {
+    expect(formatTemperature(23, undefined)).toBe("23°C");
+  });
+
+  it("shows -- for a missing reading, never a zero", () => {
+    expect(formatTemperature(undefined, 1)).toBe("--");
+    expect(formatTemperature(Number.NaN, 0)).toBe("--");
+  });
+
+  it("Track Temperature shows TrackTempCrew and Air Temperature shows AirTemp", () => {
+    const action = new SessionInfo();
+    const current = { TrackTempCrew: 41.3, AirTemp: 23.4, DisplayUnits: 0 } as TelemetryData;
+
+    expect(action["extractDisplayValue"](defaultSettings({ mode: "track-temp" }), current)).toBe("106°F");
+    expect(action["extractDisplayValue"](defaultSettings({ mode: "air-temp" }), current)).toBe("74°F");
+  });
+
+  it("shows -- without telemetry or without the reading", () => {
+    const action = new SessionInfo();
+
+    expect(action["extractDisplayValue"](defaultSettings({ mode: "track-temp" }), null)).toBe("--");
+    expect(action["extractDisplayValue"](defaultSettings({ mode: "air-temp" }), null)).toBe("--");
+    expect(
+      action["extractDisplayValue"](defaultSettings({ mode: "air-temp" }), { DisplayUnits: 1 } as TelemetryData),
+    ).toBe("--");
+  });
+
+  it("titles the keys TRACK TEMP and AIR TEMP", () => {
+    const track = generateSessionInfoSvg(defaultSettings({ mode: "track-temp" }), "41°C", false);
+    const air = generateSessionInfoSvg(defaultSettings({ mode: "air-temp" }), "23°C", false);
+
+    expect(decodeURIComponent(track)).toContain("TRACK TEMP");
+    expect(decodeURIComponent(air)).toContain("AIR TEMP");
+  });
+});
+
+describe("Speak value on press (issue #466)", () => {
+  describe("the settings schema", () => {
+    const schema = () => z.object(hoisted.settingsShape as z.ZodRawShape);
+
+    it("is on by default", () => {
+      expect(schema().parse({}).speakOnPress).toBe(true);
+    });
+
+    it("reads the PI's boolean and a persisted string alike", () => {
+      expect(schema().parse({ speakOnPress: false }).speakOnPress).toBe(false);
+      expect(schema().parse({ speakOnPress: "false" }).speakOnPress).toBe(false);
+      expect(schema().parse({ speakOnPress: "true" }).speakOnPress).toBe(true);
+    });
+
+    it("accepts the two temperature items", () => {
+      expect(schema().parse({ mode: "track-temp" }).mode).toBe("track-temp");
+      expect(schema().parse({ mode: "air-temp" }).mode).toBe("air-temp");
+    });
+
+    it("still rejects an unknown item, which the action answers with its defaults", async () => {
+      expect(schema().safeParse({ mode: "oil-temp" }).success).toBe(false);
+
+      const action = new SessionInfo();
+      await action.onWillAppear(fakeEvent("ctx", { mode: "oil-temp" }) as never);
+
+      expect(action["activeContexts"].get("ctx")).toMatchObject({ mode: "incidents", speakOnPress: true });
+    });
+  });
+
+  describe("a key press", () => {
+    let action: SessionInfo;
+
+    function setTelemetry(current: Partial<TelemetryData> | null): void {
+      vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue(current as TelemetryData | null);
+    }
+
+    async function press(settings: Record<string, unknown>): Promise<void> {
+      await action.onKeyDown(fakeEvent("ctx", settings) as never);
+    }
+
+    function published(): unknown[] {
+      return hoisted.busPublish.mock.calls.map(([envelope]) => envelope.data);
+    }
+
+    beforeEach(() => {
+      vi.clearAllMocks();
+      action = new SessionInfo();
+      vi.mocked(getFuelStats).mockReturnValue({ lastLap: null, avg: null, avgLapTime: null, samples: 0 });
+      hoisted.isEventBusInitialized.mockReturnValue(true);
+    });
+
+    it("Fuel → Last Lap publishes the last lap in liters, with the telemetry snapshot", async () => {
+      setTelemetry({ DisplayUnits: 1 });
+      vi.mocked(getFuelStats).mockReturnValue({ lastLap: 2.44, avg: 2.5, avgLapTime: 90, samples: 5 });
+
+      await press({ mode: "fuel", fuelSubMode: "lastLap" });
+
+      expect(hoisted.busPublish).toHaveBeenCalledTimes(1);
+      expect(hoisted.busPublish).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: "telemetryReadout.requested",
+          telemetry: { DisplayUnits: 1 },
+          data: { kind: "fuel-last-lap", value: 2.44, unit: "liters", laps: null },
+        }),
+      );
+    });
+
+    it("Fuel → Last Lap publishes US gallons on imperial units", async () => {
+      setTelemetry({ DisplayUnits: 0 });
+      vi.mocked(getFuelStats).mockReturnValue({ lastLap: 7.57082, avg: 7.6, avgLapTime: 90, samples: 5 });
+
+      await press({ mode: "fuel", fuelSubMode: "lastLap" });
+
+      const [data] = published() as { unit: string; value: number }[];
+      expect(data?.unit).toBe("gallons");
+      expect(data?.value).toBeCloseTo(2, 4);
+    });
+
+    it("Fuel → Average asks for the key's window and publishes the laps actually averaged", async () => {
+      setTelemetry({ DisplayUnits: 1 });
+      vi.mocked(getFuelStats).mockReturnValue({ lastLap: 2.4, avg: 2.51, avgLapTime: 90, samples: 3 });
+
+      await press({ mode: "fuel", fuelSubMode: "avgN", fuelLapWindow: "5" });
+
+      expect(getFuelStats).toHaveBeenCalledWith(5);
+      expect(published()).toEqual([{ kind: "fuel-average", value: 2.51, unit: "liters", laps: 3 }]);
+    });
+
+    it("a fuel item before any valid lap publishes a null value, so the engineer can say so", async () => {
+      setTelemetry({ DisplayUnits: 1 });
+
+      await press({ mode: "fuel", fuelSubMode: "avgN" });
+
+      expect(published()).toEqual([{ kind: "fuel-average", value: null, unit: "liters", laps: null }]);
+    });
+
+    it("a fuel key in percentage format still speaks the amount", async () => {
+      setTelemetry({ DisplayUnits: 1 });
+      vi.mocked(getFuelStats).mockReturnValue({ lastLap: 2.44, avg: 2.5, avgLapTime: 90, samples: 5 });
+
+      await press({ mode: "fuel", fuelSubMode: "lastLap", fuelFormat: "percentage" });
+
+      expect(published()).toEqual([{ kind: "fuel-last-lap", value: 2.44, unit: "liters", laps: null }]);
+    });
+
+    it("Track Temperature publishes Celsius on metric", async () => {
+      setTelemetry({ DisplayUnits: 1, TrackTempCrew: 41.3 });
+
+      await press({ mode: "track-temp" });
+
+      expect(published()).toEqual([{ kind: "track-temp", value: 41.3, unit: "celsius", laps: null }]);
+    });
+
+    it("Air Temperature publishes Fahrenheit on imperial", async () => {
+      setTelemetry({ DisplayUnits: 0, AirTemp: 23 });
+
+      await press({ mode: "air-temp" });
+
+      const [data] = published() as { kind: string; unit: string; value: number }[];
+      expect(data?.kind).toBe("air-temp");
+      expect(data?.unit).toBe("fahrenheit");
+      expect(data?.value).toBeCloseTo(73.4, 10);
+    });
+
+    it("publishes nothing with Speak value on press off", async () => {
+      setTelemetry({ DisplayUnits: 1, AirTemp: 23 });
+
+      await press({ mode: "air-temp", speakOnPress: false });
+      await press({ mode: "air-temp", speakOnPress: "false" });
+
+      expect(hoisted.busPublish).not.toHaveBeenCalled();
+    });
+
+    it("publishes nothing on an item with no speech yet", async () => {
+      setTelemetry({ DisplayUnits: 1, PlayerCarMyIncidentCount: 4, FuelLevel: 40 });
+      vi.mocked(getFuelStats).mockReturnValue({ lastLap: 2.44, avg: 2.5, avgLapTime: 90, samples: 5 });
+
+      await press({ mode: "incidents" });
+      await press({ mode: "fuel", fuelSubMode: "now" });
+      await press({ mode: "laps-to-empty" });
+
+      expect(hoisted.busPublish).not.toHaveBeenCalled();
+    });
+
+    it("publishes nothing without a telemetry snapshot", async () => {
+      setTelemetry(null);
+
+      await press({ mode: "fuel", fuelSubMode: "lastLap" });
+
+      expect(hoisted.busPublish).not.toHaveBeenCalled();
+    });
+
+    it("publishes nothing while iRacing is not connected", async () => {
+      setTelemetry({ DisplayUnits: 1, AirTemp: 23 });
+      vi.mocked(action["sdkController"].getConnectionStatus).mockReturnValue(false);
+
+      await press({ mode: "air-temp" });
+
+      expect(hoisted.busPublish).not.toHaveBeenCalled();
+    });
+
+    it("publishes nothing for a temperature the sim does not report", async () => {
+      setTelemetry({ DisplayUnits: 1 });
+
+      await press({ mode: "track-temp" });
+
+      expect(hoisted.busPublish).not.toHaveBeenCalled();
+    });
+
+    it("publishes nothing before the event bus exists", async () => {
+      setTelemetry({ DisplayUnits: 1, AirTemp: 23 });
+      hoisted.isEventBusInitialized.mockReturnValue(false);
+
+      await press({ mode: "air-temp" });
+
+      expect(hoisted.busPublish).not.toHaveBeenCalled();
+    });
+
+    it("changes nothing the key shows, so nothing is redrawn", async () => {
+      setTelemetry({ DisplayUnits: 1, AirTemp: 23 });
+      await action.onWillAppear(fakeEvent("ctx", { mode: "air-temp" }) as never);
+      vi.clearAllMocks();
+
+      await press({ mode: "air-temp" });
+
+      expect(hoisted.busPublish).toHaveBeenCalledTimes(1);
+      expect(action["setKeyImage"]).not.toHaveBeenCalled();
+      expect(action["updateKeyImage"]).not.toHaveBeenCalled();
     });
   });
 });

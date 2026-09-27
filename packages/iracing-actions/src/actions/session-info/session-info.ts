@@ -1,4 +1,5 @@
 import {
+  celsiusToFahrenheit,
   CommonSettings,
   ConnectionStateAwareAction,
   generateBorderParts,
@@ -8,6 +9,7 @@ import {
   getGlobalTitleSettings,
   IconUpdateThrottle,
   type IDeckDidReceiveSettingsEvent,
+  type IDeckKeyDownEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
   renderIconTemplate,
@@ -16,6 +18,7 @@ import {
   resolveTitleSettings,
   svgToDataUri,
 } from "@iracedeck/deck-core";
+import { getEventBus, isEventBusInitialized } from "@iracedeck/event-bus";
 import {
   absoluteWindBearingDeg,
   type BindingLimit,
@@ -55,6 +58,7 @@ import {
 import z from "zod";
 
 import sessionInfoTemplate from "../../../icons/session-info.svg";
+import { buildTelemetryReadout, readoutKindFor } from "./readout-request.js";
 
 const BACKGROUND_FLASH = "#e74c3c";
 
@@ -151,6 +155,15 @@ export const SessionInfoSettings = CommonSettings.extend({
   // blows FROM — matching how iRacing itself labels wind.
   windDirectionMode: z.enum(["relative", "absolute"]).default("relative"),
   windSpeedUnit: z.enum(["ms", "kmh", "mph"]).default("kmh"),
+  // Speak value on press (issue #466): a press has the Race Engineer read out
+  // the value the key shows. One switch for the whole action, on every item —
+  // an item with no speech yet ignores the press, and one that gains speech
+  // later needs no settings change. Defaults on, like new Race Engineer
+  // functionality; the Race Engineer master still gates every readout.
+  speakOnPress: z
+    .union([z.boolean(), z.string()])
+    .transform((val) => val === true || val === "true")
+    .default(true),
 });
 
 export type SessionInfoSettings = z.infer<typeof SessionInfoSettings>;
@@ -192,6 +205,21 @@ export function formatFuelAmount(fuelLevel: number, displayUnits: number | undef
   }
 
   return `${fuelLevel.toFixed(decimals)} L`;
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * Formats a Track / Air Temperature reading (issue #466): rounded to a whole
+ * degree in the driver's display units, `DisplayUnits` unset counting as
+ * metric. A missing reading shows `--`, never a zero.
+ */
+export function formatTemperature(celsius: number | undefined, displayUnits: number | undefined): string {
+  if (typeof celsius !== "number" || !Number.isFinite(celsius)) return "--";
+
+  if (displayUnits === DisplayUnits.English) return `${Math.round(celsiusToFahrenheit(celsius))}°F`;
+
+  return `${Math.round(celsius)}°C`;
 }
 
 /**
@@ -725,6 +753,8 @@ export function generateSessionInfoSvg(
     flags: "FLAGS",
     "laps-to-empty": "LAPS TO\nEMPTY",
     wind: "WIND",
+    "track-temp": "TRACK TEMP",
+    "air-temp": "AIR TEMP",
   };
   // Track-wetness uses the live state name as its title so the icon shows the
   // current state in one line. The fuel consumption sub-modes carry their own
@@ -829,6 +859,8 @@ export function generateSessionInfoSvg(
  * laps, position, fuel level, or race flags.
  * Incident count increase triggers a red flash effect.
  * Black and meatball flags trigger a continuous pulse effect.
+ * With Speak value on press, a press has the Race Engineer read the value out
+ * (issue #466).
  */
 export const SESSION_INFO_UUID = "com.iracedeck.sd.core.session-info" as const;
 
@@ -901,6 +933,58 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
     this.lastFlagKey.delete(ev.action.id);
     this.lastState.delete(ev.action.id);
     await this.updateDisplay(ev, settings);
+  }
+
+  /**
+   * Speak value on press (issue #466): the press publishes the item's figure
+   * for the Race Engineer. It changes nothing the key shows, so there is
+   * nothing to re-render.
+   */
+  override async onKeyDown(ev: IDeckKeyDownEvent<SessionInfoSettings>): Promise<void> {
+    const settings = this.parseSettings(ev.payload.settings);
+
+    if (!settings.speakOnPress || readoutKindFor(settings) === null) return;
+
+    this.requestTelemetryReadout(settings);
+  }
+
+  /**
+   * Read the figure now, in the driver's display units, and publish it as
+   * `telemetryReadout.requested`. Whether it is spoken — the master gate, the
+   * queue — is the audio layer's call. With no telemetry there is nothing true
+   * to say, so nothing is published.
+   */
+  private requestTelemetryReadout(settings: SessionInfoSettings): void {
+    if (!this.sdkController.getConnectionStatus()) {
+      this.logger.debug("Telemetry readout skipped — iRacing is not connected");
+
+      return;
+    }
+
+    const telemetry = this.sdkController.getCurrentTelemetry();
+
+    if (!telemetry) {
+      this.logger.debug("Telemetry readout skipped — no telemetry yet");
+
+      return;
+    }
+
+    const data = buildTelemetryReadout(settings, telemetry, getFuelStats);
+
+    if (!data) {
+      this.logger.debug(`Telemetry readout skipped — no ${settings.mode} reading`);
+
+      return;
+    }
+
+    if (!isEventBusInitialized()) {
+      this.logger.warn("Telemetry readout skipped — the event bus is not initialized");
+
+      return;
+    }
+
+    getEventBus().publish({ event: "telemetryReadout.requested", timestamp: Date.now(), telemetry, data });
+    this.logger.info(`Telemetry readout requested: ${data.kind}`);
   }
 
   private parseSettings(settings: unknown): SessionInfoSettings {
@@ -1014,6 +1098,8 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
       }
 
       if (settings.mode === "laps-to-empty") return "--";
+
+      if (settings.mode === "track-temp" || settings.mode === "air-temp") return "--";
 
       if (settings.mode === "flags") return settings.blankWhenNoFlag ? "" : "--";
 
@@ -1154,6 +1240,12 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
 
       return settings.blankWhenNoFlag ? "" : "--";
     }
+
+    // Track / Air Temperature (issue #466): the fields the session-start brief
+    // reads, and the figure a press speaks.
+    if (settings.mode === "track-temp") return formatTemperature(telemetry.TrackTempCrew, telemetry.DisplayUnits);
+
+    if (settings.mode === "air-temp") return formatTemperature(telemetry.AirTemp, telemetry.DisplayUnits);
 
     // time-remaining (default). The key counts down whatever actually ends the
     // session (#1109): the clock when the clock binds, the bare laps-to-go
