@@ -66,9 +66,9 @@ For when you can't glance at the deck — in VR, say. Press the key and the Race
 - *"Track temperature is forty one degrees."*
 - *"Air temperature is twenty three degrees."*
 
-Fuel is spoken to a tenth, in liters or gallons as your iRacing display units are set; temperatures in Celsius or Fahrenheit the same way, as whole degrees. Fuel figures come from the same clean-lap record as the [Session Info](/docs/actions/display-session/session-info/) fuel modes: a lap with a pit stop, an out-lap or in-lap, or a tow doesn't count. Before your first clean lap a fuel key says *"No clean lap on the books yet."* — and early in a stint the average names the laps it actually covers, so a five-lap key after three clean laps says *"over the last three laps"*.
+Fuel is spoken to a tenth, in liters or gallons as your iRacing display units are set; temperatures in Celsius or Fahrenheit the same way, as whole degrees. Fuel figures come from the same clean-lap record as the [Session Info](/docs/actions/display-session/session-info/) fuel modes: a lap with a pit stop, an out-lap or in-lap, a tow, or a lap run under a full-course caution doesn't count. Before your first clean lap a fuel key says *"No clean lap on the books yet."* — and early in a stint the average names the laps it actually covers, so a five-lap key after three clean laps says *"over the last three laps"*.
 
-The figure is read at the moment you press. If the engineer is already talking, your readout waits and plays when he finishes; press several keys while he talks and only the last one is read out. A readout can be lost only when a more important call is already waiting its turn. Readouts need the Race Engineer switched on and play at its volume — there is no separate switch for them. Nothing is said while iRacing isn't running.
+The figure is read at the moment you press. If the engineer is already talking, your readout waits and plays when he finishes; press several keys while he talks and only the last one is read out. The Race Engineer's own calls always go first: if one of them is already waiting its turn when you press, or one comes up while your readout is waiting, your readout is not read out — press the key again. Readouts need the Race Engineer switched on and play at its volume — there is no separate switch for them. Nothing is said while iRacing isn't running.
 
 The key shows which figure it reads out (*FUEL LAST LAP*, *FUEL AVG 5 LAPS*, *TRACK TEMP*, *AIR TEMP*), never the figure itself.
 
@@ -88,7 +88,7 @@ Which figure the key reads out. Default **Fuel Used Last Lap**.
 - **Track Temperature**
 - **Air Temperature**
 
-#### Setting: Laps
+#### Setting: Lap Window
 
 Average Fuel per Lap only: how many recent clean laps the average covers, 1–20, default 5.
 
