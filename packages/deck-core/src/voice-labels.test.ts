@@ -1,17 +1,23 @@
 import { qualifiedVoiceId } from "@iracedeck/callout-script";
 import { describe, expect, it } from "vitest";
 
-import { voiceDisplayLabels } from "./voice-labels.js";
-import type { InstalledVoicePack } from "./voice-pack-scanner.js";
+import { isFirstPartyVoicePack, orderRaceEngineerVoices, voiceDisplayLabels } from "./voice-labels.js";
+import type { InstalledVoicePack, VoicePackProvenanceKind } from "./voice-pack-scanner.js";
 
-/** A pack whose id is its lower-cased label, declaring the given bare voice ids. */
-function pack(label: string, voices: { id: string; label: string }[]): InstalledVoicePack {
-  const id = label.toLowerCase();
+/**
+ * A pack declaring the given bare voice ids, its id defaulting to its
+ * lower-cased label and its provenance to `sideload` — irrelevant to the
+ * labelling tests below, which is why most callers leave it unset. Likewise
+ * `script` (#1064): a label is the same with or without one, so every voice
+ * here is clips-only.
+ */
+function pack(
+  label: string,
+  voices: { id: string; label: string }[],
+  options: { id?: string; provenance?: VoicePackProvenanceKind } = {},
+): InstalledVoicePack {
+  const id = options.id ?? label.toLowerCase();
 
-  // `provenance` is irrelevant to labelling — a pack is named the same way
-  // whoever installed it — but the type requires it, so a sideload stands in.
-  // Likewise `script` (#1064): a label is the same with or without one, so
-  // every voice here is clips-only.
   return {
     id,
     label,
@@ -24,7 +30,7 @@ function pack(label: string, voices: { id: string; label: string }[]): Installed
       script: null,
     })),
     clips: [],
-    provenance: "sideload",
+    provenance: options.provenance ?? "sideload",
   };
 }
 
@@ -112,5 +118,93 @@ describe("voiceDisplayLabels", () => {
     ]);
 
     expect(labels).toEqual({ "race engineer::one": "Race Engineer", "race engineer::two": "Race Engineer" });
+  });
+});
+
+const ours = pack("Default", [{ id: "default", label: "Default" }], { id: "default", provenance: "catalog" });
+const terse = pack("Default (Terse)", [{ id: "shawn", label: "Default (Terse)" }], {
+  id: "iracedeck-terse",
+  provenance: "catalog",
+});
+
+describe("isFirstPartyVoicePack", () => {
+  it.each(["catalog", "bundled-seed", "development"] as const)("counts %s as iRaceDeck's own", (provenance) => {
+    expect(isFirstPartyVoicePack({ provenance })).toBe(true);
+  });
+
+  it("never counts a sideload, whatever it is called", () => {
+    expect(isFirstPartyVoicePack({ provenance: "sideload" })).toBe(false);
+  });
+});
+
+describe("voiceDisplayLabels — first-party packs (#999)", () => {
+  it("labels every voice of a first-party pack 'iRaceDeck: <pack label>'", () => {
+    expect(voiceDisplayLabels([ours, terse])).toEqual({
+      "default::default": "iRaceDeck: Default",
+      "iracedeck-terse::shawn": "iRaceDeck: Default (Terse)",
+    });
+  });
+
+  it("uses the pack label for every voice of a multi-voice first-party pack", () => {
+    const duo = pack(
+      "Pair",
+      [
+        { id: "a", label: "A" },
+        { id: "b", label: "B" },
+      ],
+      { provenance: "catalog" },
+    );
+    expect(voiceDisplayLabels([duo])).toEqual({ "pair::a": "iRaceDeck: Pair", "pair::b": "iRaceDeck: Pair" });
+  });
+
+  it("gives a hand-placed copy of default no iRaceDeck prefix", () => {
+    const copy = pack("Default", [{ id: "default", label: "Default" }], { id: "default", provenance: "sideload" });
+    expect(voiceDisplayLabels([copy])).toEqual({ "default::default": "Default" });
+  });
+});
+
+describe("orderRaceEngineerVoices (#999)", () => {
+  it("puts the managed pack first, other iRaceDeck packs next, everyone else after, each by label", () => {
+    const aaa = pack("Aaa", [{ id: "aaa", label: "Aaa" }]);
+    const spoof = pack("iRaceDeck: Pro", [{ id: "pro", label: "iRaceDeck: Pro" }], { id: "pro" });
+    const packs = [aaa, spoof, terse, ours];
+    const labels = voiceDisplayLabels(packs);
+    const voices = ["aaa::aaa", "default::default", "iracedeck-terse::shawn", "pro::pro"];
+
+    expect(orderRaceEngineerVoices(voices, packs, labels)).toEqual([
+      "default::default",
+      "iracedeck-terse::shawn",
+      "aaa::aaa",
+      "pro::pro",
+    ]);
+  });
+
+  it("keeps a voice no installed pack provides, sorted with the third-party voices", () => {
+    const labels = voiceDisplayLabels([ours]);
+    expect(orderRaceEngineerVoices(["zed", "default::default", "abe"], [ours], labels)).toEqual([
+      "default::default",
+      "abe",
+      "zed",
+    ]);
+  });
+
+  it("does not put a sideloaded default first", () => {
+    const copy = pack("Default", [{ id: "default", label: "Default" }], { id: "default", provenance: "sideload" });
+    const aaa = pack("Aaa", [{ id: "aaa", label: "Aaa" }]);
+    const packs = [copy, aaa, terse];
+    expect(
+      orderRaceEngineerVoices(
+        ["aaa::aaa", "default::default", "iracedeck-terse::shawn"],
+        packs,
+        voiceDisplayLabels(packs),
+      ),
+    ).toEqual(["iracedeck-terse::shawn", "aaa::aaa", "default::default"]);
+  });
+
+  it("returns a new array and leaves its input alone", () => {
+    const voices = ["iracedeck-terse::shawn", "default::default"];
+    const ordered = orderRaceEngineerVoices(voices, [ours, terse], voiceDisplayLabels([ours, terse]));
+    expect(ordered).toEqual(["default::default", "iracedeck-terse::shawn"]);
+    expect(voices).toEqual(["iracedeck-terse::shawn", "default::default"]);
   });
 });

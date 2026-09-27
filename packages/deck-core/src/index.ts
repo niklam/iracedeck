@@ -345,7 +345,12 @@ export {
   type VoicePackOfferVerdict,
   type VoicePackStatus,
 } from "./voice-pack-status.js";
-export { voiceDisplayLabels } from "./voice-labels.js";
+export {
+  FIRST_PARTY_VOICE_LABEL_PREFIX,
+  isFirstPartyVoicePack,
+  orderRaceEngineerVoices,
+  voiceDisplayLabels,
+} from "./voice-labels.js";
 export { createVoicePackArchiveFileSystem, createVoicePackFileSystem, VOICE_PACK_MAX_DEPTH } from "./voice-pack-fs.js";
 export {
   type BundledVoicePack,

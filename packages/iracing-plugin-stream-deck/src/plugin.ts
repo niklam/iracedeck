@@ -151,6 +151,7 @@ import {
   onIRacingTerminated,
   openDirectoryInExplorer,
   openFolderInExplorer,
+  orderRaceEngineerVoices,
   parseSettingsWindowBounds,
   type PluginConfig,
   readInstalledVoicePackSha,
@@ -1016,8 +1017,11 @@ let lastPushedVoiceLabelsJson = "";
 // together is what stops a dropdown ever pairing one scan's voices with another
 // scan's names.
 function pushRaceEngineerVoicesIfChanged(): void {
-  const json = JSON.stringify(raceEngineerVoices);
-  const labelsJson = JSON.stringify(voiceLabels());
+  const labels = voiceLabels();
+  // Published pre-ordered (#999): iRaceDeck's own voices first, the managed pack
+  // at the top. The dropdown renders the list in the order it arrives.
+  const json = JSON.stringify(orderRaceEngineerVoices(raceEngineerVoices, voicePacks.installed(), labels));
+  const labelsJson = JSON.stringify(labels);
 
   if (json === lastPushedVoiceListJson && labelsJson === lastPushedVoiceLabelsJson) return;
 
