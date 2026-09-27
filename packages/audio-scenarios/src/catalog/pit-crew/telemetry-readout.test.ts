@@ -6,8 +6,9 @@
  * cases hand the real artifact to the engine and read what played. The
  * scheduling cases pin the contract options the spec's behaviour needs:
  * queue behind whatever plays, never cut a playing readout, a newer readout
- * replaces a waiting one — and the engine's one-slot limit that drops a
- * readout behind a heavier waiting fire.
+ * replaces a waiting one — and, through `READOUT_WEIGHT`, that a readout
+ * never displaces a waiting engineer line of normal weight or above while it
+ * does replace waiting chatter.
  */
 import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "json" };
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
@@ -23,6 +24,7 @@ import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js"
 import { _resetAudioScenarios, initializeAudioScenarios, poolMemberPattern } from "../../interpreter.js";
 import { descriptionNamesGroup } from "../../reference/pack-reference.js";
 import {
+  READOUT_WEIGHT,
   registerTelemetryReadoutVocabulary,
   resolveDegreesUnit,
   resolveFuelDecimal,
@@ -143,9 +145,14 @@ function flush(audio: FakeAudio, iterations = 60): void {
 
 const VOICE = "luca";
 
-/** Two stand-in lines for the scheduling cases: a line holding the bus, and a heavier queueable one waiting. */
+/**
+ * Stand-in lines for the scheduling cases: one holding the bus, a queueable
+ * line at NORMAL weight (as `pit-crew.limiter-missing` is) and a queueable
+ * CHATTER line (as the pit readback is).
+ */
 const BUSY_CLIP = `voice/${VOICE}/spotter/car-left-01.mp3`;
-const WAITING_CLIP = `voice/${VOICE}/spotter/car-right-01.mp3`;
+const NORMAL_CLIP = `voice/${VOICE}/spotter/car-right-01.mp3`;
+const CHATTER_CLIP = `voice/${VOICE}/spotter/clear-01.mp3`;
 
 /** One clip per readout line and every figure a readout can speak, for the test voice. */
 const manifest: AudioAssetsManifest = {
@@ -162,7 +169,8 @@ const manifest: AudioAssetsManifest = {
     ...Array.from({ length: 21 }, (_, i) => `voice/${VOICE}/numbers-degrees/minus${i}.mp3`).slice(1),
     ...Array.from({ length: 177 }, (_, n) => `voice/${VOICE}/numbers-degrees/${n}.mp3`),
     BUSY_CLIP,
-    WAITING_CLIP,
+    NORMAL_CLIP,
+    CHATTER_CLIP,
   ],
   ambientLoop: "sfx/IRD-ambient-pit.mp3",
   ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
@@ -192,7 +200,8 @@ beforeEach(() => {
   for (const c of TELEMETRY_READOUT_CONTRACTS) engine.defineContract(c);
 
   // Stand-ins for "something else is on the radio": a line holding the bus
-  // above a readout, and a heavier queueable line that can wait in the slot.
+  // above a readout, and two queueable lines that can wait in the slot — one
+  // at NORMAL weight, one at CHATTER.
   engine.defineScenario({
     id: "test.busy",
     channel: AudioChannel.Voice,
@@ -203,14 +212,24 @@ beforeEach(() => {
     sequence: ["spotter/car-left-01.mp3"],
   });
   engine.defineScenario({
-    id: "test.waiting",
+    id: "test.normal",
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
     base: "voice/{voice}",
-    weight: WEIGHT.SAFETY,
+    weight: WEIGHT.NORMAL,
     queueable: true,
     frame: NO_FRAME,
     sequence: ["spotter/car-right-01.mp3"],
+  });
+  engine.defineScenario({
+    id: "test.chatter",
+    channel: AudioChannel.Voice,
+    bus: AudioBus.Voice,
+    base: "voice/{voice}",
+    weight: WEIGHT.CHATTER,
+    queueable: true,
+    frame: NO_FRAME,
+    sequence: ["spotter/clear-01.mp3"],
   });
 
   engine.setScripts(new Map([[VOICE, READOUT_SCRIPT]]));
@@ -257,20 +276,25 @@ describe("TELEMETRY_READOUT_CONTRACTS structure (issue #466)", () => {
     ]);
   });
 
-  it("fires on telemetryReadout.requested on the voice bus, queueable at the default weight and frame, in no family, carrying no sequence", () => {
+  it("fires on telemetryReadout.requested on the voice bus, queueable at READOUT_WEIGHT in the default frame, in no family, carrying no sequence", () => {
     for (const c of TELEMETRY_READOUT_CONTRACTS) {
       expect(c.when?.event, c.id).toBe("telemetryReadout.requested");
       expect(c.channel, c.id).toBe(AudioChannel.Voice);
       expect(c.bus, c.id).toBe(AudioBus.Voice);
       expect(c.base, c.id).toBe("voice/{voice}");
       expect(c.queueable, c.id).toBe(true);
-      expect(c.weight, c.id).toBeUndefined();
+      expect(c.weight, c.id).toBe(READOUT_WEIGHT);
       expect(c.family, c.id).toBeUndefined();
       expect(c.interrupt, c.id).toBeUndefined();
       expect(c.queueBehind, c.id).toBeUndefined();
       expect(c.frame, c.id).toBeUndefined();
       expect("sequence" in c, c.id).toBe(false);
     }
+  });
+
+  it("READOUT_WEIGHT sits strictly between CHATTER and NORMAL", () => {
+    expect(READOUT_WEIGHT).toBeGreaterThan(WEIGHT.CHATTER);
+    expect(READOUT_WEIGHT).toBeLessThan(WEIGHT.NORMAL);
   });
 
   it("describes when each fires in one sentence for a pack author", () => {
@@ -485,9 +509,37 @@ describe("the readouts fire through the bundled script (issue #466)", () => {
   });
 });
 
-describe("scheduling (issue #466): queue behind what plays, newest pending wins", () => {
+describe("scheduling (issue #466): a readout waits its turn and never displaces an engineer line", () => {
   it("a press while another line holds the bus waits and plays after it", () => {
     engine.fire("test.busy");
+    bus.publishEvent("telemetryReadout.requested", request({ value: 2.44 }));
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([BUSY_CLIP, line("fuel-last-lap-intro"), fuel(2), tail("liters-4")]);
+  });
+
+  it("a readout pressed while a NORMAL-weight queueable line waits is dropped, and the waiting line survives", () => {
+    engine.fire("test.busy");
+    engine.fire("test.normal");
+    bus.publishEvent("telemetryReadout.requested", request({ value: 2.44 }));
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([BUSY_CLIP, NORMAL_CLIP]);
+  });
+
+  it("a readout pressed while a CHATTER queueable line waits replaces it", () => {
+    engine.fire("test.busy");
+    engine.fire("test.chatter");
+    bus.publishEvent("telemetryReadout.requested", request({ value: 2.44 }));
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([BUSY_CLIP, line("fuel-last-lap-intro"), fuel(2), tail("liters-4")]);
+  });
+
+  it("a newer readout replaces a waiting one — a burst of presses speaks only the latest, never a backlog", () => {
+    engine.fire("test.busy");
+    bus.publishEvent("telemetryReadout.requested", request({ kind: "track-temp", value: 41, unit: "celsius" }));
+    bus.publishEvent("telemetryReadout.requested", request({ kind: "air-temp", value: 23, unit: "celsius" }));
     bus.publishEvent("telemetryReadout.requested", request({ value: 2.44 }));
     flush(audio);
 
@@ -502,23 +554,13 @@ describe("scheduling (issue #466): queue behind what plays, newest pending wins"
     expect(voiceClipsPlayed()).toEqual([line("track-temp-intro"), deg("41"), line("air-temp-intro"), deg("23")]);
   });
 
-  it("a burst of presses while the bus is busy speaks only the latest readout — never a backlog", () => {
+  it("a NORMAL-weight queueable line arriving while a readout waits replaces the readout", () => {
     engine.fire("test.busy");
-    bus.publishEvent("telemetryReadout.requested", request({ kind: "track-temp", value: 41, unit: "celsius" }));
-    bus.publishEvent("telemetryReadout.requested", request({ kind: "air-temp", value: 23, unit: "celsius" }));
     bus.publishEvent("telemetryReadout.requested", request({ value: 2.44 }));
+    engine.fire("test.normal");
     flush(audio);
 
-    expect(voiceClipsPlayed()).toEqual([BUSY_CLIP, line("fuel-last-lap-intro"), fuel(2), tail("liters-4")]);
-  });
-
-  it("the engine's one pending slot: a readout behind a HEAVIER waiting line is dropped (#1185's limit, documented)", () => {
-    engine.fire("test.busy");
-    engine.fire("test.waiting");
-    bus.publishEvent("telemetryReadout.requested", request({ value: 2.44 }));
-    flush(audio);
-
-    expect(voiceClipsPlayed()).toEqual([BUSY_CLIP, WAITING_CLIP]);
+    expect(voiceClipsPlayed()).toEqual([BUSY_CLIP, NORMAL_CLIP]);
   });
 });
 

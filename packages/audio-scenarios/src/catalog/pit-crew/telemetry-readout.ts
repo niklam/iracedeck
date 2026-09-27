@@ -29,16 +29,27 @@
  * −20…176) resolves to an empty pool and the callout is silent. The one
  * refusal is a figure no clip NAME can express — negative or non-finite.
  *
- * **Scheduling.** Default weight, `queueable: true`, the default radio frame,
- * and deliberately NO `family`: a same-family fire replaces the in-flight
- * one regardless of weight, which would let a second press cut the readout
- * the driver is listening to. Without one, a press while anything is
- * playing parks in the bus's pending slot, and a newer readout (same weight,
- * ties go to the newest) replaces a readout still waiting there — so a burst
- * of presses never builds a backlog. The slot is the engine's one pending
- * fire (#1185): a readout pressed while a HEAVIER queueable line is already
- * waiting is dropped. No `queueBehind`: it would pair a newer readout behind
- * a waiting one, which is exactly the backlog the spec rules out.
+ * **Scheduling.** `READOUT_WEIGHT`, strictly between CHATTER and NORMAL:
+ * a driver's request yields to every engineer line of normal weight or
+ * above — it never displaces one waiting its turn — and beats background
+ * chatter such as the pit readback. `queueable: true`, the default radio
+ * frame, and deliberately NO `family`: a same-family fire replaces the
+ * in-flight one regardless of weight, which would let a second press cut the
+ * readout the driver is listening to. So a press while anything plays waits
+ * in the bus's one pending slot (#1185), and there:
+ *
+ * - a newer readout replaces a readout still waiting (equal weight, ties go
+ *   to the newest) — a burst of presses never builds a backlog;
+ * - a readout pressed while a NORMAL-or-heavier line is waiting is dropped,
+ *   and that line keeps its place (a pit-limiter warning is never lost to a
+ *   key press);
+ * - a readout pressed while a CHATTER line is waiting replaces it;
+ * - a NORMAL-or-heavier queueable line arriving while a readout waits
+ *   replaces the readout.
+ *
+ * No `queueBehind`: it would pair a newer readout behind a waiting one,
+ * which is exactly the backlog the spec rules out. No `interrupt`: a readout
+ * never cuts what is playing.
  *
  * **Gating is the Race Engineer master only.** `registerPitCrew` wraps these
  * contracts with the master gate and nothing else — pressing the key is the
@@ -48,11 +59,19 @@ import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { TelemetryReadoutRequest, TelemetryReadoutUnit } from "@iracedeck/event-bus";
 
 import type { ScenarioContext, ScenarioContract } from "../../dsl.js";
-import { poolRef } from "../../dsl.js";
+import { poolRef, WEIGHT } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
 import { TEMPERATURE_UNIT_DESCRIPTION, temperatureNumberRef, temperatureUnitRef } from "./temperature-number.js";
 
 const EVENT = "telemetryReadout.requested";
+
+/**
+ * The scheduling weight of every readout — strictly between CHATTER and
+ * NORMAL. A driver's request yields to every engineer line of normal weight
+ * or above — never displaces one waiting — and beats background chatter
+ * (the pit readback). See the header's scheduling paragraph.
+ */
+export const READOUT_WEIGHT: number = WEIGHT.NORMAL - 10;
 
 /** The whole part of a fuel figure — "two", 0 to 120. */
 export const FUEL_NUMBER_GROUP = "numbers-fuel";
@@ -209,8 +228,9 @@ function readoutContract(
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
     base: "voice/{voice}",
-    // Queue behind whatever plays; a newer readout replaces a waiting one.
-    // No `family` — see the header.
+    // Queue behind whatever plays, yield to every NORMAL-or-heavier line; a
+    // newer readout replaces a waiting one. No `family` — see the header.
+    weight: READOUT_WEIGHT,
     queueable: true,
   };
 }
