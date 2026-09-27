@@ -25,8 +25,6 @@ import {
   resolveTitleSettings,
   svgToDataUri,
 } from "@iracedeck/deck-core";
-import { getEventBus, isEventBusInitialized, type TelemetryReadoutKind } from "@iracedeck/event-bus";
-import { getFuelStats } from "@iracedeck/sim-events-iracing";
 import { z } from "zod";
 
 import pitCrewTemplate from "../../../icons/pit-crew.svg";
@@ -48,8 +46,6 @@ import {
 } from "../../audio/audio-volume.js";
 import { toggleRaceEngineerFeature, toggleRadarFeature } from "../../audio/feature-gates.js";
 import { borderColorForState, statusBarOff, statusBarOn } from "../../icons/status-bar.js";
-import { FuelLapWindow } from "../../shared/fuel-lap-window.js";
-import { buildTelemetryReadout, READOUT_KINDS } from "./readout-request.js";
 
 // Re-export the shared audio-volume / audio-toggles helpers that the Pit Crew
 // test suite imports from this module by path (back-compat after the #590 and
@@ -85,13 +81,6 @@ export const PIT_CREW_UUID = "com.iracedeck.sd.core.pit-crew";
  *     (issue #897) — the same setting the PI checkbox writes, so key and
  *     checkbox mirror each other. Speaks a toggle acknowledgment when the
  *     Race Engineer master gate is on.
- *   - `telemetry-readout`: has the Race Engineer speak one figure (issue
- *     #466) — `readoutKind` picks fuel used last lap, average fuel over
- *     `fuelLapWindow` laps, track or air temperature. The action reads the
- *     value at the press, in the driver's display units, and publishes
- *     `telemetryReadout.requested`; the audio layer decides whether and when
- *     it is spoken (Race Engineer master only). Nothing is published without
- *     telemetry.
  *
  * All user-visible feature state (enabled flags, volume) lives in global
  * settings so every Pit Crew button reflects the same values. Persisted
@@ -101,14 +90,8 @@ export const PIT_CREW_UUID = "com.iracedeck.sd.core.pit-crew";
  */
 /** @internal Exported for testing. */
 export const Settings = CommonSettings.extend({
-  mode: z
-    .enum(["race-engineer", "radar", "radar-volume", "corner-names", "telemetry-readout"])
-    .default("race-engineer"),
+  mode: z.enum(["race-engineer", "radar", "radar-volume", "corner-names"]).default("race-engineer"),
   direction: z.enum(["up", "down"]).default("up"),
-  // Telemetry Readout (issue #466). Each falls back on its own, so a stale or
-  // hand-edited value never fails the whole parse and resets the key.
-  readoutKind: z.enum(READOUT_KINDS).default("fuel-last-lap").catch("fuel-last-lap"),
-  fuelLapWindow: FuelLapWindow,
 });
 
 type PitCrewSettings = z.infer<typeof Settings>;
@@ -202,47 +185,6 @@ function cornerNamesPathContent(color: string): string {
   );
 }
 
-/**
- * Gauge-and-sound-waves glyph for the Telemetry Readout mode (issue #466): an
- * instrument read out loud. Deliberately not a speech bubble, which is the
- * Chat action's concept, and an open dial with ticks and a needle rather
- * than full circles so it does not echo the radar glyph. Same placeholder
- * convention and bounds as the other Pit Crew glyphs.
- */
-function readoutPathContent(color: string): string {
-  return (
-    `<g fill="none" stroke="${color}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">` +
-    `<path d="M 10.1 52.5 A 23 23 0 1 1 49.9 52.5"/>` +
-    `<line x1="13.7" y1="24.7" x2="17.3" y2="28.3"/>` +
-    `<line x1="30" y1="18" x2="30" y2="23"/>` +
-    `<line x1="46.3" y1="24.7" x2="42.7" y2="28.3"/>` +
-    `<line x1="30" y1="41" x2="39.8" y2="27.1"/>` +
-    `<path d="M 59.8 34.1 A 9 9 0 0 1 59.8 47.9"/>` +
-    `<path d="M 64.9 28 A 17 17 0 0 1 64.9 54"/>` +
-    `</g>` +
-    `<circle cx="30" cy="41" r="4.5" fill="${color}"/>`
-  );
-}
-
-/**
- * @internal Exported for testing.
- *
- * The default key title for a Telemetry Readout key — which figure it speaks,
- * never the figure itself (the mode exists for drivers who cannot see the key).
- */
-export function readoutTitle(kind: TelemetryReadoutKind, fuelLapWindow: number): string {
-  switch (kind) {
-    case "fuel-last-lap":
-      return "FUEL\nLAST LAP";
-    case "fuel-average":
-      return `FUEL AVG\n${fuelLapWindow} ${fuelLapWindow === 1 ? "LAP" : "LAPS"}`;
-    case "track-temp":
-      return "TRACK\nTEMP";
-    case "air-temp":
-      return "AIR\nTEMP";
-  }
-}
-
 function arrowUpPath(color: string): string {
   return `<path fill="${color}" d="M35.7 10 L60 50 L45 50 L45 65 L26 65 L26 50 L11 50 Z"/>`;
 }
@@ -253,10 +195,11 @@ function arrowDownPath(color: string): string {
 
 /** Returns the per-mode default title text and whether the status bar paints. */
 function modePresentation(
-  settings: PitCrewSettings,
+  mode: Mode,
+  direction: "up" | "down",
   radarVolume: number,
 ): { defaultTitle: string; stateIndicator: "on" | "off" | null } {
-  switch (settings.mode) {
+  switch (mode) {
     case "race-engineer":
       return {
         defaultTitle: "RACE\nENGINEER",
@@ -269,18 +212,13 @@ function modePresentation(
       };
     case "radar-volume":
       return {
-        defaultTitle: `${settings.direction === "up" ? "VOL +" : "VOL −"}\n${radarVolume}%`,
+        defaultTitle: `${direction === "up" ? "VOL +" : "VOL −"}\n${radarVolume}%`,
         stateIndicator: null,
       };
     case "corner-names":
       return {
         defaultTitle: "CORNER\nNAMES",
         stateIndicator: isCornerNamesEnabled() ? "on" : "off",
-      };
-    case "telemetry-readout":
-      return {
-        defaultTitle: readoutTitle(settings.readoutKind, settings.fuelLapWindow),
-        stateIndicator: null,
       };
   }
 }
@@ -300,7 +238,7 @@ export function generatePitCrewSvg(settings: PitCrewSettings): string {
 
   const graphicColor = colors.graphic1Color ?? WHITE;
   const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), settings.graphicOverrides);
-  const { defaultTitle, stateIndicator } = modePresentation(settings, readRadarVolume());
+  const { defaultTitle, stateIndicator } = modePresentation(settings.mode, settings.direction, readRadarVolume());
   const title = resolveTitleSettings(pitCrewTemplate, getGlobalTitleSettings(), settings.titleOverrides, defaultTitle);
 
   // Status bar, when present, occupies y=100..144. Shrink the graphic area
@@ -364,8 +302,6 @@ function pickArtwork(mode: Mode, direction: "up" | "down", color: string): strin
       return radarPathContent(color) + (direction === "up" ? arrowUpPath(color) : arrowDownPath(color));
     case "corner-names":
       return cornerNamesPathContent(color);
-    case "telemetry-readout":
-      return readoutPathContent(color);
   }
 }
 
@@ -476,11 +412,6 @@ export class PitCrew extends ConnectionStateAwareAction<PitCrewSettings> {
       case "corner-names":
         toggleCornerNamesFeature(this.logger);
         break;
-      case "telemetry-readout":
-        // A readout changes no displayed state, so there is nothing to re-render.
-        this.requestTelemetryReadout(settings);
-
-        return;
     }
 
     await this.rerenderAll();
@@ -488,45 +419,6 @@ export class PitCrew extends ConnectionStateAwareAction<PitCrewSettings> {
 
   private toggleRaceEngineer(): void {
     toggleRaceEngineerFeature(this.logger);
-  }
-
-  /**
-   * Telemetry Readout key press (issue #466): read the figure now, in the
-   * driver's display units, and publish it for the Race Engineer. Whether it
-   * is spoken — the master gate, the queue — is the audio layer's call. With
-   * no telemetry there is nothing true to say, so nothing is published.
-   */
-  private requestTelemetryReadout(settings: PitCrewSettings): void {
-    if (!this.sdkController.getConnectionStatus()) {
-      this.logger.debug("Telemetry readout skipped — iRacing is not connected");
-
-      return;
-    }
-
-    const telemetry = this.sdkController.getCurrentTelemetry();
-
-    if (!telemetry) {
-      this.logger.debug("Telemetry readout skipped — no telemetry yet");
-
-      return;
-    }
-
-    const data = buildTelemetryReadout(settings.readoutKind, settings.fuelLapWindow, telemetry, getFuelStats);
-
-    if (!data) {
-      this.logger.debug(`Telemetry readout skipped — no ${settings.readoutKind} reading`);
-
-      return;
-    }
-
-    if (!isEventBusInitialized()) {
-      this.logger.warn("Telemetry readout skipped — the event bus is not initialized");
-
-      return;
-    }
-
-    getEventBus().publish({ event: "telemetryReadout.requested", timestamp: Date.now(), telemetry, data });
-    this.logger.info(`Telemetry readout requested: ${data.kind}`);
   }
 
   /**
