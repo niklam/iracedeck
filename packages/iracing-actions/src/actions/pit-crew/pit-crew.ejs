@@ -11,6 +11,7 @@
 				<option value="race-engineer">Race Engineer Toggle</option>
 				<option value="radar">Radar</option>
 				<option value="corner-names">Corner Names</option>
+				<option value="telemetry-readout">Telemetry Readout</option>
 				<!-- Radar Volume moved to the Audio Controls action (issue #590). The option
 				     is removed from this dropdown for new buttons but kept (via JS) when a
 				     button already uses it, so existing setups keep working. -->
@@ -25,6 +26,25 @@
 			</sdpi-select>
 		</sdpi-item>
 
+		<sdpi-item id="readout-kind-item" class="hidden" label="Readout">
+			<sdpi-select id="readout-kind-select" setting="readoutKind" default="fuel-last-lap">
+				<option value="fuel-last-lap">Fuel Used Last Lap</option>
+				<option value="fuel-average">Average Fuel per Lap</option>
+				<option value="track-temp">Track Temperature</option>
+				<option value="air-temp">Air Temperature</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<sdpi-item id="fuel-window-item" class="hidden" label="Laps">
+			<ird-range-input setting="fuelLapWindow" min="1" max="20" step="1" default="5" showlabels></ird-range-input>
+		</sdpi-item>
+		<div id="readout-help" class="ird-supporting-text hidden">
+			The Race Engineer speaks the figure in your iRacing display units when you press the key. He must be switched on.
+		</div>
+		<div id="fuel-window-help" class="ird-supporting-text hidden">
+			How many recent clean laps the average covers. Laps with a pit stop or tow are skipped; early in a stint he names the laps actually averaged.
+		</div>
+
 		<%# The Race Engineer voice, volumes, callout opt-ins and setup-warning
 		    patterns are plugin-global, so since #1003 they live only in the
 		    settings window — reachable from the button below. Their audio
@@ -34,14 +54,21 @@
 
 		<script>
 		(function() {
-			// Direction visibility — hide unless Mode = radar-volume. sdpi-select
-			// events can be flaky (see session-info.ejs precedent), so combine
-			// change/input listeners with a polling fallback.
-			async function initializeDirectionVisibility() {
+			// Visibility of the per-mode items: Direction for radar-volume, the
+			// Readout picker for telemetry-readout, and the Laps window for its
+			// average-fuel readout only. sdpi-select events can be flaky (see the
+			// session-info.ejs precedent), so combine change/input listeners with
+			// the shared page poller.
+			async function initializeVisibility() {
 				await customElements.whenDefined("sdpi-select");
 				const modeSelect = document.getElementById("mode-select");
+				const kindSelect = document.getElementById("readout-kind-select");
 				const directionItem = document.getElementById("direction-item");
-				if (!modeSelect || !directionItem) return;
+				const kindItem = document.getElementById("readout-kind-item");
+				const windowItem = document.getElementById("fuel-window-item");
+				const readoutHelp = document.getElementById("readout-help");
+				const windowHelp = document.getElementById("fuel-window-help");
+				if (!modeSelect || !kindSelect || !directionItem || !kindItem || !windowItem) return;
 
 				// Radar Volume is deprecated here (issue #590) — it now lives in the
 				// Audio Controls action. Keep the option only when this button already
@@ -59,27 +86,41 @@
 					}
 				};
 
-				const update = (mode) => {
-					syncRadarVolumeOption(mode);
-					if (mode === "radar-volume") directionItem.classList.remove("hidden");
-					else directionItem.classList.add("hidden");
+				const show = (el, visible) => {
+					if (!el) return;
+					if (visible) el.classList.remove("hidden");
+					else el.classList.add("hidden");
 				};
 
-				update(modeSelect.value || "race-engineer");
-				modeSelect.addEventListener("change", (ev) => update(ev.target.value));
-				modeSelect.addEventListener("input", (ev) => update(ev.target.value));
+				const update = () => {
+					const mode = modeSelect.value || "race-engineer";
+					const kind = kindSelect.value || "fuel-last-lap";
+					const readout = mode === "telemetry-readout";
+					syncRadarVolumeOption(mode);
+					show(directionItem, mode === "radar-volume");
+					show(kindItem, readout);
+					show(readoutHelp, readout);
+					show(windowItem, readout && kind === "fuel-average");
+					show(windowHelp, readout && kind === "fuel-average");
+				};
 
-				let last = modeSelect.value || "race-engineer";
+				update();
+				for (const select of [modeSelect, kindSelect]) {
+					select.addEventListener("change", update);
+					select.addEventListener("input", update);
+				}
+
+				let last = `${modeSelect.value}|${kindSelect.value}`;
 				window.irdPoll(() => {
-					const current = modeSelect.value;
-					if (current && current !== last) {
+					const current = `${modeSelect.value}|${kindSelect.value}`;
+					if (current !== last) {
 						last = current;
-						update(current);
+						update();
 					}
 				});
 			}
-			if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", initializeDirectionVisibility);
-			else initializeDirectionVisibility();
+			if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", initializeVisibility);
+			else initializeVisibility();
 		})();
 		</script>
 

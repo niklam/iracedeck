@@ -1,3 +1,4 @@
+import type { FuelStats } from "@iracedeck/sim-events-iracing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { z } from "zod";
 
@@ -18,6 +19,7 @@ import {
   PIT_CREW_UUID,
   PitCrew,
   playVoiceSequence,
+  readoutTitle,
   Settings,
 } from "./pit-crew.js";
 
@@ -73,6 +75,18 @@ const hoisted = vi.hoisted(() => {
     sdkSubscribers.delete(id);
   });
   const sdkGetConnectionStatus = vi.fn(() => sdkConnected);
+  // Telemetry Readout (#466): the press reads the snapshot and the fuel
+  // history, then publishes on the event bus.
+  let sdkTelemetry: Record<string, unknown> | null = null;
+  const sdkGetCurrentTelemetry = vi.fn(() => sdkTelemetry);
+  const getFuelStats = vi.fn((_windowLaps: number): FuelStats => ({
+    lastLap: null,
+    avg: null,
+    avgLapTime: null,
+    samples: 0,
+  }));
+  const busPublish = vi.fn();
+  const isEventBusInitialized = vi.fn(() => true);
 
   return {
     setBusVolume,
@@ -96,8 +110,15 @@ const hoisted = vi.hoisted(() => {
     sdkSubscribe,
     sdkUnsubscribe,
     sdkGetConnectionStatus,
+    sdkGetCurrentTelemetry,
+    getFuelStats,
+    busPublish,
+    isEventBusInitialized,
     setSdkConnected: (val: boolean) => {
       sdkConnected = val;
+    },
+    setSdkTelemetry: (t: Record<string, unknown> | null) => {
+      sdkTelemetry = t;
     },
     fireAllSdkTicks: (): void => {
       for (const cb of sdkSubscribers.values()) {
@@ -107,6 +128,7 @@ const hoisted = vi.hoisted(() => {
     resetSdk: (): void => {
       sdkSubscribers.clear();
       sdkConnected = true;
+      sdkTelemetry = null;
     },
   };
 });
@@ -139,6 +161,17 @@ vi.mock("@iracedeck/audio-service", () => ({
   getAudio: hoisted.getAudio,
 }));
 
+vi.mock("@iracedeck/sim-events-iracing", async () => ({
+  ...(await vi.importActual<typeof import("@iracedeck/sim-events-iracing")>("@iracedeck/sim-events-iracing")),
+  getFuelStats: hoisted.getFuelStats,
+}));
+
+vi.mock("@iracedeck/event-bus", async () => ({
+  ...(await vi.importActual<typeof import("@iracedeck/event-bus")>("@iracedeck/event-bus")),
+  getEventBus: () => ({ publish: hoisted.busPublish }),
+  isEventBusInitialized: hoisted.isEventBusInitialized,
+}));
+
 // `resolveActiveRaceEngineerVoice` / `resolveActiveDriverName` are imported
 // at module load time by pit-crew.ts. The toggle-ack and voice-test paths
 // call them; every other path doesn't. Hoisted-by-default to `null` (no
@@ -152,6 +185,9 @@ const voiceResolvers = vi.hoisted(() => ({
 
 vi.mock("@iracedeck/deck-core", async () => {
   const { z } = await import("zod");
+  const units = await vi.importActual<typeof import("../../../../deck-core/src/unit-conversion.js")>(
+    "../../../../deck-core/src/unit-conversion.js",
+  );
 
   const CommonSettings = z.object({
     colorOverrides: z.unknown().optional(),
@@ -172,6 +208,7 @@ vi.mock("@iracedeck/deck-core", async () => {
       subscribe: hoisted.sdkSubscribe,
       unsubscribe: hoisted.sdkUnsubscribe,
       getConnectionStatus: hoisted.sdkGetConnectionStatus,
+      getCurrentTelemetry: hoisted.sdkGetCurrentTelemetry,
     };
     updateConnectionState = vi.fn();
     setKeyImage = vi.fn().mockResolvedValue(undefined);
@@ -186,6 +223,8 @@ vi.mock("@iracedeck/deck-core", async () => {
     CommonSettings,
     ConnectionStateAwareAction: MockConnectionStateAwareAction,
     applyGraphicTransform: vi.fn((content: string) => content),
+    celsiusToFahrenheit: units.celsiusToFahrenheit,
+    fuelToDisplayUnits: units.fuelToDisplayUnits,
     computeGraphicArea: vi.fn(() => ({ x: 8, y: 8, width: 128, height: 84 })),
     generateBorderParts: vi.fn(() => ({ defs: "", rects: "" })),
     generateTitleText: vi.fn((opts: { text: string; fill: string }) =>
@@ -246,6 +285,8 @@ type TestInputs = {
   /** Same shape for the engineer-voice and Background Volume Test buttons. */
   _testRaceEngineerVoice?: number | string;
   _testBackgroundVolume?: number | string;
+  readoutKind?: string;
+  fuelLapWindow?: number | string;
 };
 
 function buildAppearEvent(settings: TestInputs = {}, actionId = "ctx-1"): unknown {
@@ -265,6 +306,9 @@ beforeEach(() => {
   // intends, otherwise a previous test that forced false to exercise the
   // missing-clip path poisons every test that mounts the action.
   hoisted.playOnChannel.mockReturnValue(true);
+  // Same for the Telemetry Readout doubles (#466).
+  hoisted.getFuelStats.mockReturnValue({ lastLap: null, avg: null, avgLapTime: null, samples: 0 });
+  hoisted.isEventBusInitialized.mockReturnValue(true);
   hoisted.setGlobalSettings({ pitCrewRaceEngineerEnabled: true, pitCrewRadarEnabled: true, radarVolume: 100 });
   hoisted.globalSettingsListeners.clear();
   hoisted.resetSdk();
@@ -339,6 +383,32 @@ describe("Settings (persisted legacy field stripping)", () => {
     ]) {
       expect(parsed).not.toHaveProperty(legacy);
     }
+  });
+
+  it("accepts telemetry-readout as a mode, defaulting to the last-lap fuel readout over 5 laps (#466)", () => {
+    const parsed = Settings.parse({ mode: "telemetry-readout" });
+
+    expect(parsed.mode).toBe("telemetry-readout");
+    expect(parsed.readoutKind).toBe("fuel-last-lap");
+    expect(parsed.fuelLapWindow).toBe(5);
+  });
+
+  it("a persisted unknown readout kind or a garbage window falls back per field — the parse never fails (#466)", () => {
+    const parsed = Settings.parse({
+      mode: "telemetry-readout",
+      readoutKind: "oil-temp",
+      fuelLapWindow: "abc",
+      direction: "down",
+    });
+
+    expect(parsed.readoutKind).toBe("fuel-last-lap");
+    expect(parsed.fuelLapWindow).toBe(5);
+    expect(parsed.direction).toBe("down");
+  });
+
+  it("clamps the window into 1..20 (#466)", () => {
+    expect(Settings.parse({ fuelLapWindow: 0 }).fuelLapWindow).toBe(1);
+    expect(Settings.parse({ fuelLapWindow: "25" }).fuelLapWindow).toBe(20);
   });
 });
 
@@ -1286,6 +1356,96 @@ describe("PitCrew action", () => {
     });
   });
 
+  describe("onKeyDown — telemetry-readout mode (#466)", () => {
+    async function press(settings: TestInputs): Promise<void> {
+      const action = new PitCrew();
+      await action.onWillAppear(buildAppearEvent(settings) as never);
+      vi.clearAllMocks();
+      await action.onKeyDown(buildAppearEvent(settings) as never);
+    }
+
+    it("publishes the last-lap fuel figure in the display unit, with the telemetry snapshot", async () => {
+      hoisted.setSdkTelemetry({ DisplayUnits: 1 });
+      hoisted.getFuelStats.mockReturnValue({ lastLap: 2.44, avg: 2.5, avgLapTime: 90, samples: 5 });
+
+      await press({ mode: "telemetry-readout", readoutKind: "fuel-last-lap" });
+
+      expect(hoisted.busPublish).toHaveBeenCalledTimes(1);
+      expect(hoisted.busPublish).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: "telemetryReadout.requested",
+          telemetry: { DisplayUnits: 1 },
+          data: { kind: "fuel-last-lap", value: 2.44, unit: "liters", laps: null },
+        }),
+      );
+    });
+
+    it("asks for the key's window and publishes the laps actually averaged", async () => {
+      hoisted.setSdkTelemetry({ DisplayUnits: 1 });
+      hoisted.getFuelStats.mockReturnValue({ lastLap: 2.4, avg: 2.51, avgLapTime: 90, samples: 3 });
+
+      await press({ mode: "telemetry-readout", readoutKind: "fuel-average", fuelLapWindow: "5" });
+
+      expect(hoisted.getFuelStats).toHaveBeenCalledWith(5);
+      expect(hoisted.busPublish.mock.calls[0][0].data).toEqual({
+        kind: "fuel-average",
+        value: 2.51,
+        unit: "liters",
+        laps: 3,
+      });
+    });
+
+    it("publishes the air temperature in Fahrenheit on imperial units", async () => {
+      hoisted.setSdkTelemetry({ DisplayUnits: 0, AirTemp: 23 });
+
+      await press({ mode: "telemetry-readout", readoutKind: "air-temp" });
+
+      const data = hoisted.busPublish.mock.calls[0][0].data;
+      expect(data.unit).toBe("fahrenheit");
+      expect(data.value).toBeCloseTo(73.4, 10);
+    });
+
+    it("publishes nothing while iRacing is not connected", async () => {
+      hoisted.setSdkConnected(false);
+      hoisted.setSdkTelemetry({ DisplayUnits: 1, AirTemp: 23 });
+
+      await press({ mode: "telemetry-readout", readoutKind: "air-temp" });
+
+      expect(hoisted.busPublish).not.toHaveBeenCalled();
+    });
+
+    it("publishes nothing without a telemetry snapshot", async () => {
+      await press({ mode: "telemetry-readout", readoutKind: "fuel-last-lap" });
+
+      expect(hoisted.busPublish).not.toHaveBeenCalled();
+    });
+
+    it("publishes nothing for a temperature the sim does not report", async () => {
+      hoisted.setSdkTelemetry({ DisplayUnits: 1 });
+
+      await press({ mode: "telemetry-readout", readoutKind: "track-temp" });
+
+      expect(hoisted.busPublish).not.toHaveBeenCalled();
+    });
+
+    it("publishes nothing before the event bus exists", async () => {
+      hoisted.setSdkTelemetry({ DisplayUnits: 1, AirTemp: 23 });
+      hoisted.isEventBusInitialized.mockReturnValueOnce(false);
+
+      await press({ mode: "telemetry-readout", readoutKind: "air-temp" });
+
+      expect(hoisted.busPublish).not.toHaveBeenCalled();
+    });
+
+    it("touches no global setting", async () => {
+      hoisted.setSdkTelemetry({ DisplayUnits: 1, AirTemp: 23 });
+
+      await press({ mode: "telemetry-readout", readoutKind: "air-temp" });
+
+      expect(hoisted.updateGlobalSettings).not.toHaveBeenCalled();
+    });
+  });
+
   describe("onWillDisappear", () => {
     it("unsubscribes the global-settings listener", async () => {
       const action = new PitCrew();
@@ -1352,5 +1512,23 @@ describe("generatePitCrewSvg", () => {
     hoisted.setGlobalSettings({ radarVolume: 65 });
     const result = decodeURIComponent(generatePitCrewSvg(Settings.parse({ mode: "radar-volume", direction: "up" })));
     expect(result).toContain("65%");
+  });
+
+  it("titles a telemetry-readout key by its kind and draws no status bar (#466)", () => {
+    const result = decodeURIComponent(
+      generatePitCrewSvg(Settings.parse({ mode: "telemetry-readout", readoutKind: "track-temp" })),
+    );
+
+    expect(result).toContain("TRACK");
+    expect(result).not.toContain("status-bar-on");
+    expect(result).not.toContain("status-bar-off");
+  });
+
+  it("readoutTitle names the kind, and the average its window (#466)", () => {
+    expect(readoutTitle("fuel-last-lap", 5)).toBe("FUEL\nLAST LAP");
+    expect(readoutTitle("fuel-average", 5)).toBe("FUEL AVG\n5 LAPS");
+    expect(readoutTitle("fuel-average", 1)).toBe("FUEL AVG\n1 LAP");
+    expect(readoutTitle("track-temp", 5)).toBe("TRACK\nTEMP");
+    expect(readoutTitle("air-temp", 5)).toBe("AIR\nTEMP");
   });
 });
