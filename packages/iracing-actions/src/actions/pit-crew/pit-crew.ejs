@@ -35,14 +35,14 @@
 			</sdpi-select>
 		</sdpi-item>
 
-		<sdpi-item id="fuel-window-item" class="hidden" label="Laps">
+		<sdpi-item id="fuel-window-item" class="hidden" label="Lap Window">
 			<ird-range-input setting="fuelLapWindow" min="1" max="20" step="1" default="5" showlabels></ird-range-input>
 		</sdpi-item>
 		<div id="readout-help" class="ird-supporting-text hidden">
 			The Race Engineer speaks the figure in your iRacing display units when you press the key. He must be switched on.
 		</div>
 		<div id="fuel-window-help" class="ird-supporting-text hidden">
-			How many recent clean laps the average covers. Laps with a pit stop or tow are skipped; early in a stint he names the laps actually averaged.
+			How many recent clean laps the average covers. Laps with a pit stop, out-laps and in-laps, towed laps and laps under a full-course caution are skipped; early in a stint he names the laps actually averaged.
 		</div>
 
 		<%# The Race Engineer voice, volumes, callout opt-ins and setup-warning
@@ -110,8 +110,12 @@
 					select.addEventListener("input", update);
 				}
 
+				// A transiently empty mode value is not a change: acting on it would
+				// fall back to "race-engineer", drop the deprecated Radar Volume
+				// option and hide Direction on a radar-volume key.
 				let last = `${modeSelect.value}|${kindSelect.value}`;
 				window.irdPoll(() => {
+					if (!modeSelect.value) return;
 					const current = `${modeSelect.value}|${kindSelect.value}`;
 					if (current !== last) {
 						last = current;
