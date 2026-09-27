@@ -169,8 +169,8 @@
           "name": "Pit Crew",
           "file": "pit-crew.ts",
           "encoder": false,
-          "settingsKeys": ["mode", "direction"],
-          "description": "Multi-mode action for the iRaceDeck audio framework: the Race Engineer voice toggle, the directional Radar proximity ticks, and the Corner Names callout toggle (#897). The radar-volume mode moved to the Audio Controls action (#590) — hidden from the Pit Crew Mode dropdown but kept functional so existing buttons keep working.",
+          "settingsKeys": ["mode", "direction", "readoutKind", "fuelLapWindow"],
+          "description": "Multi-mode action for the iRaceDeck audio framework: the Race Engineer voice toggle, the directional Radar proximity ticks, the Corner Names callout toggle (#897), and the Telemetry Readout mode (#466). The radar-volume mode moved to the Audio Controls action (#590) — hidden from the Pit Crew Mode dropdown but kept functional so existing buttons keep working.",
           "modes": [
             {
               "mode": "race-engineer",
@@ -182,6 +182,11 @@
               "mode": "corner-names",
               "label": "Corner Names",
               "description": "Toggles the corner-name callouts (practice/test) on/off — flips the same calloutEnabledCornerNames setting as the PI checkbox, with a spoken acknowledgment (#897)"
+            },
+            {
+              "mode": "telemetry-readout",
+              "label": "Telemetry Readout",
+              "description": "Has the Race Engineer read out fuel used last lap, average fuel over N laps, track or air temperature in the driver's display units"
             },
             {
               "mode": "radar-volume",
