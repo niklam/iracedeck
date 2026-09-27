@@ -34,13 +34,13 @@ It is also the first time a second first-party pack exists, which raises a quest
 
 **Its own pack, installed on demand.** A second voice inside `default` would reach every user unasked, but every user would download ~1,500 more clips, and any wording change to Terse would bump Default's version. A separate pack auto-installed at launch would need `ENSURED_VOICE_PACK_ID` to become a list and would ship the bytes to everyone anyway, reversing #1034's reasoning. As its own catalog pack it reaches only the users who ask for it, and nothing in deck-core's install path changes: the launch step already updates every catalog pack whose install record is behind the catalog (`voice-pack-launch.ts`, the `update` verdict), so a user who installed Terse gets each published version at their next start. Only the first install is theirs to make, from the Voice Packs card's "Available to Download" list.
 
-**Ids: pack `iracedeck-terse`, voice `terse`, so `iracedeck-terse::terse`.** A pack id and a voice id are permanent — a user's selection stores the composite — so they are chosen once. The two packs cannot share one pack id: a pack is one archive at one version, which is exactly the coupling rejected above. The voice id is also the authored directory `voice/<id>/`, so it cannot be `default`.
+**Ids: pack `iracedeck-terse`, voice `shawn`, so `iracedeck-terse::shawn`.** A pack id and a voice id are permanent — a user's selection stores the composite — so they are chosen once. The pack names the style and each voice in it names the engineer speaking, so a later terse voice for another engineer joins the same pack under its own id with no rename. The two packs cannot share one pack id: a pack is one archive at one version, which is exactly the coupling rejected above. The voice id is also the authored directory `voice/<id>/` — the authored tree is flat by voice id, only the runtime is namespaced by pack (#1144) — so it cannot be `default`, which Default's own directory holds; `iracedeck-terse::default` would need the authored tree made pack-scoped first, a refactor of the generator, the manifests, the packer and the cache that this issue does not take on.
 
 **New first-party packs are named `iracedeck-<name>`; `default` is the one legacy exception.** The catalog lists only our packs, but a third-party pack reaches a user by sideload and can choose any id; a prefix keeps ours recognisable by id as well as by provenance. The prefix is a naming rule, not a trust decision — trust is the install record (below).
 
-**The registry entry.** `VOICE_PACKS` gains `{ id: "iracedeck-terse", label: "Default (Terse)", author: "iRaceDeck", voices: ["terse"], bundled: false }` at version `1.0.0`. Everything downstream is already generic over the registry: `pack:voice` writes `catalog/iracedeck-terse.json`, `scripts/publish-voice-packs.mjs` and both workflows publish it as `voices-iracedeck-terse-1.0.0`, the website's `voice-catalog.json` lists it, and the harness can audition it.
+**The registry entry.** `VOICE_PACKS` gains `{ id: "iracedeck-terse", label: "Default (Terse)", author: "iRaceDeck", voices: ["shawn"], bundled: false }` at version `1.0.0`. Everything downstream is already generic over the registry: `pack:voice` writes `catalog/iracedeck-terse.json`, `scripts/publish-voice-packs.mjs` and both workflows publish it as `voices-iracedeck-terse-1.0.0`, the website's `voice-catalog.json` lists it, and the harness can audition it.
 
-**The branch keeps its `terse` naming.** `voice/terse/`, `configs/terse.voice.json` and the `generate.manifest.json` rows stay where the PR put them, so nothing is re-cut; only the config's label changes, to "Default (Terse)". The PR's own name was the better word, decided 2026-09-27 after a first draft of this spec renamed it `short`.
+**The branch's `terse` becomes `shawn` without re-cutting a clip.** `voice/terse/` → `voice/shawn/`, `configs/terse.voice.json` → `configs/shawn.voice.json` with the label "Default (Terse)", and every `generate.manifest.json` key `voice/terse/…` rekeyed to `voice/shawn/…`. The cache is keyed by clip path, so the rekey is what keeps the rename free; `generate:dry-run` proving zero would-generate for the voice is the check.
 
 ### Content
 
@@ -72,7 +72,7 @@ It is also the first time a second first-party pack exists, which raises a quest
 
 | Situation | Behaviour |
 | --- | --- |
-| User selects Terse, then removes the pack | The stored `iracedeck-terse::terse` is kept; `resolveActiveRaceEngineerVoice` falls back to `default::default` read-only, exactly as for any absent voice. Reinstalling restores the choice. |
+| User selects Terse, then removes the pack | The stored `iracedeck-terse::shawn` is kept; `resolveActiveRaceEngineerVoice` falls back to `default::default` read-only, exactly as for any absent voice. Reinstalling restores the choice. |
 | Catalog unreachable on a start | Installed packs keep their labels and order (the record is on disk); Terse is simply not offered for install until the catalog answers. |
 | A new callout lands in Default without Terse wording | The generalised completeness test fails on the branch that adds it. |
 | A sideload labels itself "iRaceDeck: Pro" | Shown with that label, sorted below every first-party voice. |
@@ -85,10 +85,10 @@ Automated:
 - The first-party check: `catalog`, `bundled-seed` and `development` qualify; `sideload`, and a record whose `id` does not match the manifest, do not.
 - Labels: both voices of a first-party pack read "iRaceDeck: <pack label>"; a third-party pack's labels are unchanged by this issue.
 - Order: a third-party pack labelled "Aaa" sorts below both iRaceDeck packs, and the managed pack precedes the other first-party packs.
-- The generalised completeness test covers `terse`, with a positive control: deleting one of Terse's script entries makes it fail.
-- `generate:dry-run` after the label change: zero would-generate for `terse`, and the count for `default` unchanged from master's.
+- The generalised completeness test covers `shawn`, with a positive control: deleting one of Terse's script entries makes it fail.
+- `generate:dry-run` after the rename: zero would-generate for `shawn`, and the count for `default` unchanged from master's.
 - `pack:voice iracedeck-terse` is byte-deterministic and its catalog entry verifies in the publish script's dry run; `pnpm lint:pack` over the staged pack.
-- The existing `callout-scripts.test.ts` and `script-coverage.test.ts` pass for `terse` (they already iterate every authored voice).
+- The existing `callout-scripts.test.ts` and `script-coverage.test.ts` pass for `shawn` (they already iterate every authored voice).
 
 Manual (maintainer, on hardware):
 
@@ -98,7 +98,7 @@ Manual (maintainer, on hardware):
 
 ## Affected artifacts
 
-- `@iracedeck/audio-assets`: `VOICE_PACKS`, `configs/terse.voice.json`, `voice/terse/`, `generate.manifest.json`, both manifests, `catalog/iracedeck-terse.json`, `packages/audio-assets/CLAUDE.md`.
+- `@iracedeck/audio-assets`: `VOICE_PACKS`, `configs/shawn.voice.json`, `voice/shawn/`, `generate.manifest.json`, both manifests, `catalog/iracedeck-terse.json`, `packages/audio-assets/CLAUDE.md`.
 - `@iracedeck/audio-scenarios`: the generalised `bundled-scripts.test.ts`.
 - `@iracedeck/deck-core`: the first-party label and order rule beside `voice-labels.ts`; its `CLAUDE.md`.
 - The three plugins' `plugin.ts`, which publish the sorted list.
