@@ -3,10 +3,10 @@ import type { TelemetryReadoutKind, TelemetryReadoutRequest } from "@iracedeck/e
 import { DisplayUnits, type TelemetryData } from "@iracedeck/iracing-sdk";
 import type { FuelStats } from "@iracedeck/sim-events-iracing";
 
-import type { SessionInfoSettings } from "./session-info.js";
+import type { SessionInfoSettings } from "./session-info-settings.js";
 
-/** The Session Info settings a readout reads: the item the key shows, and its fuel window. */
-export type ReadoutItem = Pick<SessionInfoSettings, "mode" | "fuelSubMode" | "fuelLapWindow">;
+/** The Session Info settings that name an item's readout: the item and its fuel sub-mode. */
+export type ReadoutItem = Pick<SessionInfoSettings, "mode" | "fuelSubMode">;
 
 /**
  * The readout a Session Info item speaks on a press (issue #466), or `null`
@@ -42,30 +42,35 @@ void _allKinds;
 export type ReadoutTelemetry = Pick<TelemetryData, "DisplayUnits" | "TrackTempCrew" | "AirTemp">;
 
 /**
- * Build the `telemetryReadout.requested` payload for one Session Info key
- * press (issue #466), or `null` when there is nothing to say: an item with no
- * speech yet, or a temperature the sim does not report. The value is converted
- * into the driver's display unit here, at press time, and never re-read.
+ * The figure a speaking Session Info item shows on its key AND speaks on a
+ * press (issue #466). One source for both surfaces, so the key and the voice
+ * read the same field with the same missing-reading rule and the same unit
+ * conversion; only the precision is each surface's own (the key rounds for
+ * its face, the audio layer for speech). The result is the
+ * `telemetryReadout.requested` payload, converted into the driver's display
+ * unit at read time.
+ *
+ * A fuel item with no valid lap yet has a `null` value: the key shows `--`
+ * and the engineer says there is no reading. A temperature the sim does not
+ * report is `null` outright: the key shows `--` and nothing is published,
+ * never "zero degrees".
  *
  * `DisplayUnits` unset counts as metric — the translator's convention. It is
  * normalized before `fuelToDisplayUnits`, which on its own reads `undefined`
  * as imperial.
  */
-export function buildTelemetryReadout(
-  item: ReadoutItem,
+export function resolveReadoutFigure(
+  kind: TelemetryReadoutKind,
+  fuelLapWindow: number,
   telemetry: ReadoutTelemetry,
   getStats: (windowLaps: number) => FuelStats,
 ): TelemetryReadoutRequest | null {
-  const kind = readoutKindFor(item);
-
-  if (kind === null) return null;
-
   const metric = telemetry.DisplayUnits !== DisplayUnits.English;
 
   switch (kind) {
     case "fuel-last-lap":
     case "fuel-average": {
-      const stats = getStats(item.fuelLapWindow);
+      const stats = getStats(fuelLapWindow);
       const liters = kind === "fuel-last-lap" ? stats.lastLap : stats.avg;
       const unit = metric ? "liters" : "gallons";
 
@@ -80,13 +85,13 @@ export function buildTelemetryReadout(
       };
     }
     case "track-temp":
-      return temperatureReadout(kind, telemetry.TrackTempCrew, metric);
+      return temperatureFigure(kind, telemetry.TrackTempCrew, metric);
     case "air-temp":
-      return temperatureReadout(kind, telemetry.AirTemp, metric);
+      return temperatureFigure(kind, telemetry.AirTemp, metric);
   }
 }
 
-function temperatureReadout(
+function temperatureFigure(
   kind: "track-temp" | "air-temp",
   celsius: number | undefined,
   metric: boolean,

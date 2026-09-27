@@ -1,6 +1,4 @@
 import {
-  celsiusToFahrenheit,
-  CommonSettings,
   ConnectionStateAwareAction,
   generateBorderParts,
   generateTitleText,
@@ -12,13 +10,19 @@ import {
   type IDeckKeyDownEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
+  litersToGallons,
   renderIconTemplate,
   resolveBorderSettings,
   resolveIconColors,
   resolveTitleSettings,
   svgToDataUri,
 } from "@iracedeck/deck-core";
-import { getEventBus, isEventBusInitialized } from "@iracedeck/event-bus";
+import {
+  getEventBus,
+  isEventBusInitialized,
+  type TelemetryReadoutKind,
+  type TelemetryReadoutRequest,
+} from "@iracedeck/event-bus";
 import {
   absoluteWindBearingDeg,
   type BindingLimit,
@@ -45,7 +49,6 @@ import {
   TrackWetness,
 } from "@iracedeck/iracing-sdk";
 import {
-  FUEL_LAP_HISTORY_CAP,
   type GapNeighbor,
   getFuelStats,
   getLiveGaps,
@@ -55,10 +58,10 @@ import {
   type LiveGaps,
   resolveLeaderLapTimeS,
 } from "@iracedeck/sim-events-iracing";
-import z from "zod";
 
 import sessionInfoTemplate from "../../../icons/session-info.svg";
-import { buildTelemetryReadout, readoutKindFor } from "./readout-request.js";
+import { readoutKindFor, resolveReadoutFigure } from "./readout-request.js";
+import { SessionInfoSettings } from "./session-info-settings.js";
 
 const BACKGROUND_FLASH = "#e74c3c";
 
@@ -90,84 +93,6 @@ const FLASH_STEPS = 12; // on-off x6 (6 red flashes)
 
 const PULSE_INTERVAL_MS = 500;
 
-const LITERS_PER_GALLON = 3.78541;
-
-/** @internal Exported for the readout builder's item type (`readout-request.ts`). */
-export const SessionInfoSettings = CommonSettings.extend({
-  mode: z
-    .enum([
-      "incidents",
-      "time-remaining",
-      "laps",
-      "position",
-      "irating",
-      "gaps",
-      "fuel",
-      "flags",
-      "track-wetness",
-      "laps-to-empty",
-      "wind",
-      "track-temp",
-      "air-temp",
-    ])
-    .default("incidents"),
-  fontSize: z.preprocess(
-    (val) => (val === "" || val === null || val === undefined ? undefined : val),
-    z.coerce.number().min(5).max(36).optional(),
-  ),
-  positionType: z.enum(["class", "overall"]).default("class"),
-  positionShowTotal: z
-    .union([z.boolean(), z.string()])
-    .transform((val) => val === true || val === "true")
-    .default(false),
-  fuelFormat: z.enum(["amount", "percentage"]).default("amount"),
-  // Fuel consumption sub-modes (issue #465): "now" is the pre-existing tank
-  // level display; "lastLap" / "avgN" read the translator's validated fuel lap
-  // history via getFuelStats(). fuelLapWindow rounds + clamps instead of
-  // validating hard — a hand-typed decimal (the PI number box doesn't
-  // step-round) or an out-of-range persisted value must not fail the whole
-  // settings parse, which would silently reset the action to its defaults.
-  fuelSubMode: z.enum(["now", "lastLap", "avgN"]).default("now"),
-  fuelLapWindow: z.preprocess(
-    (val) => (val === "" || val === null || val === undefined ? undefined : val),
-    z.coerce
-      .number()
-      .transform((val) => Math.min(FUEL_LAP_HISTORY_CAP, Math.max(1, Math.round(val))))
-      .catch(5),
-  ),
-  blankWhenNoFlag: z
-    .union([z.boolean(), z.string()])
-    .transform((val) => val === true || val === "true")
-    .default(false),
-  // Gaps mode row toggles (issue #933): which of the two class-neighbor gap
-  // rows the key shows. Both default on; a single enabled row renders larger.
-  gapShowAhead: z
-    .union([z.boolean(), z.string()])
-    .transform((val) => val === true || val === "true")
-    .default(true),
-  gapShowBehind: z
-    .union([z.boolean(), z.string()])
-    .transform((val) => val === true || val === "true")
-    .default(true),
-  // Wind mode (issue #947). "relative" points the arrow where the wind pushes
-  // the car (the useful reading mid-corner); "absolute" points it where the
-  // wind travels in world space, north up, and names the compass direction it
-  // blows FROM — matching how iRacing itself labels wind.
-  windDirectionMode: z.enum(["relative", "absolute"]).default("relative"),
-  windSpeedUnit: z.enum(["ms", "kmh", "mph"]).default("kmh"),
-  // Speak value on press (issue #466): a press has the Race Engineer read out
-  // the value the key shows. One switch for the whole action, on every item —
-  // an item with no speech yet ignores the press, and one that gains speech
-  // later needs no settings change. Defaults on, like new Race Engineer
-  // functionality; the Race Engineer master still gates every readout.
-  speakOnPress: z
-    .union([z.boolean(), z.string()])
-    .transform((val) => val === true || val === "true")
-    .default(true),
-});
-
-export type SessionInfoSettings = z.infer<typeof SessionInfoSettings>;
-
 /**
  * @internal Exported for testing
  *
@@ -192,34 +117,37 @@ export function formatSessionTime(seconds: number): string {
 /**
  * @internal Exported for testing
  *
- * Formats a fuel amount for display. Respects the player's DisplayUnits
- * setting. Tank-level readings use the default 1 decimal; the per-lap
- * consumption sub-modes pass 2 — a tenth of a liter (let alone a tenth of a
- * gallon) is too coarse for stint planning.
+ * Formats the tank level (Fuel → Now) for display. Respects the player's
+ * DisplayUnits setting, unset counting as metric.
  */
-export function formatFuelAmount(fuelLevel: number, displayUnits: number | undefined, decimals = 1): string {
-  if (displayUnits === DisplayUnits.English) {
-    const gallons = fuelLevel / LITERS_PER_GALLON;
+export function formatFuelAmount(fuelLevel: number, displayUnits: number | undefined): string {
+  if (displayUnits === DisplayUnits.English) return `${litersToGallons(fuelLevel).toFixed(1)} gal`;
 
-    return `${gallons.toFixed(decimals)} gal`;
-  }
-
-  return `${fuelLevel.toFixed(decimals)} L`;
+  return `${fuelLevel.toFixed(1)} L`;
 }
 
 /**
  * @internal Exported for testing
  *
- * Formats a Track / Air Temperature reading (issue #466): rounded to a whole
- * degree in the driver's display units, `DisplayUnits` unset counting as
- * metric. A missing reading shows `--`, never a zero.
+ * Formats a speaking item's figure for its key (issue #466) — the same figure
+ * a press speaks, from `resolveReadoutFigure`. The precision is the key's own:
+ * fuel consumption to two decimals, since a tenth of a liter (let alone a
+ * tenth of a gallon) is too coarse for stint planning, and temperatures to a
+ * whole degree. No figure, or no value yet, shows `--` — never a zero.
  */
-export function formatTemperature(celsius: number | undefined, displayUnits: number | undefined): string {
-  if (typeof celsius !== "number" || !Number.isFinite(celsius)) return "--";
+export function formatReadoutFigure(figure: TelemetryReadoutRequest | null): string {
+  if (figure === null || figure.value === null) return "--";
 
-  if (displayUnits === DisplayUnits.English) return `${Math.round(celsiusToFahrenheit(celsius))}°F`;
-
-  return `${Math.round(celsius)}°C`;
+  switch (figure.unit) {
+    case "liters":
+      return `${figure.value.toFixed(2)} L`;
+    case "gallons":
+      return `${figure.value.toFixed(2)} gal`;
+    case "celsius":
+      return `${Math.round(figure.value)}°C`;
+    case "fahrenheit":
+      return `${Math.round(figure.value)}°F`;
+  }
 }
 
 /**
@@ -943,9 +871,13 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
   override async onKeyDown(ev: IDeckKeyDownEvent<SessionInfoSettings>): Promise<void> {
     const settings = this.parseSettings(ev.payload.settings);
 
-    if (!settings.speakOnPress || readoutKindFor(settings) === null) return;
+    if (!settings.speakOnPress) return;
 
-    this.requestTelemetryReadout(settings);
+    const kind = readoutKindFor(settings);
+
+    if (kind === null) return;
+
+    this.requestTelemetryReadout(kind, settings.fuelLapWindow);
   }
 
   /**
@@ -954,7 +886,7 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
    * queue — is the audio layer's call. With no telemetry there is nothing true
    * to say, so nothing is published.
    */
-  private requestTelemetryReadout(settings: SessionInfoSettings): void {
+  private requestTelemetryReadout(kind: TelemetryReadoutKind, fuelLapWindow: number): void {
     if (!this.sdkController.getConnectionStatus()) {
       this.logger.debug("Telemetry readout skipped — iRacing is not connected");
 
@@ -969,10 +901,10 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
       return;
     }
 
-    const data = buildTelemetryReadout(settings, telemetry, getFuelStats);
+    const data = resolveReadoutFigure(kind, fuelLapWindow, telemetry, getFuelStats);
 
     if (!data) {
-      this.logger.debug(`Telemetry readout skipped — no ${settings.mode} reading`);
+      this.logger.debug(`Telemetry readout skipped — no ${kind} reading`);
 
       return;
     }
@@ -985,6 +917,16 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
 
     getEventBus().publish({ event: "telemetryReadout.requested", timestamp: Date.now(), telemetry, data });
     this.logger.info(`Telemetry readout requested: ${data.kind}`);
+  }
+
+  /**
+   * The figure a speaking item shows — the same one a press speaks (issue
+   * #466), so the key and the voice never disagree.
+   */
+  private readoutFigure(settings: SessionInfoSettings, telemetry: TelemetryData): TelemetryReadoutRequest | null {
+    const kind = readoutKindFor(settings);
+
+    return kind === null ? null : resolveReadoutFigure(kind, settings.fuelLapWindow, telemetry, getFuelStats);
   }
 
   private parseSettings(settings: unknown): SessionInfoSettings {
@@ -1195,13 +1137,9 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
       // latest lap (pit stop, tow) keeps showing the last valid value instead
       // of flickering to "--" mid-stint. The percentage format only applies to
       // the tank-level "now" display — consumption is always an amount.
+      // The figure is the one a press speaks (issue #466).
       if (settings.fuelSubMode === "lastLap" || settings.fuelSubMode === "avgN") {
-        const stats = getFuelStats(settings.fuelLapWindow);
-        const value = settings.fuelSubMode === "lastLap" ? stats.lastLap : stats.avg;
-
-        if (value === null) return "--";
-
-        return formatFuelAmount(value, telemetry.DisplayUnits, 2);
+        return formatReadoutFigure(this.readoutFigure(settings, telemetry));
       }
 
       if (settings.fuelFormat === "percentage") {
@@ -1243,9 +1181,9 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
 
     // Track / Air Temperature (issue #466): the fields the session-start brief
     // reads, and the figure a press speaks.
-    if (settings.mode === "track-temp") return formatTemperature(telemetry.TrackTempCrew, telemetry.DisplayUnits);
-
-    if (settings.mode === "air-temp") return formatTemperature(telemetry.AirTemp, telemetry.DisplayUnits);
+    if (settings.mode === "track-temp" || settings.mode === "air-temp") {
+      return formatReadoutFigure(this.readoutFigure(settings, telemetry));
+    }
 
     // time-remaining (default). The key counts down whatever actually ends the
     // session (#1109): the clock when the clock binds, the bare laps-to-go
