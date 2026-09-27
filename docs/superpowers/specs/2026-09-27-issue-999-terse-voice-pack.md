@@ -60,7 +60,7 @@ It is also the first time a second first-party pack exists, which raises a quest
 
 **First-party is decided by the install record.** A pack is iRaceDeck's when its `.install.json` says `catalog` or `bundled-seed`, or it was found under the development voice root (provenance `development`). The record is written by our installer only, and the extractor drops any copy shipped inside an archive, so a pack cannot claim it about itself; it works offline, unlike reading the live catalog, and it does not refuse a hand-installed copy of our own pack the way a reserved id prefix would. The id prefix above plays no part in the decision.
 
-**Every voice of a first-party pack is labelled "iRaceDeck: <pack label>".** "iRaceDeck: Default" and "iRaceDeck: Default (Terse)". The plugin adds the prefix; the packs' own labels stay "Default" and "Default (Terse)". The rule is one deck-core function beside `voiceDisplayLabels`, which all three plugins already call, and it keeps that function's property: an entry's name depends on its own pack's manifest and record, never on what else is installed.
+**A first-party pack's voice is labelled "iRaceDeck: <pack label>"; a first-party pack with several voices labels each "iRaceDeck: <pack label>: <voice label>".** "iRaceDeck: Default" and "iRaceDeck: Default (Terse)". The second form keeps a later second engineer in the Terse pack distinguishable from the first (amended 2026-09-27 after the branch review: the first draft gave every voice of a pack the same label). The plugin adds the prefix; the packs' own labels stay "Default" and "Default (Terse)". The rule is one deck-core function beside `voiceDisplayLabels`, which all three plugins already call, and it keeps that function's property: an entry's name depends on its own pack's manifest and record, never on what else is installed.
 
 **The plugin publishes `_raceEngineerVoices` sorted:** the managed pack first, then the other first-party packs by label, then every other voice by label. `ird-voice-select` renders options in the order it receives them, so the order is decided once, in deck-core, and not in the PI. Only labels and order change; no stored selection is read or written differently.
 
@@ -83,7 +83,7 @@ It is also the first time a second first-party pack exists, which raises a quest
 Automated:
 
 - The first-party check: `catalog`, `bundled-seed` and `development` qualify; `sideload`, and a record whose `id` does not match the manifest, do not.
-- Labels: both voices of a first-party pack read "iRaceDeck: <pack label>"; a third-party pack's labels are unchanged by this issue.
+- Labels: a single-voice first-party pack reads "iRaceDeck: <pack label>", each voice of a multi-voice one "iRaceDeck: <pack label>: <voice label>"; a third-party pack's labels are unchanged by this issue.
 - Order: a third-party pack labelled "Aaa" sorts below both iRaceDeck packs, and the managed pack precedes the other first-party packs.
 - The generalised completeness test covers `shawn`, with a positive control: deleting one of Terse's script entries makes it fail.
 - `generate:dry-run` after the rename: zero would-generate for `shawn`, and the count for `default` unchanged from master's.
