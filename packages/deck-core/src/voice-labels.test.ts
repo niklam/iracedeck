@@ -145,7 +145,8 @@ describe("voiceDisplayLabels — first-party packs (#999)", () => {
     });
   });
 
-  it("uses the pack label for every voice of a multi-voice first-party pack", () => {
+  it("adds the voice label for every voice of a multi-voice first-party pack", () => {
+    // `iRaceDeck: Pair` for both would render two identical dropdown entries.
     const duo = pack(
       "Pair",
       [
@@ -154,7 +155,12 @@ describe("voiceDisplayLabels — first-party packs (#999)", () => {
       ],
       { provenance: "catalog" },
     );
-    expect(voiceDisplayLabels([duo])).toEqual({ "pair::a": "iRaceDeck: Pair", "pair::b": "iRaceDeck: Pair" });
+    expect(voiceDisplayLabels([duo])).toEqual({ "pair::a": "iRaceDeck: Pair: A", "pair::b": "iRaceDeck: Pair: B" });
+  });
+
+  it("keeps a single-voice first-party pack at 'iRaceDeck: <pack label>' even when its voice is named otherwise", () => {
+    const solo = pack("Solo", [{ id: "x", label: "Someone" }], { provenance: "bundled-seed" });
+    expect(voiceDisplayLabels([solo])).toEqual({ "solo::x": "iRaceDeck: Solo" });
   });
 
   it("gives a hand-placed copy of default no iRaceDeck prefix", () => {
@@ -185,6 +191,17 @@ describe("orderRaceEngineerVoices (#999)", () => {
       "default::default",
       "abe",
       "zed",
+    ]);
+  });
+
+  it("sorts an unlabelled voice by the name the dropdown shows, not by its raw id", () => {
+    // `zeta::alpha` renders as `Alpha` (title-cased voice half), so it belongs
+    // before a labelled `Beta` — the raw id `zeta::alpha` would sort after it.
+    const beta = pack("Beta", [{ id: "beta", label: "Beta" }]);
+    const labels = voiceDisplayLabels([beta]);
+    expect(orderRaceEngineerVoices(["beta::beta", "zeta::alpha"], [beta], labels)).toEqual([
+      "zeta::alpha",
+      "beta::beta",
     ]);
   });
 
