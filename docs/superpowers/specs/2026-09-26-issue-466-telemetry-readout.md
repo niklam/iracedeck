@@ -12,7 +12,7 @@ The issue was filed before the callout-script split (#1064), pack-bound voices (
 
 ## What ships
 
-A fifth Pit Crew mode, **Telemetry Readout**. Each key picks one readout; pressing it has the Race Engineer speak the value in the driver's display units:
+Pressing a **Session Info** key speaks the figure it shows. A new per-key setting, **Speak value on press** (default on), exists on every item; four items speak today — Fuel → Last Lap, Fuel → Average, and two new items, **Track Temperature** and **Air Temperature** — and the Race Engineer speaks the value in the driver's display units:
 
 > "Fuel used last lap, two point four liters."
 >
@@ -50,22 +50,22 @@ This is the **first event the deck layer publishes** rather than the translator;
 
 The value is captured at press time, not re-read at fire time (the readback's #481 rule). A readout answers "what is it now" at the moment the driver asked; a queue delay of a few seconds does not make it stale, and reading at press time keeps the audio layer free of any sim dependency.
 
-### 2. The action computes the value
+### 2. Session Info computes the value
 
-`packages/iracing-actions/src/actions/pit-crew/pit-crew.ts` gains the `telemetry-readout` mode and two settings:
+The readout lives in **Session Info**, the action that already shows these figures: the key a driver reads is the key they press to hear it. (The first build put it in Pit Crew as a fifth mode with a per-key readout picker; the maintainer moved it after the manual test, because a separate key for a figure Session Info already displays duplicates the item list, and Session Info had no press behaviour to collide with.)
 
-- `readoutKind` — `fuel-last-lap` (default) · `fuel-average` · `track-temp` · `air-temp`.
-- `fuelLapWindow` — 1–20, default 5, shown only for `fuel-average`. It is the same schema Session Info's fuel average uses, extracted so the two cannot drift.
+`packages/iracing-actions/src/actions/session-info/session-info.ts` gains:
 
-On key down, with telemetry present:
+- **`speakOnPress`** — "Speak value on press", default **on**, on every item. The action-level setting is deliberately not limited to the items that speak today: it is the switch for the whole action, its help text names the items that speak, and an item that gains speech later needs no settings change. On an item with no speech yet, a press does nothing. Existing keys start speaking on press after the update, which is intended (new Race Engineer functionality defaults on); the Race Engineer master still gates every readout.
+- **Two new items**, `track-temp` and `air-temp`, showing the rounded figure with its unit ("41°C" / "106°F") in the driver's display units.
 
-- **Fuel last lap / average** — `getFuelStats(window)` from `@iracedeck/sim-events-iracing`, `.lastLap` or `.avg`, converted with the existing `fuelToDisplayUnits`. `laps` is `samples` — the laps actually averaged, which is fewer than N early in a stint — so the engineer never claims a five-lap average built from two. A `null` value is published as `null` (decision 5).
-- **Track / air temperature** — `TrackTempCrew` and `AirTemp`, the fields the session-start brief reads, converted by a new `celsiusToFahrenheit` beside the fuel helpers in `deck-core/src/unit-conversion.ts`.
+On key down, with `speakOnPress` on and telemetry present, the item maps to a kind:
+
+- **Fuel → Last Lap / Average (N laps)** — `getFuelStats(window)` from `@iracedeck/sim-events-iracing` with the key's existing `fuelLapWindow`, `.lastLap` or `.avg`, converted with the existing `fuelToDisplayUnits`. `laps` is `samples` — the laps actually averaged, which is fewer than N early in a stint — so the engineer never claims a five-lap average built from two. A `null` value is published as `null`. A key in percentage format still speaks the amount. Fuel → Now does not speak yet.
+- **Track / Air Temperature** — `TrackTempCrew` and `AirTemp`, the fields the session-start brief reads, converted by a new `celsiusToFahrenheit` beside the fuel helpers in `deck-core/src/unit-conversion.ts`.
 - `DisplayUnits` unset counts as metric, the translator's convention.
 
-With no telemetry (not connected) nothing is published — there is nothing true to say, and the Race Engineer is idle then anyway. The same holds for a temperature kind whose field is missing from the tick: the session-start brief reads a missing field as `0`, but a readout the driver asked for must never say "zero degrees" for a reading that does not exist.
-
-The key shows a per-kind title and a readout glyph designed under `icons.md`. It shows no live value: the mode exists for drivers who cannot see the key, and Session Info already displays these figures.
+With no telemetry (not connected) nothing is published — there is nothing true to say, and the Race Engineer is idle then anyway. The same holds for a temperature whose field is missing from the tick: the session-start brief reads a missing field as `0`, but a readout the driver asked for must never say "zero degrees" for a reading that does not exist; the key shows `--` then.
 
 ### 3. Five contracts in a new catalog file
 
@@ -93,7 +93,7 @@ Rounding happens once, to 0.1, before the split, so 2.44 → `2` + `liters-4`, 2
 
 **The unit stays pack-optional for temperatures exactly as in the session-start brief.** `readout.degreesUnit` draws the same two `session-start/unit-*` clips as `sessionStart.degreesUnit`, so a pack that records them once can have both callouts say "degrees, Celsius". The reference script never names the var. Fuel says its unit because the `numbers-fuel-decimal` clips carry it; a pack wanting silence there records the tails without the word.
 
-**Gating is the Race Engineer master only.** There is no per-callout opt-in and no `calloutEnabled*` key: pressing the key is the opt-in, and a checkbox that could leave a key doing nothing is a trap. Turning the Race Engineer off silences readouts, and they play at its volume on its bus with its walkie bed — the issue's out-of-scope line on independent mute and volume.
+**Gating is the Race Engineer master.** There is no per-callout opt-in and no `calloutEnabled*` key in the Race Engineer settings: pressing the key is the opt-in, and the only other switch is the key's own `speakOnPress`. Turning the Race Engineer off silences readouts, and they play at its volume on its bus with its walkie bed — the issue's out-of-scope line on independent mute and volume.
 
 **Scheduling:** a weight between chatter and normal (`WEIGHT.NORMAL - 10`), `queueable: true`, and nothing else. A readout pressed while the bus is busy waits for what is playing rather than being dropped — the driver asked for it — and a newer readout replaces a still-pending one, so hammering the key never builds a backlog. The weight is below normal so that a key press never displaces the Race Engineer's own lines: the bus keeps one pending slot (#1185) and an equal-weight newcomer takes it, so at normal weight a readout pressed during the pit-entry readback would silently delete a waiting `limiter-missing` warning (found in the branch review). The cost is the mirror image, accepted: a readout pressed while an engineer line of normal weight or above is waiting, or one that arrives while the readout waits, means the readout is not read — the driver presses again, and the website says so. It still displaces waiting chatter (the pit readback). No `family` (a same-family fire replaces the one playing whatever its weight, so a second press would cut the readout being heard), no `queueBehind` (it would chain a new readout behind the waiting one — the backlog), no `interrupt`.
 
@@ -119,16 +119,15 @@ The voice pack's catalog entry and `pack-reference.json` are regenerated. Its ve
 ## Artifacts beyond the code
 
 - Scenario harness: `event-names.ts` entry, and shortcuts for a liters and a gallons last lap, a full and a partial (3 of 5) average, no data, track °C, air °F, and the 120.9 edge.
-- Website: the mode on `docs/actions/audio-voice/pit-crew.md` (and its mode-count badge), a Features line in `changelog.mdx`, and the developer Architecture page — the event bus gains a deck-side publisher.
-- `iracedeck-actions` skill (Pit Crew gains a mode); a `race-engineer-callout-examples.md` entry for the first key-triggered callout.
-- No manifest change: Pit Crew is one UUID in all three plugins, and it stays out of `action-comms.json`.
+- Website: the two items and the setting on the Session Info page (and its mode-count badge), a Features line in `changelog.mdx` saying where it lives, and the developer Architecture page — the event bus gains a deck-side publisher.
+- `iracedeck-actions` skill (Session Info gains two items and the setting); a `race-engineer-callout-examples.md` entry for the first key-triggered callout.
+- No manifest change: Session Info is one UUID in all three plugins.
 
 ## Out of scope
 
 - Readouts on a timer or a sim event.
-- Kinds beyond these four; each later one adds clips and a kind.
-- A dial surface for the mode.
-- A live value on the key.
+- Speech for the other Session Info items (Fuel → Now, incidents, position, …); each later one adds clips and a kind.
+- A dial surface — Session Info is keypad-only.
 - A separate mute, volume or per-callout opt-in.
 - Reworking the translator's inline temperature conversion onto the new helper — `sim-events-iracing` does not depend on `deck-core`, and moving the helper is its own change.
 
@@ -138,7 +137,7 @@ The voice pack's catalog entry and `pack-reference.json` are regenerated. Its ve
 
 - Resolvers: rounding boundaries (2.44, 2.45, 0.04, 0.96, 120.9, 120.96), liters and gallons tails, `laps` 1 and 20, negative temperatures through the shared helper.
 - Contracts: the sequence each kind resolves to in metric and imperial; `no-data` for both fuel kinds on `null`; no contract fires for a temperature kind on the fuel path and vice versa.
-- Pit Crew: the payload per kind and unit system, `laps` equal to `samples` rather than the window, nothing published without telemetry, the settings schema's clamp and default.
+- Session Info: the payload per item and unit system, `laps` equal to `samples` rather than the window, nothing published without telemetry or with `speakOnPress` off, a press on a non-speaking item publishing nothing, the two temperature items' display in both unit systems and on a missing reading, the setting's default.
 - The bundled script-coverage and pack-reference freshness tests pick up the new contracts, vars and groups.
 
-**Manual (the PR gate).** In iRacing, on metric and then imperial display units: each kind spoken correctly; a fuel readout before the first clean lap says the no-data line; an average early in a stint names the laps actually averaged; a press during another callout plays after it; a burst of presses speaks at most the readout already playing and the latest one; Race Engineer off leaves the key silent. The integer → tail seam is judged by ear across a spread of figures.
+**Manual (the PR gate).** In iRacing, on metric and then imperial display units: each kind spoken correctly; a fuel readout before the first clean lap says the no-data line; an average early in a stint names the laps actually averaged; a press during another callout plays after it; a burst of presses speaks at most the readout already playing and the latest one; Race Engineer off, or Speak value on press off, leaves the key silent. The integer → tail seam is judged by ear across a spread of figures.
