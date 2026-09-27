@@ -152,3 +152,14 @@ export function formatFuelSettingWithUnit(
 
   return `${prefix}${formattedAmount} ${suffix}`;
 }
+
+/**
+ * Converts a temperature from degrees Celsius (iRacing's internal unit) to
+ * degrees Fahrenheit. Unrounded: callers that speak or display it round
+ * for their own purpose (issue #466).
+ * @param celsius - Temperature in °C
+ * @returns Temperature in °F
+ */
+export function celsiusToFahrenheit(celsius: number): number {
+  return (celsius * 9) / 5 + 32;
+}

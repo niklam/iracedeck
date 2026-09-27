@@ -112,17 +112,17 @@ const STATUS_BAR_TEMPLATES = new Set([
  *     "DEPLOY", MODE_COLOR "#3498db"; value-bearing (view-mguk-deploy-mode, formatInteger).
  */
 /**
- * Pit Crew renders TWO of its three `mode` settings as tri-state toggle
- * buttons with a status-bar on/off indicator — `race-engineer` and `radar`
- * (pit-crew.ts `modePresentation()`, lines ~211-234: both return a
- * `stateIndicator` of `"on"`/`"off"`). The third mode, `radar-volume`, is a
- * +/- stepper with no status bar (`stateIndicator: null`) so it gets no
- * distinct sample (gallery restructure wave, item 2's investigation).
+ * Pit Crew renders THREE of its four `mode` settings as toggle buttons with a
+ * status-bar on/off indicator — `race-engineer`, `radar` and `corner-names`
+ * (pit-crew.ts `modePresentation()`: each returns a `stateIndicator` of
+ * `"on"`/`"off"`). The fourth mode, `radar-volume`, is a +/- stepper with no
+ * status bar (`stateIndicator: null`) so it gets no distinct sample (gallery
+ * restructure wave, item 2's investigation).
  *
  * pit-crew.svg (the physical dynamic template both modes share) exposes only
  * ONE `{{iconContent}}` placeholder — no separate `{{titleContent}}` token —
  * because the real action bakes title + artwork + status bar into
- * `iconContent` itself (`generatePitCrewSvg()`, lines ~243-303: `iconContent =
+ * `iconContent` itself (`generatePitCrewSvg()`: `iconContent =
  * scaledGraphic + titleText + statusBar`). So each gallery sample supplies the
  * full `iconContent` as a sample title (bottomY 92, clear of the status bar,
  * matching `STATUS_BAR_TEMPLATES`' convention) plus `statusBarOn()`, leaving

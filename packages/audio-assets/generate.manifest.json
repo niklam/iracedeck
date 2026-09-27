@@ -46208,6 +46208,2662 @@
       "textPreview": "Auto fuel off. No fuel.",
       "generatedAt": "2026-09-27T11:04:11.464Z",
       "requestId": "m883DYTV2sOZHMyilVjd"
+    },
+    "voice/default/telemetry-readout/fuel-last-lap-intro-01.mp3": {
+      "hash": "03fa41163840561f",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Fuel used last lap,",
+      "generatedAt": "2026-09-27T11:36:10.092Z",
+      "requestId": "TRcCzMIF2PDRPx15IFyK"
+    },
+    "voice/default/telemetry-readout/fuel-average-intro-01.mp3": {
+      "hash": "b2f8c87895ea5fa2",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Average fuel over the last",
+      "generatedAt": "2026-09-27T11:36:10.591Z",
+      "requestId": "vED5VkNi98hywD8pCjVH"
+    },
+    "voice/default/telemetry-readout/track-temp-intro-01.mp3": {
+      "hash": "ac064a97552ddd0b",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Track temperature is",
+      "generatedAt": "2026-09-27T11:36:10.746Z",
+      "requestId": "jzDFTalDM1ZvVl3mACk9"
+    },
+    "voice/default/telemetry-readout/air-temp-intro-01.mp3": {
+      "hash": "3ce303c16f25a273",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Air temperature is",
+      "generatedAt": "2026-09-27T11:36:10.908Z",
+      "requestId": "kmEezmH9CLjPz4ax6RiV"
+    },
+    "voice/default/telemetry-readout/no-data-01.mp3": {
+      "hash": "37b4e4e7e00f3e81",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "No clean lap on the books yet.",
+      "generatedAt": "2026-09-27T11:36:11.070Z",
+      "requestId": "hwciyfZLPgvLWDHxvo5B"
+    },
+    "voice/default/readout-laps/1.mp3": {
+      "hash": "1411985239213bc5",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "lap,",
+      "generatedAt": "2026-09-27T11:36:11.845Z",
+      "requestId": "LHgws2FFugJiwxJtttyM"
+    },
+    "voice/default/readout-laps/3.mp3": {
+      "hash": "2e6db7ab11f7ff8e",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "three laps,",
+      "generatedAt": "2026-09-27T11:36:12.024Z",
+      "requestId": "0vWaAIn0Z09AImwdgAB8"
+    },
+    "voice/default/readout-laps/5.mp3": {
+      "hash": "891e854dec3c9586",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "five laps,",
+      "generatedAt": "2026-09-27T11:36:12.193Z",
+      "requestId": "gaXEtKZlZQbmqFU40Bae"
+    },
+    "voice/default/readout-laps/20.mp3": {
+      "hash": "a785949e8e9bb743",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "twenty laps,",
+      "generatedAt": "2026-09-27T11:36:12.358Z",
+      "requestId": "MtKElvnW4rS9lhfEEBKS"
+    },
+    "voice/default/numbers-fuel/0.mp3": {
+      "hash": "13acea487130a597",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "zero",
+      "generatedAt": "2026-09-27T11:36:13.150Z",
+      "requestId": "gvz80IwcpvYBuV4xOUIs"
+    },
+    "voice/default/numbers-fuel/2.mp3": {
+      "hash": "ea375baf5d4722e2",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "two",
+      "generatedAt": "2026-09-27T11:36:13.325Z",
+      "requestId": "5Xpgr42UjHFHLpR7G3tG"
+    },
+    "voice/default/numbers-fuel/5.mp3": {
+      "hash": "e34e428abd4200b7",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "five",
+      "generatedAt": "2026-09-27T11:36:13.496Z",
+      "requestId": "GBGvOXvjWd1qDtZlUz49"
+    },
+    "voice/default/numbers-fuel/41.mp3": {
+      "hash": "f7eefd11926e67c5",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "forty one",
+      "generatedAt": "2026-09-27T11:36:13.662Z",
+      "requestId": "JfeieX6zK64e6mpC23Jg"
+    },
+    "voice/default/numbers-fuel/120.mp3": {
+      "hash": "f82e46fac8b10f50",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred twenty",
+      "generatedAt": "2026-09-27T11:36:13.839Z",
+      "requestId": "QmSGzhVwM5as0KxTU2IG"
+    },
+    "voice/default/numbers-fuel/1.mp3": {
+      "hash": "f714154a95e7523d",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one",
+      "generatedAt": "2026-09-27T11:36:31.655Z",
+      "requestId": "AOyx9yh97YZkTsfZDCvG"
+    },
+    "voice/default/numbers-fuel-decimal/liters-0.mp3": {
+      "hash": "1d112307e15c9cb3",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "point zero liters.",
+      "generatedAt": "2026-09-27T11:36:32.436Z",
+      "requestId": "YhIvcplA13BJE1MvQDor"
+    },
+    "voice/default/numbers-fuel-decimal/liters-4.mp3": {
+      "hash": "6a8a5cac19daf435",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "point four liters.",
+      "generatedAt": "2026-09-27T11:36:32.626Z",
+      "requestId": "TaNMtIvXYjem20wAl6sI"
+    },
+    "voice/default/numbers-fuel-decimal/gallons-6.mp3": {
+      "hash": "35df53da321af291",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "point six gallons.",
+      "generatedAt": "2026-09-27T11:36:32.804Z",
+      "requestId": "UnvfNZ6KA7F4YT8gN9gJ"
+    },
+    "voice/default/readout-laps/2.mp3": {
+      "hash": "0836df45e9e8ca06",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "two laps,",
+      "generatedAt": "2026-09-27T11:50:12.033Z",
+      "requestId": "BA9fUcxWewRjLyqrnXsm"
+    },
+    "voice/default/readout-laps/4.mp3": {
+      "hash": "3193c013592d0dd7",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "four laps,",
+      "generatedAt": "2026-09-27T11:50:12.244Z",
+      "requestId": "I5L3AqS27ctosBlCa8SF"
+    },
+    "voice/default/readout-laps/6.mp3": {
+      "hash": "617d2ed6462403a5",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "six laps,",
+      "generatedAt": "2026-09-27T11:50:12.415Z",
+      "requestId": "MWPv9SmUn3k3Id8iBkwh"
+    },
+    "voice/default/readout-laps/7.mp3": {
+      "hash": "cbda213c85a6943a",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "seven laps,",
+      "generatedAt": "2026-09-27T11:50:12.606Z",
+      "requestId": "cJMGBjKfRHlwgF8EneVh"
+    },
+    "voice/default/readout-laps/8.mp3": {
+      "hash": "f0697c80e31b231b",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "eight laps,",
+      "generatedAt": "2026-09-27T11:50:12.771Z",
+      "requestId": "YHtbYdLfTLhL05g1Njrn"
+    },
+    "voice/default/readout-laps/9.mp3": {
+      "hash": "f4cc873c369c5680",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "nine laps,",
+      "generatedAt": "2026-09-27T11:50:12.954Z",
+      "requestId": "srda5pCtu2zVzb3Hw1ps"
+    },
+    "voice/default/readout-laps/10.mp3": {
+      "hash": "2bbe779b47c35e7f",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "ten laps,",
+      "generatedAt": "2026-09-27T11:50:13.132Z",
+      "requestId": "2j0lMQRbzFbrAglDQYpm"
+    },
+    "voice/default/readout-laps/11.mp3": {
+      "hash": "fd287eadbf096be0",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "eleven laps,",
+      "generatedAt": "2026-09-27T11:50:13.308Z",
+      "requestId": "RM35RBQWm0H12CAUoGUH"
+    },
+    "voice/default/readout-laps/12.mp3": {
+      "hash": "156f5f8bfcda00f8",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "twelve laps,",
+      "generatedAt": "2026-09-27T11:50:13.467Z",
+      "requestId": "Cd3pcqnC29KysKvoVHVX"
+    },
+    "voice/default/readout-laps/13.mp3": {
+      "hash": "96d3f50a94dcfe4d",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "thirteen laps,",
+      "generatedAt": "2026-09-27T11:50:13.661Z",
+      "requestId": "8rc1jbF3svx3UDxWUFmW"
+    },
+    "voice/default/readout-laps/14.mp3": {
+      "hash": "2bc639663f23e19a",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "fourteen laps,",
+      "generatedAt": "2026-09-27T11:50:13.838Z",
+      "requestId": "JhQgZs6rjRccUyVfkgCj"
+    },
+    "voice/default/readout-laps/15.mp3": {
+      "hash": "5cf8082a82f7ef51",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "fifteen laps,",
+      "generatedAt": "2026-09-27T11:50:14.017Z",
+      "requestId": "jwOXxZkjaHh5UYEDOny7"
+    },
+    "voice/default/readout-laps/16.mp3": {
+      "hash": "09a4c962acf9fb7a",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "sixteen laps,",
+      "generatedAt": "2026-09-27T11:50:14.187Z",
+      "requestId": "FdsH9N9FMNwxfdF1O4Wf"
+    },
+    "voice/default/readout-laps/17.mp3": {
+      "hash": "f2e6e77c986b53f8",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "seventeen laps,",
+      "generatedAt": "2026-09-27T11:50:14.372Z",
+      "requestId": "Ex8Sw2Q8vfZCdL4UCFqu"
+    },
+    "voice/default/readout-laps/18.mp3": {
+      "hash": "e0d6d72318c64406",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "eighteen laps,",
+      "generatedAt": "2026-09-27T11:50:14.541Z",
+      "requestId": "RMJWtHUMnfjG9szbwDjm"
+    },
+    "voice/default/readout-laps/19.mp3": {
+      "hash": "dc6145c2d3951cbf",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "nineteen laps,",
+      "generatedAt": "2026-09-27T11:50:14.730Z",
+      "requestId": "RMPH3Kn8Ib2kw4HvCV5F"
+    },
+    "voice/default/numbers-fuel/3.mp3": {
+      "hash": "079db83ffee58dca",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "three",
+      "generatedAt": "2026-09-27T11:50:15.519Z",
+      "requestId": "PlgdwQyrBiE479fD2jjb"
+    },
+    "voice/default/numbers-fuel/4.mp3": {
+      "hash": "048c2c91b01a3f5f",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "four",
+      "generatedAt": "2026-09-27T11:50:15.698Z",
+      "requestId": "ktPLA4zObkoRNceWKlFW"
+    },
+    "voice/default/numbers-fuel/6.mp3": {
+      "hash": "5e7e2fa4c1a3abc1",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "six",
+      "generatedAt": "2026-09-27T11:50:15.873Z",
+      "requestId": "OZ7dKY2fyWJOKBjU5vj0"
+    },
+    "voice/default/numbers-fuel/7.mp3": {
+      "hash": "7d232e3ddf54263a",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "seven",
+      "generatedAt": "2026-09-27T11:50:16.040Z",
+      "requestId": "xgtu6mJpDip1ATAYiZDf"
+    },
+    "voice/default/numbers-fuel/8.mp3": {
+      "hash": "ba20a4175233336b",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "eight",
+      "generatedAt": "2026-09-27T11:50:16.212Z",
+      "requestId": "0aGzidH1pGsDQOMeEsKo"
+    },
+    "voice/default/numbers-fuel/9.mp3": {
+      "hash": "0160f855a232545d",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "nine",
+      "generatedAt": "2026-09-27T11:50:16.376Z",
+      "requestId": "vQjpY3Z8bo76wwUkg9Zz"
+    },
+    "voice/default/numbers-fuel/10.mp3": {
+      "hash": "088307d722941849",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "ten",
+      "generatedAt": "2026-09-27T11:50:16.555Z",
+      "requestId": "eeXnG6Kc0gbSCrZ07O0F"
+    },
+    "voice/default/numbers-fuel/11.mp3": {
+      "hash": "19a043a9be779cf8",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "eleven",
+      "generatedAt": "2026-09-27T11:50:16.719Z",
+      "requestId": "Bf9nsfkjcDnyd69N3Ugk"
+    },
+    "voice/default/numbers-fuel/12.mp3": {
+      "hash": "df25dc2ede0c6f8b",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "twelve",
+      "generatedAt": "2026-09-27T11:50:16.900Z",
+      "requestId": "YEC2eeIe29n6gYD76uzE"
+    },
+    "voice/default/numbers-fuel/13.mp3": {
+      "hash": "43fea914a07ba68e",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "thirteen",
+      "generatedAt": "2026-09-27T11:50:17.069Z",
+      "requestId": "zNw1mfuBQEdLdAbfHbUA"
+    },
+    "voice/default/numbers-fuel/14.mp3": {
+      "hash": "0a859148176ca9fe",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "fourteen",
+      "generatedAt": "2026-09-27T11:50:17.252Z",
+      "requestId": "SCtzRAuwGXTYJTyq9L5Y"
+    },
+    "voice/default/numbers-fuel/15.mp3": {
+      "hash": "50ba91951ace9adc",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "fifteen",
+      "generatedAt": "2026-09-27T11:50:17.412Z",
+      "requestId": "p6AJ8bdbznPKRVksY7ON"
+    },
+    "voice/default/numbers-fuel/16.mp3": {
+      "hash": "5234757d5a9b9847",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "sixteen",
+      "generatedAt": "2026-09-27T11:50:17.591Z",
+      "requestId": "KipOM0I6hd4C2Zy1OXfE"
+    },
+    "voice/default/numbers-fuel/17.mp3": {
+      "hash": "3237dd0de7df8584",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "seventeen",
+      "generatedAt": "2026-09-27T11:50:17.753Z",
+      "requestId": "ZrcauzvJLfTDFDvbsVL1"
+    },
+    "voice/default/numbers-fuel/18.mp3": {
+      "hash": "6fd8ba7c6f1e121d",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "eighteen",
+      "generatedAt": "2026-09-27T11:50:17.935Z",
+      "requestId": "wSVGnlsKMoqgHnL6e4xf"
+    },
+    "voice/default/numbers-fuel/19.mp3": {
+      "hash": "f642f8916c4cfc3d",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "nineteen",
+      "generatedAt": "2026-09-27T11:50:18.093Z",
+      "requestId": "HVc3JhfT5A0eoxjGbq9Y"
+    },
+    "voice/default/numbers-fuel/20.mp3": {
+      "hash": "8eeba10a5ce7f166",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "twenty",
+      "generatedAt": "2026-09-27T11:50:18.274Z",
+      "requestId": "b0n39t0ZuavKgvpUCQ0f"
+    },
+    "voice/default/numbers-fuel/21.mp3": {
+      "hash": "3b5e8e9270726f2e",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "twenty one",
+      "generatedAt": "2026-09-27T11:50:18.440Z",
+      "requestId": "5JbaxfUoKbYeLFjIkUS2"
+    },
+    "voice/default/numbers-fuel/22.mp3": {
+      "hash": "92e4c9cdad71e057",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "twenty two",
+      "generatedAt": "2026-09-27T11:50:18.629Z",
+      "requestId": "RE6NetTu4ahEB1nXUVzK"
+    },
+    "voice/default/numbers-fuel/23.mp3": {
+      "hash": "2064c41dda8480c7",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "twenty three",
+      "generatedAt": "2026-09-27T11:50:18.806Z",
+      "requestId": "B38ehDzd90x54f14eEqS"
+    },
+    "voice/default/numbers-fuel/24.mp3": {
+      "hash": "a8ca2b86bb44341e",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "twenty four",
+      "generatedAt": "2026-09-27T11:50:18.985Z",
+      "requestId": "56mB4LSneUAGVXKCxo6m"
+    },
+    "voice/default/numbers-fuel/25.mp3": {
+      "hash": "e1debabfd7394a8c",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "twenty five",
+      "generatedAt": "2026-09-27T11:50:19.151Z",
+      "requestId": "Lq3Ol7YjxblKyP9zxfok"
+    },
+    "voice/default/numbers-fuel/26.mp3": {
+      "hash": "160365b0b3e72ab5",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "twenty six",
+      "generatedAt": "2026-09-27T11:50:19.338Z",
+      "requestId": "rmYnUENhEqhiHcTrZcxf"
+    },
+    "voice/default/numbers-fuel/27.mp3": {
+      "hash": "e094f51608a35d97",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "twenty seven",
+      "generatedAt": "2026-09-27T11:50:19.511Z",
+      "requestId": "tEcV6OE2qXmxuoW5sB09"
+    },
+    "voice/default/numbers-fuel/28.mp3": {
+      "hash": "25ce15f4026e8d99",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "twenty eight",
+      "generatedAt": "2026-09-27T11:50:19.696Z",
+      "requestId": "MKKOcHMWy94M0zqVdLOT"
+    },
+    "voice/default/numbers-fuel/29.mp3": {
+      "hash": "df3d9b3b2be53ba6",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "twenty nine",
+      "generatedAt": "2026-09-27T11:50:19.877Z",
+      "requestId": "WfH3nN4h9IhWbWdMNJ4F"
+    },
+    "voice/default/numbers-fuel/30.mp3": {
+      "hash": "4ad207e9311ec429",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "thirty",
+      "generatedAt": "2026-09-27T11:50:20.067Z",
+      "requestId": "9ARGamzyQJTrA9irMWoQ"
+    },
+    "voice/default/numbers-fuel/31.mp3": {
+      "hash": "5b2d36cebcdcd40d",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "thirty one",
+      "generatedAt": "2026-09-27T11:50:20.236Z",
+      "requestId": "9liSKhcamIq1xKVbIW1D"
+    },
+    "voice/default/numbers-fuel/32.mp3": {
+      "hash": "f588df7e39965396",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "thirty two",
+      "generatedAt": "2026-09-27T11:50:20.422Z",
+      "requestId": "K75xnjqHY3KR8vABWD3u"
+    },
+    "voice/default/numbers-fuel/33.mp3": {
+      "hash": "a38064f70b43b8d4",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "thirty three",
+      "generatedAt": "2026-09-27T11:50:20.582Z",
+      "requestId": "k8FGLdGWncO2394vLYGR"
+    },
+    "voice/default/numbers-fuel/34.mp3": {
+      "hash": "553ec26212c9a094",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "thirty four",
+      "generatedAt": "2026-09-27T11:50:20.765Z",
+      "requestId": "d04FmBJAo78p4tX6zkjs"
+    },
+    "voice/default/numbers-fuel/35.mp3": {
+      "hash": "878ca3d750e54c4e",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "thirty five",
+      "generatedAt": "2026-09-27T11:50:20.950Z",
+      "requestId": "pY6y5wZUd6IjwPloSZRj"
+    },
+    "voice/default/numbers-fuel/36.mp3": {
+      "hash": "e6d0622eb7e32123",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "thirty six",
+      "generatedAt": "2026-09-27T11:50:21.132Z",
+      "requestId": "Ov3tieH0iSCuZIMWcxO6"
+    },
+    "voice/default/numbers-fuel/37.mp3": {
+      "hash": "f561cbbf5a93e12d",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "thirty seven",
+      "generatedAt": "2026-09-27T11:50:21.322Z",
+      "requestId": "MbXa2mE7HqFt5I1TdNaK"
+    },
+    "voice/default/numbers-fuel/38.mp3": {
+      "hash": "84041c6c970d7f82",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "thirty eight",
+      "generatedAt": "2026-09-27T11:50:21.508Z",
+      "requestId": "LJrS613Aj69xqgYvhkn3"
+    },
+    "voice/default/numbers-fuel/39.mp3": {
+      "hash": "54a43cd46e94ac72",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "thirty nine",
+      "generatedAt": "2026-09-27T11:50:21.676Z",
+      "requestId": "X9yO7axPXT8fPgOcTHlY"
+    },
+    "voice/default/numbers-fuel/40.mp3": {
+      "hash": "f5c7bf1c07e83765",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "forty",
+      "generatedAt": "2026-09-27T11:50:21.855Z",
+      "requestId": "4irCE2ssdqHzW9J9kDTG"
+    },
+    "voice/default/numbers-fuel/42.mp3": {
+      "hash": "3567c01cf007f506",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "forty two",
+      "generatedAt": "2026-09-27T11:50:22.025Z",
+      "requestId": "QpzWCdlUBpGCkHhiNZEM"
+    },
+    "voice/default/numbers-fuel/43.mp3": {
+      "hash": "6c6f9e4d9ceb54f9",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "forty three",
+      "generatedAt": "2026-09-27T11:50:22.210Z",
+      "requestId": "ZeJb1Ya7qD0cWeaGvruv"
+    },
+    "voice/default/numbers-fuel/44.mp3": {
+      "hash": "4f81aa3d165c9d28",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "forty four",
+      "generatedAt": "2026-09-27T11:50:22.377Z",
+      "requestId": "VukhBmuofqy1n8eQwRey"
+    },
+    "voice/default/numbers-fuel/45.mp3": {
+      "hash": "a28b500db40db70f",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "forty five",
+      "generatedAt": "2026-09-27T11:50:22.566Z",
+      "requestId": "dfBoDP4HPu1WpxnhPsN5"
+    },
+    "voice/default/numbers-fuel/46.mp3": {
+      "hash": "0519a3b3c52fe064",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "forty six",
+      "generatedAt": "2026-09-27T11:50:22.735Z",
+      "requestId": "0jXK3LCbqup7TflXOaqw"
+    },
+    "voice/default/numbers-fuel/47.mp3": {
+      "hash": "e42c09d4af49458c",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "forty seven",
+      "generatedAt": "2026-09-27T11:50:22.923Z",
+      "requestId": "sgbBjXmiVFfhgxUQrdnE"
+    },
+    "voice/default/numbers-fuel/48.mp3": {
+      "hash": "fbe959191ec86725",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "forty eight",
+      "generatedAt": "2026-09-27T11:50:23.087Z",
+      "requestId": "jZDu0qaU8bWACpFkkV3P"
+    },
+    "voice/default/numbers-fuel/49.mp3": {
+      "hash": "ff129a04dcb41daf",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "forty nine",
+      "generatedAt": "2026-09-27T11:50:23.272Z",
+      "requestId": "mhkW3wXnYxz1khLI2tmy"
+    },
+    "voice/default/numbers-fuel/50.mp3": {
+      "hash": "009116a39f6e4867",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "fifty",
+      "generatedAt": "2026-09-27T11:50:23.439Z",
+      "requestId": "1v3SM40AzTV8EgkJbYDP"
+    },
+    "voice/default/numbers-fuel/51.mp3": {
+      "hash": "0731e35f50cefdf7",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "fifty one",
+      "generatedAt": "2026-09-27T11:50:23.634Z",
+      "requestId": "kEi1rmjVtpWx7XJ9Gb1L"
+    },
+    "voice/default/numbers-fuel/52.mp3": {
+      "hash": "36f78d5006138a36",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "fifty two",
+      "generatedAt": "2026-09-27T11:50:23.805Z",
+      "requestId": "cZlOVebRUTGLmZzzIZgN"
+    },
+    "voice/default/numbers-fuel/53.mp3": {
+      "hash": "677ed9839a41ef3d",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "fifty three",
+      "generatedAt": "2026-09-27T11:50:23.999Z",
+      "requestId": "kuH1LF6q8bcqjSWpDBnj"
+    },
+    "voice/default/numbers-fuel/54.mp3": {
+      "hash": "2a5b701d912f26ce",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "fifty four",
+      "generatedAt": "2026-09-27T11:50:24.177Z",
+      "requestId": "AYHM7knEgAY9tMlHFkIK"
+    },
+    "voice/default/numbers-fuel/55.mp3": {
+      "hash": "cfa9cd129bf0ee38",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "fifty five",
+      "generatedAt": "2026-09-27T11:50:24.367Z",
+      "requestId": "DpzG5vB4w021zdpPBAv6"
+    },
+    "voice/default/numbers-fuel/56.mp3": {
+      "hash": "0806e6f86b9fcf90",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "fifty six",
+      "generatedAt": "2026-09-27T11:50:24.546Z",
+      "requestId": "Gwt6IbfNhDpWcAbak5KE"
+    },
+    "voice/default/numbers-fuel/57.mp3": {
+      "hash": "311985f1c7f33e2a",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "fifty seven",
+      "generatedAt": "2026-09-27T11:50:24.756Z",
+      "requestId": "boRVCsrpXmmY0gyugUJR"
+    },
+    "voice/default/numbers-fuel/58.mp3": {
+      "hash": "748619f05a890a94",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "fifty eight",
+      "generatedAt": "2026-09-27T11:50:24.928Z",
+      "requestId": "753cAswcnTvv5hI9HIZE"
+    },
+    "voice/default/numbers-fuel/59.mp3": {
+      "hash": "32a1c0806ef47b63",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "fifty nine",
+      "generatedAt": "2026-09-27T11:50:25.116Z",
+      "requestId": "2Crtx8TquWDRElvm6LxR"
+    },
+    "voice/default/numbers-fuel/60.mp3": {
+      "hash": "fa56679ca9760887",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "sixty",
+      "generatedAt": "2026-09-27T11:50:25.282Z",
+      "requestId": "nh74YhW0A7iKpflNncR5"
+    },
+    "voice/default/numbers-fuel/61.mp3": {
+      "hash": "46b83af5ffb66ba9",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "sixty one",
+      "generatedAt": "2026-09-27T11:50:25.468Z",
+      "requestId": "yNIJc8gfURyeTYcHwwqb"
+    },
+    "voice/default/numbers-fuel/62.mp3": {
+      "hash": "ff35089d07ffa49a",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "sixty two",
+      "generatedAt": "2026-09-27T11:50:25.641Z",
+      "requestId": "isQnnhtx0DcHVzfR1EN2"
+    },
+    "voice/default/numbers-fuel/63.mp3": {
+      "hash": "00163cf385e6a388",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "sixty three",
+      "generatedAt": "2026-09-27T11:50:25.822Z",
+      "requestId": "Q2HENRfZY7dJOpI1QUQo"
+    },
+    "voice/default/numbers-fuel/64.mp3": {
+      "hash": "90862569b8117109",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "sixty four",
+      "generatedAt": "2026-09-27T11:50:25.999Z",
+      "requestId": "v3wfMYq04qqUfuLeFs3T"
+    },
+    "voice/default/numbers-fuel/65.mp3": {
+      "hash": "6d1c1b536545de2d",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "sixty five",
+      "generatedAt": "2026-09-27T11:50:26.181Z",
+      "requestId": "hc3pBjLb6Jwbe29pZexJ"
+    },
+    "voice/default/numbers-fuel/66.mp3": {
+      "hash": "659a985946a6e752",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "sixty six",
+      "generatedAt": "2026-09-27T11:50:26.356Z",
+      "requestId": "2fwVGBCzxbKpoYGIZ8LV"
+    },
+    "voice/default/numbers-fuel/67.mp3": {
+      "hash": "7e9d690f19e147a3",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "sixty seven",
+      "generatedAt": "2026-09-27T11:50:26.545Z",
+      "requestId": "Qp1kLZSwU6lWXaoE5Oq3"
+    },
+    "voice/default/numbers-fuel/68.mp3": {
+      "hash": "1cedd86bc55080b6",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "sixty eight",
+      "generatedAt": "2026-09-27T11:50:26.714Z",
+      "requestId": "8td0Dq9poAopgV3UhF1s"
+    },
+    "voice/default/numbers-fuel/69.mp3": {
+      "hash": "82873bd7aa2a9c4c",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "sixty nine",
+      "generatedAt": "2026-09-27T11:50:26.913Z",
+      "requestId": "7UYYPJU7M4F4Taxexcvn"
+    },
+    "voice/default/numbers-fuel/70.mp3": {
+      "hash": "1733170c4e8e3b4b",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "seventy",
+      "generatedAt": "2026-09-27T11:50:27.078Z",
+      "requestId": "I3Cs54Q2jjmGTkzuwqH3"
+    },
+    "voice/default/numbers-fuel/71.mp3": {
+      "hash": "3aa7ff45bd208ee6",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "seventy one",
+      "generatedAt": "2026-09-27T11:50:27.260Z",
+      "requestId": "RlatgzDCk6oZiLJ8R2AO"
+    },
+    "voice/default/numbers-fuel/72.mp3": {
+      "hash": "89814bb69d1eb5ab",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "seventy two",
+      "generatedAt": "2026-09-27T11:50:27.425Z",
+      "requestId": "QzHcpjdwDO2avfSUgbHJ"
+    },
+    "voice/default/numbers-fuel/73.mp3": {
+      "hash": "d804cd471e74dc3e",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "seventy three",
+      "generatedAt": "2026-09-27T11:50:27.601Z",
+      "requestId": "BFo8loBXq1Jy6Qj799Wz"
+    },
+    "voice/default/numbers-fuel/74.mp3": {
+      "hash": "c6dc5d4ea19fb86b",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "seventy four",
+      "generatedAt": "2026-09-27T11:50:27.775Z",
+      "requestId": "DIhe3p1pMzp5yoBi87o6"
+    },
+    "voice/default/numbers-fuel/75.mp3": {
+      "hash": "b1de4d988a8be36b",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "seventy five",
+      "generatedAt": "2026-09-27T11:50:27.960Z",
+      "requestId": "7EXG8oqUnXwiuEUp75Ol"
+    },
+    "voice/default/numbers-fuel/76.mp3": {
+      "hash": "c36a5eff5fcaa509",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "seventy six",
+      "generatedAt": "2026-09-27T11:50:28.131Z",
+      "requestId": "y3ngSvnxcA0BXJg2RMBe"
+    },
+    "voice/default/numbers-fuel/77.mp3": {
+      "hash": "a1386c0f5408d5b4",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "seventy seven",
+      "generatedAt": "2026-09-27T11:50:28.344Z",
+      "requestId": "q7Z9aKJpxri7kElm0Fk5"
+    },
+    "voice/default/numbers-fuel/78.mp3": {
+      "hash": "6d4781a0d255c23b",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "seventy eight",
+      "generatedAt": "2026-09-27T11:50:28.521Z",
+      "requestId": "GKzCfF35HpbF5B5kKsqt"
+    },
+    "voice/default/numbers-fuel/79.mp3": {
+      "hash": "3ce7463b8a5a358f",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "seventy nine",
+      "generatedAt": "2026-09-27T11:50:28.712Z",
+      "requestId": "01zmbZym2CuhrjATj2Ta"
+    },
+    "voice/default/numbers-fuel/80.mp3": {
+      "hash": "e7e4e9e2b99932da",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "eighty",
+      "generatedAt": "2026-09-27T11:50:28.877Z",
+      "requestId": "7D1alYaYc7pNWvFupADF"
+    },
+    "voice/default/numbers-fuel/81.mp3": {
+      "hash": "10b94189a632e5f7",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "eighty one",
+      "generatedAt": "2026-09-27T11:50:29.223Z",
+      "requestId": "yzTyUnS4drNcHtJbs6WQ"
+    },
+    "voice/default/numbers-fuel/82.mp3": {
+      "hash": "cd92a9b5c55e5e73",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "eighty two",
+      "generatedAt": "2026-09-27T11:50:29.386Z",
+      "requestId": "kYDlPA907xXRBZhDkwpw"
+    },
+    "voice/default/numbers-fuel/83.mp3": {
+      "hash": "1543995a4175dbc7",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "eighty three",
+      "generatedAt": "2026-09-27T11:50:29.566Z",
+      "requestId": "73X6jTjM1rjzIuuBkPwx"
+    },
+    "voice/default/numbers-fuel/84.mp3": {
+      "hash": "87463a0c25da9e47",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "eighty four",
+      "generatedAt": "2026-09-27T11:50:29.733Z",
+      "requestId": "iMRZwvduyn3ytIpUiojz"
+    },
+    "voice/default/numbers-fuel/85.mp3": {
+      "hash": "0b3a58b085a6550d",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "eighty five",
+      "generatedAt": "2026-09-27T11:50:29.903Z",
+      "requestId": "qMQVN3rxVhKBTra4Fyow"
+    },
+    "voice/default/numbers-fuel/86.mp3": {
+      "hash": "76c0287bcf950a76",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "eighty six",
+      "generatedAt": "2026-09-27T11:50:30.068Z",
+      "requestId": "KlAfpQLiAeUQZuQzBy1m"
+    },
+    "voice/default/numbers-fuel/87.mp3": {
+      "hash": "87deb803619954b5",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "eighty seven",
+      "generatedAt": "2026-09-27T11:50:30.255Z",
+      "requestId": "TCeS0sim3yLaoMdDn8XE"
+    },
+    "voice/default/numbers-fuel/88.mp3": {
+      "hash": "b20c5810bc2e3598",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "eighty eight",
+      "generatedAt": "2026-09-27T11:50:30.422Z",
+      "requestId": "k3IpHjvRqrCizZjk5FSc"
+    },
+    "voice/default/numbers-fuel/89.mp3": {
+      "hash": "9aece4d46a01f0de",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "eighty nine",
+      "generatedAt": "2026-09-27T11:50:30.600Z",
+      "requestId": "rWhoU6JGKULg83Y5wbno"
+    },
+    "voice/default/numbers-fuel/90.mp3": {
+      "hash": "af3ce6b1d0510ceb",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "ninety",
+      "generatedAt": "2026-09-27T11:50:30.765Z",
+      "requestId": "DhEHBKpp4w4ThxEhjzsp"
+    },
+    "voice/default/numbers-fuel/91.mp3": {
+      "hash": "cbf17460afec19f6",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "ninety one",
+      "generatedAt": "2026-09-27T11:50:30.948Z",
+      "requestId": "81T8VaGUTYFc30xgI9l0"
+    },
+    "voice/default/numbers-fuel/92.mp3": {
+      "hash": "9baeb3bf085953fd",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "ninety two",
+      "generatedAt": "2026-09-27T11:50:31.114Z",
+      "requestId": "4LcdQhsYysFEa1VMqUM5"
+    },
+    "voice/default/numbers-fuel/93.mp3": {
+      "hash": "0a98832a5a9870a7",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "ninety three",
+      "generatedAt": "2026-09-27T11:50:31.303Z",
+      "requestId": "98wtMA2Rk1ey9z4LnNYg"
+    },
+    "voice/default/numbers-fuel/94.mp3": {
+      "hash": "6af6348cfae7689b",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "ninety four",
+      "generatedAt": "2026-09-27T11:50:31.478Z",
+      "requestId": "ELIS471KJCn1EFZO8hnX"
+    },
+    "voice/default/numbers-fuel/95.mp3": {
+      "hash": "0a8e3b3f195bb482",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "ninety five",
+      "generatedAt": "2026-09-27T11:50:31.663Z",
+      "requestId": "u8hJ3YDXd79cqk6zO2w1"
+    },
+    "voice/default/numbers-fuel/96.mp3": {
+      "hash": "41433af506c48187",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "ninety six",
+      "generatedAt": "2026-09-27T11:50:31.835Z",
+      "requestId": "Zw13ep6TIpgqUM5I9XNh"
+    },
+    "voice/default/numbers-fuel/97.mp3": {
+      "hash": "39c4d2898fe66673",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "ninety seven",
+      "generatedAt": "2026-09-27T11:50:32.026Z",
+      "requestId": "AwYpN8s8BASyQA3uYQqe"
+    },
+    "voice/default/numbers-fuel/98.mp3": {
+      "hash": "88333e98536f2053",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "ninety eight",
+      "generatedAt": "2026-09-27T11:50:32.192Z",
+      "requestId": "3vNbRQpe1ri1Sy6LAg4h"
+    },
+    "voice/default/numbers-fuel/99.mp3": {
+      "hash": "313d19d4e88a1e4e",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "ninety nine",
+      "generatedAt": "2026-09-27T11:50:32.369Z",
+      "requestId": "xXt3GTJnpclXaiI0gFeW"
+    },
+    "voice/default/numbers-fuel/100.mp3": {
+      "hash": "46cce7edfbc19e37",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred",
+      "generatedAt": "2026-09-27T11:50:32.526Z",
+      "requestId": "x1SHhGUpTZ34hPoZEkNq"
+    },
+    "voice/default/numbers-fuel/101.mp3": {
+      "hash": "2a2ecf07a43cb554",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred one",
+      "generatedAt": "2026-09-27T11:50:32.721Z",
+      "requestId": "OYUD1zl8XaNJok75WuKr"
+    },
+    "voice/default/numbers-fuel/102.mp3": {
+      "hash": "ebbae7e54faa168a",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred two",
+      "generatedAt": "2026-09-27T11:50:32.891Z",
+      "requestId": "GjJxpEkcxHXbOkJ0uUMZ"
+    },
+    "voice/default/numbers-fuel/103.mp3": {
+      "hash": "198d513e7a9dbf19",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred three",
+      "generatedAt": "2026-09-27T11:50:33.079Z",
+      "requestId": "UMyB1znpPEyCp4qcZQmG"
+    },
+    "voice/default/numbers-fuel/104.mp3": {
+      "hash": "75367eb8dd51697a",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred four",
+      "generatedAt": "2026-09-27T11:50:33.259Z",
+      "requestId": "d8fVtrbttssHERLMYaZk"
+    },
+    "voice/default/numbers-fuel/105.mp3": {
+      "hash": "a82214873780de8e",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred five",
+      "generatedAt": "2026-09-27T11:50:33.452Z",
+      "requestId": "UsT8saYH8XAQpz8KFAum"
+    },
+    "voice/default/numbers-fuel/106.mp3": {
+      "hash": "f3ce3fbc7a769b94",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred six",
+      "generatedAt": "2026-09-27T11:50:33.627Z",
+      "requestId": "lp17OiVk5EFRupgQJQVn"
+    },
+    "voice/default/numbers-fuel/107.mp3": {
+      "hash": "5a353ff8c6a17cc6",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred seven",
+      "generatedAt": "2026-09-27T11:50:33.814Z",
+      "requestId": "EF6ZHz0TsYRmJZ0m6Wgz"
+    },
+    "voice/default/numbers-fuel/108.mp3": {
+      "hash": "9d4f3830071cf7bb",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred eight",
+      "generatedAt": "2026-09-27T11:50:33.990Z",
+      "requestId": "1QtURyJr1AyPlu1KJe1o"
+    },
+    "voice/default/numbers-fuel/109.mp3": {
+      "hash": "2b730d448fc29ae2",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred nine",
+      "generatedAt": "2026-09-27T11:50:34.176Z",
+      "requestId": "HiCZy4XnwSU8aFtGi0B1"
+    },
+    "voice/default/numbers-fuel/110.mp3": {
+      "hash": "cd5bcf141ae9f219",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred ten",
+      "generatedAt": "2026-09-27T11:50:34.354Z",
+      "requestId": "H7oUBVrSSjiPCKu0Xo6A"
+    },
+    "voice/default/numbers-fuel/111.mp3": {
+      "hash": "75e029360be59303",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred eleven",
+      "generatedAt": "2026-09-27T11:50:34.551Z",
+      "requestId": "oeKXaPSkexQ8uUpuxOUZ"
+    },
+    "voice/default/numbers-fuel/112.mp3": {
+      "hash": "0e40da6132df2620",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred twelve",
+      "generatedAt": "2026-09-27T11:50:34.735Z",
+      "requestId": "qhlVjoPSw0eNxNQ5tezM"
+    },
+    "voice/default/numbers-fuel/113.mp3": {
+      "hash": "1221e9f551e1bb60",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred thirteen",
+      "generatedAt": "2026-09-27T11:50:34.923Z",
+      "requestId": "580XKiGQ64TXWLqk8jIM"
+    },
+    "voice/default/numbers-fuel/114.mp3": {
+      "hash": "6b8f8d5d66b53b55",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred fourteen",
+      "generatedAt": "2026-09-27T11:50:35.106Z",
+      "requestId": "MN3Gi0dQ2eUFtJgiOhzp"
+    },
+    "voice/default/numbers-fuel/115.mp3": {
+      "hash": "3efe7b49e56b4687",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred fifteen",
+      "generatedAt": "2026-09-27T11:50:35.293Z",
+      "requestId": "tWOmtCZ9G9DrIpTbgyiH"
+    },
+    "voice/default/numbers-fuel/116.mp3": {
+      "hash": "cb27c2a60c688f2f",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred sixteen",
+      "generatedAt": "2026-09-27T11:50:35.477Z",
+      "requestId": "sulwqskU1PXhsy1mXYHz"
+    },
+    "voice/default/numbers-fuel/117.mp3": {
+      "hash": "f44be731f8c81f42",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred seventeen",
+      "generatedAt": "2026-09-27T11:50:35.679Z",
+      "requestId": "HVupkRQXNwrBS4Vo5ezE"
+    },
+    "voice/default/numbers-fuel/118.mp3": {
+      "hash": "76919bc6e80799d5",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred eighteen",
+      "generatedAt": "2026-09-27T11:50:35.853Z",
+      "requestId": "LOoE7Dy9HupX8NWa0ODj"
+    },
+    "voice/default/numbers-fuel/119.mp3": {
+      "hash": "c98dc8baa6dd5e31",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred nineteen",
+      "generatedAt": "2026-09-27T11:50:36.045Z",
+      "requestId": "MaqGYg4trUi8cQh27n2H"
+    },
+    "voice/default/numbers-fuel-decimal/liters-1.mp3": {
+      "hash": "03b35a805f715c09",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "point one liters.",
+      "generatedAt": "2026-09-27T11:50:36.776Z",
+      "requestId": "6cJs1kY5bTPdnU3vlCZ5"
+    },
+    "voice/default/numbers-fuel-decimal/liters-2.mp3": {
+      "hash": "7535069338144da5",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "point two liters.",
+      "generatedAt": "2026-09-27T11:50:36.965Z",
+      "requestId": "XgKEUknkcKpjls0eIkrS"
+    },
+    "voice/default/numbers-fuel-decimal/liters-3.mp3": {
+      "hash": "f609fccd8fa4bcc9",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "point three liters.",
+      "generatedAt": "2026-09-27T11:50:37.137Z",
+      "requestId": "CO1p0uYSNgEUB4VGcUtA"
+    },
+    "voice/default/numbers-fuel-decimal/liters-5.mp3": {
+      "hash": "e0329177a467d61a",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "point five liters.",
+      "generatedAt": "2026-09-27T11:50:37.308Z",
+      "requestId": "gdmjJuicdJpulBS8LukL"
+    },
+    "voice/default/numbers-fuel-decimal/liters-6.mp3": {
+      "hash": "63dc2f5e3a0e6e2c",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "point six liters.",
+      "generatedAt": "2026-09-27T11:50:37.484Z",
+      "requestId": "mDEtqICrxKPhJ47XUqg4"
+    },
+    "voice/default/numbers-fuel-decimal/liters-7.mp3": {
+      "hash": "daffa07b83962328",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "point seven liters.",
+      "generatedAt": "2026-09-27T11:50:37.660Z",
+      "requestId": "ldsKtekHwTGxUeaAh1Vz"
+    },
+    "voice/default/numbers-fuel-decimal/liters-8.mp3": {
+      "hash": "e31e84344e634bfd",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "point eight liters.",
+      "generatedAt": "2026-09-27T11:50:37.825Z",
+      "requestId": "5qgPnlcuGJQ1g8wVpkls"
+    },
+    "voice/default/numbers-fuel-decimal/liters-9.mp3": {
+      "hash": "4d750ff4cd0baf0d",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "point nine liters.",
+      "generatedAt": "2026-09-27T11:50:37.993Z",
+      "requestId": "dT9PYaTnpFiVjwJ10Uma"
+    },
+    "voice/default/numbers-fuel-decimal/gallons-0.mp3": {
+      "hash": "6db9100c2edcced5",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "point zero gallons.",
+      "generatedAt": "2026-09-27T11:50:38.161Z",
+      "requestId": "j4KSDtAejgOQvoh1atly"
+    },
+    "voice/default/numbers-fuel-decimal/gallons-1.mp3": {
+      "hash": "665d7eed9f1f1986",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "point one gallons.",
+      "generatedAt": "2026-09-27T11:50:38.331Z",
+      "requestId": "tMZIWZ7efAgZKxkC5G83"
+    },
+    "voice/default/numbers-fuel-decimal/gallons-2.mp3": {
+      "hash": "e58874a2756f1f5b",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "point two gallons.",
+      "generatedAt": "2026-09-27T11:50:38.501Z",
+      "requestId": "9HskWpk3jxskwmVyD5FI"
+    },
+    "voice/default/numbers-fuel-decimal/gallons-3.mp3": {
+      "hash": "07f8cbd580a97b7c",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "point three gallons.",
+      "generatedAt": "2026-09-27T11:50:38.673Z",
+      "requestId": "DWJb8FaB0vTlwAxUj6fb"
+    },
+    "voice/default/numbers-fuel-decimal/gallons-4.mp3": {
+      "hash": "7671201419a3bfd6",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "point four gallons.",
+      "generatedAt": "2026-09-27T11:50:38.847Z",
+      "requestId": "l50OhxfakKoWBrHSfw0d"
+    },
+    "voice/default/numbers-fuel-decimal/gallons-5.mp3": {
+      "hash": "d95672f54d52da80",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "point five gallons.",
+      "generatedAt": "2026-09-27T11:50:39.021Z",
+      "requestId": "CqT3wqdqBxbohk240WUG"
+    },
+    "voice/default/numbers-fuel-decimal/gallons-7.mp3": {
+      "hash": "d46b188f1ff665e6",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "point seven gallons.",
+      "generatedAt": "2026-09-27T11:50:39.200Z",
+      "requestId": "NJO28FVdSq2N6pxgrcep"
+    },
+    "voice/default/numbers-fuel-decimal/gallons-8.mp3": {
+      "hash": "ac153f1729284283",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "point eight gallons.",
+      "generatedAt": "2026-09-27T11:50:39.371Z",
+      "requestId": "zi8GleQsbZbCgzbS8dHH"
+    },
+    "voice/default/numbers-fuel-decimal/gallons-9.mp3": {
+      "hash": "331170e165b7ec56",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "point nine gallons.",
+      "generatedAt": "2026-09-27T11:50:39.540Z",
+      "requestId": "wG2DU9zEeK6f8BOl7HOZ"
+    },
+    "voice/shawn/telemetry-readout/fuel-last-lap-intro-01.mp3": {
+      "hash": "093c3473f5b2ac58",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Last lap,",
+      "generatedAt": "2026-09-27T16:18:26.291Z",
+      "requestId": "gfJVuSaZUJCzpVocmCUB"
+    },
+    "voice/shawn/telemetry-readout/fuel-average-intro-01.mp3": {
+      "hash": "e41f3e45307739b0",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Average over the last",
+      "generatedAt": "2026-09-27T16:18:26.481Z",
+      "requestId": "rBnnLMrQqV9tAU0itpRT"
+    },
+    "voice/shawn/telemetry-readout/track-temp-intro-01.mp3": {
+      "hash": "b1cd31e7e069d7e7",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Track is",
+      "generatedAt": "2026-09-27T16:18:26.636Z",
+      "requestId": "DMwQRWrTdghVkqJz5ziV"
+    },
+    "voice/shawn/telemetry-readout/air-temp-intro-01.mp3": {
+      "hash": "bce7370308a3c260",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Air is",
+      "generatedAt": "2026-09-27T16:18:26.786Z",
+      "requestId": "apEol87eCoGHpc02B9n7"
+    },
+    "voice/shawn/telemetry-readout/no-data-01.mp3": {
+      "hash": "cf6cae05a03ffd18",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "No clean lap yet.",
+      "generatedAt": "2026-09-27T16:18:26.935Z",
+      "requestId": "8Q4ryaljzZ96N7WxGOAI"
+    },
+    "voice/shawn/readout-laps/1.mp3": {
+      "hash": "bee3752fee4b9cea",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "lap,",
+      "generatedAt": "2026-09-27T16:18:27.718Z",
+      "requestId": "wn8ak23p31odhazlKetg"
+    },
+    "voice/shawn/readout-laps/3.mp3": {
+      "hash": "40c1819fb41b4852",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "three laps,",
+      "generatedAt": "2026-09-27T16:18:27.925Z",
+      "requestId": "lgXP09KivjiB4ZynsSjg"
+    },
+    "voice/shawn/readout-laps/5.mp3": {
+      "hash": "5011442caa2f4a1e",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "five laps,",
+      "generatedAt": "2026-09-27T16:18:28.112Z",
+      "requestId": "o6OSIFRaOPQ5kEMxfArw"
+    },
+    "voice/shawn/readout-laps/20.mp3": {
+      "hash": "e20aa9ad93bdf3c9",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "twenty laps,",
+      "generatedAt": "2026-09-27T16:18:28.297Z",
+      "requestId": "jmvRbdTxfBF2IzzRe5IU"
+    },
+    "voice/shawn/numbers-fuel/0.mp3": {
+      "hash": "96c0c4edf8036b1f",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "zero",
+      "generatedAt": "2026-09-27T16:18:29.135Z",
+      "requestId": "h2ItNsle0v2dVQPwbdrS"
+    },
+    "voice/shawn/numbers-fuel/1.mp3": {
+      "hash": "133a64c137ec113a",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one",
+      "generatedAt": "2026-09-27T16:18:29.683Z",
+      "requestId": "0MHkBEkaNYBSwpcHtnKh"
+    },
+    "voice/shawn/numbers-fuel/2.mp3": {
+      "hash": "5ec6a9545eda471d",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "two",
+      "generatedAt": "2026-09-27T16:18:29.851Z",
+      "requestId": "uDRJFDr0eITl7cG82CjM"
+    },
+    "voice/shawn/numbers-fuel/5.mp3": {
+      "hash": "02d09d155416f0ba",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "five",
+      "generatedAt": "2026-09-27T16:18:30.026Z",
+      "requestId": "VrvAN9HLc0CdhlAAz6jW"
+    },
+    "voice/shawn/numbers-fuel/41.mp3": {
+      "hash": "b2c1fb976ce2617d",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "forty one",
+      "generatedAt": "2026-09-27T16:18:30.214Z",
+      "requestId": "XkfkjCDsQRSEvwBLjkh1"
+    },
+    "voice/shawn/numbers-fuel/120.mp3": {
+      "hash": "81fe7bfd7663e32c",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred twenty",
+      "generatedAt": "2026-09-27T16:18:30.403Z",
+      "requestId": "tZEa3zWYTHQAQ7aN3N1m"
+    },
+    "voice/shawn/numbers-fuel-decimal/liters-0.mp3": {
+      "hash": "2df2ec165fecef31",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "point zero liters.",
+      "generatedAt": "2026-09-27T16:18:31.208Z",
+      "requestId": "YyW5ZdIuWd1SL0o0R5Lg"
+    },
+    "voice/shawn/numbers-fuel-decimal/liters-4.mp3": {
+      "hash": "d55c2b6d0062e5b3",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "point four liters.",
+      "generatedAt": "2026-09-27T16:18:31.409Z",
+      "requestId": "LFFGXGfoVQ9NiqQoXhR4"
+    },
+    "voice/shawn/numbers-fuel-decimal/gallons-6.mp3": {
+      "hash": "5436613d719581b0",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "point six gallons.",
+      "generatedAt": "2026-09-27T16:18:31.587Z",
+      "requestId": "eK6CptnpTfDTUcrQ1vZc"
+    },
+    "voice/shawn/readout-laps/2.mp3": {
+      "hash": "e157c0b77a16bf6b",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "two laps,",
+      "generatedAt": "2026-09-27T16:19:43.427Z",
+      "requestId": "fnT3kTpbY8N6RQaDqxeJ"
+    },
+    "voice/shawn/readout-laps/4.mp3": {
+      "hash": "9421114e4a9ca6da",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "four laps,",
+      "generatedAt": "2026-09-27T16:19:43.617Z",
+      "requestId": "CUSPtMkijlPb3szXUVWR"
+    },
+    "voice/shawn/readout-laps/6.mp3": {
+      "hash": "d533b1c8dade6bec",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "six laps,",
+      "generatedAt": "2026-09-27T16:19:43.799Z",
+      "requestId": "mLt20qCNMwdiNj3bNH7T"
+    },
+    "voice/shawn/readout-laps/7.mp3": {
+      "hash": "50f385a321a8d7ce",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "seven laps,",
+      "generatedAt": "2026-09-27T16:19:43.970Z",
+      "requestId": "MFhIGGfbHOqSOGYp5lKE"
+    },
+    "voice/shawn/readout-laps/8.mp3": {
+      "hash": "6b7140d405af6060",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "eight laps,",
+      "generatedAt": "2026-09-27T16:19:44.155Z",
+      "requestId": "SMe7AbzwRblJKuZnj4aX"
+    },
+    "voice/shawn/readout-laps/9.mp3": {
+      "hash": "dba2d9b7e0bc77fb",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "nine laps,",
+      "generatedAt": "2026-09-27T16:19:44.332Z",
+      "requestId": "t7y3k3CjYd6iqe07Q65V"
+    },
+    "voice/shawn/readout-laps/10.mp3": {
+      "hash": "6b0698fe160859fb",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "ten laps,",
+      "generatedAt": "2026-09-27T16:19:44.514Z",
+      "requestId": "gXOGOToTpCYTIFHeLFDA"
+    },
+    "voice/shawn/readout-laps/11.mp3": {
+      "hash": "6697014758622d7f",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "eleven laps,",
+      "generatedAt": "2026-09-27T16:19:44.691Z",
+      "requestId": "qLCxgMZm3Aiyr5D2eaE2"
+    },
+    "voice/shawn/readout-laps/12.mp3": {
+      "hash": "40d578d266a94798",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "twelve laps,",
+      "generatedAt": "2026-09-27T16:19:44.880Z",
+      "requestId": "5euMwKwxwdUb3t9Ak3Pk"
+    },
+    "voice/shawn/readout-laps/13.mp3": {
+      "hash": "0ea40388eb6e7f55",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "thirteen laps,",
+      "generatedAt": "2026-09-27T16:19:45.058Z",
+      "requestId": "bMf0haWV3a0DmPUC0My6"
+    },
+    "voice/shawn/readout-laps/14.mp3": {
+      "hash": "8e7ec47b5633a0fd",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "fourteen laps,",
+      "generatedAt": "2026-09-27T16:19:45.238Z",
+      "requestId": "yGV3RIg8iA80JCtKQIuL"
+    },
+    "voice/shawn/readout-laps/15.mp3": {
+      "hash": "44b2859d5568009b",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "fifteen laps,",
+      "generatedAt": "2026-09-27T16:19:45.411Z",
+      "requestId": "LfYC9tJokuvxy0Z9dnCt"
+    },
+    "voice/shawn/readout-laps/16.mp3": {
+      "hash": "b8fab49d8acdb5b0",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "sixteen laps,",
+      "generatedAt": "2026-09-27T16:19:45.617Z",
+      "requestId": "KdyEdctvKOeiTg4XkBOx"
+    },
+    "voice/shawn/readout-laps/17.mp3": {
+      "hash": "d73c860cfd4e86fc",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "seventeen laps,",
+      "generatedAt": "2026-09-27T16:19:45.826Z",
+      "requestId": "4VHh8PuRA1oW7xJrcnQa"
+    },
+    "voice/shawn/readout-laps/18.mp3": {
+      "hash": "d9749dadfd8acd9e",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "eighteen laps,",
+      "generatedAt": "2026-09-27T16:19:46.008Z",
+      "requestId": "cbvYjlbcEzuDpL0nIUTA"
+    },
+    "voice/shawn/readout-laps/19.mp3": {
+      "hash": "7ce53446d559cd80",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "nineteen laps,",
+      "generatedAt": "2026-09-27T16:19:46.181Z",
+      "requestId": "cjmBQqx3MmCaIFLJ9Sux"
+    },
+    "voice/shawn/numbers-fuel/3.mp3": {
+      "hash": "c608b233afe01b27",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "three",
+      "generatedAt": "2026-09-27T16:19:47.020Z",
+      "requestId": "r2lNSCQArsgCuwHgssfA"
+    },
+    "voice/shawn/numbers-fuel/4.mp3": {
+      "hash": "a21550d0ce69a449",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "four",
+      "generatedAt": "2026-09-27T16:19:47.225Z",
+      "requestId": "QevNzno4ST8QNp9sEjdf"
+    },
+    "voice/shawn/numbers-fuel/6.mp3": {
+      "hash": "5b167d8bf504715d",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "six",
+      "generatedAt": "2026-09-27T16:19:47.388Z",
+      "requestId": "s07jimJrhO2fGKffMCUs"
+    },
+    "voice/shawn/numbers-fuel/7.mp3": {
+      "hash": "88ac52b8698081ef",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "seven",
+      "generatedAt": "2026-09-27T16:19:47.569Z",
+      "requestId": "WL6wmgE8sp1AFJvKOeN5"
+    },
+    "voice/shawn/numbers-fuel/8.mp3": {
+      "hash": "8cc7abfd42f79353",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "eight",
+      "generatedAt": "2026-09-27T16:19:47.800Z",
+      "requestId": "nyTNYu6hr6ki819azZ6m"
+    },
+    "voice/shawn/numbers-fuel/9.mp3": {
+      "hash": "7c7bf954543868a6",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "nine",
+      "generatedAt": "2026-09-27T16:19:48.047Z",
+      "requestId": "pm50xjr8KlK8GpjuijxZ"
+    },
+    "voice/shawn/numbers-fuel/10.mp3": {
+      "hash": "3cea6581afc790f0",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "ten",
+      "generatedAt": "2026-09-27T16:19:48.263Z",
+      "requestId": "KYWWfKjC2PjlMKwXfh8P"
+    },
+    "voice/shawn/numbers-fuel/11.mp3": {
+      "hash": "077d7621377d1611",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "eleven",
+      "generatedAt": "2026-09-27T16:19:48.484Z",
+      "requestId": "fOMx0pXInN3iJxuE2miJ"
+    },
+    "voice/shawn/numbers-fuel/12.mp3": {
+      "hash": "d19363d362a8b943",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "twelve",
+      "generatedAt": "2026-09-27T16:19:48.661Z",
+      "requestId": "ToDO9iaLME1ltKQ2tzkE"
+    },
+    "voice/shawn/numbers-fuel/13.mp3": {
+      "hash": "ba020cf9d6b00e87",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "thirteen",
+      "generatedAt": "2026-09-27T16:19:48.845Z",
+      "requestId": "MEOtyARahCzTWN2a8WCn"
+    },
+    "voice/shawn/numbers-fuel/14.mp3": {
+      "hash": "157761c4b7cfa609",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "fourteen",
+      "generatedAt": "2026-09-27T16:19:49.046Z",
+      "requestId": "Q4SWzAf1JS4euOC9fBPJ"
+    },
+    "voice/shawn/numbers-fuel/15.mp3": {
+      "hash": "f8f22f59b1b50948",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "fifteen",
+      "generatedAt": "2026-09-27T16:19:49.230Z",
+      "requestId": "iLL65Jgka0DSWx3LINH7"
+    },
+    "voice/shawn/numbers-fuel/16.mp3": {
+      "hash": "e226747c77aa8f65",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "sixteen",
+      "generatedAt": "2026-09-27T16:19:49.452Z",
+      "requestId": "PlDclHrrMTZg19cEBNaW"
+    },
+    "voice/shawn/numbers-fuel/17.mp3": {
+      "hash": "7c8fab60efefa1ca",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "seventeen",
+      "generatedAt": "2026-09-27T16:19:49.642Z",
+      "requestId": "ek7MLFDDCTNG4ISkK5Zg"
+    },
+    "voice/shawn/numbers-fuel/18.mp3": {
+      "hash": "b902c9cbfdae1bc4",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "eighteen",
+      "generatedAt": "2026-09-27T16:19:49.843Z",
+      "requestId": "FApsHoFsPmVHXKuI9CcE"
+    },
+    "voice/shawn/numbers-fuel/19.mp3": {
+      "hash": "1e0b837715185438",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "nineteen",
+      "generatedAt": "2026-09-27T16:19:50.023Z",
+      "requestId": "qxXMC7j289tqzN5mjCQ0"
+    },
+    "voice/shawn/numbers-fuel/20.mp3": {
+      "hash": "b560dc55675e7868",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "twenty",
+      "generatedAt": "2026-09-27T16:19:50.215Z",
+      "requestId": "JtrfUgRgaPWIT3Dbs3Ij"
+    },
+    "voice/shawn/numbers-fuel/21.mp3": {
+      "hash": "3fc5c825ecfe48e2",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "twenty one",
+      "generatedAt": "2026-09-27T16:19:50.396Z",
+      "requestId": "47HpDPv4Dr5NtkYTPzVR"
+    },
+    "voice/shawn/numbers-fuel/22.mp3": {
+      "hash": "f2eed5f65e498647",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "twenty two",
+      "generatedAt": "2026-09-27T16:19:50.602Z",
+      "requestId": "xvtOccrSdtAZwBVDeGlV"
+    },
+    "voice/shawn/numbers-fuel/23.mp3": {
+      "hash": "29a10b4f95057576",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "twenty three",
+      "generatedAt": "2026-09-27T16:19:50.804Z",
+      "requestId": "9AGtgCF1atUFI98xJsy0"
+    },
+    "voice/shawn/numbers-fuel/24.mp3": {
+      "hash": "c8f91a68fcd9dfbb",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "twenty four",
+      "generatedAt": "2026-09-27T16:19:51.005Z",
+      "requestId": "Qx78iMY7WrPcqf4xNWOg"
+    },
+    "voice/shawn/numbers-fuel/25.mp3": {
+      "hash": "dafecf4b5ccdfdf7",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "twenty five",
+      "generatedAt": "2026-09-27T16:19:51.207Z",
+      "requestId": "g1UZmuldqkoALvYlSLxC"
+    },
+    "voice/shawn/numbers-fuel/26.mp3": {
+      "hash": "404a5fdf180cc9f6",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "twenty six",
+      "generatedAt": "2026-09-27T16:19:51.421Z",
+      "requestId": "5NKVK74lc9dOkHGjwAzx"
+    },
+    "voice/shawn/numbers-fuel/27.mp3": {
+      "hash": "06377aa47c9599eb",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "twenty seven",
+      "generatedAt": "2026-09-27T16:19:51.611Z",
+      "requestId": "Nf1wvrZJm6jZx9mgt4gD"
+    },
+    "voice/shawn/numbers-fuel/28.mp3": {
+      "hash": "96f7380d81bd2f38",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "twenty eight",
+      "generatedAt": "2026-09-27T16:19:51.801Z",
+      "requestId": "7MuRZhcorSUMPPIrvEQQ"
+    },
+    "voice/shawn/numbers-fuel/29.mp3": {
+      "hash": "6e629d0719324bb4",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "twenty nine",
+      "generatedAt": "2026-09-27T16:19:51.991Z",
+      "requestId": "Ud1noAmu6dFqGGobHu8D"
+    },
+    "voice/shawn/numbers-fuel/30.mp3": {
+      "hash": "075b7047568df616",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "thirty",
+      "generatedAt": "2026-09-27T16:19:52.172Z",
+      "requestId": "UfTV1TbdnNGSoqAHszbC"
+    },
+    "voice/shawn/numbers-fuel/31.mp3": {
+      "hash": "bd4f9943cebdf3d8",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "thirty one",
+      "generatedAt": "2026-09-27T16:19:52.366Z",
+      "requestId": "UGSAEAe0JM78VQhPidtw"
+    },
+    "voice/shawn/numbers-fuel/32.mp3": {
+      "hash": "f734097ea6c67f2e",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "thirty two",
+      "generatedAt": "2026-09-27T16:19:52.554Z",
+      "requestId": "0FPKX9OfuoIGjVFT4Bn6"
+    },
+    "voice/shawn/numbers-fuel/33.mp3": {
+      "hash": "4d5644aaf93f2731",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "thirty three",
+      "generatedAt": "2026-09-27T16:19:52.737Z",
+      "requestId": "2c6tsvdQIssRg4jtJC5t"
+    },
+    "voice/shawn/numbers-fuel/34.mp3": {
+      "hash": "84ae3994450eb9b1",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "thirty four",
+      "generatedAt": "2026-09-27T16:19:52.917Z",
+      "requestId": "mTtJDIEfD0CmLaxvOhGI"
+    },
+    "voice/shawn/numbers-fuel/35.mp3": {
+      "hash": "98241be8890695d4",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "thirty five",
+      "generatedAt": "2026-09-27T16:19:53.106Z",
+      "requestId": "tHiT2N6JUgfDih4kygDG"
+    },
+    "voice/shawn/numbers-fuel/36.mp3": {
+      "hash": "b92f8fae344168f7",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "thirty six",
+      "generatedAt": "2026-09-27T16:19:53.288Z",
+      "requestId": "JTauK7IlXt30oPv2Lg6M"
+    },
+    "voice/shawn/numbers-fuel/37.mp3": {
+      "hash": "4906a024dc20f68e",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "thirty seven",
+      "generatedAt": "2026-09-27T16:19:53.491Z",
+      "requestId": "tGuIlSAh9sn1xIQXD4Kz"
+    },
+    "voice/shawn/numbers-fuel/38.mp3": {
+      "hash": "ca91e6326041b251",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "thirty eight",
+      "generatedAt": "2026-09-27T16:19:53.659Z",
+      "requestId": "ikqTyB47HFAVqkveLCIH"
+    },
+    "voice/shawn/numbers-fuel/39.mp3": {
+      "hash": "c80f3cee4ac7a0f1",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "thirty nine",
+      "generatedAt": "2026-09-27T16:19:53.856Z",
+      "requestId": "E2Kc0GloImODpjGR7q4c"
+    },
+    "voice/shawn/numbers-fuel/40.mp3": {
+      "hash": "82c1e056976ba65e",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "forty",
+      "generatedAt": "2026-09-27T16:19:54.029Z",
+      "requestId": "ArmqoZ6Kt7eGGRWSx8T6"
+    },
+    "voice/shawn/numbers-fuel/42.mp3": {
+      "hash": "540617d260dbc1c7",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "forty two",
+      "generatedAt": "2026-09-27T16:19:54.231Z",
+      "requestId": "vqgWjxZ9RpNapFEEAbmc"
+    },
+    "voice/shawn/numbers-fuel/43.mp3": {
+      "hash": "1d7699de0932eebc",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "forty three",
+      "generatedAt": "2026-09-27T16:19:54.414Z",
+      "requestId": "axLCAcMvukmcW4i2HkTM"
+    },
+    "voice/shawn/numbers-fuel/44.mp3": {
+      "hash": "1743f1d2f74f61c4",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "forty four",
+      "generatedAt": "2026-09-27T16:19:54.599Z",
+      "requestId": "7rV7mT48s54wr98JwyaY"
+    },
+    "voice/shawn/numbers-fuel/45.mp3": {
+      "hash": "4b992d19689d4a12",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "forty five",
+      "generatedAt": "2026-09-27T16:19:54.769Z",
+      "requestId": "3JbOV4ml9N16e3RMfFI8"
+    },
+    "voice/shawn/numbers-fuel/46.mp3": {
+      "hash": "779937bbcbee4141",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "forty six",
+      "generatedAt": "2026-09-27T16:19:54.964Z",
+      "requestId": "O1adewSZWrExwWlZfyH7"
+    },
+    "voice/shawn/numbers-fuel/47.mp3": {
+      "hash": "7fb673db848ba1bd",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "forty seven",
+      "generatedAt": "2026-09-27T16:19:55.148Z",
+      "requestId": "QE5FrBqkepCt2zWJPzuD"
+    },
+    "voice/shawn/numbers-fuel/48.mp3": {
+      "hash": "58021764e6b9aaa5",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "forty eight",
+      "generatedAt": "2026-09-27T16:19:55.340Z",
+      "requestId": "MvH3x7McLpmEYHDXyc0B"
+    },
+    "voice/shawn/numbers-fuel/49.mp3": {
+      "hash": "320228110565283e",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "forty nine",
+      "generatedAt": "2026-09-27T16:19:55.517Z",
+      "requestId": "SvyBqdcc9gmyMeZVooFu"
+    },
+    "voice/shawn/numbers-fuel/50.mp3": {
+      "hash": "8abefbcf25014f17",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "fifty",
+      "generatedAt": "2026-09-27T16:19:55.703Z",
+      "requestId": "JimJl1uNrtlOmJPXlUNx"
+    },
+    "voice/shawn/numbers-fuel/51.mp3": {
+      "hash": "0b9190eacf950ca5",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "fifty one",
+      "generatedAt": "2026-09-27T16:19:55.887Z",
+      "requestId": "7hgcEzKxV1lmEwPTaOMp"
+    },
+    "voice/shawn/numbers-fuel/52.mp3": {
+      "hash": "b71cc5a52c59db3f",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "fifty two",
+      "generatedAt": "2026-09-27T16:19:56.087Z",
+      "requestId": "JDYBQUaLdqKFomV8x5Fe"
+    },
+    "voice/shawn/numbers-fuel/53.mp3": {
+      "hash": "93ad121103465eb3",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "fifty three",
+      "generatedAt": "2026-09-27T16:19:56.276Z",
+      "requestId": "sOcz0lxE4NHTrwYEnU5M"
+    },
+    "voice/shawn/numbers-fuel/54.mp3": {
+      "hash": "75e2b62fae2f670a",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "fifty four",
+      "generatedAt": "2026-09-27T16:19:56.463Z",
+      "requestId": "g3NlD555fDufFz8KsSYZ"
+    },
+    "voice/shawn/numbers-fuel/55.mp3": {
+      "hash": "e53461f8aac5255b",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "fifty five",
+      "generatedAt": "2026-09-27T16:19:56.646Z",
+      "requestId": "5UrfMS35MQM4MddLI1CM"
+    },
+    "voice/shawn/numbers-fuel/56.mp3": {
+      "hash": "89cce6b11d55b8a0",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "fifty six",
+      "generatedAt": "2026-09-27T16:19:56.839Z",
+      "requestId": "Rs4heNHSlw0qn6ptqNIj"
+    },
+    "voice/shawn/numbers-fuel/57.mp3": {
+      "hash": "97258fabe426efa3",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "fifty seven",
+      "generatedAt": "2026-09-27T16:19:57.027Z",
+      "requestId": "14x7GT6JFUwbvRc4XftK"
+    },
+    "voice/shawn/numbers-fuel/58.mp3": {
+      "hash": "e1badf42768d9ca1",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "fifty eight",
+      "generatedAt": "2026-09-27T16:19:57.212Z",
+      "requestId": "PRVOOXobpXNvwES93XK7"
+    },
+    "voice/shawn/numbers-fuel/59.mp3": {
+      "hash": "605c6cf1e574245d",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "fifty nine",
+      "generatedAt": "2026-09-27T16:19:57.388Z",
+      "requestId": "Jdp6hS2WR0tWDJmIl5hL"
+    },
+    "voice/shawn/numbers-fuel/60.mp3": {
+      "hash": "0641f1640b3cae85",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "sixty",
+      "generatedAt": "2026-09-27T16:19:57.572Z",
+      "requestId": "AQjAmq86j5FKU9HH8LkW"
+    },
+    "voice/shawn/numbers-fuel/61.mp3": {
+      "hash": "84f2ba7d20a65276",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "sixty one",
+      "generatedAt": "2026-09-27T16:19:57.745Z",
+      "requestId": "eoxDV03pnJJ7tqHRF3nz"
+    },
+    "voice/shawn/numbers-fuel/62.mp3": {
+      "hash": "0d14c89b93b3aae0",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "sixty two",
+      "generatedAt": "2026-09-27T16:19:57.923Z",
+      "requestId": "LfybnqFrLplUVy4ZmsY5"
+    },
+    "voice/shawn/numbers-fuel/63.mp3": {
+      "hash": "d41841a7efff9563",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "sixty three",
+      "generatedAt": "2026-09-27T16:19:58.102Z",
+      "requestId": "Qa0SU6mQ6JhFfUQuSJ59"
+    },
+    "voice/shawn/numbers-fuel/64.mp3": {
+      "hash": "b0817a8742860b66",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "sixty four",
+      "generatedAt": "2026-09-27T16:19:58.290Z",
+      "requestId": "MN3tL7c6wG0Sh5QqSkr6"
+    },
+    "voice/shawn/numbers-fuel/65.mp3": {
+      "hash": "a42ec7deac4cf48b",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "sixty five",
+      "generatedAt": "2026-09-27T16:19:58.472Z",
+      "requestId": "VQHcIHXfXXeURMEdpEzS"
+    },
+    "voice/shawn/numbers-fuel/66.mp3": {
+      "hash": "f1174248bc2f1d72",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "sixty six",
+      "generatedAt": "2026-09-27T16:19:58.660Z",
+      "requestId": "OZmltAzEAYRaUVZ0aDW3"
+    },
+    "voice/shawn/numbers-fuel/67.mp3": {
+      "hash": "d7d011eef463b028",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "sixty seven",
+      "generatedAt": "2026-09-27T16:19:58.834Z",
+      "requestId": "LFBddUS7gYxmDO8TKx2l"
+    },
+    "voice/shawn/numbers-fuel/68.mp3": {
+      "hash": "dc7b531ab82c23f2",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "sixty eight",
+      "generatedAt": "2026-09-27T16:19:59.023Z",
+      "requestId": "3tFO9l46jRTQPag9wGr6"
+    },
+    "voice/shawn/numbers-fuel/69.mp3": {
+      "hash": "6382a13ddb7b9c42",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "sixty nine",
+      "generatedAt": "2026-09-27T16:19:59.239Z",
+      "requestId": "oa0QrG8uUGJ2wdWBMTI3"
+    },
+    "voice/shawn/numbers-fuel/70.mp3": {
+      "hash": "55cfe0df074694d9",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "seventy",
+      "generatedAt": "2026-09-27T16:19:59.433Z",
+      "requestId": "ZGMVa520KLvS2wkplTNz"
+    },
+    "voice/shawn/numbers-fuel/71.mp3": {
+      "hash": "0052a2b8637fd327",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "seventy one",
+      "generatedAt": "2026-09-27T16:19:59.602Z",
+      "requestId": "S5k9ASIYtfM4WqSbIKBb"
+    },
+    "voice/shawn/numbers-fuel/72.mp3": {
+      "hash": "344c27397c923242",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "seventy two",
+      "generatedAt": "2026-09-27T16:19:59.798Z",
+      "requestId": "UoSVDfn1LEJbSmXIQoTw"
+    },
+    "voice/shawn/numbers-fuel/73.mp3": {
+      "hash": "6693554843a4f01e",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "seventy three",
+      "generatedAt": "2026-09-27T16:19:59.971Z",
+      "requestId": "EcUf7GfLwmuhWmnaGkid"
+    },
+    "voice/shawn/numbers-fuel/74.mp3": {
+      "hash": "21b672500513f015",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "seventy four",
+      "generatedAt": "2026-09-27T16:20:00.165Z",
+      "requestId": "0UGC59AQaOvWZUeMVIKy"
+    },
+    "voice/shawn/numbers-fuel/75.mp3": {
+      "hash": "613d919fd2f2053c",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "seventy five",
+      "generatedAt": "2026-09-27T16:20:00.347Z",
+      "requestId": "Hkgx2n3zGkdwBZhfYgvs"
+    },
+    "voice/shawn/numbers-fuel/76.mp3": {
+      "hash": "e50e028e7e44dea0",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "seventy six",
+      "generatedAt": "2026-09-27T16:20:00.533Z",
+      "requestId": "yfCoUz2UX8uDyzpV30lj"
+    },
+    "voice/shawn/numbers-fuel/77.mp3": {
+      "hash": "a2747d4728c8c232",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "seventy seven",
+      "generatedAt": "2026-09-27T16:20:00.702Z",
+      "requestId": "xNHyxgh94NpPrPLoSqKH"
+    },
+    "voice/shawn/numbers-fuel/78.mp3": {
+      "hash": "8048b69805c27c02",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "seventy eight",
+      "generatedAt": "2026-09-27T16:20:00.894Z",
+      "requestId": "aV0vRLYCObXVRLVFrIfv"
+    },
+    "voice/shawn/numbers-fuel/79.mp3": {
+      "hash": "fb7ece8e7b6b8b12",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "seventy nine",
+      "generatedAt": "2026-09-27T16:20:01.075Z",
+      "requestId": "fCr977xuVB4Oy9v6Rgi0"
+    },
+    "voice/shawn/numbers-fuel/80.mp3": {
+      "hash": "e63bd6c9f252a715",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "eighty",
+      "generatedAt": "2026-09-27T16:20:01.251Z",
+      "requestId": "sJEbgG4oDpQgk6k1zW4r"
+    },
+    "voice/shawn/numbers-fuel/81.mp3": {
+      "hash": "3998d76b1000398d",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "eighty one",
+      "generatedAt": "2026-09-27T16:20:01.416Z",
+      "requestId": "SiMv6b87M3jfjIAYT3HA"
+    },
+    "voice/shawn/numbers-fuel/82.mp3": {
+      "hash": "1c53d3f8887e64e6",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "eighty two",
+      "generatedAt": "2026-09-27T16:20:01.605Z",
+      "requestId": "MnIoBskRwH38AfClVpfi"
+    },
+    "voice/shawn/numbers-fuel/83.mp3": {
+      "hash": "0338f4af3b2bf215",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "eighty three",
+      "generatedAt": "2026-09-27T16:20:01.774Z",
+      "requestId": "xKmzAPcBN8ugSaSlbCYb"
+    },
+    "voice/shawn/numbers-fuel/84.mp3": {
+      "hash": "9a92fbeaab92ba9f",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "eighty four",
+      "generatedAt": "2026-09-27T16:20:01.955Z",
+      "requestId": "1nBkgsPwJb1tduh1SyUM"
+    },
+    "voice/shawn/numbers-fuel/85.mp3": {
+      "hash": "cb8181b24539d69e",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "eighty five",
+      "generatedAt": "2026-09-27T16:20:02.122Z",
+      "requestId": "LqxSiP45PL45k9dplyBd"
+    },
+    "voice/shawn/numbers-fuel/86.mp3": {
+      "hash": "8b2d3a4e40274346",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "eighty six",
+      "generatedAt": "2026-09-27T16:20:02.310Z",
+      "requestId": "fmQDLrl1D2OakTrlO1Aj"
+    },
+    "voice/shawn/numbers-fuel/87.mp3": {
+      "hash": "c390523a84420e6d",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "eighty seven",
+      "generatedAt": "2026-09-27T16:20:02.489Z",
+      "requestId": "lPoJFLkrkjh0VgMFhm0v"
+    },
+    "voice/shawn/numbers-fuel/88.mp3": {
+      "hash": "ea6d15c679292058",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "eighty eight",
+      "generatedAt": "2026-09-27T16:20:02.665Z",
+      "requestId": "HuR9YqOaUPQBJW08hNlM"
+    },
+    "voice/shawn/numbers-fuel/89.mp3": {
+      "hash": "4264ae6f9a4fd2d2",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "eighty nine",
+      "generatedAt": "2026-09-27T16:20:02.835Z",
+      "requestId": "xqiAQ2mNmNxWchna0TEX"
+    },
+    "voice/shawn/numbers-fuel/90.mp3": {
+      "hash": "54f1bfda651f4421",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "ninety",
+      "generatedAt": "2026-09-27T16:20:03.014Z",
+      "requestId": "ig47jxZZFL5P1qBQxJ9g"
+    },
+    "voice/shawn/numbers-fuel/91.mp3": {
+      "hash": "8f4a4fe8047b151c",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "ninety one",
+      "generatedAt": "2026-09-27T16:20:03.186Z",
+      "requestId": "DSdOVXHcHLLolfiKSK2G"
+    },
+    "voice/shawn/numbers-fuel/92.mp3": {
+      "hash": "9e48d471f06b6823",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "ninety two",
+      "generatedAt": "2026-09-27T16:20:03.379Z",
+      "requestId": "jl2hgmwQJp5NICjKtTFp"
+    },
+    "voice/shawn/numbers-fuel/93.mp3": {
+      "hash": "7082dbed5686d146",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "ninety three",
+      "generatedAt": "2026-09-27T16:20:03.549Z",
+      "requestId": "IHUeDsU7JSKRNkVFz1bR"
+    },
+    "voice/shawn/numbers-fuel/94.mp3": {
+      "hash": "96fcaa277e236efd",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "ninety four",
+      "generatedAt": "2026-09-27T16:20:03.738Z",
+      "requestId": "Vot1erBG1U1czFLAPs7x"
+    },
+    "voice/shawn/numbers-fuel/95.mp3": {
+      "hash": "d0a591793b89a7ee",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "ninety five",
+      "generatedAt": "2026-09-27T16:20:03.914Z",
+      "requestId": "c18lniDZQmjA61esQLzs"
+    },
+    "voice/shawn/numbers-fuel/96.mp3": {
+      "hash": "07d7a50ee3dd6092",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "ninety six",
+      "generatedAt": "2026-09-27T16:20:04.089Z",
+      "requestId": "zUZMSeS08nmeKglqFRBE"
+    },
+    "voice/shawn/numbers-fuel/97.mp3": {
+      "hash": "b745df8bf8496358",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "ninety seven",
+      "generatedAt": "2026-09-27T16:20:04.270Z",
+      "requestId": "UAKcRIkzCu1ukFSeY5BS"
+    },
+    "voice/shawn/numbers-fuel/98.mp3": {
+      "hash": "9bdc54b1cc1f6ff2",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "ninety eight",
+      "generatedAt": "2026-09-27T16:20:04.458Z",
+      "requestId": "MZgo4Tpbo73lomrK5CFQ"
+    },
+    "voice/shawn/numbers-fuel/99.mp3": {
+      "hash": "f7bd182c6a75fe9f",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "ninety nine",
+      "generatedAt": "2026-09-27T16:20:04.631Z",
+      "requestId": "Gc08Pl3cMm5HA2J1nDfD"
+    },
+    "voice/shawn/numbers-fuel/100.mp3": {
+      "hash": "b55acb77fdc45d42",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred",
+      "generatedAt": "2026-09-27T16:20:04.828Z",
+      "requestId": "cRnxUEIkpxNjRGs1QtDp"
+    },
+    "voice/shawn/numbers-fuel/101.mp3": {
+      "hash": "6439f0cf080e58bb",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred one",
+      "generatedAt": "2026-09-27T16:20:05.017Z",
+      "requestId": "IEJwg3szVoD27H0fjOaf"
+    },
+    "voice/shawn/numbers-fuel/102.mp3": {
+      "hash": "798fdc883ae38d29",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred two",
+      "generatedAt": "2026-09-27T16:20:05.219Z",
+      "requestId": "yahhpYNbkIjB0Y7zlwVv"
+    },
+    "voice/shawn/numbers-fuel/103.mp3": {
+      "hash": "2fe8fcae82e98be5",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred three",
+      "generatedAt": "2026-09-27T16:20:05.393Z",
+      "requestId": "Gl4Tzi211MhYuhOkT5Fu"
+    },
+    "voice/shawn/numbers-fuel/104.mp3": {
+      "hash": "84f53eb6c1e11bcd",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred four",
+      "generatedAt": "2026-09-27T16:20:05.966Z",
+      "requestId": "zonMX2S2fnODAmAy8POB"
+    },
+    "voice/shawn/numbers-fuel/105.mp3": {
+      "hash": "84cf127a8091d656",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred five",
+      "generatedAt": "2026-09-27T16:20:06.141Z",
+      "requestId": "cudllYsTjvmJZSEueJW3"
+    },
+    "voice/shawn/numbers-fuel/106.mp3": {
+      "hash": "ade09f96f740e798",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred six",
+      "generatedAt": "2026-09-27T16:20:06.323Z",
+      "requestId": "bYB6uPtahqEAEIpEeT3Q"
+    },
+    "voice/shawn/numbers-fuel/107.mp3": {
+      "hash": "c02a86b9b705c87e",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred seven",
+      "generatedAt": "2026-09-27T16:20:06.533Z",
+      "requestId": "9fmVRUGt0iiISEHdVvH3"
+    },
+    "voice/shawn/numbers-fuel/108.mp3": {
+      "hash": "80f5b6113ee52971",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred eight",
+      "generatedAt": "2026-09-27T16:20:06.727Z",
+      "requestId": "Wrw5Rr0bnDAM1Enc0hV3"
+    },
+    "voice/shawn/numbers-fuel/109.mp3": {
+      "hash": "02b9a0d246790a4e",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred nine",
+      "generatedAt": "2026-09-27T16:20:06.911Z",
+      "requestId": "23vhAWSuYrHXx7w6xNUu"
+    },
+    "voice/shawn/numbers-fuel/110.mp3": {
+      "hash": "e8f102c5a86f9b8c",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred ten",
+      "generatedAt": "2026-09-27T16:20:07.100Z",
+      "requestId": "Vmkx2tX8AbwiNOsJnGmx"
+    },
+    "voice/shawn/numbers-fuel/111.mp3": {
+      "hash": "102ac110e12223a8",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred eleven",
+      "generatedAt": "2026-09-27T16:20:07.287Z",
+      "requestId": "6sAoPotLvnJwIh0aQBP4"
+    },
+    "voice/shawn/numbers-fuel/112.mp3": {
+      "hash": "0679218603db2f96",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred twelve",
+      "generatedAt": "2026-09-27T16:20:07.478Z",
+      "requestId": "iC3WtoUGAwnqKMFNcduD"
+    },
+    "voice/shawn/numbers-fuel/113.mp3": {
+      "hash": "9be3b5fa415bf914",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred thirteen",
+      "generatedAt": "2026-09-27T16:20:07.669Z",
+      "requestId": "E56aXiEZ4xeUYItwaVrt"
+    },
+    "voice/shawn/numbers-fuel/114.mp3": {
+      "hash": "758ec68ebe4bf34f",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred fourteen",
+      "generatedAt": "2026-09-27T16:20:07.864Z",
+      "requestId": "YeWB5Nx184G7vYiTBPq9"
+    },
+    "voice/shawn/numbers-fuel/115.mp3": {
+      "hash": "f3466f35dc525b3e",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred fifteen",
+      "generatedAt": "2026-09-27T16:20:08.037Z",
+      "requestId": "ACyUqfhs4zTXM2XiFkLT"
+    },
+    "voice/shawn/numbers-fuel/116.mp3": {
+      "hash": "a9da767b4f018379",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred sixteen",
+      "generatedAt": "2026-09-27T16:20:08.225Z",
+      "requestId": "c6EeP823NDJqQaIkggOI"
+    },
+    "voice/shawn/numbers-fuel/117.mp3": {
+      "hash": "8773a7cf1e50841c",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred seventeen",
+      "generatedAt": "2026-09-27T16:20:08.397Z",
+      "requestId": "bvXriG5Ypz4M3kxfAQRe"
+    },
+    "voice/shawn/numbers-fuel/118.mp3": {
+      "hash": "fd95b5ce58b1528f",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred eighteen",
+      "generatedAt": "2026-09-27T16:20:08.585Z",
+      "requestId": "Io4DfHWoQ2YaqFn5KjTK"
+    },
+    "voice/shawn/numbers-fuel/119.mp3": {
+      "hash": "5cfcd78095b0c4f6",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "one hundred nineteen",
+      "generatedAt": "2026-09-27T16:20:08.766Z",
+      "requestId": "7jckJQp6KtjVtS03m2g8"
+    },
+    "voice/shawn/numbers-fuel-decimal/liters-1.mp3": {
+      "hash": "96ee552d0016c436",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "point one liters.",
+      "generatedAt": "2026-09-27T16:20:09.601Z",
+      "requestId": "tcr83rg61JrrHh2CYiWF"
+    },
+    "voice/shawn/numbers-fuel-decimal/liters-2.mp3": {
+      "hash": "d98155877a93265a",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "point two liters.",
+      "generatedAt": "2026-09-27T16:20:09.792Z",
+      "requestId": "lE9xq4GX0aVK3NyvEpnL"
+    },
+    "voice/shawn/numbers-fuel-decimal/liters-3.mp3": {
+      "hash": "aab673e4691a9c53",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "point three liters.",
+      "generatedAt": "2026-09-27T16:20:09.986Z",
+      "requestId": "AGQuZ8djN5tL6iMo64vk"
+    },
+    "voice/shawn/numbers-fuel-decimal/liters-5.mp3": {
+      "hash": "ea6237621fad3674",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "point five liters.",
+      "generatedAt": "2026-09-27T16:20:10.164Z",
+      "requestId": "kighvq7PvvGh480auAN7"
+    },
+    "voice/shawn/numbers-fuel-decimal/liters-6.mp3": {
+      "hash": "c97f10b30cdc3356",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "point six liters.",
+      "generatedAt": "2026-09-27T16:20:10.342Z",
+      "requestId": "fzNyWocMhk96B38wZRn3"
+    },
+    "voice/shawn/numbers-fuel-decimal/liters-7.mp3": {
+      "hash": "49dfa130570d41a2",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "point seven liters.",
+      "generatedAt": "2026-09-27T16:20:10.522Z",
+      "requestId": "DzxcoBEGT6gdbHX3Th29"
+    },
+    "voice/shawn/numbers-fuel-decimal/liters-8.mp3": {
+      "hash": "3a5e2bbfd7e9f16f",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "point eight liters.",
+      "generatedAt": "2026-09-27T16:20:10.703Z",
+      "requestId": "4vsh1eRK0T5Poa2mddWN"
+    },
+    "voice/shawn/numbers-fuel-decimal/liters-9.mp3": {
+      "hash": "636f1cda1f60b2b5",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "point nine liters.",
+      "generatedAt": "2026-09-27T16:20:10.886Z",
+      "requestId": "LNQvjkhqGLzYQpEEc2O4"
+    },
+    "voice/shawn/numbers-fuel-decimal/gallons-0.mp3": {
+      "hash": "56ec9da21f5d1f3c",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "point zero gallons.",
+      "generatedAt": "2026-09-27T16:20:11.077Z",
+      "requestId": "Vo3LKoHxUAqgE1y7iKpW"
+    },
+    "voice/shawn/numbers-fuel-decimal/gallons-1.mp3": {
+      "hash": "5b6306ade7731065",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "point one gallons.",
+      "generatedAt": "2026-09-27T16:20:11.267Z",
+      "requestId": "MouFMdBBncX5YCdrGi9r"
+    },
+    "voice/shawn/numbers-fuel-decimal/gallons-2.mp3": {
+      "hash": "1f9af8471a787066",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "point two gallons.",
+      "generatedAt": "2026-09-27T16:20:11.458Z",
+      "requestId": "hy9Ivu7W1rDotWUhpM9J"
+    },
+    "voice/shawn/numbers-fuel-decimal/gallons-3.mp3": {
+      "hash": "061c16856154526c",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "point three gallons.",
+      "generatedAt": "2026-09-27T16:20:11.632Z",
+      "requestId": "OeqtGb7cgJfCifUFbcyX"
+    },
+    "voice/shawn/numbers-fuel-decimal/gallons-4.mp3": {
+      "hash": "9dc461777676d35a",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "point four gallons.",
+      "generatedAt": "2026-09-27T16:20:11.820Z",
+      "requestId": "MKwEQ9d64V16H2yYVRjK"
+    },
+    "voice/shawn/numbers-fuel-decimal/gallons-5.mp3": {
+      "hash": "1442c1af77e1e4d8",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "point five gallons.",
+      "generatedAt": "2026-09-27T16:20:12.024Z",
+      "requestId": "BfaYJsUPuEJk9652CMbq"
+    },
+    "voice/shawn/numbers-fuel-decimal/gallons-7.mp3": {
+      "hash": "3cca4707fb2f02a9",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "point seven gallons.",
+      "generatedAt": "2026-09-27T16:20:12.230Z",
+      "requestId": "rzd1OVtwk14kDpbvgi2f"
+    },
+    "voice/shawn/numbers-fuel-decimal/gallons-8.mp3": {
+      "hash": "1abe8565d564f00f",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "point eight gallons.",
+      "generatedAt": "2026-09-27T16:20:12.440Z",
+      "requestId": "oyHCWa5JQyUiE4FMgZjC"
+    },
+    "voice/shawn/numbers-fuel-decimal/gallons-9.mp3": {
+      "hash": "bec0fef2f26650e1",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "point nine gallons.",
+      "generatedAt": "2026-09-27T16:20:12.623Z",
+      "requestId": "WaTDU4oyPyxC4RFag6Iq"
     }
   }
 }

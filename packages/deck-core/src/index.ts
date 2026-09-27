@@ -477,6 +477,7 @@ export {
   formatFuelAmount,
   formatFuelAmountWithPrefix,
   formatFuelSettingWithUnit,
+  celsiusToFahrenheit,
 } from "./unit-conversion.js";
 
 // Shared pit fuel-fill / autofuel telemetry readers (Fuel Service keypad + dial surfaces)

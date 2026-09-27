@@ -1,3 +1,5 @@
+import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
+import type { CalloutScript } from "@iracedeck/callout-script";
 import { _resetEventBus, getEventBus, initializeEventBus } from "@iracedeck/event-bus";
 import {
   Flags,
@@ -888,5 +890,60 @@ describe("the two Tire Wear shortcuts (issue #1108)", () => {
     runSequence(controller, steps);
 
     expect(events.filter((e) => e.event === "tireWear.reported")).toHaveLength(2);
+  });
+});
+
+describe("the Telemetry Readout shortcuts (issue #466)", () => {
+  const readouts = SCENARIO_SHORTCUTS.filter((s) => s.category === "Telemetry Readout");
+
+  it("offers the auditions the spec lists, in order", () => {
+    expect(readouts.map((s) => s.id)).toEqual([
+      "readout-fuel-last-lap-liters",
+      "readout-fuel-last-lap-gallons",
+      "readout-fuel-average",
+      "readout-fuel-average-partial",
+      "readout-no-data",
+      "readout-track-temp",
+      "readout-air-temp",
+      "readout-fuel-edge",
+    ]);
+  });
+
+  it("each publishes a well-formed telemetryReadout.requested payload", () => {
+    for (const s of readouts) {
+      expect(s.event, s.id).toBe("telemetryReadout.requested");
+
+      const data = s.data as { kind: string; value: number | null; unit: string; laps: number | null };
+      const isFuel = data.kind === "fuel-last-lap" || data.kind === "fuel-average";
+
+      expect(["fuel-last-lap", "fuel-average", "track-temp", "air-temp"], s.id).toContain(data.kind);
+      expect(isFuel ? ["liters", "gallons"] : ["celsius", "fahrenheit"], s.id).toContain(data.unit);
+      expect(data.laps === null, s.id).toBe(data.kind !== "fuel-average" || data.value === null);
+
+      if (data.value === null) expect(isFuel, s.id).toBe(true);
+    }
+  });
+
+  it("the partial average names fewer laps than a full window, and the edge sits at the top of the recorded range", () => {
+    const byId = (id: string) => readouts.find((s) => s.id === id)?.data as { value: number; laps: number };
+
+    expect(byId("readout-fuel-average").laps).toBe(5);
+    expect(byId("readout-fuel-average-partial").laps).toBe(3);
+    expect(Math.round(byId("readout-fuel-edge").value * 10) / 10).toBe(120.9);
+  });
+
+  it("every readout entry in the bundled script names one of these buttons", () => {
+    const script = defaultScript as CalloutScript;
+    const labels = readouts.map((s) => s.label);
+    const ids = Object.keys(script.scenarios).filter((id) => id.startsWith("pit-crew.readout-"));
+
+    expect(ids).toHaveLength(5);
+
+    for (const id of ids) {
+      const test = script.scenarios[id].test ?? "";
+      const named = labels.some((label) => test.startsWith(`Harness → Telemetry Readout → ${label}.`));
+
+      expect(named, `${id}: ${test}`).toBe(true);
+    }
   });
 });

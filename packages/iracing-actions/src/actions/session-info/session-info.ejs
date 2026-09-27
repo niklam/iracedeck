@@ -18,6 +18,8 @@
 				<option value="laps-to-empty">Laps to Empty</option>
 				<option value="flags">Race Flags</option>
 				<option value="track-wetness">Track Wetness</option>
+				<option value="track-temp">Track Temperature</option>
+				<option value="air-temp">Air Temperature</option>
 				<option value="wind">Wind</option>
 			</sdpi-select>
 		</sdpi-item>
@@ -56,7 +58,7 @@
 			<ird-range-input setting="fuelLapWindow" min="1" max="20" step="1" default="5" showlabels></ird-range-input>
 		</sdpi-item>
 		<div id="fuel-window-help" class="ird-supporting-text hidden">
-			How many recent valid laps the average covers. Laps with a pit stop or tow are skipped.
+			How many recent valid laps the average covers. A lap with a pit stop, an out-lap or in-lap, a tow, or a lap run under a full-course caution is skipped.
 		</div>
 
 		<sdpi-item id="flags-settings" label="UI" class="hidden">
@@ -94,6 +96,13 @@
 				<option value="mph">mph</option>
 			</sdpi-select>
 		</sdpi-item>
+
+		<sdpi-item label="Speak value on press">
+			<sdpi-checkbox setting="speakOnPress" default="true"></sdpi-checkbox>
+		</sdpi-item>
+		<div class="ird-supporting-text">
+			Pressing the key has the Race Engineer read the value out. Spoken so far: Fuel (Used last lap and Average per lap) and Track and Air Temperature; other items stay silent for now. Needs the Race Engineer switched on.
+		</div>
 
 		<script>
 			async function initialize() {

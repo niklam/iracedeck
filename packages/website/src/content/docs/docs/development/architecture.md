@@ -32,6 +32,7 @@ flowchart TB
   future -.-> futureTrans
   futureTrans -.-> bus
   bus --> actions
+  actions -->|"key-press readout"| bus
   bus --> re
   actions --> adapter
   adapter --> elg
@@ -54,6 +55,8 @@ flowchart TB
 Arrows show **runtime flow**. The two purple stadium nodes are the abstraction seams; they're styled the same way in every diagram below so you can anchor on them. The dashed node is hypothetical — it shows where a second sim would plug in.
 
 Two things to notice. First, only `iracing-actions` flows down to the device seam — the **Race Engineer** (`audio-scenarios`) is a sibling consumer whose output goes to your speakers, never through the deck. Second, everything left of SEAM 1 is sim-specific; everything right of it is sim-agnostic — in principle (the action layer doesn't fully hold to this; see the *Seams & where the abstraction leaks* section below).
+
+The arrow from `iracing-actions` back into the bus is the one event the deck layer publishes: a Session Info key press that asks the Race Engineer to read the value it shows out. Its payload is already in the driver's display unit, so it is as sim-agnostic as the translator's events.
 
 ## Inbound: telemetry → semantic events
 
@@ -90,7 +93,7 @@ This is why a button "knows" a yellow is out: it never reads telemetry itself �
 `event-bus` is the contract every consumer codes against. It gives them three things:
 
 - **A typed, sim-agnostic event catalog** — the vocabulary of things that can happen (`flag.yellow.raised`, an overtake, a laps-of-fuel-left crossing, a pit-lane transition). It's a plain pub/sub package that imports no simulator SDK, so the vocabulary stays the same no matter which sim feeds it.
-- **Decoupled fan-out** — publishers and subscribers never reference each other. The translator publishes; the actions, the Race Engineer and — for the replay lap record — the plugin itself each subscribe independently. You can add a consumer without touching the producer, and — in principle — swap the producer without touching the consumers.
+- **Decoupled fan-out** — publishers and subscribers never reference each other. The translator publishes nearly everything; since #466 one deck action does too — pressing a Session Info key publishes `telemetryReadout.requested` with the value the key shows, for the Race Engineer to speak. The actions, the Race Engineer and — for the replay lap record — the plugin itself each subscribe independently. You can add a consumer without touching the producer, and — in principle — swap the producer without touching the consumers.
 - **A generic telemetry snapshot on the envelope** — alongside the semantic payload, each event carries the latest raw telemetry in a generic field. This is the sim-specific escape hatch: the Race Engineer's radar and spotter engines read it (via `getLatestTelemetry`) because their job needs the full per-car picture, not a single event. It is also the part of this seam that is **not** sim-agnostic yet — see the leaks below.
 
 The catalog spans around 60 events grouped into families — pit lane and stops, flags, start lights, rolling start, pit service, tires, car control, pit limiter, incidents and off-tracks, overtakes and position changes, laps, fuel, proximity radar, track wetness, damage, session lifecycle, and the replay lap record. Payloads range from empty (pure transitions like `pitLane.entered`) to rich records:

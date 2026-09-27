@@ -521,6 +521,48 @@
         }
       ]
     },
+    "pit-crew.readout-fuel-last-lap": {
+      "comment": "On a Session Info key press: the fuel the last clean lap used, rounded to a tenth, in the driver's display unit — \"Fuel used last lap, two point four liters.\" The tenths clip carries the unit.",
+      "test": "Harness → Telemetry Readout → Fuel last lap (liters). In-sim: add a Session Info key on Fuel → Last Lap, drive one clean lap and press it.",
+      "sequence": [
+        "pool:telemetry-readout/fuel-last-lap-intro",
+        "{{readout.fuelNumber}}",
+        "{{readout.fuelDecimal}}"
+      ]
+    },
+    "pit-crew.readout-fuel-average": {
+      "comment": "On a Session Info key press: the average fuel per clean lap, naming the laps actually averaged — fewer than the key's setting early in a stint — \"Average fuel over the last five laps, two point four liters.\"",
+      "test": "Harness → Telemetry Readout → Fuel average (5 laps). In-sim: add a Session Info key on Fuel → Average and press it after a few clean laps.",
+      "sequence": [
+        "pool:telemetry-readout/fuel-average-intro",
+        "{{readout.laps}}",
+        "{{readout.fuelNumber}}",
+        "{{readout.fuelDecimal}}"
+      ]
+    },
+    "pit-crew.readout-track-temp": {
+      "comment": "On a Session Info key press: the track temperature as a whole number — \"Track temperature is forty one degrees.\" The unit is not named, as in the session-start brief; a pack that records the unit clips can add {{readout.degreesUnit}}.",
+      "test": "Harness → Telemetry Readout → Track temperature (°C). In-sim: add a Session Info key on Track Temperature and press it on track.",
+      "sequence": [
+        "pool:telemetry-readout/track-temp-intro",
+        "{{readout.tempNumber}}"
+      ]
+    },
+    "pit-crew.readout-air-temp": {
+      "comment": "On a Session Info key press: the air temperature as a whole number — \"Air temperature is twenty three degrees.\" The unit is not named, as in the session-start brief.",
+      "test": "Harness → Telemetry Readout → Air temperature (°F). In-sim: add a Session Info key on Air Temperature and press it.",
+      "sequence": [
+        "pool:telemetry-readout/air-temp-intro",
+        "{{readout.tempNumber}}"
+      ]
+    },
+    "pit-crew.readout-no-data": {
+      "comment": "On a Session Info fuel key press before any clean lap is on record: \"No clean lap on the books yet.\"",
+      "test": "Harness → Telemetry Readout → No clean lap yet. In-sim: press a Session Info key on Fuel → Last Lap before completing a clean lap in a fresh session.",
+      "sequence": [
+        "pool:telemetry-readout/no-data"
+      ]
+    },
     "pit-crew.pit-window-opened": {
       "comment": "Pit road has opened for the driver — one line, above ordinary chatter but below a flag, replayed after a busier line finishes rather than dropped because the window matters to strategy.",
       "test": "Harness → Pit Window → Pits opened. In-sim: the pits open in a race — after the field takes the green, or when a caution's pit window opens.",

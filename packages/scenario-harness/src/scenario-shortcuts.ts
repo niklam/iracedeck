@@ -20,6 +20,7 @@ import {
   type RaceStartSnapshot,
   type SimEventName,
   type StartCountdownSeconds,
+  type TelemetryReadoutRequest,
   TrackWetness,
 } from "@iracedeck/event-bus";
 import { EngineWarnings, Flags, PaceMode, PitSvFlags, PitSvStatus, TrkLoc } from "@iracedeck/iracing-sdk";
@@ -171,6 +172,15 @@ function tireSet(name: string, label: string, tires: readonly string[]): BusEven
 
 function flag(label: string, event: SimEventName, data: Record<string, unknown> = {}): BusEventShortcut {
   return { id: `flag-${label.toLowerCase().replace(/\s+/g, "-")}`, category: "Flags", label, event, data };
+}
+
+/**
+ * A Session Info key press (issue #466), published straight to the bus —
+ * the action's own conversion is bypassed, so any figure and unit can be
+ * auditioned. Each label is named by a script entry's `test` line.
+ */
+function readout(id: string, label: string, description: string, data: TelemetryReadoutRequest): BusEventShortcut {
+  return { id, category: "Telemetry Readout", label, description, event: "telemetryReadout.requested", data };
 }
 
 function startLight(id: string, label: string, event: SimEventName, description?: string): BusEventShortcut {
@@ -1269,6 +1279,62 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     data: TIRE_WEAR_REPORT_EXAMPLE,
   },
   TIRE_WEAR_STOP_SHORTCUT,
+
+  // ── Telemetry Readout (issue #466) ──
+  // What a Session Info key press publishes, straight to the bus.
+  readout("readout-fuel-last-lap-liters", "Fuel last lap (liters)", '"Fuel used last lap, two point four liters."', {
+    kind: "fuel-last-lap",
+    value: 2.44,
+    unit: "liters",
+    laps: null,
+  }),
+  readout("readout-fuel-last-lap-gallons", "Fuel last lap (gallons)", '"Fuel used last lap, zero point six gallons."', {
+    kind: "fuel-last-lap",
+    value: 0.64,
+    unit: "gallons",
+    laps: null,
+  }),
+  readout(
+    "readout-fuel-average",
+    "Fuel average (5 laps)",
+    '"Average fuel over the last five laps, two point five liters."',
+    { kind: "fuel-average", value: 2.47, unit: "liters", laps: 5 },
+  ),
+  readout(
+    "readout-fuel-average-partial",
+    "Fuel average (3 of 5 laps)",
+    'A five-lap key early in a stint, with three clean laps on record — "Average fuel over the last three laps, two point five liters."',
+    { kind: "fuel-average", value: 2.51, unit: "liters", laps: 3 },
+  ),
+  readout(
+    "readout-no-data",
+    "No clean lap yet",
+    '"No clean lap on the books yet." — a fuel readout before any clean lap.',
+    {
+      kind: "fuel-last-lap",
+      value: null,
+      unit: "liters",
+      laps: null,
+    },
+  ),
+  readout("readout-track-temp", "Track temperature (°C)", '"Track temperature is forty one degrees."', {
+    kind: "track-temp",
+    value: 41.3,
+    unit: "celsius",
+    laps: null,
+  }),
+  readout("readout-air-temp", "Air temperature (°F)", '"Air temperature is seventy three degrees." — imperial units.', {
+    kind: "air-temp",
+    value: 73.4,
+    unit: "fahrenheit",
+    laps: null,
+  }),
+  readout(
+    "readout-fuel-edge",
+    "Fuel 120.9 liters (top of range)",
+    '"Fuel used last lap, one hundred twenty point nine liters." — the highest figure the voice records; anything above is silent.',
+    { kind: "fuel-last-lap", value: 120.94, unit: "liters", laps: null },
+  ),
 
   // ── Flags ──
   flag("Yellow (local)", "flag.yellow.raised", { scope: "local" }),

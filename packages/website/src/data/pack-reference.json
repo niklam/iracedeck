@@ -3364,6 +3364,147 @@
       }
     },
     {
+      "id": "pit-crew.readout-air-temp",
+      "family": null,
+      "event": "telemetryReadout.requested",
+      "description": "You press a Session Info key showing air temperature.",
+      "frame": "radio",
+      "weight": 40,
+      "weightBand": null,
+      "queueable": true,
+      "interrupt": false,
+      "speakGate": null,
+      "base": "voice/{voice}",
+      "comment": "On a Session Info key press: the air temperature as a whole number — \"Air temperature is twenty three degrees.\" The unit is not named, as in the session-start brief.",
+      "test": "Harness → Telemetry Readout → Air temperature (°F). In-sim: add a Session Info key on Air Temperature and press it.",
+      "skip": false,
+      "references": {
+        "pools": [
+          "telemetry-readout/air-temp-intro"
+        ],
+        "vars": [
+          "readout.tempNumber"
+        ],
+        "conds": [],
+        "cases": [],
+        "includes": [],
+        "frames": []
+      }
+    },
+    {
+      "id": "pit-crew.readout-fuel-average",
+      "family": null,
+      "event": "telemetryReadout.requested",
+      "description": "You press a Session Info key showing average fuel per lap, with at least one clean lap on record.",
+      "frame": "radio",
+      "weight": 40,
+      "weightBand": null,
+      "queueable": true,
+      "interrupt": false,
+      "speakGate": null,
+      "base": "voice/{voice}",
+      "comment": "On a Session Info key press: the average fuel per clean lap, naming the laps actually averaged — fewer than the key's setting early in a stint — \"Average fuel over the last five laps, two point four liters.\"",
+      "test": "Harness → Telemetry Readout → Fuel average (5 laps). In-sim: add a Session Info key on Fuel → Average and press it after a few clean laps.",
+      "skip": false,
+      "references": {
+        "pools": [
+          "telemetry-readout/fuel-average-intro"
+        ],
+        "vars": [
+          "readout.fuelDecimal",
+          "readout.fuelNumber",
+          "readout.laps"
+        ],
+        "conds": [],
+        "cases": [],
+        "includes": [],
+        "frames": []
+      }
+    },
+    {
+      "id": "pit-crew.readout-fuel-last-lap",
+      "family": null,
+      "event": "telemetryReadout.requested",
+      "description": "You press a Session Info key showing fuel used last lap, with at least one clean lap on record.",
+      "frame": "radio",
+      "weight": 40,
+      "weightBand": null,
+      "queueable": true,
+      "interrupt": false,
+      "speakGate": null,
+      "base": "voice/{voice}",
+      "comment": "On a Session Info key press: the fuel the last clean lap used, rounded to a tenth, in the driver's display unit — \"Fuel used last lap, two point four liters.\" The tenths clip carries the unit.",
+      "test": "Harness → Telemetry Readout → Fuel last lap (liters). In-sim: add a Session Info key on Fuel → Last Lap, drive one clean lap and press it.",
+      "skip": false,
+      "references": {
+        "pools": [
+          "telemetry-readout/fuel-last-lap-intro"
+        ],
+        "vars": [
+          "readout.fuelDecimal",
+          "readout.fuelNumber"
+        ],
+        "conds": [],
+        "cases": [],
+        "includes": [],
+        "frames": []
+      }
+    },
+    {
+      "id": "pit-crew.readout-no-data",
+      "family": null,
+      "event": "telemetryReadout.requested",
+      "description": "You press a Session Info key showing a fuel figure before any clean lap is on record.",
+      "frame": "radio",
+      "weight": 40,
+      "weightBand": null,
+      "queueable": true,
+      "interrupt": false,
+      "speakGate": null,
+      "base": "voice/{voice}",
+      "comment": "On a Session Info fuel key press before any clean lap is on record: \"No clean lap on the books yet.\"",
+      "test": "Harness → Telemetry Readout → No clean lap yet. In-sim: press a Session Info key on Fuel → Last Lap before completing a clean lap in a fresh session.",
+      "skip": false,
+      "references": {
+        "pools": [
+          "telemetry-readout/no-data"
+        ],
+        "vars": [],
+        "conds": [],
+        "cases": [],
+        "includes": [],
+        "frames": []
+      }
+    },
+    {
+      "id": "pit-crew.readout-track-temp",
+      "family": null,
+      "event": "telemetryReadout.requested",
+      "description": "You press a Session Info key showing track temperature.",
+      "frame": "radio",
+      "weight": 40,
+      "weightBand": null,
+      "queueable": true,
+      "interrupt": false,
+      "speakGate": null,
+      "base": "voice/{voice}",
+      "comment": "On a Session Info key press: the track temperature as a whole number — \"Track temperature is forty one degrees.\" The unit is not named, as in the session-start brief; a pack that records the unit clips can add {{readout.degreesUnit}}.",
+      "test": "Harness → Telemetry Readout → Track temperature (°C). In-sim: add a Session Info key on Track Temperature and press it on track.",
+      "skip": false,
+      "references": {
+        "pools": [
+          "telemetry-readout/track-temp-intro"
+        ],
+        "vars": [
+          "readout.tempNumber"
+        ],
+        "conds": [],
+        "cases": [],
+        "includes": [],
+        "frames": []
+      }
+    },
+    {
       "id": "pit-crew.rolling-start-pace-car",
       "family": "rolling-start",
       "event": "rollingStart.pace-car-moving.raised",
@@ -4955,6 +5096,42 @@
         "description": "The leader's whole status line — still leading the race, or still leading our class in a multi-class race. Draws the still-leading and still-leading-class lines from the race-status clip group.",
         "usedBy": [
           "pit-crew.race-status"
+        ]
+      },
+      {
+        "name": "readout.degreesUnit",
+        "description": "Optional: the temperature unit's name alone, per the driver's display setting — composes after a numbers-degrees figure, which already says the word degrees, to make \"twenty eight degrees, Celsius\". Draws session-start/unit-celsius or session-start/unit-fahrenheit. The reference voice records neither and its script does not use it; a pack records both to have its engineer say the unit.",
+        "usedBy": []
+      },
+      {
+        "name": "readout.fuelDecimal",
+        "description": "The tenths digit of that fuel figure together with its unit, recorded as one line (\"point four liters.\") — drawn from the numbers-fuel-decimal clip group, liters-0 to liters-9 and gallons-0 to gallons-9.",
+        "usedBy": [
+          "pit-crew.readout-fuel-average",
+          "pit-crew.readout-fuel-last-lap"
+        ]
+      },
+      {
+        "name": "readout.fuelNumber",
+        "description": "The whole-number part of the fuel figure a Session Info key asked for, after rounding to a tenth, in the driver's display unit — drawn from the numbers-fuel clip group (0 to 120); a figure the voice has no clip for silences the callout.",
+        "usedBy": [
+          "pit-crew.readout-fuel-average",
+          "pit-crew.readout-fuel-last-lap"
+        ]
+      },
+      {
+        "name": "readout.laps",
+        "description": "How many clean laps an average fuel readout covers — the laps actually averaged, fewer than the key's setting early in a stint — drawn from the readout-laps clip group (1 to 20), recorded as \"lap,\" for one and \"five laps,\" above.",
+        "usedBy": [
+          "pit-crew.readout-fuel-average"
+        ]
+      },
+      {
+        "name": "readout.tempNumber",
+        "description": "The temperature a Session Info key asked for, track or air, as a whole number in the driver's display unit — drawn from the numbers-degrees clip group the session-start brief speaks, whose lines carry the word degrees and cover -20 to 176.",
+        "usedBy": [
+          "pit-crew.readout-air-temp",
+          "pit-crew.readout-track-temp"
         ]
       },
       {
@@ -27142,6 +27319,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -27157,6 +27335,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -27172,6 +27351,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -27187,6 +27367,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -27202,6 +27383,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -27217,6 +27399,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -27232,6 +27415,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -27247,6 +27431,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -27262,6 +27447,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -27277,6 +27463,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -27292,6 +27479,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -27307,6 +27495,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -27322,6 +27511,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -27337,6 +27527,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -27352,6 +27543,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -27367,6 +27559,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -27382,6 +27575,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -27397,6 +27591,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -27412,6 +27607,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -27427,6 +27623,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -27442,6 +27639,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -27457,6 +27655,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -27472,6 +27671,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -27487,6 +27687,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -27502,6 +27703,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -27517,6 +27719,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -27532,6 +27735,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -27547,6 +27751,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -27562,6 +27767,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -27577,6 +27783,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -27592,6 +27799,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -27607,6 +27815,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -27622,6 +27831,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -27637,6 +27847,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -27652,6 +27863,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -27667,6 +27879,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -27682,6 +27895,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -27697,6 +27911,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -27712,6 +27927,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -27727,6 +27943,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -27742,6 +27959,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -27757,6 +27975,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -27772,6 +27991,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -27787,6 +28007,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -27802,6 +28023,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -27817,6 +28039,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -27832,6 +28055,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -27847,6 +28071,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -27862,6 +28087,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -27877,6 +28103,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -27892,6 +28119,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -27907,6 +28135,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -27922,6 +28151,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -27937,6 +28167,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -27952,6 +28183,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -27967,6 +28199,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -27982,6 +28215,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -27997,6 +28231,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28012,6 +28247,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28027,6 +28263,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28042,6 +28279,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28057,6 +28295,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28072,6 +28311,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28087,6 +28327,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28102,6 +28343,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28117,6 +28359,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28132,6 +28375,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28147,6 +28391,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28162,6 +28407,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28177,6 +28423,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28192,6 +28439,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28207,6 +28455,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28222,6 +28471,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28237,6 +28487,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28252,6 +28503,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28267,6 +28519,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28282,6 +28535,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28297,6 +28551,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28312,6 +28567,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28327,6 +28583,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28342,6 +28599,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28357,6 +28615,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28372,6 +28631,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28387,6 +28647,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28402,6 +28663,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28417,6 +28679,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28432,6 +28695,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28447,6 +28711,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28462,6 +28727,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28477,6 +28743,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28492,6 +28759,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28507,6 +28775,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28522,6 +28791,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28537,6 +28807,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28552,6 +28823,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28567,6 +28839,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28582,6 +28855,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28597,6 +28871,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28612,6 +28887,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28627,6 +28903,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28642,6 +28919,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28657,6 +28935,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28672,6 +28951,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28687,6 +28967,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28702,6 +28983,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28717,6 +28999,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28732,6 +29015,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28747,6 +29031,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28762,6 +29047,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28777,6 +29063,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28792,6 +29079,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28807,6 +29095,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28822,6 +29111,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28837,6 +29127,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28852,6 +29143,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28867,6 +29159,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28882,6 +29175,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28897,6 +29191,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28912,6 +29207,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28927,6 +29223,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28942,6 +29239,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28957,6 +29255,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28972,6 +29271,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -28987,6 +29287,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29002,6 +29303,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29017,6 +29319,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29032,6 +29335,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29047,6 +29351,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29062,6 +29367,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29077,6 +29383,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29092,6 +29399,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29107,6 +29415,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29122,6 +29431,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29137,6 +29447,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29152,6 +29463,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29167,6 +29479,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29182,6 +29495,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29197,6 +29511,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29212,6 +29527,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29227,6 +29543,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29242,6 +29559,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29257,6 +29575,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29272,6 +29591,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29287,6 +29607,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29302,6 +29623,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29317,6 +29639,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29332,6 +29655,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29347,6 +29671,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29362,6 +29687,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29377,6 +29703,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29392,6 +29719,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29407,6 +29735,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29422,6 +29751,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29437,6 +29767,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29452,6 +29783,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29467,6 +29799,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29482,6 +29815,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29497,6 +29831,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29512,6 +29847,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29527,6 +29863,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29542,6 +29879,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29557,6 +29895,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29572,6 +29911,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29587,6 +29927,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29602,6 +29943,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29617,6 +29959,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29632,6 +29975,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29647,6 +29991,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29662,6 +30007,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29677,6 +30023,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29692,6 +30039,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29707,6 +30055,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29722,6 +30071,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29737,6 +30087,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29752,6 +30103,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29767,6 +30119,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29782,6 +30135,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29797,6 +30151,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29812,6 +30167,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29827,6 +30183,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29842,6 +30199,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29857,6 +30215,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29872,6 +30231,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29887,6 +30247,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29902,6 +30263,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29917,6 +30279,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29932,6 +30295,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29947,6 +30311,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29962,6 +30327,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29977,6 +30343,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -29992,6 +30359,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -30007,6 +30375,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -30022,6 +30391,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -30037,6 +30407,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -30052,6 +30423,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -30067,6 +30439,7 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
           ],
@@ -30082,8 +30455,1711 @@
           "viaVar": [
             "raceStart.airTempNumber",
             "raceStart.trackTempNumber",
+            "readout.tempNumber",
             "sessionStart.airTempNumber",
             "sessionStart.trackTempNumber"
+          ],
+          "playedBy": null
+        }
+      ]
+    },
+    {
+      "group": "numbers-fuel",
+      "lines": [
+        {
+          "base": "0",
+          "texts": [
+            "zero"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "1",
+          "texts": [
+            "one"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "10",
+          "texts": [
+            "ten"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "100",
+          "texts": [
+            "one hundred"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "101",
+          "texts": [
+            "one hundred one"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "102",
+          "texts": [
+            "one hundred two"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "103",
+          "texts": [
+            "one hundred three"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "104",
+          "texts": [
+            "one hundred four"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "105",
+          "texts": [
+            "one hundred five"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "106",
+          "texts": [
+            "one hundred six"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "107",
+          "texts": [
+            "one hundred seven"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "108",
+          "texts": [
+            "one hundred eight"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "109",
+          "texts": [
+            "one hundred nine"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "11",
+          "texts": [
+            "eleven"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "110",
+          "texts": [
+            "one hundred ten"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "111",
+          "texts": [
+            "one hundred eleven"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "112",
+          "texts": [
+            "one hundred twelve"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "113",
+          "texts": [
+            "one hundred thirteen"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "114",
+          "texts": [
+            "one hundred fourteen"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "115",
+          "texts": [
+            "one hundred fifteen"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "116",
+          "texts": [
+            "one hundred sixteen"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "117",
+          "texts": [
+            "one hundred seventeen"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "118",
+          "texts": [
+            "one hundred eighteen"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "119",
+          "texts": [
+            "one hundred nineteen"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "12",
+          "texts": [
+            "twelve"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "120",
+          "texts": [
+            "one hundred twenty"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "13",
+          "texts": [
+            "thirteen"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "14",
+          "texts": [
+            "fourteen"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "15",
+          "texts": [
+            "fifteen"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "16",
+          "texts": [
+            "sixteen"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "17",
+          "texts": [
+            "seventeen"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "18",
+          "texts": [
+            "eighteen"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "19",
+          "texts": [
+            "nineteen"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "2",
+          "texts": [
+            "two"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "20",
+          "texts": [
+            "twenty"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "21",
+          "texts": [
+            "twenty one"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "22",
+          "texts": [
+            "twenty two"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "23",
+          "texts": [
+            "twenty three"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "24",
+          "texts": [
+            "twenty four"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "25",
+          "texts": [
+            "twenty five"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "26",
+          "texts": [
+            "twenty six"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "27",
+          "texts": [
+            "twenty seven"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "28",
+          "texts": [
+            "twenty eight"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "29",
+          "texts": [
+            "twenty nine"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "3",
+          "texts": [
+            "three"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "30",
+          "texts": [
+            "thirty"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "31",
+          "texts": [
+            "thirty one"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "32",
+          "texts": [
+            "thirty two"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "33",
+          "texts": [
+            "thirty three"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "34",
+          "texts": [
+            "thirty four"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "35",
+          "texts": [
+            "thirty five"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "36",
+          "texts": [
+            "thirty six"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "37",
+          "texts": [
+            "thirty seven"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "38",
+          "texts": [
+            "thirty eight"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "39",
+          "texts": [
+            "thirty nine"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "4",
+          "texts": [
+            "four"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "40",
+          "texts": [
+            "forty"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "41",
+          "texts": [
+            "forty one"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "42",
+          "texts": [
+            "forty two"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "43",
+          "texts": [
+            "forty three"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "44",
+          "texts": [
+            "forty four"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "45",
+          "texts": [
+            "forty five"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "46",
+          "texts": [
+            "forty six"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "47",
+          "texts": [
+            "forty seven"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "48",
+          "texts": [
+            "forty eight"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "49",
+          "texts": [
+            "forty nine"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "5",
+          "texts": [
+            "five"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "50",
+          "texts": [
+            "fifty"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "51",
+          "texts": [
+            "fifty one"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "52",
+          "texts": [
+            "fifty two"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "53",
+          "texts": [
+            "fifty three"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "54",
+          "texts": [
+            "fifty four"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "55",
+          "texts": [
+            "fifty five"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "56",
+          "texts": [
+            "fifty six"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "57",
+          "texts": [
+            "fifty seven"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "58",
+          "texts": [
+            "fifty eight"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "59",
+          "texts": [
+            "fifty nine"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "6",
+          "texts": [
+            "six"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "60",
+          "texts": [
+            "sixty"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "61",
+          "texts": [
+            "sixty one"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "62",
+          "texts": [
+            "sixty two"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "63",
+          "texts": [
+            "sixty three"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "64",
+          "texts": [
+            "sixty four"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "65",
+          "texts": [
+            "sixty five"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "66",
+          "texts": [
+            "sixty six"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "67",
+          "texts": [
+            "sixty seven"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "68",
+          "texts": [
+            "sixty eight"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "69",
+          "texts": [
+            "sixty nine"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "7",
+          "texts": [
+            "seven"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "70",
+          "texts": [
+            "seventy"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "71",
+          "texts": [
+            "seventy one"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "72",
+          "texts": [
+            "seventy two"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "73",
+          "texts": [
+            "seventy three"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "74",
+          "texts": [
+            "seventy four"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "75",
+          "texts": [
+            "seventy five"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "76",
+          "texts": [
+            "seventy six"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "77",
+          "texts": [
+            "seventy seven"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "78",
+          "texts": [
+            "seventy eight"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "79",
+          "texts": [
+            "seventy nine"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "8",
+          "texts": [
+            "eight"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "80",
+          "texts": [
+            "eighty"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "81",
+          "texts": [
+            "eighty one"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "82",
+          "texts": [
+            "eighty two"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "83",
+          "texts": [
+            "eighty three"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "84",
+          "texts": [
+            "eighty four"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "85",
+          "texts": [
+            "eighty five"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "86",
+          "texts": [
+            "eighty six"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "87",
+          "texts": [
+            "eighty seven"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "88",
+          "texts": [
+            "eighty eight"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "89",
+          "texts": [
+            "eighty nine"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "9",
+          "texts": [
+            "nine"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "90",
+          "texts": [
+            "ninety"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "91",
+          "texts": [
+            "ninety one"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "92",
+          "texts": [
+            "ninety two"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "93",
+          "texts": [
+            "ninety three"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "94",
+          "texts": [
+            "ninety four"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "95",
+          "texts": [
+            "ninety five"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "96",
+          "texts": [
+            "ninety six"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "97",
+          "texts": [
+            "ninety seven"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "98",
+          "texts": [
+            "ninety eight"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "99",
+          "texts": [
+            "ninety nine"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelNumber"
+          ],
+          "playedBy": null
+        }
+      ]
+    },
+    {
+      "group": "numbers-fuel-decimal",
+      "lines": [
+        {
+          "base": "gallons-0",
+          "texts": [
+            "point zero gallons."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelDecimal"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "gallons-1",
+          "texts": [
+            "point one gallons."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelDecimal"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "gallons-2",
+          "texts": [
+            "point two gallons."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelDecimal"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "gallons-3",
+          "texts": [
+            "point three gallons."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelDecimal"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "gallons-4",
+          "texts": [
+            "point four gallons."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelDecimal"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "gallons-5",
+          "texts": [
+            "point five gallons."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelDecimal"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "gallons-6",
+          "texts": [
+            "point six gallons."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelDecimal"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "gallons-7",
+          "texts": [
+            "point seven gallons."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelDecimal"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "gallons-8",
+          "texts": [
+            "point eight gallons."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelDecimal"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "gallons-9",
+          "texts": [
+            "point nine gallons."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelDecimal"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "liters-0",
+          "texts": [
+            "point zero liters."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelDecimal"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "liters-1",
+          "texts": [
+            "point one liters."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelDecimal"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "liters-2",
+          "texts": [
+            "point two liters."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelDecimal"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "liters-3",
+          "texts": [
+            "point three liters."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelDecimal"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "liters-4",
+          "texts": [
+            "point four liters."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelDecimal"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "liters-5",
+          "texts": [
+            "point five liters."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelDecimal"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "liters-6",
+          "texts": [
+            "point six liters."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelDecimal"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "liters-7",
+          "texts": [
+            "point seven liters."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelDecimal"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "liters-8",
+          "texts": [
+            "point eight liters."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelDecimal"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "liters-9",
+          "texts": [
+            "point nine liters."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.fuelDecimal"
           ],
           "playedBy": null
         }
@@ -38346,6 +40422,251 @@
       ]
     },
     {
+      "group": "readout-laps",
+      "lines": [
+        {
+          "base": "1",
+          "texts": [
+            "lap,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.laps"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "10",
+          "texts": [
+            "ten laps,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.laps"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "11",
+          "texts": [
+            "eleven laps,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.laps"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "12",
+          "texts": [
+            "twelve laps,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.laps"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "13",
+          "texts": [
+            "thirteen laps,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.laps"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "14",
+          "texts": [
+            "fourteen laps,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.laps"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "15",
+          "texts": [
+            "fifteen laps,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.laps"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "16",
+          "texts": [
+            "sixteen laps,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.laps"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "17",
+          "texts": [
+            "seventeen laps,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.laps"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "18",
+          "texts": [
+            "eighteen laps,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.laps"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "19",
+          "texts": [
+            "nineteen laps,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.laps"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "2",
+          "texts": [
+            "two laps,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.laps"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "20",
+          "texts": [
+            "twenty laps,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.laps"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "3",
+          "texts": [
+            "three laps,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.laps"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "4",
+          "texts": [
+            "four laps,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.laps"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "5",
+          "texts": [
+            "five laps,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.laps"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "6",
+          "texts": [
+            "six laps,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.laps"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "7",
+          "texts": [
+            "seven laps,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.laps"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "8",
+          "texts": [
+            "eight laps,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.laps"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "9",
+          "texts": [
+            "nine laps,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "readout.laps"
+          ],
+          "playedBy": null
+        }
+      ]
+    },
+    {
       "group": "rolling-start",
       "lines": [
         {
@@ -38383,6 +40704,7 @@
             "pitSpeed.limitIntro",
             "raceStart.degreesUnit",
             "raceStart.wetness",
+            "readout.degreesUnit",
             "sessionStart.degreesUnit",
             "sessionStart.sessionLine",
             "sessionStart.speedUnit",
@@ -38403,6 +40725,7 @@
             "pitSpeed.limitIntro",
             "raceStart.degreesUnit",
             "raceStart.wetness",
+            "readout.degreesUnit",
             "sessionStart.degreesUnit",
             "sessionStart.sessionLine",
             "sessionStart.speedUnit",
@@ -38421,6 +40744,7 @@
             "pitSpeed.limitIntro",
             "raceStart.degreesUnit",
             "raceStart.wetness",
+            "readout.degreesUnit",
             "sessionStart.degreesUnit",
             "sessionStart.sessionLine",
             "sessionStart.speedUnit",
@@ -38439,6 +40763,7 @@
             "pitSpeed.limitIntro",
             "raceStart.degreesUnit",
             "raceStart.wetness",
+            "readout.degreesUnit",
             "sessionStart.degreesUnit",
             "sessionStart.sessionLine",
             "sessionStart.speedUnit",
@@ -38457,6 +40782,7 @@
             "pitSpeed.limitIntro",
             "raceStart.degreesUnit",
             "raceStart.wetness",
+            "readout.degreesUnit",
             "sessionStart.degreesUnit",
             "sessionStart.sessionLine",
             "sessionStart.speedUnit",
@@ -38475,6 +40801,7 @@
             "pitSpeed.limitIntro",
             "raceStart.degreesUnit",
             "raceStart.wetness",
+            "readout.degreesUnit",
             "sessionStart.degreesUnit",
             "sessionStart.sessionLine",
             "sessionStart.speedUnit",
@@ -38493,6 +40820,7 @@
             "pitSpeed.limitIntro",
             "raceStart.degreesUnit",
             "raceStart.wetness",
+            "readout.degreesUnit",
             "sessionStart.degreesUnit",
             "sessionStart.sessionLine",
             "sessionStart.speedUnit",
@@ -38514,6 +40842,7 @@
             "pitSpeed.limitIntro",
             "raceStart.degreesUnit",
             "raceStart.wetness",
+            "readout.degreesUnit",
             "sessionStart.degreesUnit",
             "sessionStart.sessionLine",
             "sessionStart.speedUnit",
@@ -38532,6 +40861,7 @@
             "pitSpeed.limitIntro",
             "raceStart.degreesUnit",
             "raceStart.wetness",
+            "readout.degreesUnit",
             "sessionStart.degreesUnit",
             "sessionStart.sessionLine",
             "sessionStart.speedUnit",
@@ -38550,6 +40880,7 @@
             "pitSpeed.limitIntro",
             "raceStart.degreesUnit",
             "raceStart.wetness",
+            "readout.degreesUnit",
             "sessionStart.degreesUnit",
             "sessionStart.sessionLine",
             "sessionStart.speedUnit",
@@ -38571,6 +40902,7 @@
             "pitSpeed.limitIntro",
             "raceStart.degreesUnit",
             "raceStart.wetness",
+            "readout.degreesUnit",
             "sessionStart.degreesUnit",
             "sessionStart.sessionLine",
             "sessionStart.speedUnit",
@@ -38589,6 +40921,7 @@
             "pitSpeed.limitIntro",
             "raceStart.degreesUnit",
             "raceStart.wetness",
+            "readout.degreesUnit",
             "sessionStart.degreesUnit",
             "sessionStart.sessionLine",
             "sessionStart.speedUnit",
@@ -38607,6 +40940,7 @@
             "pitSpeed.limitIntro",
             "raceStart.degreesUnit",
             "raceStart.wetness",
+            "readout.degreesUnit",
             "sessionStart.degreesUnit",
             "sessionStart.sessionLine",
             "sessionStart.speedUnit",
@@ -38625,6 +40959,7 @@
             "pitSpeed.limitIntro",
             "raceStart.degreesUnit",
             "raceStart.wetness",
+            "readout.degreesUnit",
             "sessionStart.degreesUnit",
             "sessionStart.sessionLine",
             "sessionStart.speedUnit",
@@ -38643,6 +40978,7 @@
             "pitSpeed.limitIntro",
             "raceStart.degreesUnit",
             "raceStart.wetness",
+            "readout.degreesUnit",
             "sessionStart.degreesUnit",
             "sessionStart.sessionLine",
             "sessionStart.speedUnit",
@@ -38661,6 +40997,7 @@
             "pitSpeed.limitIntro",
             "raceStart.degreesUnit",
             "raceStart.wetness",
+            "readout.degreesUnit",
             "sessionStart.degreesUnit",
             "sessionStart.sessionLine",
             "sessionStart.speedUnit",
@@ -40731,6 +43068,71 @@
           "takes": 1,
           "usedBy": [
             "pit-crew.start-light-ready"
+          ],
+          "viaVar": [],
+          "playedBy": null
+        }
+      ]
+    },
+    {
+      "group": "telemetry-readout",
+      "lines": [
+        {
+          "base": "air-temp-intro",
+          "texts": [
+            "Air temperature is"
+          ],
+          "takes": 1,
+          "usedBy": [
+            "pit-crew.readout-air-temp"
+          ],
+          "viaVar": [],
+          "playedBy": null
+        },
+        {
+          "base": "fuel-average-intro",
+          "texts": [
+            "Average fuel over the last"
+          ],
+          "takes": 1,
+          "usedBy": [
+            "pit-crew.readout-fuel-average"
+          ],
+          "viaVar": [],
+          "playedBy": null
+        },
+        {
+          "base": "fuel-last-lap-intro",
+          "texts": [
+            "Fuel used last lap,"
+          ],
+          "takes": 1,
+          "usedBy": [
+            "pit-crew.readout-fuel-last-lap"
+          ],
+          "viaVar": [],
+          "playedBy": null
+        },
+        {
+          "base": "no-data",
+          "texts": [
+            "No clean lap on the books yet."
+          ],
+          "takes": 1,
+          "usedBy": [
+            "pit-crew.readout-no-data"
+          ],
+          "viaVar": [],
+          "playedBy": null
+        },
+        {
+          "base": "track-temp-intro",
+          "texts": [
+            "Track temperature is"
+          ],
+          "takes": 1,
+          "usedBy": [
+            "pit-crew.readout-track-temp"
           ],
           "viaVar": [],
           "playedBy": null
