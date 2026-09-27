@@ -5133,7 +5133,6 @@
     "voice/shawn/pit-readback/tires-skip-lr.mp3",
     "voice/shawn/pit-readback/tires-skip-rf.mp3",
     "voice/shawn/pit-readback/tires-skip-rr.mp3",
-    "voice/shawn/pit-readback/windshield-off.mp3",
     "voice/shawn/pit-readback/windshield-on.mp3",
     "voice/shawn/pit-status/bad-angle-01.mp3",
     "voice/shawn/pit-status/bad-angle-repeat-01.mp3",
@@ -5751,8 +5750,7 @@
     "voice/shawn/track-conditions/worsening-mostly-dry-01.mp3",
     "voice/shawn/track-conditions/worsening-very-lightly-wet-01.mp3",
     "voice/shawn/track-conditions/worsening-very-wet-01.mp3",
-    "voice/shawn/welcome/greeting-01.mp3",
-    "voice/shawn/welcome/hello.mp3"
+    "voice/shawn/welcome/greeting-01.mp3"
   ],
   "ambientLoop": "sfx/IRD-ambient-pit.mp3",
   "ticks": {

@@ -67,7 +67,7 @@ export const VOICE_PACKS = Object.freeze([
     id: "iracedeck-terse",
     label: "Default (Terse)",
     version: "1.0.0",
-    description: "The Default engineer in radio shorthand: race-time calls carry the fact and nothing else.",
+    description: "The Default engineer in radio shorthand: shorter race-time calls, most of them the fact itself.",
     author: "iRaceDeck",
     voices: Object.freeze(["shawn"]),
     bundled: false,

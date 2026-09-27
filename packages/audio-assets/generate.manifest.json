@@ -24425,14 +24425,6 @@
       "generatedAt": "2026-09-11T08:00:22.249Z",
       "requestId": "S18VSve5R33HPRAX35kb"
     },
-    "voice/shawn/pit-readback/windshield-off.mp3": {
-      "hash": "a44a50cc89fd839c",
-      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
-      "model": "eleven_flash_v2_5",
-      "textPreview": "skipping the windshield.",
-      "generatedAt": "2026-09-11T08:00:22.502Z",
-      "requestId": "lQRYGEipG4b0JAn9lP6F"
-    },
     "voice/shawn/damage/repair-needed-01.mp3": {
       "hash": "fd25cb02efc59ad0",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
@@ -25680,14 +25672,6 @@
       "textPreview": "Zeus",
       "generatedAt": "2026-09-11T08:00:54.650Z",
       "requestId": "4PnK9XY3EjlFRku7Dri4"
-    },
-    "voice/shawn/welcome/hello.mp3": {
-      "hash": "e0a998a513a95ff7",
-      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
-      "model": "eleven_flash_v2_5",
-      "textPreview": "Hello",
-      "generatedAt": "2026-09-11T08:00:54.832Z",
-      "requestId": "VHpFqvKwVHifmvxHVjhR"
     },
     "voice/shawn/welcome/greeting-01.mp3": {
       "hash": "0d2d92f2cc581942",
