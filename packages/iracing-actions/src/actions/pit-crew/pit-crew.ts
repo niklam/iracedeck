@@ -470,8 +470,10 @@ export class PitCrew extends ConnectionStateAwareAction<PitCrewSettings> {
         toggleCornerNamesFeature(this.logger);
         break;
       case "telemetry-readout":
+        // A readout changes no displayed state, so there is nothing to re-render.
         this.requestTelemetryReadout(settings);
-        break;
+
+        return;
     }
 
     await this.rerenderAll();

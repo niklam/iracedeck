@@ -1444,6 +1444,39 @@ describe("PitCrew action", () => {
 
       expect(hoisted.updateGlobalSettings).not.toHaveBeenCalled();
     });
+
+    describe("re-rendering", () => {
+      const readoutKey = { mode: "telemetry-readout", readoutKind: "air-temp" } as const;
+
+      async function twoKeys(): Promise<PitCrew> {
+        hoisted.setSdkTelemetry({ DisplayUnits: 1, AirTemp: 23 });
+        const action = new PitCrew();
+        await action.onWillAppear(buildAppearEvent(readoutKey, "ctx-readout") as never);
+        await action.onWillAppear(buildAppearEvent({ mode: "race-engineer" }, "ctx-engineer") as never);
+        vi.clearAllMocks();
+
+        return action;
+      }
+
+      it("a readout press changes no displayed state, so no key is redrawn", async () => {
+        const action = await twoKeys();
+
+        await action.onKeyDown(buildAppearEvent(readoutKey, "ctx-readout") as never);
+
+        expect(hoisted.busPublish).toHaveBeenCalledTimes(1);
+        expect(action["updateKeyImage"]).not.toHaveBeenCalled();
+        expect(action["setKeyImage"]).not.toHaveBeenCalled();
+      });
+
+      it("a toggle press on the same action still redraws every visible key", async () => {
+        const action = await twoKeys();
+
+        await action.onKeyDown(buildAppearEvent({ mode: "race-engineer" }, "ctx-engineer") as never);
+
+        const redrawn = vi.mocked(action["updateKeyImage"]).mock.calls.map(([contextId]) => contextId);
+        expect(redrawn).toEqual(expect.arrayContaining(["ctx-readout", "ctx-engineer"]));
+      });
+    });
   });
 
   describe("onWillDisappear", () => {
