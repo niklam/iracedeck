@@ -37,7 +37,9 @@
  *
  * The bar is held by every first-party voice, not only the reference one
  * (#999): every voice in audio-assets' `VOICE_PACKS` registry runs the
- * per-voice block below against its own script and its own clips. The
+ * per-voice block below against its own script and its own clips, and must
+ * declare `skip: true` for exactly the ids the reference voice does — so a
+ * first-party voice never goes quiet about a callout `default` speaks. The
  * catalog-level checks — the registration and the contracts' descriptions —
  * read no script and run once. Third-party packs stay outside the bar; for
  * them absence still means skipped. The published reference and `lint:pack`
@@ -102,6 +104,14 @@ const FIRST_PARTY_SCRIPTS: ReadonlyArray<{ voice: string; script: CalloutScript 
  * voice the published reference and `lint:pack` read.
  */
 const REFERENCE_VOICE = "default";
+
+/** The ids a script declares `skip: true`, sorted — the set the skip-parity check compares (#999). */
+function skippedIds(script: CalloutScript): string[] {
+  return Object.entries(script.scenarios)
+    .filter(([, entry]) => entry.skip === true)
+    .map(([id]) => id)
+    .sort();
+}
 
 /**
  * How many contracts the catalog registered when #1065 closed it: 24 flags
@@ -366,6 +376,20 @@ describe.each(FIRST_PARTY_SCRIPTS)("voice $voice", ({ voice, script }) => {
       const undeclared = Object.keys(script.scenarios).filter((id) => !contracts.has(id));
 
       expect(undeclared, "script entries whose id is not a registered contract").toEqual([]);
+    });
+
+    it("skips exactly the callouts the reference voice skips — never one it speaks, never speaks one it skips (#999)", () => {
+      // Completeness above counts `skip: true` as an entry, so on its own it
+      // would let a first-party voice go quiet about a callout the reference
+      // voice speaks. Every first-party voice makes every callout `default`
+      // makes; parity of the skip sets is what holds that.
+      const reference = FIRST_PARTY_SCRIPTS.find((entry) => entry.voice === REFERENCE_VOICE)?.script;
+
+      expect(reference, `the reference voice ${REFERENCE_VOICE} is in FIRST_PARTY_SCRIPTS`).toBeDefined();
+      expect(
+        skippedIds(script),
+        `skip: true ids in voice/${voice}/callouts.json against voice/${REFERENCE_VOICE}/callouts.json`,
+      ).toEqual(skippedIds(reference as CalloutScript));
     });
 
     it("every entry carries the comment and test lines the reference is built from, and a sequence unless skipped", () => {
