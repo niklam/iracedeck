@@ -73,13 +73,15 @@ export function isFirstPartyVoicePack(pack: Pick<InstalledVoicePack, "provenance
  *
  * Keys are the voices' composite ids, `<pack id>::<voice id>` (#1144) — what
  * the dropdown's options carry and `_voiceLabels` is read by. Two packs each
- * shipping a `matt` are therefore two entries. The THIRD-PARTY naming rule
- * below is #1147's, narrowed to non-first-party packs by #999 once "iRaceDeck:
- * Default" needed the prefix reserved for our own voices: `<pack label>:
+ * shipping a `matt` are therefore two entries. #999 narrows the #1034 rule
+ * above to non-first-party packs, now that "iRaceDeck: Default" needs the
+ * prefix reserved for our own voices — the rule ITSELF is unchanged for a
+ * third-party pack: still prefixed only when it ships several voices or
+ * labels one differently from itself. Replacing that with `<pack label>:
  * <voice label>` for every voice of a third-party pack, whatever the manifest
- * declares — until #1147 shipped, two packs that label a voice identically
- * showed two identical entries, as the rule already allows for two different
- * voice ids.
+ * declares, remains #1147's to do and is planned, not shipped; until it
+ * lands, two third-party packs that label a voice identically still show two
+ * identical entries, as the rule already allows for two different voice ids.
  */
 export function voiceDisplayLabels(packs: readonly InstalledVoicePack[]): Record<string, string> {
   const labels: Record<string, string> = {};
@@ -101,7 +103,7 @@ export function voiceDisplayLabels(packs: readonly InstalledVoicePack[]): Record
   return labels;
 }
 
-/** `en` collation, base sensitivity and numeric ordering — the same rule the pack list and other dropdowns sort by. */
+/** Case-insensitive, numeric-aware English collation (`en`, `sensitivity: "base"`, `numeric: true`). */
 const collator = new Intl.Collator("en", { sensitivity: "base", numeric: true });
 
 /**
