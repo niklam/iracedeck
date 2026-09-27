@@ -254,6 +254,48 @@ Show the current track-wetness state with a centered vertical 6-segment bar that
 
 ---
 
+### Track Temperature
+
+Show the track temperature as a whole number with its unit — `41°C`, or `106°F` when your iRacing display units are imperial. It is the same track temperature the Race Engineer quotes in the session-start briefing. The key shows `--` while iRacing gives no reading.
+
+With [Speak value on press](#speak-value-on-press) on, pressing the key has the Race Engineer read it out: *"Track temperature is forty one degrees."*
+
+#### Details
+
+- **Dial:** No rotation support
+- **Default binding:** No keyboard binding
+- **Telemetry-aware icon:** Yes — the temperature updates live
+
+#### Setting: Font Size
+
+Size of the rendered value, in PI units (5–36, doubled for SVG render). Defaults to `14`.
+
+#### Setting: Speak value on press
+
+Whether pressing the key has the Race Engineer read the value out. Defaults to **On**. See [Speak value on press](#speak-value-on-press).
+
+---
+
+### Air Temperature
+
+Show the air temperature as a whole number with its unit — `23°C`, or `73°F` when your iRacing display units are imperial. It is the same air temperature the Race Engineer quotes in the session-start briefing. The key shows `--` while iRacing gives no reading.
+
+With [Speak value on press](#speak-value-on-press) on, pressing the key has the Race Engineer read it out: *"Air temperature is twenty three degrees."*
+
+#### Details
+
+- **Dial:** No rotation support
+- **Default binding:** No keyboard binding
+- **Telemetry-aware icon:** Yes — the temperature updates live
+
+#### Setting: Font Size
+
+Size of the rendered value, in PI units (5–36, doubled for SVG render). Defaults to `14`.
+
+#### Setting: Speak value on press
+
+Whether pressing the key has the Race Engineer read the value out. Defaults to **On**. See [Speak value on press](#speak-value-on-press).
+
 ### Wind
 
 Show the wind as an arrow with the wind speed below it. The arrow points the way the wind is travelling, turning in fine 5° steps — 72 positions rather than a handful of fixed ones. What it is measured against depends on the **Direction** setting below; in the default **Relative to car** mode it points where the wind pushes your car.
@@ -299,48 +341,6 @@ The unit the wind speed is shown in. Defaults to **km/h**.
 Size of the label under the arrow, in PI units (5–36, doubled for SVG render). Defaults to `14`. A long compass label shrinks automatically so it still fits the key.
 
 ---
-
-### Track Temperature
-
-Show the track temperature as a whole number with its unit — `41°C`, or `106°F` when your iRacing display units are imperial. It is the same track temperature the Race Engineer quotes in the session-start briefing. The key shows `--` while iRacing gives no reading.
-
-With [Speak value on press](#speak-value-on-press) on, pressing the key has the Race Engineer read it out: *"Track temperature is forty one degrees."*
-
-#### Details
-
-- **Dial:** No rotation support
-- **Default binding:** No keyboard binding
-- **Telemetry-aware icon:** Yes — the temperature updates live
-
-#### Setting: Font Size
-
-Size of the rendered value, in PI units (5–36, doubled for SVG render). Defaults to `14`.
-
-#### Setting: Speak value on press
-
-Whether pressing the key has the Race Engineer read the value out. Defaults to **On**. See [Speak value on press](#speak-value-on-press).
-
----
-
-### Air Temperature
-
-Show the air temperature as a whole number with its unit — `23°C`, or `73°F` when your iRacing display units are imperial. It is the same air temperature the Race Engineer quotes in the session-start briefing. The key shows `--` while iRacing gives no reading.
-
-With [Speak value on press](#speak-value-on-press) on, pressing the key has the Race Engineer read it out: *"Air temperature is twenty three degrees."*
-
-#### Details
-
-- **Dial:** No rotation support
-- **Default binding:** No keyboard binding
-- **Telemetry-aware icon:** Yes — the temperature updates live
-
-#### Setting: Font Size
-
-Size of the rendered value, in PI units (5–36, doubled for SVG render). Defaults to `14`.
-
-#### Setting: Speak value on press
-
-Whether pressing the key has the Race Engineer read the value out. Defaults to **On**. See [Speak value on press](#speak-value-on-press).
 
 ## Speak value on press
 
