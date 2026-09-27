@@ -3,14 +3,14 @@ title: Actions Overview
 description: All iRaceDeck actions organized by category
 ---
 
-iRaceDeck provides 33 actions with 276 modes for iRacing, organized into 10 categories.
+iRaceDeck provides 33 actions with 277 modes for iRacing, organized into 10 categories.
 
 ## Categories
 
 | Category | Actions | Modes | Description |
 |----------|---------|-------|-------------|
-| [Audio & Voice](/docs/actions/audio-voice/ai-spotter-controls/) | 3 | 16 | AI spotter, audio controls (incl. Race Engineer & Radar volume), race engineer, radar, corner names & telemetry readouts |
-| [Display & Session](/docs/actions/display-session/session-info/) | 2 | 11 | Live session data: incidents, time remaining, laps, position, estimated iRating gain/loss, gaps, fuel, laps to empty, flags, track wetness, wind |
+| [Audio & Voice](/docs/actions/audio-voice/ai-spotter-controls/) | 3 | 15 | AI spotter, audio controls (incl. Race Engineer & Radar volume), race engineer, radar & corner names |
+| [Display & Session](/docs/actions/display-session/session-info/) | 2 | 13 | Live session data: incidents, time remaining, laps, position, estimated iRating gain/loss, gaps, fuel, laps to empty, flags, track wetness, wind, track & air temperature, some read out by the Race Engineer on press |
 | [Driving Controls](/docs/actions/driving/black-box-selector/) | 3 | 21 | Black boxes, look direction, car control |
 | [Cockpit & Interface](/docs/actions/cockpit/cockpit-misc/) | 5 | 31 | Wipers, force feedback, splits & reference, telemetry, UI toggles |
 | [View & Camera](/docs/actions/view-camera/view-adjustment/) | 6 | 95 | FOV, replay, replay markers, camera controls, broadcast tools |

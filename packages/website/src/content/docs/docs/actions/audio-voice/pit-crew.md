@@ -3,11 +3,11 @@ title: Pit Crew
 description: Directional proximity radar driven by the iRaceDeck audio framework.
 sidebar:
   badge:
-    text: "4 modes"
+    text: "3 modes"
     variant: tip
 ---
 
-Pit Crew bundles iRaceDeck's pit-side audio into one Stream Deck action. It exposes **Race Engineer Toggle** (the default — flips the engineer voice on/off), **Radar** (directional proximity ticks when a car pulls alongside), **Corner Names** (toggles the corner-name callouts in practice and test sessions), and **Telemetry Readout** (the Race Engineer reads out a fuel or temperature figure when you press the key). The Race Engineer voice also speaks **Spotter** side-awareness calls ("car left", "three wide", "clear") — these are a voice callout family, not a separate mode (see [Spotter (side-awareness calls)](#spotter-side-awareness-calls) below).
+Pit Crew bundles iRaceDeck's pit-side audio into one Stream Deck action. It exposes **Race Engineer Toggle** (the default — flips the engineer voice on/off), **Radar** (directional proximity ticks when a car pulls alongside), and **Corner Names** (toggles the corner-name callouts in practice and test sessions). The Race Engineer voice also speaks **Spotter** side-awareness calls ("car left", "three wide", "clear") — these are a voice callout family, not a separate mode (see [Spotter (side-awareness calls)](#spotter-side-awareness-calls) below).
 
 Radar volume (Up/Down stepping) now lives in the [Audio Controls](/docs/actions/audio-voice/audio-controls/) action under the **Radar** mode, alongside the new **Race Engineer** volume buttons. Existing Pit Crew buttons configured for Radar Volume keep working, but new buttons set up volume control from Audio Controls.
 
@@ -56,41 +56,6 @@ The engineer confirms each press with a short line — *"Roger that. Corner call
 - **Dial:** No rotation support
 - **Default binding:** None — button-driven feature, no keyboard binding
 - **Telemetry-aware icon:** Yes — the status bar reflects the current global flag
-
-### Telemetry Readout
-
-For when you can't glance at the deck — in VR, say. Press the key and the Race Engineer reads the figure out:
-
-- *"Fuel used last lap, two point four liters."*
-- *"Average fuel over the last five laps, two point four liters."*
-- *"Track temperature is forty one degrees."*
-- *"Air temperature is twenty three degrees."*
-
-Fuel is spoken to a tenth, in liters or gallons as your iRacing display units are set; temperatures in Celsius or Fahrenheit the same way, as whole degrees. Fuel figures come from the same clean-lap record as the [Session Info](/docs/actions/display-session/session-info/) fuel modes: a lap with a pit stop, an out-lap or in-lap, a tow, or a lap run under a full-course caution doesn't count. Before your first clean lap a fuel key says *"No clean lap on the books yet."* — and early in a stint the average names the laps it actually covers, so a five-lap key after three clean laps says *"over the last three laps"*.
-
-The figure is read at the moment you press. If the engineer is already talking, your readout waits and plays when that line finishes; press several keys meanwhile and only the last one is read out. The Race Engineer's own calls take priority over a readout — only background chatter such as the pit readback gives way to it. If one of those calls is already waiting its turn when you press, or one comes up while your readout is waiting, your readout is not read out — press the key again. Readouts need the Race Engineer switched on and play at its volume — there is no separate switch for them. Nothing is said while iRacing isn't running.
-
-The key shows which figure it reads out (*FUEL LAST LAP*, *FUEL AVG 5 LAPS*, *TRACK TEMP*, *AIR TEMP*), never the figure itself.
-
-#### Details
-
-- **Method:** Spoken by the Race Engineer — no iRacing command
-- **Dial:** No rotation support
-- **Default binding:** None — button-driven feature, no keyboard binding
-- **Telemetry-aware icon:** No
-
-#### Setting: Readout
-
-Which figure the key reads out. Default **Fuel Used Last Lap**.
-
-- **Fuel Used Last Lap** — the fuel your last clean lap used
-- **Average Fuel per Lap** — the average over your recent clean laps
-- **Track Temperature**
-- **Air Temperature**
-
-#### Setting: Lap Window
-
-Average Fuel per Lap only: how many recent clean laps the average covers, 1–20, default 5.
 
 ## Global Audio Settings (shared across every Pit Crew button)
 
@@ -143,8 +108,6 @@ iRacing can also switch autofuel on by itself as you reach the pit approach, cle
 **While autofuel is armed, a change to the fuel request says nothing at all.** iRacing gives no way to tell a toggle you made from one autofuel made, so the engineer doesn't guess — and that silence is what keeps a session with autofuel from filling the radio with fuel confirmations nobody asked for. Your own fuel toggles with autofuel off are confirmed exactly as before, and the plan autofuel left you with is stated the moment autofuel goes off. A pit stop uses autofuel up as it begins, which switches it off; that is the sim's bookkeeping, so it is silent too.
 
 The engineer also calls out every iRacing-reported pit-service status transition during the stop itself — "crew working", "all done", positioning corrections ("too far left, line it up", etc.), and "crew can't fix that this stop" — so you can keep your eyes on the windscreen and react by ear.
-
-Pressing a [Telemetry Readout](#telemetry-readout) key has the engineer read out a fuel or temperature figure on demand.
 
 ## Start Lights
 

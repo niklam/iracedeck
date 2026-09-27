@@ -1,13 +1,13 @@
 ---
 title: Session Info
-description: Display live session information — incidents, time, laps, position, estimated iRating gain/loss, gaps to the cars ahead/behind, fuel, laps to empty, flags, track wetness, and wind.
+description: Display live session information — incidents, time, laps, position, estimated iRating gain/loss, gaps to the cars ahead/behind, fuel, laps to empty, flags, track wetness, wind, and track and air temperature — and have the Race Engineer read a value out when you press the key.
 sidebar:
   badge:
-    text: "11 modes"
+    text: "13 modes"
     variant: tip
 ---
 
-Display real-time session data on your Stream Deck button. Each mode shows different telemetry with a live-updating icon. Session Info is purely a display action — pressing the button does nothing.
+Display real-time session data on your Stream Deck button. Each mode shows different telemetry with a live-updating icon. Pressing the key has the Race Engineer read the value out, on the items that speak so far — see [Speak value on press](#speak-value-on-press).
 
 ## Modes
 
@@ -146,7 +146,7 @@ Size of the rendered value, in PI units (5–36, doubled for SVG render). Defaul
 
 Show the fuel remaining in the tank, the fuel you used on your last lap, or a rolling average consumption per lap — the numbers you plan a stint around, without an external overlay.
 
-The consumption values only count clean flying laps: laps with a pit stop, an out-lap or in-lap, or a tow are excluded automatically, so a stop never corrupts the average and the display keeps showing the last clean value instead of flickering. The icon shows `--` until the first clean lap has been completed. The data survives garage visits and replay watching — you can tweak the setup in the garage with your consumption numbers still on the key — and after a session change the previous session's values stay visible until you're back in the car and running (in a race, until the green flag), then reset and rebuild from the new session's laps. Values respect your iRacing display units (liters or gallons) and show two decimals.
+The consumption values only count clean flying laps: laps with a pit stop, an out-lap or in-lap, a tow, or a lap run under a full-course caution are excluded automatically, so a stop never corrupts the average and the display keeps showing the last clean value instead of flickering. The icon shows `--` until the first clean lap has been completed. The data survives garage visits and replay watching — you can tweak the setup in the garage with your consumption numbers still on the key — and after a session change the previous session's values stay visible until you're back in the car and running (in a race, until the green flag), then reset and rebuild from the new session's laps. Values respect your iRacing display units (liters or gallons) and show two decimals.
 
 #### Details
 
@@ -176,6 +176,10 @@ How many recent clean laps the **Average per lap** value covers (1–20). Defaul
 #### Setting: Font Size
 
 Size of the rendered value, in PI units (5–36, doubled for SVG render). Defaults to `14`.
+
+#### Setting: Speak value on press
+
+Whether pressing the key has the Race Engineer read the value out. Defaults to **On**. **Used last lap** and **Average per lap** speak; **Current level** doesn't yet, so a press there does nothing. See [Speak value on press](#speak-value-on-press).
 
 ---
 
@@ -246,7 +250,7 @@ Show the current track-wetness state with a centered vertical 6-segment bar that
 
 #### Settings
 
-- No additional settings. The Font Size slider does not apply (the graphic carries its own label).
+- No additional settings. The Font Size slider does not apply (the graphic carries its own label), and [Speak value on press](#speak-value-on-press) has no spoken readout for this item yet.
 
 ---
 
@@ -293,3 +297,64 @@ The unit the wind speed is shown in. Defaults to **km/h**.
 #### Setting: Font Size
 
 Size of the label under the arrow, in PI units (5–36, doubled for SVG render). Defaults to `14`. A long compass label shrinks automatically so it still fits the key.
+
+---
+
+### Track Temperature
+
+Show the track temperature as a whole number with its unit — `41°C`, or `106°F` when your iRacing display units are imperial. It is the same track temperature the Race Engineer quotes in the session-start briefing. The key shows `--` while iRacing gives no reading.
+
+With [Speak value on press](#speak-value-on-press) on, pressing the key has the Race Engineer read it out: *"Track temperature is forty one degrees."*
+
+#### Details
+
+- **Dial:** No rotation support
+- **Default binding:** No keyboard binding
+- **Telemetry-aware icon:** Yes — the temperature updates live
+
+#### Setting: Font Size
+
+Size of the rendered value, in PI units (5–36, doubled for SVG render). Defaults to `14`.
+
+#### Setting: Speak value on press
+
+Whether pressing the key has the Race Engineer read the value out. Defaults to **On**. See [Speak value on press](#speak-value-on-press).
+
+---
+
+### Air Temperature
+
+Show the air temperature as a whole number with its unit — `23°C`, or `73°F` when your iRacing display units are imperial. It is the same air temperature the Race Engineer quotes in the session-start briefing. The key shows `--` while iRacing gives no reading.
+
+With [Speak value on press](#speak-value-on-press) on, pressing the key has the Race Engineer read it out: *"Air temperature is twenty three degrees."*
+
+#### Details
+
+- **Dial:** No rotation support
+- **Default binding:** No keyboard binding
+- **Telemetry-aware icon:** Yes — the temperature updates live
+
+#### Setting: Font Size
+
+Size of the rendered value, in PI units (5–36, doubled for SVG render). Defaults to `14`.
+
+#### Setting: Speak value on press
+
+Whether pressing the key has the Race Engineer read the value out. Defaults to **On**. See [Speak value on press](#speak-value-on-press).
+
+## Speak value on press
+
+For when you can't glance at the deck — in VR, say. **Speak value on press** is on by default and appears on every item: pressing a Session Info key has the Race Engineer read out the value it shows. So far these items speak; on every other item a press does nothing:
+
+- **Fuel** on **Used last lap** — *"Fuel used last lap, two point four liters."*
+- **Fuel** on **Average per lap** — *"Average fuel over the last five laps, two point four liters."*
+- **Track Temperature** — *"Track temperature is forty one degrees."*
+- **Air Temperature** — *"Air temperature is twenty three degrees."*
+
+The lines are the Default voice's; another voice pack may word them its own way.
+
+Fuel is spoken to a tenth, in liters or gallons as your iRacing display units are set, and only clean laps count — the same laps the key shows: a lap with a pit stop, an out-lap or in-lap, a tow, or a lap run under a full-course caution doesn't count. Before your first clean lap a fuel key says *"No clean lap on the books yet."* — and early in a stint the average names the laps it actually covers, so a five-lap key after three clean laps says *"over the last three laps"*. Temperatures are spoken as whole degrees, in Celsius or Fahrenheit the same way; the engineer doesn't say the unit, though a voice pack can add it. With no temperature reading the key shows `--` and a press says nothing.
+
+The figure is read at the moment you press. If the engineer is already talking, your readout waits and plays when that line finishes; press several keys meanwhile and only the last one is read out. The Race Engineer's own calls take priority over a readout — only background chatter such as the pit readback gives way to it. If one of those calls is already waiting its turn when you press, or one comes up while your readout is waiting, your readout is not read out — press the key again. Readouts need the Race Engineer switched on and play at its volume — there is no separate switch for them beyond this setting. Nothing is said while iRacing isn't running.
+
+Turn **Speak value on press** off on a key to keep it display-only.
