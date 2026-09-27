@@ -35856,6 +35856,270 @@
       "textPreview": "White flag, last lap.",
       "generatedAt": "2026-09-20T18:10:48.312Z",
       "requestId": "PorGa9XhUi3LZxQMMZxi"
+    },
+    "voice/shawn/caution/follow-behind-01.mp3": {
+      "hash": "a21307a5d83e8364",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Single file. <break time=\"0.3s\" /> Line up behind",
+      "generatedAt": "2026-09-18T05:27:33.843Z",
+      "requestId": "bNm8bFD08qhYfDkzXmLJ"
+    },
+    "voice/shawn/caution/follow-behind-02.mp3": {
+      "hash": "0e907ff88ddcfa47",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "We're single file — you'll be behind",
+      "generatedAt": "2026-09-18T11:43:54.017Z",
+      "requestId": "G5kZ3gXZYkDF3sArWOFY"
+    },
+    "voice/shawn/caution/follow-behind-03.mp3": {
+      "hash": "1b270206376074a6",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Line up behind",
+      "generatedAt": "2026-09-18T05:27:34.259Z",
+      "requestId": "elK63wO1OmU0cEapKA09"
+    },
+    "voice/shawn/caution/follow-leader-01.mp3": {
+      "hash": "b45b14e132c15bef",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "You're leading them — it's just you and the pace car.",
+      "generatedAt": "2026-09-18T11:44:49.158Z",
+      "requestId": "cF4guJ8gkHwjvTMj3ZbT"
+    },
+    "voice/shawn/caution/follow-leader-02.mp3": {
+      "hash": "e663dc8da7979e57",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "You're first in line. <break time=\"0.3s\" /> Nothing ahead but the pace car.",
+      "generatedAt": "2026-09-18T05:01:16.272Z",
+      "requestId": "BbkSrw3HoEjrOIUJDh6g"
+    },
+    "voice/shawn/caution/follow-noname-01.mp3": {
+      "hash": "94a2bd880e63d4b7",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Line up behind the car ahead.",
+      "generatedAt": "2026-09-18T11:44:12.213Z",
+      "requestId": "DaIUeKQtxF675kldymsW"
+    },
+    "voice/shawn/caution/follow-noname-02.mp3": {
+      "hash": "14d771c7365ebbf0",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Get in behind the car in front of you.",
+      "generatedAt": "2026-09-18T11:44:12.432Z",
+      "requestId": "WvtUIl7uGVKZc2Y4Kpvq"
+    },
+    "voice/shawn/caution/pace-car-out-01.mp3": {
+      "hash": "7f24f70f0f94d671",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Pace car's out.",
+      "generatedAt": "2026-09-18T05:01:16.418Z",
+      "requestId": "R28WjrYILGnmvees9p83"
+    },
+    "voice/shawn/caution/pace-car-out-02.mp3": {
+      "hash": "b33105c759db51f2",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Pace car's on track.",
+      "generatedAt": "2026-09-18T05:01:16.586Z",
+      "requestId": "t3Iqas0SYpQJT8CIbNRt"
+    },
+    "voice/shawn/caution/pace-car-out-03.mp3": {
+      "hash": "18cfefb80df21a91",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "There's the pace car.",
+      "generatedAt": "2026-09-18T05:01:16.745Z",
+      "requestId": "Vxp0GwxLPpAqOuQ7JXZO"
+    },
+    "voice/shawn/caution/two-to-green-01.mp3": {
+      "hash": "11419745166f544c",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Two to green.",
+      "generatedAt": "2026-09-18T16:36:24.846Z",
+      "requestId": "C1zR6gT82eV3WTb4brv6"
+    },
+    "voice/shawn/caution/two-to-green-02.mp3": {
+      "hash": "48f0fd43d375ad0c",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Two laps to green.",
+      "generatedAt": "2026-09-18T16:36:25.032Z",
+      "requestId": "hIV4ZKT3WTI9GgtdzJgz"
+    },
+    "voice/shawn/caution/restart-behind-01.mp3": {
+      "hash": "3e4eb1b0d15a5fa3",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Make sure to follow",
+      "generatedAt": "2026-09-18T05:27:34.416Z",
+      "requestId": "8sChRxB5ZzQOKGfYr3zv"
+    },
+    "voice/shawn/caution/restart-behind-02.mp3": {
+      "hash": "8f165274cf156518",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Lining up behind",
+      "generatedAt": "2026-09-18T05:27:34.576Z",
+      "requestId": "Zl0dzqAPQG85jw1lKvON"
+    },
+    "voice/shawn/caution/extra-lap-01.mp3": {
+      "hash": "3f17796ea62bcc06",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Another lap under caution.",
+      "generatedAt": "2026-09-18T05:01:18.026Z",
+      "requestId": "6rk8dxrTqYa0MQUvMOB1"
+    },
+    "voice/shawn/caution/extra-lap-02.mp3": {
+      "hash": "6b1913bf2432f586",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "We're going around again.",
+      "generatedAt": "2026-09-18T05:01:18.192Z",
+      "requestId": "es0Dxc8BiQajRGpHXq0X"
+    },
+    "voice/shawn/caution/extra-lap-03.mp3": {
+      "hash": "67ee4959f88da143",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "One more lap behind the pace car.",
+      "generatedAt": "2026-09-18T05:01:18.419Z",
+      "requestId": "5xCfbTDxg8x6IlVK7Jzj"
+    },
+    "voice/shawn/caution/one-to-go-01.mp3": {
+      "hash": "d3932e722ed0ce8e",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "One lap to green.",
+      "generatedAt": "2026-09-19T05:51:42.807Z",
+      "requestId": "qzmkZKBCNi6urqRiKtGn"
+    },
+    "voice/shawn/caution/one-to-go-inside-01.mp3": {
+      "hash": "3579a6d91bfab27b",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "One lap to green. <break time=\"0.3s\" /> Take the inside line behind",
+      "generatedAt": "2026-09-19T05:53:59.191Z",
+      "requestId": "VaQDQb6o9dzZjv5f4nCx"
+    },
+    "voice/shawn/caution/one-to-go-outside-01.mp3": {
+      "hash": "fd615478a103f9f4",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "One lap to green. <break time=\"0.3s\" /> Take the outside line behind",
+      "generatedAt": "2026-09-19T05:53:19.244Z",
+      "requestId": "voyxwLzM3OmX8Fs7Nsbu"
+    },
+    "voice/shawn/caution/one-to-go-plain-01.mp3": {
+      "hash": "3265c7cbf9e524fd",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "One lap to green. <break time=\"0.3s\" /> Line up behind",
+      "generatedAt": "2026-09-19T05:51:43.539Z",
+      "requestId": "zFvEKYz4Pml7UWUhxJ6j"
+    },
+    "voice/shawn/caution/one-to-go-leader-01.mp3": {
+      "hash": "ba4a8c87b754fd8e",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "One lap to green. <break time=\"0.3s\" /> You're leading them away.",
+      "generatedAt": "2026-09-19T05:53:19.567Z",
+      "requestId": "mhQb5q5c400vVdLgH6xO"
+    },
+    "voice/shawn/caution/lineup-changed-inside-01.mp3": {
+      "hash": "f978d539c2e6becc",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Change — you're on the inside behind",
+      "generatedAt": "2026-09-18T05:27:35.535Z",
+      "requestId": "JtW2GDvVh2aVan4Wtn94"
+    },
+    "voice/shawn/caution/lineup-changed-outside-01.mp3": {
+      "hash": "9011c4cef23040be",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Change — you're on the outside behind",
+      "generatedAt": "2026-09-18T05:27:35.762Z",
+      "requestId": "X9SBZuthe7pK8JzDY8eu"
+    },
+    "voice/shawn/caution/lineup-changed-plain-01.mp3": {
+      "hash": "0b0f9830296c0c7c",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Change — you're behind",
+      "generatedAt": "2026-09-18T11:46:15.082Z",
+      "requestId": "2JzLBreDJTnW9SRQYkbm"
+    },
+    "voice/shawn/caution/lineup-changed-leader-01.mp3": {
+      "hash": "ed15dc511e080a42",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Change — you're at the front now, just the pace car ahead.",
+      "generatedAt": "2026-09-18T11:45:37.709Z",
+      "requestId": "zLZpqRnyDuoya44kePFc"
+    },
+    "voice/shawn/caution/lineup-changed-noname-01.mp3": {
+      "hash": "9b4d8e321c998c5c",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "The car ahead of you has changed.",
+      "generatedAt": "2026-09-18T11:57:04.907Z",
+      "requestId": "w9A1JKtrULkDruXR8EAV"
+    },
+    "voice/shawn/caution/lineup-changed-noname-02.mp3": {
+      "hash": "364b9162dbaf9d4f",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "You've got a different car ahead now.",
+      "generatedAt": "2026-09-18T11:57:05.140Z",
+      "requestId": "VolmN0MCQdcMhwMgRzjP"
+    },
+    "voice/shawn/caution/pace-car-off-01.mp3": {
+      "hash": "20c67141dfc85538",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Pace car's off.",
+      "generatedAt": "2026-09-18T05:01:20.651Z",
+      "requestId": "r6Y9LZRvNelys65Z0bYd"
+    },
+    "voice/shawn/caution/pace-car-off-02.mp3": {
+      "hash": "4f8a038127b7fffe",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Pace car's peeling off.",
+      "generatedAt": "2026-09-18T05:01:20.824Z",
+      "requestId": "mpZZIqBYbpva9cCeCvNk"
+    },
+    "voice/shawn/caution/restart-01.mp3": {
+      "hash": "b2b75bc4f0c7ffac",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Green, green, green! Go, go, go!",
+      "generatedAt": "2026-09-18T05:01:21.064Z",
+      "requestId": "lKMTbqTtA3FgYp6EiLZC"
+    },
+    "voice/shawn/caution/restart-02.mp3": {
+      "hash": "8bcf9db292bf4fea",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Green! Green! Green!",
+      "generatedAt": "2026-09-18T05:01:21.219Z",
+      "requestId": "pHMP2yY76v2Po5RHJwHZ"
+    },
+    "voice/shawn/caution/restart-03.mp3": {
+      "hash": "7e269fe69470a022",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Green! Go!",
+      "generatedAt": "2026-09-18T05:01:21.379Z",
+      "requestId": "dZbvsVmhemTjbWdrhMVy"
     }
   }
 }
