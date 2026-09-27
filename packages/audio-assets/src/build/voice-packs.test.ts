@@ -2,6 +2,30 @@ import { describe, expect, it } from "vitest";
 
 import { BUNDLED_VOICE_IDS, VOICE_PACKS } from "./voice-packs.mjs";
 
+describe("voice-packs.mjs — the Terse pack (#999)", () => {
+  it("registers the Terse pack as a second first-party pack, on demand (#999)", () => {
+    const terse = VOICE_PACKS.find((pack) => pack.id === "iracedeck-terse");
+    expect(terse).toMatchObject({
+      label: "Default (Terse)",
+      author: "iRaceDeck",
+      voices: ["shawn"],
+      bundled: false,
+      version: "1.0.0",
+    });
+  });
+
+  it("names every new first-party pack iracedeck-<name>; default is the one exception (#999)", () => {
+    for (const pack of VOICE_PACKS) {
+      if (pack.id !== "default") expect(pack.id).toMatch(/^iracedeck-[a-z][a-z0-9-]*$/);
+    }
+  });
+
+  it("authors each voice id once across all packs — the authored tree is flat by voice id", () => {
+    const ids = VOICE_PACKS.flatMap((pack) => [...pack.voices]);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+});
+
 describe("voice-packs.mjs — no voice ships inside a plugin (#1144)", () => {
   // Re-bundling a voice used to be one word, `bundled: true`. #1144 namespaced
   // voice ids by pack and removed what a bundled voice leaned on, so the word

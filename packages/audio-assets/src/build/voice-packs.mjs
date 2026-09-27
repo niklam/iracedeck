@@ -63,6 +63,15 @@ export const VOICE_PACKS = Object.freeze([
     voices: Object.freeze(["default"]),
     bundled: false,
   }),
+  Object.freeze({
+    id: "iracedeck-terse",
+    label: "Default (Terse)",
+    version: "1.0.0",
+    description: "The Default engineer in radio shorthand: race-time calls carry the fact and nothing else.",
+    author: "iRaceDeck",
+    voices: Object.freeze(["shawn"]),
+    bundled: false,
+  }),
 ]);
 
 /**
