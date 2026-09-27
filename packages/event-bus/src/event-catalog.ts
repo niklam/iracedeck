@@ -484,9 +484,10 @@ export type SimEventMap = {
    * #466). The first event the DECK layer publishes rather than the sim
    * translator: the action reads the figure the key shows at the moment of
    * the press, converts it to the driver's display unit and publishes it
-   * here, and the Race Engineer speaks it. The value is captured at press time on purpose — a readout
-   * answers "what is it now" as the driver asked, and a few seconds in the
-   * queue do not make it stale. Never published without telemetry.
+   * here, and the Race Engineer speaks it. The value is captured at press
+   * time on purpose — a readout answers "what is it now" as the driver
+   * asked, and a few seconds in the queue do not make it stale. Never
+   * published without telemetry.
    */
   "telemetryReadout.requested": SimEvent<"telemetryReadout.requested", TelemetryReadoutRequest>;
 

@@ -4,12 +4,11 @@
  * Five contracts fired by `telemetryReadout.requested`, a Session Info key
  * press. What they SAY is the bundled voice's `callouts.json`, so the
  * fire-through cases hand the real artifact to the engine and read what
- * played. The
- * scheduling cases pin the contract options the spec's behaviour needs:
- * queue behind whatever plays, never cut a playing readout, a newer readout
- * replaces a waiting one — and, through `READOUT_WEIGHT`, that a readout
- * never displaces a waiting engineer line of normal weight or above while it
- * does replace waiting chatter.
+ * played. The scheduling cases pin the contract options the spec's
+ * behaviour needs: queue behind whatever plays, never cut a playing
+ * readout, a newer readout replaces a waiting one — and, through
+ * `READOUT_WEIGHT`, that a readout never displaces a waiting engineer line
+ * of normal weight or above while it does replace waiting chatter.
  */
 import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "json" };
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
