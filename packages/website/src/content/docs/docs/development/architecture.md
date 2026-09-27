@@ -32,7 +32,7 @@ flowchart TB
   future -.-> futureTrans
   futureTrans -.-> bus
   bus --> actions
-  actions -.->|"key-press readout"| bus
+  actions -->|"key-press readout"| bus
   bus --> re
   actions --> adapter
   adapter --> elg
@@ -56,7 +56,7 @@ Arrows show **runtime flow**. The two purple stadium nodes are the abstraction s
 
 Two things to notice. First, only `iracing-actions` flows down to the device seam — the **Race Engineer** (`audio-scenarios`) is a sibling consumer whose output goes to your speakers, never through the deck. Second, everything left of SEAM 1 is sim-specific; everything right of it is sim-agnostic — in principle (the action layer doesn't fully hold to this; see the *Seams & where the abstraction leaks* section below).
 
-The dashed arrow from `iracing-actions` back into the bus is the one event the deck layer publishes: a key press that asks the Race Engineer to read a figure out. Its payload is already in the driver's display unit, so it is as sim-agnostic as the translator's events.
+The arrow from `iracing-actions` back into the bus is the one event the deck layer publishes: a key press that asks the Race Engineer to read a figure out. Its payload is already in the driver's display unit, so it is as sim-agnostic as the translator's events.
 
 ## Inbound: telemetry → semantic events
 
