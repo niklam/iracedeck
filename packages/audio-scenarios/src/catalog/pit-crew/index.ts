@@ -36,6 +36,9 @@
  *     at fire time
  *   - The tire-wear report after a pit stop (`tireWear.reported`, issue
  *     #1108), whose `tireWear.*` vocabulary reads the event's own payload
+ *   - The telemetry readouts on a Pit Crew key press (`telemetryReadout.requested`,
+ *     issue #466) — the first callouts a deck action triggers; gated by the
+ *     Race Engineer master only, since pressing the key is the opt-in
  *   - Laps-of-fuel-left contracts (counts 10 → 1 plus the box-this-lap call,
  *     via `fuel.lapsLeft.crossed` — issue #838; scripted since #1065)
  *
@@ -212,6 +215,7 @@ import {
 } from "./session-start.js";
 import { registerSpotterEngine, SPOTTER_STILL_THERE_DEFAULT_MS } from "./spotter-engine.js";
 import { START_LIGHT_CONTRACTS } from "./start-lights.js";
+import { registerTelemetryReadoutVocabulary, TELEMETRY_READOUT_CONTRACTS } from "./telemetry-readout.js";
 import { registerTireWearVocabulary, TIRE_WEAR_CONTRACTS } from "./tire-wear.js";
 import { AUTO_FUEL_CONTRACTS, TOGGLE_CONFIRMATION_CONTRACTS } from "./toggle-confirmations.js";
 import { TRACK_CONDITIONS_CONTRACTS } from "./track-conditions.js";
@@ -262,6 +266,12 @@ export {
   TIRE_WEAR_SCENARIO_IDS,
   type TireWearSpotKey,
 } from "./tire-wear.js";
+export {
+  registerTelemetryReadoutVocabulary,
+  TELEMETRY_READOUT_CLIP_SOURCES,
+  TELEMETRY_READOUT_CONTRACTS,
+  TELEMETRY_READOUT_SCENARIO_IDS,
+} from "./telemetry-readout.js";
 export { NO_LIMITER_CALLOUT_SETTING_KEYS, type NoLimiterCalloutId, NO_LIMITER_SCENARIO_IDS } from "./no-limiter.js";
 export {
   buildCornerNameContract,
@@ -1445,6 +1455,11 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   // `tireWear.reported` payload.
   registerTireWearVocabulary(engine);
 
+  // The vocabulary the readout scripts name (issue #466) — the `readout.*`
+  // figure vars, every one reading the fire's own `telemetryReadout.requested`
+  // payload, which the Pit Crew action captured at the moment of the press.
+  registerTelemetryReadoutVocabulary(engine);
+
   // No radio-frame fragments are registered here any more (issue #1064): the
   // engine wraps every scenario in the frame its `frame` field names — the
   // active voice's `radio` frame unless the scenario opts out with
@@ -1710,6 +1725,16 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
         wrapCalloutScenario(c, SCENARIO_ID_TO_TIRE_WEAR_ID, getTireWearCalloutEnabled, "tire-wear callout", logger),
       ),
     );
+  }
+
+  // Telemetry readouts on a Pit Crew key press (issue #466): what each says is
+  // the active voice's business (`scenarios["pit-crew.readout-*"]`). Master
+  // gate ONLY, like the opponent-flag aggregate: pressing the key is the
+  // opt-in, so there is no per-callout setting, no callout id map and no
+  // `PitCrewDeps` key — a checkbox that could leave a key doing nothing
+  // would be a trap.
+  for (const c of TELEMETRY_READOUT_CONTRACTS) {
+    engine.defineContract(wrapWithMaster(c));
   }
 
   // Damage heads-up (issue #489) — a contract since #1065: the line is the

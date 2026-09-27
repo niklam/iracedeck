@@ -56,6 +56,7 @@ import { LIMITER_MISSING_DELAY_MS, LIMITER_ON_TRACK_DELAY_MS, PIT_LIMITER_CLIP_S
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import { _resetRadarEngine } from "./radar-engine.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
+import { TELEMETRY_READOUT_CLIP_SOURCES } from "./telemetry-readout.js";
 import { TIRE_WEAR_CLIP_SOURCES } from "./tire-wear.js";
 
 const mockSessionType = vi.fn(() => "Race");
@@ -427,6 +428,13 @@ const TIRE_WEAR_CLIP_PATHS = [
   ...[85, 87, 89, 91].map((n) => `voice/${VOICE}/numbers-percent/${n}.mp3`),
 ] as const;
 
+// Telemetry-readout clips (issue #466) — the intros and the no-data line, plus
+// the figures the gating cases speak.
+const TELEMETRY_READOUT_CLIP_PATHS = [
+  ...TELEMETRY_READOUT_CLIP_SOURCES.map(({ group, base }) => `voice/${VOICE}/${group}/${base}-01.mp3`),
+  `voice/${VOICE}/numbers-degrees/41.mp3`,
+] as const;
+
 const manifest: AudioAssetsManifest = {
   clips: [
     "sfx/IRD-tick-open.mp3",
@@ -447,6 +455,7 @@ const manifest: AudioAssetsManifest = {
     ...GAP_CLIP_PATHS,
     ...PIT_LIMITER_CLIP_PATHS,
     ...TIRE_WEAR_CLIP_PATHS,
+    ...TELEMETRY_READOUT_CLIP_PATHS,
   ],
   ambientLoop: "sfx/IRD-ambient-pit.mp3",
   ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
@@ -2608,5 +2617,37 @@ describe("gap callouts fire end-to-end (issue #933)", () => {
     flush(audio);
 
     expect(voiceClipsPlayed().some((p) => p.includes("gap/"))).toBe(false);
+  });
+});
+
+// Issue #466: the telemetry readouts are gated by the Race Engineer master and
+// nothing else — no per-callout opt-in exists, so no dep can silence them.
+describe("telemetry readout registration (issue #466)", () => {
+  const TRACK_TEMP = { kind: "track-temp", value: 41, unit: "celsius", laps: null } as const;
+
+  it("fires through the real registration with the default deps", () => {
+    bus.publishEvent("telemetryReadout.requested", TRACK_TEMP);
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([
+      `voice/${VOICE}/telemetry-readout/track-temp-intro-01.mp3`,
+      `voice/${VOICE}/numbers-degrees/41.mp3`,
+    ]);
+  });
+
+  it("is silenced by the Race Engineer master", () => {
+    voiceMasterEnabled = false;
+    bus.publishEvent("telemetryReadout.requested", TRACK_TEMP);
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([]);
+    expect(mockLogger.debug).toHaveBeenCalledWith("race engineer master gate suppressed: pit-crew.readout-track-temp");
+  });
+
+  it("the no-data line fires for a fuel readout with no clean lap on record", () => {
+    bus.publishEvent("telemetryReadout.requested", { kind: "fuel-average", value: null, unit: "liters", laps: null });
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([`voice/${VOICE}/telemetry-readout/no-data-01.mp3`]);
   });
 });
