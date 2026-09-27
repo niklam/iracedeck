@@ -10,6 +10,7 @@
           "file": "session-info.ts",
           "encoder": false,
           "settingsKey": "mode",
+          "description": "Live session data on a key. With speakOnPress (\"Speak value on press\", every item, default on) a key press has the Race Engineer read the shown value out by publishing telemetryReadout.requested (#466) — so far Fuel on Used last lap / Average per lap, Track Temperature and Air Temperature; the other items stay silent.",
           "modes": [
             {
               "value": "incidents",
@@ -37,7 +38,11 @@
               "label": "Gaps",
               "description": "Live crossing-time gap to the car one class position ahead/behind with gaining/losing trend colors (race sessions only)"
             },
-            { "value": "fuel", "label": "Fuel", "description": "Fuel level as amount or percentage" },
+            {
+              "value": "fuel",
+              "label": "Fuel",
+              "description": "Fuel level as amount or percentage, fuel used last lap, or average per lap over a 1-20 lap window (the last two spoken on press)"
+            },
             {
               "value": "laps-to-empty",
               "label": "Laps to Empty",
@@ -53,6 +58,16 @@
               "value": "wind",
               "label": "Wind",
               "description": "Wind as an arrow pointing where the wind pushes the car with the speed below it; relative-to-car or compass direction, in m/s, km/h, or mph"
+            },
+            {
+              "value": "track-temp",
+              "label": "Track Temperature",
+              "description": "Track temperature (TrackTempCrew) as a whole number with its unit, e.g. 41°C / 106°F, in the driver's display units; -- when there is no reading; spoken on press"
+            },
+            {
+              "value": "air-temp",
+              "label": "Air Temperature",
+              "description": "Air temperature (AirTemp) as a whole number with its unit, e.g. 23°C / 73°F, in the driver's display units; -- when there is no reading; spoken on press"
             }
           ]
         },
@@ -169,8 +184,8 @@
           "name": "Pit Crew",
           "file": "pit-crew.ts",
           "encoder": false,
-          "settingsKeys": ["mode", "direction", "readoutKind", "fuelLapWindow"],
-          "description": "Multi-mode action for the iRaceDeck audio framework: the Race Engineer voice toggle, the directional Radar proximity ticks, the Corner Names callout toggle (#897), and the Telemetry Readout mode (#466). The radar-volume mode moved to the Audio Controls action (#590) — hidden from the Pit Crew Mode dropdown but kept functional so existing buttons keep working.",
+          "settingsKeys": ["mode", "direction"],
+          "description": "Multi-mode action for the iRaceDeck audio framework: the Race Engineer voice toggle, the directional Radar proximity ticks, and the Corner Names callout toggle (#897). The radar-volume mode moved to the Audio Controls action (#590) — hidden from the Pit Crew Mode dropdown but kept functional so existing buttons keep working.",
           "modes": [
             {
               "mode": "race-engineer",
@@ -182,11 +197,6 @@
               "mode": "corner-names",
               "label": "Corner Names",
               "description": "Toggles the corner-name callouts (practice/test) on/off — flips the same calloutEnabledCornerNames setting as the PI checkbox, with a spoken acknowledgment (#897)"
-            },
-            {
-              "mode": "telemetry-readout",
-              "label": "Telemetry Readout",
-              "description": "Has the Race Engineer read out fuel used last lap, average fuel over N laps, track or air temperature in the driver's display units"
             },
             {
               "mode": "radar-volume",
