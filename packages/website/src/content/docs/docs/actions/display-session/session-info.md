@@ -27,6 +27,10 @@ Show the live incident count. The icon flashes red when a new incident is receiv
 
 Size of the rendered value, in PI units (5–36, doubled for SVG render). Defaults to `14`.
 
+#### Setting: Speak value on press
+
+Whether pressing the key has the Race Engineer read the value out. Defaults to **On**. This item doesn't speak yet, so a press does nothing. See [Speak value on press](#speak-value-on-press).
+
 ---
 
 ### Time / Laps Remaining
@@ -43,6 +47,10 @@ Show how much of the session is left, in whichever form actually ends it. In a t
 
 Size of the rendered value, in PI units (5–36, doubled for SVG render). Defaults to `14`.
 
+#### Setting: Speak value on press
+
+Whether pressing the key has the Race Engineer read the value out. Defaults to **On**. This item doesn't speak yet, so a press does nothing. See [Speak value on press](#speak-value-on-press).
+
 ---
 
 ### Laps
@@ -58,6 +66,10 @@ Show the current lap number.
 #### Setting: Font Size
 
 Size of the rendered value, in PI units (5–36, doubled for SVG render). Defaults to `14`.
+
+#### Setting: Speak value on press
+
+Whether pressing the key has the Race Engineer read the value out. Defaults to **On**. This item doesn't speak yet, so a press does nothing. See [Speak value on press](#speak-value-on-press).
 
 ---
 
@@ -89,6 +101,10 @@ Whether to append the field size after your position. Defaults to **Off**.
 
 Size of the rendered value, in PI units (5–36, doubled for SVG render). Defaults to `14`.
 
+#### Setting: Speak value on press
+
+Whether pressing the key has the Race Engineer read the value out. Defaults to **On**. This item doesn't speak yet, so a press does nothing. See [Speak value on press](#speak-value-on-press).
+
 ---
 
 ### iRating Gain/Loss
@@ -110,6 +126,10 @@ The same estimate is available as [template variables](/docs/features/template-v
 #### Setting: Font Size
 
 Size of the rendered value, in PI units (5–36, doubled for SVG render). Defaults to `14`.
+
+#### Setting: Speak value on press
+
+Whether pressing the key has the Race Engineer read the value out. Defaults to **On**. This item doesn't speak yet, so a press does nothing. See [Speak value on press](#speak-value-on-press).
 
 ---
 
@@ -140,6 +160,10 @@ Which rows the key shows. Both default to **On**; with a single row enabled the 
 
 Size of the rendered value, in PI units (5–36, doubled for SVG render). Defaults to `14`.
 
+#### Setting: Speak value on press
+
+Whether pressing the key has the Race Engineer read the value out. Defaults to **On**. This item doesn't speak yet, so a press does nothing. See [Speak value on press](#speak-value-on-press).
+
 ---
 
 ### Fuel
@@ -150,6 +174,7 @@ The consumption values only count clean flying laps: laps with a pit stop, an ou
 
 #### Details
 
+- **Method:** Spoken by the Race Engineer on **Used last lap** and **Average per lap** — no iRacing command
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** Yes — the fuel reading updates live
@@ -187,7 +212,7 @@ Whether pressing the key has the Race Engineer read the value out. Defaults to *
 
 Show how many laps the fuel currently in the tank will last — the live tank level divided by your average consumption per lap, displayed with two decimals (e.g., `12.45`). Mid-stint it answers the one question that matters: how many laps until you must pit?
 
-The average is the same mean the Fuel mode's **Average per lap** value shows, over the same **Lap Window** — the two keys always agree. Only clean flying laps feed it: laps with a pit stop, out-laps and in-laps, and towed laps are excluded automatically, so a stop never corrupts the estimate. The icon shows `--` until the first clean lap has been completed. Because the tank level is read live, the estimate shortens continuously as you burn fuel and jumps up the moment you refuel. Like the Fuel consumption values, the data survives garage visits and replays, and after a session change the previous session's average stays in use until you're back in the car and running (in a race, until the green flag).
+The average is the same mean the Fuel mode's **Average per lap** value shows, over the same **Lap Window** — the two keys always agree. Only clean flying laps feed it: laps with a pit stop, an out-lap or in-lap, a tow, or a lap run under a full-course caution are excluded automatically, so a stop never corrupts the estimate. The icon shows `--` until the first clean lap has been completed. Because the tank level is read live, the estimate shortens continuously as you burn fuel and jumps up the moment you refuel. Like the Fuel consumption values, the data survives garage visits and replays, and after a session change the previous session's average stays in use until you're back in the car and running (in a race, until the green flag).
 
 The value is a lap count, so it's independent of your iRacing display units.
 
@@ -204,6 +229,10 @@ How many recent clean laps the average covers (1–20). Defaults to `5`. Shared 
 #### Setting: Font Size
 
 Size of the rendered value, in PI units (5–36, doubled for SVG render). Defaults to `14`.
+
+#### Setting: Speak value on press
+
+Whether pressing the key has the Race Engineer read the value out. Defaults to **On**. This item doesn't speak yet, so a press does nothing. See [Speak value on press](#speak-value-on-press).
 
 ---
 
@@ -224,6 +253,10 @@ Display currently active flags with the corresponding colors and a pulsing anima
 #### Setting: Font Size
 
 Size of the rendered value, in PI units (5–36, doubled for SVG render). Defaults to `14`.
+
+#### Setting: Speak value on press
+
+Whether pressing the key has the Race Engineer read the value out. Defaults to **On**. This item doesn't speak yet, so a press does nothing. See [Speak value on press](#speak-value-on-press).
 
 ---
 
@@ -248,9 +281,9 @@ Show the current track-wetness state with a centered vertical 6-segment bar that
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** Yes — the bar and label update live as track conditions shift through the eight states
 
-#### Settings
+#### Setting: Speak value on press
 
-- No additional settings. The Font Size slider does not apply (the graphic carries its own label), and [Speak value on press](#speak-value-on-press) has no spoken readout for this item yet.
+Whether pressing the key has the Race Engineer read the value out. Defaults to **On**. This item doesn't speak yet, so a press does nothing. See [Speak value on press](#speak-value-on-press). The Font Size setting doesn't apply here — the graphic carries its own label.
 
 ---
 
@@ -262,6 +295,7 @@ With [Speak value on press](#speak-value-on-press) on, pressing the key has the 
 
 #### Details
 
+- **Method:** Spoken by the Race Engineer — no iRacing command
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** Yes — the temperature updates live
@@ -284,6 +318,7 @@ With [Speak value on press](#speak-value-on-press) on, pressing the key has the 
 
 #### Details
 
+- **Method:** Spoken by the Race Engineer — no iRacing command
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** Yes — the temperature updates live
@@ -295,6 +330,8 @@ Size of the rendered value, in PI units (5–36, doubled for SVG render). Defaul
 #### Setting: Speak value on press
 
 Whether pressing the key has the Race Engineer read the value out. Defaults to **On**. See [Speak value on press](#speak-value-on-press).
+
+---
 
 ### Wind
 
@@ -339,6 +376,10 @@ The unit the wind speed is shown in. Defaults to **km/h**.
 #### Setting: Font Size
 
 Size of the label under the arrow, in PI units (5–36, doubled for SVG render). Defaults to `14`. A long compass label shrinks automatically so it still fits the key.
+
+#### Setting: Speak value on press
+
+Whether pressing the key has the Race Engineer read the value out. Defaults to **On**. This item doesn't speak yet, so a press does nothing. See [Speak value on press](#speak-value-on-press).
 
 ---
 
