@@ -9,6 +9,7 @@
  * replaces a waiting one — and the engine's one-slot limit that drops a
  * readout behind a heavier waiting fire.
  */
+import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "json" };
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
@@ -19,7 +20,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ScenarioContext } from "../../dsl.js";
 import { NO_FRAME, WEIGHT } from "../../dsl.js";
 import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js";
-import { _resetAudioScenarios, initializeAudioScenarios } from "../../interpreter.js";
+import { _resetAudioScenarios, initializeAudioScenarios, poolMemberPattern } from "../../interpreter.js";
 import { descriptionNamesGroup } from "../../reference/pack-reference.js";
 import {
   registerTelemetryReadoutVocabulary,
@@ -555,5 +556,28 @@ describe("the bundled script's readout entries (issue #466)", () => {
   it("compiles for the test voice with nothing skipped", () => {
     expect(mockLogger.warn).not.toHaveBeenCalled();
     expect(mockLogger.error).not.toHaveBeenCalled();
+  });
+
+  const MANIFEST: AudioAssetsManifest = manifestJson;
+
+  it("every clip source has a clip in the bundled voice", () => {
+    const missing = TELEMETRY_READOUT_CLIP_SOURCES.filter(({ group, base }) => {
+      const pattern = poolMemberPattern(group, base);
+
+      return !MANIFEST.clips.some((clip) => pattern.exec(clip)?.[1] === "default");
+    }).map(({ group, base }) => `${group}/${base}`);
+
+    expect(missing).toEqual([]);
+  });
+
+  it("the bundled voice records every figure a readout can speak: 0–120, both tails, 1–20 laps", () => {
+    const clips = new Set(MANIFEST.clips);
+    const expected = [
+      ...Array.from({ length: 121 }, (_, n) => `numbers-fuel/${n}`),
+      ...["liters", "gallons"].flatMap((u) => Array.from({ length: 10 }, (_, d) => `numbers-fuel-decimal/${u}-${d}`)),
+      ...Array.from({ length: 20 }, (_, i) => `readout-laps/${i + 1}`),
+    ];
+
+    expect(expected.filter((p) => !clips.has(`voice/default/${p}.mp3`))).toEqual([]);
   });
 });
