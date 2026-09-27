@@ -17,7 +17,7 @@ Start with callouts that fire on a plain event and say one line, so nothing abou
 | `pit-crew.pit-window-opened`   | Pit road switches from closed to open while you are in a race.                                        | **Pit Window → Pits opened**  |
 | `pit-crew.damage-repair-needed`| Your car takes damage that keeps the repair indicator lit for three seconds, and again only after a repair has cleared it. | **Damage → Damage Detected**  |
 
-Every callout has an entry like this in the [callout reference](/docs/voice-packs/reference/callouts/): what triggers it, how to hear it, and what the reference voice (`default`) says. That is the voice iRaceDeck publishes and installs for you, and every reference page is generated from it. That reference is where you will pick the next three from.
+Every callout has an entry like this in the [callout reference](/docs/voice-packs/reference/callouts/): what triggers it, how to hear it, and what the reference voice (`default`) says. That is the voice iRaceDeck installs for you, and every reference page is generated from it. That reference is where you will pick the next three from.
 
 ## Record three lines
 
