@@ -58,7 +58,7 @@ deck-core adds global settings readers on top of the pure functions:
 - `keyboard-types.ts` — Keyboard type definitions
 - `scan-code-map.ts` — PS/2 scan code mapping
 - `iracing-hotkeys.ts` — iRacing hotkey presets
-- `unit-conversion.ts` — Fuel unit conversion utilities
+- `unit-conversion.ts` — Fuel unit conversion utilities, plus `celsiusToFahrenheit` for temperature readouts
 - `fuel-telemetry.ts` — Shared `isFuelFillOn` / `isAutofuelActive` / `isAutofuelEnabled` telemetry readers used by both Fuel Service surfaces (keypad + dial)
 - `setup-warning.ts` + `setup-warning-constants.ts` — Setup-name mismatch warning (#625): `evaluateSetupWarning`, pattern helpers (`compileSetupWarningPattern`, `setupNameMatchesPattern`, `validateSetupWarningPatterns`), and the warning-id/setting-key constants (kept in a dependency-free leaf module)
 - `settings-file-rejection-warning.ts` + `settings-file-rejection-reporter.ts` — the `settings-file-rejected` banner (#1036): the pure `evaluateSettingsFileRejectionWarning(rejection)` and `createSettingsFileRejectionReporter()`, the handler every plugin passes as the settings store's `onRejected`. Rules: `global-settings.md`
