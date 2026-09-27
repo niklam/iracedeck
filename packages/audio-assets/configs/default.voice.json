@@ -18589,6 +18589,1443 @@
         "name": "heaviest-rr-outside-01",
         "text": "Wear is heaviest on the right rear, outside shoulder."
       }
+    ],
+    "telemetry-readout": [
+      {
+        "name": "fuel-last-lap-intro-01",
+        "text": "Fuel used last lap,"
+      },
+      {
+        "name": "fuel-average-intro-01",
+        "text": "Average fuel over the last"
+      },
+      {
+        "name": "track-temp-intro-01",
+        "text": "Track temperature is"
+      },
+      {
+        "name": "air-temp-intro-01",
+        "text": "Air temperature is"
+      },
+      {
+        "name": "no-data-01",
+        "text": "No clean lap on the books yet."
+      }
+    ],
+    "readout-laps": [
+      {
+        "name": "1",
+        "text": "lap,",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-average-intro-01"
+        ]
+      },
+      {
+        "name": "2",
+        "text": "two laps,",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-average-intro-01"
+        ]
+      },
+      {
+        "name": "3",
+        "text": "three laps,",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-average-intro-01"
+        ]
+      },
+      {
+        "name": "4",
+        "text": "four laps,",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-average-intro-01"
+        ]
+      },
+      {
+        "name": "5",
+        "text": "five laps,",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-average-intro-01"
+        ]
+      },
+      {
+        "name": "6",
+        "text": "six laps,",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-average-intro-01"
+        ]
+      },
+      {
+        "name": "7",
+        "text": "seven laps,",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-average-intro-01"
+        ]
+      },
+      {
+        "name": "8",
+        "text": "eight laps,",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-average-intro-01"
+        ]
+      },
+      {
+        "name": "9",
+        "text": "nine laps,",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-average-intro-01"
+        ]
+      },
+      {
+        "name": "10",
+        "text": "ten laps,",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-average-intro-01"
+        ]
+      },
+      {
+        "name": "11",
+        "text": "eleven laps,",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-average-intro-01"
+        ]
+      },
+      {
+        "name": "12",
+        "text": "twelve laps,",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-average-intro-01"
+        ]
+      },
+      {
+        "name": "13",
+        "text": "thirteen laps,",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-average-intro-01"
+        ]
+      },
+      {
+        "name": "14",
+        "text": "fourteen laps,",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-average-intro-01"
+        ]
+      },
+      {
+        "name": "15",
+        "text": "fifteen laps,",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-average-intro-01"
+        ]
+      },
+      {
+        "name": "16",
+        "text": "sixteen laps,",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-average-intro-01"
+        ]
+      },
+      {
+        "name": "17",
+        "text": "seventeen laps,",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-average-intro-01"
+        ]
+      },
+      {
+        "name": "18",
+        "text": "eighteen laps,",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-average-intro-01"
+        ]
+      },
+      {
+        "name": "19",
+        "text": "nineteen laps,",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-average-intro-01"
+        ]
+      },
+      {
+        "name": "20",
+        "text": "twenty laps,",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-average-intro-01"
+        ]
+      }
+    ],
+    "numbers-fuel": [
+      {
+        "name": "0",
+        "text": "zero",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "1",
+        "text": "one",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "2",
+        "text": "two",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "3",
+        "text": "three",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "4",
+        "text": "four",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "5",
+        "text": "five",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "6",
+        "text": "six",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "7",
+        "text": "seven",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "8",
+        "text": "eight",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "9",
+        "text": "nine",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "10",
+        "text": "ten",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "11",
+        "text": "eleven",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "12",
+        "text": "twelve",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "13",
+        "text": "thirteen",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "14",
+        "text": "fourteen",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "15",
+        "text": "fifteen",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "16",
+        "text": "sixteen",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "17",
+        "text": "seventeen",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "18",
+        "text": "eighteen",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "19",
+        "text": "nineteen",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "20",
+        "text": "twenty",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "21",
+        "text": "twenty one",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "22",
+        "text": "twenty two",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "23",
+        "text": "twenty three",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "24",
+        "text": "twenty four",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "25",
+        "text": "twenty five",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "26",
+        "text": "twenty six",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "27",
+        "text": "twenty seven",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "28",
+        "text": "twenty eight",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "29",
+        "text": "twenty nine",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "30",
+        "text": "thirty",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "31",
+        "text": "thirty one",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "32",
+        "text": "thirty two",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "33",
+        "text": "thirty three",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "34",
+        "text": "thirty four",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "35",
+        "text": "thirty five",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "36",
+        "text": "thirty six",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "37",
+        "text": "thirty seven",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "38",
+        "text": "thirty eight",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "39",
+        "text": "thirty nine",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "40",
+        "text": "forty",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "41",
+        "text": "forty one",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "42",
+        "text": "forty two",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "43",
+        "text": "forty three",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "44",
+        "text": "forty four",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "45",
+        "text": "forty five",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "46",
+        "text": "forty six",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "47",
+        "text": "forty seven",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "48",
+        "text": "forty eight",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "49",
+        "text": "forty nine",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "50",
+        "text": "fifty",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "51",
+        "text": "fifty one",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "52",
+        "text": "fifty two",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "53",
+        "text": "fifty three",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "54",
+        "text": "fifty four",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "55",
+        "text": "fifty five",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "56",
+        "text": "fifty six",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "57",
+        "text": "fifty seven",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "58",
+        "text": "fifty eight",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "59",
+        "text": "fifty nine",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "60",
+        "text": "sixty",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "61",
+        "text": "sixty one",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "62",
+        "text": "sixty two",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "63",
+        "text": "sixty three",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "64",
+        "text": "sixty four",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "65",
+        "text": "sixty five",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "66",
+        "text": "sixty six",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "67",
+        "text": "sixty seven",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "68",
+        "text": "sixty eight",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "69",
+        "text": "sixty nine",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "70",
+        "text": "seventy",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "71",
+        "text": "seventy one",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "72",
+        "text": "seventy two",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "73",
+        "text": "seventy three",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "74",
+        "text": "seventy four",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "75",
+        "text": "seventy five",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "76",
+        "text": "seventy six",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "77",
+        "text": "seventy seven",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "78",
+        "text": "seventy eight",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "79",
+        "text": "seventy nine",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "80",
+        "text": "eighty",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "81",
+        "text": "eighty one",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "82",
+        "text": "eighty two",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "83",
+        "text": "eighty three",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "84",
+        "text": "eighty four",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "85",
+        "text": "eighty five",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "86",
+        "text": "eighty six",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "87",
+        "text": "eighty seven",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "88",
+        "text": "eighty eight",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "89",
+        "text": "eighty nine",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "90",
+        "text": "ninety",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "91",
+        "text": "ninety one",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "92",
+        "text": "ninety two",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "93",
+        "text": "ninety three",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "94",
+        "text": "ninety four",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "95",
+        "text": "ninety five",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "96",
+        "text": "ninety six",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "97",
+        "text": "ninety seven",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "98",
+        "text": "ninety eight",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "99",
+        "text": "ninety nine",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "100",
+        "text": "one hundred",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "101",
+        "text": "one hundred one",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "102",
+        "text": "one hundred two",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "103",
+        "text": "one hundred three",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "104",
+        "text": "one hundred four",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "105",
+        "text": "one hundred five",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "106",
+        "text": "one hundred six",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "107",
+        "text": "one hundred seven",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "108",
+        "text": "one hundred eight",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "109",
+        "text": "one hundred nine",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "110",
+        "text": "one hundred ten",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "111",
+        "text": "one hundred eleven",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "112",
+        "text": "one hundred twelve",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "113",
+        "text": "one hundred thirteen",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "114",
+        "text": "one hundred fourteen",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "115",
+        "text": "one hundred fifteen",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "116",
+        "text": "one hundred sixteen",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "117",
+        "text": "one hundred seventeen",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "118",
+        "text": "one hundred eighteen",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "119",
+        "text": "one hundred nineteen",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      },
+      {
+        "name": "120",
+        "text": "one hundred twenty",
+        "next_text": " point four liters.",
+        "previous_request_ids": [
+          "telemetry-readout/fuel-last-lap-intro-01",
+          "readout-laps/5"
+        ]
+      }
+    ],
+    "numbers-fuel-decimal": [
+      {
+        "name": "liters-0",
+        "text": "point zero liters.",
+        "previous_request_ids": [
+          "numbers-fuel/1",
+          "numbers-fuel/2",
+          "numbers-fuel/5"
+        ]
+      },
+      {
+        "name": "liters-1",
+        "text": "point one liters.",
+        "previous_request_ids": [
+          "numbers-fuel/1",
+          "numbers-fuel/2",
+          "numbers-fuel/5"
+        ]
+      },
+      {
+        "name": "liters-2",
+        "text": "point two liters.",
+        "previous_request_ids": [
+          "numbers-fuel/1",
+          "numbers-fuel/2",
+          "numbers-fuel/5"
+        ]
+      },
+      {
+        "name": "liters-3",
+        "text": "point three liters.",
+        "previous_request_ids": [
+          "numbers-fuel/1",
+          "numbers-fuel/2",
+          "numbers-fuel/5"
+        ]
+      },
+      {
+        "name": "liters-4",
+        "text": "point four liters.",
+        "previous_request_ids": [
+          "numbers-fuel/1",
+          "numbers-fuel/2",
+          "numbers-fuel/5"
+        ]
+      },
+      {
+        "name": "liters-5",
+        "text": "point five liters.",
+        "previous_request_ids": [
+          "numbers-fuel/1",
+          "numbers-fuel/2",
+          "numbers-fuel/5"
+        ]
+      },
+      {
+        "name": "liters-6",
+        "text": "point six liters.",
+        "previous_request_ids": [
+          "numbers-fuel/1",
+          "numbers-fuel/2",
+          "numbers-fuel/5"
+        ]
+      },
+      {
+        "name": "liters-7",
+        "text": "point seven liters.",
+        "previous_request_ids": [
+          "numbers-fuel/1",
+          "numbers-fuel/2",
+          "numbers-fuel/5"
+        ]
+      },
+      {
+        "name": "liters-8",
+        "text": "point eight liters.",
+        "previous_request_ids": [
+          "numbers-fuel/1",
+          "numbers-fuel/2",
+          "numbers-fuel/5"
+        ]
+      },
+      {
+        "name": "liters-9",
+        "text": "point nine liters.",
+        "previous_request_ids": [
+          "numbers-fuel/1",
+          "numbers-fuel/2",
+          "numbers-fuel/5"
+        ]
+      },
+      {
+        "name": "gallons-0",
+        "text": "point zero gallons.",
+        "previous_request_ids": [
+          "numbers-fuel/0",
+          "numbers-fuel/1",
+          "numbers-fuel/2"
+        ]
+      },
+      {
+        "name": "gallons-1",
+        "text": "point one gallons.",
+        "previous_request_ids": [
+          "numbers-fuel/0",
+          "numbers-fuel/1",
+          "numbers-fuel/2"
+        ]
+      },
+      {
+        "name": "gallons-2",
+        "text": "point two gallons.",
+        "previous_request_ids": [
+          "numbers-fuel/0",
+          "numbers-fuel/1",
+          "numbers-fuel/2"
+        ]
+      },
+      {
+        "name": "gallons-3",
+        "text": "point three gallons.",
+        "previous_request_ids": [
+          "numbers-fuel/0",
+          "numbers-fuel/1",
+          "numbers-fuel/2"
+        ]
+      },
+      {
+        "name": "gallons-4",
+        "text": "point four gallons.",
+        "previous_request_ids": [
+          "numbers-fuel/0",
+          "numbers-fuel/1",
+          "numbers-fuel/2"
+        ]
+      },
+      {
+        "name": "gallons-5",
+        "text": "point five gallons.",
+        "previous_request_ids": [
+          "numbers-fuel/0",
+          "numbers-fuel/1",
+          "numbers-fuel/2"
+        ]
+      },
+      {
+        "name": "gallons-6",
+        "text": "point six gallons.",
+        "previous_request_ids": [
+          "numbers-fuel/0",
+          "numbers-fuel/1",
+          "numbers-fuel/2"
+        ]
+      },
+      {
+        "name": "gallons-7",
+        "text": "point seven gallons.",
+        "previous_request_ids": [
+          "numbers-fuel/0",
+          "numbers-fuel/1",
+          "numbers-fuel/2"
+        ]
+      },
+      {
+        "name": "gallons-8",
+        "text": "point eight gallons.",
+        "previous_request_ids": [
+          "numbers-fuel/0",
+          "numbers-fuel/1",
+          "numbers-fuel/2"
+        ]
+      },
+      {
+        "name": "gallons-9",
+        "text": "point nine gallons.",
+        "previous_request_ids": [
+          "numbers-fuel/0",
+          "numbers-fuel/1",
+          "numbers-fuel/2"
+        ]
+      }
     ]
   },
   "scenarios": {
@@ -18962,6 +20399,36 @@
           ]
         }
       ]
+    },
+    "pit-crew.readout-fuel-last-lap": {
+      "comment": "On a Telemetry Readout key press: the fuel the last clean lap used, rounded to a tenth, in the driver's display unit — \"Fuel used last lap, two point four liters.\" The tenths clip carries the unit.",
+      "test": "Harness → Telemetry Readout → Fuel last lap (liters). In-sim: set a Pit Crew key to Telemetry Readout → Fuel Used Last Lap, drive one clean lap and press it.",
+      "sequence": ["pool:telemetry-readout/fuel-last-lap-intro", "{{readout.fuelNumber}}", "{{readout.fuelDecimal}}"]
+    },
+    "pit-crew.readout-fuel-average": {
+      "comment": "On a Telemetry Readout key press: the average fuel per clean lap, naming the laps actually averaged — fewer than the key's setting early in a stint — \"Average fuel over the last five laps, two point four liters.\"",
+      "test": "Harness → Telemetry Readout → Fuel average (5 laps). In-sim: set a key to Telemetry Readout → Average Fuel per Lap and press it after a few clean laps.",
+      "sequence": [
+        "pool:telemetry-readout/fuel-average-intro",
+        "{{readout.laps}}",
+        "{{readout.fuelNumber}}",
+        "{{readout.fuelDecimal}}"
+      ]
+    },
+    "pit-crew.readout-track-temp": {
+      "comment": "On a Telemetry Readout key press: the track temperature as a whole number — \"Track temperature is forty one degrees.\" The unit is not named, as in the session-start brief; a pack that records the unit clips can add {{readout.degreesUnit}}.",
+      "test": "Harness → Telemetry Readout → Track temperature (°C). In-sim: set a key to Telemetry Readout → Track Temperature and press it on track.",
+      "sequence": ["pool:telemetry-readout/track-temp-intro", "{{readout.tempNumber}}"]
+    },
+    "pit-crew.readout-air-temp": {
+      "comment": "On a Telemetry Readout key press: the air temperature as a whole number — \"Air temperature is twenty three degrees.\" The unit is not named, as in the session-start brief.",
+      "test": "Harness → Telemetry Readout → Air temperature (°F). In-sim: set a key to Telemetry Readout → Air Temperature and press it.",
+      "sequence": ["pool:telemetry-readout/air-temp-intro", "{{readout.tempNumber}}"]
+    },
+    "pit-crew.readout-no-data": {
+      "comment": "On a fuel Telemetry Readout key press before any clean lap is on record: \"No clean lap on the books yet.\"",
+      "test": "Harness → Telemetry Readout → No clean lap yet. In-sim: press a fuel readout key before completing a clean lap in a fresh session.",
+      "sequence": ["pool:telemetry-readout/no-data"]
     },
     "pit-crew.pit-window-opened": {
       "comment": "Pit road has opened for the driver — one line, above ordinary chatter but below a flag, replayed after a busier line finishes rather than dropped because the window matters to strategy.",
