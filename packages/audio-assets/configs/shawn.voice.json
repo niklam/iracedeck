@@ -10,50 +10,6 @@
     "use_speaker_boost": true
   },
   "groups": {
-    "acknowledgment": [
-      {
-        "name": "acknowledgment-01",
-        "text": "Got it."
-      },
-      {
-        "name": "acknowledgment-02",
-        "text": "Roger that."
-      },
-      {
-        "name": "acknowledgment-03",
-        "text": "Copy that."
-      }
-    ],
-    "units": [
-      {
-        "name": "km",
-        "text": "kilometers per hour"
-      },
-      {
-        "name": "mph",
-        "text": "miles per hour"
-      },
-      {
-        "name": "kg",
-        "text": "kilograms"
-      },
-      {
-        "name": "litres",
-        "text": "leeters"
-      },
-      {
-        "name": "seconds",
-        "text": "seconds"
-      },
-      {
-        "name": "minutes",
-        "text": "minutes"
-      },
-      {
-        "name": "hours",
-        "text": "hours"
-      }
-    ],
     "flags": [
       {
         "name": "black-01",
