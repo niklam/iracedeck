@@ -36,7 +36,7 @@
  *     at fire time
  *   - The tire-wear report after a pit stop (`tireWear.reported`, issue
  *     #1108), whose `tireWear.*` vocabulary reads the event's own payload
- *   - The telemetry readouts on a Pit Crew key press (`telemetryReadout.requested`,
+ *   - The telemetry readouts on a Session Info key press (`telemetryReadout.requested`,
  *     issue #466) — the first callouts a deck action triggers; gated by the
  *     Race Engineer master only, since pressing the key is the opt-in
  *   - Laps-of-fuel-left contracts (counts 10 → 1 plus the box-this-lap call,
@@ -1727,12 +1727,13 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
     );
   }
 
-  // Telemetry readouts on a Pit Crew key press (issue #466): what each says is
-  // the active voice's business (`scenarios["pit-crew.readout-*"]`). Master
-  // gate ONLY, like the opponent-flag aggregate: pressing the key is the
-  // opt-in, so there is no per-callout setting, no callout id map and no
-  // `PitCrewDeps` key — a checkbox that could leave a key doing nothing
-  // would be a trap.
+  // Telemetry readouts on a Session Info key press (issue #466): what each
+  // says is the active voice's business (`scenarios["pit-crew.readout-*"]`).
+  // Master gate ONLY, like the opponent-flag aggregate: pressing the key is
+  // the opt-in, and the key's own Speak value on press the one other switch,
+  // so there is no per-callout setting, no callout id map and no
+  // `PitCrewDeps` key — a Race Engineer checkbox that could leave a key doing
+  // nothing would be a trap.
   for (const c of TELEMETRY_READOUT_CONTRACTS) {
     engine.defineContract(wrapWithMaster(c));
   }

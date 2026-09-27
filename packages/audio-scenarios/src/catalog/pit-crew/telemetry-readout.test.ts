@@ -1,9 +1,10 @@
 /**
  * Telemetry readout family tests (issue #466).
  *
- * Five contracts fired by `telemetryReadout.requested`, a Pit Crew key press.
- * What they SAY is the bundled voice's `callouts.json`, so the fire-through
- * cases hand the real artifact to the engine and read what played. The
+ * Five contracts fired by `telemetryReadout.requested`, a Session Info key
+ * press. What they SAY is the bundled voice's `callouts.json`, so the
+ * fire-through cases hand the real artifact to the engine and read what
+ * played. The
  * scheduling cases pin the contract options the spec's behaviour needs:
  * queue behind whatever plays, never cut a playing readout, a newer readout
  * replaces a waiting one — and, through `READOUT_WEIGHT`, that a readout

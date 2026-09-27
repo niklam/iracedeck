@@ -175,7 +175,7 @@ function flag(label: string, event: SimEventName, data: Record<string, unknown> 
 }
 
 /**
- * A Telemetry Readout key press (issue #466), published straight to the bus —
+ * A Session Info key press (issue #466), published straight to the bus —
  * the action's own conversion is bypassed, so any figure and unit can be
  * auditioned. Each label is named by a script entry's `test` line.
  */
@@ -1281,7 +1281,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   TIRE_WEAR_STOP_SHORTCUT,
 
   // ── Telemetry Readout (issue #466) ──
-  // What a Pit Crew Telemetry Readout key publishes, straight to the bus.
+  // What a Session Info key press publishes, straight to the bus.
   readout("readout-fuel-last-lap-liters", "Fuel last lap (liters)", '"Fuel used last lap, two point four liters."', {
     kind: "fuel-last-lap",
     value: 2.44,

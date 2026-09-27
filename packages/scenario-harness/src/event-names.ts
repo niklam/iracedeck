@@ -329,7 +329,7 @@ export const EVENT_TEMPLATES = [
   {
     name: "telemetryReadout.requested",
     description:
-      "A Pit Crew Telemetry Readout key press (issue #466) — value already in the display unit; a null fuel value means no clean lap yet",
+      "A Session Info key press with Speak value on press (issue #466) — value already in the display unit; a null fuel value means no clean lap yet",
     data: { kind: "fuel-last-lap", value: 2.44, unit: "liters", laps: null },
   },
   {

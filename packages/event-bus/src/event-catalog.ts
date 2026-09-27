@@ -170,7 +170,7 @@ export type TireWearReport = {
 };
 
 /**
- * What a Pit Crew Telemetry Readout key asks the Race Engineer to speak
+ * What a Session Info key press asks the Race Engineer to speak
  * (issue #466). Sim-agnostic: every kind is a figure any sim can supply.
  */
 export type TelemetryReadoutKind = "fuel-last-lap" | "fuel-average" | "track-temp" | "air-temp";
@@ -480,11 +480,11 @@ export type SimEventMap = {
   "tireWear.reported": SimEvent<"tireWear.reported", TireWearReport>;
 
   /**
-   * The driver pressed a Pit Crew Telemetry Readout key (issue #466). The
-   * first event the DECK layer publishes rather than the sim translator: the
-   * action reads the figure at the moment of the press, converts it to the
-   * driver's display unit and publishes it here, and the Race Engineer
-   * speaks it. The value is captured at press time on purpose — a readout
+   * The driver pressed a Session Info key with Speak value on press (issue
+   * #466). The first event the DECK layer publishes rather than the sim
+   * translator: the action reads the figure the key shows at the moment of
+   * the press, converts it to the driver's display unit and publishes it
+   * here, and the Race Engineer speaks it. The value is captured at press time on purpose — a readout
    * answers "what is it now" as the driver asked, and a few seconds in the
    * queue do not make it stale. Never published without telemetry.
    */

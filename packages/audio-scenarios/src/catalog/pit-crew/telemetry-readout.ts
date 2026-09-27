@@ -2,12 +2,12 @@
  * Telemetry readout on a key press (issue #466).
  *
  * Five contracts, all fired by `telemetryReadout.requested` — the first bus
- * event published by the DECK layer rather than the sim translator: a Pit
- * Crew key set to Telemetry Readout reads the figure at the moment of the
- * press, converts it to the driver's display unit and publishes it. One
- * contract per kind, plus `pit-crew.readout-no-data` for a fuel kind whose
- * value is `null` (no valid lap on record yet), so a pack can phrase each on
- * its own terms.
+ * event published by the DECK layer rather than the sim translator: a
+ * Session Info key with Speak value on press reads the figure it shows at
+ * the moment of the press, converts it to the driver's display unit and
+ * publishes it. One contract per kind, plus `pit-crew.readout-no-data` for a
+ * fuel kind whose value is `null` (no valid lap on record yet), so a pack can
+ * phrase each on its own terms.
  *
  * WHAT is said lives in the active voice's `callouts.json` under the same
  * ids. The bundled script speaks a fuel figure as an intro, the whole part
@@ -53,7 +53,8 @@
  *
  * **Gating is the Race Engineer master only.** `registerPitCrew` wraps these
  * contracts with the master gate and nothing else — pressing the key is the
- * opt-in, so there is no `calloutEnabled*` key and no callout id map.
+ * opt-in, and the key's own Speak value on press the one other switch, so
+ * there is no `calloutEnabled*` key and no callout id map.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { TelemetryReadoutRequest, TelemetryReadoutUnit } from "@iracedeck/event-bus";
@@ -185,7 +186,7 @@ export function registerTelemetryReadoutVocabulary(engine: Pick<IScenarioEngine,
   engine.defineVar(
     "readout.fuelNumber",
     resolveFuelNumber,
-    "The whole-number part of the fuel figure a Telemetry Readout key asked for, after rounding to a tenth, in the driver's display unit — drawn from the numbers-fuel clip group (0 to 120); a figure the voice has no clip for silences the callout.",
+    "The whole-number part of the fuel figure a Session Info key asked for, after rounding to a tenth, in the driver's display unit — drawn from the numbers-fuel clip group (0 to 120); a figure the voice has no clip for silences the callout.",
   );
   engine.defineVar(
     "readout.fuelDecimal",
@@ -200,7 +201,7 @@ export function registerTelemetryReadoutVocabulary(engine: Pick<IScenarioEngine,
   engine.defineVar(
     "readout.tempNumber",
     resolveTempNumber,
-    "The temperature a Telemetry Readout key asked for, track or air, as a whole number in the driver's display unit — drawn from the numbers-degrees clip group the session-start brief speaks, whose lines carry the word degrees and cover -20 to 176.",
+    "The temperature a Session Info key asked for, track or air, as a whole number in the driver's display unit — drawn from the numbers-degrees clip group the session-start brief speaks, whose lines carry the word degrees and cover -20 to 176.",
   );
   engine.defineVar("readout.degreesUnit", resolveDegreesUnit, TEMPERATURE_UNIT_DESCRIPTION);
 }
@@ -234,27 +235,27 @@ function readoutContract(
 export const TELEMETRY_READOUT_CONTRACTS: readonly ScenarioContract[] = [
   readoutContract(
     "pit-crew.readout-fuel-last-lap",
-    "You press a Pit Crew Telemetry Readout key set to fuel used last lap, with at least one clean lap on record.",
+    "You press a Session Info key showing fuel used last lap, with at least one clean lap on record.",
     (d) => d.kind === "fuel-last-lap" && isFiniteNumber(d.value),
   ),
   readoutContract(
     "pit-crew.readout-fuel-average",
-    "You press a Pit Crew Telemetry Readout key set to average fuel per lap, with at least one clean lap on record.",
+    "You press a Session Info key showing average fuel per lap, with at least one clean lap on record.",
     (d) => d.kind === "fuel-average" && isFiniteNumber(d.value),
   ),
   readoutContract(
     "pit-crew.readout-track-temp",
-    "You press a Pit Crew Telemetry Readout key set to track temperature.",
+    "You press a Session Info key showing track temperature.",
     (d) => d.kind === "track-temp" && isFiniteNumber(d.value),
   ),
   readoutContract(
     "pit-crew.readout-air-temp",
-    "You press a Pit Crew Telemetry Readout key set to air temperature.",
+    "You press a Session Info key showing air temperature.",
     (d) => d.kind === "air-temp" && isFiniteNumber(d.value),
   ),
   readoutContract(
     "pit-crew.readout-no-data",
-    "You press a Pit Crew Telemetry Readout key for a fuel figure before any clean lap is on record.",
+    "You press a Session Info key showing a fuel figure before any clean lap is on record.",
     (d) => isFuelKind(d.kind) && d.value === null,
   ),
 ];
