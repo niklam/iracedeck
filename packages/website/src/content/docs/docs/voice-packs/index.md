@@ -3,9 +3,9 @@ title: Voice Packs
 description: What a Race Engineer voice pack is, what its callout script can change and what it cannot, why a correct script can be silent, and where the format, the tutorial and the reference pages are.
 ---
 
-A voice pack is a folder: a `voice-pack.json` that names it, the recorded lines of one or more voices, and for each voice a **callout script** — `voice/<voice-id>/callouts.json` — that says how those lines are put together when the Race Engineer speaks. iRaceDeck publishes one pack and installs it for you; anyone can build another and drop it into the voices folder. This section is for the person building one. If you only want to install or choose a voice, [Race Engineer Voices](/docs/features/race-engineer-voices/) is the page you need.
+A voice pack is a folder: a `voice-pack.json` that names it, the recorded lines of one or more voices, and for each voice a **callout script** — `voice/<voice-id>/callouts.json` — that says how those lines are put together when the Race Engineer speaks. iRaceDeck publishes two packs — **Default**, which it installs for you, and **Default (Terse)**, which you install from the Settings window — and anyone can build another and drop it into the voices folder. This section is for the person building one. If you only want to install or choose a voice, [Race Engineer Voices](/docs/features/race-engineer-voices/) is the page you need.
 
-The short version: a pack decides **what is said**. It never decides **whether**, **when**, or **what may be interrupted** to say it.
+The short version: a pack decides **what is said**. It never decides **whether**, **when**, or **what may be interrupted** to say it. iRaceDeck's own two packs show the difference: Default (Terse) makes every callout Default makes, at the same moments and with the same priority, and only the words change — *"Blue flag."* where Default says *"Blue flag. Faster car approaching."*
 
 ## A correct script can be silent
 
@@ -13,7 +13,7 @@ The most confusing thing that will happen to you as a pack author is a script th
 
 Every callout is triggered by iRaceDeck's own code — a sim event arrives, and a gate written in code decides whether this callout is due. Your script entry is only consulted after that gate says yes. A few callouts are gated twice: the code asks again after your entry has expanded, just before the line takes the radio — the [callout reference](/docs/voice-packs/reference/callouts/) marks those **Re-checked at speak time**, and neither gate is something a script can switch off. So an entry for the leader's final-lap warning is silent all through practice and whenever you are the leader, an entry for the pit-window callout is silent outside a race, and an entry that reads out a best lap is silent until a lap has been completed — not because the script is wrong, but because the moment never came. The same is true when you audition a callout in the scenario harness: firing the event with no matching sim state resolves the callout's variables to nothing, and the callout aborts before a clip plays.
 
-When a callout stays quiet, the first move is always the same: open the [callout reference](/docs/voice-packs/reference/callouts/), find the id, and read its **description** (when it fires) and its **test** line (how to make it fire). Both come from the code and from the script of the reference voice (`default`) — the voice iRaceDeck publishes — and both are more reliable than staring at your entry.
+When a callout stays quiet, the first move is always the same: open the [callout reference](/docs/voice-packs/reference/callouts/), find the id, and read its **description** (when it fires) and its **test** line (how to make it fire). Both come from the code and from the script of the reference voice (`default`) — the voice iRaceDeck installs for you — and both are more reliable than staring at your entry.
 
 ## Two halves: the contract and the script
 

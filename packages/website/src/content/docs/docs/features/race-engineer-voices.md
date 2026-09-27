@@ -3,7 +3,7 @@ title: Race Engineer Voices
 description: How Race Engineer voice packs work, where they are stored, how to download or install one, and why they survive plugin updates.
 ---
 
-The Race Engineer speaks with a **voice pack** — a folder of recorded lines that iRaceDeck plays during a session, plus a **callout script** for each voice that says how those lines are put together. iRaceDeck downloads its own voice, **Default**, the first time the plugin starts, and you can add more — downloaded from iRaceDeck itself, or installed by hand.
+The Race Engineer speaks with a **voice pack** — a folder of recorded lines that iRaceDeck plays during a session, plus a **callout script** for each voice that says how those lines are put together. iRaceDeck publishes two voices of its own — **Default**, which it downloads the first time the plugin starts, and **Default (Terse)**, the same engineer in radio shorthand, which you install when you want it — and you can add more, downloaded from iRaceDeck itself or installed by hand.
 
 Voice packs live **outside the plugin folder**, in your own AppData directory:
 
@@ -15,17 +15,44 @@ That location matters: because packs are not inside the plugin, **updating or re
 
 The folder is shared by all three iRaceDeck plugins. If you use a Stream Deck and a Mirabox on the same PC, they read the same voices — you never download or store the same pack twice.
 
+## iRaceDeck's Own Voices
+
+iRaceDeck publishes two voice packs. Both are the same engineer, making the same callouts at the same moments; what differs is how many words he uses.
+
+### Default
+
+The voice every install gets. iRaceDeck downloads it the first time the plugin starts and keeps it up to date from then on — see [Choosing a Voice](#choosing-a-voice) below. Default speaks in full sentences, and its lines are the ones quoted throughout the [Pit Crew](/docs/actions/audio-voice/pit-crew/) page.
+
+### Default (Terse)
+
+The Default engineer in radio shorthand. Once a session is running his calls are shorter: most come down to the fact itself, with far less of Default's explanation of what a flag or a state means, while a few — a pass made, a place lost — still carry a word from him:
+
+| Default | Default (Terse) |
+| --- | --- |
+| *"Blue flag. Faster car approaching."* | *"Blue flag."* |
+| *"Car's too far left, line it up."* | *"Too far left."* |
+| *"The leader is pitting."* | *"Leader's pitting."* |
+| *"Mind the track limits."* | *"Off track."* |
+| *"That hit broke something on the car. The spotter likely has more information."* | *"We've got damage."* |
+| *"We're still leading our class. Keep it up."* | *"Still class leader."* |
+
+Outside the racing itself he keeps a friendlier tone: the welcome, the greetings by name at the start of a session, at the start of a race and at its end, and the session-start briefing read much as they do in Default. Terse makes every callout Default makes, so switching to it never costs you a call — only words.
+
+**Terse is not installed automatically** — Default stays the one voice every install gets. To add it, open **iRaceDeck Settings**, go to the **Race Engineer** tab, and press **Install** beside **Default (Terse)** under **Available to Download** in the **Voice Packs** card (see [Downloading a Voice Pack](#downloading-a-voice-pack)). Then pick **iRaceDeck: Default (Terse)** from the **Race Engineer Voice** dropdown. Once installed it keeps itself up to date: whenever a newer version is published, iRaceDeck updates it at the next plugin start, the same way it updates Default. You can remove it again from the same card; if it was your selected voice, the engineer speaks with Default until you install Terse again, and your choice comes back with it.
+
 ## Choosing a Voice
 
-Open **iRaceDeck Settings** from any action's Property Inspector, go to the **Race Engineer** section, and pick from the **Race Engineer Voice** dropdown. Every installed voice appears there, under the name its pack gave it. The change takes effect on the next callout — there is no need to restart anything.
+Open **iRaceDeck Settings** from any action's Property Inspector, go to the **Race Engineer** section, and pick from the **Race Engineer Voice** dropdown. Every installed voice appears there. The change takes effect on the next callout — there is no need to restart anything.
 
-Some voices are listed with their pack's name in front, as **Pack: Voice**. That happens when the voice's name alone could be ambiguous — a pack providing more than one voice, or a pack whose own name differs from its voice's. A pack that provides a single voice with a matching name is listed by that name alone. The rule depends only on the pack itself, so installing another pack never renames a voice you have already chosen.
+**iRaceDeck's own voices are listed first**, as **iRaceDeck: Default** and — once you have installed it — **iRaceDeck: Default (Terse)**, above every other voice, whatever the others are called. The rest follow in alphabetical order, each under the name its pack gave it. A voice counts as iRaceDeck's when iRaceDeck itself installed it — downloaded from its catalog, or placed there by an earlier version of the plugin. A copy of one of iRaceDeck's packs other than Default that you put into the folder by hand is listed like any other pack, under its own name among the rest, and iRaceDeck does not keep it up to date. A folder you put in Default's place is a different case: iRaceDeck replaces it with its own copy of Default at the next start (see below).
+
+Among the other packs, some voices are listed with their pack's name in front, as **Pack: Voice**. That happens when the voice's name alone could be ambiguous — a pack providing more than one voice, or a pack whose own name differs from its voice's. A pack that provides a single voice with a matching name is listed by that name alone. The rule depends only on the pack itself, so installing another pack never renames a voice you have already chosen.
 
 Two packs may each include a voice of the same name. Both are listed, and each plays its own recordings — installing the second never hides the first, and never changes which one you have selected.
 
 **Installed Voices**, in the **Voice Packs** card on the Race Engineer tab, lists every pack iRaceDeck has loaded, with its version and where it came from — **Downloaded** for one from iRaceDeck's own catalog, **Installed by iRaceDeck** for one an earlier version of the plugin placed there, and **Installed by hand** for one you placed in the folder yourself. Each row also names the voices the pack provides, so two packs with the same name that provide different voices are easy to tell apart. Anything in the folder that iRaceDeck could not load is listed underneath, with the reason — so a pack that is present but silent tells you why without you going looking for it.
 
-**The Default voice is managed by iRaceDeck.** The plugin no longer ships a voice inside its own folder: at every start it checks iRaceDeck's catalog, downloads **Default** (about 8 MB, from GitHub) if it is missing, and updates it — and any other voice you installed from the catalog — when a newer version is published. If the download fails, it is retried quietly in the background, more often while the Race Engineer is switched on. The row for Default reads *Kept up to date by iRaceDeck* in place of a Remove button. Because iRaceDeck keeps this folder matching the catalog, **anything you change inside it is eventually replaced** — the next published version of Default swaps the whole folder rather than merging into it, and a folder iRaceDeck cannot recognise as its own copy is replaced at the next start. A Default folder whose recordings have gone missing is downloaded again at the next start, too. To customise the Default voice, copy the folder to a new name first and edit the copy; a pack under its own name is never touched.
+**The Default voice is managed by iRaceDeck.** The plugin no longer ships a voice inside its own folder: at every start it checks iRaceDeck's catalog, downloads **Default** (about 15 MB, from GitHub) if it is missing, and updates it — and any other voice you installed from the catalog — when a newer version is published. If the download fails, it is retried quietly in the background, more often while the Race Engineer is switched on. The row for Default reads *Kept up to date by iRaceDeck* in place of a Remove button. Because iRaceDeck keeps this folder matching the catalog, **anything you change inside it is eventually replaced** — the next published version of Default swaps the whole folder rather than merging into it, and a folder iRaceDeck cannot recognise as its own copy is replaced at the next start. A Default folder whose recordings have gone missing is downloaded again at the next start, too. To customise the Default voice, copy the folder to a new name first and edit the copy; a pack under its own name is never touched.
 
 ## What a Voice Pack Decides
 

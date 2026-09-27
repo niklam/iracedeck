@@ -159,6 +159,7 @@ import {
   onIRacingTerminated,
   openDirectoryInExplorer,
   openFolderInExplorer,
+  orderRaceEngineerVoices,
   parseSettingsWindowBounds,
   pluginAudioSessionIdentity,
   type PluginConfig,
@@ -518,6 +519,17 @@ const voicePacks = createVoicePackService({
     if (isAudioScenariosInitialized()) getScenarioEngine().setScripts(scripts);
   },
   onPacksChanged: () => {
+    // Order the voice list ONCE, here, so the engine's fallback
+    // (`resolveActiveRaceEngineerVoice`), the published `_raceEngineerVoices`
+    // and every action reading it share one order (#999): iRaceDeck's own
+    // voices first, the managed pack at the top. Not in `applyManifest`: there
+    // `voicePacks.installed()` still answers for the PREVIOUS scan — the
+    // service snapshots a scan only after every `apply*` has returned — so this
+    // is the first point where the new voices and their packs' provenance and
+    // labels are both readable. Ahead of the settings guard below, so the
+    // startup scan is ordered too.
+    raceEngineerVoices = orderRaceEngineerVoices(raceEngineerVoices, voicePacks.installed(), voiceLabels());
+
     // The first scan runs long before `initGlobalSettings`, and a write made
     // then would set the dedupe markers below while reaching nothing — which
     // would suppress the real push forever. The post-init call sites publish
@@ -1000,6 +1012,9 @@ let lastPushedVoiceLabelsJson = "";
 // together is what stops a dropdown ever pairing one scan's voices with another
 // scan's names.
 function pushRaceEngineerVoicesIfChanged(): void {
+  // Already ordered where each scan lands (`onPacksChanged`, #999), so the
+  // dropdown — which renders the list in the order it arrives — shows the very
+  // order the engine resolves its fallback against.
   const json = JSON.stringify(raceEngineerVoices);
   const labelsJson = JSON.stringify(voiceLabels());
 
@@ -1058,7 +1073,9 @@ function pushVoicePackListIfChanged(): void {
       // nothing displays is payload with no reader.
       ...(pack.provenance === "development" ? { dir: pack.dir } : {}),
       // Where it came from, for the settings window's provenance badge
-      // (#1100). Displayed, never enforced.
+      // (#1100). Since #999 provenance also decides first-party labelling and
+      // order (`isFirstPartyVoicePack`); it withholds no control — the managed
+      // pack's Remove button keys off `managed` below, never provenance.
       provenance: pack.provenance,
       // The managed pack is the one the launch step keeps current — which it does
       // not while the development root provides it, so the row must not claim so.

@@ -100,12 +100,13 @@ export type InstalledVoicePack = {
    * malformed record reads as sideloaded, which is the truthful answer: nothing
    * we wrote says otherwise.
    *
-   * Displayed, never enforced. The badge tells a user that a pack came from
-   * someone other than us; it is not a trust decision the plugin acts on. The
-   * one thing that withholds a control — the managed pack's missing Remove
-   * button — is keyed by the plugin-published `managed` flag
-   * (`isManagedVoicePack`), never by this field, so no record a pack author
-   * can write reaches it.
+   * Displayed as that badge, and since #999 it also decides one thing: whether
+   * a pack is iRaceDeck's own for labelling and order (`isFirstPartyVoicePack`
+   * in `voice-labels.ts` — the "iRaceDeck:" label prefix and the pack's place
+   * at the front of the voice list). It withholds no control. The one thing
+   * that does — the managed pack's missing Remove button — is keyed by the
+   * plugin-published `managed` flag (`isManagedVoicePack`), never by this
+   * field, so no record a pack author can write reaches it.
    */
   provenance: VoicePackProvenanceKind;
 };
@@ -322,10 +323,11 @@ function scanRoot(root: string, kind: ScanRootKind, state: ScanState): void {
       continue;
     }
 
-    // The installer's record, read for the provenance badge alone. Not a
-    // security boundary: a sideloaded pack can write the same file, and packs
-    // are deliberately unsigned — the record is displayed, never enforced (see
-    // `provenance` on the pack type for what does and does not key off it).
+    // The installer's record, read for the provenance badge and, since #999,
+    // first-party labelling and order. Not a security boundary: a sideloaded
+    // pack can write the same file, and packs are deliberately unsigned — the
+    // record withholds no control (see `provenance` on the pack type for what
+    // does and does not key off it).
     //
     // Under the development root (#1143) it is not read at all: the provenance
     // there is decided by where the pack was found, and a staged folder that
