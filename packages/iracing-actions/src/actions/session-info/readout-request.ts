@@ -3,15 +3,37 @@ import type { TelemetryReadoutKind, TelemetryReadoutRequest } from "@iracedeck/e
 import { DisplayUnits, type TelemetryData } from "@iracedeck/iracing-sdk";
 import type { FuelStats } from "@iracedeck/sim-events-iracing";
 
-/**
- * The readouts a Telemetry Readout key can ask for (issue #466), in the order
- * the Property Inspector lists them.
- */
-export const READOUT_KINDS = ["fuel-last-lap", "fuel-average", "track-temp", "air-temp"] as const;
+import type { SessionInfoSettings } from "./session-info.js";
 
-// Compile-time: READOUT_KINDS covers the catalog's kinds exactly.
-type Listed = (typeof READOUT_KINDS)[number];
-const _allKinds: [Exclude<TelemetryReadoutKind, Listed> | Exclude<Listed, TelemetryReadoutKind>] extends [never]
+/** The Session Info settings a readout reads: the item the key shows, and its fuel window. */
+export type ReadoutItem = Pick<SessionInfoSettings, "mode" | "fuelSubMode" | "fuelLapWindow">;
+
+/**
+ * The readout a Session Info item speaks on a press (issue #466), or `null`
+ * for an item with no speech yet — Fuel → Now among them. The return type is
+ * left to inference on purpose: the check below reads it.
+ */
+export function readoutKindFor(item: ReadoutItem) {
+  switch (item.mode) {
+    case "fuel":
+      if (item.fuelSubMode === "lastLap") return "fuel-last-lap";
+
+      if (item.fuelSubMode === "avgN") return "fuel-average";
+
+      return null;
+    case "track-temp":
+      return "track-temp";
+    case "air-temp":
+      return "air-temp";
+    default:
+      return null;
+  }
+}
+
+// Compile-time: the items speak exactly the catalog's kinds — none left without
+// an item, and no kind the catalog does not define.
+type Spoken = NonNullable<ReturnType<typeof readoutKindFor>>;
+const _allKinds: [Exclude<TelemetryReadoutKind, Spoken> | Exclude<Spoken, TelemetryReadoutKind>] extends [never]
   ? true
   : never = true;
 void _allKinds;
@@ -20,27 +42,30 @@ void _allKinds;
 export type ReadoutTelemetry = Pick<TelemetryData, "DisplayUnits" | "TrackTempCrew" | "AirTemp">;
 
 /**
- * Build the `telemetryReadout.requested` payload for one key press (issue
- * #466), or `null` when there is nothing true to say (a temperature the sim
- * does not report). The value is converted into the driver's display unit
- * here, at press time, and never re-read.
+ * Build the `telemetryReadout.requested` payload for one Session Info key
+ * press (issue #466), or `null` when there is nothing to say: an item with no
+ * speech yet, or a temperature the sim does not report. The value is converted
+ * into the driver's display unit here, at press time, and never re-read.
  *
  * `DisplayUnits` unset counts as metric — the translator's convention. It is
  * normalized before `fuelToDisplayUnits`, which on its own reads `undefined`
  * as imperial.
  */
 export function buildTelemetryReadout(
-  kind: TelemetryReadoutKind,
-  fuelLapWindow: number,
+  item: ReadoutItem,
   telemetry: ReadoutTelemetry,
   getStats: (windowLaps: number) => FuelStats,
 ): TelemetryReadoutRequest | null {
+  const kind = readoutKindFor(item);
+
+  if (kind === null) return null;
+
   const metric = telemetry.DisplayUnits !== DisplayUnits.English;
 
   switch (kind) {
     case "fuel-last-lap":
     case "fuel-average": {
-      const stats = getStats(fuelLapWindow);
+      const stats = getStats(item.fuelLapWindow);
       const liters = kind === "fuel-last-lap" ? stats.lastLap : stats.avg;
       const unit = metric ? "liters" : "gallons";
 

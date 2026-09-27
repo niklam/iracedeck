@@ -88,7 +88,8 @@ const PULSE_INTERVAL_MS = 500;
 
 const LITERS_PER_GALLON = 3.78541;
 
-const SessionInfoSettings = CommonSettings.extend({
+/** @internal Exported for the readout builder's item type (`readout-request.ts`). */
+export const SessionInfoSettings = CommonSettings.extend({
   mode: z
     .enum([
       "incidents",
@@ -102,6 +103,8 @@ const SessionInfoSettings = CommonSettings.extend({
       "track-wetness",
       "laps-to-empty",
       "wind",
+      "track-temp",
+      "air-temp",
     ])
     .default("incidents"),
   fontSize: z.preprocess(
@@ -150,7 +153,7 @@ const SessionInfoSettings = CommonSettings.extend({
   windSpeedUnit: z.enum(["ms", "kmh", "mph"]).default("kmh"),
 });
 
-type SessionInfoSettings = z.infer<typeof SessionInfoSettings>;
+export type SessionInfoSettings = z.infer<typeof SessionInfoSettings>;
 
 /**
  * @internal Exported for testing
