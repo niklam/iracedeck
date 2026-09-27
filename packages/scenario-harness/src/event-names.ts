@@ -327,6 +327,12 @@ export const EVENT_TEMPLATES = [
     data: {},
   },
   {
+    name: "telemetryReadout.requested",
+    description:
+      "A Pit Crew Telemetry Readout key press (issue #466) — value already in the display unit; a null fuel value means no clean lap yet",
+    data: { kind: "fuel-last-lap", value: 2.44, unit: "liters", laps: null },
+  },
+  {
     name: "track.wetness.changed",
     description: "Track-wetness state stepped (irsdk_TrackWetness 1..7)",
     data: { from: 1, to: 2 },

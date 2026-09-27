@@ -170,6 +170,32 @@ export type TireWearReport = {
 };
 
 /**
+ * What a Pit Crew Telemetry Readout key asks the Race Engineer to speak
+ * (issue #466). Sim-agnostic: every kind is a figure any sim can supply.
+ */
+export type TelemetryReadoutKind = "fuel-last-lap" | "fuel-average" | "track-temp" | "air-temp";
+
+/** The display unit a readout's `value` is already in (issue #466). */
+export type TelemetryReadoutUnit = "liters" | "gallons" | "celsius" | "fahrenheit";
+
+/**
+ * Payload of `telemetryReadout.requested` (issue #466). The publisher converts
+ * the figure into the driver's display unit and names that unit, so every
+ * contract reads the same shape whatever sim produced it.
+ *
+ * - `value` — the figure in `unit`, unrounded (the audio layer rounds for
+ *   speech). `null` only for a fuel kind with no valid lap on record yet.
+ * - `laps` — for `fuel-average` only: the laps the average actually covers,
+ *   which early in a stint is fewer than the key's window. `null` otherwise.
+ */
+export type TelemetryReadoutRequest = {
+  kind: TelemetryReadoutKind;
+  value: number | null;
+  unit: TelemetryReadoutUnit;
+  laps: number | null;
+};
+
+/**
  * Pit-service readback snapshot — the queued-services view the readback
  * scenarios speak to (issue #476). Lives next to the catalog because it's
  * shared between the sim translator (which builds it from current
@@ -452,6 +478,17 @@ export type SimEventMap = {
    * when the readings are missing or all zero.
    */
   "tireWear.reported": SimEvent<"tireWear.reported", TireWearReport>;
+
+  /**
+   * The driver pressed a Pit Crew Telemetry Readout key (issue #466). The
+   * first event the DECK layer publishes rather than the sim translator: the
+   * action reads the figure at the moment of the press, converts it to the
+   * driver's display unit and publishes it here, and the Race Engineer
+   * speaks it. The value is captured at press time on purpose — a readout
+   * answers "what is it now" as the driver asked, and a few seconds in the
+   * queue do not make it stale. Never published without telemetry.
+   */
+  "telemetryReadout.requested": SimEvent<"telemetryReadout.requested", TelemetryReadoutRequest>;
 
   "flag.yellow.raised": SimEvent<"flag.yellow.raised", { scope: FlagScope }>;
   "flag.yellow.cleared": SimEvent<"flag.yellow.cleared", EmptySimEventPayload>;
