@@ -3,6 +3,7 @@
 Date: 2026-08-09
 Issue: #936 — Race Engineer: announce other drivers' flags — nearby penalty flags (furled / black / meatball / DQ) + the leader's white flag
 Branch: `ir-936`
+Superseded by: [#1274](2026-09-27-issue-1274-opponent-flags-nearby-class-car-number.md) for the opponent-flag qualification window and wording (the leader's white strand stands)
 
 ## Summary
 

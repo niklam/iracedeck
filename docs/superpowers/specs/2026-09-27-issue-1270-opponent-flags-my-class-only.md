@@ -1,4 +1,4 @@
-> **Issue:** [#1270](https://github.com/niklam/iracedeck/issues/1270) · **Supersedes:** _none_ · **Superseded by:** _none_
+> **Issue:** [#1270](https://github.com/niklam/iracedeck/issues/1270) · **Supersedes:** _none_ · **Superseded by:** [#1274](2026-09-27-issue-1274-opponent-flags-nearby-class-car-number.md)
 >
 > Point-in-time design record. The code and `.claude/rules/` are the truth; this is not documentation.
 
