@@ -101,20 +101,16 @@ function isFuelKind(kind: unknown): boolean {
   return kind === "fuel-last-lap" || kind === "fuel-average";
 }
 
+/** A payload as the `where:` and the resolvers see it, or `null` when it is not an object. */
+function payloadOf(data: unknown): Partial<TelemetryReadoutRequest> | null {
+  return typeof data === "object" && data !== null ? (data as Partial<TelemetryReadoutRequest>) : null;
+}
+
 /** The request a fire speaks — the payload of its `telemetryReadout.requested` event, or `null` for any other fire. */
 function readoutOf(ctx: ScenarioContext): Partial<TelemetryReadoutRequest> | null {
   const event = ctx.event;
 
-  if (event?.event !== EVENT) return null;
-
-  const data: unknown = event.data;
-
-  return typeof data === "object" && data !== null ? (data as Partial<TelemetryReadoutRequest>) : null;
-}
-
-/** A payload as the `where:` sees it, or `null` when it is not an object. */
-function payloadOf(data: unknown): Partial<TelemetryReadoutRequest> | null {
-  return typeof data === "object" && data !== null ? (data as Partial<TelemetryReadoutRequest>) : null;
+  return event?.event === EVENT ? payloadOf(event.data) : null;
 }
 
 /**
