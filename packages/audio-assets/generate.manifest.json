@@ -46080,6 +46080,142 @@
       "textPreview": "one hundred percent.",
       "generatedAt": "2026-09-20T12:38:43.329Z",
       "requestId": "0Rdm2hpS1g194tEY79BA"
+    },
+    "voice/shawn/tire-wear/left-front-01.mp3": {
+      "hash": "3d933268af0d8ec7",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Left front:",
+      "generatedAt": "2026-09-20T12:01:24.433Z",
+      "requestId": "1iB6t8sOgpU3eb4dRxq1"
+    },
+    "voice/shawn/tire-wear/right-front-01.mp3": {
+      "hash": "4a7a33699a663ef4",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Right front:",
+      "generatedAt": "2026-09-20T12:01:24.580Z",
+      "requestId": "ervUcGeGog19gARHybiu"
+    },
+    "voice/shawn/tire-wear/left-rear-01.mp3": {
+      "hash": "a14052525d536ee8",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Left rear:",
+      "generatedAt": "2026-09-20T12:01:24.741Z",
+      "requestId": "YMsjOLA5mgDAqL0gwiei"
+    },
+    "voice/shawn/tire-wear/right-rear-01.mp3": {
+      "hash": "64454b6a9ba30fcd",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Right rear:",
+      "generatedAt": "2026-09-20T12:01:24.887Z",
+      "requestId": "xgBo6t3rTx0QbGkCAsM8"
+    },
+    "voice/shawn/tire-wear/intro-01.mp3": {
+      "hash": "ce683a36e713e434",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Tire wear.",
+      "generatedAt": "2026-09-27T11:03:42.650Z",
+      "requestId": "BcmHMfuxFo0nzeYka6OL"
+    },
+    "voice/shawn/tire-wear/heaviest-lf-inside-01.mp3": {
+      "hash": "45371cd48d79ee2e",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Heaviest: left front, inside.",
+      "generatedAt": "2026-09-27T11:03:42.825Z",
+      "requestId": "gSL4xddGYGkxDdAinJuG"
+    },
+    "voice/shawn/tire-wear/heaviest-lf-middle-01.mp3": {
+      "hash": "9064c4b3b32c2970",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Heaviest: left front, middle.",
+      "generatedAt": "2026-09-27T11:03:43.004Z",
+      "requestId": "UgiHj3CEGNpFJocASWl7"
+    },
+    "voice/shawn/tire-wear/heaviest-lf-outside-01.mp3": {
+      "hash": "018a9d22b386ba9d",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Heaviest: left front, outside.",
+      "generatedAt": "2026-09-27T11:03:43.177Z",
+      "requestId": "hgEnN2KNf0FhSSFXU1Cc"
+    },
+    "voice/shawn/tire-wear/heaviest-rf-inside-01.mp3": {
+      "hash": "fc3bb768733cd135",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Heaviest: right front, inside.",
+      "generatedAt": "2026-09-27T11:03:43.363Z",
+      "requestId": "kGU6Q5NfiOrmVYxcwwp1"
+    },
+    "voice/shawn/tire-wear/heaviest-rf-middle-01.mp3": {
+      "hash": "ad84822d9d221b20",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Heaviest: right front, middle.",
+      "generatedAt": "2026-09-27T11:03:43.529Z",
+      "requestId": "I4SZxSYZ1JSyEBTEGvQN"
+    },
+    "voice/shawn/tire-wear/heaviest-rf-outside-01.mp3": {
+      "hash": "5e3fedd55896af57",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Heaviest: right front, outside.",
+      "generatedAt": "2026-09-27T11:03:43.759Z",
+      "requestId": "FODr6TskNnUTyzdiupXc"
+    },
+    "voice/shawn/tire-wear/heaviest-lr-inside-01.mp3": {
+      "hash": "aa1fed397841bf7e",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Heaviest: left rear, inside.",
+      "generatedAt": "2026-09-27T11:03:43.914Z",
+      "requestId": "N8AmBSuipuNADSjoYnJY"
+    },
+    "voice/shawn/tire-wear/heaviest-lr-middle-01.mp3": {
+      "hash": "b472f2b7af245a28",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Heaviest: left rear, middle.",
+      "generatedAt": "2026-09-27T11:03:44.080Z",
+      "requestId": "7R70JCDeT0hDte0m0KMl"
+    },
+    "voice/shawn/tire-wear/heaviest-lr-outside-01.mp3": {
+      "hash": "93bd16a66566bc30",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Heaviest: left rear, outside.",
+      "generatedAt": "2026-09-27T11:03:44.242Z",
+      "requestId": "1yWnLPz9ToIrcHl3cDUC"
+    },
+    "voice/shawn/tire-wear/heaviest-rr-inside-01.mp3": {
+      "hash": "b4a9551b25bbda4b",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Heaviest: right rear, inside.",
+      "generatedAt": "2026-09-27T11:03:44.430Z",
+      "requestId": "A3guCujwTgvMWIAF4xUa"
+    },
+    "voice/shawn/tire-wear/heaviest-rr-middle-01.mp3": {
+      "hash": "8d33864e15e057f3",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Heaviest: right rear, middle.",
+      "generatedAt": "2026-09-27T11:03:44.607Z",
+      "requestId": "yIEqYCrX3fXYhZUFy4l6"
+    },
+    "voice/shawn/tire-wear/heaviest-rr-outside-01.mp3": {
+      "hash": "e87f9977284ecf13",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Heaviest: right rear, outside.",
+      "generatedAt": "2026-09-27T11:03:44.783Z",
+      "requestId": "ExYtSARoOZxq5j1JR7vG"
     }
   }
 }

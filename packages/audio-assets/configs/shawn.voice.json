@@ -18100,6 +18100,76 @@
         "name": "100",
         "text": "one hundred percent."
       }
+    ],
+    "tire-wear": [
+      {
+        "name": "intro-01",
+        "text": "Tire wear."
+      },
+      {
+        "name": "left-front-01",
+        "text": "Left front:"
+      },
+      {
+        "name": "right-front-01",
+        "text": "Right front:"
+      },
+      {
+        "name": "left-rear-01",
+        "text": "Left rear:"
+      },
+      {
+        "name": "right-rear-01",
+        "text": "Right rear:"
+      },
+      {
+        "name": "heaviest-lf-inside-01",
+        "text": "Heaviest: left front, inside."
+      },
+      {
+        "name": "heaviest-lf-middle-01",
+        "text": "Heaviest: left front, middle."
+      },
+      {
+        "name": "heaviest-lf-outside-01",
+        "text": "Heaviest: left front, outside."
+      },
+      {
+        "name": "heaviest-rf-inside-01",
+        "text": "Heaviest: right front, inside."
+      },
+      {
+        "name": "heaviest-rf-middle-01",
+        "text": "Heaviest: right front, middle."
+      },
+      {
+        "name": "heaviest-rf-outside-01",
+        "text": "Heaviest: right front, outside."
+      },
+      {
+        "name": "heaviest-lr-inside-01",
+        "text": "Heaviest: left rear, inside."
+      },
+      {
+        "name": "heaviest-lr-middle-01",
+        "text": "Heaviest: left rear, middle."
+      },
+      {
+        "name": "heaviest-lr-outside-01",
+        "text": "Heaviest: left rear, outside."
+      },
+      {
+        "name": "heaviest-rr-inside-01",
+        "text": "Heaviest: right rear, inside."
+      },
+      {
+        "name": "heaviest-rr-middle-01",
+        "text": "Heaviest: right rear, middle."
+      },
+      {
+        "name": "heaviest-rr-outside-01",
+        "text": "Heaviest: right rear, outside."
+      }
     ]
   },
   "scenarios": {
@@ -18440,6 +18510,47 @@
           "if": "!readback.hasAnyService",
           "then": ["pool:pit-readback/empty-fallback"],
           "else": ["@readback-body"]
+        }
+      ]
+    },
+    "pit-crew.tire-wear-report": {
+      "comment": "After a pit stop, once the exit readback has played: the remaining tread of all four tires, front to rear, each as the lowest of its three zones in whole percent, then where the wear is heaviest, a sentence left out when every tire still reads one hundred. After a tire change the numbers describe the set that came off.",
+      "test": "Harness → Tire Wear → Report after a stop. In-sim: drive into your box, stop, and leave pit road; the report follows the exit readback.",
+      "sequence": [
+        "pool:tire-wear/intro",
+        "pool:tire-wear/left-front",
+        "{{tireWear.leftFrontTread}}",
+        "pool:tire-wear/right-front",
+        "{{tireWear.rightFrontTread}}",
+        "pool:tire-wear/left-rear",
+        "{{tireWear.leftRearTread}}",
+        "pool:tire-wear/right-rear",
+        "{{tireWear.rightRearTread}}",
+        {
+          "optional": [
+            {
+              "if": "tireWear.hasWear",
+              "then": [
+                {
+                  "case": "tireWear.heaviestSpot",
+                  "of": {
+                    "lf-inside": ["pool:tire-wear/heaviest-lf-inside"],
+                    "lf-middle": ["pool:tire-wear/heaviest-lf-middle"],
+                    "lf-outside": ["pool:tire-wear/heaviest-lf-outside"],
+                    "rf-inside": ["pool:tire-wear/heaviest-rf-inside"],
+                    "rf-middle": ["pool:tire-wear/heaviest-rf-middle"],
+                    "rf-outside": ["pool:tire-wear/heaviest-rf-outside"],
+                    "lr-inside": ["pool:tire-wear/heaviest-lr-inside"],
+                    "lr-middle": ["pool:tire-wear/heaviest-lr-middle"],
+                    "lr-outside": ["pool:tire-wear/heaviest-lr-outside"],
+                    "rr-inside": ["pool:tire-wear/heaviest-rr-inside"],
+                    "rr-middle": ["pool:tire-wear/heaviest-rr-middle"],
+                    "rr-outside": ["pool:tire-wear/heaviest-rr-outside"]
+                  }
+                }
+              ]
+            }
+          ]
         }
       ]
     },
