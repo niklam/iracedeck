@@ -10,13 +10,13 @@ The Race Engineer plays one short tone the moment the player crosses the pit exi
 
 - **When.** On `pitLane.exited`, the player's `OnPitRoad` on→off edge, which is where the pit speed limit ends. It plays only while the player is in the car (`IsOnTrack` on that tick) and not in a replay, so leaving the car, a tow or a reset is silent. There is no speed threshold: a car queueing out of a closed exit still crosses the line.
 - **What.** A new tone, a short rising two-note chirp (under 250 ms), added under `packages/audio-assets/sfx/`. It must not sound like `IRD-pit-speed-warning.wav`: that tone means "too fast", and this one means "limit's off".
-- **How it plays.** A code-owned cue engine beside the pit-road speeding engine (#912), calling `getAudio().playOnChannel(AudioChannel.Radar, …)` directly. It is not a scripted contract, for the reasons #912 gave: a tone has no wording for a voice pack to own, and a scriptless voice must not silence a safety cue.
-- **Which volume.** Radar, the channel the speeding tick already uses, so the two pit-lane tones share one slider. The Radar spotter clears itself on pit road and has nothing queued at the exit edge.
+- **How it plays.** A code-owned cue engine beside the pit-road speeding engine (#912), calling `getAudio().playOnChannel(AudioChannel.Cue, …)` directly. It is not a scripted contract, for the reasons #912 gave: a tone has no wording for a voice pack to own, and a scriptless voice must not silence a safety cue.
+- **Which channel and volume.** `AudioChannel.Cue`, a fifth mixer channel for one-shot pit-lane tones, routed to the Alerts bus at the Radar channel's mix ratio, so the beep follows the Radar Volume slider like the speeding tick and the user sees no new setting. Not the Radar channel itself: the proximity radar resumes the moment the car leaves pit road, and `playOnChannel` replaces whatever is playing on a channel, so a radar tick landing just after the edge would cut the beep to nothing. The channel is added by whichever of this issue and the limiter-on beep lands first; its design, and why a hold on Radar was rejected, are in `2026-09-27-issue-1272-limiter-on-beep.md` (#1272).
 - **The switch.** `calloutEnabledPitExitCue`, "Pit exit beep", in the same settings-window section as "Pit road speeding"; default `true` (new Race Engineer functionality ships on), read live on each event, and inert while the Race Engineer gate is off.
 
 ## What is already at pit exit, and why nothing collides
 
-"Limiter still on after pit exit" follows the same edge by about 1.5 s, and the "To confirm: …" exit readback by 4.5 s. Both are Voice-bus contracts in their own families. The beep is on Radar with no family or weight, so it neither preempts them nor waits for them.
+"Limiter still on after pit exit" follows the same edge by about 1.5 s, and the "To confirm: …" exit readback by 4.5 s. Both are Voice-bus contracts in their own families. The beep is on the Cue channel with no family or weight, so it neither preempts them nor waits for them.
 
 ## Alternatives rejected
 
