@@ -1,6 +1,6 @@
 {
   "id": "ljX1ZrXuDIIRVcmiVSyR",
-  "label": "Default (Short)",
+  "label": "Default (Terse)",
   "model_id": "eleven_flash_v2_5",
   "voice_settings": {
     "stability": 0.75,
