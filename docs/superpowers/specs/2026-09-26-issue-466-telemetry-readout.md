@@ -56,7 +56,7 @@ The readout lives in **Session Info**, the action that already shows these figur
 
 `packages/iracing-actions/src/actions/session-info/session-info.ts` gains:
 
-- **`speakOnPress`** — "Speak value on press", default **on**, on every item. The action-level setting is deliberately not limited to the items that speak today: it is the switch for the whole action, its help text names the items that speak, and an item that gains speech later needs no settings change. On an item with no speech yet, a press does nothing. Existing keys start speaking on press after the update, which is intended (new Race Engineer functionality defaults on); the Race Engineer master still gates every readout.
+- **`speakOnPress`** — "Speak value on press", default **on**, on every item. The action-level setting is deliberately not limited to the items that speak today: it is the switch for the whole action, its help text names the items that speak, and an item that gains speech later needs no settings change. On an item with no speech yet, a press does nothing. The setting is independent of #1165's planned `onPress` (what a press sends to iRacing): the maintainer chose a separate checkbox over making speech one value of that enum, so a press may both send a binding and speak once #1165 lands; the #1165 spec records the same. Existing keys start speaking on press after the update, which is intended (new Race Engineer functionality defaults on); the Race Engineer master still gates every readout.
 - **Two new items**, `track-temp` and `air-temp`, showing the rounded figure with its unit ("41°C" / "106°F") in the driver's display units.
 
 On key down, with `speakOnPress` on and telemetry present, the item maps to a kind:

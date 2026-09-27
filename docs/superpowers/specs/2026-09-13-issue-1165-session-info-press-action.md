@@ -19,6 +19,10 @@ Session Info gains a per-key **On press** setting, and the key keeps rendering i
 
 #560 wants the Session Info press to cycle display modes. A press can only mean one thing, so both features are options of this single `onPress` enum: #560 adds `"cycle-modes"`, and nothing needs migrating because `none` stays the default.
 
+## How #466 fits
+
+#466 (amended 2026-09-27, before this shipped) gives every Session Info key a press behaviour of its own: **Speak value on press** (`speakOnPress`, default on) has the Race Engineer read the value the key shows. It is deliberately **independent of `onPress`**, by the maintainer's choice: speaking is not an action the press sends to iRacing, so one press may both send the chosen binding and speak the value. `onPress` keeps meaning "what the press sends" and its default `none` still means "sends nothing" — which, since #466, no longer means the press is silent. #560's `cycle-modes` must decide which value a cycling press speaks (the mode it leaves or the one it arrives at); that is its decision, not this one's.
+
 ## Alternatives rejected
 
 - **A per-action `ird-key-binding`.** It stores a raw key on each Session Info key. That bypasses the global binding the owning action uses, cannot hold a SimHub role, and has to be edited on every key after a rebind in iRacing.
