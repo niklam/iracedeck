@@ -125,7 +125,7 @@ See `README.md` for the full CLI flag reference.
 
 The most common case — a new callout in an existing family (e.g. another flag):
 
-1. Add the entry to the group in `configs/default.voice.json`. Other voice configs *may* add the same `<group>/<entry-name>` key (wording may differ per voice) but don't have to — a voice without the clip just skips that callout (issue #664). Omit `seed` (or set `"seed": 1`) — never an arbitrary value.
+1. Add the entry to the group in `configs/default.voice.json` **and in every other first-party voice** — every voice `VOICE_PACKS` publishes, today `configs/shawn.voice.json`, the Terse pack (#999) — with that voice's own wording; a first-party voice makes every callout Default makes, and `bundled-scripts.test.ts` fails on a contract its script does not carry. Generate the Terse line scoped to its voice (`generate:dry-run --voice shawn --group <group>`, then `generate --voice shawn --group <group>`); an entry whose text, settings and seed are verbatim Default's can instead be copied — the clip and its `generate.manifest.json` row under `voice/shawn/…` — and the dry-run reports it as a cache hit. A third-party voice config *may* add the same `<group>/<entry-name>` key but doesn't have to — a voice without the clip just skips that callout (issue #664). Omit `seed` (or set `"seed": 1`) — never an arbitrary value.
 2. Preview: `pnpm --filter @iracedeck/audio-assets generate:dry-run --group <group>` — it must report exactly the new entries as "WOULD GENERATE" and everything else as cache hits.
 3. Generate scoped: `pnpm --filter @iracedeck/audio-assets generate --group <group>`.
 4. Rebuild the runtime manifest: `pnpm --filter @iracedeck/audio-assets generate:manifest`.
@@ -133,7 +133,7 @@ The most common case — a new callout in an existing family (e.g. another flag)
 
 ## Adding a new group
 
-1. Add the new top-level key under `groups` in `configs/default.voice.json` (the canonical voice; other voices may adopt the group later — parity is not required, issue #664).
+1. Add the new top-level key under `groups` in `configs/default.voice.json` (the canonical voice) and in every other first-party voice, as in step 1 above (#999); a third-party voice may adopt the group later — parity is not required of it, issue #664.
 2. Author the entries (text, no `seed` — or `"seed": 1` — by default, optional `previous_request_ids`).
 3. Generate (scoped by `--group`), after a dry-run preview.
 4. Rebuild the runtime manifest.

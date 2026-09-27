@@ -25,7 +25,7 @@ The voice every install gets. iRaceDeck downloads it the first time the plugin s
 
 ### Default (Terse)
 
-The Default engineer in radio shorthand. Once a session is running, each call carries the fact and nothing else — no greeting, no name, no encouragement, no explanation of what a flag or a state means:
+The Default engineer in radio shorthand. Once a session is running his calls are shorter: most come down to the fact itself, with far less of Default's explanation of what a flag or a state means, while a few — a pass made, a place lost — still carry a word from him:
 
 | Default | Default (Terse) |
 | --- | --- |
@@ -44,7 +44,7 @@ Outside the racing itself he keeps a friendlier tone: the welcome, the greetings
 
 Open **iRaceDeck Settings** from any action's Property Inspector, go to the **Race Engineer** section, and pick from the **Race Engineer Voice** dropdown. Every installed voice appears there. The change takes effect on the next callout — there is no need to restart anything.
 
-**iRaceDeck's own voices are listed first**, as **iRaceDeck: Default** and — once you have installed it — **iRaceDeck: Default (Terse)**, above every other voice, whatever the others are called. The rest follow in alphabetical order, each under the name its pack gave it. A voice counts as iRaceDeck's when iRaceDeck itself installed it — downloaded from its catalog, or placed there by an earlier version of the plugin. A copy of one of iRaceDeck's packs that you put into the folder by hand is listed like any other pack, under its own name among the rest, and iRaceDeck does not keep it up to date.
+**iRaceDeck's own voices are listed first**, as **iRaceDeck: Default** and — once you have installed it — **iRaceDeck: Default (Terse)**, above every other voice, whatever the others are called. The rest follow in alphabetical order, each under the name its pack gave it. A voice counts as iRaceDeck's when iRaceDeck itself installed it — downloaded from its catalog, or placed there by an earlier version of the plugin. A copy of one of iRaceDeck's packs other than Default that you put into the folder by hand is listed like any other pack, under its own name among the rest, and iRaceDeck does not keep it up to date. A folder you put in Default's place is a different case: iRaceDeck replaces it with its own copy of Default at the next start (see below).
 
 Among the other packs, some voices are listed with their pack's name in front, as **Pack: Voice**. That happens when the voice's name alone could be ambiguous — a pack providing more than one voice, or a pack whose own name differs from its voice's. A pack that provides a single voice with a matching name is listed by that name alone. The rule depends only on the pack itself, so installing another pack never renames a voice you have already chosen.
 
