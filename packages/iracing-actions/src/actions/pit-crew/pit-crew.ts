@@ -203,17 +203,24 @@ function cornerNamesPathContent(color: string): string {
 }
 
 /**
- * Speech-bubble glyph for the Telemetry Readout mode (issue #466): the
- * engineer reading a figure out. Same placeholder convention and bounds as
- * the other Pit Crew glyphs.
+ * Gauge-and-sound-waves glyph for the Telemetry Readout mode (issue #466): an
+ * instrument read out loud. Deliberately not a speech bubble, which is the
+ * Chat action's concept, and an open dial with ticks and a needle rather
+ * than full circles so it does not echo the radar glyph. Same placeholder
+ * convention and bounds as the other Pit Crew glyphs.
  */
 function readoutPathContent(color: string): string {
   return (
     `<g fill="none" stroke="${color}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">` +
-    `<path d="M 11 10 H 61 Q 66 10 66 15 V 44 Q 66 49 61 49 H 32 L 18 61 V 49 H 11 Q 6 49 6 44 V 15 Q 6 10 11 10 Z"/>` +
-    `<line x1="17" y1="23" x2="55" y2="23"/>` +
-    `<line x1="17" y1="36" x2="44" y2="36"/>` +
-    `</g>`
+    `<path d="M 10.1 52.5 A 23 23 0 1 1 49.9 52.5"/>` +
+    `<line x1="13.7" y1="24.7" x2="17.3" y2="28.3"/>` +
+    `<line x1="30" y1="18" x2="30" y2="23"/>` +
+    `<line x1="46.3" y1="24.7" x2="42.7" y2="28.3"/>` +
+    `<line x1="30" y1="41" x2="39.8" y2="27.1"/>` +
+    `<path d="M 59.8 34.1 A 9 9 0 0 1 59.8 47.9"/>` +
+    `<path d="M 64.9 28 A 17 17 0 0 1 64.9 54"/>` +
+    `</g>` +
+    `<circle cx="30" cy="41" r="4.5" fill="${color}"/>`
   );
 }
 
