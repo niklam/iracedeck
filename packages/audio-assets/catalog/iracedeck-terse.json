@@ -1,0 +1,15 @@
+{
+  "id": "iracedeck-terse",
+  "label": "Default (Terse)",
+  "version": "1.0.0",
+  "description": "The Default engineer in radio shorthand: race-time calls carry the fact and nothing else.",
+  "voices": [
+    {
+      "id": "shawn",
+      "label": "Default (Terse)"
+    }
+  ],
+  "bytes": 6654778,
+  "sha256": "6798ee2fc7d6e04725d56409d2835f116e13f4e94aa81052c5283d591d19488d",
+  "url": "https://github.com/niklam/iracedeck/releases/download/voices-iracedeck-terse-1.0.0/iracedeck-terse-1.0.0.zip"
+}
