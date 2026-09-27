@@ -141,10 +141,11 @@ The most common case — a new callout in an existing family (e.g. another flag)
 
 ## Adding a new voice
 
-1. Create `configs/<voice-id>.voice.json` with its own `id` (ElevenLabs voice id), `label`, `model_id`, `voice_settings`, and `groups`. The groups do **not** need to match `default.voice.json` — a partial voice ships fine and simply skips the callouts it lacks (issue #664). The only constraint is the coverage check above: every clip you author in a group your script addresses must be referenced by your script, and everything your script references must exist — a `<group>/<base>` the bundled voice lacks is fine when your script speaks it.
+1. Create `configs/<voice-id>.voice.json` with its own `id` (ElevenLabs voice id), `label`, `model_id`, `voice_settings`, and `groups`. The groups do **not** need to match `default.voice.json` — a partial voice loads fine and simply skips the callouts it lacks (issue #664), until step 5 makes it first-party. The only constraint is the coverage check above: every clip you author in a group your script addresses must be referenced by your script, and everything your script references must exist — a `<group>/<base>` the bundled voice lacks is fine when your script speaks it.
 2. Run `pnpm --filter @iracedeck/audio-assets generate --voice <voice-id>` to render its clips into `voice/<voice-id>/...`.
 3. Rebuild the runtime manifest. The runtime auto-discovers voices from the manifest's `voice/<id>/...` paths, so the new voice appears in the PI dropdown automatically.
 4. Author the voice's callout script — `scenarios`, `frames`, `pools`, `fragments` in the same config — and extract `voice/<voice-id>/callouts.json` (the post-edit hook runs `pnpm generate:callout-scripts` in a Claude session; run it by hand otherwise). Without one the voice is clips-only: it loads, appears in the dropdown, and says nothing, because absent means skipped. Commit the artifact with the config; the freshness test insists.
+5. Registering the voice in `VOICE_PACKS` (`src/build/voice-packs.mjs`) makes it first-party, and every first-party voice is held to script completeness (#999): add it to `FIRST_PARTY_SCRIPTS` and `CLIP_SOURCE_FLOOR` in `@iracedeck/audio-scenarios`' `bundled-scripts.test.ts`, which fails until you do and then fails on any contract its script does not carry. Third-party packs are not held to that — for them absence still means skipped. The pack reference and `lint:pack`'s engine keep reading the reference voice `default`.
 
 ## Conventions
 
