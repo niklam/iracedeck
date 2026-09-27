@@ -276,6 +276,13 @@ export {
   type ReplaySessionSubscriberOptions,
 } from "./replay-session-subscriber.js";
 
+// The Volume Mixer name and icon every plugin gives its audio session (issue #1253)
+export {
+  AUDIO_SESSION_DISPLAY_NAME,
+  AUDIO_SESSION_ICON_FILE,
+  pluginAudioSessionIdentity,
+} from "./audio-session-identity.js";
+
 // Downloadable Race Engineer voice packs (issue #1034)
 export { resolveVoicePacksPath, type ResolveVoicePacksPathOptions } from "./voice-packs-path.js";
 // The pack format's shared rules live in `@iracedeck/callout-script` since

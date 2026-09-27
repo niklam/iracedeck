@@ -159,6 +159,7 @@ import {
   openFolderInExplorer,
   orderRaceEngineerVoices,
   parseSettingsWindowBounds,
+  pluginAudioSessionIdentity,
   type PluginConfig,
   readInstalledVoicePackSha,
   resolveActiveDriverName,
@@ -421,7 +422,9 @@ const audioRootDir = join(__binDir, "..", "assets", "audio");
 // The plugin's own assets are always the first, highest-precedence audio root;
 // `voicePacks.refresh()` below extends the list with one root per installed
 // voice pack (issue #1034).
-initializeAudio(adapter.createLogger("Audio"), audioNative, [audioRootDir]);
+// The Windows Volume Mixer otherwise lists our audio session under the deck
+// host's executable ("Node"); name it and give it our logo (#1253).
+initializeAudio(adapter.createLogger("Audio"), audioNative, [audioRootDir], pluginAudioSessionIdentity(__binDir));
 getAudio().init();
 
 const featureGateLogger = adapter.createLogger("FeatureGates");
