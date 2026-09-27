@@ -103,6 +103,7 @@ In `packages/event-bus/src/event-catalog.ts`:
 
 ### 2. Translator diff + state
 
+- **A key-triggered callout has no diff.** When the moment is a deck key press rather than a sim change, the action publishes the event itself and step 2's diff and state do not apply — Pit Crew's Telemetry Readout (#466) is the precedent: the action converts the figure to the driver's display unit before publishing, so the payload stays sim-agnostic.
 - Add fields to `TranslatorState` in `packages/sim-events-iracing/src/state.ts` (typically `<name>Initialized: boolean` + a `last<Name>` cache). **Update both the type AND `createInitialState()`** — TypeScript catches the mismatch only via `pnpm build` (vitest's esbuild path is more permissive).
 - Write the diff module under `packages/sim-events-iracing/src/diff/<name>.ts`. Pattern: seed silently on first tick, advance baseline every tick, emit the bus event only on real transitions. Suppress sentinel-state transitions (Unknown ↔ x for track-wetness; * → None for pit-status).
 - Wire into `translator.ts` `handleTick`.
