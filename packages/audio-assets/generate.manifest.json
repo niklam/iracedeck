@@ -23625,14 +23625,6 @@
       "generatedAt": "2026-09-11T07:59:59.810Z",
       "requestId": "D9X7RJ1KpIZSDwPlKz9S"
     },
-    "voice/shawn/flags/checkered-01.mp3": {
-      "hash": "1d0da631c1a1ac11",
-      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
-      "model": "eleven_flash_v2_5",
-      "textPreview": "checkered flag.",
-      "generatedAt": "2026-09-11T07:59:59.999Z",
-      "requestId": "g6Of23NRPNCveYeolrcs"
-    },
     "voice/shawn/flags/debris-01.mp3": {
       "hash": "bc2a8c797a1b4af9",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
@@ -23640,14 +23632,6 @@
       "textPreview": "Watch for debris.",
       "generatedAt": "2026-09-11T08:00:00.212Z",
       "requestId": "G9BW7lLiMZqU4OkmBsKC"
-    },
-    "voice/shawn/flags/green-01.mp3": {
-      "hash": "106293acace3df07",
-      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
-      "model": "eleven_flash_v2_5",
-      "textPreview": "Green, green, green!",
-      "generatedAt": "2026-09-11T08:00:00.400Z",
-      "requestId": "CLD3d9r4aZlBzwuraAsV"
     },
     "voice/shawn/flags/meatball-01.mp3": {
       "hash": "275f39de8f3027c2",
@@ -23664,14 +23648,6 @@
       "textPreview": "Red flag. Session stopped.",
       "generatedAt": "2026-09-11T08:00:00.891Z",
       "requestId": "Qj3Vqclv6RKQq8SbuHWU"
-    },
-    "voice/shawn/flags/white-01.mp3": {
-      "hash": "2553902402306773",
-      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
-      "model": "eleven_flash_v2_5",
-      "textPreview": "White flag, last lap.",
-      "generatedAt": "2026-09-11T08:00:01.300Z",
-      "requestId": "KDX3DVjlhmYhp3dcRx12"
     },
     "voice/shawn/flags/yellow-local-01.mp3": {
       "hash": "eae21a5965719035",
