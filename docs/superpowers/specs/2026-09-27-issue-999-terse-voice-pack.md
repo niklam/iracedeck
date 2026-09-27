@@ -1,4 +1,4 @@
-# Short Callouts, the Second iRaceDeck Voice Pack
+# Terse, the Second iRaceDeck Voice Pack
 
 > **Issue:** [#999](https://github.com/niklam/iracedeck/issues/999) · **Supersedes:** _none_ · **Superseded by:** _none_
 >
@@ -14,8 +14,8 @@ It is also the first time a second first-party pack exists, which raises a quest
 
 ## Goals
 
-- Ship the short voice as its own catalog pack that a user installs on demand and that then updates itself like any catalog-installed pack.
-- Give it parity with Default: every scenario Default speaks, Short speaks.
+- Ship the terse voice as its own catalog pack that a user installs on demand and that then updates itself like any catalog-installed pack.
+- Give it parity with Default: every scenario Default speaks, Terse speaks.
 - Race-time calls are as short as possible.
 - Every iRaceDeck voice reads "iRaceDeck: <pack label>" in the dropdown and sorts above every other pack, whatever the others are called.
 
@@ -23,7 +23,7 @@ It is also the first time a second first-party pack exists, which raises a quest
 
 - Renaming the `default` pack to `iracedeck-default`. It is a published contract (every user's stored `default::default`, the installed `…\Voices\default` folders and their records, the live catalog every older plugin reads, the `voices-default-*` releases), and renaming it buys an id no user sees. It gets its own issue and its own decision.
 - The third-party naming rule — #1147 keeps it (see *Labels and order*).
-- Installing Short automatically. `default` stays the only pack the launch step installs unasked.
+- Installing Terse automatically. `default` stays the only pack the launch step installs unasked.
 - Other languages, and the voice-config authoring tool designed in #1035.
 - Reordering or re-badging the settings window's Installed Voices list.
 - Changing the generated pack reference on the website: it stays Default's, because Default is the reference voice pack authors write against.
@@ -32,19 +32,19 @@ It is also the first time a second first-party pack exists, which raises a quest
 
 ### The pack
 
-**Its own pack, installed on demand.** A second voice inside `default` would reach every user unasked, but every user would download ~1,500 more clips, and any wording change to Short would bump Default's version. A separate pack auto-installed at launch would need `ENSURED_VOICE_PACK_ID` to become a list and would ship the bytes to everyone anyway, reversing #1034's reasoning. As its own catalog pack it reaches only the users who ask for it, and nothing in deck-core's install path changes: the launch step already updates every catalog pack whose install record is behind the catalog (`voice-pack-launch.ts`, the `update` verdict), so a user who installed Short gets each published version at their next start. Only the first install is theirs to make, from the Voice Packs card's "Available to Download" list.
+**Its own pack, installed on demand.** A second voice inside `default` would reach every user unasked, but every user would download ~1,500 more clips, and any wording change to Terse would bump Default's version. A separate pack auto-installed at launch would need `ENSURED_VOICE_PACK_ID` to become a list and would ship the bytes to everyone anyway, reversing #1034's reasoning. As its own catalog pack it reaches only the users who ask for it, and nothing in deck-core's install path changes: the launch step already updates every catalog pack whose install record is behind the catalog (`voice-pack-launch.ts`, the `update` verdict), so a user who installed Terse gets each published version at their next start. Only the first install is theirs to make, from the Voice Packs card's "Available to Download" list.
 
-**Ids: pack `iracedeck-short`, voice `short`, so `iracedeck-short::short`.** A pack id and a voice id are permanent — a user's selection stores the composite — so they are chosen once. The two packs cannot share one pack id: a pack is one archive at one version, which is exactly the coupling rejected above. The voice id is also the authored directory `voice/<id>/`, so it cannot be `default`.
+**Ids: pack `iracedeck-terse`, voice `terse`, so `iracedeck-terse::terse`.** A pack id and a voice id are permanent — a user's selection stores the composite — so they are chosen once. The two packs cannot share one pack id: a pack is one archive at one version, which is exactly the coupling rejected above. The voice id is also the authored directory `voice/<id>/`, so it cannot be `default`.
 
 **New first-party packs are named `iracedeck-<name>`; `default` is the one legacy exception.** The catalog lists only our packs, but a third-party pack reaches a user by sideload and can choose any id; a prefix keeps ours recognisable by id as well as by provenance. The prefix is a naming rule, not a trust decision — trust is the install record (below).
 
-**The registry entry.** `VOICE_PACKS` gains `{ id: "iracedeck-short", label: "Default (Short callouts)", author: "iRaceDeck", voices: ["short"], bundled: false }` at version `1.0.0`. Everything downstream is already generic over the registry: `pack:voice` writes `catalog/iracedeck-short.json`, `scripts/publish-voice-packs.mjs` and both workflows publish it as `voices-iracedeck-short-1.0.0`, the website's `voice-catalog.json` lists it, and the harness can audition it.
+**The registry entry.** `VOICE_PACKS` gains `{ id: "iracedeck-terse", label: "Default (Terse)", author: "iRaceDeck", voices: ["terse"], bundled: false }` at version `1.0.0`. Everything downstream is already generic over the registry: `pack:voice` writes `catalog/iracedeck-terse.json`, `scripts/publish-voice-packs.mjs` and both workflows publish it as `voices-iracedeck-terse-1.0.0`, the website's `voice-catalog.json` lists it, and the harness can audition it.
 
-**The branch's `terse` becomes `short` without re-cutting a clip.** `voice/terse/` → `voice/short/`, `configs/terse.voice.json` → `configs/short.voice.json` with the label "Default (Short callouts)", and every `generate.manifest.json` key `voice/terse/…` rekeyed to `voice/short/…`. The cache is keyed by clip path, so the rekey is what keeps the rename free; `generate:dry-run` proving zero would-generate for the voice is the check.
+**The branch keeps its `terse` naming.** `voice/terse/`, `configs/terse.voice.json` and the `generate.manifest.json` rows stay where the PR put them, so nothing is re-cut; only the config's label changes, to "Default (Terse)". The PR's own name was the better word, decided 2026-09-27 after a first draft of this spec renamed it `short`.
 
 ### Content
 
-**Parity.** Short covers every scenario Default speaks. The six missing groups get Short wording, and the branch's `session-start-temp-numbers` folds into master's `numbers-degrees` (its two orphaned `session-start/degrees-*` clips are what fails `script-coverage.test.ts` today).
+**Parity.** Terse covers every scenario Default speaks. The six missing groups get Terse wording, and the branch's `session-start-temp-numbers` folds into master's `numbers-degrees` (its two orphaned `session-start/degrees-*` clips are what fails `script-coverage.test.ts` today).
 
 **The race-time rule.** A call made while a session is running carries the fact and nothing else: no greeting, no driver name, no encouragement, no explanation of what a flag or a state means. "Blue flag.", "Pits open.", "Meatball." Where a fact needs a number, the number and its unit, no framing.
 
@@ -54,13 +54,13 @@ It is also the first time a second first-party pack exists, which raises a quest
 
 ### Completeness
 
-**Every voice in `VOICE_PACKS` is held to completeness, not only `default`.** `bundled-scripts.test.ts` checks today that the reference voice has a script entry behind every scenario contract (`VOICE = "default"`). It is generalised to every first-party voice, so Short cannot fall behind Default as new callouts land without the suite going red. Third-party packs stay unchecked, as now. `scripts/lib/catalog-engine.mjs` keeps `BUNDLED_VOICE = "default"`: it feeds the generated pack reference, which stays the reference voice's.
+**Every voice in `VOICE_PACKS` is held to completeness, not only `default`.** `bundled-scripts.test.ts` checks today that the reference voice has a script entry behind every scenario contract (`VOICE = "default"`). It is generalised to every first-party voice, so Terse cannot fall behind Default as new callouts land without the suite going red. Third-party packs stay unchecked, as now. `scripts/lib/catalog-engine.mjs` keeps `BUNDLED_VOICE = "default"`: it feeds the generated pack reference, which stays the reference voice's.
 
 ### Labels and order
 
 **First-party is decided by the install record.** A pack is iRaceDeck's when its `.install.json` says `catalog` or `bundled-seed`, or it was found under the development voice root (provenance `development`). The record is written by our installer only, and the extractor drops any copy shipped inside an archive, so a pack cannot claim it about itself; it works offline, unlike reading the live catalog, and it does not refuse a hand-installed copy of our own pack the way a reserved id prefix would. The id prefix above plays no part in the decision.
 
-**Every voice of a first-party pack is labelled "iRaceDeck: <pack label>".** "iRaceDeck: Default" and "iRaceDeck: Default (Short callouts)". The plugin adds the prefix; the packs' own labels stay "Default" and "Default (Short callouts)". The rule is one deck-core function beside `voiceDisplayLabels`, which all three plugins already call, and it keeps that function's property: an entry's name depends on its own pack's manifest and record, never on what else is installed.
+**Every voice of a first-party pack is labelled "iRaceDeck: <pack label>".** "iRaceDeck: Default" and "iRaceDeck: Default (Terse)". The plugin adds the prefix; the packs' own labels stay "Default" and "Default (Terse)". The rule is one deck-core function beside `voiceDisplayLabels`, which all three plugins already call, and it keeps that function's property: an entry's name depends on its own pack's manifest and record, never on what else is installed.
 
 **The plugin publishes `_raceEngineerVoices` sorted:** the managed pack first, then the other first-party packs by label, then every other voice by label. `ird-voice-select` renders options in the order it receives them, so the order is decided once, in deck-core, and not in the PI. Only labels and order change; no stored selection is read or written differently.
 
@@ -72,11 +72,11 @@ It is also the first time a second first-party pack exists, which raises a quest
 
 | Situation | Behaviour |
 | --- | --- |
-| User selects Short, then removes the pack | The stored `iracedeck-short::short` is kept; `resolveActiveRaceEngineerVoice` falls back to `default::default` read-only, exactly as for any absent voice. Reinstalling restores the choice. |
-| Catalog unreachable on a start | Installed packs keep their labels and order (the record is on disk); Short is simply not offered for install until the catalog answers. |
-| A new callout lands in Default without Short wording | The generalised completeness test fails on the branch that adds it. |
+| User selects Terse, then removes the pack | The stored `iracedeck-terse::terse` is kept; `resolveActiveRaceEngineerVoice` falls back to `default::default` read-only, exactly as for any absent voice. Reinstalling restores the choice. |
+| Catalog unreachable on a start | Installed packs keep their labels and order (the record is on disk); Terse is simply not offered for install until the catalog answers. |
+| A new callout lands in Default without Terse wording | The generalised completeness test fails on the branch that adds it. |
 | A sideload labels itself "iRaceDeck: Pro" | Shown with that label, sorted below every first-party voice. |
-| A copy of Short placed by hand, no record | Treated as third-party: its own label, sorted with the others, never updated by the launch step. |
+| A copy of Terse placed by hand, no record | Treated as third-party: its own label, sorted with the others, never updated by the launch step. |
 
 ## Testing
 
@@ -85,23 +85,23 @@ Automated:
 - The first-party check: `catalog`, `bundled-seed` and `development` qualify; `sideload`, and a record whose `id` does not match the manifest, do not.
 - Labels: both voices of a first-party pack read "iRaceDeck: <pack label>"; a third-party pack's labels are unchanged by this issue.
 - Order: a third-party pack labelled "Aaa" sorts below both iRaceDeck packs, and the managed pack precedes the other first-party packs.
-- The generalised completeness test covers `short`, with a positive control: deleting one of Short's script entries makes it fail.
-- `generate:dry-run` after the rename: zero would-generate for `short`, and the count for `default` unchanged from master's.
-- `pack:voice iracedeck-short` is byte-deterministic and its catalog entry verifies in the publish script's dry run; `pnpm lint:pack` over the staged pack.
-- The existing `callout-scripts.test.ts` and `script-coverage.test.ts` pass for `short` (they already iterate every authored voice).
+- The generalised completeness test covers `terse`, with a positive control: deleting one of Terse's script entries makes it fail.
+- `generate:dry-run` after the label change: zero would-generate for `terse`, and the count for `default` unchanged from master's.
+- `pack:voice iracedeck-terse` is byte-deterministic and its catalog entry verifies in the publish script's dry run; `pnpm lint:pack` over the staged pack.
+- The existing `callout-scripts.test.ts` and `script-coverage.test.ts` pass for `terse` (they already iterate every authored voice).
 
 Manual (maintainer, on hardware):
 
-- Install Short from the Voice Packs card; the dropdown shows "iRaceDeck: Default" then "iRaceDeck: Default (Short callouts)" above any sideloaded pack.
-- Select Short and drive a session: race-time calls are short and carry no greeting; the greetings and the briefing are the PR's.
+- Install Terse from the Voice Packs card; the dropdown shows "iRaceDeck: Default" then "iRaceDeck: Default (Terse)" above any sideloaded pack.
+- Select Terse and drive a session: race-time calls are terse and carry no greeting; the greetings and the briefing are the PR's.
 - Run the *Publish voice packs* workflow as a dry run for `1.0.0`; after publishing, bump to `1.0.1` in a dry run and confirm an installed copy would update.
 
 ## Affected artifacts
 
-- `@iracedeck/audio-assets`: `VOICE_PACKS`, `configs/short.voice.json`, `voice/short/`, `generate.manifest.json`, both manifests, `catalog/iracedeck-short.json`, `packages/audio-assets/CLAUDE.md`.
+- `@iracedeck/audio-assets`: `VOICE_PACKS`, `configs/terse.voice.json`, `voice/terse/`, `generate.manifest.json`, both manifests, `catalog/iracedeck-terse.json`, `packages/audio-assets/CLAUDE.md`.
 - `@iracedeck/audio-scenarios`: the generalised `bundled-scripts.test.ts`.
 - `@iracedeck/deck-core`: the first-party label and order rule beside `voice-labels.ts`; its `CLAUDE.md`.
 - The three plugins' `plugin.ts`, which publish the sorted list.
-- Website: a page for the Short callouts pack, the voice list in the Pit Crew action doc, `changelog.mdx` (a Features line for the pack, an Improvements line for the labels and order).
+- Website: a page for the Terse pack, the voice list in the Pit Crew action doc, `changelog.mdx` (a Features line for the pack, an Improvements line for the labels and order).
 - Rules: `.claude/rules/race-engineer-callouts.md` and `.claude/rules/stream-deck-actions.md` (`ird-voice-select` labels), where they name `default` as the only voice held to completeness or the only unprefixed label.
 - A follow-up issue for renaming `default` to `iracedeck-default`; a comment on #1147.
