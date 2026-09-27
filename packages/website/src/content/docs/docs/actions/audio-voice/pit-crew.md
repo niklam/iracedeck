@@ -485,6 +485,10 @@ Two callout opt-ins live under **Race Engineer Callouts → Spotter** in the Set
 - **Repeat reminder while alongside** (`calloutEnabledSpotterStillThere`) — the "Still there." / "Hold your line." loop that repeats for as long as a car stays beside you.
 - **Reminder interval (s)** (`spotterStillThereSeconds`, 1–10, default 3) — how often that reminder repeats. Read live, so a change takes effect on the next reminder without a restart.
 
+## Readouts on request (Session Info)
+
+Besides the calls it makes on its own, the engineer reads out a figure when you ask for it: press a [Session Info](/docs/actions/display-session/session-info/) key showing fuel used last lap, average fuel per lap, track temperature or air temperature, and the engineer says the value the key shows. It is switched per key with **Speak value on press**, not under **Race Engineer Callouts** — see [Speak value on press](/docs/actions/display-session/session-info/#speak-value-on-press).
+
 ## Race Engineer Callouts (per-subject opt-in/out)
 
 Some sessions throw the same flag over and over — debris that goes on/off every lap, rolling local yellows in a busy multi-class race. The **Race Engineer Callouts** section on the [Settings window](/docs/getting-started/settings/#race-engineer)'s **Race Engineer** tab lets you switch off any individual callout while keeping the rest. The choice is plugin-global (every Pit Crew button agrees) and takes effect **live**: unchecking a callout stops new ones of that subject on the next event, but does **not** cut a callout already playing.
