@@ -42,7 +42,6 @@ import {
   TrackWetness,
 } from "@iracedeck/iracing-sdk";
 import {
-  FUEL_LAP_HISTORY_CAP,
   type GapNeighbor,
   getFuelStats,
   getLiveGaps,
@@ -55,6 +54,7 @@ import {
 import z from "zod";
 
 import sessionInfoTemplate from "../../../icons/session-info.svg";
+import { FuelLapWindow } from "../../shared/fuel-lap-window.js";
 
 const BACKGROUND_FLASH = "#e74c3c";
 
@@ -120,14 +120,9 @@ const SessionInfoSettings = CommonSettings.extend({
   // validating hard — a hand-typed decimal (the PI number box doesn't
   // step-round) or an out-of-range persisted value must not fail the whole
   // settings parse, which would silently reset the action to its defaults.
+  // The schema is shared with Pit Crew's Telemetry Readout (`shared/fuel-lap-window.ts`).
   fuelSubMode: z.enum(["now", "lastLap", "avgN"]).default("now"),
-  fuelLapWindow: z.preprocess(
-    (val) => (val === "" || val === null || val === undefined ? undefined : val),
-    z.coerce
-      .number()
-      .transform((val) => Math.min(FUEL_LAP_HISTORY_CAP, Math.max(1, Math.round(val))))
-      .catch(5),
-  ),
+  fuelLapWindow: FuelLapWindow,
   blankWhenNoFlag: z
     .union([z.boolean(), z.string()])
     .transform((val) => val === true || val === "true")

@@ -48,6 +48,7 @@ icons/                                   # Dynamic SVG templates (telemetry-driv
 - `dial-preview.ts` — `renderPendingBar`, the one #1120 hold-preview mark every renderer draws
 - `dial-release.ts` — `classifyDialReleaseForHost`, the one release rule every dial surface calls: deck-core's `classifyDialRelease` where `__FEATURE_DIAL_EXTENDED_GESTURES__` is on; never `long` where it is off (`"push-turn"` after a pressed rotation, `"short"` otherwise) (#1013)
 - `dial-name-icon.ts` — plain two-line action-name image for dial contexts (#775); push it with `pushDialNameIcon`, which sends it only on the `sd-plus-strip` profile — on a Stream Dock knob `setImage` IS the live screen (#1013). The `shared/dial-*` modules import deck-core and zod only; `dial-sim-agnostic.test.ts` keeps them free of `@iracedeck/iracing-sdk` / `@iracedeck/sim-events-iracing`
+- `fuel-lap-window.ts` — `FuelLapWindow`, the average-fuel window schema (1…`FUEL_LAP_HISTORY_CAP`, default 5, rounds and clamps rather than failing the parse) that Session Info's fuel average (#465) and Pit Crew's Telemetry Readout (#466) share so the two can never disagree
 - `profile-entries.ts` — shared `_deviceProfiles` PI-dropdown entry building + echo-loop change guard (#790)
 - `repeat-controller.ts` — long-press hold-to-repeat timing controller
 - `setup-view.ts` — registry, formatters, and render helper for the setup actions' "View …" sub-modes (#541)
