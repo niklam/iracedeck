@@ -46216,6 +46216,38 @@
       "textPreview": "Heaviest: right rear, outside.",
       "generatedAt": "2026-09-27T11:03:44.783Z",
       "requestId": "ExYtSARoOZxq5j1JR7vG"
+    },
+    "voice/shawn/pit-actions/auto-fuel-on-refuel-01.mp3": {
+      "hash": "3fd96ce9899193ad",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Auto fuel on. Taking fuel.",
+      "generatedAt": "2026-09-27T11:04:10.884Z",
+      "requestId": "lh65jNGDToJV9DTpK564"
+    },
+    "voice/shawn/pit-actions/auto-fuel-on-no-refuel-01.mp3": {
+      "hash": "cc397b62dc57eee8",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Auto fuel on. No fuel.",
+      "generatedAt": "2026-09-27T11:04:11.065Z",
+      "requestId": "Hqsn4WU29TGqQsAFnGsE"
+    },
+    "voice/shawn/pit-actions/auto-fuel-off-refuel-01.mp3": {
+      "hash": "6eb0b1c666b86b4e",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Auto fuel off. Still taking fuel.",
+      "generatedAt": "2026-09-27T11:04:11.293Z",
+      "requestId": "0B9B1Blu0S1MZ42srSFA"
+    },
+    "voice/shawn/pit-actions/auto-fuel-off-no-refuel-01.mp3": {
+      "hash": "8c4bfe5358cb3606",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Auto fuel off. No fuel.",
+      "generatedAt": "2026-09-27T11:04:11.464Z",
+      "requestId": "m883DYTV2sOZHMyilVjd"
     }
   }
 }
