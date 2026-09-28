@@ -1718,19 +1718,8 @@ describe("cycle-track-order taps iRacing's Next / Previous Car binding (#1277)",
     vi.mocked(getAllCarNumbers).mockReturnValue([]);
   });
 
-  it("uses Replay Control's Next / Previous Car keys — one sim control, one setting", () => {
-    expect(CAR_CYCLE_BINDING_KEYS.next).toBe("replayControlNextCar");
-    expect(CAR_CYCLE_BINDING_KEYS.previous).toBe("replayControlPrevCar");
-  });
-
-  // The Camera Controls PI renders `cameraControls` only, so the pair must be
-  // listed there or the user could not configure it from this action.
-  it("registers both bindings in the Camera Controls key-binding catalog", () => {
-    const settings = keyBindings.cameraControls.map((b) => b.setting);
-
-    expect(settings).toContain(CAR_CYCLE_BINDING_KEYS.next);
-    expect(settings).toContain(CAR_CYCLE_BINDING_KEYS.previous);
-  });
+  // The persisted key strings, and their presence in both key-binding catalog
+  // sections, are covered by `shared/car-cycle-bindings.test.ts`.
 
   it("taps Next Car on a CAR AHEAD press and sends no camera broadcast", async () => {
     const action = newAction();
