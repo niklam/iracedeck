@@ -1069,12 +1069,13 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
     if (settings.mode === "position") {
       const isClass = settings.positionType === "class";
 
-      // Class position is always iRacing's authoritative `PlayerCarClassPosition`
-      // (the source the Race Engineer trusts — iRacing recomputes it correctly when
-      // cars retire). Overall position uses the class-aware live resolver
-      // `getLivePosition()` while racing on track (its `.position` is the frozen
-      // calculated order), and official telemetry in pits / non-race where the
-      // calculated lap-order isn't the standings.
+      // Sources, by phase of a race: the qualifying grid until the player is
+      // racing; the class-aware live resolver `getLivePosition()` on track (its
+      // `.position` is the frozen calculated order, its `.classPosition` that
+      // order projected onto the player's class); iRacing's official
+      // `PlayerCarPosition` / `PlayerCarClassPosition` on pit road; and the
+      // official result once the player has finished. Outside a race the
+      // official counters throughout, since the lap order is not the standings.
       let overall: number | undefined;
       let klass: number | undefined;
 
@@ -1091,16 +1092,18 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
       const beforeRacingLap = typeof telemetry.LapCompleted === "number" && telemetry.LapCompleted < 0;
 
       // Once the player has taken the checkered flag their race is over: show
-      // the official result captured at that crossing and nothing else (issue
-      // #1278). The live order keeps moving through the cool-down lap — a car
-      // that finishes behind the player passes them on track — and pit road
-      // would switch the source again on the way in.
-      const finish = this.isRaceSession(telemetry) ? getRaceFinishResult(telemetry.SessionNum) : null;
+      // their official result and nothing else (issue #1278). The live order
+      // keeps moving through the cool-down lap — a car that finishes behind
+      // the player passes them on track — and pit road would switch the
+      // source again on the way in. A field the results row cannot give yet
+      // comes from the official counters, never from the running order.
+      const isRace = this.isRaceSession(telemetry);
+      const finish = isRace ? getRaceFinishResult(telemetry.SessionNum) : null;
 
       if (finish) {
-        overall = finish.position;
+        overall = finish.position > 0 ? finish.position : telemetry.PlayerCarPosition;
         klass = finish.classPosition > 0 ? finish.classPosition : telemetry.PlayerCarClassPosition;
-      } else if (this.isRaceSession(telemetry)) {
+      } else if (isRace) {
         if (isPreGreen(telemetry) || beforeRacingLap) {
           // Qualifying grid slot from the session/qualifying results — populated
           // the moment the grid is set, for both standing and rolling starts.
