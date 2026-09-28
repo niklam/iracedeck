@@ -30,9 +30,9 @@ With the sim choosing, we cannot know the neighbours in advance, and a preview t
 
 `computeTrackOrderTarget` and `trackOrderDirection` in `shared/car-cycling.ts` go if nothing else uses them after this change. The underlying primitive `findNearestCarOnTrack` stays: `iracing-sdk` and Replay Control read it for other things. The comms catalog moves `cycle-track-order` and the dial's `track-order` from `api` to `keybind`.
 
-## The sim fact this rests on, still to confirm
+## The sim fact this rests on
 
-The reporter says `V` / `Shift+V` walks the replay's track order. #1074 asks the same question and it is unanswered. The fix holds either way, because the point is to match the sim's key exactly, but the mode's name does not: "Cycle by Track Order" and CAR AHEAD / CAR BEHIND claim a spatial order. Confirm it in the sim before implementing. If it is spatial, the names stay and #1074 closes with the answer. If it is not, the naming goes back to the maintainer before this ships.
+`V` (Next Car) focuses the car ahead **on track**, and `Shift+V` (Previous Car) the car behind on track. Confirmed by the maintainer on 2026-09-28, which also answers the question #1074 was waiting on. So the mode's name and the CAR AHEAD / CAR BEHIND titles stay as they are: they describe exactly what the sim does, and clockwise = Next Car = the car ahead keeps the dial's existing direction.
 
 ## Out of scope
 
