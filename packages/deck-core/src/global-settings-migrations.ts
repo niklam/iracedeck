@@ -1,6 +1,7 @@
 /**
- * Global-settings migrations: the one-shot key renames of issue #953, and the
- * idempotent qualification of the Race Engineer voice id of #1144.
+ * Global-settings migrations, in three shapes: the one-shot key renames of
+ * issue #953, the idempotent qualification of the Race Engineer voice id of
+ * #1144, and the seed-if-absent binding defaults of #1277.
  *
  * **Renames.** When a persisted global-settings key is renamed (e.g. the Setup
  * Chassis spring binding keys, `setupChassisLeftSpring*` →
@@ -43,6 +44,26 @@
  * user never heard. Waiting costs nothing: the resolver applies the same rule
  * at read time, so the engineer speaks meanwhile, and the scan that installs
  * `default` re-runs this and persists the right answer.
+ *
+ * **Binding defaults.** `seedBindingDefaultsIfAbsent` is the third shape: a
+ * key binding an existing feature starts to need (#1277: Camera Controls'
+ * Cycle by Track Order now taps iRacing's Next / Previous Car) has only ever
+ * been written by its Property Inspector field, which saves its default when
+ * it mounts over nothing. A user who never opened that panel has nothing
+ * stored, so the feature would show the #612 missing-binding warning and do
+ * nothing. The seed writes each given key's default, in exactly the value the
+ * field would have saved (`defaultBindingStoredValue`), when the key has NEVER
+ * been stored. Any stored value is left alone — a deliberately cleared `""`
+ * included — so it is idempotent without a marker and runs at every start.
+ *
+ * It needs more than readiness. On a store that has not read the deck host (a
+ * fresh start, the pending countdown, an abandoned migration, a file that
+ * failed to parse) absence proves nothing — the user's binding may sit in the
+ * host copy — and a later host answer is merged with the file winning for
+ * passthrough keys, so a seeded default would permanently override it. The
+ * seed therefore waits for `isSettingsStoreHostDerived()` too, and on such a
+ * store simply does nothing that start; the start whose host answer lands
+ * seeds.
  */
 import { qualifyVoiceId, splitVoiceId } from "@iracedeck/callout-script";
 import type { ILogger } from "@iracedeck/logger";
@@ -50,10 +71,12 @@ import type { ILogger } from "@iracedeck/logger";
 import {
   deleteGlobalSettings,
   getGlobalSettings,
+  isSettingsStoreHostDerived,
   isSettingsStoreReady,
   onGlobalSettingsChange,
   updateGlobalSettings,
 } from "./global-settings.js";
+import { defaultBindingStoredValue } from "./key-binding-defaults.js";
 import { ENSURED_VOICE_PACK_ID } from "./voice-pack-constants.js";
 
 /**
@@ -148,4 +171,87 @@ export function migrateRaceEngineerVoiceId(availableVoices: readonly string[], l
   logger?.debug(`${stored} -> ${qualified}`);
 
   return true;
+}
+
+/**
+ * Store each binding's default under its key when that key has never been
+ * stored (#1277), now or as soon as the stored settings are in.
+ *
+ * "Never stored" is `undefined` in the cache. The keys this is for are
+ * passthrough bindings, absent from `GlobalSettingsSchema`, so once the store
+ * is ready a missing key really is one the user never wrote — the reason the
+ * header gives for renames holds here too: a schema-declared key always holds
+ * at least its default, so seeding one would do nothing. Any stored value,
+ * `""` and `null` included, is kept: a cleared binding is the user's choice.
+ * (The Property Inspector field is less strict — it re-saves its default when
+ * it mounts over `""` — so a cleared binding lasts only until that panel next
+ * opens. This seed does not add a second place that undoes it.)
+ *
+ * Each default is the short string of `key-bindings.json` (`"V"`,
+ * `"Shift+V"`), written as the JSON the binding field saves for it
+ * (`defaultBindingStoredValue`). A default naming no recordable key is skipped
+ * with a warning, never stored as `""`.
+ *
+ * Runs once per start: on the first moment the store is ready, subscribing to
+ * settings changes until then. It writes only when the store is host-derived
+ * (`isSettingsStoreHostDerived`, see the module comment); otherwise it gives
+ * up for this start, and the next start tries again.
+ *
+ * @param defaults - Map of global-settings key → default binding string
+ * @param logger - Optional logger for seed reporting
+ * @returns A disposer that cancels a still-pending seed (for tests)
+ */
+export function seedBindingDefaultsIfAbsent(defaults: Readonly<Record<string, string>>, logger?: ILogger): () => void {
+  let done = false;
+  let unsubscribe: (() => void) | null = null;
+
+  const run = (): void => {
+    if (done || !isSettingsStoreReady()) return;
+
+    // Settled for this start whatever happens below — and set BEFORE the
+    // write, whose synchronous listener fan-out re-enters this function.
+    done = true;
+    unsubscribe?.();
+    unsubscribe = null;
+
+    if (!isSettingsStoreHostDerived()) {
+      logger?.info("Binding defaults not seeded: the stored settings have not been read from the deck host yet");
+
+      return;
+    }
+
+    const settings = getGlobalSettings() as unknown as Record<string, unknown>;
+    const writes: Record<string, string> = {};
+
+    for (const [key, text] of Object.entries(defaults)) {
+      if (settings[key] !== undefined) continue;
+
+      const value = defaultBindingStoredValue(text);
+
+      if (value === undefined) {
+        logger?.warn("Binding default names no key; not seeded");
+        logger?.debug(`${key}: ${JSON.stringify(text)}`);
+        continue;
+      }
+
+      writes[key] = value;
+    }
+
+    if (Object.keys(writes).length === 0) return;
+
+    updateGlobalSettings(writes);
+    logger?.info("Seeded default key bindings");
+    logger?.debug(`Seeded: ${Object.keys(writes).join(", ")}`);
+  };
+
+  run();
+
+  if (!done) {
+    unsubscribe = onGlobalSettingsChange(() => run());
+  }
+
+  return () => {
+    unsubscribe?.();
+    unsubscribe = null;
+  };
 }

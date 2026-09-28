@@ -2185,6 +2185,43 @@ export function isSettingsStoreReady(): boolean {
 }
 
 /**
+ * Whether the cache holds everything the user has stored: the store is ready,
+ * and its settings came from a positive read of the deck host — this start's
+ * migration answer, or a file born from one — rather than from defaults
+ * standing in for a host copy the plugin has not read.
+ *
+ * False before ready; when the store started fresh (the host never answered
+ * the migration read) or still carries the pending-migration countdown; when
+ * the migration was given up on (`_migrationAbandoned`, #1041); and when the
+ * stored file failed to parse at all, leaving pure schema defaults. In each of
+ * those the user's settings may still sit in a host copy nobody has read, so
+ * the ABSENCE of a key proves nothing, and a later host answer is merged with
+ * the file winning for passthrough keys (`mergeMigration`, and the give-up
+ * retry's `{ ...host, ...file }`) — a value written now would permanently
+ * override the user's own.
+ *
+ * The one definition of "the file reflects what the host held": the host
+ * mirror ({@link hostMirrorPayload}) is skipped unless this holds, and so is
+ * any write that fills a key because it is absent (`seedBindingDefaultsIfAbsent`,
+ * #1277).
+ */
+export function isSettingsStoreHostDerived(): boolean {
+  if (!storeReady || storeSource === "fresh" || storeSalvageFailed) return false;
+
+  const settings = currentSettings as Record<string, unknown>;
+
+  // Belt and braces with the "fresh" check above: a cache carrying the
+  // pending-migration marker is a defaults file, whatever path filled it.
+  if (pendingMigrationStarts(settings) > 0) return false;
+
+  // The migration was given up on, so this store was never host-derived and a
+  // write keyed on absence could shadow a copy the plugin has never read
+  // (#1041). Durable, unlike the countdown above: the ceiling clears that one,
+  // and without this the very next start would treat the file as complete.
+  return !isMigrationAbandoned(settings);
+}
+
+/**
  * Resolves when the settings load has SETTLED: the store became ready (file,
  * host migration, or fresh), OR the unreadable-file path ran out of attempts
  * and the run continues on defaults without saving, OR applying the loaded
@@ -2230,17 +2267,7 @@ export function getSettingsStoreSource(): SettingsStoreSource | null {
  * it were real settings, banner or no banner.
  */
 export function hostMirrorPayload(channel?: { port: number; token: string }): Record<string, unknown> | undefined {
-  if (!storeReady || storeSource === "fresh" || storeSalvageFailed) return undefined;
-
-  // Belt and braces with the "fresh" check above: a cache carrying the
-  // pending-migration marker is a defaults file, whatever path filled it.
-  if (pendingMigrationStarts(currentSettings as Record<string, unknown>) > 0) return undefined;
-
-  // The migration was given up on, so this store was never host-derived and
-  // the mirror would overwrite a copy the plugin has never read (#1041).
-  // Durable, unlike the countdown above: the ceiling clears that one, and
-  // without this the very next start would mirror.
-  if (isMigrationAbandoned(currentSettings as Record<string, unknown>)) return undefined;
+  if (!isSettingsStoreHostDerived()) return undefined;
 
   const mirror = { ...(currentSettings as Record<string, unknown>) };
 
