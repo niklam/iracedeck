@@ -36,7 +36,7 @@ Both live in `@iracedeck/sim-events-iracing` (`translator.ts`) and are built on 
 
 ## Current consumers
 
-- **Session Info → Position** — `getLivePosition()`.
+- **Session Info → Position** — `getLivePosition()` while racing, and after the player's own checkered-flag crossing the official result `getRaceFinishResult()` captured there (#1278): the live order keeps moving through the cool-down lap, since a finisher is ranked live until it leaves the world, so a finished player's display holds the result instead. The capture is the `race.finished` latch's `ResultsPositions` read, keyed by `SessionNum` and kept across the replay wipe.
 - **Telemetry Display / Chat / Race Admin** driver-info template prefixes (`self`, `track_ahead/behind`, `race_ahead/behind`, `focused`) — the injected order via `buildTemplateContextFromData` (`@iracedeck/iracing-sdk` `template-context.ts`).
 - **Race Engineer** position callouts — `getLivePosition()`.
 - **Opponent-pit callouts (#622)** — the translator diff classifies pitting cars against the frozen order (`classPositionFromOrder` for class space), and the spoken "P{n}" resolves at speak time via `getLiveCarPosition(carIdx)` (the per-car sibling of `getLivePosition()`), with the emit-time payload as fallback.
