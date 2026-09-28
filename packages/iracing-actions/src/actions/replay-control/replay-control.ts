@@ -211,18 +211,14 @@ const DIRECTIONAL_PAIRS: Partial<
 };
 
 /**
- * Global setting keys for iRacing's Next Car / Previous Car keystrokes. Their
- * single home is `shared/car-cycle-bindings.ts`, because Camera Controls' Cycle
- * by Track Order taps the same two bindings (#1277); the defaults (V / Shift+V)
+ * Modes that depend on a global key binding (rather than an SDK command). Keys
+ * live in `shared/car-cycle-bindings.ts`, because Camera Controls' Cycle by
+ * Track Order taps the same two bindings (#1277); the defaults (V / Shift+V)
  * are declared in `data/key-bindings.json`.
  */
-const NEXT_CAR_BINDING_KEY = CAR_CYCLE_BINDING_KEYS.next;
-const PREV_CAR_BINDING_KEY = CAR_CYCLE_BINDING_KEYS.previous;
-
-/** Modes that depend on a global key binding (rather than an SDK command). */
 const KEYSTROKE_MODES: Partial<Record<ReplayControlMode, string>> = {
-  "next-car": NEXT_CAR_BINDING_KEY,
-  "prev-car": PREV_CAR_BINDING_KEY,
+  "next-car": CAR_CYCLE_BINDING_KEYS.next,
+  "prev-car": CAR_CYCLE_BINDING_KEYS.previous,
 };
 
 /** Modes whose display changes based on telemetry state */
@@ -2385,12 +2381,12 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
         // Send the configured keystroke (default: V) so iRacing's own car-ordering
         // drives the cycle. Telemetry-driven selection picks the wrong driver during
         // replay-while-towed, where CamCarIdx reflects the live field.
-        void this.tapBinding(NEXT_CAR_BINDING_KEY);
+        void this.tapBinding(CAR_CYCLE_BINDING_KEYS.next);
         this.logger.info("Next car executed (keystroke)");
         break;
       }
       case "prev-car": {
-        void this.tapBinding(PREV_CAR_BINDING_KEY);
+        void this.tapBinding(CAR_CYCLE_BINDING_KEYS.previous);
         this.logger.info("Previous car executed (keystroke)");
         break;
       }
