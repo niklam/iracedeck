@@ -1229,105 +1229,131 @@ describe("diffLaps — race.finished (issue #569)", () => {
     return events.filter((e): e is Extract<PendingEvent, { event: "race.finished" }> => e.event === "race.finished");
   }
 
-  it("emits race.finished once when checkered + lap.completed land in a race session", () => {
+  /**
+   * Seed, then a tick with the checkered already flying before the player
+   * reaches the line — the flag has to be up BEFORE the crossing for the
+   * crossing to count as taking it (issue #1278, the #771 rule).
+   */
+  function seedWithFlagFlying(
+    state: ReturnType<typeof createInitialState>,
+    emit: (e: PendingEvent) => void,
+    isMultiClass: boolean = false,
+  ): void {
+    diffLaps(state, tick({ SessionNum: 0 }), "race", isMultiClass, synced(), NOW, emit);
+    diffLaps(state, tick({ SessionNum: 0, SessionFlags: Flags.Checkered }), "race", isMultiClass, synced(), NOW, emit);
+  }
+
+  function crossing(lap: number, lapTime: number, flags: number = Flags.Checkered): TelemetryData {
+    return tick({
+      SessionNum: 0,
+      LapCompleted: lap,
+      LapLastLapTime: lapTime,
+      LapBestLapTime: 63.0,
+      SessionFlags: flags,
+    });
+  }
+
+  it("emits race.finished once when the player crosses the line under the checkered flag", () => {
     const state = createInitialState();
     const { events, emit } = collect();
-    diffLaps(state, tick(), "race", false, synced(), NOW, emit);
+    seedWithFlagFlying(state, emit);
 
-    diffLaps(
-      state,
-      tick({
-        LapCompleted: 5,
-        LapLastLapTime: 63.0,
-        LapBestLapTime: 63.0,
-        SessionFlags: Flags.Checkered,
-      }),
-      "race",
-      false,
-      synced(3, 3),
-      NOW,
-      emit,
-    );
+    diffLaps(state, crossing(5, 63.0), "race", false, synced(3, 3), NOW, emit);
 
     const finished = raceFinishedEvents(events);
     expect(finished).toHaveLength(1);
     expect(finished[0].data.position).toBe(3);
     expect(state.raceFinishedFired).toBe(true);
-    // The result a display holds after the flag (issue #1278) — the same read.
-    expect(state.raceFinishResult).toEqual({ sessionNum: null, position: 3, classPosition: 3 });
+    // The finish a display holds from here on (issue #1278).
+    expect(state.raceFinish).toEqual({ sessionNum: 0, lap: 5 });
   });
 
   it("does not re-emit race.finished on subsequent laps in the same session", () => {
     const state = createInitialState();
     const { events, emit } = collect();
-    diffLaps(state, tick(), "race", false, synced(), NOW, emit);
-    diffLaps(
-      state,
-      tick({
-        LapCompleted: 5,
-        LapLastLapTime: 63.0,
-        LapBestLapTime: 63.0,
-        SessionFlags: Flags.Checkered,
-      }),
-      "race",
-      false,
-      synced(3, 3),
-      NOW,
-      emit,
-    );
+    seedWithFlagFlying(state, emit);
+    diffLaps(state, crossing(5, 63.0), "race", false, synced(3, 3), NOW, emit);
     // Another lap completes — checkered still raised, but the latch holds.
-    diffLaps(
-      state,
-      tick({
-        LapCompleted: 6,
-        LapLastLapTime: 64.0,
-        LapBestLapTime: 63.0,
-        SessionFlags: Flags.Checkered,
-      }),
-      "race",
-      false,
-      synced(3, 3),
-      NOW,
-      emit,
-    );
+    diffLaps(state, crossing(6, 64.0), "race", false, synced(3, 3), NOW, emit);
 
     expect(raceFinishedEvents(events)).toHaveLength(1);
-    // The captured result is the finish, not a later cool-down lap's read.
-    expect(state.raceFinishResult?.position).toBe(3);
+    // The finish stays the first crossing under the flag.
+    expect(state.raceFinish).toEqual({ sessionNum: 0, lap: 5 });
   });
 
   it("does not emit race.finished in non-race sessions even with checkered flag", () => {
     const state = createInitialState();
     const { events, emit } = collect();
-    diffLaps(state, tick(), "qualifying", false, synced(), NOW, emit);
-    diffLaps(
-      state,
-      tick({
-        LapCompleted: 5,
-        LapLastLapTime: 63.0,
-        LapBestLapTime: 63.0,
-        SessionFlags: Flags.Checkered,
-      }),
-      "qualifying",
-      false,
-      synced(3, 3),
-      NOW,
-      emit,
-    );
+    diffLaps(state, tick({ SessionNum: 0 }), "qualifying", false, synced(), NOW, emit);
+    diffLaps(state, tick({ SessionNum: 0, SessionFlags: Flags.Checkered }), "qualifying", false, synced(), NOW, emit);
+    diffLaps(state, crossing(5, 63.0), "qualifying", false, synced(3, 3), NOW, emit);
 
     expect(raceFinishedEvents(events)).toHaveLength(0);
     expect(state.raceFinishedFired).toBe(false);
-    expect(state.raceFinishResult).toBeNull();
+    expect(state.raceFinish).toBeNull();
+  });
+
+  // Issue #1278 (review): a lapped player crosses just ahead of the leader,
+  // the emit waits for the standings, and the leader takes the flag inside
+  // that wait. The bit is up at the emit tick, but the player crossed before
+  // it flew — that crossing starts their last lap, it does not end their race.
+  it("does not treat a crossing made before the flag as the finish when the emit lands after it", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    diffLaps(state, tick({ SessionNum: 0, LapCompleted: 4 }), "race", false, synced(), NOW, emit);
+
+    // Crossing, no flag yet; standings not synced (row still on lap 4).
+    const unsynced = { lapsComplete: 4, position: 7, classPosition: 6 };
+    diffLaps(state, crossing(5, 63.0, 0), "race", false, unsynced, NOW, emit);
+    // The leader takes the flag behind the player while the emit waits.
+    diffLaps(state, crossing(5, 63.0), "race", false, unsynced, NOW + 1000, emit);
+    // Standings catch up; lap.completed goes out with the flag flying.
+    diffLaps(state, crossing(5, 63.0), "race", false, synced(7, 7), NOW + 2000, emit);
+
+    expect(events.some((e) => e.event === "lap.completed")).toBe(true);
+    expect(raceFinishedEvents(events)).toHaveLength(0);
+    expect(state.raceFinish).toBeNull();
+
+    // Their real finish is the next crossing, made under the flag.
+    diffLaps(state, crossing(6, 64.0), "race", false, synced(7, 7), NOW + 90_000, emit);
+
+    expect(raceFinishedEvents(events)).toHaveLength(1);
+    expect(state.raceFinish).toEqual({ sessionNum: 0, lap: 6 });
+  });
+
+  it("does not treat a flag that rises on the crossing tick itself as taken", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    diffLaps(state, tick({ SessionNum: 0 }), "race", false, synced(), NOW, emit);
+
+    diffLaps(state, crossing(5, 63.0), "race", false, synced(3, 3), NOW, emit);
+
+    expect(raceFinishedEvents(events)).toHaveLength(0);
+    expect(state.raceFinish).toBeNull();
+  });
+
+  it("takes the finish from the flag diff's record when the bit lands after the winner's crossing", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    diffLaps(state, tick({ SessionNum: 0 }), "race", false, synced(), NOW, emit);
+    // The flag diff's winner grace resolved the checkered at this crossing.
+    state.flagCheckeredTakenLap = 5;
+
+    diffLaps(state, crossing(5, 63.0), "race", false, synced(1, 1), NOW, emit);
+
+    expect(raceFinishedEvents(events)).toHaveLength(1);
+    expect(state.raceFinish).toEqual({ sessionNum: 0, lap: 5 });
   });
 
   it("defers the latch when position is missing so the next lap.completed retries", () => {
     const state = createInitialState();
     const { events, emit } = collect();
-    diffLaps(state, tick(), "race", false, synced(), NOW, emit);
+    seedWithFlagFlying(state, emit);
     // Lap with checkered but no position — latch should NOT flip.
     diffLaps(
       state,
       tick({
+        SessionNum: 0,
         LapCompleted: 5,
         LapLastLapTime: 63.0,
         LapBestLapTime: 63.0,
@@ -1343,48 +1369,24 @@ describe("diffLaps — race.finished (issue #569)", () => {
     );
     expect(raceFinishedEvents(events)).toHaveLength(0);
     expect(state.raceFinishedFired).toBe(false);
-    expect(state.raceFinishResult).toBeNull();
+    // The finish is recorded anyway (issue #1278): a cool-down lap usually
+    // ends in the pits, so the retry this latch waits for may never come.
+    expect(state.raceFinish).toEqual({ sessionNum: 0, lap: 5 });
 
     // Next lap arrives with position resolved — emit + latch fire now.
-    diffLaps(
-      state,
-      tick({
-        LapCompleted: 6,
-        LapLastLapTime: 64.0,
-        LapBestLapTime: 63.0,
-        SessionFlags: Flags.Checkered,
-      }),
-      "race",
-      false,
-      synced(4, 4),
-      NOW,
-      emit,
-    );
+    diffLaps(state, crossing(6, 64.0), "race", false, synced(4, 4), NOW, emit);
     expect(raceFinishedEvents(events)).toHaveLength(1);
     expect(state.raceFinishedFired).toBe(true);
+    expect(state.raceFinish).toEqual({ sessionNum: 0, lap: 5 });
   });
 
   it("re-arms the latch on session change so a later race session can fire again", () => {
     const state = createInitialState();
     const { emit } = collect();
-    diffLaps(state, tick({ SessionNum: 0 }), "race", false, synced(), NOW, emit);
-    diffLaps(
-      state,
-      tick({
-        SessionNum: 0,
-        LapCompleted: 5,
-        LapLastLapTime: 63.0,
-        LapBestLapTime: 63.0,
-        SessionFlags: Flags.Checkered,
-      }),
-      "race",
-      false,
-      synced(3, 3),
-      NOW,
-      emit,
-    );
+    seedWithFlagFlying(state, emit);
+    diffLaps(state, crossing(5, 63.0), "race", false, synced(3, 3), NOW, emit);
     expect(state.raceFinishedFired).toBe(true);
-    expect(state.raceFinishResult).toEqual({ sessionNum: 0, position: 3, classPosition: 3 });
+    expect(state.raceFinish).toEqual({ sessionNum: 0, lap: 5 });
 
     // New session (next race in the schedule).
     diffLaps(
@@ -1397,34 +1399,20 @@ describe("diffLaps — race.finished (issue #569)", () => {
       emit,
     );
     expect(state.raceFinishedFired).toBe(false);
-    expect(state.raceFinishResult).toBeNull();
+    expect(state.raceFinish).toBeNull();
   });
 
   it("carries classPosition + isMultiClass into the race.finished payload", () => {
     const state = createInitialState();
     const { events, emit } = collect();
-    diffLaps(state, tick(), "race", true, synced(), NOW, emit);
-    diffLaps(
-      state,
-      tick({
-        LapCompleted: 5,
-        LapLastLapTime: 63.0,
-        LapBestLapTime: 63.0,
-        SessionFlags: Flags.Checkered,
-      }),
-      "race",
-      true,
-      synced(8, 2),
-      NOW,
-      emit,
-    );
+    seedWithFlagFlying(state, emit, true);
+    diffLaps(state, crossing(5, 63.0), "race", true, synced(8, 2), NOW, emit);
 
     const finished = raceFinishedEvents(events);
     expect(finished).toHaveLength(1);
     expect(finished[0].data.position).toBe(8);
     expect(finished[0].data.classPosition).toBe(2);
     expect(finished[0].data.isMultiClass).toBe(true);
-    expect(state.raceFinishResult).toEqual({ sessionNum: null, position: 8, classPosition: 2 });
   });
 });
 

@@ -631,7 +631,11 @@ describe("sim-events-iracing translator", () => {
   });
 
   describe("getRaceFinishResult (issue #1278)", () => {
-    function raceSessionInfo(): Record<string, unknown> {
+    function raceSessionInfo(
+      position: number = 4,
+      classPosition: number = 2,
+      lapsComplete: number = 5,
+    ): Record<string, unknown> {
       return {
         WeekendInfo: { SimMode: "full" },
         DriverInfo: { DriverCarIdx: 0, Drivers: [{ CarIdx: 0, CarClassID: 1 }] },
@@ -640,16 +644,27 @@ describe("sim-events-iracing translator", () => {
             {
               SessionNum: 0,
               SessionType: "Race",
-              ResultsPositions: [{ CarIdx: 0, Position: 4, ClassPosition: 2, LapsComplete: 5 }],
+              ResultsPositions: [
+                { CarIdx: 0, Position: position, ClassPosition: classPosition, LapsComplete: lapsComplete },
+              ],
             },
           ],
         },
       };
     }
 
-    /** Seed on lap 4, then take the checkered on the lap-5 crossing. */
+    /** Lap 4 with the leader already finished, then the player's lap-5 crossing under the flag. */
     function finishRace(controller: MockController): void {
       controller.__tick(telemetry({ LapCompleted: 4, LapLastLapTime: 62, LapBestLapTime: 62 }));
+      controller.__tick(
+        telemetry({
+          LapCompleted: 4,
+          LapLastLapTime: 62,
+          LapBestLapTime: 62,
+          SessionFlags: Flags.Checkered,
+          SessionState: SessionState.Checkered,
+        }),
+      );
       controller.__tick(
         telemetry({
           LapCompleted: 5,
@@ -671,7 +686,7 @@ describe("sim-events-iracing translator", () => {
       expect(getRaceFinishResult(0)).toBeNull();
     });
 
-    it("returns the official result captured at the player's finish", () => {
+    it("returns the player's official result once they have finished", () => {
       const controller = createMockController();
       controller.__setSessionInfo(raceSessionInfo());
       initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
@@ -679,7 +694,30 @@ describe("sim-events-iracing translator", () => {
       finishRace(controller);
 
       // ResultsPositions' ClassPosition is 0-indexed; the result is 1-indexed.
-      expect(getRaceFinishResult(0)).toEqual({ sessionNum: 0, position: 4, classPosition: 3 });
+      expect(getRaceFinishResult(0)).toEqual({ position: 4, classPosition: 3 });
+    });
+
+    it("follows the official results row after the finish, not a snapshot", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(raceSessionInfo());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      finishRace(controller);
+      // A steward's decision moves the player down the official results.
+      controller.__setSessionInfo(raceSessionInfo(5, 3));
+
+      expect(getRaceFinishResult(0)).toEqual({ position: 5, classPosition: 4 });
+    });
+
+    it("reports unknown fields while the results row has not caught up to the finishing lap", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(raceSessionInfo());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      finishRace(controller);
+      controller.__setSessionInfo(raceSessionInfo(9, 8, 4));
+
+      expect(getRaceFinishResult(0)).toEqual({ position: 0, classPosition: 0 });
     });
 
     it("never answers for another session", () => {
@@ -705,7 +743,7 @@ describe("sim-events-iracing translator", () => {
       controller.__tick(telemetry({ LapCompleted: 5, SessionState: SessionState.CoolDown }));
 
       expect(isRaceFinished()).toBe(true);
-      expect(getRaceFinishResult(0)).toEqual({ sessionNum: 0, position: 4, classPosition: 3 });
+      expect(getRaceFinishResult(0)).toEqual({ position: 4, classPosition: 3 });
     });
   });
 

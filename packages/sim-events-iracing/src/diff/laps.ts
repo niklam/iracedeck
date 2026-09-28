@@ -157,7 +157,10 @@ export function diffLaps(
     // emission entirely.
     state.lastPositionChangeLap = -1;
     state.raceFinishedFired = false;
-    state.raceFinishResult = null;
+    state.raceFinish = null;
+    state.lapCrossLap = null;
+    state.lapCrossUnderCheckered = false;
+    state.lapPrevCheckered = false;
     state.lapCautionLatchLap = null;
     state.lapCautionSeen = false;
     state.lapCompletedWasCaution = false;
@@ -181,6 +184,27 @@ export function diffLaps(
     state.lapCautionSeen = false;
     state.lapCautionLatchLap = lapCompleted;
   }
+
+  // Crossing record (issue #1278): was the checkered already flying when the
+  // player crossed the line? Taken on the tick the counter moves — every
+  // tick, the seed and the waits below included — because the emit that
+  // reads it can land seconds later, by which time the leader may have taken
+  // the flag behind a lapped player. "Already flying" means on the previous
+  // tick too: a flag that rises on the crossing tick itself predates nothing
+  // the player did (the #771 rule; the leader's own case comes from the flag
+  // diff's winner grace, `flagCheckeredTakenLap`). The seed records no
+  // crossing — a plugin started mid-lap has not seen one.
+  const checkeredUp = hasFlag(telemetry.SessionFlags ?? 0, Flags.Checkered);
+
+  if (!state.lapCompletedInitialized) {
+    state.lapCrossLap = lapCompleted;
+    state.lapCrossUnderCheckered = false;
+  } else if (lapCompleted !== state.lapCrossLap) {
+    state.lapCrossLap = lapCompleted;
+    state.lapCrossUnderCheckered = checkeredUp && state.lapPrevCheckered;
+  }
+
+  state.lapPrevCheckered = checkeredUp;
 
   // First-tick seed. Captures the current `LapLastLapTime` so a mid-session
   // connect doesn't immediately re-emit whatever lap iRacing already has on
@@ -438,20 +462,31 @@ export function diffLaps(
   // older consumer reading the payload sees exactly what it always did.
   if (state.lapCompletedWasCaution) data.wasCaution = true;
 
-  // Race-end detection (issue #569). Once per race session: fires the first
-  // `lap.completed` in a race session after iRacing has raised the checkered
-  // flag. The latch only flips when we successfully emit (position field is
-  // populated) — without a position the race-end callout can't speak, so a
-  // suppressed emit leaves the latch open for the next lap.completed retry.
-  // Reading `SessionFlags` directly avoids depending on whether the user was
-  // connected when `flag.checkered.raised` was emitted by diffFlags (after a
-  // replay-state wipe the activeFlags set re-seeds without re-emitting).
-  const checkeredRaised = hasFlag(telemetry.SessionFlags ?? 0, Flags.Checkered);
+  // Race-end detection (issue #569). Once per race session: fires on the
+  // `lap.completed` of the lap the player finished — the crossing they made
+  // under the checkered flag. Decided from the crossing record above, never
+  // from the bit at this (possibly seconds later) emit tick: until #1278 a
+  // lapped player crossing just ahead of the leader was declared finished a
+  // lap early whenever the leader took the flag inside the standings wait.
+  // The flag diff's record covers the winner grace, where the bit lands just
+  // after the leader's crossing. The latch only flips when we successfully
+  // emit (position field is populated) — without a position the race-end
+  // callout can't speak, so a suppressed emit leaves the latch open for the
+  // next lap.completed retry, which a crossing still under the flag
+  // satisfies. The finish itself is recorded whether or not a position was
+  // read (issue #1278), because a cool-down lap usually ends in the pits and
+  // never brings that retry.
+  const tookCheckered =
+    sessionType === "race" &&
+    ((state.lapCrossLap === lapCompleted && state.lapCrossUnderCheckered) ||
+      state.flagCheckeredTakenLap === lapCompleted);
 
-  if (!state.raceFinishedFired && sessionType === "race" && checkeredRaised && positionForEmit > 0) {
+  if (tookCheckered && state.raceFinish === null) {
+    state.raceFinish = { sessionNum, lap: lapCompleted };
+  }
+
+  if (!state.raceFinishedFired && tookCheckered && positionForEmit > 0) {
     state.raceFinishedFired = true;
-    // The result a display holds from here on (issue #1278).
-    state.raceFinishResult = { sessionNum, position: positionForEmit, classPosition: classPositionForEmit };
 
     const finishedData: { position: number; classPosition?: number; isMultiClass?: boolean } = {
       position: positionForEmit,

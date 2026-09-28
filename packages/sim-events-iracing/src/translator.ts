@@ -470,19 +470,35 @@ export function isRaceFinished(): boolean {
 
 /**
  * The player's official finishing position in the current race (issue #1278),
- * or `null` before they have taken the checkered flag. Captured with the
- * `race.finished` latch — the `ResultsPositions` read that event carries — so
- * once a driver's race is over a display can show their result instead of a
- * running order that keeps moving through the cool-down lap. `sessionNum` is
- * the caller's current `SessionNum`: a result captured in another session is
- * never returned. `classPosition` is `0` when it could not be resolved.
+ * or `null` before they have taken the checkered flag — so once a driver's
+ * race is over a display can show their result instead of a running order
+ * that keeps moving through the cool-down lap. `sessionNum` is the caller's
+ * current `SessionNum`: a finish recorded in another session is never
+ * returned.
+ *
+ * The finish is the translator's record of the crossing at which the player
+ * took the flag; the numbers are read live from their `ResultsPositions` row,
+ * the official standings, which a finished car's result cannot fall back in
+ * but a steward's decision can still correct. A field is `0` while that row
+ * is unreadable or has not yet caught up to the finishing lap — a caller
+ * falls back to the official telemetry counters then, never to the running
+ * order.
  */
 export function getRaceFinishResult(sessionNum: number | undefined): RaceFinishResult | null {
-  const result = instance?.state.raceFinishResult ?? null;
+  if (!instance) return null;
 
-  if (!result || result.sessionNum !== (sessionNum ?? null)) return null;
+  const finish = instance.state.raceFinish;
 
-  return result;
+  if (!finish || finish.sessionNum !== (sessionNum ?? null)) return null;
+
+  const sessionInfo = instance.controller.getSessionInfo() as Record<string, unknown> | null;
+  const row = resolvePlayerResultsSnapshot(sessionInfo, resolvePlayerCarIdx(sessionInfo), sessionNum ?? 0);
+  const synced = row !== null && row.lapsComplete >= finish.lap;
+
+  return {
+    position: synced && row.position > 0 ? row.position : 0,
+    classPosition: synced && row.classPosition >= 0 ? row.classPosition + 1 : 0,
+  };
 }
 
 /**
@@ -1494,7 +1510,7 @@ function wipeStateForReplay(self: TranslatorInstance): void {
     // a wiped latch put Session Info back on the moving cool-down order and
     // re-armed `race.finished`. Both still clear on a real session change.
     raceFinishedFired: self.state.raceFinishedFired,
-    raceFinishResult: self.state.raceFinishResult,
+    raceFinish: self.state.raceFinish,
     // The replay lap record's baselines (issue #1203, `replayLaps*`) are
     // pointedly NOT preserved: they are previous-tick counters a replay view
     // makes meaningless, and the pre-guard diff re-seeds them from the first
