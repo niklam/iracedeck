@@ -20,6 +20,8 @@
  * under both `replayControl` and `cameraControls` with the same `setting`
  * (tests cross-check both sections against these keys).
  */
+import keyBindings from "../actions/data/key-bindings.json" with { type: "json" };
+
 export const CAR_CYCLE_BINDING_KEYS = {
   next: "replayControlNextCar",
   previous: "replayControlPrevCar",
@@ -35,3 +37,18 @@ export const CAR_CYCLE_BINDING_KEY_LIST: readonly string[] = [
 export function carCycleBindingKey(direction: "next" | "previous"): string {
   return CAR_CYCLE_BINDING_KEYS[direction];
 }
+
+/**
+ * Each key's default binding string, read from the `replayControl` section of
+ * `key-bindings.json` (`V` / `Shift+V`) rather than restated here. Every plugin
+ * hands it to deck-core's `seedBindingDefaultsIfAbsent` at startup: before
+ * #1277 Cycle by Track Order needed no binding, so an existing user who never
+ * opened a Replay Control Next / Previous Car panel has neither key stored,
+ * and their CAR AHEAD / CAR BEHIND keys would otherwise show the #612 warning
+ * and do nothing.
+ */
+export const CAR_CYCLE_BINDING_DEFAULTS: Readonly<Record<string, string>> = Object.fromEntries(
+  keyBindings.replayControl
+    .filter((row) => CAR_CYCLE_BINDING_KEY_LIST.includes(row.setting))
+    .map((row) => [row.setting, row.default]),
+);

@@ -1,7 +1,12 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import { CAR_CYCLE_BINDING_KEY_LIST, CAR_CYCLE_BINDING_KEYS, carCycleBindingKey } from "./car-cycle-bindings.js";
+import {
+  CAR_CYCLE_BINDING_DEFAULTS,
+  CAR_CYCLE_BINDING_KEY_LIST,
+  CAR_CYCLE_BINDING_KEYS,
+  carCycleBindingKey,
+} from "./car-cycle-bindings.js";
 
 const KEY_BINDINGS_PATH = new URL("../actions/data/key-bindings.json", import.meta.url);
 
@@ -58,5 +63,12 @@ describe("car-cycle-bindings (#1277)", () => {
     // iRacing's own defaults, so an untouched install works out of the box.
     expect(replay[CAR_CYCLE_BINDING_KEYS.next].default).toBe("V");
     expect(replay[CAR_CYCLE_BINDING_KEYS.previous].default).toBe("Shift+V");
+  });
+
+  it("hands the startup seed each key's default from key-bindings.json", () => {
+    // Every plugin seeds these for users who never stored them; the values are
+    // the key-bindings.json defaults, not a second copy that could drift.
+    expect(CAR_CYCLE_BINDING_DEFAULTS).toEqual({ replayControlNextCar: "V", replayControlPrevCar: "Shift+V" });
+    expect(Object.keys(CAR_CYCLE_BINDING_DEFAULTS).sort()).toEqual([...CAR_CYCLE_BINDING_KEY_LIST].sort());
   });
 });
