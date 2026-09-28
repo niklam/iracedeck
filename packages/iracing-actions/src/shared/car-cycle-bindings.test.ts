@@ -65,10 +65,18 @@ describe("car-cycle-bindings (#1277)", () => {
     expect(replay[CAR_CYCLE_BINDING_KEYS.previous].default).toBe("Shift+V");
   });
 
-  it("hands the startup seed each key's default from key-bindings.json", () => {
-    // Every plugin seeds these for users who never stored them; the values are
-    // the key-bindings.json defaults, not a second copy that could drift.
-    expect(CAR_CYCLE_BINDING_DEFAULTS).toEqual({ replayControlNextCar: "V", replayControlPrevCar: "Shift+V" });
+  it("hands the startup seed defaults that match key-bindings.json in BOTH sections", () => {
+    // Every plugin seeds these for users who never stored them. They are
+    // literals (no JSON in the bundle), so they must agree with what each PI's
+    // field saves on mount — the key-bindings.json default of its own section.
     expect(Object.keys(CAR_CYCLE_BINDING_DEFAULTS).sort()).toEqual([...CAR_CYCLE_BINDING_KEY_LIST].sort());
+
+    for (const section of ["replayControl", "cameraControls"]) {
+      const fromJson = Object.fromEntries(carCycleRows(section).map((row) => [row.setting, row.default]));
+
+      expect(CAR_CYCLE_BINDING_DEFAULTS, section).toEqual(fromJson);
+    }
+
+    expect(CAR_CYCLE_BINDING_DEFAULTS).toEqual({ replayControlNextCar: "V", replayControlPrevCar: "Shift+V" });
   });
 });
