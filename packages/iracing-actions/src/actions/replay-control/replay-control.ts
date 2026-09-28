@@ -2276,8 +2276,11 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
 
         const targetLap = findFastestLapForCar(sessionInfo, telemetry, targetCarIdx);
 
+        // iRacing's own data (ResultsPositions, then CarIdxBestLapNum) names no
+        // lap — a car with no timed lap yet, or none at all, like one that
+        // finished with FastestLap -1. The session record is never consulted.
         if (targetLap === null) {
-          this.logger.info("Jump to fastest lap: no best lap recorded yet for target car");
+          this.logger.info("Jump to fastest lap: iRacing reports no fastest lap for the target car");
           this.logger.debug(`Target carIdx: ${targetCarIdx}`);
           break;
         }

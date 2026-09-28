@@ -1848,7 +1848,9 @@ describe("ReplayControl", () => {
         expect(mockReplay.pause).not.toHaveBeenCalled();
         expect(mockReplay.setPlayPosition).not.toHaveBeenCalled();
         expect(mockCamera.switchNum).not.toHaveBeenCalled();
-        expect(action["logger"].info).toHaveBeenCalledWith(expect.stringContaining("no best lap"));
+        expect(action["logger"].info).toHaveBeenCalledWith(
+          "Jump to fastest lap: iRacing reports no fastest lap for the target car",
+        );
       });
 
       /**
