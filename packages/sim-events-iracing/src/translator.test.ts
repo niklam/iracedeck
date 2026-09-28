@@ -720,6 +720,31 @@ describe("sim-events-iracing translator", () => {
       expect(getRaceFinishResult(0)).toEqual({ position: 0, classPosition: 0 });
     });
 
+    // The winner's crossing, the flag's rise and a synced standings row can
+    // all land on one tick, and the lap is emitted on it. The flag diff's
+    // winner grace has to have recorded the crossing before the lap diff
+    // decides it, or the finish is missed and never revisited (PR #1280).
+    it("records the winner's finish when the crossing, the flag and the emit share a tick", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(raceSessionInfo(1, 0));
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(telemetry({ LapCompleted: 4, LapLastLapTime: 62, LapBestLapTime: 62, PlayerCarPosition: 1 }));
+      controller.__tick(
+        telemetry({
+          LapCompleted: 5,
+          LapLastLapTime: 63,
+          LapBestLapTime: 62,
+          SessionFlags: Flags.Checkered,
+          SessionState: SessionState.Checkered,
+          PlayerCarPosition: 1,
+        }),
+      );
+
+      expect(isRaceFinished()).toBe(true);
+      expect(getRaceFinishResult(0)).toEqual({ position: 1, classPosition: 1 });
+    });
+
     it("never answers for another session", () => {
       const controller = createMockController();
       controller.__setSessionInfo(raceSessionInfo());
