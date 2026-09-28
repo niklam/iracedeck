@@ -563,6 +563,56 @@ describe("seedBindingDefaultsIfAbsent (#1277)", () => {
       expect(logger.info).not.toHaveBeenCalledWith(expect.stringContaining("yet"));
     });
 
+    describe("an abandoned store on the upgrade that asks the host once more (#1041 / #1047)", () => {
+      /** An abandoned defaults file, loaded by a newer build so the give-up retry fires. */
+      function initRetry(): { echo: (settings: unknown) => void; logger: ILogger } {
+        const { adapter, echo } = createEchoAdapter();
+        const logger = createMockLogger();
+        initGlobalSettings(
+          adapter,
+          createMockLogger(),
+          createMemorySettingsStore(defaultsFile({ [MIGRATION_ABANDONED_KEY]: "3.3.0" })),
+          { pluginVersion: "3.4.0" },
+        );
+        // As every plugin does: called at startup, before the store is ready.
+        seedBindingDefaultsIfAbsent(DEFAULTS, logger);
+
+        return { echo, logger };
+      }
+
+      it("keeps the host's custom Next Car through the retry merge and seeds only Previous Car", async () => {
+        const { echo, logger } = initRetry();
+        await tick();
+
+        // The retry is waiting on the host: nothing is ready, nothing seeded.
+        expect(isSettingsStoreReady()).toBe(false);
+        expect(cache().replayControlNextCar).toBeUndefined();
+
+        echo({ replayControlNextCar: CUSTOM, driverName: "from the host" });
+
+        // A real answer retires the marker, so the store is host-derived now.
+        expect(getSettingsStoreSource()).toBe("host");
+        expect(cache()[MIGRATION_ABANDONED_KEY]).toBeUndefined();
+        expect(isSettingsStoreHostDerived()).toBe(true);
+        expect(cache().replayControlNextCar).toBe(CUSTOM);
+        expect(cache().replayControlPrevCar).toBe(PREV_STORED);
+        expect(logger.info).toHaveBeenCalledWith("Seeded default key bindings");
+      });
+
+      it("seeds nothing when the retry's answer is empty: the store stays abandoned", async () => {
+        const { echo, logger } = initRetry();
+        await tick();
+
+        echo({});
+
+        expect(getSettingsStoreSource()).toBe("file");
+        expect(isSettingsStoreHostDerived()).toBe(false);
+        expect(cache().replayControlNextCar).toBeUndefined();
+        expect(cache().replayControlPrevCar).toBeUndefined();
+        expect(logger.info).toHaveBeenCalledWith(expect.stringContaining("given up on"));
+      });
+    });
+
     it("does not seed when the stored file could not be parsed at all", async () => {
       initWithStore({ driverName: "kept" });
       // parseWithSalvage gives up wholesale on a failure it cannot pin to a key.
