@@ -1,7 +1,14 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import { defaultBindingStoredValue, KEY_CODE_MAP, parseDefaultKeyBinding } from "./key-binding-defaults.js";
+import {
+  defaultBindingStoredValue,
+  isValidKey,
+  KEY_CODE_MAP,
+  keyForCode,
+  keyToCode,
+  parseDefaultKeyBinding,
+} from "./key-binding-defaults.js";
 import { parseBinding, parseKeyBinding } from "./key-binding-utils.js";
 
 describe("key-binding-defaults (#1277)", () => {
@@ -64,6 +71,35 @@ describe("key-binding-defaults (#1277)", () => {
     it("maps every recordable key back to its code", () => {
       for (const [code, key] of Object.entries(KEY_CODE_MAP)) {
         expect(parseDefaultKeyBinding(key)?.code, key).toBe(code);
+      }
+    });
+  });
+
+  describe("names inherited from Object.prototype are not keys", () => {
+    // Default strings and event codes are outside input; an object index would
+    // answer these with a function (`KEY_CODE_MAP.constructor`).
+    const INHERITED = ["constructor", "__proto__", "toString", "hasOwnProperty", "valueOf", "isPrototypeOf"];
+
+    it.each(INHERITED)("%s is neither a key nor a code", (name) => {
+      expect(isValidKey(name)).toBe(false);
+      expect(keyToCode(name)).toBeUndefined();
+      expect(keyForCode(name)).toBeUndefined();
+    });
+
+    it.each(INHERITED)("a default naming %s is not a binding", (name) => {
+      expect(parseDefaultKeyBinding(name)).toBeUndefined();
+      expect(parseDefaultKeyBinding(`Shift+${name}`)).toBeUndefined();
+      expect(defaultBindingStoredValue(name)).toBeUndefined();
+    });
+
+    it.each(INHERITED)("%s is not a modifier alias either", (name) => {
+      expect(parseDefaultKeyBinding(`${name}+V`)).toEqual({ type: "keyboard", key: "v", modifiers: [], code: "KeyV" });
+    });
+
+    it("still maps every real code both ways", () => {
+      for (const [code, key] of Object.entries(KEY_CODE_MAP)) {
+        expect(keyForCode(code), code).toBe(key);
+        expect(keyToCode(key), key).toBe(code);
       }
     });
   });

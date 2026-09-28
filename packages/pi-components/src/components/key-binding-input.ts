@@ -37,7 +37,7 @@ import {
   SDPI_THEME,
   UI_TEXT,
 } from "./key-binding-utils.js";
-import { KEY_CODE_MAP, type Modifier, resolveEventCode } from "./key-maps.js";
+import { keyForCode, type Modifier, resolveEventCode } from "./key-maps.js";
 import { skipUnchanged } from "./settings-change-filter.js";
 import { probeSimHub } from "./simhub-probe.js";
 
@@ -626,7 +626,7 @@ class KeyBindingInput extends HTMLElement {
     }
 
     const code = resolveEventCode(e.code, e.key);
-    const key = KEY_CODE_MAP[code];
+    const key = keyForCode(code);
 
     if (!key) return;
 

@@ -2,13 +2,13 @@
  * Key code mappings for keyboard input capture.
  *
  * The key map itself — `KEY_CODE_MAP`, the modifiers and their aliases, and
- * the lookups over them — lives in deck-core's dependency-free
+ * the prototype-safe lookups over them (`keyForCode`, …) — lives in deck-core's dependency-free
  * `key-binding-defaults` module and is imported through its subpath, never the
  * deck-core barrel, so this browser bundle stays free of Node code (#1277).
  * One copy is what keeps a default the plugin seeds byte-identical to the one
  * this field saves. What is here is display-only and browser-only.
  */
-export { KEY_CODE_MAP, type Modifier, MODIFIERS } from "@iracedeck/deck-core/key-binding-defaults";
+export { keyForCode, type Modifier, MODIFIERS } from "@iracedeck/deck-core/key-binding-defaults";
 
 /** Maps internal key identifiers to human-readable display names */
 export const KEY_DISPLAY_NAMES: Record<string, string> = {

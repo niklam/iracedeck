@@ -129,11 +129,16 @@ export const KEY_CODE_MAP: Readonly<Record<string, string>> = Object.freeze({
   Slash: "/",
 });
 
-/** Every recordable internal key identifier. */
-const VALID_KEYS: ReadonlySet<string> = new Set(Object.values(KEY_CODE_MAP));
+// Every lookup goes through a Map, never an index into a plain object: a
+// default string or an event code is outside input, and `obj[name]` answers
+// for names inherited from `Object.prototype` (`constructor`, `__proto__`,
+// `toString`, …) — a function where a key was expected.
+
+/** `KeyboardEvent.code` → internal key identifier. */
+const CODE_TO_KEY: ReadonlyMap<string, string> = new Map(Object.entries(KEY_CODE_MAP));
 
 /** Internal key identifier → `KeyboardEvent.code`. */
-const KEY_TO_CODE: Readonly<Record<string, string>> = Object.fromEntries(
+const KEY_TO_CODE: ReadonlyMap<string, string> = new Map(
   Object.entries(KEY_CODE_MAP).map(([code, key]) => [key, code]),
 );
 
@@ -146,6 +151,10 @@ export type Modifier = (typeof MODIFIERS)[number];
 /** Aliases accepted for a modifier name in a default string. */
 export const MODIFIER_ALIASES: Readonly<Record<string, Modifier>> = Object.freeze({ control: "ctrl" });
 
+const MODIFIER_ALIAS_LOOKUP: ReadonlyMap<string, Modifier> = new Map(Object.entries(MODIFIER_ALIASES));
+
+const MODIFIER_SET: ReadonlySet<string> = new Set(MODIFIERS);
+
 /** A keyboard binding as the field builds it from a default string. */
 export interface DefaultKeyBinding {
   type: "keyboard";
@@ -157,12 +166,17 @@ export interface DefaultKeyBinding {
 
 /** Whether `key` is an internal key identifier a binding field can record. */
 export function isValidKey(key: string): boolean {
-  return VALID_KEYS.has(key);
+  return KEY_TO_CODE.has(key);
 }
 
 /** The `KeyboardEvent.code` for an internal key identifier, or `undefined` if it is not one. */
 export function keyToCode(key: string): string | undefined {
-  return isValidKey(key) ? KEY_TO_CODE[key] : undefined;
+  return KEY_TO_CODE.get(key);
+}
+
+/** The internal key identifier for a `KeyboardEvent.code`, or `undefined` if the key is not recordable. */
+export function keyForCode(code: string): string | undefined {
+  return CODE_TO_KEY.get(code);
 }
 
 /**
@@ -181,9 +195,9 @@ export function parseDefaultKeyBinding(text: string): DefaultKeyBinding | undefi
   let key = "";
 
   for (const part of parts) {
-    const modifier = MODIFIER_ALIASES[part] ?? part;
+    const modifier = MODIFIER_ALIAS_LOOKUP.get(part) ?? part;
 
-    if ((MODIFIERS as readonly string[]).includes(modifier)) {
+    if (MODIFIER_SET.has(modifier)) {
       modifiers.push(modifier as Modifier);
     } else {
       key = part;
