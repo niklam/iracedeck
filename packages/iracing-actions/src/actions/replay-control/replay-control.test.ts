@@ -2308,7 +2308,7 @@ describe("ReplayControl", () => {
             expect(mockReplay.nextLap).not.toHaveBeenCalled();
             expect(mockReplay.prevLap).not.toHaveBeenCalled();
             expect(action["logger"].info).toHaveBeenCalledWith("Jump to fastest lap: record HIT (matchedBy pair)");
-            expect(action["activeFastestLapWalk"]).toBeNull();
+            expect(action["activeFastestLapPress"]).toBeNull();
           } finally {
             vi.useRealTimers();
           }
@@ -2430,7 +2430,7 @@ describe("ReplayControl", () => {
               expect(mockCamera.switchNum).not.toHaveBeenCalled();
               expect(mockReplay.play).not.toHaveBeenCalled();
               expect(mockReplay.setPlayPosition).toHaveBeenCalledTimes(1);
-              expect(action["activeFastestLapWalk"]).toBeNull();
+              expect(action["activeFastestLapPress"]).toBeNull();
             } finally {
               vi.useRealTimers();
             }
@@ -2487,7 +2487,7 @@ describe("ReplayControl", () => {
 
               expect(mockCamera.switchNum).not.toHaveBeenCalled();
               expect(mockReplay.play).not.toHaveBeenCalled();
-              expect(action["activeFastestLapWalk"]).toBeNull();
+              expect(action["activeFastestLapPress"]).toBeNull();
             } finally {
               vi.useRealTimers();
             }
@@ -2510,6 +2510,141 @@ describe("ReplayControl", () => {
               );
               expect(mockReplay.setPlayPosition).toHaveBeenCalledExactlyOnceWith(expect.anything(), 4940);
               expect(mockReplay.play).not.toHaveBeenCalled();
+            } finally {
+              vi.useRealTimers();
+            }
+          });
+
+          /** Overlay fields on the buffer's telemetry, computed at each read. */
+          function overlayTelemetry(fields: () => Record<string, unknown>): void {
+            const read = action["sdkController"].getCurrentTelemetry;
+
+            action["sdkController"].getCurrentTelemetry = vi.fn(() => ({ ...(read() as object), ...fields() })) as any;
+          }
+
+          it("treats an unknown speed as moving: pauses, and seeks only once the pause shows", async () => {
+            vi.useFakeTimers();
+
+            try {
+              singleSessionBuffer(4, 4);
+              recordHit(5000);
+              // No speed at all until the pause has registered, a few polls later.
+              let pausedAt: number | null = null;
+
+              overlayTelemetry(() => {
+                if (mockReplay.pause.mock.calls.length > 0) pausedAt ??= Date.now();
+
+                return { ReplayPlaySpeed: pausedAt !== null && Date.now() - pausedAt >= 200 ? 0 : undefined };
+              });
+
+              await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+              await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+              await vi.advanceTimersByTimeAsync(100);
+
+              expect(mockReplay.pause).toHaveBeenCalledTimes(1);
+              expect(mockReplay.setPlayPosition).not.toHaveBeenCalled();
+
+              await vi.runAllTimersAsync();
+
+              expect(mockReplay.setPlayPosition).toHaveBeenCalledExactlyOnceWith(expect.anything(), 4940);
+              expect(mockReplay.play).toHaveBeenCalledTimes(1);
+            } finally {
+              vi.useRealTimers();
+            }
+          });
+
+          it("a pause the SDK refuses sends no jump and leaves the speed cache alone", async () => {
+            vi.useFakeTimers();
+
+            try {
+              singleSessionBuffer(4, 4);
+              recordHit(5000);
+              overlayTelemetry(() => ({ ReplayPlaySpeed: 1 }));
+              mockReplay.pause.mockReturnValueOnce(false);
+
+              await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+              action["replaySpeed"].set("ctx-1", 1);
+              await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+              await vi.runAllTimersAsync();
+
+              expect(action["logger"].warn).toHaveBeenCalledWith("Jump to fastest lap: pause failed; jump not sent");
+              expect(mockReplay.setPlayPosition).not.toHaveBeenCalled();
+              expect(mockReplay.play).not.toHaveBeenCalled();
+              expect(action["replaySpeed"].get("ctx-1")).toBe(1);
+            } finally {
+              vi.useRealTimers();
+            }
+          });
+
+          it("a pause that never shows in telemetry sends no jump", async () => {
+            vi.useFakeTimers();
+
+            try {
+              singleSessionBuffer(4, 4);
+              recordHit(5000);
+              overlayTelemetry(() => ({ ReplayPlaySpeed: 1 }));
+
+              await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+              await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+              await vi.runAllTimersAsync();
+
+              expect(action["logger"].warn).toHaveBeenCalledWith(
+                "Jump to fastest lap: replay did not pause; jump not sent",
+              );
+              expect(mockReplay.setPlayPosition).not.toHaveBeenCalled();
+              expect(mockReplay.play).not.toHaveBeenCalled();
+            } finally {
+              vi.useRealTimers();
+            }
+          });
+
+          it("plays as soon as the frame reads the target, without waiting out the SessionNum transient", async () => {
+            vi.useFakeTimers();
+
+            try {
+              singleSessionBuffer(4, 4);
+              recordHit(5000);
+              // After the jump, the sim reports SessionNum -1 for longer than the whole timeout.
+              overlayTelemetry(() => (mockReplay.setPlayPosition.mock.calls.length > 0 ? { SessionNum: -1 } : {}));
+
+              await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+              await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+              await vi.advanceTimersByTimeAsync(50);
+
+              expect(mockCamera.switchNum).toHaveBeenCalledExactlyOnceWith(4, 0, 0);
+              expect(mockReplay.play).toHaveBeenCalledTimes(1);
+            } finally {
+              vi.useRealTimers();
+            }
+          });
+
+          it("waits at least three seconds for the landing, even at the lowest search delay", async () => {
+            vi.useFakeTimers();
+
+            try {
+              const { getGlobalSettings } = await import("@iracedeck/deck-core");
+
+              // 50 ms × 4 would give up after 200 ms.
+              vi.mocked(getGlobalSettings).mockReturnValue({ fastestLapSearchDelayMs: 50 } as any);
+              onTestFinished(
+                () => void vi.mocked(getGlobalSettings).mockReturnValue({ fastestLapSearchDelayMs: 400 } as any),
+              );
+
+              const buffer = singleSessionBuffer(4, 4, { initialCursor: 9000 });
+
+              holdTheSeek();
+              recordHit(5000);
+
+              await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+              await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+              await vi.advanceTimersByTimeAsync(2500);
+
+              expect(action["logger"].warn).not.toHaveBeenCalled();
+
+              buffer.cursor.frame = 4940;
+              await vi.runAllTimersAsync();
+
+              expect(mockReplay.play).toHaveBeenCalledTimes(1);
             } finally {
               vi.useRealTimers();
             }
@@ -2693,7 +2828,7 @@ describe("ReplayControl", () => {
             expect(countReplayCommands()).toBe(commandsBefore);
             expect(mockReplay.play).not.toHaveBeenCalled();
             expect(mockStore.laps.recordLapStart).not.toHaveBeenCalled();
-            expect(action["activeFastestLapWalk"]).toBeNull();
+            expect(action["activeFastestLapPress"]).toBeNull();
           } finally {
             vi.useRealTimers();
           }
@@ -3114,7 +3249,7 @@ describe("ReplayControl", () => {
             // Still ends playing, as before.
             expect(mockReplay.play).toHaveBeenCalledTimes(1);
             expect(action["replaySpeed"].get("ctx-1")).toBe(1);
-            expect(action["activeFastestLapWalk"]).toBeNull();
+            expect(action["activeFastestLapPress"]).toBeNull();
           } finally {
             vi.useRealTimers();
           }
@@ -3414,7 +3549,7 @@ describe("ReplayControl", () => {
             expect(mockReplay.setPlayPosition).not.toHaveBeenCalled();
             expect(mockReplay.play).not.toHaveBeenCalled();
             expect(action["replaySpeed"].get("ctx-1")).toBe(0);
-            expect(action["activeFastestLapWalk"]).toBeNull();
+            expect(action["activeFastestLapPress"]).toBeNull();
           } finally {
             vi.useRealTimers();
           }
@@ -3549,19 +3684,19 @@ describe("ReplayControl", () => {
             );
             expect(mockReplay.pause).toHaveBeenCalledTimes(2);
 
-            const newWalk = action["activeFastestLapWalk"];
+            const newWalk = action["activeFastestLapPress"];
 
             expect(newWalk?.claim.cancelledBy).toBeNull();
 
             // Let the old walk's sleep end and unwind: the slot still holds the new walk.
             await vi.advanceTimersByTimeAsync(100);
-            expect(action["activeFastestLapWalk"]).toBe(newWalk);
+            expect(action["activeFastestLapPress"]).toBe(newWalk);
 
             await vi.runAllTimersAsync();
 
             // Exactly one walk converged and recorded; the cancelled one sent nothing more.
             expect(mockStore.laps.recordLapStart).toHaveBeenCalledTimes(1);
-            expect(action["activeFastestLapWalk"]).toBeNull();
+            expect(action["activeFastestLapPress"]).toBeNull();
             expect(
               vi.mocked(action["logger"].info).mock.calls.filter((c) => String(c[0]).includes("walk cancelled")),
             ).toHaveLength(1);
@@ -3680,7 +3815,7 @@ describe("ReplayControl", () => {
             );
             expect(mockReplay.goToStart).not.toHaveBeenCalled();
             expect(_getFastestLapSessionCache()).toBeNull();
-            expect(action["activeFastestLapWalk"]).toBeNull();
+            expect(action["activeFastestLapPress"]).toBeNull();
           } finally {
             vi.useRealTimers();
           }

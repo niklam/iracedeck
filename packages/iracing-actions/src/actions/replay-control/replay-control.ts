@@ -75,7 +75,7 @@ import z from "zod";
 import { computeCarNumberTarget } from "../../shared/car-cycling.js";
 import { RepeatController } from "../../shared/repeat-controller.js";
 import { cancelReplayCursorOwner, claimReplayCursor, type ReplayCursorClaim } from "../../shared/replay-cursor.js";
-import { seekReplayFrame } from "../../shared/replay-seek.js";
+import { isPaused, seekReplayFrame, waitForReplay } from "../../shared/replay-seek.js";
 
 const REPLAY_CONTROL_MODES = [
   "play-pause",
@@ -416,11 +416,17 @@ export function _getFastestLapSessionCache(): FastestLapSessionMap | null {
   return cachedFastestLapSessionMap;
 }
 
-/** Thrown inside a walk when a replay command — any action's — took the cursor; `walkToFastestLap` catches it. */
-class FastestLapWalkCancelled extends Error {
-  constructor(readonly by: string) {
-    super(`walk cancelled by ${by}`);
-    this.name = "FastestLapWalkCancelled";
+/**
+ * Thrown inside a Jump to Fastest Lap press — the walk or a record jump — when
+ * a replay command, any action's, took the cursor; `holdFastestLapSlot` catches it.
+ */
+class FastestLapPressCancelled extends Error {
+  constructor(
+    readonly by: string,
+    noun: "walk" | "jump" = "walk",
+  ) {
+    super(`${noun} cancelled by ${by}`);
+    this.name = "FastestLapPressCancelled";
   }
 }
 
@@ -429,6 +435,15 @@ const FASTEST_LAP_WALK_OWNER = "jump-to-fastest-lap walk";
 
 /** The owner name a record jump claims the replay cursor under while it waits for the landing (#1275). */
 const FASTEST_LAP_RECORD_JUMP_OWNER = "jump-to-fastest-lap record jump";
+
+/**
+ * The shortest a record jump waits for the pause and for the landing (#1275).
+ * The walk's `fastestLapSearchDelayMs × 4` alone would give a 200 ms wait at
+ * the setting's 50 ms minimum, while a jump across a long replay runs at most
+ * `maxFramesToSearchPerUpdate` frames per sim update; a longer wait costs
+ * nothing on success and only delays the warning on a failure.
+ */
+const RECORD_JUMP_MIN_TIMEOUT_MS = 3000;
 
 /** What a converged walk writes into the lap record beside the frame it found. */
 type FastestLapRecordIdentity = {
@@ -908,7 +923,7 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
    * sending anything more. A cancelled walk no longer holds the slot: a new
    * press walks while the old one unwinds.
    */
-  private activeFastestLapWalk: { contextId: string; claim: ReplayCursorClaim } | null = null;
+  private activeFastestLapPress: { contextId: string; claim: ReplayCursorClaim } | null = null;
 
   /** Last rendered state key per context (prevents redundant re-renders) */
   private lastState = new Map<string, string>();
@@ -1149,8 +1164,8 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
   }
 
   /** A walk that has not been cancelled holds the slot; one unwinding after a cancel does not. */
-  private isFastestLapWalkInFlight(): boolean {
-    return this.activeFastestLapWalk !== null && this.activeFastestLapWalk.claim.cancelledBy === null;
+  private isFastestLapPressInFlight(): boolean {
+    return this.activeFastestLapPress !== null && this.activeFastestLapPress.claim.cancelledBy === null;
   }
 
   /**
@@ -1243,36 +1258,53 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
     targetSessionNum: number,
     identity: FastestLapRecordIdentity,
   ): Promise<void> {
-    if (this.isFastestLapWalkInFlight()) {
+    if (this.isFastestLapPressInFlight()) {
       this.logger.info("Jump to fastest lap: walk already in flight; press ignored");
       this.logger.debug(
-        `In-flight walk context: ${this.activeFastestLapWalk?.contextId}, ignored press context: ${contextId}`,
+        `In-flight walk context: ${this.activeFastestLapPress?.contextId}, ignored press context: ${contextId}`,
       );
 
       return;
     }
 
-    const claim = claimReplayCursor(FASTEST_LAP_WALK_OWNER, (by) => {
-      this.logger.info(`Jump to fastest lap: walk cancelled by ${by}`);
+    await this.holdFastestLapSlot(contextId, FASTEST_LAP_WALK_OWNER, "walk", (claim) =>
+      this.runFastestLapWalk(claim, carIdx, targetLap, targetSessionNum, identity),
+    );
+  }
+
+  /**
+   * Run one Jump to Fastest Lap press — the walk or a record jump — holding
+   * the replay-cursor claim and this action's in-flight slot for its whole
+   * duration, so any replay command cancels it and a second press is ignored.
+   * The press signals a cancellation by throwing {@link FastestLapPressCancelled}.
+   */
+  private async holdFastestLapSlot(
+    contextId: string,
+    owner: string,
+    noun: "walk" | "jump",
+    run: (claim: ReplayCursorClaim) => Promise<void>,
+  ): Promise<void> {
+    const claim = claimReplayCursor(owner, (by) => {
+      this.logger.info(`Jump to fastest lap: ${noun} cancelled by ${by}`);
     });
 
-    this.activeFastestLapWalk = { contextId, claim };
+    this.activeFastestLapPress = { contextId, claim };
 
     try {
-      await this.runFastestLapWalk(claim, carIdx, targetLap, targetSessionNum, identity);
+      await run(claim);
     } catch (error) {
-      if (error instanceof FastestLapWalkCancelled) {
+      if (error instanceof FastestLapPressCancelled) {
         this.logger.debug(`Jump to fastest lap: ${error.message}; cursor left where that command put it`);
       } else {
         this.logger.error(
-          `Jump to fastest lap: walk failed: ${error instanceof Error ? error.message : String(error)}`,
+          `Jump to fastest lap: ${noun} failed: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
     } finally {
       claim.release();
 
-      // A cancelled walk may unwind after a newer one took the slot.
-      if (this.activeFastestLapWalk?.claim === claim) this.activeFastestLapWalk = null;
+      // A cancelled press may unwind after a newer one took the slot.
+      if (this.activeFastestLapPress?.claim === claim) this.activeFastestLapPress = null;
     }
   }
 
@@ -1280,13 +1312,12 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
    * Jump to a lap start the record holds (#1203), waiting for the cursor to
    * land before anything else is sent (#1275): iRacing searches a long jump
    * in steps, and a command arriving mid-search cuts it short. The sequence
-   * is: pause if the replay is moving (a moving cursor runs past the target
-   * before the landing can be read), jump to one second before the line,
-   * wait for `ReplayFrameNum` to read it, then switch the camera onto the car
-   * and play. On a timeout or a failed camera switch it sends nothing more,
-   * leaving the replay where it stopped rather than playing from a spot
-   * nobody asked for. Holds the same slot as the walk, so a second press
-   * while it waits is ignored.
+   * is: pause unless the replay reads paused, and wait for the pause to show
+   * (a moving cursor runs past the target before the landing can be read);
+   * jump to one second before the line and wait for `ReplayFrameNum` to read
+   * it; then switch the camera onto the car and play. On any failure it sends
+   * nothing more, leaving the replay where it stopped rather than playing from
+   * a spot nobody asked for.
    */
   private async jumpToRecordedLapStart(
     contextId: string,
@@ -1296,55 +1327,64 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
       lap: number;
       frame: number;
       timeMs: number | null;
-      wasMoving: boolean;
     },
   ): Promise<void> {
-    const claim = claimReplayCursor(FASTEST_LAP_RECORD_JUMP_OWNER, (by) => {
-      this.logger.info(`Jump to fastest lap: jump cancelled by ${by}`);
-    });
-
-    this.activeFastestLapWalk = { contextId, claim };
-
-    try {
+    await this.holdFastestLapSlot(contextId, FASTEST_LAP_RECORD_JUMP_OWNER, "jump", async (claim) => {
       const replay = getCommands().replay;
+      const readTelemetry = () => this.sdkController.getCurrentTelemetry();
       const approachFrame = Math.max(0, target.frame - LAP_START_APPROACH_FRAMES);
+      const timeoutMs = Math.max(
+        RECORD_JUMP_MIN_TIMEOUT_MS,
+        readFastestLapSearchDelayMs() * STABILIZATION_TIMEOUT_MULTIPLIER,
+      );
+      const waitOptions = { claim, readTelemetry, timeoutMs, pollMs: STABILIZATION_POLL_INTERVAL_MS };
 
-      if (target.wasMoving) {
-        replay.pause();
+      // An unknown speed counts as moving: a pause sent to a paused replay costs nothing.
+      if (!isPaused(readTelemetry())) {
+        if (!replay.pause()) {
+          this.logger.warn("Jump to fastest lap: pause failed; jump not sent");
+
+          return;
+        }
+
         this.setLocalSpeed(0, false);
         this.updateAllTelemetryDisplays();
+
+        const paused = await waitForReplay(waitOptions, (sample): sample is TelemetryData => isPaused(sample));
+
+        if (paused.kind === "cancelled") throw new FastestLapPressCancelled(paused.by, "jump");
+
+        if (paused.kind === "timeout") {
+          this.logger.warn("Jump to fastest lap: replay did not pause; jump not sent");
+          this.logger.debug(
+            `ReplayPlaySpeed still ${paused.telemetry?.ReplayPlaySpeed ?? "n/a"} after ${timeoutMs} ms`,
+          );
+
+          return;
+        }
       }
 
-      const timeoutMs = readFastestLapSearchDelayMs() * STABILIZATION_TIMEOUT_MULTIPLIER;
-      const outcome = await seekReplayFrame({
+      // The landing sample is read for nothing but the frame, so the
+      // `SessionNum = -1` transient after it need not be waited out.
+      const landing = await seekReplayFrame({
+        ...waitOptions,
         frame: approachFrame,
-        claim,
         send: (frame) => replay.setPlayPosition(ReplayPosMode.Begin, frame),
-        readTelemetry: () => this.sdkController.getCurrentTelemetry(),
-        timeoutMs,
-        pollMs: STABILIZATION_POLL_INTERVAL_MS,
+        requireSession: false,
       });
 
-      if (outcome.kind === "cancelled") {
-        this.logger.debug(
-          `Jump to fastest lap: jump cancelled by ${outcome.by}; cursor left where that command put it`,
-        );
+      if (landing.kind === "cancelled") throw new FastestLapPressCancelled(landing.by, "jump");
 
-        return;
-      }
-
-      if (outcome.kind === "timeout") {
-        const last = outcome.telemetry;
-
+      if (landing.kind === "timeout") {
         this.logger.warn("Jump to fastest lap: jump did not land; replay left where the seek stopped");
         this.logger.debug(
-          `Sent frame ${approachFrame}, saw frame ${last?.ReplayFrameNum ?? "n/a"} (SessionNum ${last?.SessionNum ?? "n/a"}) after ${timeoutMs} ms`,
+          `Sent frame ${approachFrame}, saw frame ${landing.telemetry?.ReplayFrameNum ?? "n/a"} after ${timeoutMs} ms`,
         );
 
         return;
       }
 
-      // Landed: now the camera and the play are safe to send.
+      // Landed: the camera and the play are safe to send now.
       if (!getCommands().camera.switchNum(target.carNum, 0, 0)) {
         this.logger.warn("Jump to fastest lap: camera switch failed; replay left at the lap start");
         this.logger.debug(`Failed switchNum: carNum=${target.carNum}, carIdx=${target.carIdx}`);
@@ -1358,16 +1398,7 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
       this.logger.debug(
         `Lap ${target.lap} of carIdx ${target.carIdx} starts at frame ${target.frame} (time ${target.timeMs ?? "untimed"} ms); landed on ${approachFrame}`,
       );
-    } catch (error) {
-      this.logger.error(
-        `Jump to fastest lap: record jump failed: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    } finally {
-      claim.release();
-
-      // A cancelled jump may unwind after a newer press took the slot.
-      if (this.activeFastestLapWalk?.claim === claim) this.activeFastestLapWalk = null;
-    }
+    });
   }
 
   private async runFastestLapWalk(
@@ -1381,7 +1412,7 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
     const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
     const checkpoint = (): void => {
-      if (claim.cancelledBy !== null) throw new FastestLapWalkCancelled(claim.cancelledBy);
+      if (claim.cancelledBy !== null) throw new FastestLapPressCancelled(claim.cancelledBy);
     };
 
     /** Every wait in the walk: a cancellation is observed as soon as the sleep ends. */
@@ -1437,12 +1468,11 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
         readTelemetry: () => this.sdkController.getCurrentTelemetry(),
         timeoutMs,
         pollMs: STABILIZATION_POLL_INTERVAL_MS,
-        sleep,
       });
 
-      if (outcome.kind === "cancelled") throw new FastestLapWalkCancelled(outcome.by);
+      if (outcome.kind === "cancelled") throw new FastestLapPressCancelled(outcome.by);
 
-      if (outcome.kind === "landed") return outcome.telemetry;
+      if (outcome.kind === "reached") return outcome.telemetry;
 
       const last = outcome.telemetry;
 
@@ -2264,10 +2294,10 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
         // would re-frame the car iRacing's camera-relative lap-search is
         // walking (#1203), and any command cuts a record jump's seek short
         // (#1275).
-        if (this.isFastestLapWalkInFlight()) {
+        if (this.isFastestLapPressInFlight()) {
           this.logger.info("Jump to fastest lap: previous press still in flight; press ignored");
           this.logger.debug(
-            `In-flight walk context: ${this.activeFastestLapWalk?.contextId}, ignored press context: ${contextId}`,
+            `In-flight walk context: ${this.activeFastestLapPress?.contextId}, ignored press context: ${contextId}`,
           );
           break;
         }
@@ -2319,7 +2349,6 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
             lap: targetLap,
             frame: lookup.frame,
             timeMs: lookup.timeMs,
-            wasMoving: typeof telemetry?.ReplayPlaySpeed === "number" && telemetry.ReplayPlaySpeed !== 0,
           });
           break;
         }
