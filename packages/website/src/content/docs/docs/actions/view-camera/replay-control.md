@@ -427,6 +427,8 @@ Which driver's fastest lap the button jumps to. Defaults to **Viewed Car**.
 
 Switch the replay camera to the next car. Defers to iRacing's own car-ordering by sending the configured keystroke, so cycling stays correct in live and replay (including replay-while-towed, where telemetry-driven selection picks the wrong driver).
 
+The key binding is shared with Camera Controls' [Cycle by Track Order](/docs/actions/view-camera/camera-focus/#cycle-by-track-order): iRaceDeck keeps one setting for iRacing's Next Car control, so rebinding it for either action changes it for both.
+
 #### Details
 
 - **Method:** Key binding
@@ -443,6 +445,8 @@ Switch the replay camera to the next car. Defers to iRacing's own car-ordering b
 ### Previous Car
 
 Switch the replay camera to the previous car. Defers to iRacing's own car-ordering by sending the configured keystroke, so cycling stays correct in live and replay (including replay-while-towed).
+
+The key binding is shared with Camera Controls' [Cycle by Track Order](/docs/actions/view-camera/camera-focus/#cycle-by-track-order): iRaceDeck keeps one setting for iRacing's Previous Car control, so rebinding it for either action changes it for both.
 
 #### Details
 
