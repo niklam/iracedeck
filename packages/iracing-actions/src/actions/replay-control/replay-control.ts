@@ -75,6 +75,7 @@ import z from "zod";
 import { computeCarNumberTarget } from "../../shared/car-cycling.js";
 import { RepeatController } from "../../shared/repeat-controller.js";
 import { cancelReplayCursorOwner, claimReplayCursor, type ReplayCursorClaim } from "../../shared/replay-cursor.js";
+import { seekReplayFrame } from "../../shared/replay-seek.js";
 
 const REPLAY_CONTROL_MODES = [
   "play-pause",
@@ -425,6 +426,9 @@ class FastestLapWalkCancelled extends Error {
 
 /** The owner name the walk claims the replay cursor under (`shared/replay-cursor.ts`). */
 const FASTEST_LAP_WALK_OWNER = "jump-to-fastest-lap walk";
+
+/** The owner name a record jump claims the replay cursor under while it waits for the landing (#1275). */
+const FASTEST_LAP_RECORD_JUMP_OWNER = "jump-to-fastest-lap record jump";
 
 /** What a converged walk writes into the lap record beside the frame it found. */
 type FastestLapRecordIdentity = {
@@ -1272,6 +1276,100 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
     }
   }
 
+  /**
+   * Jump to a lap start the record holds (#1203), waiting for the cursor to
+   * land before anything else is sent (#1275): iRacing searches a long jump
+   * in steps, and a command arriving mid-search cuts it short. The sequence
+   * is: pause if the replay is moving (a moving cursor runs past the target
+   * before the landing can be read), jump to one second before the line,
+   * wait for `ReplayFrameNum` to read it, then switch the camera onto the car
+   * and play. On a timeout or a failed camera switch it sends nothing more,
+   * leaving the replay where it stopped rather than playing from a spot
+   * nobody asked for. Holds the same slot as the walk, so a second press
+   * while it waits is ignored.
+   */
+  private async jumpToRecordedLapStart(
+    contextId: string,
+    target: {
+      carIdx: number;
+      carNum: number;
+      lap: number;
+      frame: number;
+      timeMs: number | null;
+      wasMoving: boolean;
+    },
+  ): Promise<void> {
+    const claim = claimReplayCursor(FASTEST_LAP_RECORD_JUMP_OWNER, (by) => {
+      this.logger.info(`Jump to fastest lap: jump cancelled by ${by}`);
+    });
+
+    this.activeFastestLapWalk = { contextId, claim };
+
+    try {
+      const replay = getCommands().replay;
+      const approachFrame = Math.max(0, target.frame - LAP_START_APPROACH_FRAMES);
+
+      if (target.wasMoving) {
+        replay.pause();
+        this.setLocalSpeed(0, false);
+        this.updateAllTelemetryDisplays();
+      }
+
+      const timeoutMs = readFastestLapSearchDelayMs() * STABILIZATION_TIMEOUT_MULTIPLIER;
+      const outcome = await seekReplayFrame({
+        frame: approachFrame,
+        claim,
+        send: (frame) => replay.setPlayPosition(ReplayPosMode.Begin, frame),
+        readTelemetry: () => this.sdkController.getCurrentTelemetry(),
+        timeoutMs,
+        pollMs: STABILIZATION_POLL_INTERVAL_MS,
+      });
+
+      if (outcome.kind === "cancelled") {
+        this.logger.debug(
+          `Jump to fastest lap: jump cancelled by ${outcome.by}; cursor left where that command put it`,
+        );
+
+        return;
+      }
+
+      if (outcome.kind === "timeout") {
+        const last = outcome.telemetry;
+
+        this.logger.warn("Jump to fastest lap: jump did not land; replay left where the seek stopped");
+        this.logger.debug(
+          `Sent frame ${approachFrame}, saw frame ${last?.ReplayFrameNum ?? "n/a"} (SessionNum ${last?.SessionNum ?? "n/a"}) after ${timeoutMs} ms`,
+        );
+
+        return;
+      }
+
+      // Landed: now the camera and the play are safe to send.
+      if (!getCommands().camera.switchNum(target.carNum, 0, 0)) {
+        this.logger.warn("Jump to fastest lap: camera switch failed; replay left at the lap start");
+        this.logger.debug(`Failed switchNum: carNum=${target.carNum}, carIdx=${target.carIdx}`);
+
+        return;
+      }
+
+      replay.play();
+      this.setLocalSpeed(1, false);
+      this.updateAllTelemetryDisplays();
+      this.logger.debug(
+        `Lap ${target.lap} of carIdx ${target.carIdx} starts at frame ${target.frame} (time ${target.timeMs ?? "untimed"} ms); landed on ${approachFrame}`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Jump to fastest lap: record jump failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    } finally {
+      claim.release();
+
+      // A cancelled jump may unwind after a newer press took the slot.
+      if (this.activeFastestLapWalk?.claim === claim) this.activeFastestLapWalk = null;
+    }
+  }
+
   private async runFastestLapWalk(
     claim: ReplayCursorClaim,
     carIdx: number,
@@ -1330,18 +1428,23 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
      */
     const jumpTo = async (frame: number): Promise<TelemetryData | null> => {
       checkpoint();
-      replay.setPlayPosition(ReplayPosMode.Begin, frame);
 
       const timeoutMs = settleTimeoutMs();
-      const deadline = Date.now() + timeoutMs;
-      let last: TelemetryData | null = null;
+      const outcome = await seekReplayFrame({
+        frame,
+        claim,
+        send: (f) => replay.setPlayPosition(ReplayPosMode.Begin, f),
+        readTelemetry: () => this.sdkController.getCurrentTelemetry(),
+        timeoutMs,
+        pollMs: STABILIZATION_POLL_INTERVAL_MS,
+        sleep,
+      });
 
-      while (Date.now() < deadline) {
-        await wait(STABILIZATION_POLL_INTERVAL_MS);
-        last = this.sdkController.getCurrentTelemetry();
+      if (outcome.kind === "cancelled") throw new FastestLapWalkCancelled(outcome.by);
 
-        if (readFrame(last) === frame && isSettledSample(last)) return last;
-      }
+      if (outcome.kind === "landed") return outcome.telemetry;
+
+      const last = outcome.telemetry;
 
       this.logger.warn("Jump to fastest lap: jump did not settle; aborting walk");
       this.logger.debug(
@@ -2156,11 +2259,13 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
           break;
         }
 
-        // A press while a walk stands is ignored BEFORE any command goes out:
-        // a camera switch from a key with another target would re-frame the
-        // car iRacing's camera-relative lap-search is walking (#1203).
+        // A press while a walk or a record jump stands is ignored BEFORE any
+        // command goes out: a camera switch from a key with another target
+        // would re-frame the car iRacing's camera-relative lap-search is
+        // walking (#1203), and any command cuts a record jump's seek short
+        // (#1275).
         if (this.isFastestLapWalkInFlight()) {
-          this.logger.info("Jump to fastest lap: walk already in flight; press ignored");
+          this.logger.info("Jump to fastest lap: previous press still in flight; press ignored");
           this.logger.debug(
             `In-flight walk context: ${this.activeFastestLapWalk?.contextId}, ignored press context: ${contextId}`,
           );
@@ -2174,20 +2279,6 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
         // describing the live view.
         if (telemetry?.IsReplayPlaying !== true) {
           this.logger.info("Jump to fastest lap: replay not open; iRacing ignores replay commands from the car");
-          break;
-        }
-
-        // Switch the replay camera onto the target car so the viewed car is
-        // the one whose lap plays, and so iRacing's lap-search (camera-focus-
-        // relative) walks the right driver. For viewed-car this is usually a
-        // no-op (camera is already there); for always-my-car it actively
-        // re-frames.
-        const cameraSwitched = getCommands().camera.switchNum(carNum, 0, 0);
-
-        if (!cameraSwitched) {
-          // If the SDK refused, abort rather than play or walk the wrong driver.
-          this.logger.warn("Jump to fastest lap: camera switch failed, aborting");
-          this.logger.debug(`Failed switchNum: carNum=${carNum}, carIdx=${targetCarIdx}`);
           break;
         }
 
@@ -2216,24 +2307,37 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
         });
 
         if (lookup.hit) {
-          // A one-shot jump takes the cursor from whatever holds it (a walk
-          // still unwinding after a cancel, another action's claim).
-          this.cancelFastestLapWalk(mode);
-
-          const approachFrame = Math.max(0, lookup.frame - LAP_START_APPROACH_FRAMES);
-          const positioned = replay.setPlayPosition(ReplayPosMode.Begin, approachFrame);
-          const played = replay.play();
-
-          this.setLocalSpeed(1, false);
           this.logger.info(`Jump to fastest lap: record HIT (matchedBy ${lookup.matchedBy})`);
-          this.logger.debug(
-            `Lap ${targetLap} of carIdx ${targetCarIdx} starts at frame ${lookup.frame} (time ${lookup.timeMs ?? "untimed"} ms); jumped to ${approachFrame} (setPlayPosition: ${positioned}, play: ${played})`,
-          );
           this.logFastestTimeDisagreement(sessionInfo, targetSessionNum, targetCarIdx, targetLap, lookup.timeMs);
+
+          // Fire-and-forget like the walk: the jump waits for the cursor to
+          // land before it sends anything else (#1275), and the press handler
+          // returns immediately.
+          void this.jumpToRecordedLapStart(contextId, {
+            carIdx: targetCarIdx,
+            carNum,
+            lap: targetLap,
+            frame: lookup.frame,
+            timeMs: lookup.timeMs,
+            wasMoving: typeof telemetry?.ReplayPlaySpeed === "number" && telemetry.ReplayPlaySpeed !== 0,
+          });
           break;
         }
 
         this.logger.info(`Jump to fastest lap: record MISS (${lookup.reason}); walking`);
+
+        // Switch the replay camera onto the target car before the walk:
+        // iRacing's lap-search is camera-focus-relative, so the walk must
+        // start on the right driver. For viewed-car this is usually a no-op
+        // (camera is already there); for always-my-car it actively re-frames.
+        // A record hit switches only after its jump has landed, because any
+        // command sent during the seek can cut it short (#1275).
+        if (!getCommands().camera.switchNum(carNum, 0, 0)) {
+          // If the SDK refused, abort rather than walk the wrong driver.
+          this.logger.warn("Jump to fastest lap: camera switch failed, aborting");
+          this.logger.debug(`Failed switchNum: carNum=${carNum}, carIdx=${targetCarIdx}`);
+          break;
+        }
 
         // The walk (issue #607, repaired in #1203). Fire-and-forget — the
         // press handler returns immediately; the walk ends with the replay
