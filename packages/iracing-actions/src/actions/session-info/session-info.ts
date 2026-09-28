@@ -54,6 +54,7 @@ import {
   getLiveGaps,
   getLivePosition,
   getLiveRacePositions,
+  getRaceFinishResult,
   getStartingGridPosition,
   type LiveGaps,
   resolveLeaderLapTimeS,
@@ -1089,7 +1090,17 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
       // "already racing" so non-start callers keep the live order (back-compat).
       const beforeRacingLap = typeof telemetry.LapCompleted === "number" && telemetry.LapCompleted < 0;
 
-      if (this.isRaceSession(telemetry)) {
+      // Once the player has taken the checkered flag their race is over: show
+      // the official result captured at that crossing and nothing else (issue
+      // #1278). The live order keeps moving through the cool-down lap — a car
+      // that finishes behind the player passes them on track — and pit road
+      // would switch the source again on the way in.
+      const finish = this.isRaceSession(telemetry) ? getRaceFinishResult(telemetry.SessionNum) : null;
+
+      if (finish) {
+        overall = finish.position;
+        klass = finish.classPosition > 0 ? finish.classPosition : telemetry.PlayerCarClassPosition;
+      } else if (this.isRaceSession(telemetry)) {
         if (isPreGreen(telemetry) || beforeRacingLap) {
           // Qualifying grid slot from the session/qualifying results — populated
           // the moment the grid is set, for both standing and rolling starts.
