@@ -18,10 +18,12 @@
  * camera-cycle) are intentionally absent: they issue no iRacing command, so they
  * get no status line and no icon warning. Camera Controls carries BOTH surfaces
  * (`camera-focus` keypad, `camera-focus-dial`): almost every camera mode is an
- * SDK command, but Cycle Sub-Camera is a key binding — iRacing's camera switch
- * broadcasts act on the focus and the group only, their `camera` argument never
- * selects a sub-camera, so the sim's own Next / Previous Sub Camera bindings
- * are the only working mechanism (issue #852).
+ * SDK command, but two are key bindings. Cycle Sub-Camera taps the sim's own
+ * Next / Previous Sub Camera bindings — iRacing's camera switch broadcasts act
+ * on the focus and the group only, their `camera` argument never selects a
+ * sub-camera (issue #852). Cycle by Track Order taps iRacing's Next / Previous
+ * Car, the keys Replay Control's car modes tap, so the sim picks the car ahead /
+ * behind on track and gets it right inside a replay (issue #1277).
  */
 import {
   type ActionCommMap,
@@ -33,6 +35,7 @@ import {
 } from "@iracedeck/deck-core";
 
 import { BLACK_BOX_GLOBAL_KEYS } from "../shared/black-box.js";
+import { CAR_CYCLE_BINDING_KEYS } from "../shared/car-cycle-bindings.js";
 import { SPOTTER_GLOBAL_KEYS } from "../shared/spotter-bindings.js";
 import {
   dialMuteBindingMap,
@@ -347,7 +350,8 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
 
   // Camera Controls' KEYPAD surface. Every mode is an SDK camera broadcast
   // (`getCommands().camera.*`) except Cycle Sub-Camera, which taps iRacing's
-  // own Next / Previous Sub Camera bindings (#852) — see the header note.
+  // own Next / Previous Sub Camera bindings (#852), and Cycle by Track Order,
+  // which taps its Next / Previous Car bindings (#1277) — see the header note.
   // `focus-select-car` opens a Stream Deck profile rather than talking to
   // iRacing, so it is deliberately absent (nothing to report).
   "camera-focus": entry("target", {
@@ -358,7 +362,10 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
       previous: SUB_CAMERA_BINDING_KEYS.previous,
     }),
     "cycle-car": api,
-    "cycle-track-order": api,
+    "cycle-track-order": keybindBy("direction", {
+      next: CAR_CYCLE_BINDING_KEYS.next,
+      previous: CAR_CYCLE_BINDING_KEYS.previous,
+    }),
     "cycle-driving": api,
     "focus-your-car": api,
     "focus-on-leader": api,
@@ -372,7 +379,8 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
   // The dial surface of Camera Controls (#803). Rotation cycles the camera or
   // the focused car and the press gestures center on the player's car / switch
   // camera — all iRacing SDK camera commands (`getCommands().camera.*`) except
-  // Sub-Camera rotation, which taps iRacing's sub-camera bindings (#852). The
+  // Sub-Camera rotation, which taps iRacing's sub-camera bindings (#852), and
+  // Track Order rotation, which taps its Next / Previous Car bindings (#1277). The
   // dial reuses the keypad's own cycle/focus dispatch, so both surfaces share
   // one mechanism per mode. _meta.modeSetting = "dial.mode".
   "camera-focus-dial": entry("dial.mode", {
@@ -382,7 +390,9 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     "sub-camera": pair(SUB_CAMERA_BINDING_KEYS.next, SUB_CAMERA_BINDING_KEYS.previous),
     "car-number": api,
     "race-position": api,
-    "track-order": api,
+    // Clockwise taps Next Car, counter-clockwise Previous Car (#1277) — either
+    // one unset warns, as for Sub-Camera.
+    "track-order": pair(CAR_CYCLE_BINDING_KEYS.next, CAR_CYCLE_BINDING_KEYS.previous),
     driving: api,
     // Gesture-slot values (dial.pressAction / .longPressAction / .tapAction /
     // .longTouchAction) — each an SDK camera command. "none" is omitted (it
@@ -771,8 +781,8 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
       "next-car-number",
       "prev-car-number",
     ]),
-    "next-car": keybind("replayControlNextCar"),
-    "prev-car": keybind("replayControlPrevCar"),
+    "next-car": keybind(CAR_CYCLE_BINDING_KEYS.next),
+    "prev-car": keybind(CAR_CYCLE_BINDING_KEYS.previous),
   }),
 
   "replay-navigation": entry(

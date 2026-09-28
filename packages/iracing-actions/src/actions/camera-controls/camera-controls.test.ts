@@ -8,6 +8,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import z from "zod";
 
+import { CAR_CYCLE_BINDING_KEYS } from "../../shared/car-cycle-bindings.js";
 import { _resetSelectIntents, getSelectIntent } from "../../shared/car-select-intent.js";
 import keyBindings from "../data/key-bindings.json" with { type: "json" };
 import {
@@ -127,11 +128,9 @@ vi.mock("@iracedeck/iracing-sdk", async (importOriginal) => {
 
   return {
     TrkLoc: actual.TrkLoc,
-    // The REAL in-world predicate (#968) and track-order primitive (#886):
-    // presence and road order are the behaviour under test in the world-walk
-    // cases, so mocking them would assert the mock, not the rule.
+    // The REAL in-world predicate (#968): presence is the behaviour under test
+    // in the world-walk cases, so mocking it would assert the mock, not the rule.
     carInWorld: actual.carInWorld,
-    findNearestCarOnTrack: actual.findNearestCarOnTrack,
     getCameraGroupsFromSessionInfo: vi.fn(() => []),
     getCamerasInGroup: vi.fn(() => []),
     getCarNumberRawFromSessionInfo: vi.fn(() => null),
@@ -1624,14 +1623,31 @@ describe("cycle-car focuses the neighbour by car number (pace-car recovery #803)
   });
 });
 
-// The keypad surface of the dial's track-order mode (issue #960): a press moves
-// the camera to the competitor physically AHEAD of / BEHIND the focused car on
-// the road. It shares the dial's computation (computeTrackOrderTarget over the
-// project's one findNearestCarOnTrack primitive, both REAL here), so these cases
-// pin the behaviour the two surfaces are supposed to agree on: the next→ahead
-// reading, the competitor filter, the world-presence skip, and the no-fallback
-// contract that separates it from Cycle Car.
-describe("cycle-track-order focuses the car ahead / behind on the road (#960)", () => {
+// Cycle by Track Order taps iRacing's own Next Car / Previous Car bindings
+// (issue #1277) on both surfaces — the keypad's CAR AHEAD / CAR BEHIND and the
+// dial's Track Order mode — instead of computing the neighbour from the live
+// field, which followed the live cars rather than the replay being watched.
+// Next Car (V) focuses the car ahead on track, Previous Car (Shift+V) the car
+// behind. The keys are Replay Control's (one sim control, one setting), and
+// both surfaces go through executeCycle, so the dispatch lands in one place.
+describe("cycle-track-order taps iRacing's Next / Previous Car binding (#1277)", () => {
+  function dialContext() {
+    return {
+      id: "dial-1",
+      deviceId: "dev-1",
+      deviceType: 2,
+      isKey: () => false,
+      isDial: () => true,
+      dialCanvas: () => ({ id: "sd-plus-strip", width: 200, height: 100 }) as const,
+      setDialCanvas: vi.fn(async (_dataUri: string) => {}),
+      setImage: vi.fn(async () => {}),
+      setTitle: vi.fn(async () => {}),
+      setSettings: vi.fn(async () => {}),
+      setFeedback: vi.fn(async () => {}),
+      setTriggerDescription: vi.fn(async () => {}),
+    };
+  }
+
   function sdk(action: CameraControls) {
     return (
       action as unknown as {
@@ -1643,26 +1659,35 @@ describe("cycle-track-order focuses the car ahead / behind on the road (#960)", 
     ).sdkController;
   }
 
-  // #7 (carIdx 5) is focused. #12 (carIdx 9) is just up the road, #30 (carIdx 11)
-  // well behind. carIdx 0 is the PACE CAR: physically the nearest thing ahead of
-  // the focused car, and deliberately absent from the competitor list.
+  function spy(action: CameraControls) {
+    return action as unknown as {
+      tapBinding: ReturnType<typeof vi.fn>;
+      isBindingMissing: ReturnType<typeof vi.fn>;
+      logger: { info: ReturnType<typeof vi.fn>; warn: ReturnType<typeof vi.fn> };
+    };
+  }
+
+  /** A live field around the focused car, so a computed dispatch would have had a target. */
+  const TELEMETRY = {
+    CamCarIdx: 5,
+    CamGroupNumber: 9,
+    CamCameraNumber: 2,
+    CarIdxLapDistPct: [-1, -1, -1, -1, -1, 0.5, -1, -1, -1, 0.6, -1, 0.3],
+    CarIdxTrackSurface: [-1, -1, -1, -1, -1, 3, -1, -1, -1, 3, -1, 3],
+  };
   const CARS = [
     { carIdx: 5, carNumber: "7", carNumberRaw: 7, userName: "a" },
     { carIdx: 9, carNumber: "12", carNumberRaw: 12, userName: "b" },
     { carIdx: 11, carNumber: "30", carNumberRaw: 30, userName: "c" },
   ];
 
-  /** Telemetry for a 12-slot field; `dists` maps carIdx → lap distance (-1 = absent). */
-  function telemetryWith(dists: Record<number, number>) {
-    const lapDist = Array.from({ length: 12 }, (_, idx) => dists[idx] ?? -1);
+  function newAction(telemetry: unknown = TELEMETRY): CameraControls {
+    const action = new CameraControls();
+    sdk(action).getCurrentTelemetry.mockReturnValue(telemetry);
+    sdk(action).getSessionInfo.mockReturnValue({});
+    vi.mocked(getAllCarNumbers).mockReturnValue(CARS);
 
-    return {
-      CamCarIdx: 5,
-      CamGroupNumber: 9,
-      CamCameraNumber: 2,
-      CarIdxLapDistPct: lapDist,
-      CarIdxTrackSurface: lapDist.map((d) => (d < 0 ? -1 : 3)),
-    };
+    return action;
   }
 
   async function press(action: CameraControls, direction: "next" | "previous") {
@@ -1670,6 +1695,19 @@ describe("cycle-track-order focuses the car ahead / behind on the road (#960)", 
       action: { id: "k1" },
       payload: { settings: { target: "cycle-track-order", direction } },
     } as never);
+  }
+
+  async function turn(action: CameraControls, ticks: number, reverseRotation = false) {
+    await action.onDialRotate({
+      action: dialContext(),
+      payload: { settings: { dial: { mode: "track-order", reverseRotation } }, ticks },
+    } as never);
+  }
+
+  function expectNoCameraBroadcast() {
+    expect(mockCamera.switchNum).not.toHaveBeenCalled();
+    expect(mockCamera.switchPos).not.toHaveBeenCalled();
+    expect(mockCamera.cycleCar).not.toHaveBeenCalled();
   }
 
   beforeEach(() => {
@@ -1680,93 +1718,103 @@ describe("cycle-track-order focuses the car ahead / behind on the road (#960)", 
     vi.mocked(getAllCarNumbers).mockReturnValue([]);
   });
 
-  it("focuses the car ahead on a next press, keeping the camera group and sub-camera", async () => {
-    const action = new CameraControls();
-    sdk(action).getCurrentTelemetry.mockReturnValue(telemetryWith({ 5: 0.5, 9: 0.6, 11: 0.3 }));
-    sdk(action).getSessionInfo.mockReturnValue({});
-    vi.mocked(getAllCarNumbers).mockReturnValue(CARS);
+  it("uses Replay Control's Next / Previous Car keys — one sim control, one setting", () => {
+    expect(CAR_CYCLE_BINDING_KEYS.next).toBe("replayControlNextCar");
+    expect(CAR_CYCLE_BINDING_KEYS.previous).toBe("replayControlPrevCar");
+  });
+
+  // The Camera Controls PI renders `cameraControls` only, so the pair must be
+  // listed there or the user could not configure it from this action.
+  it("registers both bindings in the Camera Controls key-binding catalog", () => {
+    const settings = keyBindings.cameraControls.map((b) => b.setting);
+
+    expect(settings).toContain(CAR_CYCLE_BINDING_KEYS.next);
+    expect(settings).toContain(CAR_CYCLE_BINDING_KEYS.previous);
+  });
+
+  it("taps Next Car on a CAR AHEAD press and sends no camera broadcast", async () => {
+    const action = newAction();
 
     await press(action, "next");
 
-    // #12 is 0.10 of a lap up the road; #30 is 0.80 ahead the long way round.
-    expect(mockCamera.switchNum).toHaveBeenCalledWith(12, 9, 2);
+    expect(spy(action).tapBinding).toHaveBeenCalledTimes(1);
+    expect(spy(action).tapBinding).toHaveBeenCalledWith(CAR_CYCLE_BINDING_KEYS.next);
+    expectNoCameraBroadcast();
   });
 
-  it("focuses the car behind on a previous press", async () => {
-    const action = new CameraControls();
-    sdk(action).getCurrentTelemetry.mockReturnValue(telemetryWith({ 5: 0.5, 9: 0.6, 11: 0.3 }));
-    sdk(action).getSessionInfo.mockReturnValue({});
-    vi.mocked(getAllCarNumbers).mockReturnValue(CARS);
+  it("taps Previous Car on a CAR BEHIND press and sends no camera broadcast", async () => {
+    const action = newAction();
 
     await press(action, "previous");
 
-    // #30 is 0.20 back down the road; #12 is 0.90 behind the long way round.
-    expect(mockCamera.switchNum).toHaveBeenCalledWith(30, 9, 2);
+    expect(spy(action).tapBinding).toHaveBeenCalledTimes(1);
+    expect(spy(action).tapBinding).toHaveBeenCalledWith(CAR_CYCLE_BINDING_KEYS.previous);
+    expectNoCameraBroadcast();
   });
 
-  it("wraps across the start/finish line rather than stopping at it", async () => {
-    const action = new CameraControls();
-    // Focused car has not quite finished the lap; #12 has just started a new one.
-    sdk(action).getCurrentTelemetry.mockReturnValue(telemetryWith({ 5: 0.98, 9: 0.02, 11: 0.9 }));
-    sdk(action).getSessionInfo.mockReturnValue({});
-    vi.mocked(getAllCarNumbers).mockReturnValue(CARS);
+  // The tap reads no telemetry, so a gap in the SDK feed must not swallow it.
+  it("still taps the binding while telemetry is unavailable", async () => {
+    const action = newAction(null);
 
     await press(action, "next");
 
-    expect(mockCamera.switchNum).toHaveBeenCalledWith(12, 9, 2);
+    expect(spy(action).tapBinding).toHaveBeenCalledWith(CAR_CYCLE_BINDING_KEYS.next);
   });
 
-  it("never targets the pace car, even when it is the nearest thing ahead", async () => {
-    const action = new CameraControls();
-    // Pace car (carIdx 0) sits 0.05 ahead — nearer than #12's 0.10 — but it is
-    // not a competitor, so the competitor filter must step over it.
-    sdk(action).getCurrentTelemetry.mockReturnValue(telemetryWith({ 0: 0.55, 5: 0.5, 9: 0.6, 11: 0.3 }));
-    sdk(action).getSessionInfo.mockReturnValue({});
-    vi.mocked(getAllCarNumbers).mockReturnValue(CARS);
+  it("taps Next Car on a clockwise detent and Previous Car counter-clockwise", async () => {
+    const action = newAction();
+
+    await turn(action, 1);
+    expect(spy(action).tapBinding).toHaveBeenLastCalledWith(CAR_CYCLE_BINDING_KEYS.next);
+
+    await turn(action, -1);
+    expect(spy(action).tapBinding).toHaveBeenLastCalledWith(CAR_CYCLE_BINDING_KEYS.previous);
+
+    expect(spy(action).tapBinding).toHaveBeenCalledTimes(2);
+    expectNoCameraBroadcast();
+  });
+
+  it("flips the pair when Reverse rotation is set", async () => {
+    const action = newAction();
+
+    await turn(action, 1, true);
+    expect(spy(action).tapBinding).toHaveBeenLastCalledWith(CAR_CYCLE_BINDING_KEYS.previous);
+
+    await turn(action, -1, true);
+    expect(spy(action).tapBinding).toHaveBeenLastCalledWith(CAR_CYCLE_BINDING_KEYS.next);
+
+    expectNoCameraBroadcast();
+  });
+
+  it("sends nothing and warns when the binding is unset, instead of logging a cycle", async () => {
+    const action = newAction();
+    spy(action).isBindingMissing.mockReturnValue(true);
 
     await press(action, "next");
 
-    expect(mockCamera.switchNum).toHaveBeenCalledWith(12, 9, 2);
+    expect(spy(action).tapBinding).not.toHaveBeenCalled();
+    expect(spy(action).logger.warn).toHaveBeenCalledWith(expect.stringContaining("not configured"));
+    expect(spy(action).logger.info).not.toHaveBeenCalledWith("Track order car cycled");
+    expectNoCameraBroadcast();
   });
 
-  it("skips a car that left the world and lands on the next one along (#885)", async () => {
-    const action = new CameraControls();
-    // #12 is the nearest ahead by lap distance but has despawned, so its slot
-    // reports no position and a NotInWorld surface.
-    sdk(action).getCurrentTelemetry.mockReturnValue(telemetryWith({ 5: 0.5, 11: 0.3 }));
-    sdk(action).getSessionInfo.mockReturnValue({});
-    vi.mocked(getAllCarNumbers).mockReturnValue(CARS);
-
-    await press(action, "next");
-
-    expect(mockCamera.switchNum).toHaveBeenCalledWith(30, 9, 2);
+  it("puts the missing-binding warning on the key for the binding its direction taps (#612)", () => {
+    expect(resolveBindingKey("cycle-track-order", "next")).toBe(CAR_CYCLE_BINDING_KEYS.next);
+    expect(resolveBindingKey("cycle-track-order", "previous")).toBe(CAR_CYCLE_BINDING_KEYS.previous);
   });
 
-  it("does nothing when the focused car is alone on track — and never falls back to a raw cycle", async () => {
-    const action = new CameraControls();
-    sdk(action).getCurrentTelemetry.mockReturnValue(telemetryWith({ 5: 0.5 }));
-    sdk(action).getSessionInfo.mockReturnValue({});
-    vi.mocked(getAllCarNumbers).mockReturnValue(CARS);
+  it("checks the key's own binding when it appears, so an unset one shows the warning", async () => {
+    const action = newAction();
+    spy(action).isBindingMissing.mockReturnValue(true);
+    const assembleIcon = vi.mocked(deckCore.assembleIcon);
 
-    await press(action, "next");
+    await action.onWillAppear({
+      action: { id: "k1", isKey: () => true, isDial: () => false, setTitle: vi.fn(async () => {}) },
+      payload: { settings: { target: "cycle-track-order", direction: "previous" } },
+    } as never);
 
-    // Unlike Cycle Car there is no SDK track-order cycle to fall back to, so a
-    // dead press must stay dead rather than reach for a different ordering.
-    expect(mockCamera.switchNum).not.toHaveBeenCalled();
-    expect(mockCamera.cycleCar).not.toHaveBeenCalled();
-    expect(mockCamera.switchPos).not.toHaveBeenCalled();
-  });
-
-  it("does nothing out of session, when no competitors are listed", async () => {
-    const action = new CameraControls();
-    sdk(action).getCurrentTelemetry.mockReturnValue(telemetryWith({ 5: 0.5, 9: 0.6 }));
-    sdk(action).getSessionInfo.mockReturnValue({});
-    vi.mocked(getAllCarNumbers).mockReturnValue([]);
-
-    await press(action, "next");
-
-    expect(mockCamera.switchNum).not.toHaveBeenCalled();
-    expect(mockCamera.cycleCar).not.toHaveBeenCalled();
+    expect(spy(action).isBindingMissing).toHaveBeenCalledWith(CAR_CYCLE_BINDING_KEYS.previous);
+    expect(assembleIcon).toHaveBeenLastCalledWith(expect.objectContaining({ bindingMissing: true }));
   });
 });
 

@@ -85,7 +85,8 @@ import {
 import { getLiveRacePositions } from "@iracedeck/sim-events-iracing";
 import z from "zod";
 
-import { computeCarNumberTarget, computeTrackOrderTarget, trackOrderDirection } from "../../shared/car-cycling.js";
+import { carCycleBindingKey } from "../../shared/car-cycle-bindings.js";
+import { computeCarNumberTarget } from "../../shared/car-cycling.js";
 import { setSelectIntent } from "../../shared/car-select-intent.js";
 import { profileEntriesEqual } from "../../shared/profile-entries.js";
 import { availableProfilesForDevice, deviceProfileEntries } from "../race-admin/race-admin-selector.js";
@@ -149,13 +150,22 @@ type Direction = "next" | "previous";
 
 /**
  * The binding key a keypad button depends on, or `null` for the SDK-driven
- * modes (which need no binding). Drives the per-button missing-binding icon
- * warning (`isBindingMissing`) — deliberately NOT `setActiveBinding`, whose
- * state is one value per action-class instance and would bleed one button's
- * mode onto every other Camera Controls key (see the note in `updateDisplay`).
+ * modes (which need no binding). Two modes tap an iRacing key binding: Cycle
+ * Sub-Camera (Next / Previous Sub Camera, #852) and Cycle by Track Order (Next
+ * / Previous Car, #1277). Drives the per-button missing-binding icon warning
+ * (`isBindingMissing`) — deliberately NOT `setActiveBinding`, whose state is
+ * one value per action-class instance and would bleed one button's mode onto
+ * every other Camera Controls key (see the note in `updateDisplay`).
  */
 export function resolveBindingKey(target: Target, direction: Direction = "next"): string | null {
-  return target === "cycle-sub-camera" ? subCameraBindingKey(direction) : null;
+  switch (target) {
+    case "cycle-sub-camera":
+      return subCameraBindingKey(direction);
+    case "cycle-track-order":
+      return carCycleBindingKey(direction);
+    default:
+      return null;
+  }
 }
 
 function isCycleTarget(target: Target): target is CycleTarget {
@@ -198,7 +208,8 @@ export const CYCLE_TITLES: Record<CycleTarget, Record<Direction, string>> = {
   // Track order (#960) titles the DESTINATION rather than the direction of
   // travel through a list: on a key the whole idea is which car you land on,
   // and "AHEAD" / "BEHIND" also reads distinctly against Cycle Car's
-  // NEXT / PREV right beside it.
+  // NEXT / PREV right beside it. iRacing's Next Car (the tap since #1277)
+  // focuses the car ahead on track, Previous Car the car behind.
   "cycle-track-order": {
     next: "CAR\nAHEAD",
     previous: "CAR\nBEHIND",
@@ -730,7 +741,8 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
    * The dial half of the action (#803); all IDeck dial events route here.
    * Rotation reuses the keypad's own `executeCycle` / focus dispatch — the dial
    * duplicates no camera logic. `isBindingMissing` is delegated for the strip's
-   * #612 warning (Sub-Camera is binding-driven since #852); `setActiveBinding`
+   * #612 warning (Sub-Camera is binding-driven since #852, Track Order since
+   * #1277); `setActiveBinding`
    * is NOT — it is one value per action-class instance and would bleed a dial
    * context's state onto the keypad buttons (see global-settings.md).
    */
@@ -905,14 +917,20 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
     direction: Direction,
     cameraGroupSubset?: string | Record<string, unknown>,
   ): Promise<void> {
-    // Sub-camera is dispatched BEFORE the telemetry guard: it taps an iRacing
-    // key binding (issue #852) and reads no telemetry at all, so a momentary
-    // gap in the SDK feed (reconnect window, menus, a stalled tick) must not
-    // swallow the press — every other keyboard-driven action taps
-    // unconditionally, and the plugin-wide offline handling already gates
-    // presses while iRacing is not running.
+    // The two binding-driven modes are dispatched BEFORE the telemetry guard:
+    // they tap an iRacing key binding (Sub-Camera #852, Track Order #1277) and
+    // read no telemetry at all, so a momentary gap in the SDK feed (reconnect
+    // window, menus, a stalled tick) must not swallow the press — every other
+    // keyboard-driven action taps unconditionally, and the plugin-wide offline
+    // handling already gates presses while iRacing is not running.
     if (target === "cycle-sub-camera") {
       await this.cycleSubCamera(direction);
+
+      return;
+    }
+
+    if (target === "cycle-track-order") {
+      await this.cycleTrackOrder(direction);
 
       return;
     }
@@ -998,43 +1016,6 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
 
         break;
       }
-      case "cycle-track-order": {
-        // Move the camera to the competitor physically AHEAD of / BEHIND the
-        // focused car on the road (issue #960) — the keypad surface of the
-        // dial's track-order mode (#886), sharing its computation rather than
-        // repeating it: `computeTrackOrderTarget` wraps the project's one
-        // track-order primitive (`findNearestCarOnTrack`) and filters to the
-        // same competitor list Cycle Car walks, so the pace car and spectators
-        // are never targeted and cars that left the world are skipped. `next`
-        // is read as "ahead" by the shared `trackOrderDirection`, the single
-        // definition both surfaces use.
-        //
-        // Focus BY NUMBER with the live group and sub-camera, exactly like
-        // Cycle Car, so only the subject changes and the shot is preserved.
-        // Unlike Cycle Car there is NO fallback: iRacing has no track-order
-        // cycle command to fall back to, and inventing one here would be a
-        // second ordering. No neighbour → nothing sent (the #885 contract).
-        const cars = getAllCarNumbers(this.sdkController.getSessionInfo(), true, true);
-        const targetCar = computeTrackOrderTarget(telemetry, carIdx, cars, trackOrderDirection(direction));
-
-        if (targetCar) {
-          const success = camera.switchNum(targetCar.carNumberRaw, groupNum, cameraNum);
-          this.logger.info("Car switched by track order");
-          this.logger.debug(`Result: ${success}, direction: ${direction}, carNumberRaw: ${targetCar.carNumberRaw}`);
-        } else {
-          // Having no neighbour is ROUTINE, not a fault: a solo practice, a
-          // hotlap or a test drive has no other car to move to, so every press
-          // lands here. `logging.md` reserves warn for "unexpected but
-          // recoverable", hence info + the detail at debug — the same shape
-          // replay-control.ts uses for its own routine absence (no best lap
-          // recorded yet), rather than the warn it uses when a target that
-          // should exist is missing. #960 originally specified warn.
-          this.logger.info("No neighbouring car on track — nothing sent");
-          this.logger.debug(`direction: ${direction}, camCarIdx: ${carIdx}, competitors: ${cars.length}`);
-        }
-
-        break;
-      }
       case "cycle-driving": {
         // Driving cameras are camera groups too, so keep focus on the CURRENTLY
         // focused car by number and advance the group — the same
@@ -1078,19 +1059,40 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
    * Shared by the keypad Cycle Sub-Camera mode and the dial's Sub-Camera mode.
    */
   private async cycleSubCamera(direction: Direction): Promise<void> {
-    const settingKey = subCameraBindingKey(direction);
+    await this.tapCycleBinding(subCameraBindingKey(direction), direction, "Sub-camera");
+  }
 
+  /**
+   * Focus the car ahead of / behind the focused car on track — the keypad
+   * Cycle by Track Order mode (CAR AHEAD / CAR BEHIND) and the dial's Track
+   * Order mode.
+   *
+   * Keyboard-driven since #1277: iRacing's own Next Car (`next`, the car ahead
+   * on track) / Previous Car (`previous`, the car behind) bindings pick the
+   * car. Computing the neighbour ourselves read the LIVE car placement, so in
+   * a replay watched inside a still-connected session it followed the live
+   * field rather than the replay the driver sees — the sim's control follows
+   * the replay. The binding keys are the ones Replay Control's Next Car /
+   * Previous Car modes tap (`shared/car-cycle-bindings.ts`): one sim control,
+   * one setting.
+   */
+  private async cycleTrackOrder(direction: Direction): Promise<void> {
+    await this.tapCycleBinding(carCycleBindingKey(direction), direction, "Track order car");
+  }
+
+  /** Taps one of the binding-driven cycle modes' iRacing key bindings, or warns when it is unset. */
+  private async tapCycleBinding(settingKey: string, direction: Direction, what: string): Promise<void> {
     // `tapBinding` returns void, so check first: without this an unset binding
     // logs a successful cycle and a support log hides the real cause.
     if (this.isBindingMissing(settingKey)) {
-      this.logger.warn("Sub-camera binding not configured — nothing sent");
+      this.logger.warn(`${what} binding not configured — nothing sent`);
       this.logger.debug(`direction: ${direction}, binding: ${settingKey}`);
 
       return;
     }
 
     await this.tapBinding(settingKey);
-    this.logger.info("Sub-camera cycled");
+    this.logger.info(`${what} cycled`);
     this.logger.debug(`direction: ${direction}, binding: ${settingKey}`);
   }
 
