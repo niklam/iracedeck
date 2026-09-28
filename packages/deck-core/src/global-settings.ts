@@ -2185,6 +2185,86 @@ export function isSettingsStoreReady(): boolean {
 }
 
 /**
+ * Run `action` once, at the first moment the settings store is ready: now if
+ * it already is, else on the first settings change after which it is. The
+ * shape every consumer deciding on the ABSENCE of a key needs (the one-shot
+ * key renames, the binding-default seed), stated once.
+ *
+ * Re-entrancy: the run is marked done, and the change subscription dropped,
+ * BEFORE `action` is called. An action that writes settings fans out to the
+ * change listeners synchronously — this one included, were it still
+ * subscribed — so marking it done afterwards would run `action` again inside
+ * its own write, on a cache it is halfway through changing.
+ *
+ * @returns A disposer that cancels a still-pending run (for tests)
+ */
+export function runOnceSettingsStoreReady(action: () => void): () => void {
+  let done = false;
+  let unsubscribe: (() => void) | null = null;
+
+  const attempt = (): void => {
+    if (done || !storeReady) return;
+
+    done = true;
+    unsubscribe?.();
+    unsubscribe = null;
+    action();
+  };
+
+  attempt();
+
+  if (!done) unsubscribe = onGlobalSettingsChange(attempt);
+
+  return () => {
+    unsubscribe?.();
+    unsubscribe = null;
+  };
+}
+
+/**
+ * Whether the settings store is host-derived, and if not, why — see
+ * {@link isSettingsStoreHostDerived}, which is the decision; this only names
+ * the reason, for a caller that has to say something different to each (the
+ * binding-default seed's log line, #1277).
+ *
+ * - `"not-ready"` — the store has not loaded yet.
+ * - `"unparseable"` — the stored file failed to parse at all; the cache is
+ *   pure schema defaults.
+ * - `"abandoned"` — the host migration was given up on (`_migrationAbandoned`,
+ *   #1041). Durable: only a later upgrade's retry that gets a real host answer
+ *   clears it, so it may never change.
+ * - `"not-read-yet"` — the store started fresh (the host never answered the
+ *   migration read) or still carries the pending-migration countdown; a later
+ *   start whose host answer lands makes it host-derived.
+ * - `"host-derived"` — the file reflects what the host held.
+ */
+export type SettingsStoreHostDerivation = "host-derived" | "not-ready" | "not-read-yet" | "abandoned" | "unparseable";
+
+/**
+ * The reason behind {@link isSettingsStoreHostDerived}; see
+ * {@link SettingsStoreHostDerivation}.
+ */
+export function getSettingsStoreHostDerivation(): SettingsStoreHostDerivation {
+  if (!storeReady) return "not-ready";
+
+  if (storeSalvageFailed) return "unparseable";
+
+  const settings = currentSettings as Record<string, unknown>;
+
+  // The migration was given up on, so this store was never host-derived and a
+  // write keyed on absence could shadow a copy the plugin has never read
+  // (#1041). Durable, unlike the countdown below: the ceiling clears that one,
+  // and without this the very next start would treat the file as complete.
+  if (isMigrationAbandoned(settings)) return "abandoned";
+
+  // A cache carrying the pending-migration marker is a defaults file, whatever
+  // path filled it — belt and braces with the "fresh" source.
+  if (storeSource === "fresh" || pendingMigrationStarts(settings) > 0) return "not-read-yet";
+
+  return "host-derived";
+}
+
+/**
  * Whether the cache holds everything the user has stored: the store is ready,
  * and its settings came from a positive read of the deck host — this start's
  * migration answer, or a file born from one — rather than from defaults
@@ -2200,25 +2280,17 @@ export function isSettingsStoreReady(): boolean {
  * retry's `{ ...host, ...file }`) — a value written now would permanently
  * override the user's own.
  *
- * The one definition of "the file reflects what the host held": the host
- * mirror ({@link hostMirrorPayload}) is skipped unless this holds, and so is
- * any write that fills a key because it is absent (`seedBindingDefaultsIfAbsent`,
- * #1277).
+ * Its binding consumer is {@link hostMirrorPayload}, the guard on the ONE
+ * whole-object host write per start (#1041): a host `setGlobalSettings`
+ * replaces everything the host holds, so mirroring a store that is not
+ * host-derived overwrites a copy nobody has read. Relaxing this predicate for
+ * any other caller re-opens that data loss. A caller that wants a looser rule
+ * needs its own predicate, never an edit here. The binding-default seed
+ * (`seedBindingDefaultsIfAbsent`, #1277) uses this one as it stands because it
+ * needs the same guarantee.
  */
 export function isSettingsStoreHostDerived(): boolean {
-  if (!storeReady || storeSource === "fresh" || storeSalvageFailed) return false;
-
-  const settings = currentSettings as Record<string, unknown>;
-
-  // Belt and braces with the "fresh" check above: a cache carrying the
-  // pending-migration marker is a defaults file, whatever path filled it.
-  if (pendingMigrationStarts(settings) > 0) return false;
-
-  // The migration was given up on, so this store was never host-derived and a
-  // write keyed on absence could shadow a copy the plugin has never read
-  // (#1041). Durable, unlike the countdown above: the ceiling clears that one,
-  // and without this the very next start would treat the file as complete.
-  return !isMigrationAbandoned(settings);
+  return getSettingsStoreHostDerivation() === "host-derived";
 }
 
 /**

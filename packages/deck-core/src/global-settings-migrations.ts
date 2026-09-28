@@ -62,8 +62,14 @@
  * host copy — and a later host answer is merged with the file winning for
  * passthrough keys, so a seeded default would permanently override it. The
  * seed therefore waits for `isSettingsStoreHostDerived()` too, and on such a
- * store simply does nothing that start; the start whose host answer lands
- * seeds.
+ * store simply does nothing that start; for a store not read YET (fresh, or
+ * the countdown) the start whose host answer lands seeds. An ABANDONED store
+ * (#1041) is excluded for good: its marker clears only when a later upgrade's
+ * retry gets a real host answer, so it may never be seeded, and those users
+ * see the #612 warning until they open a panel with the binding field.
+ * Accepted (spec, 2026-09-28): seeding them would mean letting the host win
+ * over the file for seeded keys in the migration merge — a change to the
+ * settings write path for a small group.
  */
 import { qualifyVoiceId, splitVoiceId } from "@iracedeck/callout-script";
 import type { ILogger } from "@iracedeck/logger";
@@ -71,9 +77,10 @@ import type { ILogger } from "@iracedeck/logger";
 import {
   deleteGlobalSettings,
   getGlobalSettings,
-  isSettingsStoreHostDerived,
+  getSettingsStoreHostDerivation,
   isSettingsStoreReady,
-  onGlobalSettingsChange,
+  runOnceSettingsStoreReady,
+  type SettingsStoreHostDerivation,
   updateGlobalSettings,
 } from "./global-settings.js";
 import { defaultBindingStoredValue } from "./key-binding-defaults.js";
@@ -88,20 +95,13 @@ import { ENSURED_VOICE_PACK_ID } from "./voice-pack-constants.js";
  * @returns A disposer that cancels a still-pending migration (for tests)
  */
 export function migrateGlobalSettingsKeys(renames: Record<string, string>, logger?: ILogger): () => void {
-  const pending = new Map(Object.entries(renames));
-  let unsubscribe: (() => void) | null = null;
-
-  const run = (): void => {
-    if (!isSettingsStoreReady() || pending.size === 0) return;
-
+  return runOnceSettingsStoreReady(() => {
     const settings = getGlobalSettings() as unknown as Record<string, unknown>;
     const writes: Record<string, unknown> = {};
     const deletes: string[] = [];
     const migrated: string[] = [];
 
-    for (const [oldKey, newKey] of [...pending]) {
-      // Stored settings are here — this key is settled either way.
-      pending.delete(oldKey);
+    for (const [oldKey, newKey] of Object.entries(renames)) {
       const oldValue = settings[oldKey];
 
       if (oldValue === undefined) continue;
@@ -122,23 +122,7 @@ export function migrateGlobalSettingsKeys(renames: Record<string, string>, logge
       logger?.info("Migrated renamed global settings keys");
       logger?.debug(`Migrated: ${migrated.join(", ")}`);
     }
-
-    if (pending.size === 0 && unsubscribe) {
-      unsubscribe();
-      unsubscribe = null;
-    }
-  };
-
-  run();
-
-  if (pending.size > 0) {
-    unsubscribe = onGlobalSettingsChange(() => run());
-  }
-
-  return () => {
-    unsubscribe?.();
-    unsubscribe = null;
-  };
+  });
 }
 
 /**
@@ -173,6 +157,16 @@ export function migrateRaceEngineerVoiceId(availableVoices: readonly string[], l
   return true;
 }
 
+/** What the seed logs when the store is not host-derived, per reason. */
+const NOT_SEEDED: Readonly<Record<Exclude<SettingsStoreHostDerivation, "host-derived">, string>> = {
+  "not-ready": "Binding defaults not seeded: the settings store is not ready",
+  "not-read-yet":
+    "Binding defaults not seeded: the stored settings have not been read from the deck host yet; a start whose host answer lands will seed them",
+  abandoned:
+    "Binding defaults not seeded: the migration from the deck host was given up on; binding defaults are left to the user",
+  unparseable: "Binding defaults not seeded: the stored settings could not be parsed",
+};
+
 /**
  * Store each binding's default under its key when that key has never been
  * stored (#1277), now or as soon as the stored settings are in.
@@ -189,33 +183,32 @@ export function migrateRaceEngineerVoiceId(availableVoices: readonly string[], l
  *
  * Each default is the short string of `key-bindings.json` (`"V"`,
  * `"Shift+V"`), written as the JSON the binding field saves for it
- * (`defaultBindingStoredValue`). A default naming no recordable key is skipped
- * with a warning, never stored as `""`.
+ * (`defaultBindingStoredValue`, the field's own parser). A default naming no
+ * recordable key is skipped with a warning. The field, handed one, saves `""`;
+ * the seed deliberately stores nothing instead, because a stored `""` reads as
+ * a binding the user cleared, and a key that is no longer absent would never
+ * be seeded again once the default is fixed.
  *
- * Runs once per start: on the first moment the store is ready, subscribing to
- * settings changes until then. It writes only when the store is host-derived
- * (`isSettingsStoreHostDerived`, see the module comment); otherwise it gives
- * up for this start, and the next start tries again.
+ * Runs once per start, at the first moment the store is ready
+ * (`runOnceSettingsStoreReady`). It writes only when the store is host-derived
+ * (`isSettingsStoreHostDerived`, see the module comment), and otherwise logs
+ * why not and does nothing this start. A store not read from the host yet is
+ * seeded by the start whose host answer lands; an ABANDONED store (#1041) is
+ * excluded for good — its users see the #612 warning until they open a panel
+ * with the binding field. The success line is logged only for keys the write
+ * actually stored (re-read from the cache); a write the settings parse
+ * rejected is reported as a warning.
  *
  * @param defaults - Map of global-settings key → default binding string
  * @param logger - Optional logger for seed reporting
  * @returns A disposer that cancels a still-pending seed (for tests)
  */
 export function seedBindingDefaultsIfAbsent(defaults: Readonly<Record<string, string>>, logger?: ILogger): () => void {
-  let done = false;
-  let unsubscribe: (() => void) | null = null;
+  return runOnceSettingsStoreReady(() => {
+    const derivation = getSettingsStoreHostDerivation();
 
-  const run = (): void => {
-    if (done || !isSettingsStoreReady()) return;
-
-    // Settled for this start whatever happens below — and set BEFORE the
-    // write, whose synchronous listener fan-out re-enters this function.
-    done = true;
-    unsubscribe?.();
-    unsubscribe = null;
-
-    if (!isSettingsStoreHostDerived()) {
-      logger?.info("Binding defaults not seeded: the stored settings have not been read from the deck host yet");
+    if (derivation !== "host-derived") {
+      logger?.info(NOT_SEEDED[derivation]);
 
       return;
     }
@@ -237,21 +230,27 @@ export function seedBindingDefaultsIfAbsent(defaults: Readonly<Record<string, st
       writes[key] = value;
     }
 
-    if (Object.keys(writes).length === 0) return;
+    const keys = Object.keys(writes);
+
+    if (keys.length === 0) return;
 
     updateGlobalSettings(writes);
-    logger?.info("Seeded default key bindings");
-    logger?.debug(`Seeded: ${Object.keys(writes).join(", ")}`);
-  };
 
-  run();
+    // `updateGlobalSettings` reports nothing: a write whose parse fails is
+    // dropped with its own error line, and salvage can drop single keys. Read
+    // back what landed rather than claiming the seed.
+    const stored = getGlobalSettings() as unknown as Record<string, unknown>;
+    const landed = keys.filter((key) => stored[key] === writes[key]);
+    const rejected = keys.filter((key) => stored[key] !== writes[key]);
 
-  if (!done) {
-    unsubscribe = onGlobalSettingsChange(() => run());
-  }
+    if (landed.length > 0) {
+      logger?.info("Seeded default key bindings");
+      logger?.debug(`Seeded: ${landed.join(", ")}`);
+    }
 
-  return () => {
-    unsubscribe?.();
-    unsubscribe = null;
-  };
+    if (rejected.length > 0) {
+      logger?.warn("Binding default seed write was rejected");
+      logger?.debug(`Not stored: ${rejected.join(", ")}`);
+    }
+  });
 }

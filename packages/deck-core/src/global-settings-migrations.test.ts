@@ -17,6 +17,7 @@ import {
   isSettingsStoreReady,
   MIGRATION_ABANDONED_KEY,
   MIGRATION_PENDING_KEY,
+  runOnceSettingsStoreReady,
   updateGlobalSettings,
 } from "./global-settings.js";
 import { createMemorySettingsStore } from "./settings-store.js";
@@ -73,6 +74,61 @@ const RENAMES = {
 };
 
 const cache = (): Record<string, unknown> => getGlobalSettings() as Record<string, unknown>;
+
+describe("runOnceSettingsStoreReady", () => {
+  beforeEach(() => {
+    _resetGlobalSettings();
+  });
+
+  afterEach(() => {
+    _resetGlobalSettings();
+  });
+
+  it("runs at once on a ready store", async () => {
+    initWithStore({});
+    await tick();
+    const action = vi.fn();
+
+    runOnceSettingsStoreReady(action);
+
+    expect(action).toHaveBeenCalledTimes(1);
+  });
+
+  it("waits for the store, runs once, and never again on later changes", async () => {
+    initWithStore({});
+    const action = vi.fn();
+
+    runOnceSettingsStoreReady(action);
+    updateGlobalSettings({ early: 1 }); // a change before ready does not count
+    expect(action).not.toHaveBeenCalled();
+
+    await tick();
+    updateGlobalSettings({ later: 1 });
+
+    expect(action).toHaveBeenCalledTimes(1);
+  });
+
+  it("is done before the action runs, so an action that writes settings is not re-entered", async () => {
+    initWithStore({});
+    const action = vi.fn(() => updateGlobalSettings({ writtenByAction: true }));
+
+    runOnceSettingsStoreReady(action);
+    await tick();
+
+    expect(action).toHaveBeenCalledTimes(1);
+    expect(cache().writtenByAction).toBe(true);
+  });
+
+  it("runs nothing once disposed before the store is ready", async () => {
+    initWithStore({});
+    const action = vi.fn();
+
+    runOnceSettingsStoreReady(action)();
+    await tick();
+
+    expect(action).not.toHaveBeenCalled();
+  });
+});
 
 describe("migrateGlobalSettingsKeys", () => {
   beforeEach(() => {
@@ -329,11 +385,14 @@ describe("seedBindingDefaultsIfAbsent (#1277)", () => {
   it("seeds both keys, in the value the binding field stores, when neither was ever stored", async () => {
     const store = initWithStore({ driverName: "kept" });
     await tick();
+    const logger = createMockLogger();
 
-    seedBindingDefaultsIfAbsent(DEFAULTS, createMockLogger());
+    seedBindingDefaultsIfAbsent(DEFAULTS, logger);
 
     expect(cache().replayControlNextCar).toBe(NEXT_STORED);
     expect(cache().replayControlPrevCar).toBe(PREV_STORED);
+    expect(logger.info).toHaveBeenCalledWith("Seeded default key bindings");
+    expect(logger.warn).not.toHaveBeenCalled();
     expect(store.saved.at(-1)).toMatchObject({
       replayControlNextCar: NEXT_STORED,
       replayControlPrevCar: PREV_STORED,
@@ -408,6 +467,24 @@ describe("seedBindingDefaultsIfAbsent (#1277)", () => {
     expect(logger.warn).toHaveBeenCalled();
   });
 
+  it("claims the seed only for a write that landed, and warns when the write was rejected", async () => {
+    initWithStore({});
+    await tick();
+    const logger = createMockLogger();
+    // The seed's own write fails its parse wholesale, so updateGlobalSettings
+    // drops it — the cache never holds the value the seed handed over.
+    vi.spyOn(GlobalSettingsSchema, "safeParse").mockReturnValueOnce({
+      success: false,
+      error: { issues: [{ path: [] }] },
+    } as unknown as ReturnType<typeof GlobalSettingsSchema.safeParse>);
+
+    seedBindingDefaultsIfAbsent(DEFAULTS, logger);
+
+    expect(cache().replayControlNextCar).toBeUndefined();
+    expect(logger.info).not.toHaveBeenCalledWith("Seeded default key bindings");
+    expect(logger.warn).toHaveBeenCalledWith("Binding default seed write was rejected");
+  });
+
   describe("only on a store that has read the deck host", () => {
     it("seeds after a host migration, keeping what the host held", async () => {
       const { adapter, echo } = createEchoAdapter();
@@ -437,7 +514,7 @@ describe("seedBindingDefaultsIfAbsent (#1277)", () => {
       expect(cache().replayControlNextCar).toBeUndefined();
       expect(cache().replayControlPrevCar).toBeUndefined();
       expect(store.saved.at(-1)).not.toHaveProperty("replayControlNextCar");
-      expect(logger.info).toHaveBeenCalledWith(expect.stringContaining("not seeded"));
+      expect(logger.info).toHaveBeenCalledWith(expect.stringContaining("have not been read from the deck host yet"));
     });
 
     it("does not seed a file still carrying the pending-migration countdown while the host stays silent", async () => {
@@ -470,15 +547,20 @@ describe("seedBindingDefaultsIfAbsent (#1277)", () => {
       expect(cache().replayControlPrevCar).toBe(CUSTOM);
     });
 
-    it("does not seed a store whose migration was given up on", async () => {
+    it("does not seed a store whose migration was given up on, and says so without promising a later seed", async () => {
       initWithStore(defaultsFile({ [MIGRATION_ABANDONED_KEY]: "3.3.0" }));
       await tick();
+      const logger = createMockLogger();
 
-      seedBindingDefaultsIfAbsent(DEFAULTS, createMockLogger());
+      seedBindingDefaultsIfAbsent(DEFAULTS, logger);
 
       expect(getSettingsStoreSource()).toBe("file");
       expect(isSettingsStoreHostDerived()).toBe(false);
       expect(cache().replayControlNextCar).toBeUndefined();
+      expect(logger.info).toHaveBeenCalledWith(
+        "Binding defaults not seeded: the migration from the deck host was given up on; binding defaults are left to the user",
+      );
+      expect(logger.info).not.toHaveBeenCalledWith(expect.stringContaining("yet"));
     });
 
     it("does not seed when the stored file could not be parsed at all", async () => {
@@ -490,13 +572,16 @@ describe("seedBindingDefaultsIfAbsent (#1277)", () => {
       } as unknown as ReturnType<typeof GlobalSettingsSchema.safeParse>);
       await tick();
 
-      seedBindingDefaultsIfAbsent(DEFAULTS, createMockLogger());
+      const logger = createMockLogger();
+
+      seedBindingDefaultsIfAbsent(DEFAULTS, logger);
 
       expect(isSettingsStoreReady()).toBe(true);
       expect(getSettingsStoreSource()).toBe("file");
       expect(cache().driverName).not.toBe("kept"); // proof the salvage-failed path ran
       expect(isSettingsStoreHostDerived()).toBe(false);
       expect(cache().replayControlNextCar).toBeUndefined();
+      expect(logger.info).toHaveBeenCalledWith(expect.stringContaining("could not be parsed"));
     });
   });
 
