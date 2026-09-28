@@ -828,6 +828,8 @@ describe("diffFlags — checkered deferral (issue #771)", () => {
     diffFlags(state, liveTick(Flags.Checkered, { LapCompleted: 6 }), T0 + 60_000, cross.emit);
     expect(cross.events.filter(checkered)).toHaveLength(1);
     expect(state.checkeredPendingCross).toBe(false);
+    // Not a race: no race finish is recorded (issue #1278).
+    expect(state.flagCheckeredTakenLap).toBeNull();
 
     // No re-fire afterwards.
     const after = collect();
@@ -857,6 +859,8 @@ describe("diffFlags — checkered deferral (issue #771)", () => {
 
     expect(events.filter(checkered)).toHaveLength(1);
     expect(state.checkeredPendingCross).toBe(false);
+    // The finish is recorded for the lap diff (issue #1278).
+    expect(state.flagCheckeredTakenLap).toBe(6);
   });
 
   it("mid-pack: a crossing on the raise tick without the lead defers — that car is scored for one more lap", () => {
@@ -869,6 +873,11 @@ describe("diffFlags — checkered deferral (issue #771)", () => {
 
     expect(events.filter(checkered)).toHaveLength(0);
     expect(state.checkeredPendingCross).toBe(true);
+    expect(state.flagCheckeredTakenLap).toBeNull();
+
+    // Their finish is the next crossing, recorded for the lap diff (issue #1278).
+    diffFlags(state, liveTick(Flags.Checkered, { LapCompleted: 7 }), T0 + 60_000, () => {}, true, false);
+    expect(state.flagCheckeredTakenLap).toBe(7);
   });
 
   it("winner grace: crossing just before the raise while leading a race emits immediately", () => {
@@ -882,6 +891,8 @@ describe("diffFlags — checkered deferral (issue #771)", () => {
 
     expect(events.filter(checkered)).toHaveLength(1);
     expect(state.checkeredPendingCross).toBe(false);
+    // The bit landed after the crossing, so the lap diff reads the finish from here (issue #1278).
+    expect(state.flagCheckeredTakenLap).toBe(6);
   });
 
   it("no winner grace when the player is not leading — defers to the next crossing", () => {

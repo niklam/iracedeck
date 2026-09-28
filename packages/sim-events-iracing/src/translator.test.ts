@@ -45,10 +45,12 @@ import {
   getLivePosition,
   getLiveRacePositions,
   getQualifyingInvalidationSnapshot,
+  getRaceFinishResult,
   getRaceStartConditions,
   getSessionStartConditions,
   getStartingGridPosition,
   initializeSimEventsIracing,
+  isRaceFinished,
   isSimEventsIracingInitialized,
   isUnderFullCourseCaution,
   resolveLeaderLapTimeS,
@@ -625,6 +627,148 @@ describe("sim-events-iracing translator", () => {
 
       controller.__setSessionInfo({ DriverInfo: { DriverSetupName: "" } });
       expect(getDriverSetupName()).toBeUndefined();
+    });
+  });
+
+  describe("getRaceFinishResult (issue #1278)", () => {
+    function raceSessionInfo(
+      position: number = 4,
+      classPosition: number = 2,
+      lapsComplete: number = 5,
+    ): Record<string, unknown> {
+      return {
+        WeekendInfo: { SimMode: "full" },
+        DriverInfo: { DriverCarIdx: 0, Drivers: [{ CarIdx: 0, CarClassID: 1 }] },
+        SessionInfo: {
+          Sessions: [
+            {
+              SessionNum: 0,
+              SessionType: "Race",
+              ResultsPositions: [
+                { CarIdx: 0, Position: position, ClassPosition: classPosition, LapsComplete: lapsComplete },
+              ],
+            },
+          ],
+        },
+      };
+    }
+
+    /** Lap 4 with the leader already finished, then the player's lap-5 crossing under the flag. */
+    function finishRace(controller: MockController): void {
+      controller.__tick(telemetry({ LapCompleted: 4, LapLastLapTime: 62, LapBestLapTime: 62 }));
+      controller.__tick(
+        telemetry({
+          LapCompleted: 4,
+          LapLastLapTime: 62,
+          LapBestLapTime: 62,
+          SessionFlags: Flags.Checkered,
+          SessionState: SessionState.Checkered,
+        }),
+      );
+      controller.__tick(
+        telemetry({
+          LapCompleted: 5,
+          LapLastLapTime: 63,
+          LapBestLapTime: 62,
+          SessionFlags: Flags.Checkered,
+          SessionState: SessionState.Checkered,
+        }),
+      );
+    }
+
+    it("returns null before the player has taken the checkered flag", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(raceSessionInfo());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(telemetry({ LapCompleted: 4, LapLastLapTime: 62, LapBestLapTime: 62 }));
+
+      expect(getRaceFinishResult(0)).toBeNull();
+    });
+
+    it("returns the player's official result once they have finished", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(raceSessionInfo());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      finishRace(controller);
+
+      // ResultsPositions' ClassPosition is 0-indexed; the result is 1-indexed.
+      expect(getRaceFinishResult(0)).toEqual({ position: 4, classPosition: 3 });
+    });
+
+    it("follows the official results row after the finish, not a snapshot", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(raceSessionInfo());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      finishRace(controller);
+      // A steward's decision moves the player down the official results.
+      controller.__setSessionInfo(raceSessionInfo(5, 3));
+
+      expect(getRaceFinishResult(0)).toEqual({ position: 5, classPosition: 4 });
+    });
+
+    it("reports unknown fields while the results row has not caught up to the finishing lap", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(raceSessionInfo());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      finishRace(controller);
+      controller.__setSessionInfo(raceSessionInfo(9, 8, 4));
+
+      expect(getRaceFinishResult(0)).toEqual({ position: 0, classPosition: 0 });
+    });
+
+    // The winner's crossing, the flag's rise and a synced standings row can
+    // all land on one tick, and the lap is emitted on it. The flag diff's
+    // winner grace has to have recorded the crossing before the lap diff
+    // decides it, or the finish is missed and never revisited (PR #1280).
+    it("records the winner's finish when the crossing, the flag and the emit share a tick", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(raceSessionInfo(1, 0));
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(telemetry({ LapCompleted: 4, LapLastLapTime: 62, LapBestLapTime: 62, PlayerCarPosition: 1 }));
+      controller.__tick(
+        telemetry({
+          LapCompleted: 5,
+          LapLastLapTime: 63,
+          LapBestLapTime: 62,
+          SessionFlags: Flags.Checkered,
+          SessionState: SessionState.Checkered,
+          PlayerCarPosition: 1,
+        }),
+      );
+
+      expect(isRaceFinished()).toBe(true);
+      expect(getRaceFinishResult(0)).toEqual({ position: 1, classPosition: 1 });
+    });
+
+    it("never answers for another session", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(raceSessionInfo());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      finishRace(controller);
+
+      expect(getRaceFinishResult(1)).toBeNull();
+    });
+
+    it("survives a replay visit after the finish", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(raceSessionInfo());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      finishRace(controller);
+
+      // Out of the car / watching the replay: replay-mode ticks wipe the state.
+      controller.__tick(telemetry({ IsReplayPlaying: true, IsOnTrack: false, SessionState: SessionState.CoolDown }));
+      // …and back to a live tick in the same session.
+      controller.__tick(telemetry({ LapCompleted: 5, SessionState: SessionState.CoolDown }));
+
+      expect(isRaceFinished()).toBe(true);
+      expect(getRaceFinishResult(0)).toEqual({ position: 4, classPosition: 3 });
     });
   });
 

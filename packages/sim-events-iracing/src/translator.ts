@@ -90,7 +90,13 @@ import { diffTrackWetness } from "./diff/track-wetness.js";
 import type { PendingEvent } from "./diff/types.js";
 import { calculateCanonicalRacePositions } from "./race-order.js";
 import { resolveStandingStart } from "./start-lights.js";
-import { type CautionPhase, createInitialState, type GapNeighborState, type TranslatorState } from "./state.js";
+import {
+  type CautionPhase,
+  createInitialState,
+  type GapNeighborState,
+  type RaceFinishResult,
+  type TranslatorState,
+} from "./state.js";
 import { isOvalTrack, resolveTrackDirection, resolveTrackType, type TrackDirection } from "./track-type.js";
 
 const SUBSCRIPTION_ID = "__sim-events-iracing__";
@@ -460,6 +466,39 @@ export function isRaceFinished(): boolean {
   if (!instance) return false;
 
   return instance.state.raceFinishedFired;
+}
+
+/**
+ * The player's official finishing position in the current race (issue #1278),
+ * or `null` before they have taken the checkered flag — so once a driver's
+ * race is over a display can show their result instead of a running order
+ * that keeps moving through the cool-down lap. `sessionNum` is the caller's
+ * current `SessionNum`: a finish recorded in another session is never
+ * returned.
+ *
+ * The finish is the translator's record of the crossing at which the player
+ * took the flag; the numbers are read live from their `ResultsPositions` row,
+ * the official standings, which a finished car's result cannot fall back in
+ * but a steward's decision can still correct. A field is `0` while that row
+ * is unreadable or has not yet caught up to the finishing lap — a caller
+ * falls back to the official telemetry counters then, never to the running
+ * order.
+ */
+export function getRaceFinishResult(sessionNum: number | undefined): RaceFinishResult | null {
+  if (!instance) return null;
+
+  const finish = instance.state.raceFinish;
+
+  if (!finish || finish.sessionNum !== (sessionNum ?? null)) return null;
+
+  const sessionInfo = instance.controller.getSessionInfo() as Record<string, unknown> | null;
+  const row = resolvePlayerResultsSnapshot(sessionInfo, resolvePlayerCarIdx(sessionInfo), sessionNum ?? 0);
+  const synced = row !== null && row.lapsComplete >= finish.lap;
+
+  return {
+    position: synced && row.position > 0 ? row.position : 0,
+    classPosition: synced && row.classPosition >= 0 ? row.classPosition + 1 : 0,
+  };
 }
 
 /**
@@ -1465,6 +1504,13 @@ function wipeStateForReplay(self: TranslatorInstance): void {
     lapCautionLatchLap: self.state.lapCautionLatchLap,
     lapCautionSeen: self.state.lapCautionSeen,
     lapCompletedWasCaution: self.state.lapCompletedWasCaution,
+    // The race-end latch and the result it captured (issue #1278): once the
+    // driver has taken the checkered flag their race is over, and leaving the
+    // car or opening the replay (both replay-mode ticks) must not undo that —
+    // a wiped latch put Session Info back on the moving cool-down order and
+    // re-armed `race.finished`. Both still clear on a real session change.
+    raceFinishedFired: self.state.raceFinishedFired,
+    raceFinish: self.state.raceFinish,
     // The replay lap record's baselines (issue #1203, `replayLaps*`) are
     // pointedly NOT preserved: they are previous-tick counters a replay view
     // makes meaningless, and the pre-guard diff re-seeds them from the first
@@ -1821,6 +1867,34 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // just-left-stall transition, so it must run BEFORE `diffPitLane` writes
   // the new stall flag. All other modules are independent.
   diffLifecycle(self.state, telemetry, emit);
+  // Checkered deferral (issue #771): the leader guard on the winner grace
+  // consumes the canonical live order (`.claude/rules/race-positions.md`),
+  // falling back to the official position only when no live order exists —
+  // the same read `getLivePosition()` serves between ticks (the freeze
+  // tracking is updated further down this tick, so the anchors are at most
+  // one tick stale here, which the leader check tolerates). Leader
+  // resolution is gated on race sessions — the winner grace it feeds is
+  // race-only, so non-race ticks skip the frozen-order computation.
+  // Practice-like sessions (Practice / Testing — the classifyLapSessionType
+  // convention) are flagged so the checkered speaks immediately at the
+  // raise there.
+  //
+  // Runs BEFORE `diffLaps` (issue #1278, PR #1280): the lap diff decides the
+  // player's race finish from `flagCheckeredTakenLap`, which this diff records
+  // when its winner grace resolves the checkered at the player's crossing. The
+  // crossing, the flag's rise and a synced standings row can share one tick,
+  // and a lap emitted on that tick is never revisited — run after, the winner's
+  // finish would be missed. It also puts `flag.checkered.raised` ahead of
+  // `race.finished` when both land on one tick, the order they are spoken in.
+  diffFlags(
+    self.state,
+    telemetry,
+    now,
+    emit,
+    isRaceSession,
+    isRaceSession && resolvePlayerIsLeader(self, telemetry, playerCarIdx, sessionInfo, isRaceSession),
+    sessionType.includes("Practice") || sessionType.includes("Testing"),
+  );
   // Lap completion (issue #555). Runs alongside diffLifecycle since they
   // share the lap counter; classified session type passed through so the
   // payload's `sessionType` field doesn't require a re-classification pass.
@@ -1851,26 +1925,6 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   );
   diffLimiter(self.state, telemetry, pitSpeedLimitMps, now, emit);
   diffPitLane(self.state, telemetry, trackType, now, emit);
-  // Checkered deferral (issue #771): the leader guard on the winner grace
-  // consumes the canonical live order (`.claude/rules/race-positions.md`),
-  // falling back to the official position only when no live order exists —
-  // the same read `getLivePosition()` serves between ticks (the freeze
-  // tracking is updated further down this tick, so the anchors are at most
-  // one tick stale here, which the leader check tolerates). Leader
-  // resolution is gated on race sessions — the winner grace it feeds is
-  // race-only, so non-race ticks skip the frozen-order computation.
-  // Practice-like sessions (Practice / Testing — the classifyLapSessionType
-  // convention) are flagged so the checkered speaks immediately at the
-  // raise there.
-  diffFlags(
-    self.state,
-    telemetry,
-    now,
-    emit,
-    isRaceSession,
-    isRaceSession && resolvePlayerIsLeader(self, telemetry, playerCarIdx, sessionInfo, isRaceSession),
-    sessionType.includes("Practice") || sessionType.includes("Testing"),
-  );
   // Start-light gantry edges (issue #480). Sits beside diffFlags (after the
   // replay guard — the gantry lines are in-car only) and reads the
   // already-resolved `sessionInfo` for the standing-start gate. The numeric

@@ -12,11 +12,12 @@ import {
   getLiveGaps,
   getLivePosition,
   getLiveRacePositions,
+  getRaceFinishResult,
   getStartingGridPosition,
   type LiveGaps,
   resolveLeaderLapTimeS,
 } from "@iracedeck/sim-events-iracing";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
 import {
@@ -72,6 +73,7 @@ vi.mock("@iracedeck/sim-events-iracing", () => ({
   getLiveGaps: vi.fn(() => null),
   getLivePosition: vi.fn(() => null),
   getLiveRacePositions: vi.fn(() => null),
+  getRaceFinishResult: vi.fn((): { position: number; classPosition: number } | null => null),
   getStartingGridPosition: vi.fn(() => null),
   resolveLeaderLapTimeS: vi.fn(() => null),
 }));
@@ -1827,6 +1829,134 @@ describe("SessionInfo", () => {
         });
 
         expect(decoded).toContain("P2");
+      });
+
+      // After the checkered (issue #1278): the result captured at the player's
+      // finish (4 / class 3) is distinct from the live order (5/2) and the
+      // official telemetry (9/9), so each assertion pins the finish as the source.
+      describe("after the player has taken the checkered flag", () => {
+        afterEach(() => {
+          vi.mocked(getRaceFinishResult).mockReturnValue(null);
+        });
+
+        it("should show the finishing position instead of the live order on the cool-down lap", async () => {
+          vi.mocked(getLivePosition).mockReturnValue({ position: 5, classPosition: 2, isMultiClass: true });
+          vi.mocked(getRaceFinishResult).mockReturnValue({ position: 4, classPosition: 3 });
+          const telemetry = {
+            SessionNum: 0,
+            OnPitRoad: false,
+            SessionState: SessionState.CoolDown,
+            LapCompleted: 20,
+            PlayerCarPosition: 9,
+            PlayerCarClassPosition: 9,
+          };
+
+          const overall = await triggerPositionUpdate(makeRaceSessionInfo(0), telemetry, {
+            mode: "position",
+            positionType: "overall",
+          });
+
+          expect(overall).toContain("P4");
+          expect(overall).not.toContain("P5");
+          expect(overall).not.toContain("P9");
+          expect(getRaceFinishResult).toHaveBeenCalledWith(0);
+        });
+
+        it("should show the finishing class position instead of the live order", async () => {
+          vi.mocked(getLivePosition).mockReturnValue({ position: 5, classPosition: 2, isMultiClass: true });
+          vi.mocked(getRaceFinishResult).mockReturnValue({ position: 4, classPosition: 3 });
+          const telemetry = {
+            SessionNum: 0,
+            OnPitRoad: false,
+            LapCompleted: 20,
+            PlayerCarPosition: 9,
+            PlayerCarClassPosition: 9,
+          };
+
+          const decoded = await triggerPositionUpdate(makeRaceSessionInfo(0), telemetry, {
+            mode: "position",
+            positionType: "class",
+          });
+
+          expect(decoded).toContain("P3");
+          expect(decoded).not.toContain("P2");
+          expect(decoded).not.toContain("P9");
+        });
+
+        it("should keep the finishing position on pit road", async () => {
+          vi.mocked(getLivePosition).mockReturnValue({ position: 5, classPosition: 2, isMultiClass: true });
+          vi.mocked(getRaceFinishResult).mockReturnValue({ position: 4, classPosition: 3 });
+          const telemetry = {
+            SessionNum: 0,
+            OnPitRoad: true,
+            LapCompleted: 20,
+            PlayerCarPosition: 9,
+            PlayerCarClassPosition: 9,
+          };
+
+          const decoded = await triggerPositionUpdate(makeRaceSessionInfo(0), telemetry, {
+            mode: "position",
+            positionType: "overall",
+          });
+
+          // Pit road would read the official telemetry (9); the finish (4) wins.
+          expect(decoded).toContain("P4");
+          expect(decoded).not.toContain("P9");
+        });
+
+        it("should fall back to PlayerCarClassPosition when the finish carries no class position", async () => {
+          vi.mocked(getLivePosition).mockReturnValue({ position: 5, classPosition: 2, isMultiClass: true });
+          vi.mocked(getRaceFinishResult).mockReturnValue({ position: 4, classPosition: 0 });
+          const telemetry = {
+            SessionNum: 0,
+            OnPitRoad: false,
+            LapCompleted: 20,
+            PlayerCarPosition: 9,
+            PlayerCarClassPosition: 6,
+          };
+
+          const decoded = await triggerPositionUpdate(makeRaceSessionInfo(0), telemetry, {
+            mode: "position",
+            positionType: "class",
+          });
+
+          expect(decoded).toContain("P6");
+          expect(decoded).not.toContain("P2");
+        });
+
+        it("should fall back to PlayerCarPosition when the results row cannot give the overall position yet", async () => {
+          vi.mocked(getLivePosition).mockReturnValue({ position: 5, classPosition: 2, isMultiClass: true });
+          vi.mocked(getRaceFinishResult).mockReturnValue({ position: 0, classPosition: 3 });
+          const telemetry = {
+            SessionNum: 0,
+            OnPitRoad: false,
+            LapCompleted: 20,
+            PlayerCarPosition: 9,
+            PlayerCarClassPosition: 9,
+          };
+
+          const decoded = await triggerPositionUpdate(makeRaceSessionInfo(0), telemetry, {
+            mode: "position",
+            positionType: "overall",
+          });
+
+          // The official counter (9), never the running order (5).
+          expect(decoded).toContain("P9");
+          expect(decoded).not.toContain("P5");
+        });
+
+        it("should not consult the finish outside a race session", async () => {
+          vi.mocked(getRaceFinishResult).mockReturnValue({ position: 4, classPosition: 3 });
+          const telemetry = { SessionNum: 0, OnPitRoad: false, PlayerCarPosition: 2, PlayerCarClassPosition: 8 };
+
+          const decoded = await triggerPositionUpdate(makePracticeSessionInfo(0), telemetry, {
+            mode: "position",
+            positionType: "overall",
+          });
+
+          expect(decoded).toContain("P2");
+          expect(decoded).not.toContain("P4");
+        });
       });
 
       it("should use PlayerCarClassPosition for class position in a non-race session", async () => {

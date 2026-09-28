@@ -75,7 +75,7 @@ Whether pressing the key has the Race Engineer read the value out. Defaults to *
 
 ### Position
 
-Display your current race position — either within your own car class (the default) or overall across the whole field. Optionally shows the field size (e.g., `P3/24`) by enabling the **Show Total** setting. Through the grid, formation, and parade lap — and the run down to the green — it shows your qualifying grid position, then switches to the live running order once you cross the start/finish line to begin racing.
+Display your current race position — either within your own car class (the default) or overall across the whole field. Optionally shows the field size (e.g., `P3/24`) by enabling the **Show Total** setting. Through the grid, formation, and parade lap — and the run down to the green — it shows your qualifying grid position, then switches to the live running order once you cross the start/finish line to begin racing. Once you take the checkered flag it shows your official finishing position and holds it for the rest of the session, through the cool-down lap and the drive into the pits.
 
 #### Details
 

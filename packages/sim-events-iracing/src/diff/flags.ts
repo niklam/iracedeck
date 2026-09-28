@@ -508,6 +508,11 @@ export function diffFlags(
             leaderTookTheLine
           ) {
             emit({ event: "flag.checkered.raised", data: {} });
+
+            // The winner took the flag at their own crossing (issue #1278):
+            // the lap diff's crossing record saw no flag yet, so it reads
+            // the finish from here.
+            if (leaderTookTheLine && lapCompleted !== null) state.flagCheckeredTakenLap = lapCompleted;
           } else {
             state.checkeredPendingCross = true;
             checkeredPendingSetThisTick = true;
@@ -563,6 +568,10 @@ export function diffFlags(
     } else if (crossedThisTick || telemetry.IsOnTrack === false || enteredPits) {
       emit({ event: "flag.checkered.raised", data: {} });
       state.checkeredPendingCross = false;
+
+      // A race finish taken at the line (issue #1278) — recorded for the lap
+      // diff beside its own crossing record, which agrees here.
+      if (crossedThisTick && isRaceSession && lapCompleted !== null) state.flagCheckeredTakenLap = lapCompleted;
     }
   }
 

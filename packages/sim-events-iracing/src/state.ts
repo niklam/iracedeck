@@ -1183,6 +1183,46 @@ export type TranslatorState = {
    * session re-arms the latch.
    */
   raceFinishedFired: boolean;
+  /**
+   * The player's own finish in a race (issue #1278): the session and the
+   * `LapCompleted` value of the crossing at which they took the checkered
+   * flag, set when that lap's `lap.completed` is emitted — whether or not a
+   * position could be read for it, unlike `raceFinishedFired`. Keyed by
+   * `SessionNum`, so it can never answer for another session even if a
+   * session change went unobserved. Preserved across the replay wipe with
+   * `raceFinishedFired`: after the flag a driver typically leaves the car or
+   * watches the replay, and neither may undo the finish.
+   */
+  raceFinish: { sessionNum: number | null; lap: number } | null;
+  /**
+   * The lap diff's own record of the player's S/F crossings (issue #1278):
+   * the `LapCompleted` value last seen, whether the checkered flag was
+   * already flying when that value appeared (on the tick before AND the
+   * crossing tick — a flag rising on the crossing tick itself is not one the
+   * player took, the #771 rule), and the previous tick's checkered bit. The
+   * finish is decided from the crossing, never from the bit at the later tick
+   * `lap.completed` is emitted: that emit waits up to
+   * `LAP_RESULTS_SYNC_MAX_WAIT_MS` for standings, long enough for the leader
+   * to take the flag behind a lapped player who crossed a moment earlier.
+   */
+  lapCrossLap: number | null;
+  lapCrossUnderCheckered: boolean;
+  lapPrevCheckered: boolean;
+  /**
+   * The `LapCompleted` value at which the flag diff resolved the race
+   * checkered for the player at a crossing (issue #1278) — the deferred
+   * resolution, or the #771 winner grace, where the bit lands just AFTER the
+   * leader's crossing and the lap diff's crossing record alone would miss the
+   * winner's finish. `null` until then; cleared with the rest of the state on
+   * a session change.
+   */
+  flagCheckeredTakenLap: number | null;
+};
+
+/** The player's official finishing position in a race (issue #1278); `0` = unknown. */
+export type RaceFinishResult = {
+  position: number;
+  classPosition: number;
 };
 
 export function createInitialState(): TranslatorState {
@@ -1415,5 +1455,10 @@ export function createInitialState(): TranslatorState {
     lapResultsPendingSince: 0,
     lastPositionChangeLap: -1,
     raceFinishedFired: false,
+    raceFinish: null,
+    lapCrossLap: null,
+    lapCrossUnderCheckered: false,
+    lapPrevCheckered: false,
+    flagCheckeredTakenLap: null,
   };
 }
