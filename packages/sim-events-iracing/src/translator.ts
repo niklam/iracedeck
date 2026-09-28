@@ -90,7 +90,13 @@ import { diffTrackWetness } from "./diff/track-wetness.js";
 import type { PendingEvent } from "./diff/types.js";
 import { calculateCanonicalRacePositions } from "./race-order.js";
 import { resolveStandingStart } from "./start-lights.js";
-import { type CautionPhase, createInitialState, type GapNeighborState, type TranslatorState } from "./state.js";
+import {
+  type CautionPhase,
+  createInitialState,
+  type GapNeighborState,
+  type RaceFinishResult,
+  type TranslatorState,
+} from "./state.js";
 import { isOvalTrack, resolveTrackDirection, resolveTrackType, type TrackDirection } from "./track-type.js";
 
 const SUBSCRIPTION_ID = "__sim-events-iracing__";
@@ -460,6 +466,23 @@ export function isRaceFinished(): boolean {
   if (!instance) return false;
 
   return instance.state.raceFinishedFired;
+}
+
+/**
+ * The player's official finishing position in the current race (issue #1278),
+ * or `null` before they have taken the checkered flag. Captured with the
+ * `race.finished` latch — the `ResultsPositions` read that event carries — so
+ * once a driver's race is over a display can show their result instead of a
+ * running order that keeps moving through the cool-down lap. `sessionNum` is
+ * the caller's current `SessionNum`: a result captured in another session is
+ * never returned. `classPosition` is `0` when it could not be resolved.
+ */
+export function getRaceFinishResult(sessionNum: number | undefined): RaceFinishResult | null {
+  const result = instance?.state.raceFinishResult ?? null;
+
+  if (!result || result.sessionNum !== (sessionNum ?? null)) return null;
+
+  return result;
 }
 
 /**
@@ -1465,6 +1488,13 @@ function wipeStateForReplay(self: TranslatorInstance): void {
     lapCautionLatchLap: self.state.lapCautionLatchLap,
     lapCautionSeen: self.state.lapCautionSeen,
     lapCompletedWasCaution: self.state.lapCompletedWasCaution,
+    // The race-end latch and the result it captured (issue #1278): once the
+    // driver has taken the checkered flag their race is over, and leaving the
+    // car or opening the replay (both replay-mode ticks) must not undo that —
+    // a wiped latch put Session Info back on the moving cool-down order and
+    // re-armed `race.finished`. Both still clear on a real session change.
+    raceFinishedFired: self.state.raceFinishedFired,
+    raceFinishResult: self.state.raceFinishResult,
     // The replay lap record's baselines (issue #1203, `replayLaps*`) are
     // pointedly NOT preserved: they are previous-tick counters a replay view
     // makes meaningless, and the pre-guard diff re-seeds them from the first

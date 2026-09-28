@@ -1183,6 +1183,23 @@ export type TranslatorState = {
    * session re-arms the latch.
    */
   raceFinishedFired: boolean;
+  /**
+   * The player's official result, captured when `race.finished` fires
+   * (issue #1278) — the same `ResultsPositions` read (or telemetry fallback)
+   * that event carries. `classPosition` is `0` when unknown. Keyed by the
+   * `SessionNum` it was captured in, so a result can never answer for another
+   * session even if a session change went unobserved. Preserved across the
+   * replay wipe with `raceFinishedFired`: after the flag a driver typically
+   * leaves the car or watches the replay, and neither may undo the finish.
+   */
+  raceFinishResult: RaceFinishResult | null;
+};
+
+/** The player's official finishing position in a race (issue #1278). */
+export type RaceFinishResult = {
+  sessionNum: number | null;
+  position: number;
+  classPosition: number;
 };
 
 export function createInitialState(): TranslatorState {
@@ -1415,5 +1432,6 @@ export function createInitialState(): TranslatorState {
     lapResultsPendingSince: 0,
     lastPositionChangeLap: -1,
     raceFinishedFired: false,
+    raceFinishResult: null,
   };
 }

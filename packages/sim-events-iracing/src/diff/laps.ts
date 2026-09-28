@@ -157,6 +157,7 @@ export function diffLaps(
     // emission entirely.
     state.lastPositionChangeLap = -1;
     state.raceFinishedFired = false;
+    state.raceFinishResult = null;
     state.lapCautionLatchLap = null;
     state.lapCautionSeen = false;
     state.lapCompletedWasCaution = false;
@@ -449,6 +450,8 @@ export function diffLaps(
 
   if (!state.raceFinishedFired && sessionType === "race" && checkeredRaised && positionForEmit > 0) {
     state.raceFinishedFired = true;
+    // The result a display holds from here on (issue #1278).
+    state.raceFinishResult = { sessionNum, position: positionForEmit, classPosition: classPositionForEmit };
 
     const finishedData: { position: number; classPosition?: number; isMultiClass?: boolean } = {
       position: positionForEmit,

@@ -45,10 +45,12 @@ import {
   getLivePosition,
   getLiveRacePositions,
   getQualifyingInvalidationSnapshot,
+  getRaceFinishResult,
   getRaceStartConditions,
   getSessionStartConditions,
   getStartingGridPosition,
   initializeSimEventsIracing,
+  isRaceFinished,
   isSimEventsIracingInitialized,
   isUnderFullCourseCaution,
   resolveLeaderLapTimeS,
@@ -625,6 +627,85 @@ describe("sim-events-iracing translator", () => {
 
       controller.__setSessionInfo({ DriverInfo: { DriverSetupName: "" } });
       expect(getDriverSetupName()).toBeUndefined();
+    });
+  });
+
+  describe("getRaceFinishResult (issue #1278)", () => {
+    function raceSessionInfo(): Record<string, unknown> {
+      return {
+        WeekendInfo: { SimMode: "full" },
+        DriverInfo: { DriverCarIdx: 0, Drivers: [{ CarIdx: 0, CarClassID: 1 }] },
+        SessionInfo: {
+          Sessions: [
+            {
+              SessionNum: 0,
+              SessionType: "Race",
+              ResultsPositions: [{ CarIdx: 0, Position: 4, ClassPosition: 2, LapsComplete: 5 }],
+            },
+          ],
+        },
+      };
+    }
+
+    /** Seed on lap 4, then take the checkered on the lap-5 crossing. */
+    function finishRace(controller: MockController): void {
+      controller.__tick(telemetry({ LapCompleted: 4, LapLastLapTime: 62, LapBestLapTime: 62 }));
+      controller.__tick(
+        telemetry({
+          LapCompleted: 5,
+          LapLastLapTime: 63,
+          LapBestLapTime: 62,
+          SessionFlags: Flags.Checkered,
+          SessionState: SessionState.Checkered,
+        }),
+      );
+    }
+
+    it("returns null before the player has taken the checkered flag", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(raceSessionInfo());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(telemetry({ LapCompleted: 4, LapLastLapTime: 62, LapBestLapTime: 62 }));
+
+      expect(getRaceFinishResult(0)).toBeNull();
+    });
+
+    it("returns the official result captured at the player's finish", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(raceSessionInfo());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      finishRace(controller);
+
+      // ResultsPositions' ClassPosition is 0-indexed; the result is 1-indexed.
+      expect(getRaceFinishResult(0)).toEqual({ sessionNum: 0, position: 4, classPosition: 3 });
+    });
+
+    it("never answers for another session", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(raceSessionInfo());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      finishRace(controller);
+
+      expect(getRaceFinishResult(1)).toBeNull();
+    });
+
+    it("survives a replay visit after the finish", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(raceSessionInfo());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      finishRace(controller);
+
+      // Out of the car / watching the replay: replay-mode ticks wipe the state.
+      controller.__tick(telemetry({ IsReplayPlaying: true, IsOnTrack: false, SessionState: SessionState.CoolDown }));
+      // …and back to a live tick in the same session.
+      controller.__tick(telemetry({ LapCompleted: 5, SessionState: SessionState.CoolDown }));
+
+      expect(isRaceFinished()).toBe(true);
+      expect(getRaceFinishResult(0)).toEqual({ sessionNum: 0, position: 4, classPosition: 3 });
     });
   });
 

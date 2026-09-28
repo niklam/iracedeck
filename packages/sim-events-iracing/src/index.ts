@@ -31,6 +31,7 @@ export {
   getTrackDirection,
   initializeSimEventsIracing,
   isPitActionsAllowed,
+  getRaceFinishResult,
   isRaceFinished,
   isSimEventsIracingInitialized,
   isUnderFullCourseCaution,
@@ -73,7 +74,7 @@ export {
 export { type CautionLineup, resolveCautionLineup, resolvePlayerCarIdx } from "./diff/caution-lineup.js";
 // The phase `getCautionPhase()` returns (issue #1127) — the callouts that
 // gate on a STAGE of the caution rather than on "is one out" name it.
-export { type CautionPhase } from "./state.js";
+export { type CautionPhase, type RaceFinishResult } from "./state.js";
 export { DAMAGE_DEBOUNCE_MS } from "./diff/damage.js";
 export { YELLOW_CLEARED_HOLD_MS } from "./diff/flags.js";
 // The settle window between leaving pit road and the exit readback, which is

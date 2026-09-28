@@ -1253,6 +1253,8 @@ describe("diffLaps — race.finished (issue #569)", () => {
     expect(finished).toHaveLength(1);
     expect(finished[0].data.position).toBe(3);
     expect(state.raceFinishedFired).toBe(true);
+    // The result a display holds after the flag (issue #1278) — the same read.
+    expect(state.raceFinishResult).toEqual({ sessionNum: null, position: 3, classPosition: 3 });
   });
 
   it("does not re-emit race.finished on subsequent laps in the same session", () => {
@@ -1290,6 +1292,8 @@ describe("diffLaps — race.finished (issue #569)", () => {
     );
 
     expect(raceFinishedEvents(events)).toHaveLength(1);
+    // The captured result is the finish, not a later cool-down lap's read.
+    expect(state.raceFinishResult?.position).toBe(3);
   });
 
   it("does not emit race.finished in non-race sessions even with checkered flag", () => {
@@ -1313,6 +1317,7 @@ describe("diffLaps — race.finished (issue #569)", () => {
 
     expect(raceFinishedEvents(events)).toHaveLength(0);
     expect(state.raceFinishedFired).toBe(false);
+    expect(state.raceFinishResult).toBeNull();
   });
 
   it("defers the latch when position is missing so the next lap.completed retries", () => {
@@ -1338,6 +1343,7 @@ describe("diffLaps — race.finished (issue #569)", () => {
     );
     expect(raceFinishedEvents(events)).toHaveLength(0);
     expect(state.raceFinishedFired).toBe(false);
+    expect(state.raceFinishResult).toBeNull();
 
     // Next lap arrives with position resolved — emit + latch fire now.
     diffLaps(
@@ -1378,6 +1384,7 @@ describe("diffLaps — race.finished (issue #569)", () => {
       emit,
     );
     expect(state.raceFinishedFired).toBe(true);
+    expect(state.raceFinishResult).toEqual({ sessionNum: 0, position: 3, classPosition: 3 });
 
     // New session (next race in the schedule).
     diffLaps(
@@ -1390,6 +1397,7 @@ describe("diffLaps — race.finished (issue #569)", () => {
       emit,
     );
     expect(state.raceFinishedFired).toBe(false);
+    expect(state.raceFinishResult).toBeNull();
   });
 
   it("carries classPosition + isMultiClass into the race.finished payload", () => {
@@ -1416,6 +1424,7 @@ describe("diffLaps — race.finished (issue #569)", () => {
     expect(finished[0].data.position).toBe(8);
     expect(finished[0].data.classPosition).toBe(2);
     expect(finished[0].data.isMultiClass).toBe(true);
+    expect(state.raceFinishResult).toEqual({ sessionNum: null, position: 8, classPosition: 2 });
   });
 });
 
