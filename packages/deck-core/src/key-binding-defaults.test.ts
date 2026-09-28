@@ -1,6 +1,7 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import { BINDING_KEY_CODE_MAP, defaultBindingStoredValue, parseDefaultKeyBinding } from "./key-binding-defaults.js";
+import { defaultBindingStoredValue, KEY_CODE_MAP, parseDefaultKeyBinding } from "./key-binding-defaults.js";
 import { parseBinding, parseKeyBinding } from "./key-binding-utils.js";
 
 describe("key-binding-defaults (#1277)", () => {
@@ -50,10 +51,30 @@ describe("key-binding-defaults (#1277)", () => {
       });
     });
 
+    it("is exactly what the PI field saves for a default, key by key", () => {
+      // The PI's parseSimpleDefault is this function (pi-components imports it
+      // through the subpath); these pin its observable results.
+      expect(parseDefaultKeyBinding("a")).toEqual({ type: "keyboard", key: "a", modifiers: [], code: "KeyA" });
+      expect(parseDefaultKeyBinding("Ctrl+pageup")?.code).toBe("PageUp");
+      expect(parseDefaultKeyBinding("-")?.code).toBe("Minus");
+      expect(parseDefaultKeyBinding("Ctrl+Shift")).toBeUndefined();
+      expect(parseDefaultKeyBinding("numpad10")).toBeUndefined();
+    });
+
     it("maps every recordable key back to its code", () => {
-      for (const [code, key] of Object.entries(BINDING_KEY_CODE_MAP)) {
+      for (const [code, key] of Object.entries(KEY_CODE_MAP)) {
         expect(parseDefaultKeyBinding(key)?.code, key).toBe(code);
       }
     });
+  });
+
+  it("imports nothing, so the PI bundle can take it through the subpath", () => {
+    // pi-components bundles this file into every Property Inspector via
+    // `@iracedeck/deck-core/key-binding-defaults`; an import here would travel
+    // with it — the deck-core barrel it exists to keep out, at worst.
+    const source = readFileSync(new URL("./key-binding-defaults.ts", import.meta.url), "utf8");
+
+    expect(source).not.toMatch(/^\s*(import|export\s.*\sfrom)\s/m);
+    expect(source).not.toMatch(/\brequire\(/);
   });
 });

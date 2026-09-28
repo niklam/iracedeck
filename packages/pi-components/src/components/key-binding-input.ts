@@ -45,8 +45,10 @@ import { probeSimHub } from "./simhub-probe.js";
  * SYNC NOTE: The types below (SimHubBindingValue, BindingValue) and the
  * isSimHubBinding() guard are browser-side duplicates of their counterparts
  * in @iracedeck/deck-core/global-settings.ts. The PI runs in a browser
- * context and cannot import from deck-core (Node.js). When modifying
- * binding types, update BOTH locations.
+ * context and cannot import the deck-core barrel (Node.js) — only a
+ * dependency-free subpath such as `@iracedeck/deck-core/key-binding-defaults`,
+ * where the key map and default parser live (#1277). When modifying binding
+ * types, update BOTH locations.
  *
  * Key invariant: both KeyBindingValue and SimHubBindingValue have a `type`
  * discriminant field ("keyboard" and "simhub" respectively).

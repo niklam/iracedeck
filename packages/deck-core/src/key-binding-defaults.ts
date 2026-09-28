@@ -1,38 +1,35 @@
 /**
- * Default key bindings as the Property Inspector stores them (issue #1277).
+ * The key map and the default-binding parser the Property Inspector and the
+ * plugin share (issue #1277) — ONE copy, dependency-free on purpose.
  *
  * A key binding's default is written as a short string (`"V"`, `"Shift+V"`,
  * `"Ctrl+F1"`) — in `key-bindings.json` and on an `ird-key-binding`'s
- * `default` attribute. When a binding field mounts over a setting that holds
- * nothing it parses that string with its `parseSimpleDefault` and saves
+ * `default` attribute. When that field mounts over a setting that holds
+ * nothing it parses the string with {@link parseDefaultKeyBinding} and saves
  * `JSON.stringify` of the result, so a default binding is stored as e.g.
- * `{"type":"keyboard","key":"v","modifiers":["shift"],"code":"KeyV"}`.
+ * `{"type":"keyboard","key":"v","modifiers":["shift"],"code":"KeyV"}`. When
+ * the plugin writes a default itself (`seedBindingDefaultsIfAbsent` in
+ * `global-settings-migrations.ts`) it stores {@link defaultBindingStoredValue}
+ * — the same parser, so the two cannot disagree. The `code` matters: it is
+ * what the keyboard service turns into a layout-independent scan code, so a
+ * value without it would type a different key on a non-US layout than one the
+ * field saved.
  *
- * {@link defaultBindingStoredValue} is the Node-side twin of that save, for
- * the plugin writing a default itself (`seedBindingDefaultsIfAbsent` in
- * `global-settings-migrations.ts`). The `code` matters: it is what the
- * keyboard service turns into a layout-independent scan code, so a value
- * without it would type a different key on a non-US layout than one the field
- * saved.
- *
- * SYNC NOTE: {@link BINDING_KEY_CODE_MAP} and {@link parseDefaultKeyBinding}
- * duplicate `KEY_CODE_MAP` (pi-components `key-maps.ts`) and
- * `parseSimpleDefault` (pi-components `key-binding-utils.ts`). The PI runs in
- * a browser bundle that must not pull deck-core in, and deck-core cannot
- * depend on pi-components, so the pair is pinned by
- * `pi-components/src/components/key-binding-default-parity.test.ts` — the map
- * must be equal, and both parsers must give the same value for every key and
- * modifier form. Change both sides together.
+ * WHY A SUBPATH. pi-components compiles the `ird-*` components into a browser
+ * bundle, which must never pull in the deck-core barrel (it reaches Node
+ * built-ins and the native addons). So this module is also published on its
+ * own as `@iracedeck/deck-core/key-binding-defaults` (deck-core `package.json`
+ * `exports`, pointing at the built `dist/key-binding-defaults.js`), and
+ * pi-components imports only that. Keep it free of imports — types included —
+ * so the subpath stays a leaf: an import added here is an import added to
+ * every Property Inspector.
  */
-import type { KeyBindingValue } from "./global-settings.js";
 
 /**
- * KeyboardEvent.code → internal key identifier; a copy of pi-components'
- * `KEY_CODE_MAP` (see the SYNC NOTE above).
- *
- * @internal Exported for the parity test
+ * `KeyboardEvent.code` → internal key identifier: every key a binding field
+ * can record. Frozen: it is shared, so no consumer may edit it.
  */
-export const BINDING_KEY_CODE_MAP: Readonly<Record<string, string>> = {
+export const KEY_CODE_MAP: Readonly<Record<string, string>> = Object.freeze({
   // Letters
   KeyA: "a",
   KeyB: "b",
@@ -130,48 +127,74 @@ export const BINDING_KEY_CODE_MAP: Readonly<Record<string, string>> = {
   Comma: ",",
   Period: ".",
   Slash: "/",
-};
+});
 
-/** Internal key identifier → KeyboardEvent.code. */
+/** Every recordable internal key identifier. */
+const VALID_KEYS: ReadonlySet<string> = new Set(Object.values(KEY_CODE_MAP));
+
+/** Internal key identifier → `KeyboardEvent.code`. */
 const KEY_TO_CODE: Readonly<Record<string, string>> = Object.fromEntries(
-  Object.entries(BINDING_KEY_CODE_MAP).map(([code, key]) => [key, code]),
+  Object.entries(KEY_CODE_MAP).map(([code, key]) => [key, code]),
 );
 
-const MODIFIERS = ["ctrl", "shift", "alt"] as const;
+/** Supported modifier keys, in the order a binding displays them. */
+export const MODIFIERS = ["ctrl", "shift", "alt"] as const;
+
+/** A modifier key. */
+export type Modifier = (typeof MODIFIERS)[number];
 
 /** Aliases accepted for a modifier name in a default string. */
-const MODIFIER_ALIASES: Readonly<Record<string, string>> = { control: "ctrl" };
+export const MODIFIER_ALIASES: Readonly<Record<string, Modifier>> = Object.freeze({ control: "ctrl" });
+
+/** A keyboard binding as the field builds it from a default string. */
+export interface DefaultKeyBinding {
+  type: "keyboard";
+  key: string;
+  modifiers: Modifier[];
+  /** `KeyboardEvent.code` of the key: the physical position. */
+  code: string;
+}
+
+/** Whether `key` is an internal key identifier a binding field can record. */
+export function isValidKey(key: string): boolean {
+  return VALID_KEYS.has(key);
+}
+
+/** The `KeyboardEvent.code` for an internal key identifier, or `undefined` if it is not one. */
+export function keyToCode(key: string): string | undefined {
+  return isValidKey(key) ? KEY_TO_CODE[key] : undefined;
+}
 
 /**
  * Parse a default string such as `"F1"` or `"Ctrl+Shift+A"` into the binding
- * the PI field would save — `parseSimpleDefault`'s rules exactly: parts split
- * on `+`, trimmed and lowercased; a modifier (or alias) is collected in the
- * order written; any other part is the key, the last one winning. The key must
- * be one the field can record.
+ * the field saves for it: parts split on `+`, trimmed and lowercased; a
+ * modifier (or an alias of one) is collected in the order written; any other
+ * part is the key, the last one winning. The key must be one the field can
+ * record.
  *
- * @returns The binding, or `undefined` for an empty or unrecognised key (where
- *   the field saves nothing)
+ * @returns The binding, or `undefined` when the string names no recordable
+ *   key (empty, modifiers only, or an unknown key)
  */
-export function parseDefaultKeyBinding(text: string): KeyBindingValue | undefined {
+export function parseDefaultKeyBinding(text: string): DefaultKeyBinding | undefined {
   const parts = text.split("+").map((part) => part.trim().toLowerCase());
-  const modifiers: string[] = [];
+  const modifiers: Modifier[] = [];
   let key = "";
 
   for (const part of parts) {
     const modifier = MODIFIER_ALIASES[part] ?? part;
 
     if ((MODIFIERS as readonly string[]).includes(modifier)) {
-      modifiers.push(modifier);
+      modifiers.push(modifier as Modifier);
     } else {
       key = part;
     }
   }
 
-  const code = KEY_TO_CODE[key];
+  const code = keyToCode(key);
 
   if (code === undefined) return undefined;
 
-  // Property order as the field builds it, so the stored JSON is byte-identical.
+  // Property order is part of the contract: the stored JSON is compared byte for byte.
   return { type: "keyboard", key, modifiers, code };
 }
 
@@ -179,7 +202,11 @@ export function parseDefaultKeyBinding(text: string): KeyBindingValue | undefine
  * The exact global-settings value an `ird-key-binding` stores for a default
  * string: the JSON of {@link parseDefaultKeyBinding}.
  *
- * @returns The value to store, or `undefined` when the default names no key
+ * @returns The value to store, or `undefined` when the default names no
+ *   recordable key. (The field, handed such a default, saves `""`;
+ *   `seedBindingDefaultsIfAbsent` deliberately stores nothing instead, because
+ *   a stored `""` reads as a binding the user cleared and would never be
+ *   seeded again.)
  */
 export function defaultBindingStoredValue(text: string): string | undefined {
   const binding = parseDefaultKeyBinding(text);

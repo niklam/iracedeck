@@ -632,7 +632,9 @@ export {
 
 // Key binding utilities
 export { formatKeyBinding, parseKeyBinding, parseBinding } from "./key-binding-utils.js";
-export { BINDING_KEY_CODE_MAP, defaultBindingStoredValue, parseDefaultKeyBinding } from "./key-binding-defaults.js";
+// The key map and default parser the PI shares; pi-components imports them
+// through the dependency-free `@iracedeck/deck-core/key-binding-defaults` subpath (#1277)
+export { defaultBindingStoredValue, parseDefaultKeyBinding } from "./key-binding-defaults.js";
 export {
   setWarning,
   clearWarning,

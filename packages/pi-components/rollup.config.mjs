@@ -1,3 +1,4 @@
+import nodeResolve from "@rollup/plugin-node-resolve";
 import terser from "@rollup/plugin-terser";
 import typescript from "@rollup/plugin-typescript";
 
@@ -11,6 +12,49 @@ import typescript from "@rollup/plugin-typescript";
  * Property Inspector with nothing pointing at the cause.
  */
 const tsBundle = (tsconfig) => typescript({ tsconfig, noEmitOnError: true });
+
+/**
+ * The one package import a browser bundle may make (#1277): deck-core's
+ * dependency-free key map and default parser, through its own subpath —
+ * deck-core's `exports` point it at the built `dist/key-binding-defaults.js`,
+ * which turbo builds first because deck-core is a dependency of this package.
+ * node-resolve's `resolveOnly` matches package NAMES, not subpaths, so it can
+ * only narrow resolution to deck-core; the guard in front of it refuses every
+ * other deck-core import by name, so the barrel (Node built-ins, native
+ * addons) can never be followed into a Property Inspector.
+ */
+const DECK_CORE_KEY_BINDING_DEFAULTS = "@iracedeck/deck-core/key-binding-defaults";
+const resolveBrowserImports = () => [
+  {
+    name: "deck-core-subpath-guard",
+    resolveId(source) {
+      if (source.startsWith("@iracedeck/deck-core") && source !== DECK_CORE_KEY_BINDING_DEFAULTS) {
+        this.error(
+          `"${source}" is not browser-safe: a Property Inspector bundle may import only ${DECK_CORE_KEY_BINDING_DEFAULTS} from deck-core`,
+        );
+      }
+
+      return null;
+    },
+  },
+  nodeResolve({ browser: true, resolveOnly: ["@iracedeck/deck-core"] }),
+];
+
+/**
+ * An import the bundle cannot resolve would otherwise be left as an IIFE
+ * global that does not exist in the PI page — a warning on a green build and a
+ * dead Property Inspector at runtime. Fail instead.
+ */
+const FATAL_LOG_CODES = new Set(["UNRESOLVED_IMPORT", "MISSING_GLOBAL_NAME"]);
+const onLog = (level, log, handler) => {
+  if (FATAL_LOG_CODES.has(log.code)) {
+    handler("error", log);
+
+    return;
+  }
+
+  handler(level, log);
+};
 
 /**
  * Rollup config for building the PI browser bundles into browser/ so consumer
@@ -46,7 +90,8 @@ export default [
       name: "IRaceDeckPI",
       sourcemap: false,
     },
-    plugins: [tsBundle("./tsconfig.pi.json"), terserPlugin],
+    onLog,
+    plugins: [tsBundle("./tsconfig.pi.json"), ...resolveBrowserImports(), terserPlugin],
   },
   {
     input: "src/ulanzi-bridge/index.ts",
@@ -56,6 +101,7 @@ export default [
       name: "IRaceDeckUlanziBridge",
       sourcemap: false,
     },
+    onLog,
     plugins: [tsBundle("./tsconfig.ulanzi.json"), terserPlugin],
   },
   {
@@ -66,6 +112,7 @@ export default [
       name: "IRaceDeckSettingsWindowBridge",
       sourcemap: false,
     },
+    onLog,
     plugins: [tsBundle("./tsconfig.settings-window.json"), terserPlugin],
   },
   {
@@ -76,6 +123,7 @@ export default [
       name: "IRaceDeckPiSettingsBridge",
       sourcemap: false,
     },
+    onLog,
     plugins: [tsBundle("./tsconfig.pi-settings-bridge.json"), terserPlugin],
   },
 ];
