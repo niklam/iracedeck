@@ -26,6 +26,14 @@ The two taps read the existing global settings `replayControlNextCar` / `replayC
 
 With the sim choosing, we cannot know the neighbours in advance, and a preview that disagrees with where the turn lands is worse than none. The Track Order strip keeps its title and the focused car's number large in the centre, and drops the AHEAD / BEHIND side numbers and captions. Maintainer's ruling (2026-09-28). Sub-Camera's strip is the precedent. The missing-binding warning (#612) covers both surfaces when either binding is unset, through the same `isBindingMissing` path Sub-Camera uses.
 
+### Existing keys keep working after the update
+
+Until now these keys and dials needed no binding, so an existing user has never stored `replayControlNextCar` / `replayControlPrevCar` unless a Replay Control Next / Previous Car panel was opened. The binding field saves its default when a panel mounts, but nothing else does, so without a seed an upgraded CAR AHEAD key would show the #612 warning and do nothing until a panel was opened. The code review found this; the maintainer ruled on 2026-09-28 to seed. Once the stored settings have loaded (`isSettingsStoreReady`), each of the two keys that has **never been stored** gets its default from `key-bindings.json` (`V` / `Shift+V`), in the same shape the binding field writes. A stored value is never touched, including a deliberately cleared one. The step is idempotent, needs no marker, and runs at every start in all three plugins, beside the existing global-settings migrations.
+
+### Keystrokes, not broadcasts
+
+The old path was an SDK broadcast that worked whatever window had focus. A binding is a keystroke, so it follows the user's window-focus setting like every other binding-driven mode (#977). The docs say so. Fast dial spins go through the same keyboard path as every other binding-driven dial; this change does not alter that path.
+
 ### What happens to the computed path
 
 `computeTrackOrderTarget` and `trackOrderDirection` in `shared/car-cycling.ts` go if nothing else uses them after this change. The underlying primitive `findNearestCarOnTrack` stays: `iracing-sdk` and Replay Control read it for other things. The comms catalog moves `cycle-track-order` and the dial's `track-order` from `api` to `keybind`.
@@ -45,4 +53,4 @@ With the sim choosing, we cannot know the neighbours in advance, and a preview t
 
 - **Unit:** the keypad `cycle-track-order` taps the Next Car binding for `next` and Previous Car for `previous`, and sends no `switchNum`. The dial's clockwise and counter-clockwise detents tap the right binding with and without Reverse rotation. The strip renders the focused car with no side numbers, and renders the #612 warning when a binding is unset. A test checks that the `cameraControls` and `replayControl` entries in `key-bindings.json` name the same two settings.
 - **Comms:** `action-comms.json` regenerated, and the catalog test passes.
-- **Manual (sim):** finish a race, stay in the session, and open the replay. Scrub to an incident. The dial, the CAR AHEAD / CAR BEHIND keys and `V` / `Shift+V` must all land on the same cars. Repeat in a live session and in a replay opened outside a session. Rebind Next Car in the settings and confirm both actions follow it.
+- **Manual (sim):** finish a race, stay in the session, and open the replay. Scrub to an incident. The dial, the CAR AHEAD / CAR BEHIND keys and `V` / `Shift+V` must all land on the same cars. Repeat in a live session and in a replay opened outside a session. Rebind Next Car in the settings and confirm both actions follow it. Under caution, check whether `V` lands on the pace car: the old path skipped it, and the docs describe whatever the sim does. Upgrade test: with no stored Next / Previous Car binding, start the plugin, and an existing CAR AHEAD key works at once with no warning.
