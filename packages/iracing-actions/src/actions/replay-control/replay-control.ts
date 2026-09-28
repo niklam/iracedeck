@@ -72,6 +72,7 @@ import {
 } from "@iracedeck/iracing-sdk";
 import z from "zod";
 
+import { CAR_CYCLE_BINDING_KEYS } from "../../shared/car-cycle-bindings.js";
 import { computeCarNumberTarget } from "../../shared/car-cycling.js";
 import { RepeatController } from "../../shared/repeat-controller.js";
 import { cancelReplayCursorOwner, claimReplayCursor, type ReplayCursorClaim } from "../../shared/replay-cursor.js";
@@ -210,14 +211,13 @@ const DIRECTIONAL_PAIRS: Partial<
 };
 
 /**
- * @internal Exported for testing
- *
- * Global setting keys for the configurable car-cycle keystrokes.
- * The defaults (V / Shift+V) are declared in
- * `packages/iracing-actions/src/actions/data/key-bindings.json` under `replayControl`.
+ * Global setting keys for iRacing's Next Car / Previous Car keystrokes. Their
+ * single home is `shared/car-cycle-bindings.ts`, because Camera Controls' Cycle
+ * by Track Order taps the same two bindings (#1277); the defaults (V / Shift+V)
+ * are declared in `data/key-bindings.json`.
  */
-export const NEXT_CAR_BINDING_KEY = "replayControlNextCar";
-export const PREV_CAR_BINDING_KEY = "replayControlPrevCar";
+const NEXT_CAR_BINDING_KEY = CAR_CYCLE_BINDING_KEYS.next;
+const PREV_CAR_BINDING_KEY = CAR_CYCLE_BINDING_KEYS.previous;
 
 /** Modes that depend on a global key binding (rather than an SDK command). */
 const KEYSTROKE_MODES: Partial<Record<ReplayControlMode, string>> = {
