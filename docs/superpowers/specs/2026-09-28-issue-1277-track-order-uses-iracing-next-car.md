@@ -42,7 +42,7 @@ The old path was an SDK broadcast that worked whatever window had focus. A bindi
 
 ## The sim fact this rests on
 
-`V` (Next Car) focuses the car ahead **on track**, and `Shift+V` (Previous Car) the car behind on track. Confirmed by the maintainer on 2026-09-28, which also answers the question #1074 was waiting on. So the mode's name and the CAR AHEAD / CAR BEHIND titles stay as they are: they describe exactly what the sim does, and clockwise = Next Car = the car ahead keeps the dial's existing direction.
+`V` (Next Car) focuses the car ahead **on track**, and `Shift+V` (Previous Car) the car behind on track. Confirmed by the maintainer on 2026-09-28, which also answers the question #1074 was waiting on. So the mode's name and the CAR AHEAD / CAR BEHIND titles stay as they are: they describe exactly what the sim does, and clockwise = Next Car = the car ahead keeps the dial's existing direction. The pace car is included: `V` / `Shift+V` land on it when it is on track next to the focused car (maintainer, 2026-09-29). The old computed path skipped it; the docs now say it is included.
 
 ## Out of scope
 
