@@ -1682,16 +1682,24 @@ describe("ReplayControl", () => {
       expect(mockCamera.switchNum).toHaveBeenNthCalledWith(2, 42, 0, 0); // #7 → #42
     });
 
-    it("focuses the neighbour on a Next / Previous Car (Number Order) key press in that shape (#1281)", async () => {
+    it("focuses cars that left the world in the post-race snapshot shape on a key press, both directions (#1281)", async () => {
+      // Same 2026-09-29 capture shape as the rotate version above (pace car
+      // on track at carIdx 64, every competitor at -1), driven through
+      // onKeyDown — the live path, since Replay Control's manifest declares
+      // Keypad only and onDialRotate never fires (#640).
       const notInWorld = new Array<number>(72).fill(-1);
+      const lapDistPct = [...notInWorld];
+      const trackSurface = [...notInWorld];
+      lapDistPct[64] = 0.0595;
+      trackSurface[64] = 2;
       action["sdkController"].getCurrentTelemetry = vi.fn(
         () =>
           ({
             CamCarIdx: 1,
             IsReplayPlaying: true,
             CarIdxLapCompleted: [...notInWorld],
-            CarIdxLapDistPct: [...notInWorld],
-            CarIdxTrackSurface: [...notInWorld],
+            CarIdxLapDistPct: lapDistPct,
+            CarIdxTrackSurface: trackSurface,
           }) as unknown as TelemetryData,
       );
 
@@ -1724,6 +1732,31 @@ describe("ReplayControl", () => {
       await rotate("next-car-number", 1);
 
       expect(mockCamera.switchNum).toHaveBeenCalledWith(4, 0, 0);
+    });
+
+    it("reaches the neighbour on the formation lap on a key press, where no car has completed a lap (#968)", async () => {
+      // Same snapshot 20260417-081043 shape as the rotate version above,
+      // driven through onKeyDown instead of onDialRotate — the dial path is
+      // dormant (Replay Control's manifest declares Keypad only, #640).
+      action["sdkController"].getCurrentTelemetry = vi.fn(
+        () =>
+          ({
+            CamCarIdx: 1,
+            CarIdxLapCompleted: [-1, -1, -1],
+            CarIdxLapDistPct: [0.8174, 0.801, 0.8064],
+            CarIdxTrackSurface: [TrkLoc.OnTrack, TrkLoc.OnTrack, TrkLoc.OnTrack],
+          }) as unknown as TelemetryData,
+      );
+
+      await action.onKeyDown({
+        action: { id: "ctx-1", setTitle: vi.fn(), setImage: vi.fn() },
+        payload: { settings: { mode: "next-car-number" } },
+      } as never);
+
+      // A key dispatches `settings.mode` directly, unlike a dial rotation,
+      // which the DIRECTIONAL_PAIRS inversion (#973) sends the other way —
+      // so "next" from focused #7 lands on #42, not #4.
+      expect(mockCamera.switchNum).toHaveBeenCalledWith(42, 0, 0);
     });
 
     it("maps both detents the same way whichever car-number mode the key sits on (#973)", async () => {
