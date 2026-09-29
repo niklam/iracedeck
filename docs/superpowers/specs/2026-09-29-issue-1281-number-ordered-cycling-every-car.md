@@ -22,7 +22,7 @@ The #885 symptom (the race-position dial stopped switching in a post-race replay
 - Camera Controls on a key: **Cycle Car**;
 - Replay Control: **Next / Previous Car (Number Order)**.
 
-The candidate set is the existing competitor list (`getAllCarNumbers(sessionInfo, true, true)`, so no pace car and no spectators), with **no presence filter**. That holds live and in a replay, because the maintainer's test showed the switch works in both. It also includes a driver who has not left the garage yet (the maintainer confirmed this on 2026-09-29). The rule is "every car in the session", and a presence test cannot tell a car absent now from a car present at the replay moment, since the arrays read live (above).
+The candidate set is the existing competitor list (`getAllCarNumbers(sessionInfo, true, true)`, so no pace car and no spectators), with **no presence filter**. That holds live and in a replay, because the maintainer's test showed the switch works in both. It also includes a driver who has not left the garage yet (the maintainer confirmed this on 2026-09-29). The maintainer's manual test of the finished change included turning past garage cars, and the dial did not stick. The rule is "every car in the session", and a presence test cannot tell a car absent now from a car present at the replay moment, since the arrays read live (above).
 
 Race position walks the canonical order as it is, including frozen ranks. Nothing else changes about how either order is built or which side a turn goes.
 
