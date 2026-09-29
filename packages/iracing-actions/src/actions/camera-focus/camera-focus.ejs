@@ -213,15 +213,6 @@
 			<%# Restored in #852: the line was dropped in #803 as redundant when every %>
 			<%# dial mode was `api`. Sub-Camera and Track Order are binding-driven now, so it says something. %>
 			<ird-binding-status mode-setting="<%= __dialComms._meta.modeSetting %>" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
-			<% if (locals.platform?.features?.dialExtendedGestures !== false) { %>
-			<div class="ird-supporting-text">
-				Turn the dial to cycle the selected target. In the modes that cycle by a number — Cycle by Car # and Cycle by Race Position — clockwise makes that number go down (P4 → P3, #94 → #77); Track Order steps with iRacing's own Next / Previous Car, so there clockwise selects the car physically ahead on track, regardless of standings; the camera modes simply step to the next in the list. Where previewable, the touch strip shows the current camera, sub-camera, or focused car in the centre with the target for each turn direction at its side; Cycle by Track Order shows only the focused car, since iRacing picks the next one, and Cycle Driving Camera only the current group.
-			</div>
-			<% } else { %>
-			<div class="ird-supporting-text">
-				Turn the knob to cycle the selected target. In the modes that cycle by a number — Cycle by Car # and Cycle by Race Position — clockwise makes that number go down (P4 → P3, #94 → #77); Track Order steps with iRacing's own Next / Previous Car, so there clockwise selects the car physically ahead on track, regardless of standings; the camera modes simply step to the next in the list.
-			</div>
-			<% } %>
 
 			<sdpi-item label="Rotation">
 				<sdpi-checkbox setting="dial.reverseRotation" label="Reverse rotation"></sdpi-checkbox>
