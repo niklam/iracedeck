@@ -463,7 +463,7 @@ The key binding is shared with Camera Controls' [Cycle by Track Order](/docs/act
 
 ### Next Car (Number Order)
 
-Switch the replay camera to the next car by car number order. Includes all cars — even those in the pits — and skips the pace car.
+Switch the replay camera to the next car by car number order. Every car in the session is included — cars in the pits, and cars that have already finished and left, so a replay after the race can still focus them. The pace car and spectators are skipped.
 
 #### Details
 
@@ -480,7 +480,7 @@ Switch the replay camera to the next car by car number order. Includes all cars 
 
 ### Previous Car (Number Order)
 
-Switch the replay camera to the previous car by car number order. Includes all cars — even those in the pits — and skips the pace car.
+Switch the replay camera to the previous car by car number order. Every car in the session is included — cars in the pits, and cars that have already finished and left, so a replay after the race can still focus them. The pace car and spectators are skipped.
 
 #### Details
 

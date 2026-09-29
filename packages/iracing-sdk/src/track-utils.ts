@@ -7,9 +7,28 @@ export interface FindNearestCarOptions {
 }
 
 /**
- * Whether a car currently exists in the sim world — the one in-world test every
- * car-targeting walk shares (issue #968: camera / replay cycling, the
- * track-order primitive below, and the nearest-gap helper).
+ * Whether a car currently exists in the sim world — the one in-world test the
+ * live-field consumers share (issue #968): the track-order primitive below, the
+ * nearest-gap helper behind the spotter's clear confirmation, and the caution
+ * lineup in `sim-events-iracing`.
+ *
+ * The number-ordered camera walks (Camera Controls' Cycle by Car # and Cycle
+ * by Race Position on the dial, the keypad Cycle Car mode, Replay Control's
+ * Number Order keys) do NOT use it any more (issue #1281): they used to
+ * filter with it (#885) on the premise that iRacing ignores a camera switch
+ * to a car no longer in the world; that premise was measured false (the
+ * switch works, live and in a replay), and the per-car arrays this predicate
+ * reads show the LIVE field during an in-session replay, so those walks now
+ * cover every car the session has had instead.
+ *
+ * One camera path still reaches this predicate, through `findNearestCarOnTrack`
+ * below: Replay Control's dial rotation on the `jump-to-my-car` mode
+ * (`findAdjacentCarOnTrack` → `camera.switchNum`) — physical track order, not
+ * the number order the walks above use. It is dormant, not removed: every
+ * plugin's manifest declares Replay Control `Keypad` only, no `Encoder`,
+ * since the #640 dial de-claim, so `onDialRotate` never fires. Re-adding a
+ * dial surface for it would skip a departed car in a replay, because this
+ * predicate reads the live field there too.
  *
  * A car counts as present when it has a valid lap distance AND a track surface
  * other than `NotInWorld`. Both halves earn their place: iRacing normally
@@ -21,24 +40,24 @@ export interface FindNearestCarOptions {
  *
  * The translator keeps its OWN in-world tests (`race-finish.ts`,
  * `hasLiveProgress`) because position scoring genuinely needs the lap count;
- * this predicate is the shared rule for "may the camera be pointed at it".
+ * this predicate is the shared rule for "is it on the live field right now".
  *
  * **There is deliberately NO `CarIdxLapCompleted` condition — do not add one.**
  * That field counts COMPLETED laps, so it reads `-1` for every active car until
  * its first start/finish crossing. A lap-count condition therefore marks the
  * entire formation lap as "nobody is here": it was removed from
  * `findNearestCarOnTrack` for that reason in issue #307 (snapshot
- * `20260417-081043`, every car at `laps = -1`), and re-adding it to the camera /
- * replay cycling predicate silently killed those cycles for a whole lap
- * (issue #968). It also earns nothing — the surface check already rejects every
- * despawn it would.
+ * `20260417-081043`, every car at `laps = -1`), and re-adding it to the
+ * predicate the camera / replay cycles then used silently killed those cycles
+ * for a whole lap (issue #968). It also earns nothing — the surface check
+ * already rejects every despawn it would.
  *
  * This is a per-tick snapshot with deliberately NO freeze/debounce, unlike the
  * translator's position tracking (`sim-events-iracing`'s `race-finish.ts`),
  * which starts from the same signals but remembers a last-known-good score: a
- * one-tick `NotInWorld` blink here at worst makes one detent skip a live car,
- * and the next detent recovers — which doesn't justify carrying per-car history
- * in a camera-targeting predicate.
+ * one-tick `NotInWorld` blink here at worst drops a live car from one tick's
+ * answer, and the next tick recovers — which doesn't justify carrying per-car
+ * history in a per-tick predicate.
  *
  * Callers get a per-car closure so the telemetry arrays are resolved once per
  * walk rather than per candidate. With no per-car arrays at all (out of

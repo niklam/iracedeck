@@ -1,4 +1,5 @@
 import { applyBindingWarning } from "@iracedeck/deck-core";
+import { getAllCarNumbers } from "@iracedeck/iracing-sdk";
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -82,9 +83,6 @@ vi.mock("@iracedeck/iracing-sdk", async (importOriginal) => {
 
   return {
     TrkLoc: actual.TrkLoc,
-    // The REAL in-world predicate (#968): the car walks' presence rule is the
-    // behaviour under test, so a stub would assert the mock, not the rule.
-    carInWorld: actual.carInWorld,
     getCameraGroupsFromSessionInfo: vi.fn(() => mockGroups.value),
     getCamerasInGroup: vi.fn(() => mockCameras.value),
     getCarNumberFromSessionInfo: vi.fn((_s: unknown, carIdx: number) =>
@@ -117,6 +115,33 @@ function dialContext(id: string, canvas: typeof STRIP | typeof KNOB | null = STR
 }
 
 const TELEMETRY = { CamGroupNumber: 9, CamCarIdx: 3 };
+
+/**
+ * The post-race snapshot shape (issue #1281, captures of 2026-09-29): every
+ * competitor has left the world, so `CarIdxLapDistPct`, `CarIdxTrackSurface`
+ * and `CarIdxLapCompleted` read `-1` for every car — at the live end AND at a
+ * replay moment where those cars are racing, since the arrays read the live
+ * field — while the pace car (carIdx 64 in the capture) is still on track.
+ * `CarIdxPosition` is omitted: mid-replay it reads 0 for everyone but the
+ * player.
+ */
+function postRaceTelemetry(camCarIdx: number) {
+  const size = 72;
+  const notInWorld = new Array<number>(size).fill(-1);
+  const lapDistPct = [...notInWorld];
+  const trackSurface = [...notInWorld];
+  lapDistPct[64] = 0.0595;
+  trackSurface[64] = 2; // the pace car, approaching the pits
+
+  return {
+    CamCarIdx: camCarIdx,
+    CamGroupNumber: 9,
+    IsReplayPlaying: true,
+    CarIdxLapCompleted: [...notInWorld],
+    CarIdxLapDistPct: lapDistPct,
+    CarIdxTrackSurface: trackSurface,
+  };
+}
 
 /**
  * An on-track field around the focused car for the track-order tests.
@@ -222,16 +247,9 @@ describe("camera dial-surface pure helpers", () => {
       expect(computeCarNumberTarget(3, [], "next")).toBeNull();
     });
 
-    it("walks past cars not in the world to the next present one (#885)", () => {
-      // carIdx5 (#99) left the world post-race: next from #42 skips it and
-      // wraps to #3 instead of dispatching a dead switch.
-      expect(computeCarNumberTarget(3, cars, "next", (idx) => idx !== 5)?.carNumberRaw).toBe(3);
-      // Same walk backward: previous from #42 skips absent carIdx1 (#3).
-      expect(computeCarNumberTarget(3, cars, "previous", (idx) => idx !== 1)?.carNumberRaw).toBe(99);
-    });
-
-    it("returns null when no other car is present in the world (#885)", () => {
-      expect(computeCarNumberTarget(3, cars, "next", (idx) => idx === 3)).toBeNull();
+    it("returns null when the focused car is the only car listed — it is never re-targeted", () => {
+      expect(computeCarNumberTarget(3, [cars[1]], "next")).toBeNull();
+      expect(computeCarNumberTarget(3, [cars[1]], "previous")).toBeNull();
     });
   });
 
@@ -271,30 +289,32 @@ describe("camera dial-surface pure helpers", () => {
       });
     });
 
-    it("walks past positions whose car left the world to the next present one (#885)", () => {
-      // Post-race: carIdx2 (P1) towed out but keeps its frozen rank. previous
-      // from P2 skips the dead P1 and wraps to P3 — the next present car.
-      expect(computeRacePositionTarget(3, order, "previous", (idx) => idx !== 2)).toEqual({
+    it("steps past a position no car holds — a gap in the ranks — and nothing else", () => {
+      // carIdx1=P4, carIdx2=P1, carIdx3=P2 (focused): nobody holds P3. Every
+      // RANKED car is a target whatever its world presence (#1281); only the
+      // empty rank is stepped over, wrapping as usual.
+      const gapped = [0, 4, 1, 2];
+      expect(computeRacePositionTarget(3, gapped, "next")).toEqual({
         currentPosition: 2,
-        targetPosition: 3,
-        maxPosition: 3,
+        targetPosition: 4,
+        maxPosition: 4,
       });
-      // Forward too: next from P2 skips an absent P3 (carIdx1) and wraps to P1.
-      expect(computeRacePositionTarget(3, order, "next", (idx) => idx !== 1)).toEqual({
-        currentPosition: 2,
-        targetPosition: 1,
-        maxPosition: 3,
+      expect(computeRacePositionTarget(1, gapped, "previous")).toEqual({
+        currentPosition: 4,
+        targetPosition: 2,
+        maxPosition: 4,
       });
     });
 
-    it("returns null when no other position's car is present in the world (#885)", () => {
-      expect(computeRacePositionTarget(3, order, "next", (idx) => idx === 3)).toBeNull();
+    it("returns null when the focused car is the only ranked car", () => {
+      expect(computeRacePositionTarget(3, [0, 0, 0, 1], "next")).toBeNull();
+      expect(computeRacePositionTarget(3, [0, 0, 0, 1], "previous")).toBeNull();
     });
 
-    it("recovery re-entry also walks past absent cars (#885)", () => {
-      // Focused pace car (unclassified); the leader (carIdx2, P1) left the
-      // world, so next re-enters at P2 instead of the dead P1.
-      expect(computeRacePositionTarget(0, order, "next", (idx) => idx !== 2)).toEqual({
+    it("recovery re-entry also steps past an empty rank", () => {
+      // Focused pace car (unclassified); nobody holds P1, so next re-enters at
+      // P2 rather than resolving a position with no car.
+      expect(computeRacePositionTarget(0, [0, 3, 0, 2], "next")).toEqual({
         currentPosition: null,
         targetPosition: 2,
         maxPosition: 3,
@@ -859,12 +879,11 @@ describe("CameraDialSurface", () => {
       expect(host.cycle).not.toHaveBeenCalled();
     });
 
-    it("skips a car that left the world (post-race) on a counter-clockwise detent (#885)", () => {
+    it("focuses a car that left the world (post-race) on a counter-clockwise detent (#1281)", () => {
       // Cars by number: #3 (carIdx1), #42 (carIdx3, focused), #99 (carIdx5).
-      // carIdx5 despawned (TrackSurface NotInWorld) with stale-but-valid lap
-      // telemetry — the surface signal alone must mark it absent. Counter-
-      // clockwise walks UP the number order since #973, so it wraps past #99
-      // to #3 instead of dead-switching.
+      // carIdx5 despawned (TrackSurface NotInWorld) — #885 used to skip it on
+      // the false premise that iRacing ignores a switch to it. Counter-
+      // clockwise walks UP the number order since #973, so it lands on #99.
       const host = makeHost({
         getTelemetry: vi.fn(
           () =>
@@ -879,13 +898,13 @@ describe("CameraDialSurface", () => {
       const surface = new CameraDialSurface(host as never);
       surface.rotate(dialContext("c885") as never, dial({ mode: "car-number" }), -1, false);
 
-      expect(host.focusCarNumber).toHaveBeenCalledWith(3);
+      expect(host.focusCarNumber).toHaveBeenCalledWith(99);
     });
 
-    it("skips a car that left the world (post-race) on a clockwise detent (#885)", () => {
+    it("focuses a car that left the world (post-race) on a clockwise detent (#1281)", () => {
       // Mirror of the case above for the default direction: carIdx1 (#3) is the
-      // despawned one, so a clockwise detent — which walks DOWN the number order
-      // since #973 — wraps past #3 to #99.
+      // despawned one, and a clockwise detent — which walks DOWN the number
+      // order since #973 — lands on it.
       const host = makeHost({
         getTelemetry: vi.fn(
           () =>
@@ -900,7 +919,50 @@ describe("CameraDialSurface", () => {
       const surface = new CameraDialSurface(host as never);
       surface.rotate(dialContext("c885b") as never, dial({ mode: "car-number" }), 1, false);
 
-      expect(host.focusCarNumber).toHaveBeenCalledWith(99);
+      expect(host.focusCarNumber).toHaveBeenCalledWith(3);
+    });
+
+    it("walks the whole field in the post-race snapshot shape, every car not in the world (#1281)", () => {
+      // Focused #42 (carIdx3); every competitor reads -1 everywhere and only the
+      // pace car is on track. Each detent must still land on a car.
+      const host = makeHost({ getTelemetry: vi.fn(() => postRaceTelemetry(3) as never) });
+      const surface = new CameraDialSurface(host as never);
+      surface.rotate(dialContext("c1281") as never, dial({ mode: "car-number" }), 1, false);
+      surface.rotate(dialContext("c1281") as never, dial({ mode: "car-number" }), -1, false);
+
+      expect(host.focusCarNumber).toHaveBeenNthCalledWith(1, 3); // clockwise → down to #3
+      expect(host.focusCarNumber).toHaveBeenNthCalledWith(2, 99); // counter-clockwise → up to #99
+    });
+
+    it("walks the competitor list only — no pace car, no spectators (#1281)", () => {
+      const host = makeHost({ getTelemetry: vi.fn(() => postRaceTelemetry(3) as never) });
+      const surface = new CameraDialSurface(host as never);
+      surface.rotate(dialContext("c1281b") as never, dial({ mode: "car-number" }), 1, false);
+
+      // (sessionInfo, excludePaceCar, excludeSpectators) — the pace car still on
+      // track in that snapshot is not a candidate.
+      expect(vi.mocked(getAllCarNumbers)).toHaveBeenLastCalledWith(expect.anything(), true, true);
+    });
+
+    it("still steps on the formation lap, where no car has completed a lap (#968)", () => {
+      // Snapshot 20260417-081043's shape: cars on track, every
+      // CarIdxLapCompleted -1 — the lap-count term #968 removed once killed
+      // cycling here for a whole lap.
+      const host = makeHost({
+        getTelemetry: vi.fn(
+          () =>
+            ({
+              CamCarIdx: 3,
+              CarIdxLapCompleted: [-1, -1, -1, -1, -1, -1],
+              CarIdxLapDistPct: [-1, 0.8174, -1, 0.801, -1, 0.8064],
+              CarIdxTrackSurface: [-1, 3, -1, 3, -1, 3],
+            }) as never,
+        ),
+      });
+      const surface = new CameraDialSurface(host as never);
+      surface.rotate(dialContext("c968") as never, dial({ mode: "car-number" }), 1, false);
+
+      expect(host.focusCarNumber).toHaveBeenCalledWith(3);
     });
 
     it("recovers to an end of the field when the pace car (not in the number list) has focus (#803)", () => {
@@ -1073,12 +1135,11 @@ describe("CameraDialSurface", () => {
       expect(host.focusCarNumber).not.toHaveBeenCalledWith(3);
     });
 
-    it("walks past a car that left the world (post-race tow) instead of dispatching a dead switch (#885)", () => {
-      // The reported scenario: post-race replay, still in the session. The
-      // canonical order keeps the towed leader (carIdx2, P1) at its frozen
-      // rank, but the car is NotInWorld (lc/dp -1) — a clockwise detent from
-      // P2 must walk past the dead P1 and wrap to the next PRESENT car (P3,
-      // carIdx1) rather than re-targeting the same dead switch forever.
+    it("focuses a car that left the world at its frozen rank (#1281)", () => {
+      // Post-race replay, still in the session. The canonical order keeps the
+      // towed leader (carIdx2, P1) at its frozen rank while the car is
+      // NotInWorld (lc/dp -1). A switch to it works (#1281 — #885 skipped it
+      // on the opposite premise), so a clockwise detent from P2 lands on P1.
       mockCarNumberRawByIdx.value = { 1: 3, 2: 11, 3: 42 };
       const host = makeHost({
         getRacePositions: vi.fn(() => [0, 3, 1, 2]),
@@ -1095,30 +1156,25 @@ describe("CameraDialSurface", () => {
       const surface = new CameraDialSurface(host as never);
       surface.rotate(dialContext("r885") as never, dial({ mode: "race-position" }), 1, false);
 
-      expect(host.focusCarNumber).toHaveBeenCalledWith(3); // P3's car — the P1 car is gone
-      expect(host.focusCarNumber).not.toHaveBeenCalledWith(11);
+      expect(host.focusCarNumber).toHaveBeenCalledWith(11); // the frozen P1 car
+      expect(host.focusCarNumber).not.toHaveBeenCalledWith(3);
     });
 
-    it("does nothing when every other car has left the world (#885)", () => {
-      // Everyone but the focused car despawned — no present target anywhere in
-      // the walk, so the detent must not dispatch at all.
+    it("walks the frozen order in the post-race snapshot shape, every car not in the world (#1281)", () => {
+      // Every competitor, the focused one included, reads -1 everywhere; only the
+      // pace car is on track. The canonical order still ranks them all, and
+      // each detent lands on the neighbouring rank.
       mockCarNumberRawByIdx.value = { 1: 3, 2: 11, 3: 42 };
       const host = makeHost({
         getRacePositions: vi.fn(() => [0, 3, 1, 2]),
-        getTelemetry: vi.fn(
-          () =>
-            ({
-              CamCarIdx: 3,
-              CarIdxLapCompleted: [-1, -1, -1, 10],
-              CarIdxLapDistPct: [-1, -1, -1, 0.4],
-              CarIdxTrackSurface: [-1, -1, -1, 3],
-            }) as never,
-        ),
+        getTelemetry: vi.fn(() => postRaceTelemetry(3) as never),
       });
       const surface = new CameraDialSurface(host as never);
-      surface.rotate(dialContext("r885b") as never, dial({ mode: "race-position" }), 1, false);
+      surface.rotate(dialContext("r1281") as never, dial({ mode: "race-position" }), 1, false);
+      surface.rotate(dialContext("r1281") as never, dial({ mode: "race-position" }), -1, false);
 
-      expect(host.focusCarNumber).not.toHaveBeenCalled();
+      expect(host.focusCarNumber).toHaveBeenNthCalledWith(1, 11); // clockwise → P1
+      expect(host.focusCarNumber).toHaveBeenNthCalledWith(2, 3); // counter-clockwise → P3
     });
 
     it("does nothing when the focused car has no position", () => {
@@ -1398,13 +1454,12 @@ describe("CameraDialSurface", () => {
       expect(decoded).toMatch(sideText(0.16, "P1")); // counter-clockwise detent → leader
     });
 
-    it("previews the SKIPPED-TO positions when the immediate neighbours left the world (#885)", async () => {
+    it("previews the immediate neighbours even when they left the world (#1281)", async () => {
       // Five cars: carIdx0=P5, carIdx1=P4, carIdx2=P3, carIdx3=P2 (focused),
       // carIdx4=P1. The immediate neighbours both despawned post-race —
-      // carIdx4 (P1) and carIdx2 (P3) — so the detents actually land on P5
-      // (clockwise, walking up past dead P1) and P4 (counter-clockwise,
-      // walking down past dead P3). The side badges must preview THOSE
-      // targets, keeping preview == execution.
+      // carIdx4 (P1) and carIdx2 (P3) — and keep their frozen ranks. The
+      // detents land on them (#885 used to skip them), so the side badges
+      // preview THOSE ranks, keeping preview == execution.
       mockCarNumberByIdx.value = { 0: "50", 1: "40", 2: "30", 3: "42", 4: "10" };
       const host = makeHost({
         getRacePositions: vi.fn(() => [5, 4, 3, 2, 1]),
@@ -1425,8 +1480,21 @@ describe("CameraDialSurface", () => {
 
       const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
 
-      expect(decoded).toMatch(sideText(0.84, "P5")); // clockwise walks past dead P1 to P5
-      expect(decoded).toMatch(sideText(0.16, "P4")); // counter-clockwise walks past dead P3 to P4
+      expect(decoded).toMatch(sideText(0.84, "P1")); // clockwise → the departed P1
+      expect(decoded).toMatch(sideText(0.16, "P3")); // counter-clockwise → the departed P3
+    });
+
+    it("previews departed cars on the car-number strip in the post-race snapshot shape (#1281)", async () => {
+      const host = makeHost({ getTelemetry: vi.fn(() => postRaceTelemetry(3) as never) });
+      const surface = new CameraDialSurface(host as never);
+      const ctx = dialContext("f1281");
+      await surface.willAppear(ctx as never, dial({ mode: "car-number" }));
+
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
+
+      expect(decoded).toContain(">#42<");
+      expect(decoded).toMatch(sideText(0.84, "#3")); // clockwise → #3, not in the world
+      expect(decoded).toMatch(sideText(0.16, "#99")); // counter-clockwise → #99, not in the world
     });
 
     // #852: Sub-Camera is binding-driven (iRacing exposes sub-camera stepping
@@ -2036,6 +2104,33 @@ describe("CameraDialSurface", () => {
       expect(decoded).toContain('viewBox="0 0 176 112"');
       expect(decoded).toMatch(/font-size="44"[^>]*>#\d+</);
       expect(ctx.setImage).not.toHaveBeenCalled();
+    });
+
+    it("names departed cars in the knob's car-number corners in the post-race snapshot shape (#1281)", async () => {
+      const host = makeHost({ getTelemetry: vi.fn(() => postRaceTelemetry(3) as never) });
+      const surface = new CameraDialSurface(host as never);
+      const ctx = dialContext("k1281", KNOB);
+      await surface.willAppear(ctx as never, dial({ mode: "car-number" }));
+
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls[0][0] as string);
+
+      expect(decoded.match(/>#\d+</g)?.sort()).toEqual([">#3<", ">#42<", ">#99<"]);
+    });
+
+    it("names departed cars in the knob's race-position corners in the post-race snapshot shape (#1281)", async () => {
+      mockCarNumberByIdx.value = { 1: "3", 2: "11", 3: "42" };
+      const host = makeHost({
+        getRacePositions: vi.fn(() => [0, 3, 1, 2]),
+        getTelemetry: vi.fn(() => postRaceTelemetry(3) as never),
+      });
+      const surface = new CameraDialSurface(host as never);
+      const ctx = dialContext("k1281b", KNOB);
+      await surface.willAppear(ctx as never, dial({ mode: "race-position" }));
+
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls[0][0] as string);
+
+      expect(decoded).toMatch(/>P1</);
+      expect(decoded).toMatch(/>P3</);
     });
 
     it("falls back to the identity label out of a session", async () => {

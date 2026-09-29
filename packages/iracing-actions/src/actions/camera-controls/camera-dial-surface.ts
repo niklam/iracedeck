@@ -65,17 +65,15 @@
  *     focused car has no classified position (the pace / safety car, or a car
  *     missing from the order), a detent still acts by re-entering the running
  *     order at its end — next → the leader, previous → last place — rather
- *     than stalling (#803). All car modes walk past cars that are no longer
- *     in the sim world (issue #885): post-race, finished/towed cars keep their
- *     frozen rank (and their session-info entry) but iRacing silently ignores
- *     a camera switch to them, so a detent targeting one would dead-loop —
- *     the walk continues along the ordering to the next present car, and the
- *     side previews show that same skipped-to target. Both car modes
- *     judge presence with the one shared `carInWorld` predicate — a valid lap
- *     distance and a surface other than `NotInWorld`, deliberately WITHOUT a
- *     `CarIdxLapCompleted` condition, since that field is still -1 for every
- *     car on the pace lap (the #307 fix; a lap-count term here killed cycling
- *     for the whole formation lap, #968).
+ *     than stalling (#803). Both car modes walk every car the session has had
+ *     (issue #1281): car-number the session-info competitor list (no pace
+ *     car, no spectators), race-position the canonical order as it stands,
+ *     frozen ranks of towed / finished / departed cars included. There is no
+ *     world-presence filter: a camera switch to a car that has left the world
+ *     works, live and in a replay scrubbed back to when it raced, and the
+ *     per-car arrays read the LIVE field during an in-session replay, so a
+ *     presence test would hide exactly the cars a post-race replay shows
+ *     racing (#885's filter, now removed, rested on the opposite premise).
  *
  * Sub-camera and track-order are the two binding-driven modes, so only their
  * screens carry the #612 missing-binding warning (the owning action answers
@@ -111,7 +109,6 @@ import {
   svgToDataUri,
 } from "@iracedeck/deck-core";
 import {
-  carInWorld,
   getAllCarNumbers,
   getCameraGroupsFromSessionInfo,
   getCamerasInGroup,
@@ -382,23 +379,20 @@ export function wrapPosition(current: number, dir: 1 | -1, max: number): number 
  * the number-primary default, a clockwise detent dispatches `previous`, so it
  * re-enters at last place and walks up the field. `currentPosition` is then
  * `null` (no position badge). Returns `null` when there is no usable order at
- * all (no order, or an empty field), or when no present car exists anywhere
- * along the walk.
+ * all (no order, or an empty field), or when no other position along the walk
+ * holds a car.
  *
- * `isPresent` filters to cars that currently exist in the sim world (issue
- * #885): the canonical order deliberately freezes towed / finished /
- * left-world cars at their last-known rank, but iRacing silently ignores a
- * camera switch to an absent car — `CamCarIdx` never moves, so every
- * following detent would recompute the same dead target. The walk (both the
- * classified step and the recovery re-entry) continues along the order,
- * wrapping, until a position whose car is present is found; the focused car's
- * own position is never re-targeted.
+ * Every ranked car is a target, frozen ranks included: the canonical order
+ * keeps a towed / finished / departed car at its last-known rank, and a camera
+ * switch to it works (issue #1281), so there is no world-presence filter. The
+ * walk (both the classified step and the recovery re-entry) only steps past a
+ * position NO car holds — a gap in the ranks — wrapping, and never re-targets
+ * the focused car's own position.
  */
 export function computeRacePositionTarget(
   camCarIdx: number | undefined,
   order: number[] | null,
   direction: Direction,
-  isPresent: (carIdx: number) => boolean = () => true,
 ): { currentPosition: number | null; targetPosition: number; maxPosition: number } | null {
   if (!order || camCarIdx === undefined || camCarIdx < 0) return null;
 
@@ -418,11 +412,9 @@ export function computeRacePositionTarget(
   let candidate = classified ? wrapPosition(currentPosition, dir, maxPosition) : dir === 1 ? 1 : maxPosition;
 
   for (let step = 0; step < maxPosition; step++) {
-    if (classified && candidate === currentPosition) break; // full circle — no other present car
+    if (classified && candidate === currentPosition) break; // full circle — no other ranked car
 
-    const carIdx = carIdxAtPosition(order, candidate);
-
-    if (carIdx !== null && isPresent(carIdx)) {
+    if (carIdxAtPosition(order, candidate) !== null) {
       return { currentPosition: classified ? currentPosition : null, targetPosition: candidate, maxPosition };
     }
 
@@ -509,8 +501,8 @@ export interface CarouselSlot {
 
 /**
  * The car carousel readouts: the focused car's number plus, for car-number,
- * the nearest PRESENT car either way along the ascending order (adjacent unless
- * cars in between left the world, #885), already assigned to their STRIP
+ * the adjacent car either way along the ascending order (every car the session
+ * has had, departed ones included, #1281), already assigned to their STRIP
  * SIDES — left = the counter-clockwise detent's target, right = the clockwise
  * one (#884). Track-order leaves both sides null: iRacing picks its car
  * (#1277).
@@ -746,7 +738,7 @@ export function renderSubCameraCarousel(args: {
  * Renders the car carousel strip (shared by the car-number and track-order
  * modes): the mode-name title on top, the focused car's number large in the
  * centre, flanked by the smaller dimmed numbers of the cars one detent away
- * where the mode previews them (car-number: the nearest PRESENT cars, #885;
+ * where the mode previews them (car-number: the adjacent cars, #1281;
  * `left` is the counter-clockwise detent's target, `right` the clockwise one,
  * #884; track-order passes no sides, #1277). Falls back to a centred identity
  * label out of a session (no focused car number), or to the #612
@@ -1364,16 +1356,13 @@ export class CameraDialSurface {
 
     const telemetry = this.host.getTelemetry();
     const camCarIdx = telemetry?.CamCarIdx;
-    // Skip cars that left the world (#885): post-race the frozen order (and
-    // session info) still lists them, but a switch to an absent car is
-    // silently ignored by iRacing and the dial would dead-loop on it.
-    const isPresent = carInWorld(telemetry);
 
     if (mode === "car-number") {
       // Walks the SAME competitor list the carousel previews (ascending car
-      // number), so the detent lands on the car the side badge showed.
+      // number), so the detent lands on the car the side badge showed. Every
+      // car the session has had is a target, departed ones included (#1281).
       const cars = getAllCarNumbers(this.host.getSessionInfo(), true, true);
-      const target = computeCarNumberTarget(camCarIdx, cars, direction, isPresent);
+      const target = computeCarNumberTarget(camCarIdx, cars, direction);
 
       if (target) this.host.focusCarNumber(target.carNumberRaw);
 
@@ -1387,7 +1376,7 @@ export class CameraDialSurface {
     // and execution can't land on different cars even where canonical and
     // official position orders diverge.
     const order = this.resolveOrder(telemetry);
-    const target = computeRacePositionTarget(camCarIdx, order, direction, isPresent);
+    const target = computeRacePositionTarget(camCarIdx, order, direction);
 
     if (!target || !order) return;
 
@@ -1503,16 +1492,15 @@ export class CameraDialSurface {
     const center = this.focusedCarNumber(sessionInfo, telemetry);
     const cars = getAllCarNumbers(sessionInfo, true, true);
     const clockwise = clockwiseDirection(dial.mode, dial.reverseRotation);
-    // The same world-presence walk the rotation dispatches (#885), so the side
-    // previews show the car a detent actually lands on.
-    const isPresent = carInWorld(telemetry);
 
+    // The same walk the rotation dispatches, so the side previews show the car
+    // a detent actually lands on — a departed car included (#1281).
     return {
       center,
       ...orientSides(
         clockwise,
-        computeCarNumberTarget(camCarIdx, cars, "previous", isPresent)?.carNumber ?? null,
-        computeCarNumberTarget(camCarIdx, cars, "next", isPresent)?.carNumber ?? null,
+        computeCarNumberTarget(camCarIdx, cars, "previous")?.carNumber ?? null,
+        computeCarNumberTarget(camCarIdx, cars, "next")?.carNumber ?? null,
       ),
     };
   }
@@ -1555,11 +1543,10 @@ export class CameraDialSurface {
     const centerCarNumber = this.focusedCarNumber(sessionInfo, telemetry);
 
     const order = this.resolveOrder(telemetry);
-    // The same world-presence walk the rotation dispatches (#885), so the side
-    // previews show the position a detent actually lands on.
-    const isPresent = carInWorld(telemetry);
-    const nextTarget = computeRacePositionTarget(camCarIdx, order, "next", isPresent);
-    const prevTarget = computeRacePositionTarget(camCarIdx, order, "previous", isPresent);
+    // The same walk the rotation dispatches, so the side previews show the
+    // position a detent actually lands on — a frozen rank included (#1281).
+    const nextTarget = computeRacePositionTarget(camCarIdx, order, "next");
+    const prevTarget = computeRacePositionTarget(camCarIdx, order, "previous");
 
     if (!nextTarget || !prevTarget) {
       return { centerPosition: null, centerCarNumber, leftPosition: null, rightPosition: null };
