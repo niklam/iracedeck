@@ -77,7 +77,6 @@ import tv4Svg from "@iracedeck/icons/camera-select/tv4.svg";
 import tvMixedSvg from "@iracedeck/icons/camera-select/tv-mixed.svg";
 import tvStaticSvg from "@iracedeck/icons/camera-select/tv-static.svg";
 import {
-  carInWorld,
   getAllCarNumbers,
   getCameraGroupsFromSessionInfo,
   getCarNumberRawFromSessionInfo,
@@ -993,13 +992,14 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
         // branches use (issue #803). cycleCar's switchPos(carIdx ± 1) treats the
         // car INDEX as a race POSITION, so it lands on whatever car sits at that
         // position and stalls when the focused (pace) car has no valid position.
-        // Reuses the dial car-number mode's ordering (computeCarNumberTarget)
-        // and its world-presence walk (carInWorld, #885/#968) so both surfaces
-        // agree — including skipping cars that left the world post-race; falls
-        // back to the raw cycle helper only out of session (no car list).
+        // Reuses the dial car-number mode's walk (computeCarNumberTarget) over
+        // the same competitor list so both surfaces agree — every car the
+        // session has had, departed ones included, since a switch to one
+        // works (#1281); falls back to the raw cycle helper only out of
+        // session (no car list).
         const sessionInfo = this.sdkController.getSessionInfo();
         const cars = getAllCarNumbers(sessionInfo, true, true);
-        const targetCar = computeCarNumberTarget(carIdx, cars, direction, carInWorld(telemetry));
+        const targetCar = computeCarNumberTarget(carIdx, cars, direction);
 
         if (targetCar) {
           const success = camera.switchNum(targetCar.carNumberRaw, groupNum, cameraNum);
@@ -1007,8 +1007,8 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
           this.logger.debug(`Result: ${success}, direction: ${direction}, carNumberRaw: ${targetCar.carNumberRaw}`);
         } else if (cars.length === 0) {
           // Only fall back to the raw SDK cycle out of session (no car list).
-          // When cars exist but every other one has left the world, do nothing
-          // — matching the dial's no-fallback contract (#885).
+          // When the focused car is the only one listed there is nowhere to
+          // go, so do nothing — matching the dial's no-fallback contract.
           const success = camera.cycleCar(carIdx, dir);
           this.logger.info("Car cycled (fallback)");
           this.logger.debug(`Result: ${success}, direction: ${direction}`);

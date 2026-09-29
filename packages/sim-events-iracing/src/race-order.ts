@@ -48,8 +48,9 @@ import type { TranslatorState } from "./state.js";
  *
  * At the green the order rolls to live lap progress. Every car listed on the
  * grid keeps its slot even when it is not in the world yet (a driver still in
- * the garage starts from their qualifying position all the same); consumers
- * that need presence — the camera walks — filter it themselves via `carInWorld`.
+ * the garage starts from their qualifying position all the same); a consumer
+ * that needs presence filters it itself via `carInWorld`. The race-position
+ * camera walk deliberately does not: it walks every ranked car (#1281).
  * Class position is derived from this order by `classPositionFromOrder` exactly
  * as it is during the race, so the grid's own `ClassPosition` field is never
  * read and class can't be sourced independently.

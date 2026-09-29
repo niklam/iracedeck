@@ -31,8 +31,7 @@
  *   improbability `diff/laps.ts` accepts. A first crossing (−1 → 0) opens no
  *   wait: no lap was completed.
  * - **Gate: record only what is live and observable.** A tick is eligible
- *   when `IsReplayPlaying !== true` (the per-car arrays follow the replay
- *   cursor while a replay is on screen), the session is not replay-only
+ *   when `IsReplayPlaying !== true`, the session is not replay-only
  *   (#604's `SimMode` — a `.rpy` has nothing live in it), `SessionNum >= 0`,
  *   and a frame is readable. Every ineligible tick marks the recorder
  *   unseeded; the first eligible tick after it re-seeds every baseline
@@ -42,6 +41,16 @@
  *   walk. This is why the diff runs BEFORE the translator's replay guard: the
  *   guard's early return would stop it on exactly the ticks it has to notice
  *   it cannot see.
+ *
+ *   The replay gate is NOT there because the per-car arrays follow the replay
+ *   cursor: two snapshots of a post-race in-session replay (2026-09-29, #1281)
+ *   show `CarIdxLapCompleted`, `CarIdxLapDistPct` and `CarIdxTrackSurface`
+ *   reading the LIVE field — departed cars at −1 at a replay moment where they
+ *   are racing. It is there because of the
+ *   FRAME: in a replay `resolveReplayFrame` returns `ReplayFrameNum`, the
+ *   cursor's position, so a live crossing seen on a replay tick would be
+ *   stamped with whatever moment the driver is watching rather than the frame
+ *   the car crossed at. The gate therefore stays.
  * - **Session change** (`SessionNum` or `SessionUniqueID` moves) re-seeds; the
  *   store starts a new session record from the events' identity.
  * - **The pace car is skipped** (`resolvePaceCarIdx`), and so is a car the

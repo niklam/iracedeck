@@ -62,7 +62,6 @@ import speedDisplayIconSvg from "@iracedeck/icons/replay-control/speed-display.s
 import speedIncreaseIconSvg from "@iracedeck/icons/replay-control/speed-increase.svg";
 import stopIconSvg from "@iracedeck/icons/replay-control/stop.svg";
 import {
-  carInWorld,
   findNearestCarOnTrack,
   getAllCarNumbers,
   getCarNumberRawFromSessionInfo,
@@ -806,23 +805,24 @@ export function findFastestLapForCar(
  * @internal Exported for testing
  *
  * Find the next or previous car by car number order.
- * Includes all cars (even in pits), skips the pace car.
  * Returns the CarNumberRaw value for camera API use, or null if not found.
  *
- * Delegates to the shared `computeCarNumberTarget` walk (#885), so an
- * `isPresent` predicate (the shared `carInWorld`) makes it skip cars that are no
- * longer in the sim world — session info keeps every driver listed after they
- * tow out or leave post-race, but iRacing silently ignores a camera switch to
- * an absent car, which would dead-loop the cycle on the same target.
+ * Walks every car the session has had (issue #1281) — in the pits, towed or
+ * departed alike — over the same competitor list as Camera Controls' car-number
+ * walk (no pace car, no spectators), through the shared
+ * `computeCarNumberTarget`. There is no world-presence filter: a camera switch
+ * to a car that has left the world works, live and in a replay scrubbed back to
+ * when it raced, and the per-car telemetry arrays read the live field during an
+ * in-session replay, so they could not say whether the car is racing at the
+ * replay moment anyway.
  */
 export function findAdjacentCarByNumber(
   sessionInfo: unknown,
   currentCarIdx: number,
   direction: "next" | "prev",
-  isPresent?: (carIdx: number) => boolean,
 ): number | null {
-  const allCars = getAllCarNumbers(sessionInfo, true);
-  const target = computeCarNumberTarget(currentCarIdx, allCars, direction === "next" ? "next" : "previous", isPresent);
+  const allCars = getAllCarNumbers(sessionInfo, true, true);
+  const target = computeCarNumberTarget(currentCarIdx, allCars, direction === "next" ? "next" : "previous");
 
   return target?.carNumberRaw ?? null;
 }
@@ -2402,9 +2402,8 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
 
         const sessionInfo = this.sdkController.getSessionInfo();
         const navDirection = mode === "next-car-number" ? "next" : "prev";
-        // Skip cars that left the world (#885) — switching to one is silently
-        // ignored by iRacing and would dead-loop the cycle on the same target.
-        const carNum = findAdjacentCarByNumber(sessionInfo, camCarIdx, navDirection, carInWorld(telemetry));
+        // Every car the session has had, departed ones included (#1281).
+        const carNum = findAdjacentCarByNumber(sessionInfo, camCarIdx, navDirection);
 
         if (carNum === null) {
           this.logger.warn("Could not find adjacent car by number");

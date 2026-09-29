@@ -128,9 +128,6 @@ vi.mock("@iracedeck/iracing-sdk", async (importOriginal) => {
 
   return {
     TrkLoc: actual.TrkLoc,
-    // The REAL in-world predicate (#968): presence is the behaviour under test
-    // in the world-walk cases, so mocking it would assert the mock, not the rule.
-    carInWorld: actual.carInWorld,
     getCameraGroupsFromSessionInfo: vi.fn(() => []),
     getCamerasInGroup: vi.fn(() => []),
     getCarNumberRawFromSessionInfo: vi.fn(() => null),
@@ -1554,10 +1551,11 @@ describe("cycle-car focuses the neighbour by car number (pace-car recovery #803)
     expect(mockCamera.switchNum).toHaveBeenCalledWith(12, 9, 2);
   });
 
-  it("skips a car that left the world and focuses the next present one (#885)", async () => {
+  it("focuses a car that left the world rather than skipping it (#1281)", async () => {
     // Three cars: #7 (carIdx 5, focused), #12 (carIdx 9), #30 (carIdx 11).
-    // carIdx 9 despawned post-race (NotInWorld, lap telemetry -1) — the keypad
-    // Cycle Car walk must skip it to #30, same as the dial car-number mode.
+    // carIdx 9 despawned post-race (NotInWorld, lap telemetry -1). A switch to
+    // it works (#885 skipped it on the opposite premise), so the keypad Cycle
+    // Car walk lands on #12, same as the dial car-number mode.
     const action = new CameraControls();
     sdk(action).getCurrentTelemetry.mockReturnValue({
       CamCarIdx: 5,
@@ -1578,25 +1576,58 @@ describe("cycle-car focuses the neighbour by car number (pace-car recovery #803)
       payload: { settings: { target: "cycle-car", direction: "next" } },
     } as never);
 
-    expect(mockCamera.switchNum).toHaveBeenCalledWith(30, 9, 2);
+    expect(mockCamera.switchNum).toHaveBeenCalledWith(12, 9, 2);
   });
 
-  it("does nothing when every other car has left the world — no raw-cycle fallback (#885)", async () => {
-    // Cars exist in session info but the only other one (#12, carIdx 9)
-    // despawned. The raw cycleCar fallback is reserved for the true
-    // out-of-session case (empty car list) — an all-absent field must no-op,
-    // matching the dial's no-fallback contract.
+  it("walks the whole field in the post-race snapshot shape, every car not in the world (#1281)", async () => {
+    // The 2026-09-29 capture's shape: every competitor reads -1 in lap
+    // distance, surface and laps (at the live end and mid-replay alike), the
+    // pace car alone on track. Each press still lands on the neighbour.
+    const notInWorld = new Array<number>(72).fill(-1);
+    const lapDistPct = [...notInWorld];
+    const trackSurface = [...notInWorld];
+    lapDistPct[64] = 0.0595;
+    trackSurface[64] = 2;
     const action = new CameraControls();
     sdk(action).getCurrentTelemetry.mockReturnValue({
       CamCarIdx: 5,
       CamGroupNumber: 9,
       CamCameraNumber: 2,
-      CarIdxLapCompleted: [-1, -1, -1, -1, -1, 10, -1, -1, -1, -1],
-      CarIdxLapDistPct: [-1, -1, -1, -1, -1, 0.5, -1, -1, -1, -1],
-      CarIdxTrackSurface: [-1, -1, -1, -1, -1, 3, -1, -1, -1, -1],
+      IsReplayPlaying: true,
+      CarIdxLapCompleted: [...notInWorld],
+      CarIdxLapDistPct: lapDistPct,
+      CarIdxTrackSurface: trackSurface,
     });
     sdk(action).getSessionInfo.mockReturnValue({});
-    vi.mocked(getAllCarNumbers).mockReturnValue(CARS);
+    vi.mocked(getAllCarNumbers).mockReturnValue([
+      ...CARS,
+      { carIdx: 11, carNumber: "30", carNumberRaw: 30, userName: "c" },
+    ]);
+
+    await action.onKeyDown({
+      action: { id: "k1" },
+      payload: { settings: { target: "cycle-car", direction: "next" } },
+    } as never);
+    await action.onKeyDown({
+      action: { id: "k1" },
+      payload: { settings: { target: "cycle-car", direction: "previous" } },
+    } as never);
+
+    expect(mockCamera.switchNum).toHaveBeenNthCalledWith(1, 12, 9, 2);
+    expect(mockCamera.switchNum).toHaveBeenNthCalledWith(2, 30, 9, 2); // wraps below #7 to #30
+    // The competitor list: (sessionInfo, excludePaceCar, excludeSpectators).
+    expect(vi.mocked(getAllCarNumbers)).toHaveBeenLastCalledWith(expect.anything(), true, true);
+  });
+
+  it("does nothing when the focused car is the only one listed — no raw-cycle fallback", async () => {
+    // Cars exist in session info but the focused one is the whole list, so
+    // there is nowhere to go. The raw cycleCar fallback is reserved for the
+    // true out-of-session case (empty car list), matching the dial's
+    // no-fallback contract.
+    const action = new CameraControls();
+    sdk(action).getCurrentTelemetry.mockReturnValue({ CamCarIdx: 5, CamGroupNumber: 9, CamCameraNumber: 2 });
+    sdk(action).getSessionInfo.mockReturnValue({});
+    vi.mocked(getAllCarNumbers).mockReturnValue([CARS[0]]);
 
     await action.onKeyDown({
       action: { id: "k1" },
