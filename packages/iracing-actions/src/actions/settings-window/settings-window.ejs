@@ -270,15 +270,34 @@
 			  var __rawBindings = require('./data/key-bindings.json');
 			  // One row per SETTING. A binding that key-bindings.json lists under two
 			  // categories (the FFB force pair sits under both Cockpit Misc and Force
-			  // Feedback, for their two PIs) is ONE global setting; two live inputs bound
-			  // to it would just mirror each other and inflate the count.
-			  var __seenSettings = {};
+			  // Feedback, and iRacing's Next / Previous Car under both Replay Control and
+			  // Camera Controls, #1277 — each for its own PIs) is ONE global setting; two
+			  // live inputs bound to it would just mirror each other and inflate the count.
+			  //
+			  // Which category keeps the row: the one whose key PREFIXES the setting name
+			  // (`replayControlNextCar` → replayControl, `cockpitMiscFfbForceIncrease` →
+			  // cockpitMisc) — the category that owns the setting, the longest such key if
+			  // several do — and, when no listing category prefixes it, the first one that
+			  // lists it. Never plain first-seen: that follows the file's category order,
+			  // so listing a setting under an earlier category would move its row there
+			  // and could leave its owner empty.
+			  // settings-window-bindings.test.ts runs this block against the real JSON.
+			  var __ownerOf = {};
+			  Object.keys(__rawBindings).forEach(function (c) {
+			    __rawBindings[c].forEach(function (b) {
+			      var owner = __ownerOf[b.setting];
+			      var ownsByPrefix = b.setting.indexOf(c) === 0;
+			      var ownerByPrefix = owner !== undefined && b.setting.indexOf(owner) === 0;
+			      // A prefix beats no prefix, and a longer prefix a shorter one.
+			      if (owner === undefined || (ownsByPrefix && (!ownerByPrefix || c.length > owner.length))) {
+			        __ownerOf[b.setting] = c;
+			      }
+			    });
+			  });
 			  var __allBindings = {};
 			  Object.keys(__rawBindings).forEach(function (c) {
 			    __allBindings[c] = __rawBindings[c].filter(function (b) {
-			      if (__seenSettings[b.setting]) return false;
-			      __seenSettings[b.setting] = true;
-			      return true;
+			      return __ownerOf[b.setting] === c;
 			    });
 			  });
 			  var __categories = Object.keys(__allBindings);

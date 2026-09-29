@@ -37,7 +37,7 @@ import {
   SDPI_THEME,
   UI_TEXT,
 } from "./key-binding-utils.js";
-import { KEY_CODE_MAP, type Modifier, resolveEventCode } from "./key-maps.js";
+import { keyForCode, type Modifier, resolveEventCode } from "./key-maps.js";
 import { skipUnchanged } from "./settings-change-filter.js";
 import { probeSimHub } from "./simhub-probe.js";
 
@@ -45,8 +45,10 @@ import { probeSimHub } from "./simhub-probe.js";
  * SYNC NOTE: The types below (SimHubBindingValue, BindingValue) and the
  * isSimHubBinding() guard are browser-side duplicates of their counterparts
  * in @iracedeck/deck-core/global-settings.ts. The PI runs in a browser
- * context and cannot import from deck-core (Node.js). When modifying
- * binding types, update BOTH locations.
+ * context and cannot import the deck-core barrel (Node.js) — only a
+ * dependency-free subpath such as `@iracedeck/deck-core/key-binding-defaults`,
+ * where the key map and default parser live (#1277). When modifying binding
+ * types, update BOTH locations.
  *
  * Key invariant: both KeyBindingValue and SimHubBindingValue have a `type`
  * discriminant field ("keyboard" and "simhub" respectively).
@@ -624,7 +626,7 @@ class KeyBindingInput extends HTMLElement {
     }
 
     const code = resolveEventCode(e.code, e.key);
-    const key = KEY_CODE_MAP[code];
+    const key = keyForCode(code);
 
     if (!key) return;
 

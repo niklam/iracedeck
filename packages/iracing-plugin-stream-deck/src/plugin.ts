@@ -164,6 +164,7 @@ import {
   resolveVoicePacksPath,
   runFirstRunCheck,
   runVersionCheck,
+  seedBindingDefaultsIfAbsent,
   SETTINGS_WINDOW_BOUNDS_KEY,
   SETTINGS_WINDOW_HTML,
   type SettingsWindowOpenOptions,
@@ -201,6 +202,7 @@ import {
   CameraEditorAdjustments,
   CameraEditorControls,
   CAR_CONTROL_UUID,
+  CAR_CYCLE_BINDING_DEFAULTS,
   CarControl,
   Chat,
   CHAT_UUID,
@@ -1655,6 +1657,12 @@ void voicePackLaunch.start();
 
 // Migrate the pre-#953 spring binding keys (Left/Right -> LR/RR) once real settings arrive
 migrateGlobalSettingsKeys(SETUP_CHASSIS_BINDING_KEY_RENAMES, adapter.createLogger("SettingsMigration"));
+
+// Seed iRacing's Next / Previous Car bindings for anyone who has never stored
+// them (#1277): Cycle by Track Order now taps them, and before that nothing but
+// a Replay Control panel ever wrote them. Every start, once the stored settings
+// are in; a stored value, cleared ones included, is never touched.
+seedBindingDefaultsIfAbsent(CAR_CYCLE_BINDING_DEFAULTS, adapter.createLogger("SettingsMigration"));
 
 // Wire profile switching (Elgato-only) for the Switch Profile action and the
 // "Stream Deck Profiles" settings buttons (#736)

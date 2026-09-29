@@ -1,24 +1,17 @@
 /**
- * Shared car-cycling helpers for every feature that steps the camera through
- * the field (issue #885, #886, #960):
+ * Shared car-cycling helper for every feature that steps the camera through
+ * the field by ascending CAR NUMBER (issue #885): the Camera Controls dial's
+ * car-number mode, the keypad Cycle Car mode, and Replay Control's
+ * next/previous-car-by-number modes all walk the same ordering with the same
+ * world-presence rule, so a car that left the sim world can't dead-loop any of
+ * them (presence is judged by the shared `carInWorld` predicate — see #968 for
+ * why lap count is not part of that test).
  *
- *   - by ascending CAR NUMBER — the Camera Controls dial's car-number mode, the
- *     keypad Cycle Car mode, and Replay Control's next/previous-car-by-number
- *     modes all walk the same ordering with the same world-presence rule, so a
- *     car that left the sim world can't dead-loop any of them (presence is
- *     judged by the shared `carInWorld` predicate — see #968 for why lap count
- *     is not part of that test);
- *   - by PHYSICAL TRACK ORDER — the Camera Controls dial's track-order mode
- *     (#886) and its keypad Cycle by Track Order mode (#960) step to the
- *     competitor physically ahead of / behind the focused car on the road (the
- *     two surfaces share both the target computation and the `next`-means-ahead
- *     reading below, so they cannot disagree), via the SAME
- *     `findNearestCarOnTrack` primitive behind
- *     the SDK's `track_ahead` / `track_behind` template variables
- *     (`findNearestDriverOnTrack`) and Replay Control's dial handler (never a
- *     second track-order computation).
+ * Stepping by PHYSICAL TRACK ORDER is not computed here any more: since #1277
+ * Camera Controls' Cycle by Track Order taps iRacing's own Next / Previous Car
+ * bindings (`car-cycle-bindings.ts`), because a computation over the live field
+ * followed the live cars, not the replay the driver is watching.
  */
-import { findNearestCarOnTrack, type TelemetryData } from "@iracedeck/iracing-sdk";
 
 /** A rotation/press dispatch direction in the ascending car-number ordering. */
 export type CarCycleDirection = "next" | "previous";
@@ -63,69 +56,4 @@ export function computeCarNumberTarget(
   }
 
   return null;
-}
-
-/** A dispatch direction along the physical track: towards the car ahead or the one behind. */
-export type TrackOrderDirection = "ahead" | "behind";
-
-/**
- * The physical-track reading of a cycle direction (issues #886, #960): `next`
- * is the car AHEAD on the road (the direction of travel), `previous` the car
- * BEHIND. The one place that mapping lives — every surface that steps along
- * the road routes through it (the dial's rotation dispatch AND its carousel
- * preview, so preview == execution; the keypad's Cycle by Track Order press),
- * so the two surfaces cannot drift into opposite readings of the same word.
- */
-export function trackOrderDirection(direction: CarCycleDirection): TrackOrderDirection {
-  return direction === "next" ? "ahead" : "behind";
-}
-
-/** The competitor a track-order step lands on: its identity for dispatch (`carNumberRaw`) and display (`carNumber`). */
-export interface TrackOrderTarget {
-  carIdx: number;
-  carNumberRaw: number;
-  carNumber: string;
-}
-
-/**
- * Compute the neighbouring COMPETITOR by physical track order (issue #886):
- * the car nearest ahead of / behind the focused car (`camCarIdx`) by circular
- * lap distance (`CarIdxLapDistPct`), regardless of lap count or race position
- * — a lapped car sitting just ahead on the road IS the car ahead. Delegates to
- * the shared `findNearestCarOnTrack` (`@iracedeck/iracing-sdk`), the one
- * track-order primitive in the project (also behind the SDK's
- * `findNearestDriverOnTrack` template helper and Replay Control's dial
- * handler), so the consumers never drift; this wrapper only adds the
- * competitor filter and the car-number lookup the camera dispatch needs.
- *
- * `cars` is the competitor list (`getAllCarNumbers(sessionInfo, true, true)` —
- * pace car and spectators excluded); any car outside it is skipped even when it
- * is physically closer, so the pace car under caution is never targeted. Cars
- * no longer in the sim world are skipped by the primitive's own use of the
- * shared `carInWorld` predicate (a valid lap distance and a surface other than
- * `NotInWorld`), so a towed / exited car can't dead-loop the cycle (the #885
- * concern) — the same rule the car-number walk applies, since #968 made it one
- * predicate. When the focused car has no track position of its own (not in the
- * world), the primitive's documented fallback re-enters the field at the car
- * nearest the start/finish line for BOTH directions. Returns `null` without
- * telemetry, without a focused car, or when no other competitor is on track —
- * the focused car is never re-targeted.
- */
-export function computeTrackOrderTarget(
-  telemetry: TelemetryData | null,
-  camCarIdx: number | undefined,
-  cars: ReadonlyArray<{ carIdx: number; carNumber: string; carNumberRaw: number }>,
-  direction: TrackOrderDirection,
-): TrackOrderTarget | null {
-  if (camCarIdx === undefined || cars.length === 0) return null;
-
-  const competitorsByIdx = new Map(cars.map((car) => [car.carIdx, car]));
-  const carIdx = findNearestCarOnTrack(telemetry, camCarIdx, direction, {
-    skipIdx: (idx) => !competitorsByIdx.has(idx),
-  });
-  // `skipIdx` guarantees any returned index is a competitor, so the lookup only
-  // misses when the primitive found nothing.
-  const car = carIdx === null ? undefined : competitorsByIdx.get(carIdx);
-
-  return car ? { carIdx: car.carIdx, carNumberRaw: car.carNumberRaw, carNumber: car.carNumber } : null;
 }

@@ -706,7 +706,9 @@
       "label": "Previous Sub-Camera",
       "default": "Shift+B",
       "setting": "cameraControlsSubCameraPrevious"
-    }
+    },
+    { "id": "nextCar", "label": "Next Car", "default": "V", "setting": "replayControlNextCar" },
+    { "id": "prevCar", "label": "Previous Car", "default": "Shift+V", "setting": "replayControlPrevCar" }
   ],
   "cameraEditorAdjustments": [
     { "id": "latitudeIncrease", "label": "Latitude +", "default": "D", "setting": "camEditLatitudeIncrease" },

@@ -969,6 +969,9 @@ importers:
       '@iracedeck/deck-core':
         specifier: workspace:*
         version: link:../deck-core
+      '@rollup/plugin-node-resolve':
+        specifier: 16.0.3
+        version: 16.0.3(rollup@4.63.5)
       '@rollup/plugin-terser':
         specifier: 1.0.0
         version: 1.0.0(rollup@4.63.5)

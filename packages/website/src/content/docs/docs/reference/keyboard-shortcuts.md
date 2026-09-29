@@ -158,11 +158,14 @@ Actions marked "Available via SDK" use SDK commands directly and don't require k
 |--------|-----------------|-------------------|-----------------|
 | Cycle Camera | C / Shift+C | Yes | Next / Previous Camera |
 | Cycle Sub Camera | B / Shift+B | No | Next / Previous Sub Camera |
-| Cycle Car | V / Shift+V | Yes | Next / Previous Car |
+| Cycle Car | - | Yes | - |
+| Cycle by Track Order | V / Shift+V | No | Next / Previous Car |
 | Focus on Your Car | Ctrl+V | Yes | Your Car |
 | Cycle Driving Camera | PageDown / PageUp | Yes | Next / Previous Driving Camera |
 
 Sub-camera stepping is the one camera function iRacing does not expose to plugins: its camera commands act on the focused car and the camera group only, never on the individual camera within a group. Camera Controls' Cycle Sub-Camera mode therefore triggers these `B` / `Shift+B` bindings, which it comes preconfigured with.
+
+Next / Previous Car is available through the SDK as a switch to a given car, but only iRacing's own control knows which car is ahead of or behind the focused one at every moment of a replay. Camera Controls' Cycle by Track Order mode therefore triggers the `V` / `Shift+V` bindings as well, sharing them with Replay Control's Next Car / Previous Car modes; both come preconfigured with them.
 
 ## Car Setup Adjustments
 

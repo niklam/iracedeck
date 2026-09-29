@@ -1,15 +1,38 @@
 import type { ILogger } from "@iracedeck/logger";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { migrateGlobalSettingsKeys, migrateRaceEngineerVoiceId } from "./global-settings-migrations.js";
+import { _resetBindingDispatcher, initializeBindingDispatcher } from "./binding-dispatcher.js";
+import {
+  migrateGlobalSettingsKeys,
+  migrateRaceEngineerVoiceId,
+  seedBindingDefaultsIfAbsent,
+} from "./global-settings-migrations.js";
 import {
   _resetGlobalSettings,
   getGlobalSettings,
+  getSettingsStoreSource,
+  GlobalSettingsSchema,
   initGlobalSettings,
+  isSettingsStoreHostDerived,
+  isSettingsStoreReady,
+  MIGRATION_ABANDONED_KEY,
+  MIGRATION_PENDING_KEY,
+  runOnceSettingsStoreReady,
   updateGlobalSettings,
 } from "./global-settings.js";
 import { createMemorySettingsStore } from "./settings-store.js";
 import type { IDeckPlatformAdapter } from "./types.js";
+
+// Only the native send is replaced: the positive control below drives the REAL
+// binding dispatcher over the REAL settings cache, so a seeded value has to
+// survive the same parse a key press does.
+const { mockSendKeyCombination } = vi.hoisted(() => ({
+  mockSendKeyCombination: vi.fn().mockResolvedValue(true),
+}));
+
+vi.mock("./keyboard-service.js", () => ({
+  getKeyboard: () => ({ sendKeyCombination: mockSendKeyCombination }),
+}));
 
 type EchoCallback = (settings: unknown) => void;
 
@@ -51,6 +74,61 @@ const RENAMES = {
 };
 
 const cache = (): Record<string, unknown> => getGlobalSettings() as Record<string, unknown>;
+
+describe("runOnceSettingsStoreReady", () => {
+  beforeEach(() => {
+    _resetGlobalSettings();
+  });
+
+  afterEach(() => {
+    _resetGlobalSettings();
+  });
+
+  it("runs at once on a ready store", async () => {
+    initWithStore({});
+    await tick();
+    const action = vi.fn();
+
+    runOnceSettingsStoreReady(action);
+
+    expect(action).toHaveBeenCalledTimes(1);
+  });
+
+  it("waits for the store, runs once, and never again on later changes", async () => {
+    initWithStore({});
+    const action = vi.fn();
+
+    runOnceSettingsStoreReady(action);
+    updateGlobalSettings({ early: 1 }); // a change before ready does not count
+    expect(action).not.toHaveBeenCalled();
+
+    await tick();
+    updateGlobalSettings({ later: 1 });
+
+    expect(action).toHaveBeenCalledTimes(1);
+  });
+
+  it("is done before the action runs, so an action that writes settings is not re-entered", async () => {
+    initWithStore({});
+    const action = vi.fn(() => updateGlobalSettings({ writtenByAction: true }));
+
+    runOnceSettingsStoreReady(action);
+    await tick();
+
+    expect(action).toHaveBeenCalledTimes(1);
+    expect(cache().writtenByAction).toBe(true);
+  });
+
+  it("runs nothing once disposed before the store is ready", async () => {
+    initWithStore({});
+    const action = vi.fn();
+
+    runOnceSettingsStoreReady(action)();
+    await tick();
+
+    expect(action).not.toHaveBeenCalled();
+  });
+});
 
 describe("migrateGlobalSettingsKeys", () => {
   beforeEach(() => {
@@ -256,5 +334,340 @@ describe("migrateRaceEngineerVoiceId (#1144)", () => {
 
     expect(migrateRaceEngineerVoiceId(VOICES, createMockLogger())).toBe(false);
     expect(store.saved).toHaveLength(saves);
+  });
+});
+
+describe("seedBindingDefaultsIfAbsent (#1277)", () => {
+  // What Camera Controls' Cycle by Track Order supplies (iracing-actions'
+  // CAR_CYCLE_BINDING_DEFAULTS, read from key-bindings.json).
+  const DEFAULTS = { replayControlNextCar: "V", replayControlPrevCar: "Shift+V" };
+  // What `ird-key-binding` saves for those defaults: JSON.stringify(parseSimpleDefault(...)).
+  // One parser for both (deck-core key-binding-defaults.ts); pi-components'
+  // key-binding-input.default-save.test.ts pins the field's save to it.
+  const NEXT_STORED = '{"type":"keyboard","key":"v","modifiers":[],"code":"KeyV"}';
+  const PREV_STORED = '{"type":"keyboard","key":"v","modifiers":["shift"],"code":"KeyV"}';
+  const CUSTOM = JSON.stringify({ type: "keyboard", key: "n", modifiers: ["ctrl"], code: "KeyN" });
+
+  /** An adapter whose host answer the test can deliver (`echo`). */
+  function createEchoAdapter(): { adapter: IDeckPlatformAdapter; echo: (settings: unknown) => void } {
+    let echo: EchoCallback = () => {};
+
+    const adapter = {
+      onDidReceiveGlobalSettings: (cb: EchoCallback) => {
+        echo = cb;
+      },
+      setGlobalSettings: vi.fn<(settings: Record<string, unknown>) => void>(),
+      getGlobalSettings: vi.fn<() => void>(),
+    } as unknown as IDeckPlatformAdapter;
+
+    return { adapter, echo: (settings) => echo(settings) };
+  }
+
+  /** A defaults-born file, as a fresh start persisted it. */
+  const defaultsFile = (extra: Record<string, unknown>): Record<string, unknown> => ({
+    ...(GlobalSettingsSchema.parse({}) as Record<string, unknown>),
+    ...extra,
+  });
+
+  beforeEach(() => {
+    _resetGlobalSettings();
+    _resetBindingDispatcher();
+    mockSendKeyCombination.mockClear();
+  });
+
+  afterEach(() => {
+    _resetGlobalSettings();
+    _resetBindingDispatcher();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it("seeds both keys, in the value the binding field stores, when neither was ever stored", async () => {
+    const store = initWithStore({ driverName: "kept" });
+    await tick();
+    const logger = createMockLogger();
+
+    seedBindingDefaultsIfAbsent(DEFAULTS, logger);
+
+    expect(cache().replayControlNextCar).toBe(NEXT_STORED);
+    expect(cache().replayControlPrevCar).toBe(PREV_STORED);
+    expect(logger.info).toHaveBeenCalledWith("Seeded default key bindings");
+    expect(logger.warn).not.toHaveBeenCalled();
+    expect(store.saved.at(-1)).toMatchObject({
+      replayControlNextCar: NEXT_STORED,
+      replayControlPrevCar: PREV_STORED,
+      driverName: "kept",
+    });
+  });
+
+  it("never touches a stored binding — only the absent key is seeded", async () => {
+    initWithStore({ replayControlNextCar: CUSTOM });
+    await tick();
+
+    seedBindingDefaultsIfAbsent(DEFAULTS, createMockLogger());
+
+    expect(cache().replayControlNextCar).toBe(CUSTOM);
+    expect(cache().replayControlPrevCar).toBe(PREV_STORED);
+  });
+
+  it("keeps a deliberately cleared binding cleared", async () => {
+    const store = initWithStore({ replayControlNextCar: "", replayControlPrevCar: "" });
+    await tick();
+    const savesBefore = store.saved.length;
+
+    seedBindingDefaultsIfAbsent(DEFAULTS, createMockLogger());
+
+    expect(cache().replayControlNextCar).toBe("");
+    expect(cache().replayControlPrevCar).toBe("");
+    expect(store.saved).toHaveLength(savesBefore);
+  });
+
+  it("writes nothing before the stored settings have loaded, then seeds once they have", async () => {
+    initWithStore({});
+
+    seedBindingDefaultsIfAbsent(DEFAULTS, createMockLogger());
+
+    // The cache is pure schema defaults here: absence proves nothing.
+    expect(isSettingsStoreReady()).toBe(false);
+    expect(cache().replayControlNextCar).toBeUndefined();
+
+    // A change arriving before the store is ready must not trigger it either.
+    updateGlobalSettings({ someOtherKey: "early" });
+    expect(cache().replayControlNextCar).toBeUndefined();
+
+    await tick();
+
+    expect(cache().replayControlNextCar).toBe(NEXT_STORED);
+    expect(cache().replayControlPrevCar).toBe(PREV_STORED);
+  });
+
+  it("runs harmlessly a second time (every start calls it)", async () => {
+    const store = initWithStore({});
+    await tick();
+
+    seedBindingDefaultsIfAbsent(DEFAULTS, createMockLogger());
+    const savesAfterSeed = store.saved.length;
+    seedBindingDefaultsIfAbsent(DEFAULTS, createMockLogger());
+    updateGlobalSettings({ someOtherKey: "value" });
+
+    expect(store.saved).toHaveLength(savesAfterSeed + 1); // only the unrelated write
+    expect(cache().replayControlNextCar).toBe(NEXT_STORED);
+    expect(cache().replayControlPrevCar).toBe(PREV_STORED);
+  });
+
+  it("skips a default that names no key rather than storing an empty binding", async () => {
+    initWithStore({});
+    await tick();
+    const logger = createMockLogger();
+
+    seedBindingDefaultsIfAbsent({ replayControlNextCar: "V", somethingElse: "Hyper+Q1" }, logger);
+
+    expect(cache().replayControlNextCar).toBe(NEXT_STORED);
+    expect(cache().somethingElse).toBeUndefined();
+    expect(logger.warn).toHaveBeenCalled();
+  });
+
+  it("claims the seed only for a write that landed, and warns when the write was rejected", async () => {
+    initWithStore({});
+    await tick();
+    const logger = createMockLogger();
+    // The seed's own write fails its parse wholesale, so updateGlobalSettings
+    // drops it — the cache never holds the value the seed handed over.
+    vi.spyOn(GlobalSettingsSchema, "safeParse").mockReturnValueOnce({
+      success: false,
+      error: { issues: [{ path: [] }] },
+    } as unknown as ReturnType<typeof GlobalSettingsSchema.safeParse>);
+
+    seedBindingDefaultsIfAbsent(DEFAULTS, logger);
+
+    expect(cache().replayControlNextCar).toBeUndefined();
+    expect(logger.info).not.toHaveBeenCalledWith("Seeded default key bindings");
+    expect(logger.warn).toHaveBeenCalledWith("Binding default seed write was rejected");
+  });
+
+  describe("only on a store that has read the deck host", () => {
+    it("seeds after a host migration, keeping what the host held", async () => {
+      const { adapter, echo } = createEchoAdapter();
+      initGlobalSettings(adapter, createMockLogger(), createMemorySettingsStore());
+      seedBindingDefaultsIfAbsent(DEFAULTS, createMockLogger());
+      await tick();
+
+      echo({ replayControlNextCar: CUSTOM });
+
+      expect(getSettingsStoreSource()).toBe("host");
+      expect(isSettingsStoreHostDerived()).toBe(true);
+      expect(cache().replayControlNextCar).toBe(CUSTOM);
+      expect(cache().replayControlPrevCar).toBe(PREV_STORED);
+    });
+
+    it("does not seed a fresh store (the host never answered): the binding may be in the copy nobody read", async () => {
+      vi.useFakeTimers();
+      const store = createMemorySettingsStore();
+      initGlobalSettings(createMockAdapter(), createMockLogger(), store, { migrationTimeoutMs: 20 });
+      const logger = createMockLogger();
+      seedBindingDefaultsIfAbsent(DEFAULTS, logger);
+
+      await vi.advanceTimersByTimeAsync(30);
+
+      expect(getSettingsStoreSource()).toBe("fresh");
+      expect(isSettingsStoreHostDerived()).toBe(false);
+      expect(cache().replayControlNextCar).toBeUndefined();
+      expect(cache().replayControlPrevCar).toBeUndefined();
+      expect(store.saved.at(-1)).not.toHaveProperty("replayControlNextCar");
+      expect(logger.info).toHaveBeenCalledWith(expect.stringContaining("have not been read from the deck host yet"));
+    });
+
+    it("does not seed a file still carrying the pending-migration countdown while the host stays silent", async () => {
+      vi.useFakeTimers();
+      const store = createMemorySettingsStore(defaultsFile({ [MIGRATION_PENDING_KEY]: 1 }));
+      initGlobalSettings(createMockAdapter(), createMockLogger(), store, { migrationTimeoutMs: 20 });
+      seedBindingDefaultsIfAbsent(DEFAULTS, createMockLogger());
+
+      await vi.advanceTimersByTimeAsync(30);
+
+      expect(isSettingsStoreReady()).toBe(true);
+      expect(isSettingsStoreHostDerived()).toBe(false);
+      expect(cache().replayControlNextCar).toBeUndefined();
+    });
+
+    it("seeds on the start whose host answer finally lands, under the host's own binding", async () => {
+      const { adapter, echo } = createEchoAdapter();
+      initGlobalSettings(
+        adapter,
+        createMockLogger(),
+        createMemorySettingsStore(defaultsFile({ [MIGRATION_PENDING_KEY]: 1 })),
+      );
+      seedBindingDefaultsIfAbsent(DEFAULTS, createMockLogger());
+      await tick();
+
+      echo({ replayControlPrevCar: CUSTOM });
+
+      expect(isSettingsStoreHostDerived()).toBe(true);
+      expect(cache().replayControlNextCar).toBe(NEXT_STORED);
+      expect(cache().replayControlPrevCar).toBe(CUSTOM);
+    });
+
+    it("does not seed a store whose migration was given up on, and says so without promising a later seed", async () => {
+      initWithStore(defaultsFile({ [MIGRATION_ABANDONED_KEY]: "3.3.0" }));
+      await tick();
+      const logger = createMockLogger();
+
+      seedBindingDefaultsIfAbsent(DEFAULTS, logger);
+
+      expect(getSettingsStoreSource()).toBe("file");
+      expect(isSettingsStoreHostDerived()).toBe(false);
+      expect(cache().replayControlNextCar).toBeUndefined();
+      expect(logger.info).toHaveBeenCalledWith(
+        "Binding defaults not seeded: the migration from the deck host was given up on; binding defaults are left to the user",
+      );
+      expect(logger.info).not.toHaveBeenCalledWith(expect.stringContaining("yet"));
+    });
+
+    describe("an abandoned store on the upgrade that asks the host once more (#1041 / #1047)", () => {
+      /** An abandoned defaults file, loaded by a newer build so the give-up retry fires. */
+      function initRetry(): { echo: (settings: unknown) => void; logger: ILogger } {
+        const { adapter, echo } = createEchoAdapter();
+        const logger = createMockLogger();
+        initGlobalSettings(
+          adapter,
+          createMockLogger(),
+          createMemorySettingsStore(defaultsFile({ [MIGRATION_ABANDONED_KEY]: "3.3.0" })),
+          { pluginVersion: "3.4.0" },
+        );
+        // As every plugin does: called at startup, before the store is ready.
+        seedBindingDefaultsIfAbsent(DEFAULTS, logger);
+
+        return { echo, logger };
+      }
+
+      it("keeps the host's custom Next Car through the retry merge and seeds only Previous Car", async () => {
+        const { echo, logger } = initRetry();
+        await tick();
+
+        // The retry is waiting on the host: nothing is ready, nothing seeded.
+        expect(isSettingsStoreReady()).toBe(false);
+        expect(cache().replayControlNextCar).toBeUndefined();
+
+        echo({ replayControlNextCar: CUSTOM, driverName: "from the host" });
+
+        // A real answer retires the marker, so the store is host-derived now.
+        expect(getSettingsStoreSource()).toBe("host");
+        expect(cache()[MIGRATION_ABANDONED_KEY]).toBeUndefined();
+        expect(isSettingsStoreHostDerived()).toBe(true);
+        expect(cache().replayControlNextCar).toBe(CUSTOM);
+        expect(cache().replayControlPrevCar).toBe(PREV_STORED);
+        expect(logger.info).toHaveBeenCalledWith("Seeded default key bindings");
+      });
+
+      it("seeds nothing when the retry's answer is empty: the store stays abandoned", async () => {
+        const { echo, logger } = initRetry();
+        await tick();
+
+        echo({});
+
+        expect(getSettingsStoreSource()).toBe("file");
+        expect(isSettingsStoreHostDerived()).toBe(false);
+        expect(cache().replayControlNextCar).toBeUndefined();
+        expect(cache().replayControlPrevCar).toBeUndefined();
+        expect(logger.info).toHaveBeenCalledWith(expect.stringContaining("given up on"));
+      });
+    });
+
+    it("does not seed when the stored file could not be parsed at all", async () => {
+      initWithStore({ driverName: "kept" });
+      // parseWithSalvage gives up wholesale on a failure it cannot pin to a key.
+      vi.spyOn(GlobalSettingsSchema, "safeParse").mockReturnValueOnce({
+        success: false,
+        error: { issues: [{ path: [] }] },
+      } as unknown as ReturnType<typeof GlobalSettingsSchema.safeParse>);
+      await tick();
+
+      const logger = createMockLogger();
+
+      seedBindingDefaultsIfAbsent(DEFAULTS, logger);
+
+      expect(isSettingsStoreReady()).toBe(true);
+      expect(getSettingsStoreSource()).toBe("file");
+      expect(cache().driverName).not.toBe("kept"); // proof the salvage-failed path ran
+      expect(isSettingsStoreHostDerived()).toBe(false);
+      expect(cache().replayControlNextCar).toBeUndefined();
+      expect(logger.info).toHaveBeenCalledWith(expect.stringContaining("could not be parsed"));
+    });
+  });
+
+  describe("positive control: the real binding dispatcher over the real cache", () => {
+    it("reads both keys as missing before the seed, as set after it, and taps V / Shift+V", async () => {
+      initWithStore({});
+      await tick();
+      const dispatcher = initializeBindingDispatcher(createMockLogger());
+
+      // The check can fail: with nothing stored both read as missing (#612) and a tap sends nothing.
+      expect(dispatcher.isConfigured("replayControlNextCar")).toBe(false);
+      expect(dispatcher.isConfigured("replayControlPrevCar")).toBe(false);
+      expect(await dispatcher.tap("replayControlNextCar")).toBe(false);
+      expect(mockSendKeyCombination).not.toHaveBeenCalled();
+
+      seedBindingDefaultsIfAbsent(DEFAULTS, createMockLogger());
+
+      expect(dispatcher.isConfigured("replayControlNextCar")).toBe(true);
+      expect(dispatcher.isConfigured("replayControlPrevCar")).toBe(true);
+      expect(dispatcher.isKeyboardBound("replayControlPrevCar")).toBe(true);
+
+      expect(await dispatcher.tap("replayControlNextCar")).toBe(true);
+      expect(await dispatcher.tap("replayControlPrevCar")).toBe(true);
+      expect(mockSendKeyCombination).toHaveBeenNthCalledWith(1, { key: "v", modifiers: undefined, code: "KeyV" });
+      expect(mockSendKeyCombination).toHaveBeenNthCalledWith(2, { key: "v", modifiers: ["shift"], code: "KeyV" });
+    });
+
+    it("leaves a cleared binding reading as missing", async () => {
+      initWithStore({ replayControlNextCar: "" });
+      await tick();
+      const dispatcher = initializeBindingDispatcher(createMockLogger());
+
+      seedBindingDefaultsIfAbsent(DEFAULTS, createMockLogger());
+
+      expect(dispatcher.isConfigured("replayControlNextCar")).toBe(false);
+      expect(dispatcher.isConfigured("replayControlPrevCar")).toBe(true);
+    });
   });
 });

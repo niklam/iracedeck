@@ -161,6 +161,7 @@ export {
   updateGlobalSettings,
   deleteGlobalSettings,
   isGlobalSettingsInitialized,
+  isSettingsStoreHostDerived,
   isSettingsStoreReady,
   whenSettingsStoreSettled,
   getSettingsStoreSource,
@@ -175,9 +176,13 @@ export {
   _resetGlobalSettings,
 } from "./global-settings.js";
 
-// One-shot renamed-key migrations (issue #953) and the idempotent voice-id
-// qualification (#1144)
-export { migrateGlobalSettingsKeys, migrateRaceEngineerVoiceId } from "./global-settings-migrations.js";
+// One-shot renamed-key migrations (issue #953), the idempotent voice-id
+// qualification (#1144) and the seed-if-absent binding defaults (#1277)
+export {
+  migrateGlobalSettingsKeys,
+  migrateRaceEngineerVoiceId,
+  seedBindingDefaultsIfAbsent,
+} from "./global-settings-migrations.js";
 
 // Per-feature startup policy for the Race Engineer / Radar gates (issue #1007)
 export {
@@ -627,6 +632,9 @@ export {
 
 // Key binding utilities
 export { formatKeyBinding, parseKeyBinding, parseBinding } from "./key-binding-utils.js";
+// The key map and default parser the PI shares; pi-components imports them
+// through the dependency-free `@iracedeck/deck-core/key-binding-defaults` subpath (#1277)
+export { defaultBindingStoredValue, parseDefaultKeyBinding } from "./key-binding-defaults.js";
 export {
   setWarning,
   clearWarning,

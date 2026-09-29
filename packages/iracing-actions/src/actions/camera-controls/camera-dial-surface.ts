@@ -8,13 +8,14 @@
  * strip go DOWN (`P4 → P3`, `#94 → #77`; issues #884, #973, see
  * `MODE_NUMBER_PRIMARY`). The list modes (camera / sub-camera / driving) have
  * no number to shrink and keep clockwise = next, and in track-order (issue
- * #886) "next" IS the car ahead on the road (the direction of travel), so
+ * #886) "next" IS iRacing's Next Car — the car ahead on track (#1277) — so
  * clockwise lands on the car ahead there too without a flip. The
  * `reverseRotation` setting inverts the active mode's default mapping (see
  * `clockwiseDirection`). The touch strip's small top line is always the MODE
  * name (CAMERA / SUB-CAMERA / CAR # / POSITION / TRACK ORDER / DRIVING CAM);
- * the main content identifies the thing that mode acts on, flanked by dimmed
- * side previews that follow the EFFECTIVE mapping — the left slot is always the
+ * the main content identifies the thing that mode acts on, flanked (where the
+ * mode can preview one) by dimmed side previews that follow the EFFECTIVE
+ * mapping — the left slot is always the
  * counter-clockwise detent's target and the right slot the clockwise one, so
  * preview == execution holds under both the number-primary default flip and the
  * reverse option:
@@ -30,29 +31,30 @@
  *     (`P<pos>`, the primary readout — issue #803 rework) with its car number
  *     smaller beneath it, flanked by the dimmed POSITION previews one detent
  *     either way (no car numbers at side size),
- *   - track-order → the focused car's number large in the centre, flanked by
- *     the numbers of the competitors physically ahead of / behind it on the
- *     road, each captioned AHEAD / BEHIND beneath so the strip reads correctly
- *     under either rotation mapping (issue #886),
+ *   - track-order → the focused car's number large in the centre and nothing
+ *     at the sides: since #1277 the detent taps iRacing's own Next / Previous
+ *     Car binding, so the sim picks the car and there is no neighbour we can
+ *     preview honestly (a preview that disagreed with where the turn lands
+ *     would be worse than none),
  *   - driving → the current camera group's icon + name ONLY. The driving cycle
  *     hands `group ± 1` to iRacing, which resolves and wraps it internally, so
  *     there is no coherent neighbour to preview — better none than a lying one.
  *
- * Two families of mode:
- *   - Cycle modes (camera / sub-camera / driving) rotate via the keypad's own
- *     `executeCycle` dispatch (reuse, don't duplicate) — an SDK camera command
- *     for camera / driving, and iRacing's own sub-camera key binding for
- *     sub-camera (issue #852: the switch broadcasts' `camera` argument never
- *     selects a sub-camera, so only the sim's binding can step one).
- *   - Car modes (car-number / race-position / track-order) compute the
- *     neighbouring car from an explicit ordering — car number ascending, the
- *     canonical live race order (`getLiveRacePositions`, per
- *     `.claude/rules/race-positions.md`, official `CarIdxPosition` only as the
- *     documented fallback), or the PHYSICAL track order (the shared
- *     `findNearestCarOnTrack` primitive via `computeTrackOrderTarget`, issue
- *     #886 — a distinct concept from the race order, so the canonical-order
- *     rule doesn't apply, but the computation stays that one shared helper) —
- *     and focus it directly via the keypad's Switch by Car Number dispatch (`camera.switchNum`).
+ * Two families of dispatch:
+ *   - Cycle dispatch (camera / sub-camera / track-order / driving) rotates via
+ *     the keypad's own `executeCycle` (reuse, don't duplicate) — an SDK camera
+ *     command for camera / driving, and an iRacing key binding for the other
+ *     two: Next / Previous Sub Camera for sub-camera (issue #852: the switch
+ *     broadcasts' `camera` argument never selects a sub-camera, so only the
+ *     sim's binding can step one) and Next / Previous Car for track-order
+ *     (issue #1277: our own road-order computation read the LIVE car placement,
+ *     so in a replay watched inside a live session it followed the live field
+ *     rather than the replay cursor; the sim's control follows the replay).
+ *   - Car modes (car-number / race-position) compute the neighbouring car from
+ *     an explicit ordering — car number ascending, or the canonical live race
+ *     order (`getLiveRacePositions`, per `.claude/rules/race-positions.md`,
+ *     official `CarIdxPosition` only as the documented fallback) — and focus
+ *     it directly via the keypad's Switch by Car Number dispatch (`camera.switchNum`).
  *     race-position also resolves to a car NUMBER (never a bare position)
  *     before dispatching: the SDK's own `switchPos` resolves positions from a
  *     potentially different (official) order than the canonical one the
@@ -68,21 +70,17 @@
  *     frozen rank (and their session-info entry) but iRacing silently ignores
  *     a camera switch to them, so a detent targeting one would dead-loop —
  *     the walk continues along the ordering to the next present car, and the
- *     side previews show that same skipped-to target. All three car modes
+ *     side previews show that same skipped-to target. Both car modes
  *     judge presence with the one shared `carInWorld` predicate — a valid lap
  *     distance and a surface other than `NotInWorld`, deliberately WITHOUT a
  *     `CarIdxLapCompleted` condition, since that field is still -1 for every
  *     car on the pace lap (the #307 fix; a lap-count term here killed cycling
- *     for the whole formation lap, #968). track-order reads the
- *     LIVE car placement, so during an in-session replay it follows the live
- *     field rather than the replay cursor (the #492 finding — the reason
- *     Replay Control's Next/Prev Car defer to iRacing's keystroke).
+ *     for the whole formation lap, #968).
  *
- * Every mode but sub-camera is an iRacing SDK camera command, so only the
- * sub-camera strip can carry the #612 missing-binding warning (its detent taps
- * the sim's own Next / Previous Sub Camera bindings since #852; the owning
- * action answers `isBindingMissing` for it). Out of a session each mode falls
- * back to a plain identity label.
+ * Sub-camera and track-order are the two binding-driven modes, so only their
+ * screens carry the #612 missing-binding warning (the owning action answers
+ * `isBindingMissing` for them); every other mode is an iRacing SDK camera
+ * command. Out of a session each mode falls back to a plain identity label.
  *
  * Hold preview (issue #1120): while the dial button is held past the
  * long-press threshold, the centre slot shows the car the release will focus,
@@ -124,13 +122,8 @@ import {
 import type { ILogger } from "@iracedeck/logger";
 import { z } from "zod";
 
-import {
-  computeCarNumberTarget,
-  computeTrackOrderTarget,
-  type TrackOrderDirection,
-  trackOrderDirection,
-  type TrackOrderTarget,
-} from "../../shared/car-cycling.js";
+import { CAR_CYCLE_BINDING_KEY_LIST } from "../../shared/car-cycle-bindings.js";
+import { computeCarNumberTarget } from "../../shared/car-cycling.js";
 import { dialAppearanceFields, type DialBoxColors, resolveDialBoxColors } from "../../shared/dial-box.js";
 import { fitValueFontSize } from "../../shared/dial-fit.js";
 import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
@@ -172,28 +165,32 @@ export const DIAL_MODES = ["camera", "sub-camera", "car-number", "race-position"
 export type DialMode = (typeof DIAL_MODES)[number];
 
 /**
- * The keypad `target` value each CYCLE dial mode maps to. Car modes are absent
- * — they focus a computed target directly rather than cycling.
+ * The keypad `target` value each dial mode that rotates through the keypad's
+ * own cycle dispatch maps to. car-number and race-position are absent — they
+ * focus a computed target directly. track-order is here since #1277: its
+ * detent taps iRacing's Next / Previous Car binding, exactly as the keypad's
+ * Cycle by Track Order does.
  */
-export type DialCycleTarget = "cycle-camera" | "cycle-sub-camera" | "cycle-driving";
-type CycleDialMode = "camera" | "sub-camera" | "driving";
+export type DialCycleTarget = "cycle-camera" | "cycle-sub-camera" | "cycle-track-order" | "cycle-driving";
+type CycleDialMode = "camera" | "sub-camera" | "track-order" | "driving";
 
 const CYCLE_MODE_TO_TARGET: Record<CycleDialMode, DialCycleTarget> = {
   camera: "cycle-camera",
   "sub-camera": "cycle-sub-camera",
+  "track-order": "cycle-track-order",
   driving: "cycle-driving",
 };
 
 function isCycleMode(mode: DialMode): mode is CycleDialMode {
-  return mode === "camera" || mode === "sub-camera" || mode === "driving";
+  return mode === "camera" || mode === "sub-camera" || mode === "track-order" || mode === "driving";
 }
 
 /**
  * A rotation's dispatch direction in the cycled ordering (camera list, car
- * numbers ascending, race positions ascending, or — track-order — the road,
- * where `next` is the car ahead; see the shared `trackOrderDirection`, which
- * the keypad's Cycle by Track Order mode reads the same way). Which PHYSICAL
- * turn maps to which direction is decided by `clockwiseDirection` (#884, #973).
+ * numbers ascending, race positions ascending, or — track-order — iRacing's
+ * Next Car / Previous Car, where `next` is the car ahead on track, as on the
+ * keypad's CAR AHEAD key). Which PHYSICAL turn maps to which direction is
+ * decided by `clockwiseDirection` (#884, #973).
  */
 export type Direction = "next" | "previous";
 
@@ -210,8 +207,8 @@ function oppositeDirection(direction: Direction): Direction {
  * The list modes (camera / sub-camera / driving) walk a list, not a number, so
  * they keep the plain "clockwise = next". Track-order is `false` on purpose: it
  * SHOWS a car number but never orders by one — it walks the road, and its
- * `next` already IS the car ahead (`trackOrderDirection`, #886), so clockwise
- * lands on the car ahead there without a flip.
+ * `next` already IS the car ahead (iRacing's Next Car, #886 / #1277), so
+ * clockwise lands on the car ahead there without a flip.
  *
  * Exhaustive by type (the `Record<DialMode, …>` shape the tables below use) so
  * a new dial mode cannot silently inherit "clockwise = next" — adding one is a
@@ -318,15 +315,6 @@ const MODE_TITLE: Record<DialMode, string> = {
   "track-order": "TRACK ORDER",
   driving: "DRIVING CAM",
 };
-
-/**
- * The track-order strip's side captions (issue #886): a bare pair of numbers
- * either side of the focused car says nothing about WHICH way is which, so
- * each side is captioned with the road relation its detent lands on. Assigned
- * to the strip sides through the same `orientSides` rule as the numbers, so
- * the captions follow the effective rotation mapping too.
- */
-const TRACK_ORDER_CAPTIONS: Record<TrackOrderDirection, string> = { ahead: "AHEAD", behind: "BEHIND" };
 
 /**
  * Dial-surface settings, stored under the `dial` root key. All fields default,
@@ -520,25 +508,18 @@ export interface CarouselSlot {
 }
 
 /**
- * The car-number carousel readouts: the focused car's number plus the nearest
- * PRESENT car either way along the ascending order (adjacent unless cars in
- * between left the world, #885), already assigned to their STRIP SIDES —
- * left = the counter-clockwise detent's target, right = the clockwise one
- * (#884).
+ * The car carousel readouts: the focused car's number plus, for car-number,
+ * the nearest PRESENT car either way along the ascending order (adjacent unless
+ * cars in between left the world, #885), already assigned to their STRIP
+ * SIDES — left = the counter-clockwise detent's target, right = the clockwise
+ * one (#884). Track-order leaves both sides null: iRacing picks its car
+ * (#1277).
  */
 export interface CarCarouselView {
   /** Focused car's display number (no `#`), or null out of a session. */
   center: string | null;
   left: string | null;
   right: string | null;
-  /**
-   * Optional small captions drawn beneath the side numbers (track-order's
-   * AHEAD / BEHIND, #886) — each on the side its number is on; a side with no
-   * number draws no caption either. Omitted when both sides show the SAME
-   * car (the primitive's no-track-position re-entry, or a two-car field),
-   * where one car can't honestly be captioned both ahead and behind.
-   */
-  sideCaptions?: { left: string; right: string };
 }
 
 /**
@@ -720,8 +701,8 @@ export function renderSubCameraCarousel(args: {
   // #852 — while the press gesture being previewed works regardless, so keeping
   // the warning here would compute a preview the strip never draws and then push
   // a revert frame for something nobody saw. The warning is back the moment the
-  // hold ends. This is the only carousel with a warning branch, so it is the
-  // only one that could swallow a preview.
+  // hold ends. The car carousel's track-order warning (#1277) follows the same
+  // rule.
   if (args.bindingMissing && !args.pending) {
     // Pass the strip canvas: the glyph is authored for the 144×144 key canvas
     // and only recentres/rescales onto the 200×100 strip when it is given
@@ -762,16 +743,16 @@ export function renderSubCameraCarousel(args: {
 /**
  * @internal Exported for testing
  *
- * Renders the car-number carousel strip (shared by the car-number and
- * track-order modes): the mode-name title on top, the focused car's number
- * large in the centre, flanked by the smaller dimmed numbers of the cars one
- * detent away (the nearest PRESENT cars, #885) — `left` is the
- * counter-clockwise detent's target, `right` the clockwise one (#884). With
- * `sideCaptions`, each side number gets a small caption beneath it (the
- * track-order AHEAD / BEHIND, #886) — only where that side has a number.
- * Falls back to a centred identity label out of a session (no focused car
- * number). With `pending` (issue #1120) the centre shows the hold preview
- * instead of the focused number; the sides and their captions are unchanged.
+ * Renders the car carousel strip (shared by the car-number and track-order
+ * modes): the mode-name title on top, the focused car's number large in the
+ * centre, flanked by the smaller dimmed numbers of the cars one detent away
+ * where the mode previews them (car-number: the nearest PRESENT cars, #885;
+ * `left` is the counter-clockwise detent's target, `right` the clockwise one,
+ * #884; track-order passes no sides, #1277). Falls back to a centred identity
+ * label out of a session (no focused car number), or to the #612
+ * missing-binding warning when `bindingMissing` is set. With `pending` (issue
+ * #1120) the centre shows the hold preview instead of the focused number; the
+ * sides are unchanged.
  */
 export function renderCarCarousel(
   args: {
@@ -780,30 +761,37 @@ export function renderCarCarousel(
     colors: DialBoxColors;
     title: string;
     identityLabel: string;
+    /** #612 overlay: track-order's Next / Previous Car bindings (#1277) are unset, so a detent would do nothing. */
+    bindingMissing?: boolean;
     pending?: DialPendingPreview | null;
   } & CarCarouselView,
 ): string {
   const { width: w, height: h, colors } = args;
 
+  // As on the sub-camera strip, a pending preview outranks the warning for the
+  // length of the hold (#1120): the warning is about ROTATION, and the press
+  // gesture being previewed works regardless.
+  if (args.bindingMissing && !args.pending) {
+    return svgWrap(
+      w,
+      h,
+      applyBindingWarning(dialPanel(w, h, colors) + titleLine(w, h, args.title, colors), { width: w, height: h }),
+    );
+  }
+
   if (!args.center && !args.pending) return identityBox(w, h, args.identityLabel, colors);
 
   const parts: string[] = [dialPanel(w, h, colors), titleLine(w, h, args.title, colors)];
 
-  for (const [num, caption, cx] of [
-    [args.left, args.sideCaptions?.left, w * 0.16],
-    [args.right, args.sideCaptions?.right, w * 0.84],
+  for (const [num, cx] of [
+    [args.left, w * 0.16],
+    [args.right, w * 0.84],
   ] as const) {
     if (!num) continue;
 
     parts.push(
       `<text x="${cx}" y="${Math.round(h * 0.62)}" text-anchor="middle" fill="${colors.label}" font-family="Arial, sans-serif" font-size="18" font-weight="bold" opacity="0.45">#${escapeXml(num)}</text>`,
     );
-
-    if (caption) {
-      parts.push(
-        `<text x="${cx}" y="${Math.round(h * 0.8)}" text-anchor="middle" fill="${colors.label}" font-family="Arial, sans-serif" font-size="9" font-weight="bold" opacity="0.45">${escapeXml(caption)}</text>`,
-      );
-    }
   }
 
   if (args.pending) {
@@ -908,7 +896,7 @@ const KNOB_SUB_FONT = 13;
  * targets — `left` the counter-clockwise one, `right` the clockwise one (#884)
  * — each a number, or a glyph where the strip shows one. The knob's corners
  * are deliberately simpler than the strip's sides (design gate, #1013): no
- * track-order captions and no sub-camera names, only numbers and glyphs.
+ * sub-camera names, only numbers and glyphs.
  */
 export interface KnobCarouselView {
   colors: DialBoxColors;
@@ -1044,7 +1032,8 @@ interface CameraDialContext {
 /**
  * The delegates the surface needs from its owning action. Camera cycling and
  * focus stay on the action (the SDK camera commands, plus the sub-camera key
- * binding since #852), so the dial reuses the SAME dispatch as the keypad
+ * binding since #852 and the Next / Previous Car binding since #1277), so the
+ * dial reuses the SAME dispatch as the keypad
  * rather than duplicating it. Deliberately NO `setActiveBinding` / `tapBinding`:
  * the surface never dispatches a binding itself (the action's `cycle` does),
  * and readiness state is one value per action-class instance that a dial
@@ -1070,8 +1059,9 @@ export interface CameraDialHost {
   cycle(target: DialCycleTarget, direction: Direction): void;
   /**
    * Whether any of the given global binding keys is unconfigured (#612). Only
-   * the Sub-Camera mode is binding-driven (issue #852) — every other mode is an
-   * SDK command — so this gates that one strip's warning overlay.
+   * the Sub-Camera (#852) and Track Order (#1277) modes are binding-driven —
+   * every other mode is an SDK command — so this gates those two screens'
+   * warning overlay.
    */
   isBindingMissing(keys: string | readonly string[] | null | undefined): boolean;
   /**
@@ -1379,17 +1369,11 @@ export class CameraDialSurface {
     // silently ignored by iRacing and the dial would dead-loop on it.
     const isPresent = carInWorld(telemetry);
 
-    if (mode === "car-number" || mode === "track-order") {
-      // Both walk the SAME competitor list the carousel previews — ascending
-      // car number, or (#886) the physical road order: the competitor nearest
-      // ahead / behind on the lap — so the detent lands on the car the side
-      // badge showed. track-order's presence test lives in the primitive
-      // (see the file header), hence no `isPresent` there.
+    if (mode === "car-number") {
+      // Walks the SAME competitor list the carousel previews (ascending car
+      // number), so the detent lands on the car the side badge showed.
       const cars = getAllCarNumbers(this.host.getSessionInfo(), true, true);
-      const target =
-        mode === "car-number"
-          ? computeCarNumberTarget(camCarIdx, cars, direction, isPresent)
-          : this.trackOrderTarget(telemetry, cars, direction);
+      const target = computeCarNumberTarget(camCarIdx, cars, direction, isPresent);
 
       if (target) this.host.focusCarNumber(target.carNumberRaw);
 
@@ -1434,23 +1418,6 @@ export class CameraDialSurface {
     if (canonical?.some((position) => position > 0)) return canonical;
 
     return telemetry?.CarIdxPosition ?? canonical ?? null;
-  }
-
-  /**
-   * The competitor a track-order detent in `direction` lands on (issue #886):
-   * the focused car's nearest neighbour ahead / behind on the road among
-   * `cars` — the SAME competitor set the car-number mode cycles
-   * (`getAllCarNumbers(sessionInfo, true, true)`, pace car and spectators
-   * excluded; the caller resolves it once per view / detent) — through the
-   * shared `computeTrackOrderTarget`. Used by both the rotation dispatch and
-   * the carousel preview.
-   */
-  private trackOrderTarget(
-    telemetry: TelemetryData | null,
-    cars: ReadonlyArray<{ carIdx: number; carNumber: string; carNumberRaw: number }>,
-    direction: Direction,
-  ): TrackOrderTarget | null {
-    return computeTrackOrderTarget(telemetry, telemetry?.CamCarIdx, cars, trackOrderDirection(direction));
   }
 
   /**
@@ -1551,51 +1518,26 @@ export class CameraDialSurface {
   }
 
   /**
-   * Builds the track-order carousel view (issue #886): the focused car plus
-   * the competitors physically ahead of / behind it on the road — the SAME
-   * per-direction targets the rotation focuses — each on the side its detent
-   * lands on (#884), captioned AHEAD / BEHIND on that same side. When both
-   * detents resolve to the SAME car (the focused car has no track position, so
-   * the primitive re-enters at the car nearest start/finish for both
-   * directions — or the field has only one other car), the captions are
-   * dropped: one car captioned both AHEAD and BEHIND would contradict itself,
-   * while the bare number on both sides still previews exactly what either
-   * detent focuses.
+   * Builds the track-order carousel view: the focused car only. Since #1277 a
+   * detent taps iRacing's own Next / Previous Car binding, so the sim picks the
+   * car and nothing we could put at the sides is guaranteed to be where the
+   * turn lands.
    */
-  private trackOrderCarouselView(telemetry: TelemetryData | null, dial: DialSettings): CarCarouselView {
-    const sessionInfo = this.host.getSessionInfo();
-    const center = this.focusedCarNumber(sessionInfo, telemetry);
-    const cars = getAllCarNumbers(sessionInfo, true, true);
-    const behind = this.trackOrderTarget(telemetry, cars, "previous");
-    const ahead = this.trackOrderTarget(telemetry, cars, "next");
-    const clockwise = clockwiseDirection(dial.mode, dial.reverseRotation);
-    const sameCarBothWays = behind !== null && ahead !== null && behind.carIdx === ahead.carIdx;
-
-    return {
-      center,
-      ...orientSides(clockwise, behind?.carNumber ?? null, ahead?.carNumber ?? null),
-      ...(sameCarBothWays
-        ? {}
-        : {
-            sideCaptions: orientSides(
-              clockwise,
-              TRACK_ORDER_CAPTIONS[trackOrderDirection("previous")],
-              TRACK_ORDER_CAPTIONS[trackOrderDirection("next")],
-            ),
-          }),
-    };
+  private trackOrderCarouselView(telemetry: TelemetryData | null): CarCarouselView {
+    return { center: this.focusedCarNumber(this.host.getSessionInfo(), telemetry), left: null, right: null };
   }
 
   /**
-   * The car-carousel view for the two car modes drawn as a NUMBER carousel:
-   * car-number (ascending car number) or track-order (the physical road order,
-   * #886). Deliberately NOT the same grouping as `MODE_NUMBER_PRIMARY` —
-   * track-order shows a car number but is not ordered by one, so it draws the
-   * same strip without taking the clockwise-counts-down flip.
+   * The car-carousel view for the two modes drawn as a NUMBER carousel:
+   * car-number (ascending car number, with side previews) or track-order (the
+   * focused car only, #1277). Deliberately NOT the same grouping as
+   * `MODE_NUMBER_PRIMARY` — track-order shows a car number but is not ordered
+   * by one, so it draws the same strip without taking the
+   * clockwise-counts-down flip.
    */
   private carCarouselView(telemetry: TelemetryData | null, dial: DialSettings): CarCarouselView {
     return dial.mode === "track-order"
-      ? this.trackOrderCarouselView(telemetry, dial)
+      ? this.trackOrderCarouselView(telemetry)
       : this.carNumberCarouselView(telemetry, dial);
   }
 
@@ -1711,9 +1653,7 @@ export class CameraDialSurface {
     if (dial.mode === "car-number" || dial.mode === "track-order") {
       const v = this.carCarouselView(telemetry, dial);
 
-      // The caption marker covers track-order's same-car-both-ways case, where
-      // the captions come and go while the numbers on the sides don't change.
-      return [dial.mode, v.center ?? "", v.left ?? "", v.right ?? "", v.sideCaptions ? "captions" : ""].join("|");
+      return [dial.mode, v.center ?? "", v.left ?? "", v.right ?? ""].join("|");
     }
 
     if (dial.mode === "race-position") {
@@ -1745,6 +1685,16 @@ export class CameraDialSurface {
     await ctx.action.setTriggerDescription(buildTriggerDescription(ctx.dial));
   }
 
+  /**
+   * Whether the dial is in track-order mode with a Next / Previous Car binding
+   * unset (#612, #1277). Rotation taps BOTH bindings depending on direction, so
+   * either one missing makes the dial half-dead — warn on either, as Sub-Camera
+   * does.
+   */
+  private trackOrderBindingMissing(dial: DialSettings): boolean {
+    return dial.mode === "track-order" && this.host.isBindingMissing(CAR_CYCLE_BINDING_KEY_LIST);
+  }
+
   /** Builds the touch-strip SVG for the current mode, with the hold preview in the centre while one is pending. */
   private renderStrip(dial: DialSettings, pending: DialPendingPreview | null): string {
     const colors = resolveDialBoxColors(dial.colors, MODE_COLOR[dial.mode]);
@@ -1760,7 +1710,12 @@ export class CameraDialSurface {
     if (dial.mode === "car-number" || dial.mode === "track-order") {
       const view = this.carCarouselView(telemetry, dial);
 
-      return renderCarCarousel({ ...base, identityLabel: MODE_IDENTITY[dial.mode], ...view });
+      return renderCarCarousel({
+        ...base,
+        identityLabel: MODE_IDENTITY[dial.mode],
+        ...view,
+        bindingMissing: this.trackOrderBindingMissing(dial),
+      });
     }
 
     if (dial.mode === "race-position") {
@@ -1837,10 +1792,10 @@ export class CameraDialSurface {
 
         return renderKnobCarousel({
           ...base,
-          // The strip's AHEAD / BEHIND captions stay on the strip: the knob's corners carry numbers only.
           centre: view.center ? { text: `#${view.center}` } : null,
           left: view.left ? { text: `#${view.left}` } : null,
           right: view.right ? { text: `#${view.right}` } : null,
+          bindingMissing: this.trackOrderBindingMissing(dial),
         });
       }
       case "race-position": {

@@ -7,7 +7,7 @@ sidebar:
     variant: tip
 ---
 
-Camera Controls combines camera group selection, camera cycling, and focus targeting into one action. Every mode is driven by the iRacing SDK camera commands and needs no configuration — with one exception: **Cycle Sub-Camera** uses iRacing's own Next / Previous Sub Camera key bindings, because the sim's camera commands cannot step a sub-camera (see [that mode](#cycle-sub-camera)). It comes preconfigured with iRacing's default keys, so it works out of the box. Placed on a Stream Deck+ dial the action becomes a camera dial — turn to flip through cameras or cars with the live focus on the touch strip ([On a dial](#on-a-dial)).
+Camera Controls combines camera group selection, camera cycling, and focus targeting into one action. Most modes are driven by the iRacing SDK camera commands and need no configuration. Two use iRacing's own key bindings instead: **Cycle Sub-Camera** triggers Next / Previous Sub Camera, because the sim's camera commands cannot step a sub-camera (see [that mode](#cycle-sub-camera)), and **Cycle by Track Order** triggers Next / Previous Car, so iRacing itself picks the car ahead or behind, live and in a replay (see [that mode](#cycle-by-track-order)). Both come preconfigured with iRacing's default keys, so they work out of the box. Placed on a Stream Deck+ dial the action becomes a camera dial — turn to flip through cameras or cars with the live focus on the touch strip ([On a dial](#on-a-dial)).
 
 ## Modes
 
@@ -80,7 +80,7 @@ Cycle sub-cameras within the currently active camera group (e.g., left / right /
 
 #### Details
 
-- **Method:** Key binding — this is the one Camera Controls mode that is not an SDK command
+- **Method:** Key binding — one of the two Camera Controls modes that are not an SDK command, with [Cycle by Track Order](#cycle-by-track-order)
 - **Dial:** Rotation supported ([On a dial](#on-a-dial))
 - **Default binding:** `B` (next) / `Shift+B` (previous) — iRacing's own defaults
 - **Telemetry-aware icon:** No
@@ -125,23 +125,36 @@ Switch camera focus to the next / previous car in the field, walking the field b
 
 ### Cycle by Track Order
 
-Switch camera focus to the car physically ahead of or behind the focused car **on the road** — the order you see out of the windscreen, not the running order. Lap count and standings play no part: a lapped car sitting right in front of the leader is the car ahead. That makes it the mode to reach for during an incident, where the timing screen says nothing about who is next to whom.
+Switch camera focus to the car ahead of or behind the focused car **on track** — the order you see out of the windscreen, not the running order. Lap count and standings play no part: a lapped car sitting right in front of the leader is the car ahead. That makes it the mode to reach for during an incident, where the timing screen says nothing about who is next to whom.
 
-Only competitors are cycled, so the pace car and spectators are never focused, and cars that have left the sim world — towed, or gone after the finish — are stepped over rather than focused on a car the sim would ignore. The camera group and sub-camera you are on are kept, so a press changes the subject and nothing else.
-
-Neighbours come from live car placement. While you scrub a replay *inside a live session* the mode therefore follows the live field rather than the replay cursor — in a replay you open outside a session, the replay is the live data, so it behaves as you would expect. With no other car on track, a press does nothing.
+A press triggers iRacing's own **Next Car** / **Previous Car** controls — the same step iRacing's `V` / `Shift+V` keys make — so the sim picks the car, exactly as if you had pressed the key yourself. Next Car is the car ahead on track and Previous Car the car behind. It behaves the same in a live session and in a replay, including a replay you scrub through while you are still in the session, and iRacing decides how cars that have left the session are handled. The pace car counts as a car: when it is on track ahead of or behind the focused car, Next Car / Previous Car lands on it, as iRacing's own keys do.
 
 #### Details
 
-- **Method:** iRacing API — no key binding needed
+- **Method:** Key binding
 - **Dial:** Rotation supported — the dial's own Cycle by Track Order mode does the same thing ([On a dial](#on-a-dial))
-- **Default binding:** No keyboard binding
+- **Default binding:** `V` (ahead) / `Shift+V` (behind) — iRacing's own defaults
 - **Telemetry-aware icon:** No
+
+#### Why this mode uses a key binding
+
+iRacing already knows which car is ahead of or behind the one you are watching, at any moment of a live session or a replay, and its Next Car / Previous Car controls step to exactly that car. Working the neighbour out from telemetry cannot match it everywhere — while you scrub a replay inside a live session, the telemetry describes the live field rather than the moment on screen — so the button hands the choice to the sim.
+
+These are the same two bindings Replay Control's [Next Car](/docs/actions/view-camera/replay-control/#next-car) and [Previous Car](/docs/actions/view-camera/replay-control/#previous-car) modes use. iRaceDeck keeps one setting for each, because iRacing has one Next Car control: rebind it for one action and the other follows. Both keys are preconfigured to iRacing's defaults, so the mode works without setup — the plugin stores the default `V` / `Shift+V` bindings itself the first time it starts, if they were never set, so a Cycle by Track Order key or dial you already had keeps working after the update with nothing to open or reconfigure. If you clear the binding yourself, the key shows the missing-binding warning until you set it again. If you have rebound these functions in iRacing, set the matching keys under **Related Key Bindings** in the Property Inspector.
+
+Because it sends a keystroke rather than talking to iRacing's API, this mode follows the [Focus iRacing Window](/docs/features/focus-iracing-window/) setting like every other key-binding mode on this page — unlike the iRacing API modes, which reach iRacing whatever window is in front.
 
 #### Setting: Direction
 
-- **Ahead** (default) — Pressing the button focuses the car ahead on track
-- **Behind** — Pressing the button focuses the car behind on track
+- **Ahead** (default) — Pressing the button triggers Next Car, focusing the car ahead on track
+- **Behind** — Pressing the button triggers Previous Car, focusing the car behind on track
+
+#### Keyboard simulation
+
+| Action | Default Key | iRacing Setting |
+|--------|-------------|-----------------|
+| Car ahead | V | Next Car |
+| Car behind | Shift+V | Previous Car |
 
 ---
 
@@ -299,14 +312,14 @@ The numeric camera state value passed to the iRacing SDK. Integer. Defaults to `
 
 ## On a dial
 
-Placed on a Stream Deck+ dial or a Mirabox knob, Camera Controls becomes a camera dial for spectating and broadcasting. Turn the dial to flip through cameras or cars — the dial's own **Mode** setting picks the target, and the turn direction replaces the keypad cycle modes' Next / Previous setting. One rule covers every car mode: **where the cycling order _is_ a number, clockwise makes that number go down** — `P4 → P3` in **Cycle by Race Position**, `#94 → #77` in **Cycle by Car #**. **Cycle by Track Order** is ordered by the road rather than by a number (it still shows the focused car's number, it just never sorts by it), and follows the same instinct: clockwise takes you to the car physically ahead on the road. The camera modes are plain lists, so there clockwise simply steps to the next one. A **Reverse rotation** checkbox flips the direction of whichever mode is selected. The touch strip's top line always names the current mode; below it the main content is whatever that mode acts on — the current camera, sub-camera, or car — flanked by what a turn in each direction would switch to, where it can be previewed. Every mode is an iRacing SDK camera command except **Cycle Sub-Camera**, which triggers iRacing's Next / Previous Sub Camera bindings (preconfigured to `B` / `Shift+B` — see the [keypad mode](#cycle-sub-camera)). The Property Inspector automatically shows the dial settings (instead of the keypad Mode) when the instance sits on a dial. See [Dials](/docs/features/dials/) for how the shared dial gestures work.
+Placed on a Stream Deck+ dial or a Mirabox knob, Camera Controls becomes a camera dial for spectating and broadcasting. Turn the dial to flip through cameras or cars — the dial's own **Mode** setting picks the target, and the turn direction replaces the keypad cycle modes' Next / Previous setting. One rule covers every car mode: **where the cycling order _is_ a number, clockwise makes that number go down** — `P4 → P3` in **Cycle by Race Position**, `#94 → #77` in **Cycle by Car #**. **Cycle by Track Order** is ordered by the road rather than by a number (it still shows the focused car's number, it just never sorts by it), and follows the same instinct: clockwise takes you to the car ahead on track. The camera modes are plain lists, so there clockwise simply steps to the next one. A **Reverse rotation** checkbox flips the direction of whichever mode is selected. The touch strip's top line always names the current mode; below it the main content is whatever that mode acts on — the current camera, sub-camera, or car — flanked by what a turn in each direction would switch to, where it can be previewed. Every mode is an iRacing SDK camera command except two: **Cycle Sub-Camera** triggers iRacing's Next / Previous Sub Camera bindings (preconfigured to `B` / `Shift+B` — see the [keypad mode](#cycle-sub-camera)), and **Cycle by Track Order** triggers iRacing's Next / Previous Car bindings (preconfigured to `V` / `Shift+V`, shared with Replay Control — see the [keypad mode](#cycle-by-track-order)). The Property Inspector automatically shows the dial settings (instead of the keypad Mode) when the instance sits on a dial. See [Dials](/docs/features/dials/) for how the shared dial gestures work.
 
 #### Details
 
-- **Method:** iRacing API for every mode except Cycle Sub-Camera, which uses a key binding — the dial reuses the same dispatch as the keypad cycle modes, so both surfaces behave identically
-- **Dial:** Rotating cycles the selected target one step per detent — clockwise lowers the number it cycles by (Cycle by Car #, Cycle by Race Position), selects the car ahead on the road (Cycle by Track Order), or steps to the next camera (the camera modes); counter-clockwise does the opposite, and the **Reverse rotation** setting flips the selected mode's direction
-- **Default binding:** `B` / `Shift+B` in Cycle Sub-Camera mode (iRacing's own defaults); none in the other modes
-- **Telemetry-aware icon:** Yes — the touch strip is a live carousel of the current camera / focused car and its neighbours from telemetry, falling back to a mode label when out of a session
+- **Method:** iRacing API for every mode except Cycle Sub-Camera and Cycle by Track Order, which use key bindings — the dial reuses the same dispatch as the keypad cycle modes, so both surfaces behave identically
+- **Dial:** Rotating cycles the selected target one step per detent — clockwise lowers the number it cycles by (Cycle by Car #, Cycle by Race Position), triggers Next Car to reach the car ahead on track (Cycle by Track Order), or steps to the next camera (the camera modes); counter-clockwise does the opposite, and the **Reverse rotation** setting flips the selected mode's direction
+- **Default binding:** `B` / `Shift+B` in Cycle Sub-Camera mode and `V` / `Shift+V` in Cycle by Track Order mode (iRacing's own defaults); none in the other modes
+- **Telemetry-aware icon:** Yes — the touch strip is a live carousel of the current camera / focused car and, where they can be previewed, its neighbours from telemetry, falling back to a mode label when out of a session
 
 #### Controls
 
@@ -318,10 +331,10 @@ Placed on a Stream Deck+ dial or a Mirabox knob, Camera Controls becomes a camer
 Which target the dial cycles. Defaults to **Cycle by Car #** — the marquee flip-through-the-field control.
 
 - **Cycle Camera** — steps through the camera groups (Nose, Cockpit, TV1, …). Only the groups you enable in the **Camera Groups** selector take part — the plugin-global camera set (keypad Cycle Camera buttons without their own per-button selection follow it too).
-- **Cycle Sub-Camera** — steps through the sub-cameras within the active group, leaving the camera focus untouched. The one binding-driven dial mode (see the [keypad mode](#cycle-sub-camera)); if its bindings are cleared, the touch strip shows the missing-binding warning instead of the camera carousel
+- **Cycle Sub-Camera** — steps through the sub-cameras within the active group, leaving the camera focus untouched. A binding-driven dial mode (see the [keypad mode](#cycle-sub-camera)), like Cycle by Track Order; if its bindings are cleared, the touch strip shows the missing-binding warning instead of the camera carousel
 - **Cycle by Car #** (default) — moves camera focus between cars ordered by car number. Clockwise selects the next *lower* number and counter-clockwise the next higher, wrapping around at each end — the same "clockwise counts down" feel as Cycle by Race Position
 - **Cycle by Race Position** — moves camera focus through the live running order (the plugin's canonical race order, with iRacing's official position as a fallback when no order is available). Clockwise selects the car ahead — the position number decreases. It works before the green flag too: on the grid and through the formation and parade laps the field holds its **starting grid order**, so you can set up shots from pole backwards while the pace car is still leading them round. A driver still sitting in the garage keeps their grid number in the standings but is skipped when cycling, because iRacing can't point a camera at a car that isn't in the world yet
-- **Cycle by Track Order** — moves camera focus to the car physically ahead of or behind the focused car *on the road*, regardless of standings or lap count — the order you see in front of you during a race or replay. Clockwise selects the car ahead on track, counter-clockwise the car behind. Handy for jumping between the cars involved in an incident, where the running order says nothing about who is next to whom. Only competitors are cycled — the pace car and cars that have left the world are skipped, the same as the other car modes — and the neighbours come from live car placement, so while you scrub a replay *inside a live session* the mode follows the live field, not the replay cursor (in a replay you open outside a session, the replay is the live data). The same thing on a key is the [Cycle by Track Order](#cycle-by-track-order) keypad mode
+- **Cycle by Track Order** — moves camera focus to the car ahead of or behind the focused car *on track*, regardless of standings or lap count — the order you see in front of you during a race or replay. Clockwise triggers iRacing's Next Car (the car ahead on track), counter-clockwise Previous Car (the car behind), so the sim picks the car — live and in a replay alike, including one you scrub through while still in the session. The pace car is included when it is on track next to the focused car. Handy for jumping between the cars involved in an incident, where the running order says nothing about who is next to whom. A binding-driven dial mode, like Cycle Sub-Camera, sharing its Next / Previous Car bindings with Replay Control (see the [keypad mode](#cycle-by-track-order)); if they are cleared, the touch strip shows the missing-binding warning instead of the focused car
 - **Cycle Driving Camera** — steps through the driving-style cameras
 
 The touch strip's small top line always names the current mode (`CAMERA`, `SUB-CAMERA`, `CAR #`, `POSITION`, `TRACK ORDER`, or `DRIVING CAM`). Below it, the main content is whatever that mode acts on:
@@ -330,14 +343,14 @@ The touch strip's small top line always names the current mode (`CAMERA`, `SUB-C
 - **Cycle Sub-Camera** — the current camera's name within the focused group, flanked by the adjacent cameras. iRacing owns the actual stepping order, so treat the side names as a guide to the group's camera list rather than a guarantee of where the next detent lands.
 - **Cycle by Car #** — the focused car's number large in the centre (`#number`) flanked by the neighbouring car numbers, each on the side its turn direction lands on — so by default the lower number sits on the clockwise side.
 - **Cycle by Race Position** — the focused car's race position large in the centre (`P4`), with its car number shown smaller beneath it, flanked by the smaller dimmed position previews (`P3` / `P5`) — each side the exact position a turn that way would focus. When the focused car has no classified position (the pace / safety car), the centre falls back to a number-only readout instead of a misleading position badge.
-- **Cycle by Track Order** — the focused car's number large in the centre (`#number`) flanked by the numbers of the cars physically ahead of and behind it on the road, each on the side its turn direction lands on and captioned `AHEAD` / `BEHIND` beneath — so the strip reads correctly whichever way rotation is mapped. If the focused car has no track position of its own (it has towed or left the world), both directions re-enter the field at the same car; the strip then shows that car on both sides without the captions, rather than labelling one car both ahead and behind.
+- **Cycle by Track Order** — the focused car's number large in the centre (`#number`) only. iRacing picks the car a turn lands on, so there is no neighbour to preview, and a guess that disagreed with where the turn lands would be worse than none.
 - **Cycle Driving Camera** — the current camera group's icon and name only. Driving cycling hands the next group to iRacing to resolve, so there is no neighbour to preview.
 
 Everything is drawn in a per-mode accent colour you can override (border, label, value, background) in the **Dash Box Appearance** section of the dial settings. Out of a session the strip falls back to a plain mode label (`CAR #`, `TRACK ORDER`, `CAMERA`, …).
 
 #### Setting: Reverse Rotation
 
-Flips the turn direction of the selected mode. Off by default, which gives the standard mapping described above: clockwise lowers the number in **Cycle by Car #** and **Cycle by Race Position**, selects the car ahead on the road in **Cycle by Track Order**, and steps to the next camera in the list modes. Check it if you prefer the opposite on this dial — clockwise counting *up* through car numbers (the Cycle by Car # behavior before iRaceDeck 2.5), moving back through the running order (race position before 2.3), moving back down the road in Track Order, or reversing any other mode. The touch-strip previews always follow the effective direction.
+Flips the turn direction of the selected mode. Off by default, which gives the standard mapping described above: clockwise lowers the number in **Cycle by Car #** and **Cycle by Race Position**, triggers Next Car, the car ahead on track, in **Cycle by Track Order**, and steps to the next camera in the list modes. Check it if you prefer the opposite on this dial — clockwise counting *up* through car numbers (the Cycle by Car # behavior before iRaceDeck 2.5), moving back through the running order (race position before 2.3), triggering Previous Car (the car behind) in Track Order, or reversing any other mode. The touch-strip previews always follow the effective direction.
 
 #### Setting: Camera Groups (Cycle Camera)
 

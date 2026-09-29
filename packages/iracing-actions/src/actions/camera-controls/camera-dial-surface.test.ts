@@ -2,6 +2,7 @@ import { applyBindingWarning } from "@iracedeck/deck-core";
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { CAR_CYCLE_BINDING_KEY_LIST } from "../../shared/car-cycle-bindings.js";
 import { computeCarNumberTarget } from "../../shared/car-cycling.js";
 import { resolveDialBoxColors } from "../../shared/dial-box.js";
 import {
@@ -81,11 +82,8 @@ vi.mock("@iracedeck/iracing-sdk", async (importOriginal) => {
 
   return {
     TrkLoc: actual.TrkLoc,
-    // The REAL track-order primitive (#886): the dial's track-order mode is a
-    // composition over it, and the tests below assert real on-track geometry.
-    findNearestCarOnTrack: actual.findNearestCarOnTrack,
-    // The REAL in-world predicate (#968) for the same reason — and the primitive
-    // above consumes it, so a stub here would silently change its behaviour.
+    // The REAL in-world predicate (#968): the car walks' presence rule is the
+    // behaviour under test, so a stub would assert the mock, not the rule.
     carInWorld: actual.carInWorld,
     getCameraGroupsFromSessionInfo: vi.fn(() => mockGroups.value),
     getCamerasInGroup: vi.fn(() => mockCameras.value),
@@ -121,11 +119,11 @@ function dialContext(id: string, canvas: typeof STRIP | typeof KNOB | null = STR
 const TELEMETRY = { CamGroupNumber: 9, CamCarIdx: 3 };
 
 /**
- * An on-track field for the track-order tests (#886). Competitors by number:
- * #3 (carIdx 1), #42 (carIdx 3, focused), #99 (carIdx 5). On the ROAD the
- * order is the opposite of the number order: #42 at 0.30 is followed by #3 at
- * 0.55, then #99 at 0.80 (which wraps back to #42) — so a number-ordered walk
- * and a track-ordered walk land on DIFFERENT cars.
+ * An on-track field around the focused car for the track-order tests.
+ * Competitors by number: #3 (carIdx 1), #42 (carIdx 3, focused), #99 (carIdx
+ * 5), spread around the lap so that a computed road-order preview WOULD have
+ * neighbours to draw — the strip must still show none, because since #1277
+ * iRacing picks the car.
  */
 const ON_TRACK = {
   CamCarIdx: 3,
@@ -315,7 +313,7 @@ describe("camera dial-surface pure helpers", () => {
       }
     });
 
-    it("maps clockwise to next for track-order — the car AHEAD on the road (#886)", () => {
+    it("maps clockwise to next for track-order — iRacing's Next Car, the car AHEAD on track (#886, #1277)", () => {
       // "next" IS ahead in track order (the direction of travel), so clockwise
       // lands on the car ahead just like race-position's flipped default does.
       expect(clockwiseDirection("track-order", false)).toBe("next");
@@ -486,32 +484,9 @@ describe("camera dial-surface pure helpers", () => {
       expect(svg).toContain(">#3<");
       expect(svg).toContain(">#99<");
       expect(svg).not.toMatch(/>P\d/); // never a position badge — car-number mode is number-primary
-      expect(svg).not.toMatch(/AHEAD|BEHIND/); // no side captions unless asked for
     });
 
-    it("draws the side captions beneath the side numbers when given (track-order, #886)", () => {
-      const svg = renderCarCarousel({
-        width: 200,
-        height: 100,
-        colors,
-        title: "TRACK ORDER",
-        identityLabel: "TRACK ORDER",
-        center: "42",
-        left: "99",
-        right: "3",
-        sideCaptions: { left: "BEHIND", right: "AHEAD" },
-      });
-
-      expect(svg).toContain(">TRACK ORDER<");
-      expect(svg).toContain(">#42<");
-      // Each caption sits on the SAME side as its number (left x = 0.16 w, right x = 0.84 w).
-      expect(svg).toMatch(sideText(0.16, "#99"));
-      expect(svg).toMatch(sideText(0.16, "BEHIND"));
-      expect(svg).toMatch(sideText(0.84, "#3"));
-      expect(svg).toMatch(sideText(0.84, "AHEAD"));
-    });
-
-    it("draws no caption on a side that has no car to preview", () => {
+    it("draws only the centre number when no sides are given (track-order, #1277)", () => {
       const svg = renderCarCarousel({
         width: 200,
         height: 100,
@@ -520,12 +495,48 @@ describe("camera dial-surface pure helpers", () => {
         identityLabel: "TRACK ORDER",
         center: "42",
         left: null,
-        right: "3",
-        sideCaptions: { left: "BEHIND", right: "AHEAD" },
+        right: null,
       });
 
-      expect(svg).not.toContain("BEHIND");
-      expect(svg).toMatch(sideText(0.84, "AHEAD"));
+      expect(svg).toContain(">TRACK ORDER<");
+      expect(svg).toContain(">#42<");
+      expect(svg.match(/>#\d+</g)).toEqual([">#42<"]);
+    });
+
+    it("draws the #612 warning instead of the readout when the binding is missing", () => {
+      const svg = renderCarCarousel({
+        width: 200,
+        height: 100,
+        colors,
+        title: "TRACK ORDER",
+        identityLabel: "TRACK ORDER",
+        center: "42",
+        left: null,
+        right: null,
+        bindingMissing: true,
+      });
+
+      expect(svg).toContain("binding-warning");
+      expect(svg).toContain(">TRACK ORDER<");
+      expect(svg).not.toContain(">#42<");
+    });
+
+    it("lets a pending hold preview outrank the missing-binding warning (#1120)", () => {
+      const svg = renderCarCarousel({
+        width: 200,
+        height: 100,
+        colors,
+        title: "TRACK ORDER",
+        identityLabel: "TRACK ORDER",
+        center: "42",
+        left: null,
+        right: null,
+        bindingMissing: true,
+        pending: { text: "#7", color: "#fff" },
+      });
+
+      expect(svg).not.toContain("binding-warning");
+      expect(svg).toContain(">#7<");
     });
 
     it("falls back to the identity label with no focused car", () => {
@@ -728,21 +739,28 @@ describe("CameraDialSurface", () => {
         Record<string, unknown>
       >;
 
-      // Sub-Camera is the one keyboard-driven mode (#852): iRacing's camera
-      // switch broadcasts never select a sub-camera, so it taps the sim's own
-      // bindings while every other mode stays an SDK command.
+      // Two modes are keyboard-driven: Sub-Camera (#852), because iRacing's
+      // camera switch broadcasts never select a sub-camera, and Track Order
+      // (#1277), which taps iRacing's Next / Previous Car so the sim picks the
+      // car. Every other mode stays an SDK command.
+      const keyboardModes: readonly string[] = ["sub-camera", "track-order"];
+
       for (const mode of DIAL_MODES) {
         const record = comms["camera-focus-dial"][mode] as { method?: string } | undefined;
 
         expect(record, `camera-focus-dial has no entry for dial mode "${mode}"`).toBeDefined();
         expect(record?.method, `unexpected communication method for dial mode "${mode}"`).toBe(
-          mode === "sub-camera" ? "keybind" : "api",
+          keyboardModes.includes(mode) ? "keybind" : "api",
         );
       }
 
       expect(comms["camera-focus-dial"]["sub-camera"]).toEqual({
         method: "keybind",
         binding: { scope: "global", keys: [SUB_CAMERA_BINDING_KEYS.next, SUB_CAMERA_BINDING_KEYS.previous] },
+      });
+      expect(comms["camera-focus-dial"]["track-order"]).toEqual({
+        method: "keybind",
+        binding: { scope: "global", keys: [...CAR_CYCLE_BINDING_KEY_LIST] },
       });
     });
 
@@ -764,16 +782,18 @@ describe("CameraDialSurface", () => {
   });
 
   describe("rotation → cycle modes", () => {
-    it("cycles the mapped camera / sub-camera / driving target", () => {
+    it("cycles the mapped camera / sub-camera / track-order / driving target", () => {
       const host = makeHost();
       const surface = new CameraDialSurface(host as never);
       surface.rotate(dialContext("d1") as never, dial({ mode: "camera" }), 1, false);
       surface.rotate(dialContext("d1") as never, dial({ mode: "sub-camera" }), 1, false);
+      surface.rotate(dialContext("d1") as never, dial({ mode: "track-order" }), 1, false);
       surface.rotate(dialContext("d1") as never, dial({ mode: "driving" }), -1, false);
 
       expect(host.cycle).toHaveBeenNthCalledWith(1, "cycle-camera", "next");
       expect(host.cycle).toHaveBeenNthCalledWith(2, "cycle-sub-camera", "next");
-      expect(host.cycle).toHaveBeenNthCalledWith(3, "cycle-driving", "previous");
+      expect(host.cycle).toHaveBeenNthCalledWith(3, "cycle-track-order", "next");
+      expect(host.cycle).toHaveBeenNthCalledWith(4, "cycle-driving", "previous");
     });
 
     it("dispatches one cycle step per rotate event regardless of tick magnitude", () => {
@@ -900,82 +920,50 @@ describe("CameraDialSurface", () => {
     });
   });
 
-  describe("rotation → track-order mode (#886)", () => {
-    // Field layout: see the module-level ON_TRACK fixture.
+  describe("rotation → track-order mode (#1277)", () => {
+    // Since #1277 a detent hands the step to the keypad's own cycle dispatch,
+    // which taps iRacing's Next Car / Previous Car binding: the sim picks the
+    // car, so the surface computes no target and focuses nothing itself.
 
-    it("focuses the car physically AHEAD on a clockwise detent and the car BEHIND counter-clockwise", () => {
+    it("cycles Next Car (the car AHEAD) on a clockwise detent and Previous Car counter-clockwise", () => {
       const host = makeHost({ getTelemetry: vi.fn(() => ON_TRACK as never) });
       const surface = new CameraDialSurface(host as never);
       surface.rotate(dialContext("t1") as never, dial({ mode: "track-order" }), 1, false);
-
-      expect(host.focusCarNumber).toHaveBeenCalledWith(3); // ahead of #42 on the road is #3
-
       surface.rotate(dialContext("t1") as never, dial({ mode: "track-order" }), -1, false);
 
-      expect(host.focusCarNumber).toHaveBeenLastCalledWith(99); // behind #42 (wrapping) is #99
+      expect(host.cycle.mock.calls).toEqual([
+        ["cycle-track-order", "next"],
+        ["cycle-track-order", "previous"],
+      ]);
     });
 
-    it("focuses the car BEHIND on a clockwise detent when reverseRotation is set", () => {
+    it("flips the pair when reverseRotation is set", () => {
       const host = makeHost({ getTelemetry: vi.fn(() => ON_TRACK as never) });
       const surface = new CameraDialSurface(host as never);
-      surface.rotate(dialContext("t2") as never, dial({ mode: "track-order", reverseRotation: true }), 1, false);
+      const reversed = dial({ mode: "track-order", reverseRotation: true });
+      surface.rotate(dialContext("t2") as never, reversed, 1, false);
+      surface.rotate(dialContext("t2") as never, reversed, -1, false);
 
-      expect(host.focusCarNumber).toHaveBeenCalledWith(99);
+      expect(host.cycle.mock.calls).toEqual([
+        ["cycle-track-order", "previous"],
+        ["cycle-track-order", "next"],
+      ]);
     });
 
-    it("does not cycle in track-order mode", () => {
+    it("focuses no car itself, whatever the field looks like", () => {
       const host = makeHost({ getTelemetry: vi.fn(() => ON_TRACK as never) });
       const surface = new CameraDialSurface(host as never);
       surface.rotate(dialContext("t3") as never, dial({ mode: "track-order" }), 1, false);
 
-      expect(host.cycle).not.toHaveBeenCalled();
+      expect(host.focusCarNumber).not.toHaveBeenCalled();
     });
 
-    it("skips the pace car sitting between two competitors on the road (not a competitor)", async () => {
-      // carIdx 0 is the pace car: it is on track at 0.40 (between #42 and #3) but
-      // getAllCarNumbers(…, true, true) excludes it, so a detent lands on #3.
-      const withPaceCar = {
-        ...ON_TRACK,
-        CarIdxLapDistPct: [0.4, 0.55, -1, 0.3, -1, 0.8],
-        CarIdxTrackSurface: [3, 3, -1, 3, -1, 3],
-      };
-      const host = makeHost({ getTelemetry: vi.fn(() => withPaceCar as never) });
+    it("still dispatches without telemetry — the binding needs none", () => {
+      const host = makeHost({ getTelemetry: vi.fn(() => null) });
       const surface = new CameraDialSurface(host as never);
       surface.rotate(dialContext("t4") as never, dial({ mode: "track-order" }), 1, false);
 
-      expect(host.focusCarNumber).toHaveBeenCalledWith(3);
-      // The competitor set is the pace-car/spectator-EXCLUDING list — the mock
-      // ignores the flags, so pin them explicitly: this is what keeps the pace
-      // car (absent from mockAllCars) out of the road walk.
-      const { getAllCarNumbers } = await import("@iracedeck/iracing-sdk");
-      expect(getAllCarNumbers).toHaveBeenLastCalledWith(expect.anything(), true, true);
-    });
-
-    it("skips a competitor that left the world and focuses the next one along the road (#885)", () => {
-      // #3 (carIdx1) despawned: stale lap distance but a NotInWorld surface.
-      const towed = { ...ON_TRACK, CarIdxTrackSurface: [-1, -1, -1, 3, -1, 3] };
-      const host = makeHost({ getTelemetry: vi.fn(() => towed as never) });
-      const surface = new CameraDialSurface(host as never);
-      surface.rotate(dialContext("t5") as never, dial({ mode: "track-order" }), 1, false);
-
-      expect(host.focusCarNumber).toHaveBeenCalledWith(99);
-    });
-
-    it("does nothing when no other competitor is on track", () => {
-      const alone = { ...ON_TRACK, CarIdxLapDistPct: [-1, -1, -1, 0.3, -1, -1] };
-      const host = makeHost({ getTelemetry: vi.fn(() => alone as never) });
-      const surface = new CameraDialSurface(host as never);
-      surface.rotate(dialContext("t6") as never, dial({ mode: "track-order" }), 1, false);
-
-      expect(host.focusCarNumber).not.toHaveBeenCalled();
-    });
-
-    it("does nothing without on-track telemetry", () => {
-      const host = makeHost(); // TELEMETRY has no CarIdxLapDistPct
-      const surface = new CameraDialSurface(host as never);
-      surface.rotate(dialContext("t7") as never, dial({ mode: "track-order" }), 1, false);
-
-      expect(host.focusCarNumber).not.toHaveBeenCalled();
+      expect(host.cycle).toHaveBeenCalledWith("cycle-track-order", "next");
     });
   });
 
@@ -1304,8 +1292,9 @@ describe("CameraDialSurface", () => {
       expect(decoded).toMatch(sideText(0.16, "#3"));
     });
 
-    it("renders the track-order carousel: the focused #number centred, the car ahead on the clockwise side with AHEAD / BEHIND captions (#886)", async () => {
-      // On the road (ON_TRACK): #42 (0.30) → #3 (0.55) → #99 (0.80) → wraps. Ahead of #42 is #3, behind is #99.
+    it("renders the track-order strip as the focused #number only — no side numbers or captions (#1277)", async () => {
+      // A full field around the focused #42: a computed preview would have had
+      // neighbours either side, but iRacing picks the car, so none is drawn.
       const host = makeHost({ getTelemetry: vi.fn(() => ON_TRACK as never) });
       const surface = new CameraDialSurface(host as never);
       const ctx = dialContext("f2t");
@@ -1314,51 +1303,32 @@ describe("CameraDialSurface", () => {
       const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
 
       expect(decoded).toContain(">TRACK ORDER<"); // mode-name title
-      expect(decoded).toContain(">#42<"); // focused car
-      expect(decoded).toMatch(sideText(0.84, "#3")); // clockwise = the car AHEAD on the road → right
-      expect(decoded).toMatch(sideText(0.84, "AHEAD"));
-      expect(decoded).toMatch(sideText(0.16, "#99")); // counter-clockwise = the car BEHIND → left
-      expect(decoded).toMatch(sideText(0.16, "BEHIND"));
+      expect(decoded).toMatch(/font-size="40"[^>]*>#42</); // focused car, large in the centre
+      expect(decoded.match(/>#\d+</g)).toEqual([">#42<"]); // and no other number
+      expect(decoded).not.toMatch(/AHEAD|BEHIND/);
+      expect(decoded).not.toContain("binding-warning");
     });
 
-    it("swaps the track-order preview sides AND captions when reverseRotation is set (#886)", async () => {
-      const host = makeHost({ getTelemetry: vi.fn(() => ON_TRACK as never) });
+    it("warns on the track-order strip when a Next / Previous Car binding is unset (#1277)", async () => {
+      const host = makeHost({
+        getTelemetry: vi.fn(() => ON_TRACK as never),
+        isBindingMissing: vi.fn(() => true),
+      });
       const surface = new CameraDialSurface(host as never);
-      const ctx = dialContext("f2u");
-      await surface.willAppear(ctx as never, dial({ mode: "track-order", reverseRotation: true }));
-
-      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
-
-      // Clockwise now goes to the car BEHIND, so it (and its caption) previews right.
-      expect(decoded).toMatch(sideText(0.84, "#99"));
-      expect(decoded).toMatch(sideText(0.84, "BEHIND"));
-      expect(decoded).toMatch(sideText(0.16, "#3"));
-      expect(decoded).toMatch(sideText(0.16, "AHEAD"));
-    });
-
-    it("re-renders the track-order strip when the car ahead changes on the road (#886)", async () => {
-      // A moving field: the car ahead of #42 flips from #3 to #99 between two
-      // ticks (with #3 dropping behind), so the strip must redraw — the readout
-      // signature has to track the ROAD neighbours, not just the focused car.
-      const telemetry = { value: { ...ON_TRACK } as Record<string, unknown> };
-      const host = makeHost({ getTelemetry: vi.fn(() => telemetry.value as never) });
-      const surface = new CameraDialSurface(host as never);
-      const ctx = dialContext("f2v");
-      const nowSpy = vi.spyOn(Date, "now").mockReturnValue(10_000);
+      const ctx = dialContext("f2w");
       await surface.willAppear(ctx as never, dial({ mode: "track-order" }));
-      const pushesAfterAppear = ctx.setDialCanvas.mock.calls.length;
 
-      // #3 falls behind #42, #99 is now the car ahead.
-      telemetry.value = { ...telemetry.value, CarIdxLapDistPct: [-1, 0.2, -1, 0.3, -1, 0.5] };
-      nowSpy.mockReturnValue(10_500);
-      surface.onTelemetry("f2v", telemetry.value as never);
-      await Promise.resolve();
-
-      expect(ctx.setDialCanvas.mock.calls.length).toBe(pushesAfterAppear + 1);
       const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
-      expect(decoded).toMatch(sideText(0.84, "#99"));
-      expect(decoded).toMatch(sideText(0.16, "#3"));
-      nowSpy.mockRestore();
+
+      expect(decoded).toContain("binding-warning");
+      expect(decoded).toContain(">TRACK ORDER<");
+      expect(decoded).not.toContain(">#42<");
+      // Both rotation directions tap a binding, so either one missing must warn.
+      expect(host.isBindingMissing).toHaveBeenCalledWith(CAR_CYCLE_BINDING_KEY_LIST);
+      expect(vi.mocked(applyBindingWarning)).toHaveBeenLastCalledWith(expect.any(String), {
+        width: 200,
+        height: 100,
+      });
     });
 
     it("shows an identity-only label box out of session (track-order)", async () => {
@@ -1371,34 +1341,6 @@ describe("CameraDialSurface", () => {
 
       expect(decoded).toContain(">TRACK ORDER<");
       expect(decoded).not.toMatch(/>#/); // no car number readout without a focused car
-    });
-
-    it("drops the AHEAD / BEHIND captions when both detents land on the same car (focused car has no track position, #886)", async () => {
-      // The focused #42 (carIdx 3) has towed: still in session info (so the centre
-      // reads #42) but no lap distance / NotInWorld. The primitive then re-enters
-      // at the car nearest start/finish for BOTH directions — #99 at 0.80 (0.20
-      // from the line) beats #3 at 0.55 — so both sides preview #99, and one car
-      // can't be captioned both AHEAD and BEHIND.
-      const towedFocus = {
-        ...ON_TRACK,
-        CarIdxLapDistPct: [-1, 0.55, -1, -1, -1, 0.8],
-        CarIdxTrackSurface: [-1, 3, -1, -1, -1, 3],
-      };
-      const host = makeHost({ getTelemetry: vi.fn(() => towedFocus as never) });
-      const surface = new CameraDialSurface(host as never);
-      const ctx = dialContext("f2w");
-      await surface.willAppear(ctx as never, dial({ mode: "track-order" }));
-
-      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
-
-      expect(decoded).toContain(">#42<");
-      expect(decoded).toMatch(sideText(0.16, "#99"));
-      expect(decoded).toMatch(sideText(0.84, "#99"));
-      expect(decoded).not.toMatch(/AHEAD|BEHIND/);
-      // …and both detents really do focus that same car.
-      surface.rotate(ctx as never, dial({ mode: "track-order" }), 1, false);
-      surface.rotate(ctx as never, dial({ mode: "track-order" }), -1, false);
-      expect(host.focusCarNumber.mock.calls).toEqual([[99], [99]]);
     });
 
     it("renders the race-position carousel with the mode-name title, position primary, and car number secondary", async () => {
@@ -1487,10 +1429,10 @@ describe("CameraDialSurface", () => {
       expect(decoded).toMatch(sideText(0.16, "P4")); // counter-clockwise walks past dead P3 to P4
     });
 
-    // #852: Sub-Camera is the one binding-driven dial mode (iRacing exposes
-    // sub-camera stepping only as a key binding), so its strip carries the
-    // standard #612 missing-binding warning; the other modes are SDK commands
-    // and must never show one.
+    // #852: Sub-Camera is binding-driven (iRacing exposes sub-camera stepping
+    // only as a key binding), so its strip carries the standard #612
+    // missing-binding warning — as does Track Order since #1277; the other
+    // modes are SDK commands and must never show one.
     it("warns on the sub-camera strip when the sub-camera bindings are unset (#852)", async () => {
       const host = makeHost({ isBindingMissing: vi.fn(() => true) });
       const surface = new CameraDialSurface(host as never);
@@ -2150,16 +2092,30 @@ describe("CameraDialSurface", () => {
       expect(fitted).toBeLessThan(16);
     });
 
-    it("draws the track-order corners as numbers only, with no AHEAD / BEHIND captions", async () => {
-      const surface = new CameraDialSurface(makeHost() as never);
+    it("draws the track-order knob as the title and the focused car only, with empty corners (#1277)", async () => {
+      const surface = new CameraDialSurface(makeHost({ getTelemetry: vi.fn(() => ON_TRACK as never) }) as never);
       const ctx = dialContext("k8", KNOB);
       await surface.willAppear(ctx as never, dial({ mode: "track-order" }));
 
       const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls[0][0] as string);
 
       expect(decoded).toContain(">TRACK ORDER<");
-      expect(decoded).not.toContain("AHEAD");
-      expect(decoded).not.toContain("BEHIND");
+      expect(decoded.match(/>#\d+</g)).toEqual([">#42<"]);
+      expect(decoded).not.toMatch(/AHEAD|BEHIND/);
+      expect(decoded).not.toContain("<binding-warning/>");
+    });
+
+    it("draws the track-order warning on the knob when a Next / Previous Car binding is unset (#1277)", async () => {
+      const host = makeHost({ isBindingMissing: vi.fn(() => true) });
+      const surface = new CameraDialSurface(host as never);
+      const ctx = dialContext("k9", KNOB);
+      await surface.willAppear(ctx as never, dial({ mode: "track-order" }));
+
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls[0][0] as string);
+
+      expect(decoded).toContain('viewBox="0 0 176 112"');
+      expect(decoded).toContain("<binding-warning/>");
+      expect(host.isBindingMissing).toHaveBeenCalledWith(CAR_CYCLE_BINDING_KEY_LIST);
     });
 
     it("draws the sub-camera knob as the title and the current camera only", async () => {

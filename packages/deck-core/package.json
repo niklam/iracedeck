@@ -9,6 +9,10 @@
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
+    },
+    "./key-binding-defaults": {
+      "import": "./dist/key-binding-defaults.js",
+      "types": "./dist/key-binding-defaults.d.ts"
     }
   },
   "scripts": {

@@ -1297,7 +1297,17 @@
       "method": "api"
     },
     "cycle-track-order": {
-      "method": "api"
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "next": "replayControlNextCar",
+            "previous": "replayControlPrevCar"
+          }
+        }
+      }
     },
     "cycle-driving": {
       "method": "api"
@@ -1348,7 +1358,14 @@
       "method": "api"
     },
     "track-order": {
-      "method": "api"
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "replayControlNextCar",
+          "replayControlPrevCar"
+        ]
+      }
     },
     "driving": {
       "method": "api"

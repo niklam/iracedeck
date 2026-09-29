@@ -5,7 +5,9 @@
  * These are extracted from the web component to allow for unit testing
  * in a Node.js environment (without DOM dependencies).
  */
-import { isValidKey, KEY_DISPLAY_NAMES, keyToCode, type Modifier, MODIFIER_ALIASES, MODIFIERS } from "./key-maps.js";
+import { parseDefaultKeyBinding } from "@iracedeck/deck-core/key-binding-defaults";
+
+import { KEY_DISPLAY_NAMES, type Modifier, MODIFIERS } from "./key-maps.js";
 
 /** UI text constants */
 export const UI_TEXT = {
@@ -117,31 +119,19 @@ export function parseKeyBinding(json: string | null): KeyBindingValue | null {
 /**
  * Parse a simple default string like "F1" or "Ctrl+Shift+A" into a KeyBindingValue.
  * Supports modifier aliases (e.g., "Control" → "ctrl").
+ *
+ * The parse is deck-core's `parseDefaultKeyBinding` — the one the plugin's
+ * startup seed stores with (#1277) — so a default the plugin writes is
+ * byte-identical to the one this field saves. Only the warning is the PI's own.
  */
 export function parseSimpleDefault(value: string): KeyBindingValue | null {
-  const parts = value.split("+").map((p) => p.trim().toLowerCase());
-  const modifiers: Modifier[] = [];
-  let key = "";
+  const binding = parseDefaultKeyBinding(value);
 
-  for (const part of parts) {
-    // Check if it's a modifier or an alias for one
-    const resolvedModifier = MODIFIER_ALIASES[part] ?? part;
-
-    if (MODIFIERS.includes(resolvedModifier as Modifier)) {
-      modifiers.push(resolvedModifier as Modifier);
-    } else {
-      key = part;
-    }
-  }
-
-  // Validate that the key is recognized
-  if (!isValidKey(key)) {
-    console.warn(`[ird-key-binding] Invalid default key "${key}" in "${value}"`);
+  if (binding === undefined) {
+    console.warn(`[ird-key-binding] Invalid default key in "${value}"`);
 
     return null;
   }
 
-  const code = keyToCode(key);
-
-  return code ? { type: "keyboard", key, modifiers, code } : { type: "keyboard", key, modifiers };
+  return binding;
 }
