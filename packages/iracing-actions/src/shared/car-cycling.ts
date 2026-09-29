@@ -44,10 +44,10 @@ export function computeCarNumberTarget(
 
   const dir = direction === "next" ? 1 : -1;
   const idx = camCarIdx === undefined ? -1 : cars.findIndex((c) => c.carIdx === camCarIdx);
-  // Anchor so the step lands on the focused car's neighbour, or just inside the
-  // entry end when the focused car isn't listed.
-  const anchor = idx === -1 ? (dir === 1 ? -1 : cars.length) : idx;
-  const targetIdx = (((anchor + dir) % cars.length) + cars.length) % cars.length;
+  const len = cars.length;
+  // The focused car's neighbour, or the first (next) / last (previous) car
+  // when it isn't listed (e.g. the pace car).
+  const targetIdx = idx === -1 ? (dir === 1 ? 0 : len - 1) : (idx + dir + len) % len;
 
   if (targetIdx === idx) return null; // the focused car is the only one listed
 
