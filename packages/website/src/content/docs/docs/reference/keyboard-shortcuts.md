@@ -158,7 +158,8 @@ Actions marked "Available via SDK" use SDK commands directly and don't require k
 |--------|-----------------|-------------------|-----------------|
 | Cycle Camera | C / Shift+C | Yes | Next / Previous Camera |
 | Cycle Sub Camera | B / Shift+B | No | Next / Previous Sub Camera |
-| Cycle Car | V / Shift+V | Yes | Next / Previous Car |
+| Cycle Car | - | Yes | - |
+| Cycle by Track Order | V / Shift+V | No | Next / Previous Car |
 | Focus on Your Car | Ctrl+V | Yes | Your Car |
 | Cycle Driving Camera | PageDown / PageUp | Yes | Next / Previous Driving Camera |
 
