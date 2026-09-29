@@ -42,15 +42,20 @@
  *   guard's early return would stop it on exactly the ticks it has to notice
  *   it cannot see.
  *
- *   The replay gate is NOT there because the per-car arrays follow the replay
- *   cursor: two snapshots of a post-race in-session replay (2026-09-29, #1281)
- *   show `CarIdxLapCompleted`, `CarIdxLapDistPct` and `CarIdxTrackSurface`
- *   reading the LIVE field — departed cars at −1 at a replay moment where they
- *   are racing. It is there because of the
- *   FRAME: in a replay `resolveReplayFrame` returns `ReplayFrameNum`, the
- *   cursor's position, so a live crossing seen on a replay tick would be
- *   stamped with whatever moment the driver is watching rather than the frame
- *   the car crossed at. The gate therefore stays.
+ *   The per-car arrays read the LIVE field during an in-session replay, not
+ *   the replay cursor's view of it: two snapshots of a post-race in-session
+ *   replay (2026-09-29, #1281) show `CarIdxLapCompleted`, `CarIdxLapDistPct`
+ *   and `CarIdxTrackSurface` reading the LIVE field — departed cars at −1 at
+ *   a replay moment where they are racing. This change leaves the gate as
+ *   it was: `IsReplayPlaying !== true` still excludes every replay tick.
+ *   Whether a live crossing seen on a replay tick could instead be recorded
+ *   is a separate question, out of scope here: doing so would need the LIVE
+ *   frame rather than the cursor's (`resolveReplayFrame` returns
+ *   `ReplayFrameNum`, the cursor's position, while a replay plays), and what
+ *   `ReplayFrameNumEnd` means during a replay is not established — in the
+ *   two 2026-09-29 snapshots it read 40182 with `ReplayFrameNum` at 13059
+ *   mid-replay, and 1 at the live end, which looks like a frames-remaining
+ *   count rather than an absolute frame, but that reading is not confirmed.
  * - **Session change** (`SessionNum` or `SessionUniqueID` moves) re-seeds; the
  *   store starts a new session record from the events' identity.
  * - **The pace car is skipped** (`resolvePaceCarIdx`), and so is a car the

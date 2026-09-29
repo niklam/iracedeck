@@ -12,12 +12,23 @@ export interface FindNearestCarOptions {
  * nearest-gap helper behind the spotter's clear confirmation, and the caution
  * lineup in `sim-events-iracing`.
  *
- * It is NOT a camera-targeting rule (issue #1281). The number-ordered camera
- * and replay cycles used to filter with it (#885) on the premise that iRacing
- * ignores a camera switch to a car no longer in the world; that premise was
- * measured false (the switch works, live and in a replay), and the per-car
- * arrays this predicate reads show the LIVE field during an in-session replay,
- * so the cycles now walk every car the session has had instead.
+ * The number-ordered camera walks (Camera Controls' Cycle by Car # and Cycle
+ * by Race Position on the dial, the keypad Cycle Car mode, Replay Control's
+ * Number Order keys) do NOT use it any more (issue #1281): they used to
+ * filter with it (#885) on the premise that iRacing ignores a camera switch
+ * to a car no longer in the world; that premise was measured false (the
+ * switch works, live and in a replay), and the per-car arrays this predicate
+ * reads show the LIVE field during an in-session replay, so those walks now
+ * cover every car the session has had instead.
+ *
+ * One camera path still reaches this predicate, through `findNearestCarOnTrack`
+ * below: Replay Control's dial rotation on the `jump-to-my-car` mode
+ * (`findAdjacentCarOnTrack` → `camera.switchNum`) — physical track order, not
+ * the number order the walks above use. It is dormant, not removed: every
+ * plugin's manifest declares Replay Control `Keypad` only, no `Encoder`,
+ * since the #640 dial de-claim, so `onDialRotate` never fires. Re-adding a
+ * dial surface for it would skip a departed car in a replay, because this
+ * predicate reads the live field there too.
  *
  * A car counts as present when it has a valid lap distance AND a track surface
  * other than `NotInWorld`. Both halves earn their place: iRacing normally
