@@ -12,11 +12,34 @@ import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { type CalloutScript, collectScriptReferences } from "@iracedeck/callout-script";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
+import { EngineWarnings } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { ScenarioContext } from "../../dsl.js";
+import { WEIGHT } from "../../dsl.js";
 import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios, poolMemberPattern } from "../../interpreter.js";
-import { DAMAGE_CLIP_SOURCES, DAMAGE_CONTRACTS, DAMAGE_SCENARIO_IDS } from "./damage-alerts.js";
+import { DAMAGE_CLIP_SOURCES, DAMAGE_CONTRACTS, DAMAGE_SCENARIO_IDS, damageStillNeedsRepair } from "./damage-alerts.js";
+import {
+  _resetLastIncidentPoints,
+  INCIDENT_CLIP_SOURCES,
+  INCIDENT_CONTRACTS,
+  INCIDENT_SCENARIO_IDS,
+  registerIncidentVocabulary,
+} from "./incidents.js";
+import { QUALIFYING_INVALIDATION_SCENARIO_IDS } from "./qualifying-invalidation.js";
+
+// The speak-time gate reads the translator's latest tick (issue #1288).
+// `null` — no telemetry — unless a test sets the repair bits.
+const mockLatestTelemetry = vi.fn((): unknown => null);
+
+vi.mock("@iracedeck/sim-events-iracing", () => ({
+  getLatestTelemetry: () => mockLatestTelemetry(),
+}));
+
+/** A tick with the repair bits up, and one with them cleared. */
+const DAMAGED = { EngineWarnings: EngineWarnings.MandRepNeeded };
+const REPAIRED = { EngineWarnings: 0 };
 
 const mockLogger = {
   trace: vi.fn(),
@@ -162,6 +185,8 @@ let audio: FakeAudio;
 let engine: IScenarioEngine;
 
 beforeEach(() => {
+  mockLatestTelemetry.mockReset();
+  mockLatestTelemetry.mockReturnValue(null);
   bus = createMockBus();
   audio = createFakeAudio();
   engine = initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
@@ -177,7 +202,7 @@ afterEach(() => {
 });
 
 describe("DAMAGE_CONTRACTS structure", () => {
-  it("defines the one repair-needed contract on the damage.repairNeeded.raised edge, with no where: of its own", () => {
+  it("defines the one repair-needed contract on the damage.repairNeeded.raised edge, with no where: of its own, queued behind the incident lines (issue #1211)", () => {
     expect(DAMAGE_SCENARIO_IDS).toEqual(["pit-crew.damage-repair-needed"]);
 
     for (const c of DAMAGE_CONTRACTS) {
@@ -190,7 +215,14 @@ describe("DAMAGE_CONTRACTS structure", () => {
       // Default weight: a meatball (CRITICAL) still wins the bus over the heads-up.
       expect(c.weight).toBeUndefined();
       expect(c.interrupt).toBeUndefined();
-      expect(c.queueable).toBeUndefined();
+      // Waits for a held or busy bus (issue #1211), behind the incident line
+      // for the same crash, or the lap-invalidation line in its place.
+      expect(c.queueable).toBe(true);
+      expect([...(c.queueBehind ?? [])]).toEqual([...INCIDENT_SCENARIO_IDS, ...QUALIFYING_INVALIDATION_SCENARIO_IDS]);
+      expect(c.pendingHoldMs).toBeUndefined();
+      // Re-checks the repair bits at speak time (issue #1288).
+      expect(c.speakGate?.admit).toBe(damageStillNeedsRepair);
+      expect(c.speakGate?.description).toContain("still needs a repair");
     }
   });
 
@@ -275,5 +307,229 @@ describe("the bundled script's damage entry (issue #1065)", () => {
   it("compiles for the test voice with nothing skipped — no unknown pool, condition, case key or fragment", () => {
     expect(mockLogger.warn).not.toHaveBeenCalled();
     expect(mockLogger.error).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Issue #1211 / #1288: the damage line queues, waits behind the incident line
+ * for the same crash, and is skipped once the repair bits have cleared. The
+ * engine here holds both families, as `registerPitCrew` does, with the
+ * bundled script narrowed to them.
+ */
+describe("the damage line behind a held or busy bus (issues #1211, #1288)", () => {
+  const OTHER_LINE = `voice/${VOICE}/other/line-01.mp3`;
+  const DAMAGE_LINE = `voice/${VOICE}/damage/repair-needed-01.mp3`;
+  const COMBINED_MANIFEST: AudioAssetsManifest = {
+    ...manifest,
+    clips: [
+      ...manifest.clips,
+      ...INCIDENT_CLIP_SOURCES.map(({ group, base }) => `voice/${VOICE}/${group}/${base}-01.mp3`),
+      ...[1, 2, 4].map((n) => `voice/${VOICE}/incidents/points-${n}.mp3`),
+      OTHER_LINE,
+    ],
+  };
+  const COMBINED_SCRIPT: CalloutScript = {
+    ...SCRIPT,
+    scenarios: Object.fromEntries(
+      [...DAMAGE_SCENARIO_IDS, ...INCIDENT_SCENARIO_IDS].map((id) => [id, SCRIPT.scenarios[id]]),
+    ),
+    fragments: {},
+  };
+
+  beforeEach(() => {
+    _resetAudioScenarios();
+    _resetLastIncidentPoints();
+    bus = createMockBus();
+    audio = createFakeAudio();
+    engine = initializeAudioScenarios(bus, audio, COMBINED_MANIFEST, mockLogger as never, () => VOICE);
+
+    // The production order: damage first, then the incident vocabulary and
+    // contracts — `queueBehind` matches by id at fire time.
+    for (const c of DAMAGE_CONTRACTS) engine.defineContract(c);
+
+    registerIncidentVocabulary(engine);
+
+    for (const c of INCIDENT_CONTRACTS) engine.defineContract(c);
+
+    engine.setScripts(new Map([[VOICE, COMBINED_SCRIPT]]));
+    mockLatestTelemetry.mockReturnValue(DAMAGED);
+  });
+
+  afterEach(() => {
+    _resetLastIncidentPoints();
+  });
+
+  function voicePaths(): string[] {
+    return audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path);
+  }
+
+  function publishIncident(type: string, points: number): void {
+    bus.publishEvent("incident.occurred", { type, delta: points, points } as never);
+  }
+
+  function publishDamage(): void {
+    bus.publishEvent("damage.repairNeeded.raised", {} as never);
+  }
+
+  function holdSpotterFloor(): void {
+    engine.acquireFocus(AudioBus.Voice, "spotter", WEIGHT.SAFETY);
+  }
+
+  function releaseSpotterFloor(): void {
+    engine.releaseFocus(AudioBus.Voice, "spotter");
+  }
+
+  describe("behind the incident line", () => {
+    it("on an idle bus the incident published first plays and the damage line follows it", () => {
+      publishIncident("collision-car", 4);
+      publishDamage();
+      flush(audio);
+
+      expect(voicePaths()).toEqual([
+        `voice/${VOICE}/incidents/collision-car-01.mp3`,
+        `voice/${VOICE}/incidents/points-4.mp3`,
+        DAMAGE_LINE,
+      ]);
+    });
+
+    it("under the spotter's floor the damage line attaches behind the waiting incident line", () => {
+      holdSpotterFloor();
+      publishIncident("collision-car", 4);
+      publishDamage();
+      flush(audio);
+
+      expect(voicePaths()).toEqual([]);
+
+      releaseSpotterFloor();
+      flush(audio);
+
+      expect(voicePaths()).toEqual([
+        `voice/${VOICE}/incidents/collision-car-01.mp3`,
+        `voice/${VOICE}/incidents/points-4.mp3`,
+        DAMAGE_LINE,
+      ]);
+    });
+
+    it("a damage line waiting alone moves behind an incident line that arrives after it", () => {
+      holdSpotterFloor();
+      publishDamage();
+      publishIncident("collision-car", 4);
+      releaseSpotterFloor();
+      flush(audio);
+
+      expect(voicePaths()).toEqual([
+        `voice/${VOICE}/incidents/collision-car-01.mp3`,
+        `voice/${VOICE}/incidents/points-4.mp3`,
+        DAMAGE_LINE,
+      ]);
+    });
+
+    it("an escalation replacing the waiting off-track line keeps the damage line behind it (the 14:54 log)", () => {
+      holdSpotterFloor();
+      publishIncident("off-track", 1);
+      publishDamage();
+      publishIncident("collision-world", 2);
+      releaseSpotterFloor();
+      flush(audio);
+
+      expect(voicePaths()).toEqual([
+        `voice/${VOICE}/incidents/collision-world-01.mp3`,
+        `voice/${VOICE}/incidents/points-2.mp3`,
+        DAMAGE_LINE,
+      ]);
+    });
+  });
+
+  describe("the speak-time gate on the repair bits (issue #1288)", () => {
+    function holdBusWithCaution(): void {
+      engine.defineScenario({
+        id: "test.caution",
+        channel: AudioChannel.Voice,
+        bus: AudioBus.Voice,
+        family: "caution",
+        weight: WEIGHT.SAFETY,
+        sequence: [OTHER_LINE],
+      });
+      engine.fire("test.caution"); // playing, not flushed
+    }
+
+    it("a damage line behind a SAFETY caution call waits and plays after it while the bits are up (the #1288 log)", () => {
+      holdBusWithCaution();
+      publishDamage();
+      flush(audio);
+
+      expect(voicePaths()).toEqual([OTHER_LINE, DAMAGE_LINE]);
+    });
+
+    it("the same line replaying after the bits cleared is refused, and stamps nothing", () => {
+      holdBusWithCaution();
+      publishDamage();
+      mockLatestTelemetry.mockReturnValue(REPAIRED); // repaired while it waited
+      flush(audio);
+
+      expect(voicePaths()).toEqual([OTHER_LINE]);
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        expect.stringContaining(`Scenario "pit-crew.damage-repair-needed" skipped — speak-time gate`),
+      );
+
+      // Nothing was claimed or stamped: the next damage episode speaks at once.
+      mockLatestTelemetry.mockReturnValue(DAMAGED);
+      publishDamage();
+      flush(audio);
+
+      expect(voicePaths()).toEqual([OTHER_LINE, DAMAGE_LINE]);
+    });
+
+    it("an imperative fire is admitted with the bits clear (the harness buttons)", () => {
+      mockLatestTelemetry.mockReturnValue(REPAIRED);
+
+      engine.fire("pit-crew.damage-repair-needed");
+      flush(audio);
+
+      expect(voicePaths()).toEqual([DAMAGE_LINE]);
+    });
+
+    it("a waiting line replaying with no telemetry is admitted — nothing disproves the damage", () => {
+      holdBusWithCaution();
+      publishDamage();
+      mockLatestTelemetry.mockReturnValue(null);
+      flush(audio);
+
+      expect(voicePaths()).toEqual([OTHER_LINE, DAMAGE_LINE]);
+    });
+
+    it("reads either repair bit, and only those", () => {
+      const ctx = (event: SimEventOf<SimEventName> | null): ScenarioContext => ({
+        event,
+        telemetry: null,
+        data: null,
+        now: 0,
+        vars: {},
+      });
+      const raised = {
+        event: "damage.repairNeeded.raised",
+        timestamp: 0,
+        telemetry: null,
+        data: {},
+      } as unknown as SimEventOf<SimEventName>;
+
+      mockLatestTelemetry.mockReturnValue({ EngineWarnings: EngineWarnings.OptRepNeeded });
+      expect(damageStillNeedsRepair(ctx(raised))).toBe(true);
+
+      mockLatestTelemetry.mockReturnValue({ EngineWarnings: EngineWarnings.MandRepNeeded });
+      expect(damageStillNeedsRepair(ctx(raised))).toBe(true);
+
+      mockLatestTelemetry.mockReturnValue({ EngineWarnings: EngineWarnings.PitSpeedLimiter });
+      expect(damageStillNeedsRepair(ctx(raised))).toBe(false);
+
+      mockLatestTelemetry.mockReturnValue({});
+      expect(damageStillNeedsRepair(ctx(raised))).toBe(false);
+
+      mockLatestTelemetry.mockReturnValue(null);
+      expect(damageStillNeedsRepair(ctx(raised))).toBe(true);
+
+      mockLatestTelemetry.mockReturnValue(REPAIRED);
+      expect(damageStillNeedsRepair(ctx(null))).toBe(true);
+    });
   });
 });
