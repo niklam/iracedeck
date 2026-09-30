@@ -253,14 +253,19 @@ function flushIncidentBurst(state: TranslatorState, emit: EmitFn, collisionCarVa
     // type-blind consumers (the qualifying lap-invalidation callout, the
     // overtake gate's recent-incident window) read this and nothing else.
     //
-    // Emitted BEFORE `incident.occurred`, and the order is load-bearing. The
-    // translator publishes the tick's emits in emit order and the bus
-    // dispatches each synchronously, so the qualifying contract's fire has
-    // already taken the Voice bus by the time the incident contracts hear
-    // `incident.occurred` — they then drop on the busy bus, and the driver
-    // hears "this lap will be invalidated" rather than generic coaching.
-    // Before #1122 that race was decided by registration order on ONE shared
-    // event; with two events, publication order is what decides it.
+    // Emitted BEFORE `incident.occurred`, and the order is still
+    // load-bearing, though no longer as a race for the Voice bus: since
+    // #1211 the incident and lap-invalidation lines both queue, and the
+    // generic incident line yields explicitly. The qualifying contract's
+    // `where:` stashes the timestamp of the `incident.scored` it approves,
+    // and the incident contracts refuse an `incident.occurred` carrying that
+    // same timestamp — the translator stamps a tick's emits with one `now`,
+    // so an equal timestamp means the same burst. The translator publishes
+    // in emit order and the bus dispatches each synchronously, so the stash
+    // is written before `incident.occurred` is heard; published the other
+    // way round, the incident line would be approved before the stash
+    // existed, and the driver would hear generic coaching as well as "this
+    // lap will be invalidated".
     emit({ event: "incident.scored", data: { delta: state.incidentBurstDelta } });
   }
 

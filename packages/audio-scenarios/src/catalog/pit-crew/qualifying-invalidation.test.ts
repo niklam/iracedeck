@@ -965,15 +965,16 @@ describe("the bundled script's qualifying-invalidation entry (issue #1065)", () 
   });
 });
 
-describe("the Voice-bus race with the incident contracts (issue #1122)", () => {
+describe("the incident line's yield to the lap-invalidation line (issues #1122, #1211)", () => {
   // The bundled voice's incident clips beside this family's, and the script
   // widened to both families, so the incident contracts have something to
-  // say — the race is only real when the loser would have spoken.
-  const RACE_MANIFEST: AudioAssetsManifest = {
+  // say — the yield is only observable when the incident line would have
+  // spoken.
+  const YIELD_MANIFEST: AudioAssetsManifest = {
     ...manifest,
     clips: [...manifest.clips, ...MANIFEST.clips.filter((clip) => clip.includes(`/${VOICE}/incidents/`))],
   };
-  const RACE_SCRIPT: CalloutScript = {
+  const YIELD_SCRIPT: CalloutScript = {
     ...SCRIPT,
     scenarios: Object.fromEntries(
       [...QUALIFYING_INVALIDATION_SCENARIO_IDS, ...INCIDENT_SCENARIO_IDS].map((id) => [id, SCRIPT.scenarios[id]]),
@@ -1005,14 +1006,14 @@ describe("the Voice-bus race with the incident contracts (issue #1122)", () => {
     resetQualifyingInvalidationLatch();
     bus = createMockBus();
     audio = createFakeAudio();
-    initializeAudioScenarios(bus, audio, RACE_MANIFEST, mockLogger as never, () => VOICE);
+    initializeAudioScenarios(bus, audio, YIELD_MANIFEST, mockLogger as never, () => VOICE);
     registerPitCrew(bus, {
       logger: mockLogger as never,
       getQualifyingInvalidationCalloutEnabled: () => qualifyingEnabled,
       getQualifyingInvalidationSnapshot: () => lastSnapshot,
       getIncidentCalloutEnabled: () => true,
     });
-    getScenarioEngine().setScripts(new Map([[VOICE, RACE_SCRIPT]]));
+    getScenarioEngine().setScripts(new Map([[VOICE, YIELD_SCRIPT]]));
   });
 
   afterEach(() => {

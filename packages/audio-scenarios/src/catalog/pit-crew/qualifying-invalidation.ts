@@ -361,7 +361,10 @@ export function buildQualifyingInvalidationContract(
     when: {
       // The type-blind signal (#1122): a counted burst the translator could
       // not type still invalidates the lap, and `incident.occurred` never
-      // fires for one. See the header for the bus race this order wins.
+      // fires for one. The translator publishes this event before
+      // `incident.occurred` on the same tick, so the timestamp this `where:`
+      // stashes is in place when the incident contracts read it — see the
+      // header for the yield.
       event: "incident.scored",
       where: (ev) => {
         const snapshot = getSnapshot();
