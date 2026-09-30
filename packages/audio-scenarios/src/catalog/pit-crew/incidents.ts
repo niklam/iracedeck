@@ -21,15 +21,52 @@
  * entries follow it with the `incident.points` var (registered by
  * {@link registerIncidentVocabulary}) inside an `optional` clause.
  *
- * **Family preemption.** All six share `family: "incident"` so a fast
- * sequence (light contact → harder collision a second later) supersedes
- * the in-flight callout cleanly — same mechanism the flag and pit-status
- * callouts use.
+ * **Scheduling (issue #1211).** All six are `queueable` at the default
+ * weight (`WEIGHT.NORMAL`). Until #1211 they were not, and a fire that could
+ * not take the Voice bus was dropped: below the spotter's focus floor (held
+ * at `WEIGHT.SAFETY` while a car is alongside, which is when nearly every car
+ * collision happens), or behind any equal-weight line of another family
+ * playing (a damage or furled-flag line, or a caution call at `WEIGHT.SAFETY`
+ * landing in the same seconds). Now such a fire waits in the engine's one
+ * pending slot and plays when the floor releases or the bus idles. The one
+ * slot is the engine's limit (#1185 owns it): a heavier queueable fire (a
+ * penalty flag, a SAFETY fuel tier, opponent-pit, pit-window) or an
+ * equal-weight one arriving later (a NORMAL fuel tier at start/finish)
+ * displaces a waiting incident line; lighter chatter never does. The weight
+ * stays NORMAL on purpose — at the floor's weight or above, the line would
+ * break through the floor and talk over the alongside moment it exists to
+ * protect.
  *
- * **Cross-family weight.** Default weight (`WEIGHT.NORMAL`) means
- * higher-weight flags (meatball at `WEIGHT.CRITICAL`) still win the bus over
- * these; an in-flight lower-weight pit readback is replaced by a fresh
- * incident.
+ * A waiting line goes stale, so each contract's `speakGate` refuses a fire
+ * whose event is more than {@link INCIDENT_SPEAK_MAX_AGE_MS} old when it
+ * comes to speak: past that, a new, unrelated incident may already have
+ * begun, and a late line would be heard as describing it. An imperative
+ * `fire(id)` carries no event and is admitted (the harness buttons). A line
+ * cut mid-play by an `interrupt` replays whole without asking the gate again
+ * (#1138's contract for an admitted fire) — accepted, since the driver
+ * already heard it begin. `pendingHoldMs` is not used: incidents are not a
+ * train of related fires, and the translator's burst coalescing already
+ * merges a crash into one emission.
+ *
+ * **Family preemption, and escalation.** All six share `family: "incident"`
+ * so a fast sequence (light contact → harder collision a second later)
+ * supersedes the in-flight callout cleanly — same mechanism the flag and
+ * pit-status callouts use. Preemption applies to the PLAYING line only; an
+ * escalation that finds the earlier incident WAITING replaces it in the
+ * pending slot by the engine's tie rule (equal weight, newest wins), so the
+ * driver hears the escalation's corrected points once, never both lines. The
+ * damage line (`damage-alerts.ts`) waits behind whichever incident line is
+ * waiting, the escalation included.
+ *
+ * **Qualifying (issue #1211).** On a counted flying lap the
+ * lap-invalidation line (`qualifying-invalidation.ts`) supersedes this
+ * generic coaching (#567). Its `where:` records the timestamp of the
+ * `incident.scored` it approved, and these `where:`s refuse an
+ * `incident.occurred` carrying the same timestamp — the same translator
+ * flush. Before #1211 that precedence rested on the qualifying line taking an
+ * idle bus first; once the incident lines queue, that race would park them
+ * behind it (a double-up) or, under the floor, play them alone while the
+ * non-queueable qualifying line was dropped.
  *
  * **Penalty wording (issues #922 / #938).** The spoken point count is
  * composed from the event payload's `points` — the incident's value as the
@@ -58,9 +95,39 @@
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { IncidentType, SimEventOf } from "@iracedeck/event-bus";
 
-import type { ScenarioContract } from "../../dsl.js";
+import type { ScenarioContext, ScenarioContract } from "../../dsl.js";
 import { poolRef } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
+import { qualifyingApprovedBurstAt } from "./qualifying-invalidation.js";
+
+/**
+ * How old an incident fire's event may be when the line comes to speak
+ * (issue #1211). A line waiting behind the spotter's floor or a busy bus past
+ * this is refused: the incident chain it describes has closed, a new one may
+ * have begun, and the late line would be heard as describing that. Measured
+ * from the envelope `timestamp`, the translator's flush tick — itself about a
+ * second and a half after the last count increment. Equal to #1122's
+ * `INCIDENT_SEQUENCE_GAP_MS` by reasoning, not by import: the two answer
+ * different questions and may diverge. What would set it properly: the
+ * distribution, over race sessions with debug logging on, of the time from
+ * `Scenario "pit-crew.incident-…" pending` to its replay, plus a listening
+ * check of how late a line can arrive before it reads as a new incident.
+ */
+export const INCIDENT_SPEAK_MAX_AGE_MS = 10_000;
+
+/**
+ * The incident contracts' speak-time gate (issue #1211): the fire's event is
+ * no older than {@link INCIDENT_SPEAK_MAX_AGE_MS}. An imperative `fire(id)`
+ * carries no event and is admitted, which keeps the harness buttons working.
+ * Pure — it claims nothing.
+ *
+ * @internal Exported for tests.
+ */
+export function incidentStillFresh(ctx: ScenarioContext): boolean {
+  if (ctx.event === null) return true;
+
+  return ctx.now - ctx.event.timestamp <= INCIDENT_SPEAK_MAX_AGE_MS;
+}
 
 /**
  * Points value of the incident fire most recently ADMITTED by a contract's
@@ -72,15 +139,16 @@ import type { IScenarioEngine } from "../../interpreter.js";
  * the stash is what both paths read.
  *
  * Only the MATCHING, fully-gated contract writes the stash (the write sits
- * AFTER the type check): a dispatch in which nothing fires must not touch
- * it, because a fire that arrived while a lower-weight line held the bus
- * waits in the engine's pending slot with its expansion deferred to the
- * pending drain — which re-expands WITHOUT re-running `where:` — so a later
- * suppressed or non-matching event overwriting the stash would make that
- * queued fire speak the wrong count (issue #922 review). When a later
- * incident DOES fire, the same synchronous dispatch that rewrites the stash
- * also replaces the pending or in-flight family-mate, so stash and fire stay
- * in lockstep — that replacement relies on all six contracts sharing
+ * AFTER the type check and the qualifying yield): a dispatch in which nothing
+ * fires must not touch it, because a fire waiting in the engine's pending
+ * slot — every incident line is queueable since #1211 — has its expansion
+ * deferred to the pending drain, which re-expands WITHOUT re-running
+ * `where:`, so a later suppressed or non-matching event overwriting the stash
+ * would make that queued fire speak the wrong count (issue #922 review). When
+ * a later incident DOES fire, the same synchronous dispatch that rewrites the
+ * stash also replaces the pending or in-flight family-mate (the tie rule in
+ * the slot, family preemption on the bus), so stash and fire stay in
+ * lockstep — that replacement relies on all six contracts sharing
  * `family: "incident"` and the same (default) weight; keep both uniform.
  * Imperative `engine.fire()` bypasses `where:` entirely and would read a
  * stale value — no code path fires incident contracts imperatively today.
@@ -119,7 +187,7 @@ export function registerIncidentVocabulary(engine: Pick<IScenarioEngine, "define
  */
 const INCIDENT_DESCRIPTIONS: Record<IncidentType, string> = {
   "off-track":
-    "You run all four wheels off the track in any session outside the pits, and nothing worse follows within a second or two; on a timed qualifying lap the lap-invalidated line speaks first.",
+    "You run all four wheels off the track in any session outside the pits, and nothing worse follows within a second or two; on a timed qualifying lap the lap-invalidated line speaks instead.",
   "out-of-control":
     "You lose control of the car — a spin — in any session outside the pits, and nothing worse follows within a second or two.",
   "contact-world":
@@ -140,30 +208,39 @@ function incidentContract(id: string, type: IncidentType): ScenarioContract {
     base: "voice/{voice}",
     family: "incident",
     description: INCIDENT_DESCRIPTIONS[type],
+    // Wait for a held or busy bus rather than drop (issue #1211; see the header).
+    queueable: true,
     when: {
       event: "incident.occurred",
       // No session-type gate here. In qualifying sessions, the
       // `pit-crew.qualifying-invalidation-lap-invalidated` contract (#567)
       // fires on `incident.scored`, which the translator publishes BEFORE
-      // this event on the same flush (#1122), so on a valid flying lap it
-      // grabs the Voice bus first and this contract's attemptFire is dropped
-      // by the bus-busy check. On out-laps,
-      // post-pit-exit laps, race / practice sessions, and any other case
-      // where the qualifying contract's `where:` returns false, this contract
-      // fires normally — the driver still hears generic coaching.
+      // this event on the same flush (#1122); when it approved that burst,
+      // this line yields to it (#1211). On out-laps, post-pit-exit laps,
+      // race / practice sessions, and any other case where the qualifying
+      // contract's `where:` returns false, this contract fires normally —
+      // the driver still hears generic coaching.
       where: (e) => {
-        const data = (e as SimEventOf<"incident.occurred">).data;
+        const event = e as SimEventOf<"incident.occurred">;
+        const data = event.data;
 
         if (data.type !== type) return false;
 
+        // The lap-invalidation line approved this same flush (issue #1211).
+        if (qualifyingApprovedBurstAt(event.timestamp)) return false;
+
         // Stash the payload's points for the `incident.points` resolver —
-        // only the matching, fully-gated contract writes it, so a dispatch
-        // in which nothing fires can't corrupt a queued fire's count (see
-        // `lastIncidentPoints`).
+        // only the matching, fully-gated contract writes it, AFTER every
+        // refusal, so a dispatch in which nothing fires can't corrupt a
+        // queued fire's count (see `lastIncidentPoints`).
         lastIncidentPoints = Number.isInteger(data.points) && data.points > 0 ? data.points : null;
 
         return true;
       },
+    },
+    speakGate: {
+      description: "The incident was reported no more than ten seconds before the call comes to speak.",
+      admit: incidentStillFresh,
     },
   };
 }

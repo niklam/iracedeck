@@ -18,8 +18,8 @@ import { type CalloutScript, collectScriptReferences } from "@iracedeck/callout-
 import type { IEventBus, IncidentType, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { poolRef } from "../../dsl.js";
-import type { ScenarioContract } from "../../dsl.js";
+import { poolRef, WEIGHT } from "../../dsl.js";
+import type { ScenarioContext, ScenarioContract } from "../../dsl.js";
 import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios, poolMemberPattern } from "../../interpreter.js";
 import {
@@ -27,8 +27,15 @@ import {
   INCIDENT_CLIP_SOURCES,
   INCIDENT_CONTRACTS,
   INCIDENT_SCENARIO_IDS,
+  INCIDENT_SPEAK_MAX_AGE_MS,
+  incidentStillFresh,
   registerIncidentVocabulary,
 } from "./incidents.js";
+import {
+  buildQualifyingInvalidationContract,
+  type QualifyingInvalidationSnapshot,
+  resetQualifyingInvalidationLatch,
+} from "./qualifying-invalidation.js";
 
 const TYPES: readonly IncidentType[] = [
   "off-track",
@@ -146,6 +153,9 @@ function flush(audio: FakeAudio, iterations = 20): void {
 
 const VOICE = "luca";
 
+/** A clip outside this family, for the test lines that hold the bus (issue #1211). */
+const OTHER_LINE = `voice/${VOICE}/other/line-01.mp3`;
+
 /** One variant per type line, and count clips for 1–4 points only. */
 const manifest: AudioAssetsManifest = {
   clips: [
@@ -154,6 +164,8 @@ const manifest: AudioAssetsManifest = {
     "sfx/IRD-ambient-pit.mp3",
     ...INCIDENT_CLIP_SOURCES.map(({ group, base }) => `voice/${VOICE}/${group}/${base}-01.mp3`),
     ...[1, 2, 3, 4].map((n) => `voice/${VOICE}/incidents/points-${n}.mp3`),
+    // The line another family plays while an incident arrives (issue #1211).
+    OTHER_LINE,
   ],
   ambientLoop: "sfx/IRD-ambient-pit.mp3",
   ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
@@ -198,6 +210,7 @@ function voicePaths(): string[] {
 
 beforeEach(() => {
   _resetLastIncidentPoints();
+  resetQualifyingInvalidationLatch();
   bus = createMockBus();
   audio = createFakeAudio();
   engine = initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
@@ -233,8 +246,13 @@ describe("INCIDENT_CONTRACTS", () => {
       expect(c.family).toBe("incident");
       expect(c.weight).toBeUndefined();
       expect(c.interrupt).toBeUndefined();
-      expect(c.queueable).toBeUndefined();
+      // Waits for a held or busy bus rather than drop (issue #1211).
+      expect(c.queueable).toBe(true);
+      expect(c.queueBehind).toBeUndefined();
+      expect(c.pendingHoldMs).toBeUndefined();
       expect(c.frame).toBeUndefined();
+      expect(c.speakGate?.admit).toBe(incidentStillFresh);
+      expect(c.speakGate?.description).toContain("ten seconds");
     }
   });
 
@@ -336,6 +354,48 @@ describe("registerIncidentVocabulary + the points stash", () => {
     expect(vars.get("incident.points")!()).toEqual(poolRef("incidents", "points-4"));
   });
 
+  it("an incident yielding to the lap-invalidation line never touches the stash (issue #1211)", () => {
+    const vars = new Map<string, () => unknown>();
+    const stub = {
+      defineVar: vi.fn((name: string, fn: () => unknown) => vars.set(name, fn)),
+    } as unknown as IScenarioEngine;
+    const flyingLap: QualifyingInvalidationSnapshot = {
+      sessionType: "qualifying",
+      sessionNum: 1,
+      lapsRemaining: 3,
+      lapLimited: true,
+      lapCompleted: 2,
+      lapStartedFromPits: false,
+      lapCounted: true,
+    };
+    const qualifying = buildQualifyingInvalidationContract(() => flyingLap);
+
+    registerIncidentVocabulary(stub);
+    contract("pit-crew.incident-contact-car").when?.where?.({ ...incident("contact-car", 1), timestamp: 100 });
+
+    // The lap-invalidation line approves the burst flushed at 200; the
+    // incident published on that flush yields, and the parked fire's count
+    // stays its own.
+    expect(
+      qualifying.when?.where?.({
+        event: "incident.scored",
+        timestamp: 200,
+        telemetry: null,
+        data: { delta: 4 },
+      } as never),
+    ).toBe(true);
+    expect(
+      contract("pit-crew.incident-collision-car").when?.where?.({ ...incident("collision-car", 4), timestamp: 200 }),
+    ).toBe(false);
+    expect(vars.get("incident.points")!()).toEqual(poolRef("incidents", "points-1"));
+
+    // Another flush is not that burst.
+    expect(
+      contract("pit-crew.incident-collision-car").when?.where?.({ ...incident("collision-car", 4), timestamp: 201 }),
+    ).toBe(true);
+    expect(vars.get("incident.points")!()).toEqual(poolRef("incidents", "points-4"));
+  });
+
   it("publishes the points var with a description naming the incidents group, and nothing else", () => {
     const { vars, conds, cases } = engine.vocabulary();
     const points = vars.find((v) => v.name === "incident.points");
@@ -422,5 +482,145 @@ describe("the bundled script's incident entries (issue #1065)", () => {
   it("compiles for the test voice with nothing skipped", () => {
     expect(mockLogger.warn).not.toHaveBeenCalled();
     expect(mockLogger.error).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Issue #1211: the incident lines queue. Until #1211 a fire that met the
+ * spotter's focus floor or another line playing was dropped; now it waits in
+ * the engine's pending slot, and its speak-time gate refuses it once the
+ * incident is too old to be heard as the one it describes.
+ */
+describe("scheduling behind a held or busy bus (issue #1211)", () => {
+  const T0 = 1_700_000_000_000;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(T0);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** A line of another family holding the bus, at the given weight. */
+  function holdBusWith(family: string, weight: number): void {
+    engine.defineScenario({
+      id: `test.${family}`,
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      family,
+      weight,
+      sequence: [OTHER_LINE],
+    });
+    engine.fire(`test.${family}`); // playing, not flushed
+  }
+
+  it("a collision-car fire below the spotter's floor waits and plays when the floor is released", () => {
+    engine.acquireFocus(AudioBus.Voice, "spotter", WEIGHT.SAFETY);
+
+    bus.publishEvent("incident.occurred", incident("collision-car", 4).data);
+    flush(audio);
+
+    expect(voicePaths()).toEqual([]);
+
+    engine.releaseFocus(AudioBus.Voice, "spotter");
+    flush(audio);
+
+    expect(voicePaths()).toEqual([
+      `voice/${VOICE}/incidents/collision-car-01.mp3`,
+      `voice/${VOICE}/incidents/points-4.mp3`,
+    ]);
+  });
+
+  it.each([
+    { family: "damage", weight: WEIGHT.NORMAL, what: "an equal-weight damage line" },
+    { family: "flag", weight: WEIGHT.NORMAL, what: "an equal-weight furled-flag line" },
+    { family: "caution", weight: WEIGHT.SAFETY, what: "a SAFETY caution call" },
+  ])("a fire behind $what playing waits and plays after it", ({ family, weight }) => {
+    holdBusWith(family, weight);
+
+    bus.publishEvent("incident.occurred", incident("collision-car", 4).data);
+    flush(audio);
+
+    expect(voicePaths()).toEqual([
+      OTHER_LINE,
+      `voice/${VOICE}/incidents/collision-car-01.mp3`,
+      `voice/${VOICE}/incidents/points-4.mp3`,
+    ]);
+  });
+
+  it("an escalation replaces the waiting off-track line and speaks its own points, once (issue #938)", () => {
+    engine.acquireFocus(AudioBus.Voice, "spotter", WEIGHT.SAFETY);
+
+    bus.publishEvent("incident.occurred", incident("off-track", 1).data);
+    vi.advanceTimersByTime(4000);
+    bus.publishEvent("incident.occurred", { type: "collision-world", delta: 1, points: 2 } as never);
+
+    engine.releaseFocus(AudioBus.Voice, "spotter");
+    flush(audio);
+
+    expect(voicePaths()).toEqual([
+      `voice/${VOICE}/incidents/collision-world-01.mp3`,
+      `voice/${VOICE}/incidents/points-2.mp3`,
+    ]);
+  });
+
+  it("a fire more than INCIDENT_SPEAK_MAX_AGE_MS old when it replays is refused, and stamps nothing", () => {
+    engine.acquireFocus(AudioBus.Voice, "spotter", WEIGHT.SAFETY);
+
+    bus.publishEvent("incident.occurred", incident("collision-car", 4).data);
+    vi.setSystemTime(T0 + INCIDENT_SPEAK_MAX_AGE_MS + 1);
+    engine.releaseFocus(AudioBus.Voice, "spotter");
+    flush(audio);
+
+    expect(voicePaths()).toEqual([]);
+    expect(mockLogger.debug).toHaveBeenCalledWith(
+      expect.stringContaining(`Scenario "pit-crew.incident-collision-car" skipped — speak-time gate`),
+    );
+
+    // Nothing was claimed or stamped: the next incident speaks at once.
+    bus.publishEvent("incident.occurred", incident("collision-car", 2).data);
+    flush(audio);
+
+    expect(voicePaths()).toEqual([
+      `voice/${VOICE}/incidents/collision-car-01.mp3`,
+      `voice/${VOICE}/incidents/points-2.mp3`,
+    ]);
+  });
+
+  it("a fire exactly INCIDENT_SPEAK_MAX_AGE_MS old still speaks", () => {
+    engine.acquireFocus(AudioBus.Voice, "spotter", WEIGHT.SAFETY);
+
+    bus.publishEvent("incident.occurred", incident("off-track", 1).data);
+    vi.setSystemTime(T0 + INCIDENT_SPEAK_MAX_AGE_MS);
+    engine.releaseFocus(AudioBus.Voice, "spotter");
+    flush(audio);
+
+    expect(voicePaths()).toEqual([`voice/${VOICE}/incidents/off-track-01.mp3`]);
+  });
+
+  it("an imperative fire carries no event and is admitted (the harness buttons)", () => {
+    engine.fire("pit-crew.incident-off-track");
+    flush(audio);
+
+    expect(voicePaths()).toEqual([`voice/${VOICE}/incidents/off-track-01.mp3`]);
+  });
+
+  it("the gate reads only the event's age: admits no event, refuses past the limit", () => {
+    const ctx = (event: SimEventOf<SimEventName> | null, now: number): ScenarioContext => ({
+      event,
+      telemetry: null,
+      data: null,
+      now,
+      vars: {},
+    });
+    const at = (timestamp: number) => ({ ...incident("off-track", 1), timestamp }) as SimEventOf<SimEventName>;
+
+    expect(INCIDENT_SPEAK_MAX_AGE_MS).toBe(10_000);
+    expect(incidentStillFresh(ctx(null, 50_000))).toBe(true);
+    expect(incidentStillFresh(ctx(at(1000), 1000))).toBe(true);
+    expect(incidentStillFresh(ctx(at(1000), 11_000))).toBe(true);
+    expect(incidentStillFresh(ctx(at(1000), 11_001))).toBe(false);
   });
 });

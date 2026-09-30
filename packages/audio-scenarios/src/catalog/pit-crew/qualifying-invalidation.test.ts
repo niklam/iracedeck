@@ -35,10 +35,12 @@ import {
   QUALIFYING_LAP_COUNT_MAX,
   QUALIFYING_LAP_COUNT_MIN,
   QUALIFYING_LAPS_LEFT_KEYS,
+  qualifyingApprovedBurstAt,
   type QualifyingInvalidationSnapshot,
   qualifyingLatchAllows,
   resetQualifyingInvalidationLatch,
   resolveQualifyingLapsLeft,
+  stillOnApprovedLap,
 } from "./qualifying-invalidation.js";
 import { _resetRadarEngine } from "./radar-engine.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
@@ -514,12 +516,12 @@ describe("qualifying-invalidation scenario — per-lap latch", () => {
     expect(qualifyingLatchAllows(snap({ lapCompleted: 4 }))).toBe(false);
   });
 
-  it("a fire parked behind a lower-weight line latches the lap its where: approved, not the lap the driver is on by the time it speaks (issue #1138)", () => {
+  it("a fire parked while the driver crosses S/F is refused and latches nothing, so the next lap's first incident still speaks (issues #1138, #1211)", () => {
     // A CHATTER line holds the bus; the incident wins it (higher weight, no
     // interrupt) and waits for the line to finish. Meanwhile the driver
-    // crosses S/F. The gate must latch lap 4 — the snapshot the `where:`
-    // approved — so lap 5's own first incident is still announced; latching
-    // the live snapshot silenced that one and left lap 4 open instead.
+    // crosses S/F. "This lap will be invalidated" is false by then, so the
+    // gate refuses it (#1211). It must not latch lap 5 either: latching the
+    // live snapshot (the #1138 bug) silenced lap 5's own first incident.
     getScenarioEngine().defineScenario({
       id: "test.chatter",
       channel: AudioChannel.Voice,
@@ -532,10 +534,12 @@ describe("qualifying-invalidation scenario — per-lap latch", () => {
     lastSnapshot = snap({ lapCompleted: 4, lapsRemaining: 2 });
     bus.publishEvent("incident.scored", { delta: 1 }); // parked
     lastSnapshot = snap({ lapCompleted: 5, lapsRemaining: 1 }); // S/F crossed while parked
-    flush(audio); // the chatter finishes; the parked incident replays
+    flush(audio); // the chatter finishes; the parked incident replays and is refused
 
-    expect(hasClip("/qualifying-invalidation/invalidated-01.mp3")).toBe(true);
-    expect(qualifyingLatchAllows(snap({ lapCompleted: 4 }))).toBe(false);
+    expect(hasClip("/qualifying-invalidation/invalidated-01.mp3")).toBe(false);
+    expect(mockLogger.debug).toHaveBeenCalledWith(
+      expect.stringContaining(`Scenario "pit-crew.qualifying-invalidation-lap-invalidated" skipped — speak-time gate`),
+    );
     expect(qualifyingLatchAllows(snap({ lapCompleted: 5 }))).toBe(true);
 
     audio._played.length = 0;
@@ -544,13 +548,31 @@ describe("qualifying-invalidation scenario — per-lap latch", () => {
     expect(hasClip("/qualifying-invalidation/invalidated-01.mp3")).toBe(true);
   });
 
-  it("a parked fire keeps its own snapshot when a later incident is approved and then dropped (issue #1138)", () => {
+  it("a fire parked behind a lower-weight line on the same lap latches the lap its where: approved (issue #1138)", () => {
+    getScenarioEngine().defineScenario({
+      id: "test.chatter",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      weight: WEIGHT.CHATTER,
+      sequence: [`voice/${VOICE}/qualifying-invalidation/plenty-of-laps-01.mp3`],
+    });
+    getScenarioEngine().fire("test.chatter"); // in flight, not flushed
+
+    lastSnapshot = snap({ lapCompleted: 4, lapsRemaining: 2 });
+    bus.publishEvent("incident.scored", { delta: 1 }); // parked
+    flush(audio); // the chatter finishes; the parked incident replays on the same lap
+
+    expect(hasClip("/qualifying-invalidation/invalidated-01.mp3")).toBe(true);
+    expect(qualifyingLatchAllows(snap({ lapCompleted: 4 }))).toBe(false);
+    expect(qualifyingLatchAllows(snap({ lapCompleted: 5 }))).toBe(true);
+  });
+
+  it("a later approval replaces the parked fire in the slot and speaks with its own snapshot (issues #1138, #1211)", () => {
     // A CHATTER line holds the bus, so incident A (lap 4) wins it on weight
-    // and waits. A NORMAL-weight line then cuts in, so incident B (lap 5) —
-    // the same weight, and this contract is not queueable — is DROPPED on the
-    // busy bus, after its `where:` had already approved and stashed it. One
-    // shared stash slot hands B's lap to A when A finally drains: lap 5 is
-    // latched, silencing its own first incident, and lap 4 is left open.
+    // and waits. A NORMAL-weight line then cuts in, and incident B (lap 5)
+    // meets the busy bus: queueable since #1211, it parks, replacing A in
+    // the one pending slot (equal weight, newest wins). B speaks and latches
+    // lap 5, its own approved snapshot; A, whose lap is over, is gone.
     const engine = getScenarioEngine();
 
     engine.defineScenario({
@@ -577,13 +599,13 @@ describe("qualifying-invalidation scenario — per-lap latch", () => {
     engine.fire("test.loud"); // cuts the chatter; the bus now runs at NORMAL
 
     lastSnapshot = snap({ lapCompleted: 5, lapsRemaining: 1 }); // S/F crossed
-    bus.publishEvent("incident.scored", { delta: 1 }); // B approved, then dropped
+    bus.publishEvent("incident.scored", { delta: 1 }); // B approved, replaces A in the slot
 
-    flush(audio); // test.loud finishes; A drains
+    flush(audio); // test.loud finishes; B drains
 
-    expect(hasClip("/qualifying-invalidation/invalidated-01.mp3")).toBe(true);
-    expect(qualifyingLatchAllows(snap({ lapCompleted: 4 }))).toBe(false);
-    expect(qualifyingLatchAllows(snap({ lapCompleted: 5 }))).toBe(true);
+    expect(voicePaths().filter((p) => p.includes("/invalidated-"))).toHaveLength(1);
+    expect(hasClip("/qualifying-invalidation/1-lap-left-01.mp3")).toBe(true);
+    expect(qualifyingLatchAllows(snap({ lapCompleted: 5 }))).toBe(false);
   });
 });
 
@@ -648,13 +670,16 @@ describe("buildQualifyingInvalidationContract (issue #1065)", () => {
     expect(c.base).toBeUndefined();
     expect(c.weight).toBeUndefined();
     expect(c.interrupt).toBeUndefined();
-    expect(c.queueable).toBeUndefined();
+    // Waits for a held or busy bus (issue #1211).
+    expect(c.queueable).toBe(true);
+    expect(c.queueBehind).toBeUndefined();
     expect(c.cooldown).toBeUndefined();
     expect(c.triggerDelay).toBeUndefined();
     expect(c.frame).toBeUndefined();
     // The per-lap latch is claimed at speak time since #1137, described for
     // the pack author reading a callout that sometimes says nothing.
     expect(c.speakGate?.description).toContain("first incident of the flying lap");
+    expect(c.speakGate?.description).toContain("still on that lap");
   });
 
   describe("the speak-time gate takes the snapshot the where: approved (issue #1138)", () => {
@@ -673,16 +698,50 @@ describe("buildQualifyingInvalidationContract (issue #1065)", () => {
 
     beforeEach(() => resetQualifyingInvalidationLatch());
 
-    it("latches the approved lap even when the live snapshot has moved on", () => {
+    it("latches the approved lap when the live snapshot moved on within it", () => {
+      let live = snap({ lapCompleted: 4, lapsRemaining: 3 });
+      const c = buildQualifyingInvalidationContract(() => live);
+
+      expect(c.when?.where?.(incident)).toBe(true);
+      live = snap({ lapCompleted: 4, lapsRemaining: 2 });
+
+      expect(c.speakGate?.admit(ctx)).toBe(true);
+      expect(qualifyingLatchAllows(snap({ lapCompleted: 4 }))).toBe(false);
+    });
+
+    it.each([
+      { what: "lapCompleted advanced", moved: { lapCompleted: 5 } },
+      { what: "the session changed", moved: { sessionNum: 2 } },
+    ])("refuses once the driver has left the approved lap ($what) and latches nothing (issue #1211)", ({ moved }) => {
       let live = snap({ lapCompleted: 4 });
       const c = buildQualifyingInvalidationContract(() => live);
 
       expect(c.when?.where?.(incident)).toBe(true);
-      live = snap({ lapCompleted: 5 });
+      live = snap({ lapCompleted: 4, ...moved });
+
+      expect(c.speakGate?.admit(ctx)).toBe(false);
+      expect(qualifyingLatchAllows(snap({ lapCompleted: 4 }))).toBe(true);
+      expect(qualifyingLatchAllows(live)).toBe(true);
+    });
+
+    it("admits when the live snapshot is gone at speak time — nothing says the lap changed", () => {
+      let live: QualifyingInvalidationSnapshot | null = snap({ lapCompleted: 4 });
+      const c = buildQualifyingInvalidationContract(() => live);
+
+      expect(c.when?.where?.(incident)).toBe(true);
+      live = null;
 
       expect(c.speakGate?.admit(ctx)).toBe(true);
       expect(qualifyingLatchAllows(snap({ lapCompleted: 4 }))).toBe(false);
-      expect(qualifyingLatchAllows(snap({ lapCompleted: 5 }))).toBe(true);
+    });
+
+    it("stillOnApprovedLap compares sessionNum and lapCompleted only", () => {
+      const approved = snap({ lapCompleted: 4 });
+
+      expect(stillOnApprovedLap(approved, snap({ lapCompleted: 4, lapsRemaining: 0 }))).toBe(true);
+      expect(stillOnApprovedLap(approved, snap({ lapCompleted: 5 }))).toBe(false);
+      expect(stillOnApprovedLap(approved, snap({ lapCompleted: 4, sessionNum: 2 }))).toBe(false);
+      expect(stillOnApprovedLap(approved, null)).toBe(true);
     });
 
     it("refuses a second same-lap fire that raced in after another latched the lap", () => {
@@ -725,17 +784,40 @@ describe("buildQualifyingInvalidationContract (issue #1065)", () => {
       let live = snap({ lapCompleted: 4 });
       const c = buildQualifyingInvalidationContract(() => live);
       const parked = envelope();
-      const dropped = envelope();
+      const later = envelope();
 
-      expect(c.when?.where?.(parked)).toBe(true); // approved, then parked behind a busier line
+      expect(c.when?.where?.(parked)).toBe(true); // approved on lap 4, then parked
       live = snap({ lapCompleted: 5 });
-      expect(c.when?.where?.(dropped)).toBe(true); // approved, then dropped on the busy bus
+      expect(c.when?.where?.(later)).toBe(true); // approved on lap 5
 
-      // The parked fire drains: its gate sees ITS envelope, so it latches lap
-      // 4 and leaves lap 5's own first incident free to speak.
-      expect(c.speakGate?.admit(ctxFor(parked))).toBe(true);
-      expect(qualifyingLatchAllows(snap({ lapCompleted: 4 }))).toBe(false);
+      // The parked fire is judged by ITS snapshot, lap 4, which the driver
+      // has left — a shared slot would have handed it lap 5 and admitted it.
+      expect(c.speakGate?.admit(ctxFor(parked))).toBe(false);
       expect(qualifyingLatchAllows(snap({ lapCompleted: 5 }))).toBe(true);
+      // The later fire is judged by its own, and latches lap 5.
+      expect(c.speakGate?.admit(ctxFor(later))).toBe(true);
+      expect(qualifyingLatchAllows(snap({ lapCompleted: 5 }))).toBe(false);
+    });
+
+    it("records the approved envelope's timestamp for the incident contracts' yield, and only on approval (issue #1211)", () => {
+      let live = snap({ lapCompleted: 4 });
+      const c = buildQualifyingInvalidationContract(() => live);
+      const at = (timestamp: number) => ({ ...envelope(), timestamp }) as SimEventOf<SimEventName>;
+
+      expect(qualifyingApprovedBurstAt(0)).toBe(false);
+
+      expect(c.when?.where?.(at(1000))).toBe(true);
+      expect(qualifyingApprovedBurstAt(1000)).toBe(true);
+      expect(qualifyingApprovedBurstAt(1001)).toBe(false);
+
+      // A refused approval (a pit-exit lap) records nothing.
+      live = snap({ lapCompleted: 4, lapStartedFromPits: true });
+      expect(c.when?.where?.(at(2000))).toBe(false);
+      expect(qualifyingApprovedBurstAt(2000)).toBe(false);
+      expect(qualifyingApprovedBurstAt(1000)).toBe(true);
+
+      resetQualifyingInvalidationLatch();
+      expect(qualifyingApprovedBurstAt(1000)).toBe(false);
     });
   });
 });
@@ -937,7 +1019,7 @@ describe("the Voice-bus race with the incident contracts (issue #1122)", () => {
     _resetLastIncidentPoints();
   });
 
-  it("on a counted flying lap the lap-invalidated line takes the bus and the incident line drops", () => {
+  it("on a counted flying lap the lap-invalidated line plays and the incident line yields", () => {
     lastSnapshot = snap({ lapsRemaining: 3 });
 
     publishTypedBurst();
@@ -947,17 +1029,120 @@ describe("the Voice-bus race with the incident contracts (issue #1122)", () => {
     expect(incidentClips()).toEqual([]);
   });
 
-  it("published the other way round the incident line takes the bus instead — the order is the mechanism", () => {
-    // The control for the test above: nothing but publication order keeps
-    // the qualifying line in front, so reversing it must reverse the result.
+  it("published the other way round the incident line is not yielded — the approval must come first (issue #1211)", () => {
+    // The control for the test above: the yield reads the timestamp the
+    // qualifying `where:` recorded, so an `incident.occurred` dispatched
+    // before that approval (an order the translator never publishes) plays,
+    // and the queueable lap-invalidation line waits and follows it.
     lastSnapshot = snap({ lapsRemaining: 3 });
 
     bus.publishEvent("incident.occurred", { delta: 1, points: 1, type: "off-track" });
     bus.publishEvent("incident.scored", { delta: 1 });
     flush(audio);
 
-    expect(incidentClips().some((p) => p.includes("/incidents/off-track-"))).toBe(true);
-    expect(hasClip("/qualifying-invalidation/invalidated-01.mp3")).toBe(false);
+    const paths = voicePaths();
+    const incidentAt = paths.findIndex((p) => p.includes("/incidents/off-track-"));
+    const lapAt = paths.indexOf(`voice/${VOICE}/qualifying-invalidation/invalidated-01.mp3`);
+
+    expect(incidentAt).toBeGreaterThanOrEqual(0);
+    expect(lapAt).toBeGreaterThan(incidentAt);
+  });
+
+  /**
+   * Issue #1211: both lines queue, so the precedence can no longer rest on
+   * the idle-bus race. Under the spotter's floor or behind another line, the
+   * lap-invalidation line waits and plays, and the incident line for the same
+   * burst yields to it.
+   */
+  describe("under the spotter's floor and behind a busy bus (issue #1211)", () => {
+    function holdSpotterFloor(): void {
+      getScenarioEngine().acquireFocus(AudioBus.Voice, "spotter", WEIGHT.SAFETY);
+    }
+
+    function releaseSpotterFloor(): void {
+      getScenarioEngine().releaseFocus(AudioBus.Voice, "spotter");
+    }
+
+    /**
+     * One typed burst as the translator publishes it: both envelopes from one
+     * publish loop, so one timestamp — not flushed, so nothing advances the
+     * clock before the floor is released.
+     */
+    function publishBurst(): void {
+      const timestamp = Date.now();
+
+      bus.publish({ event: "incident.scored", timestamp, telemetry: null, data: { delta: 1 } } as never);
+      bus.publish({
+        event: "incident.occurred",
+        timestamp,
+        telemetry: null,
+        data: { delta: 1, points: 1, type: "off-track" },
+      } as never);
+    }
+
+    it("incident.scored then incident.occurred on one flush under the floor gives one lap-invalidation line after release, and no incident line", () => {
+      lastSnapshot = snap({ lapsRemaining: 3 });
+      holdSpotterFloor();
+
+      publishBurst();
+
+      expect(voicePaths()).toEqual([]);
+
+      releaseSpotterFloor();
+      flush(audio);
+
+      expect(voicePaths()).toEqual([
+        `voice/${VOICE}/qualifying-invalidation/invalidated-01.mp3`,
+        `voice/${VOICE}/qualifying-invalidation/3-laps-left-01.mp3`,
+      ]);
+    });
+
+    it("behind another line playing, the lap-invalidation line waits and plays after it, and the incident line yields", () => {
+      lastSnapshot = snap({ lapsRemaining: 3 });
+      getScenarioEngine().defineScenario({
+        id: "test.other",
+        channel: AudioChannel.Voice,
+        bus: AudioBus.Voice,
+        family: "other",
+        weight: WEIGHT.NORMAL,
+        sequence: [`voice/${VOICE}/qualifying-invalidation/plenty-of-laps-01.mp3`],
+      });
+      getScenarioEngine().fire("test.other"); // playing, not flushed
+
+      publishBurst();
+      flush(audio);
+
+      expect(voicePaths()).toEqual([
+        `voice/${VOICE}/qualifying-invalidation/plenty-of-laps-01.mp3`,
+        `voice/${VOICE}/qualifying-invalidation/invalidated-01.mp3`,
+        `voice/${VOICE}/qualifying-invalidation/3-laps-left-01.mp3`,
+      ]);
+    });
+
+    it("on an out-lap under the floor the qualifying where: refuses and the incident line waits and plays", () => {
+      lastSnapshot = snap({ lapStartedFromPits: true });
+      holdSpotterFloor();
+
+      publishBurst();
+      releaseSpotterFloor();
+      flush(audio);
+
+      expect(hasClip("/qualifying-invalidation/invalidated-01.mp3")).toBe(false);
+      expect(incidentClips().some((p) => p.includes("/incidents/off-track-"))).toBe(true);
+    });
+
+    it("a lap-invalidation line still waiting when the driver crosses S/F is refused; the burst says nothing", () => {
+      lastSnapshot = snap({ lapCompleted: 4, lapsRemaining: 3 });
+      holdSpotterFloor();
+
+      publishBurst();
+      lastSnapshot = snap({ lapCompleted: 5, lapsRemaining: 2 }); // S/F crossed under the floor
+      releaseSpotterFloor();
+      flush(audio);
+
+      expect(voicePaths()).toEqual([]);
+      expect(qualifyingLatchAllows(snap({ lapCompleted: 5 }))).toBe(true);
+    });
   });
 
   it("on a pit-exit lap the qualifying where: refuses, nothing holds the bus, and the incident line plays", () => {
