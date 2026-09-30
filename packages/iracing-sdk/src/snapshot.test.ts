@@ -6,6 +6,7 @@ import {
   buildMarkdownTable,
   buildPlayerTelemetry,
   buildSnapshotEnvelope,
+  formatTime,
   generateMarkdown,
   getSessionIdentification,
   snapshotBaseName,
@@ -61,6 +62,32 @@ describe("trkLocToString", () => {
 
   it("should report unknown values", () => {
     expect(trkLocToString(99)).toBe("Unknown (99)");
+  });
+});
+
+describe("formatTime", () => {
+  it("should format sub-minute times in seconds", () => {
+    expect(formatTime(23.181)).toBe("23.181s");
+    expect(formatTime(5.2)).toBe("5.200s");
+  });
+
+  it("should pad seconds to two digits past the minute", () => {
+    expect(formatTime(68.985)).toBe("1:08.985");
+    expect(formatTime(120)).toBe("2:00.000");
+  });
+
+  it("should not pad ten or more seconds past the minute", () => {
+    expect(formatTime(72.345)).toBe("1:12.345");
+    expect(formatTime(659.5)).toBe("10:59.500");
+  });
+
+  it("should carry a value that rounds up to the next minute", () => {
+    expect(formatTime(119.9996)).toBe("2:00.000");
+    expect(formatTime(59.9996)).toBe("1:00.000");
+  });
+
+  it("should print a dash for a negative (unset) time", () => {
+    expect(formatTime(-1)).toBe("-");
   });
 });
 
