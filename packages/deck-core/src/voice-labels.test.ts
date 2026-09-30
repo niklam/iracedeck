@@ -122,7 +122,7 @@ describe("voiceDisplayLabels", () => {
 });
 
 const ours = pack("Default", [{ id: "default", label: "Default" }], { id: "default", provenance: "catalog" });
-const terse = pack("Default (Terse)", [{ id: "shawn", label: "Default (Terse)" }], {
+const terse = pack("Default (Short callouts)", [{ id: "shawn", label: "Default (Short callouts)" }], {
   id: "iracedeck-terse",
   provenance: "catalog",
 });
@@ -141,7 +141,7 @@ describe("voiceDisplayLabels — first-party packs (#999)", () => {
   it("labels every voice of a first-party pack 'iRaceDeck: <pack label>'", () => {
     expect(voiceDisplayLabels([ours, terse])).toEqual({
       "default::default": "iRaceDeck: Default",
-      "iracedeck-terse::shawn": "iRaceDeck: Default (Terse)",
+      "iracedeck-terse::shawn": "iRaceDeck: Default (Short callouts)",
     });
   });
 

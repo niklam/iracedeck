@@ -50,7 +50,7 @@ export function isFirstPartyVoicePack(pack: Pick<InstalledVoicePack, "provenance
  * labelled `iRaceDeck: <pack label>`; one shipping SEVERAL voices labels each
  * `iRaceDeck: <pack label>: <voice label>`, so its voices never render as
  * identical entries. The pack's own manifest labels ("Default", "Default
- * (Terse)") stay untouched and only the plugin adds the prefix. The accepted
+ * (Short callouts)") stay untouched and only the plugin adds the prefix. The accepted
  * limit is the same one the provenance badge already
  * lives with: a hand-written `.install.json` that names this pack's id is
  * indistinguishable from a genuine install record, so a folder placed there by

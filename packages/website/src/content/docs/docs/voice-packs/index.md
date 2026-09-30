@@ -3,9 +3,9 @@ title: Voice Packs
 description: What a Race Engineer voice pack is, what its callout script can change and what it cannot, why a correct script can be silent, and where the format, the tutorial and the reference pages are.
 ---
 
-A voice pack is a folder: a `voice-pack.json` that names it, the recorded lines of one or more voices, and for each voice a **callout script** — `voice/<voice-id>/callouts.json` — that says how those lines are put together when the Race Engineer speaks. iRaceDeck publishes two packs — **Default**, which it installs for you, and **Default (Terse)**, which you install from the Settings window — and anyone can build another and drop it into the voices folder. This section is for the person building one. If you only want to install or choose a voice, [Race Engineer Voices](/docs/features/race-engineer-voices/) is the page you need.
+A voice pack is a folder: a `voice-pack.json` that names it, the recorded lines of one or more voices, and for each voice a **callout script** — `voice/<voice-id>/callouts.json` — that says how those lines are put together when the Race Engineer speaks. iRaceDeck publishes two packs — **Default**, which it installs for you, and **Default (Short callouts)**, which you install from the Settings window — and anyone can build another and drop it into the voices folder. This section is for the person building one. If you only want to install or choose a voice, [Race Engineer Voices](/docs/features/race-engineer-voices/) is the page you need.
 
-The short version: a pack decides **what is said**. It never decides **whether**, **when**, or **what may be interrupted** to say it. iRaceDeck's own two packs show the difference: Default (Terse) makes every callout Default makes, at the same moments and with the same priority, and only the words change — *"Blue flag."* where Default says *"Blue flag. Faster car approaching."*
+The short version: a pack decides **what is said**. It never decides **whether**, **when**, or **what may be interrupted** to say it. iRaceDeck's own two packs show the difference: Default (Short callouts) makes every callout Default makes, at the same moments and with the same priority, and only the words change — *"Blue flag."* where Default says *"Blue flag. Faster car approaching."*
 
 ## A correct script can be silent
 

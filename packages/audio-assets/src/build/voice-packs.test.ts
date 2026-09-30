@@ -6,11 +6,11 @@ describe("voice-packs.mjs — the Terse pack (#999)", () => {
   it("registers the Terse pack as a second first-party pack, on demand (#999)", () => {
     const terse = VOICE_PACKS.find((pack) => pack.id === "iracedeck-terse");
     expect(terse).toMatchObject({
-      label: "Default (Terse)",
+      label: "Default (Short callouts)",
       author: "iRaceDeck",
       voices: ["shawn"],
       bundled: false,
-      version: "1.0.0",
+      version: "1.0.1",
     });
   });
 
