@@ -2223,6 +2223,42 @@ describe("sim-events-iracing translator", () => {
       expect(occurredSeenInsideScored).toBe(false);
     });
 
+    it("publishes a damage edge that settled during the burst after the burst's incident events, on the flush tick (issue #1211)", () => {
+      // The incident line plays first, then the damage line: the damage diff
+      // runs after the incident diff and holds its settled edge until the
+      // open burst flushes.
+      vi.useFakeTimers();
+      const controller = createMockController();
+      const bus = getEventBus();
+      const order: string[] = [];
+      bus.subscribe("incident.scored", () => order.push("scored"));
+      bus.subscribe("incident.occurred", () => order.push("occurred"));
+      bus.subscribe("damage.repairNeeded.raised", () => order.push("damage"));
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      const damaged = EngineWarnings.MandRepNeeded;
+      controller.__tick(telemetry({ PlayerCarMyIncidentCount: 0 }));
+      controller.__tick(telemetry({ EngineWarnings: damaged }));
+      vi.advanceTimersByTime(2_800);
+      controller.__tick(
+        telemetry({
+          EngineWarnings: damaged,
+          PlayerCarMyIncidentCount: 4,
+          PlayerIncidents: IncidentFlags.RepCollisionWithCar,
+        }),
+      );
+      // Damage settles 200 ms into the burst.
+      vi.advanceTimersByTime(200);
+      controller.__tick(telemetry({ EngineWarnings: damaged, PlayerCarMyIncidentCount: 4 }));
+      expect(order).toEqual([]);
+
+      // Flush: 1500 ms after the increment.
+      vi.advanceTimersByTime(1_300);
+      controller.__tick(telemetry({ EngineWarnings: damaged, PlayerCarMyIncidentCount: 4 }));
+
+      expect(order).toEqual(["scored", "occurred", "damage"]);
+    });
+
     it("publishes incident.scored alone for a counted burst it could not type (issue #1122)", () => {
       vi.useFakeTimers();
       const controller = createMockController();

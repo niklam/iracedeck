@@ -687,6 +687,13 @@ export type TranslatorState = {
   damageBaseline: boolean; // true = damage announced and held
   damagePendingAt: number; // 0 = stable; >0 = ms timestamp of most recent flip
   damagePendingValue: boolean; // value the pending flip is moving toward
+  // The settled rising edge is HELD behind an incident burst (#1211) so the
+  // incident line plays before the damage line. `damageHeldAt` is the settle
+  // timestamp (0 = nothing held); `damageHeldSawBurst` records that a burst
+  // was open at the settle or opened since, so the emit goes out on the tick
+  // that burst flushes rather than waiting for the grace.
+  damageHeldAt: number;
+  damageHeldSawBurst: boolean;
 
   // ── Overtakes ───────────────────────────────────────────────────────────
   overtakeInitialized: boolean;
@@ -1348,6 +1355,8 @@ export function createInitialState(): TranslatorState {
     damageBaseline: false,
     damagePendingAt: 0,
     damagePendingValue: false,
+    damageHeldAt: 0,
+    damageHeldSawBurst: false,
 
     overtakeInitialized: false,
     lastPosition: -1,
