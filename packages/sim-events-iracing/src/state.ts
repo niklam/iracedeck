@@ -802,10 +802,12 @@ export type TranslatorState = {
    * 2% cadence as the display chain), ascending, pruned to a little over one
    * lap. Each checkpoint compares its gap with the gap interpolated at
    * `progress − 1` — the same spot one lap earlier — so the pair's within-lap
-   * sector profile cancels out. Cleared (making the next lap silent) on a
-   * neighbor identity change, the player's backwards jump, a due checkpoint
-   * the side cannot sample, and any ETA-regime tick; a plain sampling gap is
-   * refused by the lookup's bracket-contiguity check instead.
+   * sector profile cancels out. Never recorded on lap 1. Cleared (making the
+   * next lap silent) on a neighbor identity change, the player's backwards
+   * jump, a due checkpoint the side cannot sample, any ETA-regime tick and
+   * every tick under a full-course caution; a plain sampling gap is refused
+   * by the lookup's bracket-contiguity check instead, which also empties the
+   * lap-rate window.
    */
   gapLapHistoryAhead: { progress: number; gapSeconds: number }[];
   gapLapHistoryBehind: { progress: number; gapSeconds: number }[];
@@ -813,7 +815,8 @@ export type TranslatorState = {
    * The most recent lap-over-lap gap changes (s/lap; negative = closing),
    * oldest first, capped at `GAP_LAP_RATE_WINDOW_SAMPLES`. Their mean is the
    * lap rate every trend callout decision reads; it is null until the window
-   * holds `GAP_LAP_RATE_MIN_SAMPLES`. Cleared with the lap history.
+   * holds `GAP_LAP_RATE_MIN_SAMPLES`. Cleared with the lap history, and
+   * whenever a checkpoint finds no contiguous reading one lap back.
    */
   gapLapRateWindowAhead: number[];
   gapLapRateWindowBehind: number[];

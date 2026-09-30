@@ -86,6 +86,8 @@ function run(
     behindOscillateS?: number;
     overrides?: Partial<TelemetryData>;
     trackLengthMeters?: number | null;
+    /** A full-course caution is out for the whole segment. */
+    caution?: boolean;
   },
 ): void {
   const lapTime = 90;
@@ -113,6 +115,7 @@ function run(
       opts.lapsRemaining ?? null,
       () => opts.minChangeS ?? GAP_DEFAULT_MIN_CHANGE_S,
       opts.trackLengthMeters ?? null,
+      opts.caution ?? false,
     );
   }
 }
@@ -590,7 +593,7 @@ describe("diffGaps — relevance events (issue #933 follow-up)", () => {
     expect(closingEvents(events2).length).toBeGreaterThanOrEqual(1);
   });
 
-  it("assumes grid spacing on the opening lap: no 'right with us' off the start, and a lap-1 breakaway waits for a lap of history", () => {
+  it("assumes grid spacing on the opening lap: no 'right with us' off the start, and a lap-1 breakaway waits for lap 3", () => {
     const state = createInitialState();
     const { events, emit } = collect();
 
@@ -612,9 +615,14 @@ describe("diffGaps — relevance events (issue #933 follow-up)", () => {
     run(state, emit, { fromLap: 0.75, toLap: 1.0, aheadGapS: 30, behindGapS: [0.8, 3.0] });
     expect(trendEvents(events)).toHaveLength(0);
 
-    // The pull continues into lap 2: with a lap of same-spot history the
-    // breakaway announces, once.
+    // The pull continues through lap 2: lap 1 is never recorded, so there is
+    // still nothing to compare with (issue #1285)...
     run(state, emit, { fromLap: 1.0, toLap: 2.0, aheadGapS: 30, behindGapS: [3.0, 4.0] });
+    expect(trendEvents(events)).toHaveLength(0);
+
+    // ...and on lap 3, with lap 2 as the same-spot history, the breakaway
+    // announces, once.
+    run(state, emit, { fromLap: 2.0, toLap: 3.0, aheadGapS: 30, behindGapS: [4.0, 5.0] });
 
     const calls = openingEvents(events);
 
@@ -892,13 +900,30 @@ describe("diffGaps — lap-scale trend calls (issue #1285)", () => {
     expect(aheadTrendCalls(events, "closing")).toHaveLength(0);
   });
 
-  it("makes no trend call on lap 1 — a breakaway from the start waits for a lap of history", () => {
+  it("makes no trend call before lap 3 — lap 1 is never recorded, so a breakaway from the start waits for lap 2's history", () => {
     // Same breakaway from the green (player on lap 1, LapCompleted 0).
     const { events } = runTrack({ fromLap: 0, laps: 4, startGapS: 2, leaderLapDeltaS: -0.7 });
     const calls = aheadTrendCalls(events, "opening");
 
     expect(calls).toHaveLength(1);
-    expect(calls[0]!.playerProgress).toBeGreaterThanOrEqual(1);
+    expect(calls[0]!.playerProgress).toBeGreaterThanOrEqual(2);
+  });
+
+  it("cannot turn a lap-1 queue-inflated gap into a lap-2 closing call", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+
+    // Off the start the car behind sits 3.5 s back in the queue and the gap
+    // unwinds to 1.5 s by the line; lap 2 then runs flat at 1.5 s. Compared
+    // with lap 1, every spot of lap 2 reads ~2 s/lap of "closing" with a
+    // sub-lap contact projection, and the gap sits 2 s under its lap-1 peak.
+    run(state, emit, { fromLap: 0.05, toLap: 1.0, aheadGapS: 30, behindGapS: [3.5, 1.5] });
+    run(state, emit, { fromLap: 1.0, toLap: 2.0, aheadGapS: 30, behindGapS: 1.5 });
+    expect(trendEvents(events)).toHaveLength(0);
+
+    // Lap 3 compares with lap 2, which was flat — still nothing.
+    run(state, emit, { fromLap: 2.0, toLap: 3.0, aheadGapS: 30, behindGapS: 1.5 });
+    expect(trendEvents(events)).toHaveLength(0);
   });
 
   it("re-arms a breakaway only once the lap rate falls below the re-arm bar, then announces a later one", () => {
@@ -1011,6 +1036,188 @@ describe("diffGaps — lap-scale trend calls (issue #1285)", () => {
     expect(minAfterStint).not.toBeNull();
     expect(minAfterStint!).toBeGreaterThan(7.5);
     expect(openingEvents(events)).toHaveLength(0);
+  });
+
+  it("does not let a 'caught' call fired on an ETA reading seed the trough of a later breakaway", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    const lapTime = 90;
+    const trackLengthMeters = 4000;
+
+    // 4 s behind the car ahead; the threshold episode arms (4 > 1.5).
+    run(state, emit, { fromLap: 1, toLap: 2.5, aheadGapS: 4, behindGapS: 30, trackLengthMeters });
+    expect(state.gapThresholdArmedAhead).toBe(true);
+
+    // The car ahead stops at `stopAt`. The player drives on: the ETA regime
+    // counts the gap down and fires "caught" under 1 s. At 0.25 s short of
+    // the stopped car the player stops too, the car ahead drives away, and
+    // the player follows 2.15 s later — so the real gap afterwards is
+    // 0.25 + 2.15 = 2.4 s. Then, a lap and a bit later, the car ahead starts
+    // pulling away at 0.8 s/lap.
+    const t0 = 2.5 * lapTime;
+    const stopAt = 2.5 + 4 / lapTime;
+    const playerStopS = 3.75;
+    const playerWaitS = 2.15;
+    const resumeS = playerStopS + playerWaitS;
+    const openFromS = resumeS + 1.2 * lapTime;
+    const endS = resumeS + 4 * lapTime;
+    const playerAt = (tau: number): number => {
+      if (tau <= playerStopS) return 2.5 + tau / lapTime;
+
+      if (tau <= resumeS) return 2.5 + playerStopS / lapTime;
+
+      return 2.5 + (playerStopS + tau - resumeS) / lapTime;
+    };
+    const aheadAt = (tau: number): number => {
+      if (tau <= playerStopS) return stopAt;
+
+      const opened = Math.max(0, tau - openFromS) * (0.8 / lapTime / lapTime);
+
+      return stopAt + (tau - playerStopS) / lapTime + opened;
+    };
+    let caughtOnEta = false;
+
+    for (let i = 1; i * 0.045 <= endS; i++) {
+      const tau = i * 0.045;
+      const before = thresholdEvents(events).length;
+
+      diffGaps(
+        state,
+        tick(t0 + tau, [playerAt(tau), aheadAt(tau), 2.5 + (tau - 30) / lapTime]),
+        true,
+        PLAYER,
+        null,
+        [2, 1, 3],
+        () => GAP_DEFAULT_ALERT_THRESHOLD_S,
+        emit,
+        null,
+        () => GAP_DEFAULT_MIN_CHANGE_S,
+        trackLengthMeters,
+      );
+
+      if (thresholdEvents(events).length > before && state.gapEtaReadingAhead) caughtOnEta = true;
+
+      if (Math.abs(tau - (openFromS - 1)) < 0.03) {
+        // Fixture guard: the lap history the breakaway reads holds only the
+        // real ~2.4 s gap, no frozen stop-time reading.
+        expect(state.gapLiveAhead?.gapSeconds).toBeCloseTo(2.4, 1);
+        expect(state.gapLapHistoryAhead.every((h) => h.gapSeconds < 3)).toBe(true);
+      }
+    }
+
+    // The call fired on an ETA reading under the 1 s threshold...
+    expect(caughtOnEta).toBe(true);
+    expect((thresholdEvents(events)[0]!.data as { gapSeconds: number }).gapSeconds).toBeLessThan(1);
+
+    // ...and the breakaway is measured from the real 2.4 s trough, not from
+    // that estimate: it announces only once the gap is 1.5 s above 2.4.
+    const opens = openingEvents(events);
+
+    expect(opens).toHaveLength(1);
+    expect((opens[0]!.data as { gapSeconds: number }).gapSeconds).toBeGreaterThanOrEqual(3.85);
+  });
+
+  it("clears the lap history on a due checkpoint where the neighbor has no live progress", () => {
+    const state = createInitialState();
+    const { emit } = collect();
+    const lapTime = 90;
+
+    run(state, emit, { fromLap: 1, toLap: 2.5, aheadGapS: 3, behindGapS: 30 });
+    expect(state.gapLapRateWindowAhead.length).toBeGreaterThan(0);
+
+    // The car ahead blinks out of the world (no lap progress) across two
+    // checkpoints.
+    for (let p = 2.505; p <= 2.56; p += 0.005) {
+      const base = tick(p * lapTime, [p, p + 3 / lapTime, p - 30 / lapTime]);
+      const lc = [...(base.CarIdxLapCompleted as number[])];
+      const pct = [...(base.CarIdxLapDistPct as number[])];
+
+      lc[AHEAD] = -1;
+      pct[AHEAD] = -1;
+      diffGaps(
+        state,
+        { ...base, CarIdxLapCompleted: lc, CarIdxLapDistPct: pct } as unknown as TelemetryData,
+        true,
+        PLAYER,
+        null,
+        [2, 1, 3],
+        () => GAP_DEFAULT_ALERT_THRESHOLD_S,
+        emit,
+      );
+    }
+
+    expect(state.gapLiveAhead?.gapSeconds).toBeNull();
+    expect(state.gapLapHistoryAhead).toHaveLength(0);
+    expect(state.gapLapRateWindowAhead).toHaveLength(0);
+    expect(state.gapRateEmaAhead).toBeNull();
+  });
+
+  it("empties the lap-rate window while the reading one lap back falls in a sampling gap", () => {
+    const state = createInitialState();
+    const { emit } = collect();
+    const lapTime = 90;
+
+    run(state, emit, { fromLap: 1, toLap: 2.5, aheadGapS: 3, behindGapS: 30 });
+
+    // The player's own progress drops out for 0.15 lap: the diff samples no
+    // checkpoint, while the car ahead's trace keeps recording, so the ahead
+    // gap is readable again the moment the player is back — and the lap
+    // history carries a 0.15-lap hole (wider than a contiguous bracket).
+    for (let p = 2.505; p < 2.65; p += 0.005) {
+      const base = tick(p * lapTime, [p, p + 3 / lapTime, p - 30 / lapTime]);
+      const lc = [...(base.CarIdxLapCompleted as number[])];
+
+      lc[PLAYER] = -1;
+      diffGaps(
+        state,
+        { ...base, CarIdxLapCompleted: lc } as unknown as TelemetryData,
+        true,
+        PLAYER,
+        null,
+        [2, 1, 3],
+        () => GAP_DEFAULT_ALERT_THRESHOLD_S,
+        emit,
+      );
+    }
+
+    // Up to the hole, the lookups still find contiguous readings.
+    run(state, emit, { fromLap: 2.65, toLap: 3.45, aheadGapS: 3, behindGapS: 30 });
+    expect(state.gapLapHistoryAhead[0]!.progress).toBeLessThan(2.5);
+    expect(state.gapLapRateWindowAhead.length).toBeGreaterThan(0);
+
+    // A lap on, the lookups land in the hole: refused, and the window goes
+    // dark instead of serving the changes from before it.
+    run(state, emit, { fromLap: 3.45, toLap: 3.6, aheadGapS: 3, behindGapS: 30 });
+    expect(state.gapLapRateWindowAhead).toHaveLength(0);
+
+    // Past the hole, contiguous readings bring it back.
+    run(state, emit, { fromLap: 3.6, toLap: 3.8, aheadGapS: 3, behindGapS: 30 });
+    expect(state.gapLapRateWindowAhead.length).toBeGreaterThan(0);
+  });
+
+  it("makes no trend call on the restart lap after a full-course caution packs the field up", () => {
+    const pacedRace = (caution: boolean): PendingEvent[] => {
+      const state = createInitialState();
+      const { events, emit } = collect();
+
+      // Green running 4 s behind the car ahead.
+      run(state, emit, { fromLap: 1, toLap: 3, aheadGapS: 4, behindGapS: 30 });
+      // Two caution laps pack the pair up to 0.8 s...
+      run(state, emit, { fromLap: 3, toLap: 5, aheadGapS: [4, 0.8], behindGapS: 30, caution });
+
+      const before = trendEvents(events).length;
+
+      // ...and after the restart the field strings out again.
+      run(state, emit, { fromLap: 5, toLap: 6, aheadGapS: [0.8, 2.5], behindGapS: 30 });
+
+      return trendEvents(events).slice(before);
+    };
+
+    // Compared with the pace laps, the restart lap reads as the car ahead
+    // pulling away — the fixture bites when the caution is not declared...
+    expect(pacedRace(false).length).toBeGreaterThan(0);
+    // ...and the caution keeps the pace laps out of the lap history.
+    expect(pacedRace(true)).toHaveLength(0);
   });
 });
 

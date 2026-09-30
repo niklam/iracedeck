@@ -2186,6 +2186,8 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
     gapLapsRemaining,
     self.getGapMinChangeSeconds,
     trackLengthMeters,
+    // `diffCaution` ran earlier this tick, so this is the current phase.
+    self.state.cautionPhase !== "none",
   );
   // Pit-box count-in (issue #600). Reuses the cached `trackLengthMeters` to
   // convert the LapDistPct→box gap into meters; the box itself comes from
