@@ -198,6 +198,8 @@ One opt-in lives under **Race Engineer Callouts → Pit Service** in the Setting
 
 Drivers focused on the racing line can miss small impacts — a tap on the wall, an inside-line bump. The Race Engineer fires a spoken heads-up the first time iRacing reports damage that requires repair, so you know to consider a pit stop without having to look away from the track. The callout fires once on each clean → damaged transition (after a short debounce window that filters frame-rate flicker), and re-fires after a repair if you pick up new damage later.
 
+The heads-up waits its turn rather than being lost: if the spotter is calling a car alongside, or another call is on the radio, it plays as soon as the radio is free. When the same crash also costs you an incident, you hear the [incident call](#incident-callouts) first and the damage heads-up right after it. If the damage has been repaired by the time it would play, the engineer says nothing.
+
 ## Incident callouts
 
 When iRacing charges you with an incident, the Race Engineer tells you what it saw and what it cost — one line per incident category, spoken a moment after the sim reports it (a quick multi-stage crash collapses into a single call with the worst outcome):
@@ -212,6 +214,8 @@ When iRacing charges you with an incident, the Race Engineer tells you what it s
 **The engineer only names an incident your incident count can account for.** iRacing reports the kind of incident and moves your count separately, a moment apart, and it also reports light contact that costs you nothing. So before he speaks, the engineer checks the kind against how far the count has moved over the incident so far: a fresh incident that cost you one point is an off-track, never a car collision — while an off-track that turns into a spin a few seconds later still escalates to two points, as iRacing scores it. A light car contact followed a second later by an off-track is announced as the off-track it was scored as. That is also why the two contact lines stay quiet: a contact is worth no points, so a count that moved was moved by something else.
 
 The spoken count is **the value iRacing actually scores for the incident** — the Sporting Code value of the detected incident category, resolved per discipline, so heavy car contact is announced as four points on pavement but two points in dirt racing. iRacing scores a multi-stage crash as one incident that escalates to its worst outcome: go off track and end up in the wall a few seconds later and the whole thing is a single two-point incident, not one plus two. The engineer follows that model — each escalation announces the incident's full current value, and a worse outcome that lands after an earlier stage was already announced corrects it, cutting the earlier line off mid-sentence if it's still playing. If no matching count line exists for the active voice, the engineer describes the contact without naming a number.
+
+**An incident call waits for the radio instead of being lost.** A collision with another car nearly always happens while the spotter is calling that car alongside, and a crash often brings a caution call in the same few seconds. The incident call plays once the spotter has said clear or the call in progress has finished, followed by the [damage heads-up](#damage-heads-up) if the crash damaged the car. If the incident escalates while its first line is still waiting, you hear only the escalated line, with the corrected point count. A call still waiting ten seconds after the incident is dropped, because by then it could be mistaken for news of a new one.
 
 ## Pit Service Status
 
@@ -280,7 +284,7 @@ On the final lap of a race the best-lap callout is suppressed — the race-end r
 
 ## Qualifying Lap Invalidation
 
-When you pick up an incident during a qualifying lap — an off-track, contact, anything iRacing counts — the Race Engineer tells you right away that the lap is gone: *"This lap will be invalidated."* In a lap-limited qualifying he follows up with how many attempts remain after this one:
+When you pick up an incident during a qualifying lap — an off-track, contact, anything iRacing counts — the Race Engineer tells you that the lap is gone: *"This lap will be invalidated."* In a lap-limited qualifying he follows up with how many attempts remain after this one:
 
 - **Out of laps** — *"We're out of qualifying laps, so that's it for now."* (the incident happened on your final counted lap)
 - **1–5 laps left** — a per-count line with its own encouragement, e.g. *"One lap left. Make sure to have a flying start for the last lap."* or *"Two laps left. Take a breath, reset, and go again."*
@@ -289,6 +293,8 @@ When you pick up an incident during a qualifying lap — an off-track, contact, 
 In a time-limited qualifying only the core line plays — a lap count would be meaningless there.
 
 Multiple incidents on the same lap collapse into a single callout. The engineer also stays quiet on laps that aren't timed attempts: the out-lap (and any lap that started from pit exit), and the extra laps after your counted attempts are done — in a lap-limited qualifying iRacing lets you keep circulating once your attempts are used up, but an incident there invalidates nothing, so nothing is announced.
+
+On a counted lap this line takes the place of the ordinary [incident call](#incident-callouts) for the same incident, so you never hear both. Like the incident call, it waits for the spotter or a call in progress to finish rather than being lost; if you have already crossed the line onto your next lap by then, it is dropped, since it would describe the wrong lap.
 
 Toggle it from **Race Engineer Callouts → Qualifying → Lap invalidated**. Race and practice sessions never fire this callout.
 
