@@ -778,22 +778,54 @@ export type TranslatorState = {
   gapLiveAhead: GapNeighborState | null;
   gapLiveBehind: GapNeighborState | null;
   /**
-   * Display-trend rate chain (issue #933 follow-up): the gap is sampled at
-   * every 2% of player progress; adjacent-sample deltas (a couple of seconds
-   * apart, where track-position noise is negligible) feed an exponential
-   * moving average of the gap rate in seconds-per-lap. The key color
-   * classifies that smoothed rate, so it goes live ~0.1 lap after any reset
-   * instead of needing a full same-spot lap of history. Reset on neighbor
-   * identity change and across any sampling break (pit visits, data gaps).
+   * Display-trend rate chain (issue #933 follow-up), DISPLAY ONLY: the gap is
+   * sampled at every 2% of player progress; adjacent-sample deltas (a couple
+   * of seconds apart, where track-position noise is negligible) feed an
+   * exponential moving average of the gap rate in seconds-per-lap. The key
+   * color classifies that smoothed rate, so it goes live ~0.1 lap after any
+   * reset instead of needing a full same-spot lap of history. It is a
+   * within-lap (sector-scale) rate, so the callouts never read it — they use
+   * the lap-over-lap rate below (issue #1285). Reset on neighbor identity
+   * change and across any sampling break (pit visits, data gaps).
    */
   gapLastCheckpointAhead: { progress: number; gapSeconds: number } | null;
   gapLastCheckpointBehind: { progress: number; gapSeconds: number } | null;
-  /** Smoothed gap rate (s/lap; negative = closing). Null until seeded. */
+  /** Smoothed display gap rate (s/lap; negative = closing). Null until seeded. Display only. */
   gapRateEmaAhead: number | null;
   gapRateEmaBehind: number | null;
-  /** Consecutive rate samples in the current chain (gates classification). */
+  /** Consecutive rate samples in the current chain (gates the display classification). */
   gapRateSamplesAhead: number;
   gapRateSamplesBehind: number;
+  /**
+   * Lap history for the callouts' lap-scale rate (issue #1285): the side's
+   * checkpoint readings `{ progress, gapSeconds }` (player progress, the same
+   * 2% cadence as the display chain), ascending, pruned to a little over one
+   * lap. Each checkpoint compares its gap with the gap interpolated at
+   * `progress − 1` — the same spot one lap earlier — so the pair's within-lap
+   * sector profile cancels out. Cleared (making the next lap silent) on a
+   * neighbor identity change, the player's backwards jump, a due checkpoint
+   * the side cannot sample, and any ETA-regime tick; a plain sampling gap is
+   * refused by the lookup's bracket-contiguity check instead.
+   */
+  gapLapHistoryAhead: { progress: number; gapSeconds: number }[];
+  gapLapHistoryBehind: { progress: number; gapSeconds: number }[];
+  /**
+   * The most recent lap-over-lap gap changes (s/lap; negative = closing),
+   * oldest first, capped at `GAP_LAP_RATE_WINDOW_SAMPLES`. Their mean is the
+   * lap rate every trend callout decision reads; it is null until the window
+   * holds `GAP_LAP_RATE_MIN_SAMPLES`. Cleared with the lap history.
+   */
+  gapLapRateWindowAhead: number[];
+  gapLapRateWindowBehind: number[];
+  /**
+   * Whether this tick's live gap is an ETA-regime reading (issue #1285): the
+   * chaser's ETA over the separation to a stopped or crawling leader rather
+   * than a crossing-time gap. Such a reading is never folded into the
+   * since-announcement extremes. Kept here, not on the public
+   * `GapNeighborState`.
+   */
+  gapEtaReadingAhead: boolean;
+  gapEtaReadingBehind: boolean;
   /** Player progress at the last recorded checkpoint (−1 before seeding). */
   gapLastCheckpointProgress: number;
   /**
@@ -809,7 +841,8 @@ export type TranslatorState = {
   /**
    * Breakaway announcement latch (issue #933): true once the side's
    * "opening" emission fired for the current episode; re-arms when the pair
-   * closes back into battle range.
+   * is back in battle range AND the lap-over-lap rate says the opening is
+   * over (issue #1285) — a null lap rate never re-arms.
    */
   gapBreakawayAnnouncedAhead: boolean;
   gapBreakawayAnnouncedBehind: boolean;
@@ -1389,6 +1422,12 @@ export function createInitialState(): TranslatorState {
     gapRateEmaBehind: null,
     gapRateSamplesAhead: 0,
     gapRateSamplesBehind: 0,
+    gapLapHistoryAhead: [],
+    gapLapHistoryBehind: [],
+    gapLapRateWindowAhead: [],
+    gapLapRateWindowBehind: [],
+    gapEtaReadingAhead: false,
+    gapEtaReadingBehind: false,
     gapLastCheckpointProgress: -1,
     gapContactAnnouncedLapsAhead: null,
     gapContactAnnouncedLapsBehind: null,

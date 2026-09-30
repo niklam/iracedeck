@@ -2185,6 +2185,7 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
     emit,
     gapLapsRemaining,
     self.getGapMinChangeSeconds,
+    trackLengthMeters,
   );
   // Pit-box count-in (issue #600). Reuses the cached `trackLengthMeters` to
   // convert the LapDistPct→box gap into meters; the box itself comes from
