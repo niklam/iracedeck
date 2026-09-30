@@ -4,7 +4,11 @@
  * Detects each car's `CarIdxTrackSurface` transition INTO
  * `TrkLoc.AproachingPits` against a per-car previous-tick baseline and emits
  * `opponentPit.entered` for the cars that matter: the (class) leader, and
- * same-lap cars within ±2 effective positions of the player. Never keys on
+ * same-lap cars within ±2 effective positions of the player. A transition out
+ * of `TrkLoc.InPitStall` never counts (#1212): iRacing reports the pit lane
+ * as `AproachingPits` on the way OUT too, so a car leaving its box makes the
+ * same edge as one arriving — and a car leaving its stall is never "pitting".
+ * Never keys on
  * `CarIdxOnPitRoad` — real telemetry shows it reading true for on-track cars
  * (see the header of `race-finish.ts`).
  *
@@ -46,7 +50,9 @@ export const OPPONENT_PIT_AGGREGATE_THRESHOLD = 3;
 
 /**
  * Per-car re-announce cooldown — a car crawling back and forth across the
- * approach-zone boundary can't re-announce the same stop.
+ * pit-entry boundary (`OnTrack` ⇄ `AproachingPits`) can't re-announce the
+ * same stop. The stall exit needs no cooldown since #1212: it is excluded by
+ * the transition itself, however long the stop.
  */
 export const OPPONENT_PIT_CAR_COOLDOWN_MS = 30_000;
 
@@ -163,6 +169,9 @@ export function diffOpponentPit(
       if (i === playerCarIdx || i === paceCarIdx) continue;
 
       if (ts[i] !== TrkLoc.AproachingPits || prev[i] === TrkLoc.AproachingPits || prev[i] === undefined) continue;
+
+      // Leaving the stall, not arriving (#1212).
+      if (prev[i] === TrkLoc.InPitStall) continue;
 
       // In-world test (the race-finish.ts shape) — blipped/vanished cars skip.
       if ((lc?.[i] ?? -1) < 0 || (dp?.[i] ?? -1) < 0) continue;

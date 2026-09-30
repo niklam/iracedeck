@@ -255,6 +255,45 @@ describe("diffOpponentPit", () => {
     expect(run(state, enter, 2000 + OPPONENT_PIT_CAR_COOLDOWN_MS + 1000)).toHaveLength(1);
   });
 
+  it("does not announce a car leaving its pit stall, however long the stop (#1212)", () => {
+    run(state, makeField(), 1000);
+    const approach = makeField();
+    approach.CarIdxTrackSurface[4] = TrkLoc.AproachingPits;
+    const stall = makeField();
+    stall.CarIdxTrackSurface[4] = TrkLoc.InPitStall;
+
+    // Arrival from the racing surface — the one announcement.
+    expect(run(state, approach, 2000)).toHaveLength(1);
+    expect(run(state, stall, 10_000)).toEqual([]);
+
+    // Leaves the stall after the cooldown has expired: the pit lane on the way
+    // out reads AproachingPits too, but InPitStall → AproachingPits is an exit.
+    const exitAt = 2000 + OPPONENT_PIT_CAR_COOLDOWN_MS + 6000;
+    expect(run(state, approach, exitAt)).toEqual([]);
+    expect(run(state, makeField(), exitAt + 5000)).toEqual([]);
+
+    // Its next stop, from the racing surface again, still announces.
+    expect(run(state, approach, exitAt + 90_000)).toHaveLength(1);
+  });
+
+  it("does not announce a car shuffling across its stall boundary (#1212)", () => {
+    run(state, makeField(), 1000);
+    const approach = makeField();
+    approach.CarIdxTrackSurface[4] = TrkLoc.AproachingPits;
+    const stall = makeField();
+    stall.CarIdxTrackSurface[4] = TrkLoc.InPitStall;
+
+    expect(run(state, approach, 2000)).toHaveLength(1);
+
+    // Well past the cooldown, the car edges in and out of its box.
+    let now = 2000 + OPPONENT_PIT_CAR_COOLDOWN_MS * 2;
+
+    for (let i = 0; i < 3; i++) {
+      expect(run(state, stall, (now += 500))).toEqual([]);
+      expect(run(state, approach, (now += 500))).toEqual([]);
+    }
+  });
+
   it("does not re-emit while the car stays in the approach state", () => {
     run(state, makeField(), 1000);
     const t = makeField();
