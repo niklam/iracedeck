@@ -61,7 +61,7 @@ The engineer confirms each press with a short line — *"Roger that. Corner call
 
 These apply to every Pit Crew button at once, so they live in the [Settings window](/docs/getting-started/settings/#race-engineer) on the **Race Engineer** tab rather than in one button's Property Inspector. Open it with the **iRaceDeck Settings** button directly under any iRaceDeck key's own settings.
 
-- **Race Engineer Voice** — which voice the engineer speaks with. iRaceDeck's own voices come first: **iRaceDeck: Default**, which every install has, and **iRaceDeck: Default (Terse)**, the same engineer in radio shorthand, once you [install it](/docs/features/race-engineer-voices/#default-terse) from the **Voice Packs** card. Any other voice pack you have installed follows. A change takes effect on the next callout. If the voice you chose is no longer installed, the engineer speaks with Default until it is back.
+- **Race Engineer Voice** — which voice the engineer speaks with. iRaceDeck's own voices come first: **iRaceDeck: Default**, which every install has, and **iRaceDeck: Default (Short callouts)**, the same engineer in radio shorthand, once you [install it](/docs/features/race-engineer-voices/#default-short-callouts) from the **Voice Packs** card. Any other voice pack you have installed follows. A change takes effect on the next callout. If the voice you chose is no longer installed, the engineer speaks with Default until it is back.
 - **Your Name** — name the engineer addresses you by; resolves a clip from `voice/<voice>/names/`.
 - **Race Engineer Volume** (0–100, default 50) — slider + Test button for the engineer voice (`AudioBus.Voice`). Sliding to 0 silences voice scenarios without disabling the Race Engineer feature.
 - **Background Volume** (0–100, default 25) — slider + Test button for the pit ambience and walkie-talkie SFX (`AudioBus.Background`, which carries both the ambient loop and the radio open/close SFX). The Test button plays a representative tick-open + ambient + tick-close preview — minus whichever half you have switched off under **Radio Frame** (the **Radio beeps** and **Pit ambience** checkboxes on the same tab), so what you hear is what a real callout's frame will carry. Defaults to 25 so it sits under the engineer voice cleanly out of the box; turn it up if you want a louder pit-lane atmosphere. Only takes effect while Race Engineer is enabled — when the engineer is off, Background is muted regardless of this value.
@@ -70,7 +70,7 @@ These apply to every Pit Crew button at once, so they live in the [Settings wind
 
 ## Race Engineer voice coverage
 
-The lines quoted on this page are the **Default** voice's. **Default (Terse)** makes the same calls at the same moments in fewer words — *"Blue flag."*, *"Too far left."*, *"Leader's pitting."* — see [Race Engineer Voices](/docs/features/race-engineer-voices/#default-terse).
+The lines quoted on this page are the **Default** voice's. **Default (Short callouts)** makes the same calls at the same moments in fewer words — *"Blue flag."*, *"Too far left."*, *"Leader's pitting."* — see [Race Engineer Voices](/docs/features/race-engineer-voices/#default-short-callouts).
 
 When the engineer is enabled, the Pit Crew catalog calls out every flag transition the iRacing translator publishes:
 
