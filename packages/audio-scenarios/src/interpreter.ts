@@ -33,10 +33,11 @@
  *   - A fire whose contract names the waiting fire in `queueBehind` attaches
  *     BEHIND it instead of taking its slot, and the two replay in order —
  *     the single slot holds a pair, never a queue (issue #1108). Each member
- *     keeps the fate its own weight earns against a newcomer; a follower
- *     never plays ahead of its waiting leader, even on an idle bus; and a
- *     leader that fails to take the bus at replay leaves its follower to
- *     play next.
+ *     keeps the fate its own weight earns against a newcomer, except that a
+ *     follower whose contract names the newcomer too stays behind it
+ *     whatever the weights (issue #1211); a follower never plays ahead of its
+ *     waiting leader, even on an idle bus; and a leader that fails to take
+ *     the bus at replay leaves its follower to play next.
  *
  * Channel routing for clip steps:
  *   - Every clip a FRAME plays goes on the SFX channel, whatever it is (#1064).
@@ -374,7 +375,8 @@ type WaitingFire = {
  * the fate it would have had alone: an arriving fire that outweighs the
  * leader replaces the leader, and takes the follower with it only if it
  * outweighs the follower too, else the follower stays, now behind the
- * newcomer. Whatever clears `BusState.pending` outright (`stopAll`, the
+ * newcomer — and it stays whatever the weights when its contract names the
+ * newcomer as well (issue #1211). Whatever clears `BusState.pending` outright (`stopAll`, the
  * leader's disable) takes it too, which is why it lives INSIDE the pending
  * fire rather than beside it. It is replayed by `drainPending` right after
  * its leader, as an ordinary fire arriving then: it parks behind the leader
@@ -1394,7 +1396,9 @@ class ScenarioEngine implements IScenarioEngine {
    * always did, and the follower goes with it only if the newcomer outweighs
    * the follower too, else the follower stays, now waiting behind the
    * newcomer; a newcomer lighter than the leader is dropped as it always
-   * was. So a fresher chatter line still replaces a stale chatter leader
+   * was. A follower whose contract names the replacing newcomer as well
+   * stays behind it whatever the weights (issue #1211), since it declared it
+   * waits behind that fire too. So a fresher chatter line still replaces a stale chatter leader
    * (the entry readback after a quick re-entry, say), and the leader's own
    * scheduling never comes to depend on what waits behind it.
    */
@@ -1453,10 +1457,12 @@ class ScenarioEngine implements IScenarioEngine {
 
     // The newcomer replaces the leader, as it would have replaced it alone.
     // The follower's fate is its own weight's: outweighed too, it goes with
-    // the leader; otherwise it stays, waiting behind the newcomer now.
+    // the leader; otherwise it stays, waiting behind the newcomer now. A
+    // follower whose contract names the newcomer too stays whatever the
+    // weights (issue #1211): it waits behind that fire by its own declaration.
     const follower = current.follower;
 
-    if (follower === undefined || weight >= follower.weight) {
+    if (follower === undefined || (weight >= follower.weight && !this.waitsBehind(follower.id, id))) {
       if (follower !== undefined) {
         this.logger.debug(`Scenario "${follower.id}" dropped — waited behind "${current.id}", displaced by "${id}"`);
       }

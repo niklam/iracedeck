@@ -259,7 +259,10 @@ export type ScenarioContract = {
    * had alone — attaching changes neither: a fire that outweighs the leader
    * replaces it, and drops the follower too only if it outweighs the
    * follower as well, else the follower stays, now behind the newcomer; a
-   * fire lighter than the leader is dropped. A follower never plays ahead of
+   * fire lighter than the leader is dropped. A follower whose list names the
+   * replacing newcomer too stays behind it whatever the weights (issue
+   * #1211), so a damage line waiting behind one incident line survives an
+   * equal-weight escalation replacing it. A follower never plays ahead of
    * its waiting leader, even when the bus is idle but the leader is held in
    * the slot (a `pendingHoldMs` hold, a focus floor between the two): it
    * attaches behind it there too. A second follower replaces the first. A
