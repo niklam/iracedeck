@@ -994,7 +994,8 @@ export type SimEventMap = {
    * (issue #933). Evaluated continuously — not at lap boundaries — from the
    * lap-scale gap rate: the gap against the gap at the same spot one lap
    * earlier (issue #1285), so no trend fires until the pair has a lap of
-   * history. "closing" fires when the projected contact
+   * history. Lap 1 and full-course cautions are never recorded, so the
+   * earliest call is on lap 3. "closing" fires when the projected contact
    * (`gapSeconds ÷ rate`) drops inside the announcement horizon (capped by
    * the laps actually remaining — a catch that completes after the race is
    * never announced), and re-fires as the projection roughly halves.
