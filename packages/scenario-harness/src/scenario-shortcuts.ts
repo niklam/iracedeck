@@ -33,7 +33,13 @@ import {
   PitSvStatus,
   TrkLoc,
 } from "@iracedeck/iracing-sdk";
-import { DAMAGE_DEBOUNCE_MS, PIT_READBACK_EXIT_DELAY_MS, YELLOW_CLEARED_HOLD_MS } from "@iracedeck/sim-events-iracing";
+import {
+  DAMAGE_DEBOUNCE_MS,
+  DAMAGE_INCIDENT_GRACE_MS,
+  DAMAGE_REPAIR_MASK,
+  PIT_READBACK_EXIT_DELAY_MS,
+  YELLOW_CLEARED_HOLD_MS,
+} from "@iracedeck/sim-events-iracing";
 
 import { TIRE_WEAR_REPORT_EXAMPLE } from "./event-names.js";
 import type { ShortcutPrecondition } from "./shortcut-preconditions.js";
@@ -89,10 +95,11 @@ export type BusEventShortcut = ScenarioShortcutBase & {
    * for a setup the translator must SEED rather than announce: a replay-mode
    * bracket (`IsReplayPlaying` true with the patch, then false), which the
    * translator suppresses every event through and re-seeds each diff from.
-   * Exists for "Damage Detected": the damage line's `speakGate` reads the
-   * repair bits from the translator's latest tick, so the button has to set
-   * them, and setting them live would be a rising edge the translator then
-   * announces a second time, five seconds later.
+   * Exists for "Damage Detected": the damage line's `speakGate` asks the
+   * translator whether a repair is needed (its settled damage state), so the
+   * button has to set the repair bits, and setting them live would be a
+   * rising edge the translator then announces a second time, five seconds
+   * later.
    */
   telemetrySequence?: readonly TelemetryStep[];
   /**
@@ -1049,9 +1056,6 @@ const TIRE_WEAR_STOP_SHORTCUT: TelemetrySequenceShortcut = {
   ],
 };
 
-/** The repair bits the translator's damage edge and the damage line's `speakGate` read (issues #1211, #1288). */
-const REPAIR_NEEDED = EngineWarnings.MandRepNeeded | EngineWarnings.OptRepNeeded;
-
 /**
  * How long a replay-mode bracket step is held — a few of the mock
  * controller's 14 ms ticks, all the translator needs to wipe its state on the
@@ -1071,16 +1075,6 @@ const INCIDENT_SETTLE_MS = 1000;
  */
 const INCIDENT_BYTE_LEAD_MS = 200;
 
-/**
- * Mirrors `DAMAGE_INCIDENT_GRACE_MS` in `sim-events-iracing` `diff/damage.ts`
- * (2 s), which that package does not export: how long a settled damage edge
- * waits for an incident burst when none is open. The collision sequences hold
- * past the debounce plus this before clearing the car, and
- * `scenario-shortcuts.test.ts` drives the real translator through them, so a
- * grace that grows past the hold turns the test red rather than drifting.
- */
-const DAMAGE_GRACE_MS = 2000;
-
 /** How long the spotter's "car left" call gets before the crash. */
 const SPOTTER_CALL_MS = 1500;
 
@@ -1091,7 +1085,7 @@ const SPOTTER_CALL_MS = 1500;
  * margin — so both are published, and wait, while the spotter still holds
  * its focus floor.
  */
-const COLLISION_ALONGSIDE_MS = DAMAGE_DEBOUNCE_MS + DAMAGE_GRACE_MS + 1000;
+const COLLISION_ALONGSIDE_MS = DAMAGE_DEBOUNCE_MS + DAMAGE_INCIDENT_GRACE_MS + 1000;
 
 /**
  * The gap between the off-track's count increment and the collision-world
@@ -1110,8 +1104,8 @@ const ESCALATION_DAMAGE_LAG_MS = 100;
  * window, then up to three lines ("Clear.", the incident or lap-invalidation
  * line, the damage line) with their radio frames. The last step holds rather
  * than ends so the page-wide shortcut lock covers it — another button
- * rewriting the repair bits inside it would refuse the damage line at its
- * `speakGate`.
+ * clearing the repair bits inside it could, once the clear has settled,
+ * refuse the damage line at its `speakGate`.
  */
 const INCIDENT_LISTEN_MS = 10_000;
 
@@ -1180,7 +1174,7 @@ function collisionDuringSpotterCall(): readonly TelemetryStep[] {
     { patch: { CarLeftRight: CarLeftRight.CarLeft }, holdMs: SPOTTER_CALL_MS },
     { patch: { PlayerIncidents: IncidentFlags.RepCollisionWithCar }, holdMs: INCIDENT_BYTE_LEAD_MS },
     {
-      patch: { PlayerCarMyIncidentCount: 4, PlayerIncidents: 0, EngineWarnings: REPAIR_NEEDED },
+      patch: { PlayerCarMyIncidentCount: 4, PlayerIncidents: 0, EngineWarnings: DAMAGE_REPAIR_MASK },
       holdMs: COLLISION_ALONGSIDE_MS,
     },
     { patch: { CarLeftRight: CarLeftRight.Clear }, holdMs: INCIDENT_LISTEN_MS },
@@ -1253,7 +1247,7 @@ const ESCALATION_WHILE_ANOTHER_LINE_PLAYS_SHORTCUT: TelemetrySequenceShortcut = 
     { patch: { PlayerIncidents: IncidentFlags.RepOffTrack }, holdMs: INCIDENT_BYTE_LEAD_MS },
     { patch: { PlayerCarMyIncidentCount: 1, PlayerIncidents: 0 }, holdMs: ESCALATION_DAMAGE_LAG_MS },
     {
-      patch: { EngineWarnings: REPAIR_NEEDED },
+      patch: { EngineWarnings: DAMAGE_REPAIR_MASK },
       holdMs: ESCALATION_GAP_MS - ESCALATION_DAMAGE_LAG_MS - INCIDENT_BYTE_LEAD_MS,
     },
     { patch: { PlayerIncidents: IncidentFlags.RepCollisionWithWorld }, holdMs: INCIDENT_BYTE_LEAD_MS },
@@ -1863,12 +1857,13 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   // the Engine Warnings panel checkboxes (Mandatory / Optional Repair)
   // when you specifically want to exercise the diff.
   //
-  // The line's `speakGate` (#1288) refuses it when the translator's latest
-  // tick shows the repair bits clear, so with the mock connected the button
-  // sets them first — inside a replay-mode bracket, so the translator seeds
-  // them as damage it already knows about rather than seeing a rising edge
-  // and announcing it again five seconds later. With the mock disconnected
-  // the translator has no tick, and the gate admits the line on that alone.
+  // The line's `speakGate` (#1288) refuses it when the translator's settled
+  // damage state says no repair is needed, so with the mock connected the
+  // button sets the repair bits first — inside a replay-mode bracket, so the
+  // translator seeds them as damage it already knows about rather than
+  // seeing a rising edge and announcing it again five seconds later. With
+  // the mock disconnected the translator knows no damage state, and the gate
+  // admits the line on that alone.
   // The patch replaces the whole `EngineWarnings` value, so any other
   // warning bit set in the panel is cleared.
   {
@@ -1878,7 +1873,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     description:
       "Fire `damage.repairNeeded.raised` directly (skips the diff debounce). Lights the repair indicator first, which the line checks before it speaks, and leaves it lit.",
     telemetrySequence: [
-      { patch: { IsReplayPlaying: true, EngineWarnings: REPAIR_NEEDED }, holdMs: INCIDENT_SEED_MS },
+      { patch: { IsReplayPlaying: true, EngineWarnings: DAMAGE_REPAIR_MASK }, holdMs: INCIDENT_SEED_MS },
       { patch: { IsReplayPlaying: false }, holdMs: INCIDENT_SEED_MS },
     ],
     event: "damage.repairNeeded.raised",
@@ -1893,9 +1888,10 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   // — the incident's value as the sim scores it (discipline-resolved:
   // dirt car contact is 2x, not 4x) — never the raw count `delta`, so the
   // varied buttons exercise count selection without iRacing. Every counted
-  // one leads with `incident.scored`, as the translator does (#1122): with
-  // a qualifying snapshot posted, the lap-invalidated line wins the bus and
-  // the incident line drops, exactly as in the sim.
+  // one leads with `incident.scored`, as the translator does (#1122), in one
+  // batch that shares one timestamp: with a qualifying snapshot posted, the
+  // lap-invalidated line plays and the incident line for the same burst
+  // yields to it (#1211), exactly as in the sim.
   {
     id: "incident-off-track",
     category: "Incidents",

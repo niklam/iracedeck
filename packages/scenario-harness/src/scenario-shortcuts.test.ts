@@ -2,7 +2,6 @@ import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" 
 import type { CalloutScript } from "@iracedeck/callout-script";
 import { _resetEventBus, getEventBus, initializeEventBus } from "@iracedeck/event-bus";
 import {
-  EngineWarnings,
   Flags,
   PitSvFlags,
   type SDKController,
@@ -15,10 +14,13 @@ import {
   _resetSimEventsIracing,
   type CautionLineup,
   DAMAGE_DEBOUNCE_MS,
+  DAMAGE_INCIDENT_GRACE_MS,
+  DAMAGE_REPAIR_MASK,
   getCautionLineup,
   getLatestTelemetry,
   getLivePosition,
   initializeSimEventsIracing,
+  isDamageRepairNeeded,
   PIT_APPROACH_COOLDOWN_MS,
   YELLOW_CLEARED_HOLD_MS,
 } from "@iracedeck/sim-events-iracing";
@@ -970,15 +972,11 @@ describe("the incident-and-damage sequences behind a held Voice bus (issue #1211
   const escalation = SCENARIO_SHORTCUTS.find((s) => s.id === "incident-escalation-while-another-line-plays");
   const damage = SCENARIO_SHORTCUTS.find((s) => s.id === "damage-repair-needed");
 
-  /** The repair bits the damage edge and the damage line's speakGate read. */
-  const REPAIR_BITS = EngineWarnings.MandRepNeeded | EngineWarnings.OptRepNeeded;
-
   /**
    * Long enough for a damage edge the translator DOES see to be announced:
-   * the debounce, `DAMAGE_INCIDENT_GRACE_MS` (2 s, not exported) and a second
-   * of margin.
+   * the debounce, the grace and a second of margin.
    */
-  const DAMAGE_ANNOUNCE_WINDOW_MS = DAMAGE_DEBOUNCE_MS + 2000 + 1000;
+  const DAMAGE_ANNOUNCE_WINDOW_MS = DAMAGE_DEBOUNCE_MS + DAMAGE_INCIDENT_GRACE_MS + 1000;
 
   /** What the three sequences are about: the car alongside, the incident burst, and the damage edge. */
   const WATCHED = new Set(["radar.changed", "incident.scored", "incident.occurred", "damage.repairNeeded.raised"]);
@@ -1117,16 +1115,17 @@ describe("the incident-and-damage sequences behind a held Voice bus (issue #1211
     expect(raised?.timestamp).toBe(escalated?.timestamp);
   });
 
-  it('"Damage Detected" lights the repair bits the damage line checks, without the translator announcing them a second time', () => {
-    // The line's speakGate (#1288) reads the repair bits from the translator's
-    // latest tick, so the button sets them — inside a replay-mode bracket, so
+  it('"Damage Detected" leaves the translator knowing the damage the line checks, without announcing it a second time', () => {
+    // The line's speakGate (#1288) asks the translator's settled damage state,
+    // so the button sets the repair bits — inside a replay-mode bracket, so
     // they are seeded as known damage rather than read as a rising edge.
     const { controller, events } = startAtBoot();
 
     runSequence(controller, [...(damage?.telemetrySequence ?? []), { patch: {}, holdMs: DAMAGE_ANNOUNCE_WINDOW_MS }]);
 
     expect(damage?.event).toBe("damage.repairNeeded.raised");
-    expect((getLatestTelemetry()?.EngineWarnings ?? 0) & REPAIR_BITS).toBe(REPAIR_BITS);
+    expect((getLatestTelemetry()?.EngineWarnings ?? 0) & DAMAGE_REPAIR_MASK).toBe(DAMAGE_REPAIR_MASK);
+    expect(isDamageRepairNeeded()).toBe(true);
     expect(events.filter((e) => e.event === "damage.repairNeeded.raised")).toEqual([]);
   });
 
@@ -1135,7 +1134,7 @@ describe("the incident-and-damage sequences behind a held Voice bus (issue #1211
     // announced damage at all.
     const { controller, events } = startAtBoot();
 
-    runSequence(controller, [{ patch: { EngineWarnings: REPAIR_BITS }, holdMs: DAMAGE_ANNOUNCE_WINDOW_MS }]);
+    runSequence(controller, [{ patch: { EngineWarnings: DAMAGE_REPAIR_MASK }, holdMs: DAMAGE_ANNOUNCE_WINDOW_MS }]);
 
     expect(events.filter((e) => e.event === "damage.repairNeeded.raised")).toHaveLength(1);
   });
