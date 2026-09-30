@@ -66,6 +66,8 @@ Decision, in three parts:
 
 Accepted edge: two bursts on one flying lap while the first qualifying fire is still parked. The second approval replaces the first in the slot (equal weight), both incidents yielded, and one lap-invalidation line plays. That line is the per-lap design, and the generic coaching for the second burst is the only loss.
 
+Accepted edge: the yield is decided at `where:` time, so an approved lap-invalidation fire that then never plays leaves its burst silent. That happens when a heavier queueable fire displaces it from the pending slot, or when the voice has no script for it. The incident line has already yielded to it and does not come back. Making the incident re-check at speak time was rejected above, for the same reason: a speak-time check cannot see a fire the engine dropped.
+
 **Rejected:** `queueBehind` from incident to qualifying, which plays both lines, the double-up itself. **Rejected:** an incident `speakGate` asking whether the qualifying line spoke. The gate runs at speak time and cannot see a qualifying fire the engine dropped, and without a queueable qualifying contract that is the common case. **Rejected:** accepting the inversion. It turns the lost qualifying line under a floor into a wrong line.
 
 ### 5. Damage: the incident line first, then the damage line, both queueable (Niklas, 2026-09-24)
