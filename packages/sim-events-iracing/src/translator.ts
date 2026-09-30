@@ -453,6 +453,27 @@ export function isPitActionsAllowed(): boolean {
 }
 
 /**
+ * Whether the player's car needs a repair, as the damage diff has SETTLED it
+ * (issue #1288): the debounced state behind `damage.repairNeeded.raised`, not
+ * the raw `EngineWarnings` repair bits of the latest tick. `null` when the
+ * translator isn't initialized or the damage diff has not seeded yet — a new
+ * connection, session or replay exit that has seen no live tick since.
+ *
+ * The bits flicker on collision-frame rebounds and during pit-stall service,
+ * which is why the edge is debounced by `DAMAGE_DEBOUNCE_MS`; a consumer
+ * that re-reads one raw tick instead can take a flicker for a repair. The
+ * damage call's speak-time gate reads this, so a line waiting for the radio
+ * is dropped only once the repair has settled as done. Answers `true` from
+ * the settle of a rising edge until the falling edge settles, including the
+ * stretch where the translator still holds the emit behind an incident burst.
+ */
+export function isDamageRepairNeeded(): boolean | null {
+  if (!instance || !instance.state.damageInitialized) return null;
+
+  return instance.state.damageBaseline;
+}
+
+/**
  * Whether the race-end latch has fired in the current race session (issue #569).
  * Set inside `diffLaps` the first time `lap.completed` lands with the checkered
  * flag raised in a race session — the diff publishes `race.finished` first into

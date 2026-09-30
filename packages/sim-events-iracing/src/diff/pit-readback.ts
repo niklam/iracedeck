@@ -46,6 +46,7 @@ import {
 } from "@iracedeck/iracing-sdk";
 
 import type { TranslatorState } from "../state.js";
+import { DAMAGE_REPAIR_MASK } from "./damage.js";
 import type { EmitFn, PendingEvent } from "./types.js";
 
 /**
@@ -96,14 +97,6 @@ const TIRE_FLAGS_MASK =
   PitSvFlags.LFTireChange | PitSvFlags.RFTireChange | PitSvFlags.LRTireChange | PitSvFlags.RRTireChange;
 
 /**
- * Damage indicator mask for the readback's `hasDamage` slot (issue #489).
- * Mirrors the rising-edge mask in `diffDamage` so the readback's
- * fast-repair gate and the live damage callout share the same definition
- * of "damaged".
- */
-const DAMAGE_MASK = EngineWarnings.MandRepNeeded | EngineWarnings.OptRepNeeded;
-
-/**
  * Build the queued-services snapshot from current telemetry. Public so
  * the translator's `getReadbackSnapshot()` can reuse it — audio scenarios
  * call that resolver at fire time (issue #481).
@@ -114,7 +107,9 @@ export function buildSnapshot(telemetry: TelemetryData): PitReadbackSnapshot {
   const playerCompound = telemetry.PlayerTireCompound ?? 0;
   const engineWarnings = telemetry.EngineWarnings ?? 0;
   const limiter = (engineWarnings & EngineWarnings.PitSpeedLimiter) !== 0;
-  const hasDamage = (engineWarnings & DAMAGE_MASK) !== 0;
+  // The live damage callout's definition of "damaged" (issue #489), shared so
+  // the readback's fast-repair gate can never read a different set of bits.
+  const hasDamage = (engineWarnings & DAMAGE_REPAIR_MASK) !== 0;
   const hasAnyTireBit = (flags & TIRE_FLAGS_MASK) !== 0;
   // Only count compound as "changing" when tires are queued AND the queued
   // compound differs from what's on the car. iRacing exposes 0=dry, 1=wet.

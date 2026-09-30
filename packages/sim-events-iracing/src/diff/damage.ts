@@ -28,8 +28,9 @@
  * a one-tick flicker defers it rather than announcing damage the car does
  * not have that instant. A bit that stays down cancels it: when the falling
  * edge settles, nothing is emitted and the baseline drops as it always has.
- * The audio layer adds its own speak-time check on the bits (#1288); this
- * hold only decides the order of the two events.
+ * The audio layer adds its own speak-time check (#1288), on the settled state
+ * this diff keeps (`isDamageRepairNeeded()` over `damageBaseline`) rather than
+ * on the raw bits; this hold only decides the order of the two events.
  *
  * No paired `cleared` event — audio scenarios only need the rising edge.
  */
@@ -62,10 +63,14 @@ export const DAMAGE_DEBOUNCE_MS = 3000;
  */
 export const DAMAGE_INCIDENT_GRACE_MS = 2000;
 
-const DAMAGE_MASK = EngineWarnings.MandRepNeeded | EngineWarnings.OptRepNeeded;
+/**
+ * The `EngineWarnings` bits that mean a repair is needed — mandatory or
+ * optional. Either one raises the edge.
+ */
+export const DAMAGE_REPAIR_MASK = EngineWarnings.MandRepNeeded | EngineWarnings.OptRepNeeded;
 
 export function diffDamage(state: TranslatorState, telemetry: TelemetryData, now: number, emit: EmitFn): void {
-  const current = ((telemetry.EngineWarnings ?? 0) & DAMAGE_MASK) !== 0;
+  const current = ((telemetry.EngineWarnings ?? 0) & DAMAGE_REPAIR_MASK) !== 0;
 
   // Seed silently on the first tick — the baseline equals the current state
   // so a player who connects mid-damage doesn't immediately get a callout
