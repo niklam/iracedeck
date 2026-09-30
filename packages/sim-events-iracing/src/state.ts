@@ -913,11 +913,14 @@ export type TranslatorState = {
   // ── Opponent pit entries (issue #622) ─────────────────────────────────
   /** First eligible tick seeds the per-car surface baseline silently. */
   opponentPitInitialized: boolean;
-  /** Previous-tick `CarIdxTrackSurface` per carIdx. */
+  /**
+   * Last IN-WORLD `CarIdxTrackSurface` per carIdx — a `NotInWorld` tick does
+   * not overwrite it, so a blink on pit road still reads as pit road (#1212).
+   */
   opponentPitLastSurface: number[];
   /**
    * Per-car re-announce cooldown deadlines (epoch ms), indexed by carIdx —
-   * a car crawling back and forth across the approach-zone boundary can't
+   * a car crawling back and forth across the pit-entry boundary can't
    * re-announce (the #650 `<x>CooldownUntil` pattern, per car).
    */
   opponentPitCarCooldownUntil: number[];

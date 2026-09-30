@@ -294,6 +294,58 @@ describe("diffOpponentPit", () => {
     }
   });
 
+  describe("NotInWorld ticks hold the last in-world surface (#1212)", () => {
+    function surfaces(carIdx: number, value: number): MutableField {
+      const t = makeField();
+      t.CarIdxTrackSurface[carIdx] = value;
+
+      return t;
+    }
+
+    const past = 2000 + OPPONENT_PIT_CAR_COOLDOWN_MS + 5000;
+
+    it("does not announce a car that blinks out between its stall and the exit", () => {
+      run(state, makeField(), 1000);
+      expect(run(state, surfaces(4, TrkLoc.AproachingPits), 2000)).toHaveLength(1);
+      run(state, surfaces(4, TrkLoc.InPitStall), 10_000);
+
+      expect(run(state, surfaces(4, TrkLoc.NotInWorld), past)).toEqual([]);
+      expect(run(state, surfaces(4, TrkLoc.AproachingPits), past + 100)).toEqual([]);
+    });
+
+    it("does not announce a car that blinks out mid pit lane on the way out", () => {
+      run(state, makeField(), 1000);
+      expect(run(state, surfaces(4, TrkLoc.AproachingPits), 2000)).toHaveLength(1);
+      run(state, surfaces(4, TrkLoc.InPitStall), 10_000);
+      run(state, surfaces(4, TrkLoc.AproachingPits), past);
+
+      expect(run(state, surfaces(4, TrkLoc.NotInWorld), past + 100)).toEqual([]);
+      expect(run(state, surfaces(4, TrkLoc.AproachingPits), past + 200)).toEqual([]);
+    });
+
+    it("does not announce a car towed to its stall as it drives out", () => {
+      run(state, makeField(), 1000);
+      run(state, surfaces(4, TrkLoc.NotInWorld), 2000);
+      run(state, surfaces(4, TrkLoc.InPitStall), 2100);
+
+      expect(run(state, surfaces(4, TrkLoc.AproachingPits), past)).toEqual([]);
+    });
+
+    it("does not announce a car first seen on pit road", () => {
+      // Out of the world at the seed — joined the session or the grid late.
+      run(state, surfaces(4, TrkLoc.NotInWorld), 1000);
+
+      expect(run(state, surfaces(4, TrkLoc.AproachingPits), 2000)).toEqual([]);
+    });
+
+    it("still announces a car that blinks out on track and reappears at pit entry", () => {
+      run(state, makeField(), 1000);
+      run(state, surfaces(4, TrkLoc.NotInWorld), 2000);
+
+      expect(run(state, surfaces(4, TrkLoc.AproachingPits), 2100)).toHaveLength(1);
+    });
+  });
+
   it("does not re-emit while the car stays in the approach state", () => {
     run(state, makeField(), 1000);
     const t = makeField();

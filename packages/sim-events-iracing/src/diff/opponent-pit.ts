@@ -1,16 +1,23 @@
 /**
  * Opponent pit-entry callouts (issue #622).
  *
- * Detects each car's `CarIdxTrackSurface` transition INTO
- * `TrkLoc.AproachingPits` against a per-car previous-tick baseline and emits
+ * Detects each car's `CarIdxTrackSurface` arrival in `TrkLoc.AproachingPits`
+ * from the racing surface (`OnTrack` / `OffTrack`) and emits
  * `opponentPit.entered` for the cars that matter: the (class) leader, and
- * same-lap cars within ±2 effective positions of the player. A transition out
- * of `TrkLoc.InPitStall` never counts (#1212): iRacing reports the pit lane
- * as `AproachingPits` on the way OUT too, so a car leaving its box makes the
- * same edge as one arriving — and a car leaving its stall is never "pitting".
- * Never keys on
+ * same-lap cars within ±2 effective positions of the player. Never keys on
  * `CarIdxOnPitRoad` — real telemetry shows it reading true for on-track cars
  * (see the header of `race-finish.ts`).
+ *
+ * **Arrivals only (#1212).** iRacing reports the pit lane as `AproachingPits`
+ * on the way OUT as well as in, so a car leaving its stall makes an
+ * `InPitStall → AproachingPits` edge that is not a pit entry. The per-car
+ * baseline therefore holds each car's last IN-WORLD surface — a `NotInWorld`
+ * tick never overwrites it — so a remote car blinking out between its stall
+ * and the exit, or mid pit lane, still reads as on pit road, and a car towed
+ * to its stall (`OnTrack → NotInWorld → InPitStall`) is never announced on
+ * the drive out. A car whose last in-world surface is unknown (never seen, or
+ * `NotInWorld` since the seed) was placed rather than driven in, and stays
+ * silent too.
  *
  * **Effective positions.** Ranks come from the canonical frozen order
  * (`calculateFrozenRacePositions`, threaded in by the translator — the
@@ -51,10 +58,15 @@ export const OPPONENT_PIT_AGGREGATE_THRESHOLD = 3;
 /**
  * Per-car re-announce cooldown — a car crawling back and forth across the
  * pit-entry boundary (`OnTrack` ⇄ `AproachingPits`) can't re-announce the
- * same stop. The stall exit needs no cooldown since #1212: it is excluded by
- * the transition itself, however long the stop.
+ * same stop. The stall exit does not rely on it since #1212: an arrival must
+ * start from the racing surface, however long the stop.
  */
 export const OPPONENT_PIT_CAR_COOLDOWN_MS = 30_000;
+
+/** Off pit road and in the world — the only surface a pit entry starts from (#1212). */
+function isRacingSurface(surface: number | undefined): boolean {
+  return surface === TrkLoc.OnTrack || surface === TrkLoc.OffTrack;
+}
 
 type Classification = {
   relation: "leader" | "ahead" | "behind" | "nearby";
@@ -168,10 +180,7 @@ export function diffOpponentPit(
     for (let i = 0; i < ts.length; i++) {
       if (i === playerCarIdx || i === paceCarIdx) continue;
 
-      if (ts[i] !== TrkLoc.AproachingPits || prev[i] === TrkLoc.AproachingPits || prev[i] === undefined) continue;
-
-      // Leaving the stall, not arriving (#1212).
-      if (prev[i] === TrkLoc.InPitStall) continue;
+      if (ts[i] !== TrkLoc.AproachingPits || !isRacingSurface(prev[i])) continue;
 
       // In-world test (the race-finish.ts shape) — blipped/vanished cars skip.
       if ((lc?.[i] ?? -1) < 0 || (dp?.[i] ?? -1) < 0) continue;
@@ -220,8 +229,11 @@ export function diffOpponentPit(
   // Advance the baseline in place every tick — even when gated, so a
   // transition during a non-race / replay / pre-green / post-race window
   // never replays once the gate opens. Element-wise copy, no per-tick
-  // allocation (the other diffs' baseline convention).
-  for (let i = 0; i < ts.length; i++) prev[i] = ts[i];
+  // allocation (the other diffs' baseline convention). A `NotInWorld` tick
+  // leaves the car's last in-world surface in place (#1212).
+  for (let i = 0; i < ts.length; i++) {
+    if (ts[i] !== TrkLoc.NotInWorld) prev[i] = ts[i];
+  }
 
   prev.length = ts.length;
 }
