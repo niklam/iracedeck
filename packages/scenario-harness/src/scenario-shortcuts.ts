@@ -23,8 +23,17 @@ import {
   type TelemetryReadoutRequest,
   TrackWetness,
 } from "@iracedeck/event-bus";
-import { EngineWarnings, Flags, PaceMode, PitSvFlags, PitSvStatus, TrkLoc } from "@iracedeck/iracing-sdk";
-import { PIT_READBACK_EXIT_DELAY_MS, YELLOW_CLEARED_HOLD_MS } from "@iracedeck/sim-events-iracing";
+import {
+  CarLeftRight,
+  EngineWarnings,
+  Flags,
+  IncidentFlags,
+  PaceMode,
+  PitSvFlags,
+  PitSvStatus,
+  TrkLoc,
+} from "@iracedeck/iracing-sdk";
+import { DAMAGE_DEBOUNCE_MS, PIT_READBACK_EXIT_DELAY_MS, YELLOW_CLEARED_HOLD_MS } from "@iracedeck/sim-events-iracing";
 
 import { TIRE_WEAR_REPORT_EXAMPLE } from "./event-names.js";
 import type { ShortcutPrecondition } from "./shortcut-preconditions.js";
@@ -72,7 +81,20 @@ export type PublishedEvent = {
 export type BusEventShortcut = ScenarioShortcutBase & {
   event: SimEventName;
   data: Record<string, unknown>;
-  telemetrySequence?: never;
+  /**
+   * Optional telemetry steps applied BEFORE publishing `event` (issue #1211),
+   * in order and holding between them exactly as a
+   * {@link TelemetrySequenceShortcut} runs them — the UI plays any sequence
+   * first and publishes after it. Where `telemetryPatch` is one patch, this is
+   * for a setup the translator must SEED rather than announce: a replay-mode
+   * bracket (`IsReplayPlaying` true with the patch, then false), which the
+   * translator suppresses every event through and re-seeds each diff from.
+   * Exists for "Damage Detected": the damage line's `speakGate` reads the
+   * repair bits from the translator's latest tick, so the button has to set
+   * them, and setting them live would be a rising edge the translator then
+   * announces a second time, five seconds later.
+   */
+  telemetrySequence?: readonly TelemetryStep[];
   /**
    * Events published BEFORE `event`, in order, in the SAME `/api/bus/publish`
    * call — back to back and synchronously, exactly as the translator publishes
@@ -148,7 +170,17 @@ export type TelemetrySequenceShortcut = ScenarioShortcutBase & {
   data?: never;
   precedingEvents?: never;
   telemetryPatch?: never;
-  qualifyingInvalidationSnapshot?: never;
+  /**
+   * Optional qualifying lap-invalidation snapshot, posted BEFORE the first
+   * step (issue #1211) — the push the bus-event shortcuts make, which the UI
+   * does for any shortcut carrying one. The incident events a sequence drives
+   * come from the translator, but the qualifying callout decides whether the
+   * lap was a flying one from this snapshot, so an incident sequence posts one
+   * to choose the line its burst gets: a qualifying flying lap, or a race
+   * snapshot that makes the qualifying callout stand down whatever an earlier
+   * button left posted.
+   */
+  qualifyingInvalidationSnapshot?: QualifyingInvalidationSnapshot;
   raceStartSnapshot?: never;
 };
 
@@ -1017,6 +1049,218 @@ const TIRE_WEAR_STOP_SHORTCUT: TelemetrySequenceShortcut = {
   ],
 };
 
+/** The repair bits the translator's damage edge and the damage line's `speakGate` read (issues #1211, #1288). */
+const REPAIR_NEEDED = EngineWarnings.MandRepNeeded | EngineWarnings.OptRepNeeded;
+
+/**
+ * How long a replay-mode bracket step is held — a few of the mock
+ * controller's 14 ms ticks, all the translator needs to wipe its state on the
+ * way in and re-seed every diff on the way out (the same bracket as
+ * {@link AUTO_FUEL_SEED_MS}).
+ */
+const INCIDENT_SEED_MS = 200;
+
+/** A settle after the bracket closes, so the run starts from a quiet bus. */
+const INCIDENT_SETTLE_MS = 1000;
+
+/**
+ * How long the `PlayerIncidents` report byte is up before its count
+ * increment lands: the byte leads the count by about 200 ms in every capture
+ * (`sim-events-iracing` `diff/incidents.ts`), and the translator types the
+ * increment from the bytes it latched in that gap.
+ */
+const INCIDENT_BYTE_LEAD_MS = 200;
+
+/**
+ * Mirrors `DAMAGE_INCIDENT_GRACE_MS` in `sim-events-iracing` `diff/damage.ts`
+ * (2 s), which that package does not export: how long a settled damage edge
+ * waits for an incident burst when none is open. The collision sequences hold
+ * past the debounce plus this before clearing the car, and
+ * `scenario-shortcuts.test.ts` drives the real translator through them, so a
+ * grace that grows past the hold turns the test red rather than drifting.
+ */
+const DAMAGE_GRACE_MS = 2000;
+
+/** How long the spotter's "car left" call gets before the crash. */
+const SPOTTER_CALL_MS = 1500;
+
+/**
+ * How long the car stays alongside after the crash: past the incident
+ * burst's quiet window (1.5 s, when the incident lines are published), the
+ * damage debounce and the grace (when the damage line is), plus a second of
+ * margin — so both are published, and wait, while the spotter still holds
+ * its focus floor.
+ */
+const COLLISION_ALONGSIDE_MS = DAMAGE_DEBOUNCE_MS + DAMAGE_GRACE_MS + 1000;
+
+/**
+ * The gap between the off-track's count increment and the collision-world
+ * one in the 14:54 log of issue #1211: two increments of one iRacing
+ * incident sequence, about 4 s apart, the second 0.9 s after the damage edge
+ * settled — inside the grace, so the translator holds the damage emit to the
+ * escalation's flush.
+ */
+const ESCALATION_GAP_MS = 4000;
+
+/** How long the repair bits wait after the off-track's increment, as they trailed it in the log. */
+const ESCALATION_DAMAGE_LAG_MS = 100;
+
+/**
+ * The listening time at the end of an incident sequence: the burst's quiet
+ * window, then up to three lines ("Clear.", the incident or lap-invalidation
+ * line, the damage line) with their radio frames. The last step holds rather
+ * than ends so the page-wide shortcut lock covers it — another button
+ * rewriting the repair bits inside it would refuse the damage line at its
+ * `speakGate`.
+ */
+const INCIDENT_LISTEN_MS = 10_000;
+
+/**
+ * The opening replay-mode bracket every incident sequence starts with (issue
+ * #1211, the {@link AUTO_FUEL_TAKEOVER_SHORTCUT} idiom): on track, off pit
+ * road, no car alongside, no incidents, no damage — set while
+ * `IsReplayPlaying` is true, where the translator publishes nothing, and
+ * seeded when it goes false. Without it a second press would start from the
+ * first press's count and repair bits: a damage baseline already raised
+ * swallows the next rising edge, and resetting the bits live is a falling
+ * edge that has to settle for 3 s first.
+ */
+const INCIDENT_SEQUENCE_OPEN: readonly TelemetryStep[] = [
+  {
+    patch: {
+      IsReplayPlaying: true,
+      IsOnTrack: true,
+      OnPitRoad: false,
+      PlayerCarInPitStall: false,
+      PlayerTrackSurface: TrkLoc.OnTrack,
+      PlayerCarMyIncidentCount: 0,
+      PlayerIncidents: 0,
+      EngineWarnings: 0,
+      CarLeftRight: CarLeftRight.Clear,
+    },
+    holdMs: INCIDENT_SEED_MS,
+  },
+  { patch: { IsReplayPlaying: false }, holdMs: INCIDENT_SETTLE_MS },
+];
+
+/**
+ * The race snapshot the non-qualifying incident sequences post: the
+ * qualifying lap-invalidation callout refuses anything but a qualifying
+ * session, so the incident line is the one the burst gets whatever a
+ * Qualifying Invalidation button left posted.
+ */
+const RACE_INCIDENT_SNAPSHOT: QualifyingInvalidationSnapshot = {
+  sessionType: "race",
+  sessionNum: 0,
+  lapsRemaining: undefined,
+  lapLimited: false,
+  lapCompleted: 0,
+  lapStartedFromPits: false,
+  lapCounted: true,
+};
+
+/**
+ * A car collision while a car is alongside (issue #1211), driven through the
+ * TRANSLATOR: a car on the left (`CarLeftRight`, the field `diff/radar.ts`
+ * reads — the spotter calls it and holds its `WEIGHT.SAFETY` focus floor on
+ * the Voice bus), then the collision-car report byte, then the count +4 on
+ * the same tick as the repair bits. The burst flushes 1.5 s later
+ * (`incident.scored`, `incident.occurred`) and the damage edge settles 3 s
+ * after the bits and waits out the grace (`damage.repairNeeded.raised`),
+ * both while the car is still alongside, so both lines wait under the floor
+ * — the incident line in the pending slot, the damage line attached behind
+ * it. Clearing the car releases the floor.
+ *
+ * Before #1211 both lines were dropped "below focus floor (spotter)", which
+ * is what the issue's log showed; hearing them after "Clear." is the fix.
+ */
+function collisionDuringSpotterCall(): readonly TelemetryStep[] {
+  return [
+    ...INCIDENT_SEQUENCE_OPEN,
+    { patch: { CarLeftRight: CarLeftRight.CarLeft }, holdMs: SPOTTER_CALL_MS },
+    { patch: { PlayerIncidents: IncidentFlags.RepCollisionWithCar }, holdMs: INCIDENT_BYTE_LEAD_MS },
+    {
+      patch: { PlayerCarMyIncidentCount: 4, PlayerIncidents: 0, EngineWarnings: REPAIR_NEEDED },
+      holdMs: COLLISION_ALONGSIDE_MS,
+    },
+    { patch: { CarLeftRight: CarLeftRight.Clear }, holdMs: INCIDENT_LISTEN_MS },
+  ];
+}
+
+const COLLISION_DURING_SPOTTER_CALL_SHORTCUT: TelemetrySequenceShortcut = {
+  id: "incident-collision-during-spotter-call",
+  category: "Incidents",
+  label: "Collision during a spotter call",
+  qualifyingInvalidationSnapshot: RACE_INCIDENT_SNAPSHOT,
+  description:
+    'Drives the TRANSLATOR through a car collision with a car alongside, about 20 s end to end (issue #1211): a car on the left, a 4x car collision a moment later with the repair indicator lit, and the car clearing after about six seconds. Expect "Car left" (and the still-there reminder while it stays), then "Clear.", then the collision-car line with four points, then the damage line — both waited under the spotter\'s focus floor and play once it is released, the incident line first. Hearing nothing after "Clear." is issue #1211 back. No preset needed: the run opens inside a replay-mode bracket that puts the car on track with no incidents and no damage; any session preset but Lone Qualify works (the spotter is silent there). It leaves the car damaged with 4x, as iRacing would. Needs the mock SDK CONNECTED; with it disconnected the translator sees no ticks and the button is silent for the wrong reason.',
+  telemetrySequence: collisionDuringSpotterCall(),
+};
+
+/**
+ * The same collision on a flying qualifying lap (issue #1211 §4): a
+ * qualifying snapshot posted first, so the burst's `incident.scored` is
+ * approved by the lap-invalidation callout and its `incident.occurred`
+ * yields — same flush, same timestamp. Under the floor the lap-invalidation
+ * line waits (it is queueable now), and the damage line attaches behind it.
+ *
+ * `lapCompleted` 8 is used by no Qualifying Invalidation button, so their
+ * per-lap latch does not silence this one; its own second press is latched,
+ * though, and then the incident line plays instead — the lap was already
+ * announced.
+ */
+const COLLISION_DURING_SPOTTER_CALL_QUALIFYING_SHORTCUT: TelemetrySequenceShortcut = {
+  id: "incident-collision-during-spotter-call-qualifying",
+  category: "Incidents",
+  label: "Collision during a spotter call (qualifying)",
+  qualifyingInvalidationSnapshot: {
+    sessionType: "qualifying",
+    sessionNum: 1,
+    lapsRemaining: 2,
+    lapLimited: true,
+    lapCompleted: 8,
+    lapStartedFromPits: false,
+    lapCounted: true,
+  },
+  description:
+    'The "Collision during a spotter call" run on a flying qualifying lap with two laps left (issue #1211): a qualifying snapshot is posted first, then the same telemetry. Expect "Car left", "Clear.", then "This lap will be invalidated" with its two-laps-left tail, then the damage line — and NO collision-car line: the incident yields to the lap-invalidation line for the same crash. A second press is latched (the lap was already announced), so it plays the collision-car line instead; press any Qualifying Invalidation button between presses to reset it. Any session preset but Lone Qualify works. Needs the mock SDK CONNECTED.',
+  telemetrySequence: collisionDuringSpotterCall(),
+};
+
+/**
+ * The 14:54 log of issue #1211, driven through the TRANSLATOR: an
+ * off-track +1, the repair bits 0.1 s later, and a collision-world report and
+ * +1 about 4 s after the first increment — one iRacing incident sequence
+ * escalating to a 2x wall hit.
+ *
+ * In the log the damage edge settled first and its line took the Voice bus,
+ * so the escalation arriving behind it was dropped. Now the translator holds
+ * the damage emit: the edge settles 3 s after the bits with no burst open and
+ * waits out the grace, the escalation's increment opens a burst inside it,
+ * and the damage event goes out on that burst's flush tick, right after
+ * `incident.occurred`. The collision-world line speaks the sequence's total
+ * (two points), not the +1 the count moved.
+ */
+const ESCALATION_WHILE_ANOTHER_LINE_PLAYS_SHORTCUT: TelemetrySequenceShortcut = {
+  id: "incident-escalation-while-another-line-plays",
+  category: "Incidents",
+  label: "Escalation while another line plays",
+  qualifyingInvalidationSnapshot: RACE_INCIDENT_SNAPSHOT,
+  description:
+    "Drives the TRANSLATOR through the crash logged in issue #1211, about 15 s end to end: an off-track (+1), the repair indicator lit a moment later, then about four seconds on the count moves again (+1) for a wall hit — one incident escalating to 2x. Expect the off-track line, then the collision-with-the-wall line with TWO points (the escalation's total, never the +1), then the damage line. In the log the damage line went first and the escalation was dropped behind it; hearing the damage line before the wall line, or no wall line, is the bug back. No preset needed: the run opens inside a replay-mode bracket that puts the car on track with no incidents and no damage, and leaves the car damaged with 2x. Needs the mock SDK CONNECTED; with it disconnected the translator sees no ticks and the button is silent for the wrong reason.",
+  telemetrySequence: [
+    ...INCIDENT_SEQUENCE_OPEN,
+    { patch: { PlayerIncidents: IncidentFlags.RepOffTrack }, holdMs: INCIDENT_BYTE_LEAD_MS },
+    { patch: { PlayerCarMyIncidentCount: 1, PlayerIncidents: 0 }, holdMs: ESCALATION_DAMAGE_LAG_MS },
+    {
+      patch: { EngineWarnings: REPAIR_NEEDED },
+      holdMs: ESCALATION_GAP_MS - ESCALATION_DAMAGE_LAG_MS - INCIDENT_BYTE_LEAD_MS,
+    },
+    { patch: { PlayerIncidents: IncidentFlags.RepCollisionWithWorld }, holdMs: INCIDENT_BYTE_LEAD_MS },
+    { patch: { PlayerCarMyIncidentCount: 2, PlayerIncidents: 0 }, holdMs: INCIDENT_LISTEN_MS },
+  ],
+};
+
 export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   // ── Pit Service ──
   {
@@ -1618,11 +1862,25 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   // so you hear the audio without waiting for the diff to settle. Use
   // the Engine Warnings panel checkboxes (Mandatory / Optional Repair)
   // when you specifically want to exercise the diff.
+  //
+  // The line's `speakGate` (#1288) refuses it when the translator's latest
+  // tick shows the repair bits clear, so with the mock connected the button
+  // sets them first — inside a replay-mode bracket, so the translator seeds
+  // them as damage it already knows about rather than seeing a rising edge
+  // and announcing it again five seconds later. With the mock disconnected
+  // the translator has no tick, and the gate admits the line on that alone.
+  // The patch replaces the whole `EngineWarnings` value, so any other
+  // warning bit set in the panel is cleared.
   {
     id: "damage-repair-needed",
     category: "Damage",
     label: "Damage Detected",
-    description: "Fire `damage.repairNeeded.raised` directly (skips the diff debounce)",
+    description:
+      "Fire `damage.repairNeeded.raised` directly (skips the diff debounce). Lights the repair indicator first, which the line checks before it speaks, and leaves it lit.",
+    telemetrySequence: [
+      { patch: { IsReplayPlaying: true, EngineWarnings: REPAIR_NEEDED }, holdMs: INCIDENT_SEED_MS },
+      { patch: { IsReplayPlaying: false }, holdMs: INCIDENT_SEED_MS },
+    ],
     event: "damage.repairNeeded.raised",
     data: {},
   },
@@ -1711,6 +1969,13 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     event: "offTrack.started",
     data: {},
   },
+  // Translator-driven (issue #1211): the incident and damage lines waiting
+  // for a held Voice bus instead of being dropped, in the order they are
+  // spoken — the thing to hear is the engine's scheduling after the
+  // translator's decisions, which a bus-event button steps over.
+  COLLISION_DURING_SPOTTER_CALL_SHORTCUT,
+  COLLISION_DURING_SPOTTER_CALL_QUALIFYING_SHORTCUT,
+  ESCALATION_WHILE_ANOTHER_LINE_PLAYS_SHORTCUT,
   // ── Qualifying Invalidation ──
   // Issue #567. Each shortcut posts its embedded `qualifyingInvalidationSnapshot`
   // to `/api/qualifying-invalidation/snapshot` before publishing the trigger
