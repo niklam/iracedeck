@@ -991,8 +991,10 @@ export type SimEventMap = {
   >;
   /**
    * A RELEVANT gap development against a class-standings neighbor
-   * (issue #933). Evaluated continuously from the smoothed gap rate — not at
-   * lap boundaries. "closing" fires when the projected contact
+   * (issue #933). Evaluated continuously — not at lap boundaries — from the
+   * lap-scale gap rate: the gap against the gap at the same spot one lap
+   * earlier (issue #1285), so no trend fires until the pair has a lap of
+   * history. "closing" fires when the projected contact
    * (`gapSeconds ÷ rate`) drops inside the announcement horizon (capped by
    * the laps actually remaining — a catch that completes after the race is
    * never announced), and re-fires as the projection roughly halves.
@@ -1011,7 +1013,7 @@ export type SimEventMap = {
       direction: "closing" | "opening";
       /** Gap in seconds at emission. */
       gapSeconds: number;
-      /** Smoothed gap rate in seconds per lap (negative = shrinking). */
+      /** Lap-over-lap gap rate in seconds per lap (negative = shrinking). */
       ratePerLap: number;
       /** Projected laps until contact (closing only). */
       lapsToContact?: number;
