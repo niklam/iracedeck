@@ -20,7 +20,11 @@
  * floor (held while a car is alongside, the usual moment of a crash), behind
  * the incident line for the same crash, or behind the `WEIGHT.SAFETY` caution
  * calls a crash brings out in the same few seconds (#1288). Now it is
- * `queueable` and waits for the bus.
+ * `queueable` and waits for the bus — in the bus's ONE pending slot, so a
+ * heavier queueable fire still takes its place: a caution call arriving
+ * while it waits replaces it, and one already waiting when it fires drops it
+ * (#1185 owns that slot; `crash-caution-sequence.test.ts` replays the #1288
+ * log, where it happens).
  *
  * When a crash produces both an incident line and this one, the incident
  * line plays first (Niklas, 2026-09-24). The translator holds the damage
@@ -34,48 +38,48 @@
  * incident line it waited for (the engine keeps a follower behind a newcomer
  * it names).
  *
- * A waiting line can outlive what it announces, so the `speakGate` re-reads
- * the repair bits from the translator's latest tick when the line comes to
- * speak and refuses it once they have cleared — the damage was repaired while
- * it waited (#1288). It admits an imperative `fire(id)` (the harness
- * buttons) and a tick with no telemetry, which has nothing to disprove the
- * damage with. A line cut mid-play by an `interrupt` replays whole without
- * asking the gate again (#1138's contract for an admitted fire).
+ * A waiting line can outlive what it announces, so the `speakGate` asks the
+ * translator whether the car still needs a repair when the line comes to
+ * speak (`isDamageRepairNeeded()`) and refuses it once the answer is no — the
+ * damage was repaired while it waited (#1288). That answer is the damage
+ * diff's own debounced state, the one behind the event, never the repair
+ * bits of one raw tick: the bits flicker on collision-frame rebounds and
+ * during pit-stall service, and a one-shot line refused on a flicker is lost
+ * for good. So the line is dropped only once the repair has settled as done.
+ * The gate admits an imperative `fire(id)` (the harness buttons) and an
+ * unknown state (no translator, or no live tick since a connect, session
+ * change or replay), which has nothing to disprove the damage with. A line
+ * cut mid-play by an `interrupt` replays whole without asking the gate again
+ * (#1138's contract for an admitted fire).
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
-import { EngineWarnings, type TelemetryData } from "@iracedeck/iracing-sdk";
-import { getLatestTelemetry } from "@iracedeck/sim-events-iracing";
+import { isDamageRepairNeeded } from "@iracedeck/sim-events-iracing";
 
 import type { ScenarioContext, ScenarioContract } from "../../dsl.js";
 import { INCIDENT_SCENARIO_IDS } from "./incidents.js";
 import { QUALIFYING_INVALIDATION_SCENARIO_IDS } from "./qualifying-invalidation.js";
 
-/** The repair bits the translator's damage edge watches. */
-const REPAIR_NEEDED_MASK = EngineWarnings.MandRepNeeded | EngineWarnings.OptRepNeeded;
-
 /**
- * The damage contract's speak-time gate (issues #1211, #1288): the latest
- * telemetry tick still shows a repair needed. Admits an imperative fire (no
- * event) and a missing tick. Pure — it claims nothing, so a refusal stamps no
- * cooldown.
+ * The damage contract's speak-time gate (issues #1211, #1288): refuses only
+ * when the translator's settled damage state says the repair is done
+ * (`isDamageRepairNeeded()` is `false`). Admits an imperative fire (no event)
+ * and an unknown state (`null`). Pure — it claims nothing, so a refusal
+ * stamps no cooldown.
  *
  * @internal Exported for tests.
  */
 export function damageStillNeedsRepair(ctx: ScenarioContext): boolean {
   if (ctx.event === null) return true;
 
-  const telemetry = getLatestTelemetry() as TelemetryData | null;
-
-  if (telemetry === null) return true;
-
-  return ((telemetry.EngineWarnings ?? 0) & REPAIR_NEEDED_MASK) !== 0;
+  return isDamageRepairNeeded() !== false;
 }
 
 const DAMAGE_REPAIR_NEEDED: ScenarioContract = {
   id: "pit-crew.damage-repair-needed",
   when: { event: "damage.repairNeeded.raised" },
   speakGate: {
-    description: "The car still needs a repair when the call comes to speak, or telemetry is unavailable.",
+    description:
+      "The car still needs a repair when the call comes to speak — the repair indicator has not settled as cleared — or the damage state is not known yet.",
     admit: damageStillNeedsRepair,
   },
   description:

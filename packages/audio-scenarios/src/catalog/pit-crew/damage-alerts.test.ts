@@ -12,7 +12,6 @@ import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { type CalloutScript, collectScriptReferences } from "@iracedeck/callout-script";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
-import { EngineWarnings } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ScenarioContext } from "../../dsl.js";
@@ -29,17 +28,19 @@ import {
 } from "./incidents.js";
 import { QUALIFYING_INVALIDATION_SCENARIO_IDS } from "./qualifying-invalidation.js";
 
-// The speak-time gate reads the translator's latest tick (issue #1288).
-// `null` — no telemetry — unless a test sets the repair bits.
-const mockLatestTelemetry = vi.fn((): unknown => null);
+// The speak-time gate reads the translator's SETTLED damage state (issue
+// #1288), never a raw tick — that the getter rides out a flicker is tested in
+// `sim-events-iracing`'s translator tests. `null` — not known — unless a test
+// sets it.
+const mockRepairNeeded = vi.fn((): boolean | null => null);
 
 vi.mock("@iracedeck/sim-events-iracing", () => ({
-  getLatestTelemetry: () => mockLatestTelemetry(),
+  isDamageRepairNeeded: () => mockRepairNeeded(),
 }));
 
-/** A tick with the repair bits up, and one with them cleared. */
-const DAMAGED = { EngineWarnings: EngineWarnings.MandRepNeeded };
-const REPAIRED = { EngineWarnings: 0 };
+/** The settled state with a repair needed, and with the repair done. */
+const DAMAGED = true;
+const REPAIRED = false;
 
 const mockLogger = {
   trace: vi.fn(),
@@ -185,8 +186,8 @@ let audio: FakeAudio;
 let engine: IScenarioEngine;
 
 beforeEach(() => {
-  mockLatestTelemetry.mockReset();
-  mockLatestTelemetry.mockReturnValue(null);
+  mockRepairNeeded.mockReset();
+  mockRepairNeeded.mockReturnValue(null);
   bus = createMockBus();
   audio = createFakeAudio();
   engine = initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
@@ -220,7 +221,7 @@ describe("DAMAGE_CONTRACTS structure", () => {
       expect(c.queueable).toBe(true);
       expect([...(c.queueBehind ?? [])]).toEqual([...INCIDENT_SCENARIO_IDS, ...QUALIFYING_INVALIDATION_SCENARIO_IDS]);
       expect(c.pendingHoldMs).toBeUndefined();
-      // Re-checks the repair bits at speak time (issue #1288).
+      // Re-checks the settled damage state at speak time (issue #1288).
       expect(c.speakGate?.admit).toBe(damageStillNeedsRepair);
       expect(c.speakGate?.description).toContain("still needs a repair");
     }
@@ -312,7 +313,7 @@ describe("the bundled script's damage entry (issue #1065)", () => {
 
 /**
  * Issue #1211 / #1288: the damage line queues, waits behind the incident line
- * for the same crash, and is skipped once the repair bits have cleared. The
+ * for the same crash, and is skipped once the repair has settled as done. The
  * engine here holds both families, as `registerPitCrew` does, with the
  * bundled script narrowed to them.
  */
@@ -352,7 +353,7 @@ describe("the damage line behind a held or busy bus (issues #1211, #1288)", () =
     for (const c of INCIDENT_CONTRACTS) engine.defineContract(c);
 
     engine.setScripts(new Map([[VOICE, COMBINED_SCRIPT]]));
-    mockLatestTelemetry.mockReturnValue(DAMAGED);
+    mockRepairNeeded.mockReturnValue(DAMAGED);
   });
 
   afterEach(() => {
@@ -440,7 +441,7 @@ describe("the damage line behind a held or busy bus (issues #1211, #1288)", () =
     });
   });
 
-  describe("the speak-time gate on the repair bits (issue #1288)", () => {
+  describe("the speak-time gate on the settled damage state (issue #1288)", () => {
     function holdBusWithCaution(): void {
       engine.defineScenario({
         id: "test.caution",
@@ -453,7 +454,7 @@ describe("the damage line behind a held or busy bus (issues #1211, #1288)", () =
       engine.fire("test.caution"); // playing, not flushed
     }
 
-    it("a damage line behind a SAFETY caution call waits and plays after it while the bits are up (the #1288 log)", () => {
+    it("a damage line behind a SAFETY caution call waits and plays after it while a repair is needed (the #1288 log)", () => {
       holdBusWithCaution();
       publishDamage();
       flush(audio);
@@ -461,10 +462,10 @@ describe("the damage line behind a held or busy bus (issues #1211, #1288)", () =
       expect(voicePaths()).toEqual([OTHER_LINE, DAMAGE_LINE]);
     });
 
-    it("the same line replaying after the bits cleared is refused, and stamps nothing", () => {
+    it("the same line replaying after the repair settled as done is refused, and stamps nothing", () => {
       holdBusWithCaution();
       publishDamage();
-      mockLatestTelemetry.mockReturnValue(REPAIRED); // repaired while it waited
+      mockRepairNeeded.mockReturnValue(REPAIRED); // repaired while it waited
       flush(audio);
 
       expect(voicePaths()).toEqual([OTHER_LINE]);
@@ -473,15 +474,15 @@ describe("the damage line behind a held or busy bus (issues #1211, #1288)", () =
       );
 
       // Nothing was claimed or stamped: the next damage episode speaks at once.
-      mockLatestTelemetry.mockReturnValue(DAMAGED);
+      mockRepairNeeded.mockReturnValue(DAMAGED);
       publishDamage();
       flush(audio);
 
       expect(voicePaths()).toEqual([OTHER_LINE, DAMAGE_LINE]);
     });
 
-    it("an imperative fire is admitted with the bits clear (the harness buttons)", () => {
-      mockLatestTelemetry.mockReturnValue(REPAIRED);
+    it("an imperative fire is admitted with the repair done (the harness buttons)", () => {
+      mockRepairNeeded.mockReturnValue(REPAIRED);
 
       engine.fire("pit-crew.damage-repair-needed");
       flush(audio);
@@ -489,16 +490,16 @@ describe("the damage line behind a held or busy bus (issues #1211, #1288)", () =
       expect(voicePaths()).toEqual([DAMAGE_LINE]);
     });
 
-    it("a waiting line replaying with no telemetry is admitted — nothing disproves the damage", () => {
+    it("a waiting line replaying with the damage state unknown is admitted — nothing disproves the damage", () => {
       holdBusWithCaution();
       publishDamage();
-      mockLatestTelemetry.mockReturnValue(null);
+      mockRepairNeeded.mockReturnValue(null);
       flush(audio);
 
       expect(voicePaths()).toEqual([OTHER_LINE, DAMAGE_LINE]);
     });
 
-    it("reads either repair bit, and only those", () => {
+    it("refuses only a settled false: admits true, an unknown state and an imperative fire", () => {
       const ctx = (event: SimEventOf<SimEventName> | null): ScenarioContext => ({
         event,
         telemetry: null,
@@ -513,22 +514,14 @@ describe("the damage line behind a held or busy bus (issues #1211, #1288)", () =
         data: {},
       } as unknown as SimEventOf<SimEventName>;
 
-      mockLatestTelemetry.mockReturnValue({ EngineWarnings: EngineWarnings.OptRepNeeded });
+      mockRepairNeeded.mockReturnValue(true);
       expect(damageStillNeedsRepair(ctx(raised))).toBe(true);
 
-      mockLatestTelemetry.mockReturnValue({ EngineWarnings: EngineWarnings.MandRepNeeded });
+      mockRepairNeeded.mockReturnValue(null);
       expect(damageStillNeedsRepair(ctx(raised))).toBe(true);
 
-      mockLatestTelemetry.mockReturnValue({ EngineWarnings: EngineWarnings.PitSpeedLimiter });
+      mockRepairNeeded.mockReturnValue(false);
       expect(damageStillNeedsRepair(ctx(raised))).toBe(false);
-
-      mockLatestTelemetry.mockReturnValue({});
-      expect(damageStillNeedsRepair(ctx(raised))).toBe(false);
-
-      mockLatestTelemetry.mockReturnValue(null);
-      expect(damageStillNeedsRepair(ctx(raised))).toBe(true);
-
-      mockLatestTelemetry.mockReturnValue(REPAIRED);
       expect(damageStillNeedsRepair(ctx(null))).toBe(true);
     });
   });

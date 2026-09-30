@@ -70,6 +70,9 @@ vi.mock("@iracedeck/sim-events-iracing", () => ({
   getSessionType: () => mockSessionType(),
   getStandingStart: () => false,
   getLatestTelemetry: () => mockLatestTelemetry(),
+  // The damage line's speak-time gate (issue #1288): the settled damage
+  // state, unknown here, which the gate admits.
+  isDamageRepairNeeded: () => null,
   TrackDirection: { Neutral: "neutral", Left: "left", Right: "right" },
 }));
 

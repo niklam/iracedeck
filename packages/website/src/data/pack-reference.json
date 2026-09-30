@@ -431,7 +431,7 @@
       "weightBand": "NORMAL",
       "queueable": true,
       "interrupt": false,
-      "speakGate": "The car still needs a repair when the call comes to speak, or telemetry is unavailable.",
+      "speakGate": "The car still needs a repair when the call comes to speak — the repair indicator has not settled as cleared — or the damage state is not known yet.",
       "base": "voice/{voice}",
       "comment": "The car has picked up damage the crew can repair — spoken once when iRacing first flags a mandatory or optional repair. A meatball flag carries the same news with more authority and outranks this line.",
       "test": "Harness → Damage → Damage Detected. In-sim: hit a wall or another car hard enough for the repair indicator to light in the black box.",
