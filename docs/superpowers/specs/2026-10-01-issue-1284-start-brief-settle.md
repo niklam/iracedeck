@@ -73,7 +73,7 @@ Both briefs set `settle` with `maxWaitMs: 10_000` and `pollMs: 500`, keep `trigg
 
 A brief that its `where:` will refuse must not wait (amended from the review — the wait runs before `where:`, so it would otherwise wait out the window and log `proceeding without …` for a fire that never proceeds). So `pending` answers ready at once for a session that is not the brief's own — race-start outside a race, session-start in one — and the master and per-callout opt-in wrappers answer a closed gate's `pending` as ready too.
 
-**Both briefs become `queueable`** (amended from the review). They now fire anywhere from 3 to 10 s after the event, where other callouts are as likely to hold the Voice bus; a non-queueable NORMAL-weight fire meeting an equal-weight line is dropped with a debug line only, which would lose the brief silently again. A brief a few seconds late is still correct.
+**Both briefs become `queueable`** (amended from the review). They now fire anywhere from 3 to 10 s after the event, where other callouts are as likely to hold the Voice bus; a non-queueable NORMAL-weight fire meeting an equal-weight line is dropped with a debug line only, which would lose the brief silently again. A brief a few seconds late is still correct — but not a brief for a session that has since ended, so both carry the same pure `speakGate` (amended from the PR review, per #1211's rule for a queueable one-shot): the session number on the event's own telemetry must still be the live one. It compares against the envelope rather than the payload's `to`, because the scenario harness publishes `to: 1` against a mock that stays at session 0; missing data admits.
 
 ## Logging
 
