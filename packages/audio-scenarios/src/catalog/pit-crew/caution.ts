@@ -90,10 +90,13 @@
  * named for a call later dropped or evicted. The record is tagged with
  * `getCautionEpisode()`'s id, which never repeats, so a car named in an
  * earlier caution — or session — never counts. Before anything is named the
- * change has nothing to judge against while the follow call is switched on
- * (it reads the lineup live and names the car itself), and with it switched
- * off judges against the caution's first readable lineup, so that driver
- * still hears the first genuine change. Switched off, the one-to-go call's
+ * change has nothing to judge against while the follow call can still name
+ * the car itself — switched on, and the field still waving, the only phase it
+ * speaks in (it reads the lineup live). Otherwise it judges against the
+ * caution's first readable lineup: the driver who switched the follow call
+ * off still hears the first genuine change, and so does one whose follow call
+ * never played (the plugin started mid-caution, or the call lost the pending
+ * slot) once the field is caught. Switched off, the one-to-go call's
  * gate never runs and records nothing, so the re-form change speaks its lane
  * and car — the only line that user then gets about the re-form.
  *
@@ -426,18 +429,20 @@ export function buildCautionContracts({
   };
 
   /**
-   * What a change is judged against: the car last named this caution; before
-   * anything is named, nothing while the follow call is switched on (it will
-   * name the car itself, read live), else the caution's first readable lineup.
+   * What a change in `episode` is judged against: the car last named this
+   * caution. Before anything is named, nothing while the follow call can still
+   * name the car itself — switched on, and the field still waving, the only
+   * phase it speaks in — else the caution's first readable lineup. Past the
+   * waving phase a follow call that never played (the plugin started
+   * mid-caution, the driver was not in the car at the flag, the call lost the
+   * pending slot, or the pack has no follow line) has nothing more to say, so
+   * waiting for it would leave every genuine change silent until two to green
+   * or one to go.
    */
-  const referenceCarIdx = (): number | null => {
-    const episode = getCautionEpisode();
-
-    if (episode === null) return null;
-
+  const referenceCarIdx = (episode: CautionEpisode): number | null => {
     if (lastNamed !== null && lastNamed.episodeId === episode.id) return lastNamed.followCarIdx;
 
-    if (isCautionCalloutEnabled("follow")) return null;
+    if (isCautionCalloutEnabled("follow") && getCautionPhase() === "waving") return null;
 
     return episode.firstFollowCarIdx;
   };
@@ -543,12 +548,18 @@ export function buildCautionContracts({
         admit: (ctx) => {
           if (!stillLinedUp.admit(ctx)) return false;
 
-          const reference = referenceCarIdx();
+          const episode = getCautionEpisode();
           const now = getCautionLineup()?.followCarIdx ?? null;
 
-          if (reference === null || now === null || now === reference) return false;
+          if (episode === null || now === null) return false;
 
-          recordNamed();
+          const reference = referenceCarIdx(episode);
+
+          if (reference === null || now === reference) return false;
+
+          // The car this call names — the one just compared, under the
+          // caution just read.
+          lastNamed = { episodeId: episode.id, followCarIdx: now };
 
           return true;
         },

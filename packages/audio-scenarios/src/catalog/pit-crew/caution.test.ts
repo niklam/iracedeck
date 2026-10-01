@@ -611,10 +611,23 @@ describe("the lineup-change call and the car last named (#1286)", () => {
     );
   });
 
-  it("stays silent with nothing named while the follow call is switched on — that call names the car itself", () => {
+  it("stays silent with nothing named while the follow call can still name the car — switched on, the field still waving", () => {
     const built = contracts();
 
+    cautionPhase = "waving";
     expect(changeAdmits(built, 12)).toBe(false);
+  });
+
+  it("once the field is caught with nothing named, judges against the first readable lineup — a follow call that never played has nothing more to say", () => {
+    // The plugin started mid-caution, or the follow call lost the pending
+    // slot: waiting for it past the only phase it speaks in would leave every
+    // genuine change silent until two to green or one to go.
+    episodeNow = { id: 1, firstFollowCarIdx: 7 };
+    const built = contracts();
+
+    cautionPhase = "caught";
+    expect(changeAdmits(built, 7)).toBe(false);
+    expect(changeAdmits(built, 12)).toBe(true);
   });
 
   it("with the follow call switched off, judges against the caution's first readable lineup", () => {
@@ -665,7 +678,9 @@ describe("the lineup-change call and the car last named (#1286)", () => {
 
     // The next caution: the record of 12 is not this caution's.
     episodeNow = { id: 2, firstFollowCarIdx: 12 };
+    cautionPhase = "waving";
     expect(changeAdmits(built, 7), "follow on: nothing named yet").toBe(false);
+    cautionPhase = "caught";
 
     // Follow off: judged against THIS caution's first lineup, not the old record.
     followEnabled = false;
@@ -1421,12 +1436,14 @@ describe("the lineup-change call beside the calls that name the car (#1286)", ()
       expect(r.played()).toEqual([HOG_CLIP, ONE_TO_GO]);
     });
 
-    it("would evict it at the family's weight without the queue — the positive control (and then speak nothing)", () => {
+    it("would evict it at the family's weight without the queue — the positive control (one to go is lost)", () => {
       const r = run({ changeOverrides: { family: "flag", weight: WEIGHT.SAFETY, queueBehind: undefined } });
 
       changeBehindWaitingOneToGo(r);
 
-      expect(r.played()).toEqual([HOG_CLIP]);
+      // With nothing named, the change replays against the first lineup and
+      // speaks — in place of the one-to-go call it evicted.
+      expect(r.played()).toEqual([HOG_CLIP, CHANGE]);
     });
   });
 
