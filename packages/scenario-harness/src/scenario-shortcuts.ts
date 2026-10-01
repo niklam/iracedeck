@@ -664,12 +664,21 @@ const LINEUP_CHANGE_LISTEN_MS = CAUTION_LINEUP_CHANGE_DELAY_MS + 3500;
 
 /**
  * The car ahead changing mid-caution (issue #1127) — a case the 2026-09-17
- * oval capture never produced (its own field re-form landed on the SAME tick
- * as one-to-go, which is why `diff/caution.ts` holds the decision behind
- * `CAUTION_LINEUP_CHANGE_DELAY_MS` in the first place — see the module doc on
- * `buildCautionContracts` in `@iracedeck/audio-scenarios/pit-crew`), so this
- * shortcut drives it directly: the pace rows change while the flags stay
- * static, well before one-to-go ever shows.
+ * oval capture never produced as a standalone change (its own field re-form
+ * landed on the tick before one-to-go, and the one-to-go call names the
+ * re-formed car itself), so this shortcut drives it directly: the pace rows
+ * change while the flags stay static, well before one-to-go ever shows.
+ *
+ * The order of the steps is load-bearing since issue #1286, which judges a
+ * change against the car the engineer last NAMED in this caution rather than
+ * the previous pace-row reading — and, while the follow callout is switched
+ * on, keeps a change silent until something has named a car. So the rows
+ * swap only after two calls have named car 11: the follow call, which rides
+ * the caution-waving flag and holds `CAUTION_FOLLOW_DELAY_MS` behind the
+ * caution announcement, and the two-to-green call on the static caution.
+ * `scenario-shortcuts.test.ts` pins that timing. A swap before either had
+ * played would be silent by design, and the button would demonstrate
+ * nothing.
  *
  * Single file throughout ({@link CAUTION_SINGLE_FILE_LINE} /
  * {@link CAUTION_SINGLE_FILE_ROW}), because the double-file interleave is
@@ -683,7 +692,7 @@ const CAUTION_LINEUP_CHANGE_SHORTCUT: TelemetrySequenceShortcut = {
   label: "Caution → lineup change",
   requires: ["player-car-index"],
   description:
-    'Drives the TRANSLATOR through a full-course caution where the car ahead changes mid-caution — a car pitted and the field re-formed, single file. Apply the race session preset (its 18-car roster supplies the pace car and every car number) and the hot-lap telemetry preset first; the run is refused without a session preset, since the caution lines read the driver list to know which car is yours. Single file throughout, so NO lane is named here on any preset — the oval preset changes nothing about this button. Expect the caution-waving line, the follow line ("...behind car eleven"), the two-to-green line — then, a few seconds later, the lineup-changed line ("...you\'re behind car seven"), followed by the one-lap-to-green line, the position line ("We\'re currently seven") and the restart (silent, same as "Caution → restart"). Needs the mock SDK CONNECTED; with it disconnected the translator sees no ticks and the button is silent for the wrong reason.',
+    'Drives the TRANSLATOR through a full-course caution where the car ahead changes mid-caution — a car pitted and the field re-formed, single file. Apply the race session preset (its 18-car roster supplies the pace car and every car number) and the hot-lap telemetry preset first; the run is refused without a session preset, since the caution lines read the driver list to know which car is yours. Single file throughout, so NO lane is named here on any preset — the oval preset changes nothing about this button. Expect, in order: the caution-waving line, the follow line ("...behind car eleven"), the two-to-green line ("...follow car eleven") — then, about two seconds after the pace rows swap, the lineup-changed line ("Change — you\'re behind car seven"), followed by the one-lap-to-green line, the position line ("We\'re currently seven") and the restart (silent, same as "Caution → restart"). The change is spoken only because car eleven was named first: since issue #1286 a change must differ from the car last named in this caution, and with the follow callout on it stays silent until a call has named one. Needs the mock SDK CONNECTED; with it disconnected the translator sees no ticks and the button is silent for the wrong reason.',
   telemetrySequence: [
     {
       patch: {

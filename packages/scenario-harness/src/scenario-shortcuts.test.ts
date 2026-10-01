@@ -1,6 +1,7 @@
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
+import { CAUTION_FOLLOW_DELAY_MS, CAUTION_LINEUP_CHANGE_DELAY_MS } from "@iracedeck/audio-scenarios/pit-crew";
 import type { CalloutScript } from "@iracedeck/callout-script";
-import { _resetEventBus, getEventBus, initializeEventBus } from "@iracedeck/event-bus";
+import { _resetEventBus, getEventBus, initializeEventBus, type SimEventName } from "@iracedeck/event-bus";
 import {
   Flags,
   PitSvFlags,
@@ -509,6 +510,49 @@ describe("the two follow-on caution shortcuts (issue #1127)", () => {
       followCarIdx: 9,
       followCarNumber: "7",
     });
+  });
+
+  it('"Caution → lineup change" swaps the rows only after two calls have named the first car, and listens past the change hold (#1286)', () => {
+    // Since #1286 a change is judged against the car last NAMED, and with the
+    // follow callout on it is silent until a call has named one — so a swap
+    // that landed before the follow call (its hold, behind the caution
+    // announcement) or the two-to-green line could play would leave this
+    // button silent by design. The allowance is a generous line plus its
+    // radio frame; the clock is the fake one, so these are simulated times.
+    const LINE_ALLOWANCE_MS = 3000;
+    const { controller, events } = startTranslator();
+    const at = new Map<SimEventName, number>();
+    const timed: readonly SimEventName[] = [
+      "flag.caution-waving.raised",
+      "caution.fieldCaught",
+      "caution.lineup.changed",
+      "caution.oneLapToGreen",
+    ];
+
+    for (const name of timed) {
+      getEventBus().subscribe(name, () => at.set(name, Date.now()));
+    }
+
+    runSequence(controller, stepsOf("flag-caution-lineup-change"));
+
+    /** When the button reported `name` — failing loudly if it never did, rather than comparing against NaN. */
+    const timeOf = (name: SimEventName): number => {
+      const t = at.get(name);
+
+      expect(t, `"${name}" was never reported`).toBeDefined();
+
+      return t ?? Number.NaN;
+    };
+
+    const flag = timeOf("flag.caution-waving.raised");
+    const pickup = timeOf("caution.fieldCaught");
+    const change = timeOf("caution.lineup.changed");
+    const oneToGo = timeOf("caution.oneLapToGreen");
+
+    expect(events.filter((e) => e.event === "caution.lineup.changed")).toHaveLength(1);
+    expect(change - flag).toBeGreaterThanOrEqual(CAUTION_FOLLOW_DELAY_MS + LINE_ALLOWANCE_MS);
+    expect(change - pickup).toBeGreaterThanOrEqual(LINE_ALLOWANCE_MS);
+    expect(oneToGo - change).toBeGreaterThanOrEqual(CAUTION_LINEUP_CHANGE_DELAY_MS + LINE_ALLOWANCE_MS);
   });
 });
 
