@@ -86,6 +86,7 @@ import { getScenarioEngine, isAudioScenariosInitialized } from "../../interprete
 import {
   buildCautionContracts,
   type CautionCalloutId,
+  type CautionEpisodeResolver,
   type CautionLineupResolver,
   type CautionPhaseResolver,
   registerCautionVocabulary,
@@ -288,6 +289,7 @@ export {
   CAUTION_SCENARIO_IDS,
   type CautionCalloutId,
   type CautionContractDeps,
+  type CautionEpisodeResolver,
   type CautionLineupResolver,
   type CautionPhaseResolver,
   registerCautionVocabulary,
@@ -1258,6 +1260,14 @@ export type PitCrewDeps = {
   // the whole family then never speaks, so the scenario harness MUST wire it
   // (`main.ts` does) or every caution button is silent for the wrong reason.
   getCautionPhase?: CautionPhaseResolver;
+  // WHICH caution is out (issue #1286). Plugins wire `getCautionEpisode()`
+  // from `@iracedeck/sim-events-iracing`: an id that never repeats, and the
+  // caution's first readable follow car. It scopes the lineup-change call's
+  // memory of the car last named to one caution, so a car named in an earlier
+  // caution — or session — never silences a change. Default `() => null`
+  // leaves the change call silent, never wrong: with no episode there is
+  // nothing to judge a change against.
+  getCautionEpisode?: CautionEpisodeResolver;
   // Pit-road speeding cue opt-in (issue #912). Live-read, single subject.
   // Consumed inside the imperative engine rather than by a scenario wrapper —
   // the cue plays direct, so there is no `where:` to gate.
@@ -1343,6 +1353,7 @@ const DEFAULT_DEPS = {
   getCautionLineup: () => null,
   getUnderFullCourseCaution: () => false,
   getCautionPhase: () => "none",
+  getCautionEpisode: () => null,
   getPitSpeedingCalloutEnabled: () => true,
   getPitLimiterCalloutEnabled: () => true,
   getNoLimiterCalloutEnabled: () => true,
@@ -1404,6 +1415,7 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
     getCautionLineup = DEFAULT_DEPS.getCautionLineup,
     getUnderFullCourseCaution = DEFAULT_DEPS.getUnderFullCourseCaution,
     getCautionPhase = DEFAULT_DEPS.getCautionPhase,
+    getCautionEpisode = DEFAULT_DEPS.getCautionEpisode,
     getPitSpeedingCalloutEnabled = DEFAULT_DEPS.getPitSpeedingCalloutEnabled,
     getPitLimiterCalloutEnabled = DEFAULT_DEPS.getPitLimiterCalloutEnabled,
     getNoLimiterCalloutEnabled = DEFAULT_DEPS.getNoLimiterCalloutEnabled,
@@ -1536,11 +1548,15 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   // caution: who to follow, the pace car out and off, the pickup (two to
   // green), each extra lap, one lap to green, a change to the car ahead, your
   // race position on the last lap, and the green. Registered right after the
-  // flags because it is part of the same conversation: eight of the nine share
-  // `family: "flag"` so a newer caution call supersedes a stale one, and the
-  // ninth (the follow call) deliberately does not, because it
-  // rides the very event that fires `pit-crew.flag-caution-waving` and must
-  // queue behind that line rather than cut it (see `caution.ts`).
+  // flags because it is part of the same conversation: six of the nine share
+  // `family: "flag"` so a newer caution call supersedes a stale one; the
+  // follow, position and lineup-change calls deliberately do not, because each
+  // shares its moment with a call it must queue behind rather than cut (the
+  // follow call rides the very event that fires `pit-crew.flag-caution-waving`;
+  // see `caution.ts`). The contracts take the episode reader and the live
+  // opt-in too: the lineup change is judged against the car last named in
+  // THIS caution, and before anything is named it asks whether the follow
+  // call is switched on (issue #1286).
   //
   // The vocabulary goes first, as every family's does; it carries the lineup
   // resolver because every lineup entry reads it at SPEAK time — the lineup is
@@ -1549,7 +1565,12 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   // the last caution lap speaks the race position, not the lineup's.
   registerCautionVocabulary(engine, getCautionLineup, getLivePosition, logger);
 
-  for (const c of buildCautionContracts({ getCautionPhase, getCautionLineup })) {
+  for (const c of buildCautionContracts({
+    getCautionPhase,
+    getCautionLineup,
+    getCautionEpisode,
+    isCautionCalloutEnabled: getCautionCalloutEnabled,
+  })) {
     engine.defineContract(
       wrapWithMaster(
         wrapCalloutScenario(c, SCENARIO_ID_TO_CAUTION_ID, getCautionCalloutEnabled, "caution callout", logger),
