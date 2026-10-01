@@ -185,11 +185,10 @@ export const LAST_LAP_CHECKPOINT_PCT = 0.35;
 let nextCautionEpisodeId = 1;
 
 /**
- * Opens and closes the episode identity with the phase. Idempotent, so it is
- * called both at the top of {@link diffLineup} — which needs the id set before
- * it records the caution's first follow car — and after the episode diff has
- * settled the tick's phase, which is the call that also covers the seed tick
- * and its early return.
+ * Opens and closes the episode identity with the phase, once the tick's phase
+ * has settled: at the top of {@link diffLineup}, which needs the id before it
+ * records the caution's first follow car, and on the seed tick, whose early
+ * return never reaches it.
  */
 function trackCautionEpisode(state: TranslatorState): void {
   if (state.cautionPhase === "none") {
@@ -336,6 +335,8 @@ function diffCautionEpisode(
       state.cautionPhase = "none";
       state.cautionCheckpointArmed = false;
     }
+
+    trackCautionEpisode(state);
 
     return;
   }
@@ -607,5 +608,4 @@ export function diffCaution(
 
   diffPaceCar(state, telemetry, sessionInfo, seeding, emit);
   diffCautionEpisode(state, telemetry, sessionInfo, canonicalPositions, seeding, emit, now);
-  trackCautionEpisode(state);
 }
