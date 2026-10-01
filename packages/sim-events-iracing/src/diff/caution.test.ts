@@ -1136,4 +1136,63 @@ describe("the caution episode (#1286)", () => {
     expect(state.cautionEpisodeId).not.toBeNull();
     expect(state.cautionFirstFollowCarIdx).toBe(2);
   });
+
+  it("pins the road capture's second caution: twelve flickers of car 0 within 1.07 s, and one genuine swap held 2.70 s", () => {
+    // The vacuity guard for the contract layer judging a change against the car
+    // last named: its round-trip cases are only worth something while the
+    // capture still carries the flicker they were measured on. Replayed once
+    // per player, since the round trips belong to different cars. Twelve are
+    // car 0, stopped, sliding past the player and back inside the change hold;
+    // the thirteenth is not a flicker at all — car 8 swaps rows ahead of player
+    // 19 and pits 2.70 s later — so it outlasts the hold and is two changes.
+    const roundTrips: Array<{ player: number; a: number | null; b: number | null; legS: number }> = [];
+
+    for (let player = 0; player < 20; player++) {
+      const state = createInitialState();
+      const { events, emit } = collect();
+      const info = playerSessionInfo(player, { oval: false });
+      // The follow car this caution opened on, then every change to it.
+      const seq: Array<{ t: number; followCarIdx: number | null }> = [];
+      let episodes = 0;
+      let lastId: number | null = null;
+
+      for (const tick of roadTicks) {
+        const before = events.length;
+
+        diffCaution(state, replayTick(tick), info, null, emit);
+
+        if (state.cautionEpisodeId !== null && state.cautionEpisodeId !== lastId) episodes++;
+
+        lastId = state.cautionEpisodeId;
+
+        if (episodes !== 2) continue;
+
+        if (seq.length === 0 && state.cautionFirstFollowCarIdx !== null) {
+          seq.push({ t: tick.t, followCarIdx: state.cautionFirstFollowCarIdx });
+        }
+
+        for (const e of events.slice(before)) {
+          if (e.event === "caution.lineup.changed") seq.push({ t: tick.t, followCarIdx: e.data.followCarIdx });
+        }
+      }
+
+      for (let i = 0; i + 2 < seq.length; i++) {
+        if (seq[i].followCarIdx === seq[i + 2].followCarIdx) {
+          roundTrips.push({
+            player,
+            a: seq[i].followCarIdx,
+            b: seq[i + 1].followCarIdx,
+            legS: Math.round((seq[i + 2].t - seq[i + 1].t) * 100) / 100,
+          });
+        }
+      }
+    }
+
+    const flickers = roundTrips.filter((r) => r.b === 0);
+
+    expect(roundTrips).toHaveLength(13);
+    expect(flickers).toHaveLength(12);
+    expect(Math.max(...flickers.map((r) => r.legS))).toBe(1.07);
+    expect(roundTrips.filter((r) => r.b !== 0)).toEqual([{ player: 19, a: 0, b: 8, legS: 2.7 }]);
+  });
 });
