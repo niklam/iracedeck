@@ -40,6 +40,8 @@ import {
   resolveRaceStartGridPosition,
   START_BRIEF_SETTLE_MAX_MS,
   START_BRIEF_SETTLE_POLL_MS,
+  START_BRIEF_SPEAK_GATE,
+  startBriefSessionStillCurrent,
 } from "./race-start.js";
 import { _resetRadarEngine } from "./radar-engine.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
@@ -672,6 +674,23 @@ describe("race-start scenario", () => {
       expect(hasClip("/race-start-greeting/niklas.mp3")).toBe(true);
     });
 
+    // #1284 review: a queueable brief that waits behind another line must not
+    // speak for a session that has since ended. The gate compares the session
+    // number on the event's own telemetry with the live one.
+    it("is refused at speak time when the session has changed again since the event", () => {
+      mockLatestTelemetry.mockReturnValue({ SessionNum: 3 });
+      fire(snap(), { from: 1, to: 2 }, { SessionNum: 2 });
+
+      expect(voicePaths()).toEqual([]);
+    });
+
+    it("speaks when the live session is still the one the event was raised for", () => {
+      mockLatestTelemetry.mockReturnValue({ SessionNum: 2 });
+      fire(snap(), { from: 1, to: 2 }, { SessionNum: 2 });
+
+      expect(hasClip("/race-start-greeting/niklas.mp3")).toBe(true);
+    });
+
     it("still briefs on a genuine transition even when the live telemetry reads Racing", () => {
       mockLatestTelemetry.mockReturnValue({ SessionState: SessionState.Racing });
       fire(snap(), { from: 0, to: 1 }, { SessionState: SessionState.Warmup });
@@ -961,6 +980,7 @@ describe("buildRaceStartContract (issue #1065)", () => {
     expect(c.weight).toBeUndefined();
     expect(c.interrupt).toBeUndefined();
     expect(c.queueable).toBe(true);
+    expect(c.speakGate).toBe(START_BRIEF_SPEAK_GATE);
     expect(c.cooldown).toBeUndefined();
     expect(c.frame).toBeUndefined();
   });
@@ -1167,5 +1187,34 @@ describe("the bundled script's race-start entry (issue #1065)", () => {
       .filter((message) => message.includes("race-start"));
 
     expect(raceStartWarnings).toEqual([]);
+  });
+});
+
+describe("startBriefSessionStillCurrent (issue #1284)", () => {
+  const ctx = (telemetry: Record<string, unknown> | null) =>
+    ({ event: null, data: null, telemetry, now: 0, vars: {} }) as unknown as Parameters<
+      typeof startBriefSessionStillCurrent
+    >[0];
+
+  it("admits when the live session number matches the event's", () => {
+    mockLatestTelemetry.mockReturnValue({ SessionNum: 2 });
+
+    expect(startBriefSessionStillCurrent(ctx({ SessionNum: 2 }))).toBe(true);
+  });
+
+  it("refuses when the live session number has moved on", () => {
+    mockLatestTelemetry.mockReturnValue({ SessionNum: 3 });
+
+    expect(startBriefSessionStillCurrent(ctx({ SessionNum: 2 }))).toBe(false);
+  });
+
+  it.each([
+    ["no envelope telemetry", null, { SessionNum: 3 }],
+    ["no session number on the event", {}, { SessionNum: 3 }],
+    ["no live telemetry", { SessionNum: 2 }, null],
+  ])("admits on missing data — %s", (_label, envelope, live) => {
+    mockLatestTelemetry.mockReturnValue(live);
+
+    expect(startBriefSessionStillCurrent(ctx(envelope))).toBe(true);
   });
 });

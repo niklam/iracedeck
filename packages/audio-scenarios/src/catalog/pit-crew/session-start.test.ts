@@ -26,7 +26,7 @@ import {
 } from "../../interpreter.js";
 import { registerPitCrew } from "./index.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
-import { START_BRIEF_SETTLE_MAX_MS, START_BRIEF_SETTLE_POLL_MS } from "./race-start.js";
+import { START_BRIEF_SETTLE_MAX_MS, START_BRIEF_SETTLE_POLL_MS, START_BRIEF_SPEAK_GATE } from "./race-start.js";
 import { _resetRadarEngine } from "./radar-engine.js";
 import {
   buildSessionStartContract,
@@ -935,6 +935,7 @@ describe("buildSessionStartContract (issue #1065)", () => {
     expect(c.weight).toBeUndefined();
     expect(c.interrupt).toBeUndefined();
     expect(c.queueable).toBe(true);
+    expect(c.speakGate).toBe(START_BRIEF_SPEAK_GATE);
     expect(c.cooldown).toBeUndefined();
     expect(c.frame).toBeUndefined();
   });

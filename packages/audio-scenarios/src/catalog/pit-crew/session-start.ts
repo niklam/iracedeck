@@ -83,6 +83,7 @@ import {
   type SetupWarningResolver,
   START_BRIEF_SETTLE_MAX_MS,
   START_BRIEF_SETTLE_POLL_MS,
+  START_BRIEF_SPEAK_GATE,
 } from "./race-start.js";
 import {
   TEMPERATURE_UNIT_DESCRIPTION,
@@ -340,6 +341,7 @@ export function buildSessionStartContract(
     // Queueable (#1284): the brief now fires anywhere from 3 to 10 s after the
     // transition, when other callouts are as likely to hold the bus, and a
     // session brief a few seconds late is still the session brief.
+    speakGate: START_BRIEF_SPEAK_GATE,
     queueable: true,
     description:
       "A practice or qualifying session begins and iRacing reports the track conditions, or ten seconds pass, in the garage or on track — but not when iRaceDeck connects while you are out lapping.",

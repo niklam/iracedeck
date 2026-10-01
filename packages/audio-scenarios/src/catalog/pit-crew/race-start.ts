@@ -81,7 +81,7 @@ import { isPostRace, SessionState, type TelemetryData } from "@iracedeck/iracing
 import type { ILogger } from "@iracedeck/logger";
 import { getLatestTelemetry, getSessionType } from "@iracedeck/sim-events-iracing";
 
-import type { ScenarioContract } from "../../dsl.js";
+import type { ScenarioContext, ScenarioContract } from "../../dsl.js";
 import { poolRef } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
 import {
@@ -160,6 +160,29 @@ type StartConditionFields = {
  *
  * @internal Exported for session-start and the tests
  */
+/** @internal Exported for the tests: whether the session a start brief was raised for is still the live one. */
+export function startBriefSessionStillCurrent(ctx: ScenarioContext): boolean {
+  const raisedFor = (ctx.telemetry as TelemetryData | null)?.SessionNum;
+  const now = (getLatestTelemetry() as TelemetryData | null)?.SessionNum;
+
+  return typeof raisedFor !== "number" || typeof now !== "number" || raisedFor === now;
+}
+
+/**
+ * The speak-time gate both start briefs carry (#1284, after the PR review):
+ * since they became `queueable`, a brief can wait behind another line, and a
+ * session that changes again in that time makes it the brief of a session
+ * that is over. It compares the session number on the event's own telemetry
+ * — the tick that raised `session.changed` — with the live one, rather than
+ * the payload's `to`, so a harness event published against a mock that never
+ * moves its session number still plays. A pure read; missing data admits
+ * (the #574 precedent). Shared so the two briefs ask the same question.
+ */
+export const START_BRIEF_SPEAK_GATE: NonNullable<ScenarioContract["speakGate"]> = {
+  description: "The session the brief was raised for is still the one running, or telemetry is unavailable.",
+  admit: startBriefSessionStillCurrent,
+};
+
 export function describeMissingStartConditions(snapshot: StartConditionFields | null): string | null {
   if (snapshot === null) return "telemetry or session info";
 
@@ -468,6 +491,7 @@ export function buildRaceStartContract(getSnapshot: RaceStartSnapshotResolver, l
     // Queueable (#1284): the brief now fires anywhere from 3 to 10 s after the
     // transition, when other callouts are as likely to hold the bus, and a
     // grid brief a few seconds late is still the grid brief.
+    speakGate: START_BRIEF_SPEAK_GATE,
     queueable: true,
     description:
       "A race session begins and iRacing reports the track conditions, or ten seconds pass — a restart on the pre-green grid included, but not when iRaceDeck connects to a race already under way.",
