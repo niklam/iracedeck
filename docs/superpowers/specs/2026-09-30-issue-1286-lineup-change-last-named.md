@@ -30,10 +30,10 @@ On admission it records the car it names, like the other three.
 
 **The reference car** is the last car named in this caution. Before anything has been named:
 
-- **with the follow call switched on**, there is no reference and the change stays silent. The follow call is what answers "who do I follow" for this caution, and it reads the lineup live when it plays, so a reshuffle between the flag and that call is reported by the call itself. This is the provisional first lineup of the log comment ("Change — behind 76" and then "Line up behind 76").
-- **with the follow call switched off**, the reference is the first readable lineup of the caution, read from the translator (below). The driver who switched the follow call off still hears the first genuine change, rather than nothing until two to green (maintainer ruling, 2026-09-30).
+- **with the follow call switched on and the field still waving**, there is no reference and the change stays silent. The follow call is what answers "who do I follow" for this caution, and it reads the lineup live when it plays, so a reshuffle between the flag and that call is reported by the call itself. This is the provisional first lineup of the log comment ("Change — behind 76" and then "Line up behind 76").
+- **otherwise** — the follow call switched off, or the field past the waving phase — the reference is the first readable lineup of the caution, read from the translator (below). The driver who switched the follow call off still hears the first genuine change, rather than nothing until two to green (maintainer ruling, 2026-09-30). The waving bound is the follow call's own: it speaks only while the field is waving, so once the field is caught a follow call that never played has nothing more to say (amended 2026-10-01, from the code review).
 
-The gate reads the follow call's opt-in live through the `getCautionCalloutEnabled` resolver `registerPitCrew` already holds, passed into `buildCautionContracts`. It does not read whether the follow call actually played: an enabled follow call that is dropped (it loses the pending slot to the caution announcement by design) or refused leaves the change silent until two to green or one to go names the car.
+The gate reads the follow call's opt-in live through the `getCautionCalloutEnabled` resolver `registerPitCrew` already holds, passed into `buildCautionContracts`. It does not read whether the follow call actually played: an enabled follow call that is dropped (it loses the pending slot to the caution announcement by design) or refused leaves the change silent for the rest of the waving phase, and from the pickup on the change is judged against the first lineup. That covers a plugin started mid-caution as well, which enters the caution caught and never sees the waving phase.
 
 ### How that settles the four mechanisms
 
@@ -42,7 +42,7 @@ The gate reads the follow call's opt-in live through the `getCautionCalloutEnabl
 - **The provisional first lineup.** Nothing named yet, follow call on: silent.
 - **No memory.** The reference is the named car, so 37 → 85 → 37 is spoken where each leg was a genuine change, and the "Change — behind 37" that duplicated two to green 171 ms earlier is not.
 
-The `oneToGoAt` stand-down in the change call's `where:` is deleted. The one-to-go call records the re-formed car when it plays, which is the same answer from the thing that was actually said, and it holds on either side of the flag — the log comment found the re-form emitted after one to go at both one-to-go calls, where the stand-down never applied. The documented behaviour with the one-to-go call switched OFF is kept: its gate never runs, nothing is recorded, and the re-form change speaks its lane and car.
+The `oneToGoAt` stand-down in the change call's `where:` is deleted. The one-to-go call records the re-formed car when it plays, which is the same answer from the thing that was actually said, and it holds whichever of the two lands first as long as one to go PLAYS after the re-form — the log comment found the re-form emitted after one to go at both one-to-go calls, where the stand-down never applied. When one to go plays before the re-form lands, it names the car the driver was following, and the re-form is then a genuine change and is spoken. The documented behaviour with the one-to-go call switched OFF is kept: its gate never runs, nothing is recorded, and the re-form change speaks its lane and car.
 
 ## Scheduling
 
@@ -79,7 +79,9 @@ The contracts record `{ episodeId, followCarIdx }` and treat a record from anoth
 
 - **Recording follows the reference voice's scripts.** A pack whose one-to-go or two-to-green line does not name the car still records it, and a numbered clause dropped as optional (no clip for that car number) records a car the driver did not hear. The contract decides which moments count as naming; the pack decides the words.
 - **Admitted and then cut still counts as named.** A call cut mid-sentence after its gate admitted it (by the restart, or by another `flag`-family call) may not have reached the number.
-- **An enabled follow call that never plays** leaves change calls silent until two to green or one to go names a car.
+- **An enabled follow call that never plays** leaves change calls silent until the pickup.
+- **A third call can still drop a waiting change.** `queueBehind` orders the change behind a waiting sibling, but a `SAFETY` call the pair does not name (another caution sibling arriving while the change waits behind a different one, or a flag call) replaces the leader and drops the follower, since the pending slot is one slot (#1185).
+- **A one-tick flag glitch opens a new caution id.** The episode lives and dies with the phase, which expires on a tick with no caution bit; the next tick opens a new id, forgetting what was named. Past the waving phase the change then judges against the new id's first lineup, so it degrades to the follow-off behaviour rather than to silence.
 - **The harness shortcut "Caution → lineup change"** keeps speaking: its pace rows swap after the follow call and two to green have both named the first car, so the change is news. Its description now says that the step order is load-bearing (amended 2026-10-01, implementation).
 
 ## Out of scope
