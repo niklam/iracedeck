@@ -3514,14 +3514,57 @@ describe("sim-events-iracing translator", () => {
       expect(getSessionStartConditions()).toBeNull();
     });
 
-    it("returns null when track wetness is still Unknown", () => {
+    it("reports wetness null (snapshot kept) while track wetness is still Unknown", () => {
       const controller = createMockController();
       controller.__setSessionInfo(SESSION_INFO);
       initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
 
       controller.__tick(telemetry({ TrackWetness: TrackWetness.Unknown, TrackTempCrew: 25, AirTemp: 18 }));
 
-      expect(getSessionStartConditions()).toBeNull();
+      const conditions = getSessionStartConditions();
+
+      expect(conditions).not.toBeNull();
+      expect(conditions?.wetness).toBeNull();
+      expect(conditions?.trackTemp).toBe(25);
+      expect(conditions?.airTemp).toBe(18);
+    });
+
+    it("reports wetness null when TrackWetness is out of range", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(SESSION_INFO);
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(telemetry({ TrackWetness: 99, TrackTempCrew: 25, AirTemp: 18 }));
+
+      expect(getSessionStartConditions()?.wetness).toBeNull();
+    });
+
+    it("reports trackTemp null when TrackTempCrew is missing, keeping the other fields", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(SESSION_INFO);
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(telemetry({ TrackWetness: TrackWetness.Dry, AirTemp: 18 }));
+
+      const conditions = getSessionStartConditions();
+
+      expect(conditions?.trackTemp).toBeNull();
+      expect(conditions?.airTemp).toBe(18);
+      expect(conditions?.wetness).toBe(TrackWetness.Dry);
+    });
+
+    it("reports airTemp null when AirTemp is not finite, keeping the other fields", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(SESSION_INFO);
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(telemetry({ TrackWetness: TrackWetness.Dry, TrackTempCrew: 25, AirTemp: Number.NaN }));
+
+      const conditions = getSessionStartConditions();
+
+      expect(conditions?.airTemp).toBeNull();
+      expect(conditions?.trackTemp).toBe(25);
+      expect(conditions?.wetness).toBe(TrackWetness.Dry);
     });
 
     it("resolves metric conditions (km/h, Celsius) and rounds temps", () => {
@@ -3643,14 +3686,57 @@ describe("sim-events-iracing translator", () => {
       expect(getRaceStartConditions()).toBeNull();
     });
 
-    it("returns null when track wetness is still Unknown", () => {
+    it("reports wetness null (snapshot kept) while track wetness is still Unknown", () => {
       const controller = createMockController();
       controller.__setSessionInfo(SESSION_INFO_P7);
       initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
 
       controller.__tick(telemetry({ TrackWetness: TrackWetness.Unknown, TrackTempCrew: 25, AirTemp: 18 }));
 
-      expect(getRaceStartConditions()).toBeNull();
+      const conditions = getRaceStartConditions();
+
+      expect(conditions).not.toBeNull();
+      expect(conditions?.wetness).toBeNull();
+      expect(conditions?.trackTemp).toBe(25);
+      expect(conditions?.airTemp).toBe(18);
+    });
+
+    it("reports wetness null when TrackWetness is out of range", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(SESSION_INFO_P7);
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(telemetry({ TrackWetness: 99, TrackTempCrew: 25, AirTemp: 18 }));
+
+      expect(getRaceStartConditions()?.wetness).toBeNull();
+    });
+
+    it("reports trackTemp null when TrackTempCrew is missing, keeping the other fields", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(SESSION_INFO_P7);
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(telemetry({ TrackWetness: TrackWetness.Dry, AirTemp: 18 }));
+
+      const conditions = getRaceStartConditions();
+
+      expect(conditions?.trackTemp).toBeNull();
+      expect(conditions?.airTemp).toBe(18);
+      expect(conditions?.wetness).toBe(TrackWetness.Dry);
+    });
+
+    it("reports airTemp null when AirTemp is not finite, keeping the other fields", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(SESSION_INFO_P7);
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(telemetry({ TrackWetness: TrackWetness.Dry, TrackTempCrew: 25, AirTemp: Number.NaN }));
+
+      const conditions = getRaceStartConditions();
+
+      expect(conditions?.airTemp).toBeNull();
+      expect(conditions?.trackTemp).toBe(25);
+      expect(conditions?.wetness).toBe(TrackWetness.Dry);
     });
 
     it("resolves metric conditions (Celsius) and reads grid position from QualifyResultsInfo", () => {
