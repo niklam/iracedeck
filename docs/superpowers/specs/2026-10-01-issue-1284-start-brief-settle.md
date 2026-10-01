@@ -44,6 +44,10 @@ What stays required: session-start's session line, which is what the brief exist
 
 A changed script is a changed pack archive: `default`'s published 1.1.1 is bumped and its catalog entry regenerated; `iracedeck-terse` 1.0.1 is not yet published and is regenerated at its current version.
 
+**Both packs require plugin 3.5.0** (amended 2026-10-01, from the branch review). A plugin's script compiler refuses an entry naming a condition it does not know, and the 3.4.0 launch step auto-updates the managed `default` pack from the live catalog — so without a floor, a 3.4.0 user would install 1.1.2 and lose both briefs for good the moment 3.5.0's catalog is published. `minPluginVersion: "3.5.0"` on both catalog entries keeps the update from being offered: a 3.4.0 launch leaves the installed pack where it is. Any later change that makes a first-party script use a vocabulary name a released plugin lacks needs the same floor.
+
+**A voice with no driver-name clips keeps the snapshot.** The plugins composed the snapshot as `null` when the active voice had no `names/` clip to pick from; they now fall back to the generic `driver` name, which the optional greeting simply skips, so `null` keeps meaning "no telemetry or session info".
+
 ## The engine gains a settle wait on the contract
 
 `ScenarioContract` gains an optional field:
@@ -65,7 +69,11 @@ The wait reuses the existing `pendingTriggerTimer`, so everything that cancels a
 
 The field is engine-level rather than a new bus event because the bus catalog is a published contract, and moving the briefs onto a "conditions ready" event would also move the #871 check — whether the driver was already on track at connect — away from the moment of connect that its envelope telemetry describes. `contracts()` does not report `settle`, as it does not report `queueBehind`: it is scheduling, which packs never see.
 
-Both briefs set `settle` with `maxWaitMs: 10_000` and `pollMs: 500`, keep `triggerDelay: 3000`, and derive `pending` from their own snapshot: `null` snapshot → "no telemetry or session info", otherwise the list of null fields from the table above.
+Both briefs set `settle` with `maxWaitMs: 10_000` and `pollMs: 500`, keep `triggerDelay: 3000`, and derive `pending` from their own snapshot: `null` snapshot → "telemetry or session info", otherwise the list of null fields from the table above.
+
+A brief that its `where:` will refuse must not wait (amended from the review — the wait runs before `where:`, so it would otherwise wait out the window and log `proceeding without …` for a fire that never proceeds). So `pending` answers ready at once for a session that is not the brief's own — race-start outside a race, session-start in one — and the master and per-callout opt-in wrappers answer a closed gate's `pending` as ready too.
+
+**Both briefs become `queueable`** (amended from the review). They now fire anywhere from 3 to 10 s after the event, where other callouts are as likely to hold the Voice bus; a non-queueable NORMAL-weight fire meeting an equal-weight line is dropped with a debug line only, which would lose the brief silently again. A brief a few seconds late is still correct.
 
 ## Logging
 
@@ -75,11 +83,11 @@ Both briefs set `settle` with `maxWaitMs: 10_000` and `pollMs: 500`, keep `trigg
 
 ## Gates kept
 
-Unchanged: the #871 fresh-connect suppressions (read from the event's envelope telemetry, which is still the connect tick), the #604 replay gate (at emission, in the translator), session-start's rejection of race sessions so the two never double-greet, and the master and per-callout opt-ins. The settle wait runs before `where:`, so a callout switched off mid-wait is still refused by its wrapper when the wait ends.
+The #871 fresh-connect suppressions are kept and read from the event's envelope telemetry, which is still the connect tick. Race-start's also asks the LIVE `SessionState` when it decides (amended from the review): a connect during the parade laps can see the green fly inside the 10 s wait, and a grid brief must not play after it. Unchanged: the #604 replay gate (at emission, in the translator), session-start's rejection of race sessions so the two never double-greet, and the master and per-callout opt-ins. The settle wait runs before `where:`, so a callout switched off mid-wait is still refused by its wrapper when the wait ends.
 
 ## Out of scope
 
-- **A green-flag bound on race-start.** The issue proposed one for a long pending window. At a 10 s cap it cannot bind: a race session opens in `GetInCar`, and the green is minutes after the transition in every format. The #871 gate already covers a connect into a race under way.
+- **A green-flag bound on race-start's genuine transitions.** The issue proposed one for a long pending window. At a 10 s cap it cannot bind on a session transition: a race session opens in `GetInCar`, and the green is minutes after it in every format. A fresh connect can land close to the green, which is why the #871 gate reads the live state too (above).
 - **Waiting for the pit speed limit or the grid position** — see the snapshot section.
 - **Other `triggerDelay` contracts** (caution, pit limiter) keep their single evaluation; `settle` is opt-in.
 - **Measuring how long `TrackWetness` stays unknown.** The fix does not wait on it; the capture below sets the constant.
