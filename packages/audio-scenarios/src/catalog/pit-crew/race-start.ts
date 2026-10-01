@@ -68,9 +68,12 @@
  * the race is already underway (`SessionState === Racing` or post-race) — a
  * pre-green grid restart still briefs. The first arm gates the contract open
  * only for race transitions (practice/qualifying are owned by session-start);
- * the snapshot arm short-circuits when telemetry / wetness aren't yet
- * available so the contract skips entirely rather than speaking a partial
- * readout.
+ * the snapshot arm short-circuits only when there is no telemetry or session
+ * info at all. A condition iRacing has not reported yet (wetness, a
+ * temperature) is waited for by the contract's `settle` — at most
+ * {@link START_BRIEF_SETTLE_MAX_MS} after the event — and if it is still
+ * unknown then, its own clause drops (an unknown wetness says so) and the rest
+ * of the brief plays (issue #1284).
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { type RaceStartSnapshot, TrackWetness } from "@iracedeck/event-bus";
@@ -90,8 +93,9 @@ import {
 
 /**
  * Resolver for the race-start snapshot, invoked at fire time. Returns `null`
- * when conditions aren't available — the contract then skips the callout
- * entirely (its `where:` predicate short-circuits).
+ * only when there is nothing to build from (no telemetry or session info) —
+ * the contract then skips the callout (its `where:` predicate short-circuits).
+ * A single condition iRacing has not reported yet is a `null` field instead.
  */
 export type RaceStartSnapshotResolver = () => RaceStartSnapshot | null;
 
@@ -115,8 +119,60 @@ export type SetupWarningResolver = (kind: "qualifying" | "race") => boolean;
  * gap actually plays, the var paths are already frozen. `triggerDelay`
  * defers the entire fire decision so where: and var resolvers see fresh,
  * settled telemetry.
+ *
+ * Settling is not always done in 3 s (issue #1284: a qualifying → race
+ * transition still read the track wetness as Unknown at +3 s, and the brief
+ * was lost), so the delay is only the first look — the contract's `settle`
+ * then keeps the fire pending until every condition is known or
+ * {@link START_BRIEF_SETTLE_MAX_MS} have passed.
  */
 export const RACE_START_DELAY_MS = 3000;
+
+/**
+ * Upper bound on how long the session-start and race-start briefs wait for
+ * iRacing to report the conditions they read, measured from
+ * `session.changed` (issue #1284). A condition still unknown at this point
+ * drops its own clause and the brief plays. Provisional: the
+ * `pnpm telemetry-watch` capture of `TrackWetness` / `TrackTempCrew` /
+ * `AirTemp` across a practice → qualifying → race weekend sets it — the
+ * maintainer ruled the wait stays within 3 to 10 s.
+ */
+export const START_BRIEF_SETTLE_MAX_MS = 10_000;
+
+/** How often the briefs re-check the conditions while settling (issue #1284). */
+export const START_BRIEF_SETTLE_POLL_MS = 500;
+
+/** The conditions both briefs read, as far as settling is concerned. */
+type StartConditionFields = {
+  trackTemp: number | null;
+  airTemp: number | null;
+  wetness: TrackWetness | null;
+};
+
+/**
+ * What a start brief is still waiting for, for its `settle.pending` and the
+ * log line the engine writes when it goes ahead without it (issue #1284):
+ * `null` once every condition is known, otherwise the missing ones by name.
+ * The pit speed limit and the grid position are deliberately not here — a
+ * track with no limit in its YAML or an event with no qualifying results
+ * would otherwise hold every brief for the full window for a value that is
+ * never coming.
+ *
+ * @internal Exported for session-start and the tests
+ */
+export function describeMissingStartConditions(snapshot: StartConditionFields | null): string | null {
+  if (snapshot === null) return "telemetry and session info";
+
+  const missing: string[] = [];
+
+  if (snapshot.wetness === null) missing.push("track wetness");
+
+  if (snapshot.trackTemp === null) missing.push("track temperature");
+
+  if (snapshot.airTemp === null) missing.push("air temperature");
+
+  return missing.length > 0 ? missing.join(", ") : null;
+}
 
 /** Wetness enum → `session-start/wetness-<suffix>.mp3` clip suffix. */
 const WETNESS_CLIP_SUFFIX: Readonly<Partial<Record<TrackWetness, string>>> = {
@@ -262,7 +318,7 @@ export function registerRaceStartVocabulary(
     () => {
       const s = getSnapshot();
 
-      if (!s) return null;
+      if (!s || s.trackTemp === null) return null;
 
       return temperatureNumberRef(s.trackTemp);
     },
@@ -274,7 +330,7 @@ export function registerRaceStartVocabulary(
     () => {
       const s = getSnapshot();
 
-      if (!s) return null;
+      if (!s || s.airTemp === null) return null;
 
       return temperatureNumberRef(s.airTemp);
     },
@@ -297,11 +353,21 @@ export function registerRaceStartVocabulary(
     "raceStart.wetness",
     () => {
       const s = getSnapshot();
-      const suffix = s ? WETNESS_CLIP_SUFFIX[s.wetness] : undefined;
+      const suffix = s && s.wetness !== null ? WETNESS_CLIP_SUFFIX[s.wetness] : undefined;
 
       return suffix ? poolRef(SESSION_START_GROUP, `wetness-${suffix}`) : null;
     },
     "The track wetness state as a word — dry, mostly dry, very lightly wet, lightly wet, moderately wet, very wet or extremely wet. Draws the wetness-<state> lines from the session-start clip group.",
+  );
+
+  engine.defineCond(
+    "raceStart.wetnessKnown",
+    () => {
+      const s = getSnapshot();
+
+      return s !== null && s.wetness !== null;
+    },
+    "iRacing has reported the track wetness. False when the brief speaks before it has, a few seconds after a session change at most — the moment to say the conditions are still unknown rather than read a state.",
   );
 
   engine.defineCase(
@@ -342,7 +408,7 @@ export function buildRaceStartContract(getSnapshot: RaceStartSnapshotResolver, l
         }
 
         if (snapshot === null) {
-          logger?.info(`race-start where: rejected — snapshot is null (telemetry not ready / wetness unknown)`);
+          logger?.info("race-start where: rejected — snapshot is null (no telemetry or session info)");
 
           return false;
         }
@@ -378,11 +444,17 @@ export function buildRaceStartContract(getSnapshot: RaceStartSnapshotResolver, l
     base: "voice/{voice}",
     family: "race-start",
     // Defer where: + var resolution so telemetry has settled by the time we
-    // read TrackWetness / TrackTempCrew / AirTemp / PlayerCarPosition. See
-    // `RACE_START_DELAY_MS` for the rationale.
+    // read TrackWetness / TrackTempCrew / AirTemp / PlayerCarPosition, then
+    // keep waiting (issue #1284) until every condition is known or the
+    // window closes. See `RACE_START_DELAY_MS` / `START_BRIEF_SETTLE_MAX_MS`.
     triggerDelay: RACE_START_DELAY_MS,
+    settle: {
+      pending: () => describeMissingStartConditions(getSnapshot()),
+      maxWaitMs: START_BRIEF_SETTLE_MAX_MS,
+      pollMs: START_BRIEF_SETTLE_POLL_MS,
+    },
     description:
-      "A race session begins and three seconds pass — a restart on the pre-green grid included, but not when iRaceDeck connects to a race already under way.",
+      "A race session begins and iRacing reports the track conditions, or ten seconds pass — a restart on the pre-green grid included, but not when iRaceDeck connects to a race already under way.",
   };
 }
 
@@ -414,9 +486,10 @@ export const SCENARIO_ID_TO_RACE_START_ID: Record<(typeof RACE_START_SCENARIO_ID
 /**
  * The clip sources the race-start script draws from directly — the pools it
  * addresses as `pool:<group>/<base>` rather than through a var: the two
- * position-clause lines under `race-start`, the three conditions intros it
- * borrows from `session-start` (issue #568 reuses the session-start clips),
- * and the setup nudge under `setup-warning`. The value-driven clips (the
+ * position-clause lines under `race-start`, the three conditions intros and
+ * the conditions-still-unknown line it borrows from `session-start` (issue
+ * #568 reuses the session-start clips; #1284 added the unknown line), and the
+ * setup nudge under `setup-warning`. The value-driven clips (the
  * greeting, the numbers, the wetness) are the vars', whose
  * descriptions name their groups. The completeness tests read this list:
  * the bundled voice must ship at least one clip for each, and the bundled
@@ -430,5 +503,6 @@ export const RACE_START_CLIP_SOURCES: readonly { group: string; base: string }[]
   { group: "session-start", base: "track-temp-intro" },
   { group: "session-start", base: "air-temp-intro" },
   { group: "session-start", base: "wetness-intro" },
+  { group: "session-start", base: "wetness-unknown" },
   { group: "setup-warning", base: "race" },
 ];

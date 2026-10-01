@@ -1887,13 +1887,13 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   // Session-start readout (issue #542; scripted since #1065). The
   // `sessionStart.*` vars and the `setupWarning.qualifyingMismatch` condition
   // read their resolvers at expansion time; the contract's `where:` reads the
-  // snapshot to refuse a fire before telemetry has settled and to leave race
+  // snapshot to refuse a fire with no telemetry at all and to leave race
   // sessions to race-start.
   registerSessionStartVocabulary(engine, getSessionStartSnapshot, getSetupWarningMismatch);
   engine.defineContract(
     wrapWithMaster(
       wrapCalloutScenario(
-        buildSessionStartContract(getSessionStartSnapshot),
+        buildSessionStartContract(getSessionStartSnapshot, logger),
         SCENARIO_ID_TO_SESSION_START_ID,
         getSessionStartCalloutEnabled,
         "session-start callout",
@@ -2036,7 +2036,8 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   // Property Inspector driver-name pick); the `raceStart.*` vars, the
   // grid-position case and the `setupWarning.raceMismatch` condition read
   // their resolvers at expansion time, the contract's `where:` reads the
-  // snapshot to refuse a fire before telemetry has settled.
+  // snapshot to refuse a fire with no telemetry at all; `settle` waits for
+  // the conditions themselves (#1284).
   registerRaceStartVocabulary(engine, getRaceStartSnapshot, getSetupWarningMismatch);
   engine.defineContract(
     wrapWithMaster(

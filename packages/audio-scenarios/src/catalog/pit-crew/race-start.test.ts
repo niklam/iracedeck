@@ -30,12 +30,16 @@ import { registerPitCrew } from "./index.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import {
   buildRaceStartContract,
+  describeMissingStartConditions,
   isRaceSession,
   RACE_START_CLIP_SOURCES,
   RACE_START_DELAY_MS,
   RACE_START_GRID_POSITION_KEYS,
   RACE_START_SCENARIO_IDS,
+  registerRaceStartVocabulary,
   resolveRaceStartGridPosition,
+  START_BRIEF_SETTLE_MAX_MS,
+  START_BRIEF_SETTLE_POLL_MS,
 } from "./race-start.js";
 import { _resetRadarEngine } from "./radar-engine.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
@@ -177,8 +181,9 @@ const GREETING_NAMES = ["niklas", "driver"];
 // below zero named minus<N>.
 const TEMP_CLIP_NAMES = Array.from({ length: 197 }, (_, i) => temperatureClipName(i - 20));
 
-// A voice with only the "driver" greeting and no setup-warning clips —
-// exercises the optional-clause skips (issue #835).
+// A voice with only the "driver" greeting, no setup-warning clips and no
+// conditions-still-unknown line — exercises the optional-clause skips (issue
+// #835), and the unknown-wetness branch being optional (issue #1284).
 const BARE_VOICE = "bare";
 
 const manifest: AudioAssetsManifest = {
@@ -189,6 +194,8 @@ const manifest: AudioAssetsManifest = {
     ...GREETING_NAMES.map((n) => `voice/${VOICE}/race-start-greeting/${n}.mp3`),
     ...RACE_START_CLIPS.map((c) => `voice/${VOICE}/race-start/${c}.mp3`),
     ...SESSION_START_CLIPS.map((c) => `voice/${VOICE}/session-start/${c}.mp3`),
+    // The conditions-still-unknown line (issue #1284).
+    `voice/${VOICE}/session-start/wetness-unknown-01.mp3`,
     // The optional unit-only clips a pack may record (issue #1187); the
     // bundled voice has none.
     `voice/${VOICE}/session-start/unit-celsius.mp3`,
@@ -281,6 +288,21 @@ function fire(
   currentSnapshot = snapshot;
   bus.publishEvent("session.changed", data, telemetry);
   flush(audio);
+}
+
+/** Publishes `session.changed` without advancing time — for the settle-wait tests that step the clock themselves. */
+function publish(
+  snapshot: RaceStartSnapshot | null,
+  data: { from: number; to: number } = { from: 0, to: 1 },
+  telemetry?: Record<string, unknown>,
+): void {
+  currentSnapshot = snapshot;
+  bus.publishEvent("session.changed", data, telemetry);
+}
+
+/** Every message logged at info so far. */
+function infoMessages(): string[] {
+  return mockLogger.info.mock.calls.map(([message]) => String(message));
 }
 
 function voicePaths(): string[] {
@@ -654,6 +676,181 @@ describe("race-start scenario", () => {
   });
 });
 
+// Issue #1284: the brief no longer decides once at +3 s. It waits — re-asking
+// every START_BRIEF_SETTLE_POLL_MS — until every condition it reads is known
+// or START_BRIEF_SETTLE_MAX_MS have passed since the event, then speaks once
+// with whatever is known.
+describe("settle wait for the conditions (issue #1284)", () => {
+  // Scoped to this contract: registerPitCrew also registers session-start,
+  // whose snapshot resolver is absent here and so writes its own line at 10 s.
+  const PROCEEDING = 'Scenario "pit-crew.race-start" proceeding without';
+  const greetings = () => voicePaths().filter((p) => p.endsWith("/race-start-greeting/niklas.mp3"));
+
+  it("speaks once, with the wetness clause, after a wetness that was unknown at +3 s arrives at +5 s", () => {
+    publish(snap({ wetness: null }));
+
+    vi.advanceTimersByTime(4900);
+    expect(audio._played).toEqual([]);
+
+    currentSnapshot = snap();
+    vi.advanceTimersByTime(100);
+    expect(audio._played.length).toBeGreaterThan(0);
+
+    flush(audio);
+
+    expect(greetings()).toHaveLength(1);
+    expect(hasClip("/session-start/wetness-intro.mp3")).toBe(true);
+    expect(hasClip("/session-start/wetness-mostly-dry.mp3")).toBe(true);
+    expect(hasClip("/session-start/wetness-unknown-01.mp3")).toBe(false);
+    expect(infoMessages().some((m) => m.includes(PROCEEDING))).toBe(false);
+  });
+
+  it("speaks at the deadline with the conditions-still-unknown line when the wetness never arrives, and logs it", () => {
+    publish(snap({ wetness: null }));
+
+    vi.advanceTimersByTime(START_BRIEF_SETTLE_MAX_MS - 1);
+    expect(audio._played).toEqual([]);
+
+    vi.advanceTimersByTime(1);
+    expect(audio._played.length).toBeGreaterThan(0);
+
+    flush(audio);
+
+    expect(greetings()).toHaveLength(1);
+    expect(hasClip("/position-number/7.mp3")).toBe(true);
+    expect(hasClip("/session-start/wetness-unknown-01.mp3")).toBe(true);
+    expect(hasClip("/session-start/wetness-intro.mp3")).toBe(false);
+    expect(infoMessages()).toContainEqual(expect.stringContaining(`${PROCEEDING} track wetness`));
+  });
+
+  it("ends the brief without any wetness line for a voice that lacks the unknown line — the else branch is optional", () => {
+    activeVoice = BARE_VOICE;
+    fire(snap({ driverName: "driver", wetness: null }));
+
+    const played = voicePaths();
+
+    expect(hasClip("/race-start-greeting/driver.mp3")).toBe(true);
+    expect(played.some((p) => p.includes("/session-start/wetness-"))).toBe(false);
+    expect(played.at(-1)).toMatch(/[/]numbers-degrees[/]20[.]mp3$/);
+  });
+
+  it.each([
+    ["trackTemp", "track-temp-intro", "28", "air-temp-intro", "20", "track temperature"],
+    ["airTemp", "air-temp-intro", "20", "track-temp-intro", "28", "air temperature"],
+  ] as const)(
+    "an unknown %s drops only its own clause, at the deadline",
+    (field, droppedIntro, droppedFigure, keptIntro, keptFigure, logged) => {
+      publish(snap({ [field]: null }));
+
+      vi.advanceTimersByTime(START_BRIEF_SETTLE_MAX_MS - 1);
+      expect(audio._played).toEqual([]);
+
+      flush(audio);
+
+      expect(hasClip(`/session-start/${droppedIntro}.mp3`)).toBe(false);
+      expect(hasClip(`/numbers-degrees/${droppedFigure}.mp3`)).toBe(false);
+      expect(hasClip(`/session-start/${keptIntro}.mp3`)).toBe(true);
+      expect(hasClip(`/numbers-degrees/${keptFigure}.mp3`)).toBe(true);
+      expect(hasClip("/race-start-greeting/niklas.mp3")).toBe(true);
+      expect(hasClip("/session-start/wetness-mostly-dry.mp3")).toBe(true);
+      expect(infoMessages()).toContainEqual(expect.stringContaining(`${PROCEEDING} ${logged}`));
+    },
+  );
+
+  it("names every condition it went ahead without in one log line", () => {
+    fire(snap({ wetness: null, trackTemp: null, airTemp: null }));
+
+    expect(infoMessages()).toContainEqual(
+      expect.stringContaining(`${PROCEEDING} track wetness, track temperature, air temperature`),
+    );
+    expect(voicePaths().some((p) => p.includes("/numbers-degrees/"))).toBe(false);
+    expect(hasClip("/session-start/wetness-unknown-01.mp3")).toBe(true);
+  });
+
+  it("speaks at +3 s with no further wait when everything is known by then", () => {
+    publish(snap());
+
+    vi.advanceTimersByTime(RACE_START_DELAY_MS - 1);
+    expect(audio._played).toEqual([]);
+
+    vi.advanceTimersByTime(1);
+    expect(audio._played.length).toBeGreaterThan(0);
+
+    flush(audio);
+
+    expect(greetings()).toHaveLength(1);
+    expect(infoMessages().some((m) => m.includes(PROCEEDING))).toBe(false);
+  });
+
+  it("plays nothing when the snapshot stays null through the window, and where: logs the rejection", () => {
+    fire(null);
+
+    expect(audio._played).toEqual([]);
+    expect(infoMessages()).toContainEqual(expect.stringContaining(`${PROCEEDING} telemetry and session info`));
+    expect(infoMessages()).toContainEqual(expect.stringContaining("race-start where: rejected — snapshot is null"));
+  });
+
+  it("restarts the wait on a second session.changed during it, and plays one brief", () => {
+    publish(snap({ wetness: null }));
+    vi.advanceTimersByTime(6000);
+    expect(audio._played).toEqual([]);
+
+    // The session changes again mid-wait: the newest event wins, so its own
+    // 3 s delay and 10 s window start over.
+    publish(snap({ wetness: null }), { from: 1, to: 2 });
+
+    // The first event's deadline passes without a fire.
+    vi.advanceTimersByTime(START_BRIEF_SETTLE_MAX_MS - 6000);
+    expect(audio._played).toEqual([]);
+
+    // The second event's deadline fires the brief.
+    vi.advanceTimersByTime(6000 - 1);
+    expect(audio._played).toEqual([]);
+    vi.advanceTimersByTime(1);
+    expect(audio._played.length).toBeGreaterThan(0);
+
+    flush(audio);
+
+    expect(greetings()).toHaveLength(1);
+    expect(infoMessages().filter((m) => m.includes(PROCEEDING))).toHaveLength(1);
+  });
+});
+
+describe("describeMissingStartConditions (issue #1284)", () => {
+  it("is null once every condition is known", () => {
+    expect(describeMissingStartConditions(snap())).toBeNull();
+  });
+
+  it("names each missing condition", () => {
+    expect(describeMissingStartConditions(snap({ wetness: null }))).toBe("track wetness");
+    expect(describeMissingStartConditions(snap({ trackTemp: null }))).toBe("track temperature");
+    expect(describeMissingStartConditions(snap({ airTemp: null }))).toBe("air temperature");
+  });
+
+  it("joins several missing conditions with commas, in a fixed order", () => {
+    expect(describeMissingStartConditions(snap({ airTemp: null, wetness: null }))).toBe(
+      "track wetness, air temperature",
+    );
+    expect(describeMissingStartConditions(snap({ wetness: null, trackTemp: null, airTemp: null }))).toBe(
+      "track wetness, track temperature, air temperature",
+    );
+  });
+
+  it("names the whole snapshot for a null one", () => {
+    expect(describeMissingStartConditions(null)).toBe("telemetry and session info");
+  });
+
+  it("does not wait on a zero temperature, the pit speed limit or the grid position", () => {
+    expect(describeMissingStartConditions(snap({ trackTemp: 0, airTemp: 0 }))).toBeNull();
+    expect(describeMissingStartConditions(snap({ playerCarPosition: undefined }))).toBeNull();
+  });
+
+  it("pins the shared window: 10 s from the event, re-asked every 500 ms", () => {
+    expect(START_BRIEF_SETTLE_MAX_MS).toBe(10_000);
+    expect(START_BRIEF_SETTLE_POLL_MS).toBe(500);
+  });
+});
+
 describe("buildRaceStartContract (issue #1065)", () => {
   it("carries no sequence and keeps every scheduling field verbatim — the 3 s trigger delay included — taking the engine's default frame", () => {
     const c = buildRaceStartContract(() => null);
@@ -673,10 +870,25 @@ describe("buildRaceStartContract (issue #1065)", () => {
     expect(c.cooldown).toBeUndefined();
     expect(c.frame).toBeUndefined();
   });
+
+  it("settles on the shared start-brief window, asking what of its own snapshot is still unknown (issue #1284)", () => {
+    let snapshot: RaceStartSnapshot | null = snap({ wetness: null });
+    const c = buildRaceStartContract(() => snapshot);
+
+    expect(c.settle?.maxWaitMs).toBe(START_BRIEF_SETTLE_MAX_MS);
+    expect(c.settle?.pollMs).toBe(START_BRIEF_SETTLE_POLL_MS);
+    expect(c.settle?.pending({} as never)).toBe("track wetness");
+
+    snapshot = snap();
+    expect(c.settle?.pending({} as never)).toBeNull();
+
+    snapshot = null;
+    expect(c.settle?.pending({} as never)).toBe("telemetry and session info");
+  });
 });
 
 describe("registerRaceStartVocabulary (issue #1065)", () => {
-  it("publishes the six vars, the grid-position case and the setup-warning condition, each with a description for a pack author", () => {
+  it("publishes the six vars, the grid-position case and the wetness-known and setup-warning conditions, each with a description for a pack author", () => {
     const { vars, conds, cases } = getScenarioEngine().vocabulary();
     const ours = (name: string) => name.startsWith("raceStart.");
 
@@ -689,12 +901,13 @@ describe("registerRaceStartVocabulary (issue #1065)", () => {
       "raceStart.wetness",
     ]);
     expect(cases.filter((c) => ours(c.name)).map((c) => c.name)).toEqual(["raceStart.gridPosition"]);
+    expect(conds.filter((c) => ours(c.name)).map((c) => c.name)).toEqual(["raceStart.wetnessKnown"]);
     expect(conds.map((c) => c.name)).toContain("setupWarning.raceMismatch");
 
     const entries = [
       ...vars.filter((v) => ours(v.name)),
       ...cases.filter((c) => ours(c.name)),
-      ...conds.filter((c) => c.name === "setupWarning.raceMismatch"),
+      ...conds.filter((c) => ours(c.name) || c.name === "setupWarning.raceMismatch"),
     ];
 
     for (const entry of entries) expect(entry.description.length, entry.name).toBeGreaterThan(0);
@@ -704,6 +917,34 @@ describe("registerRaceStartVocabulary (issue #1065)", () => {
     )) {
       expect(description.length, `raceStart.gridPosition key ${key}`).toBeGreaterThan(0);
     }
+  });
+
+  it("raceStart.wetnessKnown follows the snapshot: true only when it exists and carries a wetness (issue #1284)", () => {
+    const conds = new Map<string, (ctx: never) => boolean>();
+    let snapshot: RaceStartSnapshot | null = snap();
+
+    registerRaceStartVocabulary(
+      {
+        defineVar: vi.fn(),
+        defineCase: vi.fn(),
+        defineCond: (name: string, predicate: (ctx: never) => boolean) => conds.set(name, predicate),
+      } as never,
+      () => snapshot,
+    );
+
+    const wetnessKnown = conds.get("raceStart.wetnessKnown");
+
+    expect(wetnessKnown).toBeDefined();
+    expect(wetnessKnown?.({} as never)).toBe(true);
+
+    snapshot = snap({ wetness: TrackWetness.Dry });
+    expect(wetnessKnown?.({} as never)).toBe(true);
+
+    snapshot = snap({ wetness: null });
+    expect(wetnessKnown?.({} as never)).toBe(false);
+
+    snapshot = null;
+    expect(wetnessKnown?.({} as never)).toBe(false);
   });
 
   it("declares exactly the keys the grid-position resolver can return — enumerated over every position and the missing one", () => {
@@ -741,7 +982,7 @@ describe("the bundled script's race-start entry (issue #1065)", () => {
     }
   });
 
-  it("keeps the five optional clauses whole, the grid position a case inside its clause, and the wetness required", () => {
+  it("keeps every clause optional, the grid position a case inside its clause, and the wetness a branch on whether it is known (issue #1284)", () => {
     expect(SCRIPT.scenarios["pit-crew.race-start"].sequence).toEqual([
       { optional: ["{{raceStart.greeting}}"] },
       {
@@ -758,8 +999,11 @@ describe("the bundled script's race-start entry (issue #1065)", () => {
       },
       { optional: ["pool:session-start/track-temp-intro", "{{raceStart.trackTempNumber}}"] },
       { optional: ["pool:session-start/air-temp-intro", "{{raceStart.airTempNumber}}"] },
-      "pool:session-start/wetness-intro",
-      "{{raceStart.wetness}}",
+      {
+        if: "raceStart.wetnessKnown",
+        then: [{ optional: ["pool:session-start/wetness-intro", "{{raceStart.wetness}}"] }],
+        else: [{ optional: ["pool:session-start/wetness-unknown"] }],
+      },
       { if: "setupWarning.raceMismatch", then: [{ optional: ["pool:setup-warning/race"] }] },
     ]);
   });
@@ -775,7 +1019,7 @@ describe("the bundled script's race-start entry (issue #1065)", () => {
       "raceStart.trackTempNumber",
       "raceStart.wetness",
     ]);
-    expect(refs.conds).toEqual(["setupWarning.raceMismatch"]);
+    expect(refs.conds).toEqual(["raceStart.wetnessKnown", "setupWarning.raceMismatch"]);
     expect(refs.cases).toEqual([
       { name: "raceStart.gridPosition", keys: Object.keys(RACE_START_GRID_POSITION_KEYS).sort() },
     ]);
@@ -802,6 +1046,7 @@ describe("the bundled script's race-start entry (issue #1065)", () => {
       "session-start/air-temp-intro",
       "session-start/track-temp-intro",
       "session-start/wetness-intro",
+      "session-start/wetness-unknown",
       "setup-warning/race",
     ];
 
