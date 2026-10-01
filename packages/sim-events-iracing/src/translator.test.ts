@@ -3539,6 +3539,16 @@ describe("sim-events-iracing translator", () => {
       expect(getSessionStartConditions()?.wetness).toBeNull();
     });
 
+    it("reports wetness null for a non-integer TrackWetness, which no clip names", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(SESSION_INFO);
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(telemetry({ TrackWetness: 2.5, TrackTempCrew: 25, AirTemp: 18 }));
+
+      expect(getSessionStartConditions()?.wetness).toBeNull();
+    });
+
     it("reports trackTemp null when TrackTempCrew is missing, keeping the other fields", () => {
       const controller = createMockController();
       controller.__setSessionInfo(SESSION_INFO);
@@ -3707,6 +3717,16 @@ describe("sim-events-iracing translator", () => {
       initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
 
       controller.__tick(telemetry({ TrackWetness: 99, TrackTempCrew: 25, AirTemp: 18 }));
+
+      expect(getRaceStartConditions()?.wetness).toBeNull();
+    });
+
+    it("reports wetness null for a non-integer TrackWetness, which no clip names", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(SESSION_INFO_P7);
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(telemetry({ TrackWetness: 2.5, TrackTempCrew: 25, AirTemp: 18 }));
 
       expect(getRaceStartConditions()?.wetness).toBeNull();
     });

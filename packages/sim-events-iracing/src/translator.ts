@@ -26,7 +26,7 @@ import type {
   SimEventMap,
   SimEventName,
 } from "@iracedeck/event-bus";
-import { OpponentPenaltyFlag, TrackWetness } from "@iracedeck/event-bus";
+import { OpponentPenaltyFlag } from "@iracedeck/event-bus";
 import {
   CarLeftRight,
   classPositionFromOrder,
@@ -86,7 +86,7 @@ import { diffRollingStart } from "./diff/rolling-start.js";
 import { diffStartCountdown, diffStartLights } from "./diff/start-lights.js";
 import { diffTireWear } from "./diff/tire-wear.js";
 import { diffToggles } from "./diff/toggles.js";
-import { diffTrackWetness } from "./diff/track-wetness.js";
+import { diffTrackWetness, resolveReportedTrackWetness } from "./diff/track-wetness.js";
 import type { PendingEvent } from "./diff/types.js";
 import { calculateCanonicalRacePositions } from "./race-order.js";
 import { resolveStandingStart } from "./start-lights.js";
@@ -540,11 +540,15 @@ export function getReadbackSnapshot(): PitReadbackSnapshot | null {
   return buildReadbackSnapshot(instance.latestTelemetry);
 }
 
-/** `TrackWetness` when iRacing has reported a real value, else `null` (Unknown or out of range, #1284). */
-function resolveWetness(raw: unknown): TrackWetness | null {
-  if (typeof raw !== "number" || raw < TrackWetness.Dry || raw > TrackWetness.ExtremelyWet) return null;
+/**
+ * A Celsius reading in the driver's display unit, rounded to an integer, or
+ * `null` while iRacing has not reported it (#1284) — never a false zero.
+ * Shared by both start-brief snapshots so the two can never disagree.
+ */
+function toDisplayTemp(celsius: number | undefined, metric: boolean): number | null {
+  if (typeof celsius !== "number" || !Number.isFinite(celsius)) return null;
 
-  return raw as TrackWetness;
+  return Math.round(metric ? celsius : celsius * 1.8 + 32);
 }
 
 /**
@@ -575,16 +579,14 @@ export function getSessionStartConditions(): SessionStartConditions | null {
   // (telemetry field absent) defaults to metric.
   const metric = telemetry.DisplayUnits !== 0;
   const pitSpeedLimitMps = resolvePitSpeedLimit(instance, sessionInfo, telemetry);
-  const wetness = resolveWetness(telemetry.TrackWetness);
-  const toDisplayTemp = (celsius: number | undefined): number | null =>
-    typeof celsius === "number" && Number.isFinite(celsius) ? Math.round(metric ? celsius : celsius * 1.8 + 32) : null;
+  const wetness = resolveReportedTrackWetness(telemetry.TrackWetness);
 
   return {
     sessionType: classifySessionType(resolveSessionType(sessionInfo, telemetry)),
     pitSpeedLimit: Math.round(pitSpeedLimitMps * (metric ? 3.6 : 2.236936)),
     speedUnit: metric ? "kmh" : "mph",
-    trackTemp: toDisplayTemp(telemetry.TrackTempCrew),
-    airTemp: toDisplayTemp(telemetry.AirTemp),
+    trackTemp: toDisplayTemp(telemetry.TrackTempCrew, metric),
+    airTemp: toDisplayTemp(telemetry.AirTemp, metric),
     tempUnit: metric ? "celsius" : "fahrenheit",
     wetness,
   };
@@ -627,14 +629,12 @@ export function getRaceStartConditions(): RaceStartConditions | null {
   // iRacing `DisplayUnits`: 0 = English (imperial), 1 = Metric. Undefined
   // (telemetry field absent) defaults to metric.
   const metric = telemetry.DisplayUnits !== 0;
-  const wetness = resolveWetness(telemetry.TrackWetness);
-  const toDisplayTemp = (celsius: number | undefined): number | null =>
-    typeof celsius === "number" && Number.isFinite(celsius) ? Math.round(metric ? celsius : celsius * 1.8 + 32) : null;
+  const wetness = resolveReportedTrackWetness(telemetry.TrackWetness);
   const playerCarPosition = resolveStartingGridPosition(sessionInfo);
 
   return {
-    trackTemp: toDisplayTemp(telemetry.TrackTempCrew),
-    airTemp: toDisplayTemp(telemetry.AirTemp),
+    trackTemp: toDisplayTemp(telemetry.TrackTempCrew, metric),
+    airTemp: toDisplayTemp(telemetry.AirTemp, metric),
     tempUnit: metric ? "celsius" : "fahrenheit",
     wetness,
     playerCarPosition,
