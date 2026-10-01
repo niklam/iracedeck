@@ -229,13 +229,23 @@ export function buildDriverDetailsTable(sessionInfo: Record<string, unknown> | n
   return buildMarkdownTable(headers, rows, alignRight);
 }
 
-function formatTime(seconds: number): string {
-  if (seconds < 0) return "-";
+/**
+ * Formats a lap time as `h:mm:ss.sss` from an hour, `m:ss.sss` from a minute, or
+ * `s.sss` + `s` under a minute; `-` for a negative (unset) or non-finite value. Rounds
+ * to the millisecond before splitting, so 119.9996 reads `2:00.000` rather than `1:60.000`.
+ * @internal Exported for testing
+ */
+export function formatTime(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return "-";
 
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
+  const totalMs = Math.round(seconds * 1000);
+  const hours = Math.floor(totalMs / 3_600_000);
+  const mins = Math.floor((totalMs % 3_600_000) / 60_000);
+  const secs = ((totalMs % 60_000) / 1000).toFixed(3);
 
-  return mins > 0 ? `${mins}:${secs.toFixed(3).padStart(7, "0")}` : `${secs.toFixed(3)}s`;
+  if (hours > 0) return `${hours}:${String(mins).padStart(2, "0")}:${secs.padStart(6, "0")}`;
+
+  return mins > 0 ? `${mins}:${secs.padStart(6, "0")}` : `${secs}s`;
 }
 
 /**

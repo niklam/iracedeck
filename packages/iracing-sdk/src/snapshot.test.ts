@@ -6,6 +6,7 @@ import {
   buildMarkdownTable,
   buildPlayerTelemetry,
   buildSnapshotEnvelope,
+  formatTime,
   generateMarkdown,
   getSessionIdentification,
   snapshotBaseName,
@@ -61,6 +62,43 @@ describe("trkLocToString", () => {
 
   it("should report unknown values", () => {
     expect(trkLocToString(99)).toBe("Unknown (99)");
+  });
+});
+
+describe("formatTime", () => {
+  it("should format sub-minute times in seconds", () => {
+    expect(formatTime(23.181)).toBe("23.181s");
+    expect(formatTime(5.2)).toBe("5.200s");
+  });
+
+  it("should pad seconds to two digits past the minute", () => {
+    expect(formatTime(68.985)).toBe("1:08.985");
+    expect(formatTime(120)).toBe("2:00.000");
+  });
+
+  it("should not pad ten or more seconds past the minute", () => {
+    expect(formatTime(72.345)).toBe("1:12.345");
+    expect(formatTime(659.5)).toBe("10:59.500");
+  });
+
+  it("should carry a value that rounds up to the next minute", () => {
+    expect(formatTime(119.9996)).toBe("2:00.000");
+    expect(formatTime(59.9996)).toBe("1:00.000");
+  });
+
+  it("should switch to hours from an hour up", () => {
+    expect(formatTime(3700)).toBe("1:01:40.000");
+    expect(formatTime(3599.9996)).toBe("1:00:00.000");
+    expect(formatTime(7265.5)).toBe("2:01:05.500");
+  });
+
+  it("should print a dash for a negative (unset) time", () => {
+    expect(formatTime(-1)).toBe("-");
+  });
+
+  it("should print a dash for a non-finite time", () => {
+    expect(formatTime(Number.NaN)).toBe("-");
+    expect(formatTime(Number.POSITIVE_INFINITY)).toBe("-");
   });
 });
 
@@ -158,6 +196,16 @@ describe("buildPlayerTelemetry", () => {
     expect(table).toContain("Mazda MX-5 (#42)");
     expect(table).toContain("180.0 km/h"); // 50 m/s * 3.6
     expect(table).toContain("32.6 L");
+  });
+
+  it("should print lap times of a minute or more as m:ss.sss (#1287)", () => {
+    const table = buildPlayerTelemetry(
+      { ...sampleTelemetry, LapLastLapTime: 68.985, LapBestLapTime: 72.345 },
+      sampleSessionInfo,
+    );
+
+    expect(table).toMatch(/Last Lap Time\s*\|\s*1:08\.985/);
+    expect(table).toMatch(/Best Lap Time\s*\|\s*1:12\.345/);
   });
 
   it("should render blank instead of 'null' for a blank UserName/CarNumber (#869)", () => {

@@ -17,6 +17,10 @@ _Unreleased_
 
 - The **Default (Terse)** voice is now called **Default (Short callouts)**, a name that says what you get without needing the word "terse". Only the name changes: if it is your selected voice it stays selected, and an installed copy picks up the new name when it updates itself at the next plugin start. See [Race Engineer Voices](/docs/features/race-engineer-voices/#default-short-callouts).
 
+**Bug Fixes**
+
+- Telemetry Control's **Take Snapshot** report no longer prints lap times of a minute or more with an extra zero: a 1:08.985 lap now reads `1:08.985` instead of `1:008.985`, a time a hair under a whole minute no longer reads `:60`, and a lap-time counter past an hour now shows hours. See [Telemetry Control](/docs/actions/cockpit/telemetry-control/#take-snapshot).
+
 ## 3.4.0
 
 _2026-09-29_

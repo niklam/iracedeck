@@ -14,6 +14,12 @@
           "items": [
             "The <strong>Default (Terse)</strong> voice is now called <strong>Default (Short callouts)</strong>, a name that says what you get without needing the word &quot;terse&quot;. Only the name changes: if it is your selected voice it stays selected, and an installed copy picks up the new name when it updates itself at the next plugin start. See <a href=\"https://iracedeck.com/docs/features/race-engineer-voices/#default-short-callouts\" target=\"_blank\" rel=\"noopener noreferrer\">Race Engineer Voices</a>."
           ]
+        },
+        {
+          "title": "Bug Fixes",
+          "items": [
+            "Telemetry Control's <strong>Take Snapshot</strong> report no longer prints lap times of a minute or more with an extra zero: a 1:08.985 lap now reads <code>1:08.985</code> instead of <code>1:008.985</code>, a time a hair under a whole minute no longer reads <code>:60</code>, and a lap-time counter past an hour now shows hours. See <a href=\"https://iracedeck.com/docs/actions/cockpit/telemetry-control/#take-snapshot\" target=\"_blank\" rel=\"noopener noreferrer\">Telemetry Control</a>."
+          ]
         }
       ]
     },
