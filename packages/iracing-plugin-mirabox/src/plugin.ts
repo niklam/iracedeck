@@ -881,7 +881,9 @@ registerPitCrew(eventBus, {
 
     const driverName = resolveActiveDriverName(driverNames, "driver");
 
-    return driverName ? { ...conditions, driverName } : null;
+    // A voice with no name clips still briefs: the greeting is optional, the
+    // rest of the brief is not about the name (#1284).
+    return { ...conditions, driverName: driverName ?? "driver" };
   },
   getLapTimeCalloutEnabled: (id: LapTimeCalloutId) =>
     (getGlobalSettings() as Record<string, unknown>)[LAP_TIME_CALLOUT_SETTING_KEYS[id]] !== false,
@@ -912,7 +914,9 @@ registerPitCrew(eventBus, {
 
     const driverName = resolveActiveDriverName(driverNames, "driver");
 
-    return driverName ? { ...conditions, driverName } : null;
+    // A voice with no name clips still briefs: the greeting is optional, the
+    // rest of the brief is not about the name (#1284).
+    return { ...conditions, driverName: driverName ?? "driver" };
   },
   getOvertakeCalloutEnabled: (id: OvertakeCalloutId) =>
     (getGlobalSettings() as Record<string, unknown>)[OVERTAKE_CALLOUT_SETTING_KEYS[id]] !== false,
