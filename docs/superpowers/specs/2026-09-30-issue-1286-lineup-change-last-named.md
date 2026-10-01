@@ -80,7 +80,7 @@ The contracts record `{ episodeId, followCarIdx }` and treat a record from anoth
 - **Recording follows the reference voice's scripts.** A pack whose one-to-go or two-to-green line does not name the car still records it, and a numbered clause dropped as optional (no clip for that car number) records a car the driver did not hear. The contract decides which moments count as naming; the pack decides the words.
 - **Admitted and then cut still counts as named.** A call cut mid-sentence after its gate admitted it (by the restart, or by another `flag`-family call) may not have reached the number.
 - **An enabled follow call that never plays** leaves change calls silent until two to green or one to go names a car.
-- **The harness shortcut "Caution → lineup change"** swaps pace rows with no naming call before it, so with the follow call on it goes silent. Its sequence or description changes with this issue, so the button still demonstrates a spoken change.
+- **The harness shortcut "Caution → lineup change"** keeps speaking: its pace rows swap after the follow call and two to green have both named the first car, so the change is news. Its description now says that the step order is load-bearing (amended 2026-10-01, implementation).
 
 ## Out of scope
 
