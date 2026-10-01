@@ -325,9 +325,11 @@ type CompiledScenario = {
   unsubscribe: (() => void) | null;
   lastFireAt: number;
   /**
-   * Active `triggerDelay` timer handle, if any. New event arrivals cancel
-   * and replace the pending timer so the most recent trigger wins. Cleared
-   * on timer expiry, on `unsubscribe`, and on `defineScenario` replacement.
+   * Active `triggerDelay` timer handle, if any — or the current hop of a
+   * `settle` wait (issue #1284), which re-arms it for each re-ask. New event
+   * arrivals cancel and replace the pending timer so the most recent trigger
+   * wins. Cleared on timer expiry, on disable (`setEnabled(false)`), and on
+   * `defineScenario` replacement.
    */
   pendingTriggerTimer: ReturnType<typeof setTimeout> | null;
 };
@@ -1191,8 +1193,9 @@ class ScenarioEngine implements IScenarioEngine {
       if (!entry || !entry.enabled) return;
 
       const triggerDelay = entry.raw.triggerDelay ?? 0;
+      const settle = entry.raw.settle;
 
-      if (triggerDelay <= 0) {
+      if (triggerDelay <= 0 && !settle) {
         // Immediate path — where: runs synchronously, attemptFire runs
         // synchronously. Var resolvers will read current state at this
         // moment.
@@ -1217,13 +1220,23 @@ class ScenarioEngine implements IScenarioEngine {
       // (critical for `session.changed` → race-start, where iRacing's
       // TrackWetness can read Unknown at the transition tick).
       //
+      // A contract with `settle` (issue #1284) takes this path even with no
+      // `triggerDelay`, and after the delay keeps asking `pending` until it
+      // reports ready or the wait reaches `maxWaitMs` from the event's
+      // arrival. Every hop reuses `pendingTriggerTimer`, so what cancels a
+      // deferred fire — a newer event, a disable, a redefinition — cancels a
+      // settle in progress too.
+      //
       // Cancel any pending timer for this scenario so the most recent event
       // wins. Two rapid SessionNum advances would otherwise queue two fires.
       if (entry.pendingTriggerTimer !== null) {
         clearTimeout(entry.pendingTriggerTimer);
       }
 
-      entry.pendingTriggerTimer = setTimeout(() => {
+      const arrivedAt = Date.now();
+      let asks = 0;
+
+      const onTimer = (): void => {
         entry.pendingTriggerTimer = null;
 
         // Re-check entry state — scenario may have been redefined or
@@ -1231,6 +1244,27 @@ class ScenarioEngine implements IScenarioEngine {
         const current = this.scenarios.get(id);
 
         if (!current || !current.enabled || current !== entry) return;
+
+        if (settle) {
+          const missing = this.settlePending(id, settle.pending, ev);
+          const waited = Date.now() - arrivedAt;
+
+          asks++;
+
+          if (missing !== null) {
+            const remaining = settle.maxWaitMs - waited;
+
+            if (remaining > 0) {
+              entry.pendingTriggerTimer = setTimeout(onTimer, Math.min(settle.pollMs, remaining));
+
+              return;
+            }
+
+            this.logger.info(`Scenario "${id}" proceeding without ${missing} after ${waited} ms`);
+          } else if (asks > 1) {
+            this.logger.debug(`Scenario "${id}" settled after ${waited} ms`);
+          }
+        }
 
         if (where) {
           try {
@@ -1245,10 +1279,45 @@ class ScenarioEngine implements IScenarioEngine {
         }
 
         this.attemptFire(current, ev);
-      }, triggerDelay);
+      };
+
+      entry.pendingTriggerTimer = setTimeout(onTimer, Math.max(triggerDelay, 0));
     };
 
     return this.eventBus.subscribe(eventName, handler);
+  }
+
+  /**
+   * One ask of a contract's `settle.pending` (issue #1284), with the context
+   * a vocabulary resolver would get for the same event. A throwing check is
+   * logged at error and read as ready, so a bug in it cannot silence the
+   * callout — the fire goes on to `where:` as if nothing were missing.
+   */
+  private settlePending(
+    id: string,
+    pending: (ctx: ScenarioContext) => string | null,
+    event: SimEventOf<SimEventName>,
+  ): string | null {
+    try {
+      return pending(this.fireContext(event));
+    } catch (err) {
+      this.logger.error(
+        `Scenario "${id}" settle.pending() threw; proceeding as ready: ${err instanceof Error ? err.message : String(err)}`,
+      );
+
+      return null;
+    }
+  }
+
+  /** The context a fire's resolvers, predicates and gates read (`ScenarioContext`); `vars` fill in during expansion. */
+  private fireContext(event: SimEventOf<SimEventName> | null): ScenarioContext {
+    return {
+      event,
+      telemetry: event?.telemetry ?? null,
+      data: event?.data ?? null,
+      now: Date.now(),
+      vars: {},
+    };
   }
 
   // ── Firing pipeline ──
@@ -1563,13 +1632,7 @@ class ScenarioEngine implements IScenarioEngine {
   ): ExecOp[] | null {
     this.ensureCompiled();
 
-    const ctx: ScenarioContext = {
-      event,
-      telemetry: event?.telemetry ?? null,
-      data: event?.data ?? null,
-      now: Date.now(),
-      vars: {},
-    };
+    const ctx = this.fireContext(event);
 
     const voice = this.getActiveVoice();
     const script = voice === null ? undefined : this.compiled.get(voice);

@@ -24,15 +24,17 @@
  * The code below decides WHETHER the brief is due and how it is scheduled;
  * WHAT is said lives in the active voice's `callouts.json` under the same id
  * (`scenarios["pit-crew.session-start"]`), paired at `setScripts` time. The
- * bundled script's shape (fires ~{@link SESSION_START_DELAY_MS} ms after
- * `session.changed`):
+ * bundled script's shape (fires {@link SESSION_START_DELAY_MS} ms after
+ * `session.changed` once the conditions are known, and at most
+ * {@link START_BRIEF_SETTLE_MAX_MS} ms after it — issue #1284):
  *   [radio open]
  *   "Ok, <Name>,"                                  {{sessionStart.greeting}} — optional
  *   <session line>                                 {{sessionStart.sessionLine}} — required
  *   "The pit speed limit is" <N> <speed-unit>      optional clause — see below
  *   "Track temperature is" <N degrees>             optional clause
  *   "air temperature is"   <N degrees>             optional clause
- *   "and the track is" {{sessionStart.wetness}}    required
+ *   "and the track is" {{sessionStart.wetness}}    optional clause, when the wetness is known
+ *   "Track conditions are still unknown."          optional clause, when it is not (#1284)
  *   (if setupWarning.qualifyingMismatch) the nudge optional clause
  *   [radio close]
  *
@@ -40,8 +42,9 @@
  * brief without the greeting, without the pit-speed limit, or without a
  * temperature reading is shorter and still true, so a voice lacking a name
  * clip, a speed-number clip or a temperature clip skips that clause and
- * speaks the rest. The session line and the wetness are required: a brief
- * that names no session, or ends on "and the track is", is not a brief.
+ * speaks the rest — and so does a condition iRacing has not reported by the
+ * time the brief speaks (#1284). The session line is required: a brief that
+ * names no session is not a brief.
  *
  * Snapshot-at-fire-time (readback.ts pattern, issue #481): every dynamic clip
  * is a `{{var}}` backed by a resolver that reads the snapshot closure at
@@ -60,18 +63,28 @@
  *
  * `where:` is `getSnapshot() !== null && sessionType !== "race"`, plus the
  * #871 fresh-connect arm (reject `from === -1` when the car is on track) — so
- * the contract doesn't fire at all when conditions are unavailable (no
- * telemetry / session info, or wetness still `Unknown`), never fires in race
- * sessions, and never replays the brief to a driver already mid-session.
+ * the contract doesn't fire at all when there is no telemetry or session info,
+ * never fires in race sessions, and never replays the brief to a driver
+ * already mid-session. Each rejection is logged at info (#1284: a silent
+ * rejection left a lost qualifying brief with no trace). A condition iRacing
+ * has not reported yet is the contract's `settle` wait, shared with
+ * race-start, not a rejection.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { type SessionStartSnapshot, TrackWetness } from "@iracedeck/event-bus";
 import { type TelemetryData } from "@iracedeck/iracing-sdk";
+import type { ILogger } from "@iracedeck/logger";
 
 import type { ScenarioContract } from "../../dsl.js";
 import { poolRef } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
-import type { SetupWarningResolver } from "./race-start.js";
+import {
+  describeMissingStartConditions,
+  type SetupWarningResolver,
+  START_BRIEF_SETTLE_MAX_MS,
+  START_BRIEF_SETTLE_POLL_MS,
+  START_BRIEF_SPEAK_GATE,
+} from "./race-start.js";
 import {
   TEMPERATURE_UNIT_DESCRIPTION,
   temperatureNumberDescription,
@@ -81,8 +94,10 @@ import {
 
 /**
  * Resolver for the session-start snapshot, invoked at fire time. Returns
- * `null` when conditions aren't available — the contract then skips the
- * callout entirely (its `where:` predicate short-circuits).
+ * `null` only when there is nothing to build from (no telemetry or session
+ * info) — the contract then skips the callout (its `where:` predicate
+ * short-circuits). A single condition iRacing has not reported yet is a `null`
+ * field instead.
  */
 export type SessionStartSnapshotResolver = () => SessionStartSnapshot | null;
 
@@ -99,7 +114,9 @@ export type SessionStartSnapshotResolver = () => SessionStartSnapshot | null;
  * synchronously when the where: returns true. By the time the pause's audio-
  * gap actually plays, the var paths are already frozen. `triggerDelay`
  * defers the entire fire decision so where: and var resolvers see fresh,
- * settled telemetry.
+ * settled telemetry. It is only the first look: the contract's `settle` then
+ * waits for any condition still unknown, up to {@link START_BRIEF_SETTLE_MAX_MS}
+ * after the event (issue #1284).
  */
 export const SESSION_START_DELAY_MS = 3000;
 
@@ -179,7 +196,7 @@ export function registerSessionStartVocabulary(
     () => {
       const s = getSnapshot();
 
-      return s ? temperatureNumberRef(s.trackTemp) : null;
+      return s && s.trackTemp !== null ? temperatureNumberRef(s.trackTemp) : null;
     },
     temperatureNumberDescription("track"),
   );
@@ -189,7 +206,7 @@ export function registerSessionStartVocabulary(
     () => {
       const s = getSnapshot();
 
-      return s ? temperatureNumberRef(s.airTemp) : null;
+      return s && s.airTemp !== null ? temperatureNumberRef(s.airTemp) : null;
     },
     temperatureNumberDescription("air"),
   );
@@ -208,11 +225,21 @@ export function registerSessionStartVocabulary(
     "sessionStart.wetness",
     () => {
       const s = getSnapshot();
-      const suffix = s ? WETNESS_CLIP_SUFFIX[s.wetness] : undefined;
+      const suffix = s && s.wetness !== null ? WETNESS_CLIP_SUFFIX[s.wetness] : undefined;
 
       return suffix ? poolRef("session-start", `wetness-${suffix}`) : null;
     },
     "The track wetness state as a word — dry, mostly dry, very lightly wet, lightly wet, moderately wet, very wet or extremely wet. Draws the wetness-<state> lines from the session-start clip group.",
+  );
+
+  engine.defineCond(
+    "sessionStart.wetnessKnown",
+    () => {
+      const s = getSnapshot();
+
+      return s !== null && s.wetness !== null;
+    },
+    "iRacing has reported the track wetness. The brief waits up to ten seconds after a session change for it; false when it still has not, so say the conditions are unknown. Put only the wetness clause under it.",
   );
 
   engine.defineCond(
@@ -230,7 +257,10 @@ export function registerSessionStartVocabulary(
  * channel / bus / base / family defaults (weight is omitted, so it defaults
  * to `WEIGHT.NORMAL`).
  */
-export function buildSessionStartContract(getSnapshot: SessionStartSnapshotResolver): ScenarioContract {
+export function buildSessionStartContract(
+  getSnapshot: SessionStartSnapshotResolver,
+  logger?: ILogger,
+): ScenarioContract {
   return {
     id: "pit-crew.session-start",
     when: {
@@ -238,7 +268,11 @@ export function buildSessionStartContract(getSnapshot: SessionStartSnapshotResol
       where: (e) => {
         const snapshot = getSnapshot();
 
-        if (snapshot === null) return false;
+        if (snapshot === null) {
+          logger?.info("session-start where: rejected — snapshot is null (no telemetry or session info)");
+
+          return false;
+        }
 
         // Race sessions are spoken exclusively by the race-start contract
         // (issue #568), whose `where:` requires `isRaceSession(getSessionType())`.
@@ -250,7 +284,11 @@ export function buildSessionStartContract(getSnapshot: SessionStartSnapshotResol
         // scenario-harness session-start composer both drive it directly via the
         // snapshot resolver, so the gate and the spoken session-type line are
         // always drawn from the same source and can't disagree.
-        if (snapshot.sessionType === "race") return false;
+        if (snapshot.sessionType === "race") {
+          logger?.info("session-start where: rejected — race session (the race-start brief speaks there)");
+
+          return false;
+        }
 
         // Issue #871: the translator's fresh-connect synthesis marks itself
         // with `from: -1`. Replaying the intro brief to a driver already
@@ -269,7 +307,13 @@ export function buildSessionStartContract(getSnapshot: SessionStartSnapshotResol
         const from = (e.data as { from?: number }).from;
         const telemetry = e.telemetry as TelemetryData | null;
 
-        if (from === -1 && telemetry?.IsOnTrack === true) return false;
+        if (from === -1 && telemetry?.IsOnTrack === true) {
+          logger?.info("session-start where: rejected — fresh connect while already on track");
+
+          return false;
+        }
+
+        logger?.info(`session-start where: passed — sessionType="${snapshot.sessionType}"`);
 
         return true;
       },
@@ -279,11 +323,28 @@ export function buildSessionStartContract(getSnapshot: SessionStartSnapshotResol
     base: "voice/{voice}",
     family: "session-start",
     // Defer where: + var resolution so telemetry has settled by the time we
-    // read TrackWetness / TrackTempCrew / AirTemp. See
-    // `SESSION_START_DELAY_MS` for the rationale.
+    // read TrackWetness / TrackTempCrew / AirTemp, then keep waiting (issue
+    // #1284) until every condition is known or the window closes. See
+    // `SESSION_START_DELAY_MS` / `START_BRIEF_SETTLE_MAX_MS`.
     triggerDelay: SESSION_START_DELAY_MS,
+    // A race is race-start's: answer ready at once so a session this brief will
+    // refuse neither waits nor logs a settle line.
+    settle: {
+      pending: () => {
+        const snapshot = getSnapshot();
+
+        return snapshot?.sessionType === "race" ? null : describeMissingStartConditions(snapshot);
+      },
+      maxWaitMs: START_BRIEF_SETTLE_MAX_MS,
+      pollMs: START_BRIEF_SETTLE_POLL_MS,
+    },
+    // Queueable (#1284): the brief now fires anywhere from 3 to 10 s after the
+    // transition, when other callouts are as likely to hold the bus, and a
+    // session brief a few seconds late is still the session brief.
+    speakGate: START_BRIEF_SPEAK_GATE,
+    queueable: true,
     description:
-      "A practice or qualifying session begins and three seconds pass, whether you are in the garage or on track — but not when iRaceDeck connects while you are already out lapping.",
+      "A practice or qualifying session begins and iRacing reports the track conditions, or ten seconds pass, in the garage or on track — but not when iRaceDeck connects while you are out lapping.",
   };
 }
 
@@ -311,9 +372,10 @@ export const SESSION_START_SCENARIO_IDS: readonly string[] = ["pit-crew.session-
 /**
  * The clip sources the session-start script draws from directly — the pools
  * it addresses as `pool:<group>/<base>` rather than through a var: the four
- * clause intros under `session-start` and the setup nudge under
- * `setup-warning`. The value-driven clips (the greeting, the session line,
- * the numbers, the units, the wetness) are the vars', whose descriptions
+ * clause intros and the conditions-still-unknown line (#1284) under
+ * `session-start`, and the setup nudge under `setup-warning`. The
+ * value-driven clips (the greeting, the session line, the numbers, the
+ * units, the wetness) are the vars', whose descriptions
  * name their groups. The completeness tests read this list: the bundled
  * voice must ship at least one clip for each, and the bundled script must
  * reference exactly this set. A `(group, base)` a script addresses is
@@ -325,5 +387,6 @@ export const SESSION_START_CLIP_SOURCES: readonly { group: string; base: string 
   { group: "session-start", base: "track-temp-intro" },
   { group: "session-start", base: "air-temp-intro" },
   { group: "session-start", base: "wetness-intro" },
+  { group: "session-start", base: "wetness-unknown" },
   { group: "setup-warning", base: "qualifying" },
 ];

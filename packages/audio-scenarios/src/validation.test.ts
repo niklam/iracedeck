@@ -224,6 +224,64 @@ describe("validateScenario", () => {
     expect(errorLogs.join("\n")).toContain("pendingHoldMs must be a non-negative number");
   });
 
+  describe("settle (issue #1284)", () => {
+    const pending = (): string | null => null;
+
+    function defineWithSettle(settle: { maxWaitMs: number; pollMs: number }, triggerDelay?: number): void {
+      engine.defineContract({
+        id: "settling",
+        when: { event: "session.changed" },
+        channel: AudioChannel.Voice,
+        bus: AudioBus.Voice,
+        triggerDelay,
+        settle: { pending, ...settle },
+      });
+    }
+
+    it("accepts a settle wait at least as long as the trigger delay", () => {
+      defineWithSettle({ maxWaitMs: 10_000, pollMs: 500 }, 3000);
+      defineWithSettle({ maxWaitMs: 3000, pollMs: 500 }, 3000);
+      defineWithSettle({ maxWaitMs: 1000, pollMs: 1000 });
+
+      expect(errorLogs).toEqual([]);
+    });
+
+    it.each([
+      ["zero", 0],
+      ["negative", -1],
+      ["NaN", Number.NaN],
+      ["Infinity", Number.POSITIVE_INFINITY],
+    ])("flags a %s maxWaitMs", (_label, value) => {
+      defineWithSettle({ maxWaitMs: value, pollMs: 500 });
+
+      expect(errorLogs.join("\n")).toContain("settle.maxWaitMs must be a positive finite number");
+      expect(errorLogs.join("\n")).toContain("disabled");
+    });
+
+    it.each([
+      ["zero", 0],
+      ["negative", -500],
+      ["NaN", Number.NaN],
+      ["Infinity", Number.POSITIVE_INFINITY],
+    ])("flags a %s pollMs", (_label, value) => {
+      defineWithSettle({ maxWaitMs: 10_000, pollMs: value });
+
+      expect(errorLogs.join("\n")).toContain("settle.pollMs must be a positive finite number");
+    });
+
+    it("flags a maxWaitMs shorter than the trigger delay", () => {
+      defineWithSettle({ maxWaitMs: 2999, pollMs: 500 }, 3000);
+
+      expect(errorLogs.join("\n")).toContain("settle.maxWaitMs (2999) must not be shorter than triggerDelay (3000)");
+    });
+
+    it("does not also report the trigger-delay comparison for an invalid maxWaitMs", () => {
+      defineWithSettle({ maxWaitMs: Number.NaN, pollMs: 500 }, 3000);
+
+      expect(errorLogs.join("\n")).not.toContain("must not be shorter than triggerDelay");
+    });
+  });
+
   it("accepts a valid scenario", () => {
     engine.definePool("connector", ["pit-crew/connector/and.mp3"]);
     engine.defineVar("name", () => "pit-crew/greeting/a.mp3");

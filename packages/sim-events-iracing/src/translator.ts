@@ -26,7 +26,7 @@ import type {
   SimEventMap,
   SimEventName,
 } from "@iracedeck/event-bus";
-import { OpponentPenaltyFlag, TrackWetness } from "@iracedeck/event-bus";
+import { OpponentPenaltyFlag } from "@iracedeck/event-bus";
 import {
   CarLeftRight,
   classPositionFromOrder,
@@ -86,7 +86,7 @@ import { diffRollingStart } from "./diff/rolling-start.js";
 import { diffStartCountdown, diffStartLights } from "./diff/start-lights.js";
 import { diffTireWear } from "./diff/tire-wear.js";
 import { diffToggles } from "./diff/toggles.js";
-import { diffTrackWetness } from "./diff/track-wetness.js";
+import { diffTrackWetness, resolveReportedTrackWetness } from "./diff/track-wetness.js";
 import type { PendingEvent } from "./diff/types.js";
 import { calculateCanonicalRacePositions } from "./race-order.js";
 import { resolveStandingStart } from "./start-lights.js";
@@ -541,11 +541,23 @@ export function getReadbackSnapshot(): PitReadbackSnapshot | null {
 }
 
 /**
+ * A Celsius reading in the driver's display unit, rounded to an integer, or
+ * `null` while iRacing has not reported it (#1284) — never a false zero.
+ * Shared by both start-brief snapshots so the two can never disagree.
+ */
+function toDisplayTemp(celsius: number | undefined, metric: boolean): number | null {
+  if (typeof celsius !== "number" || !Number.isFinite(celsius)) return null;
+
+  return Math.round(metric ? celsius : celsius * 1.8 + 32);
+}
+
+/**
  * Build the session-start conditions snapshot from the latest telemetry tick +
- * session info (issues #542, #668). Returns `null` when telemetry
- * or session info is unavailable, or when track wetness is still `Unknown` —
- * the session-start scenario treats null as "skip the callout" rather than
- * speaking a nonsense line.
+ * session info (issues #542, #668). Returns `null` only when telemetry or
+ * session info is unavailable. Track wetness and the two temperatures are
+ * reported per field (#1284): each is `null` while iRacing has not reported it
+ * yet (wetness `Unknown`, a non-finite temperature), so the scenario can speak
+ * what is known instead of skipping the whole callout.
  *
  * Units are resolved here from iRacing's `DisplayUnits` so the engineer
  * matches the sim: pit speed and temperatures are converted into the user's
@@ -563,37 +575,30 @@ export function getSessionStartConditions(): SessionStartConditions | null {
 
   if (!sessionInfo) return null;
 
-  const wetness = telemetry.TrackWetness;
-
-  if (typeof wetness !== "number" || wetness < TrackWetness.Dry || wetness > TrackWetness.ExtremelyWet) {
-    return null;
-  }
-
   // iRacing `DisplayUnits`: 0 = English (imperial), 1 = Metric. Undefined
   // (telemetry field absent) defaults to metric.
   const metric = telemetry.DisplayUnits !== 0;
   const pitSpeedLimitMps = resolvePitSpeedLimit(instance, sessionInfo, telemetry);
-  const trackTempC = telemetry.TrackTempCrew ?? 0;
-  const airTempC = telemetry.AirTemp ?? 0;
-  const toDisplayTemp = (celsius: number): number => Math.round(metric ? celsius : celsius * 1.8 + 32);
+  const wetness = resolveReportedTrackWetness(telemetry.TrackWetness);
 
   return {
     sessionType: classifySessionType(resolveSessionType(sessionInfo, telemetry)),
     pitSpeedLimit: Math.round(pitSpeedLimitMps * (metric ? 3.6 : 2.236936)),
     speedUnit: metric ? "kmh" : "mph",
-    trackTemp: toDisplayTemp(trackTempC),
-    airTemp: toDisplayTemp(airTempC),
+    trackTemp: toDisplayTemp(telemetry.TrackTempCrew, metric),
+    airTemp: toDisplayTemp(telemetry.AirTemp, metric),
     tempUnit: metric ? "celsius" : "fahrenheit",
-    wetness: wetness as TrackWetness,
+    wetness,
   };
 }
 
 /**
  * Build the race-start conditions snapshot from the latest telemetry tick +
- * session info (issue #568). Returns `null` when telemetry or session info is
- * unavailable, or when track wetness is still `Unknown` — the race-start
- * scenario treats null as "skip the callout" rather than speaking a nonsense
- * line.
+ * session info (issue #568). Returns `null` only when telemetry or session
+ * info is unavailable. Track wetness and the two temperatures are reported per
+ * field (#1284): each is `null` while iRacing has not reported it yet (wetness
+ * `Unknown`, a non-finite temperature), so the scenario can speak what is known
+ * instead of skipping the whole callout.
  *
  * Differs from {@link getSessionStartConditions} in three ways:
  *   - Pit speed limit is **not** read. Race start doesn't speak the limit.
@@ -621,25 +626,17 @@ export function getRaceStartConditions(): RaceStartConditions | null {
 
   if (!sessionInfo) return null;
 
-  const wetness = telemetry.TrackWetness;
-
-  if (typeof wetness !== "number" || wetness < TrackWetness.Dry || wetness > TrackWetness.ExtremelyWet) {
-    return null;
-  }
-
   // iRacing `DisplayUnits`: 0 = English (imperial), 1 = Metric. Undefined
   // (telemetry field absent) defaults to metric.
   const metric = telemetry.DisplayUnits !== 0;
-  const trackTempC = telemetry.TrackTempCrew ?? 0;
-  const airTempC = telemetry.AirTemp ?? 0;
-  const toDisplayTemp = (celsius: number): number => Math.round(metric ? celsius : celsius * 1.8 + 32);
+  const wetness = resolveReportedTrackWetness(telemetry.TrackWetness);
   const playerCarPosition = resolveStartingGridPosition(sessionInfo);
 
   return {
-    trackTemp: toDisplayTemp(trackTempC),
-    airTemp: toDisplayTemp(airTempC),
+    trackTemp: toDisplayTemp(telemetry.TrackTempCrew, metric),
+    airTemp: toDisplayTemp(telemetry.AirTemp, metric),
     tempUnit: metric ? "celsius" : "fahrenheit",
-    wetness: wetness as TrackWetness,
+    wetness,
     playerCarPosition,
   };
 }

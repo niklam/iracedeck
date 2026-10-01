@@ -3289,16 +3289,16 @@
       "id": "pit-crew.race-start",
       "family": "race-start",
       "event": "session.changed",
-      "description": "A race session begins and three seconds pass — a restart on the pre-green grid included, but not when iRaceDeck connects to a race already under way.",
+      "description": "A race session begins and iRacing reports the track conditions, or ten seconds pass — a restart on the pre-green grid included, but not when iRaceDeck connects to a race already under way.",
       "frame": "radio",
       "weight": 50,
       "weightBand": "NORMAL",
-      "queueable": false,
+      "queueable": true,
       "interrupt": false,
-      "speakGate": null,
+      "speakGate": "The session the brief was raised for is still the one running, or telemetry is unavailable.",
       "base": "voice/{voice}",
-      "comment": "The grid brief a few seconds into a race session: the driver's name, the starting position (from pole, or qualifying put us to P N), the track and air temperatures, the track wetness, and a setup nudge when the loaded setup looks like a qualifying one. Every clause but the wetness is optional because each is a whole clause the brief reads true without — a name, a position number or a temperature the voice cannot say drops its own clause and nothing else; the position branch is a case inside its clause so a pack can rephrase pole and composed apart. The wetness intro and state are required: the brief always ends on the track.",
-      "test": "Harness → Scenario Shortcuts → Race Start → Race start — P5, with the race session preset (Race start — P1 (pole), Race start — P65 (out of range) and Race start — no position for the other position branches; the setup nudge has no harness route — In-sim: load a setup whose name matches the qualifying pattern under Setup Warning Patterns). In-sim: sit through the transition into a race session; the brief comes about three seconds in.",
+      "comment": "The grid brief a few seconds into a race session: the driver's name, the starting position (from pole, or qualifying put us to P N), the track and air temperatures, the track wetness, and a setup nudge when the loaded setup looks like a qualifying one. Every clause is optional because each is a whole clause the brief reads true without — a name, a position number or a temperature the voice cannot say, or iRacing has not reported yet, drops its own clause and nothing else; the position branch is a case inside its clause so a pack can rephrase pole and composed apart. The wetness branches on whether iRacing has reported it: known, it is read out; still unknown when the brief speaks, the engineer says so rather than leaving the track unmentioned.",
+      "test": "Harness → Scenario Shortcuts → Race Start → Race start — P5, with the race session preset (Race start — P1 (pole), Race start — P65 (out of range) and Race start — no position for the other position branches; the setup nudge has no harness route — In-sim: load a setup whose name matches the qualifying pattern under Setup Warning Patterns). In-sim: sit through the transition into a race session; the brief comes a few seconds in, once iRacing reports the track conditions, and at most ten seconds in.",
       "skip": false,
       "references": {
         "pools": [
@@ -3307,6 +3307,7 @@
           "session-start/air-temp-intro",
           "session-start/track-temp-intro",
           "session-start/wetness-intro",
+          "session-start/wetness-unknown",
           "setup-warning/race"
         ],
         "vars": [
@@ -3317,6 +3318,7 @@
           "raceStart.wetness"
         ],
         "conds": [
+          "raceStart.wetnessKnown",
           "setupWarning.raceMismatch"
         ],
         "cases": [
@@ -3534,16 +3536,16 @@
       "id": "pit-crew.session-start",
       "family": "session-start",
       "event": "session.changed",
-      "description": "A practice or qualifying session begins and three seconds pass, whether you are in the garage or on track — but not when iRaceDeck connects while you are already out lapping.",
+      "description": "A practice or qualifying session begins and iRacing reports the track conditions, or ten seconds pass, in the garage or on track — but not when iRaceDeck connects while you are out lapping.",
       "frame": "radio",
       "weight": 50,
       "weightBand": "NORMAL",
-      "queueable": false,
+      "queueable": true,
       "interrupt": false,
-      "speakGate": null,
+      "speakGate": "The session the brief was raised for is still the one running, or telemetry is unavailable.",
       "base": "voice/{voice}",
-      "comment": "The brief a few seconds into a practice or qualifying session (a race takes the race-start brief instead): the driver's name, which session it is, the pit speed limit with its unit, the track and air temperatures, the track wetness, and — in qualifying only — a setup nudge when the loaded setup looks like a race one. The greeting, the pit-speed limit, both temperatures and the nudge are optional because each is a whole clause the brief reads true without: a name, a limit or a temperature the voice cannot say drops its own clause and nothing else. The session line and the wetness are required — a brief that names no session, or stops at \"and the track is\", is not a brief.",
-      "test": "Harness → Session Start → Fire Session Start, with Session type set to practice or qualifying (race is silent here — it is the race-start callout's); Fire as Fresh Connect covers the mid-session connect. The setup nudge has no harness route — In-sim: in qualifying, load a setup whose name matches the race pattern under Setup Warning Patterns. In-sim: join a practice or qualifying session; the brief comes about three seconds after the session begins, in the garage or on track.",
+      "comment": "The brief a few seconds into a practice or qualifying session (a race takes the race-start brief instead): the driver's name, which session it is, the pit speed limit with its unit, the track and air temperatures, the track wetness, and — in qualifying only — a setup nudge when the loaded setup looks like a race one. The greeting, the pit-speed limit, both temperatures and the nudge are optional because each is a whole clause the brief reads true without: a name, a limit or a temperature the voice cannot say, or iRacing has not reported yet, drops its own clause and nothing else. The wetness branches on whether iRacing has reported it: known, it is read out; still unknown when the brief speaks, the engineer says so rather than leaving the track unmentioned. The session line is required — a brief that names no session is not a brief.",
+      "test": "Harness → Session Start → Fire Session Start, with Session type set to practice or qualifying (race is silent here — it is the race-start callout's); Fire as Fresh Connect covers the mid-session connect; set Track wetness to Unknown (or empty a temperature) to hear the brief go ahead without it after its ten-second wait. The setup nudge has no harness route — In-sim: in qualifying, load a setup whose name matches the race pattern under Setup Warning Patterns. In-sim: join a practice or qualifying session; the brief comes a few seconds after the session begins, once iRacing reports the track conditions and at most ten seconds in, in the garage or on track.",
       "skip": false,
       "references": {
         "pools": [
@@ -3551,6 +3553,7 @@
           "session-start/pit-speed-intro",
           "session-start/track-temp-intro",
           "session-start/wetness-intro",
+          "session-start/wetness-unknown",
           "setup-warning/qualifying"
         ],
         "vars": [
@@ -3563,6 +3566,7 @@
           "sessionStart.wetness"
         ],
         "conds": [
+          "sessionStart.wetnessKnown",
           "setupWarning.qualifyingMismatch"
         ],
         "cases": [],
@@ -4939,7 +4943,7 @@
       },
       {
         "name": "pitSpeed.limitIntro",
-        "description": "The lead-in to the spoken pit-speed limit (\"The pit speed limit is\"), from the session-start/pit-speed-intro clip. Nothing to say while the session conditions are unknown, so keep it in one optional clause with the number and the unit.",
+        "description": "The lead-in to the spoken pit-speed limit (\"The pit speed limit is\"), from the session-start/pit-speed-intro clip. Nothing to say before iRacing has reported the session, so keep it in one optional clause with the number and the unit.",
         "usedBy": [
           "pit-crew.no-limiter-entry"
         ]
@@ -5322,6 +5326,13 @@
         ]
       },
       {
+        "name": "raceStart.wetnessKnown",
+        "description": "iRacing has reported the track wetness. The brief waits up to ten seconds after a session change for it; false when it still has not, so say the conditions are unknown. Put only the wetness clause under it.",
+        "usedBy": [
+          "pit-crew.race-start"
+        ]
+      },
+      {
         "name": "raceStatus.isLeading",
         "description": "The driver is leading at speak time — first overall, or first in class in a multi-class race. The bundled script speaks the still-leading line instead of the position readout when this holds.",
         "usedBy": [
@@ -5396,6 +5407,13 @@
         "name": "session.isRace",
         "description": "The current session is a race session (anything that is not practice or qualifying).",
         "usedBy": []
+      },
+      {
+        "name": "sessionStart.wetnessKnown",
+        "description": "iRacing has reported the track wetness. The brief waits up to ten seconds after a session change for it; false when it still has not, so say the conditions are unknown. Put only the wetness clause under it.",
+        "usedBy": [
+          "pit-crew.session-start"
+        ]
       },
       {
         "name": "setupWarning.qualifyingMismatch",
@@ -40955,6 +40973,28 @@
           ],
           "takes": 1,
           "usedBy": [],
+          "viaVar": [
+            "pitSpeed.limitIntro",
+            "raceStart.degreesUnit",
+            "raceStart.wetness",
+            "readout.degreesUnit",
+            "sessionStart.degreesUnit",
+            "sessionStart.sessionLine",
+            "sessionStart.speedUnit",
+            "sessionStart.wetness"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "wetness-unknown",
+          "texts": [
+            "Track conditions are still unknown."
+          ],
+          "takes": 1,
+          "usedBy": [
+            "pit-crew.race-start",
+            "pit-crew.session-start"
+          ],
           "viaVar": [
             "pitSpeed.limitIntro",
             "raceStart.degreesUnit",

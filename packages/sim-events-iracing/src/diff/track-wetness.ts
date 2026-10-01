@@ -46,6 +46,16 @@ export function diffTrackWetness(state: TranslatorState, telemetry: TelemetryDat
   state.lastTrackWetness = current;
 }
 
+/**
+ * The wetness iRacing has actually reported, or `null` while it reads
+ * `Unknown` (as it can for a few seconds after a session change) or anything
+ * this diff would not accept — the one rule the start-brief snapshots share
+ * with the wetness callouts (#1284).
+ */
+export function resolveReportedTrackWetness(value: unknown): TrackWetness | null {
+  return isValidTrackWetness(value) && value !== TrackWetness.Unknown ? (value as TrackWetness) : null;
+}
+
 function isValidTrackWetness(value: unknown): boolean {
   return (
     typeof value === "number" &&

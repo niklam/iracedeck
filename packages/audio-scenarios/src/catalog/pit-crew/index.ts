@@ -1887,13 +1887,13 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   // Session-start readout (issue #542; scripted since #1065). The
   // `sessionStart.*` vars and the `setupWarning.qualifyingMismatch` condition
   // read their resolvers at expansion time; the contract's `where:` reads the
-  // snapshot to refuse a fire before telemetry has settled and to leave race
+  // snapshot to refuse a fire with no telemetry at all and to leave race
   // sessions to race-start.
   registerSessionStartVocabulary(engine, getSessionStartSnapshot, getSetupWarningMismatch);
   engine.defineContract(
     wrapWithMaster(
       wrapCalloutScenario(
-        buildSessionStartContract(getSessionStartSnapshot),
+        buildSessionStartContract(getSessionStartSnapshot, logger),
         SCENARIO_ID_TO_SESSION_START_ID,
         getSessionStartCalloutEnabled,
         "session-start callout",
@@ -2036,7 +2036,8 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   // Property Inspector driver-name pick); the `raceStart.*` vars, the
   // grid-position case and the `setupWarning.raceMismatch` condition read
   // their resolvers at expansion time, the contract's `where:` reads the
-  // snapshot to refuse a fire before telemetry has settled.
+  // snapshot to refuse a fire with no telemetry at all; `settle` waits for
+  // the conditions themselves (#1284).
   registerRaceStartVocabulary(engine, getRaceStartSnapshot, getSetupWarningMismatch);
   engine.defineContract(
     wrapWithMaster(
@@ -2101,7 +2102,22 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
  * wrapper is generic over it so what goes in comes out with the same type —
  * a contract never grows a sequence by being gated.
  */
-type Gated = { id: string; when?: ScenarioContract["when"] };
+type Gated = { id: string; when?: ScenarioContract["when"]; settle?: ScenarioContract["settle"] };
+
+/**
+ * The `settle` of a gated callout, answered as ready while the gate is closed
+ * (issue #1284). The settle wait runs before `where:`, so without this a
+ * callout switched off would still wait out its window and log `proceeding
+ * without …` at info for a fire its gate then refuses — a line that reads as
+ * a callout that went ahead. Absent when the scenario declares no settle.
+ */
+function gatedSettle<T extends Gated>(s: T, isOpen: () => boolean): Pick<Gated, "settle"> {
+  const settle = s.settle;
+
+  if (!settle) return {};
+
+  return { settle: { ...settle, pending: (ctx) => (isOpen() ? settle.pending(ctx) : null) } };
+}
 
 /**
  * Wrap a Race Engineer voice scenario with the plugin-wide master gate
@@ -2125,6 +2141,7 @@ function wrapRaceEngineerMasterGate<T extends Gated>(s: T, getEnabled: () => boo
 
   return {
     ...s,
+    ...gatedSettle(s, getEnabled),
     when: {
       event: s.when.event,
       where: (ev) => {
@@ -2231,6 +2248,7 @@ function wrapCalloutScenario<T extends Gated, TId extends string>(
 
   return {
     ...s,
+    ...gatedSettle(s, () => getCalloutEnabled(calloutId)),
     when: {
       event: s.when.event,
       where: (ev) => {

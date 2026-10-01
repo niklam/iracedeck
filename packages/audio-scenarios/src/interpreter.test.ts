@@ -4,7 +4,7 @@ import type { CalloutScript } from "@iracedeck/callout-script";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 
-import type { Scenario, ScenarioContract, SpeakGate } from "./dsl.js";
+import type { Scenario, ScenarioContext, ScenarioContract, SpeakGate } from "./dsl.js";
 import { DEFAULT_FRAME, DEFAULT_WEIGHT, NO_FRAME, poolRef, WEIGHT } from "./dsl.js";
 import type { AudioAssetsManifest, FrameOptions, IScenarioEngine } from "./interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios } from "./interpreter.js";
@@ -3357,6 +3357,302 @@ describe("triggerDelay", () => {
     expect(audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path)).toEqual([
       "pit-crew/greeting/a.mp3",
     ]);
+  });
+});
+
+// ─── settle (issue #1284) ───────────────────────────────────────────────────
+
+describe("settle (issue #1284)", () => {
+  let start: number;
+  /** Ms after `start` at which `pending` was asked. */
+  let asks: number[];
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    start = Date.now();
+    asks = [];
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function voicePlays(): string[] {
+    flushVoiceAndSfx(audio);
+
+    return audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path);
+  }
+
+  /** A `pending` that names `reason` until it has been asked `readyOnAsk` times (never, when omitted). */
+  function pendingUntil(reason: string, readyOnAsk = Number.POSITIVE_INFINITY) {
+    return vi.fn((_ctx: ScenarioContext): string | null => {
+      asks.push(Date.now() - start);
+
+      return asks.length >= readyOnAsk ? null : reason;
+    });
+  }
+
+  function defineSettling(overrides: Partial<Scenario> = {}): void {
+    engine.defineScenario({
+      id: "test.settle",
+      when: { event: "session.changed" },
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      sequence: ["pit-crew/greeting/a.mp3"],
+      ...overrides,
+    });
+  }
+
+  it("fires once when pending turns null between polls, running where: exactly once", () => {
+    const where = vi.fn(() => true);
+    const pending = pendingUntil("wetness", 3);
+    defineSettling({
+      when: { event: "session.changed", where },
+      triggerDelay: 1000,
+      settle: { pending, maxWaitMs: 10_000, pollMs: 500 },
+    });
+
+    bus.publishEvent("session.changed", { sessionNum: 2 });
+
+    vi.advanceTimersByTime(1999);
+    expect(voicePlays()).toEqual([]);
+    expect(asks).toEqual([1000, 1500]);
+    expect(where).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(1);
+    expect(asks).toEqual([1000, 1500, 2000]);
+    expect(where).toHaveBeenCalledTimes(1);
+    expect(voicePlays()).toEqual(["pit-crew/greeting/a.mp3"]);
+    expect(mockLogger.debug).toHaveBeenCalledWith('Scenario "test.settle" settled after 2000 ms');
+    expect(mockLogger.info).not.toHaveBeenCalledWith(expect.stringContaining("proceeding without"));
+
+    // `pending` reads the fire's context, built as a vocabulary resolver's is.
+    const ctx = pending.mock.calls[0]![0];
+    expect(ctx.event?.event).toBe("session.changed");
+    expect(ctx.data).toEqual({ sessionNum: 2 });
+    expect(ctx.telemetry).toBeNull();
+    expect(ctx.vars).toEqual({});
+
+    // Nothing more is asked or played once it fired.
+    vi.advanceTimersByTime(20_000);
+    expect(asks).toHaveLength(3);
+    expect(where).toHaveBeenCalledTimes(1);
+    expect(voicePlays()).toEqual(["pit-crew/greeting/a.mp3"]);
+  });
+
+  it("logs no wait when pending is ready at the first ask", () => {
+    defineSettling({
+      triggerDelay: 1000,
+      settle: { pending: pendingUntil("wetness", 1), maxWaitMs: 10_000, pollMs: 500 },
+    });
+
+    bus.publishEvent("session.changed", {});
+    vi.advanceTimersByTime(1000);
+
+    expect(asks).toEqual([1000]);
+    expect(voicePlays()).toEqual(["pit-crew/greeting/a.mp3"]);
+    expect(mockLogger.debug).not.toHaveBeenCalledWith(expect.stringContaining("settled after"));
+  });
+
+  it("fires at maxWaitMs when pending never clears, and logs what was missing at info", () => {
+    const where = vi.fn(() => true);
+    defineSettling({
+      when: { event: "session.changed", where },
+      triggerDelay: 3000,
+      settle: { pending: pendingUntil("track wetness"), maxWaitMs: 10_000, pollMs: 500 },
+    });
+
+    bus.publishEvent("session.changed", {});
+
+    vi.advanceTimersByTime(9999);
+    expect(voicePlays()).toEqual([]);
+    expect(where).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(1);
+    expect(where).toHaveBeenCalledTimes(1);
+    expect(voicePlays()).toEqual(["pit-crew/greeting/a.mp3"]);
+    expect(mockLogger.info).toHaveBeenCalledWith(
+      'Scenario "test.settle" proceeding without track wetness after 10000 ms',
+    );
+    expect(asks.at(-1)).toBe(10_000);
+  });
+
+  it("never asks past the deadline — the last poll lands at it", () => {
+    defineSettling({
+      triggerDelay: 3000,
+      settle: { pending: pendingUntil("wetness"), maxWaitMs: 10_000, pollMs: 4000 },
+    });
+
+    bus.publishEvent("session.changed", {});
+    vi.advanceTimersByTime(30_000);
+
+    expect(asks).toEqual([3000, 7000, 10_000]);
+    expect(voicePlays()).toEqual(["pit-crew/greeting/a.mp3"]);
+  });
+
+  it("a newer event during the wait restarts it with the newest event, and the old one never fires", () => {
+    const seen: unknown[] = [];
+    defineSettling({
+      when: {
+        event: "session.changed",
+        where: (e) => {
+          seen.push(e.data);
+
+          return true;
+        },
+      },
+      triggerDelay: 1000,
+      settle: { pending: pendingUntil("wetness"), maxWaitMs: 5000, pollMs: 500 },
+    });
+
+    bus.publishEvent("session.changed", { sessionNum: 1 });
+    vi.advanceTimersByTime(2000);
+    expect(asks).toEqual([1000, 1500, 2000]);
+
+    bus.publishEvent("session.changed", { sessionNum: 2 });
+
+    // The first event's deadline (5000) passes without a fire; the wait now
+    // runs from the second event's arrival at 2000.
+    vi.advanceTimersByTime(4999);
+    expect(voicePlays()).toEqual([]);
+    expect(seen).toEqual([]);
+    expect(asks.slice(3, 5)).toEqual([3000, 3500]);
+
+    vi.advanceTimersByTime(1);
+    expect(seen).toEqual([{ sessionNum: 2 }]);
+    expect(voicePlays()).toEqual(["pit-crew/greeting/a.mp3"]);
+    expect(mockLogger.info).toHaveBeenCalledWith('Scenario "test.settle" proceeding without wetness after 5000 ms');
+
+    vi.advanceTimersByTime(20_000);
+    expect(seen).toHaveLength(1);
+    expect(voicePlays()).toEqual(["pit-crew/greeting/a.mp3"]);
+  });
+
+  it("setEnabled(false) during the wait cancels it, and a re-enable does not revive it", () => {
+    const where = vi.fn(() => true);
+    defineSettling({
+      when: { event: "session.changed", where },
+      triggerDelay: 1000,
+      settle: { pending: pendingUntil("wetness"), maxWaitMs: 10_000, pollMs: 500 },
+    });
+
+    bus.publishEvent("session.changed", {});
+    vi.advanceTimersByTime(2000);
+    const asked = asks.length;
+
+    engine.setEnabled("test.settle", false);
+    engine.setEnabled("test.settle", true);
+    vi.advanceTimersByTime(20_000);
+
+    expect(asks).toHaveLength(asked);
+    expect(where).not.toHaveBeenCalled();
+    expect(voicePlays()).toEqual([]);
+  });
+
+  it("redefining the scenario during the wait cancels it", () => {
+    const where = vi.fn(() => true);
+    defineSettling({
+      when: { event: "session.changed", where },
+      triggerDelay: 1000,
+      settle: { pending: pendingUntil("wetness"), maxWaitMs: 10_000, pollMs: 500 },
+    });
+
+    bus.publishEvent("session.changed", {});
+    vi.advanceTimersByTime(2000);
+    const asked = asks.length;
+
+    const replacementPending = vi.fn((): string | null => null);
+    defineSettling({ triggerDelay: 1000, settle: { pending: replacementPending, maxWaitMs: 10_000, pollMs: 500 } });
+    vi.advanceTimersByTime(20_000);
+
+    expect(asks).toHaveLength(asked);
+    expect(replacementPending).not.toHaveBeenCalled();
+    expect(where).not.toHaveBeenCalled();
+    expect(voicePlays()).toEqual([]);
+  });
+
+  it("a throwing pending is logged at error and read as ready", () => {
+    const where = vi.fn(() => true);
+    defineSettling({
+      when: { event: "session.changed", where },
+      triggerDelay: 1000,
+      settle: {
+        pending: () => {
+          throw new Error("boom");
+        },
+        maxWaitMs: 10_000,
+        pollMs: 500,
+      },
+    });
+
+    bus.publishEvent("session.changed", {});
+    vi.advanceTimersByTime(1000);
+
+    expect(mockLogger.error).toHaveBeenCalledWith(
+      expect.stringMatching(/^Scenario "test\.settle" settle\.pending\(\) threw.*boom$/),
+    );
+    expect(where).toHaveBeenCalledTimes(1);
+    expect(voicePlays()).toEqual(["pit-crew/greeting/a.mp3"]);
+  });
+
+  it("settle with no triggerDelay takes the deferred path with a zero first delay", () => {
+    const where = vi.fn(() => true);
+    defineSettling({
+      when: { event: "session.changed", where },
+      settle: { pending: pendingUntil("wetness", 2), maxWaitMs: 10_000, pollMs: 500 },
+    });
+
+    bus.publishEvent("session.changed", {});
+
+    // Not synchronous: nothing is asked or decided at publish time.
+    expect(asks).toEqual([]);
+    expect(where).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(0);
+    expect(asks).toEqual([0]);
+    expect(voicePlays()).toEqual([]);
+
+    vi.advanceTimersByTime(500);
+    expect(asks).toEqual([0, 500]);
+    expect(where).toHaveBeenCalledTimes(1);
+    expect(voicePlays()).toEqual(["pit-crew/greeting/a.mp3"]);
+  });
+
+  it("a contract without settle still fires synchronously with no triggerDelay", () => {
+    const where = vi.fn(() => true);
+    defineSettling({ when: { event: "session.changed", where } });
+
+    bus.publishEvent("session.changed", {});
+
+    expect(where).toHaveBeenCalledTimes(1);
+    expect(voicePlays()).toEqual(["pit-crew/greeting/a.mp3"]);
+  });
+
+  it("a contract without settle still evaluates once at triggerDelay, however long it waits after", () => {
+    const where = vi.fn(() => false);
+    defineSettling({ when: { event: "session.changed", where }, triggerDelay: 1000 });
+
+    bus.publishEvent("session.changed", {});
+    vi.advanceTimersByTime(999);
+    expect(where).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(1);
+    expect(where).toHaveBeenCalledTimes(1);
+
+    vi.advanceTimersByTime(20_000);
+    expect(where).toHaveBeenCalledTimes(1);
+    expect(voicePlays()).toEqual([]);
+  });
+
+  it("contracts() does not report settle — it is scheduling, which packs never see", () => {
+    defineSettling({
+      triggerDelay: 3000,
+      settle: { pending: pendingUntil("wetness"), maxWaitMs: 10_000, pollMs: 500 },
+    });
+
+    const [report] = engine.contracts();
+    expect(report?.id).toBe("test.settle");
+    expect(report).not.toHaveProperty("settle");
   });
 });
 

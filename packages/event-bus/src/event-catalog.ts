@@ -255,12 +255,17 @@ export type SessionStartConditions = {
   /** Exact pit speed limit in `speedUnit`, rounded to the nearest integer. */
   pitSpeedLimit: number;
   speedUnit: "kmh" | "mph";
-  /** Track temperature in `tempUnit`, rounded to the nearest integer. */
-  trackTemp: number;
-  /** Air temperature in `tempUnit`, rounded to the nearest integer. */
-  airTemp: number;
+  /**
+   * Track temperature in `tempUnit`, rounded to the nearest integer. `null`
+   * when iRacing has not reported it yet (it can read unknown for a few
+   * seconds after a session transition, #1284).
+   */
+  trackTemp: number | null;
+  /** Air temperature in `tempUnit`, rounded to the nearest integer. `null` when not reported yet (#1284). */
+  airTemp: number | null;
   tempUnit: "celsius" | "fahrenheit";
-  wetness: TrackWetness;
+  /** Track wetness, or `null` when iRacing has not reported it yet (#1284). */
+  wetness: TrackWetness | null;
 };
 
 /**
@@ -293,12 +298,17 @@ export type SessionStartSnapshot = SessionStartConditions & {
  * Sim-agnostic: any future translator can populate the same shape.
  */
 export type RaceStartConditions = {
-  /** Track temperature in `tempUnit`, rounded to the nearest integer. */
-  trackTemp: number;
-  /** Air temperature in `tempUnit`, rounded to the nearest integer. */
-  airTemp: number;
+  /**
+   * Track temperature in `tempUnit`, rounded to the nearest integer. `null`
+   * when iRacing has not reported it yet (it can read unknown for a few
+   * seconds after a session transition, #1284).
+   */
+  trackTemp: number | null;
+  /** Air temperature in `tempUnit`, rounded to the nearest integer. `null` when not reported yet (#1284). */
+  airTemp: number | null;
   tempUnit: "celsius" | "fahrenheit";
-  wetness: TrackWetness;
+  /** Track wetness, or `null` when iRacing has not reported it yet (#1284). */
+  wetness: TrackWetness | null;
   /** Grid position (`PlayerCarPosition`), or `undefined` if not yet populated. */
   playerCarPosition: number | undefined;
 };

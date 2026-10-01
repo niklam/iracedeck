@@ -843,7 +843,16 @@ function wireReadbackComposer() {
 // directly on the server. Fire = push the composed snapshot to
 // `/api/session-start/snapshot`, then publish `session.changed` (same event
 // the production translator synthesizes on fresh connect for practice /
-// qualifying). Expect ~3 s of silence before the brief plays (triggerDelay).
+// qualifying). Expect ~3 s of silence before the brief plays (triggerDelay) —
+// and 10 s when a condition is left unknown (an empty temperature or the
+// Unknown wetness), which waits out the brief's settle window (#1284).
+
+/** An empty field is a value iRacing has not reported yet: null, never 0. */
+function readOptionalNumber(id) {
+  const raw = $(id).value.trim();
+
+  return raw === "" ? null : Math.round(Number(raw));
+}
 
 function readSessionStartSnapshot() {
   const driverName = ($("session-start-driver").value || "").trim().toLowerCase() || "driver";
@@ -853,10 +862,10 @@ function readSessionStartSnapshot() {
     sessionType: $("session-start-session-type").value,
     pitSpeedLimit: Math.round(Number($("session-start-pit-speed").value)),
     speedUnit: $("session-start-speed-unit").value,
-    trackTemp: Math.round(Number($("session-start-track-temp").value)),
-    airTemp: Math.round(Number($("session-start-air-temp").value)),
+    trackTemp: readOptionalNumber("session-start-track-temp"),
+    airTemp: readOptionalNumber("session-start-air-temp"),
     tempUnit: $("session-start-temp-unit").value,
-    wetness: Number($("session-start-wetness").value),
+    wetness: readOptionalNumber("session-start-wetness"),
   };
 }
 

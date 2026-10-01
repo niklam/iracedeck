@@ -13,7 +13,7 @@ import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import { describe, expect, it } from "vitest";
 
 import { createInitialState } from "../state.js";
-import { diffTrackWetness } from "./track-wetness.js";
+import { diffTrackWetness, resolveReportedTrackWetness } from "./track-wetness.js";
 import type { PendingEvent } from "./types.js";
 
 function tick(wetness: number | undefined): TelemetryData {
@@ -201,5 +201,22 @@ describe("diffTrackWetness — invalid input", () => {
 
     expect(wetnessEvents(events)).toHaveLength(0);
     expect(state.lastTrackWetness).toBe(TrackWetness.LightlyWet);
+  });
+});
+
+describe("resolveReportedTrackWetness (issue #1284)", () => {
+  it.each([TrackWetness.Dry, TrackWetness.LightlyWet, TrackWetness.ExtremelyWet])("returns %s as reported", (w) => {
+    expect(resolveReportedTrackWetness(w)).toBe(w);
+  });
+
+  it.each([
+    ["Unknown", TrackWetness.Unknown],
+    ["out of range", 99],
+    ["negative", -1],
+    ["non-integer", 2.5],
+    ["missing", undefined],
+    ["a string", "3"],
+  ])("returns null for %s", (_label, value) => {
+    expect(resolveReportedTrackWetness(value)).toBeNull();
   });
 });

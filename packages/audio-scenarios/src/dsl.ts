@@ -331,8 +331,49 @@ export type ScenarioContract = {
    * still fire and claim the channel; if the bus is busy when the delayed fire
    * attempts, the standard weight/family scheduling rules apply (wait, defer,
    * drop, or cut).
+   *
+   * One evaluation at a fixed delay is a guess at how long the data takes; a
+   * contract that would rather wait for it declares `settle` below.
    */
   triggerDelay?: number;
+  /**
+   * Wait for the data this callout reads before deciding whether to fire
+   * (issue #1284). After `triggerDelay` (zero when omitted — a contract with
+   * `settle` always takes the deferred path), the engine asks `pending`; while
+   * it names something still missing and the event is younger than
+   * `maxWaitMs`, it asks again `pollMs` later — the last ask lands AT the
+   * deadline, never past it. Then `where:` runs once and the fire proceeds as
+   * it would after a plain `triggerDelay`. `where:` is never polled, so its
+   * own logging stays one line per decision.
+   *
+   * A fire that reaches the deadline with something still missing goes ahead
+   * anyway — the callout decides what to say about an unknown — and the
+   * engine logs `Scenario "<id>" proceeding without <reason> after <n> ms` at
+   * info; one that settled after at least one re-ask logs its wait at debug.
+   * A throwing `pending` is logged at error and read as ready, so a bug in the
+   * check cannot silence the callout.
+   *
+   * The wait shares the `triggerDelay` timer, so what cancels a deferred fire
+   * cancels a settling one: a newer event of the same trigger (the newest
+   * event wins and restarts the wait), disabling the scenario, and redefining
+   * it. Validated at load time: both durations finite and positive, and
+   * `maxWaitMs` no shorter than `triggerDelay`. Scheduling only — the
+   * reference (`contracts()`) does not surface it, as it does not surface
+   * `queueBehind`.
+   */
+  settle?: {
+    /**
+     * `null` once everything the callout reads is known; otherwise what is
+     * still missing, for the log. Gets the fire's context built the way the
+     * vocabulary resolvers get it (`event`, `data` and `telemetry` from the
+     * envelope, `now`, empty `vars`) — a pure read, asked repeatedly.
+     */
+    pending: (ctx: ScenarioContext) => string | null;
+    /** Upper bound on the whole wait, measured from the event's arrival. */
+    maxWaitMs: number;
+    /** How often `pending` is asked again. */
+    pollMs: number;
+  };
   /** Optional path prefix applied to clip/pool members; leading `/` on a path escapes it. */
   base?: string;
   /**

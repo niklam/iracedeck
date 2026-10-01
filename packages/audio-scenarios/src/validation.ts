@@ -73,6 +73,29 @@ export function validateScenario(
     errors.push(`pendingHoldMs must be a non-negative number (got ${String(s.pendingHoldMs)})`);
   }
 
+  // The settle wait (issue #1284) re-arms a timer every `pollMs` until
+  // `maxWaitMs` after the event: a zero or non-finite poll would spin or
+  // never fire, and a cap shorter than `triggerDelay` would be a wait that is
+  // already over before the first ask — a contract that means something else.
+  if (s.settle !== undefined) {
+    const { maxWaitMs, pollMs } = s.settle;
+    const maxWaitValid = Number.isFinite(maxWaitMs) && maxWaitMs > 0;
+
+    if (!maxWaitValid) {
+      errors.push(`settle.maxWaitMs must be a positive finite number (got ${String(maxWaitMs)})`);
+    }
+
+    if (!Number.isFinite(pollMs) || pollMs <= 0) {
+      errors.push(`settle.pollMs must be a positive finite number (got ${String(pollMs)})`);
+    }
+
+    const triggerDelay = s.triggerDelay ?? 0;
+
+    if (maxWaitValid && maxWaitMs < triggerDelay) {
+      errors.push(`settle.maxWaitMs (${maxWaitMs}) must not be shorter than triggerDelay (${triggerDelay})`);
+    }
+  }
+
   if (resolved !== null) walk(resolved, s.base, new Set([s.id]));
 
   return { errors, warnings };
