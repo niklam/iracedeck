@@ -59,8 +59,8 @@ describe("validateRaceStartSnapshot", () => {
   it.each([
     ["non-object body", 42, "body must be an object"],
     ["missing driverName", { ...VALID, driverName: "" }, "driverName must be a non-empty string"],
-    ["non-numeric trackTemp", { ...VALID, trackTemp: "28" }, "trackTemp must be a finite number"],
-    ["non-numeric airTemp", { ...VALID, airTemp: NaN }, "airTemp must be a finite number"],
+    ["non-numeric trackTemp", { ...VALID, trackTemp: "28" }, "trackTemp must be a finite number or null"],
+    ["non-numeric airTemp", { ...VALID, airTemp: NaN }, "airTemp must be a finite number or null"],
     ["bad tempUnit", { ...VALID, tempUnit: "kelvin" }, "tempUnit must be one of: celsius, fahrenheit"],
     ["wetness out of range", { ...VALID, wetness: TrackWetness.Unknown }, /wetness must be a TrackWetness/],
     ["non-integer wetness", { ...VALID, wetness: 2.5 }, /wetness must be a TrackWetness/],

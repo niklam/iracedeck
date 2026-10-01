@@ -43,14 +43,20 @@ describe("validateSessionStartSnapshot", () => {
     expect(validateSessionStartSnapshot(VALID)).toEqual(VALID);
   });
 
+  it("accepts null conditions — iRacing has not reported them yet (#1284)", () => {
+    const body = { ...VALID, trackTemp: null, airTemp: null, wetness: null };
+
+    expect(validateSessionStartSnapshot(body)).toEqual(body);
+  });
+
   it.each([
     ["non-object body", 42, "body must be an object"],
     ["missing driverName", { ...VALID, driverName: "" }, "driverName must be a non-empty string"],
     ["bad sessionType", { ...VALID, sessionType: "warmup" }, "sessionType must be one of: practice, qualifying, race"],
     ["non-numeric pitSpeedLimit", { ...VALID, pitSpeedLimit: "80" }, "pitSpeedLimit must be a finite number"],
     ["bad speedUnit", { ...VALID, speedUnit: "knots" }, "speedUnit must be one of: kmh, mph"],
-    ["non-numeric trackTemp", { ...VALID, trackTemp: null }, "trackTemp must be a finite number"],
-    ["non-numeric airTemp", { ...VALID, airTemp: NaN }, "airTemp must be a finite number"],
+    ["non-numeric trackTemp", { ...VALID, trackTemp: "28" }, "trackTemp must be a finite number or null"],
+    ["non-numeric airTemp", { ...VALID, airTemp: NaN }, "airTemp must be a finite number or null"],
     ["bad tempUnit", { ...VALID, tempUnit: "kelvin" }, "tempUnit must be one of: celsius, fahrenheit"],
     ["wetness out of range", { ...VALID, wetness: TrackWetness.Unknown }, /wetness must be a TrackWetness/],
     ["non-integer wetness", { ...VALID, wetness: 2.5 }, /wetness must be a TrackWetness/],

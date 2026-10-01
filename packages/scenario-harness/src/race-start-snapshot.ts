@@ -52,25 +52,29 @@ export function validateRaceStartSnapshot(body: unknown): RaceStartSnapshot | st
     return "driverName must be a non-empty string";
   }
 
-  if (typeof b.trackTemp !== "number" || !Number.isFinite(b.trackTemp)) {
-    return "trackTemp must be a finite number";
+  // null = iRacing has not reported it yet (#1284) — the brief drops that clause.
+  if (b.trackTemp !== null && (typeof b.trackTemp !== "number" || !Number.isFinite(b.trackTemp))) {
+    return "trackTemp must be a finite number or null";
   }
 
-  if (typeof b.airTemp !== "number" || !Number.isFinite(b.airTemp)) {
-    return "airTemp must be a finite number";
+  if (b.airTemp !== null && (typeof b.airTemp !== "number" || !Number.isFinite(b.airTemp))) {
+    return "airTemp must be a finite number or null";
   }
 
   if (typeof b.tempUnit !== "string" || !TEMP_UNITS.includes(b.tempUnit as never)) {
     return `tempUnit must be one of: ${TEMP_UNITS.join(", ")}`;
   }
 
+  // null = iRacing has not reported it yet (#1284) — the brief says the
+  // conditions are still unknown.
   if (
-    typeof b.wetness !== "number" ||
-    b.wetness < TrackWetness.Dry ||
-    b.wetness > TrackWetness.ExtremelyWet ||
-    !Number.isInteger(b.wetness)
+    b.wetness !== null &&
+    (typeof b.wetness !== "number" ||
+      b.wetness < TrackWetness.Dry ||
+      b.wetness > TrackWetness.ExtremelyWet ||
+      !Number.isInteger(b.wetness))
   ) {
-    return `wetness must be a TrackWetness value (${TrackWetness.Dry}–${TrackWetness.ExtremelyWet})`;
+    return `wetness must be a TrackWetness value (${TrackWetness.Dry}–${TrackWetness.ExtremelyWet}) or null`;
   }
 
   if (b.playerCarPosition !== undefined && b.playerCarPosition !== null) {
@@ -81,10 +85,10 @@ export function validateRaceStartSnapshot(body: unknown): RaceStartSnapshot | st
 
   return {
     driverName: b.driverName,
-    trackTemp: b.trackTemp,
-    airTemp: b.airTemp,
+    trackTemp: b.trackTemp as number | null,
+    airTemp: b.airTemp as number | null,
     tempUnit: b.tempUnit as RaceStartSnapshot["tempUnit"],
-    wetness: b.wetness as TrackWetness,
+    wetness: b.wetness as TrackWetness | null,
     playerCarPosition: typeof b.playerCarPosition === "number" ? b.playerCarPosition : undefined,
   };
 }

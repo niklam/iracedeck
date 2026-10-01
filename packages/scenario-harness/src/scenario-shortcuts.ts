@@ -380,6 +380,11 @@ function raceStart(
   playerCarPosition: number | undefined,
   description: string,
   from = 0,
+  conditions: { trackTemp: number | null; airTemp: number | null; wetness: TrackWetness | null } = {
+    trackTemp: 28,
+    airTemp: 20,
+    wetness: TrackWetness.Dry,
+  },
 ): BusEventShortcut {
   return {
     id: `race-start-${id}`,
@@ -390,10 +395,8 @@ function raceStart(
     data: { from, to: 1 },
     raceStartSnapshot: {
       driverName: "niklas",
-      trackTemp: 28,
-      airTemp: 20,
       tempUnit: "celsius",
-      wetness: TrackWetness.Dry,
+      ...conditions,
       playerCarPosition,
     },
   };
@@ -2708,7 +2711,8 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   // not from the event payload). The scenario still gates on
   // `getSessionType() === "race"`, so set the session type to a race session
   // (via the session picker / a race preset) for these to fire. Each variant
-  // exercises a distinct position clause; the ~3 s `triggerDelay` applies.
+  // exercises a distinct position clause; the 3 s `triggerDelay` applies, and
+  // the conditions-unknown variant also waits out the 10 s `settle` (#1284).
   raceStart(
     "p1",
     "Race start — P1 (pole)",
@@ -2738,6 +2742,14 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     "Race start — no position",
     undefined,
     "Grid position unavailable (QualifyResultsInfo miss). Position clause skipped; greeting + conditions still play.",
+  ),
+  raceStart(
+    "conditions-unknown",
+    "Race start — conditions unknown",
+    5,
+    'iRacing has not reported the track wetness or the temperatures (issue #1284). The brief waits for them and, after 10 s, speaks without them: "Time to race, <Name>. Qualifying put us to P 5. Track conditions are still unknown."',
+    0,
+    { trackTemp: null, airTemp: null, wetness: null },
   ),
 
   // Fresh-connect variants (issue #871). The translator's mid-session connect
