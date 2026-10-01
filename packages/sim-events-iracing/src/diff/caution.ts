@@ -177,6 +177,29 @@ import type { EmitFn } from "./types.js";
  */
 export const LAST_LAP_CHECKPOINT_PCT = 0.35;
 
+/**
+ * The next caution's id (issue #1286). Module-level and never reset, so a
+ * caution in a later session — `resetPerSessionState` builds a fresh state —
+ * can never reuse an id a consumer still remembers.
+ */
+let nextCautionEpisodeId = 1;
+
+/**
+ * Opens and closes the episode identity with the phase. Idempotent, so it is
+ * called both at the top of {@link diffLineup} — which needs the id set before
+ * it records the caution's first follow car — and after the episode diff has
+ * settled the tick's phase, which is the call that also covers the seed tick
+ * and its early return.
+ */
+function trackCautionEpisode(state: TranslatorState): void {
+  if (state.cautionPhase === "none") {
+    state.cautionEpisodeId = null;
+    state.cautionFirstFollowCarIdx = null;
+  } else if (state.cautionEpisodeId === null) {
+    state.cautionEpisodeId = nextCautionEpisodeId++;
+  }
+}
+
 /** The pace car is on the road when its surface is a track surface rather than a pit one. */
 function onTrack(surface: number | undefined): boolean {
   return surface === TrkLoc.OnTrack || surface === TrkLoc.OffTrack;
@@ -531,6 +554,8 @@ function diffLineup(
   sessionInfo: Record<string, unknown> | null,
   emit: EmitFn,
 ): void {
+  trackCautionEpisode(state);
+
   if (state.cautionPhase === "none" || hasFlag(telemetry.SessionFlags ?? 0, Flags.Green)) {
     state.cautionFollowCarIdx = null;
 
@@ -544,6 +569,10 @@ function diffLineup(
   const was = state.cautionFollowCarIdx;
 
   state.cautionFollowCarIdx = lineup.followCarIdx;
+
+  // The caution's first lineup, kept for `getCautionEpisode()` — never moved by
+  // a change, so a consumer can tell a return to it from a new car.
+  if (state.cautionFirstFollowCarIdx === null) state.cautionFirstFollowCarIdx = lineup.followCarIdx;
 
   if (was === null || was === lineup.followCarIdx) return;
 
@@ -578,4 +607,5 @@ export function diffCaution(
 
   diffPaceCar(state, telemetry, sessionInfo, seeding, emit);
   diffCautionEpisode(state, telemetry, sessionInfo, canonicalPositions, seeding, emit, now);
+  trackCautionEpisode(state);
 }

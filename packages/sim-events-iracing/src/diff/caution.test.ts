@@ -1041,3 +1041,99 @@ describe("the caution lineup", () => {
     ]);
   });
 });
+
+describe("the caution episode (#1286)", () => {
+  /** The field single file behind the pace car, every car on the same scored lap. */
+  function singleFile(...order: number[]): Record<string, unknown> {
+    return lineup(
+      [PACE, 0, 0, 5],
+      ...order.map((carIdx, at): [number, number, number, number] => [carIdx, at + 1, 0, 5]),
+    );
+  }
+
+  it("opens an id as the phase leaves none, holds it through the phases, and clears it with the phase", () => {
+    const state = createInitialState();
+    const { emit } = collect();
+
+    diffCaution(state, flagTick(RACING), sessionInfo, null, emit); // seed
+    expect(state.cautionEpisodeId).toBeNull();
+
+    diffCaution(state, flagTick(WAVING, leader(1, 5)), sessionInfo, null, emit);
+    const id = state.cautionEpisodeId;
+
+    expect(typeof id).toBe("number");
+
+    diffCaution(state, flagTick(STATIC, leader(1, 5)), sessionInfo, null, emit);
+    expect(state.cautionPhase).toBe("caught");
+    expect(state.cautionEpisodeId).toBe(id);
+
+    diffCaution(state, flagTick(ONE_TO_GO, leader(1, 6)), sessionInfo, null, emit);
+    expect(state.cautionPhase).toBe("one-to-go");
+    expect(state.cautionEpisodeId).toBe(id);
+
+    diffCaution(state, flagTick(RESTART, leader(1, 6)), sessionInfo, null, emit);
+    expect(state.cautionPhase).toBe("none");
+    expect(state.cautionEpisodeId).toBeNull();
+  });
+
+  it("never repeats an id — not across cautions, and not on a fresh state", () => {
+    const state = createInitialState();
+    const { emit } = collect();
+
+    diffCaution(state, flagTick(RACING), sessionInfo, null, emit); // seed
+    diffCaution(state, flagTick(WAVING), sessionInfo, null, emit);
+    const first = state.cautionEpisodeId;
+
+    diffCaution(state, flagTick(RACING), sessionInfo, null, emit); // both bits gone: expires
+    expect(state.cautionEpisodeId).toBeNull();
+    diffCaution(state, flagTick(WAVING), sessionInfo, null, emit);
+    const second = state.cautionEpisodeId;
+
+    // A later session builds a fresh state (`resetPerSessionState`); the counter
+    // lives outside it, so that session's first caution cannot reuse an id.
+    const fresh = createInitialState();
+
+    diffCaution(fresh, flagTick(RACING), sessionInfo, null, emit); // seed
+    diffCaution(fresh, flagTick(WAVING), sessionInfo, null, emit);
+    const third = fresh.cautionEpisodeId;
+
+    expect(first).not.toBeNull();
+    expect(second).not.toBeNull();
+    expect(third).not.toBeNull();
+    expect(new Set([first, second, third]).size).toBe(3);
+  });
+
+  it("keeps the first readable follow car, not overwritten by a change, and forgets it with the phase", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    const info = playerSessionInfo(3);
+
+    diffCaution(state, flagTick(RACING), sessionInfo, null, emit); // seed
+    // Waving, but no lineup readable yet.
+    diffCaution(state, flagTick(WAVING), info, null, emit);
+    expect(state.cautionEpisodeId).not.toBeNull();
+    expect(state.cautionFirstFollowCarIdx).toBeNull();
+
+    diffCaution(state, flagTick(WAVING, singleFile(1, 2, 3)), info, null, emit);
+    expect(state.cautionFirstFollowCarIdx).toBe(2);
+
+    // Car 2 pits: a change is reported, and the first follow car stays.
+    diffCaution(state, flagTick(STATIC, singleFile(1, 3)), info, null, emit);
+    expect(events.filter((e) => e.event === "caution.lineup.changed")).toHaveLength(1);
+    expect(state.cautionFirstFollowCarIdx).toBe(2);
+
+    diffCaution(state, flagTick(RESTART, singleFile(1, 3)), info, null, emit);
+    expect(state.cautionFirstFollowCarIdx).toBeNull();
+  });
+
+  it("records the first follow car on the very tick the caution begins with a readable lineup", () => {
+    const state = createInitialState();
+    const { emit } = collect();
+
+    diffCaution(state, flagTick(RACING), sessionInfo, null, emit); // seed
+    diffCaution(state, flagTick(WAVING, singleFile(1, 2, 3)), playerSessionInfo(3), null, emit);
+
+    expect(state.cautionEpisodeId).not.toBeNull();
+    expect(state.cautionFirstFollowCarIdx).toBe(2);
+  });
+});
