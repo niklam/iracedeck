@@ -238,7 +238,7 @@ export function registerSessionStartVocabulary(
 
       return s !== null && s.wetness !== null;
     },
-    "iRacing has reported the track wetness. False when the brief speaks before it has, a few seconds after a session change at most — the moment to say the conditions are still unknown rather than read a state.",
+    "iRacing has reported the track wetness. The brief waits up to ten seconds after a session change for it; false when it still has not, so say the conditions are unknown. Put only the wetness clause under it.",
   );
 
   engine.defineCond(
@@ -326,11 +326,21 @@ export function buildSessionStartContract(
     // #1284) until every condition is known or the window closes. See
     // `SESSION_START_DELAY_MS` / `START_BRIEF_SETTLE_MAX_MS`.
     triggerDelay: SESSION_START_DELAY_MS,
+    // A race is race-start's: answer ready at once so a session this brief will
+    // refuse neither waits nor logs a settle line.
     settle: {
-      pending: () => describeMissingStartConditions(getSnapshot()),
+      pending: () => {
+        const snapshot = getSnapshot();
+
+        return snapshot?.sessionType === "race" ? null : describeMissingStartConditions(snapshot);
+      },
       maxWaitMs: START_BRIEF_SETTLE_MAX_MS,
       pollMs: START_BRIEF_SETTLE_POLL_MS,
     },
+    // Queueable (#1284): the brief now fires anywhere from 3 to 10 s after the
+    // transition, when other callouts are as likely to hold the bus, and a
+    // session brief a few seconds late is still the session brief.
+    queueable: true,
     description:
       "A practice or qualifying session begins and iRacing reports the track conditions, or ten seconds pass, in the garage or on track — but not when iRaceDeck connects while you are out lapping.",
   };

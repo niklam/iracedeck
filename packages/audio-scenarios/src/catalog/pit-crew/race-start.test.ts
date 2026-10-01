@@ -47,8 +47,11 @@ import { temperatureClipName } from "./temperature-number.js";
 
 const mockSessionType = vi.fn<() => string>(() => "Race");
 
+const mockLatestTelemetry = vi.fn<() => Record<string, unknown> | null>(() => null);
+
 vi.mock("@iracedeck/sim-events-iracing", () => ({
   getSessionType: () => mockSessionType(),
+  getLatestTelemetry: () => mockLatestTelemetry(),
 }));
 
 const mockLogger = {
@@ -278,6 +281,7 @@ let bus: ReturnType<typeof createMockBus>;
 let audio: FakeAudio;
 let currentSnapshot: RaceStartSnapshot | null;
 let raceStartEnabled: boolean;
+let masterEnabled: boolean;
 let setupWarningMismatch: (kind: "qualifying" | "race") => boolean;
 
 function fire(
@@ -319,6 +323,8 @@ beforeEach(() => {
   vi.useFakeTimers();
   currentSnapshot = null;
   raceStartEnabled = true;
+  masterEnabled = true;
+  mockLatestTelemetry.mockReturnValue(null);
   setupWarningMismatch = () => false;
   activeVoice = VOICE;
   mockSessionType.mockReturnValue("Race");
@@ -327,6 +333,7 @@ beforeEach(() => {
   initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => activeVoice);
   registerPitCrew(bus, {
     logger: mockLogger as never,
+    getRaceEngineerMasterEnabled: () => masterEnabled,
     getRaceStartCalloutEnabled: () => raceStartEnabled,
     getRaceStartSnapshot: () => currentSnapshot,
     getSetupWarningMismatch: (kind) => setupWarningMismatch(kind),
@@ -644,6 +651,33 @@ describe("race-start scenario", () => {
 
       expect(hasClip("/race-start-greeting/niklas.mp3")).toBe(true);
     });
+
+    // Issue #1284: the settle wait can hold the fire for up to 10 s, so a
+    // connect during the parade laps can see the green fly before the brief
+    // would speak. The gate asks the live telemetry at decision time too.
+    it("suppresses a parade-lap connect whose live telemetry reads Racing by the time it decides (the green flew during the wait)", () => {
+      mockLatestTelemetry.mockReturnValue({ SessionState: SessionState.Racing });
+      fire(snap(), { from: -1, to: 1 }, { SessionState: SessionState.ParadeLaps });
+
+      expect(voicePaths()).toEqual([]);
+      expect(infoMessages()).toContainEqual(
+        expect.stringContaining("race-start where: rejected — fresh connect into a race already underway"),
+      );
+    });
+
+    it("still briefs on a synthetic fresh connect when both the connect tick and the live telemetry read Warmup", () => {
+      mockLatestTelemetry.mockReturnValue({ SessionState: SessionState.Warmup });
+      fire(snap(), { from: -1, to: 1 }, { SessionState: SessionState.Warmup });
+
+      expect(hasClip("/race-start-greeting/niklas.mp3")).toBe(true);
+    });
+
+    it("still briefs on a genuine transition even when the live telemetry reads Racing", () => {
+      mockLatestTelemetry.mockReturnValue({ SessionState: SessionState.Racing });
+      fire(snap(), { from: 0, to: 1 }, { SessionState: SessionState.Warmup });
+
+      expect(hasClip("/race-start-greeting/niklas.mp3")).toBe(true);
+    });
   });
 
   describe("scripted delivery (issue #1065)", () => {
@@ -786,7 +820,7 @@ describe("settle wait for the conditions (issue #1284)", () => {
     fire(null);
 
     expect(audio._played).toEqual([]);
-    expect(infoMessages()).toContainEqual(expect.stringContaining(`${PROCEEDING} telemetry and session info`));
+    expect(infoMessages()).toContainEqual(expect.stringContaining(`${PROCEEDING} telemetry or session info`));
     expect(infoMessages()).toContainEqual(expect.stringContaining("race-start where: rejected — snapshot is null"));
   });
 
@@ -814,6 +848,66 @@ describe("settle wait for the conditions (issue #1284)", () => {
     expect(greetings()).toHaveLength(1);
     expect(infoMessages().filter((m) => m.includes(PROCEEDING))).toHaveLength(1);
   });
+
+  it("is deferred, not dropped, when its settle ends while an equal-weight line holds the Voice bus", () => {
+    // An imperative line at the default weight, on the Voice bus, in flight
+    // when the brief settles.
+    getScenarioEngine().defineScenario({
+      id: "test.voice-hold",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      sequence: ["voice/{voice}/setup-warning/race-01.mp3"],
+    });
+    publish(snap({ wetness: null }));
+
+    vi.advanceTimersByTime(4900);
+    getScenarioEngine().fire("test.voice-hold");
+    currentSnapshot = snap();
+    vi.advanceTimersByTime(100);
+
+    // The brief settled at +5 s into a busy bus: it is parked, not dropped,
+    // and nothing of it has played yet.
+    expect(greetings()).toEqual([]);
+    expect(mockLogger.debug).toHaveBeenCalledWith('Scenario "pit-crew.race-start" pending — deferred (bus busy)');
+
+    flush(audio);
+
+    const played = voicePaths();
+
+    expect(greetings()).toHaveLength(1);
+    expect(played[0]).toMatch(/setup-warning[/]race-01[.]mp3$/);
+    expect(played.findIndex((p) => p.endsWith("/race-start-greeting/niklas.mp3"))).toBeGreaterThan(0);
+    expect(hasClip("/session-start/wetness-mostly-dry.mp3")).toBe(true);
+  });
+
+  it("answers ready at once in a qualifying session — session-start's — so it neither waits nor logs a settle line", () => {
+    mockSessionType.mockReturnValue("Open Qualify");
+    publish(snap({ wetness: null }));
+
+    vi.advanceTimersByTime(RACE_START_DELAY_MS);
+    expect(infoMessages()).toContainEqual(expect.stringContaining("race-start where: rejected — sessionType="));
+
+    flush(audio);
+
+    expect(audio._played).toEqual([]);
+    expect(infoMessages().some((m) => m.includes(PROCEEDING))).toBe(false);
+  });
+
+  it("neither waits nor logs a settle line while its per-callout opt-in is off", () => {
+    raceStartEnabled = false;
+    fire(snap({ wetness: null }));
+
+    expect(audio._played).toEqual([]);
+    expect(infoMessages().some((m) => m.includes(PROCEEDING))).toBe(false);
+  });
+
+  it("neither waits nor logs a settle line while the Race Engineer master gate is off", () => {
+    masterEnabled = false;
+    fire(snap({ wetness: null }));
+
+    expect(audio._played).toEqual([]);
+    expect(infoMessages().some((m) => m.includes(PROCEEDING))).toBe(false);
+  });
 });
 
 describe("describeMissingStartConditions (issue #1284)", () => {
@@ -837,7 +931,7 @@ describe("describeMissingStartConditions (issue #1284)", () => {
   });
 
   it("names the whole snapshot for a null one", () => {
-    expect(describeMissingStartConditions(null)).toBe("telemetry and session info");
+    expect(describeMissingStartConditions(null)).toBe("telemetry or session info");
   });
 
   it("does not wait on a zero temperature, the pit speed limit or the grid position", () => {
@@ -852,7 +946,7 @@ describe("describeMissingStartConditions (issue #1284)", () => {
 });
 
 describe("buildRaceStartContract (issue #1065)", () => {
-  it("carries no sequence and keeps every scheduling field verbatim — the 3 s trigger delay included — taking the engine's default frame", () => {
+  it("carries no sequence and keeps every scheduling field verbatim — the 3 s trigger delay included, queueable since #1284 — taking the engine's default frame", () => {
     const c = buildRaceStartContract(() => null);
 
     expect("sequence" in c).toBe(false);
@@ -866,7 +960,7 @@ describe("buildRaceStartContract (issue #1065)", () => {
     expect(c.triggerDelay).toBe(RACE_START_DELAY_MS);
     expect(c.weight).toBeUndefined();
     expect(c.interrupt).toBeUndefined();
-    expect(c.queueable).toBeUndefined();
+    expect(c.queueable).toBe(true);
     expect(c.cooldown).toBeUndefined();
     expect(c.frame).toBeUndefined();
   });
@@ -883,7 +977,7 @@ describe("buildRaceStartContract (issue #1065)", () => {
     expect(c.settle?.pending({} as never)).toBeNull();
 
     snapshot = null;
-    expect(c.settle?.pending({} as never)).toBe("telemetry and session info");
+    expect(c.settle?.pending({} as never)).toBe("telemetry or session info");
   });
 });
 

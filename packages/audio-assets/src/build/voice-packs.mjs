@@ -31,11 +31,15 @@
  * voice — and a `voice/<id>/` clip tree. Naming the voice here as well would be
  * a second copy of a string the config already owns.
  *
- * `minPluginVersion` is deliberately absent from `default`: no plugin older than
- * the one that introduced the catalog can read the catalog at all, so there is
- * no runtime to exclude. Set it on a pack that needs a NEWER runtime than the
- * catalog's first reader — deck-core compares it with semver and keeps such a
- * pack listed but not offered.
+ * `minPluginVersion` names the oldest plugin whose engine knows every
+ * vocabulary name (var, condition, case) the pack's scripts use. An older
+ * plugin's script compiler refuses an entry naming a var or condition it does
+ * not know, so a pack offered to it would silence those callouts for good —
+ * deck-core compares the value with semver and keeps such a pack listed but
+ * not offered, and the launch step leaves an installed managed pack where it
+ * is. Raise it in the same change that makes a pack's script use a name a
+ * released plugin lacks; both packs are at 3.5.0 because their start briefs
+ * branch on `sessionStart.wetnessKnown` / `raceStart.wetnessKnown` (#1284).
  *
  * The typedef below is what THIS package's scripts and tests see (they import
  * the `.mjs` directly, so TypeScript infers from the JSDoc); `index.d.ts`
@@ -61,6 +65,7 @@ export const VOICE_PACKS = Object.freeze([
     description: "The Race Engineer voice iRaceDeck ships with.",
     author: "iRaceDeck",
     voices: Object.freeze(["default"]),
+    minPluginVersion: "3.5.0",
     bundled: false,
   }),
   Object.freeze({
@@ -70,6 +75,7 @@ export const VOICE_PACKS = Object.freeze([
     description: "The Default engineer in radio shorthand: shorter race-time calls, most of them the fact itself.",
     author: "iRaceDeck",
     voices: Object.freeze(["shawn"]),
+    minPluginVersion: "3.5.0",
     bundled: false,
   }),
 ]);

@@ -164,10 +164,11 @@ export const NO_LIMITER_CLIP_SOURCES: readonly { group: "pit-limiter"; base: str
  * never play — the script's `optional` wrapper drops the clause as a unit.
  *
  * Known coupling, accepted rather than worked around: the shared resolver
- * returns null for several reasons unrelated to the speed limit — `TrackWetness`
- * out of range, no session info yet, and (in the plugins, which compose it with a
- * driver name) an active voice with no driver-name clips. Do not read this list as
- * exhaustive when debugging a missing clause; read the resolver. The clause then
+ * returns null for reasons unrelated to the speed limit — no telemetry or no
+ * session info yet. (Until #1284 an unknown `TrackWetness` nulled it too, and
+ * the plugins nulled it for a voice with no driver-name clips; both now leave
+ * the snapshot standing.) Do not read this list as exhaustive when debugging a
+ * missing clause; read the resolver. The clause then
  * skips and "Pit entry. Mind the limit." still plays as a complete sentence. A
  * dedicated limit resolver would decouple it at the cost of another positional
  * parameter on an already long signature.
@@ -183,7 +184,7 @@ export function registerNoLimiterVocabulary(
 
       return s ? poolRef("session-start", "pit-speed-intro") : null;
     },
-    'The lead-in to the spoken pit-speed limit ("The pit speed limit is"), from the session-start/pit-speed-intro clip. Nothing to say while the session conditions are unknown, so keep it in one optional clause with the number and the unit.',
+    'The lead-in to the spoken pit-speed limit ("The pit speed limit is"), from the session-start/pit-speed-intro clip. Nothing to say before iRacing has reported the session, so keep it in one optional clause with the number and the unit.',
   );
 
   engine.defineVar(

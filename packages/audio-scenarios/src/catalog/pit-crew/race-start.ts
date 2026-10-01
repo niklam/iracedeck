@@ -79,7 +79,7 @@ import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { type RaceStartSnapshot, TrackWetness } from "@iracedeck/event-bus";
 import { isPostRace, SessionState, type TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
-import { getSessionType } from "@iracedeck/sim-events-iracing";
+import { getLatestTelemetry, getSessionType } from "@iracedeck/sim-events-iracing";
 
 import type { ScenarioContract } from "../../dsl.js";
 import { poolRef } from "../../dsl.js";
@@ -161,7 +161,7 @@ type StartConditionFields = {
  * @internal Exported for session-start and the tests
  */
 export function describeMissingStartConditions(snapshot: StartConditionFields | null): string | null {
-  if (snapshot === null) return "telemetry and session info";
+  if (snapshot === null) return "telemetry or session info";
 
   const missing: string[] = [];
 
@@ -367,7 +367,7 @@ export function registerRaceStartVocabulary(
 
       return s !== null && s.wetness !== null;
     },
-    "iRacing has reported the track wetness. False when the brief speaks before it has, a few seconds after a session change at most — the moment to say the conditions are still unknown rather than read a state.",
+    "iRacing has reported the track wetness. The brief waits up to ten seconds after a session change for it; false when it still has not, so say the conditions are unknown. Put only the wetness clause under it.",
   );
 
   engine.defineCase(
@@ -425,9 +425,19 @@ export function buildRaceStartContract(getSnapshot: RaceStartSnapshotResolver, l
         const from = (e.data as { from?: number }).from;
         const telemetry = e.telemetry as TelemetryData | null;
 
-        if (from === -1 && (telemetry?.SessionState === SessionState.Racing || isPostRace(telemetry))) {
+        //
+        // The connect tick alone is not enough since #1284: the settle wait can
+        // hold the fire for up to ten seconds, and a connect during the parade
+        // laps can see the green fly inside that window. So the LIVE state is
+        // asked too — a brief that would land after the green is refused.
+        const live = getLatestTelemetry() as TelemetryData | null;
+        const underway = (t: TelemetryData | null): boolean => t?.SessionState === SessionState.Racing || isPostRace(t);
+
+        if (from === -1 && (underway(telemetry) || underway(live))) {
           logger?.info("race-start where: rejected — fresh connect into a race already underway");
-          logger?.debug(`Fresh-connect rejection detail: SessionState=${telemetry?.SessionState}`);
+          logger?.debug(
+            `Fresh-connect rejection detail: SessionState=${telemetry?.SessionState} (connect), ${live?.SessionState} (now)`,
+          );
 
           return false;
         }
@@ -448,11 +458,17 @@ export function buildRaceStartContract(getSnapshot: RaceStartSnapshotResolver, l
     // keep waiting (issue #1284) until every condition is known or the
     // window closes. See `RACE_START_DELAY_MS` / `START_BRIEF_SETTLE_MAX_MS`.
     triggerDelay: RACE_START_DELAY_MS,
+    // Practice and qualifying are session-start's: answer ready at once so a
+    // session this brief will refuse neither waits nor logs a settle line.
     settle: {
-      pending: () => describeMissingStartConditions(getSnapshot()),
+      pending: () => (isRaceSession(getSessionType()) ? describeMissingStartConditions(getSnapshot()) : null),
       maxWaitMs: START_BRIEF_SETTLE_MAX_MS,
       pollMs: START_BRIEF_SETTLE_POLL_MS,
     },
+    // Queueable (#1284): the brief now fires anywhere from 3 to 10 s after the
+    // transition, when other callouts are as likely to hold the bus, and a
+    // grid brief a few seconds late is still the grid brief.
+    queueable: true,
     description:
       "A race session begins and iRacing reports the track conditions, or ten seconds pass — a restart on the pre-green grid included, but not when iRaceDeck connects to a race already under way.",
   };
