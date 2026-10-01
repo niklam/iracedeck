@@ -20,6 +20,7 @@ _Unreleased_
 **Bug Fixes**
 
 - Telemetry Control's **Take Snapshot** report no longer prints lap times of a minute or more with an extra zero: a 1:08.985 lap now reads `1:08.985` instead of `1:008.985`, a time a hair under a whole minute no longer reads `:60`, and a lap-time counter past an hour now shows hours. See [Telemetry Control](/docs/actions/cockpit/telemetry-control/#take-snapshot).
+- The Race Engineer no longer loses incident, damage and lap-invalidation calls just because the spotter is calling a car alongside or another call is playing: they now wait their turn and play as soon as the radio is free. After a crash he reports the incident first and the damage right after it, and he skips the damage call if the car has been repaired by then. When several more urgent calls pile up at once, as when a full-course caution comes out, one of these calls can still be crowded out. See [Pit Crew](/docs/actions/audio-voice/pit-crew/#incident-callouts).
 
 ## 3.4.0
 

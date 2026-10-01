@@ -13,9 +13,14 @@ import { silentLogger } from "@iracedeck/logger";
 import {
   _resetSimEventsIracing,
   type CautionLineup,
+  DAMAGE_DEBOUNCE_MS,
+  DAMAGE_INCIDENT_GRACE_MS,
+  DAMAGE_REPAIR_MASK,
   getCautionLineup,
+  getLatestTelemetry,
   getLivePosition,
   initializeSimEventsIracing,
+  isDamageRepairNeeded,
   PIT_APPROACH_COOLDOWN_MS,
   YELLOW_CLEARED_HOLD_MS,
 } from "@iracedeck/sim-events-iracing";
@@ -945,5 +950,192 @@ describe("the Telemetry Readout shortcuts (issue #466)", () => {
 
       expect(named, `${id}: ${test}`).toBe(true);
     }
+  });
+});
+
+describe("the incident-and-damage sequences behind a held Voice bus (issue #1211)", () => {
+  beforeEach(() => {
+    initializeEventBus(silentLogger);
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    _resetSimEventsIracing();
+    _resetEventBus();
+  });
+
+  type Stamped = Published & { timestamp: number };
+
+  const collision = SCENARIO_SHORTCUTS.find((s) => s.id === "incident-collision-during-spotter-call");
+  const qualifying = SCENARIO_SHORTCUTS.find((s) => s.id === "incident-collision-during-spotter-call-qualifying");
+  const escalation = SCENARIO_SHORTCUTS.find((s) => s.id === "incident-escalation-while-another-line-plays");
+  const damage = SCENARIO_SHORTCUTS.find((s) => s.id === "damage-repair-needed");
+
+  /**
+   * Long enough for a damage edge the translator DOES see to be announced:
+   * the debounce, the grace and a second of margin.
+   */
+  const DAMAGE_ANNOUNCE_WINDOW_MS = DAMAGE_DEBOUNCE_MS + DAMAGE_INCIDENT_GRACE_MS + 1000;
+
+  /** What the three sequences are about: the car alongside, the incident burst, and the damage edge. */
+  const WATCHED = new Set(["radar.changed", "incident.scored", "incident.occurred", "damage.repairNeeded.raised"]);
+
+  /**
+   * The translator as a tester's harness has it at boot — the mock's own
+   * default telemetry, in the garage, no preset applied — so the sequences
+   * are shown to set up everything they need themselves. Records EVERY event
+   * in the catalog with its envelope timestamp, so an event the opening
+   * bracket let slip shows up, and so two emits can be pinned to one tick.
+   */
+  function startAtBoot(): { controller: MockSDKController; events: Stamped[] } {
+    const controller = new MockSDKController();
+    controller.setConnected(true);
+    initializeSimEventsIracing(getEventBus(), controller as unknown as SDKController, silentLogger);
+    controller.tickOnce();
+
+    const events: Stamped[] = [];
+
+    for (const name of ALL_EVENT_NAMES) {
+      getEventBus().subscribe(name, (ev) => events.push({ event: ev.event, data: ev.data, timestamp: ev.timestamp }));
+    }
+
+    return { controller, events };
+  }
+
+  function watched(events: readonly Stamped[]): Published[] {
+    return events.filter((e) => WATCHED.has(e.event)).map(({ event, data }) => ({ event, data }));
+  }
+
+  /**
+   * Everything else the run published, bar `driver.firstOnTrack`: booted in
+   * the garage, the car's first live tick on track is that event whatever
+   * drives it there, and no callout consumes it.
+   */
+  function unwatched(events: readonly Stamped[]): string[] {
+    return events.map((e) => e.event).filter((name) => !WATCHED.has(name) && name !== "driver.firstOnTrack");
+  }
+
+  const COLLISION_EVENTS: Published[] = [
+    { event: "radar.changed", data: { from: "clear", to: "left" } },
+    { event: "incident.scored", data: { delta: 4 } },
+    { event: "incident.occurred", data: { delta: 4, points: 4, type: "collision-car" } },
+    { event: "damage.repairNeeded.raised", data: {} },
+    { event: "radar.changed", data: { from: "left", to: "clear" } },
+  ];
+
+  it("adds the three as translator-driven shortcuts in the Incidents category", () => {
+    for (const shortcut of [collision, qualifying, escalation]) {
+      expect(shortcut?.event).toBeUndefined();
+      expect(shortcut?.telemetrySequence).toBeDefined();
+      expect(shortcut?.category).toBe("Incidents");
+    }
+  });
+
+  it('"Collision during a spotter call" publishes the incident and then the damage while the car is still alongside', () => {
+    // Both land between the car arriving and the car clearing — under the
+    // spotter's focus floor, which is the point of the button: before #1211
+    // both lines were dropped there.
+    const { controller, events } = startAtBoot();
+
+    runSequence(controller, collision?.telemetrySequence ?? []);
+
+    expect(watched(events)).toEqual(COLLISION_EVENTS);
+    // Nothing but those: the opening bracket seeds the world it sets rather
+    // than announcing it.
+    expect(unwatched(events)).toEqual([]);
+
+    // The damage edge settles after the burst has flushed, so it waits out
+    // the grace and goes out on a later tick than the incident.
+    const occurred = events.find((e) => e.event === "incident.occurred");
+    const raised = events.find((e) => e.event === "damage.repairNeeded.raised");
+
+    expect(raised?.timestamp).toBeGreaterThan(occurred?.timestamp ?? Infinity);
+  });
+
+  it('"Collision during a spotter call" plays the same on a second press — the opening bracket reseeds the count and the repair bits', () => {
+    const { controller, events } = startAtBoot();
+
+    runSequence(controller, collision?.telemetrySequence ?? []);
+    runSequence(controller, collision?.telemetrySequence ?? []);
+
+    expect(watched(events)).toEqual([...COLLISION_EVENTS, ...COLLISION_EVENTS]);
+  });
+
+  it("the qualifying variant is the same telemetry, on a flying qualifying lap no other button latches", () => {
+    expect(qualifying?.telemetrySequence).toEqual(collision?.telemetrySequence);
+    expect(qualifying?.qualifyingInvalidationSnapshot).toMatchObject({
+      sessionType: "qualifying",
+      lapLimited: true,
+      lapStartedFromPits: false,
+      lapCounted: true,
+    });
+
+    // The per-lap latch is keyed by (sessionNum, lapCompleted): sharing a lap
+    // with a Qualifying Invalidation button would silence one of the two.
+    const snapshot = qualifying?.qualifyingInvalidationSnapshot;
+    const sharing = SCENARIO_SHORTCUTS.filter(
+      (s) =>
+        s !== qualifying &&
+        s.qualifyingInvalidationSnapshot?.sessionNum === snapshot?.sessionNum &&
+        s.qualifyingInvalidationSnapshot?.lapCompleted === snapshot?.lapCompleted,
+    );
+
+    expect(sharing.map((s) => s.id)).toEqual([]);
+  });
+
+  it("the two race sequences post a race snapshot, so a qualifying snapshot an earlier button left cannot take the burst", () => {
+    for (const shortcut of [collision, escalation]) {
+      expect(shortcut?.qualifyingInvalidationSnapshot?.sessionType, shortcut?.id).toBe("race");
+    }
+  });
+
+  it('"Escalation while another line plays" announces the off-track, then the wall hit with its total, then the damage on the escalation flush tick', () => {
+    const { controller, events } = startAtBoot();
+
+    runSequence(controller, escalation?.telemetrySequence ?? []);
+
+    expect(watched(events)).toEqual([
+      { event: "incident.scored", data: { delta: 1 } },
+      { event: "incident.occurred", data: { delta: 1, points: 1, type: "off-track" } },
+      { event: "incident.scored", data: { delta: 1 } },
+      // Two points — the sequence's total (#938) — though the count moved +1.
+      { event: "incident.occurred", data: { delta: 1, points: 2, type: "collision-world" } },
+      { event: "damage.repairNeeded.raised", data: {} },
+    ]);
+    expect(unwatched(events)).toEqual([]);
+
+    // The translator's hold: the damage edge settled with no burst open, the
+    // escalation opened one inside the grace, and the damage went out on that
+    // burst's flush tick. The collision test above is the positive control —
+    // its timestamps differ, so this equality is not a property of the rig.
+    const escalated = events.filter((e) => e.event === "incident.occurred")[1];
+    const raised = events.find((e) => e.event === "damage.repairNeeded.raised");
+
+    expect(raised?.timestamp).toBe(escalated?.timestamp);
+  });
+
+  it('"Damage Detected" leaves the translator knowing the damage the line checks, without announcing it a second time', () => {
+    // The line's speakGate (#1288) asks the translator's settled damage state,
+    // so the button sets the repair bits — inside a replay-mode bracket, so
+    // they are seeded as known damage rather than read as a rising edge.
+    const { controller, events } = startAtBoot();
+
+    runSequence(controller, [...(damage?.telemetrySequence ?? []), { patch: {}, holdMs: DAMAGE_ANNOUNCE_WINDOW_MS }]);
+
+    expect(damage?.event).toBe("damage.repairNeeded.raised");
+    expect((getLatestTelemetry()?.EngineWarnings ?? 0) & DAMAGE_REPAIR_MASK).toBe(DAMAGE_REPAIR_MASK);
+    expect(isDamageRepairNeeded()).toBe(true);
+    expect(events.filter((e) => e.event === "damage.repairNeeded.raised")).toEqual([]);
+  });
+
+  it("positive control: the same bits set outside the bracket are announced by the translator", () => {
+    // Without this the assertion above would pass on a rig that never
+    // announced damage at all.
+    const { controller, events } = startAtBoot();
+
+    runSequence(controller, [{ patch: { EngineWarnings: DAMAGE_REPAIR_MASK }, holdMs: DAMAGE_ANNOUNCE_WINDOW_MS }]);
+
+    expect(events.filter((e) => e.event === "damage.repairNeeded.raised")).toHaveLength(1);
   });
 });

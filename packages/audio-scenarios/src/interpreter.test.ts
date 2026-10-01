@@ -2666,6 +2666,86 @@ describe("queueBehind (issue #1108)", () => {
     expect(voicePaths()).toEqual([AUTOFUEL, A, B, TIRES]);
   });
 
+  describe("a follower that names the replacing newcomer stays behind it (issue #1211)", () => {
+    // The incident / damage shape: a NORMAL leader (an off-track incident
+    // line) parked with a NORMAL follower (the damage line) behind it, then an
+    // unrelated-to-the-leader newcomer replaces the leader. A follower whose
+    // contract names the newcomer too keeps waiting, now behind it, whatever
+    // the weights; one that does not keeps the weight rule.
+
+    /** An equal-weight replacement for the NORMAL leader: the escalated incident line. */
+    function defineEscalation(): void {
+      engine.defineScenario({
+        id: "test.escalation",
+        channel: AudioChannel.Voice,
+        bus: AudioBus.Voice,
+        weight: WEIGHT.NORMAL,
+        queueable: true,
+        sequence: [ALICE],
+      });
+    }
+
+    it("is kept behind an equal-weight newcomer it names, which plays first", () => {
+      defineBusy();
+      defineLeader({ weight: WEIGHT.NORMAL });
+      defineFollower({ queueBehind: ["test.leader", "test.escalation"] });
+      defineEscalation();
+
+      engine.fire("test.busy");
+      engine.fire("test.leader");
+      engine.fire("test.follower"); // attaches behind the leader
+      engine.fire("test.escalation"); // ties the leader: replaces it by the tie rule
+
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        'Scenario "test.escalation" pending — deferred (bus busy); replaces "test.leader", and "test.follower" now waits behind "test.escalation"',
+      );
+
+      flushVoiceAndSfx(audio);
+
+      expect(voicePaths()).toEqual([AUTOFUEL, ALICE, TIRES]);
+    });
+
+    it("is kept behind a heavier newcomer it names, which plays first", () => {
+      defineBusy();
+      defineLeader({ weight: WEIGHT.NORMAL });
+      defineFollower({ queueBehind: ["test.leader", "test.heavy"] });
+      defineHeavy();
+
+      engine.fire("test.busy");
+      engine.fire("test.leader");
+      engine.fire("test.follower");
+      engine.fire("test.heavy"); // SAFETY outweighs both members
+
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        'Scenario "test.heavy" pending — deferred (bus busy); replaces "test.leader", and "test.follower" now waits behind "test.heavy"',
+      );
+
+      flushVoiceAndSfx(audio);
+
+      expect(voicePaths()).toEqual([AUTOFUEL, FUEL, TIRES]);
+    });
+
+    it("a follower that does not name the newcomer keeps the weight rule — dropped by an equal-weight replacement", () => {
+      defineBusy();
+      defineLeader({ weight: WEIGHT.NORMAL });
+      defineFollower();
+      defineEscalation();
+
+      engine.fire("test.busy");
+      engine.fire("test.leader");
+      engine.fire("test.follower");
+      engine.fire("test.escalation");
+
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        'Scenario "test.follower" dropped — waited behind "test.leader", displaced by "test.escalation"',
+      );
+
+      flushVoiceAndSfx(audio);
+
+      expect(voicePaths()).toEqual([AUTOFUEL, ALICE]);
+    });
+  });
+
   it("(C) a leader moved behind an arriving fire drops the follower it carried, saying why", () => {
     // `test.g` waits behind the follower; the follower waits behind the
     // leader. With the follower and g in the slot, the leader arrives to wait

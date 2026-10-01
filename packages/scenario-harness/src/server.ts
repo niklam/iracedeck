@@ -475,11 +475,16 @@ export async function createServer(ctx: HarnessContext): Promise<FastifyInstance
 
   // One event — `{ event, data }` — or several in order — `{ events: [...] }`
   // (issue #1122). The batch publishes back to back and synchronously, the
-  // way the translator publishes one tick's emits, which is what a shortcut
-  // standing for "an incident" needs: `incident.scored` must have been
-  // dispatched, and the qualifying line's fire must hold the bus, before
-  // `incident.occurred` is published. Every entry is validated before any is
-  // published, so a bad second entry never leaves a first one half-fired.
+  // way the translator publishes one tick's emits, and every entry carries the
+  // ONE timestamp taken before the loop, as the translator stamps a tick's
+  // emits with one `now` (#1211). A shortcut standing for "an incident" needs
+  // both: `incident.scored` must have been dispatched before
+  // `incident.occurred` is published, and the incident line's same-timestamp
+  // yield to the qualifying lap-invalidation line (`qualifyingApprovedBurstAt`)
+  // only matches when the two carry an equal timestamp — a millisecond tick
+  // between them would let the incident line speak as well. Every entry is
+  // validated before any is published, so a bad second entry never leaves a
+  // first one half-fired.
   app.post("/api/bus/publish", async (req, reply) => {
     const body = req.body as { event?: unknown; data?: unknown; events?: unknown };
     const entries = Array.isArray(body.events) ? body.events : [body];
@@ -501,11 +506,12 @@ export async function createServer(ctx: HarnessContext): Promise<FastifyInstance
     }
 
     const telemetry = ctx.controller.getState().telemetry;
+    const timestamp = Date.now();
 
     for (const entry of entries as { event: SimEventName; data: Record<string, unknown> }[]) {
       ctx.bus.publish({
         event: entry.event,
-        timestamp: Date.now(),
+        timestamp,
         telemetry,
         data: entry.data,
       } as SimEventOf<SimEventName>);

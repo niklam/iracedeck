@@ -1740,7 +1740,13 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
 
   // Damage heads-up (issue #489) — a contract since #1065: the line is the
   // active voice's (`scenarios["pit-crew.damage-repair-needed"]`, addressing
-  // `pool:damage/repair-needed`).
+  // `pool:damage/repair-needed`). Queueable since #1211: the event fires once
+  // per damage episode, so a line dropped below the spotter's floor or behind
+  // another line (the incident for the same crash, a caution call — #1288)
+  // was never heard. It waits behind the incident and lap-invalidation
+  // contracts registered below through `queueBehind`, which matches by id at
+  // fire time, so registering it first is fine; its `speakGate` skips it once
+  // the repair bits have cleared.
   for (const c of DAMAGE_CONTRACTS) {
     engine.defineContract(
       wrapWithMaster(
@@ -1813,29 +1819,30 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
 
   // Qualifying lap-invalidation contract (issue #567; scripted since #1065).
   // It shares the Voice bus with the incident contracts below at the default
-  // `WEIGHT.NORMAL` band in a different family, and a second equal-weight
-  // fire hitting a busy bus is silently dropped (see `attemptFire` in
-  // interpreter.ts). The shape we want:
+  // `WEIGHT.NORMAL` band in a different family, and both are queueable since
+  // #1211, so a line that meets a busy bus or the spotter's floor waits
+  // rather than drops. The shape we want:
   //
-  //   Qualifying + valid flying lap → qualifying contract grabs the bus,
-  //                                     incident contract drops (no double-up).
+  //   Qualifying + valid flying lap → the lap-invalidation line plays, the
+  //                                     incident line yields (no double-up).
   //   Qualifying + out-lap / post-pit lap → qualifying contract's `where:`
-  //                                     returns false (no fire, no bus grab),
+  //                                     returns false (no fire),
   //                                     incident contract fires with generic
   //                                     "mind the kerbs" coaching.
   //   Race / practice / unknown        → qualifying contract's `where:`
   //                                     returns false (sessionType mismatch),
   //                                     incident contract fires normally.
   //
-  // What decides the first row is PUBLICATION order, not registration order
-  // (#1122): this contract fires on `incident.scored`, the incident contracts
-  // on `incident.occurred`, and the translator emits the two on the same
-  // flush tick in that order (`flushIncidentBurst` in `sim-events-iracing`
-  // `diff/incidents.ts`), each dispatched synchronously through every handler
-  // before the next is published — so the qualifying fire holds the bus
-  // before the incident contracts are even asked. Until #1122 both fired on
-  // the one event and this block had to sit BEFORE the incident loop; it
-  // still does, for the reader, but moving it would change nothing.
+  // The first row is decided by a stash, not by the bus (#1211): this
+  // contract fires on `incident.scored`, which the translator publishes
+  // before `incident.occurred` on the same flush tick (#1122), and its
+  // `where:` records the approved envelope's timestamp; the incident
+  // contracts' `where:` refuses an `incident.occurred` with that timestamp.
+  // Until #1211 the qualifying line merely took an idle bus first and the
+  // incident line dropped as "bus busy" — which protected nothing on a busy
+  // bus, and under the floor dropped the qualifying line while a queueable
+  // incident line would have parked and played alone. The block still sits
+  // before the incident loop for the reader; the order decides nothing.
   // incidents.ts deliberately does NOT gate on session type, because doing so
   // would silence incidents on out-laps too (where the qualifying contract
   // also stays silent).
@@ -1862,8 +1869,11 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   // reads the `incident.points` var (issue #922) — vocabulary-before-contract
   // ordering, same as session-start. They fire on `incident.occurred`, which
   // the translator publishes AFTER the qualifying contract's `incident.scored`
-  // on the same flush — that publication order is what lets the qualifying
-  // line win the bus (see the comment block above).
+  // on the same flush, and yield to a lap-invalidation line that approved it
+  // (see the comment block above). Queueable since #1211: a collision nearly
+  // always happens with a car alongside, and the spotter's floor dropped the
+  // line; now it waits for the floor's release, and its `speakGate` refuses
+  // it once the incident is more than ten seconds old.
   registerIncidentVocabulary(engine);
 
   for (const c of INCIDENT_CONTRACTS) {

@@ -60,24 +60,34 @@
  * carried anyway so a future second qualifying-related callout shares
  * preemption with this one.
  *
- * **Bus-race with incident contracts.** This contract and the
- * `pit-crew.incident-*` contracts both fire onto the Voice bus at the
- * default weight (`WEIGHT.NORMAL`), in different families, and the engine
- * drops whichever arrives second. Since #1122 they no longer share an
- * event: this contract fires on `incident.scored`, the incident contracts on
- * `incident.occurred`, and the translator emits the two on the same flush
- * tick in THAT order (`flushIncidentBurst` in `sim-events-iracing`
- * `diff/incidents.ts`). Publication is synchronous — the translator publishes
- * its tick's emits in emit order, the bus dispatches each to every handler
- * before returning, and the engine's immediate path runs `where:` and takes
- * the bus inside the handler — so by the time the incident contracts hear
- * `incident.occurred` this contract's fire already holds the bus and theirs
- * drop as "bus busy". Before #1122 the same race was decided by
- * registration order on the one shared event; the registration position in
- * `index.ts` is kept for readability, but it decides nothing now. The
+ * **Scheduling, and the incident line's yield (issue #1211).** Default
+ * weight (`WEIGHT.NORMAL`) and `queueable: true`: a lap-invalidation line
+ * that cannot take the Voice bus — another line playing, or the spotter's
+ * focus floor held while a car is alongside, which is when most crashes
+ * happen — waits and plays when the bus frees instead of being dropped.
+ * Until #1211 it was dropped there, and the precedence over the incident
+ * line (#567: the lap-status news supersedes generic coaching) rested on a
+ * bus race: this contract fires on `incident.scored`, the incident contracts
+ * on `incident.occurred`, and the translator publishes the two on the same
+ * flush tick in THAT order (`flushIncidentBurst` in `sim-events-iracing`
+ * `diff/incidents.ts`), so on an idle bus this line took it first and the
+ * incident line dropped as "bus busy". On a busy bus or under the floor the
+ * race protected nothing, and once the incident lines queued it would have
+ * inverted: the incident line parked and played while this one was lost.
+ * The yield is now explicit: the `where:` records the `timestamp` of the
+ * `incident.scored` envelope it approved ({@link qualifyingApprovedBurstAt}),
+ * and the incident contracts' `where:` refuses an `incident.occurred`
+ * carrying that same timestamp — both envelopes come from one translator
+ * publish on one tick, so an equal timestamp means the same burst. The
  * incident contracts deliberately carry no session-type gate of their own:
- * on out-laps and post-pit laps this `where:` refuses, no fire takes the
- * bus, and the driver still hears the generic coaching.
+ * on out-laps and post-pit laps this `where:` refuses, records nothing, and
+ * the driver still hears the generic coaching. A parked line is refused at
+ * speak time once the driver has left the lap it was approved on (a new
+ * `sessionNum` or `lapCompleted` in the live snapshot): "this lap will be
+ * invalidated" said on the next lap would be false, and its laps-left tail,
+ * read live, one off. That burst then says nothing, which takes a floor held
+ * across start/finish. The registration position in `index.ts` is kept for
+ * readability; it decides nothing.
  *
  * Why the type-blind event: the translator types a burst only when a report
  * byte the count can support was seen, and leaves it silent otherwise —
@@ -129,14 +139,36 @@ let lastAnnounced: { sessionNum: number | undefined; lap: number } | null = null
  * A stash in `where:` is the allowed shape (read by the gate during the very
  * fire the `where:` approved); the claim itself stays in the gate. It is keyed
  * PER FIRE rather than held in one slot because approvals and speak-time gates
- * do not alternate: a fire parked as pending (the "higher weight, no
- * interrupt" path parks it whether or not the contract is queueable) can be
- * overtaken by a later incident that its `where:` approves and the engine then
- * DROPS on a busy bus — this contract is not queueable — and one shared slot
- * handed that dropped fire's lap to the parked one. A `WeakMap` also needs no
+ * do not alternate: a fire parked as pending can be replaced in the engine's
+ * one pending slot by a later incident its `where:` also approved, or a later
+ * approval can be dropped behind a heavier fire already waiting there, and one
+ * shared slot hands one fire's lap to the other. A `WeakMap` also needs no
  * cleanup for the approvals that are dropped: they go with their envelope.
  */
 let pendingQualifyingSnapshots = new WeakMap<SimEventOf<SimEventName>, QualifyingInvalidationSnapshot>();
+
+/**
+ * The `timestamp` of the `incident.scored` envelope the `where:` most recently
+ * approved (issue #1211), read by the incident contracts' `where:` through
+ * {@link qualifyingApprovedBurstAt}: an `incident.occurred` published on the
+ * same flush carries the same timestamp, and its generic line yields to this
+ * one. A stash another contract's `where:` reads during the same dispatch —
+ * the shape #1137 allows — and a single slot is enough: the reader runs on the
+ * very tick the writer did, and no other flush can share that tick's
+ * timestamp. `null` until an approval, and after
+ * {@link resetQualifyingInvalidationLatch}.
+ */
+let approvedBurstTimestamp: number | null = null;
+
+/**
+ * Whether this callout's `where:` approved the `incident.scored` published at
+ * `timestamp` — the same burst as an `incident.occurred` carrying it, whose
+ * generic incident line then yields to the lap-invalidation line (issue #1211).
+ * A pure read.
+ */
+export function qualifyingApprovedBurstAt(timestamp: number): boolean {
+  return approvedBurstTimestamp === timestamp;
+}
 
 /**
  * Reset the per-lap latch and every stashed snapshot. Used by tests to isolate
@@ -149,6 +181,7 @@ let pendingQualifyingSnapshots = new WeakMap<SimEventOf<SimEventName>, Qualifyin
 export function resetQualifyingInvalidationLatch(): void {
   lastAnnounced = null;
   pendingQualifyingSnapshots = new WeakMap();
+  approvedBurstTimestamp = null;
 }
 
 /**
@@ -205,6 +238,23 @@ export function qualifyingLatchAllows(snapshot: QualifyingInvalidationSnapshot):
  */
 export function claimQualifyingLatch(snapshot: QualifyingInvalidationSnapshot): void {
   lastAnnounced = { sessionNum: snapshot.sessionNum, lap: snapshot.lapCompleted };
+}
+
+/**
+ * Whether the driver is still on the lap an approved snapshot names — same
+ * `sessionNum`, same `lapCompleted` — judged against the live snapshot at
+ * speak time (issue #1211). `true` when the live snapshot is missing: there is
+ * nothing to say the lap has changed.
+ *
+ * @internal Exported for tests.
+ */
+export function stillOnApprovedLap(
+  approved: QualifyingInvalidationSnapshot,
+  live: QualifyingInvalidationSnapshot | null,
+): boolean {
+  if (live === null) return true;
+
+  return live.sessionNum === approved.sessionNum && live.lapCompleted === approved.lapCompleted;
 }
 
 /** Whether the tail clause should be spoken at all. */
@@ -295,9 +345,11 @@ export function registerQualifyingInvalidationVocabulary(
  * Build the contract bound to a snapshot resolver. Stays a builder because
  * the `where:` reads the resolver: it asks whether this lap is still
  * unlatched and stashes the snapshot it approved against that fire's event
- * envelope; the `speakGate` looks THAT snapshot up by the same envelope,
- * re-checks it and latches it once the callout has expanded to something to
- * say (issues #1137, #1138). The tail is the vocabulary's
+ * envelope (and the envelope's timestamp for the incident contracts' yield,
+ * #1211); the `speakGate` looks THAT snapshot up by the same envelope,
+ * re-checks it, refuses it once the live snapshot has left its lap, and
+ * latches it once the callout has expanded to something to say (issues
+ * #1137, #1138, #1211). The tail is the vocabulary's
  * ({@link registerQualifyingInvalidationVocabulary}), which reads the
  * resolver live at expansion. The literal names no `base` — see the header.
  */
@@ -309,7 +361,10 @@ export function buildQualifyingInvalidationContract(
     when: {
       // The type-blind signal (#1122): a counted burst the translator could
       // not type still invalidates the lap, and `incident.occurred` never
-      // fires for one. See the header for the bus race this order wins.
+      // fires for one. The translator publishes this event before
+      // `incident.occurred` on the same tick, so the timestamp this `where:`
+      // stashes is in place when the incident contracts read it — see the
+      // header for the yield.
       event: "incident.scored",
       where: (ev) => {
         const snapshot = getSnapshot();
@@ -326,13 +381,16 @@ export function buildQualifyingInvalidationContract(
         if (!qualifyingLatchAllows(snapshot)) return false;
 
         pendingQualifyingSnapshots.set(ev, snapshot);
+        // The incident line for this same burst yields to this one (issue
+        // #1211): the incident contracts' `where:` reads this timestamp.
+        approvedBurstTimestamp = ev.timestamp;
 
         return true;
       },
     },
     speakGate: {
       description:
-        "This is still the first incident of the flying lap when the call comes to speak; speaking it latches the lap.",
+        "This is still the first incident of the flying lap, and you are still on that lap, when the call comes to speak; speaking it latches the lap.",
       admit: (ctx) => {
         // Stash, then check-and-claim: the snapshot THIS fire's `where:`
         // approved, found by the envelope the engine carried through the
@@ -351,6 +409,11 @@ export function buildQualifyingInvalidationContract(
 
         if (snapshot === undefined || !qualifyingLatchAllows(snapshot)) return false;
 
+        // A fire parked across start/finish (issue #1211): the lap it would
+        // call invalidated is over. A missing live snapshot proves nothing
+        // either way, so it does not refuse (the #574 precedent).
+        if (!stillOnApprovedLap(snapshot, getSnapshot())) return false;
+
         claimQualifyingLatch(snapshot);
 
         return true;
@@ -359,6 +422,9 @@ export function buildQualifyingInvalidationContract(
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
     family: "qualifying-invalidation",
+    // A line that cannot take the bus — another line playing, the spotter's
+    // floor — waits for it (issue #1211; see the header).
+    queueable: true,
     description:
       "You pick up an incident on a counted flying lap of a qualifying session, at the first incident of that lap.",
   };

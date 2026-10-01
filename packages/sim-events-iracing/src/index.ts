@@ -31,6 +31,7 @@ export {
   getStartingGridPosition,
   getTrackDirection,
   initializeSimEventsIracing,
+  isDamageRepairNeeded,
   isPitActionsAllowed,
   isRaceFinished,
   isSimEventsIracingInitialized,
@@ -75,7 +76,11 @@ export { type CautionLineup, resolveCautionLineup, resolvePlayerCarIdx } from ".
 // The phase `getCautionPhase()` returns (issue #1127) — the callouts that
 // gate on a STAGE of the caution rather than on "is one out" name it.
 export { type CautionPhase, type RaceFinishResult } from "./state.js";
-export { DAMAGE_DEBOUNCE_MS } from "./diff/damage.js";
+// The damage edge's debounce, the grace a settled edge waits for the crash's
+// incident burst (#1211), and the repair bits it watches — for the harness,
+// whose damage shortcuts replay the translator's timing and bits rather than
+// restating them.
+export { DAMAGE_DEBOUNCE_MS, DAMAGE_INCIDENT_GRACE_MS, DAMAGE_REPAIR_MASK } from "./diff/damage.js";
 export { YELLOW_CLEARED_HOLD_MS } from "./diff/flags.js";
 // The settle window between leaving pit road and the exit readback, which is
 // also when the tire wear report is published (#1108). Exported for the

@@ -32,6 +32,7 @@ import type { ILogger } from "@iracedeck/logger";
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { DAMAGE_DEBOUNCE_MS } from "./diff/damage.js";
 import { YELLOW_CLEARED_HOLD_MS } from "./diff/flags.js";
 import {
   _resetSimEventsIracing,
@@ -50,6 +51,7 @@ import {
   getSessionStartConditions,
   getStartingGridPosition,
   initializeSimEventsIracing,
+  isDamageRepairNeeded,
   isRaceFinished,
   isSimEventsIracingInitialized,
   isUnderFullCourseCaution,
@@ -769,6 +771,68 @@ describe("sim-events-iracing translator", () => {
 
       expect(isRaceFinished()).toBe(true);
       expect(getRaceFinishResult(0)).toEqual({ position: 4, classPosition: 3 });
+    });
+  });
+
+  describe("isDamageRepairNeeded (issue #1288)", () => {
+    const DAMAGED = EngineWarnings.MandRepNeeded;
+
+    it("is null before the translator is initialized and before its first live tick", () => {
+      expect(isDamageRepairNeeded()).toBeNull();
+
+      initializeSimEventsIracing(getEventBus(), createMockController(), createMockLogger());
+
+      expect(isDamageRepairNeeded()).toBeNull();
+    });
+
+    it("answers the SETTLED state: a raw flicker of the repair bits changes nothing either way", () => {
+      vi.useFakeTimers();
+      const controller = createMockController();
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(telemetry());
+      expect(isDamageRepairNeeded()).toBe(false);
+
+      // The bits rise; not settled yet, so still no repair needed.
+      controller.__tick(telemetry({ EngineWarnings: DAMAGED }));
+      expect(isDamageRepairNeeded()).toBe(false);
+
+      vi.advanceTimersByTime(DAMAGE_DEBOUNCE_MS);
+      controller.__tick(telemetry({ EngineWarnings: DAMAGED }));
+      expect(isDamageRepairNeeded()).toBe(true);
+
+      // One tick with the bits down — a collision-frame rebound or pit-stall
+      // service flicker. The latest raw tick says "repaired"; the settled
+      // state does not, so a damage line waiting for the radio is not lost.
+      vi.advanceTimersByTime(100);
+      controller.__tick(telemetry({ EngineWarnings: 0 }));
+      expect(isDamageRepairNeeded()).toBe(true);
+
+      vi.advanceTimersByTime(100);
+      controller.__tick(telemetry({ EngineWarnings: DAMAGED }));
+      expect(isDamageRepairNeeded()).toBe(true);
+
+      // A repair that holds: false only once the clear has settled.
+      controller.__tick(telemetry({ EngineWarnings: 0 }));
+      vi.advanceTimersByTime(DAMAGE_DEBOUNCE_MS - 100);
+      controller.__tick(telemetry({ EngineWarnings: 0 }));
+      expect(isDamageRepairNeeded()).toBe(true);
+
+      vi.advanceTimersByTime(100);
+      controller.__tick(telemetry({ EngineWarnings: 0 }));
+      expect(isDamageRepairNeeded()).toBe(false);
+    });
+
+    it("seeds from the first live tick and returns to null on a disconnect", () => {
+      const controller = createMockController();
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      // Connecting mid-damage: known damage, seeded rather than announced.
+      controller.__tick(telemetry({ EngineWarnings: DAMAGED }));
+      expect(isDamageRepairNeeded()).toBe(true);
+
+      controller.__tick(null, false);
+      expect(isDamageRepairNeeded()).toBeNull();
     });
   });
 
@@ -2221,6 +2285,42 @@ describe("sim-events-iracing translator", () => {
 
       expect(order).toEqual(["scored:1", "occurred"]);
       expect(occurredSeenInsideScored).toBe(false);
+    });
+
+    it("publishes a damage edge that settled during the burst after the burst's incident events, on the flush tick (issue #1211)", () => {
+      // The incident line plays first, then the damage line: the damage diff
+      // runs after the incident diff and holds its settled edge until the
+      // open burst flushes.
+      vi.useFakeTimers();
+      const controller = createMockController();
+      const bus = getEventBus();
+      const order: string[] = [];
+      bus.subscribe("incident.scored", () => order.push("scored"));
+      bus.subscribe("incident.occurred", () => order.push("occurred"));
+      bus.subscribe("damage.repairNeeded.raised", () => order.push("damage"));
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      const damaged = EngineWarnings.MandRepNeeded;
+      controller.__tick(telemetry({ PlayerCarMyIncidentCount: 0 }));
+      controller.__tick(telemetry({ EngineWarnings: damaged }));
+      vi.advanceTimersByTime(2_800);
+      controller.__tick(
+        telemetry({
+          EngineWarnings: damaged,
+          PlayerCarMyIncidentCount: 4,
+          PlayerIncidents: IncidentFlags.RepCollisionWithCar,
+        }),
+      );
+      // Damage settles 200 ms into the burst.
+      vi.advanceTimersByTime(200);
+      controller.__tick(telemetry({ EngineWarnings: damaged, PlayerCarMyIncidentCount: 4 }));
+      expect(order).toEqual([]);
+
+      // Flush: 1500 ms after the increment.
+      vi.advanceTimersByTime(1_300);
+      controller.__tick(telemetry({ EngineWarnings: damaged, PlayerCarMyIncidentCount: 4 }));
+
+      expect(order).toEqual(["scored", "occurred", "damage"]);
     });
 
     it("publishes incident.scored alone for a counted burst it could not type (issue #1122)", () => {

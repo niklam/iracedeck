@@ -18,7 +18,8 @@
         {
           "title": "Bug Fixes",
           "items": [
-            "Telemetry Control's <strong>Take Snapshot</strong> report no longer prints lap times of a minute or more with an extra zero: a 1:08.985 lap now reads <code>1:08.985</code> instead of <code>1:008.985</code>, a time a hair under a whole minute no longer reads <code>:60</code>, and a lap-time counter past an hour now shows hours. See <a href=\"https://iracedeck.com/docs/actions/cockpit/telemetry-control/#take-snapshot\" target=\"_blank\" rel=\"noopener noreferrer\">Telemetry Control</a>."
+            "Telemetry Control's <strong>Take Snapshot</strong> report no longer prints lap times of a minute or more with an extra zero: a 1:08.985 lap now reads <code>1:08.985</code> instead of <code>1:008.985</code>, a time a hair under a whole minute no longer reads <code>:60</code>, and a lap-time counter past an hour now shows hours. See <a href=\"https://iracedeck.com/docs/actions/cockpit/telemetry-control/#take-snapshot\" target=\"_blank\" rel=\"noopener noreferrer\">Telemetry Control</a>.",
+            "The Race Engineer no longer loses incident, damage and lap-invalidation calls just because the spotter is calling a car alongside or another call is playing: they now wait their turn and play as soon as the radio is free. After a crash he reports the incident first and the damage right after it, and he skips the damage call if the car has been repaired by then. When several more urgent calls pile up at once, as when a full-course caution comes out, one of these calls can still be crowded out. See <a href=\"https://iracedeck.com/docs/actions/audio-voice/pit-crew/#incident-callouts\" target=\"_blank\" rel=\"noopener noreferrer\">Pit Crew</a>."
           ]
         }
       ]
