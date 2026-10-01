@@ -37,7 +37,7 @@ The gate reads the follow call's opt-in live through the `getCautionCalloutEnabl
 
 ### How that settles the four mechanisms
 
-- **A → B → A.** The return to A is itself a `caution.lineup.changed` event, and a fresh event replaces the pending hold, so the decision is taken 2 s after the return and reads A — the car already named. Silent. Only a B leg that holds for the whole 2 s is decided on B; that car really was ahead, and the return is then a genuine change too. The road fixture's longest flicker is 1.07 s.
+- **A → B → A.** The return to A is itself a `caution.lineup.changed` event, and a fresh event replaces the pending hold, so the decision is taken 2 s after the return and reads A — the car already named. Silent. Only a B leg that holds for the whole 2 s is decided on B; that car really was ahead, and the return is then a genuine change too. Measured on the road fixture (amended 2026-10-01, implementation): of its 13 A → B → A sequences, twelve are flickers — car 0, stopped, sliding past the player and back — and the longest lasts 1.07 s; the thirteenth is not a flicker at all: car 8 swaps rows ahead of player 19 and pits 2.70 s later, two genuine changes, both spoken.
 - **A change on top of a phase call.** The phase call reads the lineup live and records the new car when it plays; the change decided afterwards finds nothing new and drops. Its gate is asked before any bus take, so a refused change never cuts anything.
 - **The provisional first lineup.** Nothing named yet, follow call on: silent.
 - **No memory.** The reference is the named car, so 37 → 85 → 37 is spoken where each leg was a genuine change, and the "Change — behind 37" that duplicated two to green 171 ms earlier is not.
@@ -56,7 +56,7 @@ A change still cannot cut anything, so a genuine change arriving mid-call is hea
 
 ## The hold
 
-`CAUTION_LINEUP_CHANGE_DELAY_MS` goes from 1500 to 2000 (maintainer ruling, 2026-09-30). The margin over the fixture's longest round trip (1.07 s) grows from 0.43 s to 0.93 s, at the cost of half a second on every genuine change — nothing against the minute a mid-caution reorder has before the green. Its role in the re-form case changes: it no longer has to outlast the gap to the one-to-go flag, since the memory settles that; it only coalesces a reshuffle into one decision.
+`CAUTION_LINEUP_CHANGE_DELAY_MS` goes from 1500 to 2000 (maintainer ruling, 2026-09-30). The margin over the fixture's longest flicker (1.07 s) grows from 0.43 s to 0.93 s, at the cost of half a second on every genuine change — nothing against the minute a mid-caution reorder has before the green. Its role in the re-form case changes: it no longer has to outlast the gap to the one-to-go flag, since the memory settles that; it only coalesces a reshuffle into one decision.
 
 ## The episode, from the translator
 
@@ -93,7 +93,7 @@ The contracts record `{ episodeId, followCarIdx }` and treat a record from anoth
 
 Suite:
 
-- **The road fixture's round trips.** Replay the second caution of `__fixtures__/caution-road-20260918.json` through the translator into the real contracts with the reference script loaded, and assert that none of the 13 A → B → A round trips speaks a change naming the car already named — and, as the vacuity guard, that the fixture still carries 13 round trips and the translator still emits two `caution.lineup.changed` per trip.
+- **The road fixture's round trips.** Replay the second caution of `__fixtures__/caution-road-20260918.json` through the translator into the real contracts with the reference script loaded, and assert that none of the twelve flickers speaks a change naming the car already named while the car-8 swap speaks both of its changes — and, as the vacuity guard, that the fixture still carries those thirteen sequences with the measured durations (twelve flickers of at most 1.07 s, the swap held 2.70 s).
 - **One test per log row:** a change deciding while two to green is playing and naming the same car (01:20:23, 01:25:54) is silent and the two-to-green call plays out; a change deciding 165 ms after one to go, naming the same car (01:09:51), is silent; a change arriving while one to go waits in the pending slot does not evict it, and one to go plays (01:21:33).
 - **The provisional lineup:** follow call on, a change before the follow call has played is silent, and the follow call then names the new car.
 - **Follow call off:** the first change after the first readable lineup speaks, and a change back to the first lineup's car is silent.
