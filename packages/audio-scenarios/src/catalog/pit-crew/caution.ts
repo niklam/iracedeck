@@ -226,7 +226,7 @@ import {
 import type { ScenarioContract, SpeakGate } from "../../dsl.js";
 import { poolRef, WEIGHT } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
-import { liveRaceCar, WAVING_FLAG_COOLDOWN_MS } from "./flag-alerts.js";
+import { CAUTION_MAX_QUEUE_WAIT_MS, liveRaceCar, WAVING_FLAG_COOLDOWN_MS } from "./flag-alerts.js";
 import { type LivePositionResolver, selectLivePosition } from "./position-readout.js";
 
 /** iRacing's GreenHeld bit in the event's own telemetry — false when there is none to read. */
@@ -387,6 +387,10 @@ function cautionContract(
     // `where:` is never re-evaluated and it may wait several seconds, so
     // without this a caution line can drain onto a green-flag track.
     speakGate: stillOutGate(getCautionPhase),
+    // …and the gate is what lets it wait longer than the engine's default: a
+    // call that is still true when it speaks may wait out a crash's burst of
+    // lines (issue #1185; `CAUTION_MAX_QUEUE_WAIT_MS`).
+    maxQueueWaitMs: CAUTION_MAX_QUEUE_WAIT_MS,
   };
 }
 
@@ -639,6 +643,9 @@ export function buildCautionContracts({
       // `interrupt` — the green lands on the driver's launch, so nothing still
       // playing may delay it, and nothing it displaces matters more.
       speakGate: undefined,
+      // …and with no gate, nothing would refuse it once stale, so it keeps
+      // the engine's default max wait rather than the family's 20 s.
+      maxQueueWaitMs: undefined,
       weight: WEIGHT.CRITICAL,
       interrupt: true,
       description: "The green flag ends a full-course caution and the field is released in a race.",

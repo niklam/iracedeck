@@ -572,6 +572,17 @@ const FIVE_TO_GO: ScenarioContract = {
  */
 export const WAVING_FLAG_COOLDOWN_MS = 30_000;
 
+/**
+ * How long a caution call may wait for the bus (issue #1185) — the caution
+ * flag's own line here and every gated `caution-*` contract in `caution.ts`.
+ * A crash brings the caution out while the incident line holds the bus, and
+ * the calls then queue behind it and each other: in the #1288 log's own
+ * timeline the pace-car call waits about 8.5 s, past the engine's default.
+ * A caution lasts minutes, and each gated call re-checks at speak time that
+ * it is still out, so a call heard late is still true.
+ */
+export const CAUTION_MAX_QUEUE_WAIT_MS = 20_000;
+
 // Caution-waving variants (issue #480) — separate, more-urgent callouts than the
 // base static yellows. The translator's reworked yellow detection guarantees a
 // base yellow and its waving variant never double-fire. Both carry the 30 s
@@ -598,6 +609,8 @@ const YELLOW_WAVING: ScenarioContract = {
 const CAUTION_WAVING: ScenarioContract = {
   ...flagContract("caution-waving"),
   queueable: true,
+  // Waits as long as the caution family's calls (issue #1185).
+  maxQueueWaitMs: CAUTION_MAX_QUEUE_WAIT_MS,
   cooldown: WAVING_FLAG_COOLDOWN_MS,
   description:
     "The full-course caution is shown waving to the field, in any session; a repeat inside thirty seconds stays silent.",

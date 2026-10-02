@@ -25,9 +25,7 @@
  * caution calls replaced each other in the slot and pushed out the damage
  * line, and with the holder still playing the incident line too. Under the
  * bus's queue (issue #1185) nothing is replaced or crowded out: all five
- * lines are heard when the holder is still playing at the flag, cut or not,
- * and when it ended before, the pace-car call outwaits the engine's default
- * max wait (see that test).
+ * lines are heard in all three variants.
  */
 import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "json" };
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
@@ -279,25 +277,18 @@ const LINEUP_CHANGED = "pit-crew.caution-lineup-changed";
 const PACE_CAR_OUT = "pit-crew.caution-pace-car-out";
 
 describe("the #1288 crash replayed through the engine (issues #1211, #1288, #1185)", () => {
-  it("holder ends before the caution flag: the incident line plays at once, then the caution calls; the pace-car call outwaits the default max wait", () => {
+  it("holder ends before the caution flag: the incident line plays at once, then the three caution calls, then the damage line", () => {
     replayCrash({ what: "a SAFETY line ending before the caution flag", leadMs: VOICE_CLIP_MS - 1000 });
 
     // The incident line, parked behind the holder, takes the bus the moment
     // it ends and is playing — two clips — when the caution calls arrive.
     // They wait in the bus's queue in arrival order (one weight), the damage
-    // line (NORMAL) behind them, and nothing replaces anything. But the
-    // pace-car call, queued at +4.1 s, would start only after the incident
-    // line, the caution flag and the two-clip lineup line: past the engine's
-    // 8 s default, so the queue drops it.
-    //
-    // OPEN (#1185): spec §2 expects all five lines heard here. Whether the
-    // caution calls get a longer max wait (they carry a speak-time gate, so
-    // they stay true while they wait) is the coordinator's call; this pins
-    // what the specced defaults do.
-    expect(heard()).toEqual(["test.holder", INCIDENT, CAUTION_WAVING, LINEUP_CHANGED, DAMAGE]);
-    expect(queueDrops()).toEqual([
-      expect.stringMatching(/^Scenario "pit-crew\.caution-pace-car-out" dropped — waited \d+ ms \(max 8000 ms\)$/),
-    ]);
+    // line (NORMAL) behind them, and nothing replaces anything. The pace-car
+    // call, queued at +4.1 s, starts only after the incident line, the
+    // caution flag and the two-clip lineup line — past the engine's 8 s
+    // default, inside the caution calls' 20 s (`CAUTION_MAX_QUEUE_WAIT_MS`).
+    expect(heard()).toEqual(["test.holder", INCIDENT, CAUTION_WAVING, LINEUP_CHANGED, PACE_CAR_OUT, DAMAGE]);
+    expect(queueDrops()).toEqual([]);
   });
 
   it("holder still playing at the caution flag: the SAFETY calls first, then the incident line, then the damage line behind it", () => {

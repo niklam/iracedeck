@@ -57,7 +57,7 @@ import {
   registerCautionVocabulary,
   SCENARIO_ID_TO_CAUTION_ID,
 } from "./caution.js";
-import { FLAG_CONTRACTS, WAVING_FLAG_COOLDOWN_MS } from "./flag-alerts.js";
+import { CAUTION_MAX_QUEUE_WAIT_MS, FLAG_CONTRACTS, WAVING_FLAG_COOLDOWN_MS } from "./flag-alerts.js";
 
 const mockSessionType = vi.fn(() => "Race");
 const mockStandingStart = vi.fn(() => false);
@@ -446,6 +446,17 @@ describe("the caution contracts", () => {
     for (const id of IDS.filter((x) => !BELOW_THE_FAMILY.includes(x) && x !== "restart")) {
       expect(contract(id).weight).toBe(WEIGHT.SAFETY);
     }
+  });
+
+  it("waits up to 20 s for the bus — every gated call, and the caution flag's own line; the ungated restart keeps the default (issue #1185)", () => {
+    for (const id of IDS) {
+      expect(contract(id).maxQueueWaitMs, id).toBe(id === "restart" ? undefined : CAUTION_MAX_QUEUE_WAIT_MS);
+    }
+
+    expect(CAUTION_MAX_QUEUE_WAIT_MS).toBe(20_000);
+    expect(FLAG_CONTRACTS.find((c) => c.id === "pit-crew.flag-caution-waving")?.maxQueueWaitMs).toBe(
+      CAUTION_MAX_QUEUE_WAIT_MS,
+    );
   });
 
   it("re-checks at speak time that the caution is still out — every call but the restart, which speaks as it ends", () => {
