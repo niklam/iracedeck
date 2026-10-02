@@ -1520,6 +1520,8 @@ class ScenarioEngine implements IScenarioEngine {
    * newcomer's place. `queuedAt` is the time of the fire's FIRST deferral: a
    * replay deferred again passes its own, so its max wait still runs from
    * then. `admitted` travels with the fire (see `WaitingFire.admitted`).
+   * `yieldsToGroup` marks an interrupt's stash, which gives way to a newer
+   * waiting fire of its group instead of replacing it.
    */
   private enqueue(
     id: string,
@@ -1530,6 +1532,7 @@ class ScenarioEngine implements IScenarioEngine {
     resume?: ResumeState,
     admitted = false,
     queuedAt: number = Date.now(),
+    yieldsToGroup = false,
   ): void {
     const raw = this.scenarios.get(id)?.raw;
     const result = state.queue.offer(
@@ -1540,6 +1543,7 @@ class ScenarioEngine implements IScenarioEngine {
         queuedAt,
         maxWaitMs: raw?.maxQueueWaitMs ?? DEFAULT_MAX_QUEUE_WAIT_MS,
         fire: { id, event, weight, resume, admitted, queuedAt },
+        yieldsToGroup,
       },
       Date.now(),
     );
@@ -1593,6 +1597,13 @@ class ScenarioEngine implements IScenarioEngine {
    * replay is not asked again (issue #1138). It is a new deferral, so its max
    * wait runs from now; a full queue may drop it as the cap's victim, which
    * is logged like any other drop and discards its resume with it.
+   *
+   * A fire of its `supersedeGroup` already waiting arrived while this one
+   * played, so it is the newer: the stash yields to it and is dropped,
+   * logged as superseded by it (issue #1185). Replacing it instead would
+   * replay the cut line over the newer one — and in a group whose `where:`
+   * writes one stash a resolver reads (`opponent-flag-ahead`'s
+   * `pendingAhead`), speak the newer fire's car in the older line.
    */
   private stashRunningIfQueueable(state: BusState, running: CompiledScenario | undefined): void {
     const active = state.activeFire;
@@ -1601,7 +1612,7 @@ class ScenarioEngine implements IScenarioEngine {
 
     const resume =
       running.raw.resumable === true ? buildResumeState(active, this.getActiveVoice(), this.generation) : undefined;
-    this.enqueue(active.id, active.event, active.weight, state, "stashed (preempted)", resume, true);
+    this.enqueue(active.id, active.event, active.weight, state, "stashed (preempted)", resume, true, undefined, true);
   }
 
   /**

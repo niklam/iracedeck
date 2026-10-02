@@ -50,6 +50,37 @@ describe("PendingQueue (issue #1185)", () => {
     expect(q.ordered()[0].queuedAt).toBe(5);
   });
 
+  it("a stash that yields to its group is itself dropped when a newer entry of the group waits", () => {
+    const q = new PendingQueue<string>(relations({}));
+    q.offer(input("b", 50, 10, { group: "ahead" }), 10);
+    const r = q.offer(input("a", 50, 20, { group: "ahead", yieldsToGroup: true }), 20);
+
+    expect(r.drops).toEqual([
+      { entry: expect.objectContaining({ id: "a" }), reason: { kind: "superseded", by: "b" } },
+    ]);
+    expect(r.position).toBeNull();
+    expect(ids(q)).toEqual(["b"]);
+    expect(q.ordered()[0].queuedAt).toBe(10);
+  });
+
+  it("a stash that yields to its group waits as usual when nothing of its group waits", () => {
+    const q = new PendingQueue<string>(relations({}));
+    q.offer(input("other", 50, 0), 0);
+    const r = q.offer(input("a", 50, 5, { group: "ahead", yieldsToGroup: true }), 5);
+
+    expect(r.drops).toEqual([]);
+    expect(ids(q)).toEqual(["other", "a"]);
+  });
+
+  it("a stash yields only to a waiting entry still inside its max wait", () => {
+    const q = new PendingQueue<string>(relations({}));
+    q.offer(input("b", 50, 0, { group: "ahead", maxWaitMs: 1000 }), 0);
+    const r = q.offer(input("a", 50, 2000, { group: "ahead", yieldsToGroup: true }), 2000);
+
+    expect(r.drops.map((d) => [d.entry.id, d.reason.kind])).toEqual([["b", "expired"]]);
+    expect(ids(q)).toEqual(["a"]);
+  });
+
   it("a follower sits right after its leader whatever the weights", () => {
     const q = new PendingQueue<string>(relations({ damage: ["incident"] }));
     q.offer(input("incident", 50), 0);

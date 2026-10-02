@@ -50,6 +50,14 @@ export type OfferInput<F> = {
   queuedAt: number;
   maxWaitMs: number;
   fire: F;
+  /**
+   * The input is an interrupt's stash of a fire that was already playing:
+   * any entry of its group still waiting arrived after it began, so the
+   * stash yields — it is dropped, superseded by that entry, rather than
+   * superseding it. Without it, a cut line would replace the newer line of
+   * its group that waited behind it.
+   */
+  yieldsToGroup?: boolean;
 };
 
 export type QueueDropReason =
@@ -120,13 +128,22 @@ export class PendingQueue<F> {
 
   offer(input: OfferInput<F>, now: number): OfferResult<F> {
     const drops = this.expire(now);
+    const { yieldsToGroup, ...fields } = input;
+    const newer = yieldsToGroup === true ? this.entries.find((e) => e.group === input.group) : undefined;
+
+    if (newer !== undefined) {
+      const entry: QueuedFire<F> = { ...fields, after: null, seq: this.seq++ };
+      drops.push({ entry, reason: { kind: "superseded", by: newer.id } });
+
+      return { drops, position: null, size: this.entries.length, behind: null };
+    }
 
     for (const old of this.entries.filter((e) => e.group === input.group)) {
       this.removeEntry(old);
       drops.push({ entry: old, reason: { kind: "superseded", by: input.id } });
     }
 
-    const entry: QueuedFire<F> = { ...input, after: null, seq: this.seq++ };
+    const entry: QueuedFire<F> = { ...fields, after: null, seq: this.seq++ };
     const leader = this.ordered().find((e) => this.waitsBehind(entry.id, e.id));
 
     if (leader !== undefined) entry.after = leader.id;

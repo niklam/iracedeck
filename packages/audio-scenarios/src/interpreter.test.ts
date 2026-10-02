@@ -3636,6 +3636,23 @@ describe("bounded pending queue (issue #1185)", () => {
     expect(heard()).toEqual(["a", "x", "b", "c", "d", "e"]);
   });
 
+  it("(12b) an interrupt's stash yields to a newer fire of its group already waiting: the newer line plays, the cut one never returns", () => {
+    define("a", WEIGHT.NORMAL, { supersedeGroup: "ahead" });
+    define("b", WEIGHT.NORMAL, { supersedeGroup: "ahead" });
+    define("x", WEIGHT.SAFETY, { queueable: false, interrupt: true });
+
+    engine.fire("q.a"); // plays
+    engine.fire("q.b"); // the newer line of the group waits behind it
+    engine.fire("q.x"); // cuts a; its stash must not replace b
+
+    expect(mockLogger.debug).toHaveBeenCalledWith('Scenario "q.a" dropped — superseded by "q.b"');
+    expect(mockLogger.debug).not.toHaveBeenCalledWith('Scenario "q.b" dropped — superseded by "q.a"');
+
+    flushVoiceAndSfx(audio);
+
+    expect(heard()).toEqual(["a", "x", "b"]);
+  });
+
   it("(13) disabling a contract removes its waiting entry; its follower stays and plays", () => {
     holdBus();
     define("a", WEIGHT.NORMAL);
