@@ -109,6 +109,12 @@ iRacing can also switch autofuel on by itself as you reach the pit approach, cle
 
 The engineer also calls out every iRacing-reported pit-service status transition during the stop itself — "crew working", "all done", positioning corrections ("too far left, line it up", etc.), and "crew can't fix that this stop" — so you can keep your eyes on the windscreen and react by ear.
 
+## When several calls come at once
+
+The engineer speaks one line at a time. A call that comes up while he is talking, or while the spotter is calling a car alongside, waits its turn instead of being lost, and when several calls are waiting the more urgent one goes first. Calls that pile up in a busy moment, such as a crash that brings out a full-course caution, all play in turn.
+
+Two things keep the radio from falling behind. A newer call replaces a waiting one that it makes out of date: a newer fuel estimate replaces the one still waiting, and a disqualification replaces a waiting black flag. And a call that can't be spoken within a few seconds of its moment is skipped, so you never hear a line about something that has already passed. News that stays true for longer waits longer: a penalty flag, the damage heads-up and the tire wear report wait up to half a minute for the radio, the full-course caution calls up to twenty seconds, and an incident call ten seconds.
+
 ## Start Lights
 
 On a **standing start** the Race Engineer walks you through the gantry sequence so you can keep your eyes on the lights and your hands on the wheel. The moment the gantry shows its ready state the engineer says *"Lights. Get ready to go."*, and *"Go, go, go!"* the instant the lights drop and the race is live. Both calls are **critical and interrupt** any chatter in progress so nothing buries them at the most time-sensitive moment. (Nothing is spoken when the lights go solid red — by then the start is moments away and a callout would land too late to act on.)
@@ -188,7 +194,7 @@ iRacing only updates tire wear while the car is in its pit box: the readings are
 
 The report only follows a stop you drove into. Leaving the garage at the start of a session, or driving out after a tow or a reset into your box, says nothing — those tires have not run a stint. It works in every session type, practice included, where stint length is being judged, and stays silent while you are watching a replay or when iRacing gives no tire-wear figures for your car. If you drive back onto pit road before the exit readback comes due, that stop's report is dropped along with it.
 
-The report waits its turn behind the exit readback rather than talking over it. If a more urgent call — the spotter, say, as you rejoin traffic — is on the radio when they come due, both wait for it and then play in order, the readback first. It has its own switch: turning off **Pit exit readback** does not silence it — the report then plays on its own, about four and a half seconds after you leave pit road.
+The report waits its turn behind the exit readback rather than talking over it. If a more urgent call — the spotter, say, as you rejoin traffic — is on the radio when they come due, both wait for it and then play in order, the readback first. A call that comes up while the readback is playing waits its turn too, and the report still follows. It has its own switch: turning off **Pit exit readback** does not silence it — the report then plays on its own, about four and a half seconds after you leave pit road.
 
 One opt-in lives under **Race Engineer Callouts → Pit Service** in the Settings window, on by default:
 
@@ -198,7 +204,7 @@ One opt-in lives under **Race Engineer Callouts → Pit Service** in the Setting
 
 Drivers focused on the racing line can miss small impacts — a tap on the wall, an inside-line bump. The Race Engineer fires a spoken heads-up the first time iRacing reports damage that requires repair, so you know to consider a pit stop without having to look away from the track. The callout fires once on each clean → damaged transition (after a short debounce window that filters frame-rate flicker), and re-fires after a repair if you pick up new damage later.
 
-The heads-up waits its turn rather than being lost: if the spotter is calling a car alongside, or another call is on the radio, it plays as soon as the radio is free — unless a more urgent call that is also waiting, such as a caution call, takes its place. When the same crash also costs you an incident, you hear the [incident call](#incident-callouts) first and the damage heads-up right after it. If the damage has been repaired by the time it would play, the engineer says nothing.
+The heads-up waits its turn rather than being lost: if the spotter is calling a car alongside, or another call is on the radio, it plays as soon as its turn comes, even when the crash brings out a full-course caution and several calls are waiting at once (see [When several calls come at once](#when-several-calls-come-at-once)). When the same crash also costs you an incident, you hear the [incident call](#incident-callouts) first and the damage heads-up after it. If the damage has been repaired by the time it would play, the engineer says nothing.
 
 ## Incident callouts
 
@@ -215,7 +221,7 @@ When iRacing charges you with an incident, the Race Engineer tells you what it s
 
 The spoken count is **the value iRacing actually scores for the incident** — the Sporting Code value of the detected incident category, resolved per discipline, so heavy car contact is announced as four points on pavement but two points in dirt racing. iRacing scores a multi-stage crash as one incident that escalates to its worst outcome: go off track and end up in the wall a few seconds later and the whole thing is a single two-point incident, not one plus two. The engineer follows that model — each escalation announces the incident's full current value, and a worse outcome that lands after an earlier stage was already announced corrects it, cutting the earlier line off mid-sentence if it's still playing. If no matching count line exists for the active voice, the engineer describes the contact without naming a number.
 
-**An incident call waits for the radio instead of being lost.** A collision with another car nearly always happens while the spotter is calling that car alongside, and a crash often brings a caution call in the same few seconds. The incident call plays once the spotter has said clear or the call in progress has finished, followed by the [damage heads-up](#damage-heads-up) if the crash damaged the car. A more urgent call that is also waiting for the radio, such as a caution call, can still take its place. If the incident escalates while its first line is still waiting, you hear only the escalated line, with the corrected point count. A call still waiting ten seconds after the incident is dropped, because by then it could be mistaken for news of a new one.
+**An incident call waits for the radio instead of being lost.** A collision with another car nearly always happens while the spotter is calling that car alongside, and a crash often brings a caution call in the same few seconds. The incident call plays once the spotter has said clear or the call in progress has finished, followed by the [damage heads-up](#damage-heads-up) if the crash damaged the car. When the crash also brings out a full-course caution, the caution calls and the incident call all play, one after another. If the incident escalates while its first line is still waiting, you hear only the escalated line, with the corrected point count. A call still waiting ten seconds after the incident is dropped, because by then it could be mistaken for news of a new one.
 
 ## Pit Service Status
 
