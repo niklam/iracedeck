@@ -3618,6 +3618,22 @@ describe("bounded pending queue (issue #1185)", () => {
       }
     });
 
+    it("a reset engine's clear is unsubscribed: after a re-init on the same bus one change runs one clear", () => {
+      holdBus();
+      define("a", WEIGHT.NORMAL);
+      engine.fire("q.a"); // waits in the engine about to be reset
+
+      _resetAudioScenarios();
+      engine = initializeAudioScenarios(bus, audio, queueManifest, mockLogger as never);
+      holdBus();
+      define("a", WEIGHT.NORMAL);
+      engine.fire("q.a"); // waits in the new engine
+
+      bus.publishEvent("session.changed", { from: 1, to: 2 });
+
+      expect(debugLines().filter((l) => l === 'Scenario "q.a" dropped — session changed')).toHaveLength(1);
+    });
+
     it("a queueable line playing across the change and cut afterwards is not stashed", () => {
       define("a", WEIGHT.NORMAL);
       define("x", WEIGHT.SAFETY, { queueable: false, interrupt: true });

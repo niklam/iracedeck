@@ -624,6 +624,8 @@ class ScenarioEngine implements IScenarioEngine {
    * per fire would be a warn per flag.
    */
   private readonly warnedFrameAborts = new Set<string>();
+  /** Unsubscribes the session-change clear; called by `dispose`. */
+  private readonly unsubscribeSessionChanged: () => void;
 
   constructor(
     eventBus: IEventBus,
@@ -645,8 +647,34 @@ class ScenarioEngine implements IScenarioEngine {
     // order) — the session-start and race-start lines that fire on that
     // event are deferred into an already-cleared queue, not cleared by it.
     // A redefined contract unsubscribes and subscribes again, behind this.
-    // There is no teardown: the engine lives as long as the plugin.
-    this.eventBus.subscribe("session.changed", () => this.clearQueuesForSessionChange());
+    // The plugin's engine lives as long as the plugin; `dispose` is for a
+    // reset (`_resetAudioScenarios`) that builds another on the same bus.
+    this.unsubscribeSessionChanged = this.eventBus.subscribe("session.changed", () =>
+      this.clearQueuesForSessionChange(),
+    );
+  }
+
+  /**
+   * Detach the engine from the event bus and stop its timers: the
+   * session-change clear, every contract's subscription and pending
+   * `triggerDelay` / `settle` timer, and every bus's pending hold. Without
+   * it, a second engine on the same bus would run alongside the first —
+   * one `session.changed` clearing twice (issue #1185).
+   */
+  dispose(): void {
+    this.unsubscribeSessionChanged();
+
+    for (const entry of this.scenarios.values()) {
+      entry.unsubscribe?.();
+      entry.unsubscribe = null;
+
+      if (entry.pendingTriggerTimer !== null) {
+        clearTimeout(entry.pendingTriggerTimer);
+        entry.pendingTriggerTimer = null;
+      }
+    }
+
+    for (const state of this.busState.values()) this.clearPendingHold(state);
   }
 
   /**
@@ -2916,5 +2944,6 @@ export function isAudioScenariosInitialized(): boolean {
 
 /** @internal Exported for test isolation only. */
 export function _resetAudioScenarios(): void {
+  engine?.dispose();
   engine = null;
 }
