@@ -715,6 +715,7 @@ class ScenarioEngine implements IScenarioEngine {
     this.scenarios.set(s.id, entry);
     this.markScriptsDirty();
     this.warnCrossBusQueueBehind(entry);
+    this.warnQueueBehindCycle(entry);
 
     const { errors, warnings } = validateScenario(
       s,
@@ -768,6 +769,54 @@ class ScenarioEngine implements IScenarioEngine {
       this.logger.warn(
         `Scenario "${other.raw.id}" queueBehind names "${s.id}" on bus ${s.bus}, not its own bus ${other.raw.bus} — the relation never matches`,
       );
+    }
+  }
+
+  /**
+   * Two contracts that each wait behind the other would both sit in the
+   * queue, each held by the other, until they expire (issue #1185): the
+   * queue never links them into a loop, but the drain serves neither while
+   * the other waits. Warned once, at the registration that closes the
+   * cycle: the walk follows `queueBehind` from this contract through the
+   * registered contracts on its own bus (a cross-bus relation never
+   * matches) and warns when it comes back here. Never an error: each
+   * relation is valid on its own.
+   */
+  private warnQueueBehindCycle(entry: CompiledScenario): void {
+    const s = entry.raw;
+    const seen = new Set<string>();
+    const walk = (id: string, path: readonly string[]): readonly string[] | null => {
+      if (id === s.id) return path;
+
+      if (seen.has(id)) return null;
+
+      seen.add(id);
+      const named = this.scenarios.get(id);
+
+      if (named === undefined || named.raw.bus !== s.bus) return null;
+
+      for (const next of named.raw.queueBehind ?? []) {
+        const found = walk(next, [...path, next]);
+
+        if (found !== null) return found;
+      }
+
+      return null;
+    };
+
+    for (const id of s.queueBehind ?? []) {
+      // Naming itself is validation's error, not a cycle.
+      if (id === s.id) continue;
+
+      const cycle = walk(id, [s.id, id]);
+
+      if (cycle !== null) {
+        this.logger.warn(
+          `Scenario "${s.id}" queueBehind forms a cycle (${cycle.map((c) => `"${c}"`).join(" → ")}) — those fires wait for each other until they expire`,
+        );
+
+        return;
+      }
     }
   }
 

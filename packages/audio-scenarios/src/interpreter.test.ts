@@ -2866,6 +2866,54 @@ describe("queueBehind (issue #1108)", () => {
     });
   });
 
+  describe("(E) a queueBehind cycle says so once at registration (issue #1185)", () => {
+    const CYCLE_WARNING =
+      'Scenario "test.leader" queueBehind forms a cycle ("test.leader" → "test.follower" → "test.leader") — those fires wait for each other until they expire';
+
+    it("warns at the registration that closes a direct cycle", () => {
+      defineFollower(); // names test.leader, which is not registered yet
+
+      expect(mockLogger.warn).not.toHaveBeenCalled();
+
+      defineLeader({ queueBehind: ["test.follower"] });
+
+      expect(mockLogger.warn).toHaveBeenCalledTimes(1);
+      expect(mockLogger.warn).toHaveBeenCalledWith(CYCLE_WARNING);
+      expect(mockLogger.error).not.toHaveBeenCalled();
+    });
+
+    it("warns for a longer cycle too", () => {
+      defineFollower(); // follower → leader
+      defineHeavy({ queueBehind: ["test.follower"] }); // heavy → follower
+      defineLeader({ queueBehind: ["test.heavy"] }); // leader → heavy closes it
+
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        'Scenario "test.leader" queueBehind forms a cycle ("test.leader" → "test.heavy" → "test.follower" → "test.leader") — those fires wait for each other until they expire',
+      );
+    });
+
+    it("stays quiet for a chain that does not close, and for a cycle across buses", () => {
+      defineFollower(); // follower → leader
+      defineLeader(); // leader names nothing
+      defineHeavy({ queueBehind: ["test.follower"] }); // heavy → follower → leader
+
+      expect(mockLogger.warn).not.toHaveBeenCalled();
+
+      engine.defineScenario({
+        id: "test.cross",
+        channel: AudioChannel.SFX,
+        bus: AudioBus.Background,
+        queueable: true,
+        queueBehind: ["test.heavy"],
+        sequence: [FUEL],
+      });
+      vi.mocked(mockLogger.warn).mockClear(); // the cross-bus warning, pinned in (D)
+      defineHeavy({ queueBehind: ["test.cross"] });
+
+      expect(mockLogger.warn).not.toHaveBeenCalledWith(expect.stringContaining("forms a cycle"));
+    });
+  });
+
   describe("(3) a follower is never stranded when its leader does not take the bus at replay", () => {
     it("because the leader's expansion aborts", () => {
       let speakable = true;
