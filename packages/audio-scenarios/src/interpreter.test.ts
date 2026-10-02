@@ -3618,6 +3618,22 @@ describe("bounded pending queue (issue #1185)", () => {
       }
     });
 
+    it("a queueable line playing across the change and cut afterwards is not stashed", () => {
+      define("a", WEIGHT.NORMAL);
+      define("x", WEIGHT.SAFETY, { queueable: false, interrupt: true });
+
+      engine.fire("q.a"); // plays in the old session
+      bus.publishEvent("session.changed", { from: 1, to: 2 });
+      engine.fire("q.x"); // cuts it in the new one
+
+      expect(mockLogger.debug).toHaveBeenCalledWith('Scenario "q.a" dropped — session changed');
+      expect(debugLines().some((l) => l.startsWith('Scenario "q.a" pending'))).toBe(false);
+
+      flushVoiceAndSfx(audio);
+
+      expect(heard()).toEqual(["a", "x"]);
+    });
+
     it("also cancels an armed hold", () => {
       define("holder", WEIGHT.NORMAL, { queueable: false, pendingHoldMs: 2000 });
       define("a", WEIGHT.NORMAL);

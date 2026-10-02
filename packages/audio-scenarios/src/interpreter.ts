@@ -51,8 +51,9 @@
  *     take the bus at replay, leaves its follower to play as an ordinary
  *     entry.
  *   - `session.changed` clears every bus's queue (and any armed hold) before
- *     that event's own contracts are dispatched, so nothing from the session
- *     that ended is spoken in the new one.
+ *     that event's own contracts are dispatched, and a line still playing
+ *     from the session that ended is not stashed when an interrupt cuts it,
+ *     so nothing from that session is spoken in the new one.
  *
  * Channel routing for clip steps:
  *   - Every clip a FRAME plays goes on the SFX channel, whatever it is (#1064).
@@ -465,6 +466,11 @@ type ActiveFire = {
    * the `WaitingFire.event` shape.
    */
   event: SimEventOf<SimEventName> | null;
+  /**
+   * The engine's `sessionGeneration` when this fire took the bus (issue
+   * #1185). An interrupt that cuts it in a later session does not stash it.
+   */
+  sessionGeneration: number;
 };
 
 /** Which half of the radio frame an op came from (issue #1064). */
@@ -569,6 +575,13 @@ class ScenarioEngine implements IScenarioEngine {
    * happened to force the same coherent full replay.
    */
   private generation = 0;
+  /**
+   * Bumped by every `session.changed` (issue #1185). The queue clear on that
+   * event cannot reach a line still playing from the session that ended, so
+   * the fire records the generation it started in and an interrupt cutting
+   * it after the change drops it instead of stashing it.
+   */
+  private sessionGeneration = 0;
   /**
    * Per-voice state of the pools a script defines — the no-repeat tracker
    * and the manifest-derived members — keyed `(voice, pool name)`. Built
@@ -1594,9 +1607,13 @@ class ScenarioEngine implements IScenarioEngine {
    * ended is still true. Clear every bus's queue, logging each fire, and
    * cancel any armed hold — a hold whose drain would find the queue empty
    * anyway, cancelled so no timer outlives the reset. Runs before the
-   * event's own contracts (see the constructor).
+   * event's own contracts (see the constructor). It also opens a new
+   * `sessionGeneration`, so a line still playing from the old session is
+   * not stashed if an interrupt cuts it.
    */
   private clearQueuesForSessionChange(): void {
+    this.sessionGeneration++;
+
     for (const state of this.busState.values()) {
       this.clearPendingHold(state);
       this.logQueueDrops(state.queue.clear());
@@ -1622,11 +1639,21 @@ class ScenarioEngine implements IScenarioEngine {
    * replay the cut line over the newer one — and in a group whose `where:`
    * writes one stash a resolver reads (`opponent-flag-ahead`'s
    * `pendingAhead`), speak the newer fire's car in the older line.
+   *
+   * A fire that began before the last `session.changed` is not stashed at
+   * all: it is dropped, logged as `session changed` (see
+   * `sessionGeneration`).
    */
   private stashRunningIfQueueable(state: BusState, running: CompiledScenario | undefined): void {
     const active = state.activeFire;
 
     if (!active || !running || running.raw.queueable !== true) return;
+
+    if (active.sessionGeneration !== this.sessionGeneration) {
+      this.logger.debug(`Scenario "${active.id}" dropped — session changed`);
+
+      return;
+    }
 
     const resume =
       running.raw.resumable === true ? buildResumeState(active, this.getActiveVoice(), this.generation) : undefined;
@@ -1942,6 +1969,7 @@ class ScenarioEngine implements IScenarioEngine {
       pauseTimer: null,
       usedChannels: collectUsedChannels(ops),
       event,
+      sessionGeneration: this.sessionGeneration,
     };
 
     if (sourceStart > 0) {
