@@ -492,8 +492,8 @@ describe("PIT_STATUS_REPEAT_CONTRACTS triggers (engine-level, no opt-out gating)
 
 describe("PIT_STATUS_REPEAT_CONTRACTS speak-time validity gate (#951)", () => {
   // `queueable: false` does NOT drop a nag behind a LOWER-weight line: the
-  // engine sets it as the pending fire whenever `weight > runningWeight` and
-  // `interrupt !== true`, and a pending fire replays WITHOUT re-running
+  // engine queues it whenever `weight > runningWeight` and `interrupt !==
+  // true`, and a queued fire replays WITHOUT re-running
   // `where:`. So a nag queued behind the (CHATTER-weight, long) pit-service
   // readback could speak after the driver had already corrected. Each nag's
   // contract carries a `speakGate` (issue #1138 — a script `if` until then)
@@ -600,9 +600,8 @@ describe("the gate is the contract's, not the script's (issue #1138)", () => {
 
   /**
    * Hold the bus with a line the nag OUTRANKS but may not cut: `queueable:
-   * false` does not drop a nag behind a lower-weight line — the engine parks
-   * it as the bus's pending fire (`weight > runningWeight && interrupt !==
-   * true`) — which is the pit-service readback's shape and the only way a nag
+   * false` does not drop a nag behind a lower-weight line — the engine queues
+   * it for the bus (`weight > runningWeight && interrupt !== true`) — which is the pit-service readback's shape and the only way a nag
    * reaches the drain at all.
    */
   function occupyVoiceBus(): void {
@@ -628,7 +627,7 @@ describe("the gate is the contract's, not the script's (issue #1138)", () => {
     // without it this block could quietly degrade into the one above, where
     // the gate is asked at fire time and the silence proves much less.
     expect(mockLogger.debug).toHaveBeenCalledWith(
-      `Scenario "${NAG_ID}" pending — waiting for bus (higher weight, no interrupt)`,
+      `Scenario "${NAG_ID}" pending (1 of 1) — waiting for bus (higher weight, no interrupt)`,
     );
 
     simMocks.latestTelemetry = { PlayerCarPitSvStatus: live };

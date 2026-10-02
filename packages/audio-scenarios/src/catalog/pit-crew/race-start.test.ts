@@ -887,7 +887,9 @@ describe("settle wait for the conditions (issue #1284)", () => {
     // The brief settled at +5 s into a busy bus: it is parked, not dropped,
     // and nothing of it has played yet.
     expect(greetings()).toEqual([]);
-    expect(mockLogger.debug).toHaveBeenCalledWith('Scenario "pit-crew.race-start" pending — deferred (bus busy)');
+    expect(mockLogger.debug).toHaveBeenCalledWith(
+      'Scenario "pit-crew.race-start" pending (1 of 1) — deferred (bus busy)',
+    );
 
     flush(audio);
 
