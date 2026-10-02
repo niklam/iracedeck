@@ -75,6 +75,8 @@ export function runAudioPreview(kind: AudioPreviewKind, logger: ILogger): void {
 
       if (outcome === "built-in") {
         logger.debug("Background test played the built-in radio frame — the selected voice has none to offer");
+      } else if (outcome === "busy") {
+        logger.debug("Background test skipped — the Race Engineer is on the radio");
       }
 
       break;

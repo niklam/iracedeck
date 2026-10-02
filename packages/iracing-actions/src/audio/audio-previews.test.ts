@@ -100,6 +100,10 @@ describe("runAudioPreview", () => {
     mocks.playBackgroundTest.mockReturnValueOnce("built-in");
     runAudioPreview("background", logger);
     expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining("built-in radio frame"));
+
+    mocks.playBackgroundTest.mockReturnValueOnce("busy");
+    runAudioPreview("background", logger);
+    expect(logger.debug).toHaveBeenLastCalledWith(expect.stringContaining("on the radio"));
   });
 
   it("exposes the kinds and a type guard so a page-supplied string can be validated", () => {
