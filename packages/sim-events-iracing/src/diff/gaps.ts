@@ -6,8 +6,12 @@
  * class-standings neighbors from the canonical frozen order, computes the
  * live gaps the `getLiveGaps()` accessor exposes (switching to a chaser-ETA
  * reading when the pair's leading car is stopped/crawling), maintains the
- * continuous display trend (a smoothed gap-rate EMA), and emits the
- * relevance-driven `gap.trendChanged` / `gap.thresholdCrossed` events.
+ * continuous display trend (a smoothed within-lap gap-rate EMA, display
+ * only), and emits the relevance-driven `gap.trendChanged` /
+ * `gap.thresholdCrossed` events. The trend callouts read a lap-scale rate
+ * instead — the gap now against the gap at the same spot one lap earlier
+ * (issue #1285) — because a within-lap rate measures one sector's profile,
+ * not the battle.
  *
  * All math primitives are pure and live in `@iracedeck/iracing-sdk`
  * `gap-utils.ts`; this module only sequences them against state.
@@ -48,8 +52,30 @@ export const GAP_CONTACT_REANNOUNCE_FACTOR = 0.5;
 export const GAP_BREAKAWAY_MIN_RATE_S_PER_LAP = 0.5;
 /** Breakaways only matter while the gap is still battle-sized (seconds). */
 export const GAP_BREAKAWAY_MAX_GAP_S = 10;
-/** A breakaway episode re-arms once the pair closes back under this (seconds). */
+/** A breakaway episode re-arms once the pair closes back under this (seconds)... */
 export const GAP_BREAKAWAY_REARM_GAP_S = 5;
+/**
+ * ...AND the lap rate has fallen below this (s/lap) — the opening is over at
+ * lap scale (issue #1285). Half the announce bar: the same hysteresis the
+ * closing threat's recede test uses.
+ */
+export const GAP_BREAKAWAY_REARM_RATE_S_PER_LAP = GAP_BREAKAWAY_MIN_RATE_S_PER_LAP / 2;
+/**
+ * Lap-over-lap gap changes averaged into the callouts' lap rate (issue
+ * #1285): the last 10 checkpoints, 0.2 lap of track.
+ */
+export const GAP_LAP_RATE_WINDOW_SAMPLES = 10;
+/** Lap-over-lap changes required before the lap rate reads anything but null. */
+export const GAP_LAP_RATE_MIN_SAMPLES = 5;
+/**
+ * ETA-regime crawl bar (issue #1285): the leading car's recent average speed
+ * (progress rate × track length over {@link GAP_RATE_WINDOW_S}) must be
+ * below this (m/s, ~29 km/h) as well as below half the chaser's. A 3 s
+ * average through a braking zone includes the braking and the exit, so it
+ * stays above the apex speed of even a slow hairpin; a wrecked, stopped or
+ * limping car falls below it.
+ */
+export const GAP_ETA_LEADER_CRAWL_MPS = 8;
 /**
  * Default minimum gap movement (seconds) IN THE ANNOUNCED DIRECTION from the
  * gap's extreme since the side's last announcement (issue #933 follow-up):
@@ -81,7 +107,7 @@ export const GAP_GLITCH_JUMP_S = 0.5;
  * on the way back, so a frame or two of bad data can never confirm.
  */
 export const GAP_STABLE_TICKS_FOR_CALLOUTS = 10;
-/** Player-progress spacing (laps) between display-trend rate samples. */
+/** Player-progress spacing (laps) between checkpoints (display-trend samples and lap-history readings). */
 export const GAP_CHECKPOINT_STEP = 0.02;
 /** Fallback alert threshold when no resolver is wired (seconds). */
 export const GAP_DEFAULT_ALERT_THRESHOLD_S = 1.0;
@@ -140,19 +166,26 @@ const GAP_RATE_WINDOW_S = 3;
  * pair is this much slower than the chaser, the crossing-time gap no longer
  * tracks the pair's true time-distance (both `now` and the lookup advance at
  * the chaser's pace), so the gap becomes the chaser's ETA over the
- * separation at its current pace — counting down as it closes.
+ * separation at its current pace — counting down as it closes. The relative
+ * test alone also passes for a leader braking into a hairpin while the
+ * chaser is still flat on the straight (issue #1285), so the regime
+ * additionally needs the leader under {@link GAP_ETA_LEADER_CRAWL_MPS}.
  */
 const GAP_ETA_LEADER_SLOW_FACTOR = 0.5;
 /** Minimum chaser rate (laps/s) for the ETA regime — both-cars-stopped stays crossing-time. */
 const GAP_ETA_CHASER_MIN_RATE = 0.002;
 
-/** EMA smoothing factor for the display gap rate (~last third of a lap). */
+/** EMA smoothing factor for the display gap rate (~0.13 lap of memory). Display only. */
 const GAP_TREND_EMA_ALPHA = 0.15;
 /** Rate samples required before the display trend classifies. ~0.1 lap. */
 const GAP_TREND_MIN_SAMPLES = 5;
-/** A sampling break wider than this (laps) restarts the rate chain. */
+/**
+ * A sampling break wider than this (laps) restarts the display rate chain,
+ * and refuses a lap-history lookup whose bracketing readings are further
+ * apart than this.
+ */
 const GAP_TREND_MAX_STEP_LAPS = 0.1;
-/** Single rate samples beyond this (s/lap) are glitches — skipped. */
+/** Single rate samples (display or lap-over-lap) beyond this (s/lap) are glitches — skipped. */
 const GAP_TREND_MAX_RATE_S_PER_LAP = 20;
 
 type Side = "ahead" | "behind";
@@ -183,6 +216,19 @@ export function diffGaps(
    * follow-up). Plugins wire the `gapCalloutMinChangeSeconds` setting.
    */
   getMinChangeSeconds: () => number = () => GAP_DEFAULT_MIN_CHANGE_S,
+  /**
+   * Track length in meters (issue #1285), for the ETA regime's crawl bar.
+   * `null` (unknown) means the regime never engages: a stopped leader then
+   * shows the frozen crossing-time gap rather than risking a false reading.
+   */
+  trackLengthMeters: number | null = null,
+  /**
+   * Whether a full-course caution is out this tick (issue #1285): the
+   * translator's `cautionPhase !== "none"`. The pace laps pack the field up
+   * and the restart strings it out again, so neither lap is comparable with
+   * the one before it — the lap history is cleared on every caution tick.
+   */
+  underFullCourseCaution: boolean = false,
 ): void {
   const lc = telemetry.CarIdxLapCompleted as number[] | undefined;
   const pct = telemetry.CarIdxLapDistPct as number[] | undefined;
@@ -207,6 +253,8 @@ export function diffGaps(
     // snapshots go blank.
     state.gapLiveAhead = null;
     state.gapLiveBehind = null;
+    state.gapEtaReadingAhead = false;
+    state.gapEtaReadingBehind = false;
 
     return;
   }
@@ -241,6 +289,8 @@ export function diffGaps(
   if (!Number.isFinite(playerLc) || playerLc! < 0 || !Number.isFinite(playerPct) || playerPct! < 0) {
     state.gapLiveAhead = null;
     state.gapLiveBehind = null;
+    state.gapEtaReadingAhead = false;
+    state.gapEtaReadingBehind = false;
 
     return;
   }
@@ -289,6 +339,23 @@ export function diffGaps(
 
   const checkpointDue =
     state.gapLastCheckpointProgress < 0 || playerProgress - state.gapLastCheckpointProgress >= GAP_CHECKPOINT_STEP;
+  const trackLength =
+    typeof trackLengthMeters === "number" && Number.isFinite(trackLengthMeters) && trackLengthMeters > 0
+      ? trackLengthMeters
+      : null;
+
+  // The lap history records only laps a later lap can fairly be compared
+  // with (issue #1285). Not lap 1: the start queue and the field sorting
+  // itself out inflate and deflate the gaps, so a lap-2 comparison against
+  // it would call a catch or a breakaway that is only the start unwinding —
+  // trend calls therefore begin on lap 3. And nothing under a full-course
+  // caution: the pack-up and the restart are not racing.
+  const lapHistoryOpen = !isFirstLap(telemetry) && !underFullCourseCaution;
+
+  if (!lapHistoryOpen) {
+    resetLapHistory(state, "ahead");
+    resetLapHistory(state, "behind");
+  }
 
   state.gapLiveAhead = computeSide(
     state,
@@ -299,6 +366,8 @@ export function diffGaps(
     sessionTime,
     playerPaused,
     checkpointDue,
+    trackLength,
+    lapHistoryOpen,
   );
   state.gapLiveBehind = computeSide(
     state,
@@ -309,6 +378,8 @@ export function diffGaps(
     sessionTime,
     playerPaused,
     checkpointDue,
+    trackLength,
+    lapHistoryOpen,
   );
 
   if (checkpointDue) state.gapLastCheckpointProgress = playerProgress;
@@ -327,8 +398,12 @@ function computeSide(
   sessionTime: number,
   playerPaused: boolean,
   checkpointDue: boolean,
+  trackLengthMeters: number | null,
+  lapHistoryOpen: boolean,
 ): GapNeighborState | null {
   const idx = side === "ahead" ? state.gapAheadIdx : state.gapBehindIdx;
+
+  setEtaReading(state, side, false);
 
   if (idx < 0) return null;
 
@@ -339,7 +414,13 @@ function computeSide(
 
   if (neighborLc === undefined || neighborLc < 0 || neighborPct === undefined || neighborPct < 0) {
     // Neighbor has no live progress this tick (blink / not in world) — hold
-    // identity but show no numbers.
+    // identity but show no numbers. A due checkpoint here is one the side
+    // cannot sample, so it breaks both rate chains like any other.
+    if (checkpointDue) {
+      resetTrendRate(state, side);
+      resetLapHistory(state, side);
+    }
+
     return { carIdx: idx, gapSeconds: null, lapDelta: 0, trend: null };
   }
 
@@ -362,9 +443,12 @@ function computeSide(
     if (crossed !== null) gapSeconds = Math.max(0, sessionTime - crossed);
 
     // ETA regime: when the pair's LEADING car is dramatically slower than
-    // the chaser (stopped, wrecked, crawling), the crossing-time reading
-    // goes insensitive — replace it with the chaser's ETA over the
-    // separation at its current pace, which counts down as it closes.
+    // the chaser AND crawling in absolute terms (stopped, wrecked, limping),
+    // the crossing-time reading goes insensitive — replace it with the
+    // chaser's ETA over the separation at its current pace, which counts
+    // down as it closes. The crawl bar keeps a leader braking into a hairpin
+    // out of it (issue #1285): there the crossing-time gap is correct, and
+    // the ETA would underestimate it by seconds. No track length, no regime.
     const leaderIdx = side === "ahead" ? idx : playerCarIdx;
     const chaserIdx = side === "ahead" ? playerCarIdx : idx;
     const leaderProgress = side === "ahead" ? neighborProgress : playerProgress;
@@ -376,7 +460,9 @@ function computeSide(
       chaserRate !== null &&
       chaserRate > GAP_ETA_CHASER_MIN_RATE &&
       leaderRate !== null &&
-      leaderRate < chaserRate * GAP_ETA_LEADER_SLOW_FACTOR
+      leaderRate < chaserRate * GAP_ETA_LEADER_SLOW_FACTOR &&
+      trackLengthMeters !== null &&
+      leaderRate * trackLengthMeters < GAP_ETA_LEADER_CRAWL_MPS
     ) {
       etaRegime = true;
       gapSeconds = Math.max(0, leaderProgress - chaserProgress) / chaserRate;
@@ -389,15 +475,24 @@ function computeSide(
   if (etaRegime) {
     // The chaser is closing on a slow/stopped leader by construction — the
     // trend IS "closing". The EMA chain restarts clean when the regime ends
-    // so a cross-regime delta can never poison the smoothed rate.
+    // so a cross-regime delta can never poison the smoothed rate, and the
+    // lap history goes too: a lap-later comparison against an ETA reading
+    // would compare two different measurements.
+    setEtaReading(state, side, true);
     resetTrendRate(state, side);
+    resetLapHistory(state, side);
 
     if (!suppressed) trend = "closing";
   } else if (!suppressed && lapDelta === 0 && gapSeconds !== null) {
     // Continuous display trend: smoothed gap rate from adjacent checkpoint
     // deltas (~2 s apart, where track-position noise is negligible),
-    // projected to seconds-per-lap. Live within ~0.1 lap of any reset.
-    if (checkpointDue) updateTrendRate(state, side, playerProgress, gapSeconds);
+    // projected to seconds-per-lap. Live within ~0.1 lap of any reset. The
+    // same checkpoint feeds the callouts' lap history.
+    if (checkpointDue) {
+      updateTrendRate(state, side, playerProgress, gapSeconds);
+
+      if (lapHistoryOpen) updateLapRate(state, side, playerProgress, gapSeconds);
+    }
 
     const ema = side === "ahead" ? state.gapRateEmaAhead : state.gapRateEmaBehind;
     const samples = side === "ahead" ? state.gapRateSamplesAhead : state.gapRateSamplesBehind;
@@ -407,8 +502,10 @@ function computeSide(
     }
   } else if (checkpointDue) {
     // A due checkpoint the side can't sample breaks the rate chain — a pit
-    // visit or data gap must not leak a stale rate into the next stint.
+    // visit or data gap must not leak a stale rate into the next stint —
+    // and the lap history with it: the next lap is compared with nothing.
     resetTrendRate(state, side);
+    resetLapHistory(state, side);
   }
 
   return { carIdx: idx, gapSeconds, lapDelta, trend };
@@ -468,6 +565,118 @@ function resetTrendRate(state: TranslatorState, side: Side): void {
   }
 }
 
+/**
+ * Record one checkpoint in a side's lap history and fold its lap-over-lap
+ * change into the lap-rate window (issue #1285). The change is this gap
+ * minus the gap at `progress − 1`, interpolated between the two history
+ * readings that bracket that point — the same spot one lap earlier, so the
+ * pair's within-lap sector profile cancels out. The lookup counts only when
+ * the bracket is contiguous (≤ {@link GAP_TREND_MAX_STEP_LAPS} apart), which
+ * is what refuses a comparison across a plain sampling gap.
+ */
+function updateLapRate(state: TranslatorState, side: Side, progress: number, gapSeconds: number): void {
+  let history = side === "ahead" ? state.gapLapHistoryAhead : state.gapLapHistoryBehind;
+  const last = history.length > 0 ? history[history.length - 1]! : undefined;
+
+  // Checkpoints only ever advance (a backwards jump resets the side first);
+  // anything else is a discontinuity the history must not straddle.
+  if (last !== undefined && progress <= last.progress) {
+    resetLapHistory(state, side);
+    history = side === "ahead" ? state.gapLapHistoryAhead : state.gapLapHistoryBehind;
+  }
+
+  history.push({ progress, gapSeconds });
+
+  // Keep exactly one reading at or before the lookup point: it is the lower
+  // bracket now, and every later lookup lies further on.
+  const target = progress - 1;
+
+  while (history.length > 1 && history[1]!.progress <= target) history.shift();
+
+  const gapThen = lapHistoryGapAt(history, target);
+  const window = side === "ahead" ? state.gapLapRateWindowAhead : state.gapLapRateWindowBehind;
+
+  if (gapThen === null) {
+    // No same-spot reading a lap ago (not a lap of history yet, or a
+    // sampling gap there): the window's older changes describe track that
+    // is no longer the last 0.2 lap, so the lap rate goes dark rather than
+    // keep serving them.
+    window.length = 0;
+
+    return;
+  }
+
+  const change = gapSeconds - gapThen;
+
+  // A single absurd change is a data glitch — skip it rather than poisoning
+  // the window, the same guard the display chain uses.
+  if (!Number.isFinite(change) || Math.abs(change) > GAP_TREND_MAX_RATE_S_PER_LAP) return;
+
+  window.push(change);
+
+  while (window.length > GAP_LAP_RATE_WINDOW_SAMPLES) window.shift();
+}
+
+/**
+ * The gap at `target` interpolated from the two history readings bracketing
+ * it, or null when they don't or are not contiguous. The prune in
+ * {@link updateLapRate} drops `history[0]` while `history[1]` is at or
+ * before the target, so only `history[0]` and `history[1]` can bracket it.
+ */
+function lapHistoryGapAt(history: { progress: number; gapSeconds: number }[], target: number): number | null {
+  if (history.length < 2) return null;
+
+  const a = history[0]!;
+  const b = history[1]!;
+
+  if (a.progress > target || b.progress < target) return null;
+
+  const span = b.progress - a.progress;
+
+  if (span <= 0 || span > GAP_TREND_MAX_STEP_LAPS) return null;
+
+  return a.gapSeconds + ((target - a.progress) / span) * (b.gapSeconds - a.gapSeconds);
+}
+
+/**
+ * The callouts' lap rate for a side (s/lap; negative = closing): the mean of
+ * its recent lap-over-lap changes, or null until the window holds
+ * {@link GAP_LAP_RATE_MIN_SAMPLES}.
+ */
+function lapRate(state: TranslatorState, side: Side): number | null {
+  const window = side === "ahead" ? state.gapLapRateWindowAhead : state.gapLapRateWindowBehind;
+
+  if (window.length < GAP_LAP_RATE_MIN_SAMPLES) return null;
+
+  let sum = 0;
+
+  for (const change of window) sum += change;
+
+  return sum / window.length;
+}
+
+/** Clear one side's lap history and lap-rate window — the next lap is silent. */
+function resetLapHistory(state: TranslatorState, side: Side): void {
+  if (side === "ahead") {
+    state.gapLapHistoryAhead = [];
+    state.gapLapRateWindowAhead = [];
+  } else {
+    state.gapLapHistoryBehind = [];
+    state.gapLapRateWindowBehind = [];
+  }
+}
+
+/** Record whether a side's live gap this tick is an ETA-regime reading. */
+function setEtaReading(state: TranslatorState, side: Side, eta: boolean): void {
+  if (side === "ahead") state.gapEtaReadingAhead = eta;
+  else state.gapEtaReadingBehind = eta;
+}
+
+/** Whether the player is on the race's opening lap (`LapCompleted` below 1). */
+function isFirstLap(telemetry: TelemetryData): boolean {
+  return typeof telemetry.LapCompleted === "number" && telemetry.LapCompleted < 1;
+}
+
 /** Whether the neighbor's own state suppresses trend/threshold processing. */
 function neighborSuppressed(telemetry: TelemetryData, idx: number): boolean {
   const onPitRoad = telemetry.CarIdxOnPitRoad as boolean[] | undefined;
@@ -483,6 +692,8 @@ function neighborSuppressed(telemetry: TelemetryData, idx: number): boolean {
 /** Reset one side's trend/threshold state (neighbor identity changed). */
 function resetSideState(state: TranslatorState, side: Side): void {
   resetTrendRate(state, side);
+  resetLapHistory(state, side);
+  setEtaReading(state, side, false);
 
   if (side === "ahead") {
     state.gapContactAnnouncedLapsAhead = null;
@@ -516,20 +727,33 @@ function resetSideState(state: TranslatorState, side: Side): void {
  *
  * Opening: a breakaway — a small gap (≤ {@link GAP_BREAKAWAY_MAX_GAP_S})
  * being opened hard (≥ {@link GAP_BREAKAWAY_MIN_RATE_S_PER_LAP}) — fires
- * once per episode; re-arms when the pair closes back into battle range. A
- * big gap opening further is never news.
+ * once per episode; re-arms when the pair is back in battle range
+ * (≤ {@link GAP_BREAKAWAY_REARM_GAP_S}) with the opening over at lap scale
+ * (< {@link GAP_BREAKAWAY_REARM_RATE_S_PER_LAP}). A big gap opening further
+ * is never news.
  *
  * Threshold: an episode arms only once the gap has been seen beyond
  * threshold + hysteresis (so a nose-to-tail start can't fire at the green),
  * fires `gap.thresholdCrossed` once when the live gap first drops below the
  * threshold, and re-arms only past the hysteresis point.
  *
+ * The closing projection, the breakaway bar and both re-arms read the LAP
+ * RATE (issue #1285): the mean recent change of the gap against the gap at
+ * the same spot one lap earlier. The display EMA is a within-lap rate — a
+ * car ahead that is faster down a straight reads as "opening hard" whatever
+ * the lap-over-lap gap does — so it never drives a callout. The price is a
+ * lap of same-spot history before any trend call: lap 1 is never recorded,
+ * so none before lap 3, and none for a lap after a neighbor change, a pit
+ * visit, a full-course caution or any other break. The
+ * threshold call does not need the rate and works from the first stable
+ * reading.
+ *
  * All of it is evaluated continuously (no lap-boundary sampling) and stays
  * silent while either car is on pit road / off track, for lapped neighbors,
- * and while the smoothed rate has no signal. A per-side minimum-movement
- * gate additionally holds any trend announcement until the gap has moved at
- * least `getMinChangeSeconds()` from the side's last one, either direction —
- * the anti-ping-pong rule.
+ * and while the lap rate has no signal. A per-side minimum-movement gate
+ * additionally holds any trend announcement until the gap has moved at
+ * least `getMinChangeSeconds()` from the side's extreme since its last one,
+ * in the announced direction — the anti-ping-pong rule.
  */
 function maybeEmitCalloutEvents(
   state: TranslatorState,
@@ -546,9 +770,10 @@ function maybeEmitCalloutEvents(
   // no announcement history yet is treated as if its last announcement
   // happened at the assumed grid spacing, and on lap 1 the threshold call is
   // held to the same movement gate — only genuine movement from the grid
-  // situation announces. A real lap-1 breakaway still fires the moment it
-  // clears the gate.
-  const firstLap = typeof telemetry.LapCompleted === "number" && telemetry.LapCompleted < 1;
+  // situation announces. Trend calls need no such hold: they read the lap
+  // history, which never records lap 1 (issue #1285), but the extremes the
+  // grid seeds still gate the first one on lap 3.
+  const firstLap = isFirstLap(telemetry);
 
   for (const side of ["ahead", "behind"] as const) {
     // Stability guard: skip a side entirely while its gap hasn't evolved
@@ -559,8 +784,8 @@ function maybeEmitCalloutEvents(
     // Fold this tick's gap into the side's since-last-announcement extremes
     // BEFORE either processor reads them. Both the threshold gate and the
     // relevance gates compare against these extremes, so folding inside the
-    // relevance path (which is EMA-warm-only) would leave them stale — or
-    // never seeded at all — whenever the trend chain is cold, silently
+    // relevance path (which needs a warm lap rate) would leave them stale —
+    // or never seeded at all — whenever the lap history is cold, silently
     // suppressing calls the user un-gated by setting the movement to 0.
     const extremes = foldSideExtremes(state, telemetry, side, playerPaused, firstLap);
 
@@ -588,6 +813,12 @@ type GapExtremes = { min: number; max: number };
  * (player or neighbor in the pits / off track) are excluded deliberately: a
  * pit-inflated gap folded as the "peak" would make every later closing call
  * pass the consistency gate for free.
+ *
+ * An ETA-regime reading (issue #1285) is not folded either — it is an
+ * estimate against a stopped or crawling leader, and folded as the "trough"
+ * it would let the crossing-time reading that follows pass the
+ * pulling-away gate for free. The extremes are handed on as they stand, so
+ * the threshold episode's lap-1 test still has them.
  */
 function foldSideExtremes(
   state: TranslatorState,
@@ -602,7 +833,19 @@ function foldSideExtremes(
 
   if (!live || idx < 0 || suppressed || live.lapDelta !== 0 || live.gapSeconds === null) return null;
 
+  const etaReading = side === "ahead" ? state.gapEtaReadingAhead : state.gapEtaReadingBehind;
+
+  if (etaReading) return currentExtremes(state, side);
+
   return foldExtremes(state, side, live.gapSeconds, firstLap);
+}
+
+/** A side's since-last-announcement extremes as they stand, or null when unseeded. */
+function currentExtremes(state: TranslatorState, side: Side): GapExtremes | null {
+  const min = side === "ahead" ? state.gapMinSinceAnnounceAhead : state.gapMinSinceAnnounceBehind;
+  const max = side === "ahead" ? state.gapMaxSinceAnnounceAhead : state.gapMaxSinceAnnounceBehind;
+
+  return min === null || max === null ? null : { min, max };
 }
 
 /**
@@ -647,13 +890,16 @@ function processRelevance(
 ): void {
   const live = side === "ahead" ? state.gapLiveAhead : state.gapLiveBehind;
   const idx = side === "ahead" ? state.gapAheadIdx : state.gapBehindIdx;
-  const ema = side === "ahead" ? state.gapRateEmaAhead : state.gapRateEmaBehind;
-  const samples = side === "ahead" ? state.gapRateSamplesAhead : state.gapRateSamplesBehind;
   const suppressed = playerPaused || (idx >= 0 && neighborSuppressed(telemetry, idx));
 
   if (!live || idx < 0 || suppressed || live.lapDelta !== 0 || live.gapSeconds === null || !extremes) return;
 
-  if (ema === null || samples < GAP_TREND_MIN_SAMPLES) return;
+  // Lap-scale rate (issue #1285). Null until the pair has a lap of same-spot
+  // history — no trend call, and no re-arm either: both latches hold
+  // through a break in the history rather than flipping on missing data.
+  const rate = lapRate(state, side);
+
+  if (rate === null) return;
 
   const gap = live.gapSeconds;
   // Consistency gate (issue #933 follow-up): a call must agree with the
@@ -671,7 +917,7 @@ function processRelevance(
 
   // ── Closing threat: announce by projected time-to-contact. ──
   const announcedAt = side === "ahead" ? state.gapContactAnnouncedLapsAhead : state.gapContactAnnouncedLapsBehind;
-  const closingRate = -ema;
+  const closingRate = -rate;
 
   if (closingRate >= GAP_CLOSING_MIN_RATE_S_PER_LAP) {
     const lapsToContact = gap / closingRate;
@@ -684,7 +930,7 @@ function processRelevance(
     if (due) {
       emit({
         event: "gap.trendChanged",
-        data: { side, direction: "closing", gapSeconds: gap, ratePerLap: ema, lapsToContact, carIdx: idx },
+        data: { side, direction: "closing", gapSeconds: gap, ratePerLap: rate, lapsToContact, carIdx: idx },
       });
 
       resetExtremes(state, side, gap);
@@ -702,21 +948,23 @@ function processRelevance(
   // ── Breakaway: a small gap being opened hard, once per episode. ──
   const breakawayAnnounced = side === "ahead" ? state.gapBreakawayAnnouncedAhead : state.gapBreakawayAnnouncedBehind;
 
-  if (breakawayAnnounced && gap <= GAP_BREAKAWAY_REARM_GAP_S && ema < GAP_BREAKAWAY_MIN_RATE_S_PER_LAP) {
-    // Back into battle range with the breakaway over — a later one is news
-    // again. The rate condition keeps a just-announced episode latched while
-    // the gap is still small and still opening.
+  if (breakawayAnnounced && gap <= GAP_BREAKAWAY_REARM_GAP_S && rate < GAP_BREAKAWAY_REARM_RATE_S_PER_LAP) {
+    // Back into battle range with the breakaway over at lap scale — a later
+    // one is news again. The rate condition keeps a just-announced episode
+    // latched while the gap is still small and still opening; with the bar
+    // at half the announce rate (issue #1285), an opening hovering at the
+    // bar cannot re-arm and re-announce lap after lap.
     if (side === "ahead") state.gapBreakawayAnnouncedAhead = false;
     else state.gapBreakawayAnnouncedBehind = false;
   } else if (
     !breakawayAnnounced &&
     openingConsistent &&
-    ema >= GAP_BREAKAWAY_MIN_RATE_S_PER_LAP &&
+    rate >= GAP_BREAKAWAY_MIN_RATE_S_PER_LAP &&
     gap <= GAP_BREAKAWAY_MAX_GAP_S
   ) {
     emit({
       event: "gap.trendChanged",
-      data: { side, direction: "opening", gapSeconds: gap, ratePerLap: ema, carIdx: idx },
+      data: { side, direction: "opening", gapSeconds: gap, ratePerLap: rate, carIdx: idx },
     });
 
     resetExtremes(state, side, gap);
@@ -743,6 +991,17 @@ function foldExtremes(state: TranslatorState, side: Side, gap: number, firstLap:
   }
 
   return { min, max };
+}
+
+/** Forget a side's extremes; the next folded reading reseeds them. */
+function clearExtremes(state: TranslatorState, side: Side): void {
+  if (side === "ahead") {
+    state.gapMinSinceAnnounceAhead = null;
+    state.gapMaxSinceAnnounceAhead = null;
+  } else {
+    state.gapMinSinceAnnounceBehind = null;
+    state.gapMaxSinceAnnounceBehind = null;
+  }
 }
 
 /** Restart a side's extremes at the just-announced gap. */
@@ -812,7 +1071,14 @@ function processThresholdEpisode(
       data: { side, gapSeconds: live.gapSeconds, thresholdSeconds: threshold, carIdx: idx },
     });
 
-    resetExtremes(state, side, live.gapSeconds);
+    // An ETA reading is an estimate against a stopped or crawling leader,
+    // not a crossing-time gap (issue #1285): seeding the extremes with it
+    // would make it the trough a later crossing-time reading is measured
+    // against. Clear them instead; the next folded reading reseeds them.
+    const etaReading = side === "ahead" ? state.gapEtaReadingAhead : state.gapEtaReadingBehind;
+
+    if (etaReading) clearExtremes(state, side);
+    else resetExtremes(state, side, live.gapSeconds);
 
     if (side === "ahead") state.gapThresholdArmedAhead = false;
     else state.gapThresholdArmedBehind = false;
