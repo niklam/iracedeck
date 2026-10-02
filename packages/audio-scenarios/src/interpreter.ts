@@ -31,8 +31,9 @@
  *     #1185): heaviest first, then the longest-waiting, then arrival order.
  *     A lighter newcomer waits rather than being dropped, and a heavier one
  *     evicts nothing. A newer fire replaces a waiting one of its
- *     `supersedeGroup` (the contract id by default); above
- *     `PENDING_QUEUE_CAPACITY` roots the lightest, then oldest, is dropped;
+ *     `supersedeGroup` (the contract id by default); an arrival above
+ *     `PENDING_QUEUE_CAPACITY` roots drops the lightest, then oldest — one
+ *     entry per arrival, so a follower that drop frees stays;
  *     a fire not started within its `maxQueueWaitMs` of its FIRST deferral
  *     is dropped when the queue is next read. Every such drop is logged.
  *   - The bus drains its queue one fire at a time as it idles, replaying

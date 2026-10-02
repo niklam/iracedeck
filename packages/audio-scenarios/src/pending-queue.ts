@@ -11,9 +11,20 @@
  * survive (DQ over black, go over ready, an incident escalation, the newest
  * readout). Pacing is the per-entry max wait, checked whenever the queue is
  * read; the cap only bounds a pathological burst.
+ *
+ * One arrival drops at most one entry. When the victim is a leader, the
+ * followers its drop frees become roots and may leave the queue over the
+ * cap until it drains — and a removal for any other reason (a disable, a
+ * group superseded) is not followed by re-applying the cap, for the same
+ * reason. The excess stays bounded: a leader's followers can only be
+ * contracts whose `queueBehind` names it.
  */
 
-/** How many waiting roots one bus keeps; followers do not count. */
+/**
+ * How many waiting roots one arrival may bring the queue to before it drops
+ * one; followers do not count. Followers freed by that drop may leave the
+ * roots above it until the queue drains.
+ */
 export const PENDING_QUEUE_CAPACITY = 4;
 
 export type QueuedFire<F> = {
@@ -128,13 +139,15 @@ export class PendingQueue<F> {
       if (e !== entry && this.waitsBehind(e.id, entry.id) && !this.isAncestorOf(e, entry)) e.after = entry.id;
     }
 
-    let roots = this.roots();
+    // One arrival drops at most one victim. Not a loop: dropping a leader
+    // frees its followers into roots, and a recount would then take one of
+    // them too (#1288's damage line behind the incident it follows).
+    const roots = this.roots();
 
-    while (roots.length > this.capacity) {
+    if (roots.length > this.capacity) {
       const victim = roots.reduce((v, e) => (byVictim(e, v) < 0 ? e : v));
       this.removeEntry(victim);
       drops.push({ entry: victim, reason: { kind: "queue-full" } });
-      roots = this.roots();
     }
 
     const position = this.ordered().indexOf(entry);

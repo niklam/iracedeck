@@ -108,6 +108,20 @@ describe("PendingQueue (issue #1185)", () => {
     expect(ids(q)).toEqual(["w", "l", "p", "incident", "damage"]);
   });
 
+  it("one arrival drops at most one entry: a follower its drop frees stays, one root over the cap", () => {
+    const q = new PendingQueue<string>(relations({ damage: ["incident"] }));
+
+    for (const [i, id] of ["waving", "lineup", "pace-car"].entries()) q.offer(input(id, 70, i), i);
+
+    q.offer(input("incident", 50, 3), 3);
+    q.offer(input("damage", 50, 4), 4);
+    const r = q.offer(input("fuel", 50, 5), 5);
+
+    expect(r.drops).toEqual([{ entry: expect.objectContaining({ id: "incident" }), reason: { kind: "queue-full" } }]);
+    expect(ids(q)).toEqual(["waving", "lineup", "pace-car", "damage", "fuel"]);
+    expect(r.position).toBe(5);
+  });
+
   it("next() expires entries past their max wait and returns the head", () => {
     const q = new PendingQueue<string>(relations({}));
     q.offer(input("old", 70, 0, { maxWaitMs: 8000 }), 0);

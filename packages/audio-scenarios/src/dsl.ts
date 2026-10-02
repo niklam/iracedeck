@@ -229,9 +229,9 @@ export type ScenarioContract = {
    * replay when the bus next idles (`true`) instead of dropping it outright
    * (`false`, the default). A deferred fire waits in the bus's queue (issue
    * #1185): heaviest first, then the longest-waiting, at most
-   * `PENDING_QUEUE_CAPACITY` (4) of them — the lightest, then the oldest, is
-   * dropped above that — and the bus drains it one fire at a time as it
-   * idles. A lighter fire no longer loses to a heavier waiting one on
+   * `PENDING_QUEUE_CAPACITY` (4) of them — an arrival above that drops the
+   * lightest, then the oldest, one entry per arrival — and the bus drains it
+   * one fire at a time as it idles. A lighter fire no longer loses to a heavier waiting one on
    * arrival, nor a heavier one evict it; both wait. A waiting fire of the
    * same `supersedeGroup` is replaced by the newer one, and a fire that has
    * not started within its `maxQueueWaitMs` of being deferred is dropped.
