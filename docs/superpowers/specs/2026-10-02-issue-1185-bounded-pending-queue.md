@@ -61,6 +61,8 @@ Overrides set by this issue, all 30 000 ms, each a sustained state whose line st
 
 The six incident lines take `maxQueueWaitMs = INCIDENT_SPEAK_MAX_AGE_MS` (10 000 ms), matching their event-age `speakGate`. NORMAL lines wait behind SAFETY ones, and in #1288's burst the incident waits behind three caution calls: with two-second lines that is about 8.3 s, which the default would expire, while their own staleness rule says the line is still true. The max wait now also bounds an incident line that was cut by an interrupt and replays `admitted`, which closes the gap #1211 §1 accepted.
 
+The gated caution calls take `maxQueueWaitMs = 20000` (Niklas, 2026-10-02): every `caution-*` contract except the CRITICAL `caution-restart`, and `flag-caution-waving`. In the #1288 log's own case (the holder ends before the caution flag), the incident line takes the bus first and pace-car-out waits about 8.5 s with the bundled voice's clip lengths, past the default. Each of these calls re-checks at speak time that the caution is still out, and the lineup and follow calls also check that the lineup still holds, so they stay true for as long as they wait.
+
 Everything else takes the default.
 
 **Why 8 s.** A Race Engineer line runs two to four seconds, so 8 s is two or three lines of backlog: enough to clear #1288's burst, short enough that nothing is spoken more than a few seconds after its moment. What would set it properly: across race sessions with debug logging on, the distribution of `queuedAt` to replay for every line that played, and of the expiry log line.
@@ -81,15 +83,13 @@ Groups set by this issue:
 | `start-light` | `start-light-ready`, `start-light-go` | #867: go replaces ready |
 | `incident` | the six `incident-*` | #1211 §3 escalation; `lastIncidentPoints` lockstep |
 | `readout` | the five `readout-*` | #466: the newest press wins |
-| `opponent-pit` | the five `opponent-pit-*` | `pendingNearby` holds one value |
 | `opponent-flag-ahead` | the four flag-ahead contracts | `pendingAhead` holds one value |
 | `fuel` | the twelve `fuel-laps-left-*` | a newer lap count supersedes an older one |
 | `pit-window` | `pit-window-opened`, `pit-window-closed` | the newest state wins |
 | `furled` | `flag-furled`, `flag-furled-cleared` | a clear supersedes a waiting warning |
-| `gap` | `gap-trend`, `gap-threshold` | one gap line at a time |
 | `position` | `position-change`, `race-status`, `overtake-gained-position`, `overtake-lost-position` | one position line at a time (they share a 20 s cooldown claim) |
 
-The caution calls keep their own ids, so a caution burst queues in full. The qualifying lap-invalidation contract keeps its id: a newer approval replaces the older one, as today.
+The caution calls keep their own ids, so a caution burst queues in full. Two groups first proposed here were dropped during implementation (Niklas, 2026-10-02). `opponent-pit`: only `opponent-pit-nearby` reads the `pendingNearby` stash, and its own id already keeps it to one waiting fire; grouping all five would have reduced a queued pit train to its last line. `gap`: a newer CHATTER trend line would have replaced a waiting NORMAL threshold call. Without the group both wait, the threshold call plays first, and the shared gap cooldown claimed in the gate refuses the second line, so it is still one gap line at a time. The qualifying lap-invalidation contract keeps its id: a newer approval replaces the older one, as today.
 
 The implementation verifies each assignment against the contract's stash and gate before applying it; a group that turns out wrong is a spec amendment, not an improvisation.
 
