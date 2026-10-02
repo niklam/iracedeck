@@ -25,14 +25,15 @@
  * harness-firable while only a driver in a race hears them.
  *
  * **Eight of the nine also re-check the caution at SPEAK time**, and that is
- * the price of being queueable rather than a belt on a brace. A pending fire
- * replays WITHOUT its `where:` being re-evaluated, and the pending slot has no
- * TTL: a call parked behind a busy bus waits for the bus to idle, however long
- * that takes. So every line here could otherwise drain onto a green-flag track
+ * the price of being queueable rather than a belt on a brace. A queued fire
+ * replays WITHOUT its `where:` being re-evaluated, and it may wait up to the
+ * engine's max wait (eight seconds by default, issue #1185) for a busy bus to
+ * idle — long enough for a caution to end in. So every line here could
+ * otherwise drain onto a green-flag track
  * — "we've caught up with the pace car" seconds after the restart, which is
  * the shape #1127 was filed about. `family: "flag"` does not close it, because
  * same-family preemption replaces the IN-FLIGHT fire and never touches a
- * pending one; nor does `triggerDelay`, which moves the fire decision rather
+ * waiting one; nor does `triggerDelay`, which moves the fire decision rather
  * than the moment of speaking. `speakGate` is the code-owned second look
  * (#1138), asked after the script expands and before the ops take the bus, on
  * the first attempt and on every replay. `restart` is the exception and must
@@ -89,7 +90,7 @@
  * one. The gate and not a `where:`, because the gate is the one place a claim
  * may be committed (#1137): it runs after the script expanded and right
  * before the ops take the bus, while a `where:` record would mark a car
- * named for a call later dropped or evicted. The record is tagged with
+ * named for a call later dropped. The record is tagged with
  * `getCautionEpisode()`'s id, which never repeats, so a car named in an
  * earlier caution — or session — never counts. Before anything is named the
  * change has nothing to judge against while the follow call can still name
@@ -97,8 +98,8 @@
  * speaks in (it reads the lineup live). Otherwise it judges against the
  * caution's first readable lineup: the driver who switched the follow call
  * off still hears the first genuine change, and so does one whose follow call
- * never played (the plugin started mid-caution, or the call lost the pending
- * slot) once the field is caught. Switched off, the one-to-go call's
+ * never played (the plugin started mid-caution, or the call was dropped from
+ * the bus's queue) once the field is caught. Switched off, the one-to-go call's
  * gate never runs and records nothing, so the re-form change speaks its lane
  * and car — the only line that user then gets about the re-form.
  *
@@ -106,13 +107,18 @@
  * `queueBehind` on its siblings, for two engine facts. Same-family
  * preemption replaces the in-flight fire wholesale, regardless of weight —
  * that is how a change cut two to green and one to go mid-sentence. And a
- * fire that finds the bus busy is parked in the single pending slot WITHOUT
- * its gate being asked, and `setPending` replaces on equal weight — that is
- * how a change evicted a waiting one-to-go call it would have refused itself
- * at replay. One notch below, it can never evict a waiting caution call; and
- * `queueBehind` keeps a sibling arriving from evicting a waiting change in
- * turn, playing the pair in order instead. A genuine change arriving
- * mid-call is heard after it, the wait every lower caution line has.
+ * fire that finds the bus busy is queued WITHOUT its gate being asked: under
+ * the engine's one pending slot (until #1185) an equal-weight fire replaced
+ * the one waiting there, which is how a change evicted a waiting one-to-go
+ * call it would have refused itself at replay. The bus's queue replaces
+ * nothing for weight, but it plays the heavier first and drops the lightest
+ * when it is full: one notch below, a change always waits behind a waiting
+ * caution call and is the one dropped, never it. `queueBehind` keeps the
+ * change behind any sibling still waiting — one that arrives after it
+ * included, and on an idle bus held by a floor or a hold — so the pair plays
+ * in order and the change's gate is asked only once the sibling has named
+ * its car. A genuine change arriving mid-call is heard after it, the wait
+ * every lower caution line has.
  *
  * `triggerDelay` holds the decision {@link CAUTION_LINEUP_CHANGE_DELAY_MS};
  * a fresh event replaces the held one, so a reshuffle over several ticks is
@@ -197,11 +203,12 @@
  * the flag is at most a tick behind it) and Green Held, which on a short
  * oval lands close to the 35% point — and same-family preemption would cut
  * whichever was in flight. So: no family, `queueable`, and a weight one notch
- * below theirs, so it waits behind either rather than cutting it and never
- * evicts either from the single pending slot. If it cannot fit before the
- * green, its `speakGate` drops it, which is the right outcome: a position
- * read out under green is not the position on the last caution lap. The
- * lineup change shares the same choice for the same reason, and adds a
+ * below theirs, so it waits behind either rather than cutting it: the bus's
+ * queue plays the heavier first whichever arrived first, and when the queue
+ * is full the lighter is the one dropped (issue #1185). If it cannot fit
+ * before the green, its `speakGate` drops it, which is the right outcome: a
+ * position read out under green is not the position on the last caution lap.
+ * The lineup change shares the same choice for the same reason, and adds a
  * `queueBehind` the other two do without: it can arrive at any stage of the
  * caution, beside any sibling.
  */
@@ -309,11 +316,14 @@ const POSITION_NUMBER_GROUP = "position-number";
  * and the longer one sets the value. The pace rows land ~50 ms after the
  * caution flag in the capture (239.88 → 239.93), so the lineup is unreadable
  * on the flag's own tick — that alone would want a fraction of a second. The
- * binding reason is the single pending slot: this call and the caution
- * announcement ride the same event, and while the bus is held they compete for
- * that one slot. The lower weight above decides who loses; this delay makes
- * the contest rarer, by giving the announcement time to take the bus and drain
- * before the follow fire is even attempted. Two and a half seconds is about
+ * longer reason is the announcement: this call and the caution announcement
+ * ride the same event, and the delay gives the announcement time to take the
+ * bus and finish before the follow fire is even attempted, so the follow call
+ * comes as its own sentence rather than queued straight behind it. While the
+ * bus is held both wait in its queue and play in weight order — the
+ * announcement first, the follow call one notch lighter — so neither costs
+ * the other (issue #1185; until then the two competed for one pending slot
+ * and this delay made that contest rarer). Two and a half seconds is about
  * the length of the bundled announcement plus its frame.
  */
 export const CAUTION_FOLLOW_DELAY_MS = 2500;
@@ -373,8 +383,8 @@ function cautionContract(
     // thrown" report #1127 was filed with.
     queueable: true,
     // …and being queueable is exactly why every one of them needs the
-    // speak-time re-check below. See the module header: a pending fire's
-    // `where:` is never re-evaluated and the pending slot has no TTL, so
+    // speak-time re-check below. See the module header: a queued fire's
+    // `where:` is never re-evaluated and it may wait several seconds, so
     // without this a caution line can drain onto a green-flag track.
     speakGate: stillOutGate(getCautionPhase),
   };
@@ -438,8 +448,9 @@ export function buildCautionContracts({
    * name the car itself — switched on, and the field still waving, the only
    * phase it speaks in — else the caution's first readable lineup. Past the
    * waving phase a follow call that never played (the plugin started
-   * mid-caution, the driver was not in the car at the flag, the call lost the
-   * pending slot, or the pack has no follow line) has nothing more to say, so
+   * mid-caution, the driver was not in the car at the flag, the call was
+   * dropped from the bus's queue, or the pack has no follow line) has nothing
+   * more to say, so
    * waiting for it would leave every genuine change silent until two to green
    * or one to go.
    */
@@ -468,14 +479,15 @@ export function buildCautionContracts({
       ...cautionContract("follow", getCautionPhase),
       family: undefined,
       // One notch BELOW the rest of the family, and deliberately not the
-      // family default — do not "tidy" it back. `BusState.pending` is a single
-      // slot and `setPending` replaces on `weight >= pending.weight`, silently.
-      // This call and `pit-crew.flag-caution-waving` ride the same event, so
-      // with the bus held (measured: the spotter held it at +0.8 s) the
-      // announcement is sitting in that slot when this one arrives. A tie would
-      // evict it. Between "Caution! Caution! Yellow flag is out." and a
-      // navigational detail, the announcement is the one that must never be
-      // lost — which is the whole point of having made it queueable.
+      // family default — do not "tidy" it back. This call and
+      // `pit-crew.flag-caution-waving` ride the same event, so with the bus
+      // held (measured: the spotter held it at +0.8 s) both wait in the bus's
+      // queue. The queue plays the heavier first and, when it is full, drops
+      // the lighter (issue #1185): one notch lighter, this call always comes
+      // after the announcement and is the one lost if anything must be.
+      // Between "Caution! Caution! Yellow flag is out." and a navigational
+      // detail, the announcement is the one that must never be lost — which
+      // is the whole point of having made it queueable.
       weight: WEIGHT.SAFETY - 1,
       triggerDelay: CAUTION_FOLLOW_DELAY_MS,
       // The `CautionWaving` bit re-raises on every re-approach of the incident
@@ -537,13 +549,13 @@ export function buildCautionContracts({
       // Outside the flag family and one notch below it, like the follow and
       // position calls — see the module header, finding 2: same-family
       // preemption cut the phase call this change duplicated, and a fire
-      // parked on a busy bus meets no gate before it takes the pending slot,
-      // so only weight keeps it from evicting a waiting caution call. Do not
-      // "tidy" either back.
+      // parked on a busy bus meets no gate until it replays, so only weight
+      // keeps it behind a waiting caution call (and the one dropped from a
+      // full queue, not the caution call). Do not "tidy" either back.
       family: undefined,
       weight: WEIGHT.SAFETY - 1,
-      // One notch below would lose a waiting change to any sibling arriving;
-      // waiting BEHIND them instead plays the pair in order (#1108).
+      // Wait BEHIND any sibling still waiting, whatever arrives first, so the
+      // pair plays in order (#1108).
       queueBehind: LINEUP_CHANGE_QUEUE_BEHIND,
       triggerDelay: CAUTION_LINEUP_CHANGE_DELAY_MS,
       speakGate: {
@@ -578,8 +590,8 @@ export function buildCautionContracts({
       ...cautionContract("position", getCautionPhase),
       // Outside the flag family and one notch below it — see the module
       // header's closing paragraph: it must wait behind the one-to-go call
-      // and Green Held, never cut them, and never evict them from the
-      // pending slot. Do not "tidy" either back.
+      // and Green Held, never cut them, and be the one dropped rather than
+      // either when the queue is full. Do not "tidy" either back.
       family: undefined,
       weight: WEIGHT.SAFETY - 1,
       description:

@@ -139,11 +139,12 @@ let lastAnnounced: { sessionNum: number | undefined; lap: number } | null = null
  * A stash in `where:` is the allowed shape (read by the gate during the very
  * fire the `where:` approved); the claim itself stays in the gate. It is keyed
  * PER FIRE rather than held in one slot because approvals and speak-time gates
- * do not alternate: a fire parked as pending can be replaced in the engine's
- * one pending slot by a later incident its `where:` also approved, or a later
- * approval can be dropped behind a heavier fire already waiting there, and one
- * shared slot hands one fire's lap to the other. A `WeakMap` also needs no
- * cleanup for the approvals that are dropped: they go with their envelope.
+ * do not alternate: a fire waiting in the bus's queue can be replaced there by
+ * a later incident its `where:` also approved (the same contract id, so the
+ * same supersede group), or a later approval can expire or be dropped from a
+ * full queue, and one shared slot hands one fire's lap to the other. A
+ * `WeakMap` also needs no cleanup for the approvals that are dropped: they go
+ * with their envelope.
  */
 let pendingQualifyingSnapshots = new WeakMap<SimEventOf<SimEventName>, QualifyingInvalidationSnapshot>();
 
@@ -394,7 +395,7 @@ export function buildQualifyingInvalidationContract(
       admit: (ctx) => {
         // Stash, then check-and-claim: the snapshot THIS fire's `where:`
         // approved, found by the envelope the engine carried through the
-        // pending slot and consumed here so it serves one fire. No stash —
+        // queue and consumed here so it serves one fire. No stash —
         // an imperative `fire(id)`, which carries no event and never ran the
         // `where:` — admits nothing. The re-check refuses a same-lap fire that
         // raced in behind one that already latched the lap, so the callout

@@ -114,7 +114,7 @@ const EVENT_OF: Record<CautionCalloutId, SimEventName> = {
 
 /**
  * The calls outside the flag family and one notch below it — each shares its
- * moment with a family-mate it must wait behind rather than cut or evict.
+ * moment with a family-mate it must wait behind rather than cut or overtake.
  */
 const BELOW_THE_FAMILY: readonly CautionCalloutId[] = ["follow", "lineup-changed", "position"];
 
@@ -440,7 +440,7 @@ describe("the caution contracts", () => {
     }
   });
 
-  it("weighs the follow, lineup-change and position calls one notch below the rest, so a tie in the pending slot costs them and not the call they follow", () => {
+  it("weighs the follow, lineup-change and position calls one notch below the rest, so they wait behind the call they follow and are the ones dropped from a full queue", () => {
     for (const id of BELOW_THE_FAMILY) expect(contract(id).weight, id).toBe(WEIGHT.SAFETY - 1);
 
     for (const id of IDS.filter((x) => !BELOW_THE_FAMILY.includes(x) && x !== "restart")) {
@@ -463,8 +463,8 @@ describe("the caution contracts", () => {
       expect(contract(id).speakGate?.admit({} as never)).toBe(true);
 
       // The case the gate exists for: a queueable fire parked behind a busy bus
-      // replays without re-running `where:`, and the pending slot has no TTL,
-      // so by the time it drains the caution can be long over.
+      // replays without re-running `where:`, and it may wait several seconds,
+      // so by the time it drains the caution can be over.
       cautionPhase = "none";
       expect(contract(id).speakGate?.admit({} as never)).toBe(false);
       cautionPhase = "caught";
@@ -558,11 +558,11 @@ describe("the caution contracts", () => {
   it("holds the follow call, because the pace rows land after the flag and the announcement needs the bus first", () => {
     expect(contract("follow").triggerDelay).toBe(CAUTION_FOLLOW_DELAY_MS);
     // The rows land 50 ms after the flag, so that half of the reason would be
-    // satisfied by a fraction of a second. The binding half is the single
-    // pending slot: the hold has to outlast the caution announcement (the
-    // bundled clip is 2.95 s plus its frame) so the two rarely contend at all.
-    // It is a rarity knob, not the correctness one — the weight above is what
-    // decides a contest that does happen.
+    // satisfied by a fraction of a second. The longer half is the
+    // announcement: the hold outlasts it (the bundled clip is 2.95 s plus its
+    // frame) so the follow call comes as its own sentence rather than queued
+    // straight behind it. It is a pacing knob, not the correctness one — when
+    // both do wait, the weight above puts the announcement first (#1185).
     expect(CAUTION_FOLLOW_DELAY_MS).toBeGreaterThanOrEqual(2500);
   });
 
@@ -598,7 +598,7 @@ describe("the lineup-change call and the car last named (#1286)", () => {
     expect(contract("lineup-changed").triggerDelay).toBe(CAUTION_LINEUP_CHANGE_DELAY_MS);
   });
 
-  it("is scheduled to wait, never to cut or evict: no family, one notch below, queued behind every caution sibling but the restart", () => {
+  it("is scheduled to wait, never to cut or overtake: no family, one notch below, queued behind every caution sibling but the restart", () => {
     const change = contract("lineup-changed");
 
     expect(change.family).toBeUndefined();
@@ -619,8 +619,8 @@ describe("the lineup-change call and the car last named (#1286)", () => {
   });
 
   it("once the field is caught with nothing named, judges against the first readable lineup — a follow call that never played has nothing more to say", () => {
-    // The plugin started mid-caution, or the follow call lost the pending
-    // slot: waiting for it past the only phase it speaks in would leave every
+    // The plugin started mid-caution, or the follow call was dropped from the
+    // queue: waiting for it past the only phase it speaks in would leave every
     // genuine change silent until two to green or one to go.
     episodeNow = { id: 1, firstFollowCarIdx: 7 };
     const built = contracts();
@@ -1157,27 +1157,27 @@ describe("the follow call beside the caution flag's own line", () => {
     expect(played()).toEqual([CAUTION_CLIP, FOLLOW_CLIP]);
   });
 
-  // `BusState.pending` is ONE slot and `setPending` replaces on
-  // `weight >= pending.weight`, silently. Both calls ride the same event, so
-  // with the bus held — the capture measured the spotter holding it when the
-  // caution came out — they compete for that slot, and a tie would discard the
-  // safety announcement in favour of a navigational detail.
-  it("never evicts the caution announcement from the pending slot when the bus is held", () => {
+  // Both calls ride the same event, so with the bus held — the capture
+  // measured the spotter holding it when the caution came out — both wait in
+  // the bus's queue (issue #1185). The queue plays the heavier first: the
+  // safety announcement, then the navigational detail one notch below it.
+  it("plays both calls in weight order when the bus is held — the caution announcement first", () => {
     const { played, flush } = run({ hogBus: true });
 
     vi.advanceTimersByTime(CAUTION_FOLLOW_DELAY_MS + 1);
     flush();
 
-    expect(played()).toEqual([HOG_CLIP, CAUTION_CLIP]);
+    expect(played()).toEqual([HOG_CLIP, CAUTION_CLIP, FOLLOW_CLIP]);
   });
 
-  it("would evict it at the family's own weight — the positive control", () => {
-    const { played, flush } = run({ hogBus: true, followWeight: WEIGHT.SAFETY });
+  it("would play the follow call first if it outweighed the announcement — the positive control", () => {
+    // Weight, not arrival, decides the order: the announcement queued first.
+    const { played, flush } = run({ hogBus: true, followWeight: WEIGHT.SAFETY + 1 });
 
     vi.advanceTimersByTime(CAUTION_FOLLOW_DELAY_MS + 1);
     flush();
 
-    expect(played()).toEqual([HOG_CLIP, FOLLOW_CLIP]);
+    expect(played()).toEqual([HOG_CLIP, FOLLOW_CLIP, CAUTION_CLIP]);
   });
 
   it("would cut that line mid-word if it shared the flag family — the positive control", () => {
@@ -1203,9 +1203,12 @@ describe("the follow call beside the caution flag's own line", () => {
  * never fired.
  *
  * The load-bearing fact is the engine's, not the contract's: a fire that
- * finds the bus busy is parked in the pending slot WITHOUT its gate being
- * asked, so only the change's weight and its `queueBehind` keep it from
- * evicting a caution call already waiting there.
+ * finds the bus busy is queued WITHOUT its gate being asked, so only the
+ * change's weight and its `queueBehind` keep it from playing ahead of a
+ * caution call waiting with it — and so from being judged before that call
+ * has named its car. (Under the engine's one pending slot, until #1185, the
+ * same fire evicted the waiting call; the queue replaces nothing for
+ * weight.)
  */
 describe("the lineup-change call beside the calls that name the car (#1286)", () => {
   const VOICE = "test";
@@ -1428,7 +1431,7 @@ describe("the lineup-change call beside the calls that name the car (#1286)", ()
       r.flush();
     }
 
-    it("does not evict one to go from the pending slot, and is refused at replay — one to go named the car", () => {
+    it("waits behind one to go, and is refused at replay — one to go named the car", () => {
       const r = run();
 
       changeBehindWaitingOneToGo(r);
@@ -1436,14 +1439,14 @@ describe("the lineup-change call beside the calls that name the car (#1286)", ()
       expect(r.played()).toEqual([HOG_CLIP, ONE_TO_GO]);
     });
 
-    it("would evict it at the family's weight without the queue — the positive control (one to go is lost)", () => {
-      const r = run({ changeOverrides: { family: "flag", weight: WEIGHT.SAFETY, queueBehind: undefined } });
+    it("would play ahead of one to go if it outweighed it with no queueBehind — the positive control (the change is judged before the car is named)", () => {
+      const r = run({ changeOverrides: { weight: WEIGHT.SAFETY + 1, queueBehind: undefined } });
 
       changeBehindWaitingOneToGo(r);
 
-      // With nothing named, the change replays against the first lineup and
-      // speaks — in place of the one-to-go call it evicted.
-      expect(r.played()).toEqual([HOG_CLIP, CHANGE]);
+      // With nothing named, the change replays first against the first
+      // lineup and speaks — then one to go names the same car again.
+      expect(r.played()).toEqual([HOG_CLIP, CHANGE, ONE_TO_GO]);
     });
   });
 
@@ -1467,12 +1470,21 @@ describe("the lineup-change call beside the calls that name the car (#1286)", ()
       expect(r.played()).toEqual([HOG_CLIP, PACE_CAR_OUT, CHANGE]);
     });
 
-    it("would be evicted for good without the queue — the positive control", () => {
-      const r = run({ changeOverrides: { queueBehind: undefined } });
+    it("would go ahead of the sibling at the family's weight with no queueBehind — the positive control", () => {
+      // Equal weight, and the change waited longer: the queue plays it first.
+      const r = run({ changeOverrides: { weight: WEIGHT.SAFETY, queueBehind: undefined } });
 
       siblingArrivesBehindChange(r);
 
-      expect(r.played()).toEqual([HOG_CLIP, PACE_CAR_OUT]);
+      expect(r.played()).toEqual([HOG_CLIP, CHANGE, PACE_CAR_OUT]);
+    });
+
+    it("keeps the order through queueBehind alone at the family's weight", () => {
+      const r = run({ changeOverrides: { weight: WEIGHT.SAFETY } });
+
+      siblingArrivesBehindChange(r);
+
+      expect(r.played()).toEqual([HOG_CLIP, PACE_CAR_OUT, CHANGE]);
     });
   });
 

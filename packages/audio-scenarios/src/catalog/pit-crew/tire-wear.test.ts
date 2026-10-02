@@ -307,7 +307,14 @@ describe("TIRE_WEAR_CONTRACTS structure", () => {
     expect("sequence" in c).toBe(false);
   });
 
-  it("waits behind the exit readback — a registered readback contract — rather than competing with it for the pending slot (issue #1108)", () => {
+  it("waits up to 30 s for the bus — the stint summary stays true until the next stop (issue #1185)", () => {
+    const [c] = TIRE_WEAR_CONTRACTS;
+
+    expect(c.maxQueueWaitMs).toBe(30_000);
+    expect(c.supersedeGroup).toBeUndefined();
+  });
+
+  it("waits behind the exit readback — a registered readback contract — rather than going ahead of it in the bus's queue (issue #1108)", () => {
     const [c] = TIRE_WEAR_CONTRACTS;
 
     expect(c.queueBehind).toEqual(["pit-crew.pit-readback-exit"]);
@@ -588,7 +595,9 @@ describe("the tire wear report fires through the bundled script (issue #1108)", 
     // The spotter shares the Voice bus, and a car alongside as the car
     // rejoins holds it above both lines: the readback has to wait, and the
     // report — published right after it in the same tick, and the heavier of
-    // the two — would take its slot without `queueBehind`. A legacy scenario
+    // the two — would play ahead of it without `queueBehind` (the queue plays
+    // the heavier first; until #1185 it took the readback's one pending slot
+    // and the readback was never heard). A legacy scenario
     // stands in for the spotter call: the engine primitive the interpreter's
     // own tests use, with the spotter's weight, interrupt and bare frame.
     engine.defineScenario({

@@ -29,9 +29,10 @@
  * "The car ahead has gone black." mid-sentence with the next car's line (or
  * the aggregate tail). Leaving `family` undefined disables preemption
  * entirely, so with `interrupt: false` + `queueable: true` each line either
- * plays to completion, defers for the bus to idle, or is superseded in the
- * single pending slot by a newer fire — never chopped audio. Repeat-
- * protection lives in the translator, not here.
+ * plays to completion or waits in the bus's queue for its turn — never
+ * chopped audio. Only the four `ahead` lines replace each other while they
+ * wait (their shared stash, below); the others queue in turn (issue #1185).
+ * Repeat-protection lives in the translator, not here.
  *
  * **Weight by relation.** `track-ahead` (a flagged car the player is closing
  * on — the approaching-an-impaired-car safety case) fires at `WEIGHT.SAFETY`;
@@ -49,10 +50,12 @@
  * module-scope stash SHARED by all four subjects' `ahead` contracts, written
  * by whichever one fires from its own `where:` — AFTER the relation + flag
  * checks and the validity checks, and only when the opt-in wrappers already
- * passed. An event that fails its own contract's gates (wrong relation,
- * wrong flag, an invalid car/position, or an opt-in-suppressed subject)
- * never reaches the write, so it can never repoint a deferred ahead line at
- * the wrong car; only a fully-gated ahead fire — furled, black, meatball, or
+ * passed. The four share the `opponent-flag-ahead` supersede group, so only
+ * one of them ever waits and the stash is the one it speaks. An event that
+ * fails its own contract's gates (wrong relation, wrong flag, an invalid
+ * car/position, or an opt-in-suppressed subject) never reaches the write,
+ * so it can never repoint a deferred ahead line at the wrong car; only a
+ * fully-gated ahead fire — furled, black, meatball, or
  * disqualify alike — claims the shared stash, matching whichever subject's
  * line is about to be spoken. The number prefers a live read through the
  * injected resolver (the plugins wire `getLiveCarPosition`), taken in the
@@ -140,14 +143,24 @@ export function registerOpponentFlagVocabulary(
   );
 }
 
+/**
+ * The four `ahead` contracts' supersede group (issue #1185): they share the
+ * one `pendingAhead` stash, so only one of them may wait at a time — a newer
+ * ahead fire replaces a waiting one, and the stash it wrote is what the
+ * survivor speaks.
+ */
+const OPPONENT_FLAG_AHEAD_GROUP = "opponent-flag-ahead";
+
 function opponentFlagContract(
   id: string,
   weight: number,
   description: string,
   where: (e: SimEventOf<"opponentFlag.flagged">) => boolean,
+  supersedeGroup?: string,
 ): ScenarioContract {
   return {
     id,
+    supersedeGroup,
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
     base: "voice/{voice}",
@@ -188,36 +201,42 @@ function subjectRelationContract(subject: OpponentFlagCalloutId, relation: Oppon
   const description = `${RELATION_CAR[relation]} ${SUBJECT_MOMENT[subject]} in a race, between the green and the checkered flag.`;
 
   if (relation === "ahead") {
-    return opponentFlagContract(id, weight, description, (ev) => {
-      // relation + flag gate. `trigger` ("raised" vs "entered-range") is
-      // deliberately ignored — the spoken line reads identically either
-      // way; the payload keeps it for the harness/future use.
-      if (ev.data.relation !== "ahead" || ev.data.flag !== SUBJECT_TO_FLAG[subject]) return false;
+    return opponentFlagContract(
+      id,
+      weight,
+      description,
+      (ev) => {
+        // relation + flag gate. `trigger` ("raised" vs "entered-range") is
+        // deliberately ignored — the spoken line reads identically either
+        // way; the payload keeps it for the harness/future use.
+        if (ev.data.relation !== "ahead" || ev.data.flag !== SUBJECT_TO_FLAG[subject]) return false;
 
-      const { carIdx, position, isMultiClass } = ev.data;
+        const { carIdx, position, isMultiClass } = ev.data;
 
-      // No usable car/position → nothing to speak; reject before firing. A
-      // fractional position would build a `position-number/4.5` lookup
-      // with no clip behind it, so non-negative integers only (mirrors
-      // opponent-pit's nearby validity check).
-      if (
-        typeof carIdx !== "number" ||
-        !Number.isInteger(carIdx) ||
-        carIdx < 0 ||
-        typeof position !== "number" ||
-        !Number.isInteger(position) ||
-        position <= 0
-      ) {
-        return false;
-      }
+        // No usable car/position → nothing to speak; reject before firing. A
+        // fractional position would build a `position-number/4.5` lookup
+        // with no clip behind it, so non-negative integers only (mirrors
+        // opponent-pit's nearby validity check).
+        if (
+          typeof carIdx !== "number" ||
+          !Number.isInteger(carIdx) ||
+          carIdx < 0 ||
+          typeof position !== "number" ||
+          !Number.isInteger(position) ||
+          position <= 0
+        ) {
+          return false;
+        }
 
-      // Stash AFTER the relation/flag + validity checks and behind the
-      // opt-in wrappers (#922's shape), so only a fully-gated ahead fire
-      // can repoint what a deferred ahead line speaks.
-      pendingAhead = { carIdx, position, isMultiClass: isMultiClass === true };
+        // Stash AFTER the relation/flag + validity checks and behind the
+        // opt-in wrappers (#922's shape), so only a fully-gated ahead fire
+        // can repoint what a deferred ahead line speaks.
+        pendingAhead = { carIdx, position, isMultiClass: isMultiClass === true };
 
-      return true;
-    });
+        return true;
+      },
+      OPPONENT_FLAG_AHEAD_GROUP,
+    );
   }
 
   return opponentFlagContract(id, weight, description, (ev) => {

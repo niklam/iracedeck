@@ -101,6 +101,7 @@ import {
   liveCurrentlyAnnounceable,
   type LivePositionResolver,
   POSITION_READOUT_SPEAK_GATE_DESCRIPTION,
+  POSITION_READOUT_SUPERSEDE_GROUP,
   selectLivePosition,
   takeIntroDecision,
   tryClaimPositionAnnouncement,
@@ -501,6 +502,7 @@ export function buildPositionContract(
     weight: WEIGHT.CHATTER,
     queueable: true,
     family: "position",
+    supersedeGroup: POSITION_READOUT_SUPERSEDE_GROUP,
   };
 }
 

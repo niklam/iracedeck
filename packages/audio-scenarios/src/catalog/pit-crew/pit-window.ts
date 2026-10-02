@@ -77,6 +77,8 @@ function pitWindowContract(direction: "opened" | "closed", to: boolean, descript
     interrupt: false,
     queueable: true,
     family: "pit-window",
+    // The newest pit-road state replaces a waiting one (issue #1185).
+    supersedeGroup: "pit-window",
     when: { event: "pitsOpen.changed", where: (e) => (e as SimEventOf<"pitsOpen.changed">).data.to === to },
   };
 }

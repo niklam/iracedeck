@@ -220,6 +220,10 @@ describe("DAMAGE_CONTRACTS structure", () => {
       // for the same crash, or the lap-invalidation line in its place.
       expect(c.queueable).toBe(true);
       expect([...(c.queueBehind ?? [])]).toEqual([...INCIDENT_SCENARIO_IDS, ...QUALIFYING_INVALIDATION_SCENARIO_IDS]);
+      // True for as long as it waits — the gate below refuses it once
+      // repaired — so it waits up to 30 s, not the engine's default (#1185).
+      expect(c.maxQueueWaitMs).toBe(30_000);
+      expect(c.supersedeGroup).toBeUndefined();
       expect(c.pendingHoldMs).toBeUndefined();
       // Re-checks the settled damage state at speak time (issue #1288).
       expect(c.speakGate?.admit).toBe(damageStillNeedsRepair);
@@ -438,6 +442,12 @@ describe("the damage line behind a held or busy bus (issues #1211, #1288)", () =
         `voice/${VOICE}/incidents/points-2.mp3`,
         DAMAGE_LINE,
       ]);
+      // The escalation replaced the waiting line through the incidents'
+      // shared supersede group (issue #1185), and the damage line re-linked
+      // behind it, since it names that contract too.
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        'Scenario "pit-crew.incident-off-track" dropped — superseded by "pit-crew.incident-collision-world"',
+      );
     });
   });
 

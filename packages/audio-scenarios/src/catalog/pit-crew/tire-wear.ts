@@ -30,7 +30,7 @@
  * the readings do not change again until the next stop, so there is no live
  * state worth re-reading at speak time, and a fire that waited behind the
  * readback replays with the very event that fired it (the engine keeps it on
- * the pending fire). Every var and case returns `null`, and the condition
+ * the queued fire). Every var and case returns `null`, and the condition
  * `false`, for any other fire — an imperative `fire(id)`, or a pack naming a
  * `tireWear.*` name from another callout's entry — which aborts a required
  * step and takes a case's `default` branch, as the grammar says.
@@ -49,27 +49,25 @@
  * **Scheduling.** Default weight, `queueable: true`, the default radio frame,
  * `family: "tire-wear"`, and `queueBehind` naming the exit readback. The
  * readback sits at `WEIGHT.CHATTER` and is published first, so on an idle
- * bus it takes the bus and the report waits as the pending fire (higher
+ * bus it takes the bus and the report waits in the bus's queue (higher
  * weight, no interrupt) and plays when it finishes. Its own family, not the
  * readback's, so neither preempts the other. `queueable` means a report that
- * cannot take the bus waits for it rather than being dropped on arrival —
- * and no more than that: the engine keeps ONE pending fire per bus, so
- * while the readback plays the report waits ALONE in that slot, and a
- * queueable fire of at least its weight that arrives then replaces it, and
- * the report is gone. That is the engine's one-slot limit, shared by every
- * queueable callout, and not something this contract can buy its way out
- * of; #1185 is where lifting it would be decided. What `queueBehind` fixes
- * is the other ordering, which rejoining
- * traffic makes common (the spotter shares the Voice bus): when the
- * readback itself has to wait, the report — published right after it in
- * the same tick, and the heavier of the two — would have taken its slot and
- * silently dropped the pit-exit confirmation. Instead it attaches behind
- * the waiting readback, both play in order once the bus idles, a readback
- * that fails to take the bus at replay leaves the report to play next, and
- * a readback cut mid-line by an interrupt while the report already waits is
- * put back ahead of it. Each keeps its own fate against a later fire: one
- * that outweighs the readback replaces the readback, and takes the report
- * with it only if it outweighs the report too.
+ * cannot take the bus waits for it rather than being dropped on arrival. A
+ * flag or spotter call landing while the readback plays waits beside it
+ * and the heavier plays first; until #1185 the engine kept ONE pending fire
+ * per bus and such a call took the report's slot, so the stint summary the
+ * driver pitted to hear was never spoken (`pit-exit-sequence.test.ts`
+ * replays that exit). `maxQueueWaitMs` is 30 s rather than the engine's
+ * default: the readings do not change until the next stop, so a busy exit
+ * must not cost the report. What `queueBehind` fixes is the other ordering,
+ * which rejoining traffic makes common (the spotter shares the Voice bus):
+ * when the readback itself has to wait, the report — published right after
+ * it in the same tick, and the heavier of the two — would play ahead of the
+ * pit-exit confirmation. Instead it waits right behind the waiting
+ * readback, both play in order once the bus idles, a readback that leaves
+ * the queue without playing (expired, refused at replay, no script entry)
+ * leaves the report to play next, and a readback cut mid-line by an
+ * interrupt while the report already waits is put back ahead of it.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { TireCorner, TireCornerWear, TireWearReport, TireZone } from "@iracedeck/event-bus";
@@ -339,8 +337,11 @@ const TIRE_WEAR_REPORT: ScenarioContract = {
   base: "voice/{voice}",
   queueable: true,
   // Published right after the exit readback from the same settle timer: on a
-  // busy bus, wait behind it rather than take its slot (see the header).
+  // busy bus, wait behind it (see the header).
   queueBehind: ["pit-crew.pit-readback-exit"],
+  // The stint summary the driver pitted to hear, true until the next stop:
+  // it waits out a busy exit rather than the engine's default (issue #1185).
+  maxQueueWaitMs: 30_000,
   family: "tire-wear",
 };
 

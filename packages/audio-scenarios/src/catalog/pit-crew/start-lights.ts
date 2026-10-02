@@ -38,11 +38,11 @@
  * call at `WEIGHT.PROXIMITY` outranks them, and cars are side by side at
  * every race start — without queueable, a gantry line colliding with a ~1 s
  * spotter clip (either direction) would be permanently lost; deferred, it
- * replays the moment the clip ends, and the `family: "start-light"` pending
- * tie-break (newest wins) keeps a stale `start-ready` from replaying after
- * `start-go` has superseded it. The countdown numbers stay
- * `queueable: false`: a number that can't take the bus right now is dropped
- * rather than replayed stale a beat later.
+ * replays the moment the clip ends, and the two share the `start-light`
+ * supersede group (issue #1185), so a stale `start-ready` still waiting is
+ * replaced by `start-go` rather than replayed after it. The countdown
+ * numbers stay `queueable: false`: a number that can't take the bus right
+ * now is dropped rather than replayed stale a beat later.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { SimEventName, SimEventOf, StartCountdownSeconds } from "@iracedeck/event-bus";
@@ -70,6 +70,13 @@ import { isRaceSession } from "./race-start.js";
 const liveRaceCar = (e: SimEventOf<SimEventName>): boolean =>
   isRaceSession(getSessionType()) && isLiveOnTrack(e.telemetry as TelemetryData | null);
 
+/**
+ * The gantry lines' supersede group (issue #1185): "go" replaces a "ready"
+ * still waiting, so a stale heads-up never replays after the lights are out
+ * (#867).
+ */
+const START_LIGHT_GROUP = "start-light";
+
 const START_READY: ScenarioContract = {
   id: "pit-crew.start-light-ready",
   channel: AudioChannel.Voice,
@@ -79,6 +86,7 @@ const START_READY: ScenarioContract = {
   interrupt: true,
   queueable: true,
   family: "start-light",
+  supersedeGroup: START_LIGHT_GROUP,
   when: { event: "startLight.start-ready.raised", where: liveRaceCar },
   description: "The start lights come on over the grid of a standing-start race while you sit live in the car.",
 };
@@ -92,6 +100,7 @@ const START_GO: ScenarioContract = {
   interrupt: true,
   queueable: true,
   family: "start-light",
+  supersedeGroup: START_LIGHT_GROUP,
   when: { event: "startLight.start-go.raised", where: liveRaceCar },
   // The sentence used to end "…or the green at a caution restart (measured on
   // an oval)". Issue #1127 made that impossible: a restart now emits

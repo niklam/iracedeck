@@ -27,33 +27,37 @@
  * at `WEIGHT.SAFETY` while a car is alongside, which is when nearly every car
  * collision happens), or behind any equal-weight line of another family
  * playing (a damage or furled-flag line, or a caution call at `WEIGHT.SAFETY`
- * landing in the same seconds). Now such a fire waits in the engine's one
- * pending slot and plays when the floor releases or the bus idles. The one
- * slot is the engine's limit (#1185 owns it): a heavier queueable fire (a
- * penalty flag, a SAFETY fuel tier, opponent-pit, pit-window) or an
- * equal-weight one arriving later (a NORMAL fuel tier at start/finish)
- * displaces a waiting incident line; lighter chatter never does. The weight
- * stays NORMAL on purpose — at the floor's weight or above, the line would
- * break through the floor and talk over the alongside moment it exists to
- * protect.
+ * landing in the same seconds). Now such a fire waits in the bus's queue
+ * and plays when the floor releases or the bus idles. Heavier lines waiting
+ * with it (the caution calls, a penalty flag, a SAFETY fuel tier,
+ * opponent-pit, pit-window) play first and lighter ones after; nothing
+ * displaces it for weight (issue #1185, which replaced the one pending slot
+ * that used to). The weight stays NORMAL on purpose — at the floor's weight
+ * or above, the line would break through the floor and talk over the
+ * alongside moment it exists to protect.
  *
- * A waiting line goes stale, so each contract's `speakGate` refuses a fire
- * whose event is more than {@link INCIDENT_SPEAK_MAX_AGE_MS} old when it
- * comes to speak: past that, a new, unrelated incident may already have
- * begun, and a late line would be heard as describing it. An imperative
- * `fire(id)` carries no event and is admitted (the harness buttons). A line
- * cut mid-play by an `interrupt` replays whole without asking the gate again
- * (#1138's contract for an admitted fire) — accepted, since the driver
- * already heard it begin. `pendingHoldMs` is not used: incidents are not a
- * train of related fires, and the translator's burst coalescing already
- * merges a crash into one emission.
+ * A waiting line goes stale: past {@link INCIDENT_SPEAK_MAX_AGE_MS}, a new,
+ * unrelated incident may already have begun, and a late line would be heard
+ * as describing it. Two things hold it to that age. Each contract's
+ * `maxQueueWaitMs` is the same age, so the queue drops a line that has
+ * waited that long — rather than the engine's shorter default, which a
+ * caution burst ahead of it would outlast (#1288) — and that also bounds a
+ * line cut mid-play by an `interrupt`, which replays whole without asking
+ * the gate again (#1138's contract for an admitted fire; the driver already
+ * heard it begin). And each contract's `speakGate` refuses a fire whose
+ * EVENT is older than that when it comes to speak, which the queue cannot
+ * see when the event was stamped before the fire was queued. An imperative
+ * `fire(id)` carries no event and is admitted (the harness buttons).
+ * `pendingHoldMs` is not used: incidents are not a train of related fires,
+ * and the translator's burst coalescing already merges a crash into one
+ * emission.
  *
  * **Family preemption, and escalation.** All six share `family: "incident"`
  * so a fast sequence (light contact → harder collision a second later)
  * supersedes the in-flight callout cleanly — same mechanism the flag and
  * pit-status callouts use. Preemption applies to the PLAYING line only; an
- * escalation that finds the earlier incident WAITING replaces it in the
- * pending slot by the engine's tie rule (equal weight, newest wins), so the
+ * escalation that finds the earlier incident WAITING replaces it there,
+ * because all six share the `incident` supersede group (issue #1185), so the
  * driver hears the escalation's corrected points once, never both lines. The
  * damage line (`damage-alerts.ts`) waits behind whichever incident line is
  * waiting, the escalation included.
@@ -140,16 +144,17 @@ export function incidentStillFresh(ctx: ScenarioContext): boolean {
  *
  * Only the MATCHING, fully-gated contract writes the stash (the write sits
  * AFTER the type check and the qualifying yield): a dispatch in which nothing
- * fires must not touch it, because a fire waiting in the engine's pending
- * slot — every incident line is queueable since #1211 — has its expansion
+ * fires must not touch it, because a fire waiting in the bus's queue —
+ * every incident line is queueable since #1211 — has its expansion
  * deferred to the pending drain, which re-expands WITHOUT re-running
  * `where:`, so a later suppressed or non-matching event overwriting the stash
  * would make that queued fire speak the wrong count (issue #922 review). When
  * a later incident DOES fire, the same synchronous dispatch that rewrites the
- * stash also replaces the pending or in-flight family-mate (the tie rule in
- * the slot, family preemption on the bus), so stash and fire stay in
- * lockstep — that replacement relies on all six contracts sharing
- * `family: "incident"` and the same (default) weight; keep both uniform.
+ * stash also replaces the waiting or in-flight family-mate (the `incident`
+ * supersede group in the queue, family preemption on the bus), so stash and
+ * fire stay in lockstep — that replacement relies on all six contracts
+ * sharing `family: "incident"` and `supersedeGroup: "incident"`; keep both
+ * uniform.
  * Imperative `engine.fire()` bypasses `where:` entirely and would read a
  * stale value — no code path fires incident contracts imperatively today.
  * `null` when the admitted payload carries no usable count (zero or
@@ -210,6 +215,14 @@ function incidentContract(id: string, type: IncidentType): ScenarioContract {
     description: INCIDENT_DESCRIPTIONS[type],
     // Wait for a held or busy bus rather than drop (issue #1211; see the header).
     queueable: true,
+    // One waiting incident line at a time: an escalation replaces the line it
+    // escalates, which keeps `lastIncidentPoints` in step with the fire that
+    // reads it (issue #1185).
+    supersedeGroup: "incident",
+    // As long as the line stays true — its own staleness rule, below — rather
+    // than the engine's default, which a caution burst ahead of it would
+    // outlast (#1288).
+    maxQueueWaitMs: INCIDENT_SPEAK_MAX_AGE_MS,
     when: {
       event: "incident.occurred",
       // No session-type gate here. In qualifying sessions, the

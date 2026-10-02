@@ -910,8 +910,8 @@ describe("FLAG_CONTRACTS yellow-cleared delivery + waving debounce (issue #671)"
 // is a one-shot edge that never re-fires — the driver was never told about
 // the penalty. The penalty scenarios are queueable so the fire defers and
 // replays when the bus idles; a black→DQ escalation while queued resolves
-// structurally (the queueable DQ fire replaces the pending black — equal
-// weight, ties → newest in the single pending slot).
+// structurally (the three share the `penalty` supersede group, so the DQ
+// fire replaces the waiting black one — issue #1185).
 describe("FLAG_CONTRACTS penalty-flag delivery (issue #923)", () => {
   // A stand-in for a spotter call / pit chatter: same Voice bus, NOT in the
   // flag family — so a penalty fire can't take the bus and can't
@@ -968,13 +968,30 @@ describe("FLAG_CONTRACTS penalty-flag delivery (issue #923)", () => {
     bus.publishEvent("incident.occurred", { delta: 1, points: 1, type: "off-track" });
     // Don't flush — the blocker holds the Voice bus; the black fire defers.
     bus.publishEvent("flag.black.raised", {});
-    // The penalty escalates while the black line waits: the queueable DQ fire
-    // takes the single pending slot (equal weight, ties → newest), so the
+    // The penalty escalates while the black line waits: the DQ fire shares
+    // its `penalty` supersede group and replaces it (issue #1185), so the
     // driver hears the escalated line, never the stale black-flag one.
     bus.publishEvent("flag.disqualify.raised", {});
     flush(audio);
 
     expect(voiceClipsPlayed()).toEqual(["voice/luca/flags/red-01.mp3", "voice/luca/flags/disqualify-01.mp3"]);
+    expect(mockLogger.debug).toHaveBeenCalledWith(
+      'Scenario "pit-crew.flag-black" dropped — superseded by "pit-crew.flag-disqualify"',
+    );
+  });
+
+  it("the three penalty lines share one supersede group and wait up to 30 s; the meatball waits as long", () => {
+    for (const id of ["pit-crew.flag-black", "pit-crew.flag-disqualify", "pit-crew.flag-dq-scoring-invalid"]) {
+      const c = FLAG_CONTRACTS.find((x) => x.id === id);
+
+      expect(c?.supersedeGroup, id).toBe("penalty");
+      expect(c?.maxQueueWaitMs, id).toBe(30_000);
+    }
+
+    const meatball = FLAG_CONTRACTS.find((x) => x.id === "pit-crew.flag-meatball");
+
+    expect(meatball?.supersedeGroup).toBeUndefined();
+    expect(meatball?.maxQueueWaitMs).toBe(30_000);
   });
 
   // The #867 supersession guard pattern (see start-lights.test.ts): the DSL
