@@ -221,10 +221,17 @@ describe("PendingQueue (issue #1185)", () => {
 
   it("hasLeaderFor() reports a waiting entry the id names", () => {
     const q = new PendingQueue<string>(relations({ tire: ["readback"] }));
-    expect(q.hasLeaderFor("tire")).toBe(false);
+    expect(q.hasLeaderFor("tire", 0)).toBe(false);
     q.offer(input("readback", 20), 0);
-    expect(q.hasLeaderFor("tire")).toBe(true);
+    expect(q.hasLeaderFor("tire", 0)).toBe(true);
     expect(q.has("readback")).toBe(true);
+  });
+
+  it("hasLeaderFor() does not count a leader past its max wait", () => {
+    const q = new PendingQueue<string>(relations({ tire: ["readback"] }));
+    q.offer(input("readback", 20, 0, { maxWaitMs: 1000 }), 0);
+    expect(q.hasLeaderFor("tire", 1000)).toBe(true);
+    expect(q.hasLeaderFor("tire", 1001)).toBe(false);
   });
 
   it("never links into a cycle", () => {

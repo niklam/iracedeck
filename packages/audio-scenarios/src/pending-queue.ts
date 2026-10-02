@@ -90,6 +90,9 @@ const byPriority = <F>(a: QueuedFire<F>, b: QueuedFire<F>): number =>
 const byVictim = <F>(a: QueuedFire<F>, b: QueuedFire<F>): number =>
   a.weight - b.weight || a.queuedAt - b.queuedAt || a.seq - b.seq;
 
+/** Whether an entry has waited past its max wait at `now` (exactly at it is still served). */
+const isExpired = <F>(e: QueuedFire<F>, now: number): boolean => now - e.queuedAt > e.maxWaitMs;
+
 export class PendingQueue<F> {
   private entries: QueuedFire<F>[] = [];
   private seq = 0;
@@ -107,9 +110,15 @@ export class PendingQueue<F> {
     return this.entries.some((e) => e.id === id);
   }
 
-  /** Whether a waiting entry is one `id`'s contract names in `queueBehind`. */
-  hasLeaderFor(id: string): boolean {
-    return this.entries.some((e) => e.id !== id && this.waitsBehind(id, e.id));
+  /**
+   * Whether a waiting entry still inside its max wait at `now` is one `id`'s
+   * contract names in `queueBehind`. An entry past its max wait is no one's
+   * leader: it is dropped, and logged, at the next read. Without `now`, the
+   * idle-bus check would queue a follower behind a dead leader, and on an
+   * idle bus nothing would drain it.
+   */
+  hasLeaderFor(id: string, now: number): boolean {
+    return this.entries.some((e) => e.id !== id && !isExpired(e, now) && this.waitsBehind(id, e.id));
   }
 
   /** The waiting entries in play order. */
@@ -220,11 +229,9 @@ export class PendingQueue<F> {
     const drops: QueueDrop<F>[] = [];
 
     for (const e of [...this.entries]) {
-      const waitedMs = now - e.queuedAt;
-
-      if (waitedMs > e.maxWaitMs) {
+      if (isExpired(e, now)) {
         this.removeEntry(e);
-        drops.push({ entry: e, reason: { kind: "expired", waitedMs, maxWaitMs: e.maxWaitMs } });
+        drops.push({ entry: e, reason: { kind: "expired", waitedMs: now - e.queuedAt, maxWaitMs: e.maxWaitMs } });
       }
     }
 

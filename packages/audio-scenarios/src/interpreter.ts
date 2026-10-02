@@ -1465,7 +1465,7 @@ class ScenarioEngine implements IScenarioEngine {
     // A fire whose contract waits behind one of THOSE must not play past it
     // (issue #1108): it is queued behind it here exactly as it would be on a
     // busy bus, and the drain plays the two in order.
-    if (state.queue.hasLeaderFor(entry.raw.id)) {
+    if (state.queue.hasLeaderFor(entry.raw.id, now)) {
       const reason = "the fire it waits behind is pending";
       this.enqueue(entry.raw.id, event, weight, state, reason, resume, admitted, queuedAt);
 
@@ -2203,7 +2203,7 @@ class ScenarioEngine implements IScenarioEngine {
   private playableAtIdle(state: BusState, e: QueuedFire<WaitingFire>): boolean {
     if (this.belowFloor(state, this.scenarios.get(e.id)?.raw.focusOwner, e.weight)) return false;
 
-    return !state.queue.hasLeaderFor(e.id);
+    return !state.queue.hasLeaderFor(e.id, Date.now());
   }
 
   /** Replay one parked fire, unless its scenario has been disabled meanwhile. */

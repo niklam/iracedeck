@@ -3453,6 +3453,25 @@ describe("bounded pending queue (issue #1185)", () => {
       expect(heard()).toEqual(["owner", "b", "a", "c"]);
     });
 
+    it("(8b) a leader past its max wait below the floor does not hold back its follower arriving on the idle bus", () => {
+      defineOwner();
+      define("a", WEIGHT.NORMAL); // the leader
+      define("b", WEIGHT.SAFETY, { queueBehind: ["q.a"] }); // at the floor
+      engine.acquireFocus(AudioBus.Voice, "spotter", WEIGHT.SAFETY);
+
+      engine.fire("q.a"); // below the floor: waits
+      vi.advanceTimersByTime(9000); // past its 8 s max wait
+      engine.fire("q.b"); // the bus is idle and b clears the floor
+
+      expect(heard()).toEqual(["b"]);
+      expect(debugLines().some((l) => l.startsWith('Scenario "q.b" pending'))).toBe(false);
+
+      endClip();
+
+      expect(mockLogger.debug).toHaveBeenCalledWith('Scenario "q.a" dropped — waited 9000 ms (max 8000 ms)');
+      expect(heard()).toEqual(["b"]);
+    });
+
     it("(8) the owner's own waiting fire passes the floor at the drain, as it would on arrival", () => {
       defineOwner();
       define("a", WEIGHT.NORMAL);
