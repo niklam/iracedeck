@@ -39,7 +39,7 @@ An entry is today's `WaitingFire` (`id`, `event`, `weight`, `resume?`, `admitted
 
 1. **Supersede.** Remove any waiting entry whose `group` equals the newcomer's. Followers of a removed entry stay in the queue: one whose contract's `queueBehind` names the newcomer re-links behind it (the #1211 rule, kept); any other drops its `after` link and becomes an ordinary entry.
 2. **Place.** Heaviest first; within a weight, oldest `queuedAt` first. A follower sits immediately after its leader (and after that leader's earlier followers), whatever the weights. A newcomer that a waiting entry names in its `queueBehind` goes ahead of that entry, which then links behind it.
-3. **Cap.** With more than `PENDING_QUEUE_CAPACITY = 4` entries, drop the lightest; ties go to the oldest. That can be the newcomer. A dropped leader's followers stay as ordinary entries.
+3. **Cap.** With more than `PENDING_QUEUE_CAPACITY = 4` entries, drop the lightest; ties go to the oldest. That can be the newcomer. A dropped leader's followers stay as ordinary entries. One arrival drops at most one entry (amended after review): a follower freed by that drop may leave the roots one over the cap until the queue drains, rather than being dropped in turn. Without this, #1288's burst plus one more NORMAL line would lose both the incident and the damage line to a single arrival. The same holds for a follower freed by disabling its leader. Followers stay bounded by their contracts' `queueBehind` lists.
 
 `next(now)` returns the head, first discarding every entry older than its max wait (§2). `remove(id)`, `clear()` and an inspection accessor for tests complete the surface.
 
@@ -67,13 +67,16 @@ Everything else takes the default.
 
 **Why 8 s.** A Race Engineer line runs two to four seconds, so 8 s is two or three lines of backlog: enough to clear #1288's burst, short enough that nothing is spoken more than a few seconds after its moment. What would set it properly: across race sessions with debug logging on, the distribution of `queuedAt` to replay for every line that played, and of the expiry log line.
 
-**The queue is cleared on `session.changed`** (new: today the slot survives a session change). The engine clears the Voice queue before it dispatches that event's own contracts, so the session-start briefing and race-start lines, which fire on it, are not cleared by it.
+**Nothing from before a session change is replayed after it.** The engine keeps a session generation, and a fire still playing across the clear is not stashed if an interrupt cuts it afterwards. **The queue is cleared on `session.changed`** (new: today the slot survives a session change). The engine clears the Voice queue before it dispatches that event's own contracts, so the session-start briefing and race-start lines, which fire on it, are not cleared by it.
 
 **Rejected:** per-contract opt-in to queueing (every family would need a decision and #1288's caution calls would need opting in; a default with overrides gets the same safety); opt-in plus a backstop (the same cost, for a distinction nobody needs yet).
 
 ### 3. Supersede groups (Niklas, 2026-10-02)
 
-A new optional contract field `supersedeGroup: string`, defaulting to the contract's own id, so the same callout never stacks. A newer waiting fire replaces an older one of the same group (§1 step 1). It acts on WAITING fires only; family preemption keeps acting on the playing one.
+A new optional contract field `supersedeGroup: string`, defaulting to the contract's own id, so the same callout never stacks. A newer waiting fire replaces an older one of the same group (§1 step 1). It acts on WAITING fires only; family preemption keeps acting on the playing one. Two refinements found in review:
+
+- A fresh fire that takes the bus at once also removes waiting fires of its group, so an older line held below a floor or behind a hold never plays after the newer one.
+- A fire an interrupt cuts and stashes yields to a newer waiting fire of its group instead of superseding it. The stash is the older news, and in a stash-backed group (`opponent-flag-ahead`) it would otherwise replay with the newer fire's values.
 
 Groups set by this issue:
 
