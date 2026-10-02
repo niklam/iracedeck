@@ -300,6 +300,7 @@ import {
   sanitizeFuelCalloutMarginLaps,
   sanitizeGapAlertThresholdSeconds,
   sanitizeGapMinChangeSeconds,
+  sanitizeOpponentFlagRangeSeconds,
 } from "@iracedeck/sim-events-iracing";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -377,6 +378,11 @@ initializeSimEventsIracing(eventBus, getController(), adapter.createLogger("SimE
     (getGlobalSettings() as Record<string, unknown>)[
       OPPONENT_FLAG_CALLOUT_SETTING_KEYS[OPPONENT_PENALTY_FLAG_TO_CALLOUT_ID[flag]]
     ] !== false,
+  // Opponent-flag range (issue #1274) — only a same-class car within this
+  // race gap, ahead or behind, is announced. Read live per announce so a
+  // settings change applies to the next one; clamp mirrors the schema.
+  getOpponentFlagRangeSeconds: () =>
+    sanitizeOpponentFlagRangeSeconds((getGlobalSettings() as Record<string, unknown>).opponentFlagRangeSeconds),
 });
 
 // Feed the translator's live per-car race order into the template-context builder
