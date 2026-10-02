@@ -937,95 +937,67 @@
       ]
     },
     "pit-crew.opponent-flag-furled-ahead": {
-      "comment": "A car up to three places ahead in the standings has been shown a furled black flag, named by its position: the car-in lead-in (the opponent-pit family's clip, reused because the words are the same), the number, then the furled tail. The number is part of the sentence — a position the voice cannot say skips the whole line. Every opponent-flag line queues behind a busier one rather than cutting it, because each describes a different car.",
-      "test": "Harness → Opponent Flags → P5 ahead: furled. In-sim: the car one place ahead of you picks up a furled black flag during a race.",
+      "comment": "A same-class car one to three places ahead in the race, within the driver's Opponent flag range, has been given a slowdown penalty (the furled black flag), named by its car number: the number clip, which already says \"car\", then the ahead tail. The number is part of the sentence — a car number the voice cannot say, or a car the session cannot number, skips the whole line. Every opponent-flag line queues behind a busier one rather than cutting it, because each describes a different car.",
+      "test": "Harness → Opponent Flags → Car 42 ahead: slowdown. In-sim: a same-class car one to three places ahead of you, within the Opponent flag range, picks up a slowdown penalty during a race.",
       "sequence": [
-        "pool:opponent-pit/car-in",
-        "{{opponentFlag.number}}",
+        "{{opponentFlag.carNumber}}",
         "pool:opponent-flags/furled-ahead-tail"
       ]
     },
     "pit-crew.opponent-flag-furled-behind": {
-      "comment": "The car directly behind in the standings has been shown a furled black flag.",
-      "test": "Harness → Opponent Flags → Behind: furled. In-sim: the car one place behind you picks up a furled black flag during a race.",
+      "comment": "The same-class car directly behind in the race, within the driver's Opponent flag range, has been given a slowdown penalty (the furled black flag), named by its car number: the number clip, which already says \"car\", then the behind tail. The number is part of the sentence — a car number the voice cannot say, or a car the session cannot number, skips the whole line.",
+      "test": "Harness → Opponent Flags → Car 42 behind: slowdown. In-sim: the same-class car directly behind you, within the Opponent flag range, picks up a slowdown penalty during a race.",
       "sequence": [
-        "pool:opponent-flags/furled-behind"
-      ]
-    },
-    "pit-crew.opponent-flag-furled-track-ahead": {
-      "comment": "A car the driver is closing on along the track carries a furled black flag — a safety-weighted heads-up, since a penalised car may be slow.",
-      "test": "Harness → Opponent Flags → Track ahead: furled. In-sim: close in on a car ahead on the road that has a furled black flag.",
-      "sequence": [
-        "pool:opponent-flags/furled-track"
+        "{{opponentFlag.carNumber}}",
+        "pool:opponent-flags/furled-behind-tail"
       ]
     },
     "pit-crew.opponent-flag-black-ahead": {
-      "comment": "A car up to three places ahead in the standings has been black-flagged, named by its position — car-in, the number, the black tail. The number is part of the sentence.",
-      "test": "Harness → Opponent Flags → P5 ahead: black flag. In-sim: the car one place ahead of you is black-flagged during a race.",
+      "comment": "A same-class car one to three places ahead in the race, within the driver's Opponent flag range, has been black-flagged, named by its car number: the number clip, which already says \"car\", then the ahead tail. The number is part of the sentence — a car number the voice cannot say, or a car the session cannot number, skips the whole line.",
+      "test": "Harness → Opponent Flags → Car 42 ahead: black flag. In-sim: a same-class car one to three places ahead of you, within the Opponent flag range, is black-flagged during a race.",
       "sequence": [
-        "pool:opponent-pit/car-in",
-        "{{opponentFlag.number}}",
+        "{{opponentFlag.carNumber}}",
         "pool:opponent-flags/black-ahead-tail"
       ]
     },
     "pit-crew.opponent-flag-black-behind": {
-      "comment": "The car directly behind in the standings has been black-flagged — the pressure from behind should ease.",
-      "test": "Harness → Opponent Flags → Behind: black flag. In-sim: the car one place behind you is black-flagged during a race.",
+      "comment": "The same-class car directly behind in the race, within the driver's Opponent flag range, has been black-flagged, named by its car number: the number clip, which already says \"car\", then the behind tail. The number is part of the sentence — a car number the voice cannot say, or a car the session cannot number, skips the whole line.",
+      "test": "Harness → Opponent Flags → Car 42 behind: black flag. In-sim: the same-class car directly behind you, within the Opponent flag range, is black-flagged during a race.",
       "sequence": [
-        "pool:opponent-flags/black-behind"
-      ]
-    },
-    "pit-crew.opponent-flag-black-track-ahead": {
-      "comment": "A car the driver is closing on along the track has been black-flagged — a safety-weighted heads-up.",
-      "test": "Harness → Opponent Flags → Track ahead: black flag. In-sim: close in on a black-flagged car ahead on the road.",
-      "sequence": [
-        "pool:opponent-flags/black-track"
+        "{{opponentFlag.carNumber}}",
+        "pool:opponent-flags/black-behind-tail"
       ]
     },
     "pit-crew.opponent-flag-meatball-ahead": {
-      "comment": "A car up to three places ahead in the standings has the meatball (repair) flag, named by its position — car-in, the number, the meatball tail. The number is part of the sentence.",
-      "test": "Harness → Opponent Flags → P5 ahead: meatball. In-sim: the car one place ahead of you is shown the meatball flag during a race.",
+      "comment": "A same-class car one to three places ahead in the race, within the driver's Opponent flag range, has been shown the meatball (repair) flag, named by its car number: the number clip, which already says \"car\", then the ahead tail. The number is part of the sentence — a car number the voice cannot say, or a car the session cannot number, skips the whole line.",
+      "test": "Harness → Opponent Flags → Car 42 ahead: meatball. In-sim: a same-class car one to three places ahead of you, within the Opponent flag range, is shown the meatball flag during a race.",
       "sequence": [
-        "pool:opponent-pit/car-in",
-        "{{opponentFlag.number}}",
+        "{{opponentFlag.carNumber}}",
         "pool:opponent-flags/meatball-ahead-tail"
       ]
     },
     "pit-crew.opponent-flag-meatball-behind": {
-      "comment": "The car directly behind in the standings has the meatball flag and will be coming in for repairs.",
-      "test": "Harness → Opponent Flags → Behind: meatball. In-sim: the car one place behind you is shown the meatball flag during a race.",
+      "comment": "The same-class car directly behind in the race, within the driver's Opponent flag range, has been shown the meatball (repair) flag, named by its car number: the number clip, which already says \"car\", then the behind tail. The number is part of the sentence — a car number the voice cannot say, or a car the session cannot number, skips the whole line.",
+      "test": "Harness → Opponent Flags → Car 42 behind: meatball. In-sim: the same-class car directly behind you, within the Opponent flag range, is shown the meatball flag during a race.",
       "sequence": [
-        "pool:opponent-flags/meatball-behind"
-      ]
-    },
-    "pit-crew.opponent-flag-meatball-track-ahead": {
-      "comment": "A car the driver is closing on along the track has the meatball flag — a damaged car that could be slow, so a safety-weighted warning.",
-      "test": "Harness → Opponent Flags → Track ahead: meatball. In-sim: close in on a car ahead on the road that is showing the meatball flag.",
-      "sequence": [
-        "pool:opponent-flags/meatball-track"
+        "{{opponentFlag.carNumber}}",
+        "pool:opponent-flags/meatball-behind-tail"
       ]
     },
     "pit-crew.opponent-flag-disqualify-ahead": {
-      "comment": "A car up to three places ahead in the standings has been disqualified, named by its position — car-in, the number, the disqualified tail. The number is part of the sentence.",
-      "test": "Harness → Opponent Flags → P5 ahead: DQ. In-sim: the car one place ahead of you is disqualified during a race.",
+      "comment": "A same-class car one to three places ahead in the race, within the driver's Opponent flag range, has been disqualified, named by its car number: the number clip, which already says \"car\", then the ahead tail. The number is part of the sentence — a car number the voice cannot say, or a car the session cannot number, skips the whole line.",
+      "test": "Harness → Opponent Flags → Car 42 ahead: DQ. In-sim: a same-class car one to three places ahead of you, within the Opponent flag range, is disqualified during a race.",
       "sequence": [
-        "pool:opponent-pit/car-in",
-        "{{opponentFlag.number}}",
+        "{{opponentFlag.carNumber}}",
         "pool:opponent-flags/disqualify-ahead-tail"
       ]
     },
     "pit-crew.opponent-flag-disqualify-behind": {
-      "comment": "The car directly behind in the standings has been disqualified.",
-      "test": "Harness → Opponent Flags → Behind: DQ. In-sim: the car one place behind you is disqualified during a race.",
+      "comment": "The same-class car directly behind in the race, within the driver's Opponent flag range, has been disqualified, named by its car number: the number clip, which already says \"car\", then the behind tail. The number is part of the sentence — a car number the voice cannot say, or a car the session cannot number, skips the whole line.",
+      "test": "Harness → Opponent Flags → Car 42 behind: DQ. In-sim: the same-class car directly behind you, within the Opponent flag range, is disqualified during a race.",
       "sequence": [
-        "pool:opponent-flags/disqualify-behind"
-      ]
-    },
-    "pit-crew.opponent-flag-disqualify-track-ahead": {
-      "comment": "A car the driver is closing on along the track has been disqualified and may pull off — a safety-weighted heads-up.",
-      "test": "Harness → Opponent Flags → Track ahead: DQ. In-sim: close in on a disqualified car ahead on the road.",
-      "sequence": [
-        "pool:opponent-flags/disqualify-track"
+        "{{opponentFlag.carNumber}}",
+        "pool:opponent-flags/disqualify-behind-tail"
       ]
     },
     "pit-crew.opponent-flag-others": {

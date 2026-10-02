@@ -10626,100 +10626,36 @@
       "requestId": "zkFZAiEp5WKt9kp6LigW"
     },
     "voice/default/opponent-flags/furled-ahead-tail-01.mp3": {
-      "hash": "5d7cb12315fa6e21",
+      "hash": "c0a2711adbd6dea4",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "has a furled black flag. They're gonna have to give that time back.",
-      "generatedAt": "2026-08-10T15:35:10.495Z",
-      "requestId": "xEuzcrAEJquRFFbcaMUA"
+      "textPreview": "ahead has a slowdown penalty.",
+      "generatedAt": "2026-10-02T18:57:27.012Z",
+      "requestId": "R1iS9iOyj9BA3OjBzFh5"
     },
     "voice/default/opponent-flags/black-ahead-tail-01.mp3": {
-      "hash": "986bde72945a134b",
+      "hash": "72b6f85ee1b73d5a",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "has a black flag. <break time=\"0.3s\" /> They'll be serving a penalty.",
-      "generatedAt": "2026-08-10T15:31:16.310Z",
-      "requestId": "7ESzBBU1EUq4Y8YSTkxQ"
+      "textPreview": "ahead has a black flag. <break time=\"0.3s\" /> They'll be serving a penalty.",
+      "generatedAt": "2026-10-02T18:57:27.280Z",
+      "requestId": "rz9qG1Hjui12O1u6oYBG"
     },
     "voice/default/opponent-flags/meatball-ahead-tail-01.mp3": {
-      "hash": "2afce5a2b983582b",
+      "hash": "abbfa017816bddf1",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "has the meatball flag. Expect them to be slow.",
-      "generatedAt": "2026-08-10T15:36:00.797Z",
-      "requestId": "AQOd4DlGkPlw6jipKrl2"
+      "textPreview": "ahead has the meatball flag. Expect them to be slow.",
+      "generatedAt": "2026-10-02T18:57:27.539Z",
+      "requestId": "Kpq0j42waJ8J5lzUh8BL"
     },
     "voice/default/opponent-flags/disqualify-ahead-tail-01.mp3": {
-      "hash": "02c2176357927af1",
+      "hash": "ef0e96226669fa9b",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "has been disqualified. They're out of the fight.",
-      "generatedAt": "2026-08-09T18:16:23.127Z",
-      "requestId": "iKfaQwUUnwyGaLqKmH4c"
-    },
-    "voice/default/opponent-flags/furled-behind-01.mp3": {
-      "hash": "d328cf722ad00238",
-      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
-      "model": "eleven_flash_v2_5",
-      "textPreview": "The car behind has a furled black flag.",
-      "generatedAt": "2026-08-09T18:16:23.359Z",
-      "requestId": "h7uA69lvh0ORPAMbxXKs"
-    },
-    "voice/default/opponent-flags/black-behind-01.mp3": {
-      "hash": "cadb972b24c2bc34",
-      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
-      "model": "eleven_flash_v2_5",
-      "textPreview": "The car behind has a black flag. <break time=\"0.3s\" /> That pressure should eas…",
-      "generatedAt": "2026-08-10T15:32:43.382Z",
-      "requestId": "9yTKL1BFNB0BCcjjnTMQ"
-    },
-    "voice/default/opponent-flags/meatball-behind-01.mp3": {
-      "hash": "7b3ec007c0e51dd9",
-      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
-      "model": "eleven_flash_v2_5",
-      "textPreview": "The car behind has the meatball flag. They'll be coming in for repairs.",
-      "generatedAt": "2026-08-10T15:36:56.170Z",
-      "requestId": "DCYgjfHPKZnA32dbL4cx"
-    },
-    "voice/default/opponent-flags/disqualify-behind-01.mp3": {
-      "hash": "439e4e9b616fd22c",
-      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
-      "model": "eleven_flash_v2_5",
-      "textPreview": "The car behind has been disqualified.",
-      "generatedAt": "2026-08-09T18:16:24.161Z",
-      "requestId": "Z3gD3d7WR7tz2rY2Giit"
-    },
-    "voice/default/opponent-flags/furled-track-01.mp3": {
-      "hash": "3b5c1031bfe70379",
-      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
-      "model": "eleven_flash_v2_5",
-      "textPreview": "The car ahead on track has a furled black flag.",
-      "generatedAt": "2026-08-09T18:16:24.402Z",
-      "requestId": "D4ihnFOOvkYSxzkp5TDn"
-    },
-    "voice/default/opponent-flags/black-track-01.mp3": {
-      "hash": "3e375f0981ed4709",
-      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
-      "model": "eleven_flash_v2_5",
-      "textPreview": "The car ahead on track has a black flag.",
-      "generatedAt": "2026-08-09T18:16:24.635Z",
-      "requestId": "k9SzP4t6JvLR4yKphsVN"
-    },
-    "voice/default/opponent-flags/meatball-track-01.mp3": {
-      "hash": "de4c82b6305ff4bd",
-      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
-      "model": "eleven_flash_v2_5",
-      "textPreview": "Careful. <break time=\"0.3s\" /> The car ahead on track has the meatball flag. Th…",
-      "generatedAt": "2026-08-10T15:37:39.621Z",
-      "requestId": "I1fPHLaEilHZqDWixeLe"
-    },
-    "voice/default/opponent-flags/disqualify-track-01.mp3": {
-      "hash": "e66765de86024a78",
-      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
-      "model": "eleven_flash_v2_5",
-      "textPreview": "The car ahead on track has been disqualified. <break time=\"0.2s\" /> They may pu…",
-      "generatedAt": "2026-08-10T15:34:22.520Z",
-      "requestId": "gH2WttI5EM9hEhMUM9un"
+      "textPreview": "ahead has been disqualified.",
+      "generatedAt": "2026-10-02T18:57:27.700Z",
+      "requestId": "4FnezRlFETW3UDIZ5cQ9"
     },
     "voice/default/opponent-flags/others-01.mp3": {
       "hash": "511244102b31e684",
@@ -23769,70 +23705,6 @@
       "generatedAt": "2026-09-11T08:00:04.480Z",
       "requestId": "bUAtF02oSUr52477F9q9"
     },
-    "voice/shawn/opponent-flags/furled-behind-01.mp3": {
-      "hash": "09c61953b00a5b23",
-      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
-      "model": "eleven_flash_v2_5",
-      "textPreview": "Car behind has a slowdown.",
-      "generatedAt": "2026-09-11T08:00:04.679Z",
-      "requestId": "8mY1gdtOG7iwVqIJ4FPJ"
-    },
-    "voice/shawn/opponent-flags/black-behind-01.mp3": {
-      "hash": "e2a27a1b60ebc249",
-      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
-      "model": "eleven_flash_v2_5",
-      "textPreview": "The car behind has a black flag.",
-      "generatedAt": "2026-09-11T08:00:04.946Z",
-      "requestId": "XAUyR6F7s0HUhhQObfXx"
-    },
-    "voice/shawn/opponent-flags/meatball-behind-01.mp3": {
-      "hash": "124324527ed12166",
-      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
-      "model": "eleven_flash_v2_5",
-      "textPreview": "Car behind has a meatball.",
-      "generatedAt": "2026-09-11T08:00:05.134Z",
-      "requestId": "QiwI8BtKWysKYYBY68iV"
-    },
-    "voice/shawn/opponent-flags/disqualify-behind-01.mp3": {
-      "hash": "73d197297eb1c03d",
-      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
-      "model": "eleven_flash_v2_5",
-      "textPreview": "car behind is disqualified.",
-      "generatedAt": "2026-09-11T08:00:05.328Z",
-      "requestId": "xkmKLjdn68RofWn0JNYp"
-    },
-    "voice/shawn/opponent-flags/furled-track-01.mp3": {
-      "hash": "30dd2a347558e317",
-      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
-      "model": "eleven_flash_v2_5",
-      "textPreview": "Car ahead has a slowdown.",
-      "generatedAt": "2026-09-11T08:00:05.524Z",
-      "requestId": "ipbC13AGRmAaNtNwcNld"
-    },
-    "voice/shawn/opponent-flags/black-track-01.mp3": {
-      "hash": "4d65d17cb15d38ef",
-      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
-      "model": "eleven_flash_v2_5",
-      "textPreview": "Car ahead has a black flag.",
-      "generatedAt": "2026-09-11T08:00:05.723Z",
-      "requestId": "Fjpg8mCs4s1GRki2uyvM"
-    },
-    "voice/shawn/opponent-flags/meatball-track-01.mp3": {
-      "hash": "0126b8eb41765812",
-      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
-      "model": "eleven_flash_v2_5",
-      "textPreview": "Meatballed car ahead.",
-      "generatedAt": "2026-09-11T08:00:05.923Z",
-      "requestId": "bOIbpisSjnWrhdLqbTcc"
-    },
-    "voice/shawn/opponent-flags/disqualify-track-01.mp3": {
-      "hash": "0904e0c08bea77a5",
-      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
-      "model": "eleven_flash_v2_5",
-      "textPreview": "Car ahead disqualified.",
-      "generatedAt": "2026-09-11T08:00:06.130Z",
-      "requestId": "PZ5ghj4Ysmy7MrzMlVY6"
-    },
     "voice/shawn/opponent-flags/others-01.mp3": {
       "hash": "048faa92c86d539b",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
@@ -34290,36 +34162,36 @@
       "requestId": "Oz3diKHZS1tvGzmIavbE"
     },
     "voice/shawn/opponent-flags/furled-ahead-tail-01.mp3": {
-      "hash": "a60e4a8d1d395769",
+      "hash": "f3685eb5b52feb01",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "has a slow-down.",
-      "generatedAt": "2026-09-20T16:07:41.099Z",
-      "requestId": "aNXOw9wTik3IsD0Dk7QL"
+      "textPreview": "ahead has a slowdown.",
+      "generatedAt": "2026-10-02T18:57:28.569Z",
+      "requestId": "z1pzBtdWt8yxINKn2wCK"
     },
     "voice/shawn/opponent-flags/black-ahead-tail-01.mp3": {
-      "hash": "7f11ebc7d7373c57",
+      "hash": "cb43432b1e28a031",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "has a black flag.",
-      "generatedAt": "2026-09-20T16:07:41.291Z",
-      "requestId": "nfkc4VMT1lGAXdKhI9tH"
+      "textPreview": "ahead has a black flag.",
+      "generatedAt": "2026-10-02T18:57:28.737Z",
+      "requestId": "p08LRPBz0Yc0KJT2Qkxm"
     },
     "voice/shawn/opponent-flags/meatball-ahead-tail-01.mp3": {
-      "hash": "9cb0f7fcd8b93b58",
+      "hash": "16832f14e7c94012",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "has the meatball.",
-      "generatedAt": "2026-09-20T16:07:41.484Z",
-      "requestId": "jBX99jQrI57d7oXjqpGB"
+      "textPreview": "ahead has the meatball.",
+      "generatedAt": "2026-10-02T18:57:28.913Z",
+      "requestId": "DWaJLelIDV57QWTuskJ8"
     },
     "voice/shawn/opponent-flags/disqualify-ahead-tail-01.mp3": {
-      "hash": "b21cc677703e5861",
+      "hash": "f009286b70ef6c83",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "has been disqualified.",
-      "generatedAt": "2026-09-20T16:07:41.711Z",
-      "requestId": "xp1YdEut6lh4Gpv0ddKq"
+      "textPreview": "ahead is disqualified.",
+      "generatedAt": "2026-10-02T18:57:29.076Z",
+      "requestId": "1OmFTU7YoehyXhx0BNw0"
     },
     "voice/shawn/opponent-pit/car-in-01.mp3": {
       "hash": "a83498566823d1a0",
@@ -48880,6 +48752,70 @@
       "textPreview": "Track conditions are still unknown.",
       "generatedAt": "2026-10-01T05:21:07.236Z",
       "requestId": "8VxwxzDhZYHe8zshU3EQ"
+    },
+    "voice/default/opponent-flags/furled-behind-tail-01.mp3": {
+      "hash": "64fe1fb6b983ed0d",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "behind has a slowdown penalty.",
+      "generatedAt": "2026-10-02T18:57:27.875Z",
+      "requestId": "aCDcGT5zVF2QemsMwkDr"
+    },
+    "voice/default/opponent-flags/black-behind-tail-01.mp3": {
+      "hash": "98ce7386640cd260",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "behind has a black flag.",
+      "generatedAt": "2026-10-02T18:57:28.033Z",
+      "requestId": "hroYgPT2L32pAbEPQcE7"
+    },
+    "voice/default/opponent-flags/meatball-behind-tail-01.mp3": {
+      "hash": "d90250e27cb93127",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "behind has the meatball flag.",
+      "generatedAt": "2026-10-02T18:57:28.225Z",
+      "requestId": "BnuTKh7Rpj1LoIRmknYO"
+    },
+    "voice/default/opponent-flags/disqualify-behind-tail-01.mp3": {
+      "hash": "6ac7eb7290ac5a44",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "behind has been disqualified.",
+      "generatedAt": "2026-10-02T18:57:28.391Z",
+      "requestId": "PUcfhe3R4CwAyG4ygqSy"
+    },
+    "voice/shawn/opponent-flags/furled-behind-tail-01.mp3": {
+      "hash": "990c2e9dab45405c",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "behind has a slowdown.",
+      "generatedAt": "2026-10-02T18:57:29.272Z",
+      "requestId": "u64ItWhOKk0qFOBxo6iK"
+    },
+    "voice/shawn/opponent-flags/black-behind-tail-01.mp3": {
+      "hash": "98ce7386640cd260",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "behind has a black flag.",
+      "generatedAt": "2026-10-02T18:57:29.445Z",
+      "requestId": "aMKKRcQueLIkTYB01o2D"
+    },
+    "voice/shawn/opponent-flags/meatball-behind-tail-01.mp3": {
+      "hash": "2c7ff6829fcb1b55",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "behind has the meatball.",
+      "generatedAt": "2026-10-02T18:57:29.620Z",
+      "requestId": "rBEG1FOK0Jk0aIJTpa8s"
+    },
+    "voice/shawn/opponent-flags/disqualify-behind-tail-01.mp3": {
+      "hash": "0f0c48920afc9c9b",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "behind is disqualified.",
+      "generatedAt": "2026-10-02T18:57:29.791Z",
+      "requestId": "YQ4Yxhtb8zaBuONhXmk6"
     }
   }
 }
