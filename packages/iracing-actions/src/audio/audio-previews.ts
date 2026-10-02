@@ -61,15 +61,23 @@ export function runAudioPreview(kind: AudioPreviewKind, logger: ILogger): void {
       break;
     }
 
-    case "background":
+    case "background": {
       logger.info("Playing background test");
       // isBackgroundTestInFlight (set inside playBackgroundTest) bypasses the
       // Background-mute branch of applyRaceEngineerAudio while the preview is
       // playing, so dragging the slider mid-preview updates the bus volume live
-      // instead of cutting the test off (#471). The frame switches are read
-      // live too, so the preview drops what the real frame drops (#1064).
+      // instead of cutting the test off (#471). It plays the selected voice's
+      // own radio frame (#1124); the switches read here govern only the
+      // built-in fallback, since the engine reads the same ones itself (#1064).
       getAudio().setBusVolume(AudioBus.Background, readBackgroundVolume() / 100);
-      playBackgroundTest(() => applyRaceEngineerAudio(), readFrameOptions());
+
+      const outcome = playBackgroundTest(() => applyRaceEngineerAudio(), readFrameOptions());
+
+      if (outcome === "built-in") {
+        logger.debug("Background test played the built-in radio frame — the selected voice has none to offer");
+      }
+
       break;
+    }
   }
 }

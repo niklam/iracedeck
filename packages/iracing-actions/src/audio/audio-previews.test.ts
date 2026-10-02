@@ -5,7 +5,7 @@ import { AUDIO_PREVIEW_KINDS, isAudioPreviewKind, runAudioPreview } from "./audi
 
 const mocks = vi.hoisted(() => ({
   playRadarTest: vi.fn(),
-  playBackgroundTest: vi.fn(),
+  playBackgroundTest: vi.fn((): string => "voice-frame"),
   playRaceEngineerVoiceTest: vi.fn(() => true),
   setBusVolume: vi.fn(),
   applyRaceEngineerAudio: vi.fn(),
@@ -34,7 +34,7 @@ vi.mock("./voice-test.js", () => ({
   playRaceEngineerVoiceTest: mocks.playRaceEngineerVoiceTest,
 }));
 
-const logger: ILogger = { ...silentLogger, warn: vi.fn(), info: vi.fn() };
+const logger: ILogger = { ...silentLogger, warn: vi.fn(), info: vi.fn(), debug: vi.fn() };
 
 describe("runAudioPreview", () => {
   beforeEach(() => {
@@ -90,6 +90,16 @@ describe("runAudioPreview", () => {
     mocks.readFrameOptions.mockReturnValueOnce({ beeps: false, ambience: false });
     runAudioPreview("background", logger);
     expect(mocks.playBackgroundTest).toHaveBeenLastCalledWith(expect.any(Function), { beeps: false, ambience: false });
+  });
+
+  it("background: says at debug when the built-in frame stood in for the voice's (issue #1124)", () => {
+    mocks.playBackgroundTest.mockReturnValueOnce("voice-frame");
+    runAudioPreview("background", logger);
+    expect(logger.debug).not.toHaveBeenCalled();
+
+    mocks.playBackgroundTest.mockReturnValueOnce("built-in");
+    runAudioPreview("background", logger);
+    expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining("built-in radio frame"));
   });
 
   it("exposes the kinds and a type guard so a page-supplied string can be validated", () => {
