@@ -329,6 +329,119 @@ describe("sim-events-iracing translator", () => {
     });
   });
 
+  describe("opponent-flag wiring (issues #1274, #1273)", () => {
+    const raceSession = (): Record<string, unknown> => ({
+      DriverInfo: {
+        DriverCarIdx: 0,
+        Drivers: [
+          { CarIdx: 0, CarNumber: "1" },
+          { CarIdx: 1, CarNumber: "07" },
+          { CarIdx: 2, CarNumber: "22" },
+        ],
+      },
+      SessionInfo: { Sessions: [{ SessionNum: 0, SessionType: "Race" }] },
+    });
+
+    /** One green-race tick: car1 `gapAheadS` race-seconds ahead of the player, car2 half a second behind. */
+    function raceTick(k: number, gapAheadS: number, car1Flags: number): TelemetryData {
+      const player = 0.3 + 0.01 * k;
+
+      return telemetry({
+        SessionState: SessionState.Racing,
+        SessionTime: 100 + k,
+        CarIdxLapCompleted: [5, 5, 5],
+        CarIdxLapDistPct: [player, player + 0.01 * gapAheadS, player - 0.005],
+        CarIdxTrackSurface: [TrkLoc.OnTrack, TrkLoc.OnTrack, TrkLoc.OnTrack],
+        CarIdxClass: [0, 0, 0],
+        CarIdxSessionFlags: [0, car1Flags, 0],
+      });
+    }
+
+    /**
+     * Drive a green race where every car laps at 0.01 of a lap per second, so
+     * the traces `getLiveGapBetween` reads build up over the ticks; the
+     * meatball goes up on car1 on the last tick only.
+     */
+    function drive(controller: MockController, gapAheadS: number, ticks = 6): void {
+      for (let k = 0; k < ticks; k++) {
+        controller.__tick(raceTick(k, gapAheadS, k === ticks - 1 ? Flags.Repair : 0));
+      }
+    }
+
+    it("defaults the range to 3 s when no resolver is passed, naming the car and carrying the race gap", () => {
+      const controller = createMockController();
+      const bus = getEventBus();
+      const handler = vi.fn();
+      bus.subscribe("opponentFlag.flagged", handler);
+      controller.__setSessionInfo(raceSession());
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      drive(controller, 2.5);
+
+      expect(handler).toHaveBeenCalledTimes(1);
+      expect(handler.mock.calls[0]![0].data).toMatchObject({
+        relation: "ahead",
+        carIdx: 1,
+        flag: OpponentPenaltyFlag.Repair,
+        trigger: "raised",
+        position: 1,
+        carNumber: "07",
+        gapSeconds: expect.closeTo(2.5, 5),
+      });
+    });
+
+    it("stays silent for a car further ahead than the default 3 s", () => {
+      const controller = createMockController();
+      const bus = getEventBus();
+      const handler = vi.fn();
+      bus.subscribe("opponentFlag.flagged", handler);
+      controller.__setSessionInfo(raceSession());
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      drive(controller, 3.5);
+
+      expect(handler).not.toHaveBeenCalled();
+    });
+
+    it("reads getOpponentFlagRangeSeconds live — a widened range announces the still-flagged car as entered-range", () => {
+      const controller = createMockController();
+      const bus = getEventBus();
+      const handler = vi.fn();
+      let range = 2;
+      bus.subscribe("opponentFlag.flagged", handler);
+      controller.__setSessionInfo(raceSession());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { getOpponentFlagRangeSeconds: () => range });
+
+      drive(controller, 2.5);
+      expect(handler).not.toHaveBeenCalled();
+
+      range = 3;
+      controller.__tick(raceTick(6, 2.5, Flags.Repair));
+
+      expect(handler).toHaveBeenCalledTimes(1);
+      expect(handler.mock.calls[0]![0].data).toMatchObject({ carIdx: 1, trigger: "entered-range" });
+    });
+
+    it("writes the debug lines through an OpponentFlags scope of the translator's logger", () => {
+      const controller = createMockController();
+      const scoped = createMockLogger();
+      const logger = createMockLogger();
+      vi.mocked(logger.createScope).mockReturnValue(scoped);
+      controller.__setSessionInfo(raceSession());
+      initializeSimEventsIracing(getEventBus(), controller, logger);
+
+      drive(controller, 2.5);
+
+      expect(logger.createScope).toHaveBeenCalledWith("OpponentFlags");
+      const lines = vi.mocked(scoped.debug).mock.calls.map((c) => c[0]);
+
+      expect(lines).toHaveLength(1);
+      expect(lines[0]).toContain("Opponent flag announced");
+      expect(lines[0]).toContain("carNumber=07");
+      expect(scoped.info).not.toHaveBeenCalled();
+    });
+  });
+
   describe("getLiveRacePositions", () => {
     it("returns the live per-car race order (1-based, indexed by carIdx)", () => {
       const controller = createMockController();

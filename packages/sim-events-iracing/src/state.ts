@@ -1040,21 +1040,32 @@ export type TranslatorState = {
    * tick even when the callout gates are closed.
    */
   opponentFlagBits: number[];
-  /** Epoch ms the car's Furled bit rose; 0 while down. Debounces flicker (#669). */
-  opponentFlagFurledSinceAt: number[];
+  /**
+   * Per HELD flag, the epoch ms the car's bit rose; 0 while down. Furled's
+   * 1 s debounces flicker (#669), Black's 3 s filters a blip (#1274) — the
+   * flag is effectively active only once its bit has been continuously up
+   * for its hold.
+   */
+  opponentFlagHeldSinceAt: { furled: number[]; black: number[] };
   /** Penalty bits already announced for the current episode, per car. Cleared per bit as the bit drops. */
   opponentFlagAnnouncedMask: number[];
+  /**
+   * Penalty bits whose "held back" debug line (#1273) was already written
+   * this episode, per car. Cleared per bit as the bit drops, exactly like
+   * {@link opponentFlagAnnouncedMask}, so the line is once per (car, flag)
+   * episode, never per tick. A logging latch only — it gates no announce,
+   * and re-seeds across a replay wipe (the worst case is one repeated line).
+   */
+  opponentFlagHeldBackLoggedMask: number[];
   /** Per-car, per-flag re-announce cooldown deadlines (epoch ms) — per-flag so an escalation (black → DQ) is never suppressed. */
   opponentFlagCooldownUntil: { furled: number[]; black: number[]; repair: number[]; disqualify: number[] };
-  /** Whether the car was inside the qualification window last tick (trigger classification + hysteresis). */
-  opponentFlagInWindow: boolean[];
   /**
    * Bitmask (same bit values as {@link opponentFlagBits} / `PENALTY_FLAG_MASK`)
-   * of flags that were EFFECTIVELY active — debounce-adjusted for Furled —
-   * as of the last tick, per carIdx. Lets the qualifier detect "became
+   * of flags that were EFFECTIVELY active — hold-adjusted for Furled and
+   * Black — as of the last tick, per carIdx. Lets the qualifier detect "became
    * effectively active THIS tick" (the raised-vs-entered-range trigger)
-   * without conflating it with the raw bit, which for Furled can rise long
-   * before the debounce clears. Recomputed and advances every tick, even
+   * without conflating it with the raw bit, which for a held flag can rise
+   * long before its hold clears. Recomputed and advances every tick, even
    * while the callout gates are closed, so a flag that turns effectively
    * active during a gated window is already reflected by the time the gate
    * reopens — the reopened tick reports `entered-range`, never a replayed
@@ -1063,7 +1074,7 @@ export type TranslatorState = {
    * **Replay-wipe obligation:** `wipeStateForReplay` MUST treat
    * this field like the `opponentFlagBits` baseline it derives from — reseed
    * it (never carry it through `preservedAcrossReplay`) exactly in lockstep
-   * with `opponentFlagBits`/`opponentFlagFurledSinceAt`, since a
+   * with `opponentFlagBits`/`opponentFlagHeldSinceAt`, since a
    * replay-timeline "was it effectively active" reading is as meaningless as
    * the bits baseline itself. Preserving this mask while `opponentFlagBits`
    * re-seeds (or the reverse) would desync the two: a flag whose raw bit
@@ -1506,10 +1517,10 @@ export function createInitialState(): TranslatorState {
 
     opponentFlagsInitialized: false,
     opponentFlagBits: [],
-    opponentFlagFurledSinceAt: [],
+    opponentFlagHeldSinceAt: { furled: [], black: [] },
     opponentFlagAnnouncedMask: [],
+    opponentFlagHeldBackLoggedMask: [],
     opponentFlagCooldownUntil: { furled: [], black: [], repair: [], disqualify: [] },
-    opponentFlagInWindow: [],
     opponentFlagEffectiveMask: [],
     opponentFlagRecentEntries: [],
     opponentFlagAggregateAnnounced: false,

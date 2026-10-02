@@ -98,6 +98,15 @@ export {
   sanitizeFuelCalloutMarginLaps,
 } from "./diff/fuel-laps-left.js";
 export { FUEL_LAP_HISTORY_CAP, type FuelLap, type FuelStats } from "./diff/fuel-laps.js";
+// The opponent-flag range setting's bounds and sanitizer (issue #1274) — the
+// plugins wire `getOpponentFlagRangeSeconds` through it, the
+// `sanitizeGapAlertThresholdSeconds` precedent.
+export {
+  OPPONENT_FLAG_DEFAULT_RANGE_SECONDS,
+  OPPONENT_FLAG_RANGE_MAX_SECONDS,
+  OPPONENT_FLAG_RANGE_MIN_SECONDS,
+  sanitizeOpponentFlagRangeSeconds,
+} from "./diff/opponent-flags.js";
 export {
   OPPONENT_PIT_AGGREGATE_THRESHOLD,
   OPPONENT_PIT_AGGREGATE_WINDOW_MS,
