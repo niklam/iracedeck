@@ -195,6 +195,26 @@ describe("race-engineer partials", () => {
     expect(html).not.toContain("<details");
   });
 
+  it("race-engineer-callouts puts the opponent-flag range directly under the Opponent Flags opt-ins (issue #1274)", () => {
+    const html = render("<%- include('race-engineer-callouts') %>", withRequire);
+
+    // The Furled opt-in names what the engineer now says; its key is unchanged.
+    expect(html).toContain('setting="calloutEnabledOpponentFlagFurled" label="Slowdown (furled black flag)"');
+    expect(html).not.toContain("Furled black flag (warning)");
+
+    const range =
+      '<sdpi-item label="Opponent flag range (s)">' +
+      '<ird-range-input setting="opponentFlagRangeSeconds" min="1" max="10" step="1" default="3" global showlabels></ird-range-input>' +
+      "</sdpi-item>" +
+      '<div class="ird-supporting-text">Only cars in your class this close ahead or behind in the race are announced.</div>';
+    expect(html).toContain(range);
+
+    // Directly under the group: the Opponent Flags item closes, and the range follows.
+    expect(html).toContain('<sdpi-item label="Opponent Flags">');
+    const flagsEnd = html.indexOf("</sdpi-item>", html.indexOf('setting="calloutEnabledOpponentFlagDisqualify"'));
+    expect(html.indexOf(range)).toBe(flagsEnd + "</sdpi-item>".length);
+  });
+
   it("setup-warning-patterns emits the two pattern fields", () => {
     const html = render("<%- include('setup-warning-patterns') %>", withRequire);
 

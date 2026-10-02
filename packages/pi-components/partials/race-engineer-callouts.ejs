@@ -122,9 +122,11 @@ var opponentPitCheckboxes = opponentPitCallouts.map(function (c) {
 }).join('');
 
 // Opponent-flag callouts (issue #936). Four subjects — penalty flags
-// on cars near us. Same 2-column auto-balancing grid as above.
+// on same-class cars within the range set below (issue #1274). Same
+// 2-column auto-balancing grid as above. The Furled label names what
+// the engineer says ("slowdown"); its key is unchanged.
 var opponentFlagCallouts = [
-	{ setting: "calloutEnabledOpponentFlagFurled", label: "Furled black flag (warning)" },
+	{ setting: "calloutEnabledOpponentFlagFurled", label: "Slowdown (furled black flag)" },
 	{ setting: "calloutEnabledOpponentFlagBlack", label: "Black flag" },
 	{ setting: "calloutEnabledOpponentFlagMeatball", label: "Meatball (repairs)" },
 	{ setting: "calloutEnabledOpponentFlagDisqualify", label: "Disqualified" },
@@ -468,6 +470,10 @@ var cautionCheckboxes = cautionCallouts.map(function (c) {
   		opponentFlagCheckboxes +
   	'</div>' +
   '</sdpi-item>' +
+  '<sdpi-item label="Opponent flag range (s)">' +
+  	'<ird-range-input setting="opponentFlagRangeSeconds" min="1" max="10" step="1" default="3" global showlabels></ird-range-input>' +
+  '</sdpi-item>' +
+  '<div class="ird-supporting-text">Only cars in your class this close ahead or behind in the race are announced.</div>' +
   '<sdpi-item label="Pit Service">' +
   	'<div style="display:grid;grid-template-rows:repeat(' + pitServiceRowCount + ',auto);grid-auto-flow:column;gap:4px 12px;width:100%;">' +
   		pitServiceCheckboxes +
