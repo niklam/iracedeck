@@ -17,7 +17,9 @@ vi.mock("@iracedeck/audio-service", () => ({
 }));
 
 const engine = vi.hoisted(() => {
-  const playFramePreview = vi.fn<(frameName: string, holdMs: number, onComplete?: () => void) => boolean>(() => false);
+  const playFramePreview = vi.fn<(frameName: string, holdMs: number, onComplete?: () => void) => string>(
+    () => "no-frame",
+  );
   const initialized = { value: false };
 
   return { playFramePreview, initialized };
@@ -39,7 +41,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   hoisted.playOnChannel.mockClear();
   hoisted.stopChannel.mockClear();
-  engine.playFramePreview.mockReset().mockReturnValue(false);
+  engine.playFramePreview.mockReset().mockReturnValue("no-frame");
   engine.initialized.value = false;
 });
 
@@ -161,7 +163,7 @@ describe("playBackgroundTest — the active voice's frame (issue #1124)", () => 
   });
 
   it("asks the engine for the voice's radio frame around the hold, and plays nothing itself", () => {
-    engine.playFramePreview.mockReturnValue(true);
+    engine.playFramePreview.mockReturnValue("playing");
 
     expect(playBackgroundTest()).toBe("voice-frame");
     expect(engine.playFramePreview).toHaveBeenCalledWith("radio", TEST_DURATION_MS, expect.any(Function));
@@ -173,7 +175,7 @@ describe("playBackgroundTest — the active voice's frame (issue #1124)", () => 
   });
 
   it("stays in flight until the engine reports the preview over, then runs onComplete", () => {
-    engine.playFramePreview.mockReturnValue(true);
+    engine.playFramePreview.mockReturnValue("playing");
     const onComplete = vi.fn();
     playBackgroundTest(onComplete);
 
@@ -192,7 +194,7 @@ describe("playBackgroundTest — the active voice's frame (issue #1124)", () => 
     engine.playFramePreview.mockImplementation((_frame, _hold, done) => {
       done?.();
 
-      return true;
+      return "playing";
     });
     const onComplete = vi.fn();
 
@@ -202,7 +204,7 @@ describe("playBackgroundTest — the active voice's frame (issue #1124)", () => 
   });
 
   it("falls back to the built-in clips when the voice has no frame to offer", () => {
-    engine.playFramePreview.mockReturnValue(false);
+    engine.playFramePreview.mockReturnValue("no-frame");
     const onComplete = vi.fn();
 
     expect(playBackgroundTest(onComplete)).toBe("built-in");
@@ -211,6 +213,25 @@ describe("playBackgroundTest — the active voice's frame (issue #1124)", () => 
     vi.advanceTimersByTime(TEST_DURATION_MS);
     expect(hoisted.playOnChannel).toHaveBeenLastCalledWith(SFX, TICK_CLOSE);
     expect(onComplete).toHaveBeenCalledTimes(1);
+  });
+
+  it("plays nothing while the engineer holds the radio — not even the fallback — and releases at once", () => {
+    engine.playFramePreview.mockReturnValue("bus-busy");
+    const onComplete = vi.fn();
+
+    expect(playBackgroundTest(onComplete)).toBe("busy");
+    expect(hoisted.playOnChannel).not.toHaveBeenCalled();
+    expect(onComplete).toHaveBeenCalledTimes(1);
+    expect(isBackgroundTestInFlight()).toBe(false);
+  });
+
+  it("an engine that throws leaves no in-flight flag behind", () => {
+    engine.playFramePreview.mockImplementation(() => {
+      throw new Error("boom");
+    });
+
+    expect(() => playBackgroundTest()).toThrow("boom");
+    expect(isBackgroundTestInFlight()).toBe(false);
   });
 
   it("falls back without asking when the engine is not initialised", () => {

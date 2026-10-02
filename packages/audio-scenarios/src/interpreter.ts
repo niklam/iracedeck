@@ -134,10 +134,11 @@ export type FrameOptions = { beeps: boolean; ambience: boolean };
 const FRAME_PREVIEW_ID = "(frame preview)";
 
 /**
- * Below every `WEIGHT` band, so no callout is ever dropped for the preview's
- * sake: an arriving one cuts it (`interrupt`) or waits behind it.
+ * What `playFramePreview` did (issue #1124): started (or, with both switches
+ * off, completed on the spot), found no frame to play, or found the bus in
+ * use and left it alone.
  */
-const FRAME_PREVIEW_WEIGHT = 0;
+export type FramePreviewResult = "playing" | "no-frame" | "bus-busy";
 
 /**
  * What the engine's vocabulary registries hold, for the generated pack-author
@@ -307,19 +308,21 @@ export interface IScenarioEngine {
    * Play the ACTIVE voice's compiled frame `frameName` around `holdMs` of
    * silence — the Background Test (issue #1124). The frame is expanded as a
    * callout's is: the user's Radio beeps / Pit ambience switches, frame clips
-   * on the SFX channel, the ambient steps. It takes the Voice bus as an
-   * interrupting fire would, at a weight below every band: what it cuts is
-   * stashed if queueable, any callout arriving meanwhile waits behind it or
-   * cuts it, and what waited plays when it ends.
+   * on the SFX channel, the ambient steps. It plays on the Voice bus and
+   * YIELDS to every callout: it never cuts, delays or displaces one. It
+   * starts only on a free bus — nothing playing, nothing pending, no focus
+   * floor held — and any callout that would play while it runs cuts it and
+   * then schedules exactly as it would on an idle bus.
    *
-   * Returns `false` without playing when no voice is active or the active
-   * voice has no compiled frame of that name (no script, a frame it does not
-   * define, or one that failed to compile or aborted on a missing clip); the
-   * caller falls back. Otherwise returns `true`, and `onComplete` runs once
-   * the preview leaves the bus — finished, cut, or `stopAll` — or at once
-   * when the switches leave the frame nothing to play.
+   * Returns `"no-frame"` without playing when no voice is active or the
+   * active voice has no compiled frame of that name (no script, a frame it
+   * does not define, or one that failed to compile or aborted on a missing
+   * clip) — the caller falls back — and `"bus-busy"` without playing when
+   * the bus is not free. Otherwise returns `"playing"`, and `onComplete` runs
+   * once the preview leaves the bus — finished, cut, or `stopAll` — or at
+   * once when the switches leave the frame nothing to play.
    */
-  playFramePreview(frameName: string, holdMs: number, onComplete?: () => void): boolean;
+  playFramePreview(frameName: string, holdMs: number, onComplete?: () => void): FramePreviewResult;
   stopAll(): void;
   /**
    * Raise an exclusive-focus weight floor on a bus (issue #652). While held,
@@ -1278,9 +1281,11 @@ class ScenarioEngine implements IScenarioEngine {
    * than a contract: a frame wraps speech, so `applyFrame` gives a body with
    * no clip no frame, and the preview is the one legitimate frame around
    * silence. It owns no cooldown, gate or resume — it is never stashed, so a
-   * cut preview is over.
+   * cut preview is over. `attemptFire` is what makes it yield: it treats a
+   * bus the preview holds as idle and cuts the preview (`yieldPreview`) only
+   * once the arriving fire has expanded to something to play.
    */
-  playFramePreview(frameName: string, holdMs: number, onComplete?: () => void): boolean {
+  playFramePreview(frameName: string, holdMs: number, onComplete?: () => void): FramePreviewResult {
     this.ensureCompiled();
 
     const voice = this.getActiveVoice();
@@ -1289,7 +1294,15 @@ class ScenarioEngine implements IScenarioEngine {
     if (voice === null || script === undefined || !script.frames.has(frameName)) {
       this.logger.debug(`Frame preview "${frameName}" unavailable for voice "${voice ?? "(none)"}"`);
 
-      return false;
+      return "no-frame";
+    }
+
+    const state = this.getBusState(AudioBus.Voice);
+
+    if (state.playingId !== null || state.pending !== null || state.focus !== null) {
+      this.logger.debug(`Frame preview "${frameName}" skipped — the Voice bus is in use`);
+
+      return "bus-busy";
     }
 
     let frame: ExpandedFrame | null;
@@ -1307,12 +1320,12 @@ class ScenarioEngine implements IScenarioEngine {
         );
       }
 
-      return false;
+      return "no-frame";
     } finally {
       this.expansionPicks = null;
     }
 
-    if (frame === null) return false;
+    if (frame === null) return "no-frame";
 
     for (const [pool, idx] of picks) pool.lastIndex = idx;
 
@@ -1321,21 +1334,16 @@ class ScenarioEngine implements IScenarioEngine {
       // bus for a silent window.
       onComplete?.();
 
-      return true;
+      return "playing";
     }
 
     const ops: ExecOp[] = [...frame.open, { kind: "pause", ms: holdMs }, ...frame.close];
-    const state = this.getBusState(AudioBus.Voice);
-
-    if (state.activeFire !== null) {
-      this.stashRunningIfQueueable(state, state.playingId === null ? undefined : this.scenarios.get(state.playingId));
-      this.cancelActiveFire(state);
-    }
 
     this.takeBus(state, {
       id: FRAME_PREVIEW_ID,
       bus: AudioBus.Voice,
-      weight: FRAME_PREVIEW_WEIGHT,
+      // Never compared: an arriving fire treats the preview's bus as idle.
+      weight: 0,
       ops,
       index: 0,
       sourceOps: ops,
@@ -1354,7 +1362,17 @@ class ScenarioEngine implements IScenarioEngine {
 
     this.stepNext(state);
 
-    return true;
+    return "playing";
+  }
+
+  /**
+   * Cut the frame preview if it holds the bus (issue #1124), so a fire that
+   * is about to play takes the bus as if it were idle. Called only once
+   * that fire has expanded to something to play: one that aborts leaves
+   * the preview running.
+   */
+  private yieldPreview(state: BusState): void {
+    if (state.activeFire?.id === FRAME_PREVIEW_ID) this.cancelActiveFire(state);
   }
 
   /**
@@ -1571,7 +1589,10 @@ class ScenarioEngine implements IScenarioEngine {
       return;
     }
 
-    if (state.playingId !== null) {
+    // A bus the frame preview holds counts as idle: the preview yields to
+    // every callout (issue #1124), and is cut below once this fire has
+    // expanded to something to play.
+    if (state.playingId !== null && state.playingId !== FRAME_PREVIEW_ID) {
       const running = this.scenarios.get(state.playingId);
       const runningWeight = state.activeFire?.weight ?? DEFAULT_WEIGHT;
 
@@ -1639,6 +1660,8 @@ class ScenarioEngine implements IScenarioEngine {
     const expanded = this.prepareOps(entry, event, admitted);
 
     if (expanded === null) return;
+
+    this.yieldPreview(state);
 
     if (!resume) entry.lastFireAt = now;
 

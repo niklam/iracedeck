@@ -15,6 +15,11 @@
  * ambient loop, tick-close after a short window, under the same two
  * switches. The caller is told which one played, so it can say so.
  *
+ * The voice-frame preview yields to the Race Engineer: a press while he
+ * holds the radio plays nothing (`"busy"`) — neither the frame, which would
+ * cut him, nor the fallback, which would play over him — and a callout
+ * arriving mid-preview cuts it.
+ *
  * Idempotent against double-press — a second call while a sequence is in
  * flight is a no-op. The optional `onComplete` callback fires once the
  * preview is over (finished, or cut by a callout or by `stopAll`), letting
@@ -25,7 +30,12 @@
 import { AudioChannel, getAudio } from "@iracedeck/audio-service";
 
 import { DEFAULT_FRAME } from "../../dsl.js";
-import { type FrameOptions, getScenarioEngine, isAudioScenariosInitialized } from "../../interpreter.js";
+import {
+  type FrameOptions,
+  type FramePreviewResult,
+  getScenarioEngine,
+  isAudioScenariosInitialized,
+} from "../../interpreter.js";
 
 const TICK_OPEN = "sfx/IRD-tick-open.mp3";
 const TICK_CLOSE = "sfx/IRD-tick-close.mp3";
@@ -39,9 +49,10 @@ const EVERYTHING: FrameOptions = { beeps: true, ambience: true };
 
 /**
  * What a press did: played the active voice's frame, played the built-in
- * fallback, or nothing because a preview was already in flight.
+ * fallback, nothing because the engineer holds the radio, or nothing because
+ * a preview was already in flight.
  */
-export type BackgroundTestOutcome = "voice-frame" | "built-in" | "in-flight";
+export type BackgroundTestOutcome = "voice-frame" | "built-in" | "busy" | "in-flight";
 
 let testInFlight = false;
 let testTimer: ReturnType<typeof setTimeout> | null = null;
@@ -64,8 +75,26 @@ export function playBackgroundTest(onComplete?: () => void, options: FrameOption
     onComplete?.();
   };
 
-  if (isAudioScenariosInitialized() && getScenarioEngine().playFramePreview(DEFAULT_FRAME, TEST_DURATION_MS, finish)) {
-    return "voice-frame";
+  let result: FramePreviewResult = "no-frame";
+
+  try {
+    if (isAudioScenariosInitialized())
+      result = getScenarioEngine().playFramePreview(DEFAULT_FRAME, TEST_DURATION_MS, finish);
+  } catch (err) {
+    // The flag is what holds the Background bus open past the master gate;
+    // a throw must not leave it set for the rest of the session.
+    testInFlight = false;
+    throw err;
+  }
+
+  if (result === "playing") return "voice-frame";
+
+  if (result === "bus-busy") {
+    // The engineer is on the radio: the preview yields rather than cut him
+    // off, and the built-in clips would play over him.
+    finish();
+
+    return "busy";
   }
 
   playBuiltInFrame(finish, options);

@@ -25,6 +25,7 @@ export type {
   AudioAssetsManifest,
   ContractReport,
   FrameOptions,
+  FramePreviewResult,
   IScenarioEngine,
   VocabularyReport,
 } from "./interpreter.js";
