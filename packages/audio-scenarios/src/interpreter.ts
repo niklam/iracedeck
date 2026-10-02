@@ -1440,6 +1440,8 @@ class ScenarioEngine implements IScenarioEngine {
 
         if (!resume) entry.lastFireAt = now;
 
+        if (!admitted) this.supersedeWaitingOfGroup(state, entry);
+
         this.executeFire(entry, event, expanded, resume);
 
         return;
@@ -1478,7 +1480,23 @@ class ScenarioEngine implements IScenarioEngine {
 
     if (!resume) entry.lastFireAt = now;
 
+    if (!admitted) this.supersedeWaitingOfGroup(state, entry);
+
     this.executeFire(entry, event, expanded, resume);
+  }
+
+  /**
+   * A fire that is about to take the bus is the newest of its
+   * `supersedeGroup`: what still waits of that group is older and would
+   * play stale after it (issue #1185) — fuel-laps-left-5 waiting below a
+   * floor or out a `pendingHoldMs` hold, behind a fuel-laps-left-3 that
+   * cleared it. Each is dropped, logged as superseded; their followers stay
+   * as ordinary entries. Not called for an interrupt's stash coming back
+   * (`admitted`): it is the older fire, and a newer one of its group would
+   * already have replaced it, or made it yield, in the queue.
+   */
+  private supersedeWaitingOfGroup(state: BusState, entry: CompiledScenario): void {
+    this.logQueueDrops(state.queue.removeGroup(entry.raw.supersedeGroup ?? entry.raw.id, entry.raw.id));
   }
 
   /**

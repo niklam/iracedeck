@@ -219,6 +219,19 @@ describe("PendingQueue (issue #1185)", () => {
     expect(q.size).toBe(0);
   });
 
+  it("removeGroup() drops the group's entries as superseded and frees their followers", () => {
+    const q = new PendingQueue<string>(relations({ damage: ["fuel-5"] }));
+    q.offer(input("fuel-5", 50, 0, { group: "fuel" }), 0);
+    q.offer(input("damage", 50, 1), 1);
+    q.offer(input("other", 50, 2), 2);
+
+    expect(q.removeGroup("fuel", "fuel-3")).toEqual([
+      { entry: expect.objectContaining({ id: "fuel-5" }), reason: { kind: "superseded", by: "fuel-3" } },
+    ]);
+    expect(ids(q)).toEqual(["damage", "other"]);
+    expect(q.ordered()[0].after).toBeNull();
+  });
+
   it("hasLeaderFor() reports a waiting entry the id names", () => {
     const q = new PendingQueue<string>(relations({ tire: ["readback"] }));
     expect(q.hasLeaderFor("tire", 0)).toBe(false);

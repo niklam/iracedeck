@@ -147,10 +147,7 @@ export class PendingQueue<F> {
       return { drops, position: null, size: this.entries.length, behind: null };
     }
 
-    for (const old of this.entries.filter((e) => e.group === input.group)) {
-      this.removeEntry(old);
-      drops.push({ entry: old, reason: { kind: "superseded", by: input.id } });
-    }
+    drops.push(...this.removeGroup(input.group, input.id));
 
     const entry: QueuedFire<F> = { ...fields, after: null, seq: this.seq++ };
     const leader = this.ordered().find((e) => this.waitsBehind(entry.id, e.id));
@@ -216,6 +213,21 @@ export class PendingQueue<F> {
     this.removeEntry(e);
 
     return e;
+  }
+
+  /**
+   * Remove every waiting entry of `group`, superseded by `by` — a fire of
+   * that group that has just taken the bus. Their followers become roots.
+   */
+  removeGroup(group: string, by: string): QueueDrop<F>[] {
+    const drops: QueueDrop<F>[] = [];
+
+    for (const old of this.entries.filter((e) => e.group === group)) {
+      this.removeEntry(old);
+      drops.push({ entry: old, reason: { kind: "superseded", by } });
+    }
+
+    return drops;
   }
 
   clear(): QueueDrop<F>[] {

@@ -3672,6 +3672,45 @@ describe("bounded pending queue (issue #1185)", () => {
     expect(heard()).toEqual(["a", "x", "b"]);
   });
 
+  describe("(12c) a fresh fire that takes the bus removes the waiting fires of its group", () => {
+    it("a newer fuel line clearing the floor replaces the older one waiting below it", () => {
+      define("owner", WEIGHT.PROXIMITY, { queueable: false, focusOwner: "spotter" });
+      define("a", WEIGHT.NORMAL, { supersedeGroup: "fuel" }); // laps-left-5
+      define("b", WEIGHT.SAFETY, { supersedeGroup: "fuel" }); // laps-left-3
+      engine.acquireFocus(AudioBus.Voice, "spotter", WEIGHT.SAFETY);
+
+      engine.fire("q.a"); // below the floor: waits
+      engine.fire("q.b"); // clears the floor on an idle bus: plays at once
+
+      expect(mockLogger.debug).toHaveBeenCalledWith('Scenario "q.a" dropped — superseded by "q.b"');
+
+      endClip();
+      engine.releaseFocus(AudioBus.Voice, "spotter");
+      flushVoiceAndSfx(audio);
+
+      expect(heard()).toEqual(["b"]);
+    });
+
+    it("a readout pressed between pit-box count-in marks replaces the one waiting out the hold", () => {
+      define("holder", WEIGHT.NORMAL, { queueable: false, pendingHoldMs: 2000 });
+      define("a", WEIGHT.NORMAL, { supersedeGroup: "readout" });
+      define("b", WEIGHT.NORMAL, { supersedeGroup: "readout" });
+
+      engine.fire("q.holder");
+      engine.fire("q.a"); // waits behind the mark
+      endClip(); // the mark ends: the hold is armed
+      engine.fire("q.b"); // a fresh press on the idle bus plays at once
+
+      expect(mockLogger.debug).toHaveBeenCalledWith('Scenario "q.a" dropped — superseded by "q.b"');
+
+      endClip();
+      vi.advanceTimersByTime(5000);
+      flushVoiceAndSfx(audio);
+
+      expect(heard()).toEqual(["holder", "b"]);
+    });
+  });
+
   it("(13) disabling a contract removes its waiting entry; its follower stays and plays", () => {
     holdBus();
     define("a", WEIGHT.NORMAL);
