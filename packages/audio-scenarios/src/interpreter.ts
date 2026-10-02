@@ -2265,7 +2265,11 @@ class ScenarioEngine implements IScenarioEngine {
       this.replayWaiting(entry.fire);
 
       // Deferred again: it is back in the queue with its original `queuedAt`
-      // — stop, rather than take the same fire off the queue in a loop.
+      // — stop, rather than take the same fire off the queue in a loop. A
+      // defensive bound: `playableAtIdle` filters out every idle-bus
+      // re-deferral `attemptFire` knows today (the focus floor, a waiting
+      // `queueBehind` leader), so this should not trigger; it is what keeps
+      // a future disagreement between the two from looping.
       if (state.queue.has(entry.id)) return;
     }
   }
