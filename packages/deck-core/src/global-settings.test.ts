@@ -462,6 +462,31 @@ describe("spotter callout defaults (issue #651)", () => {
   });
 });
 
+describe("opponentFlagRangeSeconds (issue #1274)", () => {
+  it("defaults to 3 when absent", () => {
+    expect(GlobalSettingsSchema.parse({}).opponentFlagRangeSeconds).toBe(3);
+  });
+
+  it.each([7, "7"])("keeps a valid value (%j) as the number 7", (value) => {
+    expect(GlobalSettingsSchema.parse({ opponentFlagRangeSeconds: value }).opponentFlagRangeSeconds).toBe(7);
+  });
+
+  it.each([1, 10])("accepts the bound %d", (value) => {
+    expect(GlobalSettingsSchema.parse({ opponentFlagRangeSeconds: value }).opponentFlagRangeSeconds).toBe(value);
+  });
+
+  it.each([0, 0.5, 11, -3, "abc", "", null, {}, Number.NaN])(
+    "falls back to 3 for %j without failing the whole parse",
+    (value) => {
+      const result = GlobalSettingsSchema.safeParse({ opponentFlagRangeSeconds: value, spotterStillThereSeconds: 5 });
+      expect(result.success).toBe(true);
+      expect(result.data?.opponentFlagRangeSeconds).toBe(3);
+      // A neighbouring key still parses, so the bad value did not stall the rest.
+      expect(result.data?.spotterStillThereSeconds).toBe(5);
+    },
+  );
+});
+
 describe("corner-names toggle ack opt-in default (issue #897)", () => {
   it("defaults calloutEnabledToggleCornerNames to true", () => {
     const parsed = GlobalSettingsSchema.parse({}) as Record<string, unknown>;

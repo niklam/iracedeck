@@ -546,6 +546,19 @@ export const GlobalSettingsSchema = z
       .transform((val) => val === true || val === "true")
       .default(true),
     /**
+     * Opponent-flag range in seconds (issue #1274). Only a car in the user's
+     * class within this race gap, ahead or behind, is announced; user-
+     * configurable 1–10 s, default 3. Read live by the translator on each
+     * announce, so a change applies to the next one without a restart. No
+     * migration: an absent key reads as the default.
+     */
+    // `.catch(3)` so an out-of-range / malformed persisted value (e.g. a
+    // hand-edited settings file) falls back to the default instead of throwing
+    // and aborting the entire GlobalSettingsSchema.parse — which would stall
+    // every setting, not just this one (the `spotterStillThereSeconds`
+    // precedent).
+    opponentFlagRangeSeconds: z.coerce.number().min(1).max(10).default(3).catch(3),
+    /**
      * Damage callout opt-in (issue #489). Fires after the rising-edge
      * debounce on `EngineWarnings & (MandRepNeeded | OptRepNeeded)`. Same
      * forward-compat semantics as the flag callouts above. Canonical
