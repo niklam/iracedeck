@@ -14,10 +14,20 @@
  * Every pit-crew contract is registered as a plugin registers them, against
  * the bundled voice's real script and manifest, and the clips end on a timer
  * rather than by hand, so the lines overlap as they would on the radio. What
- * held the bus at the crash is not in the log; the replay puts a `WEIGHT.SAFETY`
- * line there, ending before the caution flag — the log has the caution call
- * playing the moment it was raised, so the bus was free by then. The follow
+ * held the bus at the crash is not in the log, so the replay runs the three
+ * holders measured during #1211: a `WEIGHT.SAFETY` line ending before the
+ * caution flag (the log has the caution call playing the moment it was
+ * raised, so the bus was free by then), the same line still playing when the
+ * flag comes, and a `family: "flag"` line the caution flag cuts. The follow
  * call is switched off because the log has none.
+ *
+ * Under the engine's one pending slot each of these lost something: the
+ * caution calls replaced each other in the slot and pushed out the damage
+ * line, and with the holder still playing the incident line too. Under the
+ * bus's queue (issue #1185) nothing is replaced or crowded out: all five
+ * lines are heard when the holder is still playing at the flag, cut or not,
+ * and when it ended before, the pace-car call outwaits the engine's default
+ * max wait (see that test).
  */
 import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "json" };
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
@@ -74,6 +84,9 @@ const LINEUP: CautionLineup = {
  */
 const VOICE_CLIP_MS = 2000;
 const SFX_CLIP_MS = 290;
+
+/** The Voice clip length the timed audio uses; one test lengthens it. */
+let voiceClipMs = VOICE_CLIP_MS;
 
 const mockLogger = {
   trace: vi.fn(),
@@ -138,7 +151,7 @@ function createTimedAudio(): IAudioService {
             callbacks.delete(channel);
             cb?.();
           },
-          channel === AudioChannel.SFX ? SFX_CLIP_MS : VOICE_CLIP_MS,
+          channel === AudioChannel.SFX ? SFX_CLIP_MS : voiceClipMs,
         ),
       );
 
@@ -167,6 +180,7 @@ let bus: IEventBus;
 beforeEach(() => {
   vi.useFakeTimers();
   vi.clearAllMocks();
+  voiceClipMs = VOICE_CLIP_MS;
   _resetAudioScenarios();
   _resetRadarEngine();
   _resetSpotterEngine();
@@ -203,61 +217,127 @@ function heard(): string[] {
     .map((message) => message.slice('Playing scenario "'.length, -1));
 }
 
-describe("the #1288 crash replayed through the engine (issues #1211, #1288)", () => {
-  it("the incident line is heard; the damage line and two caution calls are displaced from the one pending slot while it plays (#1185)", () => {
-    // A SAFETY line holds the bus at the crash and ends 1 s later.
-    getScenarioEngine().defineScenario({
-      id: "test.safety-line",
-      channel: AudioChannel.Voice,
-      bus: AudioBus.Voice,
-      weight: WEIGHT.SAFETY,
-      sequence: [`voice/${VOICE}/flags/caution-waving-01.mp3`],
-    });
-    getScenarioEngine().fire("test.safety-line");
-    vi.advanceTimersByTime(VOICE_CLIP_MS - 1000);
+/** What held the Voice bus when the crash was reported — the log does not say. */
+type Holder = {
+  what: string;
+  /** How long before the crash the holder started. */
+  leadMs: number;
+  family?: string;
+};
 
-    // 01:24:55.227 — the flush tick: both events share one timestamp.
-    publish("incident.scored", { delta: 4 });
-    publish("incident.occurred", { delta: 4, points: 4, type: "collision-car" });
+/**
+ * Replay the log from the crash: the holder, the flush tick, the caution flag
+ * at +1.8 s, the damage edge at +3.9 s, the lineup change deciding at +4.0 s
+ * and the pace car at +4.1 s, then let everything play out.
+ */
+function replayCrash(holder: Holder): void {
+  getScenarioEngine().defineScenario({
+    id: "test.holder",
+    channel: AudioChannel.Voice,
+    bus: AudioBus.Voice,
+    weight: WEIGHT.SAFETY,
+    family: holder.family,
+    sequence: [`voice/${VOICE}/flags/caution-waving-01.mp3`],
+  });
+  getScenarioEngine().fire("test.holder");
+  vi.advanceTimersByTime(holder.leadMs);
 
-    // +1.8 s — the caution flag.
-    vi.advanceTimersByTime(1800);
-    publish("flag.caution-waving.raised", {});
+  // 01:24:55.227 — the flush tick: both events share one timestamp.
+  publish("incident.scored", { delta: 4 });
+  publish("incident.occurred", { delta: 4, points: 4, type: "collision-car" });
 
-    // The lineup change decides 2 s after its event, so it fires at +4.0 s.
-    vi.advanceTimersByTime(200);
-    publish("caution.lineup.changed", {});
+  // +1.8 s — the caution flag.
+  vi.advanceTimersByTime(1800);
+  publish("flag.caution-waving.raised", {});
 
-    // +3.9 s — the damage edge.
-    vi.advanceTimersByTime(1900);
-    publish("damage.repairNeeded.raised", {});
+  // The lineup change decides 2 s after its event, so it fires at +4.0 s.
+  vi.advanceTimersByTime(200);
+  publish("caution.lineup.changed", {});
 
-    // +4.1 s — the pace car.
-    vi.advanceTimersByTime(200);
-    publish("paceCar.deployed", {});
+  // +3.9 s — the damage edge.
+  vi.advanceTimersByTime(1900);
+  publish("damage.repairNeeded.raised", {});
 
-    vi.advanceTimersByTime(30_000);
+  // +4.1 s — the pace car.
+  vi.advanceTimersByTime(200);
+  publish("paceCar.deployed", {});
 
-    // What is heard, in order. The incident line, parked behind the SAFETY
-    // line, plays the moment it ends (+1 s) and runs past +4.1 s. The caution
-    // flag (+1.8 s) waits in the bus's ONE pending slot. The damage line
-    // (+3.9 s, `WEIGHT.NORMAL`) and the lineup change (+4.0 s, one notch
-    // below `WEIGHT.SAFETY` since #1286, so it never evicts a waiting caution
-    // call) meet it there and are dropped; the pace car (+4.1 s, equal weight)
-    // then replaces it. That is #1185's single slot, not something this
-    // family can fix by itself.
+  vi.advanceTimersByTime(60_000);
+}
+
+/** Every drop the queue logged — superseded, full, expired, cleared. */
+function queueDrops(): string[] {
+  return mockLogger.debug.mock.calls
+    .map(([message]) => String(message))
+    .filter((message) => / dropped — /.test(message));
+}
+
+const INCIDENT = "pit-crew.incident-collision-car";
+const DAMAGE = "pit-crew.damage-repair-needed";
+const CAUTION_WAVING = "pit-crew.flag-caution-waving";
+const LINEUP_CHANGED = "pit-crew.caution-lineup-changed";
+const PACE_CAR_OUT = "pit-crew.caution-pace-car-out";
+
+describe("the #1288 crash replayed through the engine (issues #1211, #1288, #1185)", () => {
+  it("holder ends before the caution flag: the incident line plays at once, then the caution calls; the pace-car call outwaits the default max wait", () => {
+    replayCrash({ what: "a SAFETY line ending before the caution flag", leadMs: VOICE_CLIP_MS - 1000 });
+
+    // The incident line, parked behind the holder, takes the bus the moment
+    // it ends and is playing — two clips — when the caution calls arrive.
+    // They wait in the bus's queue in arrival order (one weight), the damage
+    // line (NORMAL) behind them, and nothing replaces anything. But the
+    // pace-car call, queued at +4.1 s, would start only after the incident
+    // line, the caution flag and the two-clip lineup line: past the engine's
+    // 8 s default, so the queue drops it.
     //
-    // The outcome turns on what held the bus, which the log does not say.
-    // Had the SAFETY line still been playing at +1.8 s, the caution flag
-    // would have taken the incident line's slot instead (the incident line
-    // lost, the other four heard); had it been a `family: "flag"` line, which
-    // the caution flag cuts, all five would have been heard.
-    expect(heard()).toEqual(["test.safety-line", "pit-crew.incident-collision-car", "pit-crew.caution-pace-car-out"]);
-    expect(mockLogger.debug).toHaveBeenCalledWith(
-      'Scenario "pit-crew.damage-repair-needed" dropped — lower weight than queued "pit-crew.flag-caution-waving"',
-    );
-    expect(mockLogger.debug).toHaveBeenCalledWith(
-      'Scenario "pit-crew.caution-lineup-changed" dropped — lower weight than queued "pit-crew.flag-caution-waving"',
-    );
+    // OPEN (#1185): spec §2 expects all five lines heard here. Whether the
+    // caution calls get a longer max wait (they carry a speak-time gate, so
+    // they stay true while they wait) is the coordinator's call; this pins
+    // what the specced defaults do.
+    expect(heard()).toEqual(["test.holder", INCIDENT, CAUTION_WAVING, LINEUP_CHANGED, DAMAGE]);
+    expect(queueDrops()).toEqual([
+      expect.stringMatching(/^Scenario "pit-crew\.caution-pace-car-out" dropped — waited \d+ ms \(max 8000 ms\)$/),
+    ]);
+  });
+
+  it("holder still playing at the caution flag: the SAFETY calls first, then the incident line, then the damage line behind it", () => {
+    replayCrash({ what: "a SAFETY line still playing at +1.8 s", leadMs: 0 });
+
+    // The incident line is still waiting when the caution calls arrive. The
+    // caution flag takes the bus when the holder ends; the lineup change and
+    // the pace car each cut the call before them as they arrive (one
+    // `family: "flag"`, which acts on the PLAYING line), so the three start
+    // in turn and the burst is short. Then the incident line, about seven
+    // seconds after the crash — inside even the engine's 8 s default — and
+    // the damage line right behind it (`queueBehind`).
+    expect(heard()).toEqual(["test.holder", CAUTION_WAVING, LINEUP_CHANGED, PACE_CAR_OUT, INCIDENT, DAMAGE]);
+    expect(queueDrops()).toEqual([]);
+  });
+
+  it("holder a flag-family line the caution flag cuts: the caution calls first, then the incident line, then the damage line", () => {
+    replayCrash({ what: 'a family: "flag" line cut by the caution flag', leadMs: 0, family: "flag" });
+
+    // The caution flag replaces the playing flag-family holder outright and
+    // takes the bus; the lineup change and the pace car cut in turn as in
+    // the variant above, and the incident line, waiting since the crash,
+    // plays after them with the damage line behind it.
+    expect(heard()).toEqual(["test.holder", CAUTION_WAVING, LINEUP_CHANGED, PACE_CAR_OUT, INCIDENT, DAMAGE]);
+    expect(queueDrops()).toEqual([]);
+  });
+
+  it("with clips long enough to hold the incident line past 10 s, it expires and the damage line still plays — the pacing working, not a loss", () => {
+    voiceClipMs = 3000;
+    replayCrash({ what: "a SAFETY line still playing at +1.8 s", leadMs: 0 });
+
+    // The incident line would now start about 14 s after the crash: past its
+    // max wait, so the queue drops it rather than describe a moment long
+    // gone. The damage line, which stays true until the repair settles,
+    // waits up to 30 s and is heard. (With the longer clips the pace car
+    // arrives while the caution flag plays and cuts it by family, so it
+    // starts before the lineup change waiting in the queue.)
+    expect(heard()).toEqual(["test.holder", CAUTION_WAVING, PACE_CAR_OUT, LINEUP_CHANGED, DAMAGE]);
+    expect(queueDrops()).toEqual([
+      expect.stringMatching(/^Scenario "pit-crew\.incident-collision-car" dropped — waited \d+ ms \(max 10000 ms\)$/),
+    ]);
   });
 });
