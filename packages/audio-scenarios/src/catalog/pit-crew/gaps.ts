@@ -24,12 +24,12 @@
  *
  * Every var reads the FIRE'S OWN event (`ctx.data`, the `gap.trendChanged`
  * or `gap.thresholdCrossed` payload), never a module-scope stash written by
- * `where:`. Both contracts are queueable and carry different weights, so a
- * stash could be repointed by a fire that never played: a threshold call
- * waiting in the pending slot, a lighter trend fire arriving meanwhile —
- * its `where:` runs, then `setPending` drops it — and the replay would have
- * announced the dropped fire's side and car. A pending fire keeps its event,
- * so the payload cannot be moved from under it.
+ * `where:`. Both contracts are queueable, so a stash could be repointed by a
+ * later fire: a threshold call waiting in the bus's queue, a trend fire for
+ * the other side arriving meanwhile — its `where:` runs and overwrites the
+ * stash, or the fire is dropped (expired, superseded) after it did — and the
+ * replay would have announced the other fire's side and car. A queued fire
+ * keeps its event, so the payload cannot be moved from under it.
  *
  * Numbers are read LIVE at speak time (the #574 pattern) via the injected
  * live-gaps resolver, reusing the `lap-time-second` / `lap-time-decimal`

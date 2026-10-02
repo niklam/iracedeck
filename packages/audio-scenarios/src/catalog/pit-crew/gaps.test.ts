@@ -564,13 +564,14 @@ describe("the gap lines through the real script", () => {
   });
 
   // Both contracts are queueable and carry different weights. A threshold
-  // fire (NORMAL) that could not take the bus waits in the pending slot with
-  // its own event; a trend fire (CHATTER) arriving meanwhile is dropped by
-  // `setPending` as the lighter of the two — but its `where:` had already
-  // run. A resolver reading a module-scope stash the `where:` wrote would
-  // speak the dropped fire's side and car at the replay; the fire's own
-  // `ctx.data` cannot be repointed by a fire that never played.
-  it("a queued threshold call still speaks its own side and car after a dropped trend fire for the other side", () => {
+  // fire (NORMAL) that could not take the bus waits in the bus's queue with
+  // its own event; a trend fire (CHATTER) for the other side arrives
+  // meanwhile and waits behind it — its `where:` ran after the threshold's.
+  // A resolver reading a module-scope stash the `where:` wrote would speak
+  // the later fire's side and car in BOTH lines; each fire's own `ctx.data`
+  // cannot be repointed by another fire. (The shared cooldown is zeroed so
+  // both are said; with it, the trend's gate would refuse the second.)
+  it("two queued gap calls each speak their own side and car, the heavier first (issue #1185)", () => {
     cooldownMs = 0;
     currentGaps = {
       ahead: { carIdx: 3, gapSeconds: 0.9, lapDelta: 0, trend: null },
@@ -586,9 +587,9 @@ describe("the gap lines through the real script", () => {
     });
     engine.fire("test.blocker");
 
-    // Car A ahead crosses the threshold: equal weight, no interrupt — pends.
+    // Car A ahead crosses the threshold: equal weight, no interrupt — waits.
     bus.publishEvent("gap.thresholdCrossed", thresholdEvent("ahead").data);
-    // Car B behind opens up: CHATTER, lighter than the pending fire — dropped.
+    // Car B behind opens up: CHATTER, lighter — waits behind it.
     bus.publishEvent("gap.trendChanged", { ...trendEvent("behind", "opening").data, carIdx: 5 });
     flush(audio);
 
@@ -598,6 +599,10 @@ describe("the gap lines through the real script", () => {
       `voice/${VOICE}/gap/readout-intro-01.mp3`,
       `voice/${VOICE}/lap-time-second/0.mp3`,
       `voice/${VOICE}/lap-time-decimal/9.mp3`,
+      `voice/${VOICE}/gap/behind-opening-01.mp3`,
+      `voice/${VOICE}/gap/readout-intro-01.mp3`,
+      `voice/${VOICE}/lap-time-second/1.mp3`,
+      `voice/${VOICE}/lap-time-decimal/2.mp3`,
     ]);
   });
 

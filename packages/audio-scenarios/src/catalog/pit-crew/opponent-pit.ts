@@ -20,9 +20,11 @@
  * contracts describe DIFFERENT cars: a pit train would truncate "The car
  * ahead is pitting." mid-sentence with the next car's line (or the aggregate
  * tail). Leaving `family` undefined disables preemption entirely, so with
- * `interrupt: false` + `queueable: true` each line either plays to completion,
- * defers for the bus to idle, or is superseded in the single pending slot by
- * a newer fire — never chopped audio. Repeat-protection comes from the
+ * `interrupt: false` + `queueable: true` each line either plays to completion
+ * or waits in the bus's queue for its turn — never chopped audio. A newer
+ * fire of the same contract replaces one still waiting (the default
+ * supersede group is the contract id, issue #1185), which is what keeps the
+ * nearby line's stash below to one value. Repeat-protection comes from the
  * translator's per-car cooldown + burst aggregation, not from preemption.
  *
  * **Weight 65** — the pit-window value: strategic info above chatter, below
