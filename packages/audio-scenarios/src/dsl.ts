@@ -287,7 +287,10 @@ export type ScenarioContract = {
   queueBehind?: readonly string[];
   /**
    * Waiting fires of one supersede group replace each other: a newer fire
-   * of the group removes an older one still waiting (issue #1185). Defaults
+   * of the group removes an older one still waiting, whether the newer one
+   * waits too or takes the bus at once (issue #1185). A line an interrupt
+   * cut is the older fire: its stash yields to a waiting one of its group
+   * and is dropped instead. Defaults
    * to the contract id, so the same callout never stacks. Acts on WAITING
    * fires only; `family` keeps acting on the playing one.
    */
