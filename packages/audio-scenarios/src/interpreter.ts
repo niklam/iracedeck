@@ -1809,8 +1809,8 @@ class ScenarioEngine implements IScenarioEngine {
    * played, so it is the newer: the stash yields to it and is dropped,
    * logged as superseded by it (issue #1185). Replacing it instead would
    * replay the cut line over the newer one — and in a group whose `where:`
-   * writes one stash a resolver reads (`opponent-flag-ahead`'s
-   * `pendingAhead`), speak the newer fire's car in the older line.
+   * writes one stash a resolver reads (the #922 shape), speak the newer
+   * fire's subject in the older line.
    *
    * A fire that began before the last `session.changed` is not stashed at
    * all: it is dropped, logged as `session changed` (see
