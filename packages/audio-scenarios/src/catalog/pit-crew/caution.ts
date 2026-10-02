@@ -41,7 +41,9 @@
  * One residual the gate cannot reach: a fire that has already passed it and is
  * then cut by the CRITICAL `restart` is stashed with `admitted: true` and is
  * never asked again, so a `follow` line still PLAYING at the green replays
- * whole once the restart call finishes. Only `queueable: false` would stop
+ * whole once the restart call finishes — and since #1286 a lineup change
+ * still playing does too, because it no longer shares the restart's family,
+ * whose wholesale replacement used to discard it rather than stash it. Only `queueable: false` would stop
  * that, and this family is queueable by standing ruling — nothing in a caution
  * sequence is dropped for a busy bus. The gate restores most of what leaving
  * that ruling in place costs, not all of it.
@@ -336,7 +338,9 @@ export function cautionScenarioId(id: CautionCalloutId): string {
 /**
  * Every caution call the lineup change waits behind (issue #1286) — all but
  * itself and the restart, which is CRITICAL with `interrupt` and ends the
- * caution, after which the change's gate refuses anyway.
+ * caution: a change still WAITING then meets its gate at replay and is refused.
+ * (One still PLAYING is cut and stashed admitted — the module header's
+ * residual.)
  */
 const LINEUP_CHANGE_QUEUE_BEHIND: readonly string[] = (
   ["follow", "pace-car-out", "field-caught", "extra-lap", "one-to-go", "position", "pace-car-off"] as const
