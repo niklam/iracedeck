@@ -1267,6 +1267,103 @@ const ESCALATION_WHILE_ANOTHER_LINE_PLAYS_SHORTCUT: TelemetrySequenceShortcut = 
   ],
 };
 
+/**
+ * The 18-car roster's `CarIdxTrackSurface` with the pace car (index 0) in the
+ * pits and everyone else on track: the baseline `diff/caution.ts` `diffPaceCar`
+ * needs to see the pace car's arrival as an edge (`paceCar.deployed`). The
+ * hot-lap preset carries no surface array at all, and a seed without one leaves
+ * the baseline null, which swallows the first reading.
+ */
+const CAUTION_CRASH_SURFACES_PACE_IN_PITS = [TrkLoc.InPitStall, ...Array<number>(17).fill(TrkLoc.OnTrack)];
+
+/** The same roster with the pace car (index 0) out on the track. */
+const CAUTION_CRASH_SURFACES_PACE_OUT = [TrkLoc.OnTrack, ...Array<number>(17).fill(TrkLoc.OnTrack)];
+
+/**
+ * The beats of "Crash into a full-course caution", counted from the crash's
+ * count increment: the waving flag with the lineup 0.5 s in, the field
+ * re-forming a second later, and the pace car reaching the track a second after
+ * that — all three inside about 2.5 s, so the lines they feed pile up behind the
+ * crash's incident and damage lines instead of arriving one at a time.
+ */
+const CAUTION_CRASH_WAVING_AFTER_MS = 500;
+const CAUTION_CRASH_LINEUP_AFTER_MS = 1000;
+const CAUTION_CRASH_PACE_CAR_AFTER_MS = 1000;
+
+/**
+ * The listening time at the end: five lines contend for the bus (the caution
+ * pickup and its follow line, the lineup change, the collision line, the damage
+ * line), each with its radio frame, so this is longer than a plain incident's.
+ */
+const CAUTION_CRASH_LISTEN_MS = 20_000;
+
+/**
+ * A crash with a full-course caution right behind it (issue #1185), driven
+ * through the TRANSLATOR: the collision-car byte and the count +4 with the
+ * repair bits, then caution-waving with a single-file pace lineup 0.5 s later,
+ * the lineup changing (the car ahead of the player) a second after that, and the
+ * pace car reaching the track a second after that. The incident burst flushes
+ * 1.5 s after the crash and the damage edge settles 3 s after the bits and
+ * waits out the grace, so the caution lines are already contending for the
+ * Voice bus when the incident and damage lines are published — the bounded
+ * pending queue has to order them by weight rather than let the newest take the
+ * bus or the oldest block it.
+ *
+ * Opens inside the replay-mode bracket, which also puts the pace car in the
+ * pits, clears the caution flags and seeds the pace arrays out of the way, so a
+ * second press starts clean. The pace car's first reading is a baseline: the
+ * session preset's roster must name it (index 0), which is why the run needs a
+ * session preset.
+ */
+const CRASH_INTO_FULL_COURSE_CAUTION_SHORTCUT: TelemetrySequenceShortcut = {
+  id: "incident-crash-into-full-course-caution",
+  category: "Incidents",
+  label: "Crash into a full-course caution",
+  requires: ["player-car-index"],
+  qualifyingInvalidationSnapshot: RACE_INCIDENT_SNAPSHOT,
+  description:
+    "Drives the TRANSLATOR through a crash that is followed within three seconds by a full-course caution (issue #1185), about 30 s end to end: a 4x car collision with the repair indicator lit, caution waving with a single-file pace lineup half a second later, the field re-forming (the car ahead changes) a second after that, and the pace car reaching the track a second after that. Apply a session preset (the race one; its roster supplies the pace car and every car number) and the hot-lap telemetry preset first; the run is refused without a session preset. Expect the caution lines and the crash lines to contend for the radio: the caution-waving line first, the weightier lines ahead of the lighter ones that were waiting, the collision-car line with four points and the damage line both heard rather than dropped, and a line that waited too long skipped rather than played late. The pace car is placed in the pits and the flags cleared at the start of each run, so it can be pressed again. Needs the mock SDK CONNECTED; with it disconnected the translator sees no ticks and the button is silent for the wrong reason.",
+  telemetrySequence: [
+    {
+      patch: {
+        IsReplayPlaying: true,
+        IsOnTrack: true,
+        OnPitRoad: false,
+        PlayerCarInPitStall: false,
+        PlayerTrackSurface: TrkLoc.OnTrack,
+        PlayerCarMyIncidentCount: 0,
+        PlayerIncidents: 0,
+        EngineWarnings: 0,
+        CarLeftRight: CarLeftRight.Clear,
+        SessionFlags: RACING_NO_FLAG,
+        CarIdxPaceLine: CAUTION_SINGLE_FILE_LINE,
+        CarIdxPaceRow: CAUTION_SINGLE_FILE_ROW,
+        CarIdxTrackSurface: CAUTION_CRASH_SURFACES_PACE_IN_PITS,
+      },
+      holdMs: INCIDENT_SEED_MS,
+    },
+    { patch: { IsReplayPlaying: false }, holdMs: INCIDENT_SETTLE_MS },
+    { patch: { PlayerIncidents: IncidentFlags.RepCollisionWithCar }, holdMs: INCIDENT_BYTE_LEAD_MS },
+    {
+      patch: { PlayerCarMyIncidentCount: 4, PlayerIncidents: 0, EngineWarnings: DAMAGE_REPAIR_MASK },
+      holdMs: CAUTION_CRASH_WAVING_AFTER_MS,
+    },
+    { patch: { SessionFlags: RACING_NO_FLAG | Flags.CautionWaving }, holdMs: CAUTION_CRASH_LINEUP_AFTER_MS },
+    { patch: { CarIdxPaceRow: CAUTION_LINEUP_CHANGED_ROW }, holdMs: CAUTION_CRASH_PACE_CAR_AFTER_MS },
+    {
+      patch: { CarIdxTrackSurface: CAUTION_CRASH_SURFACES_PACE_OUT },
+      // The rest of the damage announce window, counted from the crash.
+      holdMs:
+        COLLISION_ALONGSIDE_MS -
+        CAUTION_CRASH_WAVING_AFTER_MS -
+        CAUTION_CRASH_LINEUP_AFTER_MS -
+        CAUTION_CRASH_PACE_CAR_AFTER_MS +
+        CAUTION_CRASH_LISTEN_MS,
+    },
+    { patch: { SessionFlags: RACING_NO_FLAG } },
+  ],
+};
+
 export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   // ── Pit Service ──
   {
@@ -1984,6 +2081,8 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   COLLISION_DURING_SPOTTER_CALL_SHORTCUT,
   COLLISION_DURING_SPOTTER_CALL_QUALIFYING_SHORTCUT,
   ESCALATION_WHILE_ANOTHER_LINE_PLAYS_SHORTCUT,
+  // Issue #1185: the same crash with a full-course caution right behind it.
+  CRASH_INTO_FULL_COURSE_CAUTION_SHORTCUT,
   // ── Qualifying Invalidation ──
   // Issue #567. Each shortcut posts its embedded `qualifyingInvalidationSnapshot`
   // to `/api/qualifying-invalidation/snapshot` before publishing the trigger
