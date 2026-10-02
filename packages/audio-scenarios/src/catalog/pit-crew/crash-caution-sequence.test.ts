@@ -224,7 +224,7 @@ describe("the #1288 crash replayed through the engine (issues #1211, #1288)", ()
     vi.advanceTimersByTime(1800);
     publish("flag.caution-waving.raised", {});
 
-    // The lineup change decides 1.5 s after its event, so it fires at +3.5 s.
+    // The lineup change decides 2 s after its event, so it fires at +4.0 s.
     vi.advanceTimersByTime(200);
     publish("caution.lineup.changed", {});
 
@@ -239,13 +239,13 @@ describe("the #1288 crash replayed through the engine (issues #1211, #1288)", ()
     vi.advanceTimersByTime(30_000);
 
     // What is heard, in order. The incident line, parked behind the SAFETY
-    // line, plays the moment it ends (+1 s) and runs past +4.1 s. Each of the
-    // three `WEIGHT.SAFETY` calls that arrive while it plays waits in the
-    // bus's ONE pending slot and is replaced there by the next: the caution
-    // flag by the lineup change (+3.5 s), the lineup change by the pace car
-    // (+4.1 s). The damage line (+3.9 s, `WEIGHT.NORMAL`) meets the heavier
-    // lineup change already waiting and is dropped. That is #1185's single
-    // slot, not something this family can fix by itself.
+    // line, plays the moment it ends (+1 s) and runs past +4.1 s. The caution
+    // flag (+1.8 s) waits in the bus's ONE pending slot. The damage line
+    // (+3.9 s, `WEIGHT.NORMAL`) and the lineup change (+4.0 s, one notch
+    // below `WEIGHT.SAFETY` since #1286, so it never evicts a waiting caution
+    // call) meet it there and are dropped; the pace car (+4.1 s, equal weight)
+    // then replaces it. That is #1185's single slot, not something this
+    // family can fix by itself.
     //
     // The outcome turns on what held the bus, which the log does not say.
     // Had the SAFETY line still been playing at +1.8 s, the caution flag
@@ -254,7 +254,10 @@ describe("the #1288 crash replayed through the engine (issues #1211, #1288)", ()
     // the caution flag cuts, all five would have been heard.
     expect(heard()).toEqual(["test.safety-line", "pit-crew.incident-collision-car", "pit-crew.caution-pace-car-out"]);
     expect(mockLogger.debug).toHaveBeenCalledWith(
-      'Scenario "pit-crew.damage-repair-needed" dropped — lower weight than queued "pit-crew.caution-lineup-changed"',
+      'Scenario "pit-crew.damage-repair-needed" dropped — lower weight than queued "pit-crew.flag-caution-waving"',
+    );
+    expect(mockLogger.debug).toHaveBeenCalledWith(
+      'Scenario "pit-crew.caution-lineup-changed" dropped — lower weight than queued "pit-crew.flag-caution-waving"',
     );
   });
 });
