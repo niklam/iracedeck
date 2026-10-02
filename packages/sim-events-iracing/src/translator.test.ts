@@ -36,6 +36,7 @@ import { DAMAGE_DEBOUNCE_MS } from "./diff/damage.js";
 import { YELLOW_CLEARED_HOLD_MS } from "./diff/flags.js";
 import {
   _resetSimEventsIracing,
+  getCautionEpisode,
   getCautionLineup,
   getCautionPhase,
   getDriverSetupName,
@@ -4739,6 +4740,32 @@ describe("sim-events-iracing translator", () => {
         expect(isUnderFullCourseCaution()).toBe(false);
         expect(getCautionPhase()).toBe("none");
         expect(getCautionLineup()).toBeNull();
+        expect(getCautionEpisode()).toBeNull();
+      });
+
+      it("expose the episode only while a caution is out — one id from thrown to restarted, a new one for the next", () => {
+        const controller = createMockController();
+        controller.__setSessionInfo(ovalRace());
+        initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+        controller.__tick(cautionTick({ flags: RACING }));
+        expect(getCautionEpisode()).toBeNull();
+
+        controller.__tick(cautionTick({ flags: WAVING }));
+        const episode = getCautionEpisode();
+
+        // The player holds line 0 row 1, right behind the pace car.
+        expect(episode).toEqual({ id: expect.any(Number), firstFollowCarIdx: PACE });
+
+        controller.__tick(cautionTick({ flags: STATIC }));
+        expect(getCautionEpisode()).toEqual(episode);
+
+        controller.__tick(cautionTick({ flags: RESTART }));
+        expect(getCautionEpisode()).toBeNull();
+
+        controller.__tick(cautionTick({ flags: RACING }));
+        controller.__tick(cautionTick({ flags: WAVING }));
+        expect(getCautionEpisode()?.id).not.toBe(episode?.id);
       });
 
       it("expose the phase itself — and the boolean is that phase not being none", () => {
@@ -5023,6 +5050,31 @@ describe("sim-events-iracing translator", () => {
         expect(seen).toContain("caution.restarted");
         expect(seen).not.toContain("startLight.start-go.raised");
         expect(isUnderFullCourseCaution()).toBe(false);
+      });
+
+      it("keeps the episode with the phase — the same caution, the same id and first follow car", () => {
+        // A consumer keys what it remembers on the episode (issue #1286), so a
+        // glance at the replay must not look like a new caution to it.
+        const controller = createMockController();
+        controller.__setSessionInfo(ovalRace());
+        initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+        controller.__tick(cautionTick({ flags: RACING }));
+        controller.__tick(cautionTick({ flags: WAVING }));
+        controller.__tick(cautionTick({ flags: STATIC }));
+        const before = getCautionEpisode();
+
+        expect(before).toEqual({ id: expect.any(Number), firstFollowCarIdx: PACE });
+
+        controller.__tick(cautionTick({ flags: STATIC, replay: true }));
+        expect(getCautionEpisode()).toEqual(before);
+
+        // The first tick back re-seeds the caution diff; the episode survives it.
+        controller.__tick(cautionTick({ flags: STATIC }));
+        expect(getCautionEpisode()).toEqual(before);
+
+        controller.__tick(cautionTick({ flags: STATIC }));
+        expect(getCautionEpisode()).toEqual(before);
       });
     });
   });

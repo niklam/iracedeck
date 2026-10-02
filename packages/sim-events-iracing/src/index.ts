@@ -8,6 +8,7 @@
  */
 export {
   _resetSimEventsIracing,
+  getCautionEpisode,
   getCautionLineup,
   getCautionPhase,
   getDriverSetupName,
@@ -74,8 +75,10 @@ export {
 // lineup from the committed fixture rather than typing its number in.
 export { type CautionLineup, resolveCautionLineup, resolvePlayerCarIdx } from "./diff/caution-lineup.js";
 // The phase `getCautionPhase()` returns (issue #1127) — the callouts that
-// gate on a STAGE of the caution rather than on "is one out" name it.
-export { type CautionPhase, type RaceFinishResult } from "./state.js";
+// gate on a STAGE of the caution rather than on "is one out" name it — and
+// the episode `getCautionEpisode()` returns (issue #1286), which scopes a
+// callout's memory to one caution.
+export { type CautionEpisode, type CautionPhase, type RaceFinishResult } from "./state.js";
 // The damage edge's debounce, the grace a settled edge waits for the crash's
 // incident burst (#1211), and the repair bits it watches — for the harness,
 // whose damage shortcuts replay the translator's timing and bits rather than

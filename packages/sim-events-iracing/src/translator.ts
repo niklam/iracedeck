@@ -91,6 +91,7 @@ import type { PendingEvent } from "./diff/types.js";
 import { calculateCanonicalRacePositions } from "./race-order.js";
 import { resolveStandingStart } from "./start-lights.js";
 import {
+  type CautionEpisode,
   type CautionPhase,
   createInitialState,
   type GapNeighborState,
@@ -1111,6 +1112,28 @@ export function getCautionPhase(): CautionPhase {
 }
 
 /**
+ * The current full-course caution's identity (issue #1286), or `null` while
+ * none is out (`getCautionPhase() === "none"`) or the translator isn't
+ * initialized. For a consumer that remembers something within ONE caution —
+ * the car the engineer last named — and must not carry it into the next: it
+ * keys its memory on `id` and treats anything recorded under another id as
+ * nothing remembered.
+ *
+ * The id comes from a counter no session change resets, so a caution in a
+ * later session can never match one a consumer still remembers — the audio
+ * layer's state outlives a session change, which is exactly the leak this
+ * closes. `firstFollowCarIdx` is the caution's first readable follow car, the
+ * lineup `caution.lineup.changed` never reports, for a consumer that needs a
+ * reference before anything has been said. Survives a replay glance with the
+ * phase.
+ */
+export function getCautionEpisode(): CautionEpisode | null {
+  if (!instance || instance.state.cautionEpisodeId === null) return null;
+
+  return { id: instance.state.cautionEpisodeId, firstFollowCarIdx: instance.state.cautionFirstFollowCarIdx };
+}
+
+/**
  * The player's place in the caution lineup as of the latest tick (issue #1127)
  * — who to follow, which lane, and where they would restart. `null` when the
  * translator isn't initialized, no telemetry has arrived, or the field carries
@@ -1510,6 +1533,10 @@ function wipeStateForReplay(self: TranslatorInstance): void {
     // as meaningless as the opponent-flag bits baseline above, and both
     // re-seed from the first tick back, which is exactly right.
     cautionPhase: self.state.cautionPhase,
+    // The episode's identity and first follow car (issue #1286) live and die
+    // with the phase, so they ride with it.
+    cautionEpisodeId: self.state.cautionEpisodeId,
+    cautionFirstFollowCarIdx: self.state.cautionFirstFollowCarIdx,
     // …and whether the one-to-green lap's position call is still owed, for
     // the same reason: a glance on the last caution lap must neither lose that
     // call nor repeat it. Its baseline (`cautionLastLapDistPct`) re-seeds.

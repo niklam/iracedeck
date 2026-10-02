@@ -36,6 +36,7 @@ import { initializeEventBus } from "@iracedeck/event-bus";
 import type { SDKController } from "@iracedeck/iracing-sdk";
 import { createConsoleLogger, LogLevel } from "@iracedeck/logger";
 import {
+  getCautionEpisode,
   getCautionLineup,
   getCautionPhase,
   getLiveGaps,
@@ -196,6 +197,10 @@ async function main(): Promise<void> {
     getCautionLineup: () => getCautionLineup(),
     getUnderFullCourseCaution: () => isUnderFullCourseCaution(),
     getCautionPhase: () => getCautionPhase(),
+    // The episode scopes the lineup change's memory of the car last named
+    // (issue #1286); unwired, the default `() => null` would leave the
+    // "Caution → lineup change" shortcut silent.
+    getCautionEpisode: () => getCautionEpisode(),
     // The position call on the last caution lap speaks the RACE position, not
     // the lineup's (`caution.racePosition`, the 2026-09-19 correction), so it
     // reads the same live position the position-change and race-status

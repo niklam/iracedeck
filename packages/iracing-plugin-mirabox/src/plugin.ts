@@ -277,6 +277,7 @@ import { IRacingNative } from "@iracedeck/iracing-native";
 import { LogLevel } from "@iracedeck/logger";
 import { createSvgRasterizer } from "@iracedeck/rasterizer";
 import {
+  getCautionEpisode,
   getCautionLineup,
   getCautionPhase,
   getDriverSetupName,
@@ -846,12 +847,15 @@ registerPitCrew(eventBus, {
   // translator's own caution phase — the boolean for the lap-time and
   // position-change silencings, the phase itself for the caution family,
   // which gates on WHICH stage the caution is in (the two pace-car callouts
-  // because `paceCar.deployed` / `paceCar.off` also fire at a rolling start).
+  // because `paceCar.deployed` / `paceCar.off` also fire at a rolling start),
+  // and the episode that scopes the lineup change's memory of the car last
+  // named to one caution (issue #1286).
   getCautionCalloutEnabled: (id: CautionCalloutId) =>
     (getGlobalSettings() as Record<string, unknown>)[CAUTION_CALLOUT_SETTING_KEYS[id]] !== false,
   getCautionLineup: () => getCautionLineup(),
   getUnderFullCourseCaution: () => isUnderFullCourseCaution(),
   getCautionPhase: () => getCautionPhase(),
+  getCautionEpisode: () => getCautionEpisode(),
   getFlagCalloutEnabled: (id: FlagCalloutId) =>
     (getGlobalSettings() as Record<string, unknown>)[FLAG_CALLOUT_SETTING_KEYS[id]] !== false,
   logger: adapter.createLogger("PitCrewScenarios"),

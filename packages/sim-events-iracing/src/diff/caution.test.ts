@@ -1041,3 +1041,158 @@ describe("the caution lineup", () => {
     ]);
   });
 });
+
+describe("the caution episode (#1286)", () => {
+  /** The field single file behind the pace car, every car on the same scored lap. */
+  function singleFile(...order: number[]): Record<string, unknown> {
+    return lineup(
+      [PACE, 0, 0, 5],
+      ...order.map((carIdx, at): [number, number, number, number] => [carIdx, at + 1, 0, 5]),
+    );
+  }
+
+  it("opens an id as the phase leaves none, holds it through the phases, and clears it with the phase", () => {
+    const state = createInitialState();
+    const { emit } = collect();
+
+    diffCaution(state, flagTick(RACING), sessionInfo, null, emit); // seed
+    expect(state.cautionEpisodeId).toBeNull();
+
+    diffCaution(state, flagTick(WAVING, leader(1, 5)), sessionInfo, null, emit);
+    const id = state.cautionEpisodeId;
+
+    expect(typeof id).toBe("number");
+
+    diffCaution(state, flagTick(STATIC, leader(1, 5)), sessionInfo, null, emit);
+    expect(state.cautionPhase).toBe("caught");
+    expect(state.cautionEpisodeId).toBe(id);
+
+    diffCaution(state, flagTick(ONE_TO_GO, leader(1, 6)), sessionInfo, null, emit);
+    expect(state.cautionPhase).toBe("one-to-go");
+    expect(state.cautionEpisodeId).toBe(id);
+
+    diffCaution(state, flagTick(RESTART, leader(1, 6)), sessionInfo, null, emit);
+    expect(state.cautionPhase).toBe("none");
+    expect(state.cautionEpisodeId).toBeNull();
+  });
+
+  it("never repeats an id — not across cautions, and not on a fresh state", () => {
+    const state = createInitialState();
+    const { emit } = collect();
+
+    diffCaution(state, flagTick(RACING), sessionInfo, null, emit); // seed
+    diffCaution(state, flagTick(WAVING), sessionInfo, null, emit);
+    const first = state.cautionEpisodeId;
+
+    diffCaution(state, flagTick(RACING), sessionInfo, null, emit); // both bits gone: expires
+    expect(state.cautionEpisodeId).toBeNull();
+    diffCaution(state, flagTick(WAVING), sessionInfo, null, emit);
+    const second = state.cautionEpisodeId;
+
+    // A later session builds a fresh state (`resetPerSessionState`); the counter
+    // lives outside it, so that session's first caution cannot reuse an id.
+    const fresh = createInitialState();
+
+    diffCaution(fresh, flagTick(RACING), sessionInfo, null, emit); // seed
+    diffCaution(fresh, flagTick(WAVING), sessionInfo, null, emit);
+    const third = fresh.cautionEpisodeId;
+
+    expect(first).not.toBeNull();
+    expect(second).not.toBeNull();
+    expect(third).not.toBeNull();
+    expect(new Set([first, second, third]).size).toBe(3);
+  });
+
+  it("keeps the first readable follow car, not overwritten by a change, and forgets it with the phase", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    const info = playerSessionInfo(3);
+
+    diffCaution(state, flagTick(RACING), sessionInfo, null, emit); // seed
+    // Waving, but no lineup readable yet.
+    diffCaution(state, flagTick(WAVING), info, null, emit);
+    expect(state.cautionEpisodeId).not.toBeNull();
+    expect(state.cautionFirstFollowCarIdx).toBeNull();
+
+    diffCaution(state, flagTick(WAVING, singleFile(1, 2, 3)), info, null, emit);
+    expect(state.cautionFirstFollowCarIdx).toBe(2);
+
+    // Car 2 pits: a change is reported, and the first follow car stays.
+    diffCaution(state, flagTick(STATIC, singleFile(1, 3)), info, null, emit);
+    expect(events.filter((e) => e.event === "caution.lineup.changed")).toHaveLength(1);
+    expect(state.cautionFirstFollowCarIdx).toBe(2);
+
+    diffCaution(state, flagTick(RESTART, singleFile(1, 3)), info, null, emit);
+    expect(state.cautionFirstFollowCarIdx).toBeNull();
+  });
+
+  it("records the first follow car on the very tick the caution begins with a readable lineup", () => {
+    const state = createInitialState();
+    const { emit } = collect();
+
+    diffCaution(state, flagTick(RACING), sessionInfo, null, emit); // seed
+    diffCaution(state, flagTick(WAVING, singleFile(1, 2, 3)), playerSessionInfo(3), null, emit);
+
+    expect(state.cautionEpisodeId).not.toBeNull();
+    expect(state.cautionFirstFollowCarIdx).toBe(2);
+  });
+
+  it("pins the road capture's second caution: twelve flickers of car 0 within 1.07 s, and one genuine swap held 2.70 s", () => {
+    // The vacuity guard for the contract layer judging a change against the car
+    // last named: its round-trip cases are only worth something while the
+    // capture still carries the flicker they were measured on. Replayed once
+    // per player, since the round trips belong to different cars. Twelve are
+    // car 0, stopped, sliding past the player and back inside the change hold;
+    // the thirteenth is not a flicker at all — car 8 swaps rows ahead of player
+    // 19 and pits 2.70 s later — so it outlasts the hold and is two changes.
+    const roundTrips: Array<{ player: number; a: number | null; b: number | null; legS: number }> = [];
+
+    for (let player = 0; player < 20; player++) {
+      const state = createInitialState();
+      const { events, emit } = collect();
+      const info = playerSessionInfo(player, { oval: false });
+      // The follow car this caution opened on, then every change to it.
+      const seq: Array<{ t: number; followCarIdx: number | null }> = [];
+      let episodes = 0;
+      let lastId: number | null = null;
+
+      for (const tick of roadTicks) {
+        const before = events.length;
+
+        diffCaution(state, replayTick(tick), info, null, emit);
+
+        if (state.cautionEpisodeId !== null && state.cautionEpisodeId !== lastId) episodes++;
+
+        lastId = state.cautionEpisodeId;
+
+        if (episodes !== 2) continue;
+
+        if (seq.length === 0 && state.cautionFirstFollowCarIdx !== null) {
+          seq.push({ t: tick.t, followCarIdx: state.cautionFirstFollowCarIdx });
+        }
+
+        for (const e of events.slice(before)) {
+          if (e.event === "caution.lineup.changed") seq.push({ t: tick.t, followCarIdx: e.data.followCarIdx });
+        }
+      }
+
+      for (let i = 0; i + 2 < seq.length; i++) {
+        if (seq[i].followCarIdx === seq[i + 2].followCarIdx) {
+          roundTrips.push({
+            player,
+            a: seq[i].followCarIdx,
+            b: seq[i + 1].followCarIdx,
+            legS: Math.round((seq[i + 2].t - seq[i + 1].t) * 100) / 100,
+          });
+        }
+      }
+    }
+
+    const flickers = roundTrips.filter((r) => r.b === 0);
+
+    expect(roundTrips).toHaveLength(13);
+    expect(flickers).toHaveLength(12);
+    expect(Math.max(...flickers.map((r) => r.legS))).toBe(1.07);
+    expect(roundTrips.filter((r) => r.b !== 0)).toEqual([{ player: 19, a: 0, b: 8, legS: 2.7 }]);
+  });
+});

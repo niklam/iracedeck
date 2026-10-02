@@ -41,7 +41,9 @@
  * One residual the gate cannot reach: a fire that has already passed it and is
  * then cut by the CRITICAL `restart` is stashed with `admitted: true` and is
  * never asked again, so a `follow` line still PLAYING at the green replays
- * whole once the restart call finishes. Only `queueable: false` would stop
+ * whole once the restart call finishes — and since #1286 a lineup change
+ * still playing does too, because it no longer shares the restart's family,
+ * whose wholesale replacement used to discard it rather than stash it. Only `queueable: false` would stop
  * that, and this family is queueable by standing ruling — nothing in a caution
  * sequence is dropped for a busy bus. The gate restores most of what leaving
  * that ruling in place costs, not all of it.
@@ -71,38 +73,54 @@
  * phase; a phase reader also holds its last value through a missing telemetry
  * read instead of answering "unknown".
  *
- * **2. The lineup change lands one tick BEFORE one to go**, so it holds its
- * decision and then stands down for THAT change only. The field re-forms
- * double file on the tick before the flag — 415.10 vs 415.12, and 793.92 vs
- * 793.93 — so without a hold the "Change — you're behind car twelve" line
- * would start playing 20 ms before "One lap to green. Take the inside line
- * behind car oh nine." and be cut mid-beep by it (same `family`, so
- * preemption is wholesale and weight-independent). `triggerDelay` is the
- * engine's own answer to "the data this scenario needs takes a moment to
- * settle": the fire DECISION waits {@link CAUTION_LINEUP_CHANGE_DELAY_MS},
- * and by then the one-to-go call has arrived and names the car and the lane
- * itself. The test for "the one-to-go call owns this change" is the
- * TRANSITION, not the flag: the one-to-go contract's `where:` stashes its
- * event's timestamp (a `where:` may stash what a resolver will read, never
- * claim — the #1137 rule), and the held change stands down only when a
- * one-to-go arrived AT OR AFTER the change was emitted. A change emitted
- * later on the one-to-green lap — the car ahead pitting, which pits opening
- * on the one-to-go tick makes a real case — has no one-to-go after it and is
- * spoken, so the driver is not left following a car that has gone. (The
- * first build gated on the raw flag being up, which silenced the whole lap.)
- * One consequence to know: the opt-in wrapper runs ahead of a contract's
- * `where:`, so with the one-to-go call switched OFF nothing is stashed and
- * the re-form change speaks its lane and car instead — the only line that
- * user then gets about the re-form, which is the right way round. A genuine
- * mid-caution reorder (someone pitting) speaks a second and a half late,
- * which is nothing against the minute it has. The hold also coalesces a
- * re-form that shuffles the car ahead over several ticks into one decision,
- * since a fresh event replaces the pending timer.
+ * **2. The lineup change is judged against the car last NAMED, not the last
+ * reading** (issue #1286). "Change — you're behind car twelve" speaks only
+ * when the car ahead differs from the one the engineer last told the driver
+ * about in this caution. Judged against the previous pace-row reading, as it
+ * first was, it repeated what had just been said four ways: a follow car
+ * that flickers A → B → A came back to the car already named; the field
+ * re-forms double file on the tick BEFORE the one-to-go flag (415.10 vs
+ * 415.12, and 793.92 vs 793.93), so the change duplicated the one-to-go
+ * call that names the re-formed car itself; a reshuffle between the flag and
+ * the follow call was spoken before anyone had been named; and nothing
+ * remembered the named car at all. Four calls name the car — follow, two to
+ * green, one to go, and the change itself — and each records the lineup's
+ * follow car in its `speakGate`, on admission and only when the lineup names
+ * one. The gate and not a `where:`, because the gate is the one place a claim
+ * may be committed (#1137): it runs after the script expanded and right
+ * before the ops take the bus, while a `where:` record would mark a car
+ * named for a call later dropped or evicted. The record is tagged with
+ * `getCautionEpisode()`'s id, which never repeats, so a car named in an
+ * earlier caution — or session — never counts. Before anything is named the
+ * change has nothing to judge against while the follow call can still name
+ * the car itself — switched on, and the field still waving, the only phase it
+ * speaks in (it reads the lineup live). Otherwise it judges against the
+ * caution's first readable lineup: the driver who switched the follow call
+ * off still hears the first genuine change, and so does one whose follow call
+ * never played (the plugin started mid-caution, or the call lost the pending
+ * slot) once the field is caught. Switched off, the one-to-go call's
+ * gate never runs and records nothing, so the re-form change speaks its lane
+ * and car — the only line that user then gets about the re-form.
  *
- * That hold is also why this one contract asks whether the caution is still
- * running. A change emitted in the last breath before the green would
- * otherwise be spoken INTO the restart — which is the exact shape #1127 was
- * filed about ("Yellow cleared." three seconds into a restart).
+ * The change call left the `flag` family and sits one notch below it, with
+ * `queueBehind` on its siblings, for two engine facts. Same-family
+ * preemption replaces the in-flight fire wholesale, regardless of weight —
+ * that is how a change cut two to green and one to go mid-sentence. And a
+ * fire that finds the bus busy is parked in the single pending slot WITHOUT
+ * its gate being asked, and `setPending` replaces on equal weight — that is
+ * how a change evicted a waiting one-to-go call it would have refused itself
+ * at replay. One notch below, it can never evict a waiting caution call; and
+ * `queueBehind` keeps a sibling arriving from evicting a waiting change in
+ * turn, playing the pair in order instead. A genuine change arriving
+ * mid-call is heard after it, the wait every lower caution line has.
+ *
+ * `triggerDelay` holds the decision {@link CAUTION_LINEUP_CHANGE_DELAY_MS};
+ * a fresh event replaces the held one, so a reshuffle over several ticks is
+ * one decision, taken on the car the field settled on. The hold is also why
+ * this contract asks whether the caution is still running: a change emitted
+ * in the last breath before the green would otherwise be spoken INTO the
+ * restart — the exact shape #1127 was filed about ("Yellow cleared." three
+ * seconds into a restart).
  *
  * And it is why this contract, and the follow call, ask at SPEAK time
  * whether the player still HOLDS A PACE ROW (second review, R15). In the
@@ -157,8 +175,9 @@
  * waiting five seconds for a return would push the real call to half a second
  * before the green.
  *
- * **The follow call deliberately carries no `family`, and since the second
- * review neither does the position call.** Every other contract here shares
+ * **The follow call deliberately carries no `family`; since the second
+ * review neither does the position call, and since #1286 neither does the
+ * lineup change (finding 2).** Every other contract here shares
  * `family: "flag"` so a newer caution call supersedes a stale older one. The
  * follow call cannot: it rides the very event that fires the
  * existing `pit-crew.flag-caution-waving` line ("Caution! Caution! Yellow
@@ -181,15 +200,23 @@
  * below theirs, so it waits behind either rather than cutting it and never
  * evicts either from the single pending slot. If it cannot fit before the
  * green, its `speakGate` drops it, which is the right outcome: a position
- * read out under green is not the position on the last caution lap.
+ * read out under green is not the position on the last caution lap. The
+ * lineup change shares the same choice for the same reason, and adds a
+ * `queueBehind` the other two do without: it can arrive at any stage of the
+ * caution, beside any sibling.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { Flags, hasFlag, type TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
-import { type CautionLineup, type CautionPhase, getLatestTelemetry } from "@iracedeck/sim-events-iracing";
+import {
+  type CautionEpisode,
+  type CautionLineup,
+  type CautionPhase,
+  getLatestTelemetry,
+} from "@iracedeck/sim-events-iracing";
 
-import type { ScenarioContract } from "../../dsl.js";
+import type { ScenarioContract, SpeakGate } from "../../dsl.js";
 import { poolRef, WEIGHT } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
 import { liveRaceCar, WAVING_FLAG_COOLDOWN_MS } from "./flag-alerts.js";
@@ -247,13 +274,28 @@ export type UnderCautionResolver = () => boolean;
 export type CautionPhaseResolver = () => CautionPhase;
 
 /**
- * What {@link buildCautionContracts} is built against: the phase, and the
- * lineup — the latter read at SPEAK time by the two gates that require the
- * player to still hold a pace row (module header, finding 2).
+ * Reader the plugins wire to `getCautionEpisode()`: WHICH caution is out — an
+ * id that never repeats in the process, and the caution's first readable
+ * follow car — or `null` while none is. The lineup-change call's memory of
+ * the car last named is scoped by it (issue #1286, module header finding 2):
+ * the contracts outlive a session, and a car named in the last caution must
+ * not count in the next. The translator owns the episode, so it answers for
+ * it rather than this family re-deriving one from the phase.
+ */
+export type CautionEpisodeResolver = () => CautionEpisode | null;
+
+/**
+ * What {@link buildCautionContracts} is built against: the phase; the
+ * lineup, read at SPEAK time by the two gates that require the player to
+ * still hold a pace row and by the four that record the car they name; the
+ * episode that scopes that record; and the live opt-in, which the change call
+ * asks of the follow call before anything is named (module header, finding 2).
  */
 export type CautionContractDeps = {
   getCautionPhase: CautionPhaseResolver;
   getCautionLineup: CautionLineupResolver;
+  getCautionEpisode: CautionEpisodeResolver;
+  isCautionCalloutEnabled: (id: CautionCalloutId) => boolean;
 };
 
 /** The clip group every car number is spoken from (issue #1127) — `09` and `9` are different clips. */
@@ -277,17 +319,39 @@ const POSITION_NUMBER_GROUP = "position-number";
 export const CAUTION_FOLLOW_DELAY_MS = 2500;
 
 /**
- * How long a lineup change holds before deciding. The measured gap between
- * the double-file re-form and the one-to-go flag is one tick (20 ms); a second
- * and a half clears it with room for a slower tick and coalesces a multi-tick
- * re-form into one decision, while staying short against the minute a genuine
- * mid-caution reorder has before the green.
+ * How long a lineup change holds before deciding (issue #1286). It only
+ * coalesces a reshuffle into one decision: a fresh change replaces the held
+ * one, so a follow car that flickers away and back inside the hold is decided
+ * once, on the car it came back to. Two seconds clears the road capture's
+ * longest flicker (1.07 s) by 0.93 s and stays short against the minute a
+ * genuine mid-caution reorder has before the green. It no longer has to
+ * outlast the gap between the double-file re-form and the one-to-go flag:
+ * the memory of the car last named settles that, not the hold.
  */
-export const CAUTION_LINEUP_CHANGE_DELAY_MS = 1500;
+export const CAUTION_LINEUP_CHANGE_DELAY_MS = 2000;
 
 /** The one spelling of a caution callout's scenario id — the contracts and {@link SCENARIO_ID_TO_CAUTION_ID} both come from it. */
 export function cautionScenarioId(id: CautionCalloutId): string {
   return `pit-crew.caution-${id}`;
+}
+
+/**
+ * Every caution call the lineup change waits behind (issue #1286) — all but
+ * itself and the restart, which is CRITICAL with `interrupt` and ends the
+ * caution: a change still WAITING then meets its gate at replay and is refused.
+ * (One still PLAYING is cut and stashed admitted — the module header's
+ * residual.)
+ */
+const LINEUP_CHANGE_QUEUE_BEHIND: readonly string[] = (
+  ["follow", "pace-car-out", "field-caught", "extra-lap", "one-to-go", "position", "pace-car-off"] as const
+).map(cautionScenarioId);
+
+/** The family's speak-time gate: the full-course caution is still out. */
+function stillOutGate(getCautionPhase: CautionPhaseResolver): SpeakGate {
+  return {
+    description: "Re-checked at speak time: the full-course caution is still out.",
+    admit: () => getCautionPhase() !== "none",
+  };
 }
 
 /** The fields every contract in the family shares. */
@@ -312,24 +376,25 @@ function cautionContract(
     // speak-time re-check below. See the module header: a pending fire's
     // `where:` is never re-evaluated and the pending slot has no TTL, so
     // without this a caution line can drain onto a green-flag track.
-    speakGate: {
-      description: "Re-checked at speak time: the full-course caution is still out.",
-      admit: () => getCautionPhase() !== "none",
-    },
+    speakGate: stillOutGate(getCautionPhase),
   };
 }
 
 /**
  * The family, built against the plugin's caution readers. A builder rather
- * than a constant because the contracts need the phase reader at two moments:
- * at event time, to say whether THIS occurrence of an event is news (the pace
- * car's, which fires at a rolling start too; the follow call's, whose flag
- * re-raises; the pickup's and the pace-car-off's, which read the stage), and
- * again at speak time in eight of the nine — see the module header for both.
+ * than a constant for two reasons. The contracts need the phase reader at two
+ * moments: at event time, to say whether THIS occurrence of an event is news
+ * (the pace car's, which fires at a rolling start too; the follow call's,
+ * whose flag re-raises; the pickup's and the pace-car-off's, which read the
+ * stage), and again at speak time in eight of the nine. And one build holds
+ * the car last named, shared by the four calls that record it and the change
+ * call that reads it (issue #1286) — see the module header for all three.
  */
 export function buildCautionContracts({
   getCautionPhase,
   getCautionLineup,
+  getCautionEpisode,
+  isCautionCalloutEnabled,
 }: CautionContractDeps): readonly ScenarioContract[] {
   /** The shared gate, plus "a caution is actually out" for an event that also fires elsewhere. */
   const underCautionCar = (e: SimEventOf<SimEventName>): boolean => liveRaceCar(e) && getCautionPhase() !== "none";
@@ -340,19 +405,63 @@ export function buildCautionContracts({
    * holds a pace row — read live, never from the event (module header,
    * finding 2, the towed player).
    */
-  const stillLinedUp = {
+  const stillLinedUp: SpeakGate = {
     description: "Re-checked at speak time: the full-course caution is still out and you still hold a pace row.",
     admit: () => getCautionPhase() !== "none" && getCautionLineup() !== null,
   };
 
+  /** The family's own gate, built once so the two naming calls below can wrap it. */
+  const stillOut = stillOutGate(getCautionPhase);
+
   /**
-   * When the last `caution.oneLapToGreen` arrived (its event timestamp), or
-   * `null` while none has. Stashed by the one-to-go contract's `where:` and
-   * read by the held lineup-change decision: a change emitted at or before
-   * that moment is the re-form the one-to-go call names itself; one emitted
-   * after it is a genuine change on the one-to-green lap and is spoken.
+   * The car the engineer last told the driver about in THIS caution (issue
+   * #1286), recorded by the four calls that name it when their gate admits —
+   * the one place a claim may be committed (#1137): the script has expanded
+   * and the ops take the bus next. Tagged with the caution's id so a record
+   * from an earlier caution — or session — never counts.
    */
-  let oneToGoAt: number | null = null;
+  let lastNamed: { episodeId: number; followCarIdx: number } | null = null;
+
+  /** Record the car ahead now as named — nothing while no caution is out or the lineup names no car. */
+  const recordNamed = (): void => {
+    const episode = getCautionEpisode();
+    const followCarIdx = getCautionLineup()?.followCarIdx ?? null;
+
+    if (episode === null || followCarIdx === null) return;
+
+    lastNamed = { episodeId: episode.id, followCarIdx };
+  };
+
+  /**
+   * What a change in `episode` is judged against: the car last named this
+   * caution. Before anything is named, nothing while the follow call can still
+   * name the car itself — switched on, and the field still waving, the only
+   * phase it speaks in — else the caution's first readable lineup. Past the
+   * waving phase a follow call that never played (the plugin started
+   * mid-caution, the driver was not in the car at the flag, the call lost the
+   * pending slot, or the pack has no follow line) has nothing more to say, so
+   * waiting for it would leave every genuine change silent until two to green
+   * or one to go.
+   */
+  const referenceCarIdx = (episode: CautionEpisode): number | null => {
+    if (lastNamed !== null && lastNamed.episodeId === episode.id) return lastNamed.followCarIdx;
+
+    if (isCautionCalloutEnabled("follow") && getCautionPhase() === "waving") return null;
+
+    return episode.firstFollowCarIdx;
+  };
+
+  /** A speak-time gate that also records the car the call names — on admission only. */
+  const naming = (gate: SpeakGate): SpeakGate => ({
+    description: gate.description,
+    admit: (ctx) => {
+      if (!gate.admit(ctx)) return false;
+
+      recordNamed();
+
+      return true;
+    },
+  });
 
   return [
     {
@@ -380,8 +489,8 @@ export function buildCautionContracts({
       // a double-file restart lap cannot repeat "Line up behind car N".
       // Decided after the hold, so the phase read is the one the rows landed
       // in. And the lineup gate at speak time: an instruction about a lineup
-      // is for a driver who is in it.
-      speakGate: stillLinedUp,
+      // is for a driver who is in it. It names the car, so it records it.
+      speakGate: naming(stillLinedUp),
       description:
         "iRacing waves the full-course caution at the field in a race while you are live in the car, and a second later, the field still spread out behind the flag, the pace rows say who you line up behind.",
       when: { event: "flag.caution-waving.raised", where: (e) => liveRaceCar(e) && getCautionPhase() === "waving" },
@@ -394,6 +503,8 @@ export function buildCautionContracts({
     },
     {
       ...cautionContract("field-caught", getCautionPhase),
+      // The reference voice names the car ahead here, so it records it.
+      speakGate: naming(stillOut),
       description:
         "Two to green: the waving caution goes static at the leader's crossing, a lap before the one-to-go flag, in a race with you live in the car; silent where both flags land on one tick (road courses).",
       when: {
@@ -413,35 +524,55 @@ export function buildCautionContracts({
     },
     {
       ...cautionContract("one-to-go", getCautionPhase),
+      // The reference voice names the lane and the car ahead here, so it
+      // records the car — the re-formed one, at the double-file re-form. With
+      // no lineup to read it still speaks, and records nothing.
+      speakGate: naming(stillOut),
       description:
         "iRacing raises the one-lap-to-green flag under a full-course caution and the field forms up for the restart, single or double file.",
-      when: {
-        event: "caution.oneLapToGreen",
-        // The stash the held lineup-change decision reads — the transition
-        // itself, not the raw flag. Written before the gate, since it records
-        // what the sim did rather than whether this driver hears it.
-        where: (e) => {
-          oneToGoAt = e.timestamp;
-
-          return liveRaceCar(e);
-        },
-      },
+      when: { event: "caution.oneLapToGreen", where: liveRaceCar },
     },
     {
       ...cautionContract("lineup-changed", getCautionPhase),
+      // Outside the flag family and one notch below it, like the follow and
+      // position calls — see the module header, finding 2: same-family
+      // preemption cut the phase call this change duplicated, and a fire
+      // parked on a busy bus meets no gate before it takes the pending slot,
+      // so only weight keeps it from evicting a waiting caution call. Do not
+      // "tidy" either back.
+      family: undefined,
+      weight: WEIGHT.SAFETY - 1,
+      // One notch below would lose a waiting change to any sibling arriving;
+      // waiting BEHIND them instead plays the pair in order (#1108).
+      queueBehind: LINEUP_CHANGE_QUEUE_BEHIND,
       triggerDelay: CAUTION_LINEUP_CHANGE_DELAY_MS,
-      speakGate: stillLinedUp,
-      description:
-        "The car you line up behind under caution changes — a car pitted, or the field re-formed — and a second and a half later the caution is out and you hold a row; the re-form is the one-to-go call's.",
-      when: {
-        event: "caution.lineup.changed",
-        // Decided after the hold, against live state: a change held over
-        // the green must never be spoken into the restart, and the one
-        // change the one-to-go call names itself — the re-form, emitted on
-        // the tick BEFORE that flag — is left to it. Any later change on the
-        // one-to-green lap is news and is spoken. See the module header.
-        where: (e) => underCautionCar(e) && !(oneToGoAt !== null && oneToGoAt >= e.timestamp),
+      speakGate: {
+        description:
+          "Re-checked at speak time: the caution is still out, you still hold a pace row, and the car ahead is not the one last named in this caution.",
+        admit: (ctx) => {
+          if (!stillLinedUp.admit(ctx)) return false;
+
+          const episode = getCautionEpisode();
+          const now = getCautionLineup()?.followCarIdx ?? null;
+
+          if (episode === null || now === null) return false;
+
+          const reference = referenceCarIdx(episode);
+
+          if (reference === null || now === reference) return false;
+
+          // The car this call names — the one just compared, under the
+          // caution just read.
+          lastNamed = { episodeId: episode.id, followCarIdx: now };
+
+          return true;
+        },
       },
+      description:
+        "The car you line up behind under caution changes — a car pitted, or the field re-formed — and two seconds later it is still not the car the engineer last named in this caution.",
+      // Decided after the hold. Whether the change is news is the gate's
+      // question, asked at speak time against what was actually said.
+      when: { event: "caution.lineup.changed", where: underCautionCar },
     },
     {
       ...cautionContract("position", getCautionPhase),
@@ -512,6 +643,8 @@ export function buildCautionContracts({
 export const CAUTION_SCENARIO_IDS: readonly string[] = buildCautionContracts({
   getCautionPhase: () => "none",
   getCautionLineup: () => null,
+  getCautionEpisode: () => null,
+  isCautionCalloutEnabled: () => true,
 }).map((c) => c.id);
 
 /**

@@ -24,6 +24,24 @@ import type { CornerMarker } from "@iracedeck/track-data";
 export type CautionPhase = "none" | "waving" | "caught" | "one-to-go";
 
 /**
+ * One full-course caution, as `getCautionEpisode()` reports it (issue #1286):
+ * what a consumer that remembers something within one caution — the car the
+ * engineer last named — scopes that memory to.
+ */
+export type CautionEpisode = {
+  /**
+   * Never repeats within the process — a later session's caution cannot match
+   * an earlier one's, because the counter behind it outlives every state reset.
+   */
+  id: number;
+  /**
+   * The first readable follow car of this caution — the lineup `diffLineup`
+   * does not report as a change. `null` until the lineup is readable.
+   */
+  firstFollowCarIdx: number | null;
+};
+
+/**
  * One car's open lap-time wait in the replay lap record (issue #1203): the
  * crossing that started `lap + 1` opened it, and it closes on the first tick
  * `CarIdxLastLapTime` moves off `baselineS` — or untimed when `ticksLeft` runs out.
@@ -365,6 +383,24 @@ export type TranslatorState = {
    * the position call (had it not fired yet) nor repeat it (had it).
    */
   cautionCheckpointArmed: boolean;
+  /**
+   * The current caution's id (issue #1286), `null` while the phase is
+   * `"none"`. Taken from a module-level counter in `diff/caution.ts` that no
+   * state reset touches, so an id a consumer remembers from one caution — or
+   * one session — can never match a later one.
+   *
+   * PRESERVED across a replay wipe, with `cautionPhase`: it lives and dies
+   * with the phase, and a glance at the replay is the same caution still out.
+   */
+  cautionEpisodeId: number | null;
+  /**
+   * The first readable non-null follow car of the current caution (issue
+   * #1286) — the lineup `diffLineup` seeds silently rather than reporting.
+   * Unlike {@link cautionFollowCarIdx} it is never overwritten by a change, and
+   * it clears only with the phase. PRESERVED across a replay wipe for the same
+   * reason as {@link cautionEpisodeId}.
+   */
+  cautionFirstFollowCarIdx: number | null;
 
   // ── Rolling-start pace laps (issue #657) ────────────────────────────────
   /**
@@ -1313,6 +1349,8 @@ export function createInitialState(): TranslatorState {
     cautionFollowCarIdx: null,
     cautionLastLapDistPct: null,
     cautionCheckpointArmed: false,
+    cautionEpisodeId: null,
+    cautionFirstFollowCarIdx: null,
 
     paceLapInitialized: false,
     lastTickInParadeLaps: false,
