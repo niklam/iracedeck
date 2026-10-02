@@ -1456,7 +1456,7 @@ describe("incident point-count composition (issue #922)", () => {
 
   it("a later suppressed incident event does not corrupt a queued fire's count", () => {
     // An incident that arrives while a LOWER-weight line holds the Voice bus
-    // waits in the pending slot with its expansion deferred to the drain —
+    // waits in the bus's queue with its expansion deferred to the drain —
     // the delta stash must not be rewritten by a later dispatch in which
     // nothing fires (here: the later event's own callout is toggled off), or
     // the queued fire would speak the later event's count.
@@ -2343,13 +2343,13 @@ describe("pit-limiter / no-limiter family registration (issue #1051)", () => {
       bus.publishEvent(event, {} as never, atPublish);
 
       // The window closes while the occupier still holds the bus: `where:`
-      // passes and the fire lands in the pending slot instead of playing.
+      // passes and the fire waits in the bus's queue instead of playing.
       vi.advanceTimersByTime(delayMs);
 
       // The driver fixes it while the line waits its turn.
       mockLatestTelemetry.mockReturnValue(atDrain);
 
-      // Occupier finishes → the pending fire drains and expands NOW.
+      // Occupier finishes → the queued fire drains and expands NOW.
       flush(audio);
     }
 
@@ -2361,7 +2361,7 @@ describe("pit-limiter / no-limiter family registration (issue #1051)", () => {
      * since the silence would then come from `where:` instead.
      */
     function expectQueuedThenDrained(id: string): void {
-      expect(mockLogger.debug).toHaveBeenCalledWith(`Scenario "${id}" pending — deferred (bus busy)`);
+      expect(mockLogger.debug).toHaveBeenCalledWith(`Scenario "${id}" pending (1 of 1) — deferred (bus busy)`);
       expect(mockLogger.debug).toHaveBeenCalledWith(`Replaying pending scenario "${id}"`);
     }
 

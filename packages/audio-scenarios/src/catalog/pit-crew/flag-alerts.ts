@@ -59,9 +59,10 @@
  * CRITICAL line) was silently dropped — a penalty the driver was never told
  * about. The penalty is a sustained state (serving requires a pit visit), so
  * a replay a few seconds late is always still correct and no speak-time gate
- * is needed (the #867 meatball reasoning); a black→DQ escalation while
- * queued resolves structurally — the queueable DQ fire replaces the pending
- * black in the single pending slot (equal weight, ties → newest).
+ * is needed (the #867 meatball reasoning) — and for the same reason each waits
+ * up to 30 s for the bus rather than the engine's default (issue #1185). A
+ * black→DQ escalation while queued resolves structurally: the three share the
+ * `penalty` supersede group, so the DQ fire replaces the waiting black one.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { SimEventName, SimEventOf } from "@iracedeck/event-bus";
@@ -114,6 +115,28 @@ export const liveRaceCar = (e: SimEventOf<SimEventName>): boolean =>
 // instead — `diff/pace-laps.ts`, issue #657 — so it uses `liveRaceCar` here.)
 const rollingFormationOnly = (e: SimEventOf<SimEventName>): boolean =>
   liveRaceCar(e) && !(getStandingStart() && isPreGreen(e.telemetry as TelemetryData | null));
+
+/**
+ * The penalty raises' supersede group (issue #1185): a newer penalty replaces
+ * one still waiting, so a disqualification raised while the black line waits
+ * is the line the driver hears (#923), never both.
+ */
+const PENALTY_GROUP = "penalty";
+
+/**
+ * How long a penalty line may wait for the bus (issue #1185). A penalty lasts
+ * until served — a pit visit, far longer than this — so a busy minute must
+ * not cost the driver the line, and a line heard late is still true. The
+ * meatball takes the same wait for the same reason.
+ */
+const PENALTY_MAX_QUEUE_WAIT_MS = 30_000;
+
+/**
+ * The furled pair's supersede group (issue #1185): a clear replaces a waiting
+ * warning and a fresh warning a waiting clear — only the newest state of the
+ * furled flag is worth saying.
+ */
+const FURLED_GROUP = "furled";
 
 function flagContract(id: string): ScenarioContract {
   return {
@@ -236,11 +259,13 @@ const RED: ScenarioContract = {
 // driver never told about the penalty. Serving takes a pit visit (≥ 30 s),
 // far beyond the seconds a queued fire waits, so a replay at idle is always
 // still correct — no speak-time gate (the #867 meatball precedent); a
-// black→DQ escalation while queued is covered structurally (the queueable
-// DISQUALIFY fire replaces the pending black — equal weight, ties → newest).
+// black→DQ escalation while queued is covered structurally (the DISQUALIFY
+// fire shares the `penalty` supersede group and replaces the waiting black).
 const BLACK: ScenarioContract = {
   ...flagContract("black"),
   queueable: true,
+  supersedeGroup: PENALTY_GROUP,
+  maxQueueWaitMs: PENALTY_MAX_QUEUE_WAIT_MS,
   description:
     "iRacing shows you the black flag on its own, in any session; when it comes together with a disqualification the disqualify line speaks instead.",
   when: { event: "flag.black.raised" },
@@ -282,6 +307,9 @@ const MEATBALL: ScenarioContract = {
   weight: WEIGHT.CRITICAL,
   interrupt: true,
   queueable: true,
+  // The instruction stays valid until obeyed (issue #1185): a busy minute
+  // must not cost it, so it waits as long as the penalty lines do.
+  maxQueueWaitMs: PENALTY_MAX_QUEUE_WAIT_MS,
 };
 
 // Driver-black splits (issue #480). `Disqualify` is split out of the generic
@@ -293,6 +321,8 @@ const MEATBALL: ScenarioContract = {
 const DISQUALIFY: ScenarioContract = {
   ...flagContract("disqualify"),
   queueable: true,
+  supersedeGroup: PENALTY_GROUP,
+  maxQueueWaitMs: PENALTY_MAX_QUEUE_WAIT_MS,
   description:
     "iRacing disqualifies you and shows the disqualify flag — the incident limit, or a race admin — in any session; a black flag shown alongside it stays silent.",
   when: { event: "flag.disqualify.raised" },
@@ -404,7 +434,7 @@ function furledStillShown(): boolean {
 // The cleared line's speak-time gate, the mirror of the raised one: a queued
 // clear is stale when the warning is already BACK UP by the time the bus idles
 // (the re-raise is debounced upstream, so a fresh raised fire may not have
-// displaced this one from the pending slot yet), or when a fresh raised fire
+// superseded this one in the queue yet), or when a fresh raised fire
 // reset the spoken marker while this clear sat in the queue. A clear meeting
 // Black/Disqualify is the escalation (issue #846) — the episode is over for
 // good (no further cleared event is coming: the diff consumed its announce),
@@ -432,6 +462,7 @@ function furledWithdrawn(): boolean {
 const FURLED: ScenarioContract = {
   ...flagContract("furled"),
   queueable: true,
+  supersedeGroup: FURLED_GROUP,
   description:
     "The furled black flag has stayed up on your car for a full second — a warning for time gained off track, not the half-second flicker of a brief excursion — in any session.",
   when: {
@@ -464,6 +495,7 @@ const FURLED: ScenarioContract = {
 const FURLED_CLEARED: ScenarioContract = {
   ...flagContract("furled-cleared"),
   queueable: true,
+  supersedeGroup: FURLED_GROUP,
   description:
     "The furled black flag comes down off your car after it was called, in any session, with no black flag or disqualification taking its place at that moment.",
   when: {
@@ -484,6 +516,8 @@ const FURLED_CLEARED: ScenarioContract = {
 const DQ_SCORING_INVALID: ScenarioContract = {
   ...flagContract("dq-scoring-invalid"),
   queueable: true,
+  supersedeGroup: PENALTY_GROUP,
+  maxQueueWaitMs: PENALTY_MAX_QUEUE_WAIT_MS,
   description:
     "iRacing shows the flag that disqualifies you and invalidates your scoring at the same time, in any session.",
   when: { event: "flag.dq-scoring-invalid.raised" },
@@ -538,6 +572,17 @@ const FIVE_TO_GO: ScenarioContract = {
  */
 export const WAVING_FLAG_COOLDOWN_MS = 30_000;
 
+/**
+ * How long a caution call may wait for the bus (issue #1185) — the caution
+ * flag's own line here and every gated `caution-*` contract in `caution.ts`.
+ * A crash brings the caution out while the incident line holds the bus, and
+ * the calls then queue behind it and each other: in the #1288 log's own
+ * timeline the pace-car call waits about 8.5 s, past the engine's default.
+ * A caution lasts minutes, and each gated call re-checks at speak time that
+ * it is still out, so a call heard late is still true.
+ */
+export const CAUTION_MAX_QUEUE_WAIT_MS = 20_000;
+
 // Caution-waving variants (issue #480) — separate, more-urgent callouts than the
 // base static yellows. The translator's reworked yellow detection guarantees a
 // base yellow and its waving variant never double-fire. Both carry the 30 s
@@ -564,6 +609,8 @@ const YELLOW_WAVING: ScenarioContract = {
 const CAUTION_WAVING: ScenarioContract = {
   ...flagContract("caution-waving"),
   queueable: true,
+  // Waits as long as the caution family's calls (issue #1185).
+  maxQueueWaitMs: CAUTION_MAX_QUEUE_WAIT_MS,
   cooldown: WAVING_FLAG_COOLDOWN_MS,
   description:
     "The full-course caution is shown waving to the field, in any session; a repeat inside thirty seconds stays silent.",

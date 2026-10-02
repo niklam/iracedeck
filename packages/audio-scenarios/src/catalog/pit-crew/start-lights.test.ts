@@ -411,7 +411,8 @@ describe("START_LIGHT_CONTRACTS preemption", () => {
     engine.fire("test.blocker");
 
     // Both gantry lines defer behind the higher-weight line (queueable: true);
-    // the single pending slot's newest-wins tie-break keeps only go.
+    // they share the `start-light` supersede group, so go replaces the
+    // waiting ready (issue #1185).
     bus.publishEvent("startLight.start-ready.raised", {});
     bus.publishEvent("startLight.start-go.raised", {});
     flush(audio);
@@ -419,6 +420,9 @@ describe("START_LIGHT_CONTRACTS preemption", () => {
     const voice = voiceClipsPlayed();
     expect(voice).toContain("voice/luca/start-lights/start-go-01.mp3");
     expect(voice).not.toContain("voice/luca/start-lights/start-ready-01.mp3");
+    expect(mockLogger.debug).toHaveBeenCalledWith(
+      'Scenario "pit-crew.start-light-ready" dropped — superseded by "pit-crew.start-light-go"',
+    );
   });
 
   it("a start-ready cut mid-playback by start-go is not stashed — no replay at idle (#867)", () => {

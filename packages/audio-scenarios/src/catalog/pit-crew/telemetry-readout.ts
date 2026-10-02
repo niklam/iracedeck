@@ -36,16 +36,16 @@
  * frame, and deliberately NO `family`: a same-family fire replaces the
  * in-flight one regardless of weight, which would let a second press cut the
  * readout the driver is listening to. So a press while anything plays waits
- * in the bus's one pending slot (#1185), and there:
+ * in the bus's queue (issue #1185), and there:
  *
- * - a newer readout replaces a readout still waiting (equal weight, ties go
- *   to the newest) — a burst of presses never builds a backlog;
- * - a readout pressed while a NORMAL-or-heavier line is waiting is dropped,
- *   and that line keeps its place (a pit-limiter warning is never lost to a
- *   key press);
- * - a readout pressed while a CHATTER line is waiting replaces it;
- * - a NORMAL-or-heavier queueable line arriving while a readout waits
- *   replaces the readout.
+ * - a newer readout replaces a readout still waiting (all five share the
+ *   `readout` supersede group) — a burst of presses never builds a backlog;
+ * - a NORMAL-or-heavier line waiting with it plays first, whichever arrived
+ *   first (a pit-limiter warning is never delayed by a key press);
+ * - a CHATTER line waiting with it plays after it.
+ *
+ * Nothing is dropped for weight any more; the engine's max wait is what
+ * keeps a readout from arriving long after the press.
  *
  * No `queueBehind`: it would pair a newer readout behind a waiting one,
  * which is exactly the backlog the spec rules out. No `interrupt`: a readout
@@ -226,9 +226,11 @@ function readoutContract(
     bus: AudioBus.Voice,
     base: "voice/{voice}",
     // Queue behind whatever plays, yield to every NORMAL-or-heavier line; a
-    // newer readout replaces a waiting one. No `family` — see the header.
+    // newer readout replaces a waiting one (the supersede group). No
+    // `family` — see the header.
     weight: READOUT_WEIGHT,
     queueable: true,
+    supersedeGroup: "readout",
   };
 }
 

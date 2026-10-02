@@ -236,9 +236,8 @@ beforeEach(() => {
     getQualifyingInvalidationCalloutEnabled: () => qualifyingEnabled,
     getQualifyingInvalidationSnapshot: () => lastSnapshot,
     // The incident callouts share this contract's event and its weight, and
-    // the single pending slot goes to the newest tie — keep them out so the
-    // parked-fire test below exercises the qualifying fire, not the race the
-    // header notes.
+    // would wait beside it in the bus's queue — keep them out so the
+    // parked-fire test below exercises the qualifying fire alone.
     getIncidentCalloutEnabled: () => false,
   });
   // After the registration, as the plugins do: the callout's body is looked
@@ -567,12 +566,13 @@ describe("qualifying-invalidation scenario — per-lap latch", () => {
     expect(qualifyingLatchAllows(snap({ lapCompleted: 5 }))).toBe(true);
   });
 
-  it("a later approval replaces the parked fire in the slot and speaks with its own snapshot (issues #1138, #1211)", () => {
+  it("a later approval replaces the parked fire in the queue and speaks with its own snapshot (issues #1138, #1211, #1185)", () => {
     // A CHATTER line holds the bus, so incident A (lap 4) wins it on weight
     // and waits. A NORMAL-weight line then cuts in, and incident B (lap 5)
     // meets the busy bus: queueable since #1211, it parks, replacing A in
-    // the one pending slot (equal weight, newest wins). B speaks and latches
-    // lap 5, its own approved snapshot; A, whose lap is over, is gone.
+    // the queue (the same contract id, so the same supersede group). B speaks
+    // and latches lap 5, its own approved snapshot; A, whose lap is over, is
+    // gone.
     const engine = getScenarioEngine();
 
     engine.defineScenario({
@@ -599,13 +599,16 @@ describe("qualifying-invalidation scenario — per-lap latch", () => {
     engine.fire("test.loud"); // cuts the chatter; the bus now runs at NORMAL
 
     lastSnapshot = snap({ lapCompleted: 5, lapsRemaining: 1 }); // S/F crossed
-    bus.publishEvent("incident.scored", { delta: 1 }); // B approved, replaces A in the slot
+    bus.publishEvent("incident.scored", { delta: 1 }); // B approved, replaces A in the queue
 
     flush(audio); // test.loud finishes; B drains
 
     expect(voicePaths().filter((p) => p.includes("/invalidated-"))).toHaveLength(1);
     expect(hasClip("/qualifying-invalidation/1-lap-left-01.mp3")).toBe(true);
     expect(qualifyingLatchAllows(snap({ lapCompleted: 5 }))).toBe(false);
+    expect(mockLogger.debug).toHaveBeenCalledWith(
+      'Scenario "pit-crew.qualifying-invalidation-lap-invalidated" dropped — superseded by "pit-crew.qualifying-invalidation-lap-invalidated"',
+    );
   });
 });
 

@@ -20,23 +20,23 @@
  * floor (held while a car is alongside, the usual moment of a crash), behind
  * the incident line for the same crash, or behind the `WEIGHT.SAFETY` caution
  * calls a crash brings out in the same few seconds (#1288). Now it is
- * `queueable` and waits for the bus — in the bus's ONE pending slot, so a
- * heavier queueable fire still takes its place: a caution call arriving
- * while it waits replaces it, and one already waiting when it fires drops it
- * (#1185 owns that slot; `crash-caution-sequence.test.ts` replays the #1288
- * log, where it happens).
+ * `queueable` and waits for the bus in its queue, behind heavier lines such
+ * as those caution calls rather than replaced by them (issue #1185;
+ * `crash-caution-sequence.test.ts` replays the #1288 log). It waits up to
+ * 30 s (`maxQueueWaitMs`) rather than the engine's default: the gate below
+ * keeps it true for as long as it waits, and a caution burst ahead of it
+ * runs past the default.
  *
  * When a crash produces both an incident line and this one, the incident
  * line plays first (Niklas, 2026-09-24). The translator holds the damage
  * event behind an open incident burst (`sim-events-iracing` `diff/damage.ts`),
  * so on a flush tick it is published after `incident.occurred`; `queueBehind`
- * then keeps the order when the bus is held: this line attaches behind a
+ * then keeps the order when the bus is held: this line waits right behind a
  * waiting incident line (or lap-invalidation line, which replaces the
- * incident line on a flying qualifying lap) instead of taking its slot on the
- * equal-weight tie, a waiting damage line moves behind an incident line that
- * arrives after it, and it stays behind an escalation that replaces the
- * incident line it waited for (the engine keeps a follower behind a newcomer
- * it names).
+ * incident line on a flying qualifying lap), a waiting damage line moves
+ * behind an incident line that arrives after it, and it stays behind an
+ * escalation that replaces the incident line it waited for (the queue
+ * re-links a follower behind a newcomer it names).
  *
  * A waiting line can outlive what it announces, so the `speakGate` asks the
  * translator whether the car still needs a repair when the line comes to
@@ -89,6 +89,10 @@ const DAMAGE_REPAIR_NEEDED: ScenarioContract = {
   base: "voice/{voice}",
   family: "damage",
   queueable: true,
+  // The line stays true for as long as it waits — its gate refuses it once
+  // the repair settles as done — so a caution burst ahead of it must not
+  // expire it (issues #1185, #1288).
+  maxQueueWaitMs: 30_000,
   // The incident line for the same crash plays first (see the header).
   queueBehind: [...INCIDENT_SCENARIO_IDS, ...QUALIFYING_INVALIDATION_SCENARIO_IDS],
 };

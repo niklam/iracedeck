@@ -56,6 +56,13 @@ export const WEIGHT = {
 export const DEFAULT_WEIGHT: number = WEIGHT.NORMAL;
 
 /**
+ * How long a deferred fire may wait for its bus before it is dropped
+ * (issue #1185), measured from when it was FIRST deferred. A contract
+ * overrides it with `maxQueueWaitMs`.
+ */
+export const DEFAULT_MAX_QUEUE_WAIT_MS = 8000;
+
+/**
  * The frame a contract or legacy scenario is wrapped in when it names none
  * (issue #1064): the walkie-talkie radio frame the active voice's script
  * defines under that name. The engine applies it around a body that expanded
@@ -220,7 +227,15 @@ export type ScenarioContract = {
    * When this fire cannot take the bus right now (a higher- or equal-weight
    * fire is playing, or it is below an exclusive-focus floor), defer it and
    * replay when the bus next idles (`true`) instead of dropping it outright
-   * (`false`, the default). The deferred fire replays unconditionally — its
+   * (`false`, the default). A deferred fire waits in the bus's queue (issue
+   * #1185): heaviest first, then the longest-waiting, at most
+   * `PENDING_QUEUE_CAPACITY` (4) of them — an arrival above that drops the
+   * lightest, then the oldest, one entry per arrival — and the bus drains it
+   * one fire at a time as it idles. A lighter fire no longer loses to a heavier waiting one on
+   * arrival, nor a heavier one evict it; both wait. A waiting fire of the
+   * same `supersedeGroup` is replaced by the newer one, and a fire that has
+   * not started within its `maxQueueWaitMs` of being deferred is dropped.
+   * The deferred fire replays unconditionally — its
    * `where:` is NOT re-evaluated, because it decided at event time; what
    * must still hold at speak time is the contract's `speakGate` (issue
    * #1138), which the replay asks again after re-expanding, and a cooldown
@@ -245,41 +260,51 @@ export type ScenarioContract = {
   resumable?: boolean;
   /**
    * Contract ids this fire waits BEHIND rather than competes with (issue
-   * #1108). The bus keeps one pending fire, and an arriving queueable fire
-   * either takes that slot by weight or is dropped — so when two callouts
-   * are published back to back and the bus is busy, the second displaces
-   * the first. Naming the first here changes that one relation: while a
-   * named contract is the bus's waiting fire, this fire attaches behind it
-   * instead of taking its slot, and the two play in order once the bus
-   * idles — whatever their weights, and neither is dropped. The relation
-   * holds the other way round too: a named contract that arrives to wait
-   * (stashed by an interrupt, say) while this fire holds the slot goes
-   * ahead of it rather than losing to it. It is a pair, not a queue, and
-   * against a later unrelated fire each member keeps the fate it would have
-   * had alone — attaching changes neither: a fire that outweighs the leader
-   * replaces it, and drops the follower too only if it outweighs the
-   * follower as well, else the follower stays, now behind the newcomer; a
-   * fire lighter than the leader is dropped. A follower whose list names the
-   * replacing newcomer too stays behind it whatever the weights (issue
-   * #1211), so a damage line waiting behind one incident line survives an
-   * equal-weight escalation replacing it. A follower never plays ahead of
-   * its waiting leader, even when the bus is idle but the leader is held in
-   * the slot (a `pendingHoldMs` hold, a focus floor between the two): it
-   * attaches behind it there too. A second follower replaces the first. A
-   * follower is never stranded — a leader that does not take the bus when
-   * it replays (its expansion aborted, its `speakGate` refused, the voice
-   * has no script for it) leaves the follower to play next. With nothing
-   * pending, or an unrelated fire pending, this fire schedules by the
-   * normal rules. Requires `queueable: true` and must not name the contract
-   * itself (validated at load time); an id that is not registered simply
-   * never matches, and an id registered on another `bus` never matches
-   * either — the slot is per bus — which is warned once at registration.
-   * The tire-wear report waits behind the exit readback this way.
+   * #1108) — an ordering constraint between two fires that should both be
+   * heard. While a named contract waits in the bus's queue, this fire is
+   * placed right after it (and after that leader's earlier followers),
+   * whatever the weights; a named contract that arrives to wait (stashed by
+   * an interrupt, say) while this fire waits goes ahead of it, and this fire
+   * links behind it. A leader may have several followers, in arrival order
+   * behind it. A follower does not count toward the queue's cap (issue
+   * #1185). A follower never plays ahead of its waiting leader, even when
+   * the bus is idle but the leader is held in the queue (a `pendingHoldMs`
+   * hold, a focus floor between the two): it is queued behind it there too.
+   * A follower is never stranded — a leader that leaves the queue without
+   * playing (expired, superseded, dropped by the cap, disabled) or that does
+   * not take the bus when it replays (its expansion aborted, its `speakGate`
+   * refused, the voice has no script for it) leaves the follower to play as
+   * an ordinary entry; one whose superseded leader's replacement it also
+   * names re-links behind that (issue #1211). Once its leader has been taken
+   * off the queue to play, a follower is an ordinary entry, ordered by its
+   * weight and age. Requires `queueable: true` and must not name the
+   * contract itself (validated at load time); an id that is not registered
+   * simply never matches, and an id registered on another `bus` never
+   * matches either — the queue is per bus — which is warned once at
+   * registration. The tire-wear report waits behind the exit readback this
+   * way.
    */
   queueBehind?: readonly string[];
   /**
-   * After this fire finishes, hold the bus's pending replay for N ms instead
-   * of draining it immediately (issue #758). A scenario that arrives in a
+   * Waiting fires of one supersede group replace each other: a newer fire
+   * of the group removes an older one still waiting, whether the newer one
+   * waits too or takes the bus at once (issue #1185). A line an interrupt
+   * cut is the older fire: its stash yields to a waiting one of its group
+   * and is dropped instead. Defaults
+   * to the contract id, so the same callout never stacks. Acts on WAITING
+   * fires only; `family` keeps acting on the playing one.
+   */
+  supersedeGroup?: string;
+  /**
+   * How long a deferred fire of this contract may wait before it is dropped
+   * (issue #1185). Defaults to `DEFAULT_MAX_QUEUE_WAIT_MS`. Give a longer wait
+   * only to a line that stays true for as long as it waits.
+   */
+  maxQueueWaitMs?: number;
+  /**
+   * After this fire finishes, hold the drain of the bus's queue for N ms
+   * instead of draining it immediately (issue #758; the whole queue since
+   * #1185). A scenario that arrives in a
    * train of related fires (e.g. the pit-box count-in marks, ~1 s apart)
    * declares this so a fire it displaced doesn't stutter back into the gaps
    * between its family-mates — the hold re-arms after each mark and the

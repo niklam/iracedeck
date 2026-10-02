@@ -1183,3 +1183,92 @@ describe("the incident-and-damage sequences behind a held Voice bus (issue #1211
     expect(events.filter((e) => e.event === "damage.repairNeeded.raised")).toHaveLength(1);
   });
 });
+
+describe('the "Crash into a full-course caution" shortcut (issue #1185)', () => {
+  beforeEach(() => {
+    initializeEventBus(silentLogger);
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    _resetSimEventsIracing();
+    _resetEventBus();
+  });
+
+  const shortcut = SCENARIO_SHORTCUTS.find((s) => s.id === "incident-crash-into-full-course-caution");
+
+  const WATCHED_PREFIXES = ["incident.", "damage.", "caution.", "paceCar.", "flag.caution-waving."];
+
+  /**
+   * The race session preset and the hot-lap telemetry preset, as the button's
+   * description asks, recording the incident, damage, caution and pace-car
+   * events with their envelope timestamps.
+   */
+  function startRecording(): { controller: MockSDKController; events: (Published & { timestamp: number })[] } {
+    const controller = new MockSDKController();
+    controller.setSessionInfo(readPreset("session", "race") as SessionInfo);
+    controller.mutateTelemetry(readPreset("telemetry", "hot-lap") as Partial<TelemetryData>);
+    controller.setConnected(true);
+    initializeSimEventsIracing(getEventBus(), controller as unknown as SDKController, silentLogger);
+    controller.tickOnce();
+
+    const events: (Published & { timestamp: number })[] = [];
+
+    for (const name of ALL_EVENT_NAMES) {
+      if (!WATCHED_PREFIXES.some((prefix) => name.startsWith(prefix))) continue;
+
+      getEventBus().subscribe(name, (ev) => events.push({ event: ev.event, data: ev.data, timestamp: ev.timestamp }));
+    }
+
+    return { controller, events };
+  }
+
+  const EXPECTED_ORDER = [
+    "flag.caution-waving.raised",
+    "incident.scored",
+    "incident.occurred",
+    "caution.lineup.changed",
+    "paceCar.deployed",
+    "damage.repairNeeded.raised",
+  ];
+
+  it("is a translator-driven Incidents shortcut that needs a session preset", () => {
+    expect(shortcut?.event).toBeUndefined();
+    expect(shortcut?.category).toBe("Incidents");
+    expect(shortcut?.requires).toContain("player-car-index");
+  });
+
+  it("publishes the caution waving, the incident burst, the lineup change, the pace car and then the damage", () => {
+    const { controller, events } = startRecording();
+
+    runSequence(controller, shortcut?.telemetrySequence ?? []);
+
+    expect(events.map((e) => e.event)).toEqual(EXPECTED_ORDER);
+    expect(events.find((e) => e.event === "incident.occurred")?.data).toEqual({
+      delta: 4,
+      points: 4,
+      type: "collision-car",
+    });
+    // The field re-forms behind car 7, as in "Caution → lineup change".
+    expect(events.find((e) => e.event === "caution.lineup.changed")?.data).toMatchObject({
+      followCarIdx: 9,
+      followCarNumber: "7",
+    });
+
+    // Caution, lineup change and pace car all land inside about 2.5 s.
+    const stamp = (name: string) => events.find((e) => e.event === name)?.timestamp ?? NaN;
+
+    expect(stamp("paceCar.deployed") - stamp("flag.caution-waving.raised")).toBeLessThanOrEqual(2500);
+    expect(stamp("damage.repairNeeded.raised")).toBeGreaterThan(stamp("incident.occurred"));
+  });
+
+  it("plays the same on a second press — the opening bracket resets the pace car, the flags and the count", () => {
+    const { controller, events } = startRecording();
+
+    runSequence(controller, shortcut?.telemetrySequence ?? []);
+    runSequence(controller, shortcut?.telemetrySequence ?? []);
+
+    expect(events.map((e) => e.event)).toEqual([...EXPECTED_ORDER, ...EXPECTED_ORDER]);
+  });
+});

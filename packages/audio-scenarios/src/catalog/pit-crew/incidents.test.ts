@@ -18,7 +18,7 @@ import { type CalloutScript, collectScriptReferences } from "@iracedeck/callout-
 import type { IEventBus, IncidentType, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { poolRef, WEIGHT } from "../../dsl.js";
+import { DEFAULT_MAX_QUEUE_WAIT_MS, poolRef, WEIGHT } from "../../dsl.js";
 import type { ScenarioContext, ScenarioContract } from "../../dsl.js";
 import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios, poolMemberPattern } from "../../interpreter.js";
@@ -237,7 +237,7 @@ describe("INCIDENT_CONTRACTS", () => {
     for (const c of INCIDENT_CONTRACTS) expect("sequence" in c).toBe(false);
   });
 
-  it("keeps every scheduling field verbatim: one family, default weight, the engine's default frame", () => {
+  it("keeps every scheduling field verbatim: one family and supersede group, default weight, a max wait equal to the gate's age, the engine's default frame", () => {
     for (const c of INCIDENT_CONTRACTS) {
       expect(c.when?.event).toBe("incident.occurred");
       expect(c.channel).toBe(AudioChannel.Voice);
@@ -248,6 +248,10 @@ describe("INCIDENT_CONTRACTS", () => {
       expect(c.interrupt).toBeUndefined();
       // Waits for a held or busy bus rather than drop (issue #1211).
       expect(c.queueable).toBe(true);
+      // One waiting incident line at a time, waiting as long as it stays true
+      // (issue #1185).
+      expect(c.supersedeGroup).toBe("incident");
+      expect(c.maxQueueWaitMs).toBe(INCIDENT_SPEAK_MAX_AGE_MS);
       expect(c.queueBehind).toBeUndefined();
       expect(c.pendingHoldMs).toBeUndefined();
       expect(c.frame).toBeUndefined();
@@ -488,8 +492,10 @@ describe("the bundled script's incident entries (issue #1065)", () => {
 /**
  * Issue #1211: the incident lines queue. Until #1211 a fire that met the
  * spotter's focus floor or another line playing was dropped; now it waits in
- * the engine's pending slot, and its speak-time gate refuses it once the
- * incident is too old to be heard as the one it describes.
+ * the bus's queue, and once the incident is too old to be heard as the one it
+ * describes it is dropped — by the queue's max wait, which the contracts set
+ * to the gate's age (issue #1185), and by the speak-time gate for an event
+ * stamped before it was queued.
  */
 describe("scheduling behind a held or busy bus (issue #1211)", () => {
   const T0 = 1_700_000_000_000;
@@ -564,9 +570,31 @@ describe("scheduling behind a held or busy bus (issue #1211)", () => {
       `voice/${VOICE}/incidents/collision-world-01.mp3`,
       `voice/${VOICE}/incidents/points-2.mp3`,
     ]);
+    // Replaced through the shared `incident` supersede group (issue #1185).
+    expect(mockLogger.debug).toHaveBeenCalledWith(
+      'Scenario "pit-crew.incident-off-track" dropped — superseded by "pit-crew.incident-collision-world"',
+    );
   });
 
-  it("a fire more than INCIDENT_SPEAK_MAX_AGE_MS old when it replays is refused, and stamps nothing", () => {
+  it("a fire waiting past the engine's default max wait, but inside INCIDENT_SPEAK_MAX_AGE_MS, still speaks (issue #1185)", () => {
+    // Behind a caution burst the line can wait longer than the engine's
+    // default allows while it is still true (#1288): its max wait is its
+    // own staleness rule, not the default.
+    engine.acquireFocus(AudioBus.Voice, "spotter", WEIGHT.SAFETY);
+
+    bus.publishEvent("incident.occurred", incident("collision-car", 4).data);
+    vi.setSystemTime(T0 + DEFAULT_MAX_QUEUE_WAIT_MS + 1000);
+    engine.releaseFocus(AudioBus.Voice, "spotter");
+    flush(audio);
+
+    expect(DEFAULT_MAX_QUEUE_WAIT_MS + 1000).toBeLessThan(INCIDENT_SPEAK_MAX_AGE_MS);
+    expect(voicePaths()).toEqual([
+      `voice/${VOICE}/incidents/collision-car-01.mp3`,
+      `voice/${VOICE}/incidents/points-4.mp3`,
+    ]);
+  });
+
+  it("a fire left waiting more than INCIDENT_SPEAK_MAX_AGE_MS is dropped by the queue's max wait, and stamps nothing", () => {
     engine.acquireFocus(AudioBus.Voice, "spotter", WEIGHT.SAFETY);
 
     bus.publishEvent("incident.occurred", incident("collision-car", 4).data);
@@ -575,6 +603,35 @@ describe("scheduling behind a held or busy bus (issue #1211)", () => {
     flush(audio);
 
     expect(voicePaths()).toEqual([]);
+    // The queue expires it before it ever reaches the gate: the max wait is
+    // the gate's age, measured from the same moment here.
+    expect(mockLogger.debug).toHaveBeenCalledWith(
+      `Scenario "pit-crew.incident-collision-car" dropped — waited ${INCIDENT_SPEAK_MAX_AGE_MS + 1} ms (max ${INCIDENT_SPEAK_MAX_AGE_MS} ms)`,
+    );
+    expect(mockLogger.debug).not.toHaveBeenCalledWith('Replaying pending scenario "pit-crew.incident-collision-car"');
+
+    // Nothing was claimed or stamped: the next incident speaks at once.
+    bus.publishEvent("incident.occurred", incident("collision-car", 2).data);
+    flush(audio);
+
+    expect(voicePaths()).toEqual([
+      `voice/${VOICE}/incidents/collision-car-01.mp3`,
+      `voice/${VOICE}/incidents/points-2.mp3`,
+    ]);
+  });
+
+  it("the speak-time gate still refuses by the event's age — an event stamped earlier than it was queued, and stamps nothing", () => {
+    engine.acquireFocus(AudioBus.Voice, "spotter", WEIGHT.SAFETY);
+
+    // Reported half the limit before it reached the engine: it has waited only
+    // half the max wait when it replays, but the incident is past the limit.
+    bus.publish({ ...incident("collision-car", 4), timestamp: T0 - INCIDENT_SPEAK_MAX_AGE_MS / 2 });
+    vi.setSystemTime(T0 + INCIDENT_SPEAK_MAX_AGE_MS / 2 + 1);
+    engine.releaseFocus(AudioBus.Voice, "spotter");
+    flush(audio);
+
+    expect(voicePaths()).toEqual([]);
+    expect(mockLogger.debug).toHaveBeenCalledWith('Replaying pending scenario "pit-crew.incident-collision-car"');
     expect(mockLogger.debug).toHaveBeenCalledWith(
       expect.stringContaining(`Scenario "pit-crew.incident-collision-car" skipped — speak-time gate`),
     );
@@ -589,7 +646,7 @@ describe("scheduling behind a held or busy bus (issue #1211)", () => {
     ]);
   });
 
-  it("a fire exactly INCIDENT_SPEAK_MAX_AGE_MS old still speaks", () => {
+  it("a fire exactly INCIDENT_SPEAK_MAX_AGE_MS old still speaks — at the limit of both the max wait and the gate", () => {
     engine.acquireFocus(AudioBus.Voice, "spotter", WEIGHT.SAFETY);
 
     bus.publishEvent("incident.occurred", incident("off-track", 1).data);

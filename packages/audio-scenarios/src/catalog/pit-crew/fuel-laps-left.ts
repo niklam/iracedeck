@@ -52,6 +52,9 @@ function fuelContract(
     interrupt,
     queueable: true,
     family: "fuel",
+    // A newer estimate replaces one still waiting (issue #1185): only the
+    // latest lap count is worth saying.
+    supersedeGroup: "fuel",
     when,
     description,
   };

@@ -188,6 +188,15 @@ export const POSITION_READOUT_SPEAK_GATE_DESCRIPTION =
   "No other position readout has spoken in the last twenty seconds when this one comes to speak; speaking it starts that window.";
 
 /**
+ * The supersede group every position readout shares (issue #1185): the
+ * lap-completed position call, the race status and the two overtake
+ * readouts. They share one cooldown, so only one of them can be said in a
+ * window anyway; one waiting at a time keeps the newest reading of the
+ * position rather than a backlog of older ones.
+ */
+export const POSITION_READOUT_SUPERSEDE_GROUP = "position";
+
+/**
  * The shared position cooldown as a speak-time gate (issue #1137): the claim
  * every position readout commits after its script expanded and before the ops
  * take the bus. Shared by the two overtake readouts and the race-status
@@ -473,6 +482,7 @@ export function buildOvertakeGainedPositionContract(
     weight: WEIGHT.CHATTER,
     queueable: true,
     family: "position-readout",
+    supersedeGroup: POSITION_READOUT_SUPERSEDE_GROUP,
   };
 }
 
@@ -511,6 +521,7 @@ export function buildOvertakeLostPositionContract(
     weight: WEIGHT.CHATTER,
     queueable: true,
     family: "position-readout",
+    supersedeGroup: POSITION_READOUT_SUPERSEDE_GROUP,
   };
 }
 

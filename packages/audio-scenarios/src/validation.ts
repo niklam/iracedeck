@@ -73,6 +73,17 @@ export function validateScenario(
     errors.push(`pendingHoldMs must be a non-negative number (got ${String(s.pendingHoldMs)})`);
   }
 
+  // The bounded queue (issue #1185): a group is matched by string equality,
+  // so an empty one would be a group nobody means; a max wait that is not a
+  // positive finite number would expire every waiting fire at once, or none.
+  if (s.supersedeGroup !== undefined && (typeof s.supersedeGroup !== "string" || s.supersedeGroup.length === 0)) {
+    errors.push(`supersedeGroup must be a non-empty string (got ${JSON.stringify(s.supersedeGroup)})`);
+  }
+
+  if (s.maxQueueWaitMs !== undefined && (!Number.isFinite(s.maxQueueWaitMs) || s.maxQueueWaitMs <= 0)) {
+    errors.push(`maxQueueWaitMs must be a positive finite number (got ${String(s.maxQueueWaitMs)})`);
+  }
+
   // The settle wait (issue #1284) re-arms a timer every `pollMs` until
   // `maxWaitMs` after the event: a zero or non-finite poll would spin or
   // never fire, and a cap shorter than `triggerDelay` would be a wait that is

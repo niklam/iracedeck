@@ -200,8 +200,8 @@ beforeEach(() => {
   for (const c of TELEMETRY_READOUT_CONTRACTS) engine.defineContract(c);
 
   // Stand-ins for "something else is on the radio": a line holding the bus
-  // above a readout, and two queueable lines that can wait in the slot — one
-  // at NORMAL weight, one at CHATTER.
+  // above a readout, and two queueable lines that can wait in the bus's
+  // queue — one at NORMAL weight, one at CHATTER.
   engine.defineScenario({
     id: "test.busy",
     channel: AudioChannel.Voice,
@@ -276,7 +276,7 @@ describe("TELEMETRY_READOUT_CONTRACTS structure (issue #466)", () => {
     ]);
   });
 
-  it("fires on telemetryReadout.requested on the voice bus, queueable at READOUT_WEIGHT in the default frame, in no family, carrying no sequence", () => {
+  it("fires on telemetryReadout.requested on the voice bus, queueable at READOUT_WEIGHT in the default frame, in no family but one supersede group, carrying no sequence", () => {
     for (const c of TELEMETRY_READOUT_CONTRACTS) {
       expect(c.when?.event, c.id).toBe("telemetryReadout.requested");
       expect(c.channel, c.id).toBe(AudioChannel.Voice);
@@ -285,6 +285,7 @@ describe("TELEMETRY_READOUT_CONTRACTS structure (issue #466)", () => {
       expect(c.queueable, c.id).toBe(true);
       expect(c.weight, c.id).toBe(READOUT_WEIGHT);
       expect(c.family, c.id).toBeUndefined();
+      expect(c.supersedeGroup, c.id).toBe("readout");
       expect(c.interrupt, c.id).toBeUndefined();
       expect(c.queueBehind, c.id).toBeUndefined();
       expect(c.frame, c.id).toBeUndefined();
@@ -518,22 +519,34 @@ describe("scheduling (issue #466): a readout waits its turn and never displaces 
     expect(voiceClipsPlayed()).toEqual([BUSY_CLIP, line("fuel-last-lap-intro"), fuel(2), tail("liters-4")]);
   });
 
-  it("a readout pressed while a NORMAL-weight queueable line waits is dropped, and the waiting line survives", () => {
+  it("a readout pressed while a NORMAL-weight queueable line waits plays after it — both are heard, the heavier first", () => {
     engine.fire("test.busy");
     engine.fire("test.normal");
     bus.publishEvent("telemetryReadout.requested", request({ value: 2.44 }));
     flush(audio);
 
-    expect(voiceClipsPlayed()).toEqual([BUSY_CLIP, NORMAL_CLIP]);
+    expect(voiceClipsPlayed()).toEqual([
+      BUSY_CLIP,
+      NORMAL_CLIP,
+      line("fuel-last-lap-intro"),
+      fuel(2),
+      tail("liters-4"),
+    ]);
   });
 
-  it("a readout pressed while a CHATTER queueable line waits replaces it", () => {
+  it("a readout pressed while a CHATTER queueable line waits plays before it — both are heard, the heavier first", () => {
     engine.fire("test.busy");
     engine.fire("test.chatter");
     bus.publishEvent("telemetryReadout.requested", request({ value: 2.44 }));
     flush(audio);
 
-    expect(voiceClipsPlayed()).toEqual([BUSY_CLIP, line("fuel-last-lap-intro"), fuel(2), tail("liters-4")]);
+    expect(voiceClipsPlayed()).toEqual([
+      BUSY_CLIP,
+      line("fuel-last-lap-intro"),
+      fuel(2),
+      tail("liters-4"),
+      CHATTER_CLIP,
+    ]);
   });
 
   it("a newer readout replaces a waiting one — a burst of presses speaks only the latest, never a backlog", () => {
@@ -554,13 +567,19 @@ describe("scheduling (issue #466): a readout waits its turn and never displaces 
     expect(voiceClipsPlayed()).toEqual([line("track-temp-intro"), deg("41"), line("air-temp-intro"), deg("23")]);
   });
 
-  it("a NORMAL-weight queueable line arriving while a readout waits replaces the readout", () => {
+  it("a NORMAL-weight queueable line arriving while a readout waits goes ahead of it — both are heard, the heavier first", () => {
     engine.fire("test.busy");
     bus.publishEvent("telemetryReadout.requested", request({ value: 2.44 }));
     engine.fire("test.normal");
     flush(audio);
 
-    expect(voiceClipsPlayed()).toEqual([BUSY_CLIP, NORMAL_CLIP]);
+    expect(voiceClipsPlayed()).toEqual([
+      BUSY_CLIP,
+      NORMAL_CLIP,
+      line("fuel-last-lap-intro"),
+      fuel(2),
+      tail("liters-4"),
+    ]);
   });
 });
 

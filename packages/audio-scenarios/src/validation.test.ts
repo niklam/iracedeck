@@ -224,6 +224,50 @@ describe("validateScenario", () => {
     expect(errorLogs.join("\n")).toContain("pendingHoldMs must be a non-negative number");
   });
 
+  describe("the bounded queue's fields (issue #1185)", () => {
+    function defineQueued(extra: { supersedeGroup?: string; maxQueueWaitMs?: number }): void {
+      engine.defineScenario({
+        id: "queued",
+        channel: AudioChannel.Voice,
+        bus: AudioBus.Voice,
+        queueable: true,
+        sequence: ["pit-crew/greeting/a.mp3"],
+        ...extra,
+      });
+    }
+
+    it("accepts a non-empty supersedeGroup and a positive maxQueueWaitMs", () => {
+      defineQueued({ supersedeGroup: "penalty", maxQueueWaitMs: 30_000 });
+
+      expect(errorLogs).toEqual([]);
+    });
+
+    it("flags an empty supersedeGroup", () => {
+      defineQueued({ supersedeGroup: "" });
+
+      expect(errorLogs.join("\n")).toContain('supersedeGroup must be a non-empty string (got "")');
+      expect(errorLogs.join("\n")).toContain("disabled");
+    });
+
+    it("flags a supersedeGroup that is not a string", () => {
+      defineQueued({ supersedeGroup: 7 as unknown as string });
+
+      expect(errorLogs.join("\n")).toContain("supersedeGroup must be a non-empty string (got 7)");
+    });
+
+    it.each([
+      ["zero", 0],
+      ["negative", -1],
+      ["NaN", Number.NaN],
+      ["Infinity", Number.POSITIVE_INFINITY],
+    ])("flags a %s maxQueueWaitMs", (_label, value) => {
+      defineQueued({ maxQueueWaitMs: value });
+
+      expect(errorLogs.join("\n")).toContain("maxQueueWaitMs must be a positive finite number");
+      expect(errorLogs.join("\n")).toContain("disabled");
+    });
+  });
+
   describe("settle (issue #1284)", () => {
     const pending = (): string | null => null;
 
