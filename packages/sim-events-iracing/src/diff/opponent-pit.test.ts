@@ -255,6 +255,97 @@ describe("diffOpponentPit", () => {
     expect(run(state, enter, 2000 + OPPONENT_PIT_CAR_COOLDOWN_MS + 1000)).toHaveLength(1);
   });
 
+  it("does not announce a car leaving its pit stall, however long the stop (#1212)", () => {
+    run(state, makeField(), 1000);
+    const approach = makeField();
+    approach.CarIdxTrackSurface[4] = TrkLoc.AproachingPits;
+    const stall = makeField();
+    stall.CarIdxTrackSurface[4] = TrkLoc.InPitStall;
+
+    // Arrival from the racing surface — the one announcement.
+    expect(run(state, approach, 2000)).toHaveLength(1);
+    expect(run(state, stall, 10_000)).toEqual([]);
+
+    // Leaves the stall after the cooldown has expired: the pit lane on the way
+    // out reads AproachingPits too, but InPitStall → AproachingPits is an exit.
+    const exitAt = 2000 + OPPONENT_PIT_CAR_COOLDOWN_MS + 6000;
+    expect(run(state, approach, exitAt)).toEqual([]);
+    expect(run(state, makeField(), exitAt + 5000)).toEqual([]);
+
+    // Its next stop, from the racing surface again, still announces.
+    expect(run(state, approach, exitAt + 90_000)).toHaveLength(1);
+  });
+
+  it("does not announce a car shuffling across its stall boundary (#1212)", () => {
+    run(state, makeField(), 1000);
+    const approach = makeField();
+    approach.CarIdxTrackSurface[4] = TrkLoc.AproachingPits;
+    const stall = makeField();
+    stall.CarIdxTrackSurface[4] = TrkLoc.InPitStall;
+
+    expect(run(state, approach, 2000)).toHaveLength(1);
+
+    // Well past the cooldown, the car edges in and out of its box.
+    let now = 2000 + OPPONENT_PIT_CAR_COOLDOWN_MS * 2;
+
+    for (let i = 0; i < 3; i++) {
+      expect(run(state, stall, (now += 500))).toEqual([]);
+      expect(run(state, approach, (now += 500))).toEqual([]);
+    }
+  });
+
+  describe("NotInWorld ticks hold the last in-world surface (#1212)", () => {
+    function surfaces(carIdx: number, value: number): MutableField {
+      const t = makeField();
+      t.CarIdxTrackSurface[carIdx] = value;
+
+      return t;
+    }
+
+    const past = 2000 + OPPONENT_PIT_CAR_COOLDOWN_MS + 5000;
+
+    it("does not announce a car that blinks out between its stall and the exit", () => {
+      run(state, makeField(), 1000);
+      expect(run(state, surfaces(4, TrkLoc.AproachingPits), 2000)).toHaveLength(1);
+      run(state, surfaces(4, TrkLoc.InPitStall), 10_000);
+
+      expect(run(state, surfaces(4, TrkLoc.NotInWorld), past)).toEqual([]);
+      expect(run(state, surfaces(4, TrkLoc.AproachingPits), past + 100)).toEqual([]);
+    });
+
+    it("does not announce a car that blinks out mid pit lane on the way out", () => {
+      run(state, makeField(), 1000);
+      expect(run(state, surfaces(4, TrkLoc.AproachingPits), 2000)).toHaveLength(1);
+      run(state, surfaces(4, TrkLoc.InPitStall), 10_000);
+      run(state, surfaces(4, TrkLoc.AproachingPits), past);
+
+      expect(run(state, surfaces(4, TrkLoc.NotInWorld), past + 100)).toEqual([]);
+      expect(run(state, surfaces(4, TrkLoc.AproachingPits), past + 200)).toEqual([]);
+    });
+
+    it("does not announce a car towed to its stall as it drives out", () => {
+      run(state, makeField(), 1000);
+      run(state, surfaces(4, TrkLoc.NotInWorld), 2000);
+      run(state, surfaces(4, TrkLoc.InPitStall), 2100);
+
+      expect(run(state, surfaces(4, TrkLoc.AproachingPits), past)).toEqual([]);
+    });
+
+    it("does not announce a car first seen on pit road", () => {
+      // Out of the world at the seed — joined the session or the grid late.
+      run(state, surfaces(4, TrkLoc.NotInWorld), 1000);
+
+      expect(run(state, surfaces(4, TrkLoc.AproachingPits), 2000)).toEqual([]);
+    });
+
+    it("still announces a car that blinks out on track and reappears at pit entry", () => {
+      run(state, makeField(), 1000);
+      run(state, surfaces(4, TrkLoc.NotInWorld), 2000);
+
+      expect(run(state, surfaces(4, TrkLoc.AproachingPits), 2100)).toHaveLength(1);
+    });
+  });
+
   it("does not re-emit while the car stays in the approach state", () => {
     run(state, makeField(), 1000);
     const t = makeField();
