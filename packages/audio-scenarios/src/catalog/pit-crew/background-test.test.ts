@@ -16,6 +16,18 @@ vi.mock("@iracedeck/audio-service", () => ({
   getAudio: hoisted.getAudio,
 }));
 
+const engine = vi.hoisted(() => {
+  const playFramePreview = vi.fn<(frameName: string, holdMs: number, onComplete?: () => void) => boolean>(() => false);
+  const initialized = { value: false };
+
+  return { playFramePreview, initialized };
+});
+
+vi.mock("../../interpreter.js", () => ({
+  isAudioScenariosInitialized: () => engine.initialized.value,
+  getScenarioEngine: () => ({ playFramePreview: engine.playFramePreview }),
+}));
+
 const AMBIENT = 0;
 const SFX = 1;
 const TICK_OPEN = "sfx/IRD-tick-open.mp3";
@@ -27,6 +39,8 @@ beforeEach(() => {
   vi.useFakeTimers();
   hoisted.playOnChannel.mockClear();
   hoisted.stopChannel.mockClear();
+  engine.playFramePreview.mockReset().mockReturnValue(false);
+  engine.initialized.value = false;
 });
 
 afterEach(() => {
@@ -34,7 +48,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("playBackgroundTest", () => {
+describe("playBackgroundTest — the built-in fallback", () => {
   it("plays tick-open + ambient loop immediately, then stops ambient + plays tick-close after the test window", () => {
     playBackgroundTest();
 
@@ -137,6 +151,73 @@ describe("playBackgroundTest", () => {
 
     // The flag is also cleared so a fresh playBackgroundTest can start.
     playBackgroundTest();
+    expect(hoisted.playOnChannel).toHaveBeenCalledWith(SFX, TICK_OPEN);
+  });
+});
+
+describe("playBackgroundTest — the active voice's frame (issue #1124)", () => {
+  beforeEach(() => {
+    engine.initialized.value = true;
+  });
+
+  it("asks the engine for the voice's radio frame around the hold, and plays nothing itself", () => {
+    engine.playFramePreview.mockReturnValue(true);
+
+    expect(playBackgroundTest()).toBe("voice-frame");
+    expect(engine.playFramePreview).toHaveBeenCalledWith("radio", TEST_DURATION_MS, expect.any(Function));
+    expect(hoisted.playOnChannel).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(TEST_DURATION_MS);
+    expect(hoisted.playOnChannel).not.toHaveBeenCalled();
+    expect(hoisted.stopChannel).not.toHaveBeenCalled();
+  });
+
+  it("stays in flight until the engine reports the preview over, then runs onComplete", () => {
+    engine.playFramePreview.mockReturnValue(true);
+    const onComplete = vi.fn();
+    playBackgroundTest(onComplete);
+
+    expect(isBackgroundTestInFlight()).toBe(true);
+    expect(playBackgroundTest()).toBe("in-flight");
+    expect(engine.playFramePreview).toHaveBeenCalledTimes(1);
+
+    const done = engine.playFramePreview.mock.calls[0][2];
+    done?.();
+
+    expect(isBackgroundTestInFlight()).toBe(false);
+    expect(onComplete).toHaveBeenCalledTimes(1);
+  });
+
+  it("a preview the engine completes inside the call (both switches off) leaves nothing in flight", () => {
+    engine.playFramePreview.mockImplementation((_frame, _hold, done) => {
+      done?.();
+
+      return true;
+    });
+    const onComplete = vi.fn();
+
+    expect(playBackgroundTest(onComplete)).toBe("voice-frame");
+    expect(onComplete).toHaveBeenCalledTimes(1);
+    expect(isBackgroundTestInFlight()).toBe(false);
+  });
+
+  it("falls back to the built-in clips when the voice has no frame to offer", () => {
+    engine.playFramePreview.mockReturnValue(false);
+    const onComplete = vi.fn();
+
+    expect(playBackgroundTest(onComplete)).toBe("built-in");
+    expect(hoisted.playOnChannel).toHaveBeenCalledWith(SFX, TICK_OPEN);
+
+    vi.advanceTimersByTime(TEST_DURATION_MS);
+    expect(hoisted.playOnChannel).toHaveBeenLastCalledWith(SFX, TICK_CLOSE);
+    expect(onComplete).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back without asking when the engine is not initialised", () => {
+    engine.initialized.value = false;
+
+    expect(playBackgroundTest()).toBe("built-in");
+    expect(engine.playFramePreview).not.toHaveBeenCalled();
     expect(hoisted.playOnChannel).toHaveBeenCalledWith(SFX, TICK_OPEN);
   });
 });

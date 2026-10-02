@@ -6045,4 +6045,190 @@ describe("pack-owned scripts (issue #1064)", () => {
       expect.stringContaining("include target has no sequence (a contract)"),
     );
   });
+
+  describe("playFramePreview — the Background Test plays the active voice's frame (issue #1124)", () => {
+    const HOLD_MS = 2500;
+    const PACK_BEEP = "voice/default/sfx/beep-01.mp3";
+    /** A pack frame that opens and closes on its own beep rather than the built-in ticks. */
+    const PACK_FRAME = {
+      open: [`/${PACK_BEEP}`, { ambient: "start" as const }],
+      close: [{ ambient: "stop" as const }, `/${PACK_BEEP}`],
+    };
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+      engine.setManifest({ ...scriptedManifest, clips: [...scriptedManifest.clips, PACK_BEEP] });
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    function useFrame(radio: CalloutScript["frames"][string] = PACK_FRAME, scenarios: CalloutScript["scenarios"] = {}) {
+      engine.setScripts(new Map([["default", script({ frames: { radio }, scenarios })]]));
+    }
+
+    /** Run the preview to its end: the open beep, the hold, the close beep. */
+    function finishPreview(): void {
+      audio._triggerChannelEnd(AudioChannel.SFX);
+      vi.advanceTimersByTime(HOLD_MS);
+      audio._triggerChannelEnd(AudioChannel.SFX);
+    }
+
+    it("plays the voice's own frame on SFX + Ambient around the hold, then completes", () => {
+      useFrame();
+      const onComplete = vi.fn();
+
+      expect(engine.playFramePreview(DEFAULT_FRAME, HOLD_MS, onComplete)).toBe(true);
+      expect(audio._played).toEqual([{ channel: AudioChannel.SFX, path: PACK_BEEP, loop: false }]);
+
+      audio._triggerChannelEnd(AudioChannel.SFX);
+      expect(audio._played.at(-1)).toEqual({
+        channel: AudioChannel.Ambient,
+        path: "sfx/IRD-ambient-pit.mp3",
+        loop: true,
+      });
+
+      // The hold is silence: nothing is played and the bed keeps running.
+      vi.advanceTimersByTime(HOLD_MS - 1);
+      expect(audio._played).toHaveLength(2);
+      expect(audio._stopped).toEqual([]);
+
+      vi.advanceTimersByTime(1);
+      expect(audio._stopped).toEqual([AudioChannel.Ambient]);
+      expect(audio._played.at(-1)).toEqual({ channel: AudioChannel.SFX, path: PACK_BEEP, loop: false });
+      expect(onComplete).not.toHaveBeenCalled();
+
+      audio._triggerChannelEnd(AudioChannel.SFX);
+      expect(onComplete).toHaveBeenCalledTimes(1);
+      expect(playedPaths()).not.toContain("sfx/IRD-tick-open.mp3");
+    });
+
+    it("applies the user's switches exactly as a callout's frame does", () => {
+      useFrame();
+      frameOptions = { beeps: false, ambience: true };
+
+      expect(engine.playFramePreview(DEFAULT_FRAME, HOLD_MS)).toBe(true);
+      vi.advanceTimersByTime(HOLD_MS);
+
+      expect(playedPaths()).toEqual(["sfx/IRD-ambient-pit.mp3"]);
+      expect(audio._stopped).toEqual([AudioChannel.Ambient]);
+    });
+
+    it("with both switches off it plays nothing, completes at once, and leaves the bus free", () => {
+      engine.defineContract(contract({ frame: NO_FRAME }));
+      useFrame(PACK_FRAME, { "test.green": { sequence: ["pool:flag-green"] } });
+      frameOptions = { beeps: false, ambience: false };
+      const onComplete = vi.fn();
+
+      expect(engine.playFramePreview(DEFAULT_FRAME, HOLD_MS, onComplete)).toBe(true);
+      expect(audio._played).toEqual([]);
+      expect(onComplete).toHaveBeenCalledTimes(1);
+
+      engine.fire("test.green");
+      expect(voicePaths()).toEqual(["voice/default/flags/green-01.mp3"]);
+    });
+
+    it.each([
+      ["no voice is active", DEFAULT_FRAME, () => (activeVoice = null)],
+      ["the voice has no script", DEFAULT_FRAME, () => engine.setScripts(new Map())],
+      ["the voice's script defines no such frame", "terse", () => {}],
+    ])("returns false and plays nothing when %s", (_label, frameName, arrange) => {
+      useFrame();
+      arrange();
+      const onComplete = vi.fn();
+
+      expect(engine.playFramePreview(frameName, HOLD_MS, onComplete)).toBe(false);
+      expect(audio._played).toEqual([]);
+      expect(onComplete).not.toHaveBeenCalled();
+    });
+
+    it("returns false when the frame aborts on a missing clip — and holds no bus", () => {
+      engine.defineContract(contract({ frame: NO_FRAME }));
+      useFrame({ open: ["sfx/missing-beep.mp3"], close: [] }, { "test.green": { sequence: ["pool:flag-green"] } });
+
+      expect(engine.playFramePreview(DEFAULT_FRAME, HOLD_MS)).toBe(false);
+      expect(audio._played).toEqual([]);
+
+      engine.fire("test.green");
+      expect(voicePaths()).toEqual(["voice/default/flags/green-01.mp3"]);
+    });
+
+    it("a callout arriving mid-preview waits behind it and plays once the preview has completed", () => {
+      engine.defineContract(contract({ frame: NO_FRAME, weight: WEIGHT.TRANSIENT }));
+      useFrame(PACK_FRAME, { "test.green": { sequence: ["pool:flag-green"] } });
+      let heardAtComplete: string[] | null = null;
+      engine.playFramePreview(DEFAULT_FRAME, HOLD_MS, () => (heardAtComplete = voicePaths()));
+
+      // Even the lightest band outweighs the preview, so it waits rather than drops.
+      engine.fire("test.green");
+      expect(voicePaths()).toEqual([]);
+
+      finishPreview();
+
+      // The caller's cleanup (restoring the bus volumes) runs before the next line plays.
+      expect(heardAtComplete).toEqual([]);
+      expect(voicePaths()).toEqual(["voice/default/flags/green-01.mp3"]);
+    });
+
+    it("an interrupting callout cuts the preview — its bed stops and it still completes", () => {
+      engine.defineContract(contract({ frame: NO_FRAME, interrupt: true }));
+      useFrame(PACK_FRAME, { "test.green": { sequence: ["pool:flag-green"] } });
+      const onComplete = vi.fn();
+      engine.playFramePreview(DEFAULT_FRAME, HOLD_MS, onComplete);
+      audio._triggerChannelEnd(AudioChannel.SFX);
+
+      engine.fire("test.green");
+
+      expect(audio._stopped).toContain(AudioChannel.Ambient);
+      expect(onComplete).toHaveBeenCalledTimes(1);
+      expect(voicePaths()).toEqual(["voice/default/flags/green-01.mp3"]);
+
+      // The cut preview is over: its hold expiring later plays no close beep.
+      vi.advanceTimersByTime(HOLD_MS);
+      expect(playedPaths().filter((p) => p === PACK_BEEP)).toHaveLength(1);
+    });
+
+    it("cuts an in-flight queueable callout, which replays once the preview ends", () => {
+      engine.defineContract(contract({ frame: NO_FRAME, queueable: true }));
+      useFrame(PACK_FRAME, { "test.green": { sequence: ["pool:flag-green"] } });
+      engine.fire("test.green");
+      expect(voicePaths()).toEqual(["voice/default/flags/green-01.mp3"]);
+
+      engine.playFramePreview(DEFAULT_FRAME, HOLD_MS);
+      expect(audio._stopped).toContain(AudioChannel.Voice);
+
+      finishPreview();
+      expect(voicePaths()).toEqual(["voice/default/flags/green-01.mp3", "voice/default/flags/green-01.mp3"]);
+    });
+
+    it("stopAll ends the preview and still runs its completion", () => {
+      useFrame();
+      const onComplete = vi.fn();
+      engine.playFramePreview(DEFAULT_FRAME, HOLD_MS, onComplete);
+      audio._triggerChannelEnd(AudioChannel.SFX);
+
+      engine.stopAll();
+
+      expect(onComplete).toHaveBeenCalledTimes(1);
+      expect(audio._stopped).toContain(AudioChannel.Ambient);
+
+      vi.advanceTimersByTime(HOLD_MS);
+      expect(onComplete).toHaveBeenCalledTimes(1);
+    });
+
+    it("a throwing completion is logged and leaves the scheduler working", () => {
+      engine.defineContract(contract({ frame: NO_FRAME }));
+      useFrame(PACK_FRAME, { "test.green": { sequence: ["pool:flag-green"] } });
+      engine.playFramePreview(DEFAULT_FRAME, HOLD_MS, () => {
+        throw new Error("boom");
+      });
+      finishPreview();
+
+      expect(mockLogger.error).toHaveBeenCalledWith(expect.stringContaining("completion callback threw: boom"));
+
+      engine.fire("test.green");
+      expect(voicePaths()).toEqual(["voice/default/flags/green-01.mp3"]);
+    });
+  });
 });

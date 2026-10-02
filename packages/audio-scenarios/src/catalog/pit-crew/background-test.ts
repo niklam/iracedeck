@@ -2,59 +2,86 @@
  * PI Test-button helper for the Background Volume slider (issue #471).
  *
  * Plays a representative `AudioBus.Background` preview so the user can
- * audition their slider value: walkie-talkie tick-open on `AudioChannel.SFX`,
- * pit ambient loop on `AudioChannel.Ambient`, then tick-close after a short
- * window. This is the BUILT-IN radio frame — the one the bundled voice's
- * script defines — not necessarily the active voice's: since #1064 a pack
- * defines its own frame, and a pack that opens with its own beep is not
- * what this preview plays (a follow-up will have the preview use the active
- * frame). What it does share with a real callout is the bus, the volume and
- * the user's two frame switches: with Radio beeps off the ticks are
- * dropped, with Pit ambience off the loop is, and with both off there is
- * nothing to preview, so the sequence completes on the spot.
+ * audition their slider value: what a real callout would play in the
+ * selected voice, minus the speech. Since #1124 that is the active voice's
+ * own radio frame, asked of the engine (`playFramePreview`), which expands
+ * it exactly as it does around a callout — the user's Radio beeps and Pit
+ * ambience switches, frame clips on `AudioChannel.SFX`, the ambient bed on
+ * `AudioChannel.Ambient` — around a short silence.
+ *
+ * When the engine has no frame to offer — it is not initialised, no voice is
+ * selected, or the voice has no script or a frame that failed to compile —
+ * the preview falls back to the built-in frame: walkie-talkie tick-open, pit
+ * ambient loop, tick-close after a short window, under the same two
+ * switches. The caller is told which one played, so it can say so.
  *
  * Idempotent against double-press — a second call while a sequence is in
- * flight is a no-op. The optional `onComplete` callback fires after the
- * close-tick is dispatched, letting the caller restore bus volumes that
- * were temporarily forced for the preview (e.g. when the Race Engineer
- * master gate would otherwise hold Background at 0).
+ * flight is a no-op. The optional `onComplete` callback fires once the
+ * preview is over (finished, or cut by a callout or by `stopAll`), letting
+ * the caller restore bus volumes that were temporarily forced for the
+ * preview (e.g. when the Race Engineer master gate would otherwise hold
+ * Background at 0).
  */
 import { AudioChannel, getAudio } from "@iracedeck/audio-service";
 
-import type { FrameOptions } from "../../interpreter.js";
+import { DEFAULT_FRAME } from "../../dsl.js";
+import { type FrameOptions, getScenarioEngine, isAudioScenariosInitialized } from "../../interpreter.js";
 
 const TICK_OPEN = "sfx/IRD-tick-open.mp3";
 const TICK_CLOSE = "sfx/IRD-tick-close.mp3";
 const AMBIENT_LOOP = "sfx/IRD-ambient-pit.mp3";
 
-/** How long the ambient loop plays between the open and close ticks. */
+/** How long the frame holds open — the silence where a callout's speech would be. */
 const TEST_DURATION_MS = 2500;
 
 /** Both switches on: what the preview played before the switches existed. */
 const EVERYTHING: FrameOptions = { beeps: true, ambience: true };
+
+/**
+ * What a press did: played the active voice's frame, played the built-in
+ * fallback, or nothing because a preview was already in flight.
+ */
+export type BackgroundTestOutcome = "voice-frame" | "built-in" | "in-flight";
 
 let testInFlight = false;
 let testTimer: ReturnType<typeof setTimeout> | null = null;
 
 /**
  * @param options The user's frame switches (`getFrameOptions` in the
- *   plugins): `beeps` keeps the ticks, `ambience` keeps the loop — the same
- *   two things the engine drops from the real frame. Defaults to both on.
+ *   plugins), for the built-in fallback: `beeps` keeps the ticks, `ambience`
+ *   keeps the loop. The engine reads the same switches itself for the
+ *   voice's frame. Defaults to both on.
  */
-export function playBackgroundTest(onComplete?: () => void, options: FrameOptions = EVERYTHING): void {
-  if (testInFlight) return;
+export function playBackgroundTest(onComplete?: () => void, options: FrameOptions = EVERYTHING): BackgroundTestOutcome {
+  if (testInFlight) return "in-flight";
 
-  const { beeps, ambience } = options;
+  // Set before the engine is asked: with both switches off it completes
+  // synchronously, inside the call.
+  testInFlight = true;
 
+  const finish = (): void => {
+    testInFlight = false;
+    onComplete?.();
+  };
+
+  if (isAudioScenariosInitialized() && getScenarioEngine().playFramePreview(DEFAULT_FRAME, TEST_DURATION_MS, finish)) {
+    return "voice-frame";
+  }
+
+  playBuiltInFrame(finish, options);
+
+  return "built-in";
+}
+
+/** The fallback: the plugin's own three clips, under the user's two switches. */
+function playBuiltInFrame(finish: () => void, { beeps, ambience }: FrameOptions): void {
   // Nothing to audition: don't hold the in-flight flag (and the Background
   // bus bypass with it) for a silent window.
   if (!beeps && !ambience) {
-    onComplete?.();
+    finish();
 
     return;
   }
-
-  testInFlight = true;
 
   const audio = getAudio();
 
@@ -63,13 +90,13 @@ export function playBackgroundTest(onComplete?: () => void, options: FrameOption
   if (ambience) audio.playOnChannel(AudioChannel.Ambient, AMBIENT_LOOP, true);
 
   testTimer = setTimeout(() => {
+    testTimer = null;
+
     if (ambience) audio.stopChannel(AudioChannel.Ambient);
 
     if (beeps) audio.playOnChannel(AudioChannel.SFX, TICK_CLOSE);
 
-    testInFlight = false;
-    testTimer = null;
-    onComplete?.();
+    finish();
   }, TEST_DURATION_MS);
 }
 
