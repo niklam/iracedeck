@@ -260,7 +260,7 @@ class FakeDisk {
 
       return { ok: true };
     },
-    writeFile: (file, bytes) => {
+    writeFile: (file, chunks) => {
       const code = this.fault("writeFile", file);
 
       if (code !== undefined) return { ok: false, reason: code };
@@ -271,7 +271,7 @@ class FakeDisk {
 
       if (this.tree.has(key)) return { ok: false, reason: "EEXIST" };
 
-      this.tree.set(key, { kind: "file", data: Buffer.from(bytes) });
+      this.tree.set(key, { kind: "file", data: Buffer.concat(chunks) });
       this.writes.push(key);
 
       return { ok: true };

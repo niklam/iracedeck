@@ -220,10 +220,10 @@ function memoryFs(options: { failWrite?: string; failMkdir?: string } = {}): Mem
 
         return { ok: true };
       },
-      writeFile(file, bytes) {
+      writeFile(file, chunks) {
         if (options.failWrite) return { ok: false, reason: options.failWrite };
 
-        files.set(rel(file), new Uint8Array(bytes));
+        files.set(rel(file), concat(chunks));
 
         return { ok: true };
       },
@@ -290,8 +290,14 @@ afterEach(() => {
 const WHOLE = Number.POSITIVE_INFINITY;
 const CHUNK_SIZES = [1, 3, VOICE_PACK_ARCHIVE_PUSH_BYTES, 64 * 1024, WHOLE] as const;
 
+/**
+ * The archive in `size`-byte chunks, each a COPY in its own buffer, as a file
+ * read hands them over. Views into the one test buffer would hide anything
+ * the parser keeps hold of: a retained view costs nothing extra, a retained
+ * chunk costs its whole buffer (#1102).
+ */
 async function* chunksOf(archive: Uint8Array, size: number): AsyncGenerator<Uint8Array> {
-  for (let offset = 0; offset < archive.length; offset += size) yield archive.subarray(offset, offset + size);
+  for (let offset = 0; offset < archive.length; offset += size) yield archive.slice(offset, offset + size);
 }
 
 type Limits = Parameters<typeof extractVoicePackArchive>[0]["limits"];
@@ -365,6 +371,19 @@ function extractorCases(size: number): void {
       expect(result.ok).toBe(true);
       expect(memory.dirs).toEqual(["voice/luca/flags"]);
       expect(memory.dirs).not.toContain("empty");
+    });
+
+    it("creates each folder once, however many files land in it", async () => {
+      const archive = archiveOf({
+        "voice/luca/flags/blue-01.mp3": noise(100),
+        "voice/luca/flags/blue-02.mp3": noise(100),
+        "voice/luca/position-number/4.mp3": noise(100),
+        "voice/luca/flags/blue-03.mp3": noise(100),
+      });
+      const memory = memoryFs();
+
+      expect((await extract(archive, memory)).ok).toBe(true);
+      expect(memory.dirs).toEqual(["voice/luca/flags", "voice/luca/position-number"]);
     });
 
     it("accepts stored (uncompressed) entries", async () => {
@@ -1023,6 +1042,100 @@ describe("extractVoicePackArchive reads its source as a stream (#1102)", () => {
   });
 });
 
+describe("a directory entry that carries data (#1102)", () => {
+  // A directory entry nobody starts keeps its payload inside fflate for the
+  // rest of the parse, so one carrying data used to be skipped while every
+  // chunk of that data piled up — over a gigabyte in the #1102 review, from an
+  // archive that then extracted "successfully". These read the archive in
+  // separate 64 KB buffers, the way a file read delivers it.
+  function source(archive: Uint8Array) {
+    const state = { pulls: 0 };
+
+    async function* chunks(): AsyncGenerator<Uint8Array> {
+      for (let offset = 0; offset < archive.length; offset += 64 * 1024) {
+        state.pulls += 1;
+        yield archive.slice(offset, offset + 64 * 1024);
+      }
+    }
+
+    return { chunks: chunks(), state };
+  }
+
+  it.each([
+    ["stored, with its size in the header", { method: 0 }],
+    ["stored, behind a data descriptor", { method: 0, dataDescriptor: true }],
+    ["deflated, behind a data descriptor", { method: 8, dataDescriptor: true }],
+  ])("refuses one %s, without reading on through its data", async (_, shape) => {
+    const archive = buildArchive([
+      { name: "voice/luca/", data: noise(1_000_000), ...shape },
+      { name: "voice/luca/flags/blue-01.mp3", data: noise(100) },
+    ]);
+    const { chunks, state } = source(archive);
+    const memory = memoryFs();
+
+    const result = failure(await extractVoicePackArchive({ source: chunks, targetDir: TARGET, fs: memory.fs }));
+
+    expect(result.code).toBe("malformed");
+    expect(result.reason).toMatch(/directory entry "voice\/luca\/" carries data/);
+    expect(state.pulls).toBe(1);
+    expect(memory.files.size).toBe(0);
+  });
+
+  it.each([
+    ["stored, with a zero size in the header", { method: 0 }],
+    ["deflated, with its size in the header", { method: 8 }],
+    ["deflated, behind a data descriptor", { method: 8, dataDescriptor: true }],
+  ])("still skips an empty one, %s", async (_, shape) => {
+    const archive = buildArchive([
+      { name: "voice/", ...shape },
+      { name: "voice/luca/flags/blue-01.mp3", data: noise(100_000) },
+    ]);
+    const { chunks } = source(archive);
+    const memory = memoryFs();
+
+    const result = await extractVoicePackArchive({ source: chunks, targetDir: TARGET, fs: memory.fs });
+
+    expect(result).toEqual({ ok: true, written: ["voice/luca/flags/blue-01.mp3"] });
+    expect(memory.dirs).toEqual(["voice/luca/flags"]);
+  });
+});
+
+describe("turns of the event loop (#1102)", () => {
+  /** Counts macrotask turns the event loop gets while `run` is in flight. */
+  async function turnsDuring(run: () => Promise<unknown>): Promise<number> {
+    let turns = 0;
+    let running = true;
+    const tick = (): void => {
+      if (!running) return;
+
+      turns += 1;
+      setImmediate(tick);
+    };
+
+    setImmediate(tick);
+    await run();
+    running = false;
+
+    return turns;
+  }
+
+  // Five slices of archive, handed over from memory in one chunk: under the
+  // 256 KB byte budget, and no read to yield at.
+  const archive = archiveOf({ "voice/luca/flags/blue-01.mp3": noise(5 * VOICE_PACK_ARCHIVE_PUSH_BYTES) });
+
+  it("takes no turn inside the byte budget while the work is quick", async () => {
+    expect(await turnsDuring(() => extract(archive, memoryFs()))).toBeLessThanOrEqual(1);
+  });
+
+  it("takes a turn after any slice that ran past the time budget", async () => {
+    // A clock that jumps 10 ms per reading: every slice looks slow.
+    let clock = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => (clock += 10));
+
+    expect(await turnsDuring(() => extract(archive, memoryFs()))).toBeGreaterThanOrEqual(4);
+  });
+});
+
 describe("the default caps (#1102)", () => {
   it("are pinned: the structural caps rose with the 2 GB download ceiling, the per-entry and ratio caps did not", () => {
     expect(VOICE_PACK_ARCHIVE_LIMITS).toEqual({
@@ -1124,11 +1237,14 @@ describe("the compression-ratio cap at its own boundaries (#1100)", () => {
   // the grace are each individually unjudged, however many there are. Before
   // the aggregate cap this archive was ACCEPTED and wrote 24 MiB from 27 KB.
   it("refuses an archive whose entries each sit just under the grace", async () => {
+    // One byte under, so the per-entry test never judges any of them and only
+    // the aggregate can refuse the archive — which the reason pins.
     const memory = memoryFs();
-    const archive = manyEntries(24, GRACE);
+    const archive = manyEntries(24, GRACE - 1);
     const result = failure(await extract(archive, memory));
 
     expect(result.code).toBe("compression-ratio");
+    expect(result.reason).toMatch(/in total/);
     // Bounded by the archive's own size rather than by the flat total cap:
     // whatever reached the staging directory is a small multiple of what was
     // downloaded, not gigabytes.

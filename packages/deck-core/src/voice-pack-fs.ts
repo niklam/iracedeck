@@ -1,5 +1,5 @@
 import type { ILogger } from "@iracedeck/logger";
-import { type Dirent, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { closeSync, type Dirent, mkdirSync, openSync, readdirSync, readFileSync, writeSync } from "node:fs";
 import { join } from "node:path";
 
 import type { VoicePackArchiveFileSystem } from "./voice-pack-archive.js";
@@ -143,13 +143,42 @@ export function createVoicePackArchiveFileSystem(logger: ILogger): VoicePackArch
       }
     },
 
-    writeFile(file, bytes) {
+    writeFile(file, chunks) {
+      let fd: number | undefined;
+
       try {
-        writeFileSync(file, bytes, { flag: "wx" });
+        fd = openSync(file, "wx");
+
+        // Chunk by chunk, so an entry that arrived in pieces is never joined
+        // into a second copy first. `writeSync` may write fewer bytes than
+        // asked, so each chunk is looped until it has all landed.
+        for (const chunk of chunks) {
+          for (let offset = 0; offset < chunk.byteLength;) {
+            const written = writeSync(fd, chunk, offset, chunk.byteLength - offset);
+
+            if (written === 0) throw new Error("short write");
+
+            offset += written;
+          }
+        }
+
+        // Closed on the success path, where a failing close is a failed write.
+        closeSync(fd);
+        fd = undefined;
 
         return { ok: true };
       } catch (err) {
         return failed("write", file, err);
+      } finally {
+        // Only after a failure: the write is already reported, and the
+        // staging directory holding the partial file is discarded with it.
+        if (fd !== undefined) {
+          try {
+            closeSync(fd);
+          } catch {
+            // Nothing more to report.
+          }
+        }
       }
     },
   };

@@ -44,12 +44,28 @@
  * ships inside `bin/plugin.js`.
  *
  * The archive arrives as a stream — an async iterable of chunks of any size,
- * which the installer reads from disk (#1102) — and is never held whole. What
- * extraction holds at once is one entry's output, buffered up to
- * `maxEntryBytes` so each file is written in one go, plus one slice's inflate
- * transient and one source chunk, whatever the archive's size. The chunks are
- * pulled one at a time, each pushed before the next is asked for, and pulling
- * stops at the first refusal.
+ * which the installer reads from disk (#1102) — and is never held whole. The
+ * chunks are pulled one at a time, each pushed before the next is asked for,
+ * and pulling stops at the first refusal. What extraction holds at once,
+ * whatever the archive's size, is:
+ *
+ * - one entry's output, kept as the chunks it arrived in (up to
+ *   `maxEntryBytes`) and handed to the writer as they are, never joined into a
+ *   second copy. A stored entry's chunks are views of the source chunks, so
+ *   this is about one entry plus a source chunk at either end;
+ * - one slice's inflate transient: a bomb slice expands to about 17 MB of
+ *   output, and fflate's growing output buffer took the transient to about
+ *   50 MB when the #1102 review measured it;
+ * - one source chunk (the installer reads 1 MB at a time);
+ * - bookkeeping that does grow with the archive, but slowly: fflate keeps an
+ *   (empty) list per entry it has seen, and the extractor a lowercased path
+ *   per file for the duplicate check — about 200 bytes an entry, some 20 MB
+ *   at the 100 000-entry cap.
+ *
+ * That holds only because every entry the parser announces is either started
+ * or refuses the archive. fflate buffers the data of an entry nobody started,
+ * for as long as the parse runs — which is why a directory entry is started
+ * too, see `onEntry`.
  *
  * Two consequences of the synchronous inflater are worth knowing. It expands
  * everything it is handed in one call before any handler runs, so every chunk
@@ -79,7 +95,8 @@
  *   containing its target text — and would need a `.mp3` or `.json` name.
  * - **Directory entries are never created.** Parents are made from the paths
  *   of the files accepted, so a directory entry with a hostile name is refused
- *   like any other name but a benign one is simply skipped.
+ *   like any other name, a benign one is skipped, and one that carries data
+ *   refuses the archive.
  * - **Encryption is not detected by flag.** fflate exposes no general-purpose
  *   flag bits, and re-parsing local headers to read one would mean a second
  *   parser. An encrypted entry is refused because its ciphertext does not
@@ -117,8 +134,12 @@ import { setImmediate as nextTurn } from "node:timers/promises";
 export interface VoicePackArchiveFileSystem {
   /** Create `dir` and every missing parent; already existing is success. */
   ensureDirectory(dir: string): VoicePackArchiveWrite;
-  /** Write `bytes` as a new file at `file`. */
-  writeFile(file: string, bytes: Uint8Array): VoicePackArchiveWrite;
+  /**
+   * Write the concatenation of `chunks`, in order, as a new file at `file`.
+   * Chunks rather than one buffer so an entry that arrived in pieces is
+   * written without first being joined into a second copy of itself.
+   */
+  writeFile(file: string, chunks: readonly Uint8Array[]): VoicePackArchiveWrite;
 }
 
 /** The outcome of one disk operation. `reason` is path-free: an errno where there is one. */
@@ -146,7 +167,9 @@ export interface VoicePackArchiveLimits {
  * that meet one are broken or hostile. The two structural caps were raised on
  * 2026-10-03 with the 2 GB download ceiling (#1102), once the archive stopped
  * being held in memory: the packs being prepared carry several voices at a
- * higher bitrate, and neither cap bounds memory any more.
+ * higher bitrate. Neither bounds the bulk of memory any more — that is the
+ * per-entry cap — though `maxEntries` still bounds the per-entry bookkeeping
+ * described in the module comment.
  *
  * - `maxEntries` 100 000 — one voice is roughly 1 600 entries with its
  *   directories, so this is some sixty voices' worth; the cap bounds the
@@ -158,6 +181,8 @@ export interface VoicePackArchiveLimits {
  *   buffered whole before being written (one write per file, no partial file
  *   to clean up on failure), so this is also the memory one entry can hold —
  *   and, with the archive streamed, the term that dominates the peak.
+ *   (`maxEntries` 100 000 also bounds the time between event-loop turns at
+ *   its worst; see `SLICES_PER_TURN`.)
  * - `maxCompressionRatio` 100 — speech in MP3 is incompressible (~1:1); JSON
  *   compresses 5–20:1; deflate tops out near 1032:1. Anything past 100:1 is
  *   not audio and not a manifest.
@@ -210,9 +235,19 @@ export const VOICE_PACK_ARCHIVE_PUSH_BYTES = 16 * 1024;
  * handing over small chunks makes many pushes per slice's worth of work.
  * Reading from disk yields too, at every chunk awaited, but a source that
  * resolves from memory never does, so the count stays.
+ *
+ * Bytes are a poor proxy for work when the entries are tiny, because the work
+ * is per FILE: 256 KB of hundred-byte clips is two thousand synchronous
+ * writes. So the loop also gets a turn after any slice that finds
+ * {@link MS_PER_TURN} gone since the last one. The yield can only fall
+ * between slices, though, and fflate handles a whole slice in one call: one
+ * 16 KB slice packed with tiny entries is a hundred-odd file creations, which
+ * can still hold the loop for around 100 ms on a slow disk. Splitting below
+ * a slice would mean parsing the zip ourselves.
  */
 const SLICES_PER_TURN = 16;
 const BYTES_PER_TURN = SLICES_PER_TURN * VOICE_PACK_ARCHIVE_PUSH_BYTES;
+const MS_PER_TURN = 8;
 
 export const VOICE_PACK_ARCHIVE_FAILURE_CODES = [
   "path",
@@ -478,6 +513,8 @@ type ExtractionState = {
   consumed: number;
   /** Accepted file paths, lowercased: the target filesystem is case-insensitive. */
   seen: Set<string>;
+  /** Directories already ensured during this extraction, so each is created once. */
+  ensured: Set<string>;
   /** The entry about to be started, for the decoder wrapper to capture. */
   starting?: OpenEntry;
 };
@@ -517,10 +554,6 @@ function formatBytes(bytes: number): string {
   return `${bytes} bytes`;
 }
 
-function errorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
-}
-
 /**
  * Overrides are taken one by one and each must be a positive finite number.
  *
@@ -544,6 +577,16 @@ function resolveLimits(overrides: Partial<VoicePackArchiveLimits> | undefined): 
     maxCompressionRatio: pick("maxCompressionRatio"),
     ratioGraceBytes: pick("ratioGraceBytes"),
   };
+}
+
+/**
+ * A message for an unknown thrown value. Shared with the installer, the other
+ * voice-pack module that reports a caught error.
+ *
+ * @internal
+ */
+export function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
 
 function concatChunks(chunks: readonly Uint8Array[], length: number): Uint8Array {
@@ -584,6 +627,7 @@ export async function extractVoicePackArchive(
     pending: 0,
     consumed: 0,
     seen: new Set(),
+    ensured: new Set(),
   };
 
   const fail = (code: VoicePackArchiveFailureCode, reason: string): void => {
@@ -710,15 +754,21 @@ export async function extractVoicePackArchive(
       return;
     }
 
-    const made = fs.ensureDirectory(dirname(entry.destination));
+    const folder = dirname(entry.destination);
 
-    if (!made.ok) {
-      fail("write", `could not create the folder for ${describeEntry(entry.name)} (${made.reason})`);
+    if (!state.ensured.has(folder)) {
+      const made = fs.ensureDirectory(folder);
 
-      return;
+      if (!made.ok) {
+        fail("write", `could not create the folder for ${describeEntry(entry.name)} (${made.reason})`);
+
+        return;
+      }
+
+      state.ensured.add(folder);
     }
 
-    const wrote = fs.writeFile(entry.destination, concatChunks(entry.chunks, entry.produced));
+    const wrote = fs.writeFile(entry.destination, entry.chunks);
     entry.chunks = [];
 
     if (!wrote.ok) {
@@ -728,6 +778,85 @@ export async function extractVoicePackArchive(
     }
 
     state.written.push(entry.path);
+  };
+
+  /**
+   * A directory entry is STARTED, not skipped, and refuses the archive if it
+   * produces a single byte.
+   *
+   * Skipping it would leave its data with fflate, which buffers the payload of
+   * any entry nobody started — in a list it never trims, for as long as the
+   * parse runs. A directory entry is supposed to carry nothing, but nothing
+   * stops a hostile one carrying gigabytes, and the source's chunks would pile
+   * up in that list with the archive's size: the #1102 review retained over a
+   * gigabyte that way from an archive that then extracted "successfully".
+   * Started, the data goes through a decoder and is dropped as it is judged,
+   * whether the header declared its size or a data descriptor follows it.
+   */
+  const startDirectory = (file: UnzipFile): void => {
+    const carriesData = () => fail("malformed", `directory entry ${describeEntry(file.name)} carries data`);
+
+    // A header that already claims data needs no decoding to refuse.
+    if (file.originalSize !== undefined && file.originalSize > 0) {
+      carriesData();
+
+      return;
+    }
+
+    if (file.compression !== METHOD_STORED && file.compression !== METHOD_DEFLATE) {
+      fail(
+        "malformed",
+        `entry ${describeEntry(file.name)} uses compression method ${file.compression}, which iRaceDeck does not support`,
+      );
+
+      return;
+    }
+
+    let open = true;
+    const close = (): void => {
+      open = false;
+      state.pending -= 1;
+    };
+
+    file.ondata = (err, data, final) => {
+      if (state.failure || !open) return;
+
+      if (err) {
+        close();
+        file.terminate();
+        fail("malformed", `entry ${describeEntry(file.name)} could not be decompressed (${err.message})`);
+
+        return;
+      }
+
+      if (data && data.length > 0) {
+        close();
+        file.terminate();
+        carriesData();
+
+        return;
+      }
+
+      if (final) close();
+    };
+    state.starting = {
+      name: file.name,
+      path: "",
+      destination: "",
+      compressed: 0,
+      produced: 0,
+      chunks: [],
+      closed: false,
+    };
+    state.pending += 1;
+
+    try {
+      file.start();
+    } catch (err) {
+      fail("malformed", `entry ${describeEntry(file.name)} could not be read (${errorMessage(err)})`);
+    } finally {
+      state.starting = undefined;
+    }
   };
 
   const onEntry = (file: UnzipFile): void => {
@@ -751,7 +880,11 @@ export async function extractVoicePackArchive(
       return;
     }
 
-    if (checked.directory) return;
+    if (checked.directory) {
+      startDirectory(file);
+
+      return;
+    }
 
     const path = checked.segments.join("/");
 
@@ -837,6 +970,7 @@ export async function extractVoicePackArchive(
   unzip.register(createCountingDecoder(UnzipInflate, counterFor));
 
   let turnTakenAt = 0;
+  let turnTakenAtMs = performance.now();
 
   /** Push one source chunk, cut into slices the caps can act between. */
   const pushChunk = async (chunk: Uint8Array): Promise<void> => {
@@ -848,9 +982,10 @@ export async function extractVoicePackArchive(
       state.consumed += slice.length;
       unzip.push(slice, false);
 
-      if (state.consumed - turnTakenAt >= BYTES_PER_TURN) {
-        turnTakenAt = state.consumed;
+      if (state.consumed - turnTakenAt >= BYTES_PER_TURN || performance.now() - turnTakenAtMs >= MS_PER_TURN) {
         await nextTurn();
+        turnTakenAt = state.consumed;
+        turnTakenAtMs = performance.now();
       }
     }
   };

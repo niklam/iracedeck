@@ -119,7 +119,18 @@ describe("createVoicePackArchiveFileSystem", () => {
   it("writes a new file's bytes", () => {
     const file = join(root, "blue-01.mp3");
 
-    expect(archiveFs().writeFile(file, new Uint8Array([1, 2, 3]))).toEqual({ ok: true });
+    expect(archiveFs().writeFile(file, [new Uint8Array([1, 2, 3])])).toEqual({ ok: true });
+    expect([...readFileSync(file)]).toEqual([1, 2, 3]);
+  });
+
+  it("writes the chunks of an entry in order, as one file", () => {
+    const file = join(root, "blue-02.mp3");
+    const backing = new Uint8Array([9, 1, 2, 3, 9]);
+
+    // Views into larger buffers, as a stored entry's chunks are.
+    expect(archiveFs().writeFile(file, [backing.subarray(1, 3), new Uint8Array(0), backing.subarray(3, 4)])).toEqual({
+      ok: true,
+    });
     expect([...readFileSync(file)]).toEqual([1, 2, 3]);
   });
 
@@ -131,12 +142,12 @@ describe("createVoicePackArchiveFileSystem", () => {
     const file = join(root, "planted.json");
     writeFileSync(file, "planted");
 
-    expect(archiveFs().writeFile(file, new Uint8Array([1]))).toEqual({ ok: false, reason: "EEXIST" });
+    expect(archiveFs().writeFile(file, [new Uint8Array([1])])).toEqual({ ok: false, reason: "EEXIST" });
     expect(readFileSync(file, "utf-8")).toBe("planted");
   });
 
   it("reports a missing parent rather than creating one", () => {
-    expect(archiveFs().writeFile(join(root, "nope", "x.mp3"), new Uint8Array([1]))).toEqual({
+    expect(archiveFs().writeFile(join(root, "nope", "x.mp3"), [new Uint8Array([1])])).toEqual({
       ok: false,
       reason: "ENOENT",
     });

@@ -911,10 +911,9 @@ export function createVoicePackInstaller(deps: VoicePackInstallerDeps): VoicePac
       return failed(id, code, reason, detail);
     };
 
-    const manifest = archiveFs.writeFile(
-      join(staging.dir, VOICE_PACK_MANIFEST_FILE),
+    const manifest = archiveFs.writeFile(join(staging.dir, VOICE_PACK_MANIFEST_FILE), [
       new TextEncoder().encode(seedManifestText(entry)),
-    );
+    ]);
 
     if (!manifest.ok) {
       return discardAndFail(
@@ -957,7 +956,7 @@ export function createVoicePackInstaller(deps: VoicePackInstallerDeps): VoicePac
         );
       }
 
-      const wrote = archiveFs.writeFile(destination, bytes);
+      const wrote = archiveFs.writeFile(destination, [bytes]);
 
       if (!wrote.ok) {
         return discardAndFail(
@@ -1013,7 +1012,7 @@ export function createVoicePackInstaller(deps: VoicePackInstallerDeps): VoicePac
         );
       }
 
-      const wrote = archiveFs.writeFile(destination, new TextEncoder().encode(script.text));
+      const wrote = archiveFs.writeFile(destination, [new TextEncoder().encode(script.text)]);
 
       if (!wrote.ok) {
         return discardAndFail(
