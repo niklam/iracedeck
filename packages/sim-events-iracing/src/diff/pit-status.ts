@@ -12,14 +12,16 @@
  * **The empty stop (issue #1180).** One closing transition is not absorbed:
  * with no service queued iRacing reports InProgress for a single tick and
  * drops straight back to None, never reaching Complete — so the driver,
- * waiting for the release, would hear nothing. InProgress → None while the
- * car is stationary on the pit-stall surface emits `pitService.stopEmpty`
- * instead (see `isEmptyStopClose`). And because that one-tick InProgress
- * would otherwise announce "Pit stop in progress." only to be cut off by the
- * release, a transition to InProgress is HELD for
- * `PIT_STATUS_IN_PROGRESS_HOLD_MS` and emitted only if the status is still
- * InProgress when the hold runs out. Any change or re-seed inside the hold
- * drops it; it is never flushed later.
+ * waiting for the release, would hear nothing. An InProgress that lasted
+ * under `PIT_STATUS_EMPTY_STOP_MAX_MS` and closes to None while the car is
+ * stationary on the pit-stall surface emits `pitService.stopEmpty` instead
+ * (see `isEmptyStopClose`). Only that captured shape: a longer InProgress
+ * closing to None (an abandoned stop, every service cleared mid-stop, a
+ * penalty hold, a driver swap) stays silent, because a "go" there could be
+ * false. `statusChanged` keeps mirroring the sim — InProgress is emitted on
+ * the tick it appears; keeping an empty stop from saying "Pit stop in
+ * progress." is the in-progress contract's job (it waits a quarter-second and
+ * re-checks the live status), not this diff's.
  *
  * Seeded silently only on first tick or while off-track. We deliberately
  * do NOT seed on `PlayerCarInPitStall: true` — every one of the eight
@@ -86,15 +88,16 @@ export const PIT_STATUS_MOVEMENT_SPEED_MPS = 0.05;
 export const PIT_STATUS_REST_SETTLE_MS = 500;
 
 /**
- * How long a transition to InProgress is held before it is announced
- * (issue #1180). With nothing queued iRacing reports InProgress for a single
- * tick and drops straight back to None (0.02 s in the 2026-09-19 capture),
- * while a real stop's InProgress lasts seconds (19 s in the same capture).
- * Holding a quarter-second keeps the empty stop from saying "Pit stop in
- * progress." and then being cut off by its release, at a delay nobody hears
- * on a real stop.
+ * The longest InProgress that still counts as an empty stop when it closes
+ * to None (issue #1180), exclusive. With nothing queued iRacing reports
+ * InProgress for a single tick and drops straight back to None (0.02 s in the
+ * 2026-09-19 capture), while a real stop's InProgress lasts seconds (19 s in
+ * the same capture). Anything that lasted this long or longer is one of the
+ * uncaptured closes — an abandoned stop, every service cleared mid-stop, a
+ * penalty hold, a driver swap — where a release could be false, so it stays
+ * silent like every other `* → None`.
  */
-export const PIT_STATUS_IN_PROGRESS_HOLD_MS = 250;
+export const PIT_STATUS_EMPTY_STOP_MAX_MS = 250;
 
 /**
  * The statuses that describe an uncorrected parking error, and so keep
@@ -113,24 +116,29 @@ function isPositioningError(status: number): boolean {
 }
 
 /**
- * Clear the repeat cycle, the rest clock and any held InProgress — used on
- * seed / off-track. A held InProgress is dropped, never flushed later: a
- * re-seed means the diff no longer knows the transition it was holding.
+ * Clear the repeat cycle, the rest clock and the InProgress start — used on
+ * seed / off-track. A status seeded as InProgress has no known start, so its
+ * close can never count as the short empty-stop shape.
  */
 function disarm(state: TranslatorState): void {
   state.pitStatusRepeatDueAt = 0;
   state.pitStatusRestSince = 0;
-  state.pitStatusInProgressDueAt = 0;
+  state.pitStatusInProgressSince = 0;
 }
 
 /**
- * Advance the at-rest clock from this tick's speed. Missing `Speed` counts as
- * stationary — a callout must never be suppressed by absent telemetry.
+ * Whether the car is moving on this tick: its speed, signed (a reverse crawl
+ * counts), is above {@link PIT_STATUS_MOVEMENT_SPEED_MPS}. Missing `Speed`
+ * counts as stationary — a callout must never be suppressed by absent
+ * telemetry (#574).
  */
-function updateRestTracking(state: TranslatorState, telemetry: TelemetryData, now: number): void {
-  const speed = Math.abs(telemetry.Speed ?? 0);
+function isMoving(telemetry: TelemetryData): boolean {
+  return Math.abs(telemetry.Speed ?? 0) > PIT_STATUS_MOVEMENT_SPEED_MPS;
+}
 
-  if (speed > PIT_STATUS_MOVEMENT_SPEED_MPS) {
+/** Advance the at-rest clock from this tick's speed. */
+function updateRestTracking(state: TranslatorState, telemetry: TelemetryData, now: number): void {
+  if (isMoving(telemetry)) {
     state.pitStatusRestSince = 0;
   } else if (state.pitStatusRestSince === 0) {
     state.pitStatusRestSince = now;
@@ -142,19 +150,24 @@ function isAtRest(state: TranslatorState, now: number): boolean {
 }
 
 /**
- * Whether an InProgress → None close is the empty-stop shape: the car is
- * still on the pit-stall surface and stationary on this very tick. The surface,
- * not `PlayerCarInPitStall`, because the latter was still false on the closing
- * tick in the capture. Instantaneous speed, not the settled-rest window: the
- * empty stop had been at rest for under `PIT_STATUS_REST_SETTLE_MS`. A driver
- * pulling away mid-service is moving here, so stays silent — an assumption no
- * capture has confirmed yet (see the spec). Missing telemetry qualifies (#574).
+ * Whether an InProgress → None close on this tick is the empty-stop shape
+ * (issue #1180): the InProgress began on a tick this diff saw, less than
+ * {@link PIT_STATUS_EMPTY_STOP_MAX_MS} ago, and the car is still on the
+ * pit-stall surface and stationary. The surface, not `PlayerCarInPitStall`,
+ * because the latter was still false on the closing tick in the capture.
+ * Instantaneous speed, not the settled-rest window: the empty stop had been
+ * at rest for under `PIT_STATUS_REST_SETTLE_MS`. An InProgress whose start is
+ * unknown (seeded, or re-seeded mid-stop) never qualifies. Missing surface or
+ * speed qualifies (#574).
  */
-function isEmptyStopClose(telemetry: TelemetryData): boolean {
-  const surface = telemetry.PlayerTrackSurface;
-  const speed = Math.abs(telemetry.Speed ?? 0);
+function isEmptyStopClose(state: TranslatorState, telemetry: TelemetryData, now: number): boolean {
+  if (state.pitStatusInProgressSince === 0) return false;
 
-  return (surface === undefined || surface === TrkLoc.InPitStall) && speed <= PIT_STATUS_MOVEMENT_SPEED_MPS;
+  if (now - state.pitStatusInProgressSince >= PIT_STATUS_EMPTY_STOP_MAX_MS) return false;
+
+  const surface = telemetry.PlayerTrackSurface;
+
+  return (surface === undefined || surface === TrkLoc.InPitStall) && !isMoving(telemetry);
 }
 
 export function diffPitStatus(state: TranslatorState, telemetry: TelemetryData, now: number, emit: EmitFn): void {
@@ -172,18 +185,9 @@ export function diffPitStatus(state: TranslatorState, telemetry: TelemetryData, 
   updateRestTracking(state, telemetry, now);
 
   if (status !== state.lastPitSvStatus) {
-    const closedFromInProgress = state.lastPitSvStatus === PitSvStatus.InProgress && status === PitSvStatus.None;
-
-    // Any change drops a held InProgress — it never lasted long enough to say.
-    state.pitStatusInProgressDueAt = 0;
-
-    if (status === PitSvStatus.InProgress) {
-      // Held, not emitted: a one-tick InProgress is the empty stop (#1180).
-      state.pitStatusInProgressDueAt = now + PIT_STATUS_IN_PROGRESS_HOLD_MS;
-      state.pitStatusInProgressFrom = state.lastPitSvStatus;
-    } else if (status !== PitSvStatus.None) {
+    if (status !== PitSvStatus.None) {
       emit({ event: "pitService.statusChanged", data: { from: state.lastPitSvStatus, to: status } });
-    } else if (closedFromInProgress && isEmptyStopClose(telemetry)) {
+    } else if (state.lastPitSvStatus === PitSvStatus.InProgress && isEmptyStopClose(state, telemetry, now)) {
       // The stop ended with nothing done while the car sat in its box: release
       // the driver (#1180). Every other close to None — the silent idle
       // state — is absorbed; the baseline still advances below so the next
@@ -192,22 +196,15 @@ export function diffPitStatus(state: TranslatorState, telemetry: TelemetryData, 
     }
 
     state.lastPitSvStatus = status;
+    // When this InProgress began, for the empty-stop bound; 0 for any other
+    // status.
+    state.pitStatusInProgressSince = status === PitSvStatus.InProgress ? now : 0;
     // A transition starts the cycle over: the new status speaks its own full
     // call through the path above, and its first repeat is a whole interval
     // away. Anything that isn't a positioning error simply disarms.
     state.pitStatusRepeatDueAt = isPositioningError(status) ? now + PIT_STATUS_REPEAT_INTERVAL_MS : 0;
 
     return;
-  }
-
-  // The held InProgress has lasted the whole hold: a real stop, so say it.
-  // `from` is the status it came from, not InProgress.
-  if (state.pitStatusInProgressDueAt !== 0 && now >= state.pitStatusInProgressDueAt) {
-    emit({
-      event: "pitService.statusChanged",
-      data: { from: state.pitStatusInProgressFrom, to: PitSvStatus.InProgress },
-    });
-    state.pitStatusInProgressDueAt = 0;
   }
 
   // Only the five positioning errors repeat. Checked explicitly rather than

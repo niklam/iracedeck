@@ -677,11 +677,7 @@ export type SimEventMap = {
    * `irsdk_PitSvStatus` enum (`@iracedeck/iracing-sdk` re-exports it as
    * `PitSvStatus`). Closing transitions (`* → None`) are suppressed by the
    * translator so the silent idle state never fires — an empty stop's close
-   * surfaces as `pitService.stopEmpty` instead. A transition to InProgress is
-   * emitted only once it has lasted `PIT_STATUS_IN_PROGRESS_HOLD_MS` (250 ms,
-   * in `@iracedeck/sim-events-iracing`; issue #1180): a one-tick InProgress is
-   * the empty-stop shape and is never announced. The deferred emit still
-   * carries the status it came from.
+   * surfaces as `pitService.stopEmpty` instead (issue #1180).
    */
   "pitService.statusChanged": SimEvent<"pitService.statusChanged", { from: number; to: number }>;
   /**
@@ -707,13 +703,14 @@ export type SimEventMap = {
    * to go. Sim-agnostic: the name says what happened, not how a sim reports
    * it. iRacing reports it as an InProgress that closes straight back to
    * None, never reaching Complete; the translator emits this on that close
-   * while the car is at rest on the pit-stall surface.
+   * when the InProgress lasted under a quarter-second and the car is at rest
+   * on the pit-stall surface.
    *
    * Deliberately its own event rather than a synthetic
    * `pitService.statusChanged { to: Complete }`, so `statusChanged` keeps
    * mirroring the sim's status.
    */
-  "pitService.stopEmpty": SimEvent<"pitService.stopEmpty", Record<string, never>>;
+  "pitService.stopEmpty": SimEvent<"pitService.stopEmpty", EmptySimEventPayload>;
   "carControl.drsToggled": SimEvent<"carControl.drsToggled", { on: boolean }>;
   "carControl.p2pToggled": SimEvent<"carControl.p2pToggled", { on: boolean }>;
   "carControl.limiterToggled": SimEvent<"carControl.limiterToggled", { on: boolean }>;

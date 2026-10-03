@@ -2051,7 +2051,7 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // sits in its box (issue #1180). Independent of diffToggles' bit-flag
   // world; placed adjacent for cohesion of the pit-service event group.
   // `now` drives the positioning-error repeat cadence and its movement hold
-  // (issue #951) and the InProgress hold (issue #1180) — the `diffPitLane` /
+  // (issue #951) and the empty stop's duration bound (issue #1180) — the `diffPitLane` /
   // `diffLimiter` threading precedent.
   diffPitStatus(self.state, telemetry, now, emit);
   // diffPitReadback runs after diffToggles so it sees the per-tick toggle

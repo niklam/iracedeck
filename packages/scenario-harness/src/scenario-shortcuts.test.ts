@@ -24,6 +24,7 @@ import {
   initializeSimEventsIracing,
   isDamageRepairNeeded,
   PIT_APPROACH_COOLDOWN_MS,
+  PIT_STATUS_EMPTY_STOP_MAX_MS,
   YELLOW_CLEARED_HOLD_MS,
 } from "@iracedeck/sim-events-iracing";
 import { readFileSync } from "node:fs";
@@ -998,7 +999,7 @@ describe('the "Nothing To Do (empty stop)" shortcut (issue #1180)', () => {
     );
   });
 
-  it("replays the capture's stop 2: stationary on the stall surface, InProgress for well under the 250 ms hold, then None", () => {
+  it("replays the capture's stop 2: stationary on the stall surface, InProgress for under the empty-stop bound, then None", () => {
     // `local/telemetry-watch-20260919-193233-855.jsonl`, 597.75 → 597.77.
     const live = steps[1];
 
@@ -1015,16 +1016,23 @@ describe('the "Nothing To Do (empty stop)" shortcut (issue #1180)', () => {
     expect(live.patch).toEqual({ IsReplayPlaying: false });
     expect(inProgressAt).toBe(2);
     expect(steps[inProgressAt].patch).toEqual({ PlayerCarPitSvStatus: PitSvStatus.InProgress });
-    expect(steps[inProgressAt].holdMs ?? 0).toBeLessThan(250);
+    // Under the translator's bound, or the close is not the empty-stop shape.
+    expect(steps[inProgressAt].holdMs ?? 0).toBeLessThan(PIT_STATUS_EMPTY_STOP_MAX_MS);
     expect(steps[inProgressAt + 1].patch).toEqual({ PlayerCarPitSvStatus: PitSvStatus.None });
   });
 
-  it("the translator publishes the empty-stop release and nothing else — no InProgress status change", () => {
+  it("the translator publishes the InProgress it saw, then the empty-stop release, and nothing else", () => {
+    // `statusChanged` mirrors the sim, so the one-tick InProgress is published;
+    // it is the in-progress contract's quarter-second hold that keeps it
+    // unsaid.
     const { controller, events } = startRecording("hot-lap");
 
     runSequence(controller, steps);
 
-    expect(events).toEqual([{ event: "pitService.stopEmpty", data: {} }]);
+    expect(events).toEqual([
+      { event: "pitService.statusChanged", data: { from: PitSvStatus.None, to: PitSvStatus.InProgress } },
+      { event: "pitService.stopEmpty", data: {} },
+    ]);
   });
 
   it("needs no preset: from boot, in the garage, the only addition is the first-time-on-track marker no callout speaks", () => {
@@ -1038,6 +1046,7 @@ describe('the "Nothing To Do (empty stop)" shortcut (issue #1180)', () => {
 
     expect(events).toEqual([
       { event: "driver.firstOnTrack", data: {} },
+      { event: "pitService.statusChanged", data: { from: PitSvStatus.None, to: PitSvStatus.InProgress } },
       { event: "pitService.stopEmpty", data: {} },
     ]);
   });
@@ -1048,7 +1057,12 @@ describe('the "Nothing To Do (empty stop)" shortcut (issue #1180)', () => {
     runSequence(controller, steps);
     runSequence(controller, steps);
 
-    expect(events.map((e) => e.event)).toEqual(["pitService.stopEmpty", "pitService.stopEmpty"]);
+    expect(events.map((e) => e.event)).toEqual([
+      "pitService.statusChanged",
+      "pitService.stopEmpty",
+      "pitService.statusChanged",
+      "pitService.stopEmpty",
+    ]);
     expect(getLatestTelemetry()).toMatchObject({
       IsReplayPlaying: false,
       IsOnTrack: true,
@@ -1058,7 +1072,7 @@ describe('the "Nothing To Do (empty stop)" shortcut (issue #1180)', () => {
     });
   });
 
-  it("positive control: the same stop with InProgress held past the hold announces it, so the recorder can see one", () => {
+  it("positive control: the same stop with InProgress held past the bound is not an empty stop, so no release", () => {
     const { controller, events } = startRecording("hot-lap");
     const longStop = steps.map((s, i) => (i === inProgressAt ? { ...s, holdMs: 1000 } : s));
 
@@ -1066,7 +1080,6 @@ describe('the "Nothing To Do (empty stop)" shortcut (issue #1180)', () => {
 
     expect(events).toEqual([
       { event: "pitService.statusChanged", data: { from: PitSvStatus.None, to: PitSvStatus.InProgress } },
-      { event: "pitService.stopEmpty", data: {} },
     ]);
   });
 });

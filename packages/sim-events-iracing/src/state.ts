@@ -633,11 +633,11 @@ export type TranslatorState = {
   // already correcting.
   pitStatusRepeatDueAt: number;
   pitStatusRestSince: number;
-  // InProgress hold (issue #1180). `pitStatusInProgressDueAt` is when a held
-  // InProgress transition may be emitted (0 = nothing held); `pitStatusInProgressFrom`
-  // is the status it came from, so the deferred emit carries the true `from`.
-  pitStatusInProgressDueAt: number;
-  pitStatusInProgressFrom: number;
+  // Empty-stop bound (issue #1180): when the current InProgress began, so the
+  // diff can tell the captured one-tick empty stop from a longer InProgress
+  // closing to None. 0 = not in progress, or in progress since a seed (start
+  // unknown, so never the short shape).
+  pitStatusInProgressSince: number;
 
   // ── Pit limiter warnings ────────────────────────────────────────────────
   limiterInitialized: boolean;
@@ -1437,8 +1437,7 @@ export function createInitialState(): TranslatorState {
     lastPitSvStatus: 0, // PitSvStatus.None
     pitStatusRepeatDueAt: 0,
     pitStatusRestSince: 0,
-    pitStatusInProgressDueAt: 0,
-    pitStatusInProgressFrom: 0, // PitSvStatus.None
+    pitStatusInProgressSince: 0,
 
     limiterInitialized: false,
     lastOnPitRoadForLimiter: false,
