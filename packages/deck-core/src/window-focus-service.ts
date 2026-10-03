@@ -33,6 +33,7 @@
 import type { ILogger } from "@iracedeck/logger";
 import { silentLogger } from "@iracedeck/logger";
 
+import { hasElevationMismatch } from "./elevation-check.js";
 import type { FocusIRacingMode } from "./focus-iracing-mode.js";
 import { getGlobalSettings, isSettingsStoreReady } from "./global-settings.js";
 
@@ -78,10 +79,12 @@ export type SimRunningCheck = () => boolean;
  * How long after a `FocusTimedOut` the two gated entry points skip the native
  * ask (#977). A timed-out ask blocks the JS thread for the focuser's full
  * ~1000 ms wait, and under `always` a keybind press asks twice — the adapter
- * hook and then the keystroke site — so without this an elevation mismatch
- * (the usual cause, #976) would cost ~2 s per press, and a held setup key
- * repeating every 150 ms ~1 s per tick. `focusIRacingNow()` is exempt: there
- * the press is the focus.
+ * hook and then the keystroke site — so without this a persistent cause would
+ * cost ~2 s per press, and a held setup key repeating every 150 ms ~1 s per
+ * tick. The usual cause, an elevation mismatch, is skipped outright once the
+ * probe has reported it (#976); the cooldown covers the rest — a mismatch
+ * before the probe has answered or when it threw, and any other window that
+ * refuses focus. `focusIRacingNow()` is exempt: there the press is the focus.
  */
 export const FOCUS_TIMEOUT_COOLDOWN_MS = 2000;
 
@@ -97,6 +100,12 @@ let logger: ILogger = silentLogger;
  * behind the timeouts, a window present but unfocusable, is gone.
  */
 let lastTimedOutAt: number | null = null;
+/**
+ * Whether the current elevation-mismatch skip episode has been logged (#976).
+ * Cleared whenever a gated ask finds the gate open, so the next mismatch logs
+ * its skip again.
+ */
+let elevationSkipLogged = false;
 
 /**
  * Initialize the window focus service.
@@ -157,6 +166,8 @@ function currentMode(): FocusIRacingMode | null {
 export function focusIRacingIfEnabled(): void {
   if (currentMode() !== "always") return;
 
+  if (blockedByElevationMismatch()) return;
+
   if (inTimeoutCooldown()) return;
 
   runFocuser();
@@ -179,9 +190,36 @@ export function focusIRacingBeforeInput(): void {
 
   if (mode !== "always" && mode !== "required") return;
 
+  if (blockedByElevationMismatch()) return;
+
   if (inTimeoutCooldown()) return;
 
   runFocuser();
+}
+
+/**
+ * Whether the elevation probe has reported an integrity-level mismatch on the
+ * current connection (#976), so the gated entry points should not ask the
+ * native focuser at all. Across the mismatch `SetForegroundWindow` can never
+ * succeed, so the ask would only spend the focuser's full ~1000 ms wait and
+ * inject a stray ALT tap into the front window — and focusing would not help
+ * if it did, because UIPI drops the keystrokes anyway. Before the probe has
+ * answered, or when it threw, the gate stays open. Logs the skip at debug once
+ * per episode; the elevation check has already warned about the cause.
+ */
+function blockedByElevationMismatch(): boolean {
+  if (!hasElevationMismatch()) {
+    elevationSkipLogged = false;
+
+    return false;
+  }
+
+  if (!elevationSkipLogged) {
+    logger.debug("iRacing focus skipped: iRacing runs at a higher integrity level than the plugin");
+    elevationSkipLogged = true;
+  }
+
+  return true;
 }
 
 /**
@@ -208,10 +246,11 @@ function inTimeoutCooldown(): boolean {
  * For action code where focusing IS the thing the user pressed the key for — the
  * View Adjustment *Mouse to Sim* mode is the only consumer today. That is an
  * explicit request to go to the sim, so neither the mode, the
- * `isSettingsStoreReady()` startup gate nor the post-timeout cooldown applies:
- * all three exist to keep the *implicit* before-every-action focus from
- * surprising someone or stalling the plugin, and there is nothing implicit
- * about pressing this key.
+ * `isSettingsStoreReady()` startup gate, the elevation-mismatch gate (#976) nor
+ * the post-timeout cooldown applies: all four exist to keep the *implicit*
+ * before-every-action focus from surprising someone or stalling the plugin,
+ * and there is nothing implicit about pressing this key. Under a mismatch the
+ * result code (`FocusTimedOut`) is what tells the user why nothing happened.
  *
  * Shares {@link focusIRacingIfEnabled}'s result handling and logging exactly.
  *
@@ -310,4 +349,5 @@ export function _resetWindowFocus(): void {
   isSimRunning = () => false;
   logger = silentLogger;
   lastTimedOutAt = null;
+  elevationSkipLogged = false;
 }
