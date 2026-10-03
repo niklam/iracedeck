@@ -118,14 +118,23 @@ export function words(command) {
 const has = (command, re) => re.test(command);
 
 /**
+ * What may stand between a command boundary and the command itself and still
+ * leave it in command position: `VAR=value` assignments, the shell keywords
+ * that open a command list (`if …; then gh pr merge …` would otherwise pass
+ * every trap unchecked, #1307 review), and the wrappers that run the next
+ * word as a command.
+ */
+const COMMAND_LEAD = String.raw`(?:(?:if|then|do|else|elif|while|until|time|command|exec|env|nohup|!|\{)\s+|\w+=\S*\s+)*`;
+
+/**
  * Anchors a command regex to COMMAND POSITION: the start of the string or of
  * a line, or right after `|`, `;`, `&&`, `(` or `$(`, with any leading
- * `VAR=value` assignments. Without this, a grep, an echo or a docs edit that
+ * {@link COMMAND_LEAD}. Without this, a grep, an echo or a docs edit that
  * merely MENTIONS a trapped shape (`grep 'pnpm exec vitest'`) would be denied.
  */
 export function cmd(re) {
   const flags = new Set([...re.flags, "m"]);
-  return new RegExp(String.raw`(?:^|[|;&(]\s*|\$\(\s*)(?:\w+=\S*\s+)*(?:${re.source})`, [...flags].join(""));
+  return new RegExp(String.raw`(?:^|[|;&(]\s*|\$\(\s*)${COMMAND_LEAD}(?:${re.source})`, [...flags].join(""));
 }
 
 // ---------------------------------------------------------------------------
@@ -167,7 +176,8 @@ const MERGE_VALUE_FLAGS = new Set([
 
 /** The segments of a chained command that are a `gh pr merge` (split at `&&`, `||`, `;`, `|`, `&`, newline). */
 export function mergeSegments(command) {
-  return command.split(/&&|\|\||[;|&\n]/).filter((seg) => /^[\s($]*(?:\w+=\S*\s+)*gh\s+pr\s+merge\b/.test(seg));
+  const lead = new RegExp(String.raw`^[\s($]*${COMMAND_LEAD}gh\s+pr\s+merge\b`);
+  return command.split(/&&|\|\||[;|&\n]/).filter((seg) => lead.test(seg));
 }
 
 /** Every `gh pr merge` anywhere in the string — the backstop for a separator the split does not know. */

@@ -533,6 +533,23 @@ describe("gh pr merge", () => {
       expect(deny(command, ctx({ prView: green }))).toMatch(/One `gh pr merge` per command/);
   });
 
+  it("checks a merge behind a shell keyword or a command wrapper, not only at a bare command position", () => {
+    for (const command of [
+      "if true; then gh pr merge 7 --squash; fi",
+      "while x; do gh pr merge 7 --squash; done",
+      "env GH_DEBUG=1 gh pr merge 7 --squash",
+      "! gh pr merge 7 --squash",
+    ])
+      expect(deny(command, ctx({ prView: () => ({ ...green(), reviewDecision: "REVIEW_REQUIRED" }) }))).toMatch(
+        /REVIEW_REQUIRED/,
+      );
+    expect(deny("if true; then gh pr merge 7 --squash; gh pr merge 8 --squash; fi", ctx({ prView: green }))).toMatch(
+      /One `gh pr merge` per command/,
+    );
+  });
+
+  it("still lets a mere mention through", () => passes("grep -n 'then gh pr merge' notes.md", ctx({ prView: green })));
+
   it("joins every ask in a chain into the one prompt, so none runs unseen", () => {
     const pr = green();
     pr.baseRefOid = "4444444444444444444444444444444444444444";
