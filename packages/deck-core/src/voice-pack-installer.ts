@@ -882,14 +882,14 @@ export function createVoicePackInstaller(deps: VoicePackInstallerDeps): VoicePac
     // file twice would leave a window between the two in which exactly those
     // rewrites could land, and the second, unverified read is the one that
     // would be installed — the gap this read-back exists to close. Nor does
-    // the design rest on holding the file exclusively for both reads: such a
-    // lock would make a scanner's or a stray process's open fail mid-install
-    // in ways this module cannot report well, and the one writer that could
-    // legitimately touch the file — another plugin installing the same pack —
-    // has its own working names (`<id>.<sha256>.<pid>.zip`), so it never
-    // does. Nor is the archive buffered so one read can serve both: that held the
-    // whole archive in memory, up to the download ceiling, in a process that
-    // is also rendering keys and playing audio during a race.
+    // the design rest on holding the file exclusively between write and read:
+    // the one writer with a reason to touch it, another plugin installing the
+    // same pack, has working names of its own (`<id>.<sha256>.<pid>.zip`) and
+    // never opens this file, and anything else that rewrites it is caught by
+    // the digest below. Nor is the archive buffered so one read can serve
+    // both: that held the whole archive in memory, up to the download
+    // ceiling, in a process that is also rendering keys and playing audio
+    // during a race.
     //
     // So the guarantee is stated as what it always protected: no byte that
     // fails the catalog digest is INSTALLED. The extractor writes only into a

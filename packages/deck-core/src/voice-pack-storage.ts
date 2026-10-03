@@ -203,7 +203,7 @@ export interface VoicePackStorage {
 /**
  * The archive digest, as the catalog pins it. Validated here as well because it
  * becomes part of a FILE NAME: a `sha256` argument with a separator in it would
- * otherwise turn `.tmp/<id>.<sha256>.zip` into a path somewhere else.
+ * otherwise turn `.tmp/<id>.<sha256>.<pid>.zip` into a path somewhere else.
  */
 const SHA256_HEX = SHA256_HEX_PATTERN;
 
