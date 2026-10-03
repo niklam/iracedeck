@@ -13,8 +13,8 @@
  * family, but lives outside `PIT_STATUS_CONTRACTS` because it has no clip pool
  * of its own, and it queues behind a busy radio rather than being dropped.
  *
- * **The in-progress hold (issue #1180).** On that empty stop the status reads
- * InProgress for a single tick, and the translator mirrors it, so the
+ * **The in-progress hold (issue #1180).** On that empty stop the status may
+ * read InProgress for a single tick, and the translator mirrors it, so the
  * in-progress line waits {@link PIT_STATUS_IN_PROGRESS_HOLD_MS} and is dropped
  * at speak time if the live status has left InProgress — otherwise the driver
  * would hear "Pit stop in progress." cut off by the release. The hold lives
@@ -77,7 +77,7 @@
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { SimEventOf } from "@iracedeck/event-bus";
 import { PitSvStatus, type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
-import { getLatestTelemetry, PIT_STATUS_MOVEMENT_SPEED_MPS } from "@iracedeck/sim-events-iracing";
+import { getLatestTelemetry } from "@iracedeck/sim-events-iracing";
 
 import type { ScenarioContract } from "../../dsl.js";
 import { NO_FRAME } from "../../dsl.js";
@@ -96,9 +96,10 @@ export const PIT_STATUS_REPEAT_WEIGHT = 40;
 
 /**
  * How long the in-progress line waits before it decides to speak (issue
- * #1180). With nothing queued iRacing reports InProgress for a single tick
- * (0.02 s in the 2026-09-19 capture) and drops straight back to None, while a
- * real stop's InProgress lasts seconds (19 s in the same capture). A
+ * #1180). With nothing queued iRacing reports InProgress for a single tick at
+ * most (0.02 s in the 2026-09-19 capture; the 2026-10-03 one shows none at
+ * all) and drops straight back to None, while a real stop's InProgress lasts
+ * seconds (19 s in the 2026-09-19 capture). A
  * quarter-second is long enough for the empty stop's status to have closed,
  * so its speak-time gate drops the line, and short enough that nobody hears
  * the delay on a real stop.
@@ -244,23 +245,22 @@ function stillInProgress(): boolean {
 }
 
 /**
- * The release's speak-time gate (issue #1180): the car is still stopped in its
- * box with no service under way — on the pit-stall surface, at rest (the
- * translator's {@link PIT_STATUS_MOVEMENT_SPEED_MPS}, signed speed), and the
- * status still None. The release is queueable, so it can wait behind a busy
- * radio; once the driver has pulled away, or a new stop has begun, "go" is
- * old news. Each missing field, and missing telemetry, admits (#574).
+ * The release's speak-time gate (issue #1180): the car is still in its box
+ * with no service under way — on the pit-stall surface, and the status still
+ * None. The release is queueable, so it can wait behind a busy radio; once
+ * the driver has left the stall, or a new stop has begun, "go" is old news.
+ * No speed check: the captures show the car still settling when the release
+ * fires, and a car that drives off leaves the stall surface. Each missing
+ * field, and missing telemetry, admits (#574).
  */
-function stillStoppedInBox(): boolean {
+function stillInBoxIdle(): boolean {
   const telemetry = getLatestTelemetry() as TelemetryData | null;
 
   if (telemetry === null) return true;
 
-  const { PlayerTrackSurface: surface, Speed: speed, PlayerCarPitSvStatus: status } = telemetry;
+  const { PlayerTrackSurface: surface, PlayerCarPitSvStatus: status } = telemetry;
 
   if (surface !== undefined && surface !== TrkLoc.InPitStall) return false;
-
-  if (speed !== undefined && Math.abs(speed) > PIT_STATUS_MOVEMENT_SPEED_MPS) return false;
 
   return status === undefined || status === PitSvStatus.None;
 }
@@ -321,7 +321,7 @@ export const PIT_STATUS_CONTRACTS: readonly ScenarioContract[] = [
     PitSvStatus.InProgress,
     "You are stopped in your pit box and the crew begins working on the car.",
     {
-      // Held, then re-checked (issue #1180): a stop with nothing to do reads
+      // Held, then re-checked (issue #1180): a stop with nothing to do may read
       // InProgress for one tick, and this line must not start only to be cut
       // off by the release.
       triggerDelay: PIT_STATUS_IN_PROGRESS_HOLD_MS,
@@ -347,9 +347,10 @@ export const PIT_STATUS_CONTRACTS: readonly ScenarioContract[] = [
 
 /**
  * The release after a stop with nothing to do (issue #1180). iRacing never
- * reports Complete when no service is queued — InProgress drops straight back
- * to None — so the translator publishes `pitService.stopEmpty` instead, and
- * this line releases the driver. Same family as the status lines, so a later
+ * reports Complete when no service is queued — the status stays None or drops
+ * straight back to it — so the translator publishes `pitService.stopEmpty`
+ * instead, from the short `PitstopActive` pulse such a stop shows, and this
+ * line releases the driver. Same family as the status lines, so a later
  * status still preempts it. Kept OUT of {@link PIT_STATUS_CONTRACTS}: that
  * list derives one `pool:pit-status/<base>` per contract for
  * {@link PIT_STATUS_CLIP_SOURCES}, and this one has no pool of its own — the
@@ -374,8 +375,8 @@ export const PIT_STATUS_NOTHING_TO_DO_CONTRACT: ScenarioContract = {
   when: { event: "pitService.stopEmpty" },
   queueable: true,
   speakGate: {
-    description: "The car is still stopped in its pit box with no service under way, or telemetry is unavailable.",
-    admit: stillStoppedInBox,
+    description: "The car is still in its pit box with no service under way, or telemetry is unavailable.",
+    admit: stillInBoxIdle,
   },
 };
 

@@ -73,8 +73,6 @@ const simMocks = vi.hoisted(() => ({
 vi.mock("@iracedeck/sim-events-iracing", () => ({
   getSessionType: () => "Race",
   getLatestTelemetry: () => simMocks.latestTelemetry,
-  // The translator's own constant, which the release's gate reads.
-  PIT_STATUS_MOVEMENT_SPEED_MPS: 0.05,
 }));
 
 const mockLogger = {
@@ -486,8 +484,6 @@ describe("PIT_STATUS_NOTHING_TO_DO_CONTRACT trigger (engine-level, #1180)", () =
   });
 
   it.each([
-    { left: "pulled away", live: { ...IN_THE_BOX, Speed: 2 } },
-    { left: "reversed out of the box", live: { ...IN_THE_BOX, Speed: -0.5 } },
     { left: "left the pit-stall surface", live: { ...IN_THE_BOX, PlayerTrackSurface: TrkLoc.AproachingPits } },
     { left: "began a new stop", live: { ...IN_THE_BOX, PlayerCarPitSvStatus: PitSvStatus.InProgress } },
   ])("is dropped at speak time when, while it waited, the car $left", ({ live }) => {
@@ -504,13 +500,19 @@ describe("PIT_STATUS_NOTHING_TO_DO_CONTRACT trigger (engine-level, #1180)", () =
     expect(voiceClipsPlayed(audio)).toEqual([OCCUPIER_CLIP]);
   });
 
-  it("plays when the car is still at rest in its box at speak time, at exactly the movement threshold", () => {
-    simMocks.latestTelemetry = { ...IN_THE_BOX, Speed: 0.05 };
+  it.each([
+    { moving: "still settling", speed: 0.05 },
+    { moving: "rolling forward", speed: 2 },
+    { moving: "reversing", speed: -0.5 },
+  ])("plays when the car is $moving but still on the stall surface at speak time — no speed check", ({ speed }) => {
+    simMocks.latestTelemetry = IN_THE_BOX;
+    occupyVoiceBusAtEqualWeight();
 
     bus.publishEvent("pitService.stopEmpty", {});
+    simMocks.latestTelemetry = { ...IN_THE_BOX, Speed: speed };
     flush(audio);
 
-    expect(voiceClipsPlayed(audio)).toEqual([RELEASE_CLIP]);
+    expect(voiceClipsPlayed(audio)).toEqual([OCCUPIER_CLIP, RELEASE_CLIP]);
   });
 
   it("plays when telemetry, or any field it reads, is unavailable — never suppress on missing data", () => {
