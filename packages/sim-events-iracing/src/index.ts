@@ -115,6 +115,7 @@ export {
 export { OVERTAKE_HOLD_MS, OVERTAKE_MAX_JUMP } from "./diff/overtakes.js";
 export { PIT_APPROACH_COOLDOWN_MS } from "./diff/pit-lane.js";
 export {
+  PIT_STATUS_EMPTY_STOP_MAX_MS,
   PIT_STATUS_MOVEMENT_SPEED_MPS,
   PIT_STATUS_REPEAT_INTERVAL_MS,
   PIT_STATUS_REST_SETTLE_MS,

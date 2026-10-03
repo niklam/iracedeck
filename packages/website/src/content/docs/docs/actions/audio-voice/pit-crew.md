@@ -229,11 +229,12 @@ Once the car is in the box, iRacing's status display tells you whether the crew 
 
 - **In progress** — the crew is working on the car (*"Pit stop in progress."*).
 - **Complete** — service finished, ready to leave the box (*"Done. Go."*).
+- **Nothing to do** — you stopped in the box with no service queued, so iRacing never reports the stop complete; the engineer releases you with the same *"Done. Go."* If the radio is busy at that moment, the release waits its turn, and it is dropped if you have already driven out of the box. It follows the **Complete** checkbox.
 - **Too far left / right / forward / back** — positioning correction; line the car up so the crew can reach the wheels (*"Car's too far forward, back it up."*).
 - **Bad angle** — the car is parked at an angle the crew can't reach properly.
 - **Can't fix that** — iRacing has decided the queued damage repair won't actually be performed this stop. This is the only iRacing-exposed signal that fast-repair / damage repair will fail, and it has no other audio surface.
 
-The eight callouts share a single family so a positioning correction (e.g. *"too far left"* → *"too far right"* while you wiggle into the box) cleanly preempts the previous one without queueing. Closing transitions back to the idle state are silent.
+The nine callouts share a single family so a positioning correction (e.g. *"too far left"* → *"too far right"* while you wiggle into the box) cleanly preempts the previous one without queueing. "Pit stop in progress." waits a quarter-second after the crew starts and is skipped if nothing is being done by then, so a stop with nothing to do hears only the release. Other returns to the idle state are silent: once the crew has been working on the car, a stop that ends without iRacing reporting it complete — pulling away mid-service, for example — gets no release.
 
 ### Repeated positioning corrections
 
@@ -556,7 +557,7 @@ Under **Pit Service Status**, eight callouts are toggleable independently — on
 - **Too far left**, **Too far right**, **Too far forward**, **Too far back**
 - **Bad angle**, **Can't fix that**
 
-Disabling a status only suppresses future events of that subject; an in-flight callout completes naturally. Disabling all eight silences the in-stop status family while leaving readbacks, flag callouts, and damage heads-ups intact. Each of the four positioning statuses and **Bad angle** also covers its [repeated correction](#repeated-positioning-corrections) — one checkbox governs both the initial call and the follow-ups.
+Disabling a status only suppresses future events of that subject; an in-flight callout completes naturally. Disabling all eight silences the in-stop status family while leaving readbacks, flag callouts, and damage heads-ups intact. Each of the four positioning statuses and **Bad angle** also covers its [repeated correction](#repeated-positioning-corrections) — one checkbox governs both the initial call and the follow-ups. **Complete** also covers the release after a stop with nothing to do, since both are the same *"Done. Go."* call.
 
 Under **Damage**, one callout is toggleable, enabled by default:
 

@@ -183,6 +183,12 @@ export const EVENT_TEMPLATES = [
       "Pit-box positioning error still uncorrected (issue #951). Repeats every ~2 s while the car sits misaligned. 100=TooFarLeft, 101=TooFarRight, 102=TooFarForward, 103=TooFarBack, 104=BadAngle",
     data: { status: 102 },
   },
+  {
+    name: "pitService.stopEmpty",
+    description:
+      "A pit stop ended with nothing done while the car sat in its box (issue #1180). iRacing: a PitstopActive pulse shorter than a quarter-second, falling on the pit-stall surface",
+    data: {},
+  },
   { name: "carControl.drsToggled", description: "DRS toggled", data: { on: true } },
   { name: "carControl.p2pToggled", description: "Push-to-pass toggled", data: { on: true } },
   { name: "carControl.limiterToggled", description: "Pit limiter toggled", data: { on: true } },

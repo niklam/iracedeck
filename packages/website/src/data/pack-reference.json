@@ -2780,7 +2780,7 @@
       "weightBand": "NORMAL",
       "queueable": false,
       "interrupt": false,
-      "speakGate": null,
+      "speakGate": "The crew is still working on the car a quarter-second after the stop began, or telemetry is unavailable.",
       "base": "voice/{voice}",
       "comment": "The crew has started working on the car. One of eight pit-status lines, each spoken once when iRacing's pit-service status changes to it; a newer status replaces the one still playing.",
       "test": "Harness → Pit Status → In Progress. In-sim: stop in the box with a service queued; the line plays as the crew starts.",
@@ -2788,6 +2788,32 @@
       "references": {
         "pools": [
           "pit-status/in-progress"
+        ],
+        "vars": [],
+        "conds": [],
+        "cases": [],
+        "includes": [],
+        "frames": []
+      }
+    },
+    {
+      "id": "pit-crew.pit-status-nothing-to-do",
+      "family": "pit-status",
+      "event": "pitService.stopEmpty",
+      "description": "You stop in your pit box with no service queued, so the crew has nothing to do and you can leave.",
+      "frame": "radio",
+      "weight": 50,
+      "weightBand": "NORMAL",
+      "queueable": true,
+      "interrupt": false,
+      "speakGate": "The car is still in its pit box with no service under way, or telemetry is unavailable.",
+      "base": "voice/{voice}",
+      "comment": "The car stopped in the box with no service queued, so iRacing never reports the stop complete; this releases the driver. Reuses the Complete clips.",
+      "test": "Harness → Pit Status → Nothing To Do (empty stop). In-sim: untick every pit service, stop in the box; the line plays with no \"Pit stop in progress.\" before it.",
+      "skip": false,
+      "references": {
+        "pools": [
+          "pit-status/complete"
         ],
         "vars": [],
         "conds": [],
@@ -36056,7 +36082,8 @@
           ],
           "takes": 1,
           "usedBy": [
-            "pit-crew.pit-status-complete"
+            "pit-crew.pit-status-complete",
+            "pit-crew.pit-status-nothing-to-do"
           ],
           "viaVar": [],
           "playedBy": null

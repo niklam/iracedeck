@@ -251,7 +251,13 @@ function radar(label: string, from: string, to: string): BusEventShortcut {
   };
 }
 
-function pitStatus(id: string, label: string, target: PitSvStatus, description?: string): BusEventShortcut {
+function pitStatus(
+  id: string,
+  label: string,
+  target: PitSvStatus,
+  description?: string,
+  telemetryPatch?: Record<string, unknown>,
+): BusEventShortcut {
   return {
     id: `pit-status-${id}`,
     category: "Pit Status",
@@ -264,6 +270,7 @@ function pitStatus(id: string, label: string, target: PitSvStatus, description?:
     // engine sees identical `family: "pit-status"` metadata regardless
     // of the `from` value.
     data: { from: PitSvStatus.None, to: target },
+    ...(telemetryPatch ? { telemetryPatch } : {}),
   };
 }
 
@@ -1065,6 +1072,91 @@ const TIRE_WEAR_STOP_SHORTCUT: TelemetrySequenceShortcut = {
       holdMs: TIRE_WEAR_EXIT_LANE_MS,
     },
     { patch: { PlayerTrackSurface: TrkLoc.OnTrack, Speed: 60 }, holdMs: TIRE_WEAR_LISTEN_MS },
+  ],
+};
+
+/**
+ * The settle after `PIT_STATUS_EMPTY_STOP_SHORTCUT`'s opening bracket (issue
+ * #1180), so the run starts from a quiet bus. The bracket steps themselves
+ * hold {@link AUTO_FUEL_SEED_MS}, the same bracket.
+ */
+const EMPTY_STOP_SETTLE_MS = 500;
+
+/**
+ * How long `PitstopActive` is up. The captures had it for two to four sim
+ * frames (33–67 ms); this is a few of the mock controller's 14 ms ticks —
+ * under the translator's `PIT_STATUS_EMPTY_STOP_MAX_MS`, so its fall counts
+ * as an empty stop.
+ */
+const EMPTY_STOP_PULSE_MS = 60;
+
+/** Listening time after the pulse falls: the release line. */
+const EMPTY_STOP_LISTEN_MS = 3000;
+
+/**
+ * A pit stop with nothing queued, replayed through the TRANSLATOR (issue
+ * #1180), modelled on the clean stop at sessionTime 414.90 → 414.97 of
+ * `local/telemetry-watch-20261003-144425-354.jsonl`: the car sits in its box
+ * on the pit-stall surface, `PlayerCarPitSvStatus` stays None throughout —
+ * iRacing never reports Complete when there is nothing to do, and on this
+ * stop not even InProgress — and `PitstopActive` pulses for a few frames.
+ * `PlayerCarInPitStall` stays false, as it still was at every captured fall;
+ * the translator reads the track surface. The earlier empty stop in
+ * `local/telemetry-watch-20260919-193233-855.jsonl` (597.75 → 597.80) showed
+ * the same pulse after a one-tick InProgress, which the translator does not
+ * rely on.
+ *
+ * What it exists to show is the translator's decision, which a bus-event
+ * shortcut steps over: the short pulse falling in the stall publishes
+ * `pitService.stopEmpty`, which the bundled voices speak with the Complete
+ * line, and nothing else ("Pit stop in progress." has no status to speak
+ * from).
+ *
+ * Putting the car in its box from wherever the tester left it would announce
+ * the approach, pit road and the entry readback first, so the setup and the
+ * teardown are done inside a replay-mode bracket — the
+ * {@link AUTO_FUEL_TAKEOVER_SHORTCUT} idiom: the translator suppresses every
+ * event while `IsReplayPlaying` is true and re-seeds each diff from the
+ * current snapshot when it goes false. It hands back a car on the circuit,
+ * off pit road, with no service status, so a second press replays it whole.
+ */
+const PIT_STATUS_EMPTY_STOP_SHORTCUT: TelemetrySequenceShortcut = {
+  id: "pit-status-empty-stop",
+  category: "Pit Status",
+  label: "Nothing To Do (empty stop)",
+  description:
+    'Drives the TRANSLATOR through a pit stop with no service queued, modelled on one captured on 2026-10-03, about 4 s end to end: the car in its box, the service status None throughout — iRacing never reports Complete when there is nothing to do — and the pit-stop-active flag up for a few frames. Expect the Complete line ("Done. Go.") and NOTHING before it — no in-progress line ("Pit stop in progress."), since the status never leaves None. No preset needed: the run opens and closes inside a replay-mode bracket, which the translator suppresses events through and re-seeds every diff from, so it puts the car in its box from anywhere and hands back a car on the circuit with no service status. Needs the mock SDK CONNECTED; with it disconnected the translator sees no ticks and the button is silent for the wrong reason.',
+  telemetrySequence: [
+    {
+      patch: {
+        IsReplayPlaying: true,
+        IsOnTrack: true,
+        OnPitRoad: true,
+        PlayerCarInPitStall: false,
+        PlayerTrackSurface: TrkLoc.InPitStall,
+        Speed: 0,
+        PlayerCarPitSvStatus: PitSvStatus.None,
+        // Nothing queued, as in every captured empty stop — a preset's
+        // queued service must not ride into a stop that models having none.
+        PitSvFlags: 0,
+        PitstopActive: false,
+      },
+      holdMs: AUTO_FUEL_SEED_MS,
+    },
+    { patch: { IsReplayPlaying: false }, holdMs: EMPTY_STOP_SETTLE_MS },
+    { patch: { PitstopActive: true }, holdMs: EMPTY_STOP_PULSE_MS },
+    { patch: { PitstopActive: false }, holdMs: EMPTY_STOP_LISTEN_MS },
+    // Close the bracket: back on the circuit, seeded rather than spoken.
+    {
+      patch: {
+        IsReplayPlaying: true,
+        OnPitRoad: false,
+        PlayerTrackSurface: TrkLoc.OnTrack,
+        Speed: 60,
+      },
+      holdMs: AUTO_FUEL_SEED_MS,
+    },
+    { patch: { IsReplayPlaying: false } },
   ],
 };
 
@@ -2223,8 +2315,19 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   // sim translator so you hear/see the scenario without driving
   // `PlayerCarPitSvStatus` through `/api/telemetry`. Same-family
   // preempt: fire two in a row to confirm the second cancels the first.
-  pitStatus("in-progress", "In Progress", PitSvStatus.InProgress, "Crew started working on the car"),
+  // The in-progress line re-checks the live status after a quarter-second
+  // (issue #1180), so the patch DELETES `PlayerCarPitSvStatus` — unknown
+  // admits — rather than leave the None a telemetry-driven run (the empty
+  // stop) hands back, which would drop the line. Deleting it changes nothing
+  // the translator sees: a missing status already reads as None.
+  pitStatus("in-progress", "In Progress", PitSvStatus.InProgress, "Crew started working on the car", {
+    PlayerCarPitSvStatus: null,
+  }),
   pitStatus("complete", "Complete", PitSvStatus.Complete, "Service finished — ready to leave the box"),
+  // The empty stop (issue #1180) — telemetry-driven, so it auditions the
+  // translator's decision: a short `PitstopActive` pulse, then the Complete
+  // line and nothing else.
+  PIT_STATUS_EMPTY_STOP_SHORTCUT,
   pitStatus("too-far-left", "Too Far Left", PitSvStatus.TooFarLeft),
   pitStatus("too-far-right", "Too Far Right", PitSvStatus.TooFarRight),
   pitStatus("too-far-forward", "Too Far Forward", PitSvStatus.TooFarForward),

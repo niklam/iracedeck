@@ -7,6 +7,19 @@
  * already suppresses `* → None` so the silent idle state never reaches
  * the bus.
  *
+ * A ninth, {@link PIT_STATUS_NOTHING_TO_DO_CONTRACT} (issue #1180), releases
+ * the driver from a stop that ended with nothing done: iRacing never reports
+ * Complete then, so it fires on `pitService.stopEmpty` instead. It shares the
+ * family, but lives outside `PIT_STATUS_CONTRACTS` because it has no clip pool
+ * of its own, and it queues behind a busy radio rather than being dropped.
+ *
+ * **The in-progress hold (issue #1180).** On that empty stop the status may
+ * read InProgress for a single tick, and the translator mirrors it, so the
+ * in-progress line waits {@link PIT_STATUS_IN_PROGRESS_HOLD_MS} and is dropped
+ * at speak time if the live status has left InProgress — otherwise the driver
+ * would hear "Pit stop in progress." cut off by the release. The hold lives
+ * here, on the consumer, so `pitService.statusChanged` keeps mirroring the sim.
+ *
  * The code below decides WHEN a status line fires and how it is scheduled;
  * WHAT is said lives in the active voice's `callouts.json` under the same ids
  * (`scenarios["pit-crew.pit-status-in-progress"]`, …), where the bundled
@@ -16,7 +29,7 @@
  * own gate moved onto the contracts (#1138); no bundled entry branches on
  * anything.
  *
- * **Family preemption.** All eight share `family: "pit-status"` so a rapid
+ * **Family preemption.** All nine share `family: "pit-status"` so a rapid
  * positioning correction (`TooFarLeft → TooFarRight`) supersedes the
  * in-flight callout cleanly — same mechanism the flag callouts use.
  *
@@ -63,7 +76,7 @@
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { SimEventOf } from "@iracedeck/event-bus";
-import { PitSvStatus, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { PitSvStatus, type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
 import { getLatestTelemetry } from "@iracedeck/sim-events-iracing";
 
 import type { ScenarioContract } from "../../dsl.js";
@@ -80,6 +93,18 @@ import type { IScenarioEngine } from "../../interpreter.js";
  * the CHATTER band so the pit-service readback can't bury a nag.
  */
 export const PIT_STATUS_REPEAT_WEIGHT = 40;
+
+/**
+ * How long the in-progress line waits before it decides to speak (issue
+ * #1180). With nothing queued iRacing reports InProgress for a single tick at
+ * most (0.02 s in the 2026-09-19 capture; the 2026-10-03 one shows none at
+ * all) and drops straight back to None, while a real stop's InProgress lasts
+ * seconds (19 s in the 2026-09-19 capture). A
+ * quarter-second is long enough for the empty stop's status to have closed,
+ * so its speak-time gate drops the line, and short enough that nobody hears
+ * the delay on a real stop.
+ */
+export const PIT_STATUS_IN_PROGRESS_HOLD_MS = 250;
 
 /**
  * The statuses that describe an uncorrected parking error — the ones the
@@ -148,7 +173,12 @@ export const POSITIONING_SUBJECTS: readonly {
   },
 ];
 
-function pitStatusContract(id: string, target: PitSvStatus, description: string): ScenarioContract {
+function pitStatusContract(
+  id: string,
+  target: PitSvStatus,
+  description: string,
+  extra: Partial<ScenarioContract> = {},
+): ScenarioContract {
   return {
     id: `pit-crew.pit-status-${id}`,
     description,
@@ -160,6 +190,7 @@ function pitStatusContract(id: string, target: PitSvStatus, description: string)
       event: "pitService.statusChanged",
       where: (e) => (e as SimEventOf<"pitService.statusChanged">).data.to === target,
     },
+    ...extra,
   };
 }
 
@@ -192,6 +223,46 @@ function stillMisalignedAs(target: PitSvStatus): boolean {
   const status = telemetry.PlayerCarPitSvStatus;
 
   return status === undefined || status === target;
+}
+
+/**
+ * The in-progress line's speak-time gate (issue #1180): the live
+ * `PlayerCarPitSvStatus` still reads InProgress once the
+ * {@link PIT_STATUS_IN_PROGRESS_HOLD_MS} hold has run out. An empty stop has
+ * closed to None by then, so its line is dropped and only the release is
+ * heard. Unknown telemetry, or a missing status, means play (#574) — the
+ * {@link stillMisalignedAs} rule, which also keeps the scenario harness's
+ * bus-event button firable.
+ */
+function stillInProgress(): boolean {
+  const telemetry = getLatestTelemetry() as TelemetryData | null;
+
+  if (telemetry === null) return true;
+
+  const status = telemetry.PlayerCarPitSvStatus;
+
+  return status === undefined || status === PitSvStatus.InProgress;
+}
+
+/**
+ * The release's speak-time gate (issue #1180): the car is still in its box
+ * with no service under way — on the pit-stall surface, and the status still
+ * None. The release is queueable, so it can wait behind a busy radio; once
+ * the driver has left the stall, or a new stop has begun, "go" is old news.
+ * No speed check: the captures show the car still settling when the release
+ * fires, and a car that drives off leaves the stall surface. Each missing
+ * field, and missing telemetry, admits (#574).
+ */
+function stillInBoxIdle(): boolean {
+  const telemetry = getLatestTelemetry() as TelemetryData | null;
+
+  if (telemetry === null) return true;
+
+  const { PlayerTrackSurface: surface, PlayerCarPitSvStatus: status } = telemetry;
+
+  if (surface !== undefined && surface !== TrkLoc.InPitStall) return false;
+
+  return status === undefined || status === PitSvStatus.None;
 }
 
 function pitStatusRepeatContract(
@@ -249,6 +320,17 @@ export const PIT_STATUS_CONTRACTS: readonly ScenarioContract[] = [
     "in-progress",
     PitSvStatus.InProgress,
     "You are stopped in your pit box and the crew begins working on the car.",
+    {
+      // Held, then re-checked (issue #1180): a stop with nothing to do may read
+      // InProgress for one tick, and this line must not start only to be cut
+      // off by the release.
+      triggerDelay: PIT_STATUS_IN_PROGRESS_HOLD_MS,
+      speakGate: {
+        description:
+          "The crew is still working on the car a quarter-second after the stop began, or telemetry is unavailable.",
+        admit: stillInProgress,
+      },
+    },
   ),
   pitStatusContract(
     "complete",
@@ -262,6 +344,41 @@ export const PIT_STATUS_CONTRACTS: readonly ScenarioContract[] = [
     "You stop in your pit box with damage the crew cannot repair.",
   ),
 ];
+
+/**
+ * The release after a stop with nothing to do (issue #1180). iRacing never
+ * reports Complete when no service is queued — the status stays None or drops
+ * straight back to it — so the translator publishes `pitService.stopEmpty`
+ * instead, from the short `PitstopActive` pulse such a stop shows, and this
+ * line releases the driver. Same family as the status lines, so a later
+ * status still preempts it. Kept OUT of {@link PIT_STATUS_CONTRACTS}: that
+ * list derives one `pool:pit-status/<base>` per contract for
+ * {@link PIT_STATUS_CLIP_SOURCES}, and this one has no pool of its own — the
+ * bundled voices script it onto `pool:pit-status/complete`, and a pack may
+ * give it its own line.
+ *
+ * Queueable, with a speak-time gate: it fires at the busiest radio moment of
+ * the stop (the count-in, a limiter or opponent-pit line), and a release
+ * dropped behind one of those would be the original silence again. The gate
+ * drops it once the car has left the box, so a late "go" is never heard on
+ * the way out.
+ */
+export const PIT_STATUS_NOTHING_TO_DO_SCENARIO_ID = "pit-crew.pit-status-nothing-to-do";
+
+export const PIT_STATUS_NOTHING_TO_DO_CONTRACT: ScenarioContract = {
+  id: PIT_STATUS_NOTHING_TO_DO_SCENARIO_ID,
+  description: "You stop in your pit box with no service queued, so the crew has nothing to do and you can leave.",
+  channel: AudioChannel.Voice,
+  bus: AudioBus.Voice,
+  base: "voice/{voice}",
+  family: "pit-status",
+  when: { event: "pitService.stopEmpty" },
+  queueable: true,
+  speakGate: {
+    description: "The car is still in its pit box with no service under way, or telemetry is unavailable.",
+    admit: stillInBoxIdle,
+  },
+};
 
 /** The terse "still uncorrected" nags (issue #951) — one per positioning error. */
 export const PIT_STATUS_REPEAT_CONTRACTS: readonly ScenarioContract[] = POSITIONING_SUBJECTS.map(

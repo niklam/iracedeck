@@ -5,6 +5,7 @@ import { _resetEventBus, getEventBus, initializeEventBus, type SimEventName } fr
 import {
   Flags,
   PitSvFlags,
+  PitSvStatus,
   type SDKController,
   type SessionInfo,
   type TelemetryData,
@@ -23,6 +24,7 @@ import {
   initializeSimEventsIracing,
   isDamageRepairNeeded,
   PIT_APPROACH_COOLDOWN_MS,
+  PIT_STATUS_EMPTY_STOP_MAX_MS,
   YELLOW_CLEARED_HOLD_MS,
 } from "@iracedeck/sim-events-iracing";
 import { readFileSync } from "node:fs";
@@ -939,6 +941,152 @@ describe("the two Tire Wear shortcuts (issue #1108)", () => {
     runSequence(controller, steps);
 
     expect(events.filter((e) => e.event === "tireWear.reported")).toHaveLength(2);
+  });
+});
+
+describe('the "Nothing To Do (empty stop)" shortcut (issue #1180)', () => {
+  beforeEach(() => {
+    initializeEventBus(silentLogger);
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    _resetSimEventsIracing();
+    _resetEventBus();
+  });
+
+  const shortcut = SCENARIO_SHORTCUTS.find((s) => s.id === "pit-status-empty-stop");
+  const steps = shortcut?.telemetrySequence ?? [];
+  const pulseAt = steps.findIndex((s) => s.patch.PitstopActive === true);
+
+  /**
+   * The translator started either at boot (the mock's own telemetry, no
+   * preset) or as `startTranslator` leaves it (race session, hot-lap), then
+   * recording EVERY event in the catalog: the bracket must keep the car's trip
+   * into its box silent, so a narrower recorder would hide a pit-lane event or
+   * a readback it let slip.
+   */
+  function startRecording(from: "boot" | "hot-lap"): { controller: MockSDKController; events: Published[] } {
+    let controller: MockSDKController;
+
+    if (from === "boot") {
+      controller = new MockSDKController();
+      controller.setConnected(true);
+      initializeSimEventsIracing(getEventBus(), controller as unknown as SDKController, silentLogger);
+      controller.tickOnce();
+    } else {
+      controller = startTranslator().controller;
+    }
+
+    const events: Published[] = [];
+
+    for (const name of ALL_EVENT_NAMES) {
+      getEventBus().subscribe(name, (ev) => events.push({ event: ev.event, data: ev.data }));
+    }
+
+    return { controller, events };
+  }
+
+  it("drives the translator rather than publishing an event, under the label the bundled script's test line names", () => {
+    const script = defaultScript as CalloutScript;
+
+    expect(shortcut?.event).toBeUndefined();
+    expect(shortcut?.category).toBe("Pit Status");
+    expect(shortcut?.label).toBe("Nothing To Do (empty stop)");
+    expect(script.scenarios["pit-crew.pit-status-nothing-to-do"]?.test).toMatch(
+      /^Harness → Pit Status → Nothing To Do \(empty stop\)\. /,
+    );
+  });
+
+  it("replays the 2026-10-03 clean stop: in the stall, status None throughout, a PitstopActive pulse under the bound", () => {
+    // `local/telemetry-watch-20261003-144425-354.jsonl`, 414.90 → 414.97.
+    const live = steps[1];
+
+    expect(steps[0].patch).toMatchObject({
+      IsReplayPlaying: true,
+      IsOnTrack: true,
+      OnPitRoad: true,
+      // Still false at every captured fall — the translator reads the surface.
+      PlayerCarInPitStall: false,
+      PlayerTrackSurface: TrkLoc.InPitStall,
+      Speed: 0,
+      PlayerCarPitSvStatus: PitSvStatus.None,
+      // Nothing queued, as in every captured empty stop.
+      PitSvFlags: 0,
+      PitstopActive: false,
+    });
+    expect(live.patch).toEqual({ IsReplayPlaying: false });
+    expect(pulseAt).toBe(2);
+    expect(steps[pulseAt].patch).toEqual({ PitstopActive: true });
+    // Under the translator's bound, or the fall is not the empty-stop pulse.
+    expect(steps[pulseAt].holdMs ?? 0).toBeLessThan(PIT_STATUS_EMPTY_STOP_MAX_MS);
+    expect(steps[pulseAt + 1].patch).toEqual({ PitstopActive: false });
+    // The status is never driven off None.
+    expect(steps.slice(1).some((s) => "PlayerCarPitSvStatus" in s.patch)).toBe(false);
+  });
+
+  it("the translator publishes the empty-stop release, and nothing else", () => {
+    const { controller, events } = startRecording("hot-lap");
+
+    runSequence(controller, steps);
+
+    expect(events).toEqual([{ event: "pitService.stopEmpty", data: {} }]);
+  });
+
+  it("clears a queued service inside the bracket: it is gone by the stop, and clearing it speaks no toggle", () => {
+    const { controller, events } = startRecording("hot-lap");
+
+    // A preset (or an earlier button) left fuel queued.
+    controller.mutateTelemetry({ PitSvFlags: PitSvFlags.FuelFill } as TelemetryPatch);
+    controller.tickOnce();
+    events.length = 0;
+
+    runSequence(controller, steps);
+
+    expect(controller.getState().telemetry.PitSvFlags).toBe(0);
+    expect(events).toEqual([{ event: "pitService.stopEmpty", data: {} }]);
+  });
+
+  it("needs no preset: from boot, in the garage, the only addition is the first-time-on-track marker no callout speaks", () => {
+    // `driver.firstOnTrack` is detected on replay ticks too, by design (the
+    // translator never misses a garage → on-track transition), so the bracket
+    // cannot hide it — and it does not need to: nothing in the audio layer
+    // subscribes to it.
+    const { controller, events } = startRecording("boot");
+
+    runSequence(controller, steps);
+
+    expect(events).toEqual([
+      { event: "driver.firstOnTrack", data: {} },
+      { event: "pitService.stopEmpty", data: {} },
+    ]);
+  });
+
+  it("plays the same on a second press, and ends on the circuit with no service status", () => {
+    const { controller, events } = startRecording("hot-lap");
+
+    runSequence(controller, steps);
+    runSequence(controller, steps);
+
+    expect(events.map((e) => e.event)).toEqual(["pitService.stopEmpty", "pitService.stopEmpty"]);
+    expect(getLatestTelemetry()).toMatchObject({
+      IsReplayPlaying: false,
+      IsOnTrack: true,
+      OnPitRoad: false,
+      PlayerTrackSurface: TrkLoc.OnTrack,
+      PlayerCarPitSvStatus: PitSvStatus.None,
+      PitstopActive: false,
+    });
+  });
+
+  it("positive control: the same stop with the pulse held past the bound is not an empty stop, so no release", () => {
+    const { controller, events } = startRecording("hot-lap");
+    const longStop = steps.map((s, i) => (i === pulseAt ? { ...s, holdMs: 1000 } : s));
+
+    runSequence(controller, longStop);
+
+    expect(events).toEqual([]);
   });
 });
 

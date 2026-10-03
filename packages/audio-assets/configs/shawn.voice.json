@@ -20224,6 +20224,11 @@
       "test": "Harness → Pit Status → Complete. In-sim: wait out the queued service in the box; the line plays as the crew finishes.",
       "sequence": ["pool:pit-status/complete"]
     },
+    "pit-crew.pit-status-nothing-to-do": {
+      "comment": "The car stopped in the box with no service queued, so iRacing never reports the stop complete; this releases the driver. Reuses the Complete clips.",
+      "test": "Harness → Pit Status → Nothing To Do (empty stop). In-sim: untick every pit service, stop in the box; the line plays with no \"Service started\" before it.",
+      "sequence": ["pool:pit-status/complete"]
+    },
     "pit-crew.pit-status-too-far-left": {
       "comment": "The car stopped too far left of the box for the crew to work — the first, full correction; the terse repeat nag takes over while the error persists.",
       "test": "Harness → Pit Status → Too Far Left. In-sim: stop in the pit lane left of your box marks.",

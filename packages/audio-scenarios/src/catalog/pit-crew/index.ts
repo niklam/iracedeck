@@ -18,8 +18,9 @@
  *     clear — via `tireService.changed`; dry/wet via
  *     `tireService.compoundChanged`) — scripted since #1065, each an
  *     `acknowledgment → line` pair in the voice's `callouts.json`
- *   - Pit-window, pit-box count-in, damage, pit-status (transitions and the
- *     #951 repeat nags), pit-limiter and no-limiter contracts — all scripted
+ *   - Pit-window, pit-box count-in, damage, pit-status (transitions, the
+ *     #951 repeat nags and the #1180 empty-stop release), pit-limiter and
+ *     no-limiter contracts — all scripted
  *     since #1065; the repeat nags and the two delayed limiter warnings hang
  *     their bodies on the `pitStatus.still*` / `limiter.still*` conditions
  *     registered here, and the no-limiter entry line reads its spoken limit
@@ -158,7 +159,13 @@ import {
   SCENARIO_ID_TO_PIT_LIMITER_ID,
 } from "./pit-limiter.js";
 import { registerPitSpeedingEngine } from "./pit-speeding-engine.js";
-import { PIT_STATUS_CONTRACTS, PIT_STATUS_REPEAT_CONTRACTS, registerPitStatusVocabulary } from "./pit-status.js";
+import {
+  PIT_STATUS_CONTRACTS,
+  PIT_STATUS_NOTHING_TO_DO_CONTRACT,
+  PIT_STATUS_NOTHING_TO_DO_SCENARIO_ID,
+  PIT_STATUS_REPEAT_CONTRACTS,
+  registerPitStatusVocabulary,
+} from "./pit-status.js";
 import { PIT_WINDOW_CONTRACTS } from "./pit-window.js";
 import {
   buildOvertakeGainedPositionContract,
@@ -683,6 +690,10 @@ const SCENARIO_ID_TO_PIT_STATUS_ID: Record<string, PitStatusCalloutId> = {
   "pit-crew.pit-status-too-far-forward-repeat": "too-far-forward",
   "pit-crew.pit-status-too-far-back-repeat": "too-far-back",
   "pit-crew.pit-status-bad-angle-repeat": "bad-angle",
+  // The empty-stop release (issue #1180) is the same "you can go" call as
+  // Complete, so it rides Complete's opt-in rather than a setting of its own —
+  // one checkbox silences both, the #951 precedent above.
+  [PIT_STATUS_NOTHING_TO_DO_SCENARIO_ID]: "complete",
 };
 
 /**
@@ -1777,13 +1788,14 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
 
   // Pit-status contracts (issue #479; scripted since #1065): each line is the
   // active voice's (`scenarios["pit-crew.pit-status-*"]`, addressing
-  // `pool:pit-status/<id>`), and each repeat nag's script wraps its body in
-  // the `pitStatus.still*` gate registered above. The repeat nags (issue
+  // `pool:pit-status/<id>`), and each repeat nag re-checks the car at speak
+  // time through its contract's `speakGate` (#1138). The repeat nags (issue
   // #951) ride the SAME per-status opt-ins as their transition siblings —
   // they're a modifier of one callout, not a new subject (the #572
   // precedent), so `SCENARIO_ID_TO_PIT_STATUS_ID` maps both spellings of each
-  // id onto the same `PitStatusCalloutId`.
-  for (const c of [...PIT_STATUS_CONTRACTS, ...PIT_STATUS_REPEAT_CONTRACTS]) {
+  // id onto the same `PitStatusCalloutId`. The empty-stop release (issue
+  // #1180) rides Complete's opt-in the same way.
+  for (const c of [...PIT_STATUS_CONTRACTS, ...PIT_STATUS_REPEAT_CONTRACTS, PIT_STATUS_NOTHING_TO_DO_CONTRACT]) {
     engine.defineContract(
       wrapWithMaster(
         wrapCalloutScenario(c, SCENARIO_ID_TO_PIT_STATUS_ID, getPitStatusCalloutEnabled, "pit-status callout", logger),
