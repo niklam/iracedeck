@@ -102,7 +102,7 @@
  * exactly when the marker is load-bearing (and correctly re-arms when an
  * overtime extension adds real time back).
  */
-import { Flags, hasFlag, IRSDK_UNLIMITED_LAPS, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { Flags, hasFlag, resolveLapsRemaining, type TelemetryData } from "@iracedeck/iracing-sdk";
 
 import type { TranslatorState } from "../state.js";
 import type { EmitFn } from "./types.js";
@@ -121,14 +121,7 @@ export function diffLeaderWhite(
   const leaderIdx = frozenPositions.findIndex((p) => p === 1);
   const leaderLap = leaderIdx >= 0 ? (telemetry.CarIdxLapCompleted?.[leaderIdx] ?? -1) : -1;
 
-  const rawLapsRemain = telemetry.SessionLapsRemainEx;
-  const lapsRemain =
-    typeof rawLapsRemain === "number" &&
-    Number.isFinite(rawLapsRemain) &&
-    rawLapsRemain >= 0 &&
-    rawLapsRemain < IRSDK_UNLIMITED_LAPS
-      ? rawLapsRemain
-      : null;
+  const lapsRemain = resolveLapsRemaining(telemetry);
 
   const timeRemain = telemetry.SessionTimeRemain;
   const clockExpiredNow = typeof timeRemain === "number" && Number.isFinite(timeRemain) && timeRemain <= 0;

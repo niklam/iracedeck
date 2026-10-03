@@ -10,11 +10,12 @@
  *     isBest=true
  *   - pace laps (LapCompleted=-1) are suppressed
  *   - LapLastLapTime=0 at increment defers emission to the next tick
- *   - sessionType / lapsRemaining / timeRemaining pass through
+ *   - sessionType / lapsRemaining / timeRemaining pass through; the
+ *     unlimited sentinels and negatives omit their field, 0 is kept (#1220)
  *   - sentinel session-info-absent (undefined sessionType) omits the field
  *   - session reset (LapCompleted decreases) does not synthesize an event
  */
-import { Flags, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { Flags, IRSDK_UNLIMITED_LAPS, IRSDK_UNLIMITED_TIME, type TelemetryData } from "@iracedeck/iracing-sdk";
 import { describe, expect, it } from "vitest";
 
 import { createInitialState } from "../state.js";
@@ -565,6 +566,62 @@ describe("diffLaps — payload pass-through", () => {
     );
 
     expect(lapEvents(events)[0].data.timeRemaining).toBe(1234.5);
+  });
+
+  // The side a session does not have reads a sentinel, never a missing field
+  // (#1220): the catalog promises each field only when that side limits it.
+  function completeLap(limits: Partial<TelemetryData>) {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    diffLaps(state, tick({ LapCompleted: 0, ...limits }), "race", null, synced(), NOW, emit);
+    diffLaps(
+      state,
+      tick({ LapCompleted: 1, LapLastLapTime: 63.4, LapBestLapTime: 63.4, ...limits }),
+      "race",
+      null,
+      synced(),
+      NOW,
+      emit,
+    );
+
+    expect(lapEvents(events)).toHaveLength(1);
+
+    return lapEvents(events)[0].data;
+  }
+
+  it("omits timeRemaining in a lap race, where SessionTimeRemain reads IRSDK_UNLIMITED_TIME", () => {
+    const data = completeLap({ SessionLapsRemainEx: 9, SessionTimeRemain: IRSDK_UNLIMITED_TIME });
+
+    expect(data.lapsRemaining).toBe(9);
+    expect(data).not.toHaveProperty("timeRemaining");
+  });
+
+  it("omits lapsRemaining in a timed race, where SessionLapsRemainEx reads IRSDK_UNLIMITED_LAPS", () => {
+    const data = completeLap({ SessionLapsRemainEx: IRSDK_UNLIMITED_LAPS, SessionTimeRemain: 1234.5 });
+
+    expect(data).not.toHaveProperty("lapsRemaining");
+    expect(data.timeRemaining).toBe(1234.5);
+  });
+
+  it("keeps a 0 on either side — a real reading, not an unknown", () => {
+    const data = completeLap({ SessionLapsRemainEx: 0, SessionTimeRemain: 0 });
+
+    expect(data.lapsRemaining).toBe(0);
+    expect(data.timeRemaining).toBe(0);
+  });
+
+  it("omits a negative reading on either side", () => {
+    const data = completeLap({ SessionLapsRemainEx: -1, SessionTimeRemain: -2.5 });
+
+    expect(data).not.toHaveProperty("lapsRemaining");
+    expect(data).not.toHaveProperty("timeRemaining");
+  });
+
+  it("omits a non-finite reading on either side", () => {
+    const data = completeLap({ SessionLapsRemainEx: Number.NaN, SessionTimeRemain: Number.POSITIVE_INFINITY });
+
+    expect(data).not.toHaveProperty("lapsRemaining");
+    expect(data).not.toHaveProperty("timeRemaining");
   });
 
   it("omits sessionType when undefined", () => {

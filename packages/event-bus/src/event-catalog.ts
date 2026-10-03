@@ -899,9 +899,19 @@ export type SimEventMap = {
       bestLapTime?: number;
       /** Session best before this lap, if there was one. */
       previousBestLapTime?: number;
-      /** Laps remaining in the session (`SessionLapsRemainEx`), if lap-limited. */
+      /**
+       * Laps remaining in the session (`SessionLapsRemainEx`, including the
+       * lap in progress), if lap-limited. Absent when the session has no lap
+       * cap. A session can carry both limits; this field does not say which
+       * one ends it.
+       */
       lapsRemaining?: number;
-      /** Time remaining in the session in seconds (`SessionTimeRemain`), if time-limited. */
+      /**
+       * Time remaining in the session in seconds (`SessionTimeRemain`), if
+       * time-limited. Absent when the session has no clock, and also once a
+       * timed race's clock has run past zero. A session can carry both
+       * limits; this field does not say which one ends it.
+       */
       timeRemaining?: number;
       /** Current session type, if resolvable. */
       sessionType?: "practice" | "qualifying" | "race";

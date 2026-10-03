@@ -37,6 +37,7 @@ import {
   isPreGreen,
   nearestCarGapMeters,
   type QualifyResultEntry,
+  resolveLapsRemaining,
   type SDKController,
   SessionState,
   type TelemetryData,
@@ -845,10 +846,9 @@ export function getQualifyingInvalidationSnapshot(): QualifyingInvalidationSnaps
   const sessionInfo = instance.controller.getSessionInfo() as Record<string, unknown> | null;
   const lapsTotal = telemetry.SessionLapsTotal ?? 0;
   const lapLimited = lapsTotal > 0 && lapsTotal < IRSDK_UNLIMITED_LAPS;
-  const rawLapsRemaining =
-    typeof telemetry.SessionLapsRemainEx === "number" && telemetry.SessionLapsRemainEx >= 0
-      ? telemetry.SessionLapsRemainEx
-      : undefined;
+  // Through the session-limit resolver (#1220), so a time-limited
+  // qualifying's 32767 sentinel never reads as 32766 attempts left.
+  const rawLapsRemaining = resolveLapsRemaining(telemetry) ?? undefined;
 
   return {
     sessionType: classifyLapSessionType(resolveSessionType(sessionInfo, telemetry)),

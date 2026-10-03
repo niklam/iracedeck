@@ -21,6 +21,11 @@
  *      and that unknown must never be mistaken for zero, and
  *   3. the whichever-ends-sooner rule, ties to the lap cap.
  *
+ * The translator's `lap.completed` (#1220), its leader-white detection and
+ * its qualifying lap-invalidation snapshot share only the first two: they
+ * report each side as the sim gives it and leave which one binds to their
+ * consumers.
+ *
  * The fourth is shared by the consumers that SHOW the clock to the driver —
  * Session Info and the template context, never the fuel estimate:
  *

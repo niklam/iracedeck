@@ -3708,6 +3708,7 @@ describe("sim-events-iracing translator", () => {
       controller.__tick(telemetry({ SessionLapsTotal: 32767, SessionLapsRemainEx: 32767, LapCompleted: 4 }));
 
       expect(getQualifyingInvalidationSnapshot()).toMatchObject({
+        lapsRemaining: undefined,
         lapLimited: false,
         lapCounted: true,
       });
