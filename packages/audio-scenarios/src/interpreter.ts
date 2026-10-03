@@ -91,8 +91,8 @@
  *     pool of the same name, for that voice only; a slashed pool step
  *     (`group/base`) addresses the voice's clip groups directly.
  */
-import type { AudioBus, IAudioService } from "@iracedeck/audio-service";
-import { AudioChannel } from "@iracedeck/audio-service";
+import type { IAudioService } from "@iracedeck/audio-service";
+import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { type CalloutScript, CONNECTOR_POOL } from "@iracedeck/callout-script";
 import type { IEventBus, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import type { ILogger } from "@iracedeck/logger";
@@ -125,6 +125,20 @@ export { type AudioAssetsManifest, manifestVoices } from "./manifest.js";
  * own beep clip is governed by the setting too.
  */
 export type FrameOptions = { beeps: boolean; ambience: boolean };
+
+/**
+ * The bus id the frame preview plays under (issue #1124). Not a scenario:
+ * no contract is registered with it, so every lookup by it misses — no
+ * cooldown, no pending hold, nothing to stash when it is cut.
+ */
+const FRAME_PREVIEW_ID = "(frame preview)";
+
+/**
+ * What `playFramePreview` did (issue #1124): started (or, with both switches
+ * off, completed on the spot), found no frame to play, or found the bus in
+ * use and left it alone.
+ */
+export type FramePreviewResult = "playing" | "no-frame" | "bus-busy";
 
 /**
  * What the engine's vocabulary registries hold, for the generated pack-author
@@ -290,6 +304,25 @@ export interface IScenarioEngine {
   contracts(): readonly ContractReport[];
   setEnabled(scenarioId: string, enabled: boolean): void;
   fire(scenarioId: string): void;
+  /**
+   * Play the ACTIVE voice's compiled frame `frameName` around `holdMs` of
+   * silence — the Background Test (issue #1124). The frame is expanded as a
+   * callout's is: the user's Radio beeps / Pit ambience switches, frame clips
+   * on the SFX channel, the ambient steps. It plays on the Voice bus and
+   * YIELDS to every callout: it never cuts, delays or displaces one. It
+   * starts only on a free bus — nothing playing, nothing pending, no focus
+   * floor held — and any callout that would play while it runs cuts it and
+   * then schedules exactly as it would on an idle bus.
+   *
+   * Returns `"no-frame"` without playing when no voice is active or the
+   * active voice has no compiled frame of that name (no script, a frame it
+   * does not define, or one that failed to compile or aborted on a missing
+   * clip) — the caller falls back — and `"bus-busy"` without playing when
+   * the bus is not free. Otherwise returns `"playing"`, and `onComplete` runs
+   * once the preview leaves the bus — finished, cut, or `stopAll` — or at
+   * once when the switches leave the frame nothing to play.
+   */
+  playFramePreview(frameName: string, holdMs: number, onComplete?: () => void): FramePreviewResult;
   stopAll(): void;
   /**
    * Raise an exclusive-focus weight floor on a bus (issue #652). While held,
@@ -471,6 +504,13 @@ type ActiveFire = {
    * #1185). An interrupt that cuts it in a later session does not stash it.
    */
   sessionGeneration: number;
+  /**
+   * Run once when the fire leaves the bus, whether it finished or was cut
+   * (`settle`). Only the frame preview sets it (issue #1124): its caller
+   * holds the Background bus open for the preview and must release it
+   * however the preview ends.
+   */
+  onSettled?: () => void;
 };
 
 /** Which half of the radio frame an op came from (issue #1064). */
@@ -1237,6 +1277,105 @@ class ScenarioEngine implements IScenarioEngine {
   }
 
   /**
+   * See `IScenarioEngine.playFramePreview`. A separate entry point rather
+   * than a contract: a frame wraps speech, so `applyFrame` gives a body with
+   * no clip no frame, and the preview is the one legitimate frame around
+   * silence. It owns no cooldown, gate or resume — it is never stashed, so a
+   * cut preview is over. `attemptFire` is what makes it yield: it treats a
+   * bus the preview holds as idle and cuts the preview (`yieldPreview`) only
+   * once the arriving fire has expanded to something to play.
+   */
+  playFramePreview(frameName: string, holdMs: number, onComplete?: () => void): FramePreviewResult {
+    this.ensureCompiled();
+
+    const voice = this.getActiveVoice();
+    const script = voice === null ? undefined : this.compiled.get(voice);
+
+    if (voice === null || script === undefined || !script.frames.has(frameName)) {
+      this.logger.debug(`Frame preview "${frameName}" unavailable for voice "${voice ?? "(none)"}"`);
+
+      return "no-frame";
+    }
+
+    const state = this.getBusState(AudioBus.Voice);
+
+    if (state.playingId !== null || state.queue.size > 0 || state.focus !== null) {
+      this.logger.debug(`Frame preview "${frameName}" skipped — the Voice bus is in use`);
+
+      return "bus-busy";
+    }
+
+    let frame: ExpandedFrame | null;
+    const picks: ExpansionPicks = new Map();
+    this.expansionPicks = picks;
+
+    try {
+      frame = this.expandFrame(frameName, voice, script, FRAME_PREVIEW_ID, this.fireContext(null));
+    } catch (err) {
+      if (err instanceof ExpansionAbort) {
+        this.logger.debug(`Frame preview "${frameName}" skipped — ${err.reason}`);
+      } else {
+        this.logger.error(
+          `Frame preview "${frameName}" expansion failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+
+      return "no-frame";
+    } finally {
+      this.expansionPicks = null;
+    }
+
+    if (frame === null) return "no-frame";
+
+    for (const [pool, idx] of picks) pool.lastIndex = idx;
+
+    if (frame.open.length === 0 && frame.close.length === 0) {
+      // Both switches off: nothing to audition, and no reason to hold the
+      // bus for a silent window.
+      onComplete?.();
+
+      return "playing";
+    }
+
+    const ops: ExecOp[] = [...frame.open, { kind: "pause", ms: holdMs }, ...frame.close];
+
+    this.takeBus(state, {
+      id: FRAME_PREVIEW_ID,
+      bus: AudioBus.Voice,
+      // Never compared: an arriving fire treats the preview's bus as idle.
+      weight: 0,
+      ops,
+      index: 0,
+      sourceOps: ops,
+      sourceStart: 0,
+      prerollCount: 0,
+      cancelled: false,
+      pauseTimer: null,
+      usedChannels: collectUsedChannels(ops),
+      event: null,
+      sessionGeneration: this.sessionGeneration,
+      onSettled: onComplete,
+    });
+
+    this.logger.info(`Playing frame preview "${frameName}" for voice "${voice}"`);
+    this.logger.debug(`Ops (${ops.length}): ${ops.map(opLabel).join(" | ")}`);
+
+    this.stepNext(state);
+
+    return "playing";
+  }
+
+  /**
+   * Cut the frame preview if it holds the bus (issue #1124), so a fire that
+   * is about to play takes the bus as if it were idle. Called only once
+   * that fire has expanded to something to play: one that aborts leaves
+   * the preview running.
+   */
+  private yieldPreview(state: BusState): void {
+    if (state.activeFire?.id === FRAME_PREVIEW_ID) this.cancelActiveFire(state);
+  }
+
+  /**
    * Cancel every in-flight fire on all buses and clear every bus's queue of
    * deferred replays (unlogged per entry: the reset is the reason). Used when the Race Engineer master gate flips off so a callout
    * caught mid-playback is stopped immediately — including its looping
@@ -1450,7 +1589,10 @@ class ScenarioEngine implements IScenarioEngine {
       return;
     }
 
-    if (state.playingId !== null) {
+    // A bus the frame preview holds counts as idle: the preview yields to
+    // every callout (issue #1124), and is cut below once this fire has
+    // expanded to something to play.
+    if (state.playingId !== null && state.playingId !== FRAME_PREVIEW_ID) {
       const running = this.scenarios.get(state.playingId);
       const runningWeight = state.activeFire?.weight ?? DEFAULT_WEIGHT;
 
@@ -1518,6 +1660,8 @@ class ScenarioEngine implements IScenarioEngine {
     const expanded = this.prepareOps(entry, event, admitted);
 
     if (expanded === null) return;
+
+    this.yieldPreview(state);
 
     if (!resume) entry.lastFireAt = now;
 
@@ -1783,7 +1927,7 @@ class ScenarioEngine implements IScenarioEngine {
     this.expansionPicks = picks;
 
     try {
-      const frame = canProducePlay(body) ? this.expandFrame(frameName, voice, script, entry, ctx) : null;
+      const frame = canProducePlay(body) ? this.expandFrame(frameName, voice, script, entry.raw.id, ctx) : null;
       const bodyOps = this.expandSequence(body, entry.raw.base, entry.raw.channel, ctx, new Set([entry.raw.id]));
       expanded = applyFrame(bodyOps, frame);
     } catch (err) {
@@ -1877,13 +2021,13 @@ class ScenarioEngine implements IScenarioEngine {
     frameName: string,
     voice: string | null,
     script: CompiledVoiceScript | undefined,
-    entry: CompiledScenario,
+    ownerId: string,
     ctx: ScenarioContext,
   ): ExpandedFrame | null {
     if (frameName === NO_FRAME) return null;
 
     if (voice === null || !script) {
-      this.logger.debug(`Scenario "${entry.raw.id}" gets no frame — no script for voice "${voice ?? "(none)"}"`);
+      this.logger.debug(`Scenario "${ownerId}" gets no frame — no script for voice "${voice ?? "(none)"}"`);
 
       return null;
     }
@@ -1909,7 +2053,7 @@ class ScenarioEngine implements IScenarioEngine {
 
     const options = this.frameOptions();
     const side = (steps: ResolvedStep[], tag: FrameSide): ExecOp[] =>
-      this.expandSequence(filterFrameSteps(steps, options), undefined, AudioChannel.SFX, ctx, new Set([entry.raw.id]))
+      this.expandSequence(filterFrameSteps(steps, options), undefined, AudioChannel.SFX, ctx, new Set([ownerId]))
         // A second pass on the ops, for the one step whose ops cannot be
         // predicted from its kind: an include, whose fragment is only known
         // once expanded. Every other step was filtered before it expanded.
@@ -1980,11 +2124,7 @@ class ScenarioEngine implements IScenarioEngine {
 
     const bus = entry.raw.bus;
     const state = this.getBusState(bus);
-    // A fire is taking the bus — a pending hold armed at the previous fire's
-    // finish is obsolete; it re-arms when this fire finishes.
-    this.clearPendingHold(state);
-    state.playingId = entry.raw.id;
-    state.activeFire = {
+    this.takeBus(state, {
       id: entry.raw.id,
       bus,
       weight: entry.raw.weight ?? DEFAULT_WEIGHT,
@@ -1998,7 +2138,7 @@ class ScenarioEngine implements IScenarioEngine {
       usedChannels: collectUsedChannels(ops),
       event,
       sessionGeneration: this.sessionGeneration,
-    };
+    });
 
     if (sourceStart > 0) {
       this.logger.info(`Resuming scenario "${entry.raw.id}"`);
@@ -2190,12 +2330,27 @@ class ScenarioEngine implements IScenarioEngine {
     }
   }
 
+  /**
+   * Put a fire on the bus and record it as the one playing. A pending hold
+   * armed at the previous fire's finish is obsolete; it re-arms when this
+   * fire finishes. The caller starts it with `stepNext`.
+   */
+  private takeBus(state: BusState, fire: ActiveFire): void {
+    this.clearPendingHold(state);
+    state.playingId = fire.id;
+    state.activeFire = fire;
+  }
+
   private finishFire(scenarioId: string, bus: AudioBus): void {
     const state = this.getBusState(bus);
 
     if (state.playingId === scenarioId) state.playingId = null;
 
-    if (state.activeFire?.id === scenarioId) state.activeFire = null;
+    if (state.activeFire?.id === scenarioId) {
+      const finished = state.activeFire;
+      state.activeFire = null;
+      this.settle(finished);
+    }
 
     // A finishing fire in a train of related fires (count-in marks) holds the
     // drain of the whole queue for its declared window, so the displaced line
@@ -2320,6 +2475,26 @@ class ScenarioEngine implements IScenarioEngine {
     if (state.playingId === fire.id) state.playingId = null;
 
     state.activeFire = null;
+    this.settle(fire);
+  }
+
+  /**
+   * Run a fire's `onSettled` once it has left the bus, finished or cut. A
+   * callback that throws is logged and swallowed: it is the caller's
+   * cleanup, and the scheduler step that ran it must still complete.
+   */
+  private settle(fire: ActiveFire): void {
+    const onSettled = fire.onSettled;
+
+    if (onSettled === undefined) return;
+
+    fire.onSettled = undefined;
+
+    try {
+      onSettled();
+    } catch (err) {
+      this.logger.error(`"${fire.id}" completion callback threw: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   private getBusState(bus: AudioBus): BusState {
