@@ -886,7 +886,29 @@ describe("diffOpponentFlags", () => {
       expect(logger.info).not.toHaveBeenCalled();
     });
 
-    it("logs a cooldown and an aggregate collapse as held back", () => {
+    it("logs an unreadable player lap progress as player-progress-unreadable, not as a different lap", () => {
+      const logger = createMockLogger();
+      const t = makeField();
+
+      run(state, t, 1000, { logger });
+      t.CarIdxSessionFlags[3] = Flags.Repair;
+      t.CarIdxLapDistPct[PLAYER] = -1;
+
+      expect(run(state, t, 2000, { logger })).toEqual([]);
+      expect(logger.debug.mock.calls[0]![0]).toContain("reason=player-progress-unreadable");
+
+      const lapDown = createInitialState();
+      const other = makeField();
+
+      run(lapDown, other, 1000, { logger });
+      other.CarIdxSessionFlags[3] = Flags.Repair;
+      other.CarIdxLapCompleted[3] = 9;
+      run(lapDown, other, 2000, { logger });
+
+      expect(logger.debug.mock.calls[1]![0]).toContain("reason=different-lap");
+    });
+
+    it("logs a cooldown and a silenced collapse as held back, and the announce that trips the aggregate as the aggregate", () => {
       const logger = createMockLogger();
       const t = makeField();
       run(state, t, 1000, { logger });
@@ -899,14 +921,25 @@ describe("diffOpponentFlags", () => {
       run(state, t, 4000, { logger });
 
       t.CarIdxSessionFlags[2] = Flags.Repair;
-      t.CarIdxSessionFlags[1] = Flags.Repair; // the third distinct car — collapses
+      t.CarIdxSessionFlags[1] = Flags.Repair; // car1 announces; car2 is the third distinct car — collapses
       run(state, t, 5000, { logger });
+
+      t.CarIdxSessionFlags[4] = Flags.Repair; // a fourth car while the aggregate episode is open — silenced
+      run(state, t, 6000, { logger });
 
       const lines = logger.debug.mock.calls.map((c) => c[0] as string);
 
       expect(lines.find((l) => l.includes("held back") && l.includes("carIdx=3 "))).toContain("reason=cooldown");
-      expect(lines.find((l) => l.includes("held back") && l.includes("carIdx=2 "))).toContain("reason=collapsed");
-      expect(lines.some((l) => l.includes("aggregate announced"))).toBe(true);
+      // The tripping announce produced the aggregate line, so it says so —
+      // naming the car — rather than reading as held back.
+      expect(lines.some((l) => l.includes("held back") && l.includes("carIdx=2 "))).toBe(false);
+      const aggregate = lines.filter((l) => l.includes("aggregate announced"));
+
+      expect(aggregate).toHaveLength(1);
+      expect(aggregate[0]).toContain("cars=3");
+      expect(aggregate[0]).toContain("carIdx=2 ");
+      expect(aggregate[0]).toContain(`flag=${OpponentPenaltyFlag.Repair}`);
+      expect(lines.find((l) => l.includes("held back") && l.includes("carIdx=4 "))).toContain("reason=collapsed");
       expect(logger.info).not.toHaveBeenCalled();
     });
   });

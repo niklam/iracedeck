@@ -60,8 +60,8 @@
  * pending flag: same class (a readable `CarIdxClass` must match the
  * player's in any session — `isMultiClass` reads false while session info is
  * missing — and in multi-class an unreadable class does not qualify), same
- * lap (lap-progress scores within one lap — the #622 `classify` structure),
- * then
+ * lap (lap-progress scores within one lap — the #622 `classify` structure;
+ * an unreadable player progress is its own reason), then
  * - `"ahead"`: one to {@link OPPONENT_FLAG_AHEAD_WINDOW} class positions
  *   ahead, and
  * - `"behind"`: exactly one class position behind,
@@ -147,10 +147,12 @@
  * naming the car (carIdx and number), the flag, relation and trigger, the
  * raw `CarIdxSessionFlags` in hex, the class positions of the car and the
  * player, the race gap and the car's `CarIdxTrackSurface` — so a support log
- * can show which car a call was about. An effectively-active flag that is
- * held back (not in world, class, lap, positions, gap, opt-out, cooldown, or
- * the aggregate collapse) writes one "held back" line with its reason, once
- * per (car, flag) episode via
+ * can show which car a call was about. The announce that trips the burst
+ * collapse writes the same fields on its "aggregate announced" line instead,
+ * with the distinct-car count. An effectively-active flag that is held back
+ * (not in world, class, player progress, lap, positions, gap, opt-out,
+ * cooldown, or silenced by an open aggregate episode) writes one "held back"
+ * line with its reason, once per (car, flag) episode via
  * `opponentFlagHeldBackLoggedMask`: the FIRST reason is the one logged, a
  * later change of reason is not, and the car still writes its announce line
  * if it qualifies later. Nothing logs at info.
@@ -272,6 +274,7 @@ type HeldBackReason =
   | "class-unreadable"
   | "different-class"
   | "position-unresolved"
+  | "player-progress-unreadable"
   | "different-lap"
   | "outside-positions"
   | "gap-unreadable"
@@ -377,8 +380,11 @@ function assess(
   // Same lap: lap-progress scores within one full lap. Raw `CarIdxLap`
   // equality misbehaves around S/F crossings; the score form is what the
   // position machinery ranks by. The car's own progress passed the caller's
-  // in-world test; the player's may still be unreadable, which fails here.
-  if (player.progress === null) return { reason: "different-lap", carPos, playerPos, gapSeconds: null };
+  // in-world test; the player's may still be unreadable — its own reason,
+  // since nothing is known about the lap then.
+  if (player.progress === null) {
+    return { reason: "player-progress-unreadable", carPos, playerPos, gapSeconds: null };
+  }
 
   const lc = telemetry.CarIdxLapCompleted;
   const dp = telemetry.CarIdxLapDistPct;
@@ -674,17 +680,21 @@ export function diffOpponentFlags(
       }
 
       // Collapsed: the announce that reaches the threshold speaks the
-      // aggregate tail, once per episode; later ones stay silent while the
-      // episode flag is set.
+      // aggregate tail, once per episode, and its line says so — naming the
+      // car that tripped it; later ones stay silent while the episode flag
+      // is set, each logged as held back.
+      if (!state.opponentFlagAggregateAnnounced) {
+        state.opponentFlagAggregateAnnounced = true;
+        logger.debug(
+          `Opponent flag aggregate announced: cars=${state.opponentFlagRecentEntries.length} flag=${def.flag} ${carTail}`,
+        );
+        emit({ event: "opponentFlag.flagged", data: { relation: "others" } });
+        continue;
+      }
+
       if ((heldBackLogged[i] & def.bit) === 0) {
         heldBackLogged[i] |= def.bit;
         logger.debug(`Opponent flag held back: flag=${def.flag} reason=collapsed ${carTail}`);
-      }
-
-      if (!state.opponentFlagAggregateAnnounced) {
-        state.opponentFlagAggregateAnnounced = true;
-        logger.debug(`Opponent flag aggregate announced: cars=${state.opponentFlagRecentEntries.length}`);
-        emit({ event: "opponentFlag.flagged", data: { relation: "others" } });
       }
     }
   }
