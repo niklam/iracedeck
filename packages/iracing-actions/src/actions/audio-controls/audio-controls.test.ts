@@ -60,8 +60,10 @@ vi.mock("@iracedeck/icons/audio-controls/master-volume-up.svg", () => ({
 vi.mock("@iracedeck/icons/audio-controls/master-volume-down.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
 }));
+// Distinct too: it is the mute glyph a pair without an icon of its own falls
+// back to (#1196).
 vi.mock("@iracedeck/icons/audio-controls/master-mute.svg", () => ({
-  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+  default: '<svg xmlns="http://www.w3.org/2000/svg">mute-icon {{mainLabel}} {{subLabel}}</svg>',
 }));
 vi.mock("@iracedeck/icons/audio-controls/push-to-talk.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">push-to-talk</svg>',
@@ -275,12 +277,93 @@ describe("AudioControls", () => {
       expect(volumeDown).not.toBe(mute);
     });
 
-    it("should fall back to volume-up icon for master with mute action", () => {
-      const masterMute = generateAudioControlsSvg(parseAudioControlsSettings({ category: "master", action: "mute" }));
-      // The mute action uses the volume-up icon (falls back to master-volume-up SVG)
-      // but has its own title "VOLUME\nMASTER"
-      expect(masterMute).toContain("data:image/svg+xml");
-      expect(decodeURIComponent(masterMute)).toContain("MASTER");
+    describe("a pair the PI never writes (#1196)", () => {
+      const UNAVAILABLE = [
+        ["master", "mute"],
+        ["master", "mute-driver"],
+        ["race-engineer", "mute"],
+        ["race-engineer", "mute-driver"],
+        ["radar", "mute"],
+        ["radar", "mute-driver"],
+      ] as const;
+
+      it.each(UNAVAILABLE)("%s + %s warns and never draws the Push to Talk microphone", (category, action) => {
+        const decoded = decodeURIComponent(generateAudioControlsSvg(parseAudioControlsSettings({ category, action })));
+
+        expect(decoded).toContain("<binding-warning/>");
+        expect(decoded).not.toContain("push-to-talk");
+        expect(decoded).not.toContain("AUDIO\nCONTROLS");
+      });
+
+      it("keeps master + mute's own icon and title", () => {
+        const decoded = decodeURIComponent(
+          generateAudioControlsSvg(parseAudioControlsSettings({ category: "master", action: "mute" })),
+        );
+
+        expect(decoded).toContain("mute-icon");
+        expect(decoded).toContain("MUTE\nMASTER");
+      });
+
+      it("draws the stored action's glyph and names the stored pair when it has no icon of its own", () => {
+        const radarMute = decodeURIComponent(
+          generateAudioControlsSvg(parseAudioControlsSettings({ category: "radar", action: "mute" })),
+        );
+        const engineerMuteDriver = decodeURIComponent(
+          generateAudioControlsSvg(parseAudioControlsSettings({ category: "race-engineer", action: "mute-driver" })),
+        );
+        const masterMuteDriver = decodeURIComponent(
+          generateAudioControlsSvg(parseAudioControlsSettings({ category: "master", action: "mute-driver" })),
+        );
+
+        expect(radarMute).toContain("mute-icon");
+        expect(radarMute).toContain("MUTE\nRADAR");
+        expect(engineerMuteDriver).toContain("mute-driver-icon");
+        expect(engineerMuteDriver).toContain("MUTE DRIVER\nENGINEER");
+        expect(masterMuteDriver).toContain("mute-driver-icon");
+        expect(masterMuteDriver).toContain("MUTE DRIVER\nMASTER");
+      });
+
+      it("leaves every pair the PI does write without a warning while its binding is configured", () => {
+        const available = [
+          ["push-to-talk", "volume-up"],
+          ["push-to-talk", "mute-driver"],
+          ["voice-chat", "volume-up"],
+          ["voice-chat", "volume-down"],
+          ["voice-chat", "mute"],
+          ["voice-chat", "mute-driver"],
+          ["master", "volume-up"],
+          ["master", "volume-down"],
+          ["race-engineer", "volume-up"],
+          ["race-engineer", "volume-down"],
+          ["radar", "volume-up"],
+          ["radar", "volume-down"],
+        ] as const;
+
+        for (const [category, action] of available) {
+          const decoded = decodeURIComponent(
+            generateAudioControlsSvg(parseAudioControlsSettings({ category, action }), false),
+          );
+
+          expect(decoded, `${category} + ${action}`).not.toContain("<binding-warning/>");
+        }
+      });
+
+      it("clears the active binding rather than keeping the previous key's (#1196)", async () => {
+        const action = new AudioControls();
+        await action.onWillAppear(fakeEvent("ctx-stale", { category: "master", action: "mute-driver" }) as any);
+
+        expect(action["setActiveBinding"]).toHaveBeenCalledWith(null);
+      });
+
+      it("shows the warning on the key itself when it appears", async () => {
+        const action = new AudioControls();
+        await action.onWillAppear(fakeEvent("ctx-stale", { category: "master", action: "mute-driver" }) as any);
+
+        const image = decodeURIComponent(String(vi.mocked(action["setKeyImage"]).mock.calls[0]?.[1]));
+
+        expect(image).toContain("<binding-warning/>");
+        expect(image).toContain("MUTE DRIVER\nMASTER");
+      });
     });
 
     it("should include correct labels for voice-chat volume-up", () => {

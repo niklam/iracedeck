@@ -10,7 +10,9 @@ import {
   dialMuteBindingMap,
   dialMuteDriverBindingMap,
   dialSkipCallBindingMap,
+  isDialPressAvailable,
   isInternalAudioCategory,
+  isKeypadControlAvailable,
   parseAudioControlsSettings,
   pressBindingKeys,
   resolveRotationBinding,
@@ -247,6 +249,54 @@ describe("audio-controls settings", () => {
       expect(isInternalAudioCategory("master")).toBe(false);
       expect(isInternalAudioCategory("spotter")).toBe(false);
       expect(isInternalAudioCategory("push-to-talk")).toBe(false);
+    });
+  });
+
+  describe("isKeypadControlAvailable (#1196)", () => {
+    const ACTIONS = ["volume-up", "volume-down", "mute", "mute-driver"] as const;
+
+    it("is true for every Push to Talk pair, which ignores the action", () => {
+      for (const action of ACTIONS) {
+        expect(isKeypadControlAvailable({ category: "push-to-talk", action })).toBe(true);
+      }
+    });
+
+    it("offers all four voice chat actions", () => {
+      for (const action of ACTIONS) {
+        expect(isKeypadControlAvailable({ category: "voice-chat", action })).toBe(true);
+      }
+    });
+
+    it.each(["master", "race-engineer", "radar"] as const)("offers %s volume only", (category) => {
+      expect(isKeypadControlAvailable({ category, action: "volume-up" })).toBe(true);
+      expect(isKeypadControlAvailable({ category, action: "volume-down" })).toBe(true);
+      expect(isKeypadControlAvailable({ category, action: "mute" })).toBe(false);
+      expect(isKeypadControlAvailable({ category, action: "mute-driver" })).toBe(false);
+    });
+  });
+
+  describe("isDialPressAvailable (#1196)", () => {
+    const AVAILABLE: Record<(typeof DIAL_CATEGORIES)[number], readonly string[]> = {
+      "voice-chat": ["push-to-talk", "mute-unmute", "mute-driver"],
+      master: ["push-to-talk"],
+      spotter: ["push-to-talk", "skip-call"],
+      "race-engineer": ["push-to-talk", "mute-unmute"],
+      radar: ["push-to-talk", "mute-unmute"],
+    };
+
+    it("matches the presses each category offers, over every category and press", () => {
+      for (const category of DIAL_CATEGORIES) {
+        for (const pressAction of DIAL_PRESS_ACTIONS) {
+          expect(isDialPressAvailable({ category, pressAction }), `${category} + ${pressAction}`).toBe(
+            AVAILABLE[category].includes(pressAction),
+          );
+        }
+      }
+    });
+
+    it("keeps internal Mute / Unmute available although it needs no binding", () => {
+      expect(pressBindingKeys({ category: "radar", pressAction: "mute-unmute" })).toEqual([]);
+      expect(isDialPressAvailable({ category: "radar", pressAction: "mute-unmute" })).toBe(true);
     });
   });
 });

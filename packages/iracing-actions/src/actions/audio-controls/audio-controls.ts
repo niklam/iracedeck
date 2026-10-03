@@ -37,6 +37,7 @@ import {
   type AudioControlsSettings,
   type InternalAudioCategory,
   isInternalAudioCategory,
+  isKeypadControlAvailable,
   parseAudioControlsSettings,
 } from "./audio-controls-settings.js";
 import { AudioDialSurface } from "./audio-dial-surface.js";
@@ -85,32 +86,71 @@ const AUDIO_CONTROLS_TITLES: Record<string, string> = {
 };
 
 /**
+ * The glyph for a `{category}-{action}` pair with no entry of its own in
+ * {@link AUDIO_ICONS} — a pair the PI never writes, such as Radar + Mute
+ * (#1196). It draws what the stored action is, so the key does not pass for a
+ * different control: before #1196 these fell back to the Push to Talk
+ * microphone.
+ */
+const ACTION_GLYPHS: Record<AudioAction, string> = {
+  "volume-up": masterVolumeUpIconSvg,
+  "volume-down": masterVolumeDownIconSvg,
+  mute: masterMuteIconSvg,
+  "mute-driver": voiceChatMuteDriverIconSvg,
+};
+
+/** Title lines for a pair with no entry in {@link AUDIO_CONTROLS_TITLES}: "{action}\n{category}". */
+const ACTION_TITLE_LABELS: Record<AudioAction, string> = {
+  "volume-up": "VOL UP",
+  "volume-down": "VOL DOWN",
+  mute: "MUTE",
+  "mute-driver": "MUTE DRIVER",
+};
+
+const CATEGORY_TITLE_LABELS: Record<Exclude<AudioCategory, "push-to-talk">, string> = {
+  "voice-chat": "VOICE",
+  master: "MASTER",
+  "race-engineer": "ENGINEER",
+  radar: "RADAR",
+};
+
+/**
  * @internal Exported for testing
  *
- * Generates an SVG data URI icon for the audio controls action.
+ * Generates an SVG data URI icon for the audio controls action. A pair that
+ * can do nothing when pressed (see {@link isKeypadControlAvailable}) always
+ * carries the warning overlay, whatever `bindingMissing` says: no binding can
+ * make it work, but the key must not look like one that does (#1196).
  */
 export function generateAudioControlsSvg(settings: AudioControlsSettings, bindingMissing = false): string {
   const { category, action: audioAction } = settings;
 
-  let iconKey: string;
+  let iconSvg: string;
   let defaultTitle: string;
 
   if (category === "push-to-talk") {
-    iconKey = "push-to-talk";
-    defaultTitle = AUDIO_CONTROLS_TITLES["push-to-talk"] || "TALK";
+    iconSvg = AUDIO_ICONS["push-to-talk"];
+    defaultTitle = AUDIO_CONTROLS_TITLES["push-to-talk"];
   } else {
-    iconKey = `${category}-${audioAction}`;
+    const key = `${category}-${audioAction}`;
+    iconSvg = AUDIO_ICONS[key] ?? ACTION_GLYPHS[audioAction];
     defaultTitle =
-      AUDIO_CONTROLS_TITLES[`${category}-${audioAction}`] || AUDIO_CONTROLS_TITLES[iconKey] || "AUDIO\nCONTROLS";
+      AUDIO_CONTROLS_TITLES[key] ?? `${ACTION_TITLE_LABELS[audioAction]}\n${CATEGORY_TITLE_LABELS[category]}`;
   }
 
-  const iconSvg = AUDIO_ICONS[iconKey] || AUDIO_ICONS["push-to-talk"];
   const colors = resolveIconColors(iconSvg, getGlobalColors(), settings.colorOverrides);
   const title = resolveTitleSettings(iconSvg, getGlobalTitleSettings(), settings.titleOverrides, defaultTitle);
   const border = resolveBorderSettings(iconSvg, getGlobalBorderSettings(), settings.borderOverrides);
   const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), settings.graphicOverrides);
 
-  return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic, bindingMissing });
+  return assembleIcon({
+    graphicSvg: iconSvg,
+    colors,
+    title,
+    border,
+    graphic,
+    bindingMissing: bindingMissing || !isKeypadControlAvailable(settings),
+  });
 }
 
 /**
@@ -149,11 +189,10 @@ export class AudioControls extends ConnectionStateAwareAction<AudioControlsSetti
       return;
     }
 
-    const activeKey = this.resolveGlobalKey(settings.category, settings.action);
-
-    if (activeKey) {
-      this.setActiveBinding(activeKey);
-    }
+    // Unconditional: a pair with no binding (the internal categories, or one
+    // the PI never writes, #1196) must clear the key, not leave the one the
+    // previous key declared deciding this key's readiness.
+    this.setActiveBinding(this.resolveGlobalKey(settings.category, settings.action));
 
     await this.updateDisplay(ev, settings);
   }
@@ -170,11 +209,7 @@ export class AudioControls extends ConnectionStateAwareAction<AudioControlsSetti
       return;
     }
 
-    const activeKey = this.resolveGlobalKey(settings.category, settings.action);
-
-    if (activeKey) {
-      this.setActiveBinding(activeKey);
-    }
+    this.setActiveBinding(this.resolveGlobalKey(settings.category, settings.action));
 
     await this.updateDisplay(ev, settings);
   }
