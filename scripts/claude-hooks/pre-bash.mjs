@@ -4,7 +4,7 @@
  */
 import {
   applyVerdict,
-  changeSignature,
+  baseChangedSince,
   currentBranch,
   ghJson,
   git,
@@ -15,6 +15,7 @@ import {
   readIndexFile,
   readInput,
   readRepoFile,
+  replayRebase,
   specFilenames,
   toplevel,
   workspacePackages,
@@ -30,6 +31,7 @@ const memo = (fn) => {
   };
 };
 
+const HOOK_STARTED = Date.now();
 const input = await readInput();
 const command = input.tool_input?.command;
 if (typeof command === "string" && command.trim()) {
@@ -73,13 +75,16 @@ if (typeof command === "string" && command.trim()) {
           "view",
           ...(ref ? [ref] : []),
           "--json",
-          "number,state,headRefOid,headRefName,baseRefName,reviewDecision,mergeStateStatus,statusCheckRollup,reviews",
+          "number,state,headRefOid,headRefName,baseRefName,baseRefOid,reviewDecision,mergeStateStatus,statusCheckRollup,reviews",
         ],
         dir,
       ),
     ),
-    // What a commit changes, for the merge gate's pure-rebase check (#1307).
-    changeSignature: memo(changeSignature),
+    // The merge gate's pure-rebase check (#1307). One deadline for the whole
+    // hook, inside its 60 s timeout: a timed-out PreToolUse hook does not block.
+    replayRebase,
+    baseChangedSince: memo(baseChangedSince),
+    deadlineAt: HOOK_STARTED + 50_000,
   };
   let verdict;
   try {

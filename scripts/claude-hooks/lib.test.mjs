@@ -5,8 +5,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { spawnSyncShim } from "../lib/spawn-shim.mjs";
-import { changedFiles } from "./change-signature.mjs";
-import { changeSignature, readIndexFile, run, SPEC_DIR, specFilenames } from "./lib.mjs";
+import { readIndexFile, replayRebase, run, SPEC_DIR, specFilenames } from "./lib.mjs";
 
 // `run()` routes between the two spawns. `spawnSync` stays real — the fixture
 // repos below reach git through `run()` — except where the `run` tests stub it.
@@ -35,55 +34,158 @@ afterEach(() => {
   rmSync(root, { recursive: true, force: true });
 });
 
-// #1307: the merge gate compares what two commits change, each against its
-// own merge-base with the base branch, in a real repository.
-describe("changeSignature", () => {
-  const lines = (n, edits = {}) =>
+// #1307: the merge gate's pure-rebase check, in real repositories. Each case
+// builds M0, a reviewed branch off it, a moved base M1, and a head on M1.
+describe("replayRebase", () => {
+  const ID = ["-c", "user.email=t@t", "-c", "user.name=t"];
+  const gitIn = (dir, ...args) =>
+    execFileSync("git", [...ID, ...args], { cwd: dir, stdio: "pipe" })
+      .toString()
+      .trim();
+  const lines = (edits = {}, n = 10) =>
     Array.from({ length: n }, (_, i) => edits[i + 1] ?? `line ${i + 1}`).join("\n") + "\n";
-  const commit = (files, msg) => {
+  const commit = (files, msg = "c") => {
     for (const [name, text] of Object.entries(files)) writeFileSync(join(root, name), text);
     git("add", "-A");
     git("commit", "-qm", msg);
-    return git("rev-parse", "HEAD").toString().trim();
+    return gitIn(root, "rev-parse", "HEAD");
   };
-  /** M0 → F (the reviewed branch); M0 → M1 (master moved); M1 → F' (a rebase of F). */
-  const arrange = (rebasedEdit) => {
-    const m0 = commit({ "a.txt": lines(10) }, "m0");
+  const replay = (reviewed, head, base) => replayRebase({ reviewed, head, base, dir: root });
+  /** M0 → reviewed (line 2 of a.txt, a new c.txt); M0 → M1 (line 9 of a.txt). */
+  const arrange = () => {
+    const m0 = commit({ "a.txt": lines() }, "m0");
     git("checkout", "-q", "-b", "feature");
-    const reviewed = commit({ "a.txt": lines(10, { 2: "feature" }), "c.txt": "new\n" }, "f");
+    const reviewed = commit({ "a.txt": lines({ 2: "feature" }), "c.txt": "new\n" }, "reviewed");
     git("checkout", "-q", "master");
-    commit({ "a.txt": lines(10, { 9: "master moved" }) }, "m1");
-    git("update-ref", "refs/remotes/origin/master", "HEAD");
-    git("checkout", "-q", "-b", "rebased");
-    const rebased = commit({ "a.txt": lines(10, { 2: rebasedEdit, 9: "master moved" }), "c.txt": "new\n" }, "f");
-    return { m0, reviewed, rebased };
+    const m1 = commit({ "a.txt": lines({ 9: "master moved" }) }, "m1");
+    return { m0, reviewed, m1 };
+  };
+  const rebaseOnto = (base, ...picks) => {
+    git("checkout", "-q", "-B", "rebased", base);
+    for (const p of picks) git("cherry-pick", "--allow-empty", p);
+    return gitIn(root, "rev-parse", "HEAD");
   };
 
-  it("calls a clean rebase onto a moved base the same change", () => {
-    const { reviewed, rebased } = arrange("feature");
-    const before = changeSignature(reviewed, "origin/master", root);
-    const after = changeSignature(rebased, "origin/master", root);
-    expect([...before.keys()].sort()).toEqual(["a.txt", "c.txt"]);
-    expect(changedFiles(before, after)).toEqual([]);
+  it("passes a clean rebase onto a moved base", () => {
+    const { reviewed, m1 } = arrange();
+    expect(replay(reviewed, rebaseOnto(m1, reviewed), m1)).toEqual({
+      ok: true,
+      differing: [],
+      conflicted: [],
+      lineMismatch: [],
+    });
   });
 
-  it("names the file a conflict resolution changed", () => {
-    const { reviewed, rebased } = arrange("resolved differently");
-    expect(
-      changedFiles(changeSignature(reviewed, "origin/master", root), changeSignature(rebased, "origin/master", root)),
-    ).toEqual(["a.txt"]);
+  it("refuses a head that moves the reviewed line elsewhere — what the withdrawn line test accepted", () => {
+    const { reviewed, m1 } = arrange();
+    git("checkout", "-q", "-B", "moved", m1);
+    const head = commit({ "a.txt": lines({ 7: "feature", 9: "master moved" }), "c.txt": "new\n" });
+    expect(replay(reviewed, head, m1)).toMatchObject({ ok: true, differing: ["a.txt"], conflicted: [] });
   });
 
-  it("is null for a commit git cannot find or fetch, and for anything that is not a full sha", () => {
-    arrange("feature");
-    expect(changeSignature("f".repeat(40), "origin/master", root)).toBeNull();
-    expect(changeSignature("HEAD", "origin/master", root)).toBeNull();
-    expect(changeSignature(undefined, "origin/master", root)).toBeNull();
+  it("refuses a changed byte that a textconv driver would hide — trees compare by id", () => {
+    commit({ ".gitattributes": "*.pdf diff=same\n", "a.txt": lines() }, "m0");
+    git("config", "diff.same.textconv", "echo same");
+    git("checkout", "-q", "-b", "feature");
+    const reviewed = commit({ "doc.pdf": "bytes A\n" });
+    git("checkout", "-q", "master");
+    const m1 = commit({ "a.txt": lines({ 9: "x" }) });
+    git("checkout", "-q", "-B", "other", m1);
+    const head = commit({ "doc.pdf": "bytes B\n" });
+    expect(replay(reviewed, head, m1)).toMatchObject({ ok: true, differing: ["doc.pdf"] });
   });
 
-  it("is null when the base ref does not exist", () => {
-    const { reviewed } = arrange("feature");
-    expect(changeSignature(reviewed, "origin/nowhere", root)).toBeNull();
+  /** M0 → reviewed inserts X after line 5; M0 → M1 inserts Y there: the rebase conflicts in a.txt. */
+  const arrangeConflict = () => {
+    commit({ "a.txt": lines() }, "m0");
+    git("checkout", "-q", "-b", "feature");
+    const reviewed = commit({ "a.txt": lines({ 5: "line 5\nX" }) }, "reviewed");
+    git("checkout", "-q", "master");
+    const m1 = commit({ "a.txt": lines({ 5: "line 5\nY" }) }, "m1");
+    git("checkout", "-q", "-B", "resolved", m1);
+    return { reviewed, m1 };
+  };
+
+  it("reports a conflicted file whose resolution keeps the reviewed lines, for the gate to ask about", () => {
+    const { reviewed, m1 } = arrangeConflict();
+    const head = commit({ "a.txt": lines({ 5: "line 5\nY\nX" }) }, "resolved");
+    expect(replay(reviewed, head, m1)).toEqual({
+      ok: true,
+      differing: ["a.txt"],
+      conflicted: ["a.txt"],
+      lineMismatch: [],
+    });
+  });
+
+  it("marks a conflicted file whose resolution changed the reviewed lines", () => {
+    const { reviewed, m1 } = arrangeConflict();
+    const head = commit({ "a.txt": lines({ 5: "line 5\nY\nX2" }) }, "resolved");
+    expect(replay(reviewed, head, m1)).toMatchObject({ conflicted: ["a.txt"], lineMismatch: ["a.txt"] });
+  });
+
+  it("refuses a follow-up commit on top of the reviewed one before any replay", () => {
+    const { reviewed, m1 } = arrange();
+    git("checkout", "-q", "feature");
+    const head = commit({ "c.txt": "changed\n" }, "follow-up");
+    expect(replay(reviewed, head, m1)).toMatchObject({ ok: true, followUp: 1 });
+  });
+
+  it("passes the base merged into the branch — an 'Update branch' merge is a rebase by other means", () => {
+    const { reviewed, m1 } = arrange();
+    git("checkout", "-q", "feature");
+    git("merge", "-q", "--no-edit", m1);
+    expect(replay(reviewed, gitIn(root, "rev-parse", "HEAD"), m1)).toMatchObject({ ok: true, differing: [] });
+  });
+
+  it("passes a clean rebase of a multi-commit branch, compared against its tip", () => {
+    const { reviewed, m1 } = arrange();
+    git("checkout", "-q", "feature");
+    const tip = commit({ "d.txt": "second\n" }, "second");
+    expect(replay(tip, rebaseOnto(m1, reviewed, tip), m1)).toMatchObject({ ok: true, differing: [] });
+  });
+
+  it("is not fooled by a replace ref in the checkout", () => {
+    const { reviewed, m1 } = arrange();
+    const cleanHead = rebaseOnto(m1, reviewed);
+    git("checkout", "-q", "-B", "moved", m1);
+    const badHead = commit({ "a.txt": lines({ 7: "feature", 9: "master moved" }), "c.txt": "new\n" });
+    git("replace", badHead, cleanHead);
+    expect(replay(reviewed, badHead, m1)).toMatchObject({ differing: ["a.txt"] });
+  });
+
+  it("fetches a reviewed commit that only origin has", () => {
+    const { m1 } = arrange();
+    const remote = mkdtempSync(join(tmpdir(), "ird-hooks-origin-"));
+    const other = mkdtempSync(join(tmpdir(), "ird-hooks-other-"));
+    try {
+      gitIn(remote, "init", "-q", "--bare");
+      git("remote", "add", "origin", remote);
+      git("push", "-q", "origin", "master");
+      gitIn(other, "clone", "-q", remote, ".");
+      gitIn(other, "checkout", "-q", "-b", "pushed", `${m1}~1`);
+      writeFileSync(join(other, "e.txt"), "from elsewhere\n");
+      gitIn(other, "add", "-A");
+      gitIn(other, "commit", "-qm", "reviewed elsewhere");
+      gitIn(other, "push", "-q", "origin", "pushed");
+      const reviewed = gitIn(other, "rev-parse", "HEAD");
+      expect(() => gitIn(root, "cat-file", "-e", `${reviewed}^{commit}`)).toThrow();
+      git("checkout", "-q", "-B", "rebased", m1);
+      const head = commit({ "e.txt": "from elsewhere\n" }, "rebased");
+      expect(replay(reviewed, head, m1)).toMatchObject({ ok: true, differing: [] });
+      expect(() => git("rev-parse", "-q", "--verify", "FETCH_HEAD")).toThrow();
+    } finally {
+      rmSync(remote, { recursive: true, force: true });
+      rmSync(other, { recursive: true, force: true });
+    }
+  });
+
+  it("fails, never passes, for a commit git cannot find or fetch, a non-sha, or a spent deadline", () => {
+    const { reviewed, m1 } = arrange();
+    expect(replay("f".repeat(40), reviewed, m1)).toMatchObject({ ok: false });
+    expect(replay("HEAD", reviewed, m1)).toMatchObject({ ok: false });
+    expect(replayRebase({ reviewed, head: reviewed, base: m1, dir: root, deadlineAt: Date.now() - 1 })).toMatchObject({
+      ok: false,
+    });
   });
 });
 

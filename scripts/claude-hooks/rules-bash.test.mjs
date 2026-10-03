@@ -32,9 +32,11 @@ function ctx(overrides = {}) {
     packages: () => ({ "@iracedeck/logger": { dir: "x", scripts: ["build", "typecheck"] } }),
     isInside: (c, p) => c.toLowerCase() === p.toLowerCase() || c.toLowerCase().startsWith(p.toLowerCase() + path.sep),
     prView: () => undefined,
-    // Unreadable by default, so a merge case that does not set it up fails
-    // closed exactly as a real git failure would (#1307).
-    changeSignature: () => null,
+    // Unanswerable by default, so a merge case that does not set them up fails
+    // closed exactly as a real git or gh failure would (#1307).
+    replayRebase: () => undefined,
+    baseChangedSince: () => undefined,
+    deadlineAt: 0,
     ...overrides,
   };
 }
@@ -224,10 +226,11 @@ describe("gh pr merge", () => {
   describe("a pure rebase of the reviewed head", () => {
     const reviewedOid = "2222222222222222222222222222222222222222";
     const olderOid = "3333333333333333333333333333333333333333";
-    const change = (...lines) => new Map([["src/a.ts", ["diff --git a/src/a.ts b/src/a.ts", ...lines]]]);
+    const baseOid = "4444444444444444444444444444444444444444";
+    const pinned = `gh pr merge 7 --squash --match-head-commit ${head}`;
     const rebased = () => {
       const pr = green();
-      pr.baseRefName = "master";
+      pr.baseRefOid = baseOid;
       pr.reviews = [
         {
           author: { login: "coderabbitai" },
@@ -238,53 +241,104 @@ describe("gh pr merge", () => {
       ];
       return pr;
     };
-    /** `changeSignature` answering per sha, recording what it was asked. */
-    const signatures = (bySha) => {
-      const calls = [];
-      const fn = (sha, baseRef, dir) => {
-        calls.push({ sha, baseRef, dir });
-        return bySha[sha] ?? null;
-      };
-      return { fn, calls };
+    const clean = { ok: true, differing: [], conflicted: [], lineMismatch: [] };
+    /** A context whose replay answers `result`, recording every git and gh question asked. */
+    const arrange = (result, opts = {}) => {
+      const prView = opts.prView ?? rebased;
+      // Read by `in`, not a destructuring default: the gh-failure case passes `undefined` on purpose.
+      const retargeted = "retargeted" in opts ? opts.retargeted : false;
+      const calls = { replay: [], timeline: [] };
+      const c = ctx({
+        prView,
+        deadlineAt: 123,
+        replayRebase: (args) => {
+          calls.replay.push(args);
+          return result;
+        },
+        baseChangedSince: (...args) => {
+          calls.timeline.push(args);
+          return retargeted;
+        },
+      });
+      return { c, calls };
     };
 
-    it("passes when the head changes exactly what the reviewed commit changed", () => {
-      const { fn, calls } = signatures({ [reviewedOid]: change("+a"), [head]: change("+a") });
-      passes("gh pr merge 7 --squash", ctx({ prView: rebased, changeSignature: fn }));
-      expect(calls).toEqual([
-        { sha: reviewedOid, baseRef: "origin/master", dir: MASTER },
-        { sha: head, baseRef: "origin/master", dir: MASTER },
-      ]);
+    it("passes a clean replay, handing it the reviewed commit, the head, the PR's own base sha and the deadline", () => {
+      const { c, calls } = arrange(clean);
+      passes(pinned, c);
+      expect(calls.replay).toEqual([{ reviewed: reviewedOid, head, base: baseOid, dir: MASTER, deadlineAt: 123 }]);
+      expect(calls.timeline).toEqual([[7, "2026-10-03T10:00:00Z", MASTER]]);
     });
 
-    it("refuses a rebase whose conflict resolution changed a line, naming the file", () => {
-      const { fn } = signatures({ [reviewedOid]: change("+a"), [head]: change("+A") });
-      const why = deny("gh pr merge 7 --squash", ctx({ prView: rebased, changeSignature: fn }));
+    it("accepts a short --match-head-commit prefix of the head", () =>
+      passes(`gh pr merge 7 --squash --match-head-commit ${head.slice(0, 9)}`, arrange(clean).c));
+
+    it("refuses an unpinned merge before any git work, naming the flag to add", () => {
+      const { c, calls } = arrange(clean);
+      expect(deny("gh pr merge 7 --squash", c)).toMatch(new RegExp(`--match-head-commit ${head}`));
+      expect(calls.replay).toHaveLength(0);
+    });
+
+    it("refuses a pin to another commit", () =>
+      expect(deny(`gh pr merge 7 --squash --match-head-commit ${olderOid}`, arrange(clean).c)).toMatch(/pin it/));
+
+    it("refuses a head whose replayed tree differs, naming the file", () => {
+      const why = deny(pinned, arrange({ ...clean, differing: ["src/a.ts"] }).c);
       expect(why).toMatch(/not a pure rebase of it \(changed: src\/a\.ts\)/);
       expect(why).toMatch(/@coderabbitai review/);
     });
 
+    it("asks, naming the files, when only conflicted files differ and their lines match", () => {
+      const v = asks(pinned, arrange({ ok: true, differing: ["c.json"], conflicted: ["c.json"], lineMismatch: [] }).c);
+      expect(v).toMatch(/conflicted in c\.json/);
+      expect(v).toMatch(/maintainer confirms/);
+    });
+
+    it("refuses a conflicted file whose lines differ, marking it conflicted", () =>
+      expect(
+        deny(pinned, arrange({ ok: true, differing: ["c.json"], conflicted: ["c.json"], lineMismatch: ["c.json"] }).c),
+      ).toMatch(/changed: c\.json \(conflicted\)/));
+
+    it("refuses when a clean file differs even though the conflicted ones match", () =>
+      expect(
+        deny(pinned, arrange({ ok: true, differing: ["a.ts", "c.json"], conflicted: ["c.json"], lineMismatch: [] }).c),
+      ).toMatch(/changed: a\.ts\)/));
+
     it("names at most five differing files", () => {
-      const many = (l) => new Map(Array.from({ length: 7 }, (_, i) => [`f${i}.ts`, [l]]));
-      const { fn } = signatures({ [reviewedOid]: many("+a"), [head]: many("+b") });
-      expect(deny("gh pr merge 7 --squash", ctx({ prView: rebased, changeSignature: fn }))).toMatch(
+      const many = Array.from({ length: 7 }, (_, i) => `f${i}.ts`);
+      expect(deny(pinned, arrange({ ...clean, differing: many }).c)).toMatch(
         /changed: f0\.ts, f1\.ts, f2\.ts, f3\.ts, f4\.ts, and 2 more/,
       );
     });
 
-    it("refuses when git cannot read the reviewed commit's change", () => {
-      const { fn, calls } = signatures({ [head]: change("+a") });
-      expect(deny("gh pr merge 7 --squash", ctx({ prView: rebased, changeSignature: fn }))).toMatch(
-        /could not read both changes/,
+    it("refuses a follow-up push on top of the reviewed commit", () =>
+      expect(
+        deny(pinned, arrange({ ok: true, followUp: 2, differing: [], conflicted: [], lineMismatch: [] }).c),
+      ).toMatch(/adds 2 commit\(s\) on top of it/));
+
+    it("refuses with the replay's reason when it could not run, and when there is no replay at all", () => {
+      expect(deny(pinned, arrange({ ok: false, reason: "git could not fetch every commit" }).c)).toMatch(
+        /and git could not fetch every commit\./,
       );
-      expect(calls).toHaveLength(1);
+      expect(deny(pinned, arrange(undefined).c)).toMatch(/could not run/);
     });
 
-    it("refuses when git cannot read the head's change", () => {
-      const { fn } = signatures({ [reviewedOid]: change("+a") });
-      expect(deny("gh pr merge 7 --squash", ctx({ prView: rebased, changeSignature: fn }))).toMatch(
-        /could not read both changes/,
-      );
+    it("refuses a PR whose base branch changed after the review, before any replay", () => {
+      const { c, calls } = arrange(clean, { retargeted: true });
+      expect(deny(pinned, c)).toMatch(/base branch was changed after that review/);
+      expect(calls.replay).toHaveLength(0);
+    });
+
+    it("refuses when gh cannot say whether the base changed", () =>
+      expect(deny(pinned, arrange(clean, { retargeted: undefined }).c)).toMatch(
+        /could not read whether the base branch/,
+      ));
+
+    it("refuses a release back-merge on this path, before any gh or git work", () => {
+      const { c, calls } = arrange(clean, { prView: () => ({ ...rebased(), headRefName: "release/3.5" }) });
+      expect(deny(`gh pr merge 7 --merge --match-head-commit ${head}`, c)).toMatch(/back-merge lands its commits/);
+      expect(calls.replay).toHaveLength(0);
+      expect(calls.timeline).toHaveLength(0);
     });
 
     it("compares the NEWEST review, not an older approval it would reach past", () => {
@@ -303,10 +357,9 @@ describe("gh pr merge", () => {
           submittedAt: "2026-10-03T10:00:00Z",
         },
       ];
-      const { fn } = signatures({ [olderOid]: change("+a"), [reviewedOid]: change("+a", "+b"), [head]: change("+a") });
-      expect(deny("gh pr merge 7 --squash", ctx({ prView: () => pr, changeSignature: fn }))).toMatch(
-        /previous head 222222222/,
-      );
+      const { c, calls } = arrange(clean, { prView: () => pr });
+      passes(pinned, c);
+      expect(calls.replay[0].reviewed).toBe(reviewedOid);
     });
 
     it("finds the newest review by submittedAt whatever the list order", () => {
@@ -325,39 +378,50 @@ describe("gh pr merge", () => {
           submittedAt: "2026-10-03T09:00:00Z",
         },
       ];
-      const { fn } = signatures({ [reviewedOid]: change("+a"), [head]: change("+a") });
-      passes("gh pr merge 7 --squash", ctx({ prView: () => pr, changeSignature: fn }));
+      const { c, calls } = arrange(clean, { prView: () => pr });
+      passes(pinned, c);
+      expect(calls.replay[0].reviewed).toBe(reviewedOid);
+    });
+
+    it("runs no git or gh work while a cheap check already refuses, and says the rebase check is pending", () => {
+      const pr = rebased();
+      pr.statusCheckRollup[0] = { __typename: "CheckRun", name: "Tests", status: "IN_PROGRESS" };
+      const { c, calls } = arrange(clean, { prView: () => pr });
+      expect(deny(pinned, c)).toMatch(/pending: Tests; the head has no CodeRabbit review of its own/);
+      expect(calls.replay).toHaveLength(0);
+      expect(calls.timeline).toHaveLength(0);
     });
 
     it("still requires CodeRabbit to have approved at some point", () => {
       const pr = rebased();
       pr.reviews[0].state = "COMMENTED";
-      const { fn } = signatures({ [reviewedOid]: change("+a"), [head]: change("+a") });
-      expect(deny("gh pr merge 7 --squash", ctx({ prView: () => pr, changeSignature: fn }))).toMatch(/never approved/);
+      expect(deny(pinned, arrange(clean, { prView: () => pr }).c)).toMatch(/never approved/);
     });
 
-    it("refuses a PR CodeRabbit never reviewed, without reading any change", () => {
+    it("does not let a look-alike login stand in for CodeRabbit", () => {
       const pr = rebased();
-      pr.reviews = [];
-      const { fn, calls } = signatures({});
-      expect(deny("gh pr merge 7 --squash", ctx({ prView: () => pr, changeSignature: fn }))).toMatch(
-        /no CodeRabbit review at head/,
-      );
-      expect(calls).toHaveLength(0);
+      pr.reviews.push({ author: { login: "coderabbit-fan" }, state: "COMMENTED", commit: { oid: head } });
+      const { c, calls } = arrange({ ...clean, differing: ["a.ts"] }, { prView: () => pr });
+      expect(deny(pinned, c)).toMatch(/not a pure rebase/);
+      expect(calls.replay).toHaveLength(1);
     });
 
-    it("does not read any change when a review sits at head", () => {
-      const { fn, calls } = signatures({});
-      passes("gh pr merge 7 --squash", ctx({ prView: green, changeSignature: fn }));
-      expect(calls).toHaveLength(0);
+    it("accepts the bot's [bot]-suffixed login", () => {
+      const pr = green();
+      pr.reviews = [{ author: { login: "coderabbitai[bot]" }, state: "APPROVED", commit: { oid: head } }];
+      passes("gh pr merge 7 --squash", ctx({ prView: () => pr }));
     });
 
-    it("reads against origin/<baseRefName> for a PR into another branch", () => {
-      const pr = rebased();
-      pr.baseRefName = "release/3.5";
-      const { fn, calls } = signatures({ [reviewedOid]: change("+a"), [head]: change("+a") });
-      passes("gh pr merge 7 --squash", ctx({ prView: () => pr, changeSignature: fn }));
-      expect(calls[0].baseRef).toBe("origin/release/3.5");
+    it("does no rebase work, and needs no pin, when a review sits at head", () => {
+      const { c, calls } = arrange(clean, { prView: green });
+      passes("gh pr merge 7 --squash", c);
+      expect(calls.replay).toHaveLength(0);
+    });
+
+    it("--admin skips the rebase check with the other review checks", () => {
+      const { c, calls } = arrange({ ...clean, differing: ["a.ts"] });
+      passes("gh pr merge 7 --squash --admin", c);
+      expect(calls.replay).toHaveLength(0);
     });
   });
 

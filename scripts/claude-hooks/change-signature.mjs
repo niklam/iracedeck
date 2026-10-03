@@ -1,37 +1,51 @@
 /**
- * What a branch changes, reduced to what survives a rebase (#1307).
+ * The line check the merge gate falls back to for files a rebase conflicted
+ * in (#1307).
  *
- * The merge gate accepts a head whose change is identical to the commit
- * CodeRabbit last reviewed: file by file, the same added and removed lines.
- * A rebase shifts line numbers, changes the surrounding context and gives a
- * touched text file a new post-image blob, so those are dropped; everything
- * that says what the branch itself did is kept. The design and the rejected
- * alternatives are in
+ * The gate's real test is a replay: the reviewed change re-applied onto the
+ * head's base must give the head's exact tree (`replayRebase` in `lib.mjs`).
+ * A file the replay reported as conflicted cannot match, since the replay
+ * holds conflict markers where the head holds a resolution. For those files
+ * this compares the added and removed lines of the two changes, each against
+ * its own merge-base. It cannot see WHERE a line sits — hunk headers are
+ * dropped, because a rebase shifts them — so a match is never a pass on its
+ * own: the gate asks the maintainer to confirm. The design is in
  * `docs/superpowers/specs/2026-10-03-issue-1307-merge-gate-pure-rebase.md`.
  *
- * Pure: the git side is `changeSignature` in `lib.mjs`, which feeds this the
- * text of `git diff --no-renames --full-index --unified=0 <merge-base> <sha>`.
+ * Pure. Input is the text of plumbing
+ * `git diff-tree -p --no-renames --full-index -U0 <base> <commit> -- <paths>`,
+ * decoded byte-for-byte (latin1), so no byte is lost or merged in decoding.
  */
 
 /**
- * Parse that diff into `Map<path, string[]>`: per file, its diff lines minus
- * the `@@` hunk headers, and minus the `index` line unless the file is binary
- * (a binary file has no lines to compare, so its post-image blob id is its
- * content). With `--unified=0` there are no context lines to drop.
+ * Parse that diff into `Map<header, string[]>`: per `diff --git` header, its
+ * lines minus the `@@` hunk headers, and minus the `index` line unless the
+ * file is binary (a binary file has no lines to compare, so its post-image
+ * blob id is its content). Keyed by the WHOLE header, which is unique per
+ * path — parsing a path out of it is ambiguous for a path containing ` b/`.
+ * A header that repeats (git prints a typechange as a delete block plus a
+ * create block for one path) appends to the same entry. Split on `\n` only:
+ * git emits LF, and a CR is part of the file's bytes.
  */
 export function parseChangeSignature(diffText) {
   const files = new Map();
   let lines = null;
   let index = null;
+  let start = 0;
   const close = () => {
-    if (lines && index !== null && lines.some((l) => l.startsWith("Binary files "))) lines.splice(1, 0, index);
+    if (lines && index !== null && lines.slice(start).some((l) => l.startsWith("Binary files ")))
+      lines.splice(start + 1, 0, index);
   };
-  for (const line of diffText.split(/\r?\n/)) {
+  const all = diffText.split("\n");
+  if (all.at(-1) === "") all.pop();
+  for (const line of all) {
     if (line.startsWith("diff --git ")) {
       close();
-      lines = [line];
+      lines = files.get(line) ?? [];
+      start = lines.length;
+      lines.push(line);
       index = null;
-      files.set(pathOf(line), lines);
+      files.set(line, lines);
     } else if (!lines || line.startsWith("@@")) {
       continue;
     } else if (line.startsWith("index ") && index === null) {
@@ -44,20 +58,13 @@ export function parseChangeSignature(diffText) {
   return files;
 }
 
-/** The `b/` path of a `diff --git a/<p> b/<p>` header (the same path under `--no-renames`). */
-function pathOf(header) {
-  const rest = header.slice("diff --git ".length);
-  const at = rest.lastIndexOf(" b/");
-  return at >= 0 ? rest.slice(at + 3) : rest;
-}
-
-/** The paths whose change differs between two signatures, sorted; `[]` means a pure rebase. */
+/** The `diff --git` headers whose change differs between two signatures, sorted; `[]` means the lines match. */
 export function changedFiles(a, b) {
   const out = [];
-  for (const p of new Set([...a.keys(), ...b.keys()])) {
-    const x = a.get(p);
-    const y = b.get(p);
-    if (!x || !y || x.length !== y.length || x.some((l, i) => l !== y[i])) out.push(p);
+  for (const k of new Set([...a.keys(), ...b.keys()])) {
+    const x = a.get(k);
+    const y = b.get(k);
+    if (!x || !y || x.length !== y.length || x.some((l, i) => l !== y[i])) out.push(k);
   }
   return out.sort();
 }

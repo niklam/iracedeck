@@ -16,7 +16,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 import { spawnSyncShim } from "../lib/spawn-shim.mjs";
-import { parseChangeSignature } from "./change-signature.mjs";
+import { changedFiles, parseChangeSignature } from "./change-signature.mjs";
 
 // The deck-host link readers moved to `scripts/lib/plugin-links.mjs` in #1143,
 // where `pnpm dev:voices` also needs them. Re-exported so every hook caller and
@@ -82,20 +82,21 @@ function emit(obj) {
  * without the args array Node deprecates beside one; `shim: false` spawns an
  * `.exe` outside that list (powershell) directly too. An argument the shim
  * refuses comes back as a failed run, never a throw. `maxBuffer` raises
- * `spawnSync`'s 1 MiB output cap for a caller that reads a whole diff; output
- * past the cap is a failed run (`ENOBUFS`).
+ * `spawnSync`'s 1 MiB output cap for a caller that reads a whole diff (output
+ * past the cap is a failed run, `ENOBUFS`); `encoding: "latin1"` reads bytes
+ * one-to-one, for a caller that compares them; `env` adds variables.
  */
-export function run(cmd, args, { cwd, timeoutMs = 60_000, shim, maxBuffer } = {}) {
+export function run(cmd, args, { cwd, timeoutMs = 60_000, shim, maxBuffer, encoding = "utf8", env } = {}) {
   const spawn = (shim ?? !/^(git|gh|node)$/.test(cmd)) ? spawnSyncShim : spawnSync;
   let res;
   try {
     res = spawn(cmd, args, {
       cwd,
-      encoding: "utf8",
+      encoding,
       timeout: timeoutMs,
       ...(maxBuffer ? { maxBuffer } : {}),
       windowsHide: true,
-      env: { ...process.env, GH_PROMPT_DISABLED: "1", GIT_TERMINAL_PROMPT: "0" },
+      env: { ...process.env, GH_PROMPT_DISABLED: "1", GIT_TERMINAL_PROMPT: "0", ...env },
     });
   } catch (error) {
     return { ok: false, out: "", err: String(error.message), code: null };
@@ -231,29 +232,123 @@ export function originMasterFresh(dir) {
 }
 
 /**
- * What commit `sha` changes relative to its merge-base with `baseRef`, as the
- * per-file signature `change-signature.mjs` compares (#1307), or `null` when
- * any step fails — every caller refuses on `null`. A commit that is not in the
- * local object store (a force-pushed head on a fresh clone) is fetched from
- * `origin` by its sha first; a session that pushed the old head usually still
- * has it.
+ * Replays the reviewed commit's change onto the head's base and compares the
+ * result with the head (#1307): the merge gate's test for "the newest push is
+ * a pure rebase of what CodeRabbit reviewed". `reviewed`, `head` and `base`
+ * are full shas — `base` the PR's own `baseRefOid`, never a local ref name,
+ * which can be stale (failing OPEN) or shadowed by a branch or tag.
+ *
+ * Returns `{ ok: true, followUp }` for a follow-up push (new non-merge commits
+ * on top of the reviewed one), else `{ ok: true, differing, conflicted, lineMismatch }` — the paths
+ * where the replayed tree differs from the head's tree, those of them the
+ * replay reported as conflicted, and those conflicted ones whose added and
+ * removed lines also differ — or `{ ok: false, reason }`. Trees compare by
+ * object id, so diff config, textconv and encoding play no part; only the
+ * conflicted-file line check reads a diff, through plumbing, byte-exact.
+ *
+ * Every call runs with `GIT_NO_REPLACE_OBJECTS=1`, so a replace ref in the
+ * session's checkout cannot change what a sha means, and stays inside
+ * `deadlineAt` (epoch ms): a PreToolUse hook that times out does not block.
+ * Missing commits are fetched from `origin` by sha in one call; that writes
+ * objects, never a ref or `FETCH_HEAD`.
  */
-export function changeSignature(sha, baseRef, dir) {
-  if (typeof sha !== "string" || !/^[0-9a-f]{40}$/i.test(sha)) return null;
-  const present = () => git(["cat-file", "-e", `${sha}^{commit}`], dir).ok;
-  if (
-    !present() &&
-    !(git(["fetch", "--quiet", "--no-tags", "origin", sha], dir, { timeoutMs: 20_000 }).ok && present())
-  )
-    return null;
-  const base = git(["merge-base", baseRef, sha], dir);
-  if (!base.ok) return null;
-  const diff = git(
-    ["diff", "--no-color", "--no-ext-diff", "--no-renames", "--full-index", "--unified=0", base.out.trim(), sha],
+export function replayRebase({ reviewed, head, base, dir, deadlineAt = Date.now() + 30_000 }) {
+  const shas = [reviewed, head, base];
+  if (!shas.every((s) => typeof s === "string" && /^[0-9a-f]{40}$/i.test(s)))
+    return { ok: false, reason: "a reviewed, head or base sha is missing" };
+  const left = () => deadlineAt - Date.now();
+  const g = (args, opts = {}) => {
+    const budget = left();
+    if (budget < 1_000) return { ok: false, code: null, out: "", err: "deadline" };
+    const cap = opts.timeoutMs ?? 15_000;
+    return git(args, dir, { ...opts, timeoutMs: Math.min(cap, budget), env: { GIT_NO_REPLACE_OBJECTS: "1" } });
+  };
+  const present = (s) => g(["cat-file", "-e", `${s}^{commit}`]).ok;
+  const missing = shas.filter((s) => !present(s));
+  if (missing.length) {
+    g(["fetch", "--quiet", "--no-tags", "--no-write-fetch-head", "origin", ...new Set(missing)], { timeoutMs: 20_000 });
+    if (!missing.every(present)) return { ok: false, reason: "git could not fetch every commit it needs from origin" };
+  }
+  // A follow-up push, not a rebase: the reviewed commit is still in the head's
+  // history with new non-merge commits after it. Merge commits pass on to the
+  // replay — an "Update branch" merge of the base is a rebase by other means.
+  const ancestor = g(["merge-base", "--is-ancestor", reviewed, head]);
+  if (ancestor.code !== 0 && ancestor.code !== 1)
+    return { ok: false, reason: "git could not tell whether the reviewed commit is in the head's history" };
+  if (ancestor.code === 0) {
+    const count = g(["rev-list", "--no-merges", "--count", `${reviewed}..${head}`]);
+    if (!count.ok) return { ok: false, reason: "git could not count the commits after the reviewed one" };
+    const followUp = Number(count.out.trim());
+    if (followUp > 0) return { ok: true, followUp, differing: [], conflicted: [], lineMismatch: [] };
+  }
+  const mergeBase = (s) => {
+    const r = g(["merge-base", s, base]);
+    return r.ok ? r.out.trim() : null;
+  };
+  const mbReviewed = mergeBase(reviewed);
+  const mbHead = mergeBase(head);
+  if (!mbReviewed || !mbHead) return { ok: false, reason: "git could not find a merge-base with the PR's base" };
+  const merged = g([
+    "merge-tree",
+    "--write-tree",
+    "--name-only",
+    "--no-messages",
+    "-z",
+    `--merge-base=${mbReviewed}`,
+    mbHead,
+    reviewed,
+  ]);
+  if (merged.code !== 0 && merged.code !== 1)
+    return { ok: false, reason: "git merge-tree could not replay the reviewed change" };
+  // `-z`: the tree id, then each conflicted path, NUL-separated and unquoted.
+  const [tree, ...conflictedList] = merged.out.split("\0").filter(Boolean);
+  const conflictedAll = new Set(merged.code === 1 ? conflictedList : []);
+  const diff = g(["diff-tree", "-r", "--no-renames", "--name-only", "-z", tree, `${head}^{tree}`], {
+    maxBuffer: 16 * 1024 * 1024,
+  });
+  if (!diff.ok) return { ok: false, reason: "git could not compare the replayed tree with the head's" };
+  const differing = diff.out.split("\0").filter(Boolean).sort();
+  const conflicted = differing.filter((p) => conflictedAll.has(p));
+  if (conflicted.length === 0) return { ok: true, differing, conflicted, lineMismatch: [] };
+  if (conflicted.length > MAX_CONFLICTED_LINE_CHECKS)
+    return { ok: false, reason: `the rebase conflicted in ${conflicted.length} files, more than the line check reads` };
+  // One path per diff, so no header ever has to be matched back to a path.
+  const signature = (from, to, file) => {
+    const r = g(["diff-tree", "-p", "--no-renames", "--full-index", "--unified=0", from, to, "--", file], {
+      maxBuffer: 64 * 1024 * 1024,
+      encoding: "latin1",
+    });
+    return r.ok ? parseChangeSignature(r.out) : null;
+  };
+  const lineMismatch = [];
+  for (const file of conflicted) {
+    const before = signature(mbReviewed, reviewed, file);
+    const after = before && signature(mbHead, head, file);
+    if (!before || !after) return { ok: false, reason: "git could not read the conflicted files' changes" };
+    // An empty signature means the path did not round-trip into git; never read that as a match.
+    if (before.size === 0 || after.size === 0 || changedFiles(before, after).length) lineMismatch.push(file);
+  }
+  return { ok: true, differing, conflicted, lineMismatch };
+}
+
+/** Conflicted files the replay line-checks; past this the gate refuses rather than spend the hook's deadline. */
+export const MAX_CONFLICTED_LINE_CHECKS = 20;
+
+/**
+ * Whether the PR's base branch was changed after `sinceIso` (#1307): a
+ * `BaseRefChangedEvent` in its timeline. `undefined` when gh cannot answer,
+ * which the merge gate treats as yes.
+ */
+export function baseChangedSince(number, sinceIso, dir) {
+  const query =
+    "query($owner:String!,$repo:String!,$n:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$n){timelineItems(itemTypes:[BASE_REF_CHANGED_EVENT],last:50){nodes{... on BaseRefChangedEvent{createdAt}}}}}}";
+  const r = ghJson(
+    ["api", "graphql", "-f", `query=${query}`, "-F", "owner={owner}", "-F", "repo={repo}", "-F", `n=${number}`],
     dir,
-    { maxBuffer: 64 * 1024 * 1024 },
   );
-  return diff.ok ? parseChangeSignature(diff.out) : null;
+  const nodes = r?.data?.repository?.pullRequest?.timelineItems?.nodes;
+  if (!Array.isArray(nodes)) return undefined;
+  return nodes.some((x) => typeof x?.createdAt === "string" && x.createdAt > (sinceIso ?? ""));
 }
 
 /** Is `candidate` inside `parent` (both absolute)? Case-insensitive on Windows. */
