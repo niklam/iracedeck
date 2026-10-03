@@ -26,6 +26,8 @@ A flagged car qualifies only when all of these hold:
 
 The race gap is the crossing-time gap from #933 (`getLiveGapBetween(ahead, behind)` in `translator.ts`), passed into `diffOpponentFlags` as an injected resolver `(aheadCarIdx, behindCarIdx) => number | null` beside `getCalloutEnabled`, so the diff stays a pure function of its inputs. A `null` gap — traces not yet covering the lookup, either car without live progress — never qualifies. Silence is the right failure here; a guessed gap is how the old window said false things.
 
+The gap carries #1285's ETA regime (amended 2026-10-03, after the branch review). A raw crossing-time gap overstates the distance to a car ahead that has slowed right down: a meatballed car limping at 20 m/s 70 m ahead reads about 3.5 s, outside the default range, though the player reaches it in about 1.5 s — so "Expect them to be slow" would miss exactly the cars it describes. `diffGaps` already switches to the chaser's ETA when the pair's leading car is crawling; that switch is extracted into one helper that both `diffGaps` and `getLiveGapBetween` use, so the gap displays, the gap callouts and this qualifier read the same gap for the same pair.
+
 There is no hysteresis on the range bound. The per-(car, flag) episode latch already means a car is announced once per flag episode, so a car hovering at the bound cannot repeat; the bound only decides whether the first announce happens — including a flag already up on a car that closes into range later (`entered-range`).
 
 ### The range is a setting: 1–10 s, default 3 s
