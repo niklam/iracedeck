@@ -30,7 +30,6 @@ import { OpponentPenaltyFlag } from "@iracedeck/event-bus";
 import {
   CarLeftRight,
   classPositionFromOrder,
-  crossingTimeAt,
   extractQualifyResults,
   IRSDK_UNLIMITED_LAPS,
   IRSDK_UNLIMITED_TIME,
@@ -63,13 +62,18 @@ import {
   type FuelLapTracker,
   type FuelStats,
 } from "./diff/fuel-laps.js";
-import { diffGaps, GAP_DEFAULT_ALERT_THRESHOLD_S, GAP_DEFAULT_MIN_CHANGE_S } from "./diff/gaps.js";
+import { diffGaps, GAP_DEFAULT_ALERT_THRESHOLD_S, GAP_DEFAULT_MIN_CHANGE_S, readPairGap } from "./diff/gaps.js";
 import { diffIncidents, resolveCollisionCarValue } from "./diff/incidents.js";
 import { diffLaps } from "./diff/laps.js";
 import { diffLeaderWhite } from "./diff/leader-white.js";
 import { diffLifecycle } from "./diff/lifecycle.js";
 import { diffLimiter } from "./diff/limiter.js";
-import { diffOpponentFlags, OPPONENT_FLAG_DEFS } from "./diff/opponent-flags.js";
+import {
+  diffOpponentFlags,
+  OPPONENT_FLAG_DEFAULT_RANGE_SECONDS,
+  OPPONENT_FLAG_DEFS,
+  type OpponentFlagResolvers,
+} from "./diff/opponent-flags.js";
 import { diffOpponentPit } from "./diff/opponent-pit.js";
 import { diffOvertakes } from "./diff/overtakes.js";
 import { diffPaceLaps, resolvePaceCarIdx } from "./diff/pace-laps.js";
@@ -218,12 +222,16 @@ type TranslatorInstance = {
    */
   getGapMinChangeSeconds: () => number;
   /**
-   * Live-read per-flag opt-in for the opponent penalty-flag callouts
-   * (issue #936). Enforced in the diff — not only at the audio layer — so a
-   * disabled subject never consumes the burst-aggregation budget. Plugins
-   * wire it to the `calloutEnabledOpponentFlag*` global settings.
+   * The live-read resolvers `diffOpponentFlags` consumes, bound once at init:
+   * the per-flag opt-in (issue #936 — enforced in the diff, not only at the
+   * audio layer, so a disabled subject never consumes the burst-aggregation
+   * budget; plugins wire it to the `calloutEnabledOpponentFlag*` global
+   * settings), the race gap from THIS instance's traces (issue #1274), and the
+   * race-gap range (plugins wire it to `opponentFlagRangeSeconds`).
    */
-  getOpponentFlagCalloutEnabled: (flag: OpponentPenaltyFlag) => boolean;
+  opponentFlagResolvers: OpponentFlagResolvers;
+  /** Scoped logger for the opponent-flag debug lines (issue #1273). */
+  opponentFlagLogger: ILogger;
 };
 
 /**
@@ -266,6 +274,15 @@ export type SimEventsIracingOptions = {
    * global settings. Default: everything enabled.
    */
   getOpponentFlagCalloutEnabled?: (flag: OpponentPenaltyFlag) => boolean;
+  /**
+   * Live-read race-gap range (seconds) for the opponent penalty-flag
+   * callouts (issue #1274) — only a same-class car this close ahead or
+   * behind in the race is announced. Plugins compose it from the
+   * `opponentFlagRangeSeconds` global setting via
+   * `sanitizeOpponentFlagRangeSeconds`. Default: a constant
+   * {@link OPPONENT_FLAG_DEFAULT_RANGE_SECONDS}.
+   */
+  getOpponentFlagRangeSeconds?: () => number;
 };
 
 let instance: TranslatorInstance | null = null;
@@ -305,7 +322,12 @@ export function initializeSimEventsIracing(
     getCornerCalloutLeadSeconds: options.getCornerCalloutLeadSeconds ?? (() => CORNER_CALLOUT_DEFAULT_LEAD_SECONDS),
     getGapAlertThresholdSeconds: options.getGapAlertThresholdSeconds ?? (() => GAP_DEFAULT_ALERT_THRESHOLD_S),
     getGapMinChangeSeconds: options.getGapMinChangeSeconds ?? (() => GAP_DEFAULT_MIN_CHANGE_S),
-    getOpponentFlagCalloutEnabled: options.getOpponentFlagCalloutEnabled ?? (() => true),
+    opponentFlagResolvers: {
+      getCalloutEnabled: options.getOpponentFlagCalloutEnabled ?? (() => true),
+      getRaceGap: (aheadCarIdx, behindCarIdx) => liveGapBetween(self, aheadCarIdx, behindCarIdx),
+      getRangeSeconds: options.getOpponentFlagRangeSeconds ?? (() => OPPONENT_FLAG_DEFAULT_RANGE_SECONDS),
+    },
+    opponentFlagLogger: logger.createScope("OpponentFlags"),
   };
 
   instance = self;
@@ -1173,25 +1195,42 @@ export function getCautionLineup(): CautionLineup | null {
 }
 
 /**
- * Crossing-time gap in seconds between any two cars (issue #933): how long
- * ago `aheadCarIdx` crossed `behindCarIdx`'s current track position. The
- * reusable primitive behind future consumers ("we're N seconds behind the
- * leader") — resolve the target from the canonical order
- * (`getLiveRacePositions()`), then call this. `null` when the traces don't
- * cover the lookup or either car has no live progress.
+ * Race gap in seconds between any two cars (issue #933): normally the
+ * crossing time — how long ago `aheadCarIdx` crossed `behindCarIdx`'s current
+ * track position — and, when the ahead car is crawling (stopped, wrecked,
+ * limping) while the behind car is still at pace, the behind car's ETA over
+ * the separation instead (the #1285 ETA regime; needs the track length).
+ * This is the same reading the gap display and the gap callouts use for a
+ * neighbor pair (`readPairGap` in `diff/gaps.ts`), so every consumer says the
+ * same thing about the same two cars (issue #1274). The reusable primitive
+ * behind future consumers ("we're N seconds behind the leader") — resolve
+ * the target from the canonical order (`getLiveRacePositions()`), then call
+ * this. `null` when the traces don't cover the lookup (and the ETA regime
+ * does not engage) or either car has no live progress.
  */
 export function getLiveGapBetween(aheadCarIdx: number, behindCarIdx: number): number | null {
-  if (!instance || !instance.latestTelemetry) return null;
+  return instance ? liveGapBetween(instance, aheadCarIdx, behindCarIdx) : null;
+}
 
-  const telemetry = instance.latestTelemetry;
+/**
+ * {@link getLiveGapBetween} for one translator instance — the opponent-flag
+ * qualifier's race gap (issue #1274) is bound to the instance it runs in.
+ */
+function liveGapBetween(self: TranslatorInstance, aheadCarIdx: number, behindCarIdx: number): number | null {
+  if (!self.latestTelemetry) return null;
+
+  const telemetry = self.latestTelemetry;
   const lapCompleted = telemetry.CarIdxLapCompleted as number[] | undefined;
   const lapDistPct = telemetry.CarIdxLapDistPct as number[] | undefined;
-  const sessionTime = typeof telemetry.SessionTime === "number" ? telemetry.SessionTime : null;
+  const sessionTime =
+    typeof telemetry.SessionTime === "number" && Number.isFinite(telemetry.SessionTime) ? telemetry.SessionTime : null;
 
   if (!Array.isArray(lapCompleted) || !Array.isArray(lapDistPct) || sessionTime === null) return null;
 
   const behindLc = lapCompleted[behindCarIdx];
   const behindPct = lapDistPct[behindCarIdx];
+  const aheadLc = lapCompleted[aheadCarIdx];
+  const aheadPct = lapDistPct[aheadCarIdx];
 
   if (!hasLiveProgress(behindLc, behindPct)) return null;
 
@@ -1200,15 +1239,19 @@ export function getLiveGapBetween(aheadCarIdx: number, behindCarIdx: number): nu
   // car's position for up to a lap — so without this check the lookup keeps
   // returning a plausible gap that grows one second per second to a car that
   // is no longer on track.
-  if (!hasLiveProgress(lapCompleted[aheadCarIdx], lapDistPct[aheadCarIdx])) return null;
+  if (!hasLiveProgress(aheadLc, aheadPct)) return null;
 
-  const trace = instance.state.gapTraces[aheadCarIdx];
+  const sessionInfo = self.controller.getSessionInfo() as Record<string, unknown> | null;
 
-  if (!trace) return null;
-
-  const crossed = crossingTimeAt(trace, behindLc! + behindPct!);
-
-  return crossed === null ? null : Math.max(0, sessionTime - crossed);
+  return readPairGap(
+    self.state.gapTraces,
+    aheadCarIdx,
+    aheadLc! + aheadPct!,
+    behindCarIdx,
+    behindLc! + behindPct!,
+    sessionTime,
+    resolveTrackLengthMeters(self.state, sessionInfo, telemetry),
+  ).gapSeconds;
 }
 
 /** Whether a car's raw lap/percent pair reports live on-track progress. */
@@ -1498,14 +1541,16 @@ function wipeStateForReplay(self: TranslatorInstance): void {
     // wipe would make cars whose flags the aggregate already covered
     // re-announce individually, and a car whose flag cooldown hasn't expired
     // would re-announce the same episode. `opponentFlagBits` /
-    // `opponentFlagsInitialized` / `opponentFlagFurledSinceAt` /
-    // `opponentFlagEffectiveMask` deliberately re-seed — replay-timeline bit
-    // and debounce-timer values are meaningless (see `opponentFlagEffectiveMask`'s
+    // `opponentFlagsInitialized` / `opponentFlagSeededAt` /
+    // `opponentFlagHeldSinceAt` / `opponentFlagEffectiveMask` deliberately
+    // re-seed — replay-timeline bit
+    // and hold-timer values are meaningless (see `opponentFlagEffectiveMask`'s
     // JSDoc in `state.ts` for why the effective-mask baseline must re-seed in
     // lockstep with the raw-bit baseline rather than being preserved here).
+    // `opponentFlagHeldBackLoggedMask` (#1273) re-seeds too: it is a logging
+    // latch, and the worst a wipe can do is repeat one debug line.
     opponentFlagAnnouncedMask: self.state.opponentFlagAnnouncedMask,
     opponentFlagCooldownUntil: self.state.opponentFlagCooldownUntil,
-    opponentFlagInWindow: self.state.opponentFlagInWindow,
     opponentFlagRecentEntries: self.state.opponentFlagRecentEntries,
     opponentFlagAggregateAnnounced: self.state.opponentFlagAggregateAnnounced,
     // The leader's white-flag once-per-race latch (issue #936) is STICKY,
@@ -2121,15 +2166,20 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
     emit,
   );
 
-  // Opponent penalty flags (issue #936) — advances the per-car flag store
-  // (the `getLiveOpponentFlags()` seam) every tick, then classifies the
-  // qualification window and emits `opponentFlag.flagged` (individual lines
-  // + the distinct-car burst aggregate). Consumes the same canonical frozen
-  // order and track length as the diffs above; the per-flag opt-in resolver
-  // is enforced here so disabled subjects never feed the aggregation.
+  // Opponent penalty flags (issues #936, #1274) — advances the per-car flag
+  // store (the `getLiveOpponentFlags()` seam) every tick, then qualifies
+  // same-class cars near the player and emits `opponentFlag.flagged`
+  // (individual lines + the distinct-car burst aggregate). Consumes the same
+  // canonical frozen order as the diffs above; the race gap is the gap
+  // display's own pair reading (#933's crossing time, or the #1285 ETA behind
+  // a crawling car) from the traces `diffGaps` last advanced (one tick old
+  // here, which a seconds-scale range cannot notice), and the per-flag
+  // opt-in resolver is enforced here so disabled subjects never feed the
+  // aggregation. Session info names the car (`carNumber`).
   diffOpponentFlags(
     self.state,
     telemetry,
+    sessionInfo,
     playerCarIdx,
     resolvePaceCarIdx(sessionInfo),
     isRaceSession,
@@ -2138,10 +2188,10 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
     isPostRace(telemetry),
     resolveIsMultiClass(sessionInfo) === true,
     canonicalPositions,
-    trackLengthMeters,
-    self.getOpponentFlagCalloutEnabled,
+    self.opponentFlagResolvers,
     now,
     emit,
+    self.opponentFlagLogger,
   );
 
   // Leader's white flag (issue #936) — detected by lap counting against the

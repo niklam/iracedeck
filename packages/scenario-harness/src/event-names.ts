@@ -55,9 +55,16 @@ export const EVENT_TEMPLATES = [
   },
   {
     name: "opponentFlag.flagged",
-    description:
-      "A penalty flag on another car matters to us (issue #936) — relation: ahead / behind / track-ahead / others",
-    data: { relation: "ahead", carIdx: 7, flag: OpponentPenaltyFlag.Black, trigger: "raised", position: 5 },
+    description: "A penalty flag on a nearby car in our class (issues #936, #1274) — relation: ahead / behind / others",
+    data: {
+      relation: "ahead",
+      carIdx: 7,
+      flag: OpponentPenaltyFlag.Black,
+      trigger: "raised",
+      position: 5,
+      carNumber: "42",
+      gapSeconds: 1.8,
+    },
   },
   {
     name: "cornerName.approaching",

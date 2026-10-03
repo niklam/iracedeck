@@ -134,8 +134,13 @@ export enum OpponentPenaltyFlag {
   Disqualify = "disqualify",
 }
 
-/** Who a flagged car is relative to the player. `"others"` is the aggregate tail. */
-export type OpponentFlagRelation = "ahead" | "behind" | "track-ahead" | "others";
+/**
+ * Who a flagged car is relative to the player (issue #1274): `"ahead"` is a
+ * same-class, same-lap car one to three class positions ahead, `"behind"` the
+ * one directly behind, both within the driver's race-gap range. `"others"` is
+ * the aggregate tail.
+ */
+export type OpponentFlagRelation = "ahead" | "behind" | "others";
 
 /** One tire, by the car's own front/rear and left/right (issue #1108). */
 export type TireCorner = "lf" | "rf" | "lr" | "rr";
@@ -428,8 +433,11 @@ export type SimEventMap = {
    * (`trigger: "entered-range"`). `position` is the car's effective position
    * at emit time (class position in multi-class) — consumers prefer a live
    * speak-time read and use this as the fallback; `isMultiClass` records the
-   * projection the classification ran in. `gapSeconds` is the coarse forward
-   * track gap, present for `"track-ahead"` only. `carIdx`/`flag`/`trigger`
+   * projection the classification ran in. `carNumber` is the car's number as
+   * the session info spells it (a string, so `09` and `9` stay distinct),
+   * absent when the session info has no row for the car. `gapSeconds` is the
+   * race gap to the car (#933's crossing-time gap, issue #1274), present on
+   * every individual event. `carIdx`/`flag`/`trigger`/`carNumber`/`gapSeconds`
    * are absent for the `"others"` aggregate.
    */
   "opponentFlag.flagged": SimEvent<
@@ -440,6 +448,7 @@ export type SimEventMap = {
       flag?: OpponentPenaltyFlag;
       trigger?: "raised" | "entered-range";
       position?: number;
+      carNumber?: string;
       gapSeconds?: number;
       isMultiClass?: boolean;
     }

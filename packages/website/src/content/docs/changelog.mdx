@@ -28,6 +28,11 @@ _Unreleased_
 - When iRacing runs as Administrator and iRaceDeck does not, pressing a key while iRacing is behind another window no longer holds up iRaceDeck for a second or sends a stray Alt key to the window in front. iRaceDeck now stops trying to bring iRacing forward once it has detected the mismatch, since Windows will not allow it (View Adjustment's **Mouse to Sim** still tries, as that is what the key is for); run both at the same privilege level to get your actions working. See [Focus iRacing Window](/docs/features/focus-iracing-window/#why-it-matters).
 - The Race Engineer no longer says "Change" under a full-course caution for the car he has just named, and no longer cuts off the two-to-green or one-to-go call to repeat it.
 - On Ulanzi decks, a newly placed key now works as set up from its very first press. Settings iRaceDeck saves for a key by itself were ignored until the key was next shown, after a page change or a restart, so until then a new key acted like one created by an old version: a new **Tire Service** key on **Toggle Tires**, for example, flipped each tire instead of using its default *Select configured tires* behavior. See [Tire Service](/docs/actions/pit-service/tire-service/#toggle-tires).
+- The Race Engineer no longer announces penalty flags on cars you are not racing. Opponent flags are now called only for a car in your class and on your lap, up to three places ahead of you or directly behind, and within a new **Opponent flag range (s)** setting (1 to 10 seconds, 3 by default) under **Opponent Flags** in the Settings window. Cars in the pits are never called, nothing is called while you are in the pits, and a car with several flags gets one call, for the worst. He names the car by its number (*"Car 42 ahead has a slowdown penalty."*), calls a furled black flag a slowdown penalty, and waits for a black flag to stay up for three seconds before calling it. The "car ahead on track" calls about any nearby car are gone, and the **Furled black flag (warning)** checkbox is now **Slowdown (furled black flag)**. See [Pit Crew](/docs/actions/audio-voice/pit-crew/#opponent-penalty-flags-races).
+
+**Maintenance**
+
+- Race Engineer debug logs now say which car an opponent-flag call was about and why, and why a flagged car was left unannounced.
 
 ## 3.4.0
 

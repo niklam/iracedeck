@@ -26,6 +26,7 @@ import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import type { CornerMarker } from "@iracedeck/track-data";
 
 import type { TranslatorState } from "../state.js";
+import { coerceSettingNumber } from "./setting-number.js";
 import type { EmitFn } from "./types.js";
 
 /**
@@ -56,9 +57,9 @@ export const CORNER_CALLOUT_LEAD_MAX_SECONDS = 5;
  * wrap their live-read closure in this (the #838 fuel-margin pattern).
  */
 export function sanitizeCornerCalloutLeadSeconds(value: unknown): number {
-  const n = typeof value === "string" && value !== "" ? Number(value) : value;
+  const n = coerceSettingNumber(value);
 
-  if (typeof n !== "number" || !Number.isFinite(n)) return CORNER_CALLOUT_DEFAULT_LEAD_SECONDS;
+  if (n === null) return CORNER_CALLOUT_DEFAULT_LEAD_SECONDS;
 
   return Math.min(CORNER_CALLOUT_LEAD_MAX_SECONDS, Math.max(CORNER_CALLOUT_LEAD_MIN_SECONDS, n));
 }

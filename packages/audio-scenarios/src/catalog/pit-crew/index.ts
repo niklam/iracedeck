@@ -297,7 +297,6 @@ export {
   type UnderCautionResolver,
 } from "./caution.js";
 export {
-  _resetOpponentFlagPending,
   OPPONENT_FLAG_CALLOUT_SETTING_KEYS,
   OPPONENT_FLAG_CLIP_SOURCES,
   OPPONENT_FLAG_CONTRACTS,
@@ -1213,20 +1212,20 @@ export type PitCrewDeps = {
   // clause — a safe stub for tests.
   getLiveGaps?: LiveGapsResolver;
   // User opt-ins for the opponent-flag callouts (issue #936). Four subjects —
-  // `furled`, `black`, `meatball`, `disqualify` — each gating its own three
-  // relation scenarios (ahead/behind/track-ahead) plus (for `black`) the aggregate
-  // tail. Same gate-at-event-arrival shape as the other callout families. Default
-  // `() => true` preserves legacy behavior for tests that don't supply a closure.
+  // `furled`, `black`, `meatball`, `disqualify` — each gating its own two
+  // relation scenarios (ahead/behind, #1274). The aggregate tail is not
+  // per-flag-gated (see the registration below). Same gate-at-event-arrival
+  // shape as the other callout families. Default `() => true` preserves
+  // legacy behavior for tests that don't supply a closure.
   getOpponentFlagCalloutEnabled?: (id: OpponentFlagCalloutId) => boolean;
   // Opponent-flag live position resolver (issue #936). Plugins wire
-  // `getLiveCarPosition` so the ahead line's number is fresh at speak time,
-  // read in the projection the event was classified in (the pending
-  // stash's `isMultiClass`). The flagged car itself is carried by a
-  // module-scope stash written in the firing ahead scenario's `where:`
-  // (the #922 shape, shared across all four subjects), so an event that
-  // fails its own scenario's gates can never repoint a deferred line.
-  // Default `() => null` falls back to the emit-time payload position — a
-  // safe stub for tests and the harness.
+  // `getLiveCarPosition` so the `opponentFlag.number` var — the 3.3.0
+  // position var, kept for third-party packs; the bundled pack names the car
+  // by number since #1274 — is fresh at speak time, read in the projection
+  // the event was classified in (the payload's `isMultiClass`). The var reads
+  // the expanding fire's own event, so a later flag event can never repoint
+  // a deferred line. Default `() => null` falls back to the emit-time
+  // payload position — a safe stub for tests and the harness.
   getOpponentFlagLivePosition?: OpponentFlagLivePositionResolver;
   // User opt-ins for the full-course caution callouts (issue #1127). Nine
   // subjects, one per moment of the sequence. Same gate-at-event-arrival shape
@@ -1672,14 +1671,14 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
     );
   }
 
-  // Opponent-flag family (issue #936; scripted since #1065). One contract per
-  // flag × relation so every line is individually harness-firable and the
-  // safety-relevant track-ahead lines carry SAFETY weight; both diff triggers
+  // Opponent-flag family (issue #936; scripted since #1065; reworked for
+  // #1274). One contract per flag × relation (ahead/behind) so every line is
+  // individually harness-firable, all at normal weight; both diff triggers
   // ride the same contracts, and the lines themselves are the voice script's
-  // `pool:opponent-flags/<base>` steps (the numbered ahead lines splice the
-  // `opponentFlag.number` var, registered first). Family-less + queueable for
-  // the same reason as opponent-pit: the lines describe DIFFERENT cars —
-  // queue, never chop. The aggregate (`opponent-flag-others`) registers
+  // steps (the bundled lines name the car with the `opponentFlag.carNumber`
+  // var, registered first, before a `pool:opponent-flags/<base>` tail).
+  // Family-less + queueable for the same reason as opponent-pit: the lines
+  // describe DIFFERENT cars — queue, never chop. The aggregate (`opponent-flag-others`) registers
   // master-gated but NOT per-flag-gated: the translator diff enforces the
   // per-flag opt-ins before anything feeds the aggregation, so the aggregate
   // by construction only describes enabled flags — gating it on one subject's
