@@ -52,6 +52,17 @@ Frames with `code` set and no `cmdType === "REQUEST"` are ack/responses and are 
 
 Ulanzi only carries settings on `add` / `paramfromapp`; `keydown` / `keyup` / `dial*` frames omit them. The client caches the latest settings per context and **backfills** press/dial events before routing — otherwise actions would fire with empty settings. The cache is dropped on `clear`.
 
+**The cache is write-through (#1236).** `UlanziClient.setSettings` replaces the context's entry with the written object once the frame is sent — whole, the host's write semantics — so the next press carries what the plugin last wrote. Before #1236 a plugin-side write left the cache on the pre-write object until the next `add` / `paramfromapp`, and on a freshly placed key that meant every press saw `{}`: whatever the actions wrote on first appearance was invisible, so a new Tire Service key had no `toggleMode` and no `addedWithVersion`, resolved as a pre-1.13 instance, and used *Toggle configured tires* instead of *Select configured tires*. Note that a fresh key's base `addedWithVersion` stamp is still not in the cache afterwards, on this host or any other: Tire Service and Fuel Service write `{...raw, …}` after `super.onWillAppear`, which replaces the stamp's object on the host too. That is theirs, not the cache's.
+
+The deliberate edges:
+
+- **The cache is isolated both ways.** It stores a `structuredClone` of every settings object it takes in (`add`, `paramfromapp`, `setSettings`) and hands each backfilled event its own clone, so neither a caller mutating the object it wrote nor a handler mutating its payload can change what later events see.
+- **Only a sent write is cached.** `send` reports whether the socket was open. A dropped `setSettings` logs a warning and leaves the entry alone, so the cache never claims settings the host did not receive.
+- **A write never creates an entry.** A write for a context with no entry (one landing after its `clear`) still goes to the host, logs at debug, and does not resurrect the entry.
+- **An uncached context is backfilled with `{}`**, not left undefined. deck-core's event payloads require a settings object and the adapter would coerce `undefined` to `{}` anyway, so "unknown" cannot reach an action as anything else.
+
+**Unmeasured:** whether UlanziStudio echoes a `paramfromapp` after a plugin `setSettings`. With no Ulanzi device on the dev machine no action ever appears, so no `add` has been observed. If the host does echo, the echo of an EARLIER write could land after a later write was cached and roll the entry back until the later echo arrives — on a fresh key the base's stamp and the action's own write go out back to back. The same echo would reach `onDidReceiveSettings` regardless of the cache, so the write-through does not create that exposure, but measure it before relying on the cache's ordering.
+
 ### PI markers (synthesized)
 
 UlanziStudio has no host-generated "PI appeared" event. The Ulanzi PI bridge (in `@iracedeck/pi-components`) sends a `sendToPlugin` marker (`payload.event === "propertyInspectorDidAppear"`) on connect; the client normalizes that into the `propertyInspectorDidAppear` global event so `onPropertyInspectorDidAppear` (e.g. audio-device re-enumeration) works.
