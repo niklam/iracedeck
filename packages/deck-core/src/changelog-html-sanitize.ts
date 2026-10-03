@@ -25,8 +25,20 @@ const ALLOWED_TAGS = new Set(["code", "strong", "em", "a"]);
  * Matches one tag: `</?name ...attrs>`. Deliberately not a general HTML parser.
  * Built per call, never shared: a `g`-flagged regex carries `lastIndex`, and a
  * module-level one would make this function stateful across calls.
+ *
+ * Linear in the bullet's length, and that is load-bearing (#1101): this runs
+ * over remote text inside the plugin process. No part of an attempt may cross
+ * a `<` — not the attribute text, not a quoted value — so an attempt that
+ * fails ends at the next `<`, where the next attempt starts, and no character
+ * is rescanned by more than one of them. The lookahead pins the name to its
+ * full length, so a long run of name characters is not retried at every
+ * shorter split between name and attributes. Without both, `<a<a<a…` or a `<`
+ * followed by a long word with no `>` takes time quadratic in its length —
+ * about half an hour for a 2 MB body. A tag carrying a `<` inside a quoted
+ * value is no longer recognised and is escaped as text; the generator never
+ * emits one.
  */
-const TAG_PATTERN = "<(/?)([a-zA-Z][a-zA-Z0-9]*)((?:[^>\"']|\"[^\"]*\"|'[^']*')*)>";
+const TAG_PATTERN = "<(/?)([a-zA-Z][a-zA-Z0-9]*)(?![a-zA-Z0-9])((?:[^<>\"']|\"[^\"<]*\"|'[^'<]*')*)>";
 
 /** Matches `href="…"` / `href='…'` / bare `href=…` in a tag's attribute text. */
 const HREF = /\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/i;

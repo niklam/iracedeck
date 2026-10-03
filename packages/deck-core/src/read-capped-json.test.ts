@@ -52,7 +52,7 @@ describe("readCappedJson", () => {
   });
 
   it("drops a leading byte-order mark, as response.json() does", async () => {
-    const response = new Response('﻿{"ok":true}');
+    const response = new Response('\uFEFF{"ok":true}');
 
     await expect(readCappedJson(response, 1024)).resolves.toEqual({ ok: true });
   });
@@ -72,6 +72,16 @@ describe("readCappedJson", () => {
 
     await expect(readCappedJson(response, 500)).rejects.toBeInstanceOf(ResponseTooLargeError);
   });
+
+  it.each([Number.NaN, Number.POSITIVE_INFINITY, 0, -1, 1.5])(
+    "refuses a cap of %s rather than reading unbounded",
+    async (cap) => {
+      const { response, state } = streamedResponse(["{}"]);
+
+      await expect(readCappedJson(response, cap)).rejects.toBeInstanceOf(RangeError);
+      expect(state.cancelled).toBe(true);
+    },
+  );
 
   it("throws on a body that is not JSON", async () => {
     await expect(readCappedJson(new Response("<html>captive portal</html>"), 1024)).rejects.toBeInstanceOf(SyntaxError);

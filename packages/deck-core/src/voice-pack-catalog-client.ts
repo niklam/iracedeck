@@ -29,7 +29,11 @@
  */
 import { abortAfter } from "./abort-after.js";
 import { readCappedJson } from "./read-capped-json.js";
-import { parseVoicePackCatalog, type VoicePackCatalogEntry } from "./voice-pack-catalog.js";
+import {
+  parseVoicePackCatalog,
+  VOICE_PACK_CATALOG_MAX_BYTES,
+  type VoicePackCatalogEntry,
+} from "./voice-pack-catalog.js";
 
 /** The artifact the website build publishes (see packages/website/scripts). */
 export const VOICE_PACK_CATALOG_URL = "https://iracedeck.com/voice-catalog.json";
@@ -41,14 +45,6 @@ export const VOICE_PACK_CATALOG_URL = "https://iracedeck.com/voice-catalog.json"
  * Engineer card, which has installed packs to show with or without an answer.
  */
 export const VOICE_PACK_CATALOG_FETCH_TIMEOUT_MS = 5000;
-
-/**
- * The most body this fetch will read (#1101); a larger one is refused mid-read
- * as "we do not know". An entry is around half a kilobyte and the catalog
- * holds at most `VOICE_PACK_CATALOG_MAX_PACKS` of them, so a legitimate
- * document never comes near this.
- */
-export const VOICE_PACK_CATALOG_MAX_BYTES = 256 * 1024;
 
 /**
  * What one fetch answered.
@@ -105,7 +101,13 @@ export async function fetchVoicePackCatalog(
     // reports, and it carries no body worth (or safe) reading as JSON.
     if (response.status === 304) return { status: "not-modified" };
 
-    if (!response.ok) return { status: "unknown" };
+    if (!response.ok) {
+      // Released rather than left unread: an unread body holds its connection
+      // until it is garbage-collected, and this fetch is retried on a schedule.
+      await response.body?.cancel().catch(() => undefined);
+
+      return { status: "unknown" };
+    }
 
     const entries = parseVoicePackCatalog(await readCappedJson(response, maxBytes));
 

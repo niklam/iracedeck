@@ -30,8 +30,9 @@ import path from "node:path";
 // imports voice-pack-catalog.ts makes to its NodeNext-resolved siblings, which
 // have no compiled .js on disk in this checkout.
 import {
-  VOICE_PACK_CATALOG_MAX_PACKS,
+  VOICE_PACK_CATALOG_MAX_BYTES,
   VoicePackCatalogEntrySchema,
+  VoicePackCatalogSchema,
 } from "../../packages/deck-core/src/voice-pack-catalog.ts";
 
 /** Where committed catalog entries live, relative to the repository root. */
@@ -76,15 +77,6 @@ export function buildVoiceCatalogData(entriesDir) {
     .filter((name) => name.endsWith(".json"))
     .sort();
 
-  // Every plugin refuses a catalog longer than this as a whole (#1101), so
-  // publishing one would take every pack offline at once. Refused here, where
-  // a build can fail, rather than discovered there.
-  if (files.length > VOICE_PACK_CATALOG_MAX_PACKS) {
-    throw new Error(
-      `${VOICE_CATALOG_ENTRIES_DIR}: ${files.length} entries, but plugins refuse a catalog of more than ${VOICE_PACK_CATALOG_MAX_PACKS} (VOICE_PACK_CATALOG_MAX_PACKS in voice-pack-catalog.ts)`,
-    );
-  }
-
   const packs = files.map((file) => {
     const relPath = `${VOICE_CATALOG_ENTRIES_DIR}/${file}`;
     const filePath = path.join(entriesDir, file);
@@ -127,7 +119,20 @@ export function buildVoiceCatalogData(entriesDir) {
   // coincidence of the file-name check above.
   packs.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 
-  return { schema: 1, packs };
+  const data = { schema: 1, packs };
+
+  // The document as a whole, against the same schema the plugin reads it
+  // with: a plugin refuses a catalog that fails it ENTIRELY (#1101 — the pack
+  // cap, for one), so publishing one would take every pack offline at once.
+  const document = VoicePackCatalogSchema.safeParse(data);
+
+  if (!document.success) {
+    const issues = document.error.issues.map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`).join("; ");
+
+    throw new Error(`${VOICE_CATALOG_ENTRIES_DIR}: the assembled catalog would be refused by every plugin: ${issues}`);
+  }
+
+  return data;
 }
 
 /**
@@ -137,5 +142,16 @@ export function buildVoiceCatalogData(entriesDir) {
  * @returns {string}
  */
 export function serializeVoiceCatalogData(data) {
-  return `${JSON.stringify(data, null, 2)}\n`;
+  const text = `${JSON.stringify(data, null, 2)}\n`;
+  const bytes = Buffer.byteLength(text, "utf-8");
+
+  // Checked on the serialized text because the cap is on the body as served,
+  // indentation included. Every plugin refuses a larger one whole (#1101).
+  if (bytes > VOICE_PACK_CATALOG_MAX_BYTES) {
+    throw new Error(
+      `voice-catalog.json would be ${bytes} bytes, but plugins refuse a catalog over ${VOICE_PACK_CATALOG_MAX_BYTES} (VOICE_PACK_CATALOG_MAX_BYTES in voice-pack-catalog.ts)`,
+    );
+  }
+
+  return text;
 }

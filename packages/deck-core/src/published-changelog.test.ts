@@ -4,7 +4,12 @@ import url from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { CHANGELOG_MAX_BYTES } from "./changelog-feed-client.js";
-import { parsePublishedChangelog, PUBLISHED_CHANGELOG_MAX_RELEASES } from "./published-changelog.js";
+import {
+  parsePublishedChangelog,
+  PUBLISHED_CHANGELOG_MAX_CATEGORIES,
+  PUBLISHED_CHANGELOG_MAX_ITEMS,
+  PUBLISHED_CHANGELOG_MAX_RELEASES,
+} from "./published-changelog.js";
 
 const repoRoot = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "../../..");
 
@@ -90,6 +95,32 @@ describe("parsePublishedChangelog", () => {
       PUBLISHED_CHANGELOG_MAX_RELEASES,
     );
   });
+
+  it("returns undefined for a release with more categories than the cap", () => {
+    const release = (n: number) => ({
+      releases: [
+        { version: "1.0.0", date: null, categories: Array.from({ length: n }, () => ({ title: "t", items: [] })) },
+      ],
+    });
+
+    expect(parsePublishedChangelog(release(PUBLISHED_CHANGELOG_MAX_CATEGORIES + 1))).toBeUndefined();
+    expect(parsePublishedChangelog(release(PUBLISHED_CHANGELOG_MAX_CATEGORIES))).toHaveLength(1);
+  });
+
+  it("returns undefined for a category with more items than the cap", () => {
+    const release = (n: number) => ({
+      releases: [
+        {
+          version: "1.0.0",
+          date: null,
+          categories: [{ title: "t", items: Array.from({ length: n }, () => "x") }],
+        },
+      ],
+    });
+
+    expect(parsePublishedChangelog(release(PUBLISHED_CHANGELOG_MAX_ITEMS + 1))).toBeUndefined();
+    expect(parsePublishedChangelog(release(PUBLISHED_CHANGELOG_MAX_ITEMS))).toHaveLength(1);
+  });
 });
 
 // The changelog grows with every release, and a published artifact over either
@@ -108,10 +139,13 @@ describe("published changelog headroom (#1101)", () => {
     expect(Buffer.byteLength(artifact, "utf-8")).toBeLessThan(CHANGELOG_MAX_BYTES / 2);
   });
 
-  it("is under half the release cap", () => {
-    const releases = parsePublishedChangelog(JSON.parse(artifact));
+  it("is under half of every shape cap", () => {
+    const releases = parsePublishedChangelog(JSON.parse(artifact)) ?? [];
+    const categories = releases.map((release) => release.categories);
 
-    expect(releases).toBeDefined();
-    expect(releases?.length).toBeLessThan(PUBLISHED_CHANGELOG_MAX_RELEASES / 2);
+    expect(releases.length).toBeGreaterThan(0);
+    expect(releases.length).toBeLessThan(PUBLISHED_CHANGELOG_MAX_RELEASES / 2);
+    expect(Math.max(...categories.map((c) => c.length))).toBeLessThan(PUBLISHED_CHANGELOG_MAX_CATEGORIES / 2);
+    expect(Math.max(...categories.flat().map((c) => c.items.length))).toBeLessThan(PUBLISHED_CHANGELOG_MAX_ITEMS / 2);
   });
 });

@@ -34,7 +34,18 @@ export class ResponseTooLargeError extends Error {
  * `response.json()`.
  */
 export async function readCappedJson(response: Response, maxBytes: number): Promise<unknown> {
-  const chunks: Uint8Array[] = [];
+  // `received > NaN` is never true, so an unvalidated cap could switch itself
+  // off without a word. Refused the way voice-pack-download.ts refuses one.
+  if (!Number.isInteger(maxBytes) || maxBytes <= 0) {
+    await response.body?.cancel().catch(() => undefined);
+
+    throw new RangeError(`byte cap ${String(maxBytes)} is not a positive integer`);
+  }
+
+  // Decoded as the chunks arrive, so no copy of the raw bytes outlives the
+  // chunk it came in.
+  const decoder = new TextDecoder();
+  const text: string[] = [];
   let received = 0;
 
   if (response.body !== null) {
@@ -55,19 +66,13 @@ export async function readCappedJson(response: Response, maxBytes: number): Prom
         throw new ResponseTooLargeError(maxBytes);
       }
 
-      chunks.push(value);
+      text.push(decoder.decode(value, { stream: true }));
     }
   }
 
-  const body = new Uint8Array(received);
-  let offset = 0;
-
-  for (const chunk of chunks) {
-    body.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
+  text.push(decoder.decode());
 
   // An empty body is "" here and a SyntaxError from the parse, exactly as it
   // is from `response.json()`.
-  return JSON.parse(new TextDecoder().decode(body));
+  return JSON.parse(text.join(""));
 }

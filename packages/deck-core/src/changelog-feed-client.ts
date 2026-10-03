@@ -58,7 +58,13 @@ export async function fetchPublishedChangelog(
   try {
     const response = await fetchImpl(url, { signal: abortAfter(timeoutMs), cache: "no-store" });
 
-    if (!response.ok) return undefined;
+    if (!response.ok) {
+      // Released rather than left unread: an unread body holds its connection
+      // until it is garbage-collected.
+      await response.body?.cancel().catch(() => undefined);
+
+      return undefined;
+    }
 
     return parsePublishedChangelog(await readCappedJson(response, maxBytes));
   } catch {

@@ -62,7 +62,7 @@ describe("buildVoiceCatalogData", () => {
       writeEntry(id, validEntry({ id, voices: [{ id, label: "Voice" }] }));
     }
 
-    expect(() => buildVoiceCatalogData(root)).toThrow(/VOICE_PACK_CATALOG_MAX_PACKS/);
+    expect(() => buildVoiceCatalogData(root)).toThrow(/refused by every plugin.*packs/);
 
     rmSync(path.join(root, "pack-0.json"));
 
@@ -160,6 +160,13 @@ describe("buildVoiceCatalogData", () => {
 });
 
 describe("serializeVoiceCatalogData", () => {
+  it("throws when the published document would exceed the plugins' byte cap", () => {
+    const voices = Array.from({ length: 200 }, (_, i) => ({ id: `voice-${i}`, label: `Voice ${i}` }));
+    const big = { schema: 1, packs: Array.from({ length: 20 }, (_, i) => validEntry({ id: `pack-${i}`, voices })) };
+
+    expect(() => serializeVoiceCatalogData(big)).toThrow(/VOICE_PACK_CATALOG_MAX_BYTES/);
+  });
+
   it("ends with a trailing newline", () => {
     expect(serializeVoiceCatalogData({ schema: 1, packs: [] })).toMatch(/\n$/);
   });

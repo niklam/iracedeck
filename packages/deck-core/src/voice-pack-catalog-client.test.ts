@@ -1,11 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  fetchVoicePackCatalog,
-  VOICE_PACK_CATALOG_MAX_BYTES,
-  VOICE_PACK_CATALOG_URL,
-} from "./voice-pack-catalog-client.js";
-import { VOICE_PACK_CATALOG_MAX_PACKS } from "./voice-pack-catalog.js";
+import { fetchVoicePackCatalog, VOICE_PACK_CATALOG_URL } from "./voice-pack-catalog-client.js";
+import { VOICE_PACK_CATALOG_MAX_BYTES, VOICE_PACK_CATALOG_MAX_PACKS } from "./voice-pack-catalog.js";
 
 const SHA = "a".repeat(64);
 
@@ -85,17 +81,34 @@ describe("fetchVoicePackCatalog", () => {
   });
 
   it("reports not-modified on a 304 without reading the body", async () => {
-    const response = new Response(null, { status: 304 });
-    const fetchImpl = vi.fn(async () => response) as unknown as typeof fetch;
+    // A real Response cannot carry a body on a 304, so this double does — one
+    // that holds a valid catalog and fails the test if it is ever touched.
+    const getReader = vi.fn(() => new Response(JSON.stringify(BODY)).body!.getReader());
+    const fetchImpl = vi.fn(async () => ({
+      ok: false,
+      status: 304,
+      body: { getReader, cancel: vi.fn(async () => undefined) },
+      headers: new Headers(),
+    })) as unknown as typeof fetch;
 
     await expect(fetchVoicePackCatalog({ fetchImpl })).resolves.toEqual({ status: "not-modified" });
-    expect(response.bodyUsed).toBe(false);
+    expect(getReader).not.toHaveBeenCalled();
   });
 
   it("returns unknown on a non-OK, non-304 status", async () => {
     expect(await fetchVoicePackCatalog({ fetchImpl: respondWith(BODY, { status: 500 }) })).toEqual({
       status: "unknown",
     });
+  });
+
+  it("releases the body of a non-OK response rather than leaving it unread", async () => {
+    const response = new Response("<html>503</html>", { status: 503 });
+    const fetchImpl = vi.fn(async () => response) as unknown as typeof fetch;
+
+    await fetchVoicePackCatalog({ fetchImpl });
+
+    // A cancelled stream is disturbed, so a later read is refused.
+    expect(response.bodyUsed).toBe(true);
   });
 
   it("returns unknown when the request throws", async () => {

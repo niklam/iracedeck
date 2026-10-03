@@ -41,6 +41,14 @@ describe("fetchPublishedChangelog", () => {
     expect(await fetchPublishedChangelog({ fetchImpl: respondWith(BODY, 500) })).toBeUndefined();
   });
 
+  it("releases the body of a non-OK response rather than leaving it unread", async () => {
+    const response = new Response("<html>503</html>", { status: 503 });
+
+    await fetchPublishedChangelog({ fetchImpl: vi.fn(async () => response) as unknown as typeof fetch });
+
+    expect(response.bodyUsed).toBe(true);
+  });
+
   it("returns undefined when the request throws", async () => {
     const fetchImpl = vi.fn(async () => {
       throw new Error("ECONNREFUSED");
