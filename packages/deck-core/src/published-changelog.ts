@@ -31,8 +31,16 @@ const ReleaseSchema = z.object({
   categories: z.array(CategorySchema),
 });
 
+/**
+ * The most releases the artifact may carry (#1101) — 41 in October 2026, so
+ * decades of headroom. What it stops is a well-formed but absurd document
+ * being validated and sanitized release by release; `published-changelog.test.ts`
+ * fails long before the committed artifact gets near it.
+ */
+export const PUBLISHED_CHANGELOG_MAX_RELEASES = 1000;
+
 const PublishedChangelogSchema = z.object({
-  releases: z.array(ReleaseSchema),
+  releases: z.array(ReleaseSchema).max(PUBLISHED_CHANGELOG_MAX_RELEASES),
 });
 
 export type PublishedReleaseCategory = z.infer<typeof CategorySchema>;

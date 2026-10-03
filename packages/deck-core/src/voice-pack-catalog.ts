@@ -73,13 +73,23 @@ export const VoicePackCatalogEntrySchema = z.object({
 export type VoicePackCatalogEntry = z.infer<typeof VoicePackCatalogEntrySchema>;
 
 /**
+ * The most entries a catalog may list (#1101). It lists iRaceDeck's own packs
+ * and nothing else, so this is far beyond anything it will hold; what it
+ * stops is a well-formed but absurd document of millions of entries, each of
+ * which would otherwise be validated one by one in a synchronous loop while
+ * telemetry is polled every 10 ms. The website's generator refuses to publish
+ * past it, so the cap can never take a real catalog offline.
+ */
+export const VOICE_PACK_CATALOG_MAX_PACKS = 100;
+
+/**
  * `schema` stays `1` for the same reason the pack manifest's does: a version
  * distinguishes formats that coexist in the wild, and nothing has published a
  * voice catalog yet.
  */
 export const VoicePackCatalogSchema = z.object({
   schema: z.literal(1),
-  packs: z.array(z.unknown()),
+  packs: z.array(z.unknown()).max(VOICE_PACK_CATALOG_MAX_PACKS),
 });
 
 /**

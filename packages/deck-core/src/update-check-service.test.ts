@@ -22,7 +22,7 @@ function release(version: string, date: string | null = "2026-08-14"): Published
 
 /** A fetch double answering with the given releases artifact. */
 function feed(releases: PublishedRelease[]): typeof fetch {
-  return vi.fn(async () => ({ ok: true, json: async () => ({ releases }) })) as unknown as typeof fetch;
+  return vi.fn(async () => new Response(JSON.stringify({ releases }))) as unknown as typeof fetch;
 }
 
 function service(overrides: Partial<UpdateCheckServiceDeps> = {}) {
@@ -114,10 +114,9 @@ describe("createUpdateCheckService", () => {
   });
 
   it("shares one request between concurrent callers", async () => {
-    const fetchImpl = vi.fn(async () => ({
-      ok: true,
-      json: async () => ({ releases: [release("2.6.0")] }),
-    })) as unknown as typeof fetch;
+    const fetchImpl = vi.fn(
+      async () => new Response(JSON.stringify({ releases: [release("2.6.0")] })),
+    ) as unknown as typeof fetch;
     const svc = service({ fetchImpl });
 
     await Promise.all([svc.get(), svc.get(), svc.get()]);

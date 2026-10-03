@@ -29,7 +29,10 @@ import path from "node:path";
 // resolves this file's own syntax fine, but not the `.js`-extensioned relative
 // imports voice-pack-catalog.ts makes to its NodeNext-resolved siblings, which
 // have no compiled .js on disk in this checkout.
-import { VoicePackCatalogEntrySchema } from "../../packages/deck-core/src/voice-pack-catalog.ts";
+import {
+  VOICE_PACK_CATALOG_MAX_PACKS,
+  VoicePackCatalogEntrySchema,
+} from "../../packages/deck-core/src/voice-pack-catalog.ts";
 
 /** Where committed catalog entries live, relative to the repository root. */
 export const VOICE_CATALOG_ENTRIES_DIR = "packages/audio-assets/catalog";
@@ -72,6 +75,15 @@ export function buildVoiceCatalogData(entriesDir) {
   const files = readdirSync(entriesDir)
     .filter((name) => name.endsWith(".json"))
     .sort();
+
+  // Every plugin refuses a catalog longer than this as a whole (#1101), so
+  // publishing one would take every pack offline at once. Refused here, where
+  // a build can fail, rather than discovered there.
+  if (files.length > VOICE_PACK_CATALOG_MAX_PACKS) {
+    throw new Error(
+      `${VOICE_CATALOG_ENTRIES_DIR}: ${files.length} entries, but plugins refuse a catalog of more than ${VOICE_PACK_CATALOG_MAX_PACKS} (VOICE_PACK_CATALOG_MAX_PACKS in voice-pack-catalog.ts)`,
+    );
+  }
 
   const packs = files.map((file) => {
     const relPath = `${VOICE_CATALOG_ENTRIES_DIR}/${file}`;

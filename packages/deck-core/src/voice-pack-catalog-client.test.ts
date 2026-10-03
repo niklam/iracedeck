@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { fetchVoicePackCatalog, VOICE_PACK_CATALOG_URL } from "./voice-pack-catalog-client.js";
+import {
+  fetchVoicePackCatalog,
+  VOICE_PACK_CATALOG_MAX_BYTES,
+  VOICE_PACK_CATALOG_URL,
+} from "./voice-pack-catalog-client.js";
+import { VOICE_PACK_CATALOG_MAX_PACKS } from "./voice-pack-catalog.js";
 
 const SHA = "a".repeat(64);
 
@@ -16,25 +21,21 @@ const ENTRY = {
 
 const BODY = { schema: 1, packs: [ENTRY] };
 
-/** A fetch double that never calls `json()` — used to prove a 304 is not re-parsed. */
-function explodingJson(): () => Promise<unknown> {
-  return () => {
-    throw new Error("json() must not be called on a 304");
-  };
-}
+/**
+ * A fetch double answering with a real `Response`, so the body is read as a
+ * stream. `text` is sent verbatim; otherwise `body` is serialized. A 304 is a
+ * null-body status, so it carries none.
+ */
+function respondWith(body: unknown, opts: { status?: number; etag?: string; text?: string } = {}): typeof fetch {
+  const { status = 200, etag, text } = opts;
 
-function respondWith(
-  body: unknown,
-  opts: { ok?: boolean; status?: number; etag?: string; json?: () => Promise<unknown> } = {},
-): typeof fetch {
-  const { status = 200, ok = status >= 200 && status < 300, etag, json } = opts;
-
-  return vi.fn(async () => ({
-    ok,
-    status,
-    json: json ?? (async () => body),
-    headers: { get: (name: string) => (name.toLowerCase() === "etag" ? (etag ?? null) : null) },
-  })) as unknown as typeof fetch;
+  return vi.fn(
+    async () =>
+      new Response(status === 304 ? null : (text ?? JSON.stringify(body)), {
+        status,
+        headers: etag === undefined ? undefined : { ETag: etag },
+      }),
+  ) as unknown as typeof fetch;
 }
 
 describe("fetchVoicePackCatalog", () => {
@@ -84,13 +85,15 @@ describe("fetchVoicePackCatalog", () => {
   });
 
   it("reports not-modified on a 304 without reading the body", async () => {
-    const fetchImpl = respondWith(undefined, { status: 304, ok: false, json: explodingJson() });
+    const response = new Response(null, { status: 304 });
+    const fetchImpl = vi.fn(async () => response) as unknown as typeof fetch;
 
     await expect(fetchVoicePackCatalog({ fetchImpl })).resolves.toEqual({ status: "not-modified" });
+    expect(response.bodyUsed).toBe(false);
   });
 
   it("returns unknown on a non-OK, non-304 status", async () => {
-    expect(await fetchVoicePackCatalog({ fetchImpl: respondWith(BODY, { status: 500, ok: false }) })).toEqual({
+    expect(await fetchVoicePackCatalog({ fetchImpl: respondWith(BODY, { status: 500 }) })).toEqual({
       status: "unknown",
     });
   });
@@ -104,16 +107,43 @@ describe("fetchVoicePackCatalog", () => {
   });
 
   it("returns unknown when the body is not JSON", async () => {
-    const fetchImpl = respondWith(undefined, {
-      json: async () => {
-        throw new SyntaxError("Unexpected token <");
-      },
-    });
+    const fetchImpl = respondWith(undefined, { text: "<html>captive portal</html>" });
 
     expect(await fetchVoicePackCatalog({ fetchImpl })).toEqual({ status: "unknown" });
   });
 
   it("returns unknown when the body has the wrong shape", async () => {
     expect(await fetchVoicePackCatalog({ fetchImpl: respondWith({ nope: true }) })).toEqual({ status: "unknown" });
+  });
+
+  it("returns unknown when the body is over the byte cap", async () => {
+    const text = JSON.stringify(BODY);
+
+    // The same well-formed document, one byte too long for the cap.
+    expect(
+      await fetchVoicePackCatalog({ fetchImpl: respondWith(undefined, { text }), maxBytes: text.length - 1 }),
+    ).toEqual({ status: "unknown" });
+    expect(
+      (await fetchVoicePackCatalog({ fetchImpl: respondWith(undefined, { text }), maxBytes: text.length })).status,
+    ).toBe("ok");
+  });
+
+  it("returns unknown for a padded body over the default cap", async () => {
+    // Valid JSON throughout, so only the cap can be what refuses it.
+    const text = `{"schema":1,"packs":[]${" ".repeat(VOICE_PACK_CATALOG_MAX_BYTES)}}`;
+
+    expect(await fetchVoicePackCatalog({ fetchImpl: respondWith(undefined, { text }) })).toEqual({ status: "unknown" });
+  });
+
+  it("returns unknown for a well-formed catalog listing more packs than the cap", async () => {
+    // Small enough to pass the byte cap, so the length cap is what refuses it.
+    const packs = (n: number) => ({ schema: 1, packs: Array.from({ length: n }, () => ({})) });
+
+    expect(await fetchVoicePackCatalog({ fetchImpl: respondWith(packs(VOICE_PACK_CATALOG_MAX_PACKS + 1)) })).toEqual({
+      status: "unknown",
+    });
+    expect((await fetchVoicePackCatalog({ fetchImpl: respondWith(packs(VOICE_PACK_CATALOG_MAX_PACKS)) })).status).toBe(
+      "ok",
+    );
   });
 });

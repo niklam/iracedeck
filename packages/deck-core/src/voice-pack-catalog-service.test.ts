@@ -35,24 +35,17 @@ function pack(id: string, overrides: Partial<VoicePackCatalogEntry> = {}): Voice
 
 /** A fetch double answering with the given entries, optionally carrying an ETag. */
 function catalogResponse(entries: VoicePackCatalogEntry[], opts: { etag?: string } = {}): typeof fetch {
-  return vi.fn(async () => ({
-    ok: true,
-    status: 200,
-    json: async () => ({ schema: 1, packs: entries }),
-    headers: { get: (name: string) => (name.toLowerCase() === "etag" ? (opts.etag ?? null) : null) },
-  })) as unknown as typeof fetch;
+  return vi.fn(
+    async () =>
+      new Response(JSON.stringify({ schema: 1, packs: entries }), {
+        headers: opts.etag === undefined ? undefined : { ETag: opts.etag },
+      }),
+  ) as unknown as typeof fetch;
 }
 
-/** A fetch double answering 304, whose `json()` throws if ever called. */
+/** A fetch double answering 304 — a null-body status, so there is nothing to read. */
 function notModifiedResponse(): typeof fetch {
-  return vi.fn(async () => ({
-    ok: false,
-    status: 304,
-    json: async () => {
-      throw new Error("json() must not be called on a 304");
-    },
-    headers: { get: () => null },
-  })) as unknown as typeof fetch;
+  return vi.fn(async () => new Response(null, { status: 304 })) as unknown as typeof fetch;
 }
 
 function service(overrides: Partial<VoicePackCatalogServiceDeps> = {}) {
@@ -231,12 +224,7 @@ describe("createVoicePackCatalogService", () => {
   });
 
   it("reports unknown on a non-OK status", async () => {
-    const fetchImpl = vi.fn(async () => ({
-      ok: false,
-      status: 500,
-      json: async () => ({}),
-      headers: { get: () => null },
-    })) as unknown as typeof fetch;
+    const fetchImpl = vi.fn(async () => new Response("{}", { status: 500 })) as unknown as typeof fetch;
 
     expect(await service({ fetchImpl }).get()).toEqual({ state: "unknown" });
   });
@@ -250,25 +238,13 @@ describe("createVoicePackCatalogService", () => {
   });
 
   it("reports unknown when the body is not JSON", async () => {
-    const fetchImpl = vi.fn(async () => ({
-      ok: true,
-      status: 200,
-      json: async () => {
-        throw new SyntaxError("Unexpected token <");
-      },
-      headers: { get: () => null },
-    })) as unknown as typeof fetch;
+    const fetchImpl = vi.fn(async () => new Response("<html>captive portal</html>")) as unknown as typeof fetch;
 
     expect(await service({ fetchImpl }).get()).toEqual({ state: "unknown" });
   });
 
   it("reports unknown when the body has the wrong shape", async () => {
-    const fetchImpl = vi.fn(async () => ({
-      ok: true,
-      status: 200,
-      json: async () => ({ nope: true }),
-      headers: { get: () => null },
-    })) as unknown as typeof fetch;
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ nope: true }))) as unknown as typeof fetch;
 
     expect(await service({ fetchImpl }).get()).toEqual({ state: "unknown" });
   });

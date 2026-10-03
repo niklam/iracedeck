@@ -1,13 +1,18 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { fetchPublishedChangelog, PUBLISHED_CHANGELOG_URL } from "./changelog-feed-client.js";
+import { CHANGELOG_MAX_BYTES, fetchPublishedChangelog, PUBLISHED_CHANGELOG_URL } from "./changelog-feed-client.js";
 
 const BODY = {
   releases: [{ version: "2.6.0", date: "2026-08-14", categories: [{ title: "Features", items: ["A thing."] }] }],
 };
 
-function respondWith(body: unknown, ok = true): typeof fetch {
-  return vi.fn(async () => ({ ok, json: async () => body })) as unknown as typeof fetch;
+/** A fetch double answering with a real `Response`, so the body is read as a stream. */
+function respondWithText(text: string, status = 200): typeof fetch {
+  return vi.fn(async () => new Response(text, { status })) as unknown as typeof fetch;
+}
+
+function respondWith(body: unknown, status = 200): typeof fetch {
+  return respondWithText(JSON.stringify(body), status);
 }
 
 describe("fetchPublishedChangelog", () => {
@@ -33,7 +38,7 @@ describe("fetchPublishedChangelog", () => {
   });
 
   it("returns undefined on a non-OK status", async () => {
-    expect(await fetchPublishedChangelog({ fetchImpl: respondWith(BODY, false) })).toBeUndefined();
+    expect(await fetchPublishedChangelog({ fetchImpl: respondWith(BODY, 500) })).toBeUndefined();
   });
 
   it("returns undefined when the request throws", async () => {
@@ -45,17 +50,31 @@ describe("fetchPublishedChangelog", () => {
   });
 
   it("returns undefined when the body is not JSON", async () => {
-    const fetchImpl = vi.fn(async () => ({
-      ok: true,
-      json: async () => {
-        throw new SyntaxError("Unexpected token <");
-      },
-    })) as unknown as typeof fetch;
-
-    expect(await fetchPublishedChangelog({ fetchImpl })).toBeUndefined();
+    expect(
+      await fetchPublishedChangelog({ fetchImpl: respondWithText("<html>captive portal</html>") }),
+    ).toBeUndefined();
   });
 
   it("returns undefined when the body has the wrong shape", async () => {
     expect(await fetchPublishedChangelog({ fetchImpl: respondWith({ nope: true }) })).toBeUndefined();
+  });
+
+  it("returns undefined when the body is over the byte cap", async () => {
+    const text = JSON.stringify(BODY);
+
+    // The same well-formed document, one byte too long for the cap.
+    expect(
+      await fetchPublishedChangelog({ fetchImpl: respondWithText(text), maxBytes: text.length - 1 }),
+    ).toBeUndefined();
+    expect(await fetchPublishedChangelog({ fetchImpl: respondWithText(text), maxBytes: text.length })).toHaveLength(1);
+  });
+
+  it("returns undefined for a padded body over the default cap", async () => {
+    // Valid JSON throughout — whitespace is legal between tokens — so only the
+    // cap can be what refuses it.
+    const padded = `{"releases":[]${" ".repeat(CHANGELOG_MAX_BYTES)}}`;
+
+    expect(await fetchPublishedChangelog({ fetchImpl: respondWithText(padded) })).toBeUndefined();
+    expect(await fetchPublishedChangelog({ fetchImpl: respondWithText(padded), maxBytes: padded.length })).toEqual([]);
   });
 });

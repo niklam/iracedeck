@@ -5,6 +5,7 @@ import url from "node:url";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { VOICE_PACK_CATALOG_MAX_PACKS } from "../packages/deck-core/src/voice-pack-catalog.ts";
 import { buildVoiceCatalogData, serializeVoiceCatalogData, VOICE_CATALOG_ENTRIES_DIR } from "./lib/voice-catalog-data.mjs";
 
 const repoRoot = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "..");
@@ -52,6 +53,20 @@ describe("buildVoiceCatalogData", () => {
     writeFileSync(path.join(root, "not-json.json"), "{ this is not json", "utf-8");
 
     expect(() => buildVoiceCatalogData(root)).toThrow(/not-json\.json/);
+  });
+
+  it("throws when there are more entries than a plugin will read", () => {
+    for (let i = 0; i <= VOICE_PACK_CATALOG_MAX_PACKS; i++) {
+      const id = `pack-${i}`;
+
+      writeEntry(id, validEntry({ id, voices: [{ id, label: "Voice" }] }));
+    }
+
+    expect(() => buildVoiceCatalogData(root)).toThrow(/VOICE_PACK_CATALOG_MAX_PACKS/);
+
+    rmSync(path.join(root, "pack-0.json"));
+
+    expect(buildVoiceCatalogData(root).packs).toHaveLength(VOICE_PACK_CATALOG_MAX_PACKS);
   });
 
   it("throws when an entry's id does not match its file name", () => {

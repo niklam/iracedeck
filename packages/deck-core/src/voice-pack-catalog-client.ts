@@ -21,13 +21,14 @@
  * filesystem, and it is unchanged: no page has a control that reaches this.
  * `voice-pack-catalog-base.ts` owns the validation and the reasoning.
  *
- * Never throws. A refused connection, a timeout, an HTTP error, a body that is
- * not JSON, and a body of the wrong shape are all the same answer —
+ * Never throws. A refused connection, a timeout, an HTTP error, a body over the
+ * byte cap, a body that is not JSON, and a body of the wrong shape are all the same answer —
  * `{ status: "unknown" }`, "we do not know" — because every caller acts on all
  * of them identically: the Installed Voices card renders exactly the packs it
  * already knew about, same as if this feature did not exist.
  */
 import { abortAfter } from "./abort-after.js";
+import { readCappedJson } from "./read-capped-json.js";
 import { parseVoicePackCatalog, type VoicePackCatalogEntry } from "./voice-pack-catalog.js";
 
 /** The artifact the website build publishes (see packages/website/scripts). */
@@ -40,6 +41,14 @@ export const VOICE_PACK_CATALOG_URL = "https://iracedeck.com/voice-catalog.json"
  * Engineer card, which has installed packs to show with or without an answer.
  */
 export const VOICE_PACK_CATALOG_FETCH_TIMEOUT_MS = 5000;
+
+/**
+ * The most body this fetch will read (#1101); a larger one is refused mid-read
+ * as "we do not know". An entry is around half a kilobyte and the catalog
+ * holds at most `VOICE_PACK_CATALOG_MAX_PACKS` of them, so a legitimate
+ * document never comes near this.
+ */
+export const VOICE_PACK_CATALOG_MAX_BYTES = 256 * 1024;
 
 /**
  * What one fetch answered.
@@ -74,9 +83,16 @@ export async function fetchVoicePackCatalog(
     etag?: string;
     fetchImpl?: typeof fetch;
     timeoutMs?: number;
+    maxBytes?: number;
   } = {},
 ): Promise<VoicePackCatalogFetchResult> {
-  const { url = VOICE_PACK_CATALOG_URL, etag, fetchImpl = fetch, timeoutMs = VOICE_PACK_CATALOG_FETCH_TIMEOUT_MS } = p;
+  const {
+    url = VOICE_PACK_CATALOG_URL,
+    etag,
+    fetchImpl = fetch,
+    timeoutMs = VOICE_PACK_CATALOG_FETCH_TIMEOUT_MS,
+    maxBytes = VOICE_PACK_CATALOG_MAX_BYTES,
+  } = p;
 
   try {
     const response = await fetchImpl(url, {
@@ -91,7 +107,7 @@ export async function fetchVoicePackCatalog(
 
     if (!response.ok) return { status: "unknown" };
 
-    const entries = parseVoicePackCatalog(await response.json());
+    const entries = parseVoicePackCatalog(await readCappedJson(response, maxBytes));
 
     if (entries === undefined) return { status: "unknown" };
 
