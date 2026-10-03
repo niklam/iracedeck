@@ -1034,6 +1034,15 @@ export type TranslatorState = {
   /** First tick seeds the per-car penalty-bit store silently. */
   opponentFlagsInitialized: boolean;
   /**
+   * Epoch ms of the tick that seeded the store (the first store tick, or the
+   * first one after a replay wipe re-seeds it); `0` before it. A HELD flag
+   * whose continuous-up time began on this tick was already up when the
+   * store first saw it, so its hold clearing reads `entered-range`, never
+   * `raised` (issue #1274) — the seed tick has no earlier truth to read.
+   * Re-seeds across a replay wipe with the rest of the store.
+   */
+  opponentFlagSeededAt: number;
+  /**
    * Masked penalty bits (`PENALTY_FLAG_MASK`) per carIdx as of the last
    * tick — the flag-state STORE `getLiveOpponentFlags()` reads (truth), and
    * the edge baseline the qualifier diffs against (policy). Advances every
@@ -1516,6 +1525,7 @@ export function createInitialState(): TranslatorState {
     replayLapsTimeWait: [],
 
     opponentFlagsInitialized: false,
+    opponentFlagSeededAt: 0,
     opponentFlagBits: [],
     opponentFlagHeldSinceAt: { furled: [], black: [] },
     opponentFlagAnnouncedMask: [],

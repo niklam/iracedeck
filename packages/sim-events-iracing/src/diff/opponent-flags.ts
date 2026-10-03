@@ -50,20 +50,26 @@
  * effectively active DURING a gated window is already reflected by the time
  * the gate reopens, so the reopened tick correctly reports `entered-range`
  * rather than replaying a `raised` for an edge that happened several ticks
- * earlier under the gate.
+ * earlier under the gate. One more case reads `entered-range` although the
+ * mask transitions: a HELD flag whose continuous-up time began on the seed
+ * tick (`opponentFlagSeededAt` — the first store tick, or the first after a
+ * replay wipe re-seeds it). It was already up when the store first looked,
+ * so its hold clearing three seconds later is not a flag being raised.
  *
  * **Qualification (#1274).** Per non-player/non-pace/in-world car with a
- * pending flag: same class (in multi-class `CarIdxClass` must match the
- * player's; an unreadable class does not qualify), same lap (lap-progress
- * scores within one lap — the #622 `classify` structure), then
+ * pending flag: same class (a readable `CarIdxClass` must match the
+ * player's in any session — `isMultiClass` reads false while session info is
+ * missing — and in multi-class an unreadable class does not qualify), same
+ * lap (lap-progress scores within one lap — the #622 `classify` structure),
+ * then
  * - `"ahead"`: one to {@link OPPONENT_FLAG_AHEAD_WINDOW} class positions
  *   ahead, and
  * - `"behind"`: exactly one class position behind,
  *
  * each only while the RACE gap — the gap display's own pair reading (#933's
  * crossing time, or the #1285 chaser ETA when the car ahead is crawling),
- * through the injected `getRaceGap(aheadCarIdx, behindCarIdx)` resolver so this module
- * stays a pure function of its inputs — is at most the driver's range
+ * through the injected `getRaceGap(aheadCarIdx, behindCarIdx)` resolver so
+ * this module stays a pure function of its inputs — is at most the driver's range
  * (`getRangeSeconds()`, read live once per announce pass). A `null` gap never
  * qualifies: silence is the right failure, a guessed gap is how the #936
  * track-ahead window said false things. There is no hysteresis on the bound;
@@ -81,9 +87,10 @@
  * episode-latch bit, stamp the flag's own cooldown (per-flag, so an
  * escalation like black → DQ on the same car is never suppressed by the
  * black cooldown), and emit with `trigger: "raised"` when the flag became
- * effectively active this exact tick, else `"entered-range"` (the
- * level-triggered case: the flag was already active and something else — the
- * qualification, a cooldown, a gate, an opt-in — just cleared). The payload
+ * effectively active this exact tick (and was not already up at the seed
+ * tick), else `"entered-range"` (the level-triggered case: the flag was
+ * already active and something else — the qualification, a cooldown, a gate,
+ * an opt-in — just cleared). The payload
  * names the car by `carNumber` (session info, omitted when there is no row)
  * and carries the race gap as `gapSeconds`.
  *
@@ -123,12 +130,13 @@
  *
  * Two classes of announce are exempt from the collapse:
  * - **Opt-outs never reach it.** The injected `getCalloutEnabled` resolver
- *   (live-read from the plugin's global settings per announce) is checked
- *   before any stamping, so a disabled subject never consumes the
- *   aggregation budget and can never redirect an enabled subject into a
- *   collapsed tail — the aggregate line by construction only ever describes
- *   flags the user opted into, which is why the audio side plays it master-
- *   gated but NOT per-flag-gated.
+ *   (live-read from the plugin's global settings once per pending flag per
+ *   pass) is checked before any stamping — and before the race-gap lookup,
+ *   which a car whose every pending flag is opted out skips — so a disabled
+ *   subject never consumes the aggregation budget and can never redirect an
+ *   enabled subject into a collapsed tail. The aggregate line by
+ *   construction only ever describes flags the user opted into, which is why
+ *   the audio side plays it master-gated but NOT per-flag-gated.
  * - **Escalations always get through.** A further flag on a car that
  *   already has an announced flag this episode (black → DQ) emits
  *   individually even mid-collapse and never counts as a new distinct car:
@@ -142,9 +150,10 @@
  * can show which car a call was about. An effectively-active flag that is
  * held back (not in world, class, lap, positions, gap, opt-out, cooldown, or
  * the aggregate collapse) writes one "held back" line with its reason, once
- * per (car, flag) episode via `opponentFlagHeldBackLoggedMask`: the FIRST
- * reason is the one logged, a later change of reason is not, and the car
- * still writes its announce line if it qualifies later. Nothing logs at info.
+ * per (car, flag) episode via
+ * `opponentFlagHeldBackLoggedMask`: the FIRST reason is the one logged, a
+ * later change of reason is not, and the car still writes its announce line
+ * if it qualifies later. Nothing logs at info.
  */
 import { OpponentPenaltyFlag } from "@iracedeck/event-bus";
 import {
@@ -296,37 +305,72 @@ type NotQualified = {
 type Assessment = Qualified | NotQualified;
 
 /**
+ * The player's side of every qualification, the same for every car in one
+ * announce pass — resolved once per pass rather than once per flagged car
+ * (the class position is an O(field) walk).
+ */
+type PlayerStanding = {
+  /** The player's (class) position; `0` when unresolved. */
+  pos: number;
+  /** The player's lap progress (`CarIdxLapCompleted + CarIdxLapDistPct`); `null` when unreadable. */
+  progress: number | null;
+};
+
+function resolvePlayerStanding(
+  telemetry: TelemetryData,
+  positions: number[],
+  playerCarIdx: number,
+  isMultiClass: boolean,
+): PlayerStanding {
+  const pos = isMultiClass
+    ? classPositionFromOrder(positions, telemetry.CarIdxClass as number[] | undefined, playerCarIdx)
+    : (positions[playerCarIdx] ?? 0);
+  const lc = telemetry.CarIdxLapCompleted?.[playerCarIdx] ?? -1;
+  const dp = telemetry.CarIdxLapDistPct?.[playerCarIdx] ?? -1;
+
+  return { pos, progress: lc < 0 || dp < 0 ? null : lc + dp };
+}
+
+/**
  * Qualify a car against the player (issue #1274): same class, same lap, 1–3
  * class positions ahead or exactly one behind, and a race gap within range.
  * The race gap is only looked up once the positions qualify — it is the one
- * check that costs a trace search.
+ * check that costs a trace search — and only when `needGap` says some
+ * pending flag on the car is opted in: for a car whose every pending flag is
+ * opted out the gap could change nothing, so the car reads `opted-out` there.
+ *
+ * Class: a readable class that differs from the player's never qualifies,
+ * whatever `isMultiClass` says — `isMultiClass` is false while session info
+ * is missing, and a single-class session's classes are all equal anyway. An
+ * unreadable class fails only in a multi-class session, where the class
+ * decides the class positions too.
  */
 function assess(
   telemetry: TelemetryData,
   positions: number[],
+  player: PlayerStanding,
   playerCarIdx: number,
   carIdx: number,
   isMultiClass: boolean,
   getRaceGap: OpponentFlagResolvers["getRaceGap"],
   rangeSeconds: number,
+  needGap: boolean,
 ): Assessment {
   const carClasses = telemetry.CarIdxClass as number[] | undefined;
+  const playerClass = carClasses?.[playerCarIdx];
+  const carClass = carClasses?.[carIdx];
+  const classesReadable = typeof playerClass === "number" && typeof carClass === "number";
 
-  if (isMultiClass) {
-    const playerClass = carClasses?.[playerCarIdx];
-    const carClass = carClasses?.[carIdx];
+  if (isMultiClass && !classesReadable) {
+    return { reason: "class-unreadable", carPos: 0, playerPos: 0, gapSeconds: null };
+  }
 
-    if (typeof playerClass !== "number" || typeof carClass !== "number") {
-      return { reason: "class-unreadable", carPos: 0, playerPos: 0, gapSeconds: null };
-    }
-
-    if (playerClass !== carClass) return { reason: "different-class", carPos: 0, playerPos: 0, gapSeconds: null };
+  if (classesReadable && playerClass !== carClass) {
+    return { reason: "different-class", carPos: 0, playerPos: 0, gapSeconds: null };
   }
 
   const carPos = isMultiClass ? classPositionFromOrder(positions, carClasses, carIdx) : (positions[carIdx] ?? 0);
-  const playerPos = isMultiClass
-    ? classPositionFromOrder(positions, carClasses, playerCarIdx)
-    : (positions[playerCarIdx] ?? 0);
+  const playerPos = player.pos;
 
   if (carPos <= 0 || playerPos <= 0) return { reason: "position-unresolved", carPos, playerPos, gapSeconds: null };
 
@@ -334,14 +378,11 @@ function assess(
   // equality misbehaves around S/F crossings; the score form is what the
   // position machinery ranks by. The car's own progress passed the caller's
   // in-world test; the player's may still be unreadable, which fails here.
+  if (player.progress === null) return { reason: "different-lap", carPos, playerPos, gapSeconds: null };
+
   const lc = telemetry.CarIdxLapCompleted;
   const dp = telemetry.CarIdxLapDistPct;
-  const playerLc = lc?.[playerCarIdx] ?? -1;
-  const playerDp = dp?.[playerCarIdx] ?? -1;
-
-  if (playerLc < 0 || playerDp < 0) return { reason: "different-lap", carPos, playerPos, gapSeconds: null };
-
-  const scoreGap = Math.abs((lc?.[carIdx] ?? 0) + (dp?.[carIdx] ?? 0) - (playerLc + playerDp));
+  const scoreGap = Math.abs((lc?.[carIdx] ?? 0) + (dp?.[carIdx] ?? 0) - player.progress);
 
   if (scoreGap >= 1.0) return { reason: "different-lap", carPos, playerPos, gapSeconds: null };
 
@@ -355,6 +396,8 @@ function assess(
   } else {
     return { reason: "outside-positions", carPos, playerPos, gapSeconds: null };
   }
+
+  if (!needGap) return { reason: "opted-out", carPos, playerPos, gapSeconds: null };
 
   const gapSeconds = relation === "ahead" ? getRaceGap(carIdx, playerCarIdx) : getRaceGap(playerCarIdx, carIdx);
 
@@ -433,6 +476,8 @@ export function diffOpponentFlags(
 
   state.opponentFlagsInitialized = true;
 
+  if (isFirstTick) state.opponentFlagSeededAt = now;
+
   const bits = state.opponentFlagBits;
   const announced = state.opponentFlagAnnouncedMask;
   const heldBackLogged = state.opponentFlagHeldBackLoggedMask;
@@ -493,8 +538,10 @@ export function diffOpponentFlags(
   const dp = telemetry.CarIdxLapDistPct;
   // Read once per announce pass, and only when some car has something
   // pending — a range change applies from the next pass, never retroactively.
+  // The player's standing is the same for every car in the pass, so it is
+  // resolved once alongside it.
   let rangeSeconds: number | null = null;
-  const readRange = (): number => (rangeSeconds ??= sanitizeOpponentFlagRangeSeconds(resolvers.getRangeSeconds()));
+  let player: PlayerStanding | null = null;
 
   for (let i = 0; i < raw.length; i++) {
     if (i === playerCarIdx || i === paceCarIdx) continue;
@@ -505,61 +552,83 @@ export function diffOpponentFlags(
 
     if (pending === 0) continue;
 
-    const carIdx = i;
-    const range = readRange();
+    const range = (rangeSeconds ??= sanitizeOpponentFlagRangeSeconds(resolvers.getRangeSeconds()));
+
+    player ??= resolvePlayerStanding(telemetry, frozenPositions, playerCarIdx, isMultiClass);
+
+    // Opt-outs are enforced HERE, not only at the audio layer: a disabled
+    // subject must never stamp state, consume the aggregation budget, or
+    // redirect an enabled subject into a collapsed tail. Live-read per pass
+    // so a settings toggle takes effect on the next event; a flag re-enabled
+    // mid-episode simply announces then (level-trigger). Read before the
+    // qualification so a car whose every pending flag is opted out costs no
+    // gap lookup.
+    let enabledPending = 0;
+
+    for (const def of OPPONENT_FLAG_DEFS) {
+      if ((pending & def.bit) !== 0 && resolvers.getCalloutEnabled(def.flag)) enabledPending |= def.bit;
+    }
+
     // In-world test (the race-finish.ts shape) — blipped/vanished/towed cars
     // never qualify.
     const inWorld = (lc?.[i] ?? -1) >= 0 && (dp?.[i] ?? -1) >= 0;
     const assessment: Assessment = inWorld
-      ? assess(telemetry, frozenPositions, playerCarIdx, i, isMultiClass, resolvers.getRaceGap, range)
+      ? assess(
+          telemetry,
+          frozenPositions,
+          player,
+          playerCarIdx,
+          i,
+          isMultiClass,
+          resolvers.getRaceGap,
+          range,
+          enabledPending !== 0,
+        )
       : { reason: "not-in-world", carPos: 0, playerPos: 0, gapSeconds: null };
     // Resolved lazily: only an announce or a first held-back line needs it.
     let carNumber: string | null | undefined;
-    const readCarNumber = (): string | null => (carNumber ??= getCarNumberFromSessionInfo(sessionInfo, carIdx));
-
-    /** The #1273 held-back line — once per (car, flag) episode, never per tick. */
-    const holdBack = (def: (typeof OPPONENT_FLAG_DEFS)[number], reason: HeldBackReason): void => {
-      if ((heldBackLogged[carIdx] & def.bit) !== 0) return;
-
-      heldBackLogged[carIdx] |= def.bit;
-      logger.debug(
-        `Opponent flag held back: flag=${def.flag} reason=${reason} ` +
-          describeCar(telemetry, carIdx, readCarNumber(), raw[carIdx] ?? 0, assessment, range),
-      );
-    };
 
     for (const def of OPPONENT_FLAG_DEFS) {
       if ((pending & def.bit) === 0) continue; // not effectively active, or episode already announced
 
+      let heldBack: HeldBackReason | null = null;
+
       if (assessment.reason !== undefined) {
-        holdBack(def, assessment.reason);
+        heldBack = assessment.reason;
+      } else if ((enabledPending & def.bit) === 0) {
+        heldBack = "opted-out";
+      } else if (now < (cooldownUntil[def.key][i] ?? 0)) {
+        heldBack = "cooldown"; // per-(car, flag) cooldown
+      }
+
+      if (heldBack !== null) {
+        // The #1273 held-back line — once per (car, flag) episode, never per tick.
+        if ((heldBackLogged[i] & def.bit) === 0) {
+          heldBackLogged[i] |= def.bit;
+          carNumber ??= getCarNumberFromSessionInfo(sessionInfo, i);
+          logger.debug(
+            `Opponent flag held back: flag=${def.flag} reason=${heldBack} ` +
+              describeCar(telemetry, i, carNumber, raw[i] ?? 0, assessment, range),
+          );
+        }
+
         continue;
       }
 
-      // Opt-outs are enforced HERE, not only at the audio layer: a disabled
-      // subject must never stamp state, consume the aggregation budget, or
-      // redirect an enabled subject into a collapsed tail. Live-read per
-      // announce so a settings toggle takes effect on the next event; a flag
-      // re-enabled mid-episode simply announces then (level-trigger).
-      if (!resolvers.getCalloutEnabled(def.flag)) {
-        holdBack(def, "opted-out");
-        continue;
-      }
-
-      const cooldownArr = cooldownUntil[def.key];
-
-      if (now < (cooldownArr[i] ?? 0)) {
-        holdBack(def, "cooldown"); // per-(car, flag) cooldown
-        continue;
-      }
-
-      const activatedThisTick = (prevEffective[i] & def.bit) === 0;
+      // Only a qualified car gets past the held-back checks above.
+      const qualified = assessment as Qualified;
+      // `raised` only when the flag became effectively active THIS tick and
+      // was not already up when the store seeded: a held flag found up on
+      // the seed tick clears its hold later, but nobody saw it rise.
+      const seededUp = isHeldFlag(def.key) && heldSinceAt[def.key][i] <= state.opponentFlagSeededAt;
+      const activatedThisTick = (prevEffective[i] & def.bit) === 0 && !seededUp;
+      const trigger = activatedThisTick ? ("raised" as const) : ("entered-range" as const);
       // A further flag on a car that already has an announced flag this
       // episode — evaluated BEFORE this flag's own latch bit is set.
       const isEscalation = (announced[i] & ~def.bit) !== 0;
 
       announced[i] |= def.bit;
-      cooldownArr[i] = now + OPPONENT_FLAG_CAR_COOLDOWN_MS;
+      cooldownUntil[def.key][i] = now + OPPONENT_FLAG_CAR_COOLDOWN_MS;
 
       // Distinct-car window bookkeeping: refresh the car's entry if it's
       // already listed (keeping the episode alive), add it otherwise — the
@@ -580,25 +649,25 @@ export function diffOpponentFlags(
         (!state.opponentFlagAggregateAnnounced &&
           state.opponentFlagRecentEntries.length < OPPONENT_FLAG_AGGREGATE_THRESHOLD);
 
-      if (individually) {
-        const trigger = activatedThisTick ? ("raised" as const) : ("entered-range" as const);
-        const number = readCarNumber();
+      carNumber ??= getCarNumberFromSessionInfo(sessionInfo, i);
 
-        logger.debug(
-          `Opponent flag announced: flag=${def.flag} relation=${assessment.relation} trigger=${trigger} ` +
-            describeCar(telemetry, i, number, raw[i] ?? 0, assessment, range),
-        );
+      const carTail =
+        `relation=${qualified.relation} trigger=${trigger} ` +
+        describeCar(telemetry, i, carNumber, raw[i] ?? 0, qualified, range);
+
+      if (individually) {
+        logger.debug(`Opponent flag announced: flag=${def.flag} ${carTail}`);
         emit({
           event: "opponentFlag.flagged",
           data: {
-            relation: assessment.relation,
+            relation: qualified.relation,
             carIdx: i,
             flag: def.flag,
             trigger,
             isMultiClass,
-            position: assessment.carPos,
-            ...(number !== null ? { carNumber: number } : {}),
-            gapSeconds: assessment.gapSeconds,
+            position: qualified.carPos,
+            ...(carNumber !== null ? { carNumber } : {}),
+            gapSeconds: qualified.gapSeconds,
           },
         });
         continue;
@@ -607,7 +676,10 @@ export function diffOpponentFlags(
       // Collapsed: the announce that reaches the threshold speaks the
       // aggregate tail, once per episode; later ones stay silent while the
       // episode flag is set.
-      holdBack(def, "collapsed");
+      if ((heldBackLogged[i] & def.bit) === 0) {
+        heldBackLogged[i] |= def.bit;
+        logger.debug(`Opponent flag held back: flag=${def.flag} reason=collapsed ${carTail}`);
+      }
 
       if (!state.opponentFlagAggregateAnnounced) {
         state.opponentFlagAggregateAnnounced = true;

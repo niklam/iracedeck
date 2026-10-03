@@ -422,6 +422,45 @@ describe("sim-events-iracing translator", () => {
       expect(handler.mock.calls[0]![0].data).toMatchObject({ carIdx: 1, trigger: "entered-range" });
     });
 
+    it.each([
+      { flag: OpponentPenaltyFlag.Black, bit: Flags.Black, holdMs: 3000 },
+      { flag: OpponentPenaltyFlag.Furled, bit: Flags.Furled, holdMs: 1000 },
+    ])(
+      "a $flag already up when a replay glance ends re-seeds silently and announces as entered-range, never raised",
+      ({ flag, bit, holdMs }) => {
+        vi.useFakeTimers();
+        const controller = createMockController();
+        const bus = getEventBus();
+        const handler = vi.fn();
+        bus.subscribe("opponentFlag.flagged", handler);
+        controller.__setSessionInfo(raceSession());
+        initializeSimEventsIracing(bus, controller, createMockLogger());
+
+        // Wall clock in quarter seconds, session clock in whole seconds: the
+        // traces the wipe cleared are readable again two ticks after it,
+        // well before either hold clears, so the trigger is the hold's alone.
+        const start = Date.UTC(2026, 9, 3, 12);
+        let k = 0;
+        const tickAt = (car1Flags: number, replay = false): void => {
+          vi.setSystemTime(start + k * 250);
+          controller.__tick({ ...raceTick(k, 1.5, car1Flags), IsReplayPlaying: replay } as TelemetryData);
+          k++;
+        };
+
+        for (let n = 0; n < 6; n++) tickAt(0);
+
+        // A replay glance; the flag goes up on car1 meanwhile.
+        tickAt(bit, true);
+        tickAt(bit, true);
+
+        // Back live: the re-seed tick, then the hold and a little more.
+        for (let n = 0; n <= holdMs / 250 + 2; n++) tickAt(bit);
+
+        expect(handler).toHaveBeenCalledTimes(1);
+        expect(handler.mock.calls[0]![0].data).toMatchObject({ carIdx: 1, flag, trigger: "entered-range" });
+      },
+    );
+
     /**
      * A green race on a 4 km track where car1 crawls at `leaderMps` and sits
      * `aheadM` metres up the road on the last tick, while the player laps at

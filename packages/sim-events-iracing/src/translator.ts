@@ -1541,8 +1541,9 @@ function wipeStateForReplay(self: TranslatorInstance): void {
     // wipe would make cars whose flags the aggregate already covered
     // re-announce individually, and a car whose flag cooldown hasn't expired
     // would re-announce the same episode. `opponentFlagBits` /
-    // `opponentFlagsInitialized` / `opponentFlagHeldSinceAt` /
-    // `opponentFlagEffectiveMask` deliberately re-seed — replay-timeline bit
+    // `opponentFlagsInitialized` / `opponentFlagSeededAt` /
+    // `opponentFlagHeldSinceAt` / `opponentFlagEffectiveMask` deliberately
+    // re-seed — replay-timeline bit
     // and hold-timer values are meaningless (see `opponentFlagEffectiveMask`'s
     // JSDoc in `state.ts` for why the effective-mask baseline must re-seed in
     // lockstep with the raw-bit baseline rather than being preserved here).

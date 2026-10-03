@@ -285,9 +285,21 @@ describe("diffOpponentFlags", () => {
       expect(run(playerState, playerUnreadable, 2000, { multi: true, positions })).toEqual([]);
     });
 
-    it("single-class sessions ignore CarIdxClass entirely", () => {
+    it("never qualifies a readable different class, even while the session does not read multi-class (no session info yet)", () => {
+      const logger = createMockLogger();
       const t = makeField();
       t.CarIdxClass[3] = 999;
+
+      run(state, t, 1000, { logger });
+      t.CarIdxSessionFlags[3] = Flags.Repair;
+
+      expect(run(state, t, 2000, { logger, sessionInfo: null })).toEqual([]);
+      expect(logger.debug.mock.calls[0]![0]).toContain("reason=different-class");
+    });
+
+    it("single-class sessions do not need CarIdxClass — an unreadable class still qualifies", () => {
+      const t = makeField();
+      t.CarIdxClass[3] = undefined;
 
       run(state, t, 1000);
       t.CarIdxSessionFlags[3] = Flags.Repair;
@@ -442,6 +454,35 @@ describe("diffOpponentFlags", () => {
 
       expect(run(state, t, 2500)).toEqual([]);
       expect(run(state, t, 3600)).toEqual([]);
+    });
+
+    it.each([
+      { flag: OpponentPenaltyFlag.Black, bit: Flags.Black, hold: OPPONENT_FLAG_BLACK_HOLD_MS },
+      { flag: OpponentPenaltyFlag.Furled, bit: Flags.Furled, hold: OPPONENT_FLAG_FURLED_DEBOUNCE_MS },
+    ])(
+      "a $flag already up on the seed tick announces as entered-range once its hold clears, never as raised",
+      ({ flag, bit, hold }) => {
+        const t = makeField();
+        t.CarIdxSessionFlags[3] = bit; // up before the plugin ever saw the car
+
+        expect(run(state, t, 1000)).toEqual([]); // the seed tick
+        expect(run(state, t, 1000 + hold - 1)).toEqual([]);
+        expect(run(state, t, 1000 + hold)).toEqual([flagged(3, flag, "ahead", 3, { trigger: "entered-range" })]);
+      },
+    );
+
+    it("a held flag that drops and rises again after the seed tick reads raised", () => {
+      const t = makeField();
+      t.CarIdxSessionFlags[3] = Flags.Black;
+      run(state, t, 1000); // seeded up
+      t.CarIdxSessionFlags[3] = 0;
+      run(state, t, 2000);
+      t.CarIdxSessionFlags[3] = Flags.Black;
+      run(state, t, 3000);
+
+      expect(run(state, t, 3000 + OPPONENT_FLAG_BLACK_HOLD_MS)).toEqual([
+        flagged(3, OpponentPenaltyFlag.Black, "ahead", 3),
+      ]);
     });
 
     it("Repair and Disqualify are immediate", () => {
@@ -706,6 +747,25 @@ describe("diffOpponentFlags", () => {
       // Mid-collapse, the first announced car's meatball escalates to a DQ.
       t.CarIdxSessionFlags[3] = Flags.Repair | Flags.Disqualify;
       expect(run(state, t, 5000)).toEqual([flagged(3, OpponentPenaltyFlag.Disqualify, "ahead", 3)]);
+    });
+
+    it("never looks up the race gap for a car whose every pending flag is opted out, logging it as opted-out", () => {
+      const logger = createMockLogger();
+      const t = makeField();
+      const gap = vi.fn<GapResolver>(() => 9); // would be over range, if anyone asked
+      const enabled = (flag: OpponentPenaltyFlag) => flag !== OpponentPenaltyFlag.Repair;
+
+      run(state, t, 1000, { enabled, gap, logger });
+      t.CarIdxSessionFlags[3] = Flags.Repair;
+
+      expect(run(state, t, 2000, { enabled, gap, logger })).toEqual([]);
+      expect(gap).not.toHaveBeenCalled();
+      expect(logger.debug.mock.calls[0]![0]).toContain("reason=opted-out");
+
+      // An enabled flag on the same car still costs the lookup.
+      t.CarIdxSessionFlags[3] = Flags.Repair | Flags.Disqualify;
+      run(state, t, 3000, { enabled, gap, logger });
+      expect(gap).toHaveBeenCalledTimes(1);
     });
 
     it("never lets a disabled subject consume the aggregation budget or stamp state (opt-outs enforced diff-side)", () => {
