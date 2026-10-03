@@ -399,7 +399,8 @@ describe("window focus service", () => {
   // Under an integrity-level mismatch focus can never transfer, so both gated
   // entry points skip the native ask outright (#976).
   describe("elevation-mismatch gate (issue #976)", () => {
-    const SKIP_LINE = "iRacing focus skipped: iRacing runs at a higher integrity level than the plugin";
+    const SKIP_LINE =
+      "Not focusing the iRacing window: it runs at a higher integrity level than the plugin, so focus cannot transfer";
 
     it("skips the adapter-hook ask while a mismatch is reported", () => {
       state.elevationMismatch = true;
@@ -427,14 +428,15 @@ describe("window focus service", () => {
       expect(focuser).toHaveBeenCalledTimes(2);
     });
 
-    it("logs the skip at debug once per episode, not on every press", () => {
+    it("logs the skip at info once per episode, not on every press", () => {
       state.elevationMismatch = true;
       const { logger } = arrange(FocusResult.FocusTimedOut);
       focusIRacingIfEnabled();
       focusIRacingBeforeInput();
       focusIRacingIfEnabled();
 
-      expect(vi.mocked(logger.debug).mock.calls.filter(([line]) => line === SKIP_LINE)).toHaveLength(1);
+      expect(logger.info).toHaveBeenCalledOnce();
+      expect(logger.info).toHaveBeenCalledWith(SKIP_LINE);
       expect(logger.warn).not.toHaveBeenCalled();
     });
 
@@ -447,7 +449,7 @@ describe("window focus service", () => {
       state.elevationMismatch = true;
       focusIRacingIfEnabled();
 
-      expect(vi.mocked(logger.debug).mock.calls.filter(([line]) => line === SKIP_LINE)).toHaveLength(2);
+      expect(vi.mocked(logger.info).mock.calls.filter(([line]) => line === SKIP_LINE)).toHaveLength(2);
     });
 
     it("lets the next ask through once the mismatch clears", () => {
@@ -467,7 +469,7 @@ describe("window focus service", () => {
       focusIRacingIfEnabled();
       focusIRacingBeforeInput();
 
-      expect(logger.debug).not.toHaveBeenCalled();
+      expect(logger.info).not.toHaveBeenCalled();
     });
 
     it("focusIRacingNow (Mouse to Sim) still asks — the press IS the focus", () => {
@@ -486,7 +488,20 @@ describe("window focus service", () => {
       const { logger } = arrange(FocusResult.Focused);
       focusIRacingIfEnabled();
 
-      expect(logger.debug).toHaveBeenCalledWith(SKIP_LINE);
+      expect(logger.info).toHaveBeenCalledWith(SKIP_LINE);
+    });
+
+    it("ends a timeout episode begun before the probe answered, so the next genuine timeout warns", () => {
+      const { logger } = arrange(FocusResult.FocusTimedOut);
+      focusIRacingIfEnabled();
+      expect(logger.warn).toHaveBeenCalledOnce();
+
+      state.elevationMismatch = true;
+      focusIRacingIfEnabled();
+      state.elevationMismatch = false;
+      focusIRacingIfEnabled();
+
+      expect(logger.warn).toHaveBeenCalledTimes(2);
     });
   });
 
