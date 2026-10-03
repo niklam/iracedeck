@@ -20,7 +20,7 @@ If you are picking up an issue, read this first.
 | 8   | Manual testing                                             | **blocks the PR**       | below                                                                       |
 | 9   | Push, open the PR                                          | —                       | `@.claude/rules/build-and-commit.md`                                        |
 | 10  | Babysit the review                                         | every thread answered   | below                                                                       |
-| 11  | Merge                                                      | approved + checks green **at the current head** | `@.claude/rules/build-and-commit.md`                    |
+| 11  | Merge                                                      | approved + checks green **at the current head** (a pure rebase carries the review, #1307) | `@.claude/rules/build-and-commit.md`                    |
 | 12  | Watch **all four** post-merge runs to completion           | a red result goes to the coordinator            | below                                                   |
 | 13  | Remove the worktree                                        | —                                               | `@.claude/rules/build-and-commit.md`                    |
 
@@ -80,7 +80,7 @@ For a change with nothing runnable to test — a rules or docs change — the ga
 
 CodeRabbit is the reviewer. **Do not wait for a human code review** — the maintainer is the tester and the approver, not a second reviewer.
 
-Poll the PR, fix every finding **that holds — nitpicks included**, and answer every thread: cite the fix commit where you applied it, the reasoning where you did not. Expect a fresh review after every push. Stop polling once the review is done.
+Poll the PR, fix every finding **that holds — nitpicks included**, and answer every thread: cite the fix commit where you applied it, the reasoning where you did not. Expect a fresh review after every push that is not a pure rebase — CodeRabbit does not review a rebase, and the merge gate does not need it to (step 11). Stop polling once the review is done.
 
 Nitpicks are in scope precisely because they are the ones it is tempting to wave through; "it's only a nitpick" is not a reason to skip one, and it is not a reason to apply one that is wrong either.
 
@@ -92,7 +92,7 @@ One trap with no other home: `gh pr checks` exits non-zero (8) while any check i
 
 Once CodeRabbit has approved and the checks are green, **the agent driving the work merges** — the maintainer is not a second reviewer to wait for. A *review* step never merges; that separation is what `@.claude/rules/build-and-commit.md` protects, and it owns the merge mechanics. Merging includes the issue's Roadmap card moving to `Testing` — the post-merge hook does that and reports when it could not, in which case make the move by hand (#1065, 2026-09-05); `@.claude/rules/build-and-commit.md` has the lanes.
 
-**An approval and a green check are both head-specific.** The merge hook (`@.claude/rules/hooks.md`) refuses `gh pr merge` unless the approval and every check are green at the **current** head and the merge method matches the branch — neither travels with a push, while the PR still displays the old approval beside the new head. A `mergeStateStatus` of `BLOCKED` while you believe everything is green means the hook will refuse. And `gh pr checks` exits non-zero (8) while anything is still pending, so treat that exit as "not finished", never as "failed".
+**An approval and a green check are both head-specific.** The merge hook (`@.claude/rules/hooks.md`) refuses `gh pr merge` unless the approval and every check are green at the **current** head and the merge method matches the branch — neither travels with a push, while the PR still displays the old approval beside the new head. One push does carry the review over: a **pure rebase** of the newest reviewed commit (#1307), which CodeRabbit does not review. The hook decides it — a clean rebase passes, one that conflicted asks the maintainer, anything else is refused naming the files — and its refusal says what to add or ask for; the mechanics are in `@.claude/rules/hooks.md`. The checks still have to run green at the new head. A `mergeStateStatus` of `BLOCKED` while you believe everything is green means the hook will refuse. And `gh pr checks` exits non-zero (8) while anything is still pending, so treat that exit as "not finished", never as "failed".
 
 Issue work reaches a target branch only through an approved PR. Two documented paths do not: a maintainer-directed **Master** work mode, and a release **back-merge**. Neither is an excuse to skip the PR on issue work.
 
