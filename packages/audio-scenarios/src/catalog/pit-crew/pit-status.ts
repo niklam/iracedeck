@@ -7,6 +7,12 @@
  * already suppresses `* → None` so the silent idle state never reaches
  * the bus.
  *
+ * A ninth, {@link PIT_STATUS_NOTHING_TO_DO_CONTRACT} (issue #1180), releases
+ * the driver from a stop that ended with nothing done: iRacing never reports
+ * Complete then, so it fires on `pitService.stopEmpty` instead. It shares the
+ * family and the shape, but lives outside `PIT_STATUS_CONTRACTS` because it
+ * has no clip pool of its own.
+ *
  * The code below decides WHEN a status line fires and how it is scheduled;
  * WHAT is said lives in the active voice's `callouts.json` under the same ids
  * (`scenarios["pit-crew.pit-status-in-progress"]`, …), where the bundled
@@ -262,6 +268,29 @@ export const PIT_STATUS_CONTRACTS: readonly ScenarioContract[] = [
     "You stop in your pit box with damage the crew cannot repair.",
   ),
 ];
+
+/**
+ * The release after a stop with nothing to do (issue #1180). iRacing never
+ * reports Complete when no service is queued — InProgress drops straight back
+ * to None — so the translator publishes `pitService.stopEmpty` instead, and
+ * this line releases the driver. Same family as the status lines, so a later
+ * status still preempts it. Kept OUT of {@link PIT_STATUS_CONTRACTS}: that
+ * list derives one `pool:pit-status/<base>` per contract for
+ * {@link PIT_STATUS_CLIP_SOURCES}, and this one has no pool of its own — the
+ * bundled voices script it onto `pool:pit-status/complete`, and a pack may
+ * give it its own line.
+ */
+export const PIT_STATUS_NOTHING_TO_DO_SCENARIO_ID = "pit-crew.pit-status-nothing-to-do";
+
+export const PIT_STATUS_NOTHING_TO_DO_CONTRACT: ScenarioContract = {
+  id: PIT_STATUS_NOTHING_TO_DO_SCENARIO_ID,
+  description: "You stop in your pit box with no service queued, so the crew has nothing to do and you can leave.",
+  channel: AudioChannel.Voice,
+  bus: AudioBus.Voice,
+  base: "voice/{voice}",
+  family: "pit-status",
+  when: { event: "pitService.stopEmpty" },
+};
 
 /** The terse "still uncorrected" nags (issue #951) — one per positioning error. */
 export const PIT_STATUS_REPEAT_CONTRACTS: readonly ScenarioContract[] = POSITIONING_SUBJECTS.map(

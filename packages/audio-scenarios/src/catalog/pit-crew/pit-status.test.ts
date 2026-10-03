@@ -24,6 +24,9 @@
  *     same live telemetry when the nag comes to speak — so it holds for a
  *     voice pack that writes no `if`, which the bundled script no longer does
  *   - the bundled script's entries, vocabulary and clip sources (#1065)
+ *   - the empty-stop release (#1180): its own contract on
+ *     `pitService.stopEmpty`, outside `PIT_STATUS_CONTRACTS`, scripted onto
+ *     the Complete clips and riding the Complete opt-in
  */
 import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "json" };
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
@@ -42,6 +45,8 @@ import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import {
   PIT_STATUS_CLIP_SOURCES,
   PIT_STATUS_CONTRACTS,
+  PIT_STATUS_NOTHING_TO_DO_CONTRACT,
+  PIT_STATUS_NOTHING_TO_DO_SCENARIO_ID,
   PIT_STATUS_REPEAT_CONTRACTS,
   PIT_STATUS_REPEAT_SCENARIO_IDS,
   PIT_STATUS_REPEAT_WEIGHT,
@@ -193,10 +198,10 @@ const manifest: AudioAssetsManifest = {
 /** The bundled voice's script, verbatim. The JSON import types `schema` as `number`, hence the cast. */
 const SCRIPT = defaultScript as CalloutScript;
 
-const ALL_IDS = [...PIT_STATUS_SCENARIO_IDS, ...PIT_STATUS_REPEAT_SCENARIO_IDS];
+const ALL_IDS = [...PIT_STATUS_SCENARIO_IDS, ...PIT_STATUS_REPEAT_SCENARIO_IDS, PIT_STATUS_NOTHING_TO_DO_SCENARIO_ID];
 
 /**
- * The bundled script narrowed to the family's own thirteen entries (and to no
+ * The bundled script narrowed to the family's own fourteen entries (and to no
  * fragments — none of them includes one). The engine-level blocks register
  * the pit-status family ALONE, and an entry for a contract the engine does not
  * hold would be a `no contract` warn.
@@ -237,7 +242,9 @@ function registerFamilyAlone(): void {
   engine = initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
   registerPitStatusVocabulary(engine);
 
-  for (const c of [...PIT_STATUS_CONTRACTS, ...PIT_STATUS_REPEAT_CONTRACTS]) engine.defineContract(c);
+  for (const c of [...PIT_STATUS_CONTRACTS, ...PIT_STATUS_REPEAT_CONTRACTS, PIT_STATUS_NOTHING_TO_DO_CONTRACT]) {
+    engine.defineContract(c);
+  }
 
   engine.setScripts(new Map([[VOICE, PIT_STATUS_SCRIPT]]));
 }
@@ -353,6 +360,76 @@ describe("PIT_STATUS_CONTRACTS triggers (engine-level, no opt-out gating)", () =
     engine.setScripts(new Map());
 
     bus.publishEvent("pitService.statusChanged", { from: PitSvStatus.None, to: PitSvStatus.InProgress });
+    flush(audio);
+
+    expect(audio._played).toEqual([]);
+  });
+});
+
+describe("PIT_STATUS_NOTHING_TO_DO_CONTRACT structure (#1180)", () => {
+  const c = PIT_STATUS_NOTHING_TO_DO_CONTRACT;
+
+  it("is the empty-stop release, fired by `pitService.stopEmpty` with no filter", () => {
+    expect(PIT_STATUS_NOTHING_TO_DO_SCENARIO_ID).toBe("pit-crew.pit-status-nothing-to-do");
+    expect(c.id).toBe(PIT_STATUS_NOTHING_TO_DO_SCENARIO_ID);
+    expect(c.when?.event).toBe("pitService.stopEmpty");
+    expect(c.when?.where).toBeUndefined();
+  });
+
+  it("has the status lines' shape — same family, default weight, the voice bus — so a later status still preempts it", () => {
+    expect(c.family).toBe("pit-status");
+    expect(c.weight).toBeUndefined();
+    expect(c.interrupt).not.toBe(true);
+    expect(c.queueable).not.toBe(true);
+    expect(c.base).toBe("voice/{voice}");
+    expect(c.channel).toBe(AudioChannel.Voice);
+    expect(c.bus).toBe(AudioBus.Voice);
+  });
+
+  it("carries no gate, no sequence and takes the engine's default frame", () => {
+    expect(c.speakGate).toBeUndefined();
+    expect("sequence" in c).toBe(false);
+    expect(c.frame).toBeUndefined();
+  });
+
+  it("stays out of PIT_STATUS_CONTRACTS and adds no clip source — it has no pool of its own", () => {
+    expect(PIT_STATUS_CONTRACTS).not.toContain(c);
+    expect(PIT_STATUS_SCENARIO_IDS).not.toContain(PIT_STATUS_NOTHING_TO_DO_SCENARIO_ID);
+    expect(PIT_STATUS_CLIP_SOURCES.map(({ base }) => base)).not.toContain("nothing-to-do");
+  });
+});
+
+describe("PIT_STATUS_NOTHING_TO_DO_CONTRACT trigger (engine-level, #1180)", () => {
+  beforeEach(registerFamilyAlone);
+
+  afterEach(() => {
+    _resetAudioScenarios();
+    vi.clearAllMocks();
+  });
+
+  it("plays the Complete line through the bundled script, inside the radio frame", () => {
+    bus.publishEvent("pitService.stopEmpty", {});
+    flush(audio);
+
+    expect(voiceClipsPlayed(audio)).toEqual([`voice/${VOICE}/pit-status/complete-01.mp3`]);
+    expect(sfxClipsPlayed(audio)).toEqual(["sfx/IRD-tick-open.mp3", "sfx/IRD-tick-close.mp3"]);
+  });
+
+  it("a later status in the same family preempts it", () => {
+    bus.publishEvent("pitService.stopEmpty", {});
+    // Don't flush — the release is still mid-playback.
+    bus.publishEvent("pitService.statusChanged", { from: PitSvStatus.None, to: PitSvStatus.TooFarLeft });
+    flush(audio);
+
+    expect(voiceClipsPlayed(audio).at(-1)).toBe(`voice/${VOICE}/pit-status/too-far-left-01.mp3`);
+  });
+
+  it("a voice that does not script it is silent for it", () => {
+    const { [PIT_STATUS_NOTHING_TO_DO_SCENARIO_ID]: _omitted, ...rest } = PIT_STATUS_SCRIPT.scenarios;
+
+    engine.setScripts(new Map([[VOICE, { ...PIT_STATUS_SCRIPT, scenarios: rest }]]));
+
+    bus.publishEvent("pitService.stopEmpty", {});
     flush(audio);
 
     expect(audio._played).toEqual([]);
@@ -719,6 +796,17 @@ describe("the bundled script's pit-status entries (issue #1065)", () => {
     }
   });
 
+  it("scripts the empty-stop release onto the Complete clips, with a comment and a Pit Status harness route (#1180)", () => {
+    const entry = SCRIPT.scenarios[PIT_STATUS_NOTHING_TO_DO_SCENARIO_ID];
+
+    expect(entry, "no script entry for the empty-stop release").toBeDefined();
+    expect(entry.comment?.length ?? 0).toBeGreaterThan(0);
+    expect(entry.test).toMatch(/^Harness → Pit Status → Nothing To Do \(empty stop\)\. /);
+    expect(entry.skip).toBeUndefined();
+    expect(entry.frame).toBeUndefined();
+    expect(entry.sequence).toEqual(["pool:pit-status/complete"]);
+  });
+
   it("scripts every repeat nag as the clip alone — the re-check is the contract's gate (issue #1138)", () => {
     // Both halves together: the entry says only what is SAID, and the
     // still-misaligned re-check is on the contract. Asserting the bare
@@ -876,9 +964,33 @@ describe("PIT_STATUS_CONTRACTS per-callout opt-out (via registerPitCrew)", () =>
       bus.publishEvent("pitService.statusChanged", { from: PitSvStatus.None, to });
     }
 
+    bus.publishEvent("pitService.stopEmpty", {});
     flush(audio);
 
     expect(voiceClipsPlayed(audio)).toEqual([]);
+  });
+
+  it("the empty-stop release rides the Complete opt-in — one checkbox silences both (#1180)", () => {
+    enabled.set("complete", false);
+    bus.publishEvent("pitService.stopEmpty", {});
+    flush(audio);
+
+    expect(voiceClipsPlayed(audio)).toEqual([]);
+    expect(mockLogger.debug).toHaveBeenCalledWith("pit-status callout suppressed: complete");
+
+    enabled.set("complete", true);
+    bus.publishEvent("pitService.stopEmpty", {});
+    flush(audio);
+
+    expect(voiceClipsPlayed(audio)).toEqual([`voice/${VOICE}/pit-status/complete-01.mp3`]);
+  });
+
+  it("the empty-stop release ignores the In Progress opt-in (#1180)", () => {
+    enabled.set("in-progress", false);
+    bus.publishEvent("pitService.stopEmpty", {});
+    flush(audio);
+
+    expect(voiceClipsPlayed(audio)).toEqual([`voice/${VOICE}/pit-status/complete-01.mp3`]);
   });
 
   it("disabling a status suppresses its repeat nag too — the repeats ride the same opt-in (#951)", () => {

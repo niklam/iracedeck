@@ -2797,6 +2797,32 @@
       }
     },
     {
+      "id": "pit-crew.pit-status-nothing-to-do",
+      "family": "pit-status",
+      "event": "pitService.stopEmpty",
+      "description": "You stop in your pit box with no service queued, so the crew has nothing to do and you can leave.",
+      "frame": "radio",
+      "weight": 50,
+      "weightBand": "NORMAL",
+      "queueable": false,
+      "interrupt": false,
+      "speakGate": null,
+      "base": "voice/{voice}",
+      "comment": "The car stopped in the box with no service queued, so iRacing never reports the stop complete; this releases the driver. Reuses the Complete clips.",
+      "test": "Harness → Pit Status → Nothing To Do (empty stop). In-sim: untick every pit service, stop in the box; the line plays with no \"Pit stop in progress.\" before it.",
+      "skip": false,
+      "references": {
+        "pools": [
+          "pit-status/complete"
+        ],
+        "vars": [],
+        "conds": [],
+        "cases": [],
+        "includes": [],
+        "frames": []
+      }
+    },
+    {
       "id": "pit-crew.pit-status-too-far-back",
       "family": "pit-status",
       "event": "pitService.statusChanged",
@@ -36056,7 +36082,8 @@
           ],
           "takes": 1,
           "usedBy": [
-            "pit-crew.pit-status-complete"
+            "pit-crew.pit-status-complete",
+            "pit-crew.pit-status-nothing-to-do"
           ],
           "viaVar": [],
           "playedBy": null
