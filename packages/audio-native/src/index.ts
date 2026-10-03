@@ -276,9 +276,9 @@ export class AudioNative {
 /**
  * Call the addon's `setSessionIdentity`, or report false when the loaded
  * binary predates it. A TypeScript build can run against an older
- * `audio_native.node` — `pnpm build:ts` skips the native build, and a locked
- * binary survives a rebuild — and a missing function must not throw inside
- * `initializeAudio` and abort plugin startup over a cosmetic feature (#1253).
+ * `audio_native.node` — `pnpm build:ts` skips the native build — and a missing
+ * function must not throw inside `initializeAudio` and abort plugin startup
+ * over a cosmetic feature (#1253).
  *
  * @internal Exported for testing
  */
