@@ -124,11 +124,15 @@ const has = (command, re) => re.test(command);
  * every trap unchecked, #1307 review), and the wrappers that run the next
  * word as a command, with their own options — the ones that take a value
  * (`env -u NAME`, `env -C DIR`, `env -S STRING`, `exec -a NAME`) with it.
+ * A value never starts with `-`, so every token has exactly one parse: were a
+ * `-u` free to take the next `-u` as its value, a long run of them on a
+ * command that does not match backtracks exponentially, and regex time is not
+ * bounded by the hook's spawn deadline.
  *
  * A heuristic, not a shell parser: the hooks catch mistakes, not deliberate
  * obfuscation, so a command handed to `bash -c` or `xargs` is out of reach.
  */
-const COMMAND_LEAD = String.raw`(?:(?:if|then|do|else|elif|while|until|!|\{)\s+|(?:time|command|exec|env|nohup)(?:\s+(?:-[uCSa]|--unset|--chdir|--split-string)\s+\S+|\s+-\S+)*\s+|\w+=\S*\s+)*`;
+const COMMAND_LEAD = String.raw`(?:(?:if|then|do|else|elif|while|until|!|\{)\s+|(?:time|command|exec|env|nohup)(?:\s+(?:-[uCSa]|--unset|--chdir|--split-string)\s+[^\s-]\S*|\s+-\S+)*\s+|\w+=\S*\s+)*`;
 
 /**
  * Anchors a command regex to COMMAND POSITION: the start of the string or of

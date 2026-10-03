@@ -553,6 +553,17 @@ describe("gh pr merge", () => {
     );
   });
 
+  it("judges a long run of wrapper options in linear time — regex time is outside the spawn deadline", () => {
+    // The short run first: an exponential regression takes seconds on 34 bare
+    // `-u` tokens and fails here, where 4000 of them would hang the suite.
+    for (const n of [34, 4000])
+      for (const unit of ["-u ", "-u x ", "-u -i x -C "]) {
+        const started = Date.now();
+        passes(`env ${unit.repeat(n)}echo done`, ctx({ prView: green }));
+        expect(Date.now() - started, `${n} × "${unit}"`).toBeLessThan(200);
+      }
+  });
+
   it("still lets a mere mention through", () => passes("grep -n 'then gh pr merge' notes.md", ctx({ prView: green })));
 
   it("joins every ask in a chain into the one prompt, so none runs unseen", () => {
