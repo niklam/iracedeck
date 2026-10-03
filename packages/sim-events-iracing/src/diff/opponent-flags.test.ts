@@ -24,8 +24,12 @@ type MutableField = {
   CarIdxLapCompleted: number[];
   CarIdxLapDistPct: number[];
   CarIdxClass: Array<number | undefined>;
-  CarIdxTrackSurface?: number[];
+  CarIdxTrackSurface?: Array<number | undefined>;
+  CarIdxOnPitRoad?: boolean[];
   SessionFlags?: number;
+  OnPitRoad?: boolean;
+  PlayerCarInPitStall?: boolean;
+  PlayerTrackSurface?: number;
 };
 
 /** n-car field: player (carIdx 0) is P4 in the default 8-car shape. */
@@ -612,6 +616,128 @@ describe("diffOpponentFlags", () => {
     });
   });
 
+  describe("a flagged car in the pits (#1274 manual test)", () => {
+    it.each([
+      { name: "in its pit stall", surface: TrkLoc.InPitStall },
+      { name: "on pit lane / approaching pit entry", surface: TrkLoc.AproachingPits },
+    ])("holds back a car $name, and announces it as entered-range once it rejoins still flagged", ({ surface }) => {
+      const t = makeField();
+      const gap = vi.fn<GapResolver>(() => DEFAULT_GAP);
+      t.CarIdxTrackSurface = Array<number>(8).fill(TrkLoc.OnTrack);
+
+      run(state, t, 1000, { gap });
+      t.CarIdxSessionFlags[3] = Flags.Black;
+      t.CarIdxTrackSurface[3] = surface;
+
+      expect(run(state, t, 2000, { gap })).toEqual([]);
+      expect(run(state, t, 2000 + OPPONENT_FLAG_BLACK_HOLD_MS, { gap })).toEqual([]);
+      expect(run(state, t, 9000, { gap })).toEqual([]);
+      // Held back before the race gap is ever looked up.
+      expect(gap).not.toHaveBeenCalled();
+      expect(state.opponentFlagAnnouncedMask[3]).toBe(0);
+
+      t.CarIdxTrackSurface[3] = TrkLoc.OnTrack;
+
+      expect(run(state, t, 10_000, { gap })).toEqual([
+        flagged(3, OpponentPenaltyFlag.Black, "ahead", 3, { trigger: "entered-range" }),
+      ]);
+    });
+
+    it("keeps a car eligible when its track surface is missing — a missing reading never holds a car back", () => {
+      const t = makeField();
+      t.CarIdxTrackSurface = Array<number>(8).fill(TrkLoc.OnTrack);
+      t.CarIdxTrackSurface[3] = undefined;
+
+      run(state, t, 1000);
+      t.CarIdxSessionFlags[3] = Flags.Repair;
+
+      expect(run(state, t, 2000)).toEqual([flagged(3, OpponentPenaltyFlag.Repair, "ahead", 3)]);
+
+      delete t.CarIdxTrackSurface; // no array at all on this tick
+      t.CarIdxSessionFlags[4] = Flags.Repair;
+
+      expect(run(state, t, 3000)).toEqual([flagged(4, OpponentPenaltyFlag.Repair, "behind", 5)]);
+    });
+
+    it("does not key on CarIdxOnPitRoad, which real telemetry shows true for cars on track", () => {
+      const t = makeField();
+      t.CarIdxTrackSurface = Array<number>(8).fill(TrkLoc.OnTrack);
+      t.CarIdxOnPitRoad = Array<boolean>(8).fill(false);
+
+      run(state, t, 1000);
+      t.CarIdxSessionFlags[3] = Flags.Repair;
+      t.CarIdxOnPitRoad[3] = true; // surface says on track
+
+      expect(run(state, t, 2000)).toEqual([flagged(3, OpponentPenaltyFlag.Repair, "ahead", 3)]);
+    });
+  });
+
+  describe("the player in the pits (#1274 manual test)", () => {
+    it.each<{ name: string; pit: Partial<MutableField> }>([
+      { name: "on pit road", pit: { OnPitRoad: true } },
+      { name: "in the pit stall", pit: { PlayerCarInPitStall: true } },
+      { name: "in the stall by track surface", pit: { PlayerTrackSurface: TrkLoc.InPitStall } },
+      { name: "approaching pit entry", pit: { PlayerTrackSurface: TrkLoc.AproachingPits } },
+    ])(
+      "holds every call while the player is $name; on rejoin a still-flagged car announces as entered-range",
+      ({ pit }) => {
+        const t = makeField();
+        const onTrack: Partial<MutableField> = {
+          OnPitRoad: false,
+          PlayerCarInPitStall: false,
+          PlayerTrackSurface: TrkLoc.OnTrack,
+        };
+
+        Object.assign(t, onTrack);
+        run(state, t, 1000);
+        Object.assign(t, pit);
+        t.CarIdxSessionFlags[3] = Flags.Repair;
+        t.CarIdxSessionFlags[4] = Flags.Black;
+
+        expect(run(state, t, 2000)).toEqual([]);
+        expect(run(state, t, 2000 + OPPONENT_FLAG_BLACK_HOLD_MS)).toEqual([]);
+        // A policy hold, not a store gate: the store advanced, nothing latched or stamped.
+        expect(state.opponentFlagEffectiveMask[4]).toBe(Flags.Black);
+        expect(state.opponentFlagAnnouncedMask[3]).toBe(0);
+        expect(state.opponentFlagAnnouncedMask[4]).toBe(0);
+        expect(state.opponentFlagCooldownUntil.repair[3] ?? 0).toBe(0);
+        expect(state.opponentFlagRecentEntries).toHaveLength(0);
+
+        Object.assign(t, onTrack);
+
+        // Black's hold already elapsed in the pits — it announces at once.
+        expect(run(state, t, 6000)).toEqual([
+          flagged(3, OpponentPenaltyFlag.Repair, "ahead", 3, { trigger: "entered-range" }),
+          flagged(4, OpponentPenaltyFlag.Black, "behind", 5, { trigger: "entered-range" }),
+        ]);
+      },
+    );
+
+    it("reads the player's own CarIdxTrackSurface when PlayerTrackSurface is missing", () => {
+      const t = makeField();
+      t.CarIdxTrackSurface = Array<number>(8).fill(TrkLoc.OnTrack);
+
+      run(state, t, 1000);
+      t.CarIdxTrackSurface[PLAYER] = TrkLoc.InPitStall;
+      t.CarIdxSessionFlags[3] = Flags.Repair;
+
+      expect(run(state, t, 2000)).toEqual([]);
+    });
+
+    it("a flag that drops while the player is in the pits never announces", () => {
+      const t = makeField();
+      run(state, t, 1000);
+      t.OnPitRoad = true;
+      t.CarIdxSessionFlags[3] = Flags.Repair;
+      expect(run(state, t, 2000)).toEqual([]);
+      t.CarIdxSessionFlags[3] = 0;
+      expect(run(state, t, 3000)).toEqual([]);
+      t.OnPitRoad = false;
+
+      expect(run(state, t, 4000)).toEqual([]);
+    });
+  });
+
   describe("the payload", () => {
     it("names the car by its session-info number as a string, leading zero kept", () => {
       const t = makeField();
@@ -940,6 +1066,58 @@ describe("diffOpponentFlags", () => {
       expect(aggregate[0]).toContain("carIdx=2 ");
       expect(aggregate[0]).toContain(`flag=${OpponentPenaltyFlag.Repair}`);
       expect(lines.find((l) => l.includes("held back") && l.includes("carIdx=4 "))).toContain("reason=collapsed");
+      expect(logger.info).not.toHaveBeenCalled();
+    });
+
+    it("names the car's CarIdxOnPitRoad on the announce line", () => {
+      const logger = createMockLogger();
+      const t = makeField();
+      t.CarIdxOnPitRoad = Array<boolean>(8).fill(false);
+
+      run(state, t, 1000, { logger });
+      t.CarIdxSessionFlags[3] = Flags.Repair;
+      t.CarIdxOnPitRoad[3] = true;
+      run(state, t, 2000, { logger });
+
+      expect(logger.debug.mock.calls[0]![0]).toContain("Opponent flag announced");
+      expect(logger.debug.mock.calls[0]![0]).toContain("onPitRoad=true");
+
+      const s = createInitialState();
+      const u = makeField();
+
+      run(s, u, 1000, { logger });
+      u.CarIdxSessionFlags[3] = Flags.Repair;
+      run(s, u, 2000, { logger });
+      expect(logger.debug.mock.calls[1]![0]).toContain("onPitRoad=none");
+    });
+
+    it("logs a car in the pits as car-in-pits and a player in the pits as player-in-pits, once per episode", () => {
+      const logger = createMockLogger();
+      const t = makeField();
+      t.CarIdxTrackSurface = Array<number>(8).fill(TrkLoc.OnTrack);
+
+      run(state, t, 1000, { logger });
+      t.CarIdxSessionFlags[3] = Flags.Repair;
+      t.CarIdxTrackSurface[3] = TrkLoc.AproachingPits;
+
+      for (let now = 2000; now <= 4000; now += 1000) run(state, t, now, { logger });
+
+      expect(logger.debug).toHaveBeenCalledTimes(1);
+      expect(logger.debug.mock.calls[0]![0]).toContain("reason=car-in-pits");
+      expect(logger.debug.mock.calls[0]![0]).toContain(`surface=${TrkLoc.AproachingPits}`);
+
+      const s = createInitialState();
+      const u = makeField();
+
+      run(s, u, 1000, { logger });
+      u.PlayerCarInPitStall = true;
+      u.CarIdxSessionFlags[4] = Flags.Repair;
+
+      for (let now = 2000; now <= 4000; now += 1000) run(s, u, now, { logger });
+
+      expect(logger.debug).toHaveBeenCalledTimes(2);
+      expect(logger.debug.mock.calls[1]![0]).toContain("reason=player-in-pits");
+      expect(logger.debug.mock.calls[1]![0]).toContain("carIdx=4 ");
       expect(logger.info).not.toHaveBeenCalled();
     });
   });

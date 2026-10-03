@@ -80,6 +80,21 @@
  * or track-relative path: a flagged car is not a hazard, so a call about a
  * car the driver is not racing is noise.
  *
+ * **Nobody in the pits (#1274 manual test).** A flagged car in its pit stall
+ * or on the pit lane (`CarIdxTrackSurface` `InPitStall` / `AproachingPits` —
+ * iRacing reports the whole lane, in and out, as the latter) is held back
+ * before qualification: it is serving the penalty or out of the race, not
+ * racing the driver. `CarIdxOnPitRoad` is deliberately not read for this —
+ * real telemetry shows it true for cars on track and false for cars in their
+ * box (see the header of `race-finish.ts`) — and a missing surface keeps the
+ * car eligible. Nothing at all is announced while the PLAYER is in the pits
+ * (`OnPitRoad`, `PlayerCarInPitStall`, or a pit `PlayerTrackSurface`, the
+ * player's `CarIdxTrackSurface` standing in for a missing one): the driver is
+ * not racing anyone then. Both are policy holds, not gates — the store keeps
+ * advancing and nothing latches or stamps while they hold, so a flag still up
+ * when the car or the player rejoins announces then, as `entered-range`, if
+ * the car qualifies.
+ *
  * **Announce condition.** Effectively active AND qualified AND that flag's
  * bit not already in `opponentFlagAnnouncedMask` (the per-episode latch) AND
  * opted in AND that flag's per-car cooldown (`opponentFlagCooldownUntil`,
@@ -146,12 +161,14 @@
  * **Debug logging (#1273).** Every individual announce writes one debug line
  * naming the car (carIdx and number), the flag, relation and trigger, the
  * raw `CarIdxSessionFlags` in hex, the class positions of the car and the
- * player, the race gap and the car's `CarIdxTrackSurface` — so a support log
- * can show which car a call was about. The announce that trips the burst
+ * player, the race gap, the car's `CarIdxTrackSurface` and its
+ * `CarIdxOnPitRoad` (logged as evidence only, never decided on) — so a
+ * support log can show which car a call was about. The announce that trips the burst
  * collapse writes the same fields on its "aggregate announced" line instead,
  * with the distinct-car count. An effectively-active flag that is held back
- * (not in world, class, player progress, lap, positions, gap, opt-out,
- * cooldown, or silenced by an open aggregate episode) writes one "held back"
+ * (player in the pits, not in world, car in the pits, class, player
+ * progress, lap, positions, gap, opt-out, cooldown, or silenced by an open
+ * aggregate episode) writes one "held back"
  * line with its reason, once per (car, flag) episode via
  * `opponentFlagHeldBackLoggedMask`: the FIRST reason is the one logged, a
  * later change of reason is not, and the car still writes its announce line
@@ -165,6 +182,7 @@ import {
   getCarNumberFromSessionInfo,
   PENALTY_FLAG_MASK,
   type TelemetryData,
+  TrkLoc,
 } from "@iracedeck/iracing-sdk";
 import { type ILogger, silentLogger } from "@iracedeck/logger";
 
@@ -270,7 +288,9 @@ export type OpponentFlagResolvers = {
 
 /** Why a pending flag did not announce — the #1273 "held back" reason. */
 type HeldBackReason =
+  | "player-in-pits"
   | "not-in-world"
+  | "car-in-pits"
   | "class-unreadable"
   | "different-class"
   | "position-unresolved"
@@ -332,6 +352,40 @@ function resolvePlayerStanding(
   const dp = telemetry.CarIdxLapDistPct?.[playerCarIdx] ?? -1;
 
   return { pos, progress: lc < 0 || dp < 0 ? null : lc + dp };
+}
+
+/**
+ * A track surface that puts a car in the pits: its stall, or the pit lane
+ * (iRacing reports the whole lane, in and out, as `AproachingPits` — see
+ * `opponent-pit.ts`). A missing reading is not in the pits.
+ */
+function isPitSurface(surface: number | undefined): boolean {
+  return surface === TrkLoc.InPitStall || surface === TrkLoc.AproachingPits;
+}
+
+/**
+ * Whether a car is in the pits, judged from `CarIdxTrackSurface` alone —
+ * never `CarIdxOnPitRoad`, which real telemetry shows reading true for cars on
+ * track and false for cars in their box (see the header of `race-finish.ts`).
+ * Missing data keeps the car eligible.
+ */
+function isCarInPits(telemetry: TelemetryData, carIdx: number): boolean {
+  return isPitSurface((telemetry.CarIdxTrackSurface as Array<number | undefined> | undefined)?.[carIdx]);
+}
+
+/**
+ * Whether the player is in the pits: on pit road, in the stall, or on a pit
+ * surface — the player's own scalars (the ones `pit-lane.ts` trusts), with the
+ * player's `CarIdxTrackSurface` standing in for a missing `PlayerTrackSurface`.
+ */
+function isPlayerInPits(telemetry: TelemetryData, playerCarIdx: number): boolean {
+  if (telemetry.OnPitRoad === true || telemetry.PlayerCarInPitStall === true) return true;
+
+  const surface =
+    telemetry.PlayerTrackSurface ??
+    (telemetry.CarIdxTrackSurface as Array<number | undefined> | undefined)?.[playerCarIdx];
+
+  return isPitSurface(surface);
 }
 
 /**
@@ -428,13 +482,14 @@ function describeCar(
   assessment: Assessment,
   rangeSeconds: number,
 ): string {
-  const surface = (telemetry.CarIdxTrackSurface as number[] | undefined)?.[carIdx];
+  const surface = (telemetry.CarIdxTrackSurface as Array<number | undefined> | undefined)?.[carIdx];
+  const onPitRoad = (telemetry.CarIdxOnPitRoad as Array<boolean | undefined> | undefined)?.[carIdx];
   const gap = assessment.gapSeconds === null ? "none" : `${assessment.gapSeconds.toFixed(2)}s`;
 
   return (
     `carIdx=${carIdx} carNumber=${carNumber ?? "none"} sessionFlags=0x${(rawFlags >>> 0).toString(16)} ` +
     `classPos=${assessment.carPos || "none"} playerClassPos=${assessment.playerPos || "none"} ` +
-    `raceGap=${gap} range=${rangeSeconds}s surface=${surface ?? "none"}`
+    `raceGap=${gap} range=${rangeSeconds}s surface=${surface ?? "none"} onPitRoad=${onPitRoad ?? "none"}`
   );
 }
 
@@ -548,6 +603,10 @@ export function diffOpponentFlags(
   // resolved once alongside it.
   let rangeSeconds: number | null = null;
   let player: PlayerStanding | null = null;
+  // A policy hold, not a gate: the store above already advanced and nothing
+  // below latches or stamps while it holds, so a flag still up when the
+  // player rejoins announces then (`entered-range`), if the car qualifies.
+  const playerInPits = isPlayerInPits(telemetry, playerCarIdx);
 
   for (let i = 0; i < raw.length; i++) {
     if (i === playerCarIdx || i === paceCarIdx) continue;
@@ -576,21 +635,32 @@ export function diffOpponentFlags(
     }
 
     // In-world test (the race-finish.ts shape) — blipped/vanished/towed cars
-    // never qualify.
+    // never qualify, and neither does a car in the pits. All three are decided
+    // before `assess`, so none of them costs a gap lookup.
     const inWorld = (lc?.[i] ?? -1) >= 0 && (dp?.[i] ?? -1) >= 0;
-    const assessment: Assessment = inWorld
-      ? assess(
-          telemetry,
-          frozenPositions,
-          player,
-          playerCarIdx,
-          i,
-          isMultiClass,
-          resolvers.getRaceGap,
-          range,
-          enabledPending !== 0,
-        )
-      : { reason: "not-in-world", carPos: 0, playerPos: 0, gapSeconds: null };
+    const unqualified = (reason: HeldBackReason): NotQualified => ({
+      reason,
+      carPos: 0,
+      playerPos: 0,
+      gapSeconds: null,
+    });
+    const assessment: Assessment = playerInPits
+      ? unqualified("player-in-pits")
+      : !inWorld
+        ? unqualified("not-in-world")
+        : isCarInPits(telemetry, i)
+          ? unqualified("car-in-pits")
+          : assess(
+              telemetry,
+              frozenPositions,
+              player,
+              playerCarIdx,
+              i,
+              isMultiClass,
+              resolvers.getRaceGap,
+              range,
+              enabledPending !== 0,
+            );
     // Resolved lazily: only an announce or a first held-back line needs it.
     let carNumber: string | null | undefined;
 
