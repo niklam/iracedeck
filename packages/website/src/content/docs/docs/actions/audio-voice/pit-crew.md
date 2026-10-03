@@ -234,7 +234,7 @@ Once the car is in the box, iRacing's status display tells you whether the crew 
 - **Bad angle** — the car is parked at an angle the crew can't reach properly.
 - **Can't fix that** — iRacing has decided the queued damage repair won't actually be performed this stop. This is the only iRacing-exposed signal that fast-repair / damage repair will fail, and it has no other audio surface.
 
-The nine callouts share a single family so a positioning correction (e.g. *"too far left"* → *"too far right"* while you wiggle into the box) cleanly preempts the previous one without queueing. "Pit stop in progress." waits a quarter-second after the crew starts and is skipped if the crew is already done by then, so a stop with nothing to do — where iRacing reports the crew working for a single instant — hears only the release. Other returns to the idle state are silent: once the crew has been working on the car, a stop that ends without iRacing reporting it complete — pulling away mid-service, for example — gets no release.
+The nine callouts share a single family so a positioning correction (e.g. *"too far left"* → *"too far right"* while you wiggle into the box) cleanly preempts the previous one without queueing. "Pit stop in progress." waits a quarter-second after the crew starts and is skipped if nothing is being done by then, so a stop with nothing to do hears only the release. Other returns to the idle state are silent: once the crew has been working on the car, a stop that ends without iRacing reporting it complete — pulling away mid-service, for example — gets no release.
 
 ### Repeated positioning corrections
 
