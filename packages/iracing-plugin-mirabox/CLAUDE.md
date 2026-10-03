@@ -55,7 +55,7 @@ Unlike the Elgato plugin (which has a first-party `streamdeck link` CLI), Mirabo
 
 On Windows, `link:mirabox` creates a directory **junction** (via `fs.symlinkSync(..., "junction")`), which does not require admin/developer mode.
 
-The full cycle is `pnpm stop:mirabox && pnpm switch-test-env:mirabox && pnpm start:mirabox`. Stop the host **before** the build, not just before the relink: a running host locks the native `iracing_native.node` and `pnpm build` then fails with EPERM.
+The full cycle is `pnpm stop:mirabox && pnpm switch-test-env:mirabox && pnpm start:mirabox`. Stop the host **first**, not between the build and the relink: the relink runs inside `switch-test-env`, straight after the build, and a running host holds the plugin folder's files open; and the host reads its plugins at start only, so it loads the new build when `start:mirabox` brings it back. A running host no longer fails the build itself — since #1258 a native addon it has loaded is moved aside into the package's `.locked-native/` and rebuilt (`scripts/lib/native-addon-build.mjs`). A `bin/` runtime-dependency bump that changes keysender's or `@resvg/resvg-js`'s binary while a host holds the old one is not measured, and may still fail the postbuild install.
 
 `start:mirabox` / `stop:mirabox` resolve the host executable from `MIRABOX_APP_PATH`, defaulting to `%ProgramFiles(x86)%\StreamDock\StreamDock.exe`. Set it in `.env.local` when you run a different host (VSD Craft installs as `VSD Craft.exe`) — the process that gets stopped is the executable's own filename, so the override covers both directions.
 

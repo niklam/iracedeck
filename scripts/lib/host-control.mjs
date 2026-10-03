@@ -6,8 +6,10 @@
  *
  * The assertion that motivated the split: a `taskkill` that FAILS must not be
  * reported as "was not running". The dev loop is `stop && switch-test-env &&
- * start`, so a stop that only looked like it worked lets the build proceed into
- * the EPERM-on-iracing_native.node failure the stop step exists to prevent.
+ * start`, so a stop that only looked like it worked lets the build and the
+ * relink proceed under a host still running the old plugin and holding its
+ * files open — a relink that can fail, and a build the host does not load
+ * until it restarts.
  */
 import { lstatSync, readlinkSync } from "node:fs";
 import { join, win32 } from "node:path";
@@ -76,7 +78,9 @@ export function stopHost(host, { appPath, spawnSync, log = console } = {}) {
       const detail = `${result.stderr ?? ""}${result.stdout ?? ""}`.trim();
       log.error(`Error: could not stop ${image} (taskkill exit ${result.status}).`);
       if (detail) log.error(`  ${detail}`);
-      log.error(`  A build will fail with EPERM while ${host.label} still holds the native module.`);
+      log.error(
+        `  ${host.label} is still running the plugin it started with: it will not load a new build until it restarts, and a relink can fail on files it holds open.`,
+      );
 
       return 1;
     }

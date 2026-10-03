@@ -198,14 +198,17 @@ export function runDevVoices(
   const targets = links(env);
   const ours = hostsLinkedHere(targets, { root, platform });
 
-  // Ahead of the build, because the build is what these hosts break. A running
-  // host holds `iracing_native.node` open and the build dies with EPERM —
-  // which is the failure the transaction below exists for, and the one line
-  // that lets a developer avoid it entirely.
+  // Ahead of the build, because anything printed after it scrolls past
+  // unread. A running host no longer fails the build on the native addons
+  // (#1258), but it keeps the plugin it started with — it reads the new
+  // bin/config.json only at its next start — the relink below can fail on
+  // files it holds open, and a bin/ runtime-dependency bump may still fail the
+  // build against a binary it holds, which the transaction below covers.
   if (ours.length > 0) {
     log.log(
-      `Linked to this worktree: ${ours.map(({ host }) => host).join(", ")} — they must not be RUNNING during the ` +
-        "build (a running deck host locks the native addon and the build fails with EPERM).",
+      `Linked to this worktree: ${ours.map(({ host }) => host).join(", ")} — they should be stopped while this runs ` +
+        "and started after it: a running deck host keeps the plugin it started with, and the relink can fail on " +
+        "files it holds open.",
     );
   }
 
@@ -228,8 +231,8 @@ export function runDevVoices(
     restoreMarker(root, previous);
     log.error(
       `Error: the plugin build failed — ${DEV_LOCAL_FILE} restored to its previous state; nothing was relinked. ` +
-        "Stop the deck hosts linked to this worktree (pnpm stop:mirabox / stop:ulanzi, quit Stream Deck) and run " +
-        "the command again.",
+        "Fix what the build output above names and run the command again — if it is a file a running deck host " +
+        "holds, stop the hosts linked to this worktree first (pnpm stop:mirabox / stop:ulanzi, quit Stream Deck).",
     );
 
     return 1;
@@ -463,8 +466,8 @@ function reportStaging({ voicePacksRoot, isDefaultRoot }, log) {
 
 /**
  * Which of {@link HOST_RELINKS} currently point at THIS worktree's plugin
- * folder — the hosts whose link the switch may relink, and the hosts that must
- * not be running during the build. One answer, used by both.
+ * folder — the hosts whose link the switch may relink, and the hosts the
+ * pre-build hint asks to be stopped. One answer, used by both.
  */
 function hostsLinkedHere(targets, { root, platform }) {
   const norm = (p) => {

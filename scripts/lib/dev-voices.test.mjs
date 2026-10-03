@@ -452,11 +452,11 @@ describe("the build step", () => {
   });
 
   // The marker and the built config.json must never disagree. The build is the
-  // step that carries the marker INTO every bin/config.json, and it is exactly
-  // the step that fails while a deck host linked to this worktree is running
-  // (EPERM on the native addon) — so a marker changed before it and left there
-  // afterwards says development mode is on while all three plugin folders say
-  // it is off, a state nothing in the plugin can report.
+  // step that carries the marker INTO every bin/config.json, and it is the
+  // step that can fail — on a type error, or on a bin/ runtime-dependency bump
+  // against a binary a running deck host holds — so a marker changed before it
+  // and left there afterwards says development mode is on while all three
+  // plugin folders say it is off, a state nothing in the plugin can report.
   it("restores an absent marker when the build fails during 'on'", () => {
     const exec = fakeExec({ [BUILD_ARGS.join(" ")]: 1 });
     const log = fakeLog();
@@ -525,11 +525,11 @@ describe("the pre-build hint", () => {
     expect(runDevVoices("on", options({ log, links: mixedLinks }))).toBe(0);
     const hint = [...log.log.mock.calls]
       .map((args) => args.join(" "))
-      .find((line) => /must not be RUNNING/i.test(line));
-    expect(hint, "the build locks the native addon — the hosts holding it must be named").toBeDefined();
+      .find((line) => /should be stopped while this runs/i.test(line));
+    expect(hint, "the hosts running a plugin from this tree must be named, to stop and restart").toBeDefined();
     expect(hint).toContain("Stream Deck");
     // Mirabox points at another worktree and Ulanzi is not linked at all —
-    // neither can be holding THIS tree's addon open.
+    // neither runs a plugin from THIS tree.
     expect(hint).not.toContain("Mirabox");
     expect(hint).not.toContain("Ulanzi");
   });
@@ -538,7 +538,7 @@ describe("the pre-build hint", () => {
     const log = fakeLog();
 
     expect(runDevVoices("on", options({ log, links: () => mixedLinks().slice(1) }))).toBe(0);
-    expect(output(log)).not.toMatch(/must not be RUNNING/i);
+    expect(output(log)).not.toMatch(/should be stopped while this runs/i);
   });
 
   it("is printed before the build runs", () => {
@@ -551,7 +551,7 @@ describe("the pre-build hint", () => {
     });
 
     expect(runDevVoices("on", options({ log, exec, links: mixedLinks }))).toBe(0);
-    const hintAt = order.findIndex((line) => /must not be RUNNING/i.test(line));
+    const hintAt = order.findIndex((line) => /should be stopped while this runs/i.test(line));
     const buildAt = order.findIndex((line) => line.startsWith("EXEC exec turbo"));
     expect(hintAt).toBeGreaterThanOrEqual(0);
     expect(buildAt).toBeGreaterThanOrEqual(0);
