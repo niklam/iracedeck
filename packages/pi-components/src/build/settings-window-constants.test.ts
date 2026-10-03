@@ -7,10 +7,12 @@ import {
   SETTINGS_WINDOW_HTML as RUNTIME_HTML,
   SETTINGS_WINDOW_OPEN_WARNING_ID,
   SETTINGS_WINDOW_SERVER_WARNING_ID,
+  VOICE_PACK_INSTALL_PHASES,
 } from "@iracedeck/deck-core";
 import { describe, expect, it } from "vitest";
 
 import { SETTINGS_WINDOW_FLAG as COMPONENTS_FLAG } from "../components/settings-window-context.js";
+import { VOICE_PACK_CARD_PHASES } from "../components/voice-pack-catalog-constants.js";
 import { WARNINGS_SETTING as COMPONENT_WARNINGS_KEY } from "../components/warnings-constants.js";
 import { SETTINGS_WINDOW_FLAG as BRIDGE_FLAG } from "../settings-window-bridge/index.js";
 import { SETTINGS_WINDOW_HTML as BUILD_HTML } from "./index.mjs";
@@ -148,5 +150,17 @@ describe("settings-window page withholds the settings-window banners (#1014)", (
 describe("PI warnings settings key (#610, #1014)", () => {
   it("is the same key in deck-core and in the browser component", () => {
     expect(COMPONENT_WARNINGS_KEY).toBe(PI_WARNINGS_KEY);
+  });
+});
+
+/**
+ * The voice-pack card drops an install record whose phase it does not know,
+ * so a phase the plugin writes and the card's copy lacks would show an
+ * install in progress as nothing at all — pinned here like the key above.
+ */
+describe("voice-pack install phases (#1102)", () => {
+  it("are the same list in deck-core and in the voice-pack card", () => {
+    expect([...VOICE_PACK_CARD_PHASES]).toEqual([...VOICE_PACK_INSTALL_PHASES]);
+    expect(VOICE_PACK_CARD_PHASES).not.toContain("verifying");
   });
 });
