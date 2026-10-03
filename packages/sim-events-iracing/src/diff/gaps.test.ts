@@ -10,6 +10,8 @@
  *   - Neighbor identity change resets the side's trend state
  *   - Trend callouts read the lap-over-lap gap, not the within-lap rate
  *     (issue #1285), against a synthetic two-car track
+ *   - readPairGap: the one pair reading (crossing time, or the chaser's ETA
+ *     behind a crawling leader) shared with the opponent-flag race gap
  */
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import { describe, expect, it } from "vitest";
@@ -19,6 +21,8 @@ import {
   diffGaps,
   GAP_DEFAULT_ALERT_THRESHOLD_S,
   GAP_DEFAULT_MIN_CHANGE_S,
+  GAP_ETA_LEADER_CRAWL_MPS,
+  readPairGap,
   sanitizeGapAlertThresholdSeconds,
   sanitizeGapMinChangeSeconds,
 } from "./gaps.js";
@@ -1323,5 +1327,78 @@ describe("gap setting sanitizers (issue #933 review)", () => {
     expect(sanitizeGapMinChangeSeconds(-5)).toBe(0);
     expect(sanitizeGapMinChangeSeconds(50)).toBe(10);
     expect(sanitizeGapMinChangeSeconds("junk")).toBe(GAP_DEFAULT_MIN_CHANGE_S);
+  });
+});
+
+describe("readPairGap (issues #1285, #1274)", () => {
+  const TRACK_M = 4000;
+  const LEADER = 1;
+  const CHASER = 0;
+
+  /** A trace of a car moving at `rate` laps/s, sampled every half second from t0 to t1 (inclusive), at `atT1` progress at t1. */
+  function trace(rate: number, atT1: number, t0: number, t1: number): { progress: number; time: number }[] {
+    const samples: { progress: number; time: number }[] = [];
+
+    for (let t = t0; t <= t1 + 1e-9; t += 0.5) samples.push({ progress: atT1 - rate * (t1 - t), time: t });
+
+    return samples;
+  }
+
+  /** The chaser at 40 m/s (0.01 lap/s) at progress 5.39; the leader `aheadM` metres up the road at `leaderMps`. */
+  function pair(leaderMps: number, aheadM: number): { traces: TranslatorState["gapTraces"]; leaderAt: number } {
+    const leaderAt = 5.39 + aheadM / TRACK_M;
+    const traces: TranslatorState["gapTraces"] = [];
+
+    traces[CHASER] = trace(0.01, 5.39, 90, 110);
+    traces[LEADER] = trace(leaderMps / TRACK_M, leaderAt, 90, 110);
+
+    return { traces, leaderAt };
+  }
+
+  it("reads the chaser's ETA behind a crawling leader — a stopped-ish car 30 m up the road is 0.75 s away, not 6 s", () => {
+    const { traces, leaderAt } = pair(5, 30);
+    const reading = readPairGap(traces, LEADER, leaderAt, CHASER, 5.39, 110, TRACK_M);
+
+    expect(reading.etaReading).toBe(true);
+    expect(reading.gapSeconds).toBeCloseTo(0.75, 5);
+  });
+
+  it("keeps the crossing time for a slower leader above the crawl bar", () => {
+    // 15 m/s is under half the chaser's 40 m/s but above the crawl bar.
+    expect(15).toBeGreaterThan(GAP_ETA_LEADER_CRAWL_MPS);
+    const { traces, leaderAt } = pair(15, 70);
+    const reading = readPairGap(traces, LEADER, leaderAt, CHASER, 5.39, 110, TRACK_M);
+
+    expect(reading.etaReading).toBe(false);
+    expect(reading.gapSeconds).toBeCloseTo(70 / 15, 5);
+  });
+
+  it("keeps the crossing time for two cars at the same pace", () => {
+    const { traces, leaderAt } = pair(40, 100);
+    const reading = readPairGap(traces, LEADER, leaderAt, CHASER, 5.39, 110, TRACK_M);
+
+    expect(reading).toEqual({ gapSeconds: expect.closeTo(2.5, 5), etaReading: false });
+  });
+
+  it("never engages the regime without a usable track length", () => {
+    const { traces, leaderAt } = pair(5, 30);
+
+    for (const length of [null, 0, Number.NaN]) {
+      const reading = readPairGap(traces, LEADER, leaderAt, CHASER, 5.39, 110, length);
+
+      expect(reading.etaReading).toBe(false);
+      expect(reading.gapSeconds).toBeCloseTo(6, 5);
+    }
+  });
+
+  it("is null when the leader's trace does not cover the chaser and the regime does not engage", () => {
+    const traces: TranslatorState["gapTraces"] = [];
+
+    traces[CHASER] = trace(0.01, 5.39, 90, 110);
+
+    expect(readPairGap(traces, LEADER, 5.4, CHASER, 5.39, 110, TRACK_M)).toEqual({
+      gapSeconds: null,
+      etaReading: false,
+    });
   });
 });

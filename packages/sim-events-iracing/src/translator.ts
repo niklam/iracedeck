@@ -30,7 +30,6 @@ import { OpponentPenaltyFlag } from "@iracedeck/event-bus";
 import {
   CarLeftRight,
   classPositionFromOrder,
-  crossingTimeAt,
   extractQualifyResults,
   IRSDK_UNLIMITED_LAPS,
   IRSDK_UNLIMITED_TIME,
@@ -63,7 +62,7 @@ import {
   type FuelLapTracker,
   type FuelStats,
 } from "./diff/fuel-laps.js";
-import { diffGaps, GAP_DEFAULT_ALERT_THRESHOLD_S, GAP_DEFAULT_MIN_CHANGE_S } from "./diff/gaps.js";
+import { diffGaps, GAP_DEFAULT_ALERT_THRESHOLD_S, GAP_DEFAULT_MIN_CHANGE_S, readPairGap } from "./diff/gaps.js";
 import { diffIncidents, resolveCollisionCarValue } from "./diff/incidents.js";
 import { diffLaps } from "./diff/laps.js";
 import { diffLeaderWhite } from "./diff/leader-white.js";
@@ -1196,12 +1195,18 @@ export function getCautionLineup(): CautionLineup | null {
 }
 
 /**
- * Crossing-time gap in seconds between any two cars (issue #933): how long
- * ago `aheadCarIdx` crossed `behindCarIdx`'s current track position. The
- * reusable primitive behind future consumers ("we're N seconds behind the
- * leader") — resolve the target from the canonical order
- * (`getLiveRacePositions()`), then call this. `null` when the traces don't
- * cover the lookup or either car has no live progress.
+ * Race gap in seconds between any two cars (issue #933): normally the
+ * crossing time — how long ago `aheadCarIdx` crossed `behindCarIdx`'s current
+ * track position — and, when the ahead car is crawling (stopped, wrecked,
+ * limping) while the behind car is still at pace, the behind car's ETA over
+ * the separation instead (the #1285 ETA regime; needs the track length).
+ * This is the same reading the gap display and the gap callouts use for a
+ * neighbor pair (`readPairGap` in `diff/gaps.ts`), so every consumer says the
+ * same thing about the same two cars (issue #1274). The reusable primitive
+ * behind future consumers ("we're N seconds behind the leader") — resolve
+ * the target from the canonical order (`getLiveRacePositions()`), then call
+ * this. `null` when the traces don't cover the lookup (and the ETA regime
+ * does not engage) or either car has no live progress.
  */
 export function getLiveGapBetween(aheadCarIdx: number, behindCarIdx: number): number | null {
   return instance ? liveGapBetween(instance, aheadCarIdx, behindCarIdx) : null;
@@ -1217,12 +1222,15 @@ function liveGapBetween(self: TranslatorInstance, aheadCarIdx: number, behindCar
   const telemetry = self.latestTelemetry;
   const lapCompleted = telemetry.CarIdxLapCompleted as number[] | undefined;
   const lapDistPct = telemetry.CarIdxLapDistPct as number[] | undefined;
-  const sessionTime = typeof telemetry.SessionTime === "number" ? telemetry.SessionTime : null;
+  const sessionTime =
+    typeof telemetry.SessionTime === "number" && Number.isFinite(telemetry.SessionTime) ? telemetry.SessionTime : null;
 
   if (!Array.isArray(lapCompleted) || !Array.isArray(lapDistPct) || sessionTime === null) return null;
 
   const behindLc = lapCompleted[behindCarIdx];
   const behindPct = lapDistPct[behindCarIdx];
+  const aheadLc = lapCompleted[aheadCarIdx];
+  const aheadPct = lapDistPct[aheadCarIdx];
 
   if (!hasLiveProgress(behindLc, behindPct)) return null;
 
@@ -1231,15 +1239,19 @@ function liveGapBetween(self: TranslatorInstance, aheadCarIdx: number, behindCar
   // car's position for up to a lap — so without this check the lookup keeps
   // returning a plausible gap that grows one second per second to a car that
   // is no longer on track.
-  if (!hasLiveProgress(lapCompleted[aheadCarIdx], lapDistPct[aheadCarIdx])) return null;
+  if (!hasLiveProgress(aheadLc, aheadPct)) return null;
 
-  const trace = self.state.gapTraces[aheadCarIdx];
+  const sessionInfo = self.controller.getSessionInfo() as Record<string, unknown> | null;
 
-  if (!trace) return null;
-
-  const crossed = crossingTimeAt(trace, behindLc! + behindPct!);
-
-  return crossed === null ? null : Math.max(0, sessionTime - crossed);
+  return readPairGap(
+    self.state.gapTraces,
+    aheadCarIdx,
+    aheadLc! + aheadPct!,
+    behindCarIdx,
+    behindLc! + behindPct!,
+    sessionTime,
+    resolveTrackLengthMeters(self.state, sessionInfo, telemetry),
+  ).gapSeconds;
 }
 
 /** Whether a car's raw lap/percent pair reports live on-track progress. */
@@ -2157,8 +2169,9 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // store (the `getLiveOpponentFlags()` seam) every tick, then qualifies
   // same-class cars near the player and emits `opponentFlag.flagged`
   // (individual lines + the distinct-car burst aggregate). Consumes the same
-  // canonical frozen order as the diffs above; the race gap is #933's
-  // crossing-time gap from the traces `diffGaps` last advanced (one tick old
+  // canonical frozen order as the diffs above; the race gap is the gap
+  // display's own pair reading (#933's crossing time, or the #1285 ETA behind
+  // a crawling car) from the traces `diffGaps` last advanced (one tick old
   // here, which a seconds-scale range cannot notice), and the per-flag
   // opt-in resolver is enforced here so disabled subjects never feed the
   // aggregation. Session info names the car (`carNumber`).

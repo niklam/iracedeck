@@ -60,8 +60,9 @@
  *   ahead, and
  * - `"behind"`: exactly one class position behind,
  *
- * each only while the RACE gap — #933's crossing-time gap, through the
- * injected `getRaceGap(aheadCarIdx, behindCarIdx)` resolver so this module
+ * each only while the RACE gap — the gap display's own pair reading (#933's
+ * crossing time, or the #1285 chaser ETA when the car ahead is crawling),
+ * through the injected `getRaceGap(aheadCarIdx, behindCarIdx)` resolver so this module
  * stays a pure function of its inputs — is at most the driver's range
  * (`getRangeSeconds()`, read live once per announce pass). A `null` gap never
  * qualifies: silence is the right failure, a guessed gap is how the #936
@@ -246,9 +247,10 @@ export type OpponentFlagResolvers = {
    */
   getCalloutEnabled: (flag: OpponentPenaltyFlag) => boolean;
   /**
-   * Race gap in seconds between two cars (#933's crossing-time gap,
-   * `getLiveGapBetween` in `translator.ts`), or `null` when it cannot be
-   * read. `null` never qualifies.
+   * Race gap in seconds between two cars (`getLiveGapBetween` in
+   * `translator.ts`: #933's crossing time, or the #1285 ETA reading behind a
+   * crawling car — the same reading the gap display uses), or `null` when it
+   * cannot be read. `null` never qualifies.
    */
   getRaceGap: (aheadCarIdx: number, behindCarIdx: number) => number | null;
   /** The driver's race-gap range in seconds, live-read once per announce pass (sanitized here too). */

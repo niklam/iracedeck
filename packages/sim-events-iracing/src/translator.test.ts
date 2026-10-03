@@ -422,6 +422,87 @@ describe("sim-events-iracing translator", () => {
       expect(handler.mock.calls[0]![0].data).toMatchObject({ carIdx: 1, trigger: "entered-range" });
     });
 
+    /**
+     * A green race on a 4 km track where car1 crawls at `leaderMps` and sits
+     * `aheadM` metres up the road on the last tick, while the player laps at
+     * 0.01 of a lap per second (40 m/s); the meatball goes up on car1 on the
+     * last tick only.
+     */
+    function driveCrawler(controller: MockController, leaderMps: number, aheadM: number, ticks = 10): void {
+      const trackM = 4000;
+      const rate = leaderMps / trackM;
+      const last = ticks - 1;
+      const carAtEnd = 0.3 + 0.01 * last + aheadM / trackM;
+
+      for (let k = 0; k < ticks; k++) {
+        const player = 0.3 + 0.01 * k;
+
+        controller.__tick(
+          telemetry({
+            SessionState: SessionState.Racing,
+            SessionTime: 100 + k,
+            CarIdxLapCompleted: [5, 5, 5],
+            CarIdxLapDistPct: [player, carAtEnd - rate * (last - k), player - 0.005],
+            CarIdxTrackSurface: [TrkLoc.OnTrack, TrkLoc.OnTrack, TrkLoc.OnTrack],
+            CarIdxClass: [0, 0, 0],
+            CarIdxSessionFlags: [0, k === last ? Flags.Repair : 0, 0],
+          }),
+        );
+      }
+    }
+
+    const raceSessionWithTrack = (): Record<string, unknown> => ({
+      ...raceSession(),
+      WeekendInfo: { TrackID: 1, TrackLength: "4.00 km" },
+    });
+
+    it("reads the gap display's ETA behind a crawling car — a stopped-ish car 30 m ahead is 0.75 s away, inside the default 3 s (#1285 regime)", () => {
+      const controller = createMockController();
+      const bus = getEventBus();
+      const handler = vi.fn();
+      bus.subscribe("opponentFlag.flagged", handler);
+      controller.__setSessionInfo(raceSessionWithTrack());
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      // 5 m/s: the crossing time to car1 is 6 s, which the 3 s range rejects.
+      driveCrawler(controller, 5, 30);
+
+      expect(handler).toHaveBeenCalledTimes(1);
+      expect(handler.mock.calls[0]![0].data).toMatchObject({
+        relation: "ahead",
+        carIdx: 1,
+        gapSeconds: expect.closeTo(0.75, 5),
+      });
+    });
+
+    it("keeps the crossing time for a slower car above the crawl bar", () => {
+      const controller = createMockController();
+      const bus = getEventBus();
+      const handler = vi.fn();
+      bus.subscribe("opponentFlag.flagged", handler);
+      controller.__setSessionInfo(raceSessionWithTrack());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { getOpponentFlagRangeSeconds: () => 5 });
+
+      // 15 m/s, 70 m ahead: crossing 70 / 15 s; the ETA would have read 1.75 s.
+      driveCrawler(controller, 15, 70);
+
+      expect(handler).toHaveBeenCalledTimes(1);
+      expect(handler.mock.calls[0]![0].data).toMatchObject({ carIdx: 1, gapSeconds: expect.closeTo(70 / 15, 5) });
+    });
+
+    it("never reads the ETA without a track length — the crawling car 30 m ahead stays 6 s away and silent", () => {
+      const controller = createMockController();
+      const bus = getEventBus();
+      const handler = vi.fn();
+      bus.subscribe("opponentFlag.flagged", handler);
+      controller.__setSessionInfo(raceSession());
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      driveCrawler(controller, 5, 30);
+
+      expect(handler).not.toHaveBeenCalled();
+    });
+
     it("writes the debug lines through an OpponentFlags scope of the translator's logger", () => {
       const controller = createMockController();
       const scoped = createMockLogger();

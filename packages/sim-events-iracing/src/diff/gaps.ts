@@ -162,6 +162,64 @@ const GAP_ETA_LEADER_SLOW_FACTOR = 0.5;
 /** Minimum chaser rate (laps/s) for the ETA regime — both-cars-stopped stays crossing-time. */
 const GAP_ETA_CHASER_MIN_RATE = 0.002;
 
+/** One pair's race gap, and whether it is the chaser-ETA reading rather than the crossing time. */
+export type PairGapReading = { gapSeconds: number | null; etaReading: boolean };
+
+/**
+ * The race gap from a chasing car to the car it is chasing — ONE reading for
+ * every consumer of a pair's gap, so the gap display, the gap callouts and
+ * the opponent-flag range (issue #1274) say the same thing about the same two
+ * cars.
+ *
+ * Normally the crossing time (issue #933): how long ago the leader crossed
+ * the chaser's current progress, read from the leader's trace. When the
+ * leader is dramatically slower than the chaser AND crawling in absolute
+ * terms (stopped, wrecked, limping — the ETA regime, issues #933 and #1285),
+ * the crossing time overstates the distance and stops tracking it (both
+ * `now` and the lookup advance at the chaser's pace), so the reading becomes
+ * the chaser's ETA over the separation at its current pace, which counts
+ * down as it closes. The crawl bar keeps a leader braking into a hairpin out
+ * of it — there the crossing time is right and the ETA would underestimate
+ * it by seconds. No usable track length, no regime.
+ *
+ * Pure: reads the traces, never mutates them. `gapSeconds` is `null` when
+ * the leader's trace does not cover the chaser's progress and the regime
+ * does not engage. Progress is total progress (`CarIdxLapCompleted +
+ * CarIdxLapDistPct`).
+ */
+export function readPairGap(
+  traces: TranslatorState["gapTraces"],
+  leaderIdx: number,
+  leaderProgress: number,
+  chaserIdx: number,
+  chaserProgress: number,
+  sessionTime: number,
+  trackLengthMeters: number | null,
+): PairGapReading {
+  const leaderTrace = traces[leaderIdx];
+  const crossed = leaderTrace ? crossingTimeAt(leaderTrace, chaserProgress) : null;
+  const crossingGap = crossed !== null ? Math.max(0, sessionTime - crossed) : null;
+  const trackLength =
+    typeof trackLengthMeters === "number" && Number.isFinite(trackLengthMeters) && trackLengthMeters > 0
+      ? trackLengthMeters
+      : null;
+  const chaserRate = recentProgressRate(traces[chaserIdx], chaserProgress, sessionTime, GAP_RATE_WINDOW_S);
+  const leaderRate = recentProgressRate(leaderTrace, leaderProgress, sessionTime, GAP_RATE_WINDOW_S);
+
+  if (
+    chaserRate !== null &&
+    chaserRate > GAP_ETA_CHASER_MIN_RATE &&
+    leaderRate !== null &&
+    leaderRate < chaserRate * GAP_ETA_LEADER_SLOW_FACTOR &&
+    trackLength !== null &&
+    leaderRate * trackLength < GAP_ETA_LEADER_CRAWL_MPS
+  ) {
+    return { gapSeconds: Math.max(0, leaderProgress - chaserProgress) / chaserRate, etaReading: true };
+  }
+
+  return { gapSeconds: crossingGap, etaReading: false };
+}
+
 /** EMA smoothing factor for the display gap rate (~0.13 lap of memory). Display only. */
 const GAP_TREND_EMA_ALPHA = 0.15;
 /** Rate samples required before the display trend classifies. ~0.1 lap. */
@@ -423,37 +481,32 @@ function computeSide(
   if (lapDelta === 0) {
     // Ahead: how long ago did the neighbor cross MY position (their trace).
     // Behind: how long ago did I cross the neighbor's position (my trace).
-    const trace = side === "ahead" ? state.gapTraces[idx] : state.gapTraces[playerCarIdx];
-    const lookupProgress = side === "ahead" ? playerProgress : neighborProgress;
-    const crossed = trace ? crossingTimeAt(trace, lookupProgress) : null;
+    // Either way it is the LEADING car's trace read at the CHASER's
+    // progress — or the chaser's ETA when the leader is crawling (see
+    // `readPairGap`, shared with the opponent-flag race gap).
+    const reading =
+      side === "ahead"
+        ? readPairGap(
+            state.gapTraces,
+            idx,
+            neighborProgress,
+            playerCarIdx,
+            playerProgress,
+            sessionTime,
+            trackLengthMeters,
+          )
+        : readPairGap(
+            state.gapTraces,
+            playerCarIdx,
+            playerProgress,
+            idx,
+            neighborProgress,
+            sessionTime,
+            trackLengthMeters,
+          );
 
-    if (crossed !== null) gapSeconds = Math.max(0, sessionTime - crossed);
-
-    // ETA regime: when the pair's LEADING car is dramatically slower than
-    // the chaser AND crawling in absolute terms (stopped, wrecked, limping),
-    // the crossing-time reading goes insensitive — replace it with the
-    // chaser's ETA over the separation at its current pace, which counts
-    // down as it closes. The crawl bar keeps a leader braking into a hairpin
-    // out of it (issue #1285): there the crossing-time gap is correct, and
-    // the ETA would underestimate it by seconds. No track length, no regime.
-    const leaderIdx = side === "ahead" ? idx : playerCarIdx;
-    const chaserIdx = side === "ahead" ? playerCarIdx : idx;
-    const leaderProgress = side === "ahead" ? neighborProgress : playerProgress;
-    const chaserProgress = side === "ahead" ? playerProgress : neighborProgress;
-    const chaserRate = recentProgressRate(state.gapTraces[chaserIdx], chaserProgress, sessionTime, GAP_RATE_WINDOW_S);
-    const leaderRate = recentProgressRate(state.gapTraces[leaderIdx], leaderProgress, sessionTime, GAP_RATE_WINDOW_S);
-
-    if (
-      chaserRate !== null &&
-      chaserRate > GAP_ETA_CHASER_MIN_RATE &&
-      leaderRate !== null &&
-      leaderRate < chaserRate * GAP_ETA_LEADER_SLOW_FACTOR &&
-      trackLengthMeters !== null &&
-      leaderRate * trackLengthMeters < GAP_ETA_LEADER_CRAWL_MPS
-    ) {
-      etaRegime = true;
-      gapSeconds = Math.max(0, leaderProgress - chaserProgress) / chaserRate;
-    }
+    gapSeconds = reading.gapSeconds;
+    etaRegime = reading.etaReading;
   }
 
   const suppressed = playerPaused || neighborSuppressed(telemetry, idx);
