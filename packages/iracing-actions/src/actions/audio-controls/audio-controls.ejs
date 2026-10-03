@@ -248,8 +248,10 @@
 
 			// Which surface this instance sits on: the PI registration's
 			// actionInfo.payload.controller ("Keypad" | "Encoder"; the Mirabox host
-			// may report "Knob"). Anything unknown or unavailable falls back to the
-			// keypad view (#759 pattern).
+			// may report "Knob"). A missing controller means a keypad (a host that
+			// declares no dials sends none). A failed lookup returns null: the
+			// surface is then unknown, so the PI keeps the keypad view (#759
+			// pattern) but wires neither surface (#1196).
 			async function resolveController() {
 				try {
 					const client = window.SDPIComponents && window.SDPIComponents.streamDeckClient;
@@ -257,7 +259,7 @@
 					const controller = info && info.actionInfo && info.actionInfo.payload && info.actionInfo.payload.controller;
 					return controller === "Encoder" || controller === "Knob" ? "Encoder" : "Keypad";
 				} catch (err) {
-					return "Keypad";
+					return null;
 				}
 			}
 
@@ -324,6 +326,22 @@
 					pressStatus.classList.toggle("hidden", hideStatus);
 				}
 
+				// A press this build does not offer at all falls back to None too:
+				// Push to Talk is compiled out where the host never sends the release
+				// it needs (#1013), so a value stored on another host would otherwise
+				// sit in a select that cannot show it, warning on the knob screen until
+				// the user happened to pick something else (#1196). A conditional
+				// option is still "offered" while detached; the rule above owns it.
+				const offered =
+					Array.from(pressSelect ? pressSelect.querySelectorAll("option") : []).some((o) => o.value === press) ||
+					dialConditionalOptions.some((entry) => entry && entry.option.value === press);
+
+				if (pressSelect && pressSelect.value && !offered) {
+					pressSelect.value = "none";
+					pressSelect.dispatchEvent(new Event("input", { bubbles: true }));
+					pressSelect.dispatchEvent(new Event("change", { bubbles: true }));
+				}
+
 				// A press the current Mode cannot fire falls back to None (blind-safe).
 				applyConditionalOptions(pressSelect, dialConditionalOptions, category, "none");
 			}
@@ -334,14 +352,21 @@
 			// the current Mode does not offer. Run on the wrong surface, that
 			// rewrote a setting the user cannot see: a keypad PI reset a stored
 			// dial press to None, and a dial PI reset a stored keypad action to
-			// Volume Up.
+			// Volume Up. So when the lookup fails the PI wires nothing: its selects
+			// still save, but nothing is rewritten on a guess.
+			//
+			// Waiting for the lookup costs the keypad nothing it could use: the
+			// stored values reach the selects over the same connection, so there is
+			// nothing to filter before it answers.
 			async function initialize() {
 				await customElements.whenDefined("sdpi-select");
 
-				if ((await resolveController()) === "Encoder") {
+				const controller = await resolveController();
+
+				if (controller === "Encoder") {
 					applyDialView();
 					initializeDial();
-				} else {
+				} else if (controller === "Keypad") {
 					initializeKeypad();
 				}
 			}
@@ -364,14 +389,13 @@
 						updateVisibility(ev.target.value || "push-to-talk");
 					});
 
-					// Polling fallback for reliable detection
-					let lastValue = categorySelect.value || "push-to-talk";
+					// Polling fallback, every tick like the dial's (#1196): sdpi-select
+					// events can be unreliable, and a stored action that lands after the
+					// category must still meet the fallback rule, or a pair the category
+					// does not offer survives the PI being opened. updateVisibility is
+					// idempotent, so a tick with nothing to do changes nothing.
 					window.irdPoll(() => {
-						const currentValue = categorySelect.value;
-						if (currentValue && currentValue !== lastValue) {
-							lastValue = currentValue;
-							updateVisibility(currentValue);
-						}
+						updateVisibility(categorySelect.value || "push-to-talk");
 					});
 				}
 			}

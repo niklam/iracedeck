@@ -348,6 +348,13 @@ describe("AudioControls", () => {
         }
       });
 
+      it("clears the active binding rather than keeping the previous key's (#1196)", async () => {
+        const action = new AudioControls();
+        await action.onWillAppear(fakeEvent("ctx-stale", { category: "master", action: "mute-driver" }) as any);
+
+        expect(action["setActiveBinding"]).toHaveBeenCalledWith(null);
+      });
+
       it("shows the warning on the key itself when it appears", async () => {
         const action = new AudioControls();
         await action.onWillAppear(fakeEvent("ctx-stale", { category: "master", action: "mute-driver" }) as any);

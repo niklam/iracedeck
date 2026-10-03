@@ -189,11 +189,10 @@ export class AudioControls extends ConnectionStateAwareAction<AudioControlsSetti
       return;
     }
 
-    const activeKey = this.resolveGlobalKey(settings.category, settings.action);
-
-    if (activeKey) {
-      this.setActiveBinding(activeKey);
-    }
+    // Unconditional: a pair with no binding (the internal categories, or one
+    // the PI never writes, #1196) must clear the key, not leave the one the
+    // previous key declared deciding this key's readiness.
+    this.setActiveBinding(this.resolveGlobalKey(settings.category, settings.action));
 
     await this.updateDisplay(ev, settings);
   }
@@ -210,11 +209,7 @@ export class AudioControls extends ConnectionStateAwareAction<AudioControlsSetti
       return;
     }
 
-    const activeKey = this.resolveGlobalKey(settings.category, settings.action);
-
-    if (activeKey) {
-      this.setActiveBinding(activeKey);
-    }
+    this.setActiveBinding(this.resolveGlobalKey(settings.category, settings.action));
 
     await this.updateDisplay(ev, settings);
   }
