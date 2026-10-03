@@ -251,7 +251,13 @@ function radar(label: string, from: string, to: string): BusEventShortcut {
   };
 }
 
-function pitStatus(id: string, label: string, target: PitSvStatus, description?: string): BusEventShortcut {
+function pitStatus(
+  id: string,
+  label: string,
+  target: PitSvStatus,
+  description?: string,
+  telemetryPatch?: Record<string, unknown>,
+): BusEventShortcut {
   return {
     id: `pit-status-${id}`,
     category: "Pit Status",
@@ -264,6 +270,7 @@ function pitStatus(id: string, label: string, target: PitSvStatus, description?:
     // engine sees identical `family: "pit-status"` metadata regardless
     // of the `from` value.
     data: { from: PitSvStatus.None, to: target },
+    ...(telemetryPatch ? { telemetryPatch } : {}),
   };
 }
 
@@ -2300,7 +2307,14 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   // sim translator so you hear/see the scenario without driving
   // `PlayerCarPitSvStatus` through `/api/telemetry`. Same-family
   // preempt: fire two in a row to confirm the second cancels the first.
-  pitStatus("in-progress", "In Progress", PitSvStatus.InProgress, "Crew started working on the car"),
+  // The in-progress line re-checks the live status after a quarter-second
+  // (issue #1180), so the patch DELETES `PlayerCarPitSvStatus` — unknown
+  // admits — rather than leave the None a telemetry-driven run (the empty
+  // stop) hands back, which would drop the line. Deleting it changes nothing
+  // the translator sees: a missing status already reads as None.
+  pitStatus("in-progress", "In Progress", PitSvStatus.InProgress, "Crew started working on the car", {
+    PlayerCarPitSvStatus: null,
+  }),
   pitStatus("complete", "Complete", PitSvStatus.Complete, "Service finished — ready to leave the box"),
   // The empty stop (issue #1180) — telemetry-driven, so it auditions the
   // translator's decision: no "in progress", then the Complete line.

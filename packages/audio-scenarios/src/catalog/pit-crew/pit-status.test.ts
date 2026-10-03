@@ -26,7 +26,11 @@
  *   - the bundled script's entries, vocabulary and clip sources (#1065)
  *   - the empty-stop release (#1180): its own contract on
  *     `pitService.stopEmpty`, outside `PIT_STATUS_CONTRACTS`, scripted onto
- *     the Complete clips and riding the Complete opt-in
+ *     the Complete clips and riding the Complete opt-in; queueable behind a
+ *     busy radio, and dropped at speak time once the car has left its box
+ *   - the in-progress hold (#1180): the in-progress line waits
+ *     `PIT_STATUS_IN_PROGRESS_HOLD_MS` and is dropped if the live status has
+ *     left InProgress by then — the only transition line with a gate
  */
 import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "json" };
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
@@ -34,7 +38,7 @@ import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { type CalloutScript, collectScriptReferences } from "@iracedeck/callout-script";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
-import { PitSvStatus } from "@iracedeck/iracing-sdk";
+import { PitSvStatus, TrkLoc } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { NO_FRAME, WEIGHT } from "../../dsl.js";
@@ -45,6 +49,7 @@ import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import {
   PIT_STATUS_CLIP_SOURCES,
   PIT_STATUS_CONTRACTS,
+  PIT_STATUS_IN_PROGRESS_HOLD_MS,
   PIT_STATUS_NOTHING_TO_DO_CONTRACT,
   PIT_STATUS_NOTHING_TO_DO_SCENARIO_ID,
   PIT_STATUS_REPEAT_CONTRACTS,
@@ -57,14 +62,19 @@ import {
 import { _resetRadarEngine } from "./radar-engine.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
 
-// `latestTelemetry` backs the repeat nags' speak-time gate. `null` (the
-// default, and what the scenario harness sees) means "unknown" — the gate must
-// then let the line play rather than suppress on missing data.
-const simMocks = vi.hoisted(() => ({ latestTelemetry: null as { PlayerCarPitSvStatus?: number } | null }));
+// `latestTelemetry` backs the speak-time gates: the repeat nags', the
+// in-progress line's and the empty-stop release's. `null` (the default, and
+// what the scenario harness sees) means "unknown" — a gate must then let the
+// line play rather than suppress on missing data.
+const simMocks = vi.hoisted(() => ({
+  latestTelemetry: null as { PlayerCarPitSvStatus?: number; PlayerTrackSurface?: number; Speed?: number } | null,
+}));
 
 vi.mock("@iracedeck/sim-events-iracing", () => ({
   getSessionType: () => "Race",
   getLatestTelemetry: () => simMocks.latestTelemetry,
+  // The translator's own constant, which the release's gate reads.
+  PIT_STATUS_MOVEMENT_SPEED_MPS: 0.05,
 }));
 
 const mockLogger = {
@@ -295,10 +305,15 @@ describe("PIT_STATUS_CONTRACTS structure", () => {
 });
 
 describe("PIT_STATUS_CONTRACTS triggers (engine-level, no opt-out gating)", () => {
-  beforeEach(registerFamilyAlone);
+  beforeEach(() => {
+    // Fake timers so the in-progress line's hold (#1180) can run out.
+    vi.useFakeTimers();
+    registerFamilyAlone();
+  });
 
   afterEach(() => {
     _resetAudioScenarios();
+    vi.useRealTimers();
     vi.clearAllMocks();
   });
 
@@ -313,6 +328,7 @@ describe("PIT_STATUS_CONTRACTS triggers (engine-level, no opt-out gating)", () =
     { to: PitSvStatus.CantFixThat, expected: `voice/${VOICE}/pit-status/cant-fix-that-01.mp3` },
   ])("to=$to fires the matching clip", ({ to, expected }) => {
     bus.publishEvent("pitService.statusChanged", { from: PitSvStatus.None, to });
+    vi.advanceTimersByTime(PIT_STATUS_IN_PROGRESS_HOLD_MS);
     flush(audio);
 
     expect(voiceClipsPlayed(audio)).toEqual([expected]);
@@ -360,6 +376,7 @@ describe("PIT_STATUS_CONTRACTS triggers (engine-level, no opt-out gating)", () =
     engine.setScripts(new Map());
 
     bus.publishEvent("pitService.statusChanged", { from: PitSvStatus.None, to: PitSvStatus.InProgress });
+    vi.advanceTimersByTime(PIT_STATUS_IN_PROGRESS_HOLD_MS);
     flush(audio);
 
     expect(audio._played).toEqual([]);
@@ -380,14 +397,18 @@ describe("PIT_STATUS_NOTHING_TO_DO_CONTRACT structure (#1180)", () => {
     expect(c.family).toBe("pit-status");
     expect(c.weight).toBeUndefined();
     expect(c.interrupt).not.toBe(true);
-    expect(c.queueable).not.toBe(true);
     expect(c.base).toBe("voice/{voice}");
     expect(c.channel).toBe(AudioChannel.Voice);
     expect(c.bus).toBe(AudioBus.Voice);
   });
 
-  it("carries no gate, no sequence and takes the engine's default frame", () => {
-    expect(c.speakGate).toBeUndefined();
+  it("queues behind a busy radio rather than being dropped, and re-checks the car at speak time", () => {
+    expect(c.queueable).toBe(true);
+    expect(c.triggerDelay).toBeUndefined();
+    expect(c.speakGate?.description).toBeTruthy();
+  });
+
+  it("carries no sequence and takes the engine's default frame", () => {
     expect("sequence" in c).toBe(false);
     expect(c.frame).toBeUndefined();
   });
@@ -424,6 +445,86 @@ describe("PIT_STATUS_NOTHING_TO_DO_CONTRACT trigger (engine-level, #1180)", () =
     expect(voiceClipsPlayed(audio).at(-1)).toBe(`voice/${VOICE}/pit-status/too-far-left-01.mp3`);
   });
 
+  /** Hold the Voice bus with an unrelated line of the release's own weight, which it cannot cut. */
+  function occupyVoiceBusAtEqualWeight(): void {
+    engine.defineScenario({
+      id: "test.bus-occupier",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      base: "voice/{voice}",
+      weight: WEIGHT.NORMAL,
+      sequence: [OCCUPIER_CLIP_STEP],
+    });
+    engine.fire("test.bus-occupier");
+  }
+
+  const RELEASE_CLIP = `voice/${VOICE}/pit-status/complete-01.mp3`;
+  const IN_THE_BOX = { PlayerCarPitSvStatus: PitSvStatus.None, PlayerTrackSurface: TrkLoc.InPitStall, Speed: 0 };
+
+  afterEach(() => {
+    simMocks.latestTelemetry = null;
+  });
+
+  it("queues behind a busy equal-weight line and plays after it", () => {
+    simMocks.latestTelemetry = IN_THE_BOX;
+    occupyVoiceBusAtEqualWeight();
+
+    bus.publishEvent("pitService.stopEmpty", {});
+
+    // Deferred, not dropped: a non-queueable fire at equal weight is dropped here.
+    expect(mockLogger.debug).toHaveBeenCalledWith(
+      `Scenario "${PIT_STATUS_NOTHING_TO_DO_SCENARIO_ID}" pending (1 of 1) — deferred (bus busy)`,
+    );
+    expect(voiceClipsPlayed(audio)).not.toContain(RELEASE_CLIP);
+
+    flush(audio);
+
+    expect(mockLogger.debug).toHaveBeenCalledWith(
+      `Replaying pending scenario "${PIT_STATUS_NOTHING_TO_DO_SCENARIO_ID}"`,
+    );
+    expect(voiceClipsPlayed(audio)).toEqual([OCCUPIER_CLIP, RELEASE_CLIP]);
+  });
+
+  it.each([
+    { left: "pulled away", live: { ...IN_THE_BOX, Speed: 2 } },
+    { left: "reversed out of the box", live: { ...IN_THE_BOX, Speed: -0.5 } },
+    { left: "left the pit-stall surface", live: { ...IN_THE_BOX, PlayerTrackSurface: TrkLoc.AproachingPits } },
+    { left: "began a new stop", live: { ...IN_THE_BOX, PlayerCarPitSvStatus: PitSvStatus.InProgress } },
+  ])("is dropped at speak time when, while it waited, the car $left", ({ live }) => {
+    simMocks.latestTelemetry = IN_THE_BOX;
+    occupyVoiceBusAtEqualWeight();
+
+    bus.publishEvent("pitService.stopEmpty", {});
+    simMocks.latestTelemetry = live;
+    flush(audio);
+
+    expect(mockLogger.debug).toHaveBeenCalledWith(
+      `Replaying pending scenario "${PIT_STATUS_NOTHING_TO_DO_SCENARIO_ID}"`,
+    );
+    expect(voiceClipsPlayed(audio)).toEqual([OCCUPIER_CLIP]);
+  });
+
+  it("plays when the car is still at rest in its box at speak time, at exactly the movement threshold", () => {
+    simMocks.latestTelemetry = { ...IN_THE_BOX, Speed: 0.05 };
+
+    bus.publishEvent("pitService.stopEmpty", {});
+    flush(audio);
+
+    expect(voiceClipsPlayed(audio)).toEqual([RELEASE_CLIP]);
+  });
+
+  it("plays when telemetry, or any field it reads, is unavailable — never suppress on missing data", () => {
+    for (const live of [null, {}]) {
+      audio._played.length = 0;
+      simMocks.latestTelemetry = live;
+
+      bus.publishEvent("pitService.stopEmpty", {});
+      flush(audio);
+
+      expect(voiceClipsPlayed(audio), JSON.stringify(live)).toEqual([RELEASE_CLIP]);
+    }
+  });
+
   it("a voice that does not script it is silent for it", () => {
     const { [PIT_STATUS_NOTHING_TO_DO_SCENARIO_ID]: _omitted, ...rest } = PIT_STATUS_SCRIPT.scenarios;
 
@@ -433,6 +534,96 @@ describe("PIT_STATUS_NOTHING_TO_DO_CONTRACT trigger (engine-level, #1180)", () =
     flush(audio);
 
     expect(audio._played).toEqual([]);
+  });
+});
+
+describe("the in-progress hold (#1180)", () => {
+  const IN_PROGRESS_CLIP = `voice/${VOICE}/pit-status/in-progress-01.mp3`;
+  const inProgress = PIT_STATUS_CONTRACTS.find((c) => c.id === "pit-crew.pit-status-in-progress");
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    registerFamilyAlone();
+  });
+
+  afterEach(() => {
+    simMocks.latestTelemetry = null;
+    _resetAudioScenarios();
+    vi.useRealTimers();
+    vi.clearAllMocks();
+  });
+
+  function publishInProgress(): void {
+    bus.publishEvent("pitService.statusChanged", { from: PitSvStatus.None, to: PitSvStatus.InProgress });
+  }
+
+  it("waits a quarter-second before deciding, and re-checks the live status then", () => {
+    expect(PIT_STATUS_IN_PROGRESS_HOLD_MS).toBe(250);
+    expect(inProgress?.triggerDelay).toBe(PIT_STATUS_IN_PROGRESS_HOLD_MS);
+    expect(inProgress?.speakGate?.description).toBeTruthy();
+    expect(inProgress?.queueable).not.toBe(true);
+  });
+
+  it("says nothing before the hold runs out", () => {
+    simMocks.latestTelemetry = { PlayerCarPitSvStatus: PitSvStatus.InProgress };
+    publishInProgress();
+    vi.advanceTimersByTime(PIT_STATUS_IN_PROGRESS_HOLD_MS - 1);
+    flush(audio);
+
+    expect(audio._played).toEqual([]);
+  });
+
+  it("plays when the status still reads InProgress at speak time — a real stop", () => {
+    simMocks.latestTelemetry = { PlayerCarPitSvStatus: PitSvStatus.InProgress };
+    publishInProgress();
+    vi.advanceTimersByTime(PIT_STATUS_IN_PROGRESS_HOLD_MS);
+    flush(audio);
+
+    expect(voiceClipsPlayed(audio)).toEqual([IN_PROGRESS_CLIP]);
+  });
+
+  it.each([
+    { what: "closed to None — the empty stop", status: PitSvStatus.None },
+    { what: "moved on to Complete", status: PitSvStatus.Complete },
+  ])("is dropped when the live status has $what by speak time", ({ status }) => {
+    simMocks.latestTelemetry = { PlayerCarPitSvStatus: PitSvStatus.InProgress };
+    publishInProgress();
+    simMocks.latestTelemetry = { PlayerCarPitSvStatus: status };
+    vi.advanceTimersByTime(PIT_STATUS_IN_PROGRESS_HOLD_MS);
+    flush(audio);
+
+    expect(audio._played).toEqual([]);
+    expect(mockLogger.debug).toHaveBeenCalledWith(
+      `Scenario "pit-crew.pit-status-in-progress" skipped — speak-time gate: ${inProgress?.speakGate?.description}`,
+    );
+  });
+
+  it("plays when telemetry, or its status field, is unavailable — never suppress on missing data", () => {
+    for (const live of [null, {}]) {
+      audio._played.length = 0;
+      simMocks.latestTelemetry = live;
+      publishInProgress();
+      vi.advanceTimersByTime(PIT_STATUS_IN_PROGRESS_HOLD_MS);
+      flush(audio);
+
+      expect(voiceClipsPlayed(audio), JSON.stringify(live)).toEqual([IN_PROGRESS_CLIP]);
+    }
+  });
+
+  it("an empty stop hears only the release: InProgress, its close, then stopEmpty inside the hold", () => {
+    simMocks.latestTelemetry = { PlayerCarPitSvStatus: PitSvStatus.InProgress, PlayerTrackSurface: TrkLoc.InPitStall };
+    publishInProgress();
+    vi.advanceTimersByTime(20);
+    simMocks.latestTelemetry = {
+      PlayerCarPitSvStatus: PitSvStatus.None,
+      PlayerTrackSurface: TrkLoc.InPitStall,
+      Speed: 0,
+    };
+    bus.publishEvent("pitService.stopEmpty", {});
+    vi.advanceTimersByTime(PIT_STATUS_IN_PROGRESS_HOLD_MS);
+    flush(audio);
+
+    expect(voiceClipsPlayed(audio)).toEqual([`voice/${VOICE}/pit-status/complete-01.mp3`]);
   });
 });
 
@@ -829,8 +1020,12 @@ describe("the bundled script's pit-status entries (issue #1065)", () => {
       expect(c.speakGate?.description, c.id).toBeTruthy();
     }
 
-    // …and only the nags: a transition line decides everything at `where:`.
-    for (const c of PIT_STATUS_CONTRACTS) expect(c.speakGate, c.id).toBeUndefined();
+    // …and of the transition lines only the in-progress one (#1180), whose
+    // hold must be able to drop it; every other decides everything at `where:`.
+    for (const c of PIT_STATUS_CONTRACTS) {
+      if (c.id === "pit-crew.pit-status-in-progress") expect(c.speakGate?.description, c.id).toBeTruthy();
+      else expect(c.speakGate, c.id).toBeUndefined();
+    }
   });
 
   it("references no condition at all — the five the family registers are published, not used (issue #1138)", () => {
@@ -949,6 +1144,8 @@ describe("PIT_STATUS_CONTRACTS per-callout opt-out (via registerPitCrew)", () =>
   });
 
   it("disabling all suppresses every callout", () => {
+    vi.useFakeTimers();
+
     for (const id of enabled.keys()) enabled.set(id, false);
 
     for (const to of [
@@ -965,9 +1162,13 @@ describe("PIT_STATUS_CONTRACTS per-callout opt-out (via registerPitCrew)", () =>
     }
 
     bus.publishEvent("pitService.stopEmpty", {});
+    // Past the in-progress line's hold (#1180), so it is asked too.
+    vi.advanceTimersByTime(PIT_STATUS_IN_PROGRESS_HOLD_MS);
     flush(audio);
+    vi.useRealTimers();
 
     expect(voiceClipsPlayed(audio)).toEqual([]);
+    expect(mockLogger.debug).toHaveBeenCalledWith("pit-status callout suppressed: in-progress");
   });
 
   it("the empty-stop release rides the Complete opt-in — one checkbox silences both (#1180)", () => {
