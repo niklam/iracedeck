@@ -51,7 +51,13 @@
  *   - `sessionType`: resolved by the orchestrator (translator.ts) since it
  *     reads session info; the diff just consumes the classified value.
  */
-import { Flags, hasFlag, type TelemetryData } from "@iracedeck/iracing-sdk";
+import {
+  Flags,
+  hasFlag,
+  resolveLapsRemaining,
+  resolveTimeRemainingS,
+  type TelemetryData,
+} from "@iracedeck/iracing-sdk";
 
 import type { TranslatorState } from "../state.js";
 import type { EmitFn } from "./types.js";
@@ -337,13 +343,16 @@ export function diffLaps(
 
   if (sessionType) data.sessionType = sessionType;
 
-  const lapsRemaining = typeof telemetry.SessionLapsRemainEx === "number" ? telemetry.SessionLapsRemainEx : undefined;
+  // Through the session-limit resolvers (#1220): iRacing reports the side a
+  // session does not have with a sentinel (32767 laps, 604800 s), and the
+  // catalog promises each field only when that side limits the session.
+  const lapsRemaining = resolveLapsRemaining(telemetry);
 
-  if (lapsRemaining !== undefined && lapsRemaining >= 0) data.lapsRemaining = lapsRemaining;
+  if (lapsRemaining !== null) data.lapsRemaining = lapsRemaining;
 
-  const timeRemaining = typeof telemetry.SessionTimeRemain === "number" ? telemetry.SessionTimeRemain : undefined;
+  const timeRemaining = resolveTimeRemainingS(telemetry);
 
-  if (timeRemaining !== undefined && timeRemaining >= 0) data.timeRemaining = timeRemaining;
+  if (timeRemaining !== null) data.timeRemaining = timeRemaining;
 
   // Position fields (issue #566). Primary source is `ResultsPositions` — the
   // authoritative leaderboard — when it has caught up to the lap counter.
