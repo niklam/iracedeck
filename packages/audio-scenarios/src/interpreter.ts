@@ -1299,7 +1299,7 @@ class ScenarioEngine implements IScenarioEngine {
 
     const state = this.getBusState(AudioBus.Voice);
 
-    if (state.playingId !== null || state.pending !== null || state.focus !== null) {
+    if (state.playingId !== null || state.queue.size > 0 || state.focus !== null) {
       this.logger.debug(`Frame preview "${frameName}" skipped — the Voice bus is in use`);
 
       return "bus-busy";
