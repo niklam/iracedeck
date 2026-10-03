@@ -286,7 +286,9 @@ export class UlanziClient {
    * Latest settings per context. Ulanzi only carries settings on `add` /
    * `paramfromapp`; `keydown` / `keyup` / `dial*` / `clear` frames omit them, so
    * the client backfills these events from this cache before routing — otherwise
-   * actions would fire with empty settings.
+   * actions would fire with empty settings. A plugin-side `setSettings` writes
+   * through to it (#1236): no settings frame is known to follow that write, so
+   * without it every later event would carry the pre-write settings.
    */
   private readonly contextSettings = new Map<string, Record<string, unknown>>();
 
@@ -432,6 +434,10 @@ export class UlanziClient {
           this.contextSettings.set(ctx, ev.payload.settings ?? {});
         } else {
           // Press / dial / disappear frames omit settings — backfill from cache.
+          // A context with no entry gets `{}`: deck-core's event payloads
+          // require a settings object, so the adapter would coerce an
+          // undefined to `{}` anyway and "unknown" cannot reach an action as
+          // anything else (#1236).
           ev.payload.settings = this.contextSettings.get(ctx) ?? ev.payload.settings ?? {};
         }
       }
@@ -547,8 +553,19 @@ export class UlanziClient {
     });
   }
 
+  /**
+   * Persist a context's settings. The write replaces the host's whole object,
+   * so the cache takes it whole too (#1236) — the next press for this context
+   * is backfilled with what was written, not with the last `add` /
+   * `paramfromapp`. Only a context that is still cached is updated: a write
+   * landing after its `clear` must not resurrect the entry.
+   */
   setSettings(context: string, settings: Record<string, unknown>): void {
     const { uuid, key, actionid } = decodeContext(context);
+
+    if (this.contextSettings.has(context)) {
+      this.contextSettings.set(context, { ...settings });
+    }
 
     this.send({ cmd: "setSettings", uuid, key, actionid, settings });
   }

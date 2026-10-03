@@ -365,6 +365,138 @@ describe("UlanziClient routing + settings cache", () => {
     expect((keyDown.mock.calls[0][0] as UlanziEvent).payload?.settings).toEqual({});
   });
 
+  describe("plugin-side setSettings writes through to the cache (#1236)", () => {
+    const CTX = "com.x.action___5___a";
+    const add = (param: Record<string, unknown>): void =>
+      lastSocket.emit("message", JSON.stringify({ cmd: "add", uuid: "com.x.action", key: "5", actionid: "a", param }));
+    const press = (cmd: string, extra: Record<string, unknown> = {}): void =>
+      lastSocket.emit("message", JSON.stringify({ cmd, uuid: "com.x.action", key: "5", actionid: "a", ...extra }));
+
+    it("backfills the next key frames with the written settings, not the add's", async () => {
+      const client = await connected();
+      const keyDown = vi.fn();
+      const keyUp = vi.fn();
+      client.onActionEvent("com.x.action", "keyDown", keyDown);
+      client.onActionEvent("com.x.action", "keyUp", keyUp);
+
+      // The fresh-key shape: the host's `add` carries {}, and the plugin
+      // seeds defaults from willAppear (Tire Service's toggleMode).
+      add({});
+      client.setSettings(CTX, { toggleMode: "select", addedWithVersion: "3.5.0" });
+      press("keydown");
+      press("keyup");
+
+      expect((keyDown.mock.calls[0][0] as UlanziEvent).payload?.settings).toEqual({
+        toggleMode: "select",
+        addedWithVersion: "3.5.0",
+      });
+      expect((keyUp.mock.calls[0][0] as UlanziEvent).payload?.settings).toEqual({
+        toggleMode: "select",
+        addedWithVersion: "3.5.0",
+      });
+    });
+
+    it("backfills the next dial frames with the written settings", async () => {
+      const client = await connected();
+      const dialDown = vi.fn();
+      const dialRotate = vi.fn();
+      client.onActionEvent("com.x.action", "dialDown", dialDown);
+      client.onActionEvent("com.x.action", "dialRotate", dialRotate);
+
+      add({ mode: "a" });
+      client.setSettings(CTX, { mode: "b" });
+      press("dialdown");
+      press("dialrotate", { rotateEvent: "right" });
+
+      expect((dialDown.mock.calls[0][0] as UlanziEvent).payload?.settings).toEqual({ mode: "b" });
+      expect((dialRotate.mock.calls[0][0] as UlanziEvent).payload?.settings).toEqual({ mode: "b" });
+    });
+
+    it("replaces the cached object whole, like the host's write", async () => {
+      const client = await connected();
+      const keyDown = vi.fn();
+      client.onActionEvent("com.x.action", "keyDown", keyDown);
+
+      add({ mode: "a", amount: 5 });
+      client.setSettings(CTX, { mode: "b" });
+      press("keydown");
+
+      expect((keyDown.mock.calls[0][0] as UlanziEvent).payload?.settings).toEqual({ mode: "b" });
+    });
+
+    it("caches a copy, so a caller mutating its object afterwards does not reach the cache", async () => {
+      const client = await connected();
+      const keyDown = vi.fn();
+      client.onActionEvent("com.x.action", "keyDown", keyDown);
+
+      add({});
+      const written: Record<string, unknown> = { mode: "b" };
+      client.setSettings(CTX, written);
+      written.mode = "mutated";
+      press("keydown");
+
+      expect((keyDown.mock.calls[0][0] as UlanziEvent).payload?.settings).toEqual({ mode: "b" });
+    });
+
+    it("is overwritten by a later didReceiveSettings and a later add", async () => {
+      const client = await connected();
+      const keyDown = vi.fn();
+      client.onActionEvent("com.x.action", "keyDown", keyDown);
+
+      add({ mode: "a" });
+      client.setSettings(CTX, { mode: "b" });
+      press("paramfromapp", { param: { mode: "c" } });
+      press("keydown");
+      client.setSettings(CTX, { mode: "d" });
+      add({ mode: "e" });
+      press("keydown");
+
+      expect((keyDown.mock.calls[0][0] as UlanziEvent).payload?.settings).toEqual({ mode: "c" });
+      expect((keyDown.mock.calls[1][0] as UlanziEvent).payload?.settings).toEqual({ mode: "e" });
+    });
+
+    it("does not resurrect a context's entry after its clear", async () => {
+      const client = await connected();
+      const keyDown = vi.fn();
+      client.onActionEvent("com.x.action", "keyDown", keyDown);
+
+      add({ mode: "a" });
+      lastSocket.emit(
+        "message",
+        JSON.stringify({ cmd: "clear", param: [{ uuid: "com.x.action", key: "5", actionid: "a" }] }),
+      );
+      // A write still in flight from the context's last willAppear lands late.
+      client.setSettings(CTX, { mode: "b" });
+      press("keydown");
+
+      expect((keyDown.mock.calls[0][0] as UlanziEvent).payload?.settings).toEqual({});
+      // The write itself still goes to the host — only the cache is guarded.
+      expect(sentMessages()).toContainEqual({
+        cmd: "setSettings",
+        uuid: "com.x.action",
+        key: "5",
+        actionid: "a",
+        settings: { mode: "b" },
+      });
+    });
+
+    it("leaves other contexts' entries alone", async () => {
+      const client = await connected();
+      const keyDown = vi.fn();
+      client.onActionEvent("com.x.action", "keyDown", keyDown);
+
+      add({ mode: "a" });
+      lastSocket.emit(
+        "message",
+        JSON.stringify({ cmd: "add", uuid: "com.x.action", key: "6", actionid: "b", param: { mode: "z" } }),
+      );
+      client.setSettings(CTX, { mode: "b" });
+      lastSocket.emit("message", JSON.stringify({ cmd: "keydown", uuid: "com.x.action", key: "6", actionid: "b" }));
+
+      expect((keyDown.mock.calls[0][0] as UlanziEvent).payload?.settings).toEqual({ mode: "z" });
+    });
+  });
+
   it("routes the global didReceiveGlobalSettings event", async () => {
     const client = await connected();
     const handler = vi.fn();
