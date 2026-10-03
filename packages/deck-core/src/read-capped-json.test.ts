@@ -9,7 +9,7 @@ const encoder = new TextEncoder();
  * pulled and whether the reader cancelled — which is what proves the read
  * stopped mid-body rather than draining the stream and checking afterwards.
  */
-function streamedResponse(chunks: string[], headers?: Record<string, string>) {
+function streamedResponse(chunks: (string | Uint8Array)[], headers?: Record<string, string>) {
   const state = { pulled: 0, cancelled: false };
   const stream = new ReadableStream<Uint8Array>({
     pull(controller) {
@@ -19,7 +19,9 @@ function streamedResponse(chunks: string[], headers?: Record<string, string>) {
         return;
       }
 
-      controller.enqueue(encoder.encode(chunks[state.pulled]));
+      const chunk = chunks[state.pulled];
+
+      controller.enqueue(typeof chunk === "string" ? encoder.encode(chunk) : chunk);
       state.pulled++;
     },
     cancel() {
@@ -43,10 +45,12 @@ describe("readCappedJson", () => {
     await expect(readCappedJson(new Response(text), encoder.encode(text).byteLength)).resolves.toEqual({ a: "xyz" });
   });
 
-  it("joins a body that arrives in several chunks, multi-byte characters split across them", async () => {
-    // "ä" is two bytes in UTF-8; splitting the string is not splitting the
-    // bytes, so this checks the chunks are joined before decoding.
-    const { response } = streamedResponse(['{"name":"R', "äikkö", 'nen"}']);
+  it("decodes a UTF-8 character split across two chunks", async () => {
+    // "ä" is C3 A4 in UTF-8. Splitting between those two bytes is what catches
+    // a decoder that handles each chunk on its own.
+    const bytes = encoder.encode('{"name":"Räikkönen"}');
+    const splitAt = bytes.indexOf(0xc3) + 1;
+    const { response } = streamedResponse([bytes.slice(0, splitAt), bytes.slice(splitAt)]);
 
     await expect(readCappedJson(response, 1024)).resolves.toEqual({ name: "Räikkönen" });
   });
