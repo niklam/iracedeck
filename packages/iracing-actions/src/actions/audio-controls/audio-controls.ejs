@@ -328,9 +328,25 @@
 				applyConditionalOptions(pressSelect, dialConditionalOptions, category, "none");
 			}
 
+			// Each surface wires only its own selects (#1196). Both sets are in the
+			// DOM on every instance (the other surface's merely hidden), and each
+			// set's fallback rule REWRITES its select when the stored value is one
+			// the current Mode does not offer. Run on the wrong surface, that
+			// rewrote a setting the user cannot see: a keypad PI reset a stored
+			// dial press to None, and a dial PI reset a stored keypad action to
+			// Volume Up.
 			async function initialize() {
 				await customElements.whenDefined("sdpi-select");
 
+				if ((await resolveController()) === "Encoder") {
+					applyDialView();
+					initializeDial();
+				} else {
+					initializeKeypad();
+				}
+			}
+
+			function initializeKeypad() {
 				const categorySelect = document.getElementById("category-select");
 				keypadConditionalOptions = [
 					conditionalOption(document.querySelector('#action-select option[value="mute"]'), MUTE_CATEGORIES),
@@ -358,8 +374,10 @@
 						}
 					});
 				}
+			}
 
-				// Dial section wiring — polling fallback covers both selects at once.
+			function initializeDial() {
+				// Polling fallback covers both selects at once.
 				dialConditionalOptions = [
 					conditionalOption(
 						document.querySelector('#dial-press-select option[value="mute-unmute"]'),
@@ -383,10 +401,6 @@
 				}
 				updateDialVisibility();
 				window.irdPoll(updateDialVisibility);
-
-				if ((await resolveController()) === "Encoder") {
-					applyDialView();
-				}
 			}
 
 			if (document.readyState === "loading") {
