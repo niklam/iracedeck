@@ -6,6 +6,7 @@ import {
   type VoicePackCatalogEntry,
   VoicePackCatalogEntrySchema,
 } from "./voice-pack-catalog.js";
+import { VOICE_PACK_DOWNLOAD_CEILING_BYTES } from "./voice-pack-download.js";
 
 const SHA = "a".repeat(64);
 
@@ -129,6 +130,13 @@ describe("isVoicePackOfferable", () => {
   // With no way to establish the requirement is met, the honest answer is no.
   it("does not offer when the running version cannot be read", () => {
     expect(isVoicePackOfferable(offer("3.3.0"), "not-a-version")).toBe(false);
+  });
+
+  it("does not offer a pack larger than the download ceiling, whatever its version floor (#1102)", () => {
+    const sized = (bytes: number) => parseVoicePackCatalog(catalog([entry({ bytes })]))?.[0] as VoicePackCatalogEntry;
+
+    expect(isVoicePackOfferable(sized(VOICE_PACK_DOWNLOAD_CEILING_BYTES), "3.2.0")).toBe(true);
+    expect(isVoicePackOfferable(sized(VOICE_PACK_DOWNLOAD_CEILING_BYTES + 1), "3.2.0")).toBe(false);
   });
 
   it("still offers an unconditional pack when the running version cannot be read", () => {

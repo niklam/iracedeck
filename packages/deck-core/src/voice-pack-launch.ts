@@ -242,7 +242,13 @@ export function createVoicePackLaunchStep(deps: VoicePackLaunchStepDeps): VoiceP
     const unsupported = catalog.packs.find((pack) => isManagedVoicePack(pack.id) && pack.verdict === "unsupported");
 
     if (unsupported !== undefined) {
-      return giveUp(`"${unsupported.id}" needs plugin ${unsupported.minPluginVersion ?? "?"} or newer`);
+      // Unsupported is also how an entry over the download ceiling arrives
+      // (#1102), and that one names no version.
+      return giveUp(
+        unsupported.minPluginVersion === undefined
+          ? `"${unsupported.id}" cannot be installed by this plugin build`
+          : `"${unsupported.id}" needs plugin ${unsupported.minPluginVersion} or newer`,
+      );
     }
 
     // A catalog with no entry for the managed pack is a publishing mistake, not

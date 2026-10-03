@@ -306,6 +306,23 @@ describe("voice-pack launch step", () => {
     expect(permanentInstaller.refreshCatalog).toHaveBeenLastCalledWith({ bypassTtl: true });
   });
 
+  it("gives up rather than retrying when default is unsupported for its size, naming no version (#1102)", async () => {
+    const installer = fakeInstaller(ok([offer({ id: "default", verdict: "unsupported" })]));
+    const step = createVoicePackLaunchStep({
+      installer,
+      settled: () => Promise.resolve(),
+      isPackUsable: () => true,
+      isRaceEngineerEnabled: () => true,
+      logger,
+    });
+
+    await expect(step.start()).resolves.toEqual({
+      state: "given-up",
+      reason: expect.stringContaining("cannot be installed by this plugin build"),
+    });
+    expect(installer.install).not.toHaveBeenCalled();
+  });
+
   it("gives up when the catalog says default needs a newer plugin, and re-asks hourly rather than never", async () => {
     const installer = fakeInstaller(ok([offer({ id: "default", verdict: "unsupported", minPluginVersion: "9.0.0" })]));
     const step = createVoicePackLaunchStep({

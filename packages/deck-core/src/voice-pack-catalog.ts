@@ -27,6 +27,7 @@ import { coerce, gt, valid as semverValid } from "semver";
 import { z } from "zod";
 
 import { SHA256_HEX_MESSAGE, SHA256_HEX_PATTERN } from "./voice-pack-constants.js";
+import { VOICE_PACK_DOWNLOAD_CEILING_BYTES } from "./voice-pack-download.js";
 
 const semverString = z.string().refine((value) => semverValid(value) !== null, "must be a valid semver version");
 
@@ -160,9 +161,17 @@ export function parseVoicePackCatalog(body: unknown): VoicePackCatalogEntry[] | 
  * predicate the UI renders from, never a filter applied to the list.
  *
  * An unparseable running version answers `false`: with no way to establish that
- * the requirement is met, the honest answer is that we cannot offer it.
+ * the requirement is met, the honest answer is that we cannot offer it. So does
+ * an entry whose `bytes` is over {@link VOICE_PACK_DOWNLOAD_CEILING_BYTES}.
  */
 export function isVoicePackOfferable(entry: VoicePackCatalogEntry, pluginVersion: string): boolean {
+  // An archive larger than the downloader will ever accept cannot be
+  // installed by this build, whatever its version floor says: the download
+  // would be cut at the ceiling and fail. Refused here, before any request,
+  // so the card does not offer it and the launch step gives up on it rather
+  // than retrying a download that cannot succeed.
+  if (entry.bytes > VOICE_PACK_DOWNLOAD_CEILING_BYTES) return false;
+
   if (entry.minPluginVersion === undefined) return true;
 
   if (semverValid(pluginVersion) === null) return false;
