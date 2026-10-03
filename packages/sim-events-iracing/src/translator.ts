@@ -2046,10 +2046,12 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   diffPitsOpen(self.state, telemetry, isRaceSession, replayOnlySession, emit);
   diffToggles(self.state, telemetry, now, emit);
   // diffPitStatus emits `pitService.statusChanged` for in-progress / complete
-  // / positioning / can't-fix-that transitions (issue #479). Independent of
-  // diffToggles' bit-flag world; placed adjacent for cohesion of the
-  // pit-service event group. `now` drives the positioning-error repeat
-  // cadence and its movement hold (issue #951) — the `diffPitLane` /
+  // / positioning / can't-fix-that transitions (issue #479), and
+  // `pitService.stopEmpty` when a stop ends with nothing done while the car
+  // sits in its box (issue #1180). Independent of diffToggles' bit-flag
+  // world; placed adjacent for cohesion of the pit-service event group.
+  // `now` drives the positioning-error repeat cadence and its movement hold
+  // (issue #951) and the InProgress hold (issue #1180) — the `diffPitLane` /
   // `diffLimiter` threading precedent.
   diffPitStatus(self.state, telemetry, now, emit);
   // diffPitReadback runs after diffToggles so it sees the per-tick toggle

@@ -617,11 +617,12 @@ export type TranslatorState = {
 
   // ── Pit-service status (issue #479) ─────────────────────────────────────
   // Tracks PlayerCarPitSvStatus across ticks so the diff can emit one event
-  // per transition. Seeded silently on first tick / off-track / in pit stall
-  // for the same reason `lastPitSvFlags` is — the user isn't responsible for
-  // those state changes and the engineer should stay silent on connect /
-  // garage returns. Closing transitions (* → None) are suppressed in the
-  // diff itself, not via baseline juggling.
+  // per transition. Seeded silently on first tick / off-track so the engineer
+  // stays silent on connect / garage returns — but deliberately NOT in the pit
+  // stall, where every status callout happens (see the diff's header).
+  // Closing transitions (* → None) are suppressed in the diff itself, not via
+  // baseline juggling, except InProgress → None at rest in the stall, which
+  // becomes `pitService.stopEmpty` (issue #1180).
   pitStatusInitialized: boolean;
   lastPitSvStatus: number; // PitSvStatus enum value
   // Positioning-error repeat cadence (issue #951). `pitStatusRepeatDueAt` is
@@ -632,6 +633,11 @@ export type TranslatorState = {
   // already correcting.
   pitStatusRepeatDueAt: number;
   pitStatusRestSince: number;
+  // InProgress hold (issue #1180). `pitStatusInProgressDueAt` is when a held
+  // InProgress transition may be emitted (0 = nothing held); `pitStatusInProgressFrom`
+  // is the status it came from, so the deferred emit carries the true `from`.
+  pitStatusInProgressDueAt: number;
+  pitStatusInProgressFrom: number;
 
   // ── Pit limiter warnings ────────────────────────────────────────────────
   limiterInitialized: boolean;
@@ -1431,6 +1437,8 @@ export function createInitialState(): TranslatorState {
     lastPitSvStatus: 0, // PitSvStatus.None
     pitStatusRepeatDueAt: 0,
     pitStatusRestSince: 0,
+    pitStatusInProgressDueAt: 0,
+    pitStatusInProgressFrom: 0, // PitSvStatus.None
 
     limiterInitialized: false,
     lastOnPitRoadForLimiter: false,

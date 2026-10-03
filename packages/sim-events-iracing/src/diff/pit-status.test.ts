@@ -18,13 +18,22 @@
  *   - the `OnPitRoad` bound, which stops a latched status nagging forever
  *     once the car has left the pit lane, without breaking the overshoot
  *     case that reads `PlayerCarInPitStall: false`
+ *   - the InProgress hold (issue #1180): a transition to InProgress is
+ *     announced only once it has lasted `PIT_STATUS_IN_PROGRESS_HOLD_MS`,
+ *     carries its true `from`, and is dropped by any change or re-seed
+ *     inside the hold
+ *   - `pitService.stopEmpty` (issue #1180): InProgress → None while the car
+ *     is stationary on the InPitStall surface releases the driver; moving,
+ *     off the stall surface, or any other `* → None` stays silent, and
+ *     missing telemetry qualifies
  */
-import { PitSvStatus, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { PitSvStatus, type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
 import { describe, expect, it } from "vitest";
 
 import { createInitialState } from "../state.js";
 import {
   diffPitStatus,
+  PIT_STATUS_IN_PROGRESS_HOLD_MS,
   PIT_STATUS_MOVEMENT_SPEED_MPS,
   PIT_STATUS_REPEAT_INTERVAL_MS,
   PIT_STATUS_REST_SETTLE_MS,
@@ -57,6 +66,10 @@ function repeatEvents(events: PendingEvent[]): PendingEvent[] {
   return events.filter((e) => e.event === "pitService.positioningRepeat");
 }
 
+function stopEmptyEvents(events: PendingEvent[]): PendingEvent[] {
+  return events.filter((e) => e.event === "pitService.stopEmpty");
+}
+
 describe("diffPitStatus — seeding", () => {
   it("does not emit on the first tick when idle", () => {
     const state = createInitialState();
@@ -74,6 +87,13 @@ describe("diffPitStatus — seeding", () => {
     const { events, emit } = collect();
 
     diffPitStatus(state, tick({ PlayerCarPitSvStatus: PitSvStatus.InProgress }), T0, emit);
+    // A seed holds nothing, so outlasting the InProgress hold stays silent too.
+    diffPitStatus(
+      state,
+      tick({ PlayerCarPitSvStatus: PitSvStatus.InProgress }),
+      T0 + PIT_STATUS_IN_PROGRESS_HOLD_MS,
+      emit,
+    );
 
     expect(statusEvents(events)).toHaveLength(0);
     expect(state.lastPitSvStatus).toBe(PitSvStatus.InProgress);
@@ -108,11 +128,18 @@ describe("diffPitStatus — emission inside pit stall (production case)", () => 
       T0 + 100,
       emit,
     );
+    // Still working once the InProgress hold (#1180) has run out.
+    diffPitStatus(
+      state,
+      tick({ PlayerCarInPitStall: true, PlayerCarPitSvStatus: PitSvStatus.InProgress }),
+      T0 + 100 + PIT_STATUS_IN_PROGRESS_HOLD_MS,
+      emit,
+    );
     // Crew finishes.
     diffPitStatus(
       state,
       tick({ PlayerCarInPitStall: true, PlayerCarPitSvStatus: PitSvStatus.Complete }),
-      T0 + 200,
+      T0 + 5000,
       emit,
     );
 
@@ -139,6 +166,13 @@ describe("diffPitStatus — emission inside pit stall (production case)", () => 
         PlayerCarPitSvStatus: 1, // PitSvStatus.InProgress, exactly as captured
       }),
       T0 + 100,
+      emit,
+    );
+    // The same reading once the InProgress hold (#1180) has run out.
+    diffPitStatus(
+      state,
+      tick({ IsOnTrack: true, PlayerCarInPitStall: true, PlayerCarPitSvStatus: 1 }),
+      T0 + 100 + PIT_STATUS_IN_PROGRESS_HOLD_MS,
       emit,
     );
 
@@ -189,6 +223,9 @@ describe("diffPitStatus — emission", () => {
 
     diffPitStatus(state, tick(), T0, emit);
     diffPitStatus(state, tick({ PlayerCarPitSvStatus: target }), T0 + 100, emit);
+    // A second tick past the InProgress hold (#1180), so a held InProgress has
+    // had its chance to emit; every other target emitted on the transition.
+    diffPitStatus(state, tick({ PlayerCarPitSvStatus: target }), T0 + 100 + PIT_STATUS_IN_PROGRESS_HOLD_MS, emit);
 
     const fired = statusEvents(events);
 
@@ -215,9 +252,13 @@ describe("diffPitStatus — emission", () => {
     const state = createInitialState();
     const { events, emit } = collect();
 
+    const emittedAt = T0 + 100 + PIT_STATUS_IN_PROGRESS_HOLD_MS;
+
     diffPitStatus(state, tick(), T0, emit);
     diffPitStatus(state, tick({ PlayerCarPitSvStatus: PitSvStatus.InProgress }), T0 + 100, emit);
-    diffPitStatus(state, tick({ PlayerCarPitSvStatus: PitSvStatus.InProgress }), T0 + 200, emit);
+    diffPitStatus(state, tick({ PlayerCarPitSvStatus: PitSvStatus.InProgress }), emittedAt, emit);
+    diffPitStatus(state, tick({ PlayerCarPitSvStatus: PitSvStatus.InProgress }), emittedAt + 100, emit);
+    diffPitStatus(state, tick({ PlayerCarPitSvStatus: PitSvStatus.InProgress }), emittedAt + 1000, emit);
 
     expect(statusEvents(events)).toHaveLength(1);
   });
@@ -243,16 +284,232 @@ describe("diffPitStatus — silent close", () => {
     const state = createInitialState();
     const { events, emit } = collect();
 
+    const firstStop = T0 + 100;
+    const secondStop = T0 + 5000;
+
     diffPitStatus(state, tick(), T0, emit);
-    diffPitStatus(state, tick({ PlayerCarPitSvStatus: PitSvStatus.InProgress }), T0 + 100, emit);
-    diffPitStatus(state, tick({ PlayerCarPitSvStatus: PitSvStatus.None }), T0 + 200, emit);
-    diffPitStatus(state, tick({ PlayerCarPitSvStatus: PitSvStatus.InProgress }), T0 + 300, emit);
+    diffPitStatus(state, tick({ PlayerCarPitSvStatus: PitSvStatus.InProgress }), firstStop, emit);
+    diffPitStatus(
+      state,
+      tick({ PlayerCarPitSvStatus: PitSvStatus.InProgress }),
+      firstStop + PIT_STATUS_IN_PROGRESS_HOLD_MS,
+      emit,
+    );
+    diffPitStatus(state, tick({ PlayerCarPitSvStatus: PitSvStatus.None }), firstStop + 1000, emit);
+    diffPitStatus(state, tick({ PlayerCarPitSvStatus: PitSvStatus.InProgress }), secondStop, emit);
+    diffPitStatus(
+      state,
+      tick({ PlayerCarPitSvStatus: PitSvStatus.InProgress }),
+      secondStop + PIT_STATUS_IN_PROGRESS_HOLD_MS,
+      emit,
+    );
 
     const fired = statusEvents(events);
 
     expect(fired).toHaveLength(2);
     expect(fired[1].data).toEqual({ from: PitSvStatus.None, to: PitSvStatus.InProgress });
   });
+});
+
+describe("diffPitStatus — InProgress hold and empty stop (#1180)", () => {
+  // Shapes from the 2026-09-19 capture: a real stop's InProgress lasts 19 s
+  // and ends in Complete; a stop with nothing queued reads InProgress for one
+  // tick (0.02 s) and drops straight back to None, never reaching Complete.
+  // `PlayerTrackSurface` already reads InPitStall on the closing tick while
+  // `PlayerCarInPitStall` is still false, so the stall surface is the gate.
+  const stall = { PlayerTrackSurface: TrkLoc.InPitStall, Speed: 0 };
+
+  it("releases an empty stop: one-tick InProgress closing to None at rest in the stall", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+
+    diffPitStatus(state, tick(stall), T0, emit);
+    diffPitStatus(state, tick({ ...stall, PlayerCarPitSvStatus: PitSvStatus.InProgress }), T0 + 200, emit);
+    diffPitStatus(state, tick({ ...stall, PlayerCarPitSvStatus: PitSvStatus.None }), T0 + 220, emit);
+    diffPitStatus(state, tick({ ...stall, PlayerCarPitSvStatus: PitSvStatus.None }), T0 + 1000, emit);
+
+    expect(statusEvents(events)).toHaveLength(0);
+    expect(stopEmptyEvents(events)).toEqual([{ event: "pitService.stopEmpty", data: {} }]);
+  });
+
+  it("announces a real stop's InProgress once the hold runs out, then Complete, with no stopEmpty", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    const startedAt = T0 + 200;
+
+    diffPitStatus(state, tick(stall), T0, emit);
+    diffPitStatus(state, tick({ ...stall, PlayerCarPitSvStatus: PitSvStatus.InProgress }), startedAt, emit);
+    diffPitStatus(
+      state,
+      tick({ ...stall, PlayerCarPitSvStatus: PitSvStatus.InProgress }),
+      startedAt + PIT_STATUS_IN_PROGRESS_HOLD_MS - 1,
+      emit,
+    );
+    expect(statusEvents(events)).toHaveLength(0);
+
+    diffPitStatus(
+      state,
+      tick({ ...stall, PlayerCarPitSvStatus: PitSvStatus.InProgress }),
+      startedAt + PIT_STATUS_IN_PROGRESS_HOLD_MS,
+      emit,
+    );
+    expect(statusEvents(events)).toEqual([
+      { event: "pitService.statusChanged", data: { from: PitSvStatus.None, to: PitSvStatus.InProgress } },
+    ]);
+
+    diffPitStatus(
+      state,
+      tick({ ...stall, PlayerCarPitSvStatus: PitSvStatus.InProgress }),
+      startedAt + PIT_STATUS_IN_PROGRESS_HOLD_MS + 50,
+      emit,
+    );
+    expect(statusEvents(events)).toHaveLength(1);
+
+    diffPitStatus(state, tick({ ...stall, PlayerCarPitSvStatus: PitSvStatus.Complete }), T0 + 19_000, emit);
+
+    const fired = statusEvents(events);
+
+    expect(fired).toHaveLength(2);
+    expect(fired[1].data).toEqual({ from: PitSvStatus.InProgress, to: PitSvStatus.Complete });
+    expect(stopEmptyEvents(events)).toHaveLength(0);
+  });
+
+  it("stays silent when InProgress closes to None while the car is moving", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+
+    diffPitStatus(state, tick(stall), T0, emit);
+    diffPitStatus(state, tick({ ...stall, PlayerCarPitSvStatus: PitSvStatus.InProgress }), T0 + 200, emit);
+    diffPitStatus(state, tick({ ...stall, Speed: 1.5, PlayerCarPitSvStatus: PitSvStatus.None }), T0 + 220, emit);
+    diffPitStatus(state, tick({ ...stall, Speed: 1.5, PlayerCarPitSvStatus: PitSvStatus.None }), T0 + 1000, emit);
+
+    expect(stopEmptyEvents(events)).toHaveLength(0);
+    expect(statusEvents(events)).toHaveLength(0);
+  });
+
+  it("stays silent when InProgress closes to None off the InPitStall surface", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    const approach = { PlayerTrackSurface: TrkLoc.AproachingPits, Speed: 0 };
+
+    diffPitStatus(state, tick(approach), T0, emit);
+    diffPitStatus(state, tick({ ...approach, PlayerCarPitSvStatus: PitSvStatus.InProgress }), T0 + 200, emit);
+    diffPitStatus(state, tick({ ...approach, PlayerCarPitSvStatus: PitSvStatus.None }), T0 + 220, emit);
+
+    expect(stopEmptyEvents(events)).toHaveLength(0);
+    expect(statusEvents(events)).toHaveLength(0);
+  });
+
+  it("counts a speed of exactly the movement threshold as at rest", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+
+    diffPitStatus(state, tick(stall), T0, emit);
+    diffPitStatus(state, tick({ ...stall, PlayerCarPitSvStatus: PitSvStatus.InProgress }), T0 + 200, emit);
+    diffPitStatus(
+      state,
+      tick({ ...stall, Speed: PIT_STATUS_MOVEMENT_SPEED_MPS, PlayerCarPitSvStatus: PitSvStatus.None }),
+      T0 + 220,
+      emit,
+    );
+
+    expect(stopEmptyEvents(events)).toHaveLength(1);
+  });
+
+  it("counts a reverse crawl as moving (signed Speed)", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+
+    diffPitStatus(state, tick(stall), T0, emit);
+    diffPitStatus(state, tick({ ...stall, PlayerCarPitSvStatus: PitSvStatus.InProgress }), T0 + 200, emit);
+    diffPitStatus(state, tick({ ...stall, Speed: -0.2, PlayerCarPitSvStatus: PitSvStatus.None }), T0 + 220, emit);
+
+    expect(stopEmptyEvents(events)).toHaveLength(0);
+  });
+
+  it("drops the held InProgress when a positioning error replaces it inside the hold", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+
+    diffPitStatus(state, tick(stall), T0, emit);
+    diffPitStatus(state, tick({ ...stall, PlayerCarPitSvStatus: PitSvStatus.InProgress }), T0 + 200, emit);
+    diffPitStatus(state, tick({ ...stall, PlayerCarPitSvStatus: PitSvStatus.TooFarBack }), T0 + 300, emit);
+
+    for (let at = T0 + 400; at <= T0 + 200 + PIT_STATUS_IN_PROGRESS_HOLD_MS * 4; at += 50) {
+      diffPitStatus(state, tick({ ...stall, PlayerCarPitSvStatus: PitSvStatus.TooFarBack }), at, emit);
+    }
+
+    expect(statusEvents(events)).toEqual([
+      { event: "pitService.statusChanged", data: { from: PitSvStatus.InProgress, to: PitSvStatus.TooFarBack } },
+    ]);
+    expect(stopEmptyEvents(events)).toHaveLength(0);
+  });
+
+  it("drops the held InProgress on a re-seed inside the hold, and never flushes it later", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+
+    diffPitStatus(state, tick(stall), T0, emit);
+    diffPitStatus(state, tick({ ...stall, PlayerCarPitSvStatus: PitSvStatus.InProgress }), T0 + 200, emit);
+    diffPitStatus(
+      state,
+      tick({ ...stall, IsOnTrack: false, PlayerCarPitSvStatus: PitSvStatus.InProgress }),
+      T0 + 300,
+      emit,
+    );
+
+    for (let at = T0 + 400; at <= T0 + 200 + PIT_STATUS_IN_PROGRESS_HOLD_MS * 4; at += 50) {
+      diffPitStatus(state, tick({ ...stall, PlayerCarPitSvStatus: PitSvStatus.InProgress }), at, emit);
+    }
+
+    expect(statusEvents(events)).toHaveLength(0);
+    expect(state.pitStatusInProgressDueAt).toBe(0);
+  });
+
+  it("treats missing Speed and PlayerTrackSurface as qualifying rather than suppressing", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+
+    diffPitStatus(state, tick(), T0, emit);
+    diffPitStatus(state, tick({ PlayerCarPitSvStatus: PitSvStatus.InProgress }), T0 + 200, emit);
+    diffPitStatus(state, tick({ PlayerCarPitSvStatus: PitSvStatus.None }), T0 + 220, emit);
+
+    expect(stopEmptyEvents(events)).toEqual([{ event: "pitService.stopEmpty", data: {} }]);
+  });
+
+  it("releases a spoken stop that closes to None at rest in the stall", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+
+    diffPitStatus(state, tick(stall), T0, emit);
+    diffPitStatus(state, tick({ ...stall, PlayerCarPitSvStatus: PitSvStatus.InProgress }), T0 + 200, emit);
+    diffPitStatus(
+      state,
+      tick({ ...stall, PlayerCarPitSvStatus: PitSvStatus.InProgress }),
+      T0 + 200 + PIT_STATUS_IN_PROGRESS_HOLD_MS,
+      emit,
+    );
+    diffPitStatus(state, tick({ ...stall, PlayerCarPitSvStatus: PitSvStatus.None }), T0 + 5200, emit);
+
+    expect(statusEvents(events)).toEqual([
+      { event: "pitService.statusChanged", data: { from: PitSvStatus.None, to: PitSvStatus.InProgress } },
+    ]);
+    expect(stopEmptyEvents(events)).toHaveLength(1);
+  });
+
+  it.each([PitSvStatus.Complete, PitSvStatus.TooFarLeft])(
+    "does not release on %s → None at rest in the stall (only InProgress → None qualifies)",
+    (from) => {
+      const state = createInitialState();
+      const { events, emit } = collect();
+
+      diffPitStatus(state, tick(stall), T0, emit);
+      diffPitStatus(state, tick({ ...stall, PlayerCarPitSvStatus: from }), T0 + 200, emit);
+      diffPitStatus(state, tick({ ...stall, PlayerCarPitSvStatus: PitSvStatus.None }), T0 + 5000, emit);
+
+      expect(stopEmptyEvents(events)).toHaveLength(0);
+    },
+  );
 });
 
 // ── Positioning-error repeat cadence (issue #951) ─────────────────────────
