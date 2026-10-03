@@ -334,6 +334,8 @@ export {
 export {
   isVoicePackOfferable,
   parseVoicePackCatalog,
+  VOICE_PACK_CATALOG_MAX_BYTES,
+  VOICE_PACK_CATALOG_MAX_PACKS,
   type VoicePackCatalogEntry,
   VoicePackCatalogEntrySchema,
   VoicePackCatalogSchema,
@@ -721,11 +723,15 @@ export {
 export { sanitizeChangelogHtml } from "./changelog-html-sanitize.js";
 export {
   parsePublishedChangelog,
+  PUBLISHED_CHANGELOG_MAX_CATEGORIES,
+  PUBLISHED_CHANGELOG_MAX_ITEMS,
+  PUBLISHED_CHANGELOG_MAX_RELEASES,
   type PublishedRelease,
   type PublishedReleaseCategory,
 } from "./published-changelog.js";
 export {
   CHANGELOG_FETCH_TIMEOUT_MS,
+  CHANGELOG_MAX_BYTES,
   fetchPublishedChangelog,
   PUBLISHED_CHANGELOG_URL,
 } from "./changelog-feed-client.js";

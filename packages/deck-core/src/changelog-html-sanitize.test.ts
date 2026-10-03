@@ -77,4 +77,24 @@ describe("sanitizeChangelogHtml", () => {
   it("returns an empty string for empty input", () => {
     expect(sanitizeChangelogHtml("")).toBe("");
   });
+
+  it("escapes a tag carrying a < inside a quoted value rather than keeping it", () => {
+    expect(sanitizeChangelogHtml('<a href="https://x.test/<b">x</a>')).not.toContain("<a href");
+  });
+
+  // #1101: this runs over remote text in the plugin process. The old pattern
+  // was quadratic on both inputs — measured at 734 ms for 40 KB of `<a`, which
+  // puts this 400 KB case near 75 s — so a bound of seconds separates the two
+  // shapes by an order of magnitude either way, on any machine CI runs on.
+  it.each([
+    ["repeated unclosed tags", "<a".repeat(200_000)],
+    ["one < before a long word", `<${"a".repeat(400_000)}`],
+    ["unclosed quoted values", '<a "'.repeat(100_000)],
+  ])("sanitizes %s in linear time", (_shape, html) => {
+    const started = performance.now();
+    const out = sanitizeChangelogHtml(html);
+
+    expect(performance.now() - started).toBeLessThan(2000);
+    expect(out).not.toContain("<a");
+  });
 });

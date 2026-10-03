@@ -73,13 +73,37 @@ export const VoicePackCatalogEntrySchema = z.object({
 export type VoicePackCatalogEntry = z.infer<typeof VoicePackCatalogEntrySchema>;
 
 /**
+ * The most entries a catalog may list (#1101). It lists iRaceDeck's own packs
+ * and nothing else, so this is far beyond anything it will hold; what it
+ * stops is a well-formed but absurd document of millions of entries, each of
+ * which would otherwise be validated one by one in a synchronous loop while
+ * telemetry is polled every 10 ms.
+ *
+ * A catalog past either cap here is refused WHOLE, not truncated, and both
+ * caps are permanent for every plugin already installed: raising one later
+ * reaches only the plugins built after it. That is deliberate — a truncated
+ * catalog would hide whichever packs sort last, the managed default among
+ * them, behind an answer that looks complete — and it is why the website's
+ * generator refuses to publish past either cap rather than leaving the
+ * plugins to find out.
+ */
+export const VOICE_PACK_CATALOG_MAX_PACKS = 100;
+
+/**
+ * The most body the catalog fetch will read (#1101), measured on the document
+ * as published (pretty-printed). See {@link VOICE_PACK_CATALOG_MAX_PACKS} for
+ * why it is refused rather than truncated, and why the generator enforces it.
+ */
+export const VOICE_PACK_CATALOG_MAX_BYTES = 256 * 1024;
+
+/**
  * `schema` stays `1` for the same reason the pack manifest's does: a version
  * distinguishes formats that coexist in the wild, and nothing has published a
  * voice catalog yet.
  */
 export const VoicePackCatalogSchema = z.object({
   schema: z.literal(1),
-  packs: z.array(z.unknown()),
+  packs: z.array(z.unknown()).max(VOICE_PACK_CATALOG_MAX_PACKS),
 });
 
 /**

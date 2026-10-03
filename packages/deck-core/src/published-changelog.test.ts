@@ -1,6 +1,17 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import url from "node:url";
 import { describe, expect, it } from "vitest";
 
-import { parsePublishedChangelog } from "./published-changelog.js";
+import { CHANGELOG_MAX_BYTES } from "./changelog-feed-client.js";
+import {
+  parsePublishedChangelog,
+  PUBLISHED_CHANGELOG_MAX_CATEGORIES,
+  PUBLISHED_CHANGELOG_MAX_ITEMS,
+  PUBLISHED_CHANGELOG_MAX_RELEASES,
+} from "./published-changelog.js";
+
+const repoRoot = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "../../..");
 
 const VALID = {
   _meta: { generatedFrom: "…", generatedBy: "…", note: "…" },
@@ -74,5 +85,67 @@ describe("parsePublishedChangelog", () => {
 
   it("accepts an artifact with no releases at all", () => {
     expect(parsePublishedChangelog({ releases: [] })).toEqual([]);
+  });
+
+  it("returns undefined for a well-formed artifact listing more releases than the cap", () => {
+    const releases = (n: number) => Array.from({ length: n }, () => ({ version: "1.0.0", date: null, categories: [] }));
+
+    expect(parsePublishedChangelog({ releases: releases(PUBLISHED_CHANGELOG_MAX_RELEASES + 1) })).toBeUndefined();
+    expect(parsePublishedChangelog({ releases: releases(PUBLISHED_CHANGELOG_MAX_RELEASES) })).toHaveLength(
+      PUBLISHED_CHANGELOG_MAX_RELEASES,
+    );
+  });
+
+  it("returns undefined for a release with more categories than the cap", () => {
+    const release = (n: number) => ({
+      releases: [
+        { version: "1.0.0", date: null, categories: Array.from({ length: n }, () => ({ title: "t", items: [] })) },
+      ],
+    });
+
+    expect(parsePublishedChangelog(release(PUBLISHED_CHANGELOG_MAX_CATEGORIES + 1))).toBeUndefined();
+    expect(parsePublishedChangelog(release(PUBLISHED_CHANGELOG_MAX_CATEGORIES))).toHaveLength(1);
+  });
+
+  it("returns undefined for a category with more items than the cap", () => {
+    const release = (n: number) => ({
+      releases: [
+        {
+          version: "1.0.0",
+          date: null,
+          categories: [{ title: "t", items: Array.from({ length: n }, () => "x") }],
+        },
+      ],
+    });
+
+    expect(parsePublishedChangelog(release(PUBLISHED_CHANGELOG_MAX_ITEMS + 1))).toBeUndefined();
+    expect(parsePublishedChangelog(release(PUBLISHED_CHANGELOG_MAX_ITEMS))).toHaveLength(1);
+  });
+});
+
+// The changelog grows with every release, and a published artifact over either
+// cap reads as "we do not know" on every plugin in the field — silently, since
+// the What's New tab then just shows its built-in notes. The compiled-in copy
+// is built by the same generator from the same changelog.mdx as the published
+// one, so measuring it here fails the build while there is still half the
+// budget left to raise a cap in, rather than on the day the feed goes dark.
+describe("published changelog headroom (#1101)", () => {
+  const artifact = readFileSync(
+    path.join(repoRoot, "packages/iracing-actions/src/actions/data/changelog.json"),
+    "utf-8",
+  );
+
+  it("is under half the byte cap", () => {
+    expect(Buffer.byteLength(artifact, "utf-8")).toBeLessThan(CHANGELOG_MAX_BYTES / 2);
+  });
+
+  it("is under half of every shape cap", () => {
+    const releases = parsePublishedChangelog(JSON.parse(artifact)) ?? [];
+    const categories = releases.map((release) => release.categories);
+
+    expect(releases.length).toBeGreaterThan(0);
+    expect(releases.length).toBeLessThan(PUBLISHED_CHANGELOG_MAX_RELEASES / 2);
+    expect(Math.max(...categories.map((c) => c.length))).toBeLessThan(PUBLISHED_CHANGELOG_MAX_CATEGORIES / 2);
+    expect(Math.max(...categories.flat().map((c) => c.items.length))).toBeLessThan(PUBLISHED_CHANGELOG_MAX_ITEMS / 2);
   });
 });

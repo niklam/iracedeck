@@ -5,6 +5,7 @@ import url from "node:url";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { VOICE_PACK_CATALOG_MAX_PACKS } from "../packages/deck-core/src/voice-pack-catalog.ts";
 import { buildVoiceCatalogData, serializeVoiceCatalogData, VOICE_CATALOG_ENTRIES_DIR } from "./lib/voice-catalog-data.mjs";
 
 const repoRoot = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "..");
@@ -52,6 +53,20 @@ describe("buildVoiceCatalogData", () => {
     writeFileSync(path.join(root, "not-json.json"), "{ this is not json", "utf-8");
 
     expect(() => buildVoiceCatalogData(root)).toThrow(/not-json\.json/);
+  });
+
+  it("throws when there are more entries than a plugin will read", () => {
+    for (let i = 0; i <= VOICE_PACK_CATALOG_MAX_PACKS; i++) {
+      const id = `pack-${i}`;
+
+      writeEntry(id, validEntry({ id, voices: [{ id, label: "Voice" }] }));
+    }
+
+    expect(() => buildVoiceCatalogData(root)).toThrow(/refused by every plugin.*packs/);
+
+    rmSync(path.join(root, "pack-0.json"));
+
+    expect(buildVoiceCatalogData(root).packs).toHaveLength(VOICE_PACK_CATALOG_MAX_PACKS);
   });
 
   it("throws when an entry's id does not match its file name", () => {
@@ -145,6 +160,13 @@ describe("buildVoiceCatalogData", () => {
 });
 
 describe("serializeVoiceCatalogData", () => {
+  it("throws when the published document would exceed the plugins' byte cap", () => {
+    const voices = Array.from({ length: 200 }, (_, i) => ({ id: `voice-${i}`, label: `Voice ${i}` }));
+    const big = { schema: 1, packs: Array.from({ length: 20 }, (_, i) => validEntry({ id: `pack-${i}`, voices })) };
+
+    expect(() => serializeVoiceCatalogData(big)).toThrow(/VOICE_PACK_CATALOG_MAX_BYTES/);
+  });
+
   it("ends with a trailing newline", () => {
     expect(serializeVoiceCatalogData({ schema: 1, packs: [] })).toMatch(/\n$/);
   });

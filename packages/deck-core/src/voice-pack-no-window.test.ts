@@ -44,7 +44,12 @@ const SRC_DIR = join(process.cwd(), "packages/deck-core/src");
  * this feature, so they are held to the same rule; the `voice*` glob below
  * cannot reach another package's directory, which is why they are named.
  */
-const SHARED_MODULES: readonly string[] = [join(process.cwd(), "packages/callout-script/src/voice-pack.ts")];
+const SHARED_MODULES: readonly string[] = [
+  join(process.cwd(), "packages/callout-script/src/voice-pack.ts"),
+  // On the catalog fetch path, which runs unasked at every start (#1101).
+  join(process.cwd(), "packages/deck-core/src/abort-after.ts"),
+  join(process.cwd(), "packages/deck-core/src/read-capped-json.ts"),
+];
 
 /** Names that put something on the user's screen, and the module each lives in. */
 const FORBIDDEN: readonly { pattern: RegExp; what: string }[] = [
