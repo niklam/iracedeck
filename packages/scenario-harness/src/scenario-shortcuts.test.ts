@@ -1012,6 +1012,8 @@ describe('the "Nothing To Do (empty stop)" shortcut (issue #1180)', () => {
       PlayerTrackSurface: TrkLoc.InPitStall,
       Speed: 0,
       PlayerCarPitSvStatus: PitSvStatus.None,
+      // Nothing queued, as in every captured empty stop.
+      PitSvFlags: 0,
       PitstopActive: false,
     });
     expect(live.patch).toEqual({ IsReplayPlaying: false });
@@ -1029,6 +1031,20 @@ describe('the "Nothing To Do (empty stop)" shortcut (issue #1180)', () => {
 
     runSequence(controller, steps);
 
+    expect(events).toEqual([{ event: "pitService.stopEmpty", data: {} }]);
+  });
+
+  it("clears a queued service inside the bracket: it is gone by the stop, and clearing it speaks no toggle", () => {
+    const { controller, events } = startRecording("hot-lap");
+
+    // A preset (or an earlier button) left fuel queued.
+    controller.mutateTelemetry({ PitSvFlags: PitSvFlags.FuelFill } as TelemetryPatch);
+    controller.tickOnce();
+    events.length = 0;
+
+    runSequence(controller, steps);
+
+    expect(controller.getState().telemetry.PitSvFlags).toBe(0);
     expect(events).toEqual([{ event: "pitService.stopEmpty", data: {} }]);
   });
 

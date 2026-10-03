@@ -1136,6 +1136,9 @@ const PIT_STATUS_EMPTY_STOP_SHORTCUT: TelemetrySequenceShortcut = {
         PlayerTrackSurface: TrkLoc.InPitStall,
         Speed: 0,
         PlayerCarPitSvStatus: PitSvStatus.None,
+        // Nothing queued, as in every captured empty stop — a preset's
+        // queued service must not ride into a stop that models having none.
+        PitSvFlags: 0,
         PitstopActive: false,
       },
       holdMs: AUTO_FUEL_SEED_MS,
