@@ -430,15 +430,18 @@ export class UlanziClient {
 
       if (ctx && ev.payload) {
         if (ev.event === "willAppear" || ev.event === "didReceiveSettings") {
-          // These frames carry fresh settings — cache them.
-          this.contextSettings.set(ctx, ev.payload.settings ?? {});
+          // These frames carry fresh settings — cache them. The cache holds its
+          // own copies, in and out, so a handler mutating its payload can
+          // never rewrite what later events are backfilled with (#1236).
+          this.contextSettings.set(ctx, structuredClone(ev.payload.settings ?? {}));
         } else {
           // Press / dial / disappear frames omit settings — backfill from cache.
           // A context with no entry gets `{}`: deck-core's event payloads
           // require a settings object, so the adapter would coerce an
           // undefined to `{}` anyway and "unknown" cannot reach an action as
           // anything else (#1236).
-          ev.payload.settings = this.contextSettings.get(ctx) ?? ev.payload.settings ?? {};
+          const cached = this.contextSettings.get(ctx);
+          ev.payload.settings = cached ? structuredClone(cached) : (ev.payload.settings ?? {});
         }
       }
 
@@ -524,11 +527,15 @@ export class UlanziClient {
     }
   }
 
-  /** Send a JSON message to UlanziStudio. */
-  private send(message: Record<string, unknown>): void {
-    if (this.ws?.readyState === WS_OPEN) {
-      this.ws.send(JSON.stringify(message));
+  /** Send a JSON message to UlanziStudio. Returns false when the socket isn't open and the message was dropped. */
+  private send(message: Record<string, unknown>): boolean {
+    if (this.ws?.readyState !== WS_OPEN) {
+      return false;
     }
+
+    this.ws.send(JSON.stringify(message));
+
+    return true;
   }
 
   // --- Outbound commands ---
@@ -557,17 +564,25 @@ export class UlanziClient {
    * Persist a context's settings. The write replaces the host's whole object,
    * so the cache takes it whole too (#1236) — the next press for this context
    * is backfilled with what was written, not with the last `add` /
-   * `paramfromapp`. Only a context that is still cached is updated: a write
-   * landing after its `clear` must not resurrect the entry.
+   * `paramfromapp`. The cache only takes a write that was actually sent, so it
+   * never holds settings the host did not receive, and only for a context that
+   * is still cached: a write landing after its `clear` must not resurrect the
+   * entry.
    */
   setSettings(context: string, settings: Record<string, unknown>): void {
     const { uuid, key, actionid } = decodeContext(context);
 
-    if (this.contextSettings.has(context)) {
-      this.contextSettings.set(context, { ...settings });
+    if (!this.send({ cmd: "setSettings", uuid, key, actionid, settings })) {
+      this.logger.warn(`setSettings for ${context} dropped: socket not open`);
+
+      return;
     }
 
-    this.send({ cmd: "setSettings", uuid, key, actionid, settings });
+    if (this.contextSettings.has(context)) {
+      this.contextSettings.set(context, structuredClone(settings));
+    } else {
+      this.logger.debug(`setSettings for uncached context ${context}: sent, cache not updated`);
+    }
   }
 
   /**
