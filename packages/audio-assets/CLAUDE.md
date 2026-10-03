@@ -67,7 +67,7 @@ The byte rule has a corollary worth stating: the archive's bytes may only change
 
 ## Sound effects (`sfx/`)
 
-`sfx/` holds the non-voice assets: the walkie-talkie tick-open/close pair, the ambient pit loop, and the radar proximity tones (`sfx/radar/`). The ticks and the loop are referenced by each voice's `frames` (the `radio` frame in `configs/<voice-id>.voice.json` — since #1064 there is no `radio-frame.ts` in code) and by the PI background-volume test (`@iracedeck/audio-scenarios` `background-test.ts`); the tones by the radar engine (`radar-engine.ts`). Deliberately **not** radio-filtered at build time: everything outside `voice/` is copied into the plugin output unchanged (see `src/presets.mjs`), so the ticks and tones stay clean.
+`sfx/` holds the non-voice assets: the walkie-talkie tick-open/close pair, the ambient pit loop, and the radar proximity tones (`sfx/radar/`). The ticks and the loop are referenced by each voice's `frames` (the `radio` frame in `configs/<voice-id>.voice.json` — since #1064 there is no `radio-frame.ts` in code) and by the PI background-volume test (`@iracedeck/audio-scenarios` `background-test.ts`), which plays them only as the fallback for a voice with no `radio` frame — otherwise it previews the voice's own frame (#1124); the tones by the radar engine (`radar-engine.ts`). Deliberately **not** radio-filtered at build time: everything outside `voice/` is copied into the plugin output unchanged (see `src/presets.mjs`), so the ticks and tones stay clean.
 
 ## Voices may diverge — the within-pack coverage check (issues #664, #1065)
 
