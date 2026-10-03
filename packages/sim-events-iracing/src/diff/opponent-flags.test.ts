@@ -738,6 +738,129 @@ describe("diffOpponentFlags", () => {
     });
   });
 
+  describe("one call per car: the worst flag (#1274 manual test)", () => {
+    it("Furled + Repair rising together (the 0x1c0000 capture) speaks only the meatball", () => {
+      const t = makeField();
+      run(state, t, 1000);
+      t.CarIdxSessionFlags[3] = 0x1c0000; // Furled + Repair + Servicible
+
+      expect(run(state, t, 2000)).toEqual([flagged(3, OpponentPenaltyFlag.Repair, "ahead", 3)]);
+      // Furled clears its 1 s hold: outranked by the announced meatball, latched silently.
+      expect(run(state, t, 2000 + OPPONENT_FLAG_FURLED_DEBOUNCE_MS)).toEqual([]);
+      expect(run(state, t, 8000)).toEqual([]);
+      expect(state.opponentFlagAnnouncedMask[3]).toBe(Flags.Repair | Flags.Furled);
+      // The silent latch spoke nothing, so it stamps no cooldown.
+      expect(state.opponentFlagCooldownUntil.furled[3] ?? 0).toBe(0);
+    });
+
+    it("Black + Repair rising together: nothing at t0 (the meatball waits for Black's hold), then only Black", () => {
+      const t = makeField();
+      run(state, t, 1000);
+      t.CarIdxSessionFlags[3] = Flags.Black | Flags.Repair;
+
+      expect(run(state, t, 2000)).toEqual([]);
+      expect(run(state, t, 3000)).toEqual([]);
+      expect(run(state, t, 2000 + OPPONENT_FLAG_BLACK_HOLD_MS)).toEqual([
+        flagged(3, OpponentPenaltyFlag.Black, "ahead", 3),
+      ]);
+      expect(run(state, t, 8000)).toEqual([]);
+      expect(state.opponentFlagAnnouncedMask[3]).toBe(Flags.Black | Flags.Repair);
+      // One car, one window entry.
+      expect(state.opponentFlagRecentEntries).toHaveLength(1);
+    });
+
+    it("Disqualify + Repair rising together speaks only the disqualification", () => {
+      const t = makeField();
+      run(state, t, 1000);
+      t.CarIdxSessionFlags[3] = Flags.Disqualify | Flags.Repair;
+
+      expect(run(state, t, 2000)).toEqual([flagged(3, OpponentPenaltyFlag.Disqualify, "ahead", 3)]);
+      expect(run(state, t, 3000)).toEqual([]);
+    });
+
+    it("a lesser flag rising later on a car with an announced worse flag stays silent", () => {
+      const t = makeField();
+      run(state, t, 1000);
+      t.CarIdxSessionFlags[3] = Flags.Black;
+      run(state, t, 2000);
+      expect(run(state, t, 5000)).toEqual([flagged(3, OpponentPenaltyFlag.Black, "ahead", 3)]);
+
+      t.CarIdxSessionFlags[3] = Flags.Black | Flags.Repair;
+      expect(run(state, t, 6000)).toEqual([]);
+      t.CarIdxSessionFlags[3] = Flags.Black | Flags.Repair | Flags.Furled;
+      expect(run(state, t, 7000)).toEqual([]);
+      expect(run(state, t, 9000)).toEqual([]);
+    });
+
+    it("a worse flag rising later still announces — an escalation", () => {
+      const t = makeField();
+      run(state, t, 1000);
+      t.CarIdxSessionFlags[3] = Flags.Furled;
+      run(state, t, 2000);
+      expect(run(state, t, 3000)).toEqual([flagged(3, OpponentPenaltyFlag.Furled, "ahead", 3)]);
+
+      t.CarIdxSessionFlags[3] = Flags.Furled | Flags.Repair;
+      expect(run(state, t, 4000)).toEqual([flagged(3, OpponentPenaltyFlag.Repair, "ahead", 3)]);
+    });
+
+    it("a worse bit dropping inside its hold releases the waiting lesser flag", () => {
+      const t = makeField();
+      run(state, t, 1000);
+      t.CarIdxSessionFlags[3] = Flags.Black | Flags.Repair;
+
+      expect(run(state, t, 2000)).toEqual([]); // the meatball waits on Black's hold
+      t.CarIdxSessionFlags[3] = Flags.Repair; // Black blips off inside its hold
+
+      expect(run(state, t, 3000)).toEqual([
+        flagged(3, OpponentPenaltyFlag.Repair, "ahead", 3, { trigger: "entered-range" }),
+      ]);
+    });
+
+    it("an opted-out worse flag never suppresses, nor delays, an enabled lesser one", () => {
+      const t = makeField();
+      const enabled = (flag: OpponentPenaltyFlag) => flag !== OpponentPenaltyFlag.Black;
+
+      run(state, t, 1000, { enabled });
+      t.CarIdxSessionFlags[3] = Flags.Black | Flags.Repair;
+
+      expect(run(state, t, 2000, { enabled })).toEqual([flagged(3, OpponentPenaltyFlag.Repair, "ahead", 3)]);
+      expect(run(state, t, 2000 + OPPONENT_FLAG_BLACK_HOLD_MS, { enabled })).toEqual([]);
+
+      // And an announced worse flag the driver then opts out of stops outranking.
+      const s = createInitialState();
+      const u = makeField();
+      let blackOn = true;
+      const toggled = (flag: OpponentPenaltyFlag) => flag !== OpponentPenaltyFlag.Black || blackOn;
+
+      run(s, u, 1000, { enabled: toggled });
+      u.CarIdxSessionFlags[3] = Flags.Black;
+      run(s, u, 2000, { enabled: toggled });
+      expect(run(s, u, 5000, { enabled: toggled })).toEqual([flagged(3, OpponentPenaltyFlag.Black, "ahead", 3)]);
+
+      blackOn = false;
+      u.CarIdxSessionFlags[3] = Flags.Black | Flags.Repair;
+      expect(run(s, u, 6000, { enabled: toggled })).toEqual([flagged(3, OpponentPenaltyFlag.Repair, "ahead", 3)]);
+    });
+
+    it("a worse flag held back by its own cooldown does not outrank: the lesser one speaks once the hold resolves", () => {
+      const t = makeField();
+      run(state, t, 1000);
+      t.CarIdxSessionFlags[3] = Flags.Black;
+      run(state, t, 2000);
+      expect(run(state, t, 5000)).toEqual([flagged(3, OpponentPenaltyFlag.Black, "ahead", 3)]);
+
+      t.CarIdxSessionFlags[3] = 0; // Black clears, ending its episode...
+      run(state, t, 6000);
+      // ...and re-raises inside its 30 s cooldown, with a meatball.
+      t.CarIdxSessionFlags[3] = Flags.Black | Flags.Repair;
+
+      expect(run(state, t, 7000)).toEqual([]); // the meatball waits on Black's hold
+      expect(run(state, t, 7000 + OPPONENT_FLAG_BLACK_HOLD_MS)).toEqual([
+        flagged(3, OpponentPenaltyFlag.Repair, "ahead", 3, { trigger: "entered-range" }),
+      ]);
+    });
+  });
+
   describe("the payload", () => {
     it("names the car by its session-info number as a string, leading zero kept", () => {
       const t = makeField();
@@ -845,15 +968,16 @@ describe("diffOpponentFlags", () => {
       const t = makeField();
       run(state, t, 1000);
 
+      // Each further flag is MORE severe than the last, so each escalates.
       t.CarIdxSessionFlags[3] = Flags.Repair;
       expect(run(state, t, 2000)).toHaveLength(1);
-      t.CarIdxSessionFlags[3] = Flags.Repair | Flags.Disqualify;
-      expect(run(state, t, 3000)).toEqual([flagged(3, OpponentPenaltyFlag.Disqualify, "ahead", 3)]);
-      t.CarIdxSessionFlags[3] = Flags.Repair | Flags.Disqualify | Flags.Black;
-      run(state, t, 4000); // Black's hold starts
-      expect(run(state, t, 4000 + OPPONENT_FLAG_BLACK_HOLD_MS)).toEqual([
+      t.CarIdxSessionFlags[3] = Flags.Repair | Flags.Black;
+      run(state, t, 3000); // Black's hold starts
+      expect(run(state, t, 3000 + OPPONENT_FLAG_BLACK_HOLD_MS)).toEqual([
         flagged(3, OpponentPenaltyFlag.Black, "ahead", 3),
       ]);
+      t.CarIdxSessionFlags[3] = Flags.Repair | Flags.Black | Flags.Disqualify;
+      expect(run(state, t, 7000)).toEqual([flagged(3, OpponentPenaltyFlag.Disqualify, "ahead", 3)]);
 
       expect(state.opponentFlagRecentEntries).toHaveLength(1);
       expect(state.opponentFlagAggregateAnnounced).toBe(false);
@@ -1119,6 +1243,32 @@ describe("diffOpponentFlags", () => {
       expect(logger.debug.mock.calls[1]![0]).toContain("reason=player-in-pits");
       expect(logger.debug.mock.calls[1]![0]).toContain("carIdx=4 ");
       expect(logger.info).not.toHaveBeenCalled();
+    });
+
+    it("logs a silently latched lesser flag as outranked, naming the flag that outranks it, and writes nothing while it waits", () => {
+      const logger = createMockLogger();
+      const t = makeField();
+
+      run(state, t, 1000, { logger });
+      t.CarIdxSessionFlags[3] = Flags.Black | Flags.Repair;
+
+      run(state, t, 2000, { logger });
+      run(state, t, 3000, { logger });
+      expect(logger.debug).not.toHaveBeenCalled(); // waiting on Black's hold burns no line
+
+      run(state, t, 2000 + OPPONENT_FLAG_BLACK_HOLD_MS, { logger });
+
+      const lines = logger.debug.mock.calls.map((c) => c[0] as string);
+
+      expect(lines).toHaveLength(2);
+      expect(lines[0]).toContain("Opponent flag announced");
+      expect(lines[0]).toContain(`flag=${OpponentPenaltyFlag.Black}`);
+      expect(lines[1]).toContain("Opponent flag held back");
+      expect(lines[1]).toContain(`flag=${OpponentPenaltyFlag.Repair}`);
+      expect(lines[1]).toContain(`reason=outranked outrankedBy=${OpponentPenaltyFlag.Black}`);
+
+      run(state, t, 6000, { logger });
+      expect(logger.debug).toHaveBeenCalledTimes(2);
     });
   });
 });

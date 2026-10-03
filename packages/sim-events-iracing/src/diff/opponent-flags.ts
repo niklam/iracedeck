@@ -98,22 +98,49 @@
  * **Announce condition.** Effectively active AND qualified AND that flag's
  * bit not already in `opponentFlagAnnouncedMask` (the per-episode latch) AND
  * opted in AND that flag's per-car cooldown (`opponentFlagCooldownUntil`,
- * {@link OPPONENT_FLAG_CAR_COOLDOWN_MS}) expired. On announce: set the
+ * {@link OPPONENT_FLAG_CAR_COOLDOWN_MS}) expired AND the flag is the car's
+ * worst (below). On announce: set the
  * episode-latch bit, stamp the flag's own cooldown (per-flag, so an
  * escalation like black → DQ on the same car is never suppressed by the
  * black cooldown), and emit with `trigger: "raised"` when the flag became
  * effectively active this exact tick (and was not already up at the seed
  * tick), else `"entered-range"` (the level-triggered case: the flag was
  * already active and something else — the qualification, a cooldown, a gate,
- * an opt-in — just cleared). The payload
+ * an opt-in, a pit hold, a worse flag's hold — just cleared). The payload
  * names the car by `carNumber` (session info, omitted when there is no row)
  * and carries the race gap as `gapSeconds`.
  *
- * **Escalation.** iRacing swaps Furled for Black in one transition: the
+ * **One call per car: the worst flag (#1274 manual test).** Severity is
+ * disqualify > black > repair (meatball) > furled (slowdown)
+ * (`OPPONENT_FLAG_SEVERITY`), ranked among the car's ENABLED flags only — an
+ * opted-out flag never outranks, or delays, an enabled lesser one. A flag
+ * that would otherwise announce:
+ * - is **outranked** when a worse enabled flag on the car is in the episode
+ *   latch (announced earlier, or this pass — the pass walks worst first). It
+ *   is then latched silently: its bit joins `opponentFlagAnnouncedMask`, so
+ *   its episode is covered and it is never spoken, but no cooldown is stamped
+ *   (nothing was said) and the car gets no aggregation-window entry. The
+ *   latch then behaves exactly like a spoken one: it ends with the flag's own
+ *   bit, it outranks still lesser flags, and it makes a later worse flag an
+ *   escalation.
+ * - **waits** when a worse enabled flag's raw bit is up but still inside its
+ *   hold (a meatball rising with a black would otherwise speak at once and
+ *   the black three seconds later): nothing is latched or logged, and the
+ *   hold resolves first. If the worse flag clears its hold it announces and
+ *   the lesser one is outranked; if its bit drops inside the hold the lesser
+ *   one announces then, as `entered-range` (it was already effectively
+ *   active). The wait does not look at the worse flag's cooldown, so a worse
+ *   flag re-raised inside its cooldown delays the lesser one by at most its
+ *   hold, after which the lesser one speaks — a worse flag that would not
+ *   announce does not outrank.
+ *
+ * **Escalation.** A worse flag arriving later still announces, and bypasses
+ * the burst collapse (below). iRacing swaps Furled for Black in one transition: the
  * Furled latch drops with its bit and Black then waits its own hold. An
- * escalation is classified `announced & ~bit` at announce time, so one that
- * lands after the earlier flag's bit dropped is announced as a plain flag —
- * which is what it is to the driver.
+ * escalation is classified `announced & ~bit` at announce time — silent
+ * latches included, since they too mean the car's episode was covered — so
+ * one that lands after the earlier flag's bit dropped is announced as a plain
+ * flag, which is what it is to the driver.
  *
  * **Gating** (the `diffOpponentPit` precedent): race sessions only,
  * replay-only sessions suppressed, pre-green suppressed (grid/formation
@@ -145,8 +172,8 @@
  *
  * Two classes of announce are exempt from the collapse:
  * - **Opt-outs never reach it.** The injected `getCalloutEnabled` resolver
- *   (live-read from the plugin's global settings once per pending flag per
- *   pass) is checked before any stamping — and before the race-gap lookup,
+ *   (live-read from the plugin's global settings once per raised flag per
+ *   pass, for each car with something pending) is checked before any stamping — and before the race-gap lookup,
  *   which a car whose every pending flag is opted out skips — so a disabled
  *   subject never consumes the aggregation budget and can never redirect an
  *   enabled subject into a collapsed tail. The aggregate line by
@@ -163,16 +190,17 @@
  * raw `CarIdxSessionFlags` in hex, the class positions of the car and the
  * player, the race gap, the car's `CarIdxTrackSurface` and its
  * `CarIdxOnPitRoad` (logged as evidence only, never decided on) — so a
- * support log can show which car a call was about. The announce that trips the burst
- * collapse writes the same fields on its "aggregate announced" line instead,
- * with the distinct-car count. An effectively-active flag that is held back
- * (player in the pits, not in world, car in the pits, class, player
- * progress, lap, positions, gap, opt-out, cooldown, or silenced by an open
- * aggregate episode) writes one "held back"
- * line with its reason, once per (car, flag) episode via
- * `opponentFlagHeldBackLoggedMask`: the FIRST reason is the one logged, a
+ * support log can show which car a call was about. The announce that trips
+ * the burst collapse writes the same fields on its "aggregate announced" line
+ * instead, with the distinct-car count. An effectively-active flag that is
+ * held back (player in the pits, not in world, car in the pits, class, player
+ * progress, lap, positions, gap, opt-out, cooldown, outranked by a worse flag
+ * — named as `outrankedBy=` — or silenced by an open aggregate episode)
+ * writes one "held back" line with its reason, once per (car, flag) episode
+ * via `opponentFlagHeldBackLoggedMask`: the FIRST reason is the one logged, a
  * later change of reason is not, and the car still writes its announce line
- * if it qualifies later. Nothing logs at info.
+ * if it qualifies later. A flag merely waiting on a worse flag's hold writes
+ * nothing, so the wait never spends its episode's line. Nothing logs at info.
  */
 import { OpponentPenaltyFlag } from "@iracedeck/event-bus";
 import {
@@ -266,6 +294,32 @@ export const OPPONENT_FLAG_DEFS: Array<{ key: FlagKey; bit: number; flag: Oppone
 ];
 
 /**
+ * Severity, worst first (#1274 manual test): disqualify > black > repair
+ * (meatball) > furled (slowdown). The announce pass walks a car's flags in
+ * this order, so a worse flag is latched before a lesser one is looked at —
+ * which is what lets the lesser one see it in the latch and stay silent, and
+ * keeps a same-pass lesser latch out of the worse flag's escalation test.
+ */
+const OPPONENT_FLAG_SEVERITY: FlagKey[] = ["disqualify", "black", "repair", "furled"];
+
+const OPPONENT_FLAG_DEFS_BY_SEVERITY = OPPONENT_FLAG_SEVERITY.map((key) =>
+  OPPONENT_FLAG_DEFS.find((def) => def.key === key)!,
+);
+
+/** Per flag, the mask of the flags that outrank it. */
+const MORE_SEVERE_MASK = Object.fromEntries(
+  OPPONENT_FLAG_DEFS_BY_SEVERITY.map((def, rank) => [
+    def.key,
+    OPPONENT_FLAG_DEFS_BY_SEVERITY.slice(0, rank).reduce((mask, worse) => mask | worse.bit, 0),
+  ]),
+) as Record<FlagKey, number>;
+
+/** The most severe flag set in `mask` (non-zero). */
+function mostSevere(mask: number): OpponentPenaltyFlag | undefined {
+  return OPPONENT_FLAG_DEFS_BY_SEVERITY.find((def) => (mask & def.bit) !== 0)?.flag;
+}
+
+/**
  * The live inputs the qualifier reads through injected closures, so the diff
  * stays a pure function of its arguments (#936, #1274).
  */
@@ -301,6 +355,7 @@ type HeldBackReason =
   | "gap-over-range"
   | "opted-out"
   | "cooldown"
+  | "outranked"
   | "collapsed";
 
 /** A car that qualifies: its relation, both class positions and the race gap. */
@@ -326,6 +381,10 @@ type NotQualified = {
 };
 
 type Assessment = Qualified | NotQualified;
+
+function unqualified(reason: HeldBackReason): NotQualified {
+  return { reason, carPos: 0, playerPos: 0, gapSeconds: null };
+}
 
 /**
  * The player's side of every qualification, the same for every car in one
@@ -627,23 +686,21 @@ export function diffOpponentFlags(
     // so a settings toggle takes effect on the next event; a flag re-enabled
     // mid-episode simply announces then (level-trigger). Read before the
     // qualification so a car whose every pending flag is opted out costs no
-    // gap lookup.
-    let enabledPending = 0;
+    // gap lookup. Read over every RAISED flag, not only the pending ones:
+    // the worst-flag rule ranks among enabled flags only, so an opted-out
+    // flag can never outrank, or make wait, an enabled lesser one.
+    let enabled = 0;
 
     for (const def of OPPONENT_FLAG_DEFS) {
-      if ((pending & def.bit) !== 0 && resolvers.getCalloutEnabled(def.flag)) enabledPending |= def.bit;
+      if ((bits[i] & def.bit) !== 0 && resolvers.getCalloutEnabled(def.flag)) enabled |= def.bit;
     }
+
+    const enabledPending = pending & enabled;
 
     // In-world test (the race-finish.ts shape) — blipped/vanished/towed cars
     // never qualify, and neither does a car in the pits. All three are decided
     // before `assess`, so none of them costs a gap lookup.
     const inWorld = (lc?.[i] ?? -1) >= 0 && (dp?.[i] ?? -1) >= 0;
-    const unqualified = (reason: HeldBackReason): NotQualified => ({
-      reason,
-      carPos: 0,
-      playerPos: 0,
-      gapSeconds: null,
-    });
     const assessment: Assessment = playerInPits
       ? unqualified("player-in-pits")
       : !inWorld
@@ -664,10 +721,13 @@ export function diffOpponentFlags(
     // Resolved lazily: only an announce or a first held-back line needs it.
     let carNumber: string | null | undefined;
 
-    for (const def of OPPONENT_FLAG_DEFS) {
+    // Worst first, so a worse flag latched this pass is in `announced[i]` by
+    // the time a lesser one asks (see `OPPONENT_FLAG_SEVERITY`).
+    for (const def of OPPONENT_FLAG_DEFS_BY_SEVERITY) {
       if ((pending & def.bit) === 0) continue; // not effectively active, or episode already announced
 
       let heldBack: HeldBackReason | null = null;
+      let outrankedBy = 0;
 
       if (assessment.reason !== undefined) {
         heldBack = assessment.reason;
@@ -675,6 +735,23 @@ export function diffOpponentFlags(
         heldBack = "opted-out";
       } else if (now < (cooldownUntil[def.key][i] ?? 0)) {
         heldBack = "cooldown"; // per-(car, flag) cooldown
+      } else {
+        // One call per car: the worst flag (see the module header).
+        const worse = enabled & MORE_SEVERE_MASK[def.key];
+
+        outrankedBy = worse & announced[i];
+
+        if (outrankedBy !== 0) {
+          // A worse flag's episode already covers the car: latch silently —
+          // no cooldown (nothing was spoken) and no window entry.
+          announced[i] |= def.bit;
+          heldBack = "outranked";
+        } else if ((worse & bits[i] & ~effectiveMask[i]) !== 0) {
+          // A worse flag's raw bit is up but still inside its hold: wait for
+          // the hold to resolve — silently, and without spending this
+          // episode's held-back line on the wait.
+          continue;
+        }
       }
 
       if (heldBack !== null) {
@@ -682,8 +759,11 @@ export function diffOpponentFlags(
         if ((heldBackLogged[i] & def.bit) === 0) {
           heldBackLogged[i] |= def.bit;
           carNumber ??= getCarNumberFromSessionInfo(sessionInfo, i);
+
+          const by = outrankedBy !== 0 ? ` outrankedBy=${mostSevere(outrankedBy)}` : "";
+
           logger.debug(
-            `Opponent flag held back: flag=${def.flag} reason=${heldBack} ` +
+            `Opponent flag held back: flag=${def.flag} reason=${heldBack}${by} ` +
               describeCar(telemetry, i, carNumber, raw[i] ?? 0, assessment, range),
           );
         }

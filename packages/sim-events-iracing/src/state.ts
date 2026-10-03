@@ -1056,7 +1056,11 @@ export type TranslatorState = {
    * for its hold.
    */
   opponentFlagHeldSinceAt: { furled: number[]; black: number[] };
-  /** Penalty bits already announced for the current episode, per car. Cleared per bit as the bit drops. */
+  /**
+   * Penalty bits whose current episode is covered, per car: announced, or
+   * latched silently because a worse flag on the car outranked it (#1274).
+   * Cleared per bit as the bit drops.
+   */
   opponentFlagAnnouncedMask: number[];
   /**
    * Penalty bits whose "held back" debug line (#1273) was already written
