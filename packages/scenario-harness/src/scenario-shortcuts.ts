@@ -1069,6 +1069,83 @@ const TIRE_WEAR_STOP_SHORTCUT: TelemetrySequenceShortcut = {
 };
 
 /**
+ * Step holds for `PIT_STATUS_EMPTY_STOP_SHORTCUT` (issue #1180). The bracket
+ * steps are the {@link AUTO_FUEL_SEED_MS} idiom; the settle lets the run start
+ * from a quiet bus.
+ */
+const EMPTY_STOP_SEED_MS = 200;
+const EMPTY_STOP_SETTLE_MS = 500;
+
+/**
+ * How long the status reads InProgress. The capture had it for one sim tick
+ * (0.02 s); this is a couple of the mock controller's 14 ms ticks, still far
+ * under the translator's 250 ms InProgress hold, so "Pit stop in progress."
+ * is never announced.
+ */
+const EMPTY_STOP_IN_PROGRESS_MS = 30;
+
+/** Listening time after the status drops back to None: the release line. */
+const EMPTY_STOP_LISTEN_MS = 3000;
+
+/**
+ * A pit stop with nothing queued, replayed through the TRANSLATOR (issue
+ * #1180), modelled on stop 2 of `local/telemetry-watch-20260919-193233-855.jsonl`
+ * (sessionTime 597.75 → 597.77): the car sits stationary on the pit-stall
+ * surface, `PlayerCarPitSvStatus` reads InProgress for one tick and drops
+ * straight back to None — iRacing never reports Complete when there is
+ * nothing to do. `PlayerCarInPitStall` stays false throughout, as it still was
+ * on the capture's closing tick; the translator reads the track surface.
+ *
+ * What it exists to show is the translator's decision, which a bus-event
+ * shortcut steps over: the held InProgress is dropped (no "Pit stop in
+ * progress."), and the close publishes `pitService.stopEmpty`, which the
+ * bundled voices speak with the Complete line.
+ *
+ * Putting the car in its box from wherever the tester left it would announce
+ * the approach, pit road and the entry readback first, so the setup and the
+ * teardown are done inside a replay-mode bracket — the
+ * {@link AUTO_FUEL_TAKEOVER_SHORTCUT} idiom: the translator suppresses every
+ * event while `IsReplayPlaying` is true and re-seeds each diff from the
+ * current snapshot when it goes false. It hands back a car on the circuit,
+ * off pit road, with no service status, so a second press replays it whole.
+ */
+const PIT_STATUS_EMPTY_STOP_SHORTCUT: TelemetrySequenceShortcut = {
+  id: "pit-status-empty-stop",
+  category: "Pit Status",
+  label: "Nothing To Do (empty stop)",
+  description:
+    'Drives the TRANSLATOR through a pit stop with no service queued, modelled on one captured on 2026-09-19, about 4 s end to end: the car stationary in its box, the service status InProgress for a couple of ticks, then straight back to None — iRacing never reports Complete when there is nothing to do. Expect the Complete line ("Done. Go.") and NOTHING before it: hearing the in-progress line ("Pit stop in progress.") means the translator announced the one-tick InProgress. No preset needed: the run opens and closes inside a replay-mode bracket, which the translator suppresses events through and re-seeds every diff from, so it puts the car in its box from anywhere and hands back a car on the circuit with no service status. Needs the mock SDK CONNECTED; with it disconnected the translator sees no ticks and the button is silent for the wrong reason.',
+  telemetrySequence: [
+    {
+      patch: {
+        IsReplayPlaying: true,
+        IsOnTrack: true,
+        OnPitRoad: true,
+        PlayerCarInPitStall: false,
+        PlayerTrackSurface: TrkLoc.InPitStall,
+        Speed: 0,
+        PlayerCarPitSvStatus: PitSvStatus.None,
+      },
+      holdMs: EMPTY_STOP_SEED_MS,
+    },
+    { patch: { IsReplayPlaying: false }, holdMs: EMPTY_STOP_SETTLE_MS },
+    { patch: { PlayerCarPitSvStatus: PitSvStatus.InProgress }, holdMs: EMPTY_STOP_IN_PROGRESS_MS },
+    { patch: { PlayerCarPitSvStatus: PitSvStatus.None }, holdMs: EMPTY_STOP_LISTEN_MS },
+    // Close the bracket: back on the circuit, seeded rather than spoken.
+    {
+      patch: {
+        IsReplayPlaying: true,
+        OnPitRoad: false,
+        PlayerTrackSurface: TrkLoc.OnTrack,
+        Speed: 60,
+      },
+      holdMs: EMPTY_STOP_SEED_MS,
+    },
+    { patch: { IsReplayPlaying: false } },
+  ],
+};
+
+/**
  * How long a replay-mode bracket step is held — a few of the mock
  * controller's 14 ms ticks, all the translator needs to wipe its state on the
  * way in and re-seed every diff on the way out (the same bracket as
@@ -2225,6 +2302,9 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   // preempt: fire two in a row to confirm the second cancels the first.
   pitStatus("in-progress", "In Progress", PitSvStatus.InProgress, "Crew started working on the car"),
   pitStatus("complete", "Complete", PitSvStatus.Complete, "Service finished — ready to leave the box"),
+  // The empty stop (issue #1180) — telemetry-driven, so it auditions the
+  // translator's decision: no "in progress", then the Complete line.
+  PIT_STATUS_EMPTY_STOP_SHORTCUT,
   pitStatus("too-far-left", "Too Far Left", PitSvStatus.TooFarLeft),
   pitStatus("too-far-right", "Too Far Right", PitSvStatus.TooFarRight),
   pitStatus("too-far-forward", "Too Far Forward", PitSvStatus.TooFarForward),

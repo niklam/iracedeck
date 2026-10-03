@@ -5,6 +5,7 @@ import { _resetEventBus, getEventBus, initializeEventBus, type SimEventName } fr
 import {
   Flags,
   PitSvFlags,
+  PitSvStatus,
   type SDKController,
   type SessionInfo,
   type TelemetryData,
@@ -939,6 +940,134 @@ describe("the two Tire Wear shortcuts (issue #1108)", () => {
     runSequence(controller, steps);
 
     expect(events.filter((e) => e.event === "tireWear.reported")).toHaveLength(2);
+  });
+});
+
+describe('the "Nothing To Do (empty stop)" shortcut (issue #1180)', () => {
+  beforeEach(() => {
+    initializeEventBus(silentLogger);
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    _resetSimEventsIracing();
+    _resetEventBus();
+  });
+
+  const shortcut = SCENARIO_SHORTCUTS.find((s) => s.id === "pit-status-empty-stop");
+  const steps = shortcut?.telemetrySequence ?? [];
+  const inProgressAt = steps.findIndex((s) => s.patch.PlayerCarPitSvStatus === PitSvStatus.InProgress);
+
+  /**
+   * The translator started either at boot (the mock's own telemetry, no
+   * preset) or as `startTranslator` leaves it (race session, hot-lap), then
+   * recording EVERY event in the catalog: the bracket must keep the car's trip
+   * into its box silent, so a narrower recorder would hide a pit-lane event or
+   * a readback it let slip.
+   */
+  function startRecording(from: "boot" | "hot-lap"): { controller: MockSDKController; events: Published[] } {
+    let controller: MockSDKController;
+
+    if (from === "boot") {
+      controller = new MockSDKController();
+      controller.setConnected(true);
+      initializeSimEventsIracing(getEventBus(), controller as unknown as SDKController, silentLogger);
+      controller.tickOnce();
+    } else {
+      controller = startTranslator().controller;
+    }
+
+    const events: Published[] = [];
+
+    for (const name of ALL_EVENT_NAMES) {
+      getEventBus().subscribe(name, (ev) => events.push({ event: ev.event, data: ev.data }));
+    }
+
+    return { controller, events };
+  }
+
+  it("drives the translator rather than publishing an event, under the label the bundled script's test line names", () => {
+    const script = defaultScript as CalloutScript;
+
+    expect(shortcut?.event).toBeUndefined();
+    expect(shortcut?.category).toBe("Pit Status");
+    expect(shortcut?.label).toBe("Nothing To Do (empty stop)");
+    expect(script.scenarios["pit-crew.pit-status-nothing-to-do"]?.test).toMatch(
+      /^Harness → Pit Status → Nothing To Do \(empty stop\)\. /,
+    );
+  });
+
+  it("replays the capture's stop 2: stationary on the stall surface, InProgress for well under the 250 ms hold, then None", () => {
+    // `local/telemetry-watch-20260919-193233-855.jsonl`, 597.75 → 597.77.
+    const live = steps[1];
+
+    expect(steps[0].patch).toMatchObject({
+      IsReplayPlaying: true,
+      IsOnTrack: true,
+      OnPitRoad: true,
+      // Still false on the capture's closing tick — the translator reads the surface.
+      PlayerCarInPitStall: false,
+      PlayerTrackSurface: TrkLoc.InPitStall,
+      Speed: 0,
+      PlayerCarPitSvStatus: PitSvStatus.None,
+    });
+    expect(live.patch).toEqual({ IsReplayPlaying: false });
+    expect(inProgressAt).toBe(2);
+    expect(steps[inProgressAt].patch).toEqual({ PlayerCarPitSvStatus: PitSvStatus.InProgress });
+    expect(steps[inProgressAt].holdMs ?? 0).toBeLessThan(250);
+    expect(steps[inProgressAt + 1].patch).toEqual({ PlayerCarPitSvStatus: PitSvStatus.None });
+  });
+
+  it("the translator publishes the empty-stop release and nothing else — no InProgress status change", () => {
+    const { controller, events } = startRecording("hot-lap");
+
+    runSequence(controller, steps);
+
+    expect(events).toEqual([{ event: "pitService.stopEmpty", data: {} }]);
+  });
+
+  it("needs no preset: from boot, in the garage, the only addition is the first-time-on-track marker no callout speaks", () => {
+    // `driver.firstOnTrack` is detected on replay ticks too, by design (the
+    // translator never misses a garage → on-track transition), so the bracket
+    // cannot hide it — and it does not need to: nothing in the audio layer
+    // subscribes to it.
+    const { controller, events } = startRecording("boot");
+
+    runSequence(controller, steps);
+
+    expect(events).toEqual([
+      { event: "driver.firstOnTrack", data: {} },
+      { event: "pitService.stopEmpty", data: {} },
+    ]);
+  });
+
+  it("plays the same on a second press, and ends on the circuit with no service status", () => {
+    const { controller, events } = startRecording("hot-lap");
+
+    runSequence(controller, steps);
+    runSequence(controller, steps);
+
+    expect(events.map((e) => e.event)).toEqual(["pitService.stopEmpty", "pitService.stopEmpty"]);
+    expect(getLatestTelemetry()).toMatchObject({
+      IsReplayPlaying: false,
+      IsOnTrack: true,
+      OnPitRoad: false,
+      PlayerTrackSurface: TrkLoc.OnTrack,
+      PlayerCarPitSvStatus: PitSvStatus.None,
+    });
+  });
+
+  it("positive control: the same stop with InProgress held past the hold announces it, so the recorder can see one", () => {
+    const { controller, events } = startRecording("hot-lap");
+    const longStop = steps.map((s, i) => (i === inProgressAt ? { ...s, holdMs: 1000 } : s));
+
+    runSequence(controller, longStop);
+
+    expect(events).toEqual([
+      { event: "pitService.statusChanged", data: { from: PitSvStatus.None, to: PitSvStatus.InProgress } },
+      { event: "pitService.stopEmpty", data: {} },
+    ]);
   });
 });
 
