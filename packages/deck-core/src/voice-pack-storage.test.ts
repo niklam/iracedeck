@@ -26,6 +26,8 @@ const ROOT = join("vp", "Voices");
 const TMP = join(ROOT, VOICE_PACK_TMP_DIR);
 const TRASH = join(ROOT, VOICE_PACK_TRASH_DIR);
 const SHA = "a".repeat(64);
+/** The pid every working name below carries: the default storage is this process's. */
+const PID = process.pid;
 
 type Entry = { kind: "dir" } | { kind: "file"; data: Buffer };
 type FaultOp = "makeDirectory" | "rename" | "remove" | "writeTextFile" | "createExclusive" | "openWrite";
@@ -193,6 +195,13 @@ class FakeFs implements VoicePackStorageFileSystem {
     return { ok: true as const, created: true };
   }
 
+  /** What `freeBytes` answers; `undefined` stands for a statfs that failed. */
+  free: number | undefined = 10_000_000_000;
+
+  async freeBytes(_path: string) {
+    return this.free;
+  }
+
   async openWrite(file: string) {
     const code = this.fault("openWrite", file);
 
@@ -274,7 +283,7 @@ describe("openDownload", () => {
 
     if (!opened.ok) return;
 
-    expect(opened.path).toBe(join(TMP, `luca.${SHA}.zip`));
+    expect(opened.path).toBe(join(TMP, `luca.${SHA}.${PID}.zip`));
     await opened.sink.write(new TextEncoder().encode("PK"));
     await opened.sink.write(new TextEncoder().encode("rest"));
 
@@ -284,12 +293,12 @@ describe("openDownload", () => {
   });
 
   it("removes a leftover of the same name first — even a directory", async () => {
-    fs.file(join(TMP, `luca.${SHA}.zip`, "stray"), "x");
+    fs.file(join(TMP, `luca.${SHA}.${PID}.zip`, "stray"), "x");
 
     const opened = await storage.openDownload("luca", SHA);
 
     expect(opened.ok).toBe(true);
-    expect(fs.read(join(TMP, `luca.${SHA}.zip`))).toBe("");
+    expect(fs.read(join(TMP, `luca.${SHA}.${PID}.zip`))).toBe("");
   });
 
   it("discard closes and deletes the file", async () => {
@@ -324,15 +333,77 @@ describe("openDownload", () => {
   });
 });
 
+describe("per-process working names (#1102)", () => {
+  // Two plugins can install the same pack at once — the lock is best-effort and
+  // a waiter proceeds when its wait runs out — so neither may ever write, read
+  // or delete a file the other is using.
+  it("gives each process its own archive and staging directory, and one never clobbers the other", async () => {
+    const first = createVoicePackStorage({ root: ROOT, fs, logger: logger as never, pid: 111 });
+    const second = createVoicePackStorage({ root: ROOT, fs, logger: logger as never, pid: 222 });
+
+    const a = await first.openDownload("luca", SHA);
+    const b = await second.openDownload("luca", SHA);
+
+    if (!a.ok || !b.ok) throw new Error("expected both downloads to open");
+
+    expect(a.path).toBe(join(TMP, `luca.${SHA}.111.zip`));
+    expect(b.path).toBe(join(TMP, `luca.${SHA}.222.zip`));
+
+    await a.sink.write(new TextEncoder().encode("first"));
+    await b.sink.write(new TextEncoder().encode("second"));
+    await b.discard();
+
+    // The second process's discard did not touch the first's archive.
+    expect(fs.read(a.path)).toBe("first");
+
+    const stagedA = await first.createStagingDir("luca", SHA);
+    fs.file(join((stagedA as { dir: string }).dir, "a.mp3"), "x");
+    const stagedB = await second.createStagingDir("luca", SHA);
+
+    if (!stagedA.ok || !stagedB.ok) throw new Error("expected both staging directories");
+
+    // Creating the second emptied nothing of the first's.
+    expect(stagedB.dir).not.toBe(stagedA.dir);
+    expect(fs.children(stagedA.dir)).toEqual(["a.mp3"]);
+  });
+
+  it("keeps every process's working names while any install of the pack holds the lock", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(5_000_000);
+    fs.file(join(TMP, "luca.lock"), JSON.stringify({ pid: 111, acquiredAt: Date.now(), heartbeatAt: Date.now() }));
+    fs.file(join(TMP, `luca.${SHA}.111.zip`), "holder");
+    fs.file(join(TMP, `luca.${SHA}.222.zip`), "waiter that gave up");
+    fs.file(join(TMP, `luca.${SHA}.222`, "a.mp3"), "x");
+
+    const result = await storage.sweep();
+
+    expect(result).toEqual({ removed: 0, failed: 0, kept: 4 });
+  });
+});
+
+describe("freeBytes", () => {
+  it("asks the port about the packs folder", async () => {
+    fs.free = 123_456;
+
+    expect(await storage.freeBytes()).toBe(123_456);
+  });
+
+  it("answers undefined when the volume cannot be read", async () => {
+    fs.free = undefined;
+
+    expect(await storage.freeBytes()).toBeUndefined();
+  });
+});
+
 describe("createStagingDir", () => {
-  it("creates an empty .tmp/<id>.<sha> and discards it on request", async () => {
+  it("creates an empty .tmp/<id>.<sha>.<pid> and discards it on request", async () => {
     const staged = await storage.createStagingDir("luca", SHA);
 
     expect(staged.ok).toBe(true);
 
     if (!staged.ok) return;
 
-    expect(staged.dir).toBe(join(TMP, `luca.${SHA}`));
+    expect(staged.dir).toBe(join(TMP, `luca.${SHA}.${PID}`));
     expect(fs.has(staged.dir)).toBe(true);
     expect(fs.children(staged.dir)).toEqual([]);
 
@@ -343,17 +414,17 @@ describe("createStagingDir", () => {
   });
 
   it("empties a half-filled leftover from an earlier attempt", async () => {
-    fs.file(join(TMP, `luca.${SHA}`, "voice", "luca", "flags", "stale.mp3"), "x");
+    fs.file(join(TMP, `luca.${SHA}.${PID}`, "voice", "luca", "flags", "stale.mp3"), "x");
 
     const staged = await storage.createStagingDir("luca", SHA);
 
     expect(staged.ok).toBe(true);
-    expect(fs.children(join(TMP, `luca.${SHA}`))).toEqual([]);
+    expect(fs.children(join(TMP, `luca.${SHA}.${PID}`))).toEqual([]);
   });
 
   it("reports a leftover it cannot remove", async () => {
-    fs.file(join(TMP, `luca.${SHA}`, "held.mp3"), "x");
-    fs.faults.remove = (path) => (path.endsWith(`luca.${SHA}`) ? "EBUSY" : undefined);
+    fs.file(join(TMP, `luca.${SHA}.${PID}`, "held.mp3"), "x");
+    fs.faults.remove = (path) => (path.endsWith(`luca.${SHA}.${PID}`) ? "EBUSY" : undefined);
 
     expect(await storage.createStagingDir("luca", SHA)).toEqual({ ok: false, code: "EBUSY" });
   });
@@ -361,9 +432,9 @@ describe("createStagingDir", () => {
 
 describe("writeProvenance", () => {
   it("writes .install.json into the given directory, serialized", async () => {
-    fs.dir(join(TMP, `luca.${SHA}`));
+    fs.dir(join(TMP, `luca.${SHA}.${PID}`));
 
-    const result = await storage.writeProvenance(join(TMP, `luca.${SHA}`), {
+    const result = await storage.writeProvenance(join(TMP, `luca.${SHA}.${PID}`), {
       schema: 1,
       source: "catalog",
       id: "luca",
@@ -374,7 +445,7 @@ describe("writeProvenance", () => {
     });
 
     expect(result).toEqual({ ok: true });
-    const text = fs.read(join(TMP, `luca.${SHA}`, VOICE_PACK_PROVENANCE_FILE));
+    const text = fs.read(join(TMP, `luca.${SHA}.${PID}`, VOICE_PACK_PROVENANCE_FILE));
     expect(text?.endsWith("\n")).toBe(true);
     expect(JSON.parse(text as string)).toMatchObject({ id: "luca", sha256: SHA, source: "catalog" });
   });
@@ -386,7 +457,7 @@ describe("writeProvenance", () => {
 
 describe("promote", () => {
   const target = join(ROOT, "luca");
-  const staged = join(TMP, `luca.${SHA}`);
+  const staged = join(TMP, `luca.${SHA}.${PID}`);
 
   beforeEach(() => {
     seed(fs, target, OLD_PACK);
@@ -574,8 +645,8 @@ describe("retire", () => {
 
 describe("sweep", () => {
   it("empties .tmp and .trash of everything safe to delete", async () => {
-    fs.file(join(TMP, `luca.${SHA}.zip`), "zip");
-    fs.file(join(TMP, `luca.${SHA}`, "a.mp3"), "x");
+    fs.file(join(TMP, `luca.${SHA}.${PID}.zip`), "zip");
+    fs.file(join(TMP, `luca.${SHA}.${PID}`, "a.mp3"), "x");
     fs.file(join(TMP, "junk.txt"), "x");
     seed(fs, join(ROOT, "luca"), NEW_PACK);
     seed(fs, join(TRASH, "luca.100"), OLD_PACK);
@@ -615,13 +686,13 @@ describe("sweep", () => {
     vi.useFakeTimers();
     vi.setSystemTime(5_000_000);
     fs.file(join(TMP, "luca.lock"), JSON.stringify({ pid: 1, acquiredAt: Date.now(), heartbeatAt: Date.now() }));
-    fs.file(join(TMP, `luca.${SHA}.zip`), "in flight");
-    fs.file(join(TMP, `other.${SHA}.zip`), "abandoned");
+    fs.file(join(TMP, `luca.${SHA}.${PID}.zip`), "in flight");
+    fs.file(join(TMP, `other.${SHA}.${PID}.zip`), "abandoned");
 
     const result = await storage.sweep();
 
     expect(result).toEqual({ removed: 1, failed: 0, kept: 2 });
-    expect(fs.children(TMP)).toEqual([`luca.${SHA}.zip`, "luca.lock"]);
+    expect(fs.children(TMP)).toEqual([`luca.${SHA}.${PID}.zip`, "luca.lock"]);
   });
 
   it("sweeps a stale lock along with its files", async () => {
@@ -629,7 +700,7 @@ describe("sweep", () => {
     vi.setSystemTime(5_000_000);
     const dead = Date.now() - VOICE_PACK_LOCK_STALE_MS - 1;
     fs.file(join(TMP, "luca.lock"), JSON.stringify({ pid: 1, acquiredAt: dead, heartbeatAt: dead }));
-    fs.file(join(TMP, `luca.${SHA}.zip`), "abandoned");
+    fs.file(join(TMP, `luca.${SHA}.${PID}.zip`), "abandoned");
 
     await storage.sweep();
 
@@ -785,6 +856,48 @@ describe("acquireLock", () => {
     await settled.lock?.release();
 
     expect(fs.has(lockPath)).toBe(true);
+  });
+
+  it("waits as long as the caller asks before proceeding without the lock", async () => {
+    const beat = (): void => {
+      fs.file(lockPath, JSON.stringify({ pid: 1, acquiredAt: 1, heartbeatAt: Date.now() }));
+    };
+    beat();
+    const foreign = setInterval(beat, VOICE_PACK_LOCK_HEARTBEAT_MS);
+    const settled: { lock?: VoicePackLock } = {};
+    const maxWaitMs = 3 * VOICE_PACK_LOCK_MAX_WAIT_MS;
+    const waiting = storage.acquireLock("luca", { maxWaitMs }).then((lock) => (settled.lock = lock));
+
+    // Past the default wait, still waiting on the live holder.
+    await vi.advanceTimersByTimeAsync(2 * VOICE_PACK_LOCK_MAX_WAIT_MS);
+    expect(settled.lock).toBeUndefined();
+
+    await vi.advanceTimersByTimeAsync(VOICE_PACK_LOCK_MAX_WAIT_MS + VOICE_PACK_LOCK_POLL_MS * 2);
+    clearInterval(foreign);
+    await waiting;
+
+    expect(settled.lock?.acquired).toBe(false);
+    expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("30 minutes"));
+  });
+
+  it.each([
+    ["NaN", Number.NaN],
+    ["zero", 0],
+    ["negative", -1],
+    ["Infinity", Number.POSITIVE_INFINITY],
+  ])("keeps the default wait when asked for %s", async (_, maxWaitMs) => {
+    fs.file(lockPath, JSON.stringify({ pid: 1, acquiredAt: 1, heartbeatAt: Date.now() }));
+    const foreign = setInterval(() => {
+      fs.file(lockPath, JSON.stringify({ pid: 1, acquiredAt: 1, heartbeatAt: Date.now() }));
+    }, VOICE_PACK_LOCK_HEARTBEAT_MS);
+    const settled: { lock?: VoicePackLock } = {};
+    const waiting = storage.acquireLock("luca", { maxWaitMs }).then((lock) => (settled.lock = lock));
+
+    await vi.advanceTimersByTimeAsync(VOICE_PACK_LOCK_MAX_WAIT_MS + VOICE_PACK_LOCK_POLL_MS * 2);
+    clearInterval(foreign);
+    await waiting;
+
+    expect(settled.lock?.acquired).toBe(false);
   });
 
   it("proceeds without the lock when it cannot be created, and never deletes another holder's file", async () => {
@@ -1033,6 +1146,14 @@ describe("createVoicePackStorageFileSystem", () => {
     const text = await real().readTextFile(file);
     expect(text?.length).toBe(70_002);
     expect(text?.startsWith("PK")).toBe(true);
+  });
+
+  it("reads the free space of a real volume, and answers undefined for a path it cannot stat", async () => {
+    const free = await real().freeBytes(dir);
+
+    expect(typeof free).toBe("number");
+    expect(free).toBeGreaterThan(0);
+    expect(await real().freeBytes(join(dir, "nope", "deeper"))).toBeUndefined();
   });
 
   it("returns undefined for a missing text file and reports a failed write", async () => {
