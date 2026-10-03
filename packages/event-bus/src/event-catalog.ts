@@ -676,8 +676,8 @@ export type SimEventMap = {
    * sim-defined numeric ids — the bus stays sim-agnostic. iRacing uses the
    * `irsdk_PitSvStatus` enum (`@iracedeck/iracing-sdk` re-exports it as
    * `PitSvStatus`). Closing transitions (`* → None`) are suppressed by the
-   * translator so the silent idle state never fires — an empty stop's close
-   * surfaces as `pitService.stopEmpty` instead (issue #1180).
+   * translator so the silent idle state never fires. A stop that ends with
+   * nothing done surfaces as `pitService.stopEmpty` (issue #1180).
    */
   "pitService.statusChanged": SimEvent<"pitService.statusChanged", { from: number; to: number }>;
   /**
@@ -698,13 +698,15 @@ export type SimEventMap = {
    */
   "pitService.positioningRepeat": SimEvent<"pitService.positioningRepeat", { status: number }>;
   /**
-   * A pit stop ended with nothing done while the car sat stationary in its
-   * box (issue #1180) — the crew had no service queued, so the driver is free
-   * to go. Sim-agnostic: the name says what happened, not how a sim reports
-   * it. iRacing reports it as an InProgress that closes straight back to
-   * None, never reaching Complete; the translator emits this on that close
-   * when the InProgress lasted under a quarter-second and the car is at rest
-   * on the pit-stall surface.
+   * A pit stop ended with nothing done while the car sat in its box (issue
+   * #1180) — the crew had no service queued, so the driver is free to go.
+   * Sim-agnostic: the name says what happened, not how a sim reports it.
+   * iRacing never reaches Complete on such a stop, and its status may show a
+   * single tick of InProgress or none at all; what it does report is a
+   * `PitstopActive` pulse of a few frames, where a real stop holds the flag
+   * for the whole service. The translator emits this on the pulse's fall when
+   * the pulse lasted under a quarter-second and the car is on the pit-stall
+   * surface.
    *
    * Deliberately its own event rather than a synthetic
    * `pitService.statusChanged { to: Complete }`, so `statusChanged` keeps

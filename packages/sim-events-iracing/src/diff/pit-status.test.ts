@@ -18,13 +18,14 @@
  *   - the `OnPitRoad` bound, which stops a latched status nagging forever
  *     once the car has left the pit lane, without breaking the overshoot
  *     case that reads `PlayerCarInPitStall: false`
- *   - `pitService.stopEmpty` (issue #1180): an InProgress that lasted under
- *     `PIT_STATUS_EMPTY_STOP_MAX_MS` closing to None while the car is
- *     stationary on the InPitStall surface releases the driver; a longer
- *     InProgress, one whose start was seeded rather than seen, a moving car,
- *     the wrong surface or any other `* → None` stays silent, and missing
- *     surface / speed telemetry qualifies. `statusChanged` keeps mirroring
- *     the sim: InProgress is emitted on the tick it appears
+ *   - `pitService.stopEmpty` (issue #1180): a `PitstopActive` pulse shorter
+ *     than `PIT_STATUS_EMPTY_STOP_MAX_MS` that falls on the InPitStall surface
+ *     releases the driver, replayed frame by frame from the three captured
+ *     empty stops (two of which never report InProgress); a real stop's
+ *     service-long pulse, a pulse at or over the bound, one already up at the
+ *     seed, one falling off the stall surface, or no `PitstopActive` at all
+ *     stays silent, and a missing surface qualifies. `statusChanged` keeps
+ *     mirroring the sim: InProgress is emitted on the tick it appears
  */
 import { PitSvStatus, type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
 import { describe, expect, it } from "vitest";
@@ -255,9 +256,8 @@ describe("diffPitStatus — silent close", () => {
     const state = createInitialState();
     const { events, emit } = collect();
 
-    // The first stop's InProgress lasts seconds before it closes, well past
-    // the empty-stop bound (#1180), so the close is the plain silent kind —
-    // no release.
+    // No `PitstopActive` pulse here, so the close is the plain silent kind —
+    // no release (#1180).
     diffPitStatus(state, tick(), T0, emit);
     diffPitStatus(state, tick({ PlayerCarPitSvStatus: PitSvStatus.InProgress }), T0 + 100, emit);
     diffPitStatus(state, tick({ PlayerCarPitSvStatus: PitSvStatus.None }), T0 + 5000, emit);
@@ -272,216 +272,341 @@ describe("diffPitStatus — silent close", () => {
 });
 
 describe("diffPitStatus — empty stop (#1180)", () => {
-  // Shapes from the 2026-09-19 capture: a real stop's InProgress lasts 19 s
-  // and ends in Complete; a stop with nothing queued reads InProgress for one
-  // tick (0.02 s) and drops straight back to None, never reaching Complete.
-  // `PlayerTrackSurface` already reads InPitStall on the closing tick while
-  // `PlayerCarInPitStall` is still false, so the stall surface is the gate.
-  const stall = { PlayerTrackSurface: TrkLoc.InPitStall, Speed: 0 };
+  /**
+   * One captured frame: `[sessionTime (s), PlayerCarPitSvStatus,
+   * PlayerTrackSurface, PlayerCarInPitStall, PitstopActive, OnPitRoad, Speed]`.
+   * `IsOnTrack` read true on every frame of every window below, and the
+   * 2026-09-19 capture has no `Speed` (left out of the tick, not zeroed).
+   */
+  type Frame = readonly [number, PitSvStatus, TrkLoc, boolean, boolean, boolean, number?];
 
-  /** Idle in the stall, then InProgress at `startedAt`, then `closing` at `closedAt`. */
-  function stop(
-    startedAt: number,
-    closedAt: number,
-    closing: Partial<TelemetryData> = {},
-  ): { events: PendingEvent[]; state: ReturnType<typeof createInitialState> } {
+  const STALL = TrkLoc.InPitStall;
+  const APPROACH = TrkLoc.AproachingPits;
+  const BACK = PitSvStatus.TooFarBack;
+
+  /**
+   * Replay frames through the diff, `now` taken from `sessionTime` in ms.
+   * Returns the events and the `now` of each tick that emitted
+   * `pitService.stopEmpty`.
+   */
+  function replay(frames: readonly Frame[]): { events: PendingEvent[]; releasedAt: number[] } {
     const state = createInitialState();
     const { events, emit } = collect();
+    const releasedAt: number[] = [];
 
-    diffPitStatus(state, tick(stall), T0, emit);
-    diffPitStatus(state, tick({ ...stall, PlayerCarPitSvStatus: PitSvStatus.InProgress }), startedAt, emit);
-    diffPitStatus(state, tick({ ...stall, PlayerCarPitSvStatus: PitSvStatus.None, ...closing }), closedAt, emit);
+    for (const [sessionTime, status, surface, inStall, active, onPitRoad, speed] of frames) {
+      const now = Math.round(sessionTime * 1000);
+      const before = stopEmptyEvents(events).length;
 
-    return { events, state };
+      diffPitStatus(
+        state,
+        tick({
+          IsOnTrack: true,
+          OnPitRoad: onPitRoad,
+          PlayerCarPitSvStatus: status,
+          PlayerTrackSurface: surface,
+          PlayerCarInPitStall: inStall,
+          PitstopActive: active,
+          ...(speed === undefined ? {} : { Speed: speed }),
+        }),
+        now,
+        emit,
+      );
+
+      if (stopEmptyEvents(events).length > before) releasedAt.push(now);
+    }
+
+    return { events, releasedAt };
   }
 
-  it("releases the captured empty stop: InProgress for one tick, then None at rest in the stall", () => {
-    const { events } = stop(T0 + 200, T0 + 220);
+  /**
+   * 2026-10-03, 348 s: overshoot, backed into the box. TooFarBack clears to
+   * None while the car still rolls at 1.24 m/s and InProgress never appears;
+   * `PitstopActive` pulses for four frames on the stall surface. Every frame
+   * from 348.200 s on; the approach before it keeps only the frames where a
+   * discrete value changed.
+   */
+  const OVERSHOOT_2026_10_03: readonly Frame[] = [
+    [343.35, PitSvStatus.None, APPROACH, false, false, true, 0.135],
+    [343.367, BACK, APPROACH, false, false, true, 0.004],
+    [347.267, BACK, STALL, false, false, true, 0.789],
+    [348.2, BACK, STALL, false, false, true, 1.241],
+    [348.217, BACK, STALL, false, false, true, 1.238],
+    [348.233, PitSvStatus.None, STALL, false, false, true, 1.238],
+    [348.25, PitSvStatus.None, STALL, false, false, true, 1.236],
+    [348.267, PitSvStatus.None, STALL, false, false, true, 1.234],
+    [348.283, PitSvStatus.None, STALL, false, false, true, 1.233],
+    [348.3, PitSvStatus.None, STALL, false, false, true, 1.231],
+    [348.317, PitSvStatus.None, STALL, false, false, true, 1.23],
+    [348.333, PitSvStatus.None, STALL, false, false, true, 1.228],
+    [348.35, PitSvStatus.None, STALL, false, false, true, 1.227],
+    [348.367, PitSvStatus.None, STALL, false, false, true, 1.218],
+    [348.383, PitSvStatus.None, STALL, false, false, true, 1.196],
+    [348.4, PitSvStatus.None, STALL, false, false, true, 1.163],
+    [348.417, PitSvStatus.None, STALL, false, false, true, 1.119],
+    [348.433, PitSvStatus.None, STALL, false, false, true, 1.066],
+    [348.45, PitSvStatus.None, STALL, false, false, true, 1.004],
+    [348.467, PitSvStatus.None, STALL, false, false, true, 0.925],
+    [348.483, PitSvStatus.None, STALL, false, false, true, 0.836],
+    [348.5, PitSvStatus.None, STALL, false, false, true, 0.741],
+    [348.517, PitSvStatus.None, STALL, false, false, true, 0.641],
+    [348.533, PitSvStatus.None, STALL, false, false, true, 0.535],
+    [348.55, PitSvStatus.None, STALL, false, false, true, 0.425],
+    [348.567, PitSvStatus.None, STALL, false, false, true, 0.311],
+    [348.583, PitSvStatus.None, STALL, false, false, true, 0.193],
+    [348.6, PitSvStatus.None, STALL, false, false, true, 0.068],
+    [348.617, PitSvStatus.None, STALL, false, true, true, 0.06],
+    [348.633, PitSvStatus.None, STALL, false, true, true, 0.097],
+    [348.65, PitSvStatus.None, STALL, false, true, true, 0.042],
+    [348.667, PitSvStatus.None, STALL, false, true, true, 0.029],
+    [348.683, PitSvStatus.None, STALL, false, false, true, 0.05],
+    [348.7, PitSvStatus.None, STALL, false, false, true, 0.021],
+    [348.717, PitSvStatus.None, STALL, false, false, true, 0.017],
+    [348.733, PitSvStatus.None, STALL, false, false, true, 0.027],
+    [348.75, PitSvStatus.None, STALL, false, false, true, 0.01],
+    [348.767, PitSvStatus.None, STALL, true, false, true, 0.011],
+    [348.783, PitSvStatus.None, STALL, true, false, true, 0.017],
+    [348.8, PitSvStatus.None, STALL, true, false, true, 0.007],
+    [350.4, PitSvStatus.None, STALL, false, false, true, 0.842],
+    [351.0, PitSvStatus.None, APPROACH, false, false, true, 5.095],
+  ];
 
-    expect(stopEmptyEvents(events)).toEqual([{ event: "pitService.stopEmpty", data: {} }]);
+  /**
+   * 2026-10-03, 414 s: a clean stop on the marks. The status stays None
+   * throughout — no InProgress at all — and `PitstopActive` pulses for four
+   * frames. Every frame from 414.833 s on.
+   */
+  const CLEAN_2026_10_03: readonly Frame[] = [
+    [414.05, PitSvStatus.None, APPROACH, false, false, true, 3.373],
+    [414.067, PitSvStatus.None, STALL, false, false, true, 3.346],
+    [414.833, PitSvStatus.None, STALL, false, false, true, 0.367],
+    [414.85, PitSvStatus.None, STALL, false, false, true, 0.238],
+    [414.867, PitSvStatus.None, STALL, false, false, true, 0.107],
+    [414.883, PitSvStatus.None, STALL, false, false, true, 0.024],
+    [414.9, PitSvStatus.None, STALL, false, true, true, 0.098],
+    [414.917, PitSvStatus.None, STALL, false, true, true, 0.066],
+    [414.933, PitSvStatus.None, STALL, false, true, true, 0.01],
+    [414.95, PitSvStatus.None, STALL, false, true, true, 0.051],
+    [414.967, PitSvStatus.None, STALL, false, false, true, 0.033],
+    [414.983, PitSvStatus.None, STALL, false, false, true, 0.007],
+    [415.0, PitSvStatus.None, STALL, false, false, true, 0.028],
+    [415.017, PitSvStatus.None, STALL, false, false, true, 0.018],
+    [415.033, PitSvStatus.None, STALL, false, false, true, 0.005],
+    [415.05, PitSvStatus.None, STALL, false, false, true, 0.017],
+    [415.067, PitSvStatus.None, STALL, false, false, true, 0.011],
+    [415.083, PitSvStatus.None, STALL, false, false, true, 0.001],
+    [415.1, PitSvStatus.None, STALL, false, false, true, 0.008],
+    [415.117, PitSvStatus.None, STALL, true, false, true, 0.006],
+  ];
+
+  /**
+   * 2026-09-19, 597 s: the first captured empty stop — one tick of
+   * InProgress, then a two-frame `PitstopActive` pulse that rises on the very
+   * tick the status drops back to None. Changes-only capture, every record.
+   */
+  const EMPTY_2026_09_19: readonly Frame[] = [
+    [572.7, PitSvStatus.None, APPROACH, false, false, true],
+    [597.55, PitSvStatus.None, STALL, false, false, true],
+    [597.75, PitSvStatus.InProgress, STALL, false, false, true],
+    [597.767, PitSvStatus.None, STALL, false, true, true],
+    [597.8, PitSvStatus.None, STALL, false, false, true],
+    [598.0, PitSvStatus.None, STALL, true, false, true],
+    [607.0, PitSvStatus.None, STALL, false, false, true],
+    [607.75, PitSvStatus.None, APPROACH, false, false, true],
+    [613.7, PitSvStatus.None, APPROACH, false, false, false],
+  ];
+
+  /**
+   * 2026-09-19, 447 s: a real stop, four tyres and fuel. `PitstopActive` is up
+   * from 447.267 s to 467.433 s — the whole service — and falls one frame
+   * after Complete. Changes-only capture, every record (PitSvFlags-only
+   * changes mid-service collapse to the same frame values here).
+   */
+  const REAL_2026_09_19: readonly Frame[] = [
+    [436.6, PitSvStatus.None, APPROACH, false, false, true],
+    [444.967, BACK, APPROACH, false, false, true],
+    [446.767, BACK, STALL, false, false, true],
+    [447.25, PitSvStatus.None, STALL, false, false, true],
+    [447.267, PitSvStatus.None, STALL, false, true, true],
+    [447.467, PitSvStatus.None, STALL, true, true, true],
+    [448.267, PitSvStatus.InProgress, STALL, true, true, true],
+    [448.35, PitSvStatus.InProgress, STALL, true, true, true],
+    [449.883, PitSvStatus.InProgress, STALL, true, true, true],
+    [457.467, PitSvStatus.InProgress, STALL, true, true, true],
+    [458.967, PitSvStatus.InProgress, STALL, true, true, true],
+    [467.417, PitSvStatus.Complete, STALL, true, true, true],
+    [467.433, PitSvStatus.Complete, STALL, true, false, true],
+    [469.133, PitSvStatus.Complete, STALL, false, false, true],
+    [469.683, PitSvStatus.Complete, APPROACH, false, false, true],
+    [475.55, PitSvStatus.None, APPROACH, false, false, false],
+  ];
+
+  describe("captured stops", () => {
+    it("releases the 2026-10-03 overshoot once, on the pulse's fall — the status never reports InProgress", () => {
+      const { events, releasedAt } = replay(OVERSHOOT_2026_10_03);
+
+      expect(releasedAt).toEqual([348_683]);
+      expect(stopEmptyEvents(events)).toEqual([{ event: "pitService.stopEmpty", data: {} }]);
+      expect(statusEvents(events).map((e) => e.data)).toEqual([{ from: PitSvStatus.None, to: BACK }]);
+    });
+
+    it("releases the 2026-10-03 clean stop once, on the pulse's fall — the status stays None throughout", () => {
+      const { events, releasedAt } = replay(CLEAN_2026_10_03);
+
+      expect(releasedAt).toEqual([414_967]);
+      expect(events).toEqual([{ event: "pitService.stopEmpty", data: {} }]);
+    });
+
+    it("releases the 2026-09-19 empty stop once, and still mirrors its one-tick InProgress", () => {
+      const { events, releasedAt } = replay(EMPTY_2026_09_19);
+
+      expect(releasedAt).toEqual([597_800]);
+      expect(events.map((e) => e.event)).toEqual(["pitService.statusChanged", "pitService.stopEmpty"]);
+      expect(statusEvents(events).map((e) => e.data)).toEqual([
+        { from: PitSvStatus.None, to: PitSvStatus.InProgress },
+      ]);
+    });
+
+    it("does not release the 2026-09-19 real stop — its 20 s pulse is a service — and mirrors InProgress and Complete", () => {
+      const { events } = replay(REAL_2026_09_19);
+
+      expect(stopEmptyEvents(events)).toHaveLength(0);
+      expect(statusEvents(events).map((e) => e.data)).toEqual([
+        { from: PitSvStatus.None, to: BACK },
+        { from: PitSvStatus.None, to: PitSvStatus.InProgress },
+        { from: PitSvStatus.InProgress, to: PitSvStatus.Complete },
+      ]);
+    });
   });
 
-  it("still mirrors the sim: the InProgress is emitted on the tick it appears, even on an empty stop", () => {
-    const state = createInitialState();
-    const { events, emit } = collect();
+  describe("the pulse", () => {
+    const stall = { PlayerTrackSurface: TrkLoc.InPitStall, Speed: 0 };
 
-    diffPitStatus(state, tick(stall), T0, emit);
-    diffPitStatus(state, tick({ ...stall, PlayerCarPitSvStatus: PitSvStatus.InProgress }), T0 + 200, emit);
-
-    expect(events).toEqual([
-      { event: "pitService.statusChanged", data: { from: PitSvStatus.None, to: PitSvStatus.InProgress } },
-    ]);
-
-    diffPitStatus(state, tick({ ...stall, PlayerCarPitSvStatus: PitSvStatus.None }), T0 + 220, emit);
-
-    expect(events.map((e) => e.event)).toEqual(["pitService.statusChanged", "pitService.stopEmpty"]);
-  });
-
-  it("releases an InProgress just under the bound", () => {
-    const { events } = stop(T0 + 200, T0 + 200 + PIT_STATUS_EMPTY_STOP_MAX_MS - 1);
-
-    expect(stopEmptyEvents(events)).toHaveLength(1);
-  });
-
-  it("does not release an InProgress that lasted exactly the bound", () => {
-    const { events } = stop(T0 + 200, T0 + 200 + PIT_STATUS_EMPTY_STOP_MAX_MS);
-
-    expect(stopEmptyEvents(events)).toHaveLength(0);
-  });
-
-  it("does not release a stop whose InProgress lasted seconds and then closed to None at rest in the stall", () => {
-    // Not the captured shape: an abandoned stop, every service cleared
-    // mid-stop, a penalty hold or a driver swap could all look like this, and
-    // a "go" there could be false.
-    const { events } = stop(T0 + 200, T0 + 5200);
-
-    expect(statusEvents(events)).toEqual([
-      { event: "pitService.statusChanged", data: { from: PitSvStatus.None, to: PitSvStatus.InProgress } },
-    ]);
-    expect(stopEmptyEvents(events)).toHaveLength(0);
-  });
-
-  it("a real stop: InProgress, then Complete, and no stopEmpty", () => {
-    const state = createInitialState();
-    const { events, emit } = collect();
-
-    diffPitStatus(state, tick(stall), T0, emit);
-    diffPitStatus(state, tick({ ...stall, PlayerCarPitSvStatus: PitSvStatus.InProgress }), T0 + 200, emit);
-    diffPitStatus(state, tick({ ...stall, PlayerCarPitSvStatus: PitSvStatus.Complete }), T0 + 19_200, emit);
-    diffPitStatus(state, tick({ ...stall, Speed: 3, PlayerCarPitSvStatus: PitSvStatus.None }), T0 + 27_000, emit);
-
-    expect(statusEvents(events).map((e) => e.data)).toEqual([
-      { from: PitSvStatus.None, to: PitSvStatus.InProgress },
-      { from: PitSvStatus.InProgress, to: PitSvStatus.Complete },
-    ]);
-    expect(stopEmptyEvents(events)).toHaveLength(0);
-  });
-
-  it("a short real stop: InProgress → Complete inside the bound emits Complete from InProgress, and no stopEmpty", () => {
-    const state = createInitialState();
-    const { events, emit } = collect();
-
-    diffPitStatus(state, tick(stall), T0, emit);
-    diffPitStatus(state, tick({ ...stall, PlayerCarPitSvStatus: PitSvStatus.InProgress }), T0 + 200, emit);
-    diffPitStatus(state, tick({ ...stall, PlayerCarPitSvStatus: PitSvStatus.Complete }), T0 + 300, emit);
-
-    expect(statusEvents(events).map((e) => e.data)).toEqual([
-      { from: PitSvStatus.None, to: PitSvStatus.InProgress },
-      { from: PitSvStatus.InProgress, to: PitSvStatus.Complete },
-    ]);
-    expect(stopEmptyEvents(events)).toHaveLength(0);
-  });
-
-  it("stays silent when InProgress closes to None while the car is moving", () => {
-    const { events } = stop(T0 + 200, T0 + 220, { Speed: 1.5 });
-
-    expect(stopEmptyEvents(events)).toHaveLength(0);
-  });
-
-  it("stays silent when InProgress closes to None off the InPitStall surface", () => {
-    const { events } = stop(T0 + 200, T0 + 220, { PlayerTrackSurface: TrkLoc.AproachingPits });
-
-    expect(stopEmptyEvents(events)).toHaveLength(0);
-  });
-
-  it("counts a speed of exactly the movement threshold as at rest", () => {
-    const { events } = stop(T0 + 200, T0 + 220, { Speed: PIT_STATUS_MOVEMENT_SPEED_MPS });
-
-    expect(stopEmptyEvents(events)).toHaveLength(1);
-  });
-
-  it("counts a reverse crawl as moving (signed Speed)", () => {
-    const { events } = stop(T0 + 200, T0 + 220, { Speed: -0.2 });
-
-    expect(stopEmptyEvents(events)).toHaveLength(0);
-  });
-
-  it("treats missing Speed and PlayerTrackSurface as qualifying rather than suppressing", () => {
-    const state = createInitialState();
-    const { events, emit } = collect();
-
-    diffPitStatus(state, tick(), T0, emit);
-    diffPitStatus(state, tick({ PlayerCarPitSvStatus: PitSvStatus.InProgress }), T0 + 200, emit);
-    diffPitStatus(state, tick({ PlayerCarPitSvStatus: PitSvStatus.None }), T0 + 220, emit);
-
-    expect(stopEmptyEvents(events)).toEqual([{ event: "pitService.stopEmpty", data: {} }]);
-  });
-
-  it.each([PitSvStatus.Complete, PitSvStatus.TooFarLeft])(
-    "does not release on %s → None at rest in the stall, however short (only InProgress → None qualifies)",
-    (from) => {
+    /**
+     * Idle in the stall, `PitstopActive` up at T0 + 100 and down `heldMs`
+     * later; `falling` overrides the telemetry of the falling tick.
+     */
+    function pulse(heldMs: number, falling: Partial<TelemetryData> = {}): PendingEvent[] {
       const state = createInitialState();
       const { events, emit } = collect();
 
       diffPitStatus(state, tick(stall), T0, emit);
-      diffPitStatus(state, tick({ ...stall, PlayerCarPitSvStatus: from }), T0 + 200, emit);
-      diffPitStatus(state, tick({ ...stall, PlayerCarPitSvStatus: PitSvStatus.None }), T0 + 220, emit);
+      diffPitStatus(state, tick({ ...stall, PitstopActive: true }), T0 + 100, emit);
+      diffPitStatus(state, tick({ ...stall, PitstopActive: false, ...falling }), T0 + 100 + heldMs, emit);
 
-      expect(stopEmptyEvents(events)).toHaveLength(0);
-    },
-  );
-
-  it("does not release an InProgress that was seeded on connect — its start is unknown", () => {
-    const state = createInitialState();
-    const { events, emit } = collect();
-
-    diffPitStatus(state, tick({ ...stall, PlayerCarPitSvStatus: PitSvStatus.InProgress }), T0, emit);
-    diffPitStatus(state, tick({ ...stall, PlayerCarPitSvStatus: PitSvStatus.None }), T0 + 20, emit);
-
-    expect(state.pitStatusInProgressSince).toBe(0);
-    expect(events).toEqual([]);
-  });
-
-  it("does not release after a re-seed mid-InProgress, even a moment later — the stale start is cleared", () => {
-    const state = createInitialState();
-    const { events, emit } = collect();
-
-    diffPitStatus(state, tick(stall), T0, emit);
-    diffPitStatus(state, tick({ ...stall, PlayerCarPitSvStatus: PitSvStatus.InProgress }), T0 + 200, emit);
-    expect(state.pitStatusInProgressSince).toBe(T0 + 200);
-
-    // A one-tick off-track blip re-seeds the diff while the status reads InProgress.
-    diffPitStatus(
-      state,
-      tick({ ...stall, IsOnTrack: false, PlayerCarPitSvStatus: PitSvStatus.InProgress }),
-      T0 + 210,
-      emit,
-    );
-    expect(state.pitStatusInProgressSince).toBe(0);
-
-    diffPitStatus(state, tick({ ...stall, PlayerCarPitSvStatus: PitSvStatus.None }), T0 + 220, emit);
-
-    expect(stopEmptyEvents(events)).toHaveLength(0);
-  });
-
-  it("clears the InProgress start when the status moves on, so a later close cannot reuse it", () => {
-    const state = createInitialState();
-    const { events, emit } = collect();
-
-    diffPitStatus(state, tick(stall), T0, emit);
-    diffPitStatus(state, tick({ ...stall, PlayerCarPitSvStatus: PitSvStatus.InProgress }), T0 + 200, emit);
-    diffPitStatus(state, tick({ ...stall, PlayerCarPitSvStatus: PitSvStatus.Complete }), T0 + 210, emit);
-
-    expect(state.pitStatusInProgressSince).toBe(0);
-
-    diffPitStatus(state, tick({ ...stall, PlayerCarPitSvStatus: PitSvStatus.None }), T0 + 220, emit);
-
-    expect(stopEmptyEvents(events)).toHaveLength(0);
-  });
-
-  it("releases each empty stop once, and again on the next one", () => {
-    const state = createInitialState();
-    const { events, emit } = collect();
-
-    diffPitStatus(state, tick(stall), T0, emit);
-
-    for (const at of [T0 + 1000, T0 + 60_000]) {
-      diffPitStatus(state, tick({ ...stall, PlayerCarPitSvStatus: PitSvStatus.InProgress }), at, emit);
-      diffPitStatus(state, tick({ ...stall, PlayerCarPitSvStatus: PitSvStatus.None }), at + 20, emit);
-      diffPitStatus(state, tick({ ...stall, PlayerCarPitSvStatus: PitSvStatus.None }), at + 1000, emit);
+      return events;
     }
 
-    expect(stopEmptyEvents(events)).toHaveLength(2);
+    it("releases a pulse just under the bound", () => {
+      expect(stopEmptyEvents(pulse(PIT_STATUS_EMPTY_STOP_MAX_MS - 1))).toHaveLength(1);
+    });
+
+    it("does not release a pulse that lasted exactly the bound", () => {
+      expect(stopEmptyEvents(pulse(PIT_STATUS_EMPTY_STOP_MAX_MS))).toHaveLength(0);
+    });
+
+    it("does not release a pulse whose fall is off the InPitStall surface", () => {
+      expect(stopEmptyEvents(pulse(67, { PlayerTrackSurface: TrkLoc.AproachingPits }))).toHaveLength(0);
+    });
+
+    it("has no speed gate: a car still rolling at the fall is released", () => {
+      expect(stopEmptyEvents(pulse(67, { Speed: 1.5 }))).toHaveLength(1);
+    });
+
+    it("treats a missing PlayerTrackSurface as qualifying rather than suppressing (#574)", () => {
+      const state = createInitialState();
+      const { events, emit } = collect();
+
+      diffPitStatus(state, tick(), T0, emit);
+      diffPitStatus(state, tick({ PitstopActive: true }), T0 + 100, emit);
+      diffPitStatus(state, tick({ PitstopActive: false }), T0 + 167, emit);
+
+      expect(stopEmptyEvents(events)).toEqual([{ event: "pitService.stopEmpty", data: {} }]);
+    });
+
+    it("never releases without PitstopActive — a one-tick InProgress alone is not the signal", () => {
+      const state = createInitialState();
+      const { events, emit } = collect();
+
+      diffPitStatus(state, tick(stall), T0, emit);
+      diffPitStatus(state, tick({ ...stall, PlayerCarPitSvStatus: PitSvStatus.InProgress }), T0 + 100, emit);
+      diffPitStatus(state, tick({ ...stall, PlayerCarPitSvStatus: PitSvStatus.None }), T0 + 117, emit);
+      diffPitStatus(state, tick(stall), T0 + 1000, emit);
+
+      expect(stopEmptyEvents(events)).toHaveLength(0);
+      expect(state.lastPitstopActive).toBe(false);
+      expect(state.pitstopActiveSince).toBe(0);
+    });
+
+    it("does not release a pulse that was already up at the seed — its start is unknown", () => {
+      const state = createInitialState();
+      const { events, emit } = collect();
+
+      diffPitStatus(state, tick({ ...stall, PitstopActive: true }), T0, emit);
+      expect(state.lastPitstopActive).toBe(true);
+      expect(state.pitstopActiveSince).toBe(0);
+
+      diffPitStatus(state, tick({ ...stall, PitstopActive: false }), T0 + 20, emit);
+
+      expect(events).toEqual([]);
+    });
+
+    it("does not release after a re-seed mid-pulse, even a moment later — the start is cleared", () => {
+      const state = createInitialState();
+      const { events, emit } = collect();
+
+      diffPitStatus(state, tick(stall), T0, emit);
+      diffPitStatus(state, tick({ ...stall, PitstopActive: true }), T0 + 100, emit);
+      expect(state.pitstopActiveSince).toBe(T0 + 100);
+
+      // A one-tick off-track blip re-seeds the diff while the pulse is up.
+      diffPitStatus(state, tick({ ...stall, IsOnTrack: false, PitstopActive: true }), T0 + 117, emit);
+      expect(state.pitstopActiveSince).toBe(0);
+
+      diffPitStatus(state, tick({ ...stall, PitstopActive: false }), T0 + 133, emit);
+
+      expect(stopEmptyEvents(events)).toHaveLength(0);
+    });
+
+    it("tracks the pulse on ticks where the status changes too", () => {
+      // Rises on the tick InProgress appears, falls on the tick it closes:
+      // both take the diff's status-change branch, which returns early.
+      const state = createInitialState();
+      const { events, emit } = collect();
+
+      diffPitStatus(state, tick(stall), T0, emit);
+      diffPitStatus(
+        state,
+        tick({ ...stall, PlayerCarPitSvStatus: PitSvStatus.InProgress, PitstopActive: true }),
+        T0 + 100,
+        emit,
+      );
+      diffPitStatus(
+        state,
+        tick({ ...stall, PlayerCarPitSvStatus: PitSvStatus.None, PitstopActive: false }),
+        T0 + 150,
+        emit,
+      );
+
+      expect(events.map((e) => e.event)).toEqual(["pitService.statusChanged", "pitService.stopEmpty"]);
+    });
+
+    it("releases each empty stop once, and again on the next one", () => {
+      const state = createInitialState();
+      const { events, emit } = collect();
+
+      diffPitStatus(state, tick(stall), T0, emit);
+
+      for (const at of [T0 + 1000, T0 + 60_000]) {
+        diffPitStatus(state, tick({ ...stall, PitstopActive: true }), at, emit);
+        diffPitStatus(state, tick({ ...stall, PitstopActive: true }), at + 33, emit);
+        diffPitStatus(state, tick({ ...stall, PitstopActive: false }), at + 67, emit);
+        diffPitStatus(state, tick({ ...stall, PitstopActive: false }), at + 1000, emit);
+      }
+
+      expect(stopEmptyEvents(events)).toHaveLength(2);
+      expect(state.pitstopActiveSince).toBe(0);
+    });
   });
 });
 

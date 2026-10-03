@@ -186,7 +186,7 @@ export const EVENT_TEMPLATES = [
   {
     name: "pitService.stopEmpty",
     description:
-      "A pit stop ended with nothing done while the car sat in its box (issue #1180). iRacing: InProgress closing straight back to None, at rest on the pit-stall surface",
+      "A pit stop ended with nothing done while the car sat in its box (issue #1180). iRacing: a PitstopActive pulse shorter than a quarter-second, falling on the pit-stall surface",
     data: {},
   },
   { name: "carControl.drsToggled", description: "DRS toggled", data: { on: true } },

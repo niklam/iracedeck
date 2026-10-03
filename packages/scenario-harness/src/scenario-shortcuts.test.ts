@@ -958,7 +958,7 @@ describe('the "Nothing To Do (empty stop)" shortcut (issue #1180)', () => {
 
   const shortcut = SCENARIO_SHORTCUTS.find((s) => s.id === "pit-status-empty-stop");
   const steps = shortcut?.telemetrySequence ?? [];
-  const inProgressAt = steps.findIndex((s) => s.patch.PlayerCarPitSvStatus === PitSvStatus.InProgress);
+  const pulseAt = steps.findIndex((s) => s.patch.PitstopActive === true);
 
   /**
    * The translator started either at boot (the mock's own telemetry, no
@@ -999,40 +999,37 @@ describe('the "Nothing To Do (empty stop)" shortcut (issue #1180)', () => {
     );
   });
 
-  it("replays the capture's stop 2: stationary on the stall surface, InProgress for under the empty-stop bound, then None", () => {
-    // `local/telemetry-watch-20260919-193233-855.jsonl`, 597.75 → 597.77.
+  it("replays the 2026-10-03 clean stop: in the stall, status None throughout, a PitstopActive pulse under the bound", () => {
+    // `local/telemetry-watch-20261003-144425-354.jsonl`, 414.90 → 414.97.
     const live = steps[1];
 
     expect(steps[0].patch).toMatchObject({
       IsReplayPlaying: true,
       IsOnTrack: true,
       OnPitRoad: true,
-      // Still false on the capture's closing tick — the translator reads the surface.
+      // Still false at every captured fall — the translator reads the surface.
       PlayerCarInPitStall: false,
       PlayerTrackSurface: TrkLoc.InPitStall,
       Speed: 0,
       PlayerCarPitSvStatus: PitSvStatus.None,
+      PitstopActive: false,
     });
     expect(live.patch).toEqual({ IsReplayPlaying: false });
-    expect(inProgressAt).toBe(2);
-    expect(steps[inProgressAt].patch).toEqual({ PlayerCarPitSvStatus: PitSvStatus.InProgress });
-    // Under the translator's bound, or the close is not the empty-stop shape.
-    expect(steps[inProgressAt].holdMs ?? 0).toBeLessThan(PIT_STATUS_EMPTY_STOP_MAX_MS);
-    expect(steps[inProgressAt + 1].patch).toEqual({ PlayerCarPitSvStatus: PitSvStatus.None });
+    expect(pulseAt).toBe(2);
+    expect(steps[pulseAt].patch).toEqual({ PitstopActive: true });
+    // Under the translator's bound, or the fall is not the empty-stop pulse.
+    expect(steps[pulseAt].holdMs ?? 0).toBeLessThan(PIT_STATUS_EMPTY_STOP_MAX_MS);
+    expect(steps[pulseAt + 1].patch).toEqual({ PitstopActive: false });
+    // The status is never driven off None.
+    expect(steps.slice(1).some((s) => "PlayerCarPitSvStatus" in s.patch)).toBe(false);
   });
 
-  it("the translator publishes the InProgress it saw, then the empty-stop release, and nothing else", () => {
-    // `statusChanged` mirrors the sim, so the one-tick InProgress is published;
-    // it is the in-progress contract's quarter-second hold that keeps it
-    // unsaid.
+  it("the translator publishes the empty-stop release, and nothing else", () => {
     const { controller, events } = startRecording("hot-lap");
 
     runSequence(controller, steps);
 
-    expect(events).toEqual([
-      { event: "pitService.statusChanged", data: { from: PitSvStatus.None, to: PitSvStatus.InProgress } },
-      { event: "pitService.stopEmpty", data: {} },
-    ]);
+    expect(events).toEqual([{ event: "pitService.stopEmpty", data: {} }]);
   });
 
   it("needs no preset: from boot, in the garage, the only addition is the first-time-on-track marker no callout speaks", () => {
@@ -1046,7 +1043,6 @@ describe('the "Nothing To Do (empty stop)" shortcut (issue #1180)', () => {
 
     expect(events).toEqual([
       { event: "driver.firstOnTrack", data: {} },
-      { event: "pitService.statusChanged", data: { from: PitSvStatus.None, to: PitSvStatus.InProgress } },
       { event: "pitService.stopEmpty", data: {} },
     ]);
   });
@@ -1057,30 +1053,24 @@ describe('the "Nothing To Do (empty stop)" shortcut (issue #1180)', () => {
     runSequence(controller, steps);
     runSequence(controller, steps);
 
-    expect(events.map((e) => e.event)).toEqual([
-      "pitService.statusChanged",
-      "pitService.stopEmpty",
-      "pitService.statusChanged",
-      "pitService.stopEmpty",
-    ]);
+    expect(events.map((e) => e.event)).toEqual(["pitService.stopEmpty", "pitService.stopEmpty"]);
     expect(getLatestTelemetry()).toMatchObject({
       IsReplayPlaying: false,
       IsOnTrack: true,
       OnPitRoad: false,
       PlayerTrackSurface: TrkLoc.OnTrack,
       PlayerCarPitSvStatus: PitSvStatus.None,
+      PitstopActive: false,
     });
   });
 
-  it("positive control: the same stop with InProgress held past the bound is not an empty stop, so no release", () => {
+  it("positive control: the same stop with the pulse held past the bound is not an empty stop, so no release", () => {
     const { controller, events } = startRecording("hot-lap");
-    const longStop = steps.map((s, i) => (i === inProgressAt ? { ...s, holdMs: 1000 } : s));
+    const longStop = steps.map((s, i) => (i === pulseAt ? { ...s, holdMs: 1000 } : s));
 
     runSequence(controller, longStop);
 
-    expect(events).toEqual([
-      { event: "pitService.statusChanged", data: { from: PitSvStatus.None, to: PitSvStatus.InProgress } },
-    ]);
+    expect(events).toEqual([]);
   });
 });
 

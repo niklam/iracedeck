@@ -621,8 +621,7 @@ export type TranslatorState = {
   // stays silent on connect / garage returns — but deliberately NOT in the pit
   // stall, where every status callout happens (see the diff's header).
   // Closing transitions (* → None) are suppressed in the diff itself, not via
-  // baseline juggling, except InProgress → None at rest in the stall, which
-  // becomes `pitService.stopEmpty` (issue #1180).
+  // baseline juggling.
   pitStatusInitialized: boolean;
   lastPitSvStatus: number; // PitSvStatus enum value
   // Positioning-error repeat cadence (issue #951). `pitStatusRepeatDueAt` is
@@ -633,11 +632,14 @@ export type TranslatorState = {
   // already correcting.
   pitStatusRepeatDueAt: number;
   pitStatusRestSince: number;
-  // Empty-stop bound (issue #1180): when the current InProgress began, so the
-  // diff can tell the captured one-tick empty stop from a longer InProgress
-  // closing to None. 0 = not in progress, or in progress since a seed (start
-  // unknown, so never the short shape).
-  pitStatusInProgressSince: number;
+  // Empty-stop pulse (issue #1180): the previous tick's `PitstopActive`
+  // (missing reads as false), and when the current pulse rose, so the diff can
+  // tell an empty stop's two-to-four-frame pulse from a real stop's
+  // service-long one and emit `pitService.stopEmpty` on its fall.
+  // `pitstopActiveSince` is 0 while the flag is down, or up since a seed
+  // (start unknown, so never the short pulse).
+  lastPitstopActive: boolean;
+  pitstopActiveSince: number;
 
   // ── Pit limiter warnings ────────────────────────────────────────────────
   limiterInitialized: boolean;
@@ -1437,7 +1439,8 @@ export function createInitialState(): TranslatorState {
     lastPitSvStatus: 0, // PitSvStatus.None
     pitStatusRepeatDueAt: 0,
     pitStatusRestSince: 0,
-    pitStatusInProgressSince: 0,
+    lastPitstopActive: false,
+    pitstopActiveSince: 0,
 
     limiterInitialized: false,
     lastOnPitRoadForLimiter: false,

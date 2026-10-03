@@ -1083,32 +1083,34 @@ const TIRE_WEAR_STOP_SHORTCUT: TelemetrySequenceShortcut = {
 const EMPTY_STOP_SETTLE_MS = 500;
 
 /**
- * How long the status reads InProgress. The capture had it for one sim tick
- * (0.02 s); this is a couple of the mock controller's 14 ms ticks — under the
- * translator's `PIT_STATUS_EMPTY_STOP_MAX_MS`, so the close counts as an empty
- * stop, and under the in-progress line's quarter-second hold, so "Pit stop in
- * progress." is dropped before it speaks.
+ * How long `PitstopActive` is up. The captures had it for two to four sim
+ * frames (33–67 ms); this is a few of the mock controller's 14 ms ticks —
+ * under the translator's `PIT_STATUS_EMPTY_STOP_MAX_MS`, so its fall counts
+ * as an empty stop.
  */
-const EMPTY_STOP_IN_PROGRESS_MS = 30;
+const EMPTY_STOP_PULSE_MS = 60;
 
-/** Listening time after the status drops back to None: the release line. */
+/** Listening time after the pulse falls: the release line. */
 const EMPTY_STOP_LISTEN_MS = 3000;
 
 /**
  * A pit stop with nothing queued, replayed through the TRANSLATOR (issue
- * #1180), modelled on stop 2 of `local/telemetry-watch-20260919-193233-855.jsonl`
- * (sessionTime 597.75 → 597.77): the car sits stationary on the pit-stall
- * surface, `PlayerCarPitSvStatus` reads InProgress for one tick and drops
- * straight back to None — iRacing never reports Complete when there is
- * nothing to do. `PlayerCarInPitStall` stays false throughout, as it still was
- * on the capture's closing tick; the translator reads the track surface.
+ * #1180), modelled on the clean stop at sessionTime 414.90 → 414.97 of
+ * `local/telemetry-watch-20261003-144425-354.jsonl`: the car sits in its box
+ * on the pit-stall surface, `PlayerCarPitSvStatus` stays None throughout —
+ * iRacing never reports Complete when there is nothing to do, and on this
+ * stop not even InProgress — and `PitstopActive` pulses for a few frames.
+ * `PlayerCarInPitStall` stays false, as it still was at every captured fall;
+ * the translator reads the track surface. The earlier empty stop in
+ * `local/telemetry-watch-20260919-193233-855.jsonl` (597.75 → 597.80) showed
+ * the same pulse after a one-tick InProgress, which the translator does not
+ * rely on.
  *
  * What it exists to show is the translator's decision, which a bus-event
- * shortcut steps over: the short InProgress closing at rest in the stall
- * publishes `pitService.stopEmpty`, which the bundled voices speak with the
- * Complete line. The translator still publishes the InProgress itself; the
- * in-progress line waits a quarter-second and re-checks the live status, so
- * it is dropped (no "Pit stop in progress.").
+ * shortcut steps over: the short pulse falling in the stall publishes
+ * `pitService.stopEmpty`, which the bundled voices speak with the Complete
+ * line, and nothing else ("Pit stop in progress." has no status to speak
+ * from).
  *
  * Putting the car in its box from wherever the tester left it would announce
  * the approach, pit road and the entry readback first, so the setup and the
@@ -1123,7 +1125,7 @@ const PIT_STATUS_EMPTY_STOP_SHORTCUT: TelemetrySequenceShortcut = {
   category: "Pit Status",
   label: "Nothing To Do (empty stop)",
   description:
-    'Drives the TRANSLATOR through a pit stop with no service queued, modelled on one captured on 2026-09-19, about 4 s end to end: the car stationary in its box, the service status InProgress for a couple of ticks, then straight back to None — iRacing never reports Complete when there is nothing to do. Expect the Complete line ("Done. Go.") and NOTHING before it: hearing the in-progress line ("Pit stop in progress.") means its quarter-second hold did not drop it once the status had closed. No preset needed: the run opens and closes inside a replay-mode bracket, which the translator suppresses events through and re-seeds every diff from, so it puts the car in its box from anywhere and hands back a car on the circuit with no service status. Needs the mock SDK CONNECTED; with it disconnected the translator sees no ticks and the button is silent for the wrong reason.',
+    'Drives the TRANSLATOR through a pit stop with no service queued, modelled on one captured on 2026-10-03, about 4 s end to end: the car in its box, the service status None throughout — iRacing never reports Complete when there is nothing to do — and the pit-stop-active flag up for a few frames. Expect the Complete line ("Done. Go.") and NOTHING before it — no in-progress line ("Pit stop in progress."), since the status never leaves None. No preset needed: the run opens and closes inside a replay-mode bracket, which the translator suppresses events through and re-seeds every diff from, so it puts the car in its box from anywhere and hands back a car on the circuit with no service status. Needs the mock SDK CONNECTED; with it disconnected the translator sees no ticks and the button is silent for the wrong reason.',
   telemetrySequence: [
     {
       patch: {
@@ -1134,12 +1136,13 @@ const PIT_STATUS_EMPTY_STOP_SHORTCUT: TelemetrySequenceShortcut = {
         PlayerTrackSurface: TrkLoc.InPitStall,
         Speed: 0,
         PlayerCarPitSvStatus: PitSvStatus.None,
+        PitstopActive: false,
       },
       holdMs: AUTO_FUEL_SEED_MS,
     },
     { patch: { IsReplayPlaying: false }, holdMs: EMPTY_STOP_SETTLE_MS },
-    { patch: { PlayerCarPitSvStatus: PitSvStatus.InProgress }, holdMs: EMPTY_STOP_IN_PROGRESS_MS },
-    { patch: { PlayerCarPitSvStatus: PitSvStatus.None }, holdMs: EMPTY_STOP_LISTEN_MS },
+    { patch: { PitstopActive: true }, holdMs: EMPTY_STOP_PULSE_MS },
+    { patch: { PitstopActive: false }, holdMs: EMPTY_STOP_LISTEN_MS },
     // Close the bracket: back on the circuit, seeded rather than spoken.
     {
       patch: {
@@ -2319,7 +2322,8 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   }),
   pitStatus("complete", "Complete", PitSvStatus.Complete, "Service finished — ready to leave the box"),
   // The empty stop (issue #1180) — telemetry-driven, so it auditions the
-  // translator's decision: no "in progress", then the Complete line.
+  // translator's decision: a short `PitstopActive` pulse, then the Complete
+  // line and nothing else.
   PIT_STATUS_EMPTY_STOP_SHORTCUT,
   pitStatus("too-far-left", "Too Far Left", PitSvStatus.TooFarLeft),
   pitStatus("too-far-right", "Too Far Right", PitSvStatus.TooFarRight),
