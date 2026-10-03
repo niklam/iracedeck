@@ -39,6 +39,16 @@
         "$TURBO_ROOT$/scripts/lib/dev-local.mjs"
       ]
     },
+    "@iracedeck/audio-native#build": {
+      "dependsOn": ["^build"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/lib/native-addon-build.mjs"],
+      "outputs": ["dist/**", "build/**"]
+    },
+    "@iracedeck/iracing-native#build": {
+      "dependsOn": ["^build"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/lib/native-addon-build.mjs"],
+      "outputs": ["dist/**", "build/**"]
+    },
     "@iracedeck/iracing-plugin-mirabox#build": {
       "dependsOn": ["^build", "@iracedeck/audio-assets#stage:dev-voices"],
       "env": ["IRACEDECK_DEV_VOICES"],
