@@ -30,6 +30,7 @@ import {
 } from "@iracedeck/iracing-sdk";
 
 import type { GapNeighborState, TranslatorState } from "../state.js";
+import { coerceSettingNumber } from "./setting-number.js";
 import type { EmitFn } from "./types.js";
 
 /**
@@ -142,20 +143,6 @@ export function sanitizeGapMinChangeSeconds(value: unknown): number {
   if (n === null) return GAP_DEFAULT_MIN_CHANGE_S;
 
   return Math.min(GAP_MIN_CHANGE_MAX_S, Math.max(GAP_MIN_CHANGE_MIN_S, n));
-}
-
-/**
- * Coerce a raw global-settings value to a finite number, or `null` when it is
- * MISSING. Empty string and `null` must not become `0`: `Number("")` and
- * `Number(null)` are both a finite zero, so a cleared Property Inspector field
- * would silently mean "0 seconds" — which for the movement gate is the value
- * that turns the consistency gate OFF, and for the threshold clamps to its
- * minimum. Mirrors `sanitizeCornerCalloutLeadSeconds`.
- */
-function coerceSettingNumber(value: unknown): number | null {
-  const n = typeof value === "string" && value !== "" ? Number(value) : value;
-
-  return typeof n === "number" && Number.isFinite(n) ? n : null;
 }
 
 /** Window (s) for measuring a car's recent progress rate. */

@@ -157,6 +157,7 @@ import {
 import { type ILogger, silentLogger } from "@iracedeck/logger";
 
 import type { TranslatorState } from "../state.js";
+import { coerceSettingNumber } from "./setting-number.js";
 import type { EmitFn } from "./types.js";
 
 /** Rolling window for counting recently-announced flagged cars. */
@@ -195,11 +196,10 @@ export const OPPONENT_FLAG_RANGE_MAX_SECONDS = 10;
  * rounding, a stored fractional value is honoured as written).
  */
 export function sanitizeOpponentFlagRangeSeconds(value: unknown): number {
-  // Empty string and `null` must not become `0` (`Number("")` is a finite
-  // zero) — they are a MISSING value, not a request for the minimum.
-  const n = typeof value === "string" && value !== "" ? Number(value) : value;
+  // A cleared field is a MISSING value, not a request for the minimum.
+  const n = coerceSettingNumber(value);
 
-  if (typeof n !== "number" || !Number.isFinite(n)) return OPPONENT_FLAG_DEFAULT_RANGE_SECONDS;
+  if (n === null) return OPPONENT_FLAG_DEFAULT_RANGE_SECONDS;
 
   return Math.min(OPPONENT_FLAG_RANGE_MAX_SECONDS, Math.max(OPPONENT_FLAG_RANGE_MIN_SECONDS, n));
 }
