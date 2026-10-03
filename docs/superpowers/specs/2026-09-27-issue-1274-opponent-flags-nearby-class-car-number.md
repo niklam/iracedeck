@@ -30,6 +30,17 @@ The gap carries #1285's ETA regime (amended 2026-10-03, after the branch review)
 
 There is no hysteresis on the range bound. The per-(car, flag) episode latch already means a car is announced once per flag episode, so a car hovering at the bound cannot repeat; the bound only decides whether the first announce happens — including a flag already up on a car that closes into range later (`entered-range`).
 
+### Nothing about the pits, and nothing from the pits
+
+Amended 2026-10-03 after the maintainer's manual test, which heard "Car 20 ahead has a black flag" for a car approaching pit entry, and a slowdown and a meatball line for an on-track car while he sat in his own pit box.
+
+- **A car in the pits never qualifies**: on pit road (`CarIdxOnPitRoad`), in its stall, or approaching pit entry (`CarIdxTrackSurface`). It is where a penalised car goes to serve, and it is not a car the driver is racing at that moment. A missing reading stays eligible.
+- **Nothing is announced while the player is in the pits** — on pit road, in the stall, or approaching pit entry. This is a hold on the announce, not on the store: the episode latch is untouched, so a flag still up when the player rejoins announces then (`entered-range`) if the car qualifies.
+
+### One call per car: the worst flag
+
+Severity is disqualified > black > meatball > slowdown (the maintainer's order, 2026-10-03). Of a car's flags that would announce, only the most severe is spoken; a lesser flag on a car already announced for a worse one that is still up is latched silently; a worse flag arriving later still announces, as an escalation. Because Black waits 3 s and the meatball is immediate, a lesser flag waits while a worse flag's bit is up but still inside its hold, so a black and a meatball raised together speak once, as the black. Ranking runs over the enabled flags only — an opted-out flag never silences an enabled one.
+
 ### The range is a setting: 1–10 s, default 3 s
 
 The maintainer's call on 2026-09-28, after a reporter asked for 2–3 s and said he would otherwise switch the callouts off: the #936 window was about 10 s, which is too far to matter, and how close is close is the driver's choice.
@@ -90,7 +101,7 @@ Every relation is now class-only, so the **My class only** option #1270 specifie
 
 Suite:
 
-- `opponent-flags.test.ts`: a different-class car never qualifies, and one with unreadable class data does not either; positions 1–3 ahead qualify and 4 does not; one behind qualifies and two does not; a gap equal to the range qualifies and just over does not, in both directions, at the default and at a non-default range; a range change is read on the next announce and lets an already-flagged car now in range announce as `entered-range`; a `null` gap never qualifies; a lapped or lapping same-class car never qualifies; Black announces only after 3 s continuously up and a drop inside the hold announces nothing; Furled keeps its 1 s; an escalation Furled → Black announces the Black after its hold; the payload carries `carNumber` and the race `gapSeconds`, and omits `carNumber` when the session info has no row.
+- `opponent-flags.test.ts`: a car on pit road, in its stall or approaching pit entry never qualifies, and nothing announces while the player is in the pits (an in-range flag announces on rejoin); only the worst of a car's flags is spoken, a lesser flag waits out a worse flag's hold, and an opted-out flag never silences an enabled one; a different-class car never qualifies, and one with unreadable class data does not either; positions 1–3 ahead qualify and 4 does not; one behind qualifies and two does not; a gap equal to the range qualifies and just over does not, in both directions, at the default and at a non-default range; a range change is read on the next announce and lets an already-flagged car now in range announce as `entered-range`; a `null` gap never qualifies; a lapped or lapping same-class car never qualifies; Black announces only after 3 s continuously up and a drop inside the hold announces nothing; Furled keeps its 1 s; an escalation Furled → Black announces the Black after its hold; the payload carries `carNumber` and the race `gapSeconds`, and omits `carNumber` when the session info has no row.
 - `audio-scenarios`: the track-ahead contracts are gone; `opponentFlag.carNumber` resolves to the car-number clip and skips the line when it cannot; `opponentFlag.number` still resolves.
 - `pnpm lint:pack` and the coverage rules pass for the default pack; `pnpm generate:pack-reference` is fresh.
 - `global-settings`: `opponentFlagRangeSeconds` defaults to 3, clamps out-of-range and non-numeric stored values to 3 without failing the parse; the translator option defaults to 3 s when no resolver is passed.
