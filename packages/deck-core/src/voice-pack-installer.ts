@@ -56,7 +56,8 @@ import {
   type VoicePackManifest,
 } from "@iracedeck/callout-script";
 import type { ILogger } from "@iracedeck/logger";
-import { createHash } from "node:crypto";
+import { createHash, type Hash } from "node:crypto";
+import { createReadStream } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { setImmediate as nextTurn } from "node:timers/promises";
@@ -112,6 +113,101 @@ const SEED_FILES_PER_TURN = 64;
  */
 function reachableVoiceOf(path: string): string | undefined {
   return USABLE_VOICE_CLIP.test(path) ? path.split("/")[1] : undefined;
+}
+
+/** What the read-back of a staged archive measured, once the whole file has been read. */
+type ReadBackResult =
+  { error: string; bytes: number; sha256?: undefined } | { error?: undefined; bytes: number; sha256: string };
+
+/**
+ * The single pass over a staged archive: a source for the extractor that
+ * hashes and counts every chunk on its way through, and a `finish` that reads
+ * whatever the extractor left unread into the same hash.
+ *
+ * The extractor stops pulling at its first refusal and ends the iteration,
+ * which calls `return()` on the iterator it was given. This one's `return()`
+ * deliberately leaves the file open, because the rest of it still has to be
+ * hashed; `finish` drains it and then closes it on every path.
+ *
+ * A read error is recorded here as well as thrown on into the extractor, which
+ * reports it as a damaged archive — the record is what lets the installer say
+ * the archive could not be read back, which is what happened.
+ *
+ * Reading stops once the file has delivered more than `expectedBytes`: the
+ * length already disagrees with the catalog, so the verdict is settled, and a
+ * file swapped for a larger one should cost no more reading than that.
+ *
+ * @internal Exported for testing
+ */
+export function createReadBack(
+  stream: AsyncIterable<Uint8Array>,
+  expectedBytes: number,
+): { source: AsyncIterable<Uint8Array>; finish: () => Promise<ReadBackResult> } {
+  const hash: Hash = createHash("sha256");
+  let iterator: AsyncIterator<Uint8Array> | undefined;
+  let bytes = 0;
+  let error: string | undefined;
+  let ended = false;
+
+  const open = (): AsyncIterator<Uint8Array> => (iterator ??= stream[Symbol.asyncIterator]());
+
+  const next = async (): Promise<IteratorResult<Uint8Array, undefined>> => {
+    if (ended) return { done: true, value: undefined };
+
+    let result: IteratorResult<Uint8Array>;
+
+    try {
+      result = await open().next();
+    } catch (err) {
+      ended = true;
+      error = err instanceof Error ? err.message : String(err);
+      throw err;
+    }
+
+    if (result.done) {
+      ended = true;
+
+      return { done: true, value: undefined };
+    }
+
+    hash.update(result.value);
+    bytes += result.value.length;
+
+    if (bytes > expectedBytes) ended = true;
+
+    return { done: false, value: result.value };
+  };
+
+  const source: AsyncIterable<Uint8Array> = {
+    [Symbol.asyncIterator]: () => ({
+      next,
+      // Not forwarded: the extractor stopping is not the end of the read.
+      return: async () => ({ done: true, value: undefined }),
+    }),
+  };
+
+  const finish = async (): Promise<ReadBackResult> => {
+    try {
+      while (!ended) {
+        try {
+          await next();
+        } catch {
+          // Recorded by `next`.
+        }
+      }
+    } finally {
+      try {
+        await iterator?.return?.();
+      } catch {
+        // Closing a file that failed to read can fail too; the read error,
+        // if any, is already recorded, and the file handle is the stream's.
+      }
+    }
+
+    return error === undefined ? { bytes, sha256: hash.digest("hex") } : { error, bytes };
+  };
+
+  return { source, finish };
 }
 
 export type VoicePackInstallOutcome =
@@ -202,12 +298,12 @@ export interface BundledVoicePack {
 }
 
 /**
- * The one disk operation no sibling port offers: reading a file's bytes.
+ * The disk reads no sibling port offers: a file's bytes, whole or as a stream.
  *
- * Needed twice. The extractor takes the whole archive as a `Uint8Array`, and
- * the downloader writes to disk — so the archive is read back, and hashed
- * again on the way, which is what makes "verifying" a phase with content
- * rather than a label. And the seed reads each bundled clip so it can write it
+ * Needed twice, in two shapes. The downloader writes the archive to disk, and
+ * the install reads it back as a STREAM — hashed as it passes and handed, chunk
+ * by chunk, to the extractor — so the archive is never held in memory (#1102).
+ * And the seed reads each bundled clip whole, one at a time, so it can write it
  * through the SAME port the extractor writes through, inheriting that port's
  * refusal of a pre-planted destination for free. The `node:fs` implementation
  * is {@link createVoicePackInstallerFileSystem}, the only disk access in this
@@ -216,6 +312,12 @@ export interface BundledVoicePack {
 export interface VoicePackInstallerFileSystem {
   /** The file's bytes, or `undefined` for anything unreadable. */
   readFile(file: string): Promise<Uint8Array | undefined>;
+  /**
+   * The file's bytes as chunks, read lazily. A read that fails — including a
+   * file that cannot be opened — throws out of the iteration with a path-free
+   * message; ending the iteration early closes the file.
+   */
+  readStream(file: string): AsyncIterable<Uint8Array>;
 }
 
 /**
@@ -643,9 +745,9 @@ export function createVoicePackInstaller(deps: VoicePackInstallerDeps): VoicePac
   }
 
   /**
-   * Download, verify, extract and validate into a staging directory. Every
-   * failure discards what it made — the archive, the staging tree — and the
-   * installed pack has not been looked at.
+   * Download, then read back, verify and extract in one pass, then validate,
+   * into a staging directory. Every failure discards what it made — the
+   * archive, the staging tree — and the installed pack has not been looked at.
    */
   async function stageFromCatalog(id: string, entry: VoicePackCatalogEntry): Promise<Staged | InstallFailure> {
     const opened = await storage.openDownload(id, entry.sha256);
@@ -696,45 +798,26 @@ export function createVoicePackInstaller(deps: VoicePackInstallerDeps): VoicePac
     // is what the DISK hands back, and the two are the same only if the write
     // was faithful and nothing rewrote the file in between — a scanner
     // "cleaning" it, another plugin's overlapping download of the same name.
-    // Hashing the read-back is the cheap way to know, and it is what makes the
-    // verifying phase a verification.
+    // So the read-back is hashed too, and it is hashed on the EXTRACTION pass
+    // itself (#1102), as the chunks go by.
     //
-    // BUT NOTE WHAT THIS COSTS, because the module one layer down promises the
-    // opposite. `voice-pack-download.ts` hashes as the stream flows and says so
-    // in its own comment: buffering the whole archive to hash it afterwards
-    // would hold it in memory inside a process that is also rendering keys and
-    // playing audio during a race. This line then reads the entire file into
-    // one buffer and hands that buffer to the extractor, so peak memory during
-    // an install IS the whole archive plus the extractor's per-entry buffers —
-    // bounded by `VOICE_PACK_DOWNLOAD_CEILING_BYTES` (128 MB), not by streaming.
+    // One pass, not a hashing pass and then an extracting one. Reading the
+    // file twice would leave a window between the two in which exactly those
+    // rewrites could land, and the second, unverified read is the one that
+    // would be installed — the gap this read-back exists to close. (Node
+    // cannot open the file without FILE_SHARE_WRITE to forbid the rewrite.)
+    // Nor is the archive buffered so one read can serve both: that held the
+    // whole archive in memory, up to the download ceiling, in a process that
+    // is also rendering keys and playing audio during a race.
     //
-    // Harmless at today's ~8 MB pack, which is exactly why it needs writing
-    // down rather than leaving for a reader to infer from the layer below: a
-    // multi-voice pack approaches that ceiling with no code change and no new
-    // review. The fix — hash incrementally over a read stream and give the
-    // extractor a streaming source — is issue #1102.
-    setPhase(id, { phase: "verifying", totalBytes: entry.bytes });
-    const archive = await fs.readFile(opened.path);
-
-    if (archive === undefined) {
-      await opened.discard();
-
-      return failed(id, "storage", "The downloaded archive could not be read back. Try again.", "readFile failed");
-    }
-
-    const onDisk = createHash("sha256").update(archive).digest("hex");
-
-    if (onDisk !== entry.sha256) {
-      await opened.discard();
-
-      return failed(
-        id,
-        "verify",
-        "The archive changed on disk after it was downloaded, so it was discarded. Try again.",
-        `read-back digest ${onDisk.slice(0, 12)}… != ${entry.sha256.slice(0, 12)}…`,
-      );
-    }
-
+    // So the guarantee is stated as what it always protected: no byte that
+    // fails the catalog digest is INSTALLED. The extractor writes only into a
+    // staging directory made fresh for this install, it treats every byte as
+    // hostile anyway, and nothing is promoted until the whole file has been
+    // read and its digest and length match the entry. When the extractor
+    // refuses part-way, the rest of the file is still drained into the hash —
+    // a plain read, no decompression — so that a rewritten file is reported as
+    // the cause ("changed on disk") rather than by its symptom, a damaged entry.
     const staging = await storage.createStagingDir(id, entry.sha256);
 
     if (!staging.ok) {
@@ -749,11 +832,32 @@ export function createVoicePackInstaller(deps: VoicePackInstallerDeps): VoicePac
     }
 
     setPhase(id, { phase: "extracting", totalBytes: entry.bytes });
-    const extracted = await extractVoicePackArchive({ archive, targetDir: staging.dir, fs: archiveFs });
+    const readBack = createReadBack(fs.readStream(opened.path), entry.bytes);
+    const extracted = await extractVoicePackArchive({ source: readBack.source, targetDir: staging.dir, fs: archiveFs });
+    const read = await readBack.finish();
 
     // The archive has served its purpose either way; a leftover is the
     // sweep's problem, not a failure.
     await opened.discard();
+
+    if (read.error !== undefined) {
+      await staging.discard();
+
+      return failed(id, "storage", "The downloaded archive could not be read back. Try again.", `read: ${read.error}`);
+    }
+
+    if (read.bytes !== entry.bytes || read.sha256 !== entry.sha256) {
+      await staging.discard();
+
+      return failed(
+        id,
+        "verify",
+        "The archive changed on disk after it was downloaded, so it was discarded. Try again.",
+        read.bytes !== entry.bytes
+          ? `read-back length ${read.bytes} != ${entry.bytes}`
+          : `read-back digest ${read.sha256.slice(0, 12)}… != ${entry.sha256.slice(0, 12)}…`,
+      );
+    }
 
     if (!extracted.ok) {
       await staging.discard();
@@ -1311,6 +1415,21 @@ export function createVoicePackInstallerFileSystem(logger: ILogger): VoicePackIn
         logger.debug(`Voice packs: cannot read "${file}": ${err instanceof Error ? err.message : String(err)}`);
 
         return undefined;
+      }
+    },
+
+    async *readStream(file) {
+      try {
+        // A later read never overwrites a chunk `createReadStream` already
+        // handed out, so the extractor may hold one past the next read.
+        for await (const chunk of createReadStream(file)) yield chunk as Buffer;
+      } catch (err) {
+        logger.debug(`Voice packs: cannot read "${file}": ${err instanceof Error ? err.message : String(err)}`);
+        // The message ends up in the install's log detail, so it carries the
+        // errno and never the path.
+        const code = (err as NodeJS.ErrnoException | undefined)?.code;
+
+        throw new Error(typeof code === "string" ? code : "read failed");
       }
     },
   };

@@ -1,4 +1,4 @@
-import { UnzipInflate } from "fflate";
+import { Unzip, UnzipInflate } from "fflate";
 import { relative, resolve, sep } from "node:path";
 import { crc32, deflateRawSync } from "node:zlib";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -175,6 +175,21 @@ function noise(bytes: number): Uint8Array {
 
 const MiB = 1024 * 1024;
 
+let bombCache: Uint8Array | undefined;
+
+/**
+ * 64 MiB of zeros behind a header that declares ten bytes: deflate's ceiling,
+ * lying as a real bomb would. Built once, because the chunk-size matrix runs
+ * the cases that use it five times over and deflating 64 MiB is the slow part.
+ */
+function lyingBomb(): Uint8Array {
+  bombCache ??= buildArchive([
+    { name: "voice/luca/flags/zeros.mp3", data: new Uint8Array(64 * MiB), declare: { uncompressed: 10 } },
+  ]);
+
+  return bombCache;
+}
+
 // ---------------------------------------------------------------------------
 // The filesystem port, in memory.
 // ---------------------------------------------------------------------------
@@ -225,16 +240,69 @@ function spyOnInflate() {
   return vi.spyOn(UnzipInflate.prototype, "push");
 }
 
+/** Total bytes across a push spy's calls — what a decoder or the parser was actually handed. */
+function pushedBytes(spy: { mock: { calls: readonly (readonly [Uint8Array, ...unknown[]])[] } }): number {
+  return spy.mock.calls.reduce((total, [chunk]) => total + chunk.length, 0);
+}
+
+/**
+ * Records what the extractor itself hands the parser. fflate's `Unzip.push`
+ * re-enters itself for the bytes left over after each header it parses, so a
+ * plain spy counts some bytes twice; only the outermost call is the
+ * extractor's.
+ */
+function watchParserPushes() {
+  const original = Unzip.prototype.push;
+  const calls: [Uint8Array, boolean][] = [];
+  let depth = 0;
+
+  vi.spyOn(Unzip.prototype, "push").mockImplementation(function (this: Unzip, chunk: Uint8Array, final?: boolean) {
+    if (depth === 0) calls.push([chunk, final ?? false]);
+
+    depth += 1;
+
+    try {
+      original.call(this, chunk, final);
+    } finally {
+      depth -= 1;
+    }
+  });
+
+  return { calls, bytes: () => calls.reduce((total, [chunk]) => total + chunk.length, 0) };
+}
+
 afterEach(() => {
   vi.restoreAllMocks();
 });
 
-async function extract(
-  archive: Uint8Array,
-  memory: MemoryFs,
-  limits?: Parameters<typeof extractVoicePackArchive>[0]["limits"],
-) {
-  return extractVoicePackArchive({ archive, targetDir: TARGET, fs: memory.fs, limits });
+// ---------------------------------------------------------------------------
+// The source: a buffer handed over in chunks.
+//
+// The extractor takes an async iterable of chunks of any size, and where the
+// chunks split must not matter — not to the local-header check, not to entry
+// boundaries, not to the truncation checks. So every case in the main suite
+// runs at each of these sizes: one byte and three bytes (the signature split
+// across chunks, every header field split), the push slice itself, a size
+// larger than the slice (so chunks are re-sliced), and the whole archive in
+// one chunk.
+// ---------------------------------------------------------------------------
+
+const WHOLE = Number.POSITIVE_INFINITY;
+const CHUNK_SIZES = [1, 3, VOICE_PACK_ARCHIVE_PUSH_BYTES, 64 * 1024, WHOLE] as const;
+
+async function* chunksOf(archive: Uint8Array, size: number): AsyncGenerator<Uint8Array> {
+  for (let offset = 0; offset < archive.length; offset += size) yield archive.subarray(offset, offset + size);
+}
+
+type Limits = Parameters<typeof extractVoicePackArchive>[0]["limits"];
+
+async function extractIn(size: number, archive: Uint8Array, memory: MemoryFs, limits?: Limits) {
+  return extractVoicePackArchive({ source: chunksOf(archive, size), targetDir: TARGET, fs: memory.fs, limits });
+}
+
+/** One whole chunk — for the cases outside the chunk-size matrix. */
+async function extract(archive: Uint8Array, memory: MemoryFs, limits?: Limits) {
+  return extractIn(WHOLE, archive, memory, limits);
 }
 
 function failure(result: Awaited<ReturnType<typeof extractVoicePackArchive>>) {
@@ -245,7 +313,10 @@ function failure(result: Awaited<ReturnType<typeof extractVoicePackArchive>>) {
 
 // ---------------------------------------------------------------------------
 
-describe("extractVoicePackArchive", () => {
+/** The extractor's cases, every one reading its archive in `size`-byte chunks. */
+function extractorCases(size: number): void {
+  const extract = (archive: Uint8Array, memory: MemoryFs, limits?: Limits) => extractIn(size, archive, memory, limits);
+
   describe("accepts a well-formed pack", () => {
     it("writes every clip and the manifest, nested, in archive order", async () => {
       const manifest = '{"schema":1,"id":"luca"}\n';
@@ -490,17 +561,19 @@ describe("extractVoicePackArchive", () => {
     it("stops at the total-bytes cap while the entry that crosses it is still expanding", async () => {
       // The third header lies small so the truthful-header shortcut cannot
       // refuse it early: only the bytes counted as they come out can.
+      // Sized small, with a cap to match, because every case here also runs
+      // with the archive handed over a byte at a time.
       const memory = memoryFs();
       const archive = buildArchive([
-        { name: "voice/luca/flags/a.mp3", data: noise(400 * 1024) },
-        { name: "voice/luca/flags/b.mp3", data: noise(400 * 1024) },
-        { name: "voice/luca/flags/c.mp3", data: noise(400 * 1024), declare: { uncompressed: 10 } },
+        { name: "voice/luca/flags/a.mp3", data: noise(40 * 1024) },
+        { name: "voice/luca/flags/b.mp3", data: noise(40 * 1024) },
+        { name: "voice/luca/flags/c.mp3", data: noise(40 * 1024), declare: { uncompressed: 10 } },
       ]);
 
-      const result = failure(await extract(archive, memory, { maxTotalBytes: MiB }));
+      const result = failure(await extract(archive, memory, { maxTotalBytes: 100_000 }));
 
       expect(result.code).toBe("total-bytes");
-      expect(result.reason).toMatch(/more than 1 MB in total/);
+      expect(result.reason).toMatch(/more than 100 KB in total/);
       expect(result.written).toEqual(["voice/luca/flags/a.mp3", "voice/luca/flags/b.mp3"]);
       expect(memory.files.has("voice/luca/flags/c.mp3")).toBe(false);
     });
@@ -527,10 +600,7 @@ describe("extractVoicePackArchive", () => {
       // refused before inflating, which is a different test.
       const pushes = spyOnInflate();
       const memory = memoryFs();
-      const archive = buildArchive([
-        { name: "voice/luca/flags/zeros.mp3", data: new Uint8Array(64 * MiB), declare: { uncompressed: 10 } },
-      ]);
-      const slicesIfCompleted = Math.ceil(archive.length / VOICE_PACK_ARCHIVE_PUSH_BYTES);
+      const archive = lyingBomb();
 
       const result = failure(await extract(archive, memory));
 
@@ -541,7 +611,7 @@ describe("extractVoicePackArchive", () => {
       expect(memory.dirs).toEqual([]);
       // Aborted WHILE expanding: the inflater saw a fraction of the entry.
       expect(pushes.mock.calls.length).toBeGreaterThan(0);
-      expect(pushes.mock.calls.length).toBeLessThan(slicesIfCompleted);
+      expect(pushedBytes(pushes)).toBeLessThan(archive.length / 2);
     });
 
     it("lets a small, highly compressible file through under the grace floor", async () => {
@@ -566,23 +636,28 @@ describe("extractVoicePackArchive", () => {
       // deflates ten- or twentyfold, and past the grace floor its ratio IS
       // judged. This is the legitimate side of the cap: compressing well is
       // not what makes a bomb, and a cap that refused this would refuse JSON.
+      // The grace is lowered so the file can be small and still be judged
+      // over most of its length: every case here also runs a byte at a time.
       const memory = memoryFs();
+      const size = 256 * 1024;
 
-      const result = await extract(archiveOf({ "voice/luca/callouts.json": text(2 * MiB) }), memory);
+      const result = await extract(archiveOf({ "voice/luca/callouts.json": text(size) }), memory, {
+        ratioGraceBytes: 16 * 1024,
+      });
 
       expect(result).toEqual({ ok: true, written: ["voice/luca/callouts.json"] });
-      expect(memory.files.get("voice/luca/callouts.json")?.length).toBe(2 * MiB);
+      expect(memory.files.get("voice/luca/callouts.json")?.length).toBe(size);
     });
 
     it("enforces the caps on bytes actually produced, not on what the header declares", async () => {
-      // The header is attacker-written. This one claims ten bytes over two
-      // megabytes of real data; a cap read off the header would wave it through.
+      // The header is attacker-written. This one claims ten bytes over 200 KB
+      // of real data; a cap read off the header would wave it through.
       const memory = memoryFs();
       const archive = buildArchive([
-        { name: "voice/luca/flags/a.mp3", data: noise(2 * MiB), declare: { uncompressed: 10 } },
+        { name: "voice/luca/flags/a.mp3", data: noise(200_000), declare: { uncompressed: 10 } },
       ]);
 
-      const result = failure(await extract(archive, memory, { maxEntryBytes: MiB }));
+      const result = failure(await extract(archive, memory, { maxEntryBytes: 100_000 }));
 
       expect(result.code).toBe("entry-bytes");
       expect(memory.files.size).toBe(0);
@@ -617,7 +692,8 @@ describe("extractVoicePackArchive", () => {
 
       expect(result.code).toBe("total-bytes");
       expect(result.written).toEqual(["voice/luca/flags/a.mp3"]);
-      expect(pushes).toHaveBeenCalledTimes(1);
+      // Only the first entry's stream reached the inflater, however it was chunked.
+      expect(pushedBytes(pushes)).toBe(deflateRawSync(noise(100), { level: 9 }).length);
     });
 
     it("keeps its caps when a streamed entry declares no sizes at all", async () => {
@@ -643,9 +719,7 @@ describe("extractVoicePackArchive", () => {
       // for every value, which would accept everything. The bomb is the proof,
       // with a lying header so only the counted caps can catch it, and each
       // cap isolated by leaving the other one legitimately out of reach.
-      const bomb = buildArchive([
-        { name: "voice/luca/flags/zeros.mp3", data: new Uint8Array(64 * MiB), declare: { uncompressed: 10 } },
-      ]);
+      const bomb = lyingBomb();
 
       const ratio = memoryFs();
       const byRatio = failure(
@@ -674,7 +748,7 @@ describe("extractVoicePackArchive", () => {
       expect(memory.files.size).toBe(0);
     });
 
-    it("refuses an empty buffer", async () => {
+    it("refuses an empty source", async () => {
       const result = failure(await extract(new Uint8Array(0), memoryFs()));
 
       expect(result.code).toBe("malformed");
@@ -784,7 +858,7 @@ describe("extractVoicePackArchive", () => {
       const memory = memoryFs();
 
       const result = await extractVoicePackArchive({
-        archive: archiveOf({ "a.json": "{}" }),
+        source: chunksOf(archiveOf({ "a.json": "{}" }), size),
         targetDir: "packs/luca",
         fs: memory.fs,
       });
@@ -804,6 +878,160 @@ describe("extractVoicePackArchive", () => {
 
     expect(result.reason).not.toMatch(/[\n\u202e]/);
     expect(result.reason.length).toBeLessThan(200);
+  });
+}
+
+describe.each(CHUNK_SIZES.map((size) => [size === WHOLE ? "one whole chunk" : `${size}-byte chunks`, size]))(
+  "extractVoicePackArchive, source in %s",
+  (_label, size) => extractorCases(size),
+);
+
+describe("extractVoicePackArchive reads its source as a stream (#1102)", () => {
+  /**
+   * A source that hands out `chunks` one per pull and records, at each pull,
+   * how many archive bytes the parser had been given — so the test can see
+   * whether the extractor reads ahead of what it has pushed.
+   */
+  function recordingSource(chunks: readonly Uint8Array[]) {
+    const parser = watchParserPushes();
+    const pushedAtPull: number[] = [];
+    const state = { pulls: 0, closed: false };
+
+    async function* source(): AsyncGenerator<Uint8Array> {
+      try {
+        for (const chunk of chunks) {
+          pushedAtPull.push(parser.bytes());
+          state.pulls += 1;
+          yield chunk;
+        }
+      } finally {
+        state.closed = true;
+      }
+    }
+
+    return { source: source(), pushedAtPull, state };
+  }
+
+  function split(archive: Uint8Array, size: number): Uint8Array[] {
+    const chunks: Uint8Array[] = [];
+
+    for (let offset = 0; offset < archive.length; offset += size) chunks.push(archive.subarray(offset, offset + size));
+
+    return chunks;
+  }
+
+  it("pushes each chunk before it pulls the next", async () => {
+    const archive = archiveOf({
+      "voice-pack.json": '{"schema":1}',
+      "voice/luca/flags/blue-01.mp3": noise(40_000),
+      "voice/luca/flags/blue-02.mp3": noise(30_000),
+    });
+    const chunks = split(archive, 5000);
+    const { source, pushedAtPull, state } = recordingSource(chunks);
+
+    const result = await extractVoicePackArchive({ source, targetDir: TARGET, fs: memoryFs().fs });
+
+    expect(result.ok).toBe(true);
+    expect(chunks.length).toBeGreaterThan(10);
+    // At the pull for chunk k, exactly the bytes of chunks 0..k-1 had reached
+    // the parser: nothing read ahead, nothing held back.
+    expect(pushedAtPull).toEqual(chunks.map((_, k) => chunks.slice(0, k).reduce((t, c) => t + c.length, 0)));
+    expect(state.pulls).toBe(chunks.length);
+  });
+
+  it("stops pulling at the first refusal and ends the iteration", async () => {
+    const archive = buildArchive([
+      { name: "voice/luca/flags/blue-01.mp3", data: noise(100) },
+      { name: ".install.json", data: new TextEncoder().encode('{"source":"catalog"}') },
+      { name: "voice/luca/flags/blue-02.mp3", data: noise(200_000), method: 0 },
+    ]);
+    const chunks = split(archive, 1000);
+    const { source, state } = recordingSource(chunks);
+
+    const result = failure(await extractVoicePackArchive({ source, targetDir: TARGET, fs: memoryFs().fs }));
+
+    expect(result.code).toBe("path");
+    // The refusal is in the first chunk; the 200 KB behind it is never read.
+    expect(state.pulls).toBe(1);
+    expect(chunks.length).toBeGreaterThan(200);
+    expect(state.closed).toBe(true);
+  });
+
+  it("refuses a source whose first bytes are not a local header, even when they span chunks", async () => {
+    const archive = archiveOf({ "voice/luca/flags/blue-01.mp3": noise(100) });
+    const forged = new Uint8Array(archive);
+    forged[3] = 0x00;
+    const { source, state } = recordingSource(split(forged, 1));
+    const memory = memoryFs();
+
+    const result = failure(await extractVoicePackArchive({ source, targetDir: TARGET, fs: memory.fs }));
+
+    expect(result.code).toBe("malformed");
+    expect(result.reason).toMatch(/not a zip archive/);
+    // Judged on the fourth byte, before anything was handed to the parser.
+    expect(state.pulls).toBe(4);
+    expect(memory.files.size).toBe(0);
+  });
+
+  it("refuses a source shorter than a signature", async () => {
+    const result = failure(await extract(new Uint8Array([0x50, 0x4b, 0x03]), memoryFs()));
+
+    expect(result.code).toBe("malformed");
+    expect(result.reason).toMatch(/not a zip archive/);
+  });
+
+  it.each([
+    ["on the first pull", 0],
+    ["part-way through the archive", 3],
+  ])("reports a source that throws %s as a damaged archive, and never throws itself", async (_, after) => {
+    const archive = archiveOf({ "voice/luca/flags/blue-01.mp3": noise(40_000) });
+    const chunks = split(archive, 4096);
+
+    async function* failing(): AsyncGenerator<Uint8Array> {
+      for (const [index, chunk] of chunks.entries()) {
+        if (index === after) throw new Error("EIO: i/o error, read");
+
+        yield chunk;
+      }
+    }
+
+    const memory = memoryFs();
+    const pending = extractVoicePackArchive({ source: failing(), targetDir: TARGET, fs: memory.fs });
+
+    await expect(pending).resolves.toMatchObject({ ok: false, code: "malformed" });
+
+    const result = failure(await pending);
+
+    expect(result.reason).toMatch(/damaged or truncated/);
+    expect(result.reason).toMatch(/EIO/);
+    expect(memory.files.size).toBe(0);
+  });
+
+  it("re-slices a large chunk into pushes no larger than the slice", async () => {
+    const parser = watchParserPushes();
+    const archive = archiveOf({ "voice/luca/flags/blue-01.mp3": noise(5 * VOICE_PACK_ARCHIVE_PUSH_BYTES) });
+
+    const result = await extract(archive, memoryFs());
+
+    expect(result.ok).toBe(true);
+    expect(parser.bytes()).toBe(archive.length);
+
+    for (const [chunk] of parser.calls) expect(chunk.length).toBeLessThanOrEqual(VOICE_PACK_ARCHIVE_PUSH_BYTES);
+
+    // The source's end arrives as one empty final push.
+    expect(parser.calls.at(-1)).toEqual([new Uint8Array(0), true]);
+  });
+});
+
+describe("the default caps (#1102)", () => {
+  it("are pinned: the structural caps rose with the 2 GB download ceiling, the per-entry and ratio caps did not", () => {
+    expect(VOICE_PACK_ARCHIVE_LIMITS).toEqual({
+      maxEntries: 100_000,
+      maxTotalBytes: 4_000_000_000,
+      maxEntryBytes: 16_000_000,
+      maxCompressionRatio: 100,
+      ratioGraceBytes: 1_000_000,
+    });
   });
 });
 
@@ -903,10 +1131,57 @@ describe("the compression-ratio cap at its own boundaries (#1100)", () => {
     expect(result.code).toBe("compression-ratio");
     // Bounded by the archive's own size rather than by the flat total cap:
     // whatever reached the staging directory is a small multiple of what was
-    // downloaded, not half a gigabyte.
+    // downloaded, not gigabytes.
     expect(archive.length * VOICE_PACK_ARCHIVE_LIMITS.maxCompressionRatio).toBeLessThan(
       VOICE_PACK_ARCHIVE_LIMITS.maxTotalBytes,
     );
+  });
+
+  // The aggregate is judged against the archive bytes CONSUMED so far, not the
+  // archive's whole length (#1102). Front-loaded expansion behind a large tail
+  // is the case that tells the two apart: four entries each under the grace,
+  // so the per-entry test never judges them, followed by 5 MB of stored noise.
+  // Against the whole length (about 5 MB, so 500 MB of headroom) the 3.6 MB of
+  // zeros would pass; against the few kilobytes consumed when they come out,
+  // they do not.
+  function frontLoaded(): { archive: Uint8Array; zeros: number } {
+    const each = 900_000;
+    const archive = buildArchive([
+      ...Array.from({ length: 4 }, (_, i) => ({ name: `voice/luca/flags/z${i}.mp3`, data: zeros(each) })),
+      { name: "voice/luca/flags/tail.mp3", data: noise(5_000_000), method: 0 },
+    ]);
+
+    return { archive, zeros: 4 * each };
+  }
+
+  it("refuses a front-loaded expansion that the archive's whole length would have accepted", async () => {
+    const { archive, zeros: expanded } = frontLoaded();
+    const ratio = VOICE_PACK_ARCHIVE_LIMITS.maxCompressionRatio;
+
+    // The premises: each entry escapes the per-entry test, the total passes
+    // the grace, and the old denominator would have let all of it through.
+    expect(expanded / 4).toBeLessThan(GRACE);
+    expect(expanded).toBeGreaterThan(GRACE);
+    expect(expanded + 5_000_000).toBeLessThan(ratio * archive.length);
+
+    const memory = memoryFs();
+    const result = failure(await extract(archive, memory));
+
+    expect(result.code).toBe("compression-ratio");
+    expect(result.reason).toMatch(/in total/);
+    expect(memory.files.has("voice/luca/flags/tail.mp3")).toBe(false);
+  });
+
+  it("accepts the same entries once the archive bytes behind them have been consumed", async () => {
+    // The control: the same zeros AFTER the noise are judged against 5 MB
+    // consumed, and pass — so the refusal above is the running count's doing.
+    const each = 900_000;
+    const archive = buildArchive([
+      { name: "voice/luca/flags/tail.mp3", data: noise(5_000_000), method: 0 },
+      ...Array.from({ length: 4 }, (_, i) => ({ name: `voice/luca/flags/z${i}.mp3`, data: zeros(each) })),
+    ]);
+
+    expect((await extract(archive, memoryFs())).ok).toBe(true);
   });
 
   // The negative control, and the one that matters most: a cap that refuses

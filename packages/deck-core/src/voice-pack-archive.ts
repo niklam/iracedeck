@@ -43,20 +43,33 @@
  * inlines a worker script whose survival under bundling is fragile, and this
  * ships inside `bin/plugin.js`.
  *
+ * The archive arrives as a stream — an async iterable of chunks of any size,
+ * which the installer reads from disk (#1102) — and is never held whole. What
+ * extraction holds at once is one entry's output, buffered up to
+ * `maxEntryBytes` so each file is written in one go, plus one slice's inflate
+ * transient and one source chunk, whatever the archive's size. The chunks are
+ * pulled one at a time, each pushed before the next is asked for, and pulling
+ * stops at the first refusal.
+ *
  * Two consequences of the synchronous inflater are worth knowing. It expands
- * everything it is handed in one call before any handler runs, so the archive
- * is fed to `Unzip` in {@link VOICE_PACK_ARCHIVE_PUSH_BYTES} slices: that
- * slice, times deflate's ~1032:1 ceiling, is the largest transient a bomb can
- * force before the caps see it (about 17 MB). And `UnzipFile.terminate()` only
- * forwards to a decoder that defines one, which the synchronous inflater does
- * not — so the decoder is wrapped ({@link createCountingDecoder}) to count the
- * compressed bytes it is given, which is what the ratio is measured against,
- * and to make `terminate()` really drop everything after it.
+ * everything it is handed in one call before any handler runs, so every chunk
+ * is re-sliced and fed to `Unzip` in pieces of at most
+ * {@link VOICE_PACK_ARCHIVE_PUSH_BYTES}: that slice, times deflate's ~1032:1
+ * ceiling, is the largest transient a bomb can force before the caps see it
+ * (about 17 MB), however large the chunks the source hands over. And
+ * `UnzipFile.terminate()` only forwards to a decoder that defines one, which
+ * the synchronous inflater does not — so the decoder is wrapped
+ * ({@link createCountingDecoder}) to count the compressed bytes it is given,
+ * which is what the per-entry ratio is measured against, and to make
+ * `terminate()` really drop everything after it.
  *
  * What is deliberately NOT done here, and why:
  *
- * - **CRCs are not checked.** Integrity is the archive's sha-256, verified by
- *   the installer before this runs; a CRC an attacker wrote proves nothing.
+ * - **CRCs are not checked.** Integrity is the archive's sha-256, which the
+ *   installer computes over the very chunks this reads and checks before
+ *   anything written here is promoted; a CRC an attacker wrote proves nothing.
+ *   Until then every byte is hostile, which is how this module treats them
+ *   anyway.
  * - **The central directory is ignored.** fflate's streaming reader walks the
  *   local headers, and the name validated is the name written. An archive whose
  *   central directory disagrees with its local headers (a "schizophrenic" zip)
@@ -130,16 +143,21 @@ export interface VoicePackArchiveLimits {
  * largest JSON anywhere in the audio pipeline 480 KB (the voice config a #1064
  * script would derive from is 196 KB). Each cap sits far above what a
  * legitimate pack needs and far below what would hurt, so the only archives
- * that meet one are broken or hostile:
+ * that meet one are broken or hostile. The two structural caps were raised on
+ * 2026-10-03 with the 2 GB download ceiling (#1102), once the archive stopped
+ * being held in memory: the packs being prepared carry several voices at a
+ * higher bitrate, and neither cap bounds memory any more.
  *
- * - `maxEntries` 20 000 — a five-voice pack is roughly 8 000 entries with its
- *   directories; the cap bounds the number of files an archive can make the
- *   plugin create.
- * - `maxTotalBytes` 512 MB — five voices are ~165 MB. This is the bound on
+ * - `maxEntries` 100 000 — one voice is roughly 1 600 entries with its
+ *   directories, so this is some sixty voices' worth; the cap bounds the
+ *   number of files an archive can make the plugin create.
+ * - `maxTotalBytes` 4 GB — twice the download ceiling. MP3 does not compress,
+ *   so a real pack unpacks to about its archive's size; this is the bound on
  *   disk used by the staging directory and on the work a bomb can extract.
  * - `maxEntryBytes` 16 MB — two hundred times the largest clip. Entries are
  *   buffered whole before being written (one write per file, no partial file
- *   to clean up on failure), so this is also the memory one entry can hold.
+ *   to clean up on failure), so this is also the memory one entry can hold —
+ *   and, with the archive streamed, the term that dominates the peak.
  * - `maxCompressionRatio` 100 — speech in MP3 is incompressible (~1:1); JSON
  *   compresses 5–20:1; deflate tops out near 1032:1. Anything past 100:1 is
  *   not audio and not a manifest.
@@ -150,8 +168,8 @@ export interface VoicePackArchiveLimits {
  *   ratio, while a bomb's first 16 KB slice sails past it in one chunk.
  */
 export const VOICE_PACK_ARCHIVE_LIMITS: Readonly<VoicePackArchiveLimits> = {
-  maxEntries: 20_000,
-  maxTotalBytes: 512_000_000,
+  maxEntries: 100_000,
+  maxTotalBytes: 4_000_000_000,
   maxEntryBytes: 16_000_000,
   maxCompressionRatio: 100,
   ratioGraceBytes: 1_000_000,
@@ -168,7 +186,9 @@ export const VOICE_PACK_ARCHIVE_LIMITS: Readonly<VoicePackArchiveLimits> = {
 export const VOICE_PACK_ARCHIVE_MAX_NAME_LENGTH = 160;
 
 /**
- * How much of the archive is handed to the parser per call.
+ * The most of the archive handed to the parser per call. A source chunk larger
+ * than this is cut into slices of this size; a smaller one is pushed as it
+ * arrives.
  *
  * The synchronous inflater expands an entire slice before any handler runs, so
  * this is the unit the caps can act at. At deflate's ceiling a slice this size
@@ -185,10 +205,14 @@ export const VOICE_PACK_ARCHIVE_PUSH_BYTES = 16 * 1024;
  * 33 MB pack extracted in one go would hold the loop for the whole of it —
  * the inflation is quick (a zero-filled stream inflated at ~400 MB/s of output
  * when measured), the 1 500 synchronous file writes behind it are not. Every
- * sixteen slices (256 KB of archive, a few milliseconds of work) the loop gets
- * a turn.
+ * sixteen slices' worth (256 KB of archive, a few milliseconds of work) the
+ * loop gets a turn. Counted in bytes rather than in pushes, because a source
+ * handing over small chunks makes many pushes per slice's worth of work.
+ * Reading from disk yields too, at every chunk awaited, but a source that
+ * resolves from memory never does, so the count stays.
  */
 const SLICES_PER_TURN = 16;
+const BYTES_PER_TURN = SLICES_PER_TURN * VOICE_PACK_ARCHIVE_PUSH_BYTES;
 
 export const VOICE_PACK_ARCHIVE_FAILURE_CODES = [
   "path",
@@ -215,8 +239,17 @@ export type ExtractVoicePackArchiveResult =
   | { ok: false; code: VoicePackArchiveFailureCode; reason: string; written: readonly string[] };
 
 export interface ExtractVoicePackArchiveOptions {
-  /** The whole archive. Not mutated, but must not be mutated by the caller until the promise settles. */
-  archive: Uint8Array;
+  /**
+   * The archive's bytes, in order, as chunks of any size. Pulled one chunk at
+   * a time, each pushed into the parser before the next is asked for, and
+   * never read past the first refusal: the iteration is then ended, which
+   * calls the iterator's `return()`. A caller that wants the rest of the bytes
+   * after a refusal — the installer, hashing the whole file — hands in an
+   * iterator whose `return()` leaves its underlying reader open. A source
+   * that throws is reported as a damaged archive. Chunks are not mutated, and
+   * must not be mutated by the caller until the promise settles.
+   */
+  source: AsyncIterable<Uint8Array>;
   /** Absolute path of a directory that exists and is empty. */
   targetDir: string;
   fs: VoicePackArchiveFileSystem;
@@ -225,6 +258,7 @@ export interface ExtractVoicePackArchiveOptions {
 }
 
 const LOCAL_HEADER_SIGNATURE = 0x04034b50;
+const LOCAL_HEADER_SIGNATURE_BYTES = 4;
 const METHOD_STORED = 0;
 const METHOD_DEFLATE = 8;
 
@@ -440,6 +474,8 @@ type ExtractionState = {
   totalBytes: number;
   /** Entries started and not yet closed — nonzero at the end means the archive ended inside one. */
   pending: number;
+  /** Archive bytes pushed into the parser so far; the aggregate ratio's denominator. */
+  consumed: number;
   /** Accepted file paths, lowercased: the target filesystem is case-insensitive. */
   seen: Set<string>;
   /** The entry about to be started, for the decoder wrapper to capture. */
@@ -523,8 +559,8 @@ function concatChunks(chunks: readonly Uint8Array[], length: number): Uint8Array
 }
 
 /**
- * Extract `archive` into `targetDir`, refusing the whole archive at the first
- * entry that breaks a rule or a cap.
+ * Extract the archive `source` yields into `targetDir`, refusing the whole
+ * archive at the first entry that breaks a rule or a cap.
  *
  * Whole, not entry by entry: an archive that tries `../` once, or ships an
  * `.install.json`, or expands a thousandfold, is not one to keep installing
@@ -539,9 +575,16 @@ function concatChunks(chunks: readonly Uint8Array[], length: number): Uint8Array
 export async function extractVoicePackArchive(
   options: ExtractVoicePackArchiveOptions,
 ): Promise<ExtractVoicePackArchiveResult> {
-  const { archive, fs } = options;
+  const { source, fs } = options;
   const limits = resolveLimits(options.limits);
-  const state: ExtractionState = { written: [], entries: 0, totalBytes: 0, pending: 0, seen: new Set() };
+  const state: ExtractionState = {
+    written: [],
+    entries: 0,
+    totalBytes: 0,
+    pending: 0,
+    consumed: 0,
+    seen: new Set(),
+  };
 
   const fail = (code: VoicePackArchiveFailureCode, reason: string): void => {
     // The first refusal is the one that describes the archive; anything the
@@ -557,14 +600,6 @@ export async function extractVoicePackArchive(
   }
 
   const target = resolve(options.targetDir);
-
-  // The packer writes the first local header at offset 0, as does every zip
-  // tool that is not producing a self-extractor. fflate's streaming reader
-  // would happily scan past a prefix to find a header inside anything; that
-  // is a tolerance, not a requirement, and it is not extended to a download.
-  if (!startsWithLocalHeader(archive)) {
-    return { ok: false, code: "malformed", reason: "not a zip archive", written: [] };
-  }
 
   const abandon = (file: UnzipFile, entry: OpenEntry): void => {
     entry.closed = true;
@@ -617,14 +652,20 @@ export async function extractVoicePackArchive(
       // per-entry cap alone bounds one entry and nothing about the total: a
       // 27 KB archive of 24 such entries wrote 24 MiB and was ACCEPTED.
       //
-      // Measured against the archive's own length rather than a sum of
-      // compressed sizes. It is the one number in this whole operation that
-      // cannot be misdeclared — it is the buffer we were handed — and it is
-      // also the honest statement of the attack: how much disk this many bytes
-      // can make us write. A real pack runs about 1:1, MP3 being incompressible.
+      // Measured against the archive bytes CONSUMED so far — pushed into the
+      // parser, the slice being expanded included — rather than a sum of
+      // compressed sizes or a length the caller declares. Like the whole
+      // archive's length that it replaced when the source became a stream
+      // (#1102), nobody can misdeclare it: it is bytes this function has
+      // actually been handed. It is never larger than that length, so the
+      // check only got stricter, and it judges an attack where it happens
+      // rather than against a total that has not arrived yet. It is also the
+      // honest statement of the attack: how much disk this many bytes can
+      // make us write. A real pack runs about 1:1 at every point, MP3 being
+      // incompressible, and the grace still applies before anything is judged.
       if (
         state.totalBytes >= limits.ratioGraceBytes &&
-        state.totalBytes > limits.maxCompressionRatio * archive.length
+        state.totalBytes > limits.maxCompressionRatio * state.consumed
       ) {
         abandon(file, entry);
         fail(
@@ -795,21 +836,68 @@ export async function extractVoicePackArchive(
   unzip.register(createCountingDecoder(UnzipPassThrough, counterFor));
   unzip.register(createCountingDecoder(UnzipInflate, counterFor));
 
-  let slices = 0;
+  let turnTakenAt = 0;
+
+  /** Push one source chunk, cut into slices the caps can act between. */
+  const pushChunk = async (chunk: Uint8Array): Promise<void> => {
+    for (let offset = 0; offset < chunk.length && !state.failure; offset += VOICE_PACK_ARCHIVE_PUSH_BYTES) {
+      const slice = chunk.subarray(offset, Math.min(offset + VOICE_PACK_ARCHIVE_PUSH_BYTES, chunk.length));
+
+      // Counted before the push: the slice is what the inflater expands in
+      // this call, so it is part of what the output is measured against.
+      state.consumed += slice.length;
+      unzip.push(slice, false);
+
+      if (state.consumed - turnTakenAt >= BYTES_PER_TURN) {
+        turnTakenAt = state.consumed;
+        await nextTurn();
+      }
+    }
+  };
+
+  // The packer writes the first local header at offset 0, as does every zip
+  // tool that is not producing a self-extractor. fflate's streaming reader
+  // would happily scan past a prefix to find a header inside anything; that
+  // is a tolerance, not a requirement, and it is not extended to a download.
+  // The four signature bytes may span several chunks, so they are held until
+  // they have all arrived, and pushed on with whatever came with them.
+  let head: Uint8Array | undefined = new Uint8Array(0);
 
   try {
-    for (let offset = 0; offset < archive.length && !state.failure; offset += VOICE_PACK_ARCHIVE_PUSH_BYTES) {
-      const end = Math.min(offset + VOICE_PACK_ARCHIVE_PUSH_BYTES, archive.length);
+    for await (const chunk of source) {
+      if (head === undefined) {
+        await pushChunk(chunk);
+      } else {
+        head = head.length === 0 ? chunk : concatChunks([head, chunk], head.length + chunk.length);
 
-      unzip.push(archive.subarray(offset, end), end === archive.length);
-      slices += 1;
+        if (head.length < LOCAL_HEADER_SIGNATURE_BYTES) continue;
 
-      if (slices % SLICES_PER_TURN === 0 && end < archive.length) await nextTurn();
+        if (!startsWithLocalHeader(head)) {
+          fail("malformed", "not a zip archive");
+          break;
+        }
+
+        const held = head;
+        head = undefined;
+        await pushChunk(held);
+      }
+
+      // Not one more chunk is pulled after a refusal; leaving the loop ends
+      // the iteration.
+      if (state.failure) break;
     }
+
+    if (!state.failure && head !== undefined) fail("malformed", "not a zip archive");
+
+    // The source's end is the archive's end. fflate takes it as an empty
+    // final push, which is what lets it report an archive that ends inside
+    // an entry's declared length.
+    if (!state.failure) unzip.push(new Uint8Array(0), true);
   } catch (err) {
     // fflate throws for a header it cannot finish parsing and for an archive
-    // that ends inside an entry's declared length. Anything it throws after
-    // a refusal is the refusal's own doing and is not reported over it.
+    // that ends inside an entry's declared length, and a source can throw for
+    // a read that failed. Anything thrown after a refusal is the refusal's
+    // own doing and is not reported over it.
     fail("malformed", `archive is damaged or truncated (${errorMessage(err)})`);
   }
 
@@ -825,10 +913,8 @@ export async function extractVoicePackArchive(
     : { ok: true, written: state.written };
 }
 
-function startsWithLocalHeader(archive: Uint8Array): boolean {
-  if (archive.length < 4) return false;
+function startsWithLocalHeader(head: Uint8Array): boolean {
+  if (head.length < LOCAL_HEADER_SIGNATURE_BYTES) return false;
 
-  return (
-    new DataView(archive.buffer, archive.byteOffset, archive.byteLength).getUint32(0, true) === LOCAL_HEADER_SIGNATURE
-  );
+  return new DataView(head.buffer, head.byteOffset, head.byteLength).getUint32(0, true) === LOCAL_HEADER_SIGNATURE;
 }
