@@ -104,7 +104,17 @@ export function run(cmd, args, { cwd, timeoutMs = 60_000, shim, maxBuffer, encod
       timeout: Math.min(timeoutMs, budget),
       ...(maxBuffer ? { maxBuffer } : {}),
       windowsHide: true,
-      env: { ...process.env, GH_PROMPT_DISABLED: "1", GIT_TERMINAL_PROMPT: "0", ...env },
+      // No prompt of any kind may hold a hook: `GIT_TERMINAL_PROMPT` stops git's
+      // own, an empty `GIT_ASKPASS` an inherited askpass program, and
+      // `GCM_INTERACTIVE` Git Credential Manager's sign-in window.
+      env: {
+        ...process.env,
+        GH_PROMPT_DISABLED: "1",
+        GIT_TERMINAL_PROMPT: "0",
+        GIT_ASKPASS: "",
+        GCM_INTERACTIVE: "never",
+        ...env,
+      },
     });
   } catch (error) {
     return { ok: false, out: "", err: String(error.message), code: null };

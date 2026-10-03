@@ -352,6 +352,15 @@ describe("the hook-wide deadline", () => {
     expect(vi.mocked(spawnSync).mock.calls.at(-1)[2].timeout).toBeLessThanOrEqual(5_000);
   });
 
+  it("never lets a credential prompt hold the hook", () => {
+    vi.mocked(spawnSync).mockImplementationOnce(() => ({ status: 0, stdout: "", stderr: "" }));
+    run("git", ["fetch", "origin"]);
+    const env = vi.mocked(spawnSync).mock.calls.at(-1)[2].env;
+    expect(env.GIT_TERMINAL_PROMPT).toBe("0");
+    expect(env.GIT_ASKPASS).toBe("");
+    expect(env.GCM_INTERACTIVE).toBe("never");
+  });
+
   it("starts nothing once it is spent", () => {
     setHookDeadline(Date.now() - 1);
     vi.mocked(spawnSync).mockClear();

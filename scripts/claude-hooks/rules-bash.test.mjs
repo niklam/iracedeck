@@ -524,6 +524,15 @@ describe("gh pr merge", () => {
       /One `gh pr merge` per command/,
     ));
 
+  it("refuses a second merge joined by a single & or |&, and one the split cannot see", () => {
+    for (const command of [
+      `gh pr merge 7 --squash & gh pr merge 8 --squash --admin`,
+      `gh pr merge 7 --squash |& gh pr merge 8 --squash`,
+      `gh pr merge 7 --squash $(gh pr merge 8 --squash)`,
+    ])
+      expect(deny(command, ctx({ prView: green }))).toMatch(/One `gh pr merge` per command/);
+  });
+
   it("joins every ask in a chain into the one prompt, so none runs unseen", () => {
     const pr = green();
     pr.baseRefOid = "4444444444444444444444444444444444444444";

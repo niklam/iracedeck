@@ -165,10 +165,13 @@ const MERGE_VALUE_FLAGS = new Set([
   "-R",
 ]);
 
-/** The segments of a chained command that are a `gh pr merge` (split at `&&`, `||`, `;`, `|`, newline). */
+/** The segments of a chained command that are a `gh pr merge` (split at `&&`, `||`, `;`, `|`, `&`, newline). */
 export function mergeSegments(command) {
-  return command.split(/&&|\|\||[;|\n]/).filter((seg) => /^[\s($]*(?:\w+=\S*\s+)*gh\s+pr\s+merge\b/.test(seg));
+  return command.split(/&&|\|\||[;|&\n]/).filter((seg) => /^[\s($]*(?:\w+=\S*\s+)*gh\s+pr\s+merge\b/.test(seg));
 }
+
+/** Every `gh pr merge` anywhere in the string — the backstop for a separator the split does not know. */
+const mergeMentions = (command) => (command.match(/\bgh\s+pr\s+merge\b/g) ?? []).length;
 
 /**
  * One `gh pr merge` segment's own arguments: the PR ref, the boolean flags and
@@ -300,8 +303,8 @@ export const rules = [
       // One merge per command, judged on its own words: the rule used to read
       // the first merge of a chain and honour `--admin` anywhere in the string.
       const segments = mergeSegments(c);
-      if (segments.length !== 1)
-        return segments.length > 1
+      if (segments.length !== 1 || mergeMentions(c) !== 1)
+        return segments.length > 1 || mergeMentions(c) > 1
           ? "One `gh pr merge` per command: each merge is checked on its own, so run them one at a time."
           : "Could not isolate the `gh pr merge` in this command; run it on its own.";
       const merge = parseMerge(segments[0]);
