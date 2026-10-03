@@ -16,6 +16,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 import { spawnSyncShim } from "../lib/spawn-shim.mjs";
+import { parseChangeSignature } from "./change-signature.mjs";
 
 // The deck-host link readers moved to `scripts/lib/plugin-links.mjs` in #1143,
 // where `pnpm dev:voices` also needs them. Re-exported so every hook caller and
@@ -80,9 +81,11 @@ function emit(obj) {
  * goes through `spawnSyncShim` (#1149), which gives it the shell Windows needs
  * without the args array Node deprecates beside one; `shim: false` spawns an
  * `.exe` outside that list (powershell) directly too. An argument the shim
- * refuses comes back as a failed run, never a throw.
+ * refuses comes back as a failed run, never a throw. `maxBuffer` raises
+ * `spawnSync`'s 1 MiB output cap for a caller that reads a whole diff; output
+ * past the cap is a failed run (`ENOBUFS`).
  */
-export function run(cmd, args, { cwd, timeoutMs = 60_000, shim } = {}) {
+export function run(cmd, args, { cwd, timeoutMs = 60_000, shim, maxBuffer } = {}) {
   const spawn = (shim ?? !/^(git|gh|node)$/.test(cmd)) ? spawnSyncShim : spawnSync;
   let res;
   try {
@@ -90,6 +93,7 @@ export function run(cmd, args, { cwd, timeoutMs = 60_000, shim } = {}) {
       cwd,
       encoding: "utf8",
       timeout: timeoutMs,
+      ...(maxBuffer ? { maxBuffer } : {}),
       windowsHide: true,
       env: { ...process.env, GH_PROMPT_DISABLED: "1", GIT_TERMINAL_PROMPT: "0" },
     });
@@ -224,6 +228,32 @@ export function originMasterFresh(dir) {
   const remoteSha = remote.out.trim().split(/\s+/)[0];
   if (!remoteSha) return undefined;
   return { fresh: remoteSha === local.out.trim(), local: local.out.trim().slice(0, 9), remote: remoteSha.slice(0, 9) };
+}
+
+/**
+ * What commit `sha` changes relative to its merge-base with `baseRef`, as the
+ * per-file signature `change-signature.mjs` compares (#1307), or `null` when
+ * any step fails — every caller refuses on `null`. A commit that is not in the
+ * local object store (a force-pushed head on a fresh clone) is fetched from
+ * `origin` by its sha first; a session that pushed the old head usually still
+ * has it.
+ */
+export function changeSignature(sha, baseRef, dir) {
+  if (typeof sha !== "string" || !/^[0-9a-f]{40}$/i.test(sha)) return null;
+  const present = () => git(["cat-file", "-e", `${sha}^{commit}`], dir).ok;
+  if (
+    !present() &&
+    !(git(["fetch", "--quiet", "--no-tags", "origin", sha], dir, { timeoutMs: 20_000 }).ok && present())
+  )
+    return null;
+  const base = git(["merge-base", baseRef, sha], dir);
+  if (!base.ok) return null;
+  const diff = git(
+    ["diff", "--no-color", "--no-ext-diff", "--no-renames", "--full-index", "--unified=0", base.out.trim(), sha],
+    dir,
+    { maxBuffer: 64 * 1024 * 1024 },
+  );
+  return diff.ok ? parseChangeSignature(diff.out) : null;
 }
 
 /** Is `candidate` inside `parent` (both absolute)? Case-insensitive on Windows. */

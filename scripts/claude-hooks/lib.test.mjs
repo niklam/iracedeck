@@ -5,7 +5,8 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { spawnSyncShim } from "../lib/spawn-shim.mjs";
-import { readIndexFile, run, SPEC_DIR, specFilenames } from "./lib.mjs";
+import { changedFiles } from "./change-signature.mjs";
+import { changeSignature, readIndexFile, run, SPEC_DIR, specFilenames } from "./lib.mjs";
 
 // `run()` routes between the two spawns. `spawnSync` stays real — the fixture
 // repos below reach git through `run()` — except where the `run` tests stub it.
@@ -32,6 +33,58 @@ beforeEach(() => {
 
 afterEach(() => {
   rmSync(root, { recursive: true, force: true });
+});
+
+// #1307: the merge gate compares what two commits change, each against its
+// own merge-base with the base branch, in a real repository.
+describe("changeSignature", () => {
+  const lines = (n, edits = {}) =>
+    Array.from({ length: n }, (_, i) => edits[i + 1] ?? `line ${i + 1}`).join("\n") + "\n";
+  const commit = (files, msg) => {
+    for (const [name, text] of Object.entries(files)) writeFileSync(join(root, name), text);
+    git("add", "-A");
+    git("commit", "-qm", msg);
+    return git("rev-parse", "HEAD").toString().trim();
+  };
+  /** M0 → F (the reviewed branch); M0 → M1 (master moved); M1 → F' (a rebase of F). */
+  const arrange = (rebasedEdit) => {
+    const m0 = commit({ "a.txt": lines(10) }, "m0");
+    git("checkout", "-q", "-b", "feature");
+    const reviewed = commit({ "a.txt": lines(10, { 2: "feature" }), "c.txt": "new\n" }, "f");
+    git("checkout", "-q", "master");
+    commit({ "a.txt": lines(10, { 9: "master moved" }) }, "m1");
+    git("update-ref", "refs/remotes/origin/master", "HEAD");
+    git("checkout", "-q", "-b", "rebased");
+    const rebased = commit({ "a.txt": lines(10, { 2: rebasedEdit, 9: "master moved" }), "c.txt": "new\n" }, "f");
+    return { m0, reviewed, rebased };
+  };
+
+  it("calls a clean rebase onto a moved base the same change", () => {
+    const { reviewed, rebased } = arrange("feature");
+    const before = changeSignature(reviewed, "origin/master", root);
+    const after = changeSignature(rebased, "origin/master", root);
+    expect([...before.keys()].sort()).toEqual(["a.txt", "c.txt"]);
+    expect(changedFiles(before, after)).toEqual([]);
+  });
+
+  it("names the file a conflict resolution changed", () => {
+    const { reviewed, rebased } = arrange("resolved differently");
+    expect(
+      changedFiles(changeSignature(reviewed, "origin/master", root), changeSignature(rebased, "origin/master", root)),
+    ).toEqual(["a.txt"]);
+  });
+
+  it("is null for a commit git cannot find or fetch, and for anything that is not a full sha", () => {
+    arrange("feature");
+    expect(changeSignature("f".repeat(40), "origin/master", root)).toBeNull();
+    expect(changeSignature("HEAD", "origin/master", root)).toBeNull();
+    expect(changeSignature(undefined, "origin/master", root)).toBeNull();
+  });
+
+  it("is null when the base ref does not exist", () => {
+    const { reviewed } = arrange("feature");
+    expect(changeSignature(reviewed, "origin/nowhere", root)).toBeNull();
+  });
 });
 
 // #1193 review: the worktree gate asks "is there a spec for #n on master?",
