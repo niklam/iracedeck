@@ -1,7 +1,7 @@
 import type { ILogger } from "@iracedeck/logger";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createElevationCheckSubscriber } from "./elevation-check.js";
+import { _resetElevationCheck, createElevationCheckSubscriber, hasElevationMismatch } from "./elevation-check.js";
 import { ELEVATION_WARNING_ID, ELEVATION_WARNING_MESSAGE } from "./elevation-warning.js";
 import { clearWarning, setWarning } from "./pi-warnings.js";
 
@@ -27,6 +27,7 @@ function createMockLogger(): ILogger {
 describe("createElevationCheckSubscriber", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    _resetElevationCheck();
   });
 
   it("does not probe while disconnected", () => {
@@ -158,5 +159,89 @@ describe("createElevationCheckSubscriber", () => {
 
     expect(getStatus).toHaveBeenCalledTimes(2);
     expect(clearWarning).toHaveBeenCalledWith(ELEVATION_WARNING_ID);
+  });
+});
+
+// The focus service gates the implicit window focus on this reader (#976).
+describe("hasElevationMismatch", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    _resetElevationCheck();
+  });
+
+  it("is false before any probe has run", () => {
+    expect(hasElevationMismatch()).toBe(false);
+  });
+
+  it("is true after a probe reports a mismatch", () => {
+    createElevationCheckSubscriber({ getStatus: () => ({ mismatch: true }), logger: createMockLogger() })(
+      undefined,
+      true,
+    );
+
+    expect(hasElevationMismatch()).toBe(true);
+  });
+
+  it("is false after a probe passes", () => {
+    createElevationCheckSubscriber({ getStatus: () => ({ mismatch: false }), logger: createMockLogger() })(
+      undefined,
+      true,
+    );
+
+    expect(hasElevationMismatch()).toBe(false);
+  });
+
+  it("forgets the mismatch on disconnect, before the next probe has answered", () => {
+    const subscriber = createElevationCheckSubscriber({
+      getStatus: () => ({ mismatch: true }),
+      logger: createMockLogger(),
+    });
+
+    subscriber(undefined, true);
+    subscriber(undefined, false);
+
+    expect(hasElevationMismatch()).toBe(false);
+  });
+
+  it("tracks a reconnect at a different elevation", () => {
+    const getStatus = vi
+      .fn<() => { mismatch: boolean }>()
+      .mockReturnValueOnce({ mismatch: true })
+      .mockReturnValueOnce({ mismatch: false });
+    const subscriber = createElevationCheckSubscriber({ getStatus, logger: createMockLogger() });
+
+    subscriber(undefined, true);
+    expect(hasElevationMismatch()).toBe(true);
+
+    subscriber(undefined, false);
+    subscriber(undefined, true);
+    expect(hasElevationMismatch()).toBe(false);
+  });
+
+  it("is false when the probe threw, even after an earlier mismatch on another connection", () => {
+    const getStatus = vi
+      .fn<() => { mismatch: boolean }>()
+      .mockReturnValueOnce({ mismatch: true })
+      .mockImplementationOnce(() => {
+        throw new Error("probe exploded");
+      });
+    const subscriber = createElevationCheckSubscriber({ getStatus, logger: createMockLogger() });
+
+    subscriber(undefined, true);
+    subscriber(undefined, false);
+    subscriber(undefined, true);
+
+    expect(getStatus).toHaveBeenCalledTimes(2);
+    expect(hasElevationMismatch()).toBe(false);
+  });
+
+  it("is cleared by _resetElevationCheck", () => {
+    createElevationCheckSubscriber({ getStatus: () => ({ mismatch: true }), logger: createMockLogger() })(
+      undefined,
+      true,
+    );
+    _resetElevationCheck();
+
+    expect(hasElevationMismatch()).toBe(false);
   });
 });

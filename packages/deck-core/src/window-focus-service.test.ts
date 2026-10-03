@@ -17,12 +17,17 @@ const { state } = vi.hoisted(() => ({
     settings: { focusIRacingWindow: "never" } as Record<string, unknown>,
     storeReady: true,
     iRacingActive: false,
+    elevationMismatch: false,
   },
 }));
 
 vi.mock("./global-settings.js", () => ({
   getGlobalSettings: () => state.settings,
   isSettingsStoreReady: () => state.storeReady,
+}));
+
+vi.mock("./elevation-check.js", () => ({
+  hasElevationMismatch: () => state.elevationMismatch,
 }));
 
 /**
@@ -66,6 +71,7 @@ describe("window focus service", () => {
     state.settings = { focusIRacingWindow: "always" };
     state.storeReady = true;
     state.iRacingActive = false;
+    state.elevationMismatch = false;
   });
 
   afterEach(() => {
@@ -390,6 +396,115 @@ describe("window focus service", () => {
     });
   });
 
+  // Under an integrity-level mismatch focus can never transfer, so both gated
+  // entry points skip the native ask outright (#976).
+  describe("elevation-mismatch gate (issue #976)", () => {
+    const SKIP_LINE =
+      "Not focusing the iRacing window: it runs at a higher integrity level than the plugin, so focus cannot transfer";
+
+    it("skips the adapter-hook ask while a mismatch is reported", () => {
+      state.elevationMismatch = true;
+      const { focuser } = arrange(FocusResult.FocusTimedOut);
+      focusIRacingIfEnabled();
+
+      expect(focuser).not.toHaveBeenCalled();
+    });
+
+    it("skips the keystroke-site ask under always and required", () => {
+      state.elevationMismatch = true;
+      const { focuser } = arrange(FocusResult.FocusTimedOut);
+      focusIRacingBeforeInput();
+      state.settings = { focusIRacingWindow: "required" };
+      focusIRacingBeforeInput();
+
+      expect(focuser).not.toHaveBeenCalled();
+    });
+
+    it("asks as before when no mismatch is reported — the probe has not run, threw, or passed", () => {
+      const { focuser } = arrange(FocusResult.Focused);
+      focusIRacingIfEnabled();
+      focusIRacingBeforeInput();
+
+      expect(focuser).toHaveBeenCalledTimes(2);
+    });
+
+    it("logs the skip at info once per episode, not on every press", () => {
+      state.elevationMismatch = true;
+      const { logger } = arrange(FocusResult.FocusTimedOut);
+      focusIRacingIfEnabled();
+      focusIRacingBeforeInput();
+      focusIRacingIfEnabled();
+
+      expect(logger.info).toHaveBeenCalledOnce();
+      expect(logger.info).toHaveBeenCalledWith(SKIP_LINE);
+      expect(logger.warn).not.toHaveBeenCalled();
+    });
+
+    it("logs again for a new episode after the gate was seen open", () => {
+      state.elevationMismatch = true;
+      const { logger } = arrange(FocusResult.Focused);
+      focusIRacingIfEnabled();
+      state.elevationMismatch = false;
+      focusIRacingIfEnabled();
+      state.elevationMismatch = true;
+      focusIRacingIfEnabled();
+
+      expect(vi.mocked(logger.info).mock.calls.filter(([line]) => line === SKIP_LINE)).toHaveLength(2);
+    });
+
+    it("lets the next ask through once the mismatch clears", () => {
+      state.elevationMismatch = true;
+      const { focuser } = arrange(FocusResult.Focused);
+      focusIRacingIfEnabled();
+      state.elevationMismatch = false;
+      focusIRacingIfEnabled();
+
+      expect(focuser).toHaveBeenCalledOnce();
+    });
+
+    it("does not consult the mismatch under never", () => {
+      state.settings = { focusIRacingWindow: "never" };
+      state.elevationMismatch = true;
+      const { logger } = arrange(FocusResult.Focused);
+      focusIRacingIfEnabled();
+      focusIRacingBeforeInput();
+
+      expect(logger.info).not.toHaveBeenCalled();
+    });
+
+    it("focusIRacingNow (Mouse to Sim) still asks — the press IS the focus", () => {
+      state.elevationMismatch = true;
+      const { focuser } = arrange(FocusResult.FocusTimedOut);
+
+      expect(focusIRacingNow()).toBe(FocusResult.FocusTimedOut);
+      expect(focuser).toHaveBeenCalledOnce();
+    });
+
+    it("_resetWindowFocus clears the logged episode", () => {
+      state.elevationMismatch = true;
+      arrange(FocusResult.Focused);
+      focusIRacingIfEnabled();
+      _resetWindowFocus();
+      const { logger } = arrange(FocusResult.Focused);
+      focusIRacingIfEnabled();
+
+      expect(logger.info).toHaveBeenCalledWith(SKIP_LINE);
+    });
+
+    it("ends a timeout episode begun before the probe answered, so the next genuine timeout warns", () => {
+      const { logger } = arrange(FocusResult.FocusTimedOut);
+      focusIRacingIfEnabled();
+      expect(logger.warn).toHaveBeenCalledOnce();
+
+      state.elevationMismatch = true;
+      focusIRacingIfEnabled();
+      state.elevationMismatch = false;
+      focusIRacingIfEnabled();
+
+      expect(logger.warn).toHaveBeenCalledTimes(2);
+    });
+  });
+
   // Issue #930: the setting is on by default, so this path runs before every
   // key/dial press. A missing window while iRacing is closed is the expected
   // outcome, not a fault — it must not spam the log at warn level.
@@ -445,6 +560,7 @@ describe("focusIRacingNow (issue #926)", () => {
     state.settings = { focusIRacingWindow: "always" };
     state.storeReady = true;
     state.iRacingActive = false;
+    state.elevationMismatch = false;
   });
 
   it("focuses even when the setting is disabled", () => {
