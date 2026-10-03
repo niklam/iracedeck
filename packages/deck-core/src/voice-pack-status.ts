@@ -23,8 +23,12 @@
  * installed, and they would disagree the moment a user deleted the folder by
  * hand. `failed` is the one terminal state that stays, because a failure the
  * user has not seen yet is not visible anywhere else.
+ *
+ * There is no `verifying`: since #1102 the archive is read back, verified and
+ * extracted in one pass, reported as `extracting`. The payload is run-scoped
+ * and the same build writes and reads it, so no older reader needs the value.
  */
-export const VOICE_PACK_INSTALL_PHASES = ["downloading", "verifying", "extracting", "swapping", "failed"] as const;
+export const VOICE_PACK_INSTALL_PHASES = ["downloading", "extracting", "swapping", "failed"] as const;
 
 export type VoicePackInstallPhase = (typeof VOICE_PACK_INSTALL_PHASES)[number];
 

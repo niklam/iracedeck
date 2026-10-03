@@ -76,7 +76,7 @@ function isVerdict(value: unknown): value is VoicePackOfferVerdict {
 }
 
 /** Mirrors `VoicePackInstallPhase` in deck-core's `voice-pack-status.ts`. */
-const KNOWN_PHASES = ["downloading", "verifying", "extracting", "swapping", "failed"] as const;
+const KNOWN_PHASES = ["downloading", "extracting", "swapping", "failed"] as const;
 type VoicePackInstallPhase = (typeof KNOWN_PHASES)[number];
 
 function isPhase(value: unknown): value is VoicePackInstallPhase {
@@ -274,7 +274,6 @@ function formatProgress(receivedBytes: number, totalBytes: number): string {
 /** User-facing phase words — the plugin's enum values are implementation vocabulary. */
 const PHASE_LABELS: Record<Exclude<VoicePackInstallPhase, "failed">, string> = {
   downloading: "Downloading…",
-  verifying: "Verifying…",
   extracting: "Extracting…",
   swapping: "Installing…",
 };
