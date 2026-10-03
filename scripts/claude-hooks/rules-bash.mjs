@@ -122,9 +122,13 @@ const has = (command, re) => re.test(command);
  * leave it in command position: `VAR=value` assignments, the shell keywords
  * that open a command list (`if …; then gh pr merge …` would otherwise pass
  * every trap unchecked, #1307 review), and the wrappers that run the next
- * word as a command.
+ * word as a command, with their own options — the ones that take a value
+ * (`env -u NAME`, `env -C DIR`, `env -S STRING`, `exec -a NAME`) with it.
+ *
+ * A heuristic, not a shell parser: the hooks catch mistakes, not deliberate
+ * obfuscation, so a command handed to `bash -c` or `xargs` is out of reach.
  */
-const COMMAND_LEAD = String.raw`(?:(?:if|then|do|else|elif|while|until|time|command|exec|env|nohup|!|\{)\s+|\w+=\S*\s+)*`;
+const COMMAND_LEAD = String.raw`(?:(?:if|then|do|else|elif|while|until|!|\{)\s+|(?:time|command|exec|env|nohup)(?:\s+(?:-[uCSa]|--unset|--chdir|--split-string)\s+\S+|\s+-\S+)*\s+|\w+=\S*\s+)*`;
 
 /**
  * Anchors a command regex to COMMAND POSITION: the start of the string or of

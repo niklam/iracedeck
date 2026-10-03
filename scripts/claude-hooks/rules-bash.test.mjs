@@ -538,6 +538,11 @@ describe("gh pr merge", () => {
       "if true; then gh pr merge 7 --squash; fi",
       "while x; do gh pr merge 7 --squash; done",
       "env GH_DEBUG=1 gh pr merge 7 --squash",
+      "env -i gh pr merge 7 --squash",
+      "env -u GH_TOKEN -i PATH=/bin gh pr merge 7 --squash",
+      "exec -a merger gh pr merge 7 --squash",
+      "time -p gh pr merge 7 --squash",
+      "nohup gh pr merge 7 --squash",
       "! gh pr merge 7 --squash",
     ])
       expect(deny(command, ctx({ prView: () => ({ ...green(), reviewDecision: "REVIEW_REQUIRED" }) }))).toMatch(
