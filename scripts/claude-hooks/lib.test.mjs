@@ -5,7 +5,16 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { spawnSyncShim } from "../lib/spawn-shim.mjs";
-import { readIndexFile, replayRebase, run, SPEC_DIR, specFilenames } from "./lib.mjs";
+import {
+  baseChangedSince,
+  MAX_CONFLICTED_LINE_CHECKS,
+  readIndexFile,
+  replayRebase,
+  run,
+  setHookDeadline,
+  SPEC_DIR,
+  specFilenames,
+} from "./lib.mjs";
 
 // `run()` routes between the two spawns. `spawnSync` stays real — the fixture
 // repos below reach git through `run()` — except where the `run` tests stub it.
@@ -134,7 +143,13 @@ describe("replayRebase", () => {
     const { reviewed, m1 } = arrange();
     git("checkout", "-q", "feature");
     git("merge", "-q", "--no-edit", m1);
-    expect(replay(reviewed, gitIn(root, "rev-parse", "HEAD"), m1)).toMatchObject({ ok: true, differing: [] });
+    // toEqual: a `followUp` the base's own commit put there must not hide behind a partial match.
+    expect(replay(reviewed, gitIn(root, "rev-parse", "HEAD"), m1)).toEqual({
+      ok: true,
+      differing: [],
+      conflicted: [],
+      lineMismatch: [],
+    });
   });
 
   it("passes a clean rebase of a multi-commit branch, compared against its tip", () => {
@@ -183,9 +198,165 @@ describe("replayRebase", () => {
     const { reviewed, m1 } = arrange();
     expect(replay("f".repeat(40), reviewed, m1)).toMatchObject({ ok: false });
     expect(replay("HEAD", reviewed, m1)).toMatchObject({ ok: false });
-    expect(replayRebase({ reviewed, head: reviewed, base: m1, dir: root, deadlineAt: Date.now() - 1 })).toMatchObject({
-      ok: false,
+    setHookDeadline(Date.now() - 1);
+    try {
+      expect(replay(reviewed, reviewed, m1)).toEqual({ ok: false, reason: "the hook ran out of time" });
+    } finally {
+      setHookDeadline(Infinity);
+    }
+  });
+
+  it("reports a modify/delete conflict kept as the reviewed file, which no tree difference shows", () => {
+    commit({ "old.sh": lines(), "a.txt": "a\n" }, "m0");
+    git("checkout", "-q", "-b", "feature");
+    const reviewed = commit({ "old.sh": lines({ 3: "reviewed edit" }) }, "reviewed");
+    git("checkout", "-q", "master");
+    git("rm", "-q", "old.sh");
+    git("commit", "-qm", "m1 deletes old.sh");
+    const m1 = gitIn(root, "rev-parse", "HEAD");
+    git("checkout", "-q", "-B", "kept", m1);
+    const head = commit({ "old.sh": lines({ 3: "reviewed edit" }) }, "kept");
+    expect(replay(reviewed, head, m1)).toEqual({
+      ok: true,
+      differing: [],
+      conflicted: ["old.sh"],
+      lineMismatch: ["old.sh"],
     });
+  });
+
+  it("compares a rename's source, so a base fix to it cannot vanish into the target", () => {
+    commit({ "f.txt": lines() }, "m0");
+    git("checkout", "-q", "-b", "feature");
+    git("mv", "f.txt", "g.txt");
+    const reviewed = commit({ "g.txt": lines({ 10: "edited" }) }, "rename");
+    git("checkout", "-q", "master");
+    const m1 = commit({ "f.txt": lines({ 3: "security fix" }) }, "m1 fixes f");
+    git("checkout", "-q", "-B", "theirs", m1);
+    git("rm", "-q", "f.txt");
+    const head = commit({ "g.txt": lines({ 10: "edited" }) }, "rebased, fix dropped");
+    const v = replay(reviewed, head, m1);
+    expect(v.ok).toBe(true);
+    expect(v.conflicted).toContain("f.txt");
+    expect(v.lineMismatch).toContain("f.txt");
+  });
+
+  it("refuses criss-cross history, where git would pick one of several merge-bases", () => {
+    commit({ "a.txt": lines() }, "m0");
+    git("checkout", "-q", "-b", "x");
+    const x1 = commit({ "x.txt": "x\n" }, "x1");
+    git("checkout", "-q", "master");
+    const y1 = commit({ "y.txt": "y\n" }, "y1");
+    git("merge", "-q", "--no-edit", x1);
+    const base = gitIn(root, "rev-parse", "HEAD");
+    git("checkout", "-q", "x");
+    git("merge", "-q", "--no-edit", y1);
+    const reviewed = commit({ "c.txt": "c\n" }, "reviewed");
+    expect(replay(reviewed, reviewed, base)).toEqual({
+      ok: false,
+      reason: "the history is criss-crossed (more than one merge-base)",
+    });
+  });
+
+  it("runs from the repository root whatever directory the session is in", () => {
+    mkdirSync(join(root, "sub"));
+    commit({ "a.txt": lines(), "sub/keep.txt": "k\n" }, "m0");
+    git("checkout", "-q", "-b", "feature");
+    const reviewed = commit({ "a.txt": lines({ 5: "line 5\nX" }) }, "reviewed");
+    git("checkout", "-q", "master");
+    const m1 = commit({ "a.txt": lines({ 5: "line 5\nY" }) }, "m1");
+    git("checkout", "-q", "-B", "resolved", m1);
+    const head = commit({ "a.txt": lines({ 5: "line 5\nY\nX" }) }, "resolved");
+    expect(replayRebase({ reviewed, head, base: m1, dir: join(root, "sub") })).toEqual({
+      ok: true,
+      differing: ["a.txt"],
+      conflicted: ["a.txt"],
+      lineMismatch: [],
+    });
+  });
+
+  it("refuses rather than line-check more conflicted files than the deadline allows", () => {
+    const many = Object.fromEntries(
+      Array.from({ length: MAX_CONFLICTED_LINE_CHECKS + 1 }, (_, i) => [`f${i}.txt`, lines()]),
+    );
+    commit(many, "m0");
+    git("checkout", "-q", "-b", "feature");
+    const mine = Object.fromEntries(Object.keys(many).map((f) => [f, lines({ 2: "mine" })]));
+    const reviewed = commit(mine, "reviewed");
+    git("checkout", "-q", "master");
+    const m1 = commit(Object.fromEntries(Object.keys(many).map((f) => [f, lines({ 2: "theirs" })])), "m1");
+    expect(replay(reviewed, m1, m1)).toMatchObject({
+      ok: false,
+      reason: expect.stringMatching(/more than the line check reads/),
+    });
+  });
+
+  it("ignores grafts and replace refs, whatever the hook's environment holds", () => {
+    const { reviewed, m1 } = arrange();
+    vi.mocked(spawnSync).mockClear();
+    replay(reviewed, rebaseOnto(m1, reviewed), m1);
+    const gitEnvs = vi
+      .mocked(spawnSync)
+      .mock.calls.filter(([c]) => c === "git")
+      .map(([, , o]) => o.env);
+    expect(gitEnvs.length).toBeGreaterThan(3);
+    for (const env of gitEnvs) {
+      expect(env.GIT_NO_REPLACE_OBJECTS).toBe("1");
+      expect(env.GIT_GRAFT_FILE).toBeTruthy();
+    }
+  });
+});
+
+// #1307: the base moving under a PR — a retarget or a base force-push — since a review.
+describe("baseChangedSince", () => {
+  const answer = (nodes) =>
+    vi.mocked(spawnSync).mockImplementationOnce(() => ({
+      status: 0,
+      stdout: JSON.stringify({ data: { repository: { pullRequest: { timelineItems: { nodes } } } } }),
+      stderr: "",
+    }));
+
+  it("asks GitHub for both a retarget and a base force-push", () => {
+    answer([]);
+    baseChangedSince(7, "2026-10-03T10:00:00Z", root);
+    const [cmd, args] = vi.mocked(spawnSync).mock.calls.at(-1);
+    expect(cmd).toBe("gh");
+    const query = args.find((a) => a.startsWith("query="));
+    expect(query).toMatch(/itemTypes:\[BASE_REF_CHANGED_EVENT,BASE_REF_FORCE_PUSHED_EVENT\]/);
+    expect(query).toMatch(/on BaseRefChangedEvent\{createdAt\}/);
+    expect(query).toMatch(/on BaseRefForcePushedEvent\{createdAt\}/);
+    expect(args).toContain("n=7");
+  });
+
+  it("is true only for an event after the review", () => {
+    answer([{ createdAt: "2026-10-03T09:00:00Z" }]);
+    expect(baseChangedSince(7, "2026-10-03T10:00:00Z", root)).toBe(false);
+    answer([{ createdAt: "2026-10-03T09:00:00Z" }, { createdAt: "2026-10-03T11:00:00Z" }]);
+    expect(baseChangedSince(7, "2026-10-03T10:00:00Z", root)).toBe(true);
+  });
+
+  it("is undefined — which the gate reads as yes — when gh cannot answer", () => {
+    vi.mocked(spawnSync).mockImplementationOnce(() => ({ status: 1, stdout: "", stderr: "HTTP 502" }));
+    expect(baseChangedSince(7, "2026-10-03T10:00:00Z", root)).toBeUndefined();
+    vi.mocked(spawnSync).mockImplementationOnce(() => ({ status: 0, stdout: "{}", stderr: "" }));
+    expect(baseChangedSince(7, "2026-10-03T10:00:00Z", root)).toBeUndefined();
+  });
+});
+
+describe("the hook-wide deadline", () => {
+  afterEach(() => setHookDeadline(Infinity));
+
+  it("clamps every spawn to what is left of it, gh included", () => {
+    setHookDeadline(Date.now() + 5_000);
+    vi.mocked(spawnSync).mockImplementationOnce(() => ({ status: 0, stdout: "", stderr: "" }));
+    run("gh", ["--version"], { timeoutMs: 45_000 });
+    expect(vi.mocked(spawnSync).mock.calls.at(-1)[2].timeout).toBeLessThanOrEqual(5_000);
+  });
+
+  it("starts nothing once it is spent", () => {
+    setHookDeadline(Date.now() - 1);
+    vi.mocked(spawnSync).mockClear();
+    expect(run("git", ["status"])).toMatchObject({ ok: false });
+    expect(spawnSync).not.toHaveBeenCalled();
   });
 });
 

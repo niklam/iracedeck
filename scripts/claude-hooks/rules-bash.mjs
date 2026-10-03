@@ -139,6 +139,67 @@ export const GIT_WORKTREE_REMOVE = cmd(/git\s+(?:-c\s+\S+\s+)?(?:-C\s+\S+\s+)?wo
 /** CodeRabbit's login as `gh` reports it — exact, so a look-alike account cannot stand in for it. */
 const CODERABBIT = /^coderabbitai(\[bot\])?$/i;
 
+/**
+ * The CodeRabbit reviews that say what it SAW. GitHub files a thread reply as
+ * a COMMENTED review with an empty body, at whatever commit the PR head was
+ * when the reply landed — counting one would mark an unreviewed commit as
+ * reviewed (#1307 review, PR #1300's reply review 5395629514).
+ */
+export const coderabbitReviews = (reviews) =>
+  (reviews ?? []).filter(
+    (r) => CODERABBIT.test(r.author?.login ?? "") && !(r.state === "COMMENTED" && !(r.body ?? "").trim()),
+  );
+
+/** `gh pr merge` flags that take a value, so the value is never read as the PR or as a flag. */
+const MERGE_VALUE_FLAGS = new Set([
+  "--match-head-commit",
+  "--body",
+  "-b",
+  "--body-file",
+  "-F",
+  "--subject",
+  "-t",
+  "--author-email",
+  "-A",
+  "--repo",
+  "-R",
+]);
+
+/** The segments of a chained command that are a `gh pr merge` (split at `&&`, `||`, `;`, `|`, newline). */
+export function mergeSegments(command) {
+  return command.split(/&&|\|\||[;|\n]/).filter((seg) => /^[\s($]*(?:\w+=\S*\s+)*gh\s+pr\s+merge\b/.test(seg));
+}
+
+/**
+ * One `gh pr merge` segment's own arguments: the PR ref, the boolean flags and
+ * the `--match-head-commit` value (the last one, as gh's flag parser takes
+ * it). Read from the segment's words, so a flag inside `--body "…"`, after a
+ * `#`, or in another command of the chain is not taken for the merge's own.
+ */
+export function parseMerge(segment) {
+  const w = words(segment);
+  const at = w.findIndex((x, k) => x === "merge" && w[k - 1] === "pr");
+  const flags = new Set();
+  let ref;
+  let pin;
+  for (let k = at + 1; k < w.length; k++) {
+    const a = w[k];
+    if (a.startsWith("#")) break;
+    if (!a.startsWith("-")) {
+      ref ??= a;
+      continue;
+    }
+    const eq = a.indexOf("=");
+    const name = eq > 0 ? a.slice(0, eq) : a;
+    if (!MERGE_VALUE_FLAGS.has(name)) flags.add(name);
+    else {
+      const value = eq > 0 ? a.slice(eq + 1) : w[++k];
+      if (name === "--match-head-commit") pin = value;
+    }
+  }
+  return { ref, flags, pin };
+}
+
 const names = (paths, mark = () => "") =>
   paths
     .slice(0, 5)
@@ -154,17 +215,16 @@ const names = (paths, mark = () => "") =>
  * base stalled behind an `@coderabbitai review`.
  *
  * The test is a replay (`replayRebase` in `lib.mjs`): the reviewed change
- * re-applied onto the head's base must give the head's exact tree. Files the
- * replay reports as conflicted fall back to a line check, and a line match
- * still only earns the ask — it cannot see where a line sits. Refused before
- * any replay: a release back-merge (its commits land one by one), a base
- * retargeted since the review, and a merge not pinned with
- * `--match-head-commit` (the verdict is about this exact head). A follow-up
- * commit on top of the reviewed one is refused from inside the replay.
- * Every uncertain path refuses. Spec:
+ * re-applied onto the head's base must give the head's exact tree. Every file
+ * the replay reports as conflicted gets a line check, and a line match still
+ * only earns the ask — it cannot see where a line sits. Refused before any
+ * replay: a release back-merge (its commits land one by one), a merge not
+ * pinned to this exact head with `--match-head-commit`, and a base retargeted
+ * or force-pushed since the review. A follow-up push is refused from inside
+ * the replay. Every uncertain path refuses. Spec:
  * `docs/superpowers/specs/2026-10-03-issue-1307-merge-gate-pure-rebase.md`.
  */
-function rebaseVerdict(c, pr, bot, ctx, isBackMerge) {
+function rebaseVerdict(merge, pr, bot, ctx, isBackMerge) {
   const head = pr.headRefOid;
   // `gh` lists reviews oldest first; `submittedAt` decides when both carry it.
   const newest = bot.reduce((a, b) => ((b.submittedAt ?? "") >= (a.submittedAt ?? "") ? b : a));
@@ -173,20 +233,20 @@ function rebaseVerdict(c, pr, bot, ctx, isBackMerge) {
   const reviewAgain = "ask `@coderabbitai review`";
   if (isBackMerge)
     return `${stale}, and a release back-merge lands its commits one by one, so a rewritten tip needs a fresh review — ${reviewAgain}.`;
-  const pin = c.match(/--match-head-commit[=\s]+([0-9a-f]{7,40})\b/i)?.[1];
-  if (!pin || !head.toLowerCase().startsWith(pin.toLowerCase()))
+  // GitHub takes only a full sha here, so a prefix would be a merge that can never go through.
+  if (!/^[0-9a-f]{40}$/i.test(merge.pin ?? "") || merge.pin.toLowerCase() !== head.toLowerCase())
     return `${stale}. The rebase check decides about this exact head, so pin it: add \`--match-head-commit ${head}\`.`;
-  const retargeted = ctx.baseChangedSince?.(pr.number, newest.submittedAt, ctx.cwd);
-  if (retargeted !== false)
-    return retargeted
-      ? `${stale}, and the PR's base branch was changed after that review — ${reviewAgain}.`
-      : `${stale}, and gh could not read whether the base branch changed since that review.`;
-  const v = ctx.replayRebase?.({ reviewed, head, base: pr.baseRefOid, dir: ctx.cwd, deadlineAt: ctx.deadlineAt });
+  const moved = ctx.baseChangedSince?.(pr.number, newest.submittedAt, ctx.cwd);
+  if (moved !== false)
+    return moved
+      ? `${stale}, and the PR's base branch was retargeted or force-pushed after that review — ${reviewAgain}.`
+      : `${stale}, and gh could not read whether the base branch moved since that review.`;
+  const v = ctx.replayRebase?.({ reviewed, head, base: pr.baseRefOid, dir: ctx.cwd });
   if (!v?.ok) return `${stale}, and ${v?.reason ?? "the rebase check could not run"}.`;
   if (v.followUp)
-    return `${stale}, and the head adds ${v.followUp} commit(s) on top of it, which is a follow-up push, not a rebase — wait for CodeRabbit's review of them.`;
+    return `${stale}, and the head adds ${v.followUp} commit(s) after it, which is a follow-up push, not a rebase — wait for CodeRabbit's review of them.`;
   const conflicted = new Set(v.conflicted);
-  const refused = v.differing.filter((p) => !conflicted.has(p) || v.lineMismatch.includes(p));
+  const refused = [...new Set([...v.differing.filter((p) => !conflicted.has(p)), ...v.lineMismatch])].sort();
   if (refused.length)
     return `${stale}, and the head is not a pure rebase of it (changed: ${names(refused, (p) => (conflicted.has(p) ? " (conflicted)" : ""))}) — ${reviewAgain}.`;
   if (conflicted.size)
@@ -237,22 +297,30 @@ export const rules = [
     name: "gh pr merge: approval and checks are verified at the current head",
     test: (c, ctx) => {
       if (!has(c, cmd(/gh\s+pr\s+merge\b/))) return null;
-      const after = words(c.slice(c.indexOf("pr merge") + 8));
-      const ref = after.find((w) => !w.startsWith("-"));
+      // One merge per command, judged on its own words: the rule used to read
+      // the first merge of a chain and honour `--admin` anywhere in the string.
+      const segments = mergeSegments(c);
+      if (segments.length !== 1)
+        return segments.length > 1
+          ? "One `gh pr merge` per command: each merge is checked on its own, so run them one at a time."
+          : "Could not isolate the `gh pr merge` in this command; run it on its own.";
+      const merge = parseMerge(segments[0]);
+      const ref = merge.ref;
       const pr = ctx.prView(ref, ctx.cwd);
       if (!pr)
         return `Could not read the PR${ref ? ` "${ref}"` : " for this branch"} with gh; refusing to merge blind.`;
       if (pr.state !== "OPEN") return `PR #${pr.number} is ${pr.state}, not OPEN.`;
       const problems = [];
       const isBackMerge = /^release\//.test(pr.headRefName ?? "");
-      const squash = has(c, /--squash\b/);
-      const merge = has(c, /--merge\b/) || has(c, /--rebase\b/);
+      const flag = (...f) => f.some((x) => merge.flags.has(x));
+      const squash = flag("--squash", "-s");
+      const regular = flag("--merge", "-m", "--rebase", "-r");
       if (isBackMerge && squash)
         problems.push("a release-branch back-merge is a regular merge (--merge), never a squash");
       if (!isBackMerge && !squash) problems.push("feature/fix PRs are squash-merged (--squash)");
-      if (!isBackMerge && merge) problems.push("feature/fix PRs are squash-merged, not --merge/--rebase");
-      const admin = has(c, /--admin\b/);
-      const bot = (pr.reviews ?? []).filter((r) => CODERABBIT.test(r.author?.login ?? ""));
+      if (!isBackMerge && regular) problems.push("feature/fix PRs are squash-merged, not --merge/--rebase");
+      const admin = flag("--admin");
+      const bot = coderabbitReviews(pr.reviews);
       // Set when the head has no review of its own but an older one exists: the
       // pure-rebase check (#1307), run last because it is the one that costs git work.
       let rebaseCheck = false;
@@ -273,7 +341,7 @@ export const rules = [
       if (bad.length) problems.push(`checks not green: ${bad.join(", ")}`);
       if (["BLOCKED", "DIRTY"].includes(pr.mergeStateStatus))
         problems.push(`mergeStateStatus is ${pr.mergeStateStatus}`);
-      if (problems.length === 0) return rebaseCheck ? rebaseVerdict(c, pr, bot, ctx, isBackMerge) : null;
+      if (problems.length === 0) return rebaseCheck ? rebaseVerdict(merge, pr, bot, ctx, isBackMerge) : null;
       if (rebaseCheck)
         problems.push(
           "the head has no CodeRabbit review of its own (the pure-rebase check runs once the rest is green)",
@@ -571,12 +639,14 @@ const checkName = (c) => c.name ?? c.context ?? c.__typename ?? "?";
  * denies, or which of two asks, is the one reported.
  */
 export function checkBash(command, ctx) {
-  let ask = null;
+  const asks = [];
   for (const rule of rules) {
     const v = rule.test(command, ctx);
     if (!v) continue;
     if (typeof v === "string") return v;
-    ask ??= v;
+    asks.push(v.ask);
   }
-  return ask;
+  // Every ask in one prompt: a chain the maintainer approves runs whole, so a
+  // later ask hidden behind an earlier one would run unseen (#1307 review).
+  return asks.length ? { ask: asks.join("\n\n") } : null;
 }
