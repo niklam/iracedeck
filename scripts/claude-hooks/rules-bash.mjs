@@ -13,6 +13,7 @@
  */
 import path from "node:path";
 
+import { changedFiles } from "./change-signature.mjs";
 import { MAIN_BRANCH, SPEC_DIR } from "./lib.mjs";
 
 const TITLE_RE = /^(feat|fix|improve|perf|refactor|docs|ci|chore|test|build|style|revert)(\([^)]+\))?!?: .+ \(#\d+\)$/;
@@ -136,6 +137,35 @@ export const GIT_COMMIT = cmd(/git\s+(-C\s+\S+\s+)?commit\b/);
 export const GIT_WORKTREE_ADD = cmd(/git\s+(?:-C\s+\S+\s+)?worktree\s+add\b(.*)$/);
 export const GIT_WORKTREE_REMOVE = cmd(/git\s+(?:-c\s+\S+\s+)?(?:-C\s+\S+\s+)?worktree\s+remove\b(.*)$/);
 
+/**
+ * Why the PR's head lacks a review it can merge on, or `null` when the head is
+ * a pure rebase of the commit CodeRabbit last reviewed (#1307): the same added
+ * and removed lines, file by file, against each commit's own merge-base with
+ * the base branch. CodeRabbit does not review a rebase, so without this every
+ * PR rebased onto a moved base stalled behind an `@coderabbitai review`.
+ * The NEWEST review is the one compared, whatever its state — it is what
+ * CodeRabbit last saw, and an older approval must not reach past it. Every
+ * uncertain path refuses: no review at all, a signature git could not produce
+ * for either commit, or any differing file. A stale `origin/<base>` makes the
+ * head's diff carry base commits the reviewed one lacks, so it refuses too.
+ */
+function notAPureRebase(pr, bot, ctx) {
+  const head = pr.headRefOid.slice(0, 9);
+  if (bot.length === 0) return `no CodeRabbit review at head ${head}`;
+  // `gh` lists reviews oldest first; `submittedAt` decides when both carry it.
+  const newest = bot.reduce((a, b) => ((b.submittedAt ?? "") >= (a.submittedAt ?? "") ? b : a));
+  const reviewed = newest.commit?.oid ?? "";
+  const stale = `no CodeRabbit review at head ${head} — the newest one is at a previous head ${reviewed.slice(0, 9)}`;
+  const baseRef = `origin/${pr.baseRefName || MAIN_BRANCH}`;
+  const before = ctx.changeSignature?.(reviewed, baseRef, ctx.cwd);
+  const after = before && ctx.changeSignature(pr.headRefOid, baseRef, ctx.cwd);
+  if (!before || !after) return `${stale}, and git could not read both changes to check for a pure rebase`;
+  const differ = changedFiles(before, after);
+  if (differ.length === 0) return null;
+  const named = differ.slice(0, 5).join(", ") + (differ.length > 5 ? `, and ${differ.length - 5} more` : "");
+  return `${stale}, and the head is not a pure rebase of it (changed: ${named}) — ask \`@coderabbitai review\``;
+}
+
 export const rules = [
   {
     name: "code-review is a Skill, never --fix",
@@ -196,12 +226,10 @@ export const rules = [
         if (pr.reviewDecision !== "APPROVED")
           problems.push(`reviewDecision is ${pr.reviewDecision ?? "unset"}, not APPROVED`);
         const bot = (pr.reviews ?? []).filter((r) => /coderabbit/i.test(r.author?.login ?? ""));
-        const atHead = bot.filter((r) => r.commit?.oid === pr.headRefOid);
+        const atHead = bot.some((r) => r.commit?.oid === pr.headRefOid);
         const everApproved = bot.some((r) => r.state === "APPROVED");
-        if (atHead.length === 0)
-          problems.push(
-            `no CodeRabbit review at head ${pr.headRefOid.slice(0, 9)} — the approval shown belongs to a previous head`,
-          );
+        const unreviewed = atHead ? null : notAPureRebase(pr, bot, ctx);
+        if (unreviewed) problems.push(unreviewed);
         else if (!everApproved) problems.push("CodeRabbit has never approved this PR");
       }
       const rollup = pr.statusCheckRollup ?? [];

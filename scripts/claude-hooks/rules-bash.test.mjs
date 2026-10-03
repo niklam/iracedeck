@@ -32,6 +32,9 @@ function ctx(overrides = {}) {
     packages: () => ({ "@iracedeck/logger": { dir: "x", scripts: ["build", "typecheck"] } }),
     isInside: (c, p) => c.toLowerCase() === p.toLowerCase() || c.toLowerCase().startsWith(p.toLowerCase() + path.sep),
     prView: () => undefined,
+    // Unreadable by default, so a merge case that does not set it up fails
+    // closed exactly as a real git failure would (#1307).
+    changeSignature: () => null,
     ...overrides,
   };
 }
@@ -217,6 +220,147 @@ describe("gh pr merge", () => {
     pr.reviews = [{ author: { login: "niklam" }, state: "COMMENTED", commit: { oid: head } }];
     expect(deny("gh pr merge 7 --squash", ctx({ prView: () => pr }))).toMatch(/no CodeRabbit review/);
   });
+  // #1307: a head that is a pure rebase of the commit CodeRabbit last reviewed.
+  describe("a pure rebase of the reviewed head", () => {
+    const reviewedOid = "2222222222222222222222222222222222222222";
+    const olderOid = "3333333333333333333333333333333333333333";
+    const change = (...lines) => new Map([["src/a.ts", ["diff --git a/src/a.ts b/src/a.ts", ...lines]]]);
+    const rebased = () => {
+      const pr = green();
+      pr.baseRefName = "master";
+      pr.reviews = [
+        {
+          author: { login: "coderabbitai" },
+          state: "APPROVED",
+          commit: { oid: reviewedOid },
+          submittedAt: "2026-10-03T10:00:00Z",
+        },
+      ];
+      return pr;
+    };
+    /** `changeSignature` answering per sha, recording what it was asked. */
+    const signatures = (bySha) => {
+      const calls = [];
+      const fn = (sha, baseRef, dir) => {
+        calls.push({ sha, baseRef, dir });
+        return bySha[sha] ?? null;
+      };
+      return { fn, calls };
+    };
+
+    it("passes when the head changes exactly what the reviewed commit changed", () => {
+      const { fn, calls } = signatures({ [reviewedOid]: change("+a"), [head]: change("+a") });
+      passes("gh pr merge 7 --squash", ctx({ prView: rebased, changeSignature: fn }));
+      expect(calls).toEqual([
+        { sha: reviewedOid, baseRef: "origin/master", dir: MASTER },
+        { sha: head, baseRef: "origin/master", dir: MASTER },
+      ]);
+    });
+
+    it("refuses a rebase whose conflict resolution changed a line, naming the file", () => {
+      const { fn } = signatures({ [reviewedOid]: change("+a"), [head]: change("+A") });
+      const why = deny("gh pr merge 7 --squash", ctx({ prView: rebased, changeSignature: fn }));
+      expect(why).toMatch(/not a pure rebase of it \(changed: src\/a\.ts\)/);
+      expect(why).toMatch(/@coderabbitai review/);
+    });
+
+    it("names at most five differing files", () => {
+      const many = (l) => new Map(Array.from({ length: 7 }, (_, i) => [`f${i}.ts`, [l]]));
+      const { fn } = signatures({ [reviewedOid]: many("+a"), [head]: many("+b") });
+      expect(deny("gh pr merge 7 --squash", ctx({ prView: rebased, changeSignature: fn }))).toMatch(
+        /changed: f0\.ts, f1\.ts, f2\.ts, f3\.ts, f4\.ts, and 2 more/,
+      );
+    });
+
+    it("refuses when git cannot read the reviewed commit's change", () => {
+      const { fn, calls } = signatures({ [head]: change("+a") });
+      expect(deny("gh pr merge 7 --squash", ctx({ prView: rebased, changeSignature: fn }))).toMatch(
+        /could not read both changes/,
+      );
+      expect(calls).toHaveLength(1);
+    });
+
+    it("refuses when git cannot read the head's change", () => {
+      const { fn } = signatures({ [reviewedOid]: change("+a") });
+      expect(deny("gh pr merge 7 --squash", ctx({ prView: rebased, changeSignature: fn }))).toMatch(
+        /could not read both changes/,
+      );
+    });
+
+    it("compares the NEWEST review, not an older approval it would reach past", () => {
+      const pr = rebased();
+      pr.reviews = [
+        {
+          author: { login: "coderabbitai" },
+          state: "APPROVED",
+          commit: { oid: olderOid },
+          submittedAt: "2026-10-03T09:00:00Z",
+        },
+        {
+          author: { login: "coderabbitai" },
+          state: "COMMENTED",
+          commit: { oid: reviewedOid },
+          submittedAt: "2026-10-03T10:00:00Z",
+        },
+      ];
+      const { fn } = signatures({ [olderOid]: change("+a"), [reviewedOid]: change("+a", "+b"), [head]: change("+a") });
+      expect(deny("gh pr merge 7 --squash", ctx({ prView: () => pr, changeSignature: fn }))).toMatch(
+        /previous head 222222222/,
+      );
+    });
+
+    it("finds the newest review by submittedAt whatever the list order", () => {
+      const pr = rebased();
+      pr.reviews = [
+        {
+          author: { login: "coderabbitai" },
+          state: "COMMENTED",
+          commit: { oid: reviewedOid },
+          submittedAt: "2026-10-03T10:00:00Z",
+        },
+        {
+          author: { login: "coderabbitai" },
+          state: "APPROVED",
+          commit: { oid: olderOid },
+          submittedAt: "2026-10-03T09:00:00Z",
+        },
+      ];
+      const { fn } = signatures({ [reviewedOid]: change("+a"), [head]: change("+a") });
+      passes("gh pr merge 7 --squash", ctx({ prView: () => pr, changeSignature: fn }));
+    });
+
+    it("still requires CodeRabbit to have approved at some point", () => {
+      const pr = rebased();
+      pr.reviews[0].state = "COMMENTED";
+      const { fn } = signatures({ [reviewedOid]: change("+a"), [head]: change("+a") });
+      expect(deny("gh pr merge 7 --squash", ctx({ prView: () => pr, changeSignature: fn }))).toMatch(/never approved/);
+    });
+
+    it("refuses a PR CodeRabbit never reviewed, without reading any change", () => {
+      const pr = rebased();
+      pr.reviews = [];
+      const { fn, calls } = signatures({});
+      expect(deny("gh pr merge 7 --squash", ctx({ prView: () => pr, changeSignature: fn }))).toMatch(
+        /no CodeRabbit review at head/,
+      );
+      expect(calls).toHaveLength(0);
+    });
+
+    it("does not read any change when a review sits at head", () => {
+      const { fn, calls } = signatures({});
+      passes("gh pr merge 7 --squash", ctx({ prView: green, changeSignature: fn }));
+      expect(calls).toHaveLength(0);
+    });
+
+    it("reads against origin/<baseRefName> for a PR into another branch", () => {
+      const pr = rebased();
+      pr.baseRefName = "release/3.5";
+      const { fn, calls } = signatures({ [reviewedOid]: change("+a"), [head]: change("+a") });
+      passes("gh pr merge 7 --squash", ctx({ prView: () => pr, changeSignature: fn }));
+      expect(calls[0].baseRef).toBe("origin/release/3.5");
+    });
+  });
+
   it("refuses when reviewDecision is not APPROVED", () =>
     expect(
       deny("gh pr merge 7 --squash", ctx({ prView: () => ({ ...green(), reviewDecision: "REVIEW_REQUIRED" }) })),

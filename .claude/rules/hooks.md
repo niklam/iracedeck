@@ -22,7 +22,7 @@ A **deny** refuses the call and tells the model why. An **ask** forces the permi
 | --- | --- | --- |
 | `git push` of a tag | ask | a tag cuts a release |
 | `gh pr create` | deny on a title that is not `<type>(<scope>): … (#<issue>)` | PR title discipline |
-| `gh pr merge` | deny unless: OPEN, `--squash` (or `--merge` for a `release/*` head), `reviewDecision` APPROVED, a CodeRabbit review at the current head plus an approval, every rollup entry green (fails closed on unknown node types), not BLOCKED/DIRTY. `--admin` skips only the review checks. | approval and checks are head-specific |
+| `gh pr merge` | deny unless: OPEN, `--squash` (or `--merge` for a `release/*` head), `reviewDecision` APPROVED, a CodeRabbit review at the current head — or a head that is a pure rebase of the newest review's commit, the same added and removed lines file by file (#1307) — plus an approval, every rollup entry green (fails closed on unknown node types), not BLOCKED/DIRTY. `--admin` skips only the review checks. | approval and checks are head-specific |
 | `git commit` with a spec on a non-master branch | deny | specs commit to master only |
 | `git commit` ADDING a spec with no header block, no Out-of-scope section or no Testing/Verification section | deny | the two sections that decayed to 17 % and 70 % because no rule named them; amendments and unreadable text pass, so it is forward-only |
 | `git worktree add ../ir-<n>` where `origin/master` carries no `docs/superpowers/specs/*-issue-<n>-*.md` | ask, unless the issue's labels are readable and carry no `enhancement` | a feature gets its spec before its worktree; the exemptions are judgement, so the maintainer confirms |

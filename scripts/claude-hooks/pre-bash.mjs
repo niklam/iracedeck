@@ -4,6 +4,7 @@
  */
 import {
   applyVerdict,
+  changeSignature,
   currentBranch,
   ghJson,
   git,
@@ -77,6 +78,8 @@ if (typeof command === "string" && command.trim()) {
         dir,
       ),
     ),
+    // What a commit changes, for the merge gate's pure-rebase check (#1307).
+    changeSignature: memo(changeSignature),
   };
   let verdict;
   try {
