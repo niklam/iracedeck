@@ -33,6 +33,7 @@ import {
   DIAL_SKIP_CALL_BINDINGS,
   type DialCategory,
   type DialPressAction,
+  isDialPressAvailable,
   isInternalAudioCategory,
   pressBindingKeys,
   PUSH_TO_TALK_KEY,
@@ -102,7 +103,10 @@ export interface AudioStripState {
   enabled?: boolean;
   /** True while the PTT binding is held (press action = push-to-talk). */
   pttHeld: boolean;
-  /** True when a binding this dial's rotate/press needs is unconfigured (#612). */
+  /**
+   * True when a binding this dial's rotate/press needs is unconfigured (#612),
+   * or when the stored press cannot fire on this dial at all (#1196).
+   */
   bindingMissing: boolean;
 }
 
@@ -110,10 +114,14 @@ export interface AudioStripState {
  * @internal Exported for testing
  *
  * Computes the encoder trigger descriptions from the current dial settings.
+ * The push is labelled only when it can fire for the dial's category: a stored
+ * press its Mode does not offer (Master + Mute a Driver) is a value the PI
+ * never writes, and advertising it would promise a press that only logs
+ * (#1196).
  */
 export function buildAudioTriggerDescription(dial: AudioDialSettings): DeckTriggerDescription {
   const description: DeckTriggerDescription = { rotate: ROTATE_LABELS[dial.category] };
-  const pushLabel = PRESS_LABELS[dial.pressAction];
+  const pushLabel = isDialPressAvailable(dial) ? PRESS_LABELS[dial.pressAction] : undefined;
 
   if (pushLabel) description.push = pushLabel;
 
@@ -571,11 +579,25 @@ export class AudioDialSurface {
       volume: bus?.read(),
       enabled: bus?.isEnabled(),
       pttHeld: ctx.pttHeld,
-      bindingMissing: this.host.isBindingMissing([
-        ...rotationBindingKeys(category),
-        ...pressBindingKeys(ctx.settings.dial),
-      ]),
+      bindingMissing:
+        this.isPressUnavailable(ctx.settings.dial) ||
+        this.host.isBindingMissing([...rotationBindingKeys(category), ...pressBindingKeys(ctx.settings.dial)]),
     };
+  }
+
+  /**
+   * Whether the stored press is one this dial can never fire (#1196): a press
+   * its category does not offer, or Push to Talk on a host that never sends
+   * the release it needs (see {@link down}). Either is a value the PI would
+   * not write here, so the screen warns rather than passing for a working
+   * press. `none` is a choice, not a fault.
+   */
+  private isPressUnavailable(dial: AudioDialSettings): boolean {
+    if (dial.pressAction === "none") return false;
+
+    if (dial.pressAction === "push-to-talk" && !__FEATURE_DIAL_EXTENDED_GESTURES__) return true;
+
+    return !isDialPressAvailable(dial);
   }
 
   /** Pushes the dial's own screen — the strip or the knob drawing (#1013); nothing when it has none. */

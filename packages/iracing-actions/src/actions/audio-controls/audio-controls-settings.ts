@@ -230,6 +230,47 @@ export function resolveRotationBinding(category: KeybindDialCategory, ticks: num
 }
 
 /**
+ * Whether a keypad `{category, action}` pair can do anything when pressed
+ * (#1196). Push to Talk ignores `action`; the internal categories step their
+ * volume and have no mute; a keybind category needs an entry in
+ * {@link AUDIO_CONTROLS_GLOBAL_KEYS}. The PI only ever writes available
+ * pairs, so `false` means a stored value it would never write — a hand-edited
+ * or imported profile, or one from a different build.
+ */
+export function isKeypadControlAvailable(settings: Pick<AudioControlsSettings, "category" | "action">): boolean {
+  if (settings.category === "push-to-talk") return true;
+
+  if (isInternalAudioCategory(settings.category)) {
+    return settings.action === "volume-up" || settings.action === "volume-down";
+  }
+
+  return `${settings.category}-${settings.action}` in AUDIO_CONTROLS_GLOBAL_KEYS;
+}
+
+/**
+ * Whether the dial's press can fire for its category (#1196), read from the
+ * same tables the surface dispatches from. Mute / Unmute also fires for the
+ * internal categories, which flip a feature gate and need no binding, so this
+ * cannot be derived from {@link pressBindingKeys}. `none` is never available:
+ * it is the absence of a press. Host capability (Push to Talk needs a release
+ * a Mirabox knob never sends) is the surface's concern, not the settings'.
+ */
+export function isDialPressAvailable(dial: AudioDialSettings): boolean {
+  switch (dial.pressAction) {
+    case "push-to-talk":
+      return true;
+    case "mute-unmute":
+      return isInternalAudioCategory(dial.category) || DIAL_MUTE_BINDINGS[dial.category] !== undefined;
+    case "mute-driver":
+      return !isInternalAudioCategory(dial.category) && DIAL_MUTE_DRIVER_BINDINGS[dial.category] !== undefined;
+    case "skip-call":
+      return !isInternalAudioCategory(dial.category) && DIAL_SKIP_CALL_BINDINGS[dial.category] !== undefined;
+    case "none":
+      return false;
+  }
+}
+
+/**
  * Binding keys the dial PRESS requires. PTT always needs its binding;
  * Mute / Unmute needs the keybind category's mute binding when it has one —
  * the internal categories toggle their feature gate (no binding) and master

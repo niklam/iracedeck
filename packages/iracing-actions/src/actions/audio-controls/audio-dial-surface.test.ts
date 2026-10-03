@@ -311,6 +311,34 @@ describe("buildAudioTriggerDescription", () => {
       push: "Mute a driver",
     });
   });
+
+  // A stored press its category does not offer only logs when pushed, so it
+  // must not be advertised (#1196).
+  it.each([
+    ["master", "mute-driver"],
+    ["spotter", "mute-driver"],
+    ["race-engineer", "mute-driver"],
+    ["radar", "mute-driver"],
+    ["master", "mute-unmute"],
+    ["spotter", "mute-unmute"],
+    ["voice-chat", "skip-call"],
+    ["master", "skip-call"],
+    ["race-engineer", "skip-call"],
+    ["radar", "skip-call"],
+  ] as const)("omits push for %s + %s, a press that cannot fire (#1196)", (category, pressAction) => {
+    expect(buildAudioTriggerDescription({ category, pressAction })).not.toHaveProperty("push");
+  });
+
+  it("keeps Mute / Unmute for the internal categories, which need no binding (#1196)", () => {
+    expect(buildAudioTriggerDescription({ category: "race-engineer", pressAction: "mute-unmute" })).toHaveProperty(
+      "push",
+      "Mute / unmute",
+    );
+    expect(buildAudioTriggerDescription({ category: "voice-chat", pressAction: "mute-unmute" })).toHaveProperty(
+      "push",
+      "Mute / unmute",
+    );
+  });
 });
 
 describe("AudioDialSurface (through AudioControls)", () => {
@@ -792,6 +820,35 @@ describe("AudioDialSurface (through AudioControls)", () => {
     });
   });
 
+  describe("a press the dial cannot fire (#1196)", () => {
+    it.each([
+      ["master", "mute-driver"],
+      ["master", "mute-unmute"],
+      ["radar", "skip-call"],
+    ])("warns on the strip for %s + %s, whose binding check alone would pass", async (category, pressAction) => {
+      const ctx = dialAction();
+      await action.onWillAppear(ev(ctx, { dial: { category, pressAction } }));
+      await flush();
+
+      expect(ctx.setTriggerDescription).toHaveBeenCalledWith(expect.not.objectContaining({ push: expect.anything() }));
+      expect(lastFeedbackSvg(ctx)).toContain("<binding-warning/>");
+    });
+
+    it.each([
+      ["voice-chat", "none"],
+      ["race-engineer", "mute-unmute"],
+      ["voice-chat", "mute-driver"],
+      ["spotter", "skip-call"],
+      ["master", "push-to-talk"],
+    ])("leaves %s + %s without a warning while its bindings are configured", async (category, pressAction) => {
+      const ctx = dialAction();
+      await action.onWillAppear(ev(ctx, { dial: { category, pressAction } }));
+      await flush();
+
+      expect(lastFeedbackSvg(ctx)).not.toContain("<binding-warning/>");
+    });
+  });
+
   describe("extended gestures off (Mirabox / Ulanzi)", () => {
     it("still rotates, presses and renders, but pushes no trigger description", async () => {
       vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
@@ -817,6 +874,15 @@ describe("AudioDialSurface (through AudioControls)", () => {
 
       expect(mockHoldBinding).not.toHaveBeenCalled();
       expect(lastFeedbackSvg(ctx)).not.toContain("ON AIR");
+    });
+
+    it("warns on the knob screen for a stored Push to Talk, which this host can never fire (#1196)", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
+      const ctx = dialAction("dial-1", KNOB);
+      await action.onWillAppear(ev(ctx, { dial: { category: "voice-chat", pressAction: "push-to-talk" } }));
+      await flush();
+
+      expect(lastFeedbackSvg(ctx)).toContain("<binding-warning/>");
     });
   });
 
