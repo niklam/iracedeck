@@ -46,8 +46,12 @@
  *     vs the frozen baseline rather than iRacing's `LapBestLapTime` field,
  *     which can lag the lap-time refresh. Internally consistent regardless
  *     of update ordering.
- *   - `lapsRemaining` / `timeRemaining`: pass-through from session telemetry.
- *     Both omitted when the underlying field is missing.
+ *   - `lapsRemaining` / `timeRemaining`: `SessionLapsRemainEx` /
+ *     `SessionTimeRemain` read through `resolveLapsRemaining` /
+ *     `resolveTimeRemainingS` (#1220). Each is omitted when its resolver
+ *     returns null: the field is missing, reads the unlimited sentinel of the
+ *     side the session does not have (32767 laps, 604800 s), or is negative
+ *     or non-finite. A `0` is kept.
  *   - `sessionType`: resolved by the orchestrator (translator.ts) since it
  *     reads session info; the diff just consumes the classified value.
  */

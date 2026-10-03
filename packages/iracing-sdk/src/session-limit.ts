@@ -12,15 +12,19 @@
  * two does, and that comparison used to live in the fuel callouts alone.
  *
  * This module owns four things. The first three are shared by every consumer —
- * the fuel laps-left callouts (`sim-events-iracing`), the translator's
- * `lap.completed` `lapsRemaining` / `timeRemaining` (#1220), Session Info's
- * Time Remaining key and the template context's `session.laps_remaining` and
+ * the fuel laps-left callouts (`sim-events-iracing`), Session Info's Time
+ * Remaining key and the template context's `session.laps_remaining` and
  * `session.time_remaining`:
  *
  *   1. decoding the two sentinels,
  *   2. the rule that `null` means UNKNOWN (missing, sentinel, nonsensical) —
  *      and that unknown must never be mistaken for zero, and
  *   3. the whichever-ends-sooner rule, ties to the lap cap.
+ *
+ * The translator's `lap.completed` (#1220), its leader-white detection and
+ * its qualifying lap-invalidation snapshot share only the first two: they
+ * report each side as the sim gives it and leave which one binds to their
+ * consumers.
  *
  * The fourth is shared by the consumers that SHOW the clock to the driver —
  * Session Info and the template context, never the fuel estimate:

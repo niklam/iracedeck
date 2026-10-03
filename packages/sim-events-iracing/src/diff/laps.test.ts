@@ -584,6 +584,8 @@ describe("diffLaps — payload pass-through", () => {
       emit,
     );
 
+    expect(lapEvents(events)).toHaveLength(1);
+
     return lapEvents(events)[0].data;
   }
 
@@ -610,6 +612,13 @@ describe("diffLaps — payload pass-through", () => {
 
   it("omits a negative reading on either side", () => {
     const data = completeLap({ SessionLapsRemainEx: -1, SessionTimeRemain: -2.5 });
+
+    expect(data).not.toHaveProperty("lapsRemaining");
+    expect(data).not.toHaveProperty("timeRemaining");
+  });
+
+  it("omits a non-finite reading on either side", () => {
+    const data = completeLap({ SessionLapsRemainEx: Number.NaN, SessionTimeRemain: Number.POSITIVE_INFINITY });
 
     expect(data).not.toHaveProperty("lapsRemaining");
     expect(data).not.toHaveProperty("timeRemaining");
