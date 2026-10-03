@@ -826,6 +826,11 @@ describe("registerPitCrew live gating", () => {
 
     // User unchecks Red while it is playing.
     enabled.set("red", false);
+    // `_played` is append-only and `stopChannel` never removes from it, so the
+    // clip-list assertion below would pass even if the toggle HAD cut the line.
+    // `stopChannel(Voice)` is reachable only from `cancelActiveFire`, so its
+    // absence is the precise observable for "nothing was cut" (issue #990).
+    expect(audio.stopChannel).not.toHaveBeenCalledWith(AudioChannel.Voice);
 
     // Drain the in-flight sequence — gate fires only on event arrival,
     // so the already-fired sequence completes naturally.
@@ -835,18 +840,18 @@ describe("registerPitCrew live gating", () => {
   });
 
   it("toggling a flag off only blocks future fires; the previous one finishes", () => {
-    // First red fires and is allowed to play.
+    // First red fires. Don't flush — it is still mid-playback.
     bus.publishEvent("flag.red.raised", {} as never);
-    flush(audio);
-    const playsAfterFirst = voiceClipsPlayed().length;
-    expect(playsAfterFirst).toBe(1);
 
-    // User disables red. A subsequent red event is gated.
+    // User disables red, and a second red arrives while the first is speaking.
+    // Ungated, it would family-preempt the first; gated, it never reaches the
+    // scheduler, so the first is not cut.
     enabled.set("red", false);
     bus.publishEvent("flag.red.raised", {} as never);
+    expect(audio.stopChannel).not.toHaveBeenCalledWith(AudioChannel.Voice);
     flush(audio);
 
-    expect(voiceClipsPlayed().length).toBe(playsAfterFirst);
+    expect(voiceClipsPlayed()).toEqual([`voice/${VOICE}/flags/red-01.mp3`]);
   });
 
   it("re-enabling a flag restores future fires", () => {
@@ -891,6 +896,7 @@ describe("registerPitCrew live gating", () => {
     // Don't flush — yellow-cleared is mid-playback.
     enabled.set("meatball", false);
     bus.publishEvent("flag.meatball.raised", {} as never);
+    expect(audio.stopChannel).not.toHaveBeenCalledWith(AudioChannel.Voice);
     flush(audio);
 
     // yellow-cleared completed; no meatball ever played.
@@ -1085,6 +1091,7 @@ describe("pit-service-requests live gate (issue #468)", () => {
 
     // User unchecks the gate while it is playing.
     pitServiceRequestsEnabled = false;
+    expect(audio.stopChannel).not.toHaveBeenCalledWith(AudioChannel.Voice);
 
     // Drain the in-flight sequence — gate fires only on event arrival,
     // so the already-fired sequence completes naturally.
@@ -1230,6 +1237,7 @@ describe("autofuel callout live gating (issue #474)", () => {
     expect(audio._played.length).toBeGreaterThan(0);
 
     autoFuelEnabled = false;
+    expect(audio.stopChannel).not.toHaveBeenCalledWith(AudioChannel.Voice);
     flush(audio);
 
     expect(voiceClipsPlayed()).toEqual([AUTO_ON_REFUEL]);
@@ -1268,6 +1276,7 @@ describe("damage callout live gating (issue #489)", () => {
     expect(audio._played.length).toBeGreaterThan(0);
 
     damageEnabled.set("repair-needed", false);
+    expect(audio.stopChannel).not.toHaveBeenCalledWith(AudioChannel.Voice);
     flush(audio);
 
     expect(voiceClipsPlayed().some((p) => p.includes("/damage/repair-needed-"))).toBe(true);
@@ -1324,6 +1333,7 @@ describe("incident callout live gating (issue #530)", () => {
     expect(audio._played.length).toBeGreaterThan(0);
 
     incidentEnabled.set("collision-car", false);
+    expect(audio.stopChannel).not.toHaveBeenCalledWith(AudioChannel.Voice);
     flush(audio);
 
     expect(voiceClipsPlayed().some((p) => p.includes("/incidents/collision-car-"))).toBe(true);
@@ -1520,6 +1530,7 @@ describe("pit-box count-in live gating (issue #600)", () => {
     expect(audio._played.length).toBeGreaterThan(0);
 
     pitBoxEnabled = false;
+    expect(audio.stopChannel).not.toHaveBeenCalledWith(AudioChannel.Voice);
     flush(audio);
 
     expect(voiceClipsPlayed().some((p) => p.includes("/pit-box/five-"))).toBe(true);
