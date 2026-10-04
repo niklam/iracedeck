@@ -20,8 +20,11 @@ import { ReplayPosMode, resolveReplayFrame, type TelemetryData } from "@iracedec
 import {
   cancelReplayCursorOwner,
   clearReplayLanding,
+  clearReplaySighting,
+  lastReplaySighting,
   pendingReplayLanding,
   recordReplayLanding,
+  recordReplaySighting,
   type ReplayLanding,
 } from "../../shared/replay-cursor.js";
 
@@ -45,6 +48,17 @@ export const CONFIRMATION_FLASH_MS = 1_000;
  */
 export const DIAL_LANDING_HOLD_MS = 1_000;
 
+/**
+ * @internal Exported for testing
+ *
+ * How long (ms) `IsReplayPlaying` must read false before the surfaces take the
+ * replay as left for the car. For roughly 300 ms after every `setPlayPosition`
+ * iRacing reports it false (measured 2026-10-04), so without the grace a turn
+ * right after a jump is refused as "from the car", the dial flashes its
+ * from-the-car caption and the keypad's Next / Previous grey for a moment.
+ */
+export const REPLAY_EXIT_GRACE_MS = 1_000;
+
 /** The replay counts as landed once `ReplayFrameNum` is this close (1 s) to the frame jumped to. */
 const LANDED_WITHIN_FRAMES = 60;
 
@@ -59,10 +73,15 @@ export type MarkerDirection = "next" | "previous";
  * pressed at, so Delete from the same spot reaches a marker set far back.
  * Session number and time are descriptive only (a person reading the file),
  * taken from the replay's own session while a replay plays and from the live
- * session otherwise.
+ * session otherwise. `inReplay` is the context's debounced flag, so a press in
+ * the post-seek blip still names the replay's session.
  */
-export function buildMarker(telemetry: TelemetryData, currentFrame: number, secondsBack: number): ReplayMarker {
-  const inReplay = telemetry.IsReplayPlaying === true;
+export function buildMarker(
+  telemetry: TelemetryData,
+  currentFrame: number,
+  secondsBack: number,
+  inReplay: boolean,
+): ReplayMarker {
   const sessionNum = (inReplay ? telemetry.ReplaySessionNum : telemetry.SessionNum) ?? 0;
   const sessionTime = (inReplay ? telemetry.ReplaySessionTime : telemetry.SessionTime) ?? 0;
 
@@ -125,6 +144,18 @@ export function readSubSessionId(sessionInfo: unknown): number | undefined {
 export interface ReplayContext {
   ok: true;
   telemetry: TelemetryData;
+  /**
+   * Whether a replay is on screen, debounced: true from the first replay read,
+   * false only once `IsReplayPlaying` has read false for
+   * {@link REPLAY_EXIT_GRACE_MS}. Every "in a replay" decision reads this,
+   * never `telemetry.IsReplayPlaying`, which drops for ~300 ms after each seek.
+   */
+  inReplay: boolean;
+  /**
+   * The frame on screen: `ReplayFrameNum` in a replay (through the grace, the
+   * last one a replay read showed) and `ReplayFrameNumEnd` live. Never
+   * `ReplayFrameNumEnd` in a replay, where it is the frames left, not a position.
+   */
   frame: number;
   store: ReplaySessionStore;
   scope: SubSessionScoped | undefined;
@@ -148,28 +179,61 @@ export interface ReplayContextSource {
 }
 
 /**
- * Reads the replay context fresh: connected, a store, telemetry with a frame
- * (`ReplayFrameNum` in a replay, `ReplayFrameNumEnd` live), and the scope.
+ * Reads the replay context fresh: connected, a store, telemetry with a frame,
+ * whether a replay is on screen (debounced, see {@link resolveReplayState}),
+ * and the scope. `nowMs` is injectable for tests.
  */
-export function readReplayContext(source: ReplayContextSource): ReplayContextResult {
+export function readReplayContext(source: ReplayContextSource, nowMs: number = Date.now()): ReplayContextResult {
   if (!source.getConnectionStatus()) return { ok: false, reason: "Not connected to iRacing" };
 
   if (!source.isStoreInitialized()) return { ok: false, reason: "Replay session store not initialized" };
 
   const telemetry = source.getCurrentTelemetry();
-  const frame = resolveReplayFrame(telemetry);
+  const state = telemetry ? resolveReplayState(telemetry, nowMs) : null;
 
-  if (!telemetry || frame === null) return { ok: false, reason: "No replay frame in telemetry" };
+  if (!telemetry || state === null) return { ok: false, reason: "No replay frame in telemetry" };
 
   const subSessionId = readSubSessionId(source.getSessionInfo());
 
   return {
     ok: true,
     telemetry,
-    frame,
+    inReplay: state.inReplay,
+    frame: state.frame,
     store: source.getStore(),
     scope: subSessionId === undefined ? undefined : { subSessionId },
   };
+}
+
+/**
+ * Whether a replay is on screen and the frame it shows, debounced across every
+ * Replay Markers surface through the one process-wide sighting
+ * (`shared/replay-cursor.ts`). Entering a replay is immediate. Leaving it
+ * counts only once `IsReplayPlaying` has read false for
+ * {@link REPLAY_EXIT_GRACE_MS} since the last replay read; until then the last
+ * replay frame seen is held. Null when the telemetry carries no usable frame.
+ */
+function resolveReplayState(telemetry: TelemetryData, nowMs: number): { inReplay: boolean; frame: number } | null {
+  if (telemetry.IsReplayPlaying === true) {
+    const frame = resolveReplayFrame(telemetry);
+
+    if (frame === null) return null;
+
+    recordReplaySighting(frame, nowMs);
+
+    return { inReplay: true, frame };
+  }
+
+  const sighting = lastReplaySighting();
+
+  if (sighting !== null && nowMs - sighting.seenAt < REPLAY_EXIT_GRACE_MS) {
+    return { inReplay: true, frame: sighting.frame };
+  }
+
+  clearReplaySighting();
+  const frame = resolveReplayFrame(telemetry);
+
+  return frame === null ? null : { inReplay: false, frame };
 }
 
 /**
@@ -177,7 +241,7 @@ export function readReplayContext(source: ReplayContextSource): ReplayContextRes
  * would send nothing. The one predicate behind the keypad's greyed Next /
  * Previous keys, the dial's first step and the dial's side marks:
  *
- * - out of a replay it is always null — iRacing honours replay commands only
+ * - out of a replay (the context's debounced `inReplay`) it is always null — iRacing honours replay commands only
  *   out of the car (irsdk_defines.h: "camera and replay commands only work
  *   when you are out of your car"), so from the car a jump would be sent,
  *   ignored, and logged as done;
@@ -194,7 +258,7 @@ export function resolveJumpTarget(
   context: ReplayContext,
   fromFrame: number = context.frame,
 ): ReplayMarker | null {
-  if (context.telemetry.IsReplayPlaying !== true) return null;
+  if (!context.inReplay) return null;
 
   return direction === "next"
     ? context.store.markers.next(fromFrame, context.scope)
@@ -296,7 +360,7 @@ function hasActiveRecordFor(context: ReplayContext): boolean {
 export function previewAddMarker(context: ReplayContext, secondsBack: number): ReplayMarker | null {
   if (!hasActiveRecordFor(context)) return null;
 
-  const marker = buildMarker(context.telemetry, context.frame, secondsBack);
+  const marker = buildMarker(context.telemetry, context.frame, secondsBack, context.inReplay);
   const duplicate = context.store.markers
     .list(context.scope)
     .some((m) => Math.abs(m.frame - marker.frame) <= MARKER_DEDUPE_FRAMES);
@@ -306,7 +370,7 @@ export function previewAddMarker(context: ReplayContext, secondsBack: number): R
 
 /** Adds the marker `secondsBack` before the context's frame; `added` is false for a duplicate. */
 export function addMarkerAt(context: ReplayContext, secondsBack: number): { marker: ReplayMarker; added: boolean } {
-  const marker = buildMarker(context.telemetry, context.frame, secondsBack);
+  const marker = buildMarker(context.telemetry, context.frame, secondsBack, context.inReplay);
 
   return { marker, added: context.store.markers.add(marker, context.scope) };
 }

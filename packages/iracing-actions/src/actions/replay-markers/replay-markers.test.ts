@@ -1,7 +1,8 @@
 import { ReplayPosMode, type TelemetryData } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { _resetReplayCursor, claimReplayCursor } from "../../shared/replay-cursor.js";
+import { _resetReplayCursor, claimReplayCursor, clearReplayLanding } from "../../shared/replay-cursor.js";
+import { REPLAY_EXIT_GRACE_MS } from "./replay-markers-ops.js";
 import {
   buildMarker,
   CONFIRMATION_FLASH_MS,
@@ -291,7 +292,7 @@ describe("ReplayMarkers", () => {
 
   describe("buildMarker", () => {
     it("live: seconds back from the live edge, with the live session", () => {
-      expect(buildMarker(LIVE, 30_000, 5)).toEqual({
+      expect(buildMarker(LIVE, 30_000, 5, false)).toEqual({
         frame: 29_700,
         pressFrame: 30_000,
         sessionNum: 2,
@@ -300,7 +301,7 @@ describe("ReplayMarkers", () => {
     });
 
     it("replay: seconds back from the frame on screen, with the replay's session", () => {
-      expect(buildMarker(REPLAY, 12_000, 0)).toEqual({
+      expect(buildMarker(REPLAY, 12_000, 0, true)).toEqual({
         frame: 12_000,
         pressFrame: 12_000,
         sessionNum: 1,
@@ -308,8 +309,15 @@ describe("ReplayMarkers", () => {
       });
     });
 
+    it("in a replay's post-seek blip (IsReplayPlaying reads false): still the replay's session", () => {
+      expect(buildMarker({ ...REPLAY, IsReplayPlaying: false } as TelemetryData, 12_000, 0, true)).toMatchObject({
+        sessionNum: 1,
+        sessionTimeMs: 200_000,
+      });
+    });
+
     it("clamps the frame and the time at 0", () => {
-      expect(buildMarker({ ...LIVE, SessionTime: 2 } as TelemetryData, 100, 60)).toMatchObject({
+      expect(buildMarker({ ...LIVE, SessionTime: 2 } as TelemetryData, 100, 60, false)).toMatchObject({
         frame: 0,
         sessionTimeMs: 0,
       });
@@ -528,6 +536,22 @@ describe("ReplayMarkers", () => {
       _resetReplayCursor();
     });
 
+    it("Next in the post-seek blip still jumps, from the replay's last frame", async () => {
+      mocks.markers.next.mockReturnValue({ frame: 15_000, sessionNum: 1, sessionTimeMs: 0 });
+      const { action, sdk } = makeAction(REPLAY);
+      await action.onKeyDown(keyDown({ mode: "next" }));
+      mocks.setPlayPosition.mockClear();
+      mocks.markers.next.mockClear();
+      clearReplayLanding(); // the landing alone: the replay state is what is under test
+
+      sdk.getCurrentTelemetry.mockReturnValue({ ...REPLAY, IsReplayPlaying: false } as TelemetryData);
+      await vi.advanceTimersByTimeAsync(300);
+      await action.onKeyDown(keyDown({ mode: "next" }));
+
+      expect(mocks.markers.next).toHaveBeenCalledWith(12_000, { subSessionId: 86697546 });
+      expect(mocks.setPlayPosition).toHaveBeenCalledWith(ReplayPosMode.Begin, 15_000);
+    });
+
     it.each(["next", "previous"])("%s from the car sends nothing and says why at debug", async (mode) => {
       mocks.markers.next.mockReturnValue({ frame: 31_000, sessionNum: 2, sessionTimeMs: 0 });
       mocks.markers.previous.mockReturnValue({ frame: 29_000, sessionNum: 2, sessionTimeMs: 0 });
@@ -679,6 +703,26 @@ describe("ReplayMarkers", () => {
       tick(action);
       expect(redrawn(action)).toHaveLength(2);
       expect(redrawn(action)[1]![1]).not.toContain("dimmed");
+    });
+
+    it("Next stays available through the post-seek blip, and greys only once the replay is really left", async () => {
+      storeWith([AHEAD]);
+      const { action, sdk } = makeAction(REPLAY);
+      await appear(action, { mode: "next" });
+      expect(shown(action)).not.toContain("dimmed");
+
+      // For ~300 ms after every `setPlayPosition`, telemetry reads IsReplayPlaying false.
+      sdk.getCurrentTelemetry.mockReturnValue({ ...REPLAY, IsReplayPlaying: false } as TelemetryData);
+      await vi.advanceTimersByTimeAsync(300);
+      tick(action);
+      await vi.advanceTimersByTimeAsync(100);
+      expect(redrawn(action)).toHaveLength(0);
+
+      await vi.advanceTimersByTimeAsync(REPLAY_EXIT_GRACE_MS);
+      tick(action);
+      await vi.advanceTimersByTimeAsync(100);
+      expect(redrawn(action)).toHaveLength(1);
+      expect(redrawn(action)[0]![1]).toMatch(/\|dimmed$/);
     });
 
     it("Previous flips to available once the replay is past the marker's window", async () => {

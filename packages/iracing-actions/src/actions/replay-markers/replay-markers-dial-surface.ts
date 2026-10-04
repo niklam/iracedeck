@@ -158,7 +158,9 @@ export function buildTriggerDescription(dial: ReplayMarkersDialSettings): DeckTr
  * - the side marks lit where a turn from `anchorFrame` would jump — the same
  *   {@link resolveJumpTarget} the rotation calls, so the screen cannot promise a
  *   jump the dial will not make (out of a replay neither is lit);
- * - from the car, a caption naming the press when it adds.
+ * - from the car, a caption naming the press when it adds. "From the car" is
+ *   the context's debounced `inReplay`, so the caption does not flash in the
+ *   ~300 ms after each seek while `IsReplayPlaying` reads false.
  */
 export function resolveDialView(
   context: ReplayContextResult,
@@ -167,7 +169,7 @@ export function resolveDialView(
 ): { value: string; sides: DialSideMarks; caption: string; dimmed: boolean } {
   if (!context.ok) return { value: "", sides: { left: false, right: false }, caption: "", dimmed: true };
 
-  const inReplay = context.telemetry.IsReplayPlaying === true;
+  const { inReplay } = context;
   const markers = context.store.markers.list(context.scope);
   const sides = {
     left: resolveJumpTarget("previous", context, anchorFrame) !== null,
@@ -271,7 +273,7 @@ export class ReplayMarkersDialSurface {
 
     if (!first) {
       this.host.logger.debug(
-        context.telemetry.IsReplayPlaying === true
+        context.inReplay
           ? `Dial ${direction}: no marker that way (anchor=${anchor})`
           : `Dial ${direction}: replay not playing, and iRacing ignores replay commands from the car`,
       );

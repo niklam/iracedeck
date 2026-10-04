@@ -13,6 +13,7 @@ import {
   CONFIRMATION_FLASH_MS,
   DIAL_LANDING_HOLD_MS,
   readReplayContext,
+  REPLAY_EXIT_GRACE_MS,
   resolveJumpTarget,
 } from "./replay-markers-ops.js";
 import { ReplayMarkersDialSettings } from "./replay-markers-settings.js";
@@ -403,6 +404,78 @@ describe("ReplayMarkersDialSurface", () => {
     });
   });
 
+  describe("the post-seek telemetry blip", () => {
+    /** What telemetry reads for ~300 ms after every `setPlayPosition`: not playing, `ReplayFrameNumEnd` the frames LEFT. */
+    const BLIP = { ...replayAt(0), IsReplayPlaying: false } as TelemetryData;
+
+    it("turns in the blip still jump, each stepping on from the marker just jumped to", async () => {
+      setMarkers([1_000, 2_000, 3_000]);
+      const surface = makeSurface();
+      const ctx = dialContext();
+      await appear(surface, ctx);
+
+      surface.rotate(ctx as never, dial(), 1, false);
+      env.telemetry = BLIP;
+      await vi.advanceTimersByTimeAsync(80);
+      surface.rotate(ctx as never, dial(), 1, false);
+      await vi.advanceTimersByTimeAsync(80);
+      surface.rotate(ctx as never, dial(), 1, false);
+
+      expect(mocks.setPlayPosition.mock.calls.map((c) => c[1])).toEqual([1_000, 2_000, 3_000]);
+    });
+
+    it("no from-the-car caption flashes on the strip during the blip", async () => {
+      setMarkers([1_000, 3_000]);
+      const surface = makeSurface();
+      const ctx = dialContext();
+      await appear(surface, ctx);
+      expect(lastBox(ctx)).not.toContain("data-caption");
+
+      env.telemetry = BLIP;
+      await vi.advanceTimersByTimeAsync(300);
+      surface.onTick(ctx.id);
+      await settle();
+
+      expect(lastBox(ctx)).not.toContain("data-caption");
+    });
+
+    it("a full second of not playing is the car: the caption shows, a turn sends nothing, and a replay is back at once", async () => {
+      setMarkers([1_000, 3_000]);
+      const surface = makeSurface();
+      const ctx = dialContext();
+      await appear(surface, ctx);
+
+      env.telemetry = BLIP;
+      await vi.advanceTimersByTimeAsync(300);
+      surface.onTick(ctx.id);
+      await vi.advanceTimersByTimeAsync(REPLAY_EXIT_GRACE_MS);
+      surface.onTick(ctx.id);
+      await settle();
+
+      expect(lastBox(ctx)).toMatch(/data-caption="true"[^>]*>ADD /);
+      surface.rotate(ctx as never, dial(), 1, false);
+      expect(mocks.setPlayPosition).not.toHaveBeenCalled();
+
+      env.telemetry = replayAt(500);
+      surface.onTick(ctx.id);
+      await settle();
+
+      expect(lastBox(ctx)).not.toContain("data-caption");
+      surface.rotate(ctx as never, dial(), 1, false);
+      expect(mocks.setPlayPosition).toHaveBeenCalledWith(ReplayPosMode.Begin, 1_000);
+    });
+
+    it("from the car with no replay before: the caption shows at once", async () => {
+      setMarkers([1_000]);
+      env.telemetry = LIVE;
+      const surface = makeSurface();
+      const ctx = dialContext();
+      await appear(surface, ctx);
+
+      expect(lastBox(ctx)).toMatch(/data-caption="true"[^>]*>ADD /);
+    });
+  });
+
   describe("the replay cursor", () => {
     it("is cancelled under the dial's name before every send", async () => {
       setMarkers([1_000, 2_000, 3_000]);
@@ -439,7 +512,9 @@ describe("ReplayMarkersDialSurface", () => {
       claimReplayCursor("fastest-lap");
 
       surface.rotate(ctx as never, dial(), 1, false);
+      // From the car: past the post-seek grace, so the replay counts as left.
       env.telemetry = LIVE;
+      await vi.advanceTimersByTimeAsync(REPLAY_EXIT_GRACE_MS);
       surface.rotate(ctx as never, dial(), -1, false);
 
       expect(currentReplayCursorOwner()).toBe("fastest-lap");

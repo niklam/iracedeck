@@ -13,7 +13,10 @@ import {
   jumpToMarkerFrame,
   markerIndexAt,
   previewAddMarker,
+  readReplayContext,
+  REPLAY_EXIT_GRACE_MS,
   type ReplayContext,
+  type ReplayContextSource,
   resolveAnchorFrame,
   resolveJumpTarget,
   resolveMarkerJumpAnchor,
@@ -80,6 +83,7 @@ describe("resolveJumpTarget", () => {
     return {
       ok: true,
       telemetry: telemetry as TelemetryData,
+      inReplay: telemetry.IsReplayPlaying === true,
       frame: 3_000,
       store: { markers: { next, previous } } as unknown as ReplaySessionStore,
       scope: { subSessionId: 7 },
@@ -101,6 +105,89 @@ describe("resolveJumpTarget", () => {
     expect(resolveJumpTarget("next", ctx)).toBeNull();
     expect(resolveJumpTarget("previous", ctx)).toBeNull();
     expect(ctx.store.markers.next).not.toHaveBeenCalled();
+  });
+});
+
+describe("the replay state survives the post-seek blip (#1230)", () => {
+  /** A replay at `frame`; `ReplayFrameNumEnd` is the frames LEFT, never a position. */
+  const replayAt = (frame: number) =>
+    ({ IsReplayPlaying: true, ReplayFrameNum: frame, ReplayFrameNumEnd: 90_000 }) as TelemetryData;
+  /** What telemetry reads for ~300 ms after a `setPlayPosition`, and what it reads from the car. */
+  const notPlaying = { IsReplayPlaying: false, ReplayFrameNum: 0, ReplayFrameNumEnd: 90_000 } as TelemetryData;
+  const store = {
+    markers: { next: vi.fn(() => markers(5_000)[0]!), previous: vi.fn(() => null) },
+  } as unknown as ReplaySessionStore;
+  let telemetry: TelemetryData = notPlaying;
+  const source: ReplayContextSource = {
+    getConnectionStatus: () => true,
+    getCurrentTelemetry: () => telemetry,
+    getSessionInfo: () => null,
+    isStoreInitialized: () => true,
+    getStore: () => store,
+  };
+
+  function read(t: TelemetryData, nowMs: number): ReplayContext {
+    telemetry = t;
+    const context = readReplayContext(source, nowMs);
+
+    if (!context.ok) throw new Error(context.reason);
+
+    return context;
+  }
+
+  beforeEach(() => {
+    _resetReplayCursor();
+  });
+
+  it("a false read under the grace is still the replay, at the last replay frame seen", () => {
+    expect(read(replayAt(4_000), 10_000)).toMatchObject({ inReplay: true, frame: 4_000 });
+
+    expect(read(notPlaying, 10_300)).toMatchObject({ inReplay: true, frame: 4_000 });
+    expect(read(notPlaying, 10_000 + REPLAY_EXIT_GRACE_MS - 1)).toMatchObject({ inReplay: true, frame: 4_000 });
+  });
+
+  it("a jump is still available in the grace, measured from the held frame", () => {
+    read(replayAt(4_000), 10_000);
+    const context = read(notPlaying, 10_300);
+
+    expect(resolveJumpTarget("next", context)?.frame).toBe(5_000);
+    expect(store.markers.next).toHaveBeenLastCalledWith(4_000, undefined);
+  });
+
+  it("false for the whole grace is the car: live, at the live edge", () => {
+    read(replayAt(4_000), 10_000);
+    read(notPlaying, 10_300);
+
+    const context = read(notPlaying, 10_000 + REPLAY_EXIT_GRACE_MS);
+
+    expect(context).toMatchObject({ inReplay: false, frame: 90_000 });
+    expect(resolveJumpTarget("next", context)).toBeNull();
+  });
+
+  it("the grace runs from the LAST replay read, so a blip after every jump never adds up", () => {
+    read(replayAt(4_000), 10_000);
+    read(notPlaying, 10_500);
+    read(replayAt(4_100), 10_600);
+
+    expect(read(notPlaying, 11_500)).toMatchObject({ inReplay: true, frame: 4_100 });
+  });
+
+  it("never in a replay: live from the first read", () => {
+    expect(read(notPlaying, 10_000)).toMatchObject({ inReplay: false, frame: 90_000 });
+  });
+
+  it("re-entering a replay is immediate", () => {
+    read(replayAt(4_000), 10_000);
+    read(notPlaying, 12_000);
+
+    expect(read(replayAt(7_000), 12_010)).toMatchObject({ inReplay: true, frame: 7_000 });
+  });
+
+  it("a replay left for the car stays left: the old frame is not revived later", () => {
+    read(replayAt(4_000), 10_000);
+    read(notPlaying, 11_000);
+
+    expect(read(notPlaying, 11_010)).toMatchObject({ inReplay: false, frame: 90_000 });
   });
 });
 
@@ -189,6 +276,7 @@ describe("previewAddMarker", () => {
         ReplaySessionNum: 1,
         ReplaySessionTime: 50,
       } as TelemetryData,
+      inReplay: true,
       frame: 3_000,
       store: {
         markers: { list: () => markers(1_000) },

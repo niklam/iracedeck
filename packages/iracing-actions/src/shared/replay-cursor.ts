@@ -25,6 +25,14 @@
  * replay is no longer headed there. The rule for when a landing still anchors
  * is the marker surfaces' own (`replay-markers-ops.ts`).
  *
+ * Beside it sits the last **replay sighting** (#1230): the frame and time of
+ * the last tick that read `IsReplayPlaying` true. For roughly 300 ms after
+ * every `setPlayPosition` telemetry reads `IsReplayPlaying` false, so the
+ * Replay Markers surfaces hold "in a replay" from this sighting through a short
+ * grace rather than taking that blip for the car. One value for the same
+ * reason the landing is one: there is one replay. The grace rule is
+ * `readReplayContext`'s (`replay-markers-ops.ts`).
+ *
  * Deliberately in-memory and process-wide: every action runs in one plugin
  * process, and nothing here belongs in persisted settings.
  */
@@ -69,6 +77,15 @@ export interface ReplayLanding {
 }
 
 let landing: ReplayLanding | null = null;
+
+/** The last tick that read as a replay: the frame on screen, and when. */
+export interface ReplaySighting {
+  readonly frame: number;
+  /** `Date.now()` at the read. */
+  readonly seenAt: number;
+}
+
+let sighting: ReplaySighting | null = null;
 
 /**
  * Claim the cursor for a long-running driver. An earlier claim still standing
@@ -127,8 +144,24 @@ export function clearReplayLanding(): void {
   landing = null;
 }
 
+/** Records a read that showed a replay playing at `frame`. */
+export function recordReplaySighting(frame: number, seenAt: number): void {
+  sighting = { frame, seenAt };
+}
+
+/** The last read that showed a replay, or `null` since the replay was left (or never seen). */
+export function lastReplaySighting(): ReplaySighting | null {
+  return sighting;
+}
+
+/** Drops the sighting: the replay has been left for the car. */
+export function clearReplaySighting(): void {
+  sighting = null;
+}
+
 /** @internal Reset for tests. */
 export function _resetReplayCursor(): void {
   current = null;
   landing = null;
+  sighting = null;
 }

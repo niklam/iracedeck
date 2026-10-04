@@ -312,7 +312,7 @@ export class ReplayMarkers extends ConnectionStateAwareAction<ReplayMarkersSetti
       }
       case "next":
       case "previous": {
-        if (context.telemetry.IsReplayPlaying !== true) {
+        if (!context.inReplay) {
           this.logger.debug(
             `${settings.mode}: replay not playing, and iRacing ignores replay commands from the car; open the replay first`,
           );
