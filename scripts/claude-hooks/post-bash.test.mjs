@@ -1,4 +1,6 @@
 import { spawnSync } from "node:child_process";
+import { mkdtempSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -6,7 +8,13 @@ import { describe, expect, it } from "vitest";
 // paths whose step needs no network are used, and the board helpers run dry.
 const HOOK = path.join(import.meta.dirname, "post-bash.mjs");
 
-function fire(command, stdout = "") {
+// A PATH with no `gh` on it, so a step that asks gh fails at once — offline
+// and deterministic — and reports that it could not, which proves it ran.
+const NO_GH = mkdtempSync(path.join(os.tmpdir(), "post-bash-no-gh-"));
+
+function fire(command, { stdout = "", withoutGh = false } = {}) {
+  const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !withoutGh || k.toLowerCase() !== "path"));
+  if (withoutGh) env.PATH = NO_GH;
   const r = spawnSync(process.execPath, [HOOK], {
     input: JSON.stringify({
       tool_name: "Bash",
@@ -16,7 +24,7 @@ function fire(command, stdout = "") {
     }),
     encoding: "utf8",
     timeout: 60_000,
-    env: { ...process.env, IRACEDECK_HOOKS_DRY_RUN: "1" },
+    env: { ...env, IRACEDECK_HOOKS_DRY_RUN: "1" },
   });
   expect(r.status, r.stderr).toBe(0);
   return r.stdout.trim() ? JSON.parse(r.stdout).hookSpecificOutput.additionalContext : null;
@@ -27,6 +35,7 @@ describe("post-bash.mjs triggers", () => {
     for (const command of [
       `grep -rn "gh pr merge" scripts`,
       `git commit -q -F - <<'EOF'\nsubject\n\nafter gh pr merge 7 the card moves\nEOF`,
+      `git commit -m "$(cat <<'EOF'\nsubject\n\ngit worktree add ../ir-77 -b fix/77-x\nEOF\n)"`,
       `echo "gh issue create --title x"`,
       `printf '%s' 'sed -i s/a/b/ f'`,
       `grep -n 'git worktree add ../ir-5' notes.md`,
@@ -34,9 +43,27 @@ describe("post-bash.mjs triggers", () => {
       expect(fire(command), command).toBeNull();
   });
 
-  it("runs the issue step on a real `gh issue create`", () =>
-    expect(fire("gh issue create --title x --body y", "")).toMatch(/no issue URL in the output/));
+  it("runs the issue step on a real `gh issue create`, behind a wrapper too", () => {
+    expect(fire("gh issue create --title x --body y")).toMatch(/no issue URL in the output/);
+    expect(fire("timeout 60 gh issue create --title x --body y")).toMatch(/no issue URL in the output/);
+  });
 
-  it("runs the sed step on a real `sed -i`, even after a chain", () =>
-    expect(fire("ls && sed -i s/a/b/ nothing.txt")).toMatch(/sed -i ran/));
+  it("runs the sed step on a real `sed -i`, after a chain or through xargs", () => {
+    expect(fire("ls && sed -i s/a/b/ nothing.txt")).toMatch(/sed -i ran/);
+    expect(fire("git ls-files '*.nothing' | xargs sed -i 's/a/b/'")).toMatch(/sed -i ran/);
+  });
+
+  it("runs the merge step on a real `gh pr merge`, behind a wrapper too", () => {
+    for (const command of ["gh pr merge 7 --squash", "timeout 120 gh pr merge 7 --squash"])
+      expect(fire(command, { withoutGh: true }), command).toMatch(/could not read the PR back/);
+    expect(fire(`gh pr merge "7" --squash`)).toMatch(/its PR argument could not be read/);
+  });
+
+  it("moves the card of the tree the add created, not of one a comment names", () => {
+    const note = fire("# superseded: git worktree add ../ir-1400\ngit worktree add ../ir-1321 -b fix/1321-x", {
+      withoutGh: true,
+    });
+    expect(note).toMatch(/Worktree for #1321 created/);
+    expect(note).not.toMatch(/1400/);
+  });
 });

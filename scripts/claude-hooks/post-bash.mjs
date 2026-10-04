@@ -6,7 +6,7 @@
 import path from "node:path";
 
 import { addToBoard, gh, ghJson, git, postContext, readInput, setBoardStatus } from "./lib.mjs";
-import { atCommand, GIT_WORKTREE_ADD, gitCwd, mergeSegments, parseMerge, words } from "./rules-bash.mjs";
+import { firstMerge, GIT_WORKTREE_ADD, gitCwd, trustedMask, worktreeAddTarget } from "./rules-bash.mjs";
 import { issueFromWorktreePath, missingWorkflows } from "./rules-post.mjs";
 
 const input = await readInput();
@@ -17,17 +17,25 @@ if (typeof command === "string") {
   const stdout = typeof resp === "string" ? resp : (resp.stdout ?? resp.output ?? "");
   const notes = [];
   try {
-    // Every trigger is tested at command position with inert text masked, like
-    // the pre-hook's rules (#1321): a grep, a heredoc or a comment body that
-    // merely NAMES `gh pr merge` used to run the after-merge steps.
-    if (atCommand(command, /sed\s+(-[a-zA-Z]*i|--in-place)/)) {
+    // The triggers read the trusted-masked text (#1321): a grep, a heredoc or a
+    // comment body that merely NAMES `gh pr merge` used to run the after-merge
+    // steps. Where the mask is not trusted they read the raw text, as before.
+    // Unanchored on purpose: a follow-up is wanted wherever the command ran,
+    // `xargs sed -i` and `timeout 120 gh pr merge` included.
+    const text = trustedMask(command);
+    if (/\bsed\s+(-[a-zA-Z]*i|--in-place)/.test(text)) {
       const r = git(["diff", "--stat"], gitCwd(command, cwd));
       notes.push(`sed -i ran; git diff --stat:\n${r.out.trim() || "(no tracked changes)"}`);
     }
-    const merge = mergeSegments(command)[0];
-    if (merge !== undefined) notes.push(...afterMerge(parseMerge(merge).ref, cwd));
-    if (atCommand(command, /gh\s+issue\s+create\b/)) notes.push(...afterIssueCreate(stdout, cwd));
-    if (atCommand(command, GIT_WORKTREE_ADD)) notes.push(...afterWorktreeAdd(command, cwd));
+    const merge = firstMerge(command);
+    if (merge?.readable) notes.push(...afterMerge(merge.ref, cwd));
+    else if (merge)
+      notes.push(
+        "gh pr merge ran, but its PR argument could not be read; check by hand whether it merged, and move its Roadmap card to Testing.",
+      );
+    if (/\bgh\s+issue\s+create\b/.test(text)) notes.push(...afterIssueCreate(stdout, cwd));
+    const target = worktreeAddTarget(command);
+    if (target) notes.push(...afterWorktreeAdd(command, target, cwd));
   } catch (e) {
     notes.push(`post-bash hook error: ${e?.stack ?? e}`);
   }
@@ -80,18 +88,8 @@ function afterIssueCreate(stdout, cwd) {
   ];
 }
 
-function afterWorktreeAdd(command, cwd) {
-  const m = command.match(/worktree\s+add\b(.*)$/m);
-  const args = words(m?.[1] ?? "");
-  let target;
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === "-b" || args[i] === "-B") i++;
-    else if (!args[i].startsWith("-")) {
-      target = args[i];
-      break;
-    }
-  }
-  if (!target) return [];
+/** `target` is the add's own argument (`worktreeAddTarget`), read where the pre-hook's rule read it. */
+function afterWorktreeAdd(command, target, cwd) {
   const resolved = path.resolve(gitCwd(command, cwd, GIT_WORKTREE_ADD), target);
   const issue = issueFromWorktreePath(resolved);
   if (!issue) return [];
