@@ -29,10 +29,10 @@ Three parts: one for users and support, one that watches by itself, and one for 
 - **Mechanism.** The capture is a deck-core module using an in-process `inspector.Session` on the main thread (`session.connect()`, then `Profiler.setSamplingInterval` 1000 µs, `Profiler.start`, `Profiler.stop`). This is Node's built-in inspector, so it needs no `--inspect`, no port and no developer mode. The 1 ms interval halves the 0.5 ms overhead seen in manual profiling; 30 s still yields ~30,000 samples.
 - **Page interface.**
   - The button sends `sendToPlugin { event: "captureCpuProfile" }`. It carries no duration and no path, because a command never takes a path from the page (`settings-window.md`).
-  - Its status is the run-scoped key `_profileCaptureStatus` (`{ state: "idle" | "capturing" | "saved" | "failed", startedAt?, file?, reason? }`). It is enrolled in `RUN_SCOPED_SETTING_KEYS`, the same pattern as `_voicePackStatus`.
+  - Its status is the run-scoped key `_profileCaptureStatus` (`{ state: "idle" | "capturing" | "saved" | "failed", startedAt?, durationMs?, file?, reason? }`, published as a JSON string like `_voicePackStatus`). `capturing` carries `durationMs`, so the page's countdown never hard-codes 30 s. It is enrolled in `RUN_SCOPED_SETTING_KEYS`, the same pattern as `_voicePackStatus`. It is exempt from the "every producer re-asserts its state" rule in `global-settings.md`, because a capture dies with the process that ran it.
   - The button shows a countdown while capturing and the saved file name afterwards.
   - A press during a capture is refused (the state already says capturing).
-  - An **Open folder** button (`openProfilesFolder`) reveals the folder through the existing `openFolderInExplorer`.
+  - An **Open folder** button (`openProfilesFolder`) opens the folder through the existing `openDirectoryInExplorer`, which also creates it when no capture has run yet. `openFolderInExplorer` would select a file inside the folder's parent instead.
   - Both buttons render only under `locals.settingsWindow`, like the Diagnostics card's existing Open folder.
 - **Logging.** `INFO` "CPU profile capture started" and "CPU profile saved", with the path at `debug`. Unavailable inspector, write failure: `WARN` with the reason, and the state `failed` with that reason.
 
@@ -47,7 +47,7 @@ Three parts: one for users and support, one that watches by itself, and one for 
   - **Recovery:** it writes `INFO` "Plugin CPU use back to normal" on the first sample below both thresholds, then re-arms.
   - **Why WARN carries numbers:** the logging rule keeps info lines parameter-free, so the numbers go on the WARN, and that line is what a support log needs.
 - **Per-minute figures.** One `debug` line per sample: `Resources: cpu 12.3% core, loop 9.8%, rss 340 MB, heap 64/172 MB`. Visible when debug logging is on, which is when a maintainer is looking.
-- **Session summary.** At each iRacing disconnect, through the app-monitor terminate path: `INFO` "Resource summary for the iRacing session", plus a `debug` line with the average and peak CPU, the peak event-loop load, and the peak RSS and heap.
+- **Session summary.** At each iRacing disconnect, through the app-monitor terminate path: `INFO` "Resource summary for the iRacing session", plus a `debug` line with the average and peak CPU, the peak event-loop load, and the peak RSS and heap. Only samples taken while iRacing runs count towards it, and a session with no such samples writes nothing.
 - **Not gated on `debugLogging`.** The WARN and the INFO lines always reach the file, because users run with debug off.
 
 ### 3. A local debug switch for the developer, never shipped
