@@ -14,6 +14,7 @@
 				<option value="stop-recording">Stop Recording</option>
 				<option value="restart-recording">Restart Recording</option>
 				<option value="snapshot">Take Snapshot</option>
+				<option value="capture-profile">Capture CPU Profile</option>
 			</sdpi-select>
 		</sdpi-item>
 
@@ -28,6 +29,12 @@
 			(an "iRaceDeck\telemetry-snapshots" folder in your user home folder). Environment variables such as
 			%USERPROFILE% and a leading ~ are expanded; a relative path is resolved against your home folder. The
 			folder is created if it does not exist.
+		</div>
+		<div id="capture-profile-help" class="ird-supporting-text hidden">
+			Records 30 seconds of what iRaceDeck is doing, for a report about high CPU use. The key counts down,
+			then shows SAVED or FAILED. The files go to the profiles folder next to the plugin log; open it with
+			Open folder beside Capture CPU profile on the Settings window's Diagnostics tab. Only one capture
+			runs at a time, from a key or from the Settings window.
 		</div>
 
 		<script>
@@ -56,6 +63,7 @@
 				const isSnapshot = mode === "snapshot";
 				document.getElementById("snapshot-settings")?.classList.toggle("hidden", !isSnapshot);
 				document.getElementById("snapshot-help")?.classList.toggle("hidden", !isSnapshot);
+				document.getElementById("capture-profile-help")?.classList.toggle("hidden", mode !== "capture-profile");
 			}
 
 			if (document.readyState === "loading") {

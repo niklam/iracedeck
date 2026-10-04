@@ -76,6 +76,18 @@ Where the log file lives:
 - **Stream Dock (Mirabox)**: in the plugin's `log` folder under `%APPDATA%\HotSpot\StreamDock\plugins\com.iracedeck.sd.core.sdPlugin\`, named by date (e.g. `2026.5.31.log`).
 - **Ulanzi Deck (UlanziStudio)**: in the plugin's `log` folder under `%APPDATA%\Ulanzi\UlanziDeck\Plugins\com.ulanzi.iracedeck.ulanziPlugin\`, named by date (e.g. `2026.5.31.log`).
 
+## If iRaceDeck uses a lot of CPU
+
+iRaceDeck keeps an eye on its own CPU use. It checks once a minute, and when three checks in a row find it busy — using half of one CPU core or more, or spending half the time or more working rather than waiting for something to do — the plugin log gets a warning with the figures, such as `Plugin CPU use is high: 62.4% of one core, event loop 71.0% busy, over 3 min (rss 340 MB, heap 64/172 MB)`, and a note once it is back to normal. You don't need debug logging on for these lines, so a log you already have may show when it started.
+
+To show us what is using the CPU:
+
+1. While the problem is happening, open the [Settings window](/docs/getting-started/settings/#diagnostics) and pick the **Diagnostics** tab.
+2. Press **Capture CPU profile** and keep iRacing and your deck running as you were. The capture takes 30 seconds.
+3. When the line under the button shows the saved file's name, press **Open folder** and attach both new files (`.cpuprofile` and `.txt`) to your report, together with the plugin log.
+
+The capture only records iRaceDeck itself, never iRacing or anything else on your PC, and nothing is sent anywhere: the files stay in the `profiles` folder next to the log until you attach them.
+
 ## Need more help?
 
 - **Discord**: [Join the community](https://discord.gg/c6nRYywpah) for real-time support

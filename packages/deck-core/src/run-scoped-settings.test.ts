@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { PROFILE_CAPTURE_STATUS_KEY } from "./cpu-profile-capture-constants.js";
 import { PI_WARNINGS_KEY } from "./pi-warnings-constants.js";
 import { hasOnlyRunScopedKeys, RUN_SCOPED_SETTING_KEYS, stripRunScopedKeys } from "./run-scoped-settings.js";
 import { VOICE_PACKS_KEY } from "./voice-pack-constants.js";
@@ -7,6 +8,16 @@ import { VOICE_PACKS_KEY } from "./voice-pack-constants.js";
 describe("run-scoped settings keys (issue #1014)", () => {
   it("enrols the PI warnings key", () => {
     expect(RUN_SCOPED_SETTING_KEYS).toContain(PI_WARNINGS_KEY);
+  });
+
+  // #1338: a "capturing" state read back after a restart would count down a
+  // capture that died with the previous process.
+  it("enrols the CPU profile capture status and strips it before the file", () => {
+    expect(RUN_SCOPED_SETTING_KEYS).toContain(PROFILE_CAPTURE_STATUS_KEY);
+    expect(
+      stripRunScopedKeys({ [PROFILE_CAPTURE_STATUS_KEY]: JSON.stringify({ state: "capturing" }), driverName: "nick" }),
+    ).toEqual({ driverName: "nick" });
+    expect(hasOnlyRunScopedKeys([PROFILE_CAPTURE_STATUS_KEY])).toBe(true);
   });
 
   it("drops every enrolled key", () => {

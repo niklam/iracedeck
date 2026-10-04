@@ -594,6 +594,7 @@ export {
   isAppMonitorInitialized,
   isIRacingActive,
   isIRacingRunning,
+  onIRacingStarted,
   onIRacingTerminated,
 } from "./app-monitor.js";
 
@@ -871,6 +872,29 @@ export {
   watchdogDailyLogFileName,
   type WatchdogLogTarget,
 } from "./main-thread-watchdog.js";
+// Capture CPU profile: an in-process profiler session behind the settings window's Diagnostics button (issue #1338)
+export {
+  CPU_PROFILE_DEFAULTS,
+  type CpuProfileCapture,
+  type CpuProfileCaptureOptions,
+  type CpuProfileCaptureResult,
+  _resetCpuProfileCapture,
+  createCpuProfileCapture,
+  getCpuProfileCapture,
+  initializeCpuProfileCapture,
+  isCpuProfileCaptureInitialized,
+  PROFILE_CAPTURE_STATUS_KEY,
+  type ProfileCaptureStatus,
+} from "./cpu-profile-capture.js";
+// Resource monitor: the plugin's own CPU, event-loop and memory use in its log (issue #1338)
+export {
+  RESOURCE_MONITOR_DEFAULTS,
+  type ResourceMonitor,
+  type ResourceMonitorConfig,
+  type ResourceMonitorOptions,
+  type ResourceSample,
+  startResourceMonitor,
+} from "./resource-monitor.js";
 // Settings-channel publisher: store write + the one host mirror per start (issue #993 phase 2)
 export {
   createSettingsChannelPublisher,

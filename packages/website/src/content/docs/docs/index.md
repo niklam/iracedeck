@@ -20,7 +20,7 @@ Welcome to the iRaceDeck documentation. Here you'll find guides for getting star
 
 ## Actions
 
-iRaceDeck provides **33 actions** with **277 modes** across 10 categories. See the [Actions Overview](/docs/actions/overview/) for a full breakdown, or jump to a category:
+iRaceDeck provides **33 actions** with **278 modes** across 10 categories. See the [Actions Overview](/docs/actions/overview/) for a full breakdown, or jump to a category:
 
 - [Audio & Voice](/docs/actions/audio-voice/ai-spotter-controls/) — AI spotter, audio controls, race engineer & radar
 - [Display & Session](/docs/actions/display-session/session-info/) — Live session data and telemetry displays

@@ -25,6 +25,7 @@
     "build:stream-deck": "pnpm build:ts && pnpm restart:stream-deck",
     "restart:stream-deck": "streamdeck restart com.iracedeck.sd.core",
     "dev": "turbo run dev",
+    "debug:plugin": "node scripts/debug-plugin.mjs",
     "dev:voices": "node scripts/dev-voices.mjs",
     "stage:voices": "pnpm --filter @iracedeck/audio-assets stage:dev-voices",
     "clean": "turbo run clean",

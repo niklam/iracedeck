@@ -21,4 +21,17 @@
 <ird-dev-base-url></ird-dev-base-url>
 <% if (locals.settingsWindow) { %>
 <div class="ird-open-settings"><ird-open-folder></ird-open-folder></div>
+<%# Capture CPU profile (#1338): window only, like Open folder above — a PI's sendToPlugin goes to its action. %>
+<sdpi-item label="CPU profile">
+  <div class="ird-cpu-profile-buttons">
+    <ird-capture-cpu-profile></ird-capture-cpu-profile>
+    <ird-open-profiles-folder></ird-open-profiles-folder>
+  </div>
+</sdpi-item>
+<ird-cpu-profile-status></ird-cpu-profile-status>
+<div class="ird-supporting-text">
+  Records 30 seconds of what the plugin is doing and saves it to the profiles folder next to the plugin log.
+  Capture while the problem is happening, then attach both files (.cpuprofile and .txt) to your report.
+  The folder keeps the five newest captures.
+</div>
 <% } %>

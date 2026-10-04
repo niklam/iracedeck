@@ -1,5 +1,6 @@
 import {
   PI_WARNINGS_KEY,
+  PROFILE_CAPTURE_STATUS_KEY,
   SETTINGS_WINDOW_HTML as RUNTIME_HTML,
   SETTINGS_WINDOW_OPEN_WARNING_ID,
   SETTINGS_WINDOW_SERVER_WARNING_ID,
@@ -10,6 +11,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
+import { PROFILE_CAPTURE_STATUS_SETTING } from "../components/cpu-profile-capture-constants.js";
 import { SETTINGS_WINDOW_FLAG as COMPONENTS_FLAG } from "../components/settings-window-context.js";
 import { VOICE_PACK_CARD_PHASES } from "../components/voice-pack-catalog-constants.js";
 import { WARNINGS_SETTING as COMPONENT_WARNINGS_KEY } from "../components/warnings-constants.js";
@@ -149,6 +151,17 @@ describe("settings-window page withholds the settings-window banners (#1014)", (
 describe("PI warnings settings key (#610, #1014)", () => {
   it("is the same key in deck-core and in the browser component", () => {
     expect(COMPONENT_WARNINGS_KEY).toBe(PI_WARNINGS_KEY);
+  });
+});
+
+/**
+ * The CPU profile capture's status key (#1338): written by deck-core's capture
+ * service, read by `ird-cpu-profile-status`. A rename on one side alone would
+ * leave the Diagnostics card silent through a whole capture.
+ */
+describe("CPU profile capture status key (#1338)", () => {
+  it("is the same key in deck-core and in the browser component", () => {
+    expect(PROFILE_CAPTURE_STATUS_SETTING).toBe(PROFILE_CAPTURE_STATUS_KEY);
   });
 });
 

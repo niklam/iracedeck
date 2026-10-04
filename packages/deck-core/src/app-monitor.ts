@@ -48,6 +48,17 @@ let logger: ILogger | null = null;
 /** Listeners notified after iRacing terminates (issue #870) */
 const terminatedListeners = new Set<() => void>();
 
+/** Listeners notified when iRacing becomes active (issue #1338) */
+const startedListeners = new Set<() => void>();
+
+/**
+ * Whether the started listeners have already been notified for the current
+ * session (issue #1338). The launch event and the SDK connection can both
+ * report the same start; whichever comes first wins, and the exit
+ * notification re-arms it.
+ */
+let simStartNotified = false;
+
 /**
  * Whether the terminated listeners have already been notified for the
  * current exit episode (issue #870). The terminate event and the
@@ -69,6 +80,24 @@ function cancelSdkExitConfirm(): void {
   }
 }
 
+/** Notify the started listeners once per session. */
+function notifyIRacingStart(): void {
+  if (simStartNotified) {
+    return;
+  }
+
+  simStartNotified = true;
+
+  for (const listener of startedListeners) {
+    try {
+      listener();
+    } catch (error) {
+      logger?.error("iRacing-started listener failed");
+      logger?.debug(`Listener error: ${String(error)}`);
+    }
+  }
+}
+
 /** Notify the terminated listeners once per exit episode. */
 function notifyIRacingExit(): void {
   if (simExitNotified) {
@@ -76,6 +105,7 @@ function notifyIRacingExit(): void {
   }
 
   simExitNotified = true;
+  simStartNotified = false;
 
   for (const listener of terminatedListeners) {
     try {
@@ -100,6 +130,7 @@ function handleSdkConnectionTick(isConnected: boolean): void {
   if (isConnected) {
     cancelSdkExitConfirm();
     simExitNotified = false;
+    notifyIRacingStart();
 
     return;
   }
@@ -177,6 +208,7 @@ export function initAppMonitor(adapter: IDeckPlatformAdapter, log: ILogger): voi
       cancelSdkExitConfirm();
       simExitNotified = false;
       getController().setReconnectEnabled(true);
+      notifyIRacingStart();
     }
   });
 
@@ -289,6 +321,24 @@ export function onIRacingTerminated(listener: () => void): () => void {
 }
 
 /**
+ * Subscribe to iRacing becoming active (issue #1338): the first of the host's
+ * launch event and the SDK connection coming up, once per session — the edge
+ * {@link onIRacingTerminated} closes. A plugin that starts while iRacing is
+ * already connected hears it on the first connection tick. A throwing listener
+ * is logged and skipped; the rest still run.
+ *
+ * @param listener - Called once per iRacing session start
+ * @returns Unsubscribe function
+ */
+export function onIRacingStarted(listener: () => void): () => void {
+  startedListeners.add(listener);
+
+  return () => {
+    startedListeners.delete(listener);
+  };
+}
+
+/**
  * Check if the app monitor has been initialized.
  *
  * @returns true if initialized, false otherwise
@@ -306,7 +356,9 @@ export function _resetAppMonitor(): void {
   iRacingRunning = false;
   runningSetByEvent = false;
   simExitNotified = false;
+  simStartNotified = false;
   lastSdkConnected = null;
   cancelSdkExitConfirm();
   terminatedListeners.clear();
+  startedListeners.clear();
 }

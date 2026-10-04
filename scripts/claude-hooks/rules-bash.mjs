@@ -13,6 +13,7 @@
  */
 import path from "node:path";
 
+import { DEBUG_VALUE, ELGATO_MANIFEST, manifestDebug } from "../lib/debug-plugin.mjs";
 import { MAIN_BRANCH, SPEC_DIR } from "./lib.mjs";
 
 const TITLE_RE = /^(feat|fix|improve|perf|refactor|docs|ci|chore|test|build|style|revert)(\([^)]+\))?!?: .+ \(#\d+\)$/;
@@ -806,7 +807,7 @@ export const rules = [
       // take them — the index or the working copy, per `commitSelection`.
       for (const f of committed.filter((x) => x.startsWith(SPEC_DIR))) {
         if (ctx.tracked?.(dir, f)) continue;
-        const text = ctx.specText?.(dir, f, fromIndex.has(f) ? "index" : "worktree");
+        const text = ctx.committedText?.(dir, f, fromIndex.has(f) ? "index" : "worktree");
         if (text === undefined) continue;
         const missing = missingSpecParts(text);
         if (missing.length)
@@ -818,6 +819,38 @@ export const rules = [
         ctx.modified(dir).includes("pnpm-lock.yaml")
       )
         return "pnpm-lock.yaml is modified but not in this commit while a package.json is. Stage the lockfile too — local builds pass via hoisting, CI's --frozen-lockfile fails every job at once.";
+      return null;
+    },
+  },
+  {
+    // `pnpm debug:plugin on` writes an inspector flag into the Elgato manifest
+    // on the developer's machine, and on the maintainer's master it stays there
+    // (#1338). The commit is where it must stop: the bytes are read from where
+    // THIS commit takes them ({@link manifestSources}), so a manifest that is
+    // dirty with the key but left out of the commit passes, and one staged
+    // clean and edited since is judged on its staged copy. Bytes the hook
+    // cannot read pass, as for the spec rule; `pack:plugin` and CI are the
+    // backstops.
+    name: "git commit: the Elgato manifest never carries a Debug key",
+    test: (c, ctx) => {
+      if (!has(c, GIT_COMMIT)) return null;
+      const dir = gitCwd(c, ctx.cwd, GIT_COMMIT);
+      for (const commit of matchesAt(c, GIT_COMMIT)) {
+        for (const from of manifestSources(c, commit, ctx, dir)) {
+          const text = ctx.committedText?.(dir, ELGATO_MANIFEST, from);
+          if (text === undefined) continue;
+          const state = manifestDebug(text);
+          // Text that does not parse is judged by a plain search — erring to deny.
+          const present = state.ok ? state.present : /"Debug"\s*:/.test(text);
+          if (!present) continue;
+          const value = state.ok ? JSON.stringify(state.value) : "(unparsed)";
+          const fix =
+            state.ok && state.value === DEBUG_VALUE
+              ? "Run `pnpm debug:plugin off` (then `git add` the manifest again if it is staged)"
+              : "This value was not set by `pnpm debug:plugin`; remove the line by hand";
+          return `${ELGATO_MANIFEST} would be committed with "Debug": ${value} in its Nodejs block (from the ${from === "index" ? "staged" : "working"} copy) — a local inspector switch that must never be committed. ${fix}, or leave the manifest out of this commit (\`git commit --only -- <paths>\`).`;
+        }
+      }
       return null;
     },
   },
@@ -1047,6 +1080,167 @@ function addedFiles(args, ctx, dir) {
     const hits = candidates.filter((f) => f === p || f.startsWith(`${p}/`));
     return hits.length ? hits : [o];
   });
+}
+
+/**
+ * The words of one command, from `from` (just past its verb) to the end of that
+ * command, as `{ value, known }`. Found in the `flat` text, where every quote,
+ * substitution, heredoc body and comment is blanked — so a multi-line
+ * `-m "$(cat <<'EOF' … EOF)"` is ONE word and the `-- <paths>` after it are
+ * still read — and each word's value taken from the raw text: a plain word
+ * as written, a quoted one unquoted, one with a `$` or backtick outside single
+ * quotes as `known: false` (its value is decided at run time), and heredoc bodies and comments
+ * dropped as data. When the mask is not trusted the raw command is tokenised
+ * instead, respecting simple quotes, as the older rules do.
+ */
+function argTokens(command, from) {
+  const { text, flat, trusted } = view(command);
+  if (!trusted) return chainWords(command.slice(from)).map((value) => ({ value, known: true }));
+  // `2>&1` and `&>` are redirections, not a background `&`.
+  const sep = /&&|\|\||[;|\n]|(?<![<>])&(?!>)/g;
+  sep.lastIndex = from;
+  const end = sep.exec(flat)?.index ?? command.length;
+  const out = [];
+  for (const m of flat.slice(from, end).matchAll(/\S+/g)) {
+    const a = from + m.index;
+    const raw = command.slice(a, a + m[0].length);
+    const masked = text.slice(a, a + m[0].length);
+    // A `$` or backtick outside single quotes expands at run time: `"$P"`, `$(…)`, `${x}`.
+    const expands = /[$`]/.test(raw.replace(/'[^']*'/g, ""));
+    if (m[0] !== raw && /^_+$/.test(masked)) continue;
+    if (expands) out.push({ value: raw, known: false });
+    else if (m[0] === raw) out.push({ value: raw, known: true });
+    else out.push({ value: raw.replace(/\\(.)/g, "$1").replace(/["']/g, ""), known: true });
+  }
+  return out;
+}
+
+/** `git commit` options whose value is the NEXT word when not attached; `-S` and `-u` only ever take one attached. */
+const COMMIT_VALUE_SHORT = "mFCct";
+const COMMIT_ATTACHED_SHORT = "Su";
+const COMMIT_VALUE_LONG = new Set([
+  "--message",
+  "--file",
+  "--reuse-message",
+  "--reedit-message",
+  "--fixup",
+  "--squash",
+  "--author",
+  "--date",
+  "--template",
+  "--cleanup",
+  "--trailer",
+  "--pathspec-from-file",
+]);
+
+/** A redirection operator standing alone, whose target is the next word. */
+const BARE_REDIRECT = /^\d*(?:<<-?|<<<|<>|<&|>&|>>|>\||&>>?|<|>)$/;
+
+/**
+ * A git command's words split into options and pathspec operands: `long` and
+ * `short` hold the option names seen (a short cluster's letters one by one),
+ * an option's value is skipped, redirections and their targets are skipped,
+ * and every word after `--` is an operand. `unknown` is set when a word that is
+ * not an option's value carries a substitution — it could be anything.
+ */
+function gitArgs(tokens, valueShort = "", attachedShort = "", valueLong = new Set()) {
+  const res = { long: new Set(), short: new Set(), operands: [], unknown: false };
+  for (let i = 0; i < tokens.length; i++) {
+    const { value: w, known } = tokens[i];
+    // An option is still read by its name; only its attached value is unknown.
+    if (!known && !w.startsWith("-")) {
+      res.unknown = true;
+      continue;
+    }
+    if (/^(?:\d*[<>]|&>)/.test(w)) {
+      if (BARE_REDIRECT.test(w)) i++;
+    } else if (w === "--") {
+      res.operands.push(...tokens.slice(i + 1));
+      break;
+    } else if (w.startsWith("--")) {
+      const name = w.split("=")[0];
+      res.long.add(name);
+      if (!w.includes("=") && valueLong.has(name)) i++;
+    } else if (/^-[^-]/.test(w)) {
+      for (let k = 1; k < w.length; k++) {
+        res.short.add(w[k]);
+        if (attachedShort.includes(w[k])) break;
+        if (valueShort.includes(w[k])) {
+          if (k === w.length - 1) i++;
+          break;
+        }
+      }
+    } else res.operands.push(tokens[i]);
+  }
+  if (res.operands.some((t) => !t.known)) res.unknown = true;
+  return res;
+}
+
+/**
+ * Whether a pathspec operand, relative to the command's cwd `dir`, selects
+ * the repo-relative `target`: as itself, as a directory above it, or as the
+ * whole tree. A glob or a `:(magic)` pathspec is taken to select it — the hook
+ * does not evaluate those, and erring that way only costs a deny when the
+ * target would really carry something to deny.
+ */
+function pathspecCovers(token, target, ctx, dir) {
+  if (!token.known) return true;
+  const op = token.value;
+  if (/[*?[]/.test(op) || op.startsWith(":")) return true;
+  const top = ctx.toplevel?.(dir);
+  const rel = asPath(top ? path.relative(top, path.resolve(dir, op)) : op)
+    .replace(/^\.\//, "")
+    .replace(/\/+$/, "");
+  if (rel === "" || rel === ".") return true;
+  if (rel.startsWith("../")) return false;
+  return target === rel || target.startsWith(`${rel}/`);
+}
+
+const GIT_ADD = cmd(/git\s+(?:-C\s+\S+\s+)?add\b/);
+
+/**
+ * Where the `git commit` matched as `commit` takes the Elgato manifest's bytes
+ * from: `[]` when it does not commit the manifest at all, `["index"]` for the
+ * staged copy, `["worktree"]` for the working copy, both when it cannot tell.
+ *
+ * - A pathspec (`git commit [--only] [--] <paths>`) commits those paths from
+ *   the WORKING copy; a staged manifest outside it is left out, unless
+ *   `-i`/`--include` adds the staged files too.
+ * - `-a`/`--all` commits every tracked file from the working copy.
+ * - A `git add` chained ahead of the commit that selects the manifest stages
+ *   the working copy before the commit runs (the hook runs before both).
+ * - Otherwise a plain commit takes the INDEX, and only when the manifest is
+ *   staged — so a manifest dirty with the key but not staged passes.
+ * - A substitution standing where an option or a path could be, and
+ *   `--pathspec-from-file`, leave the selection unknown: both copies are read.
+ */
+function manifestSources(command, commit, ctx, dir) {
+  // GIT_COMMIT and GIT_ADD both end on their verb, so a match ends where the verb does.
+  const args = gitArgs(
+    argTokens(command, commit.index + commit[0].length),
+    COMMIT_VALUE_SHORT,
+    COMMIT_ATTACHED_SHORT,
+    COMMIT_VALUE_LONG,
+  );
+  if (args.unknown || args.long.has("--pathspec-from-file")) return ["index", "worktree"];
+  const covers = (t) => pathspecCovers(t, ELGATO_MANIFEST, ctx, dir);
+  if (args.operands.length) {
+    if (args.operands.some(covers)) return ["worktree"];
+    if (!(args.short.has("i") || args.long.has("--include"))) return [];
+  } else if (args.short.has("a") || args.long.has("--all")) return ["worktree"];
+  const added = [...matchesAt(command, GIT_ADD)]
+    .filter((m) => m.index < commit.index)
+    .some((m) => {
+      const a = gitArgs(argTokens(command, m.index + m[0].length));
+      if (a.unknown || a.long.has("--pathspec-from-file")) return true;
+      if (a.operands.length) return a.operands.some(covers);
+      return (
+        ["A", "u", "p", "i", "e"].some((f) => a.short.has(f)) ||
+        ["--all", "--update", "--patch", "--interactive", "--edit"].some((f) => a.long.has(f))
+      );
+    });
+  if (added) return ["worktree"];
+  return ctx.staged(dir).includes(ELGATO_MANIFEST) ? ["index"] : [];
 }
 
 /**

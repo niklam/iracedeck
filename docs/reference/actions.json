@@ -326,6 +326,11 @@
               "value": "snapshot",
               "label": "Take Snapshot",
               "description": "Developer tool: saves the current telemetry + session info to disk as timestamped JSON and Markdown files"
+            },
+            {
+              "value": "capture-profile",
+              "label": "Capture CPU Profile",
+              "description": "Records 30 s of the plugin's own CPU profile through the shared capture service (#1338), the same as the settings window's Capture CPU profile; the key counts down, then shows SAVED or FAILED for 3 s. No iRacing command"
             }
           ]
         },

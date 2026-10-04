@@ -193,7 +193,10 @@ import {
   initWindowFocus,
   isIRacingActive,
   resolveSettingsStorePath,
+  onIRacingStarted,
+  onIRacingTerminated,
   startMainThreadWatchdog,
+  startResourceMonitor,
   type PluginConfig,
 } from "@iracedeck/deck-core";
 import { initializeEventBus } from "@iracedeck/event-bus";
@@ -222,6 +225,25 @@ streamDeck.logger.setLevel("info");
 startMainThreadWatchdog({
   logger: adapter.createLogger("MainThreadWatchdog"),
   target: { kind: "file", path: elgatoPluginLogFile() },
+});
+
+// 2c. Beside it, the resource monitor (#1338): a sample a minute of CPU,
+//     event-loop and memory use, plus one at each session edge; one WARN with
+//     the numbers after three high minutes, an INFO on recovery, a summary at
+//     each iRacing exit. The app-monitor hooks are injected rather than
+//     imported (#1176). The CPU
+//     profile capture it pairs with is the shared deck-core service,
+//     `initializeCpuProfileCapture(...)` beside the settings-window controller,
+//     writing into `<log dir>/profiles` (Elgato:
+//     `join(dirname(elgatoPluginLogFile()), "profiles")`; Mirabox and Ulanzi:
+//     `join(logDir, "profiles")`); the command handler gets `captureCpuProfile`
+//     (calling `getCpuProfileCapture().capture()`) + `profilesPath`, and the
+//     Telemetry Control key's Capture Profile mode uses the same getter
+startResourceMonitor({
+  logger: adapter.createLogger("ResourceMonitor"),
+  onSessionStart: onIRacingStarted,
+  onSessionEnd: onIRacingTerminated,
+  isSessionActive: isIRacingActive,
 });
 
 // 3. Initialize SDK singleton (must come before sim-events-iracing)

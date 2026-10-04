@@ -125,6 +125,17 @@
     display: inline-block;
     width: auto;
   }
+  /* Capture CPU profile + its Open folder (#1338): two compact pills side by side. */
+  .ird-cpu-profile-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .ird-cpu-profile-buttons ird-capture-cpu-profile,
+  .ird-cpu-profile-buttons ird-open-profiles-folder {
+    display: inline-block;
+    width: auto;
+  }
   /* Divider above a block that CLOSES a section — the same rule .ird-docs-link
      uses, so the settings button and the docs link read as siblings. It sits on
      the block WRAPPING .ird-open-settings (see open-settings.ejs), so the two

@@ -345,6 +345,7 @@ describe("settings-window WebSocket host", () => {
         payload: {
           driverName: "nick",
           _warnings: JSON.stringify([{ id: "elevation-mismatch", level: "warning", message: "from an earlier run" }]),
+          _profileCaptureStatus: JSON.stringify({ state: "capturing", startedAt: 0, durationMs: 30000 }),
         },
       }),
     );
