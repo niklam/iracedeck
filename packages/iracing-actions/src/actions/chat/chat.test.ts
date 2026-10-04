@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { buildTemplateContext, type TemplateContext } from "@iracedeck/iracing-sdk";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   Chat,
@@ -60,7 +61,23 @@ vi.mock("@iracedeck/icons/chat/toggle.svg", () => ({
   default: "<svg>toggle-icon</svg>",
 }));
 
-vi.mock("@iracedeck/deck-core", () => ({
+// The real iracing-sdk, with buildTemplateContext wrapped in a spy so the tests
+// can assert the display path never builds its own context (#1337).
+vi.mock("@iracedeck/iracing-sdk", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@iracedeck/iracing-sdk")>();
+
+  return { ...actual, buildTemplateContext: vi.fn(actual.buildTemplateContext) };
+});
+
+vi.mock("@iracedeck/deck-core", async () => ({
+  // The real throttle from deck-core's source: the refresh tests drive its
+  // leading/trailing window with fake timers.
+  IconUpdateThrottle: (
+    await vi.importActual<typeof import("../../../../deck-core/src/icon-update-throttle.js")>(
+      "../../../../deck-core/src/icon-update-throttle.js",
+    )
+  ).IconUpdateThrottle,
+  EMPTY_TEMPLATE_CONTEXT: { display: {}, raw: {} },
   CommonSettings: {
     extend: () => {
       const defaults = {
@@ -83,7 +100,12 @@ vi.mock("@iracedeck/deck-core", () => ({
   },
   ConnectionStateAwareAction: class MockConnectionStateAwareAction {
     logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
-    sdkController = { subscribe: vi.fn(), unsubscribe: vi.fn(), getCurrentTelemetry: vi.fn() };
+    sdkController = {
+      subscribe: vi.fn(),
+      unsubscribe: vi.fn(),
+      getCurrentTelemetry: vi.fn(),
+      getCurrentTemplateContext: vi.fn((): TemplateContext | null => null),
+    };
     updateConnectionState = vi.fn();
     setKeyImage = vi.fn();
     setRegenerateCallback = vi.fn();
@@ -717,6 +739,147 @@ describe("Chat", () => {
       expect(mockSendMessage).not.toHaveBeenCalled();
       expect(mockMacro).not.toHaveBeenCalled();
       expect(mockSendKeyCombination).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("telemetry-driven icon refresh (issue #1337)", () => {
+    let action: Chat;
+
+    /** One SDK frame: the controller notifies every subscriber once. */
+    function tick(): void {
+      for (const [, callback] of vi.mocked(action["sdkController"].subscribe).mock.calls) {
+        callback({} as never, false);
+      }
+    }
+
+    function setPosition(position: string | null): void {
+      vi.mocked(action["sdkController"].getCurrentTemplateContext).mockReturnValue(
+        position === null
+          ? null
+          : { display: { "self.position": position }, raw: { "self.position": Number(position) } },
+      );
+    }
+
+    async function appear(id: string, settings: Record<string, unknown>): Promise<void> {
+      await action.onWillAppear(fakeEvent(id, { mode: "send-message", ...settings }) as any);
+    }
+
+    /** Decoded image of every telemetry-driven push, in order. */
+    function pushedImages(): string[] {
+      return vi.mocked(action["updateKeyImage"]).mock.calls.map(([, uri]) => decodeURIComponent(uri as string));
+    }
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+      vi.setSystemTime(1_000_000);
+      action = new Chat();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("reads the shared per-frame context for every templated key and never builds its own", async () => {
+      setPosition("3");
+      await appear("key-1", { keyText: "P{{self.position}}" });
+      await appear("key-2", { keyText: "P{{self.position}}" });
+      await appear("key-3", { message: "I am P{{self.position}}" });
+      vi.mocked(action["sdkController"].getCurrentTemplateContext).mockClear();
+      vi.mocked(buildTemplateContext).mockClear();
+      vi.mocked(action["setRegenerateCallback"]).mockClear();
+
+      setPosition("4");
+      tick();
+      // Let each render's awaited image push settle before checking the callback.
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(buildTemplateContext).not.toHaveBeenCalled();
+      expect(action["sdkController"].getCurrentTemplateContext).toHaveBeenCalledTimes(3);
+      expect(pushedImages()).toHaveLength(3);
+      expect(pushedImages().every((img) => img.includes("P4"))).toBe(true);
+      expect(action["setRegenerateCallback"]).toHaveBeenCalledTimes(3);
+    });
+
+    it("never builds a context on the display path when the key first appears", async () => {
+      setPosition("3");
+      await appear("key-1", { keyText: "P{{self.position}}" });
+
+      expect(buildTemplateContext).not.toHaveBeenCalled();
+      expect(action["sdkController"].getCurrentTemplateContext).toHaveBeenCalledTimes(1);
+    });
+
+    it("coalesces a burst of ticks inside one window into a leading and a trailing refresh", async () => {
+      setPosition("1");
+      await appear("key-1", { keyText: "P{{self.position}}" });
+
+      for (let position = 2; position <= 7; position++) {
+        setPosition(String(position));
+        tick();
+        vi.advanceTimersByTime(10);
+      }
+
+      // Leading edge only: the five ticks after it fell inside the 100 ms window.
+      expect(pushedImages()).toHaveLength(1);
+      expect(pushedImages()[0]).toContain("P2");
+
+      vi.advanceTimersByTime(100);
+
+      // One trailing flush, rendered from the latest state.
+      expect(pushedImages()).toHaveLength(2);
+      expect(pushedImages()[1]).toContain("P7");
+    });
+
+    it("skips the push when the resolved icon has not changed", async () => {
+      setPosition("5");
+      await appear("key-1", { keyText: "P{{self.position}}" });
+
+      tick();
+
+      expect(action["sdkController"].getCurrentTemplateContext).toHaveBeenCalledTimes(2);
+      expect(action["updateKeyImage"]).not.toHaveBeenCalled();
+    });
+
+    it("never requests a context for a key without templates", async () => {
+      setPosition("5");
+      await appear("key-1", { keyText: "Good race", message: "gg" });
+
+      for (let i = 0; i < 5; i++) {
+        tick();
+        vi.advanceTimersByTime(50);
+      }
+
+      expect(action["sdkController"].getCurrentTemplateContext).not.toHaveBeenCalled();
+      expect(buildTemplateContext).not.toHaveBeenCalled();
+      expect(action["updateKeyImage"]).not.toHaveBeenCalled();
+    });
+
+    it("drops a pending refresh when the key disappears", async () => {
+      setPosition("1");
+      await appear("key-1", { keyText: "P{{self.position}}" });
+
+      setPosition("2");
+      tick(); // leading edge renders P2
+      setPosition("3");
+      vi.advanceTimersByTime(10);
+      tick(); // inside the window: a trailing flush is pending
+
+      await action.onWillDisappear(fakeEvent("key-1") as any);
+      vi.advanceTimersByTime(500);
+
+      expect(pushedImages()).toHaveLength(1);
+      expect(pushedImages()[0]).toContain("P2");
+    });
+
+    it("resolves against the empty context when the controller has no context", async () => {
+      setPosition(null);
+      await appear("key-1", { keyText: "P{{self.position}} {{= self.position + }}" });
+
+      const [, uri] = vi.mocked(action["setKeyImage"]).mock.calls[0];
+      const image = decodeURIComponent(uri as string);
+
+      // Variables render empty; expression parse errors stay verbatim.
+      expect(image).toContain("P {{= self.position + }}");
+      expect(buildTemplateContext).not.toHaveBeenCalled();
     });
   });
 });

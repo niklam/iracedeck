@@ -2,6 +2,7 @@ import {
   assembleIcon,
   CommonSettings,
   ConnectionStateAwareAction,
+  EMPTY_TEMPLATE_CONTEXT,
   focusIRacingBeforeInput,
   generateIconText,
   getCommands,
@@ -10,6 +11,7 @@ import {
   getGlobalGraphicSettings,
   getGlobalSettings,
   getGlobalTitleSettings,
+  IconUpdateThrottle,
   type IDeckDialDownEvent,
   type IDeckDialRotateEvent,
   type IDeckDidReceiveSettingsEvent,
@@ -286,6 +288,12 @@ export const CHAT_UUID = "com.iracedeck.sd.core.chat" as const;
 export class Chat extends ConnectionStateAwareAction<ChatSettings> {
   private activeContexts = new Map<string, ChatSettings>();
   private lastRenderedIcon = new Map<string, string>();
+  /**
+   * Coalesces the telemetry-driven icon refresh to 10 Hz per key (#1337). The
+   * SDK ticks at about 60 Hz; without this every templated key re-resolved and
+   * re-rendered on every tick.
+   */
+  private readonly iconThrottle = new IconUpdateThrottle();
 
   override async onWillAppear(ev: IDeckWillAppearEvent<ChatSettings>): Promise<void> {
     await super.onWillAppear(ev);
@@ -297,16 +305,22 @@ export class Chat extends ConnectionStateAwareAction<ChatSettings> {
 
     await this.updateDisplay(ev, settings);
 
-    this.sdkController.subscribe(ev.action.id, () => {
-      const storedSettings = this.activeContexts.get(ev.action.id);
+    const contextId = ev.action.id;
 
+    this.sdkController.subscribe(contextId, () => {
+      const storedSettings = this.activeContexts.get(contextId);
+
+      // Keys without templates never schedule a refresh, so they never ask for a context.
       if (storedSettings && hasTemplateVars(storedSettings)) {
-        this.updateIconFromTelemetry(ev.action.id, storedSettings);
+        this.iconThrottle.schedule(contextId, () => this.refreshIconFromTelemetry(contextId));
       }
     });
   }
 
   override async onWillDisappear(ev: IDeckWillDisappearEvent<ChatSettings>): Promise<void> {
+    // Drop any coalesced refresh still pending so it can't fire for a context
+    // that no longer exists.
+    this.iconThrottle.clear(ev.action.id);
     await super.onWillDisappear(ev);
     this.activeContexts.delete(ev.action.id);
     this.lastRenderedIcon.delete(ev.action.id);
@@ -477,15 +491,31 @@ export class Chat extends ConnectionStateAwareAction<ChatSettings> {
   }
 
   /** Resolves template variables for display only (icon rendering).
-   *  The send path in executeSdkSendMessage performs its own resolution at send time. */
+   *  Reads the controller's per-frame cached context, shared by every key that
+   *  renders on the same frame (#1337); when disconnected it resolves against the
+   *  empty context, as user-entered titles do. The send path in
+   *  executeSdkSendMessage builds its own context at press time. */
   private resolveSettingsTemplates(settings: ChatSettings): ChatSettings {
     if (!hasTemplateVars(settings)) return settings;
 
-    const context = buildTemplateContext(this.sdkController);
+    const context = this.sdkController.getCurrentTemplateContext() ?? EMPTY_TEMPLATE_CONTEXT;
     const resolvedKeyText = resolveTemplate(settings.keyText, context);
     const resolvedMessage = resolveTemplate(settings.message, context);
 
     return { ...settings, keyText: resolvedKeyText, message: resolvedMessage };
+  }
+
+  /**
+   * Throttled render for a telemetry tick: re-reads the context's settings at
+   * render time, so a trailing flush uses the latest settings and a context that
+   * has since disappeared or lost its templates renders nothing.
+   */
+  private async refreshIconFromTelemetry(contextId: string): Promise<void> {
+    const settings = this.activeContexts.get(contextId);
+
+    if (!settings || !hasTemplateVars(settings)) return;
+
+    await this.updateIconFromTelemetry(contextId, settings);
   }
 
   private async updateIconFromTelemetry(contextId: string, settings: ChatSettings): Promise<void> {

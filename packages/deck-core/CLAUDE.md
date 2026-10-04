@@ -50,7 +50,7 @@ deck-core adds global settings readers on top of the pure functions:
 - `clipboard-service.ts` — Clipboard singleton with injected writer (`initializeClipboard`, `getClipboard`); mirrors the keyboard-service DI pattern
 - `simhub-service.ts` — SimHub Control Mapper singleton (`initializeSimHub`, `getSimHub`) plus the reachability API (`isSimHubReachable`, `onSimHubReachabilityChange`)
 - `icon-template.ts` — SVG template rendering and color resolution (delegates to `@iracedeck/icon-composer`)
-- `title-template.ts` — User-entered title template resolution (#899): `titleHasTemplate` (the cheap `{{` gate) and `resolveTitleTemplate` (resolves via `getCurrentTemplateContext()` + `resolveTemplate`; empty-context fallback when disconnected/uninitialized, so variables render empty and expression parse errors stay verbatim)
+- `title-template.ts` — User-entered title template resolution (#899): `titleHasTemplate` (the cheap `{{` gate) and `resolveTitleTemplate` (resolves via `getCurrentTemplateContext()` + `resolveTemplate`; empty-context fallback when disconnected/uninitialized, so variables render empty and expression parse errors stay verbatim). The fallback is exported as the frozen `EMPTY_TEMPLATE_CONTEXT` for any other display path that reads `getCurrentTemplateContext()` itself (Chat's key text, #1337)
 - `icon-update-throttle.ts` — `IconUpdateThrottle`, the per-context 10 Hz throttle + trailing-edge coalescer for telemetry-driven `setKeyImage` bursts (#493; moved here from `iracing-actions/src/shared/` in #899 so the `BaseAction` title watcher can use it)
 - `overlay-utils.ts` — SVG overlay utilities (inactive state, data URI conversion)
 - `key-binding-utils.ts` — Key binding parsing and formatting

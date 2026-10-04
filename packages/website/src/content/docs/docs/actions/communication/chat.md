@@ -26,7 +26,7 @@ Send a user-defined chat message. Supports [template variables](/docs/features/t
 - **Method:** iRacing API
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
-- **Telemetry-aware icon:** Yes — when the button text or message template references live variables (e.g., `{{Speed}}`), the button re-renders whenever those variables change
+- **Telemetry-aware icon:** Yes — when the button text or message template references live variables (e.g., `{{Speed}}`), the button re-renders whenever those variables change, at most ten times a second
 
 #### Setting: Message Text
 
