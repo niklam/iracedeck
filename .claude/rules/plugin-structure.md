@@ -232,11 +232,13 @@ startMainThreadWatchdog({
 //     the numbers after three high minutes, an INFO on recovery, a summary at
 //     each iRacing exit. The app-monitor hooks are injected rather than
 //     imported (#1176). The CPU
-//     profile capture it pairs with is created beside the settings-window
-//     controller, writing into `<log dir>/profiles` (Elgato:
+//     profile capture it pairs with is the shared deck-core service,
+//     `initializeCpuProfileCapture(...)` beside the settings-window controller,
+//     writing into `<log dir>/profiles` (Elgato:
 //     `join(dirname(elgatoPluginLogFile()), "profiles")`; Mirabox and Ulanzi:
-//     `join(logDir, "profiles")`), and handed to the command handler as
-//     `captureCpuProfile` + `profilesPath`
+//     `join(logDir, "profiles")`); the command handler gets `captureCpuProfile`
+//     (calling `getCpuProfileCapture().capture()`) + `profilesPath`, and the
+//     Telemetry Control key's Capture Profile mode uses the same getter
 startResourceMonitor({
   logger: adapter.createLogger("ResourceMonitor"),
   onSessionStart: onIRacingStarted,

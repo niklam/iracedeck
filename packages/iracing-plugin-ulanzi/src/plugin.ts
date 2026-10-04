@@ -102,7 +102,6 @@ import {
   type BundledVoicePack,
   type CalloutScript,
   clearWarning,
-  createCpuProfileCapture,
   createElevationCheckSubscriber,
   createFileSettingsStore,
   createReplaySessionSubscriber,
@@ -129,6 +128,7 @@ import {
   focusIRacingIfEnabled,
   frameOptionsFromSettings,
   getController,
+  getCpuProfileCapture,
   getDevVoicePacksRoot,
   getGlobalSettings,
   getPluginPlatform,
@@ -139,6 +139,7 @@ import {
   initGlobalSettings,
   initializeBindingDispatcher,
   initializeClipboard,
+  initializeCpuProfileCapture,
   initializeKeyboard,
   initializeRasterizer,
   initializeReplaySessionStore,
@@ -1309,7 +1310,9 @@ const settingsChannel = createSettingsChannelPublisher({ adapter, logger: settin
 // Capture CPU profile (#1338): the files go to `profiles` inside the log
 // directory the adapter's FileSink writes (`<plugin>/log/profiles`).
 const profilesDir = join(logDir, "profiles");
-const cpuProfileCapture = createCpuProfileCapture({
+// One shared service (#1338): the settings window's button and the Telemetry
+// Control key's Capture Profile mode reach it through getCpuProfileCapture().
+initializeCpuProfileCapture({
   profilesDir,
   logger: adapter.createLogger("CpuProfile"),
   // The run-scoped `_profileCaptureStatus` the Diagnostics card renders.
@@ -1400,7 +1403,7 @@ const settingsWindow = createSettingsWindowController({
     // anything from the page: the duration is the service's, the folder is ours.
     // A press during a capture is refused by the service itself.
     captureCpuProfile: () => {
-      void cpuProfileCapture.capture();
+      void getCpuProfileCapture().capture();
     },
     profilesPath: profilesDir,
   }),
