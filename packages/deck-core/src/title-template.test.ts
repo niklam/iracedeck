@@ -80,6 +80,22 @@ describe("resolveTitleTemplate", () => {
     expect(resolveTitleTemplate("{{= self.position + }}")).toBe("{{= self.position + }}");
   });
 
+  it("falls back to the empty context when a lazily built namespace throws (#1339)", () => {
+    // The live context builds a namespace on its first lookup, inside
+    // resolveTemplate; a builder that throws there must not escape.
+    mockGetCurrentTemplateContext.mockReturnValue({
+      display: () => {
+        throw new Error("malformed driver entry");
+      },
+      raw: () => {
+        throw new Error("malformed driver entry");
+      },
+    });
+
+    expect(resolveTitleTemplate("CAR {{track_ahead.car_number}}")).toBe("CAR ");
+    expect(resolveTitleTemplate("{{= self.position + }}")).toBe("{{= self.position + }}");
+  });
+
   it("falls back to the empty context when the SDK singleton is not initialized", () => {
     mockGetController.mockImplementation(() => {
       throw new Error("SDK not initialized");

@@ -490,6 +490,102 @@ describe("BaseAction title template live updates (issue #899)", () => {
     expect(ctx.setImageSpy).toHaveBeenLastCalledWith("<svg>36</svg>");
   });
 
+  describe("resolution inside the throttle (#1339)", () => {
+    // The regenerate callback reads `shown` rather than the template context,
+    // so every getCurrentTemplateContext() call counted here is a title
+    // resolution made by the tick path.
+    let shown = "34";
+    const regenerate = vi.fn(() => `<svg>${shown}</svg>`);
+
+    function setShown(value: string): void {
+      shown = value;
+      setDisplayValue(value);
+    }
+
+    function prepare(): ReturnType<typeof createTitleContext> {
+      const ctx = createTitleContext("{{self.car_number}}");
+
+      setShown("34");
+      ctx.action.registerRegenerateCallback(CONTEXT_ID, regenerate);
+      // One tick past the window records "34" as the last resolved title.
+      vi.advanceTimersByTime(200);
+      ctx.driveTick();
+      vi.advanceTimersByTime(200);
+      mockGetCurrentTemplateContext.mockClear();
+      regenerate.mockClear();
+      ctx.setImageSpy.mockClear();
+
+      return ctx;
+    }
+
+    it("a burst of ticks inside one window resolves the title at most on the leading and trailing edge", () => {
+      const ctx = prepare();
+
+      for (let i = 0; i < 10; i++) {
+        ctx.driveTick();
+        vi.advanceTimersByTime(5);
+      }
+
+      // Only the leading tick resolved; the other nine are one pending flush.
+      expect(mockGetCurrentTemplateContext).toHaveBeenCalledTimes(1);
+
+      vi.advanceTimersByTime(100);
+
+      expect(mockGetCurrentTemplateContext).toHaveBeenCalledTimes(2);
+    });
+
+    it("an unchanged title neither regenerates nor pushes", () => {
+      const ctx = prepare();
+
+      for (let i = 0; i < 10; i++) {
+        ctx.driveTick();
+        vi.advanceTimersByTime(5);
+      }
+
+      vi.advanceTimersByTime(100);
+
+      expect(regenerate).not.toHaveBeenCalled();
+      expect(ctx.setImageSpy).not.toHaveBeenCalled();
+    });
+
+    it("a changed title pushes once, however many ticks carry the change", () => {
+      const ctx = prepare();
+
+      setShown("35");
+
+      for (let i = 0; i < 10; i++) {
+        ctx.driveTick();
+        vi.advanceTimersByTime(5);
+      }
+
+      vi.advanceTimersByTime(100);
+
+      expect(ctx.setImageSpy).toHaveBeenCalledTimes(1);
+      expect(ctx.setImageSpy).toHaveBeenLastCalledWith("<svg>35</svg>");
+    });
+
+    it("a pending flush does nothing once the context is untracked", () => {
+      const ctx = prepare();
+
+      ctx.driveTick();
+      setShown("35");
+      ctx.driveTick();
+      mockGetCurrentTemplateContext.mockClear();
+
+      const settingsEvent = {
+        action: ctx.fakeAction,
+        payload: { settings: { titleOverrides: { titleText: "PLAIN" } } },
+      } as unknown as IDeckDidReceiveSettingsEvent<Record<string, unknown>>;
+
+      void ctx.action.onDidReceiveSettings(settingsEvent);
+      ctx.setImageSpy.mockClear();
+      vi.advanceTimersByTime(200);
+
+      expect(mockGetCurrentTemplateContext).not.toHaveBeenCalled();
+      expect(ctx.setImageSpy).not.toHaveBeenCalled();
+    });
+  });
+
   it("stops tracking when settings change to a non-templated title", () => {
     const ctx = createTitleContext("{{self.car_number}}");
 

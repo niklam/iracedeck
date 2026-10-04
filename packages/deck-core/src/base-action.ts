@@ -106,7 +106,12 @@ export abstract class BaseAction<T = Record<string, unknown>> implements IDeckAc
   /** Shared telemetry subscription ID for title templates */
   private titleTemplateSubId: string | null = null;
 
-  /** Caps template-driven icon re-renders at 10 Hz per context (issue #493 pattern) */
+  /**
+   * Caps each templated title's refresh at 10 Hz per context (issue #493
+   * pattern). Since #1339 it gates template resolution as well as the
+   * re-render, so a title asks for a template context at most on the leading
+   * and trailing edge of each window rather than on every tick.
+   */
   private readonly titleTemplateThrottle = new IconUpdateThrottle();
 
   private static readonly FLAG_FLASH_INTERVAL_MS = 500;
@@ -706,20 +711,36 @@ export abstract class BaseAction<T = Record<string, unknown>> implements IDeckAc
   }
 
   /**
-   * Per-tick change detection: re-resolve each tracked template (cheap string
-   * work against the controller's cached context) and only when the resolved
-   * title actually changed, schedule a full icon regenerate through the
-   * 10 Hz throttle (issue #493 pattern).
+   * A telemetry tick does no work of its own: it schedules each tracked
+   * context's refresh through the 10 Hz throttle (issue #493 pattern), and the
+   * refresh resolves the template. Resolving per tick asked for a template
+   * context on every frame for every templated title, which rebuilds the
+   * shared context each frame (#1339) — the same shape Telemetry Display had.
    */
   private onTitleTemplateTick(): void {
-    for (const [contextId, template] of this.titleTemplateContexts) {
-      const resolved = resolveTitleTemplate(template);
-
-      if (this.lastResolvedTitles.get(contextId) === resolved) continue;
-
-      this.lastResolvedTitles.set(contextId, resolved);
-      this.titleTemplateThrottle.schedule(contextId, () => this.regenerateForTitleTemplate(contextId));
+    for (const contextId of this.titleTemplateContexts.keys()) {
+      this.titleTemplateThrottle.schedule(contextId, () => this.refreshTitleTemplate(contextId));
     }
+  }
+
+  /**
+   * Throttled refresh for one templated title: resolve it against the current
+   * context and, only when the result differs from the last one, regenerate
+   * and push the icon. Re-reads the template at flush time, so a trailing
+   * flush uses the latest title text and a context untracked since the tick
+   * does nothing (untracking also clears its pending flush).
+   */
+  private refreshTitleTemplate(contextId: string): void {
+    const template = this.titleTemplateContexts.get(contextId);
+
+    if (template === undefined) return;
+
+    const resolved = resolveTitleTemplate(template);
+
+    if (this.lastResolvedTitles.get(contextId) === resolved) return;
+
+    this.lastResolvedTitles.set(contextId, resolved);
+    this.regenerateForTitleTemplate(contextId);
   }
 
   /**
@@ -730,10 +751,11 @@ export abstract class BaseAction<T = Record<string, unknown>> implements IDeckAc
    *
    * Teardown window: a subclass may await work in onWillDisappear before
    * calling super, and during that window a pending trailing flush (or a
-   * telemetry tick) can still land here for the disappearing context — the
-   * base class has no earlier hook, so this window cannot be closed from
-   * here (the #493/#532 clear-before-await convention applies to
-   * action-owned throttles, which CAN clear at handler entry). That is
+   * telemetry tick's leading-edge refresh) can still land here for the
+   * disappearing context — the base class has no earlier hook, so this
+   * window cannot be closed from here (the #493/#532 clear-before-await
+   * convention applies to action-owned throttles, which CAN clear at
+   * handler entry). That is
    * accepted: the same window exists for every base-owned subscription
    * (flag flash, readiness), and the worst case is a setImage to a dead
    * context whose rejection is caught and logged below.
