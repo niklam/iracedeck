@@ -594,6 +594,7 @@ export {
   isAppMonitorInitialized,
   isIRacingActive,
   isIRacingRunning,
+  onIRacingStarted,
   onIRacingTerminated,
 } from "./app-monitor.js";
 

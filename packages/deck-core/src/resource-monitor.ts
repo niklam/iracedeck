@@ -16,9 +16,18 @@
  *   `INFO` "Plugin CPU use back to normal", then the rule re-arms.
  * - **Every sample:** one `debug` line with the figures.
  * - **Session summary:** at each iRacing exit, `INFO` "Resource summary for the
- *   iRacing session" plus a `debug` line with the average and peak CPU, the peak
- *   event-loop load and the peak RSS and heap. A sample counts towards the
- *   session only while iRacing is active.
+ *   iRacing session" plus a `debug` line with the time-weighted average and the
+ *   peak CPU, the peak event-loop load and the peak RSS and heap.
+ *
+ * **Session edges.** A sample's figures cover the whole interval since the
+ * previous one, so attributing it by whether iRacing is active when it is
+ * taken would hand a minute that was mostly outside a session to the session,
+ * or the other way round. Instead the monitor takes an extra sample at each
+ * edge — iRacing starting and exiting — and restarts its minute there, so
+ * every interval lies wholly inside or wholly outside a session. An edge
+ * sample is PARTIAL: it is logged and counted towards the session, but it is
+ * not a minute, so it neither extends nor breaks the run of high minutes. The
+ * summary is written after the exit edge's sample.
  *
  * None of it is gated on `debugLogging`: users run with debug off, and the WARN
  * and INFO lines are what reaches their logs.
@@ -32,8 +41,10 @@
 import type { ILogger } from "@iracedeck/logger";
 import { type EventLoopUtilization, performance } from "node:perf_hooks";
 
-/** One minute's reading. */
+/** One interval's reading. */
 export interface ResourceSample {
+  /** How long the interval was. */
+  elapsedMs: number;
   /** CPU time used over the interval, as a % of one core (may exceed 100 on several cores). */
   cpuPercent: number;
   /** Event-loop utilisation over the interval, 0..1. */
@@ -65,7 +76,10 @@ export const RESOURCE_MONITOR_DEFAULTS: ResourceMonitorConfig = {
 /** Running aggregates for the current iRacing session. */
 export interface ResourceSessionStats {
   samples: number;
-  cpuSum: number;
+  /** Σ elapsed time of the session's samples, for the time-weighted average. */
+  elapsedMs: number;
+  /** Σ cpuPercent × elapsedMs. */
+  cpuPercentMs: number;
   cpuPeak: number;
   eluPeak: number;
   rssPeak: number;
@@ -88,7 +102,8 @@ export interface ResourceLogLine {
 
 const EMPTY_SESSION: ResourceSessionStats = {
   samples: 0,
-  cpuSum: 0,
+  elapsedMs: 0,
+  cpuPercentMs: 0,
   cpuPeak: 0,
   eluPeak: 0,
   rssPeak: 0,
@@ -113,7 +128,9 @@ function minutes(ms: number): string {
 /**
  * One sample in, the next state and the log lines out.
  *
- * @param inSession whether iRacing is active, so the sample counts towards the session summary
+ * @param inSession whether the sample's whole interval lies inside an iRacing session
+ * @param partial an edge sample, shorter than an interval: logged and counted
+ *   towards the session, but it does not take part in the high/normal rule
  * @internal Exported for testing
  */
 export function resourceMonitorStep(
@@ -121,20 +138,23 @@ export function resourceMonitorStep(
   sample: ResourceSample,
   inSession: boolean,
   config: ResourceMonitorConfig = RESOURCE_MONITOR_DEFAULTS,
+  partial = false,
 ): { state: ResourceMonitorState; lines: ResourceLogLine[] } {
   const lines: ResourceLogLine[] = [
     {
       level: "debug",
       message:
         `Resources: cpu ${sample.cpuPercent.toFixed(1)}% core, loop ${pct(sample.elu)}%, ` +
-        `rss ${mb(sample.rssBytes)} MB, heap ${mb(sample.heapUsedBytes)}/${mb(sample.heapTotalBytes)} MB`,
+        `rss ${mb(sample.rssBytes)} MB, heap ${mb(sample.heapUsedBytes)}/${mb(sample.heapTotalBytes)} MB` +
+        (partial ? ` (partial, ${(sample.elapsedMs / 1000).toFixed(0)} s)` : ""),
     },
   ];
 
   const session = inSession
     ? {
         samples: state.session.samples + 1,
-        cpuSum: state.session.cpuSum + sample.cpuPercent,
+        elapsedMs: state.session.elapsedMs + sample.elapsedMs,
+        cpuPercentMs: state.session.cpuPercentMs + sample.cpuPercent * sample.elapsedMs,
         cpuPeak: Math.max(state.session.cpuPeak, sample.cpuPercent),
         eluPeak: Math.max(state.session.eluPeak, sample.elu),
         rssPeak: Math.max(state.session.rssPeak, sample.rssBytes),
@@ -142,6 +162,8 @@ export function resourceMonitorStep(
         heapTotalPeak: Math.max(state.session.heapTotalPeak, sample.heapTotalBytes),
       }
     : state.session;
+
+  if (partial) return { state: { ...state, session }, lines };
 
   const high = sample.cpuPercent >= config.cpuPercentThreshold || sample.elu >= config.eluThreshold;
 
@@ -173,7 +195,7 @@ export function resourceMonitorStep(
 
 /**
  * The session summary at an iRacing exit; the session's aggregates start over.
- * A session that took no sample (shorter than one interval) writes nothing.
+ * A session that took no sample writes nothing.
  *
  * @internal Exported for testing
  */
@@ -186,6 +208,8 @@ export function resourceSessionSummary(state: ResourceMonitorState): {
 
   if (s.samples === 0) return { state: next, lines: [] };
 
+  const average = s.elapsedMs > 0 ? s.cpuPercentMs / s.elapsedMs : 0;
+
   return {
     state: next,
     lines: [
@@ -193,7 +217,7 @@ export function resourceSessionSummary(state: ResourceMonitorState): {
       {
         level: "debug",
         message:
-          `Resource summary: ${s.samples} samples, cpu avg ${(s.cpuSum / s.samples).toFixed(1)}% ` +
+          `Resource summary: ${s.samples} samples over ${minutes(s.elapsedMs)}, cpu avg ${average.toFixed(1)}% ` +
           `peak ${s.cpuPeak.toFixed(1)}% core, loop peak ${pct(s.eluPeak)}%, ` +
           `rss peak ${mb(s.rssPeak)} MB, heap peak ${mb(s.heapUsedPeak)}/${mb(s.heapTotalPeak)} MB`,
       },
@@ -208,6 +232,10 @@ export type ResourceSampler = () => ResourceSample;
  * The real sampler: CPU and event-loop deltas since the previous call (or
  * since creation), memory as of now.
  *
+ * Each counter is read ONCE per sample and diffed against the previous
+ * reading by hand. Reading a delta and then a fresh baseline would drop
+ * whatever ran between the two reads from every interval.
+ *
  * @internal Exported for testing
  */
 export function createProcessResourceSampler(): ResourceSampler {
@@ -216,19 +244,22 @@ export function createProcessResourceSampler(): ResourceSampler {
   let lastElu: EventLoopUtilization = performance.eventLoopUtilization();
 
   return () => {
-    const cpu = process.cpuUsage(lastCpu);
+    const cpu = process.cpuUsage();
     const at = performance.now();
-    const elu = performance.eventLoopUtilization(lastElu);
+    const elu = performance.eventLoopUtilization();
+    const cpuMicros = cpu.user - lastCpu.user + (cpu.system - lastCpu.system);
+    const eluDelta = performance.eventLoopUtilization(elu, lastElu);
     const elapsedMs = Math.max(1, at - lastAt);
     const memory = process.memoryUsage();
 
-    lastCpu = process.cpuUsage();
+    lastCpu = cpu;
     lastAt = at;
-    lastElu = performance.eventLoopUtilization();
+    lastElu = elu;
 
     return {
-      cpuPercent: ((cpu.user + cpu.system) / 1000 / elapsedMs) * 100,
-      elu: elu.utilization,
+      elapsedMs,
+      cpuPercent: (cpuMicros / 1000 / elapsedMs) * 100,
+      elu: eluDelta.utilization,
       rssBytes: memory.rss,
       heapUsedBytes: memory.heapUsed,
       heapTotalBytes: memory.heapTotal,
@@ -238,16 +269,22 @@ export function createProcessResourceSampler(): ResourceSampler {
 
 export interface ResourceMonitorOptions {
   logger: ILogger;
+  /** Subscribe to iRacing starting; the plugin binds deck-core's `onIRacingStarted`. Returns an unsubscribe. */
+  onSessionStart?: (listener: () => void) => () => void;
   /** Subscribe to iRacing exits; the plugin binds deck-core's `onIRacingTerminated`. Returns an unsubscribe. */
   onSessionEnd?: (listener: () => void) => () => void;
-  /** Whether iRacing is active now; the plugin binds `isIRacingActive`. Without it every sample counts. */
+  /**
+   * Whether iRacing is active when the monitor starts; the plugin binds
+   * `isIRacingActive`. After that the edges decide. Without it the monitor
+   * starts inside a session unless it was given an `onSessionStart` to wait for.
+   */
   isSessionActive?: () => boolean;
   config?: Partial<ResourceMonitorConfig>;
   sampler?: ResourceSampler;
 }
 
 export interface ResourceMonitor {
-  /** Take a sample now, outside the timer (tests). */
+  /** Take a full-interval sample now, outside the timer (tests). */
   sampleNow(): void;
   stop(): void;
 }
@@ -261,15 +298,16 @@ export function startResourceMonitor(options: ResourceMonitorOptions): ResourceM
   const config: ResourceMonitorConfig = { ...RESOURCE_MONITOR_DEFAULTS, ...options.config };
   const sampler = options.sampler ?? createProcessResourceSampler();
   let state = initialResourceMonitorState();
+  let inSession = options.isSessionActive ? options.isSessionActive() : !options.onSessionStart;
+  let timer: ReturnType<typeof setInterval> | undefined;
 
   const emit = (lines: ResourceLogLine[]): void => {
     for (const line of lines) logger[line.level](line.message);
   };
 
-  const sampleNow = (): void => {
+  const take = (partial: boolean): void => {
     try {
-      const inSession = options.isSessionActive ? options.isSessionActive() : true;
-      const result = resourceMonitorStep(state, sampler(), inSession, config);
+      const result = resourceMonitorStep(state, sampler(), inSession, config, partial);
       state = result.state;
       emit(result.lines);
     } catch (err) {
@@ -277,22 +315,43 @@ export function startResourceMonitor(options: ResourceMonitorOptions): ResourceM
     }
   };
 
-  const timer = setInterval(sampleNow, config.intervalMs);
-  timer.unref();
+  const startTimer = (): void => {
+    if (timer !== undefined) clearInterval(timer);
 
-  const unsubscribe = options.onSessionEnd?.(() => {
-    const result = resourceSessionSummary(state);
-    state = result.state;
-    emit(result.lines);
-  });
+    timer = setInterval(() => take(false), config.intervalMs);
+    timer.unref();
+  };
+
+  /** Close the interval that ends at the edge, switch sides, and start a fresh minute. */
+  const edge = (starting: boolean): void => {
+    if (starting === inSession) return;
+
+    take(true);
+    inSession = starting;
+    startTimer();
+
+    if (!starting) {
+      const result = resourceSessionSummary(state);
+      state = result.state;
+      emit(result.lines);
+    }
+  };
+
+  startTimer();
+
+  const unsubscribeStart = options.onSessionStart?.(() => edge(true));
+  const unsubscribeEnd = options.onSessionEnd?.(() => edge(false));
 
   logger.info("Resource monitor started");
 
   return {
-    sampleNow,
+    sampleNow: () => take(false),
     stop: () => {
-      clearInterval(timer);
-      unsubscribe?.();
+      if (timer !== undefined) clearInterval(timer);
+
+      timer = undefined;
+      unsubscribeStart?.();
+      unsubscribeEnd?.();
     },
   };
 }

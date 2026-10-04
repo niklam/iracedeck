@@ -6,6 +6,7 @@ import {
   isAppMonitorInitialized,
   isIRacingActive,
   isIRacingRunning,
+  onIRacingStarted,
   onIRacingTerminated,
 } from "@iracedeck/deck-core";
 import type { ILogger } from "@iracedeck/logger";
@@ -501,6 +502,92 @@ describe("App Monitor", () => {
       vi.advanceTimersByTime(IRACING_EXIT_SDK_CONFIRM_MS);
 
       expect(listener).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe("onIRacingStarted (issue #1338)", () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("should notify once on launch, however many connection ticks follow", () => {
+      initAppMonitor(mockAdapter, createMockLogger());
+      const listener = vi.fn();
+      onIRacingStarted(listener);
+
+      mockAdapter._simulateLaunch("iRacingSim64DX11.exe");
+      driveSdkTick(true);
+      driveSdkTick(true);
+
+      expect(listener).toHaveBeenCalledTimes(1);
+    });
+
+    it("should notify on the first connection tick on a host without launch events", () => {
+      mockGetConnectionStatus.mockReturnValue(true);
+      initAppMonitor(mockAdapter, createMockLogger());
+      const listener = vi.fn();
+      onIRacingStarted(listener);
+
+      driveSdkTick(true);
+      driveSdkTick(true);
+
+      expect(listener).toHaveBeenCalledTimes(1);
+    });
+
+    it("should not notify for other applications", () => {
+      initAppMonitor(mockAdapter, createMockLogger());
+      const listener = vi.fn();
+      onIRacingStarted(listener);
+
+      mockAdapter._simulateLaunch("notepad.exe");
+
+      expect(listener).not.toHaveBeenCalled();
+    });
+
+    it("should re-arm after each exit, so starts and exits alternate", () => {
+      initAppMonitor(mockAdapter, createMockLogger());
+      const order: string[] = [];
+      onIRacingStarted(() => order.push("start"));
+      onIRacingTerminated(() => order.push("exit"));
+
+      mockAdapter._simulateLaunch("iRacingSim64DX11.exe");
+      driveSdkTick(true);
+      mockAdapter._simulateTerminate("iRacingSim64DX11.exe");
+      driveSdkTick(false);
+      mockAdapter._simulateLaunch("iRacingSim64DX11.exe");
+      driveSdkTick(true);
+      mockAdapter._simulateTerminate("iRacingSim64DX11.exe");
+      driveSdkTick(false);
+      // A start seen only on the SDK connection, then an exit only on the
+      // SDK-disconnect fallback (no events from the host this time).
+      driveSdkTick(true);
+      driveSdkTick(false);
+      vi.advanceTimersByTime(IRACING_EXIT_SDK_CONFIRM_MS);
+      driveSdkTick(true);
+
+      expect(order).toEqual(["start", "exit", "start", "exit", "start", "exit", "start"]);
+    });
+
+    it("should keep notifying later listeners when an earlier one throws, and stop after unsubscribe", () => {
+      initAppMonitor(mockAdapter, createMockLogger());
+      const later = vi.fn();
+      onIRacingStarted(() => {
+        throw new Error("boom");
+      });
+      const unsubscribe = onIRacingStarted(later);
+
+      mockAdapter._simulateLaunch("iRacingSim64DX11.exe");
+      expect(later).toHaveBeenCalledTimes(1);
+
+      unsubscribe();
+      mockAdapter._simulateTerminate("iRacingSim64DX11.exe");
+      mockAdapter._simulateLaunch("iRacingSim64DX11.exe");
+
+      expect(later).toHaveBeenCalledTimes(1);
     });
   });
 
