@@ -36,6 +36,7 @@ const DIAL_TEMPLATES = new Set([
   "setup-fuel",
   "setup-hybrid",
   "setup-traction",
+  "replay-markers",
   "splits-delta-cycle",
   "view-adjustment",
 ]);
