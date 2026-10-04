@@ -1,3 +1,4 @@
+import { watchdogDailyLogFileName } from "@iracedeck/deck-core";
 import { type ILogger, LogLevel } from "@iracedeck/logger";
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -34,6 +35,21 @@ describe("FileSink", () => {
     expect(readdirSync(dir)).toEqual([expected]);
     expect(readFileSync(join(dir, expected), "utf-8")).toContain("INFO [Scope] hello");
   });
+
+  // The main-thread watchdog's worker appends to this sink's file on its own
+  // (#1330) and must stay self-contained, so it keeps its own copy of the
+  // name. This fails if the two drift apart.
+  it.each(["2026-01-01T00:30:00", "2026-05-05T12:00:00", "2026-10-31T23:30:00", "2026-12-09T08:00:00"])(
+    "names the day's file as the main-thread watchdog does (%s)",
+    (localTime) => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date(localTime));
+
+      new FileSink(dir).write("INFO", "x");
+
+      expect(readdirSync(dir)).toEqual([watchdogDailyLogFileName(new Date())]);
+    },
+  );
 
   it("appends successive lines to the same file", () => {
     const sink = new FileSink(dir);
