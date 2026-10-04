@@ -4,6 +4,7 @@
  */
 import {
   applyVerdict,
+  baseChangedSince,
   currentBranch,
   ghJson,
   git,
@@ -14,6 +15,8 @@ import {
   readIndexFile,
   readInput,
   readRepoFile,
+  replayRebase,
+  setHookDeadline,
   specFilenames,
   toplevel,
   workspacePackages,
@@ -29,6 +32,9 @@ const memo = (fn) => {
   };
 };
 
+// One deadline for every git and gh call this hook makes, inside its 60 s
+// timeout: a PreToolUse hook that times out does not block the call (#1307).
+setHookDeadline(Date.now() + 50_000);
 const input = await readInput();
 const command = input.tool_input?.command;
 if (typeof command === "string" && command.trim()) {
@@ -72,11 +78,14 @@ if (typeof command === "string" && command.trim()) {
           "view",
           ...(ref ? [ref] : []),
           "--json",
-          "number,state,headRefOid,headRefName,baseRefName,reviewDecision,mergeStateStatus,statusCheckRollup,reviews",
+          "number,state,headRefOid,headRefName,baseRefName,baseRefOid,reviewDecision,mergeStateStatus,statusCheckRollup,reviews",
         ],
         dir,
       ),
     ),
+    // The merge gate's pure-rebase check (#1307).
+    replayRebase,
+    baseChangedSince: memo(baseChangedSince),
   };
   let verdict;
   try {
