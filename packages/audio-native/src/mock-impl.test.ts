@@ -118,4 +118,42 @@ describe("AudioNativeMock", () => {
       expect(mock.sessionIdentity).toBeNull();
     });
   });
+
+  describe("device-rerouted callback (#1330)", () => {
+    it("records nothing until setDeviceReroutedCallback is called", () => {
+      expect(mock.deviceReroutedCallback).toBeNull();
+    });
+
+    it("records the callback so a test can fire it", () => {
+      const callback = vi.fn();
+      mock.setDeviceReroutedCallback(callback);
+
+      mock.deviceReroutedCallback?.();
+
+      expect(callback).toHaveBeenCalledTimes(1);
+    });
+
+    it("replaces an earlier callback", () => {
+      const first = vi.fn();
+      const second = vi.fn();
+      mock.setDeviceReroutedCallback(first);
+      mock.setDeviceReroutedCallback(second);
+
+      expect(mock.deviceReroutedCallback).toBe(second);
+    });
+
+    it("clears the callback when passed null", () => {
+      mock.setDeviceReroutedCallback(vi.fn());
+      mock.setDeviceReroutedCallback(null);
+
+      expect(mock.deviceReroutedCallback).toBeNull();
+    });
+
+    it("clears the callback when the engine is destroyed", () => {
+      mock.setDeviceReroutedCallback(vi.fn());
+      mock.destroyAudioEngine();
+
+      expect(mock.deviceReroutedCallback).toBeNull();
+    });
+  });
 });

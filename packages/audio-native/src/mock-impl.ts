@@ -9,6 +9,12 @@ export class AudioNativeMock {
   /** The identity last passed to {@link setSessionIdentity}, or null if none is set. */
   sessionIdentity: { displayName: string; iconPath?: string } | null = null;
 
+  /**
+   * The callback last passed to {@link setDeviceReroutedCallback}, or null if
+   * none is registered. Tests call it to simulate a device reroute.
+   */
+  deviceReroutedCallback: (() => void) | null = null;
+
   initAudioEngine(): boolean {
     console.debug("[AudioNativeMock] initAudioEngine()");
 
@@ -17,8 +23,10 @@ export class AudioNativeMock {
 
   destroyAudioEngine(): void {
     console.debug("[AudioNativeMock] destroyAudioEngine()");
-    // Destroying the engine clears the session identity, as it does natively.
+    // Destroying the engine clears the session identity and the reroute
+    // callback, as it does natively.
     this.sessionIdentity = null;
+    this.deviceReroutedCallback = null;
   }
 
   startAudioEngine(): boolean {
@@ -71,6 +79,11 @@ export class AudioNativeMock {
     }
 
     return true;
+  }
+
+  setDeviceReroutedCallback(callback: (() => void) | null): void {
+    // Recorded for tests; no device is ever rerouted here.
+    this.deviceReroutedCallback = callback;
   }
 }
 
