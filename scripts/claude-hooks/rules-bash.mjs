@@ -505,13 +505,15 @@ export const rules = [
   {
     name: "pnpm --filter on a script the package does not have",
     test: (c, ctx) => {
-      const m = c.match(cmd(/pnpm\s+--filter\s+(@iracedeck\/[\w-]+)\s+(?:run\s+)?([\w:-]+)/));
-      if (!m) return null;
-      if (/^(add|remove|install|exec|dlx|update|why|list|ls)$/.test(m[2])) return null;
-      const pkg = ctx.packages()[m[1]];
-      if (!pkg) return `No workspace package named ${m[1]}.`;
-      if (!pkg.scripts.includes(m[2]))
-        return `${m[1]} has no "${m[2]}" script — pnpm --filter exits 0 and does nothing (scripts: ${pkg.scripts.join(", ") || "none"}).`;
+      // Every filtered command in a chain, not just the first: since #1021 a
+      // `pnpm --filter <pkg> test` passes, so it must not shield a later one.
+      for (const m of c.matchAll(cmd(/pnpm\s+--filter\s+(@iracedeck\/[\w-]+)\s+(?:run\s+)?([\w:-]+)/g))) {
+        if (/^(add|remove|install|exec|dlx|update|why|list|ls)$/.test(m[2])) continue;
+        const pkg = ctx.packages()[m[1]];
+        if (!pkg) return `No workspace package named ${m[1]}.`;
+        if (!pkg.scripts.includes(m[2]))
+          return `${m[1]} has no "${m[2]}" script — pnpm --filter exits 0 and does nothing (scripts: ${pkg.scripts.join(", ") || "none"}).`;
+      }
       return null;
     },
   },

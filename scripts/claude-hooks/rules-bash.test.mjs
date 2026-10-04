@@ -882,6 +882,11 @@ describe("command-shape traps", () => {
     passes("pnpm --filter @iracedeck/logger test:watch", c);
     passes('pnpm --filter @iracedeck/logger test -t "a name"', c);
     expect(deny("pnpm --filter @iracedeck/iracing-plugin-mirabox test", c)).toMatch(/no "test" script/);
+    // A passing filtered command does not shield a later one in the chain.
+    expect(
+      deny("pnpm --filter @iracedeck/logger test && pnpm --filter @iracedeck/iracing-plugin-mirabox test", c),
+    ).toMatch(/iracing-plugin-mirabox has no "test" script/);
+    passes("pnpm --filter @iracedeck/logger add zod; pnpm --filter @iracedeck/logger test", c);
     expect(deny("pnpm --filter @iracedeck/logger test")).toMatch(/no "test" script/);
   });
   it("pnpm --filter with a missing script or package", () => {
