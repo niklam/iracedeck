@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -17,7 +18,27 @@ import {
 } from "./cpu-profile-capture.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const SOURCE_URL = pathToFileURL(join(HERE, "cpu-profile-capture.ts")).href;
+
+/**
+ * Transpile the capture module and its constants leaf into `dir` as plain ES
+ * modules and return the module's URL. Node's own type stripping cannot load
+ * the source directly: it does not map the `./cpu-profile-capture-constants.js`
+ * specifier onto the `.ts` file beside it.
+ */
+function transpileCaptureModule(dir: string): string {
+  const ts = createRequire(join(HERE, "..", "package.json"))("typescript") as typeof import("typescript");
+
+  writeFileSync(join(dir, "package.json"), JSON.stringify({ type: "module" }));
+
+  for (const name of ["cpu-profile-capture", "cpu-profile-capture-constants"]) {
+    const output = ts.transpileModule(readFileSync(join(HERE, `${name}.ts`), "utf-8"), {
+      compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
+    }).outputText;
+    writeFileSync(join(dir, `${name}.js`), output);
+  }
+
+  return pathToFileURL(join(dir, "cpu-profile-capture.js")).href;
+}
 
 function makeLogger() {
   const logger = {
@@ -92,6 +113,28 @@ describe("summarizeCpuProfile", () => {
     expect(text).toContain("Busy time:  0.01 s (50.0% of wall time)");
     expect(text).toMatch(/4\.0 ms {2}40\.0% {2}hot {2}file:\/\/\/plugin\.js:10:5/);
     expect(text).toMatch(/\(idle\) {2}\[not code: the thread was waiting for work\]/);
+  });
+
+  it("treats only V8's own pseudo-frames as labelled, never a function that shares an Object.prototype name", () => {
+    const profile: CpuProfile = {
+      nodes: [
+        { id: 1, callFrame: { functionName: "(root)", url: "", lineNumber: 0, columnNumber: 0 }, children: [2, 3] },
+        { id: 2, callFrame: { functionName: "toString", url: "", lineNumber: 4, columnNumber: 2 } },
+        { id: 3, callFrame: { functionName: "constructor", url: "", lineNumber: 0, columnNumber: 0 } },
+      ],
+      startTime: 0,
+      endTime: 2000,
+      samples: [2, 3],
+      timeDeltas: [0, 1000],
+    };
+    const summary = summarizeCpuProfile(profile);
+
+    for (const entry of summary.entries) expect(entry.label).toBeUndefined();
+
+    const text = formatCpuProfileSummary(summary, { stem: "cpu-x", samplingIntervalUs: 1000 });
+
+    expect(text).toMatch(/toString {2}\(native\):5:3/);
+    expect(text).not.toContain("[function");
   });
 
   it("keeps only the top N", () => {
@@ -277,6 +320,34 @@ describe("createCpuProfileCapture (injected session)", () => {
     expect(statusesOf(write).at(-1)).toMatchObject({ state: "failed", reason: expect.stringMatching(/written/) });
   });
 
+  it("reports the capture's real start when a last-resort failure ends it", async () => {
+    const write = vi.fn();
+    const logger = makeLogger();
+    const times = [new Date("2026-10-04T12:00:00.000Z"), new Date("2026-10-04T12:05:00.000Z")];
+    const capture = createCpuProfileCapture({
+      profilesDir: dir,
+      logger,
+      writeSettings: write,
+      durationMs: 1,
+      now: () => times.shift() ?? new Date("2026-10-04T13:00:00.000Z"),
+      openSession: async () => fakeSession(syntheticProfile()),
+      summarize: () => {
+        throw new Error("summary bug");
+      },
+    });
+
+    const result = await capture.capture();
+
+    expect(result).toEqual({ ok: false, reason: "summary bug" });
+    expect(statusesOf(write).at(-1)).toEqual({
+      state: "failed",
+      startedAt: Date.parse("2026-10-04T12:00:00.000Z"),
+      reason: "summary bug",
+    });
+    expect(logger.warn).toHaveBeenCalledWith("CPU profile capture failed: summary bug");
+    expect(capture.isCapturing()).toBe(false);
+  });
+
   it("refuses a second request while one is running, without touching the published state", async () => {
     const write = vi.fn();
     const capture = createCpuProfileCapture({
@@ -298,13 +369,16 @@ describe("createCpuProfileCapture (injected session)", () => {
 });
 
 /**
- * The real capture in a child Node process, which imports the TypeScript
- * source directly (Node's type stripping). A child, so the profiler and the
- * busy loop never share a thread with the test runner.
+ * The real capture in a child Node process, importing the module transpiled
+ * from source. A child, so the profiler and the busy loop never share a thread
+ * with the test runner.
  */
-function runCaptureChild(profilesDir: string): Promise<{ first: unknown; second: unknown; statuses: unknown[] }> {
+function runCaptureChild(
+  moduleUrl: string,
+  profilesDir: string,
+): Promise<{ first: unknown; second: unknown; statuses: unknown[] }> {
   const script = `
-    import { createCpuProfileCapture } from ${JSON.stringify(SOURCE_URL)};
+    import { createCpuProfileCapture } from ${JSON.stringify(moduleUrl)};
 
     const quiet = () => {};
     const logger = { trace: quiet, debug: quiet, info: quiet, warn: quiet, error: quiet };
@@ -364,7 +438,10 @@ describe("createCpuProfileCapture in a real process", () => {
     const profilesDir = join(dir, "profiles");
     mkdirSync(dir, { recursive: true });
 
-    const { first, second, statuses } = await runCaptureChild(profilesDir);
+    const moduleDir = join(dir, "module");
+    mkdirSync(moduleDir, { recursive: true });
+
+    const { first, second, statuses } = await runCaptureChild(transpileCaptureModule(moduleDir), profilesDir);
 
     expect(first).toMatchObject({ ok: true });
     expect(second).toEqual({ ok: false, reason: "a capture is already running", busy: true });

@@ -24,15 +24,18 @@
  *
  * Decision record: `docs/superpowers/specs/2026-10-04-issue-1338-built-in-profiling.md`.
  *
- * This file imports nothing but Node built-ins and erasable types, so its
- * integration test can run it in a child Node process straight from source.
+ * This file imports nothing but Node built-ins, erasable types and its own
+ * constants leaf, so its integration test can run it, transpiled, in a child
+ * Node process.
  */
 import type { ILogger } from "@iracedeck/logger";
 import { mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import { PROFILE_CAPTURE_STATUS_KEY } from "./cpu-profile-capture-constants.js";
+
 /** The run-scoped global-settings key carrying the capture's state (enrolled in `RUN_SCOPED_SETTING_KEYS`). */
-export const PROFILE_CAPTURE_STATUS_KEY = "_profileCaptureStatus";
+export { PROFILE_CAPTURE_STATUS_KEY };
 
 /** The spec's values: 30 s at a 1 ms sampling interval (~30,000 samples), newest five pairs kept. */
 export const CPU_PROFILE_DEFAULTS = {
@@ -79,6 +82,8 @@ export interface CpuProfileCaptureOptions {
   keep?: number;
   /** Wall clock, for the file names and `startedAt`. */
   now?: () => Date;
+  /** @internal Builds the `.txt` from the profile; defaults to `summarizeCpuProfile` + `formatCpuProfileSummary`. For tests. */
+  summarize?: (profile: CpuProfile, stem: string) => string;
   /** Opens an unconnected session; defaults to `new (await import("node:inspector")).Session()`. Throws when unavailable. */
   openSession?: () => Promise<InspectorSessionLike>;
 }
@@ -110,12 +115,17 @@ export interface CpuProfile {
 const CAPTURE_FILE_PATTERN = /^(cpu-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z)\.(cpuprofile|txt)$/;
 
 /** V8's pseudo-frames: listed in the summary, but labelled, since none of them is plugin code. */
-const PSEUDO_FRAME_LABELS: Record<string, string> = {
-  "(idle)": "not code: the thread was waiting for work",
-  "(program)": "not plugin code: V8 and native work outside JavaScript",
-  "(garbage collector)": "not plugin code: garbage collection",
-  "(root)": "not code: the profile's root",
-};
+/**
+ * A `Map`, never an object literal: the lookup key is whatever name V8 gave a
+ * function, and a native frame named `toString` or `constructor` would find
+ * `Object.prototype`'s member in a plain object.
+ */
+const PSEUDO_FRAME_LABELS: ReadonlyMap<string, string> = new Map([
+  ["(idle)", "not code: the thread was waiting for work"],
+  ["(program)", "not plugin code: V8 and native work outside JavaScript"],
+  ["(garbage collector)", "not plugin code: garbage collection"],
+  ["(root)", "not code: the profile's root"],
+]);
 
 /**
  * The file stem for a capture started at `date`: `cpu-2026-10-04T12-30-05-123Z`.
@@ -198,7 +208,7 @@ export function summarizeCpuProfile(profile: CpuProfile): CpuProfileSummary {
       column: frame.columnNumber + 1,
       selfUs,
     };
-    const label = PSEUDO_FRAME_LABELS[frame.functionName];
+    const label = PSEUDO_FRAME_LABELS.get(frame.functionName);
 
     if (label && frame.url === "") entry.label = label;
 
@@ -316,7 +326,13 @@ export function createCpuProfileCapture(options: CpuProfileCaptureOptions): CpuP
   const keep = options.keep ?? CPU_PROFILE_DEFAULTS.keep;
   const now = options.now ?? (() => new Date());
   const openSession = options.openSession ?? openInspectorSession;
+  const summarize =
+    options.summarize ??
+    ((profile: CpuProfile, stem: string) =>
+      formatCpuProfileSummary(summarizeCpuProfile(profile), { stem, samplingIntervalUs }));
   let capturing = false;
+  /** The running capture's start, so even the last-resort failure reports when it began. */
+  let currentStartedAt: number | undefined;
 
   const publish = (status: ProfileCaptureStatus): void => {
     try {
@@ -326,7 +342,7 @@ export function createCpuProfileCapture(options: CpuProfileCaptureOptions): CpuP
     }
   };
 
-  const fail = (startedAt: number, reason: string): CpuProfileCaptureResult => {
+  const fail = (startedAt: number | undefined, reason: string): CpuProfileCaptureResult => {
     logger.warn(`CPU profile capture failed: ${reason}`);
     publish({ state: "failed", startedAt, reason });
 
@@ -336,6 +352,7 @@ export function createCpuProfileCapture(options: CpuProfileCaptureOptions): CpuP
   const run = async (): Promise<CpuProfileCaptureResult> => {
     const started = now();
     const startedAt = started.getTime();
+    currentStartedAt = startedAt;
     const stem = captureFileStem(started);
 
     publish({ state: "capturing", startedAt, durationMs });
@@ -376,11 +393,14 @@ export function createCpuProfileCapture(options: CpuProfileCaptureOptions): CpuP
 
     const profileFile = join(profilesDir, `${stem}.cpuprofile`);
     const summaryFile = join(profilesDir, `${stem}.txt`);
+    // Outside the write's try: a summary that cannot be built is a bug, not a
+    // write failure, and goes to the last-resort catch in `capture()`.
+    const summaryText = summarize(profile, stem);
 
     try {
       await mkdir(profilesDir, { recursive: true });
       await writeFile(profileFile, JSON.stringify(profile));
-      await writeFile(summaryFile, formatCpuProfileSummary(summarizeCpuProfile(profile), { stem, samplingIntervalUs }));
+      await writeFile(summaryFile, summaryText);
     } catch (err) {
       return fail(startedAt, `the profile could not be written (${describeError(err)})`);
     }
@@ -403,14 +423,17 @@ export function createCpuProfileCapture(options: CpuProfileCaptureOptions): CpuP
       }
 
       capturing = true;
+      currentStartedAt = undefined;
 
       try {
         return await run();
       } catch (err) {
-        // Nothing above should throw, but the lock must never stay held.
-        return fail(now().getTime(), describeError(err));
+        // Nothing above should throw, but the lock must never stay held, and
+        // the failure still reports when the capture began, not when it died.
+        return fail(currentStartedAt, describeError(err));
       } finally {
         capturing = false;
+        currentStartedAt = undefined;
       }
     },
     isCapturing: () => capturing,

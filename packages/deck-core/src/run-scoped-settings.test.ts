@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { PROFILE_CAPTURE_STATUS_KEY } from "./cpu-profile-capture.js";
+import { PROFILE_CAPTURE_STATUS_KEY } from "./cpu-profile-capture-constants.js";
 import { PI_WARNINGS_KEY } from "./pi-warnings-constants.js";
 import { hasOnlyRunScopedKeys, RUN_SCOPED_SETTING_KEYS, stripRunScopedKeys } from "./run-scoped-settings.js";
 import { VOICE_PACKS_KEY } from "./voice-pack-constants.js";
