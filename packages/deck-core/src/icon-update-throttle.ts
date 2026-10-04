@@ -12,20 +12,35 @@
  * Behavior per context id:
  *   - First call OR call >= `windowMs` since the last send: render
  *     immediately, record the send time, cancel any pending flush.
- *   - Call inside the window: replace any pending timer with a fresh one
- *     scheduled for the moment the window expires. Re-rendering at flush
- *     time means the *latest* state always wins; we never need to remember
- *     intermediate values.
+ *   - Call inside the window: if no flush is pending, arm one timer for
+ *     the moment the window expires; if one is pending, only replace the
+ *     render it will run. The newest render always wins, and re-rendering at
+ *     flush time means the *latest* state always wins; we never need to
+ *     remember intermediate values.
+ *
+ * The timer is armed once per window rather than re-armed per call (#1339):
+ * its deadline is anchored to the last send, which does not move while a
+ * flush is pending, so a re-armed timer would fire at the same moment and
+ * cost a clearTimeout, a setTimeout and a closure per tick per key.
  *
  * The render closure is re-evaluated at every call (immediate or trailing),
  * so callers can pass a closure that resolves from current state — no need
  * to capture and update an intermediate "pending state".
  */
+/** A trailing flush armed for one context: its timer and the render it runs. */
+interface PendingFlush {
+  readonly timer: ReturnType<typeof setTimeout>;
+  render: () => Promise<void> | void;
+}
+
 export class IconUpdateThrottle {
   /** @internal Exposed so tests can inspect throttle state. */
   readonly lastImageSentAt = new Map<string, number>();
-  /** @internal Exposed so tests can inspect pending timers. */
-  readonly pendingFlush = new Map<string, ReturnType<typeof setTimeout>>();
+  /**
+   * @internal Exposed so tests can inspect pending flushes: the one timer
+   * armed for the window, and the newest render it will run.
+   */
+  readonly pendingFlush = new Map<string, PendingFlush>();
 
   /** Minimum gap between sends for the same context (default 100 ms — 10 Hz). */
   constructor(private readonly windowMs = 100) {}
@@ -53,21 +68,27 @@ export class IconUpdateThrottle {
       return;
     }
 
-    // Inside the window — coalesce. Replace any pending timer so the
-    // flush time stays anchored to the last arrival, and re-resolution
-    // at flush time picks up the latest state.
-    this.cancelPending(contextId);
+    // Inside the window — coalesce. A flush already pending fires at the
+    // window's end, which is anchored to the last send and so has not moved:
+    // hand it the newest render and leave its timer alone.
+    const pending = this.pendingFlush.get(contextId);
 
-    const delay = this.windowMs - elapsed;
+    if (pending) {
+      pending.render = render;
 
-    this.pendingFlush.set(
-      contextId,
-      setTimeout(() => {
+      return;
+    }
+
+    const flush: PendingFlush = {
+      render,
+      timer: setTimeout(() => {
         this.pendingFlush.delete(contextId);
         this.lastImageSentAt.set(contextId, Date.now());
-        IconUpdateThrottle.invokeRender(render);
-      }, delay),
-    );
+        IconUpdateThrottle.invokeRender(flush.render);
+      }, this.windowMs - elapsed),
+    };
+
+    this.pendingFlush.set(contextId, flush);
   }
 
   /**
@@ -104,10 +125,10 @@ export class IconUpdateThrottle {
   }
 
   private cancelPending(contextId: string): void {
-    const timer = this.pendingFlush.get(contextId);
+    const pending = this.pendingFlush.get(contextId);
 
-    if (timer) {
-      clearTimeout(timer);
+    if (pending) {
+      clearTimeout(pending.timer);
       this.pendingFlush.delete(contextId);
     }
   }
