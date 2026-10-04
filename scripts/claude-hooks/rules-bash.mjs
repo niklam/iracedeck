@@ -494,9 +494,13 @@ export const rules = [
   },
   {
     name: "run vitest through the root script",
+    // `pnpm --filter <pkg> test` is NOT refused: since #1021 every package with
+    // tests runs them through `scripts/test-package.mjs`, which keeps the root
+    // config and its native loader. A package without a `test` script is the
+    // next rule's case.
     test: (c) =>
-      (has(c, cmd(/(pnpm\s+exec\s+|npx\s+)vitest\b/)) || has(c, cmd(/pnpm\s+--filter\s+\S+\s+(run\s+)?test\b/))) &&
-      "Run tests as `pnpm test <path>`: `pnpm exec vitest` drops the native config loader and the per-package test scripts match nothing (.claude/rules/testing.md).",
+      has(c, cmd(/(pnpm\s+exec\s+|npx\s+)vitest\b/)) &&
+      "Run tests as `pnpm test <path>` (or `pnpm --filter <pkg> test`): `pnpm exec vitest` and `npx vitest` drop the native config loader (.claude/rules/testing.md).",
   },
   {
     name: "pnpm --filter on a script the package does not have",

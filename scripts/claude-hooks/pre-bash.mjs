@@ -69,7 +69,10 @@ if (typeof command === "string" && command.trim()) {
     tracked: memo((dir, rel) => git(["cat-file", "-e", `HEAD:${rel}`], dir).ok),
     issueLabels: memo((issue, dir) => ghJson(["issue", "view", String(issue), "--json", "labels"], dir)),
     linkTargets: memo(() => linkTargets()),
-    packages: memo(() => workspacePackages(mainRepoRoot(cwd) ?? cwd)),
+    // The checkout the command runs in, not the main one: `pnpm --filter`
+    // resolves the workspace from its cwd, so a worktree whose manifests
+    // differ from master's is judged by its own scripts (#1021).
+    packages: memo(() => workspacePackages(toplevel(cwd) ?? mainRepoRoot(cwd) ?? cwd)),
     isInside,
     prView: memo((ref, dir) =>
       ghJson(
