@@ -12,7 +12,7 @@ Check these descriptions for drift as part of **every release's** release-notes 
 |---------------|---------------|-----------------|
 | Action count (Elgato) | 32 | `packages/website/src/content/docs/index.mdx` stats row |
 | Action count (Mirabox) | 31 (no Switch Profile) | Mirabox manifest `Actions` |
-| Dial-capable actions | 16 — Stream Deck+ dials (Elgato) and Mirabox knobs; on Mirabox turn and push only | `iracedeck-actions` skill / actions with `encoder: true`; Mirabox manifest `Knob` |
+| Dial-capable actions | 17 — Stream Deck+ dials (Elgato) and Mirabox knobs; on Mirabox turn and push only | `iracedeck-actions` skill / actions with `encoder: true`; Mirabox manifest `Knob` |
 | Headline features | Settings window, Race Engineer, live data on keys, template variables, dials, profiles | changelog / website |
 | Supported Elgato devices | every device DEVICE_SUPPORT marks supported (#983) | `packages/website/src/data/brands.ts` (`ECOSYSTEMS.elgato.devices`) |
 | Supported Mirabox brands | Mirabox, Stream Dock, SOOMFON, VAPOURD, KILOGOGRAPH, HALCONTORNO, VSDinside, Nouvolo (list is open-ended) | `packages/website/src/data/brands.ts` (`BRANDS` for the names; `ECOSYSTEMS.mirabox.listIsComplete` for the open-ended marker) |

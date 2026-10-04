@@ -1,9 +1,11 @@
 /**
- * The shared Stream Deck+ dial "dash box" — the 200×100 touch-strip pixmap the
- * seven Setup dial surfaces (Brakes, Traction, Fuel, Engine, Aero, Chassis,
- * Hybrid) draw for their encoder slot. Each action was carrying its own copy of
- * this renderer (issue #817); this module is the single source (issue #811),
- * and adds user-adjustable colors.
+ * The shared dial "dash box" — the full-canvas pixmap thirteen dial surfaces
+ * draw on the dial's own screen: the seven Setup dials (Brakes, Traction, Fuel,
+ * Engine, Aero, Chassis, Hybrid), Camera Editor Adjustments, Cockpit Misc,
+ * Force Feedback, Replay Markers, Splits & Reference and View Adjustment. The
+ * Setup actions were each carrying their own copy of this renderer (issue
+ * #817); this module is the single source (issue #811), and adds
+ * user-adjustable colors.
  *
  * The box is a rounded panel floating on the black device screen: the
  * background color fills the area INSIDE the border frame (the outer margin
@@ -126,7 +128,7 @@ export function renderDialBox(canvas: DialCanvasProfile, args: DialBoxArgs): str
 }
 
 /**
- * Dash-box appearance settings, spread into each Setup dial's `DialSettings`
+ * Dash-box appearance settings, spread into each dash-box dial's settings
  * schema (issue #811). All slots default so a keypad-only instance or a fresh
  * dial parses cleanly, and every field is `.catch`-guarded so a value written
  * by a newer plugin version degrades to its default instead of failing the
