@@ -238,7 +238,7 @@ describe("SDKController", () => {
       const ctx = controller.getCurrentTemplateContext();
 
       expect(ctx).not.toBeNull();
-      expect(ctx!.display["telemetry.Speed"]).toBe("100");
+      expect(ctx!.display("telemetry.Speed")).toBe("100");
     });
 
     it("should include raw values in the returned context", () => {
@@ -248,8 +248,8 @@ describe("SDKController", () => {
       const ctx = controller.getCurrentTemplateContext();
 
       expect(ctx).not.toBeNull();
-      expect(ctx!.raw["telemetry.Speed"]).toBe(156.789);
-      expect(typeof ctx!.raw["telemetry.Speed"]).toBe("number");
+      expect(ctx!.raw("telemetry.Speed").value).toBe(156.789);
+      expect(typeof ctx!.raw("telemetry.Speed").value).toBe("number");
     });
 
     it("should cache context within the same tick", () => {
@@ -279,7 +279,7 @@ describe("SDKController", () => {
       const ctx2 = controller.getCurrentTemplateContext();
 
       expect(ctx2).not.toBe(ctx1);
-      expect(ctx2!.display["telemetry.Speed"]).toBe("200");
+      expect(ctx2!.display("telemetry.Speed")).toBe("200");
     });
 
     it("should return null when no telemetry has ever been received", () => {
@@ -299,7 +299,7 @@ describe("SDKController", () => {
 
       const ctxBefore = controller.getCurrentTemplateContext();
       expect(ctxBefore).not.toBeNull();
-      expect(ctxBefore!.display["telemetry.Speed"]).toBe("100");
+      expect(ctxBefore!.display("telemetry.Speed")).toBe("100");
 
       // After new telemetry, context should be rebuilt (not the same object)
       vi.mocked(mockSdk.getTelemetry).mockReturnValue({ Speed: 300 });
@@ -307,7 +307,7 @@ describe("SDKController", () => {
 
       const ctxAfter = controller.getCurrentTemplateContext();
       expect(ctxAfter).not.toBe(ctxBefore);
-      expect(ctxAfter!.display["telemetry.Speed"]).toBe("300");
+      expect(ctxAfter!.display("telemetry.Speed")).toBe("300");
     });
   });
 
@@ -370,8 +370,25 @@ describe("SDKController", () => {
 
       const ctx = controller.getCurrentTemplateContext();
 
-      expect(ctx!.display["self.position"]).toBe("1");
-      expect(ctx!.display["race_behind.name"]).toBe("Other");
+      expect(ctx!.display("self.position")).toBe("1");
+      expect(ctx!.display("race_behind.name")).toBe("Other");
+    });
+
+    it("asks the provider only when a driver variable is read, once per context (#1339)", () => {
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue({ Speed: 100, SessionNum: 0 } as unknown as TelemetryData);
+      vi.mocked(mockSdk.getSessionInfo).mockReturnValue(null);
+      const provider = vi.fn(() => [1]);
+      controller.setLivePositionsProvider(provider);
+
+      const ctx = controller.getCurrentTemplateContext();
+
+      expect(ctx!.display("telemetry.Speed")).toBe("100");
+      expect(provider).not.toHaveBeenCalled();
+
+      ctx!.display("self.position");
+      ctx!.display("race_ahead.name");
+
+      expect(provider).toHaveBeenCalledTimes(1);
     });
   });
 

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   generateTelemetryDisplaySvg,
@@ -11,11 +11,23 @@ vi.mock("../../../icons/telemetry-display.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">{{backgroundColor}} {{titleContent}} {{valueContent}}</svg>',
 }));
 
-vi.mock("@iracedeck/iracing-sdk", () => ({
-  resolveTemplate: vi.fn((template: string) => template.replace("{{telemetry.Speed}}", "156.79")),
+const { templateState } = vi.hoisted(() => ({
+  /** The value `{{telemetry.Speed}}` resolves to; the throttle tests change it between ticks. */
+  templateState: { speed: "156.79" },
 }));
 
-vi.mock("@iracedeck/deck-core", () => ({
+vi.mock("@iracedeck/iracing-sdk", () => ({
+  resolveTemplate: vi.fn((template: string) => template.replace("{{telemetry.Speed}}", templateState.speed)),
+}));
+
+vi.mock("@iracedeck/deck-core", async () => ({
+  // The real throttle from deck-core's source: the refresh tests drive its
+  // leading/trailing window with fake timers.
+  IconUpdateThrottle: (
+    await vi.importActual<typeof import("../../../../deck-core/src/icon-update-throttle.js")>(
+      "../../../../deck-core/src/icon-update-throttle.js",
+    )
+  ).IconUpdateThrottle,
   CommonSettings: {
     extend: (_fields: unknown) => {
       // Return a mock Zod-like schema
@@ -48,17 +60,6 @@ vi.mock("@iracedeck/deck-core", () => ({
     async onWillDisappear(): Promise<void> {}
   },
   escapeXml: vi.fn((str: string) => str),
-  IconUpdateThrottle: class {
-    schedule(_id: string, render: () => unknown): void {
-      try {
-        void Promise.resolve(render()).catch(() => {});
-      } catch {
-        // Swallow sync throws — matches the production render contract.
-      }
-    }
-    clear(): void {}
-    clearAll(): void {}
-  },
   resolveTitleTemplate: vi.fn((text: string) => text.replace("{{self.car_number}}", "34")),
   generateBorderParts: vi.fn(() => ({ defs: "", rects: "" })),
   getGlobalBorderSettings: vi.fn(() => ({})),
@@ -231,6 +232,121 @@ describe("TelemetryDisplay", () => {
       const mocked = action as unknown as { setKeyImage: ReturnType<typeof vi.fn> };
       const svgArg = mocked.setKeyImage.mock.calls[0][1] as string;
       expect(decodeURIComponent(svgArg)).toContain("CAR 34");
+    });
+  });
+
+  describe("telemetry-driven refresh resolves inside the throttle (#1339)", () => {
+    /** Stands in for the controller's per-frame context; `resolveTemplate` is mocked and never reads it. */
+    const CONTEXT = {} as never;
+
+    let action: TelemetryDisplay;
+
+    /** One SDK frame: the controller notifies every subscriber once. */
+    function tick(): void {
+      for (const [, callback] of vi.mocked(action["sdkController"].subscribe).mock.calls) {
+        callback({} as never, false);
+      }
+    }
+
+    async function appear(id: string): Promise<void> {
+      await action.onWillAppear({
+        action: { id, isKey: () => true, setTitle: vi.fn().mockResolvedValue(undefined) },
+        payload: { settings: { title: "SPEED", template: "{{telemetry.Speed}}", fontSize: 15 } },
+      } as never);
+    }
+
+    /** Decoded image of every telemetry-driven push, in order. */
+    function pushedImages(): string[] {
+      return vi.mocked(action["updateKeyImage"]).mock.calls.map(([, uri]) => decodeURIComponent(uri as string));
+    }
+
+    function contextRequests(): number {
+      return vi.mocked(action["sdkController"].getCurrentTemplateContext).mock.calls.length;
+    }
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+      vi.setSystemTime(1_000_000);
+      templateState.speed = "100";
+      action = new TelemetryDisplay();
+      vi.mocked(action["sdkController"].getCurrentTemplateContext).mockReturnValue(CONTEXT);
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+      templateState.speed = "156.79";
+    });
+
+    it("asks for a context only on the leading and trailing edge of a burst", async () => {
+      await appear("key-1");
+      vi.mocked(action["sdkController"].getCurrentTemplateContext).mockClear();
+
+      for (let speed = 101; speed <= 110; speed++) {
+        templateState.speed = String(speed);
+        tick();
+        vi.advanceTimersByTime(5);
+      }
+
+      // Ten ticks inside one 100 ms window: only the leading edge has resolved.
+      expect(contextRequests()).toBe(1);
+      expect(pushedImages()).toHaveLength(1);
+      expect(pushedImages()[0]).toContain("101");
+
+      await vi.advanceTimersByTimeAsync(100);
+
+      // One trailing flush, resolved from the latest state.
+      expect(contextRequests()).toBe(2);
+      expect(pushedImages()).toHaveLength(2);
+      expect(pushedImages()[1]).toContain("110");
+    });
+
+    it("drops a pending flush and ignores later ticks once the key disappears", async () => {
+      await appear("key-1");
+
+      templateState.speed = "101";
+      tick(); // leading edge renders 101
+      templateState.speed = "102";
+      vi.advanceTimersByTime(10);
+      tick(); // inside the window: a trailing flush is pending
+
+      vi.mocked(action["sdkController"].getCurrentTemplateContext).mockClear();
+      await action.onWillDisappear({ action: { id: "key-1" }, payload: { settings: {} } } as never);
+      await vi.advanceTimersByTimeAsync(500);
+      tick();
+      await vi.advanceTimersByTimeAsync(500);
+
+      expect(contextRequests()).toBe(0);
+      expect(pushedImages()).toHaveLength(1);
+      expect(pushedImages()[0]).toContain("101");
+    });
+
+    it("pushes no image when the resolved value has not changed", async () => {
+      await appear("key-1");
+
+      tick();
+      await vi.advanceTimersByTimeAsync(200);
+      tick();
+      await vi.advanceTimersByTimeAsync(200);
+
+      expect(contextRequests()).toBe(3); // appear + two refreshes
+      expect(action["updateKeyImage"]).not.toHaveBeenCalled();
+    });
+
+    it("pushes one image per change of the resolved value", async () => {
+      await appear("key-1");
+
+      templateState.speed = "120";
+      tick();
+      await vi.advanceTimersByTimeAsync(200);
+      tick(); // same value again: no second push
+      await vi.advanceTimersByTimeAsync(200);
+      templateState.speed = "130";
+      tick();
+      await vi.advanceTimersByTimeAsync(200);
+
+      expect(pushedImages()).toHaveLength(2);
+      expect(pushedImages()[0]).toContain("120");
+      expect(pushedImages()[1]).toContain("130");
     });
   });
 });

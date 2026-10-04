@@ -21,8 +21,10 @@ import { getController } from "./sdk-singleton.js";
  * (Chat's key text, #1337) fall back the same way instead of defining their own.
  */
 export const EMPTY_TEMPLATE_CONTEXT: TemplateContext = Object.freeze({
-  display: Object.freeze({}),
-  raw: Object.freeze({}),
+  // Inline rather than templateContextFromMaps({}): a module-scope call into
+  // iracing-sdk would break every test that mocks that package without it.
+  display: () => undefined,
+  raw: () => ({ found: false }),
 });
 
 /**
@@ -37,6 +39,14 @@ export function titleHasTemplate(text: string | undefined): boolean {
  * Resolves {{…}} placeholders in user-entered title text against the current
  * telemetry template context. Text without placeholders is returned unchanged
  * without consulting the SDK.
+ *
+ * Never throws. The context builds its namespaces lazily, on the first lookup
+ * of a path in them (#1339), so a builder that throws (a malformed driver
+ * entry, the live-order provider) does so inside `resolveTemplate`, not inside
+ * `getCurrentTemplateContext()`. Such a throw resolves the title against the
+ * empty context, as a throw from the eager build did before. It must not
+ * escape: `BaseAction`'s title tick runs inside the SDK's subscriber fan-out,
+ * where a throw would skip every later subscriber, every frame.
  */
 export function resolveTitleTemplate(text: string): string {
   if (!text.includes("{{")) return text;
@@ -49,5 +59,13 @@ export function resolveTitleTemplate(text: string): string {
     // SDK singleton not initialized (e.g. tests) — resolve against the empty context
   }
 
-  return resolveTemplate(text, context ?? EMPTY_TEMPLATE_CONTEXT);
+  if (context) {
+    try {
+      return resolveTemplate(text, context);
+    } catch {
+      // A namespace builder threw — fall through to the empty context
+    }
+  }
+
+  return resolveTemplate(text, EMPTY_TEMPLATE_CONTEXT);
 }

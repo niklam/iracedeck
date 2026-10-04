@@ -4,6 +4,7 @@
  * getController is mocked so tests can control the template context;
  * resolveTemplate itself runs for real (pure string processing).
  */
+import { templateContextFromMaps } from "@iracedeck/iracing-sdk";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { EMPTY_TEMPLATE_CONTEXT, resolveTitleTemplate, titleHasTemplate } from "./title-template.js";
@@ -37,10 +38,11 @@ describe("titleHasTemplate", () => {
 
 describe("EMPTY_TEMPLATE_CONTEXT", () => {
   it("is empty and frozen, so a shared fallback cannot be mutated by one consumer", () => {
-    expect(EMPTY_TEMPLATE_CONTEXT).toEqual({ display: {}, raw: {} });
     expect(Object.isFrozen(EMPTY_TEMPLATE_CONTEXT)).toBe(true);
-    expect(Object.isFrozen(EMPTY_TEMPLATE_CONTEXT.display)).toBe(true);
-    expect(Object.isFrozen(EMPTY_TEMPLATE_CONTEXT.raw)).toBe(true);
+    expect(EMPTY_TEMPLATE_CONTEXT.display("self.name")).toBeUndefined();
+    expect(EMPTY_TEMPLATE_CONTEXT.raw("self.name")).toEqual({ found: false });
+    expect(EMPTY_TEMPLATE_CONTEXT.display("constructor")).toBeUndefined();
+    expect(EMPTY_TEMPLATE_CONTEXT.raw("toString")).toEqual({ found: false });
   });
 });
 
@@ -55,19 +57,13 @@ describe("resolveTitleTemplate", () => {
   });
 
   it("resolves {{variable}} placeholders against the current template context", () => {
-    mockGetCurrentTemplateContext.mockReturnValue({
-      display: { "track_ahead.car_number": "34" },
-      raw: {},
-    });
+    mockGetCurrentTemplateContext.mockReturnValue(templateContextFromMaps({ "track_ahead.car_number": "34" }));
 
     expect(resolveTitleTemplate("CAR {{track_ahead.car_number}}")).toBe("CAR 34");
   });
 
   it("resolves {{= expression }} placeholders against the raw context", () => {
-    mockGetCurrentTemplateContext.mockReturnValue({
-      display: {},
-      raw: { "self.position": 4 },
-    });
+    mockGetCurrentTemplateContext.mockReturnValue(templateContextFromMaps({}, { "self.position": 4 }));
 
     expect(resolveTitleTemplate("P{{= self.position + 1 }}")).toBe("P5");
   });
@@ -81,6 +77,22 @@ describe("resolveTitleTemplate", () => {
   it("keeps expression parse errors visible when disconnected", () => {
     mockGetCurrentTemplateContext.mockReturnValue(null);
 
+    expect(resolveTitleTemplate("{{= self.position + }}")).toBe("{{= self.position + }}");
+  });
+
+  it("falls back to the empty context when a lazily built namespace throws (#1339)", () => {
+    // The live context builds a namespace on its first lookup, inside
+    // resolveTemplate; a builder that throws there must not escape.
+    mockGetCurrentTemplateContext.mockReturnValue({
+      display: () => {
+        throw new Error("malformed driver entry");
+      },
+      raw: () => {
+        throw new Error("malformed driver entry");
+      },
+    });
+
+    expect(resolveTitleTemplate("CAR {{track_ahead.car_number}}")).toBe("CAR ");
     expect(resolveTitleTemplate("{{= self.position + }}")).toBe("{{= self.position + }}");
   });
 

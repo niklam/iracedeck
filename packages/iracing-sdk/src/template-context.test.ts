@@ -1,14 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { buildReferenceTemplateMaps } from "./template-context-reference.test-helper.js";
 import {
   buildTemplateContextFromData,
   findDriverByCamCarIdx,
   findDriverByRacePosition,
   findNearestDriverOnTrack,
-  flattenContext,
   formatTimeRemaining,
-  prefixKeys,
+  namespaceBuilders,
   splitDriverName,
+  type TemplateContext,
 } from "./template-context.js";
 import { resolveTemplate } from "./template-resolver.js";
 import { IRSDK_UNLIMITED_LAPS, IRSDK_UNLIMITED_TIME, type SessionInfo, type TelemetryData } from "./types.js";
@@ -331,24 +332,6 @@ describe("findDriverByCamCarIdx", () => {
   });
 });
 
-describe("prefixKeys", () => {
-  it("should prefix all keys", () => {
-    const result = prefixKeys("self", { name: "John", position: "3" });
-
-    expect(result).toEqual({ "self.name": "John", "self.position": "3" });
-  });
-
-  it("should handle empty record", () => {
-    expect(prefixKeys("self", {})).toEqual({});
-  });
-
-  it("should handle keys that already contain dots", () => {
-    const result = prefixKeys("sessionInfo", { "WeekendInfo.TrackName": "Spa" });
-
-    expect(result).toEqual({ "sessionInfo.WeekendInfo.TrackName": "Spa" });
-  });
-});
-
 describe("buildTemplateContextFromData", () => {
   it("should build flat context with valid data", () => {
     const drivers = [
@@ -382,16 +365,16 @@ describe("buildTemplateContextFromData", () => {
     const telemetry = makeTelemetry();
     const ctx = buildTemplateContextFromData(telemetry, sessionInfo);
 
-    expect(ctx.display["self.name"]).toBe("John Smith");
-    expect(ctx.display["self.first_name"]).toBe("John");
-    expect(ctx.display["self.last_name"]).toBe("Smith");
-    expect(ctx.display["self.position"]).toBe("2");
-    expect(ctx.display["self.incidents"]).toBe("3");
-    expect(ctx.display["session.type"]).toBe("Race");
-    expect(ctx.display["session.laps_remaining"]).toBe("10");
-    expect(ctx.display["session.time_remaining"]).toBe("61:01");
-    expect(ctx.display["track.name"]).toBe("Spa-Francorchamps");
-    expect(ctx.display["track.short_name"]).toBe("Spa");
+    expect(ctx.display("self.name")).toBe("John Smith");
+    expect(ctx.display("self.first_name")).toBe("John");
+    expect(ctx.display("self.last_name")).toBe("Smith");
+    expect(ctx.display("self.position")).toBe("2");
+    expect(ctx.display("self.incidents")).toBe("3");
+    expect(ctx.display("session.type")).toBe("Race");
+    expect(ctx.display("session.laps_remaining")).toBe("10");
+    expect(ctx.display("session.time_remaining")).toBe("61:01");
+    expect(ctx.display("track.name")).toBe("Spa-Francorchamps");
+    expect(ctx.display("track.short_name")).toBe("Spa");
   });
 
   it("should return empty fields with null telemetry", () => {
@@ -399,19 +382,19 @@ describe("buildTemplateContextFromData", () => {
     const sessionInfo = makeSessionInfo(drivers, 0);
     const ctx = buildTemplateContextFromData(null, sessionInfo);
 
-    expect(ctx.display["self.position"]).toBe("");
-    expect(ctx.display["self.incidents"]).toBe("");
-    expect(ctx.display["track_ahead.name"]).toBe("");
-    expect(ctx.display["track_behind.name"]).toBe("");
+    expect(ctx.display("self.position")).toBe("");
+    expect(ctx.display("self.incidents")).toBe("");
+    expect(ctx.display("track_ahead.name")).toBe("");
+    expect(ctx.display("track_behind.name")).toBe("");
   });
 
   it("should return empty fields with null session info", () => {
     const ctx = buildTemplateContextFromData(null, null);
 
-    expect(ctx.display["self.name"]).toBe("");
-    expect(ctx.display["track_ahead.name"]).toBe("");
-    expect(ctx.display["session.type"]).toBe("");
-    expect(ctx.display["track.name"]).toBe("");
+    expect(ctx.display("self.name")).toBe("");
+    expect(ctx.display("track_ahead.name")).toBe("");
+    expect(ctx.display("session.type")).toBe("");
+    expect(ctx.display("track.name")).toBe("");
   });
 
   it("should omit track_ahead fields from raw when there is no track-ahead driver", () => {
@@ -428,8 +411,8 @@ describe("buildTemplateContextFromData", () => {
 
     const ctx = buildTemplateContextFromData(telemetry, sessionInfo);
 
-    expect("track_ahead.position" in ctx.raw).toBe(false);
-    expect(ctx.display["track_ahead.position"]).toBe("");
+    expect(ctx.raw("track_ahead.position").found).toBe(false);
+    expect(ctx.display("track_ahead.position")).toBe("");
   });
 
   it("should omit session.laps_remaining from raw when SessionLapsRemainEx is negative", () => {
@@ -439,8 +422,8 @@ describe("buildTemplateContextFromData", () => {
 
     const ctx = buildTemplateContextFromData(telemetry, sessionInfo);
 
-    expect("session.laps_remaining" in ctx.raw).toBe(false);
-    expect(ctx.display["session.laps_remaining"]).toBe("");
+    expect(ctx.raw("session.laps_remaining").found).toBe(false);
+    expect(ctx.display("session.laps_remaining")).toBe("");
   });
 
   it("should omit session.laps_remaining when SessionLapsRemainEx reads the unlimited sentinel (#1109)", () => {
@@ -452,8 +435,8 @@ describe("buildTemplateContextFromData", () => {
 
     const ctx = buildTemplateContextFromData(telemetry, sessionInfo);
 
-    expect("session.laps_remaining" in ctx.raw).toBe(false);
-    expect(ctx.display["session.laps_remaining"]).toBe("");
+    expect(ctx.raw("session.laps_remaining").found).toBe(false);
+    expect(ctx.display("session.laps_remaining")).toBe("");
   });
 
   it("should omit session.laps_remaining when SessionLapsRemainEx is missing or NaN", () => {
@@ -461,12 +444,12 @@ describe("buildTemplateContextFromData", () => {
     const sessionInfo = makeSessionInfo(drivers, 0);
 
     const missing = buildTemplateContextFromData(makeTelemetry({ SessionLapsRemainEx: undefined }), sessionInfo);
-    expect("session.laps_remaining" in missing.raw).toBe(false);
-    expect(missing.display["session.laps_remaining"]).toBe("");
+    expect(missing.raw("session.laps_remaining").found).toBe(false);
+    expect(missing.display("session.laps_remaining")).toBe("");
 
     const nan = buildTemplateContextFromData(makeTelemetry({ SessionLapsRemainEx: NaN }), sessionInfo);
-    expect("session.laps_remaining" in nan.raw).toBe(false);
-    expect(nan.display["session.laps_remaining"]).toBe("");
+    expect(nan.raw("session.laps_remaining").found).toBe(false);
+    expect(nan.display("session.laps_remaining")).toBe("");
   });
 
   it("should keep session.laps_remaining at 0 in the leader-finished window (a real count, not unknown)", () => {
@@ -476,8 +459,8 @@ describe("buildTemplateContextFromData", () => {
 
     const ctx = buildTemplateContextFromData(telemetry, sessionInfo);
 
-    expect(ctx.raw["session.laps_remaining"]).toBe(0);
-    expect(ctx.display["session.laps_remaining"]).toBe("0");
+    expect(ctx.raw("session.laps_remaining").value).toBe(0);
+    expect(ctx.display("session.laps_remaining")).toBe("0");
   });
 
   it("should render session.time_remaining empty when SessionTimeRemain reads the unlimited sentinel (#1186)", () => {
@@ -489,8 +472,8 @@ describe("buildTemplateContextFromData", () => {
 
     const ctx = buildTemplateContextFromData(telemetry, sessionInfo);
 
-    expect(ctx.raw["session.time_remaining"]).toBe("");
-    expect(ctx.display["session.time_remaining"]).toBe("");
+    expect(ctx.raw("session.time_remaining").value).toBe("");
+    expect(ctx.display("session.time_remaining")).toBe("");
   });
 
   it("should render session.time_remaining empty when SessionTimeRemain is missing or NaN", () => {
@@ -498,12 +481,12 @@ describe("buildTemplateContextFromData", () => {
     const sessionInfo = makeSessionInfo(drivers, 0);
 
     const missing = buildTemplateContextFromData(makeTelemetry({ SessionTimeRemain: undefined }), sessionInfo);
-    expect(missing.raw["session.time_remaining"]).toBe("");
-    expect(missing.display["session.time_remaining"]).toBe("");
+    expect(missing.raw("session.time_remaining").value).toBe("");
+    expect(missing.display("session.time_remaining")).toBe("");
 
     const nan = buildTemplateContextFromData(makeTelemetry({ SessionTimeRemain: NaN }), sessionInfo);
-    expect(nan.raw["session.time_remaining"]).toBe("");
-    expect(nan.display["session.time_remaining"]).toBe("");
+    expect(nan.raw("session.time_remaining").value).toBe("");
+    expect(nan.display("session.time_remaining")).toBe("");
   });
 
   it("should render session.time_remaining empty for an infinite SessionTimeRemain", () => {
@@ -512,7 +495,7 @@ describe("buildTemplateContextFromData", () => {
 
     for (const value of [Infinity, -Infinity]) {
       const ctx = buildTemplateContextFromData(makeTelemetry({ SessionTimeRemain: value }), sessionInfo);
-      expect(ctx.display["session.time_remaining"]).toBe("");
+      expect(ctx.display("session.time_remaining")).toBe("");
     }
   });
 
@@ -524,13 +507,13 @@ describe("buildTemplateContextFromData", () => {
 
     const ctx = buildTemplateContextFromData(makeTelemetry({ SessionTimeRemain: -3.2 }), sessionInfo);
 
-    expect(ctx.raw["session.time_remaining"]).toBe("0:00");
-    expect(ctx.display["session.time_remaining"]).toBe("0:00");
+    expect(ctx.raw("session.time_remaining").value).toBe("0:00");
+    expect(ctx.display("session.time_remaining")).toBe("0:00");
 
     // A hair below zero must clamp before formatting, never floor to "-1:59".
     for (const value of [-0.0001, -0]) {
       const edge = buildTemplateContextFromData(makeTelemetry({ SessionTimeRemain: value }), sessionInfo);
-      expect(edge.display["session.time_remaining"]).toBe("0:00");
+      expect(edge.display("session.time_remaining")).toBe("0:00");
     }
   });
 
@@ -541,7 +524,7 @@ describe("buildTemplateContextFromData", () => {
 
     const ctx = buildTemplateContextFromData(telemetry, sessionInfo);
 
-    expect(ctx.display["session.time_remaining"]).toBe("10079:59");
+    expect(ctx.display("session.time_remaining")).toBe("10079:59");
   });
 
   it("should keep session.time_remaining as the formatted M:SS string in both maps for a real clock", () => {
@@ -549,12 +532,12 @@ describe("buildTemplateContextFromData", () => {
     const sessionInfo = makeSessionInfo(drivers, 0);
 
     const ctx = buildTemplateContextFromData(makeTelemetry({ SessionTimeRemain: 3661.5 }), sessionInfo);
-    expect(ctx.raw["session.time_remaining"]).toBe("61:01");
-    expect(ctx.display["session.time_remaining"]).toBe("61:01");
+    expect(ctx.raw("session.time_remaining").value).toBe("61:01");
+    expect(ctx.display("session.time_remaining")).toBe("61:01");
 
     // The clock reaching zero does not end a timed race — 0 is a real reading.
     const expired = buildTemplateContextFromData(makeTelemetry({ SessionTimeRemain: 0 }), sessionInfo);
-    expect(expired.display["session.time_remaining"]).toBe("0:00");
+    expect(expired.display("session.time_remaining")).toBe("0:00");
   });
 
   it("should populate race_ahead and race_behind from race position", () => {
@@ -568,8 +551,8 @@ describe("buildTemplateContextFromData", () => {
     const telemetry = makeTelemetry({ CarIdxPosition: [2, 1, 3] });
     const ctx = buildTemplateContextFromData(telemetry, sessionInfo);
 
-    expect(ctx.display["race_ahead.name"]).toBe("P1 Driver");
-    expect(ctx.display["race_behind.name"]).toBe("P3 Driver");
+    expect(ctx.display("race_ahead.name")).toBe("P1 Driver");
+    expect(ctx.display("race_behind.name")).toBe("P3 Driver");
   });
 
   it("should populate focused fields from the camera-focused car (CamCarIdx)", () => {
@@ -582,11 +565,11 @@ describe("buildTemplateContextFromData", () => {
     const telemetry = makeTelemetry({ CamCarIdx: 1, CarIdxPosition: [2, 1] });
     const ctx = buildTemplateContextFromData(telemetry, sessionInfo);
 
-    expect(ctx.display["focused.name"]).toBe("Focused Driver");
-    expect(ctx.display["focused.abbrev_name"]).toBe("F. Driver");
-    expect(ctx.display["focused.car_number"]).toBe("42");
-    expect(ctx.display["focused.position"]).toBe("1");
-    expect(ctx.display["focused.irating"]).toBe("4200");
+    expect(ctx.display("focused.name")).toBe("Focused Driver");
+    expect(ctx.display("focused.abbrev_name")).toBe("F. Driver");
+    expect(ctx.display("focused.car_number")).toBe("42");
+    expect(ctx.display("focused.position")).toBe("1");
+    expect(ctx.display("focused.irating")).toBe("4200");
   });
 
   it("should resolve focused fields to the player's data when the camera is on the player's car", () => {
@@ -599,11 +582,11 @@ describe("buildTemplateContextFromData", () => {
     const telemetry = makeTelemetry({ CamCarIdx: 0, CarIdxPosition: [2, 1] });
     const ctx = buildTemplateContextFromData(telemetry, sessionInfo);
 
-    expect(ctx.display["focused.name"]).toBe("Player");
-    expect(ctx.display["focused.car_number"]).toBe("7");
+    expect(ctx.display("focused.name")).toBe("Player");
+    expect(ctx.display("focused.car_number")).toBe("7");
     // incidents is self-only even when focused resolves to the player's own car
-    expect(ctx.display["focused.incidents"]).toBeUndefined();
-    expect("focused.incidents" in ctx.raw).toBe(false);
+    expect(ctx.display("focused.incidents")).toBeUndefined();
+    expect(ctx.raw("focused.incidents").found).toBe(false);
   });
 
   it("should make every focused field match self when the camera is on the player's car", () => {
@@ -633,12 +616,12 @@ describe("buildTemplateContextFromData", () => {
     const ctx = buildTemplateContextFromData(telemetry, sessionInfo);
 
     for (const field of ["position", "class_position", "lap", "laps_completed", "name", "car_number", "irating"]) {
-      expect(ctx.display[`focused.${field}`]).toBe(ctx.display[`self.${field}`]);
+      expect(ctx.display(`focused.${field}`)).toBe(ctx.display(`self.${field}`));
     }
 
     // Sanity: the player-authoritative lap won, not the stale per-car array value.
-    expect(ctx.display["focused.lap"]).toBe("9");
-    expect(ctx.display["focused.laps_completed"]).toBe("8");
+    expect(ctx.display("focused.lap")).toBe("9");
+    expect(ctx.display("focused.laps_completed")).toBe("8");
   });
 
   it("should leave focused fields empty when no car is focused (negative sentinel)", () => {
@@ -647,9 +630,9 @@ describe("buildTemplateContextFromData", () => {
     const telemetry = makeTelemetry({ CamCarIdx: -1 });
     const ctx = buildTemplateContextFromData(telemetry, sessionInfo);
 
-    expect(ctx.display["focused.name"]).toBe("");
-    expect(ctx.display["focused.position"]).toBe("");
-    expect("focused.position" in ctx.raw).toBe(false);
+    expect(ctx.display("focused.name")).toBe("");
+    expect(ctx.display("focused.position")).toBe("");
+    expect(ctx.raw("focused.position").found).toBe(false);
   });
 
   it("should leave focused fields empty when CamCarIdx is absent from live telemetry", () => {
@@ -658,10 +641,10 @@ describe("buildTemplateContextFromData", () => {
     const telemetry = makeTelemetry(); // CamCarIdx not set
     const ctx = buildTemplateContextFromData(telemetry, sessionInfo);
 
-    expect(ctx.display["focused.name"]).toBe("");
-    expect(ctx.display["focused.position"]).toBe("");
+    expect(ctx.display("focused.name")).toBe("");
+    expect(ctx.display("focused.position")).toBe("");
     // Numeric fields are omitted from raw when unavailable (string fields stay "" — same as the other no-driver prefixes)
-    expect("focused.position" in ctx.raw).toBe(false);
+    expect(ctx.raw("focused.position").found).toBe(false);
   });
 
   it("should show the pace car's identity but blank position/class when focused on it", () => {
@@ -678,12 +661,12 @@ describe("buildTemplateContextFromData", () => {
 
     // Camera focus is a deliberate user selection, so the pace car is NOT filtered
     // out — its identity still shows — but it has no meaningful race position.
-    expect(ctx.display["focused.name"]).toBe("Pace Car");
-    expect(ctx.display["focused.car_number"]).toBe("0");
-    expect(ctx.display["focused.position"]).toBe("");
-    expect(ctx.display["focused.class_position"]).toBe("");
-    expect("focused.position" in ctx.raw).toBe(false);
-    expect("focused.class_position" in ctx.raw).toBe(false);
+    expect(ctx.display("focused.name")).toBe("Pace Car");
+    expect(ctx.display("focused.car_number")).toBe("0");
+    expect(ctx.display("focused.position")).toBe("");
+    expect(ctx.display("focused.class_position")).toBe("");
+    expect(ctx.raw("focused.position").found).toBe(false);
+    expect(ctx.raw("focused.class_position").found).toBe(false);
   });
 
   it("should blank an unclassified (position 0) car's position rather than show 0", () => {
@@ -703,9 +686,9 @@ describe("buildTemplateContextFromData", () => {
     });
     const ctx = buildTemplateContextFromData(telemetry, sessionInfo);
 
-    expect(ctx.display["focused.name"]).toBe("Garaged");
-    expect(ctx.display["focused.position"]).toBe("");
-    expect(ctx.display["focused.class_position"]).toBe("");
+    expect(ctx.display("focused.name")).toBe("Garaged");
+    expect(ctx.display("focused.position")).toBe("");
+    expect(ctx.display("focused.class_position")).toBe("");
   });
 
   it("should blank a car absent from the live order rather than fall back to official", () => {
@@ -726,8 +709,8 @@ describe("buildTemplateContextFromData", () => {
     });
     const ctx = buildTemplateContextFromData(telemetry, sessionInfo, [1, 0]); // car 1 not ranked
 
-    expect(ctx.display["focused.position"]).toBe("");
-    expect(ctx.display["focused.class_position"]).toBe("");
+    expect(ctx.display("focused.position")).toBe("");
+    expect(ctx.display("focused.class_position")).toBe("");
   });
 
   it("should resolve a focused template end to end with a real built context", () => {
@@ -762,8 +745,8 @@ describe("buildTemplateContextFromData", () => {
 
     const ctx = buildTemplateContextFromData(telemetry, sessionInfo, [1, 2]);
 
-    expect(ctx.display["self.position"]).toBe("1");
-    expect(ctx.display["focused.position"]).toBe("2");
+    expect(ctx.display("self.position")).toBe("1");
+    expect(ctx.display("focused.position")).toBe("2");
   });
 
   it("should derive class position from the live order, not the frozen CarIdxClassPosition", () => {
@@ -786,8 +769,8 @@ describe("buildTemplateContextFromData", () => {
 
     const ctx = buildTemplateContextFromData(telemetry, sessionInfo, [2, 1, 4, 3]);
 
-    expect(ctx.display["self.class_position"]).toBe("1"); // car0, class 10, leads its class
-    expect(ctx.display["focused.class_position"]).toBe("2"); // car2, class 10, behind car0
+    expect(ctx.display("self.class_position")).toBe("1"); // car0, class 10, leads its class
+    expect(ctx.display("focused.class_position")).toBe("2"); // car2, class 10, behind car0
   });
 
   it("should derive a pit-road car's class from the canonical order (no pit-road special-casing)", () => {
@@ -808,7 +791,7 @@ describe("buildTemplateContextFromData", () => {
     // of its class ahead), and pit road no longer forces the official counter.
     const ctx = buildTemplateContextFromData(telemetry, sessionInfo, [1, 2]);
 
-    expect(ctx.display["focused.class_position"]).toBe("2");
+    expect(ctx.display("focused.class_position")).toBe("2");
   });
 
   it("should fall back to the official class position when CarIdxClass is unavailable", () => {
@@ -818,7 +801,7 @@ describe("buildTemplateContextFromData", () => {
 
     const ctx = buildTemplateContextFromData(telemetry, sessionInfo);
 
-    expect(ctx.display["focused.class_position"]).toBe("5");
+    expect(ctx.display("focused.class_position")).toBe("5");
   });
 
   it("should not expose a focused.incidents field (self-only)", () => {
@@ -831,8 +814,8 @@ describe("buildTemplateContextFromData", () => {
     const telemetry = makeTelemetry({ CamCarIdx: 1 });
     const ctx = buildTemplateContextFromData(telemetry, sessionInfo);
 
-    expect(ctx.display["focused.incidents"]).toBeUndefined();
-    expect("focused.incidents" in ctx.raw).toBe(false);
+    expect(ctx.display("focused.incidents")).toBeUndefined();
+    expect(ctx.raw("focused.incidents").found).toBe(false);
   });
 
   it("should use official position/class and player lap/incidents for self in non-race sessions", () => {
@@ -858,11 +841,11 @@ describe("buildTemplateContextFromData", () => {
 
     const ctx = buildTemplateContextFromData(telemetry, sessionInfo);
 
-    expect(ctx.display["self.position"]).toBe("5");
-    expect(ctx.display["self.class_position"]).toBe("3");
-    expect(ctx.display["self.lap"]).toBe("12");
-    expect(ctx.display["self.laps_completed"]).toBe("11");
-    expect(ctx.display["self.incidents"]).toBe("7");
+    expect(ctx.display("self.position")).toBe("5");
+    expect(ctx.display("self.class_position")).toBe("3");
+    expect(ctx.display("self.lap")).toBe("12");
+    expect(ctx.display("self.laps_completed")).toBe("11");
+    expect(ctx.display("self.incidents")).toBe("7");
   });
 
   it("should use the injected canonical order for race positions", () => {
@@ -880,8 +863,8 @@ describe("buildTemplateContextFromData", () => {
     // Canonical order: car0 P1, car1 P2, car2 P3.
     const ctx = buildTemplateContextFromData(telemetry, sessionInfo, [1, 2, 3]);
 
-    expect(ctx.display["self.position"]).toBe("1");
-    expect(ctx.display["race_behind.name"]).toBe("Leader"); // Car 1 at P2 is behind player at P1
+    expect(ctx.display("self.position")).toBe("1");
+    expect(ctx.display("race_behind.name")).toBe("Leader"); // Car 1 at P2 is behind player at P1
   });
 
   it("should use native CarIdxPosition for non-race sessions", () => {
@@ -904,7 +887,7 @@ describe("buildTemplateContextFromData", () => {
     const ctx = buildTemplateContextFromData(telemetry, sessionInfo);
 
     // Non-race: no live order, so self.position comes from official CarIdxPosition.
-    expect(ctx.display["self.position"]).toBe("2");
+    expect(ctx.display("self.position")).toBe("2");
   });
 
   it("should show the player's live track position on pit road, not held official", () => {
@@ -925,7 +908,7 @@ describe("buildTemplateContextFromData", () => {
     // everywhere — no pit-road official overlay, even for self.
     const ctx = buildTemplateContextFromData(telemetry, sessionInfo, [2, 1]);
 
-    expect(ctx.display["self.position"]).toBe("2");
+    expect(ctx.display("self.position")).toBe("2");
   });
 
   it("should resolve race neighbours from the single canonical order without duplicate-rank collisions (issue #710)", () => {
@@ -951,11 +934,11 @@ describe("buildTemplateContextFromData", () => {
     // Canonical order: Ahead P1, Player P2, Behind P3, Pit Car P4 (its track slot).
     const ctx = buildTemplateContextFromData(telemetry, sessionInfo, [2, 4, 1, 3]);
 
-    expect(ctx.display["race_ahead.name"]).toBe("Ahead");
-    expect(ctx.display["race_behind.name"]).toBe("Behind"); // P3 — the old blend returned "Pit Car" here
-    expect(ctx.display["race_behind.position"]).toBe("3");
+    expect(ctx.display("race_ahead.name")).toBe("Ahead");
+    expect(ctx.display("race_behind.name")).toBe("Behind"); // P3 — the old blend returned "Pit Car" here
+    expect(ctx.display("race_behind.position")).toBe("3");
     // The pit car itself shows its live track position (P4), not its held official P3.
-    expect(ctx.display["focused.position"]).toBe("4");
+    expect(ctx.display("focused.position")).toBe("4");
   });
 
   it("should fall back to official CarIdxPosition when no live order is injected", () => {
@@ -969,7 +952,7 @@ describe("buildTemplateContextFromData", () => {
 
     const ctx = buildTemplateContextFromData(telemetry, sessionInfo); // no injected order
 
-    expect(ctx.display["self.position"]).toBe("2");
+    expect(ctx.display("self.position")).toBe("2");
   });
 
   it("should include telemetry with prefix and formatted values", () => {
@@ -985,11 +968,11 @@ describe("buildTemplateContextFromData", () => {
     const sessionInfo = makeSessionInfo(drivers, 0);
     const ctx = buildTemplateContextFromData(telemetry, sessionInfo);
 
-    expect(ctx.display["telemetry.Speed"]).toBe("156.79");
-    expect(ctx.display["telemetry.OilTemp"]).toBe("95");
-    expect(ctx.display["telemetry.IsOnTrack"]).toBe("Yes");
-    expect(ctx.display["telemetry.CarIdxLap"]).toBeUndefined();
-    expect(ctx.display["telemetry.CarIdxPosition"]).toBeUndefined();
+    expect(ctx.display("telemetry.Speed")).toBe("156.79");
+    expect(ctx.display("telemetry.OilTemp")).toBe("95");
+    expect(ctx.display("telemetry.IsOnTrack")).toBe("Yes");
+    expect(ctx.display("telemetry.CarIdxLap")).toBeUndefined();
+    expect(ctx.display("telemetry.CarIdxPosition")).toBeUndefined();
   });
 
   it("should include sessionInfo with prefix and nested dot-notation", () => {
@@ -997,15 +980,15 @@ describe("buildTemplateContextFromData", () => {
     const sessionInfo = makeSessionInfo(drivers, 0);
     const ctx = buildTemplateContextFromData(null, sessionInfo);
 
-    expect(ctx.display["sessionInfo.WeekendInfo.TrackDisplayName"]).toBe("Spa-Francorchamps");
-    expect(ctx.display["sessionInfo.WeekendInfo.TrackDisplayShortName"]).toBe("Spa");
+    expect(ctx.display("sessionInfo.WeekendInfo.TrackDisplayName")).toBe("Spa-Francorchamps");
+    expect(ctx.display("sessionInfo.WeekendInfo.TrackDisplayShortName")).toBe("Spa");
   });
 
   it("should return empty telemetry and sessionInfo with null data", () => {
     const ctx = buildTemplateContextFromData(null, null);
 
-    expect(ctx.display["telemetry.Speed"]).toBeUndefined();
-    expect(ctx.display["sessionInfo.WeekendInfo.TrackDisplayName"]).toBeUndefined();
+    expect(ctx.display("telemetry.Speed")).toBeUndefined();
+    expect(ctx.display("sessionInfo.WeekendInfo.TrackDisplayName")).toBeUndefined();
   });
 });
 
@@ -1016,8 +999,8 @@ describe("buildTemplateContextFromData raw map", () => {
 
     const ctx = buildTemplateContextFromData(telemetry, sessionInfo);
 
-    expect(ctx.raw["telemetry.Speed"]).toBe(156.789);
-    expect(ctx.display["telemetry.Speed"]).toBe("156.79");
+    expect(ctx.raw("telemetry.Speed").value).toBe(156.789);
+    expect(ctx.display("telemetry.Speed")).toBe("156.79");
   });
 
   it("should keep booleans as booleans in raw while display is Yes/No", () => {
@@ -1026,8 +1009,8 @@ describe("buildTemplateContextFromData raw map", () => {
 
     const ctx = buildTemplateContextFromData(telemetry, sessionInfo);
 
-    expect(ctx.raw["telemetry.IsOnTrack"]).toBe(true);
-    expect(ctx.display["telemetry.IsOnTrack"]).toBe("Yes");
+    expect(ctx.raw("telemetry.IsOnTrack").value).toBe(true);
+    expect(ctx.display("telemetry.IsOnTrack")).toBe("Yes");
   });
 
   it("should keep boolean-semantic integer fields as 0/1 numbers in raw while display is Yes/No", () => {
@@ -1036,8 +1019,8 @@ describe("buildTemplateContextFromData raw map", () => {
 
     const ctx = buildTemplateContextFromData(telemetry, sessionInfo);
 
-    expect(ctx.raw["telemetry.PushToPass"]).toBe(1);
-    expect(ctx.display["telemetry.PushToPass"]).toBe("Yes");
+    expect(ctx.raw("telemetry.PushToPass").value).toBe(1);
+    expect(ctx.display("telemetry.PushToPass")).toBe("Yes");
   });
 
   it("should keep driver position as a number in raw while display is a string", () => {
@@ -1046,9 +1029,9 @@ describe("buildTemplateContextFromData raw map", () => {
 
     const ctx = buildTemplateContextFromData(telemetry, sessionInfo);
 
-    expect(ctx.raw["self.position"]).toBe(Number(ctx.display["self.position"]));
-    expect(typeof ctx.raw["self.position"]).toBe("number");
-    expect(typeof ctx.display["self.position"]).toBe("string");
+    expect(ctx.raw("self.position").value).toBe(Number(ctx.display("self.position")));
+    expect(typeof ctx.raw("self.position").value).toBe("number");
+    expect(typeof ctx.display("self.position")).toBe("string");
   });
 
   it("should omit missing numeric driver fields from raw but keep empty string in display", () => {
@@ -1056,17 +1039,17 @@ describe("buildTemplateContextFromData raw map", () => {
 
     const ctx = buildTemplateContextFromData(null, sessionInfo);
 
-    expect("self.position" in ctx.raw).toBe(false);
-    expect(ctx.display["self.position"]).toBe("");
+    expect(ctx.raw("self.position").found).toBe(false);
+    expect(ctx.display("self.position")).toBe("");
   });
 
   it("should produce essentially empty maps with null telemetry and session info", () => {
     const ctx = buildTemplateContextFromData(null, null);
 
-    expect(ctx.raw["telemetry.Speed"]).toBeUndefined();
-    expect("self.position" in ctx.raw).toBe(false);
-    expect(ctx.raw["self.name"]).toBe("");
-    expect(ctx.display["self.name"]).toBe("");
+    expect(ctx.raw("telemetry.Speed").value).toBeUndefined();
+    expect(ctx.raw("self.position").found).toBe(false);
+    expect(ctx.raw("self.name").value).toBe("");
+    expect(ctx.display("self.name")).toBe("");
   });
 
   it("should keep sessionInfo numbers full-precision in raw", () => {
@@ -1082,8 +1065,8 @@ describe("buildTemplateContextFromData raw map", () => {
 
     const ctx = buildTemplateContextFromData(null, sessionInfo);
 
-    expect(ctx.raw["sessionInfo.DriverInfo.DriverCarFuelKgPerLtr"]).toBe(0.75);
-    expect(ctx.display["sessionInfo.DriverInfo.DriverCarFuelKgPerLtr"]).toBe("0.75");
+    expect(ctx.raw("sessionInfo.DriverInfo.DriverCarFuelKgPerLtr").value).toBe(0.75);
+    expect(ctx.display("sessionInfo.DriverInfo.DriverCarFuelKgPerLtr")).toBe("0.75");
   });
 
   it("should resolve the fuel-add expression end to end with a real built context", () => {
@@ -1118,7 +1101,7 @@ describe("buildTemplateContextFromData raw map", () => {
     const telemetry = makeTelemetry({ CamCarIdx: 1, CarIdxPosition: [2, 1] });
     const ctx = buildTemplateContextFromData(telemetry, sessionInfo);
 
-    expect(ctx.raw["focused.irating"]).toBe(4200);
+    expect(ctx.raw("focused.irating").value).toBe(4200);
     expect(resolveTemplate("{{= focused.irating + 100 }}", ctx)).toBe("4300");
   });
 
@@ -1127,8 +1110,8 @@ describe("buildTemplateContextFromData raw map", () => {
 
     const ctx = buildTemplateContextFromData(makeTelemetry(), sessionInfo);
 
-    expect(ctx.raw["self.abbrev_name"]).toBe("");
-    expect(ctx.display["self.abbrev_name"]).toBe("");
+    expect(ctx.raw("self.abbrev_name").value).toBe("");
+    expect(ctx.display("self.abbrev_name")).toBe("");
   });
 
   it("should let a ternary fall back to name when abbrev_name is null (#869)", () => {
@@ -1151,8 +1134,8 @@ describe("buildTemplateContextFromData raw map", () => {
 
     const ctx = buildTemplateContextFromData(makeTelemetry(), sessionInfo);
 
-    expect(ctx.raw["self.car_number"]).toBe("");
-    expect(ctx.display["self.car_number"]).toBe("");
+    expect(ctx.raw("self.car_number").value).toBe("");
+    expect(ctx.display("self.car_number")).toBe("");
   });
 
   it("should not crash on a null UserName and keep name fields as empty strings", () => {
@@ -1160,10 +1143,10 @@ describe("buildTemplateContextFromData raw map", () => {
 
     const ctx = buildTemplateContextFromData(makeTelemetry(), sessionInfo);
 
-    expect(ctx.raw["self.name"]).toBe("");
-    expect(ctx.raw["self.first_name"]).toBe("");
-    expect(ctx.raw["self.last_name"]).toBe("");
-    expect(ctx.display["self.name"]).toBe("");
+    expect(ctx.raw("self.name").value).toBe("");
+    expect(ctx.raw("self.first_name").value).toBe("");
+    expect(ctx.raw("self.last_name").value).toBe("");
+    expect(ctx.display("self.name")).toBe("");
   });
 
   it("should keep a null LicString as an empty string in raw", () => {
@@ -1171,8 +1154,8 @@ describe("buildTemplateContextFromData raw map", () => {
 
     const ctx = buildTemplateContextFromData(makeTelemetry(), sessionInfo);
 
-    expect(ctx.raw["self.license"]).toBe("");
-    expect(ctx.display["self.license"]).toBe("");
+    expect(ctx.raw("self.license").value).toBe("");
+    expect(ctx.display("self.license")).toBe("");
   });
 
   it("should coerce unquoted-numeric YAML string fields instead of crashing (#869)", () => {
@@ -1180,108 +1163,141 @@ describe("buildTemplateContextFromData raw map", () => {
 
     const ctx = buildTemplateContextFromData(makeTelemetry(), sessionInfo);
 
-    expect(ctx.raw["self.name"]).toBe("88");
-    expect(ctx.raw["self.first_name"]).toBe("88");
-    expect(ctx.raw["self.abbrev_name"]).toBe("88");
-    expect(ctx.raw["self.car_number"]).toBe("88");
+    expect(ctx.raw("self.name").value).toBe("88");
+    expect(ctx.raw("self.first_name").value).toBe("88");
+    expect(ctx.raw("self.abbrev_name").value).toBe("88");
+    expect(ctx.raw("self.car_number").value).toBe("88");
   });
 });
 
-describe("flattenContext display map", () => {
-  it("should flatten a flat object", () => {
-    const result = flattenContext({ Speed: 100, Gear: 4 }).display;
+// The per-leaf rule the pre-#1339 flattenContext applied, now applied by the
+// path walk behind telemetry.* and sessionInfo.*: each case reads the same
+// object through a lazy context instead of a flattened map.
+describe("telemetry and sessionInfo leaf walk", () => {
+  /** Reads `display` under one walked namespace of a context built from `source`. */
+  function walk(source: Record<string, unknown>, namespace: "telemetry" | "sessionInfo" = "sessionInfo") {
+    const ctx =
+      namespace === "telemetry"
+        ? buildTemplateContextFromData(source as TelemetryData, null)
+        : buildTemplateContextFromData(null, source as unknown as SessionInfo);
 
-    expect(result.Speed).toBe("100");
-    expect(result.Gear).toBe("4");
+    return (path: string) => ctx.display(`${namespace}.${path}`);
+  }
+
+  it("should flatten a flat object", () => {
+    const result = walk({ Speed: 100, Gear: 4 });
+
+    expect(result("Speed")).toBe("100");
+    expect(result("Gear")).toBe("4");
   });
 
   it("should flatten nested objects with dot notation", () => {
-    const result = flattenContext({
+    const result = walk({
       WeekendInfo: { TrackDisplayName: "Spa", TrackLength: "7.004 km" },
-    }).display;
+    });
 
-    expect(result["WeekendInfo.TrackDisplayName"]).toBe("Spa");
-    expect(result["WeekendInfo.TrackLength"]).toBe("7.004 km");
+    expect(result("WeekendInfo.TrackDisplayName")).toBe("Spa");
+    expect(result("WeekendInfo.TrackLength")).toBe("7.004 km");
   });
 
   it("should round floating point numbers to 2 decimals", () => {
-    const result = flattenContext({ Speed: 156.789, Throttle: 0.5 }).display;
+    const result = walk({ Speed: 156.789, Throttle: 0.5 });
 
-    expect(result.Speed).toBe("156.79");
-    expect(result.Throttle).toBe("0.50");
+    expect(result("Speed")).toBe("156.79");
+    expect(result("Throttle")).toBe("0.50");
   });
 
   it("should keep integers as integers", () => {
-    const result = flattenContext({ Gear: 4, Lap: 12 }).display;
+    const result = walk({ Gear: 4, Lap: 12 });
 
-    expect(result.Gear).toBe("4");
-    expect(result.Lap).toBe("12");
+    expect(result("Gear")).toBe("4");
+    expect(result("Lap")).toBe("12");
   });
 
   it("should convert booleans to Yes/No", () => {
-    const result = flattenContext({ IsOnTrack: true, IsReplayPlaying: false }).display;
+    const result = walk({ IsOnTrack: true, IsReplayPlaying: false });
 
-    expect(result.IsOnTrack).toBe("Yes");
-    expect(result.IsReplayPlaying).toBe("No");
+    expect(result("IsOnTrack")).toBe("Yes");
+    expect(result("IsReplayPlaying")).toBe("No");
   });
 
   it("should skip arrays", () => {
-    const result = flattenContext({ CarIdxLap: [1, 2, 3], Speed: 100 }).display;
+    const result = walk({ CarIdxLap: [1, 2, 3], Speed: 100 });
 
-    expect(result.CarIdxLap).toBeUndefined();
-    expect(result.Speed).toBe("100");
+    expect(result("CarIdxLap")).toBeUndefined();
+    expect(result("Speed")).toBe("100");
   });
 
   it("should skip arrays at nested levels", () => {
-    const result = flattenContext({
+    const result = walk({
       DriverInfo: { Drivers: [{ Name: "test" }], DriverCarIdx: 0 },
-    }).display;
+    });
 
-    expect(result["DriverInfo.Drivers"]).toBeUndefined();
-    expect(result["DriverInfo.DriverCarIdx"]).toBe("0");
+    expect(result("DriverInfo.Drivers")).toBeUndefined();
+    expect(result("DriverInfo.DriverCarIdx")).toBe("0");
   });
 
   it("should filter keys by excludePrefix", () => {
-    const result = flattenContext(
-      { Speed: 100, CarIdxLap: [1], CarIdxPosition: [1], Gear: 3 },
-      { excludePrefix: "CarIdx" },
-    ).display;
+    const result = walk({ Speed: 100, CarIdxLap: [1], CarIdxPosition: [1], CarIdxScalar: 2, Gear: 3 }, "telemetry");
 
-    expect(result.Speed).toBe("100");
-    expect(result.Gear).toBe("3");
-    expect(result.CarIdxLap).toBeUndefined();
-    expect(result.CarIdxPosition).toBeUndefined();
+    expect(result("Speed")).toBe("100");
+    expect(result("Gear")).toBe("3");
+    expect(result("CarIdxLap")).toBeUndefined();
+    expect(result("CarIdxPosition")).toBeUndefined();
+    expect(result("CarIdxScalar")).toBeUndefined();
   });
 
   it("should handle deeply nested objects", () => {
-    const result = flattenContext({
+    const result = walk({
       CarSetup: { Tires: { LeftFront: { TreadRemaining: 85.5 } } },
-    }).display;
+    });
 
-    expect(result["CarSetup.Tires.LeftFront.TreadRemaining"]).toBe("85.50");
+    expect(result("CarSetup.Tires.LeftFront.TreadRemaining")).toBe("85.50");
   });
 
   it("should convert known boolean-semantic integer fields to Yes/No", () => {
-    const result = flattenContext({ IsOnTrack: 1, IsReplayPlaying: 0, Speed: 100 }).display;
+    const result = walk({ IsOnTrack: 1, IsReplayPlaying: 0, Speed: 100 });
 
-    expect(result.IsOnTrack).toBe("Yes");
-    expect(result.IsReplayPlaying).toBe("No");
-    expect(result.Speed).toBe("100");
+    expect(result("IsOnTrack")).toBe("Yes");
+    expect(result("IsReplayPlaying")).toBe("No");
+    expect(result("Speed")).toBe("100");
   });
 
   it("should not convert unknown integer fields to Yes/No", () => {
-    const result = flattenContext({ Gear: 1, Lap: 0 }).display;
+    const result = walk({ Gear: 1, Lap: 0 });
 
-    expect(result.Gear).toBe("1");
-    expect(result.Lap).toBe("0");
+    expect(result("Gear")).toBe("1");
+    expect(result("Lap")).toBe("0");
   });
 
   it("should skip null and undefined values", () => {
-    const result = flattenContext({ a: null, b: undefined, c: "valid" } as Record<string, unknown>).display;
+    const result = walk({ a: null, b: undefined, c: "valid" } as Record<string, unknown>);
 
-    expect(result.a).toBeUndefined();
-    expect(result.b).toBeUndefined();
-    expect(result.c).toBe("valid");
+    expect(result("a")).toBeUndefined();
+    expect(result("b")).toBeUndefined();
+    expect(result("c")).toBe("valid");
+  });
+
+  it("should apply the CarIdx exclusion at every depth of a telemetry path", () => {
+    const result = walk({ Speed: 100, Nested: { CarIdxThing: 4, Other: 5 } }, "telemetry");
+
+    expect(result("Nested.CarIdxThing")).toBeUndefined();
+    expect(result("Nested.Other")).toBe("5");
+  });
+
+  it("should not address into an array or past a leaf", () => {
+    const result = walk({ DriverInfo: { Drivers: [{ UserName: "x" }], DriverCarIdx: 0 } });
+
+    expect(result("DriverInfo.Drivers.0.UserName")).toBeUndefined();
+    expect(result("DriverInfo.DriverCarIdx.x")).toBeUndefined();
+    expect(result("DriverInfo")).toBeUndefined();
+  });
+
+  it("should keep an exotic primitive display-only", () => {
+    const ctx = buildTemplateContextFromData(null, { Big: BigInt(5) } as unknown as SessionInfo);
+
+    expect(ctx.display("sessionInfo.Big")).toBe("5");
+    expect(ctx.raw("sessionInfo.Big")).toEqual({ found: false });
   });
 });
 
@@ -1305,14 +1321,14 @@ describe("iRating estimate template variables (#268)", () => {
       IRATING_ORDER,
     );
 
-    expect(ctx.raw["self.irating_change"]).toBeTypeOf("number");
-    expect(ctx.raw["self.irating_new"]).toBeTypeOf("number");
-    expect(ctx.raw["race_ahead.irating_change"]).toBeTypeOf("number");
-    expect(ctx.raw["race_behind.irating_change"]).toBeTypeOf("number");
+    expect(ctx.raw("self.irating_change").value).toBeTypeOf("number");
+    expect(ctx.raw("self.irating_new").value).toBeTypeOf("number");
+    expect(ctx.raw("race_ahead.irating_change").value).toBeTypeOf("number");
+    expect(ctx.raw("race_behind.irating_change").value).toBeTypeOf("number");
 
-    const change = ctx.raw["self.irating_change"] as number;
+    const change = ctx.raw("self.irating_change").value as number;
 
-    expect(ctx.raw["self.irating_new"]).toBe(Math.round(3000 + change));
+    expect(ctx.raw("self.irating_new").value).toBe(Math.round(3000 + change));
   });
 
   it("formats the display form signed and rounded", () => {
@@ -1322,11 +1338,11 @@ describe("iRating estimate template variables (#268)", () => {
       IRATING_ORDER,
     );
 
-    const change = ctx.raw["self.irating_change"] as number;
+    const change = ctx.raw("self.irating_change").value as number;
     const rounded = Math.round(change);
     const expected = rounded > 0 ? `+${rounded}` : String(rounded);
 
-    expect(ctx.display["self.irating_change"]).toBe(expected);
+    expect(ctx.display("self.irating_change")).toBe(expected);
   });
 
   it("exposes session.sof as the player's class SOF", () => {
@@ -1336,11 +1352,11 @@ describe("iRating estimate template variables (#268)", () => {
       IRATING_ORDER,
     );
 
-    const sof = ctx.raw["session.sof"] as number;
+    const sof = ctx.raw("session.sof").value as number;
 
     expect(sof).toBeGreaterThan(2000);
     expect(sof).toBeLessThan(3000);
-    expect(ctx.display["session.sof"]).toBe(String(Math.round(sof)));
+    expect(ctx.display("session.sof")).toBe(String(Math.round(sof)));
   });
 
   it("renders blank in a non-race session (no live order in use)", () => {
@@ -1351,10 +1367,10 @@ describe("iRating estimate template variables (#268)", () => {
 
     const ctx = buildTemplateContextFromData(makeIratingTelemetry(), nonRace, IRATING_ORDER);
 
-    expect(ctx.display["self.irating_change"]).toBe("");
-    expect(ctx.raw["self.irating_change"]).toBeUndefined();
-    expect(ctx.display["session.sof"]).toBe("");
-    expect(ctx.raw["session.sof"]).toBeUndefined();
+    expect(ctx.display("self.irating_change")).toBe("");
+    expect(ctx.raw("self.irating_change").value).toBeUndefined();
+    expect(ctx.display("session.sof")).toBe("");
+    expect(ctx.raw("session.sof").value).toBeUndefined();
   });
 
   it("emits the estimate from official positions in a qualifying session (#872)", () => {
@@ -1367,11 +1383,11 @@ describe("iRating estimate template variables (#268)", () => {
     const ctx = buildTemplateContextFromData(makeIratingTelemetry(), qualifying, null);
 
     // Highest-rated player (3000) sitting P2 of 3 → negative estimate.
-    expect(ctx.raw["self.irating_change"]).toBeTypeOf("number");
-    expect(ctx.raw["self.irating_change"] as number).toBeLessThan(0);
-    expect(ctx.raw["self.irating_new"]).toBeTypeOf("number");
-    expect(ctx.raw["session.sof"]).toBeTypeOf("number");
-    expect(ctx.display["session.sof"]).not.toBe("");
+    expect(ctx.raw("self.irating_change").value).toBeTypeOf("number");
+    expect(ctx.raw("self.irating_change").value as number).toBeLessThan(0);
+    expect(ctx.raw("self.irating_new").value).toBeTypeOf("number");
+    expect(ctx.raw("session.sof").value).toBeTypeOf("number");
+    expect(ctx.display("session.sof")).not.toBe("");
   });
 
   it("emits the estimate from the qualifying grid in a race before any positions exist (#872)", () => {
@@ -1393,9 +1409,9 @@ describe("iRating estimate template variables (#268)", () => {
 
     const ctx = buildTemplateContextFromData(telemetry, preGreen, [0, 0, 0]);
 
-    expect(ctx.raw["self.irating_change"]).toBeTypeOf("number");
-    expect(ctx.raw["self.irating_change"] as number).toBeLessThan(0);
-    expect(ctx.raw["session.sof"]).toBeTypeOf("number");
+    expect(ctx.raw("self.irating_change").value).toBeTypeOf("number");
+    expect(ctx.raw("self.irating_change").value as number).toBeLessThan(0);
+    expect(ctx.raw("session.sof").value).toBeTypeOf("number");
   });
 
   it("holds the grid estimate through the green-flag run to the line (player not yet classified)", () => {
@@ -1418,8 +1434,8 @@ describe("iRating estimate template variables (#268)", () => {
 
     const ctx = buildTemplateContextFromData(telemetry, preGreen, [0, 1, 0]);
 
-    expect(ctx.raw["self.irating_change"]).toBeTypeOf("number");
-    expect(ctx.raw["self.irating_change"] as number).toBeLessThan(0);
+    expect(ctx.raw("self.irating_change").value).toBeTypeOf("number");
+    expect(ctx.raw("self.irating_change").value as number).toBeLessThan(0);
   });
 
   it("emits no estimate when telemetry is null even if the qualifying grid is cached", () => {
@@ -1437,9 +1453,9 @@ describe("iRating estimate template variables (#268)", () => {
     // scored as one combined class, so no estimate is emitted at all.
     const ctx = buildTemplateContextFromData(null, sessionInfo, null);
 
-    expect(ctx.raw["self.irating_change"]).toBeUndefined();
-    expect(ctx.display["self.irating_change"]).toBe("");
-    expect(ctx.raw["session.sof"]).toBeUndefined();
+    expect(ctx.raw("self.irating_change").value).toBeUndefined();
+    expect(ctx.display("self.irating_change")).toBe("");
+    expect(ctx.raw("session.sof").value).toBeUndefined();
   });
 
   it("keeps the live order authoritative over official positions in a race (#872)", () => {
@@ -1450,7 +1466,7 @@ describe("iRating estimate template variables (#268)", () => {
 
     const ctx = buildTemplateContextFromData(telemetry, makeSessionInfo(IRATING_DRIVERS, 0), [3, 1, 2]);
 
-    expect(ctx.raw["self.irating_change"] as number).toBeLessThan(0);
+    expect(ctx.raw("self.irating_change").value as number).toBeLessThan(0);
   });
 
   it("renders blank for a driver excluded from the field", () => {
@@ -1463,8 +1479,560 @@ describe("iRating estimate template variables (#268)", () => {
 
     const ctx = buildTemplateContextFromData(telemetry, makeSessionInfo(drivers, 0), [2, 1, 3, 4]);
 
-    expect(ctx.display["focused.irating_change"]).toBe("");
-    expect(ctx.raw["focused.irating_change"]).toBeUndefined();
-    expect(ctx.display["focused.name"]).toBe("No Rating");
+    expect(ctx.display("focused.irating_change")).toBe("");
+    expect(ctx.raw("focused.irating_change").value).toBeUndefined();
+    expect(ctx.display("focused.name")).toBe("No Rating");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Lazy context (#1339)
+// ---------------------------------------------------------------------------
+
+/** A multiclass field: the player, two rivals, a lapped car, the pace car and a spectator. */
+function makeRichDrivers() {
+  return [
+    makeDriver({ CarIdx: 0, UserName: "Pace Car", AbbrevName: null, CarNumber: "0", IRating: 0, CarIsPaceCar: 1 }),
+    makeDriver({ CarIdx: 1, UserName: "Player One", AbbrevName: "P. One", CarNumber: "11", IRating: 3100 }),
+    makeDriver({ CarIdx: 2, UserName: "Rival Two", AbbrevName: "R. Two", CarNumber: 22, IRating: 2700 }),
+    makeDriver({ CarIdx: 3, UserName: "Rival Three", AbbrevName: "R. Three", CarNumber: "33", IRating: 1900 }),
+    makeDriver({ CarIdx: 4, UserName: "Gt Four", AbbrevName: "G. Four", CarNumber: "44", IRating: 2400 }),
+    makeDriver({ CarIdx: 5, UserName: "Watcher", AbbrevName: null, CarNumber: null, IRating: 1500, IsSpectator: 1 }),
+  ];
+}
+
+/** Session info with nested objects, arrays at several depths, floats, booleans and blank scalars. */
+function makeRichSessionInfo(sessionType: string, playerCarIdx = 1, drivers = makeRichDrivers()): SessionInfo {
+  return {
+    WeekendInfo: {
+      TrackName: "spa up",
+      TrackDisplayName: "Spa-Francorchamps",
+      TrackDisplayShortName: "Spa",
+      TrackLength: "7.00 km",
+      TrackID: 163,
+      TrackPitSpeedLimit: "60.00 kph",
+      TrackNorthLat: 50.4372,
+      Official: 1,
+      WeekendOptions: { NumStarters: 6, IsFixedSetup: 0, HasCautions: false, CommercialMode: "consumer" },
+      TelemetryOptions: { TelemetryDiskFile: "" },
+    },
+    SessionInfo: {
+      Sessions: [
+        {
+          SessionNum: 0,
+          SessionType: sessionType,
+          SessionName: sessionType.toUpperCase(),
+          SessionLaps: "unlimited",
+          ResultsPositions: [{ Position: 1, CarIdx: 2, FastestTime: 137.512 }],
+          ResultsFastestLap: [{ CarIdx: 2, FastestLap: 3 }],
+          ResultsAverageLapTime: -1,
+          ResultsOfficial: 0,
+        },
+      ],
+    },
+    QualifyResultsInfo: {
+      Results: [
+        { Position: 0, ClassPosition: 0, CarIdx: 2, FastestTime: 136.1 },
+        { Position: 1, ClassPosition: 1, CarIdx: 1, FastestTime: 136.4 },
+        { Position: 2, ClassPosition: 2, CarIdx: 3, FastestTime: 137.0 },
+        { Position: 3, ClassPosition: 0, CarIdx: 4, FastestTime: 139.9 },
+      ],
+    },
+    CameraInfo: { Groups: [{ GroupNum: 1, GroupName: "Nose", Cameras: [{ CameraNum: 1 }] }] },
+    DriverInfo: {
+      DriverCarIdx: playerCarIdx,
+      DriverUserID: 123456,
+      DriverCarFuelKgPerLtr: 0.75,
+      DriverCarRedLine: 8500.0,
+      DriverSetupIsModified: 0,
+      DriverIncidentCount: 2,
+      Drivers: drivers,
+    },
+    SplitTimeInfo: { Sectors: [{ SectorNum: 0, SectorStartPct: 0 }] },
+    CarSetup: {
+      UpdateCount: 3,
+      Tires: { LeftFront: { StartingPressure: "165 kPa", TreadRemaining: "100%" } },
+      Chassis: { Front: { ArbBlades: 2, BrakePressureBias: "54.3%" } },
+    },
+  } as unknown as SessionInfo;
+}
+
+/** Telemetry with floats, booleans, boolean-semantic ints, bitfields and CarIdx arrays. */
+function makeRichTelemetry(overrides: Record<string, unknown> = {}): TelemetryData {
+  return {
+    SessionNum: 0,
+    SessionTick: 4242,
+    SessionTime: 1834.123456,
+    SessionLapsRemainEx: 12,
+    SessionTimeRemain: 2201.7,
+    SessionFlags: 268435456,
+    Speed: 61.23456,
+    RPM: 7012.5,
+    Gear: 4,
+    FuelLevel: 31.4159,
+    FuelLevelPct: 0.5,
+    Lap: 9,
+    LapCompleted: 8,
+    LapDistPct: 0.4321,
+    IsOnTrack: true,
+    IsOnTrackCar: true,
+    IsReplayPlaying: false,
+    IsInGarage: false,
+    OnPitRoad: false,
+    PlayerCarInPitStall: 0,
+    PushToPass: 1,
+    DriverMarker: 0,
+    PitstopActive: false,
+    PlayerCarPosition: 2,
+    PlayerCarClassPosition: 2,
+    PlayerCarMyIncidentCount: 4,
+    PlayerCarIdx: 1,
+    CamCarIdx: 2,
+    dcBrakeBias: 54.25,
+    LFshockDefl_ST: [0.01, 0.02, 0.03, 0.04, 0.05, 0.06],
+    CarIdxPosition: [0, 2, 1, 3, 4, 0],
+    CarIdxClassPosition: [0, 2, 1, 3, 1, 0],
+    CarIdxClass: [11, 100, 100, 100, 200, 0],
+    CarIdxLap: [0, 9, 9, 8, 9, -1],
+    CarIdxLapCompleted: [0, 8, 8, 7, 8, -1],
+    CarIdxLapDistPct: [0.2, 0.4321, 0.47, 0.35, 0.1, -1],
+    CarIdxOnPitRoad: [false, false, false, false, true, false],
+    CarIdxTrackSurface: [3, 3, 3, 3, 1, -1],
+    ...overrides,
+  } as unknown as TelemetryData;
+}
+
+interface EquivalenceFixture {
+  name: string;
+  telemetry: TelemetryData | null;
+  sessionInfo: SessionInfo | null;
+  livePositions?: number[] | null;
+}
+
+/** The six spec fixtures plus the shapes the existing suite already exercises. */
+function equivalenceFixtures(): EquivalenceFixture[] {
+  return [
+    {
+      // The canonical order disagrees with the official counters, so a context that
+      // ignored it would differ from the reference.
+      name: "race with an injected live order",
+      telemetry: makeRichTelemetry(),
+      sessionInfo: makeRichSessionInfo("Race"),
+      livePositions: [0, 3, 1, 2, 4, 0],
+    },
+    {
+      name: "practice (the injected order is ignored outside a race)",
+      telemetry: makeRichTelemetry({ CamCarIdx: -1 }),
+      sessionInfo: makeRichSessionInfo("Practice"),
+      livePositions: [0, 3, 1, 2, 4, 0],
+    },
+    {
+      name: "qualifying on the official counters",
+      telemetry: makeRichTelemetry({ CamCarIdx: 1 }),
+      sessionInfo: makeRichSessionInfo("Lone Qualify"),
+      livePositions: null,
+    },
+    {
+      // No classification yet: the iRating estimate comes from the qualifying grid.
+      name: "race pre-green from the qualifying grid",
+      telemetry: makeRichTelemetry({
+        CarIdxPosition: [0, 0, 0, 0, 0, 0],
+        CarIdxClassPosition: [0, 0, 0, 0, 0, 0],
+        SessionTimeRemain: 604800,
+        SessionLapsRemainEx: 32767,
+      }),
+      sessionInfo: makeRichSessionInfo("Race"),
+      livePositions: [],
+    },
+    {
+      name: "spectator with the camera on another car",
+      telemetry: makeRichTelemetry({ CamCarIdx: 3, PlayerCarMyIncidentCount: 0 }),
+      sessionInfo: makeRichSessionInfo("Race", 5),
+      livePositions: [0, 3, 1, 2, 4, 0],
+    },
+    {
+      name: "camera on the pace car",
+      telemetry: makeRichTelemetry({ CamCarIdx: 0 }),
+      sessionInfo: makeRichSessionInfo("Race"),
+      livePositions: [0, 3, 1, 2, 4, 0],
+    },
+    {
+      name: "disconnected with session info only",
+      telemetry: null,
+      sessionInfo: makeRichSessionInfo("Race"),
+      livePositions: [0, 3, 1, 2, 4, 0],
+    },
+    { name: "nothing at all", telemetry: null, sessionInfo: null },
+    {
+      name: "the suite's small race fixture",
+      telemetry: makeTelemetry({ Speed: 156.789, IsOnTrack: true, CamCarIdx: 1 } as Partial<TelemetryData>),
+      sessionInfo: makeSessionInfo(
+        [makeDriver({ CarIdx: 0 }), makeDriver({ CarIdx: 1, UserName: "Jane Doe" }), makeDriver({ CarIdx: 2 })],
+        0,
+      ),
+    },
+  ];
+}
+
+/** Paths absent from every reference build, prototype names among them. */
+const ABSENT_SAMPLES = [
+  "telemetry.CarIdxPosition",
+  "telemetry.CarIdxLap",
+  "telemetry.LFshockDefl_ST",
+  "telemetry.LFshockDefl_ST.0",
+  "telemetry.Speed.x",
+  "telemetry.__proto__",
+  "telemetry.toString",
+  "telemetry.constructor",
+  "constructor",
+  "__proto__",
+  "toString",
+  "hasOwnProperty",
+  "self.nope",
+  "self.constructor",
+  "self.__proto__",
+  "self.name.x",
+  "focused.incidents",
+  "track.constructor",
+  "session.hasOwnProperty",
+  "sessionInfo.constructor",
+  "sessionInfo.__proto__",
+  "sessionInfo.WeekendInfo",
+  "sessionInfo.WeekendInfo.constructor",
+  "sessionInfo.DriverInfo.Drivers",
+  "sessionInfo.DriverInfo.Drivers.0.UserName",
+  "sessionInfo.SessionInfo.Sessions.0.SessionType",
+  "nonsense.x",
+  "self",
+  "telemetry",
+  "sessionInfo",
+  "",
+  ".",
+  "self.",
+  "telemetry.",
+  ".self.name",
+];
+
+/**
+ * Every path the reference builds must resolve identically, and a path it does
+ * not build must be absent. Mismatches are collected so a failure names them all.
+ */
+function compareWithReference(fixture: EquivalenceFixture): string[] {
+  const reference = buildReferenceTemplateMaps(fixture.telemetry, fixture.sessionInfo, fixture.livePositions);
+  const ctx = buildTemplateContextFromData(fixture.telemetry, fixture.sessionInfo, fixture.livePositions);
+  const mismatches: string[] = [];
+
+  for (const [path, expected] of Object.entries(reference.display)) {
+    const actual = ctx.display(path);
+
+    if (actual !== expected) mismatches.push(`display ${path}: ${String(actual)} !== ${expected}`);
+  }
+
+  for (const [path, expected] of Object.entries(reference.raw)) {
+    const actual = ctx.raw(path);
+
+    if (!actual.found || !Object.is(actual.value, expected)) {
+      mismatches.push(`raw ${path}: ${JSON.stringify(actual)} !== ${String(expected)}`);
+    }
+  }
+
+  // The reverse direction: what the reference does not produce is absent. The
+  // candidates are the samples above plus, for every produced path, each of its
+  // proper prefixes and one segment past it.
+  const candidates = new Set(ABSENT_SAMPLES);
+
+  for (const path of Object.keys(reference.display)) {
+    candidates.add(`${path}.x`);
+
+    for (let dot = path.indexOf("."); dot >= 0; dot = path.indexOf(".", dot + 1)) {
+      candidates.add(path.slice(0, dot));
+    }
+  }
+
+  for (const path of candidates) {
+    if (!Object.hasOwn(reference.display, path) && ctx.display(path) !== undefined) {
+      mismatches.push(`display ${path} should be absent, got ${String(ctx.display(path))}`);
+    }
+
+    if (!Object.hasOwn(reference.raw, path) && ctx.raw(path).found) {
+      mismatches.push(`raw ${path} should be absent, got ${JSON.stringify(ctx.raw(path))}`);
+    }
+  }
+
+  return mismatches;
+}
+
+describe("lazy template context: equivalence with the eager reference (#1339)", () => {
+  it.each(equivalenceFixtures().map((fixture) => [fixture.name, fixture] as const))(
+    "%s: every reference path resolves identically and nothing else resolves",
+    (_name, fixture) => {
+      expect(compareWithReference(fixture)).toEqual([]);
+    },
+  );
+
+  it("covers every namespace in the rich race fixture", () => {
+    // Guards the comparison against passing vacuously on a fixture that builds little.
+    const [race] = equivalenceFixtures();
+    const reference = buildReferenceTemplateMaps(race.telemetry, race.sessionInfo, race.livePositions);
+    const namespaces = new Set(Object.keys(reference.display).map((path) => path.slice(0, path.indexOf("."))));
+
+    expect([...namespaces].sort()).toEqual(Object.keys(namespaceBuilders).sort());
+    expect(Object.keys(reference.display).length).toBeGreaterThan(120);
+    expect(reference.display["race_ahead.name"]).toBe("Rival Three");
+    expect(reference.display["session.sof"]).not.toBe("");
+  });
+
+  it("answers the samples as absent in every fixture", () => {
+    for (const fixture of equivalenceFixtures()) {
+      const ctx = buildTemplateContextFromData(fixture.telemetry, fixture.sessionInfo, fixture.livePositions);
+
+      for (const path of ABSENT_SAMPLES) {
+        expect(ctx.display(path), `${fixture.name}: ${path}`).toBeUndefined();
+        expect(ctx.raw(path), `${fixture.name}: ${path}`).toEqual({ found: false });
+      }
+    }
+  });
+
+  it("renders a bare prototype name empty through the resolver", () => {
+    const ctx = buildTemplateContextFromData(makeRichTelemetry(), makeRichSessionInfo("Race"));
+
+    // The pre-#1339 resolver read the inherited property and rendered Object's
+    // function source for {{constructor}}; the lookup answers own paths only.
+    expect(resolveTemplate("[{{constructor}}][{{toString}}][{{__proto__}}]", ctx)).toBe("[][][]");
+    expect(resolveTemplate("{{= constructor }}", ctx)).toBe("");
+  });
+
+  it("keeps working when a method is detached from its context", () => {
+    const { display, raw } = buildTemplateContextFromData(makeRichTelemetry(), makeRichSessionInfo("Race"));
+
+    expect(display("self.name")).toBe("Player One");
+    expect(raw("telemetry.Speed")).toEqual({ found: true, value: 61.23456 });
+  });
+});
+
+describe("lazy template context: laziness (#1339)", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  type NamespaceName = keyof typeof namespaceBuilders;
+
+  /** Spies on every namespace builder; returns the names built so far, with counts. */
+  function spyOnBuilders(): () => Partial<Record<NamespaceName, number>> {
+    const spies = (Object.keys(namespaceBuilders) as NamespaceName[]).map(
+      (name) => [name, vi.spyOn(namespaceBuilders, name)] as const,
+    );
+
+    return () =>
+      Object.fromEntries(
+        spies.filter(([, spy]) => spy.mock.calls.length > 0).map(([name, spy]) => [name, spy.mock.calls.length]),
+      );
+  }
+
+  function makeContext(provider: () => number[] | null): TemplateContext {
+    return buildTemplateContextFromData(makeRichTelemetry(), makeRichSessionInfo("Race"), provider);
+  }
+
+  it("builds nothing and asks for no order until a path is looked up", () => {
+    const built = spyOnBuilders();
+    const provider = vi.fn(() => [0, 3, 1, 2, 4, 0]);
+
+    makeContext(provider);
+
+    expect(built()).toEqual({});
+    expect(provider).not.toHaveBeenCalled();
+  });
+
+  it("asked only for self.position, builds self alone and asks for the order once", () => {
+    const built = spyOnBuilders();
+    const provider = vi.fn(() => [0, 3, 1, 2, 4, 0]);
+    const ctx = makeContext(provider);
+
+    expect(ctx.display("self.position")).toBe("3");
+    expect(ctx.raw("self.position")).toEqual({ found: true, value: 3 });
+    expect(ctx.display("self.name")).toBe("Player One");
+
+    // Never sessionInfo: no walk of the YAML happened.
+    expect(built()).toEqual({ self: 1 });
+    expect(provider).toHaveBeenCalledTimes(1);
+  });
+
+  it("shares one order across every driver namespace and session", () => {
+    const built = spyOnBuilders();
+    const provider = vi.fn(() => [0, 3, 1, 2, 4, 0]);
+    const ctx = makeContext(provider);
+
+    for (const name of ["self", "track_ahead", "track_behind", "race_ahead", "race_behind", "focused"]) {
+      ctx.display(`${name}.name`);
+      ctx.display(`${name}.position`);
+    }
+
+    ctx.display("session.sof");
+
+    expect(provider).toHaveBeenCalledTimes(1);
+    expect(built()).toEqual({
+      self: 1,
+      track_ahead: 1,
+      track_behind: 1,
+      race_ahead: 1,
+      race_behind: 1,
+      focused: 1,
+      session: 1,
+    });
+  });
+
+  it("asked only for track, telemetry or sessionInfo paths, never asks for the order", () => {
+    const built = spyOnBuilders();
+    const provider = vi.fn(() => [0, 3, 1, 2, 4, 0]);
+    const ctx = makeContext(provider);
+
+    expect(ctx.display("track.name")).toBe("Spa-Francorchamps");
+    expect(ctx.display("telemetry.Speed")).toBe("61.23");
+    expect(ctx.display("sessionInfo.WeekendInfo.TrackID")).toBe("163");
+    expect(ctx.display("sessionInfo.WeekendInfo.TrackName")).toBe("spa up");
+
+    expect(provider).not.toHaveBeenCalled();
+    expect(built()).toEqual({ track: 1, telemetry: 1, sessionInfo: 1 });
+  });
+
+  it("asked only for session clock fields, never asks for the order; session.sof asks once", () => {
+    const built = spyOnBuilders();
+    const provider = vi.fn(() => [0, 3, 1, 2, 4, 0]);
+    const ctx = makeContext(provider);
+
+    expect(ctx.display("session.time_remaining")).not.toBe("");
+    expect(ctx.raw("session.time_remaining").found).toBe(true);
+    expect(ctx.display("session.type")).toBe("Race");
+    ctx.display("session.laps_remaining");
+    ctx.raw("session.laps_remaining");
+
+    expect(built()).toEqual({ session: 1 });
+    expect(provider).not.toHaveBeenCalled();
+
+    expect(ctx.display("session.sof")).not.toBe("");
+    expect(ctx.raw("session.sof").found).toBe(true);
+    ctx.display("session.sof");
+
+    expect(provider).toHaveBeenCalledTimes(1);
+    expect(built()).toEqual({ session: 1 });
+  });
+
+  it("session.sof asked first, through raw, still asks for the order once", () => {
+    const provider = vi.fn(() => [0, 3, 1, 2, 4, 0]);
+    const ctx = makeContext(provider);
+
+    expect(ctx.raw("session.sof").found).toBe(true);
+    expect(ctx.display("session.sof")).not.toBe("");
+    ctx.display("self.position");
+
+    expect(provider).toHaveBeenCalledTimes(1);
+  });
+
+  it("builds nothing for a path with no namespace", () => {
+    const built = spyOnBuilders();
+    const provider = vi.fn(() => [0, 3, 1, 2, 4, 0]);
+    const ctx = makeContext(provider);
+
+    for (const path of ["constructor", "__proto__", "nonsense.x", "self", "", "toString.x"]) {
+      ctx.display(path);
+      ctx.raw(path);
+    }
+
+    expect(built()).toEqual({});
+    expect(provider).not.toHaveBeenCalled();
+  });
+});
+
+describe("lazy template context: session-info memo (#1339)", () => {
+  /**
+   * Session info whose DriverInfo and WeekendInfo count their reads: the driver
+   * list and the player car index come from DriverInfo, the `track` namespace from
+   * WeekendInfo, and nothing else the tests ask for reads either.
+   */
+  function countingSessionInfo(trackName: string) {
+    const base = makeRichSessionInfo("Race") as unknown as Record<string, unknown>;
+    const reads = { DriverInfo: 0, WeekendInfo: 0 };
+    const driverInfo = base.DriverInfo;
+    const weekendInfo = { ...(base.WeekendInfo as Record<string, unknown>), TrackDisplayName: trackName };
+
+    Object.defineProperty(base, "DriverInfo", {
+      enumerable: true,
+      get: () => {
+        reads.DriverInfo++;
+
+        return driverInfo;
+      },
+    });
+    Object.defineProperty(base, "WeekendInfo", {
+      enumerable: true,
+      get: () => {
+        reads.WeekendInfo++;
+
+        return weekendInfo;
+      },
+    });
+
+    return { sessionInfo: base as unknown as SessionInfo, reads };
+  }
+
+  function readFrame(ctx: TemplateContext): string[] {
+    return [ctx.display("self.name") ?? "", ctx.display("race_ahead.name") ?? "", ctx.display("track.name") ?? ""];
+  }
+
+  it("builds the driver list and track once for two frames on the same session-info object", () => {
+    const { sessionInfo, reads } = countingSessionInfo("Spa-Francorchamps");
+    const order = () => [0, 3, 1, 2, 4, 0];
+
+    const first = readFrame(buildTemplateContextFromData(makeRichTelemetry(), sessionInfo, order));
+    const afterFirst = { ...reads };
+
+    expect(afterFirst.DriverInfo).toBeGreaterThan(0);
+    expect(afterFirst.WeekendInfo).toBeGreaterThan(0);
+
+    // A later frame: fresh telemetry, the same session-info object.
+    const second = readFrame(
+      buildTemplateContextFromData(makeRichTelemetry({ SessionTick: 4243, Speed: 62 }), sessionInfo, order),
+    );
+
+    expect(reads).toEqual(afterFirst);
+    expect(second).toEqual(first);
+    expect(first).toEqual(["Player One", "Rival Three", "Spa-Francorchamps"]);
+  });
+
+  it("rebuilds them for a new session-info object", () => {
+    const order = () => [0, 3, 1, 2, 4, 0];
+    const before = countingSessionInfo("Spa-Francorchamps");
+
+    readFrame(buildTemplateContextFromData(makeRichTelemetry(), before.sessionInfo, order));
+
+    // iRacing published new session info: a new parsed object.
+    const after = countingSessionInfo("Circuit de Spa-Francorchamps");
+    const frame = readFrame(buildTemplateContextFromData(makeRichTelemetry(), after.sessionInfo, order));
+
+    expect(after.reads.DriverInfo).toBeGreaterThan(0);
+    expect(after.reads.WeekendInfo).toBeGreaterThan(0);
+    expect(frame[2]).toBe("Circuit de Spa-Francorchamps");
+  });
+
+  it("answers track blank without session info, and a later context with it still builds its own", () => {
+    const first = buildTemplateContextFromData(makeRichTelemetry(), null);
+    const second = buildTemplateContextFromData(null, null);
+
+    expect(first.display("track.name")).toBe("");
+    expect(first.raw("track.short_name")).toEqual({ found: true, value: "" });
+    expect(second.display("track.short_name")).toBe("");
+    // A later context with session info still builds its own track namespace.
+    expect(buildTemplateContextFromData(null, makeRichSessionInfo("Race")).display("track.name")).toBe(
+      "Spa-Francorchamps",
+    );
+  });
+
+  it("still recomputes the telemetry-derived namespaces per context", () => {
+    const sessionInfo = makeRichSessionInfo("Race");
+    const first = buildTemplateContextFromData(makeRichTelemetry(), sessionInfo, [0, 3, 1, 2, 4, 0]);
+    const second = buildTemplateContextFromData(makeRichTelemetry(), sessionInfo, [0, 1, 2, 3, 4, 0]);
+
+    expect(first.display("self.position")).toBe("3");
+    expect(second.display("self.position")).toBe("1");
   });
 });

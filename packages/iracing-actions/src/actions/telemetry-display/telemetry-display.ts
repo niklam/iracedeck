@@ -104,6 +104,13 @@ export function generateTelemetryDisplaySvg(title: string, value: string, settin
 /**
  * Telemetry Display Action
  * Displays live telemetry values on the Stream Deck key using mustache templates.
+ *
+ * A telemetry tick does no work of its own: it schedules a refresh through the
+ * per-key throttle, and the refresh resolves the template, compares the result
+ * with the last rendered state and pushes an image only when it changed. Asking
+ * for the template context per tick rebuilt the shared context every frame for
+ * every templated key, which was most of the plugin's allocation (about 92 MB/s
+ * in a 35-car race, #1339).
  */
 export const TELEMETRY_DISPLAY_UUID = "com.iracedeck.sd.core.telemetry-display" as const;
 
@@ -111,10 +118,12 @@ export class TelemetryDisplay extends ConnectionStateAwareAction<TelemetryDispla
   private activeContexts = new Map<string, TelemetryDisplaySettings>();
   private lastState = new Map<string, string>();
   /**
-   * Caps per-key icon updates at 10 Hz with a trailing-edge coalescer
-   * (issue #493). The SDK now ticks at ~70 Hz with SessionTick dedupe (so
-   * up to ~60 unique frames per second can reach this action); a fast-
-   * changing template like RPM would otherwise flood `setKeyImage` calls.
+   * Caps each key's telemetry refresh at 10 Hz with a trailing-edge coalescer.
+   * It first capped `setKeyImage` calls (#493): the SDK delivers up to ~60
+   * unique frames per second, and a fast-changing template like RPM would
+   * otherwise flood them. Since #1339 it also gates template resolution, so a
+   * key asks for a template context at most on the leading and trailing edge
+   * of each window rather than on every tick.
    */
   private readonly imageThrottle = new IconUpdateThrottle();
 
@@ -124,11 +133,13 @@ export class TelemetryDisplay extends ConnectionStateAwareAction<TelemetryDispla
     this.activeContexts.set(ev.action.id, settings);
     await this.updateDisplay(ev, settings);
 
-    this.sdkController.subscribe(ev.action.id, () => {
-      const storedSettings = this.activeContexts.get(ev.action.id);
+    const contextId = ev.action.id;
 
-      if (storedSettings) {
-        this.updateDisplayFromTelemetry(ev.action.id, storedSettings);
+    this.sdkController.subscribe(contextId, () => {
+      // Schedule the whole refresh, template resolution included (#1339): the
+      // tick itself never asks for a template context.
+      if (this.activeContexts.has(contextId)) {
+        this.imageThrottle.schedule(contextId, () => this.refreshFromTelemetry(contextId));
       }
     });
   }
@@ -199,27 +210,25 @@ export class TelemetryDisplay extends ConnectionStateAwareAction<TelemetryDispla
     return `${title}|${value}|${co?.backgroundColor || ""}|${co?.textColor || ""}|${settings.fontSize}|${borderKey}`;
   }
 
-  private async updateDisplayFromTelemetry(contextId: string, settings: TelemetryDisplaySettings): Promise<void> {
+  /**
+   * Throttled refresh for a telemetry tick. Re-reads the key's settings at
+   * flush time, so a trailing flush uses the latest settings and a key that has
+   * since disappeared renders nothing; resolves the template once, and pushes
+   * an image only when the resolved state differs from the last one rendered.
+   */
+  private async refreshFromTelemetry(contextId: string): Promise<void> {
+    const settings = this.activeContexts.get(contextId);
+
+    if (!settings) return;
+
     const { title, value } = this.resolveDisplay(settings);
     const stateKey = this.buildStateKey(title, value, settings);
-    const lastStateKey = this.lastState.get(contextId);
 
-    if (lastStateKey === stateKey) return;
+    if (this.lastState.get(contextId) === stateKey) return;
 
     this.lastState.set(contextId, stateKey);
 
-    // Route through the 10 Hz throttle (issue #493). The render closure
-    // re-resolves from current telemetry/settings at flush time so a
-    // trailing-edge fire reflects the latest state, not the state we
-    // had when the throttle scheduled it.
-    this.imageThrottle.schedule(contextId, async () => {
-      const storedSettings = this.activeContexts.get(contextId);
-
-      if (!storedSettings) return;
-
-      const display = this.resolveDisplay(storedSettings);
-      const svgDataUri = generateTelemetryDisplaySvg(display.title, display.value, storedSettings);
-      await this.updateKeyImage(contextId, svgDataUri);
-    });
+    const svgDataUri = generateTelemetryDisplaySvg(title, value, settings);
+    await this.updateKeyImage(contextId, svgDataUri);
   }
 }

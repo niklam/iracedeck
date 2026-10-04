@@ -11,6 +11,25 @@
 export type ExpressionValue = string | number | boolean;
 
 /**
+ * The value at a variable path. `found: false` means there is no such path,
+ * which an expression reports as an unknown variable; `found: true` with an
+ * `undefined` value is a path that exists but holds nothing. Defined here, not
+ * in the template context, so this module stays free of any context type; the
+ * context's `TemplateLookup` is this type under its own name.
+ */
+export interface VariableLookupResult {
+  found: boolean;
+  value?: ExpressionValue;
+}
+
+/**
+ * Resolves a variable path for an expression. `found: false` makes the
+ * expression fail as an unknown variable (rendering ""). The template context
+ * supplies it.
+ */
+export type VariableLookup = (path: string) => VariableLookupResult;
+
+/**
  * @internal Exported for testing
  */
 export type Token =
@@ -517,12 +536,9 @@ function looseEquals(left: ExpressionValue, right: ExpressionValue): boolean {
   }
 }
 
-function evaluateBinary(
-  node: Extract<ExprNode, { type: "binary" }>,
-  vars: Record<string, ExpressionValue>,
-): EvalResult {
-  const leftResult = evaluateAst(node.left, vars);
-  const rightResult = evaluateAst(node.right, vars);
+function evaluateBinary(node: Extract<ExprNode, { type: "binary" }>, lookup: VariableLookup): EvalResult {
+  const leftResult = evaluateAst(node.left, lookup);
+  const rightResult = evaluateAst(node.right, lookup);
   const left = leftResult.value;
   const right = rightResult.value;
 
@@ -558,8 +574,8 @@ function evaluateBinary(
   }
 }
 
-function evaluateCall(node: Extract<ExprNode, { type: "call" }>, vars: Record<string, ExpressionValue>): EvalResult {
-  const args = node.args.map((arg) => toNumber(evaluateAst(arg, vars).value));
+function evaluateCall(node: Extract<ExprNode, { type: "call" }>, lookup: VariableLookup): EvalResult {
+  const args = node.args.map((arg) => toNumber(evaluateAst(arg, lookup).value));
 
   switch (node.name) {
     case "round": {
@@ -591,28 +607,31 @@ function evaluateCall(node: Extract<ExprNode, { type: "call" }>, vars: Record<st
  * forwards its chosen branch's envelope (preserving the fixedDecimals hint
  * from round(x, n)); all other constructs emit hint-free envelopes.
  */
-export function evaluateAst(node: ExprNode, vars: Record<string, ExpressionValue>): EvalResult {
+export function evaluateAst(node: ExprNode, lookup: VariableLookup): EvalResult {
   switch (node.type) {
     case "number":
       return { value: node.value };
     case "string":
       return { value: node.value };
-    case "variable":
-      // Object.hasOwn (not `in`) so prototype-chain properties like
+    case "variable": {
+      // The lookup answers own paths only, so prototype-chain names like
       // "constructor" or "toString" never resolve as variables.
-      if (!Object.hasOwn(vars, node.path)) {
+      const variable = lookup(node.path);
+
+      if (!variable.found) {
         throw new ExpressionRuntimeError(`Unknown variable "${node.path}"`);
       }
 
-      return { value: vars[node.path] };
+      return { value: variable.value as ExpressionValue };
+    }
     case "unary":
-      return { value: -toNumber(evaluateAst(node.operand, vars).value) };
+      return { value: -toNumber(evaluateAst(node.operand, lookup).value) };
     case "binary":
-      return evaluateBinary(node, vars);
+      return evaluateBinary(node, lookup);
     case "ternary":
-      return evaluateAst(isTruthy(evaluateAst(node.condition, vars).value) ? node.whenTrue : node.whenFalse, vars);
+      return evaluateAst(isTruthy(evaluateAst(node.condition, lookup).value) ? node.whenTrue : node.whenFalse, lookup);
     case "call":
-      return evaluateCall(node, vars);
+      return evaluateCall(node, lookup);
   }
 }
 
@@ -661,7 +680,7 @@ export function clearExpressionCache(): void {
  * Returns the formatted result string, "" on runtime error, or null on parse
  * error (the caller renders the original source verbatim on parse error).
  */
-export function resolveExpression(source: string, vars: Record<string, ExpressionValue>): string | null {
+export function resolveExpression(source: string, lookup: VariableLookup): string | null {
   // Reject over-limit sources before touching the cache so huge strings are
   // never stored as cache keys.
   if (source.length > MAX_EXPRESSION_LENGTH) {
@@ -693,7 +712,7 @@ export function resolveExpression(source: string, vars: Record<string, Expressio
   }
 
   try {
-    return formatResult(evaluateAst(entry.node, vars));
+    return formatResult(evaluateAst(entry.node, lookup));
   } catch (error) {
     if (error instanceof ExpressionRuntimeError) {
       return "";

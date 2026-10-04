@@ -32,7 +32,7 @@ vi.mock("@iracedeck/iracing-sdk", () => ({
   getAllCarNumbers: vi.fn(() => []),
   classifyCarNumberTarget: vi.fn(() => "user"),
   getPlayerCarNumberFromSessionInfo: vi.fn(() => null),
-  buildTemplateContext: vi.fn(() => ({ display: {}, raw: {} })),
+  buildTemplateContext: vi.fn(() => ({ display: () => undefined, raw: () => ({ found: false }) })),
   resolveTemplate: vi.fn((template: string) => template),
 }));
 

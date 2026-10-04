@@ -66,6 +66,65 @@ describe("IconUpdateThrottle", () => {
     expect(calls).toEqual(["initial", "final"]);
   });
 
+  it("arms one timer per window and flushes the last render scheduled inside it (#1339)", async () => {
+    const calls: string[] = [];
+    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
+
+    throttle.schedule("ctx", () => {
+      calls.push("leading");
+    });
+    vi.advanceTimersByTime(10);
+    throttle.schedule("ctx", () => {
+      calls.push("first");
+    });
+
+    const armed = throttle.pendingFlush.get("ctx")?.timer;
+
+    expect(armed).toBeDefined();
+
+    for (let i = 0; i < 8; i++) {
+      vi.advanceTimersByTime(5);
+      throttle.schedule("ctx", () => {
+        calls.push(`burst-${i}`);
+      });
+    }
+
+    // Every schedule after the first inside the window only replaced the
+    // render: the same timer is still armed and no other was ever created.
+    expect(throttle.pendingFlush.get("ctx")?.timer).toBe(armed);
+    expect(setTimeoutSpy).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(1);
+
+    // The flush fires at the window's end (100 ms after the leading send,
+    // 50 ms elapsed so far) and runs only the newest render.
+    await vi.advanceTimersByTimeAsync(49);
+    expect(calls).toEqual(["leading"]);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(calls).toEqual(["leading", "burst-7"]);
+    expect(throttle.pendingFlush.size).toBe(0);
+
+    setTimeoutSpy.mockRestore();
+  });
+
+  it("an immediate render outside the window cancels a flush still pending", async () => {
+    const pending = vi.fn();
+    const immediate = vi.fn();
+
+    throttle.schedule("ctx", vi.fn());
+    vi.advanceTimersByTime(10);
+    throttle.schedule("ctx", pending);
+
+    // Simulate a late timer: the clock passes the window without the timer
+    // having run yet, so the next schedule takes the immediate branch.
+    vi.setSystemTime(Date.now() + 200);
+    throttle.schedule("ctx", immediate);
+
+    expect(immediate).toHaveBeenCalledTimes(1);
+    expect(throttle.pendingFlush.size).toBe(0);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(pending).not.toHaveBeenCalled();
+  });
+
   it("never fires the trailing flush if no calls arrived inside the window", async () => {
     const render = vi.fn();
 

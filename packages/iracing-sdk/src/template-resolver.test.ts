@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import type { TemplateContext, TemplateValue } from "./template-context.js";
+import { type TemplateContext, templateContextFromMaps, type TemplateValue } from "./template-context.js";
 import { resolveTemplate } from "./template-resolver.js";
 
 /** Builds a combined context from a display map (raw defaults to empty). */
 function ctx(display: Record<string, unknown>, raw: Record<string, TemplateValue> = {}): TemplateContext {
-  return { display: display as Record<string, string>, raw };
+  return templateContextFromMaps(display as Record<string, string>, raw);
 }
 
 describe("resolveTemplate", () => {

@@ -106,12 +106,14 @@ export { resolveTemplate } from "./template-resolver.js";
 export {
   buildTemplateContext,
   buildTemplateContextFromData,
-  prefixKeys,
   splitDriverName,
   findNearestDriverOnTrack,
   findDriverByRacePosition,
   formatTimeRemaining,
+  type LivePositionsSource,
+  templateContextFromMaps,
   type TemplateContext,
+  type TemplateLookup,
   type TemplateValue,
 } from "./template-context.js";
 
