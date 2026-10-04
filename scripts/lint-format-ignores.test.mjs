@@ -1,8 +1,7 @@
+import { ESLint } from "eslint";
 import { execFileSync } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-
-import { ESLint } from "eslint";
 import prettier from "prettier";
 import { describe, expect, it } from "vitest";
 
@@ -10,6 +9,7 @@ import { describe, expect, it } from "vitest";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 // What the prettier CLI reads by default; the API reads nothing unless told.
+// node-gyp's output roots are ignored through .gitignore alone.
 const PRETTIER_IGNORE_FILES = [join(repoRoot, ".gitignore"), join(repoRoot, ".prettierignore")];
 
 // The `build/` ignores exist for node-gyp's output, and must stay narrow enough
@@ -21,22 +21,32 @@ const trackedUnderBuild = execFileSync("git", ["ls-files", "-z"], { cwd: repoRoo
   .split("\0")
   .filter((file) => /(^|\/)build\//.test(file));
 
-// What `pnpm lint` and `pnpm format` actually match by extension.
+// ESLint's isPathIgnored() also answers true for a file no config block's
+// `files` matches, so only an extension eslint.config.js lints proves anything
+// about the ignores. Prettier's answer depends on the path alone, so it checks
+// every tracked file.
 const LINTED = /\.(ts|mjs|js)$/;
-const FORMATTED = /\.(ts|json)$/;
 
-// Paths node-gyp writes, which must stay ignored. They need not exist.
+// Paths node-gyp writes, which must stay ignored. They need not exist, and are
+// `.ts` so the ESLint answer cannot come from the extension alone.
 const NATIVE_OUTPUT = [
-  "packages/iracing-native/build/Release/iracing_native.node",
+  "build/Release/obj/config.ts",
+  "packages/iracing-native/build/Release/obj/iracing_native.ts",
   "packages/audio-native/build/Release/obj/audio_native.ts",
-  "build/Release/config.json",
 ];
 
 describe("lint and format ignores", () => {
   // A discovery that finds nothing would pass every assertion below vacuously.
   it("finds tracked source under a build/ directory to check", () => {
     expect(trackedUnderBuild.filter((file) => LINTED.test(file)).length).toBeGreaterThan(0);
-    expect(trackedUnderBuild.filter((file) => FORMATTED.test(file)).length).toBeGreaterThan(0);
+  });
+
+  // The control for the node-gyp check below: the same kind of path outside a
+  // build/ root is NOT ignored, so a `true` there comes from the ignore pattern.
+  it("ESLint does not ignore a .ts path outside a build/ root", async () => {
+    const eslint = new ESLint({ cwd: repoRoot });
+
+    expect(await eslint.isPathIgnored(join(repoRoot, "packages/iracing-native/src/config.ts"))).toBe(false);
   });
 
   it("ESLint does not ignore tracked source under a build/ directory", async () => {
@@ -52,10 +62,9 @@ describe("lint and format ignores", () => {
   });
 
   it("Prettier does not ignore tracked source under a build/ directory", async () => {
-    const files = trackedUnderBuild.filter((file) => FORMATTED.test(file));
     const ignored = [];
 
-    for (const file of files) {
+    for (const file of trackedUnderBuild) {
       const info = await prettier.getFileInfo(join(repoRoot, file), { ignorePath: PRETTIER_IGNORE_FILES });
 
       if (info.ignored) ignored.push(file);
