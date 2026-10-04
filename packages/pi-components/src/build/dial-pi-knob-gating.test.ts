@@ -120,7 +120,7 @@ describe("dial Property Inspectors on a knob (#1013)", () => {
     rmSync(tmp, { recursive: true, force: true });
   });
 
-  it("finds all sixteen dial templates", () => {
+  it("finds all seventeen dial templates", () => {
     expect(dialNames).toEqual([...DIAL_TEMPLATES].sort());
   });
 
