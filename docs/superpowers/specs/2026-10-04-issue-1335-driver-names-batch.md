@@ -30,7 +30,13 @@ Both voices use the same ElevenLabs voice, model and voice settings, and the fiv
 
 As with `jorgen` in #1118: `Zoltán` is entered as `zoltan` and keeps the á in its text.
 
-### 5. No version bump while the pack versions are unpublished
+### 5. A name the TTS mispronounces is respelled, never moved to another model
+
+The audition found two names said wrongly: Matthias came out English where its owner says it the German way ("ma-TEE-as"), and Ade came out as "ay-day" where its owner says "aid, as in first aid". Their spoken `text` is respelled to `Mattias` and `Aid` in all five lines. The slug stays `matthias` / `ade`, and the Your Name dropdown takes its label from the slug, so the user still sees the name they asked for. The respelling does show in the website's pack reference, which lists spoken texts.
+
+ElevenLabs offers two exact controls, and neither fits. SSML phoneme tags work only on the older `eleven_flash_v2`, and inline IPA needs `eleven_v4`. Either would put one name on a different model from the rest of the voice, inside a single line such as "Time to race, Aid." A pronunciation dictionary on the voice's own model (`eleven_flash_v2_5`) can only apply an alias, which is the same respelling kept in the ElevenLabs account instead of the repo. Moving the whole voice to v4 would be a separate decision, since it means re-cutting every clip.
+
+### 6. No version bump while the pack versions are unpublished
 
 Default `1.1.2` and Terse `1.0.1` have not been published (the latest releases are `voices-default-1.1.1` and `voices-iracedeck-terse-1.0.0`), so the batch rides those versions and regenerates both catalog entries. If either version is published between releases before this merges, that pack gets a `version` bump instead, since a published archive's bytes may never change under the same version.
 
@@ -43,6 +49,6 @@ Default `1.1.2` and Terse `1.0.1` have not been published (the latest releases a
 ## Testing
 
 - The Default dry run over the five groups reports exactly the 55 new entries as "WOULD GENERATE" before any paid generation. After copying, the Terse dry run reports all 55 as cache hits and generates nothing.
-- The maintainer auditions all 55 Default takes, listening most carefully to Zoltán, Yeray, Matthias and Ade, whose spoken form an English TTS voice may not match.
+- The maintainer auditions all 55 Default takes, listening most carefully to Zoltán, Yeray, Matthias and Ade, whose spoken form an English TTS voice may not match. Matthias and Ade were re-cut after the first audition (decision 5).
 - `pnpm test` covers the script-coverage test for both voices and the pack-reference freshness test. `pack:voice` for both packs must succeed and regenerate their catalog entries.
 - Manually, the new names appear in the Your Name dropdown with each pack selected, and a greeting plays with one of them.
