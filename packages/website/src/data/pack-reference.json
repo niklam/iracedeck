@@ -20500,7 +20500,7 @@
         {
           "base": "arrabbiata-1",
           "texts": [
-            "Arrabbiata one."
+            "Arrabbiata 1."
           ],
           "takes": 1,
           "usedBy": [],
@@ -20512,7 +20512,7 @@
         {
           "base": "arrabbiata-2",
           "texts": [
-            "Arrabbiata two."
+            "Arrabbiata 2."
           ],
           "takes": 1,
           "usedBy": [],
@@ -20656,7 +20656,7 @@
         {
           "base": "biondetti-1",
           "texts": [
-            "Biondetti one."
+            "Biondetti 1."
           ],
           "takes": 1,
           "usedBy": [],
@@ -20668,7 +20668,7 @@
         {
           "base": "biondetti-2",
           "texts": [
-            "Biondetti two."
+            "Biondetti 2."
           ],
           "takes": 1,
           "usedBy": [],
@@ -20716,7 +20716,7 @@
         {
           "base": "bocht-10",
           "texts": [
-            "Bocht ten."
+            "Bocht 10."
           ],
           "takes": 1,
           "usedBy": [],
@@ -20728,7 +20728,7 @@
         {
           "base": "bocht-9",
           "texts": [
-            "Bocht nine."
+            "Bocht 9."
           ],
           "takes": 1,
           "usedBy": [],
@@ -20740,7 +20740,7 @@
         {
           "base": "bolderbergbocht",
           "texts": [
-            "Bolderbergbocht."
+            "Bolderberg bocht."
           ],
           "takes": 1,
           "usedBy": [],
@@ -20800,7 +20800,7 @@
         {
           "base": "bruennchen",
           "texts": [
-            "Bruennchen."
+            "Brünnchen."
           ],
           "takes": 1,
           "usedBy": [],
@@ -20980,7 +20980,7 @@
         {
           "base": "chateaou-d-eau",
           "texts": [
-            "Chateaou d'Eau."
+            "Château d'Eau."
           ],
           "takes": 1,
           "usedBy": [],
@@ -21136,7 +21136,7 @@
         {
           "base": "courbe-d-antares",
           "texts": [
-            "Courbe d'Antares."
+            "Courbe d'Antarès."
           ],
           "takes": 1,
           "usedBy": [],
@@ -21316,7 +21316,7 @@
         {
           "base": "curva-quericia",
           "texts": [
-            "Curva Quericia."
+            "Curva Quercia."
           ],
           "takes": 1,
           "usedBy": [],
@@ -21436,7 +21436,7 @@
         {
           "base": "doettinger-hoehe",
           "texts": [
-            "Doettinger Hoehe."
+            "Döttinger Höhe."
           ],
           "takes": 1,
           "usedBy": [],
@@ -21820,7 +21820,7 @@
         {
           "base": "fuchsroehre",
           "texts": [
-            "Fuchsroehre."
+            "Fuchsröhre."
           ],
           "takes": 1,
           "usedBy": [],
@@ -21952,7 +21952,7 @@
         {
           "base": "grosse-kuppe-kurve",
           "texts": [
-            "Grosse Kuppe-Kurve."
+            "Große Kuppe."
           ],
           "takes": 1,
           "usedBy": [],
@@ -22084,7 +22084,7 @@
         {
           "base": "hedwigshoehe",
           "texts": [
-            "Hedwigshoehe."
+            "Hedwigshöhe."
           ],
           "takes": 1,
           "usedBy": [],
@@ -23092,7 +23092,7 @@
         {
           "base": "nuerburgring",
           "texts": [
-            "Nuerburgring."
+            "Nürburgring."
           ],
           "takes": 1,
           "usedBy": [],
@@ -23404,7 +23404,7 @@
         {
           "base": "quiddelbacher-hoehe",
           "texts": [
-            "Quiddelbacher Hoehe."
+            "Quiddelbacher Höhe."
           ],
           "takes": 1,
           "usedBy": [],
@@ -24112,7 +24112,7 @@
         {
           "base": "suedkurve",
           "texts": [
-            "Suedkurve."
+            "Südkurve."
           ],
           "takes": 1,
           "usedBy": [],
@@ -25468,7 +25468,7 @@
         {
           "base": "wuerth",
           "texts": [
-            "Wuerth."
+            "Würth."
           ],
           "takes": 1,
           "usedBy": [],

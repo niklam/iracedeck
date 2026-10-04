@@ -61,6 +61,7 @@ export default defineConfig({
       "@iracedeck/iracing-native": packageSrc("iracing-native"),
       "@iracedeck/logger": packageSrc("logger"),
       "@iracedeck/sim-events-iracing": packageSrc("sim-events-iracing"),
+      "@iracedeck/track-data": packageSrc("track-data"),
     },
   },
   test: {

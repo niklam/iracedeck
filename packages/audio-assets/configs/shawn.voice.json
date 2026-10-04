@@ -7329,7 +7329,7 @@
       },
       {
         "name": "curva-quericia-01",
-        "text": "Curva Quericia.",
+        "text": "Curva Quercia.",
         "voice_settings": { "language_code": "it" }
       },
       {
@@ -7374,7 +7374,7 @@
       },
       {
         "name": "doettinger-hoehe-01",
-        "text": "döttinger höhe.",
+        "text": "Döttinger Höhe.",
         "voice_settings": { "language_code": "de" }
       },
       {
@@ -7518,7 +7518,7 @@
       },
       {
         "name": "fuchsroehre-01",
-        "text": "fuchsröhre.",
+        "text": "Fuchsröhre.",
         "voice_settings": { "language_code": "de" }
       },
       {
@@ -7916,7 +7916,7 @@
       },
       {
         "name": "michael-schumacher-s-01",
-        "text": "Michael-Schumacher ess.",
+        "text": "Michael-Schumacher-S.",
         "voice_settings": { "language_code": "de" }
       },
       {
@@ -8050,8 +8050,8 @@
       },
       {
         "name": "parabolika-01",
-        "text": "Parabolica.",
-        "voice_settings": { "language_code": "it" }
+        "text": "Parabolika.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "peluqui-01",
@@ -8104,7 +8104,7 @@
       {
         "name": "primeira-01",
         "text": "Primeira.",
-        "voice_settings": { "language_code": "it" }
+        "voice_settings": { "language_code": "pt" }
       },
       {
         "name": "quarry-bend-01",
@@ -8866,8 +8866,8 @@
       },
       {
         "name": "wuerth-01",
-        "text": "Wuerth.",
-        "voice_settings": { "language_code": "es" }
+        "text": "Würth.",
+        "voice_settings": { "language_code": "de" }
       },
       {
         "name": "yokohama-bridge-01",
