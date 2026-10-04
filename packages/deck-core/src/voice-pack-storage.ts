@@ -24,7 +24,7 @@
  */
 import { packId } from "@iracedeck/callout-script";
 import type { ILogger } from "@iracedeck/logger";
-import { type FileHandle, mkdir, open, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { type FileHandle, mkdir, open, readdir, readFile, rename, rm, stat, statfs, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { SHA256_HEX_PATTERN, VOICE_PACK_PROVENANCE_FILE } from "./voice-pack-constants.js";
@@ -98,6 +98,8 @@ export interface VoicePackStorageFileSystem {
   createExclusive(file: string, text: string): Promise<{ ok: true; created: boolean } | { ok: false; code: string }>;
   /** Open (truncating) for writing. */
   openWrite(file: string): Promise<{ ok: true; handle: VoicePackWriteHandle } | { ok: false; code: string }>;
+  /** Bytes free to this user on the volume holding `path`, or `undefined` when that cannot be read. */
+  freeBytes(path: string): Promise<number | undefined>;
 }
 
 export type OpenVoicePackDownloadResult =
@@ -159,15 +161,30 @@ export interface VoicePackStorageDeps {
   root: string;
   fs: VoicePackStorageFileSystem;
   logger: ILogger;
+  /**
+   * This process's id, which goes into its working names in `.tmp` and its
+   * lock record. Defaults to `process.pid`; a test passes two to stand in for
+   * two plugins sharing one packs folder.
+   */
+  pid?: number;
+}
+
+export interface VoicePackLockOptions {
+  /**
+   * How long to wait for another install of the same pack before proceeding
+   * without the lock. Defaults to {@link VOICE_PACK_LOCK_MAX_WAIT_MS}; anything
+   * that is not a positive finite number keeps the default.
+   */
+  maxWaitMs?: number;
 }
 
 export interface VoicePackStorage {
   readonly root: string;
   /** `<root>/<id>` — where an installed pack lives, and its audio root. */
   packDir(id: string): string;
-  /** A truncated `.tmp/<id>.<sha256>.zip` opened for the downloader. */
+  /** A truncated `.tmp/<id>.<sha256>.<pid>.zip` opened for the downloader — this process's own. */
   openDownload(id: string, sha256: string): Promise<OpenVoicePackDownloadResult>;
-  /** An empty `.tmp/<id>.<sha256>/` for the extractor. */
+  /** An empty `.tmp/<id>.<sha256>.<pid>/` for the extractor — this process's own. */
   createStagingDir(id: string, sha256: string): Promise<CreateVoicePackStagingResult>;
   /** Write `.install.json` into `dir` — a staged directory, before it is promoted. */
   writeProvenance(dir: string, provenance: VoicePackProvenance): Promise<VoicePackFsResult>;
@@ -178,13 +195,15 @@ export interface VoicePackStorage {
   /** Plugin start: empty `.tmp` and `.trash` of everything safe to delete. */
   sweep(): Promise<SweepVoicePacksResult>;
   /** Best-effort: wait for another plugin's install of `id`, then hold the lock. */
-  acquireLock(id: string): Promise<VoicePackLock>;
+  acquireLock(id: string, options?: VoicePackLockOptions): Promise<VoicePackLock>;
+  /** Bytes free on the packs folder's volume, or `undefined` when that cannot be read. */
+  freeBytes(): Promise<number | undefined>;
 }
 
 /**
  * The archive digest, as the catalog pins it. Validated here as well because it
  * becomes part of a FILE NAME: a `sha256` argument with a separator in it would
- * otherwise turn `.tmp/<id>.<sha256>.zip` into a path somewhere else.
+ * otherwise turn `.tmp/<id>.<sha256>.<pid>.zip` into a path somewhere else.
  */
 const SHA256_HEX = SHA256_HEX_PATTERN;
 
@@ -193,7 +212,8 @@ const SHA256_HEX = SHA256_HEX_PATTERN;
  *
  * A dot separator rather than the spec's illustrative dash, because a pack id
  * may itself contain dashes and never a dot: `<id>` is then unambiguously the
- * first segment, of a trash entry, a staged archive and a lock file alike. The
+ * first segment, of a trash entry, a staged archive (`<id>.<sha256>.<pid>.zip`),
+ * a staging directory (`<id>.<sha256>.<pid>`) and a lock file alike. The
  * `.removed` suffix is what separates a pack the user removed from one an
  * install superseded, and the sweep treats the two differently — see
  * {@link VoicePackStorage.sweep}.
@@ -236,7 +256,12 @@ function sleep(ms: number): Promise<void> {
 /**
  * The storage choreography over an injected filesystem.
  */
-export function createVoicePackStorage({ root, fs, logger }: VoicePackStorageDeps): VoicePackStorage {
+export function createVoicePackStorage({
+  root,
+  fs,
+  logger,
+  pid = process.pid,
+}: VoicePackStorageDeps): VoicePackStorage {
   const tmpDir = join(root, VOICE_PACK_TMP_DIR);
   const trashDir = join(root, VOICE_PACK_TRASH_DIR);
   const packDir = (id: string): string => join(root, id);
@@ -257,7 +282,7 @@ export function createVoicePackStorage({ root, fs, logger }: VoicePackStorageDep
   };
 
   const lockText = (acquiredAt: number): string =>
-    JSON.stringify({ pid: process.pid, acquiredAt, heartbeatAt: Date.now() } satisfies LockRecord);
+    JSON.stringify({ pid, acquiredAt, heartbeatAt: Date.now() } satisfies LockRecord);
 
   const invalid = (what: string, value: string): { ok: false; code: string } => {
     logger.debug(`Voice packs: refusing ${what} "${value}" — not a valid name`);
@@ -278,7 +303,11 @@ export function createVoicePackStorage({ root, fs, logger }: VoicePackStorageDep
 
       if (!made.ok) return made;
 
-      const path = join(tmpDir, `${id}.${sha256}.zip`);
+      // The process id is in the name so that two plugins installing the same
+      // pack at once — which the lock makes rare but cannot rule out, since a
+      // waiter proceeds when its wait runs out — never write, read or delete
+      // each other's archive. See `acquireLock` for why that matters.
+      const path = join(tmpDir, `${id}.${sha256}.${pid}.zip`);
 
       // A leftover from an interrupted run is removed rather than truncated: it
       // may be a directory of that name, which no open mode can overwrite.
@@ -321,7 +350,8 @@ export function createVoicePackStorage({ root, fs, logger }: VoicePackStorageDep
 
       if (!SHA256_HEX.test(sha256)) return invalid("digest", sha256);
 
-      const dir = join(tmpDir, `${id}.${sha256}`);
+      // Per process, for the reason `openDownload` gives.
+      const dir = join(tmpDir, `${id}.${sha256}.${pid}`);
 
       // Emptied first: an extractor writing into a directory that still holds
       // half of a previous attempt would produce a pack with files no archive
@@ -485,8 +515,11 @@ export function createVoicePackStorage({ root, fs, logger }: VoicePackStorageDep
      * deleted by a start that knew nothing about them:
      *
      * - Everything in `.tmp` belonging to a LIVE lock. The packs folder is
-     *   shared across the three ecosystems, so a `.tmp/luca.<sha>.zip` may be
-     *   another plugin's download in progress right now. Deleting it would
+     *   shared across the three ecosystems, so a `.tmp/luca.<sha>.<pid>.zip`
+     *   may be another plugin's download in progress right now. The owner is
+     *   the name's first dot-separated segment — the pack id, which never
+     *   contains a dot — so every working name of `luca`, whichever process
+     *   made it, is kept while any install of `luca` holds the lock. Deleting it would
      *   succeed — Node opens files with delete sharing — and that plugin's
      *   extractor would then open a file that no longer exists.
      * - A plain `.trash/<id>.<stamp>` entry while `<root>/<id>` does not
@@ -555,14 +588,24 @@ export function createVoicePackStorage({ root, fs, logger }: VoicePackStorageDep
 
     /**
      * Correctness NEVER depends on this lock. Two plugins installing the same
-     * pack at once both download hash-verified, byte-identical content, and
+     * pack at once each download into, read back from and extract into working
+     * names of their own — the process id is part of every one (#1102) — so
+     * neither can truncate, rewrite or delete what the other is reading. Both
+     * end with hash-verified, byte-identical content, and
      * {@link VoicePackStorage.promote} is safe under that race — the second to
      * arrive finds `<root>/<id>` occupied by exactly what it was about to put
      * there. What the lock buys is not safety but bandwidth: the second plugin
-     * waits, then finds the work already done, instead of fetching 12.5 MB it
-     * is about to throw away. So every way this can fail — the directory cannot
-     * be created, the exclusive create errors, a stale lock cannot be removed,
-     * the wait runs out — answers `acquired: false`, and the caller proceeds.
+     * waits, then finds the work already done, instead of fetching a pack of up
+     * to 2 GB it is about to throw away. So every way this can fail — the
+     * directory cannot be created, the exclusive create errors, a stale lock
+     * cannot be removed, the wait runs out — answers `acquired: false`, and the
+     * caller proceeds.
+     *
+     * The wait is the caller's to size (`options.maxWaitMs`). Ten minutes is
+     * shorter than a large pack's download can honestly take, and a waiter
+     * that gave up on a live holder mid-download would fetch the whole pack a
+     * second time beside it; the installer passes a wait that covers the
+     * holder's download ceiling.
      *
      * The create-exclusive is the only atomic step; the stale check is a read
      * of a file another process may be rewriting under us. A reader that lands
@@ -574,8 +617,13 @@ export function createVoicePackStorage({ root, fs, logger }: VoicePackStorageDep
      * removing it — the poll between retries is what breaks the tie, and the
      * deadline is what ends it if nothing does; see the takeover branch below.
      */
-    async acquireLock(id) {
+    async acquireLock(id, options) {
       const unlocked: VoicePackLock = { acquired: false, release: async () => undefined };
+      const requested = options?.maxWaitMs;
+      const maxWaitMs =
+        typeof requested === "number" && Number.isFinite(requested) && requested > 0
+          ? requested
+          : VOICE_PACK_LOCK_MAX_WAIT_MS;
 
       if (!isPackId(id)) return unlocked;
 
@@ -589,7 +637,7 @@ export function createVoicePackStorage({ root, fs, logger }: VoicePackStorageDep
 
       const file = lockFile(id);
       const started = Date.now();
-      const deadline = started + VOICE_PACK_LOCK_MAX_WAIT_MS;
+      const deadline = started + maxWaitMs;
 
       for (;;) {
         const acquiredAt = Date.now();
@@ -665,8 +713,8 @@ export function createVoicePackStorage({ root, fs, logger }: VoicePackStorageDep
           // as empty, remove it, and land back here — a retry that skipped the
           // sleep would spin with no delay, and one that skipped the deadline
           // would spin for as long as both processes lived, with the documented
-          // "polls every VOICE_PACK_LOCK_POLL_MS, gives up after
-          // VOICE_PACK_LOCK_MAX_WAIT_MS" true of every path but this one. The
+          // "polls every VOICE_PACK_LOCK_POLL_MS, gives up after the wait" true
+          // of every path but this one. The
           // sleep is what lets one of them win the create; the deadline is what
           // ends it if neither does. One poll's delay on an honest takeover is
           // nothing against the stale window it just waited out.
@@ -674,7 +722,7 @@ export function createVoicePackStorage({ root, fs, logger }: VoicePackStorageDep
 
         if (Date.now() >= deadline) {
           logger.warn(
-            `Voice packs: another install of "${id}" has held the lock for ${Math.round(VOICE_PACK_LOCK_MAX_WAIT_MS / 60_000)} minutes; proceeding without it`,
+            `Voice packs: another install of "${id}" has held the lock for ${Math.round(maxWaitMs / 60_000)} minutes; proceeding without it`,
           );
 
           return unlocked;
@@ -682,6 +730,10 @@ export function createVoicePackStorage({ root, fs, logger }: VoicePackStorageDep
 
         await sleep(VOICE_PACK_LOCK_POLL_MS);
       }
+    },
+
+    freeBytes() {
+      return fs.freeBytes(root);
     },
   };
 }
@@ -786,6 +838,19 @@ export function createVoicePackStorageFileSystem(logger: ILogger): VoicePackStor
         if ((err as NodeJS.ErrnoException | undefined)?.code === "EEXIST") return { ok: true, created: false };
 
         return failed("create", file, err);
+      }
+    },
+
+    async freeBytes(path) {
+      try {
+        const volume = await statfs(path);
+
+        // `bavail`, not `bfree`: the blocks this user may actually write.
+        return Number(volume.bavail) * Number(volume.bsize);
+      } catch (err) {
+        failed("statfs", path, err);
+
+        return undefined;
       }
     },
 

@@ -62,6 +62,7 @@
  */
 import { sendToPlugin } from "./sdpi-client.js";
 import { skipUnchanged } from "./settings-change-filter.js";
+import { VOICE_PACK_CARD_PHASES } from "./voice-pack-catalog-constants.js";
 
 let styleInjected = false;
 
@@ -75,8 +76,8 @@ function isVerdict(value: unknown): value is VoicePackOfferVerdict {
   return typeof value === "string" && (KNOWN_VERDICTS as readonly string[]).includes(value);
 }
 
-/** Mirrors `VoicePackInstallPhase` in deck-core's `voice-pack-status.ts`. */
-const KNOWN_PHASES = ["downloading", "verifying", "extracting", "swapping", "failed"] as const;
+/** Mirrors `VoicePackInstallPhase` in deck-core's `voice-pack-status.ts`; pinned to it, see the constants module. */
+const KNOWN_PHASES = VOICE_PACK_CARD_PHASES;
 type VoicePackInstallPhase = (typeof KNOWN_PHASES)[number];
 
 function isPhase(value: unknown): value is VoicePackInstallPhase {
@@ -274,7 +275,6 @@ function formatProgress(receivedBytes: number, totalBytes: number): string {
 /** User-facing phase words — the plugin's enum values are implementation vocabulary. */
 const PHASE_LABELS: Record<Exclude<VoicePackInstallPhase, "failed">, string> = {
   downloading: "Downloading…",
-  verifying: "Verifying…",
   extracting: "Extracting…",
   swapping: "Installing…",
 };

@@ -121,6 +121,17 @@ describe("createVoicePackCatalogService", () => {
       });
     });
 
+    it("lists a pack over the download ceiling as unsupported, naming no version (#1102)", async () => {
+      const status = await service({
+        fetchImpl: catalogResponse([pack("luca", { bytes: 2_000_000_001 })]),
+        getPluginVersion: () => "3.2.0",
+        getInstalledSha: () => undefined,
+      }).get();
+
+      expect(status).toMatchObject({ state: "ok", packs: [{ id: "luca", verdict: "unsupported" }] });
+      expect(status.state === "ok" ? status.packs[0]?.minPluginVersion : "not ok").toBeUndefined();
+    });
+
     it("calls a pack unsupported even when a hash comparison alone would call it an update", async () => {
       // An installed pack whose newest catalog version needs a newer plugin
       // than this one: pressing "update" would not work, so it must not be

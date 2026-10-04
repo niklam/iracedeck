@@ -11,9 +11,12 @@ import type { VoicePackCatalogEntry } from "./voice-pack-catalog.js";
 import { VOICE_PACK_PROVENANCE_FILE } from "./voice-pack-constants.js";
 import {
   type BundledVoicePack,
+  createReadBack,
   createVoicePackInstaller,
   createVoicePackInstallerFileSystem,
+  installLockWaitMs,
   readInstalledVoicePackSha,
+  requiredFreeBytes,
   validateStagedVoicePack,
   VOICE_PACK_PROGRESS_INTERVAL_MS,
   type VoicePackInstallerDeps,
@@ -25,6 +28,7 @@ import type { VoicePackCatalogState, VoicePackStatus } from "./voice-pack-status
 import {
   createVoicePackStorage,
   type SweepVoicePacksResult,
+  VOICE_PACK_LOCK_MAX_WAIT_MS,
   VOICE_PACK_LOCK_POLL_MS,
   VOICE_PACK_TMP_DIR,
   VOICE_PACK_TRASH_DIR,
@@ -43,6 +47,8 @@ const ID = "luca";
 const PACK_DIR = join(ROOT, ID);
 const OLD_SHA = "0".repeat(64);
 const URL_ = "https://example.test/luca-1.1.0.zip";
+/** The pid in every working name: the harness's storage is this process's unless told otherwise. */
+const PID = process.pid;
 
 type Entry = { kind: "dir" } | { kind: "file"; data: Buffer };
 type FaultOp =
@@ -54,7 +60,8 @@ type FaultOp =
   | "openWrite"
   | "ensureDirectory"
   | "writeFile"
-  | "readFile";
+  | "readFile"
+  | "readStream";
 
 /**
  * One in-memory tree behind all four ports the installer composes — the
@@ -73,8 +80,17 @@ class FakeDisk {
   faults: { [K in FaultOp]?: (path: string, second?: string) => string | undefined } = {};
   /** Every write through the extractor's port, in order — its footprint in the staging directory. */
   readonly writes: string[] = [];
-  /** Files whose bytes come back altered from `readFile` — a disk that lies. */
-  readonly corruptOnRead = new Set<string>();
+  /**
+   * Files whose bytes come back altered from either reader — a disk that lies:
+   * key to the offset of the one byte that is flipped.
+   */
+  readonly corruptOnRead = new Map<string, number>();
+  /** Bytes appended to a file as either reader hands it back — a file that grew after it was written. */
+  readonly appendOnRead = new Map<string, Uint8Array>();
+  /** Bytes each file has handed out through `readStream`, by key — what was actually read. */
+  readonly streamed = new Map<string, number>();
+  /** What the storage port's `freeBytes` answers; `undefined` is a statfs that failed. */
+  free: number | undefined = 100_000_000_000;
 
   key(path: string): string {
     return normalize(path).replace(/[\\/]+$/, "");
@@ -211,6 +227,7 @@ class FakeDisk {
 
       return { ok: true, created: true };
     },
+    freeBytes: async () => this.free,
     openWrite: async (file) => {
       const code = this.fault("openWrite", file);
 
@@ -253,7 +270,7 @@ class FakeDisk {
 
       return { ok: true };
     },
-    writeFile: (file, bytes) => {
+    writeFile: (file, chunks) => {
       const code = this.fault("writeFile", file);
 
       if (code !== undefined) return { ok: false, reason: code };
@@ -264,7 +281,7 @@ class FakeDisk {
 
       if (this.tree.has(key)) return { ok: false, reason: "EEXIST" };
 
-      this.tree.set(key, { kind: "file", data: Buffer.from(bytes) });
+      this.tree.set(key, { kind: "file", data: Buffer.concat(chunks) });
       this.writes.push(key);
 
       return { ok: true };
@@ -299,23 +316,59 @@ class FakeDisk {
 
   readonly readerFs: VoicePackInstallerFileSystem = {
     readFile: async (file) => {
-      const code = this.fault("readFile", file);
+      const read = this.bytesOf(file);
 
-      if (code !== undefined) return undefined;
-
-      const key = this.key(file);
-      const entry = this.tree.get(key);
-
-      if (entry?.kind !== "file") return undefined;
-
-      const bytes = new Uint8Array(entry.data);
-
-      if (this.corruptOnRead.has(key)) bytes[0] ^= 0xff;
-
-      return bytes;
+      return typeof read === "string" || this.fault("readFile", file) !== undefined ? undefined : read;
     },
+    readStream: (file) => this.stream(file),
   };
+
+  /** A file's bytes as either reader hands them back — appended to and corrupted as configured — or the errno. */
+  private bytesOf(file: string): Uint8Array | string {
+    const key = this.key(file);
+    const entry = this.tree.get(key);
+
+    if (entry?.kind !== "file") return "ENOENT";
+
+    const extra = this.appendOnRead.get(key) ?? new Uint8Array(0);
+    const bytes = new Uint8Array(entry.data.length + extra.length);
+    bytes.set(entry.data);
+    bytes.set(extra, entry.data.length);
+
+    const flipped = this.corruptOnRead.get(key);
+
+    if (flipped !== undefined) bytes[flipped] ^= 0xff;
+
+    return bytes;
+  }
+
+  /**
+   * The file in {@link STREAM_CHUNK}-byte chunks, so an archive arrives as
+   * several, each a copy in its own buffer as a file read delivers it, and
+   * every chunk handed out is counted in {@link streamed}. The `readStream`
+   * fault is asked before each chunk, with the chunk's index as its second
+   * argument, so a test can fail the open (index 0) or a read part-way.
+   */
+  private async *stream(file: string): AsyncGenerator<Uint8Array> {
+    const key = this.key(file);
+    const read = this.bytesOf(file);
+
+    if (typeof read === "string") throw new Error(read);
+
+    for (let offset = 0, index = 0; offset < read.length; offset += STREAM_CHUNK, index += 1) {
+      const code = this.faults.readStream?.(key, String(index));
+
+      if (code !== undefined) throw new Error(code);
+
+      const chunk = read.slice(offset, offset + STREAM_CHUNK);
+      this.streamed.set(key, (this.streamed.get(key) ?? 0) + chunk.length);
+      yield chunk;
+    }
+  }
 }
+
+/** Small, so that even a test archive is read back as several chunks. */
+const STREAM_CHUNK = 64;
 
 function sha256(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
@@ -420,12 +473,19 @@ type HarnessOptions = {
   now?: () => number;
   pluginVersion?: string;
   deps?: Partial<VoicePackInstallerDeps>;
+  /** The storage's pid, standing in for one of several plugins sharing the disk. */
+  pid?: number;
 };
 
 function harness(opts: HarnessOptions = {}) {
   const disk = opts.disk ?? new FakeDisk();
   disk.dir(ROOT);
-  const storage = createVoicePackStorage({ root: ROOT, fs: disk.storageFs, logger: logger as never });
+  const storage = createVoicePackStorage({
+    root: ROOT,
+    fs: disk.storageFs,
+    logger: logger as never,
+    ...(opts.pid === undefined ? {} : { pid: opts.pid }),
+  });
   const calls: string[] = [];
   const published: VoicePackStatus[] = [];
   const banners = new Map<string, { level: string; message: string }>();
@@ -698,14 +758,143 @@ describe("createVoicePackInstaller — a successful install", () => {
 
     // Every phase was published in order, the install then left `installs`,
     // and the catalog's verdict flipped on the final publish.
+    // Read-back, verification and extraction are one pass (#1102), reported
+    // as `extracting`.
     expect(phases(published).filter((phase, i, all) => phase !== all[i - 1])).toEqual([
       "downloading",
-      "verifying",
       "extracting",
       "swapping",
       undefined,
     ]);
     expect(published.at(-1)?.catalog).toMatchObject({ state: "ok", packs: [{ id: ID, verdict: "installed" }] });
+  });
+
+  it("reads the staged archive back as a stream, never whole, and all of it (#1102)", async () => {
+    const disk = new FakeDisk();
+    const readFile = vi.spyOn(disk.readerFs, "readFile");
+    const { installer } = harness({ disk, entries: [entryFor(NEW_ARCHIVE)] });
+
+    await expect(installer.install(ID)).resolves.toEqual({ ok: true, outcome: "installed" });
+
+    expect(readFile).not.toHaveBeenCalled();
+    expect(NEW_ARCHIVE.length).toBeGreaterThan(3 * STREAM_CHUNK);
+    expect(disk.streamed.get(disk.key(join(TMP, `${ID}.${NEW_SHA}.${PID}.zip`)))).toBe(NEW_ARCHIVE.length);
+  });
+
+  it("installs when the drive has exactly the room it asks for", async () => {
+    const disk = new FakeDisk();
+    disk.free = requiredFreeBytes(NEW_ARCHIVE.length);
+    const { installer } = harness({ disk, entries: [entryFor(NEW_ARCHIVE)] });
+
+    await expect(installer.install(ID)).resolves.toEqual({ ok: true, outcome: "installed" });
+  });
+
+  it("installs when the free space cannot be read, rather than blocking on it", async () => {
+    const disk = new FakeDisk();
+    disk.free = undefined;
+    const { installer } = harness({ disk, entries: [entryFor(NEW_ARCHIVE)] });
+
+    await expect(installer.install(ID)).resolves.toEqual({ ok: true, outcome: "installed" });
+    expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining("free space unknown"));
+  });
+
+  it("installs when the catalog overstates the archive's size, measuring the read-back against what arrived", async () => {
+    // `bytes` is a cap for the download; the digest is what identifies the
+    // archive, and the read-back must match what the download delivered.
+    const disk = new FakeDisk();
+    const { installer } = harness({ disk, entries: [entryFor(NEW_ARCHIVE, { bytes: NEW_ARCHIVE.length + 100 })] });
+
+    await expect(installer.install(ID)).resolves.toEqual({ ok: true, outcome: "installed" });
+    expect(readInstalledVoicePackSha(disk.scanFs, PACK_DIR, ID)).toBe(NEW_SHA);
+  });
+
+  it("waits on another plugin's install for as long as this pack's download may take", async () => {
+    const disk = new FakeDisk();
+    const entry = entryFor(NEW_ARCHIVE, { bytes: 1_500_000_000 });
+    const h = harness({ disk, entries: [entry], fetchImpl: fetchReturning(NEW_ARCHIVE) });
+    const acquire = vi.spyOn(h.deps.storage, "acquireLock");
+
+    await h.installer.install(ID);
+
+    expect(acquire).toHaveBeenCalledWith(ID, { maxWaitMs: installLockWaitMs(1_500_000_000) });
+    // 1.5 GB at the 100 kB/s floor is 15 000 s, plus the default ten minutes.
+    expect(installLockWaitMs(1_500_000_000)).toBe(15_000_000 + VOICE_PACK_LOCK_MAX_WAIT_MS);
+    expect(installLockWaitMs(NEW_ARCHIVE.length)).toBe(30 * 60_000 + VOICE_PACK_LOCK_MAX_WAIT_MS);
+  });
+
+  it("refuses a catalog entry over the download ceiling before making any request", async () => {
+    const disk = new FakeDisk();
+    const h = harness({ disk, entries: [entryFor(NEW_ARCHIVE, { bytes: 2_000_000_001 })] });
+
+    const result = await h.installer.install(ID);
+
+    expect(result).toMatchObject({ ok: false, code: "unsupported" });
+    expect((result as { reason: string }).reason).toContain("larger than this iRaceDeck build can download (2 GB)");
+    expect(h.fetchImpl).not.toHaveBeenCalled();
+    expectNoDebris(disk);
+  });
+
+  it("two plugins installing the same pack past each other's lock never share a working file", async () => {
+    // Both waits ran out, so both proceed without the lock — the case the lock
+    // cannot rule out. Plugin A is part-way through its download when plugin B
+    // runs a whole install of the same pack; with one shared archive name, B
+    // would truncate, then delete, the file A is writing and about to read.
+    const disk = new FakeDisk();
+    const entry = entryFor(NEW_ARCHIVE);
+    const unlocked = async () => ({ acquired: false, release: async () => undefined });
+    let release!: () => void;
+    const gate = new Promise<void>((resolveGate) => {
+      release = resolveGate;
+    });
+    let firstChunkWritten!: () => void;
+    const midDownload = new Promise<void>((resolveMid) => {
+      firstChunkWritten = resolveMid;
+    });
+    const half = Math.floor(NEW_ARCHIVE.length / 2);
+    const slowFetch = vi.fn(async (): Promise<Response> => {
+      let index = 0;
+      const stream = new ReadableStream<Uint8Array>(
+        {
+          async pull(controller) {
+            if (index === 0) {
+              index += 1;
+              controller.enqueue(NEW_ARCHIVE.slice(0, half));
+
+              return;
+            }
+
+            if (index === 1) {
+              index += 1;
+              firstChunkWritten();
+              await gate;
+              controller.enqueue(NEW_ARCHIVE.slice(half));
+
+              return;
+            }
+
+            controller.close();
+          },
+        },
+        { highWaterMark: 0 },
+      );
+
+      return new Response(stream, { status: 200 });
+    });
+    const a = harness({ disk, entries: [entry], fetchImpl: slowFetch, pid: 111 });
+    const b = harness({ disk, entries: [entry], pid: 222 });
+    a.deps.storage.acquireLock = unlocked;
+    b.deps.storage.acquireLock = unlocked;
+
+    const first = a.installer.install(ID);
+    await midDownload;
+    await expect(b.installer.install(ID)).resolves.toEqual({ ok: true, outcome: "installed" });
+    release();
+
+    // A's archive was its own all along: it verifies and installs over B's
+    // identical copy, which goes to the trash.
+    await expect(first).resolves.toEqual({ ok: true, outcome: "updated" });
+    expect(readInstalledVoicePackSha(disk.scanFs, PACK_DIR, ID)).toBe(NEW_SHA);
+    expectNoDebris(disk);
   });
 
   it("reports a first install as installed, with nothing to trash", async () => {
@@ -790,11 +979,78 @@ describe("createVoicePackInstaller — the installed pack survives every failure
 
   it("when the archive read back from disk is not the one that was downloaded", async () => {
     const h = withOldPack();
-    h.disk.corruptOnRead.add(h.disk.key(join(TMP, `${ID}.${NEW_SHA}.zip`)));
+    const archiveKey = h.disk.key(join(TMP, `${ID}.${NEW_SHA}.${PID}.zip`));
+    h.disk.corruptOnRead.set(archiveKey, 0);
 
     const result = await expectFailure(h, "verify");
 
     expect(result.reason).toContain("changed on disk");
+    expect(result.detail).toContain("digest");
+    expect(h.calls).toEqual([]);
+    // The flipped byte is the first one, so the extractor refused at once
+    // ("not a zip archive") — and the rest was still read into the hash, so
+    // the report names the cause rather than that symptom.
+    expect(h.disk.streamed.get(archiveKey)).toBe(NEW_ARCHIVE.length);
+    expect(h.disk.writes).toEqual([]);
+  });
+
+  it("when the archive read back is the downloaded one with more bytes after it", async () => {
+    // Every byte the catalog describes comes back intact, then more: the
+    // length disagrees, and that alone refuses it.
+    const h = withOldPack();
+    h.disk.appendOnRead.set(h.disk.key(join(TMP, `${ID}.${NEW_SHA}.${PID}.zip`)), text("TRAILING"));
+
+    const result = await expectFailure(h, "verify");
+
+    expect(result.reason).toContain("changed on disk");
+    expect(result.detail).toContain("length");
+    expect(h.calls).toEqual([]);
+  });
+
+  it("when a byte inside a stored entry is rewritten on disk: the extractor accepts it, the digest does not", async () => {
+    // Same length, and stored, so there is no deflate stream to break and no
+    // CRC the extractor checks: the archive unpacks cleanly, and only the
+    // read-back digest stands between the rewritten clip and the live pack.
+    const stored = zipSync(
+      { "voice-pack.json": text(manifestText()), "voice/luca/flags/blue-01.mp3": text("NEW-CLIP-BYTES") },
+      { level: 0 },
+    );
+    const h = withOldPack({ entries: [entryFor(stored)], fetchImpl: fetchReturning(stored) });
+    const offset = Buffer.from(stored).indexOf("NEW-CLIP-BYTES") + 4;
+    expect(offset).toBeGreaterThan(4);
+    h.disk.corruptOnRead.set(h.disk.key(join(TMP, `${ID}.${sha256(stored)}.${PID}.zip`)), offset);
+
+    const result = await expectFailure(h, "verify");
+
+    expect(result.reason).toContain("changed on disk");
+    // Every file was written into staging — the extractor saw nothing wrong —
+    // and the staged tree is gone, never promoted.
+    expect(h.disk.writes).toHaveLength(2);
+    expect(h.disk.has(join(TMP, `${ID}.${sha256(stored)}.${PID}`))).toBe(false);
+    expect(h.calls).toEqual([]);
+  });
+
+  it("when the drive does not have room for the archive and its unpacked copy", async () => {
+    const h = withOldPack();
+    h.disk.free = requiredFreeBytes(NEW_ARCHIVE.length) - 1;
+
+    const result = await expectFailure(h, "storage");
+
+    expect(result.reason).toContain("free disk space");
+    expect(result.reason).toMatch(/needs about \d+ MB/);
+    // Refused before a byte was fetched or written.
+    expect(h.fetchImpl).not.toHaveBeenCalled();
+    expect(h.calls).toEqual([]);
+  });
+
+  it("when the archive cannot be read back from disk", async () => {
+    const h = withOldPack();
+    h.disk.faults.readStream = (_path, index) => (Number(index) >= 2 ? "EIO" : undefined);
+
+    const result = await expectFailure(h, "storage");
+
+    expect(result.reason).toContain("could not be read back");
+    expect(result.detail).toContain("EIO");
     expect(h.calls).toEqual([]);
   });
 
@@ -807,7 +1063,7 @@ describe("createVoicePackInstaller — the installed pack survives every failure
       ".install.json": '{"source":"catalog"}',
     });
     const h = withOldPack({ entries: [entryFor(hostile)], fetchImpl: fetchReturning(hostile) });
-    const stagingDir = join(TMP, `${ID}.${sha256(hostile)}`);
+    const stagingDir = join(TMP, `${ID}.${sha256(hostile)}.${PID}`);
 
     const result = await expectFailure(h, "extract");
 
@@ -834,7 +1090,7 @@ describe("createVoicePackInstaller — the installed pack survives every failure
   it("when staging debris cannot be discarded: it is never a pack, and the next sweep removes it", async () => {
     const hostile = archiveOf({ "voice-pack.json": manifestText(), ".install.json": "{}" });
     const h = withOldPack({ entries: [entryFor(hostile)], fetchImpl: fetchReturning(hostile) });
-    const stagingDir = h.disk.key(join(TMP, `${ID}.${sha256(hostile)}`));
+    const stagingDir = h.disk.key(join(TMP, `${ID}.${sha256(hostile)}.${PID}`));
     // Only once it exists: `createStagingDir` empties the path first, and that
     // removal must succeed for the extraction to be reached at all.
     h.disk.faults.remove = (path) => (path === stagingDir && h.disk.has(stagingDir) ? "EBUSY" : undefined);
@@ -910,7 +1166,7 @@ describe("createVoicePackInstaller — the installed pack survives every failure
   it("when the staged pack cannot be moved into place: the old one is put back", async () => {
     const h = withOldPack();
     const packKey = h.disk.key(PACK_DIR);
-    const stagingKey = h.disk.key(join(TMP, `${ID}.${NEW_SHA}`));
+    const stagingKey = h.disk.key(join(TMP, `${ID}.${NEW_SHA}.${PID}`));
     h.disk.faults.rename = (from, to) => (from === stagingKey && to === packKey ? "EACCES" : undefined);
 
     const result = await expectFailure(h, "promote");
@@ -1232,6 +1488,7 @@ describe("createVoicePackInstaller — never throws", () => {
         storage: {
           root: ROOT,
           packDir: (id) => join(ROOT, id),
+          freeBytes: async () => undefined,
           openDownload: async () => {
             throw new Error("not a result");
           },
@@ -1551,6 +1808,7 @@ describe("createVoicePackInstaller — seed by copy", () => {
 
             return disk.readerFs.readFile(file);
           },
+          readStream: (file) => disk.readerFs.readStream(file),
         },
       },
     });
@@ -1804,6 +2062,77 @@ describe("readInstalledVoicePackSha", () => {
   });
 });
 
+describe("createReadBack", () => {
+  /** A source of `chunks` that records how far it was read and whether it was closed. */
+  function recorded(chunks: readonly Uint8Array[], opts: { failAt?: number } = {}) {
+    const state = { pulled: 0, closed: false };
+
+    async function* stream(): AsyncGenerator<Uint8Array> {
+      try {
+        for (const [index, chunk] of chunks.entries()) {
+          if (index === opts.failAt) throw new Error("EIO");
+
+          state.pulled += 1;
+          yield chunk;
+        }
+      } finally {
+        state.closed = true;
+      }
+    }
+
+    return { stream: stream(), state };
+  }
+
+  const CHUNKS = [text("abc"), text("defg"), text("hi")];
+  const ALL = text("abcdefghi");
+
+  it("hashes what passes through, keeps the file open when the consumer stops early, and drains it on finish", async () => {
+    const { stream, state } = recorded(CHUNKS);
+    const readBack = createReadBack(stream, ALL.length);
+
+    for await (const chunk of readBack.source) {
+      expect(chunk).toEqual(text("abc"));
+      break;
+    }
+
+    // The consumer's early exit did not close the underlying read.
+    expect(state.closed).toBe(false);
+    expect(state.pulled).toBe(1);
+
+    await expect(readBack.finish()).resolves.toEqual({ bytes: ALL.length, sha256: sha256(ALL) });
+    expect(state.pulled).toBe(3);
+    expect(state.closed).toBe(true);
+  });
+
+  it("records a read error, throws it on to the consumer, and reports it from finish", async () => {
+    const { stream, state } = recorded(CHUNKS, { failAt: 1 });
+    const readBack = createReadBack(stream, ALL.length);
+    const consumed: Uint8Array[] = [];
+
+    await expect(
+      (async () => {
+        for await (const chunk of readBack.source) consumed.push(chunk);
+      })(),
+    ).rejects.toThrow("EIO");
+
+    expect(consumed).toEqual([text("abc")]);
+    await expect(readBack.finish()).resolves.toEqual({ error: "EIO", bytes: 3 });
+    expect(state.closed).toBe(true);
+  });
+
+  it("stops reading once the file has delivered more than the expected length", async () => {
+    const { stream, state } = recorded([...CHUNKS, text("jk"), text("lm")]);
+    const readBack = createReadBack(stream, 5);
+
+    const result = await readBack.finish();
+
+    // The second chunk crossed five bytes; nothing after it was read.
+    expect(state.pulled).toBe(2);
+    expect(result).toMatchObject({ bytes: 7 });
+    expect(state.closed).toBe(true);
+  });
+});
+
 describe("createVoicePackInstallerFileSystem", () => {
   let dir: string;
 
@@ -1819,5 +2148,36 @@ describe("createVoicePackInstallerFileSystem", () => {
     expect(Array.from((await fs.readFile(join(dir, "a.bin"))) ?? [])).toEqual([1, 2, 3]);
     await expect(fs.readFile(join(dir, "missing.bin"))).resolves.toBeUndefined();
     expect(logger.debug).toHaveBeenCalledTimes(1);
+  });
+
+  it("streams a file's bytes in chunks", async () => {
+    dir = mkdtempSync(join(tmpdir(), "ird-installer-"));
+    // Larger than one 1 MB read, so it arrives as more than one chunk.
+    const bytes = Buffer.alloc(2_500_000, 7);
+    bytes[0] = 1;
+    bytes[bytes.length - 1] = 9;
+    writeFileSync(join(dir, "a.bin"), bytes);
+    const fs = createVoicePackInstallerFileSystem(logger as never);
+    const chunks: Uint8Array[] = [];
+
+    for await (const chunk of fs.readStream(join(dir, "a.bin"))) chunks.push(chunk);
+
+    expect(chunks.length).toBeGreaterThan(1);
+    expect(Math.max(...chunks.map((chunk) => chunk.length))).toBeLessThanOrEqual(1024 * 1024);
+    expect(Buffer.concat(chunks).equals(bytes)).toBe(true);
+  });
+
+  it("throws a path-free error out of the stream for a file it cannot read", async () => {
+    dir = mkdtempSync(join(tmpdir(), "ird-installer-"));
+    const fs = createVoicePackInstallerFileSystem(logger as never);
+    const missing = join(dir, "missing.bin");
+
+    const reading = (async () => {
+      for await (const chunk of fs.readStream(missing)) void chunk;
+    })();
+
+    await expect(reading).rejects.toThrow(/^ENOENT$/);
+    // The path goes to the debug log, never into the error a user's status carries.
+    expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining("missing.bin"));
   });
 });

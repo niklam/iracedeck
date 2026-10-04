@@ -4,7 +4,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   downloadVoicePack,
   resolveByteCap,
+  resolveTotalTimeoutMs,
   VOICE_PACK_DOWNLOAD_CEILING_BYTES,
+  VOICE_PACK_DOWNLOAD_MIN_RATE_BYTES_PER_S,
   VOICE_PACK_DOWNLOAD_STALL_TIMEOUT_MS,
   VOICE_PACK_DOWNLOAD_TOTAL_TIMEOUT_MS,
   type VoicePackDownloadProgress,
@@ -284,6 +286,13 @@ describe("downloadVoicePack", () => {
       expect(resolveByteCap(10)).toBe(10);
       expect(resolveByteCap(VOICE_PACK_DOWNLOAD_CEILING_BYTES)).toBe(VOICE_PACK_DOWNLOAD_CEILING_BYTES);
       expect(resolveByteCap(VOICE_PACK_DOWNLOAD_CEILING_BYTES * 100)).toBe(VOICE_PACK_DOWNLOAD_CEILING_BYTES);
+    });
+
+    it("pins the ceiling at 2 GB, decimal like the size the settings card shows (#1102)", () => {
+      expect(VOICE_PACK_DOWNLOAD_CEILING_BYTES).toBe(2_000_000_000);
+      expect(resolveByteCap(1_999_999_999)).toBe(1_999_999_999);
+      expect(resolveByteCap(2_000_000_001)).toBe(2_000_000_000);
+      expect(resolveByteCap(12_500_000_000)).toBe(2_000_000_000);
     });
   });
 
@@ -642,6 +651,17 @@ describe("downloadVoicePack", () => {
   });
 
   describe("total ceiling", () => {
+    it("grows with the pack: 30 minutes up to 180 MB, then the time the cap takes at 100 kB/s (#1102)", () => {
+      expect(VOICE_PACK_DOWNLOAD_TOTAL_TIMEOUT_MS).toBe(30 * 60_000);
+      expect(VOICE_PACK_DOWNLOAD_MIN_RATE_BYTES_PER_S).toBe(100_000);
+      // Today's single-voice pack sits on the floor.
+      expect(resolveTotalTimeoutMs(12_500_000)).toBe(30 * 60_000);
+      // 180 MB at 100 kB/s is exactly the floor: the last size it covers.
+      expect(resolveTotalTimeoutMs(180_000_000)).toBe(30 * 60_000);
+      expect(resolveTotalTimeoutMs(180_000_001)).toBeGreaterThan(30 * 60_000);
+      // The largest acceptable pack: 20 000 s, about five and a half hours.
+      expect(resolveTotalTimeoutMs(2_000_000_000)).toBe(20_000_000);
+    });
     /**
      * A body that delivers one byte every `gap` ms, `count` times, then closes.
      * With `gap` under the idle deadline it is never silent long enough to
@@ -730,6 +750,44 @@ describe("downloadVoicePack", () => {
       await vi.advanceTimersByTimeAsync(VOICE_PACK_DOWNLOAD_TOTAL_TIMEOUT_MS * 4);
 
       expect(await pending).toEqual({ ok: true, sha256: digest, bytes: 3 });
+    });
+
+    it("derives the default ceiling from the cap, so a large pack's honest download outlasts 30 minutes", async () => {
+      vi.useFakeTimers();
+      // One byte every ~29 s for about 40 minutes: past the 30-minute floor,
+      // inside the 50 minutes a 300 MB cap is given at 100 kB/s.
+      const gap = VOICE_PACK_DOWNLOAD_STALL_TIMEOUT_MS - 1_000;
+      const count = Math.ceil((40 * 60_000) / gap);
+      const { stream, digest } = drip(count, gap);
+
+      const pending = downloadVoicePack({
+        url: URL_,
+        expectedSha256: digest,
+        maxBytes: 300_000_000,
+        sink: memorySink(),
+        fetchImpl: respondWith(stream),
+      });
+      await vi.advanceTimersByTimeAsync((count + 2) * gap);
+
+      expect(await pending).toEqual({ ok: true, sha256: digest, bytes: count });
+    });
+
+    it("lets an explicit ceiling win over the derived one", async () => {
+      vi.useFakeTimers();
+      const gap = VOICE_PACK_DOWNLOAD_STALL_TIMEOUT_MS - 1_000;
+      const { stream, digest } = drip(10, gap);
+
+      const pending = downloadVoicePack({
+        url: URL_,
+        expectedSha256: digest,
+        maxBytes: VOICE_PACK_DOWNLOAD_CEILING_BYTES,
+        sink: memorySink(),
+        totalTimeoutMs: 3 * gap,
+        fetchImpl: respondWith(stream),
+      });
+      await vi.advanceTimersByTimeAsync(12 * gap);
+
+      expect(await pending).toMatchObject({ ok: false, failure: "timeout" });
     });
 
     it("honours a caller-supplied ceiling, and its reason names the ceiling rather than a stall", async () => {

@@ -273,7 +273,6 @@ describe("ird-voice-pack-catalog", () => {
     });
 
     it.each([
-      ["verifying", "Verifying"],
       ["extracting", "Extracting"],
       ["swapping", "Installing"],
     ])("shows a phase label for %s with no stale byte progress", (phase, expectedWord) => {
@@ -413,6 +412,16 @@ describe("ird-voice-pack-catalog", () => {
       );
 
       // Falls back to the verdict-driven Install action, as if nothing were in flight.
+      expect(el.querySelector(".ird-vpc-button")?.textContent).toBe("Install");
+    });
+
+    it("has no verifying phase: verification is part of extracting since #1102", () => {
+      const { el, mock } = mount();
+
+      publish(mock, status({ state: "ok", packs: [offer({ verdict: "install" })] }, { luca: { phase: "verifying" } }));
+
+      expect(el.querySelector(".ird-vpc-phase")).toBeNull();
+      expect(el.textContent).not.toContain("Verifying");
       expect(el.querySelector(".ird-vpc-button")?.textContent).toBe("Install");
     });
   });

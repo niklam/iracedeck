@@ -13,9 +13,11 @@
  * Three properties are load-bearing, and each is enforced on the bytes that
  * ACTUALLY ARRIVE rather than on anything the server says about them:
  *
- * - The sha-256 is computed as the stream flows. Buffering 12.5 MB to hash it
- *   afterwards would hold the whole archive in memory inside a plugin process
- *   that is also rendering keys and playing audio during a race.
+ * - The sha-256 is computed as the stream flows. Buffering the archive to hash
+ *   it afterwards would hold all of it — up to the 2 GB ceiling — in memory
+ *   inside a plugin process that is also rendering keys and playing audio
+ *   during a race. The installer keeps the same promise one step later: it
+ *   reads the archive back from disk as a stream (#1102).
  * - The byte cap is checked per chunk and aborts the moment it is crossed.
  *   `Content-Length` is a claim, not a fact — a server may omit it, and one that
  *   lies would otherwise be believed — so it is used for the progress bar and
@@ -92,17 +94,47 @@ export const VOICE_PACK_DOWNLOAD_STALL_TIMEOUT_MS = 30_000;
  * not a dripping server. One timer serves both bounds; each arm sets it to
  * whichever is nearer, the idle deadline or what is left of this one.
  *
- * 30 min. The honest worst case is a several-voice pack on a throttled link:
- * 12.5 MB at 20 kB/s — a mobile plan past its data cap — is about ten minutes,
- * and three voices' worth is about thirty. A single-voice pack gets through on
- * anything faster than 7 kB/s (12.5 MB / 1800 s). Slower than that is not a
- * slow link, it is one nobody sits and waits on, and the retry at the next
- * start costs nothing. On the other side of the number, a dripping server now
- * holds the install for half an hour rather than indefinitely — and the other
- * plugins stop waiting on the lock after `VOICE_PACK_LOCK_MAX_WAIT_MS` (ten
- * minutes) in any case.
+ * 30 min is the FLOOR, and the ceiling a download actually gets grows with
+ * the pack — see {@link resolveTotalTimeoutMs}. A flat 30 minutes was sized for
+ * a 12.5 MB single-voice pack, which gets through on anything faster than
+ * 7 kB/s (12.5 MB / 1800 s); slower than that is not a slow link, it is one
+ * nobody sits and waits on, and the retry at the next start costs nothing. On
+ * the other side of the number, a dripping server holds the install for a
+ * bounded time rather than indefinitely — and the other plugins stop waiting
+ * on the lock after `VOICE_PACK_LOCK_MAX_WAIT_MS` (ten minutes) in any case.
  */
 export const VOICE_PACK_DOWNLOAD_TOTAL_TIMEOUT_MS = 30 * 60_000;
+
+/**
+ * The slowest sustained rate the total ceiling is sized to let finish:
+ * 100 kB/s (0.8 Mbit/s), in bytes per second.
+ *
+ * The ceiling exists to bound a dripping server, not to cut an honest slow
+ * download, and at a flat 30 minutes a 2 GB pack would have needed 1.1 MB/s
+ * sustained (#1102). Sizing it by this rate instead keeps every pack up to
+ * 180 MB on the 30-minute floor and gives a 2 GB pack about five and a half
+ * hours — still a bound, and still one only a server delivering less than a
+ * slow mobile link ever meets.
+ */
+export const VOICE_PACK_DOWNLOAD_MIN_RATE_BYTES_PER_S = 100_000;
+
+/**
+ * The total network-time ceiling for a download capped at `maxBytes`:
+ * {@link VOICE_PACK_DOWNLOAD_TOTAL_TIMEOUT_MS}, or the time `maxBytes` takes
+ * at {@link VOICE_PACK_DOWNLOAD_MIN_RATE_BYTES_PER_S}, whichever is longer.
+ * An explicit {@link DownloadVoicePackOptions.totalTimeoutMs} wins over this.
+ *
+ * {@link downloadVoicePack} passes the cap it actually enforces — the caller's
+ * `maxBytes` held under {@link VOICE_PACK_DOWNLOAD_CEILING_BYTES} — so a catalog
+ * entry with a typo in its `bytes` cannot stretch the clock past what the
+ * largest acceptable pack would get.
+ */
+export function resolveTotalTimeoutMs(maxBytes: number): number {
+  return Math.max(
+    VOICE_PACK_DOWNLOAD_TOTAL_TIMEOUT_MS,
+    Math.ceil((maxBytes / VOICE_PACK_DOWNLOAD_MIN_RATE_BYTES_PER_S) * 1000),
+  );
+}
 
 /**
  * The most this function will ever accept, whatever the caller asks for.
@@ -115,10 +147,13 @@ export const VOICE_PACK_DOWNLOAD_TOTAL_TIMEOUT_MS = 30 * 60_000;
  * typo lands in, and `"bytes": 12500000000` should cost a failed install
  * rather than a filled disk.
  *
- * 128 MiB is ten packs' worth. A pack carrying several voices is plausible; a
- * pack larger than this is not, and raising the constant is the whole change.
+ * 2 GB, decimal like the extractor's caps and the size the settings card
+ * shows (#1102). Packs carrying several higher-bitrate voices are already past
+ * 100 MB, and nothing downstream holds the archive in memory — the installer
+ * streams it from disk through the extractor — so the ceiling is a bound on
+ * disk and download time rather than on the plugin's resident set.
  */
-export const VOICE_PACK_DOWNLOAD_CEILING_BYTES = 128 * 1024 * 1024;
+export const VOICE_PACK_DOWNLOAD_CEILING_BYTES = 2_000_000_000;
 
 /**
  * Where the bytes go. `write` may be synchronous or return a promise; either
@@ -215,7 +250,11 @@ export interface DownloadVoicePackOptions {
   /** The caller's own cancellation — the plugin stopping, say. */
   signal?: AbortSignal;
   stallTimeoutMs?: number;
-  /** The ceiling on network time across the whole download — see {@link VOICE_PACK_DOWNLOAD_TOTAL_TIMEOUT_MS}. */
+  /**
+   * The ceiling on network time across the whole download — see {@link
+   * VOICE_PACK_DOWNLOAD_TOTAL_TIMEOUT_MS}. Defaults to {@link resolveTotalTimeoutMs}
+   * of the enforced byte cap; a value given here wins.
+   */
   totalTimeoutMs?: number;
   fetchImpl?: typeof fetch;
 }
@@ -234,7 +273,7 @@ const SHA256_HEX = SHA256_HEX_PATTERN;
  * The cap actually enforced: the caller's, held under the ceiling.
  *
  * @internal Exported for testing — proving the clamp any other way would mean
- * streaming 128 MiB through a test.
+ * streaming 2 GB through a test.
  */
 export function resolveByteCap(maxBytes: number): number {
   return Math.min(maxBytes, VOICE_PACK_DOWNLOAD_CEILING_BYTES);
@@ -258,7 +297,6 @@ export async function downloadVoicePack(options: DownloadVoicePackOptions): Prom
     onProgress,
     signal,
     stallTimeoutMs = VOICE_PACK_DOWNLOAD_STALL_TIMEOUT_MS,
-    totalTimeoutMs = VOICE_PACK_DOWNLOAD_TOTAL_TIMEOUT_MS,
     fetchImpl = fetch,
   } = options;
 
@@ -277,6 +315,7 @@ export async function downloadVoicePack(options: DownloadVoicePackOptions): Prom
   if (signal?.aborted) return fail("aborted", "cancelled before the request was made", 0);
 
   const cap = resolveByteCap(maxBytes);
+  const totalTimeoutMs = options.totalTimeoutMs ?? resolveTotalTimeoutMs(cap);
   const hash = createHash("sha256");
   let received = 0;
   let totalBytes: number | undefined;

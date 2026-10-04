@@ -12,7 +12,8 @@
         {
           "title": "Improvements",
           "items": [
-            "The <strong>Default (Terse)</strong> voice is now called <strong>Default (Short callouts)</strong>, a name that says what you get without needing the word &quot;terse&quot;. Only the name changes: if it is your selected voice it stays selected, and an installed copy picks up the new name when it updates itself at the next plugin start. See <a href=\"https://iracedeck.com/docs/features/race-engineer-voices/#default-short-callouts\" target=\"_blank\" rel=\"noopener noreferrer\">Race Engineer Voices</a>."
+            "The <strong>Default (Terse)</strong> voice is now called <strong>Default (Short callouts)</strong>, a name that says what you get without needing the word &quot;terse&quot;. Only the name changes: if it is your selected voice it stays selected, and an installed copy picks up the new name when it updates itself at the next plugin start. See <a href=\"https://iracedeck.com/docs/features/race-engineer-voices/#default-short-callouts\" target=\"_blank\" rel=\"noopener noreferrer\">Race Engineer Voices</a>.",
+            "Installing or updating a voice pack no longer loads the whole download into memory, so an install stays light on a running plugin whatever the pack's size, and voice packs of up to 2 GB can now be installed. See <a href=\"https://iracedeck.com/docs/features/race-engineer-voices/\" target=\"_blank\" rel=\"noopener noreferrer\">Race Engineer Voices</a>."
           ]
         },
         {

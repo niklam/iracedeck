@@ -16,8 +16,11 @@
  * The pipeline, per the spec's *Install pipeline* section, is: decide (the
  * catalog's `sha256` against the installed `.install.json` — equal means
  * nothing to do, and that comparison is the whole answer to "don't re-download
- * on every plugin version"), lock, download while hashing, verify, extract to a
- * staging directory, validate the content, stop playback, promote, refresh.
+ * on every plugin version"), check free space, lock, download while hashing,
+ * then ONE pass that reads the archive back from disk, hashes it and extracts
+ * it to a staging directory (#1102) — the read-back digest decides before
+ * anything is promoted — then validate the content, stop playback, promote,
+ * refresh.
  * Every step before `promote` works in `.tmp`, which the scanner never reads,
  * so up to that point the installed pack is not merely intact but is also the
  * only thing the engine can see. `promote` is two renames whose rollback the
@@ -56,25 +59,33 @@ import {
   type VoicePackManifest,
 } from "@iracedeck/callout-script";
 import type { ILogger } from "@iracedeck/logger";
-import { createHash } from "node:crypto";
+import { createHash, type Hash } from "node:crypto";
+import { createReadStream } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { setImmediate as nextTurn } from "node:timers/promises";
 
 import type { PiWarningLevel } from "./pi-warnings.js";
-import { extractVoicePackArchive, type VoicePackArchiveFileSystem } from "./voice-pack-archive.js";
+import { errorMessage, extractVoicePackArchive, type VoicePackArchiveFileSystem } from "./voice-pack-archive.js";
 import type { VoicePackCatalogGetOptions } from "./voice-pack-catalog-service.js";
 import { isVoicePackOfferable, type VoicePackCatalogEntry } from "./voice-pack-catalog.js";
 import { VOICE_PACK_PROVENANCE_FILE } from "./voice-pack-constants.js";
-import { downloadVoicePack, type VoicePackDownloadFailure } from "./voice-pack-download.js";
+import {
+  downloadVoicePack,
+  resolveByteCap,
+  resolveTotalTimeoutMs,
+  VOICE_PACK_DOWNLOAD_CEILING_BYTES,
+  type VoicePackDownloadFailure,
+} from "./voice-pack-download.js";
 import { parseVoicePackProvenance, type VoicePackProvenance } from "./voice-pack-provenance.js";
 import type { VoicePackFileRead, VoicePackFileSystem } from "./voice-pack-scanner.js";
 import type { VoicePackCatalogState, VoicePackInstallState, VoicePackStatus } from "./voice-pack-status.js";
-import type {
-  CreateVoicePackStagingResult,
-  PromoteVoicePackResult,
-  SweepVoicePacksResult,
-  VoicePackStorage,
+import {
+  type CreateVoicePackStagingResult,
+  type PromoteVoicePackResult,
+  type SweepVoicePacksResult,
+  VOICE_PACK_LOCK_MAX_WAIT_MS,
+  type VoicePackStorage,
 } from "./voice-pack-storage.js";
 
 /**
@@ -101,6 +112,55 @@ export const VOICE_PACK_PROGRESS_INTERVAL_MS = 1_000;
 const SEED_FILES_PER_TURN = 64;
 
 /**
+ * Free space an install wants beyond twice the archive, checked before the
+ * download starts.
+ *
+ * An install holds the archive and its unpacked staging copy on disk at once,
+ * and MP3 does not compress, so the copy is about the archive's size again:
+ * {@link requiredFreeBytes} is `2 × bytes` plus this margin, for the file
+ * system's own overhead on some thousands of small files and for whatever
+ * else is writing to the drive meanwhile. The pack being replaced costs
+ * nothing: it moves to `.trash` by a rename on the same volume.
+ *
+ * Running out mid-install already fails safely, as a `storage` or `write`
+ * failure with the staging tree discarded; this check only makes it come
+ * before a large download rather than after it, with a message that says how
+ * much space is needed.
+ */
+export const VOICE_PACK_INSTALL_FREE_SPACE_MARGIN_BYTES = 256_000_000;
+
+/** The free space an install of an archive of `bytes` wants — see {@link VOICE_PACK_INSTALL_FREE_SPACE_MARGIN_BYTES}. */
+export function requiredFreeBytes(bytes: number): number {
+  return 2 * bytes + VOICE_PACK_INSTALL_FREE_SPACE_MARGIN_BYTES;
+}
+
+/**
+ * How long an install waits on another plugin's install of the same pack
+ * before proceeding without the lock: the holder's whole download ceiling at
+ * this pack's size, plus the default wait for its unpacking and swap.
+ *
+ * The storage default of ten minutes is shorter than a large pack can
+ * honestly take to download, and a waiter that gave up on a live holder would
+ * fetch the whole pack a second time beside it. A holder that DIED is not
+ * waited out this long — its lock goes stale within a minute and a half.
+ *
+ * @internal Exported for testing
+ */
+export function installLockWaitMs(bytes: number): number {
+  return resolveTotalTimeoutMs(resolveByteCap(bytes)) + VOICE_PACK_LOCK_MAX_WAIT_MS;
+}
+
+/** The read size of {@link createVoicePackInstallerFileSystem}'s `readStream`. */
+const READ_BACK_CHUNK_BYTES = 1024 * 1024;
+
+/** Decimal megabytes or gigabytes, as the settings card shows a pack's size. */
+function describeSize(bytes: number): string {
+  if (bytes >= 1_000_000_000) return `${Number((bytes / 1_000_000_000).toFixed(1))} GB`;
+
+  return `${Math.max(1, Math.round(bytes / 1_000_000))} MB`;
+}
+
+/**
  * The voice a clip belongs to, for a clip the scenario engine can reach —
  * `voice/<voice-id>/<group>/<name>.mp3`, exactly that depth, lowercase
  * extension (`USABLE_VOICE_CLIP`, the scanner's own grammar, shared through
@@ -112,6 +172,101 @@ const SEED_FILES_PER_TURN = 64;
  */
 function reachableVoiceOf(path: string): string | undefined {
   return USABLE_VOICE_CLIP.test(path) ? path.split("/")[1] : undefined;
+}
+
+/** What the read-back of a staged archive measured, once the whole file has been read. */
+type ReadBackResult =
+  { error: string; bytes: number; sha256?: undefined } | { error?: undefined; bytes: number; sha256: string };
+
+/**
+ * The single pass over a staged archive: a source for the extractor that
+ * hashes and counts every chunk on its way through, and a `finish` that reads
+ * whatever the extractor left unread into the same hash.
+ *
+ * The extractor stops pulling at its first refusal and ends the iteration,
+ * which calls `return()` on the iterator it was given. This one's `return()`
+ * deliberately leaves the file open, because the rest of it still has to be
+ * hashed; `finish` drains it and then closes it on every path.
+ *
+ * A read error is recorded here as well as thrown on into the extractor, which
+ * reports it as a damaged archive — the record is what lets the installer say
+ * the archive could not be read back, which is what happened.
+ *
+ * Reading stops once the file has delivered more than `expectedBytes`: the
+ * length already disagrees with the catalog, so the verdict is settled, and a
+ * file swapped for a larger one should cost no more reading than that.
+ *
+ * @internal Exported for testing
+ */
+export function createReadBack(
+  stream: AsyncIterable<Uint8Array>,
+  expectedBytes: number,
+): { source: AsyncIterable<Uint8Array>; finish: () => Promise<ReadBackResult> } {
+  const hash: Hash = createHash("sha256");
+  let iterator: AsyncIterator<Uint8Array> | undefined;
+  let bytes = 0;
+  let error: string | undefined;
+  let ended = false;
+
+  const open = (): AsyncIterator<Uint8Array> => (iterator ??= stream[Symbol.asyncIterator]());
+
+  const next = async (): Promise<IteratorResult<Uint8Array, undefined>> => {
+    if (ended) return { done: true, value: undefined };
+
+    let result: IteratorResult<Uint8Array>;
+
+    try {
+      result = await open().next();
+    } catch (err) {
+      ended = true;
+      error = errorMessage(err);
+      throw err;
+    }
+
+    if (result.done) {
+      ended = true;
+
+      return { done: true, value: undefined };
+    }
+
+    hash.update(result.value);
+    bytes += result.value.length;
+
+    if (bytes > expectedBytes) ended = true;
+
+    return { done: false, value: result.value };
+  };
+
+  const source: AsyncIterable<Uint8Array> = {
+    [Symbol.asyncIterator]: () => ({
+      next,
+      // Not forwarded: the extractor stopping is not the end of the read.
+      return: async () => ({ done: true, value: undefined }),
+    }),
+  };
+
+  const finish = async (): Promise<ReadBackResult> => {
+    try {
+      while (!ended) {
+        try {
+          await next();
+        } catch {
+          // Recorded by `next`.
+        }
+      }
+    } finally {
+      try {
+        await iterator?.return?.();
+      } catch {
+        // Closing a file that failed to read can fail too; the read error,
+        // if any, is already recorded, and the file handle is the stream's.
+      }
+    }
+
+    return error === undefined ? { bytes, sha256: hash.digest("hex") } : { error, bytes };
+  };
+
+  return { source, finish };
 }
 
 export type VoicePackInstallOutcome =
@@ -202,12 +357,12 @@ export interface BundledVoicePack {
 }
 
 /**
- * The one disk operation no sibling port offers: reading a file's bytes.
+ * The disk reads no sibling port offers: a file's bytes, whole or as a stream.
  *
- * Needed twice. The extractor takes the whole archive as a `Uint8Array`, and
- * the downloader writes to disk — so the archive is read back, and hashed
- * again on the way, which is what makes "verifying" a phase with content
- * rather than a label. And the seed reads each bundled clip so it can write it
+ * Needed twice, in two shapes. The downloader writes the archive to disk, and
+ * the install reads it back as a STREAM — hashed as it passes and handed, chunk
+ * by chunk, to the extractor — so the archive is never held in memory (#1102).
+ * And the seed reads each bundled clip whole, one at a time, so it can write it
  * through the SAME port the extractor writes through, inheriting that port's
  * refusal of a pre-planted destination for free. The `node:fs` implementation
  * is {@link createVoicePackInstallerFileSystem}, the only disk access in this
@@ -216,6 +371,12 @@ export interface BundledVoicePack {
 export interface VoicePackInstallerFileSystem {
   /** The file's bytes, or `undefined` for anything unreadable. */
   readFile(file: string): Promise<Uint8Array | undefined>;
+  /**
+   * The file's bytes as chunks, read lazily. A read that fails — including a
+   * file that cannot be opened — throws out of the iteration with a path-free
+   * message; ending the iteration early closes the file.
+   */
+  readStream(file: string): AsyncIterable<Uint8Array>;
 }
 
 /**
@@ -643,11 +804,29 @@ export function createVoicePackInstaller(deps: VoicePackInstallerDeps): VoicePac
   }
 
   /**
-   * Download, verify, extract and validate into a staging directory. Every
-   * failure discards what it made — the archive, the staging tree — and the
-   * installed pack has not been looked at.
+   * Download, then read back, verify and extract in one pass, then validate,
+   * into a staging directory. Every failure discards what it made — the
+   * archive, the staging tree — and the installed pack has not been looked at.
    */
   async function stageFromCatalog(id: string, entry: VoicePackCatalogEntry): Promise<Staged | InstallFailure> {
+    const free = await storage.freeBytes();
+    const required = requiredFreeBytes(entry.bytes);
+
+    // Unknown free space does not block: the volume could not be asked, and
+    // running out later still fails safely. A known shortfall stops here,
+    // before a byte is downloaded.
+    if (free === undefined) {
+      logger.debug(`Voice pack "${id}": free space unknown; installing without the check`);
+    } else if (free < required) {
+      return failed(
+        id,
+        "storage",
+        `Installing this voice needs about ${describeSize(required)} of free disk space, and the drive holding ` +
+          `the voice packs folder has ${describeSize(free)}. Free up some space and try again.`,
+        `free ${free} < required ${required}`,
+      );
+    }
+
     const opened = await storage.openDownload(id, entry.sha256);
 
     if (!opened.ok) {
@@ -696,45 +875,30 @@ export function createVoicePackInstaller(deps: VoicePackInstallerDeps): VoicePac
     // is what the DISK hands back, and the two are the same only if the write
     // was faithful and nothing rewrote the file in between — a scanner
     // "cleaning" it, another plugin's overlapping download of the same name.
-    // Hashing the read-back is the cheap way to know, and it is what makes the
-    // verifying phase a verification.
+    // So the read-back is hashed too, and it is hashed on the EXTRACTION pass
+    // itself (#1102), as the chunks go by.
     //
-    // BUT NOTE WHAT THIS COSTS, because the module one layer down promises the
-    // opposite. `voice-pack-download.ts` hashes as the stream flows and says so
-    // in its own comment: buffering the whole archive to hash it afterwards
-    // would hold it in memory inside a process that is also rendering keys and
-    // playing audio during a race. This line then reads the entire file into
-    // one buffer and hands that buffer to the extractor, so peak memory during
-    // an install IS the whole archive plus the extractor's per-entry buffers —
-    // bounded by `VOICE_PACK_DOWNLOAD_CEILING_BYTES` (128 MB), not by streaming.
+    // One pass, not a hashing pass and then an extracting one. Reading the
+    // file twice would leave a window between the two in which exactly those
+    // rewrites could land, and the second, unverified read is the one that
+    // would be installed — the gap this read-back exists to close. Nor does
+    // the design rest on holding the file exclusively between write and read:
+    // the one writer with a reason to touch it, another plugin installing the
+    // same pack, has working names of its own (`<id>.<sha256>.<pid>.zip`) and
+    // never opens this file, and anything else that rewrites it is caught by
+    // the digest below. Nor is the archive buffered so one read can serve
+    // both: that held the whole archive in memory, up to the download
+    // ceiling, in a process that is also rendering keys and playing audio
+    // during a race.
     //
-    // Harmless at today's ~8 MB pack, which is exactly why it needs writing
-    // down rather than leaving for a reader to infer from the layer below: a
-    // multi-voice pack approaches that ceiling with no code change and no new
-    // review. The fix — hash incrementally over a read stream and give the
-    // extractor a streaming source — is issue #1102.
-    setPhase(id, { phase: "verifying", totalBytes: entry.bytes });
-    const archive = await fs.readFile(opened.path);
-
-    if (archive === undefined) {
-      await opened.discard();
-
-      return failed(id, "storage", "The downloaded archive could not be read back. Try again.", "readFile failed");
-    }
-
-    const onDisk = createHash("sha256").update(archive).digest("hex");
-
-    if (onDisk !== entry.sha256) {
-      await opened.discard();
-
-      return failed(
-        id,
-        "verify",
-        "The archive changed on disk after it was downloaded, so it was discarded. Try again.",
-        `read-back digest ${onDisk.slice(0, 12)}… != ${entry.sha256.slice(0, 12)}…`,
-      );
-    }
-
+    // So the guarantee is stated as what it always protected: no byte that
+    // fails the catalog digest is INSTALLED. The extractor writes only into a
+    // staging directory made fresh for this install, it treats every byte as
+    // hostile anyway, and nothing is promoted until the whole file has been
+    // read and its digest and length match the entry. When the extractor
+    // refuses part-way, the rest of the file is still drained into the hash —
+    // a plain read, no decompression — so that a rewritten file is reported as
+    // the cause ("changed on disk") rather than by its symptom, a damaged entry.
     const staging = await storage.createStagingDir(id, entry.sha256);
 
     if (!staging.ok) {
@@ -749,11 +913,35 @@ export function createVoicePackInstaller(deps: VoicePackInstallerDeps): VoicePac
     }
 
     setPhase(id, { phase: "extracting", totalBytes: entry.bytes });
-    const extracted = await extractVoicePackArchive({ archive, targetDir: staging.dir, fs: archiveFs });
+    // Measured against what the download actually delivered, not the catalog's
+    // `bytes`: that is a CAP, and an entry that overstates it still downloads
+    // and verifies against its digest.
+    const readBack = createReadBack(fs.readStream(opened.path), downloaded.bytes);
+    const extracted = await extractVoicePackArchive({ source: readBack.source, targetDir: staging.dir, fs: archiveFs });
+    const read = await readBack.finish();
 
     // The archive has served its purpose either way; a leftover is the
     // sweep's problem, not a failure.
     await opened.discard();
+
+    if (read.error !== undefined) {
+      await staging.discard();
+
+      return failed(id, "storage", "The downloaded archive could not be read back. Try again.", `read: ${read.error}`);
+    }
+
+    if (read.bytes !== downloaded.bytes || read.sha256 !== entry.sha256) {
+      await staging.discard();
+
+      return failed(
+        id,
+        "verify",
+        "The archive changed on disk after it was downloaded, so it was discarded. Try again.",
+        read.bytes !== downloaded.bytes
+          ? `read-back length ${read.bytes} != ${downloaded.bytes}`
+          : `read-back digest ${read.sha256.slice(0, 12)}… != ${entry.sha256.slice(0, 12)}…`,
+      );
+    }
 
     if (!extracted.ok) {
       await staging.discard();
@@ -807,10 +995,9 @@ export function createVoicePackInstaller(deps: VoicePackInstallerDeps): VoicePac
       return failed(id, code, reason, detail);
     };
 
-    const manifest = archiveFs.writeFile(
-      join(staging.dir, VOICE_PACK_MANIFEST_FILE),
+    const manifest = archiveFs.writeFile(join(staging.dir, VOICE_PACK_MANIFEST_FILE), [
       new TextEncoder().encode(seedManifestText(entry)),
-    );
+    ]);
 
     if (!manifest.ok) {
       return discardAndFail(
@@ -853,7 +1040,7 @@ export function createVoicePackInstaller(deps: VoicePackInstallerDeps): VoicePac
         );
       }
 
-      const wrote = archiveFs.writeFile(destination, bytes);
+      const wrote = archiveFs.writeFile(destination, [bytes]);
 
       if (!wrote.ok) {
         return discardAndFail(
@@ -909,7 +1096,7 @@ export function createVoicePackInstaller(deps: VoicePackInstallerDeps): VoicePac
         );
       }
 
-      const wrote = archiveFs.writeFile(destination, new TextEncoder().encode(script.text));
+      const wrote = archiveFs.writeFile(destination, [new TextEncoder().encode(script.text)]);
 
       if (!wrote.ok) {
         return discardAndFail(
@@ -1027,6 +1214,15 @@ export function createVoicePackInstaller(deps: VoicePackInstallerDeps): VoicePac
     const pluginVersion = (await guarded("the plugin version lookup", deps.getPluginVersion)) ?? "";
 
     if (!isVoicePackOfferable(entry, pluginVersion)) {
+      if (entry.bytes > VOICE_PACK_DOWNLOAD_CEILING_BYTES) {
+        return failed(
+          id,
+          "unsupported",
+          `This pack is larger than this iRaceDeck build can download (${describeSize(VOICE_PACK_DOWNLOAD_CEILING_BYTES)}).`,
+          `catalog bytes ${entry.bytes} > ceiling ${VOICE_PACK_DOWNLOAD_CEILING_BYTES}`,
+        );
+      }
+
       return failed(
         id,
         "unsupported",
@@ -1054,7 +1250,7 @@ export function createVoicePackInstaller(deps: VoicePackInstallerDeps): VoicePac
     // change to the status shape for a state that resolves itself.
     setPhase(id, { phase: "downloading", receivedBytes: 0, totalBytes: entry.bytes });
 
-    const lock = await storage.acquireLock(id);
+    const lock = await storage.acquireLock(id, { maxWaitMs: installLockWaitMs(entry.bytes) });
 
     try {
       // The lock may have been held by another plugin installing exactly this
@@ -1085,24 +1281,23 @@ export function createVoicePackInstaller(deps: VoicePackInstallerDeps): VoicePac
     logger.debug(`Voice pack "${id}" ${pack.entry.version}: copying from ${pack.audioDir}`);
 
     // The same lock the install path holds, over the same id — and the seed
-    // needs it MORE. The packs root is shared by all three ecosystems and the
-    // staging path is a function of (id, sha256), so two plugins seeding the
-    // same bundled pack — both started at login, both finding the folder
-    // empty — copy into ONE directory. Each one's `createStagingDir` empties
-    // it, and each one's startup sweep deletes it, because the sweep spares a
-    // `.tmp` entry only under a live lock. None of that errors: the copy
+    // needs it MORE. The packs root is shared by all three ecosystems, and two
+    // plugins seeding the same bundled pack are both started at login and
+    // both find the folder empty. Their staging directories are their own
+    // (the process id is in the name, #1102), but each one's startup sweep
+    // deletes every `.tmp` entry of the pack that no live lock protects —
+    // the other's staging tree included. None of that errors: the copy
     // recreates its parents and carries on, and the validation that follows
     // checks the list of files THIS process wrote, not the disk — so the loser
-    // promotes a pack silently short of every clip the winner deleted. Held,
+    // promotes a pack silently short of every clip the sweep deleted. Held,
     // the lock makes the other plugin's sweep keep the tree and its seed wait,
     // and the re-check below then finds the pack in place.
     //
     // Correctness still does not depend on the lock being granted — the
     // storage module says why, and its promise there is narrower than it
-    // reads: it covers the SWAP, where the second arrival finds identical
-    // content, and says nothing about two processes sharing a staging
-    // directory, which is exactly the gap this lock closes in the common
-    // case. `acquired: false` is proceeded past, as everywhere.
+    // reads: it covers the SWAP and the working files, and says nothing about
+    // a sweep racing a seed, which is exactly the gap this lock closes in the
+    // common case. `acquired: false` is proceeded past, as everywhere.
     const lock = await storage.acquireLock(id);
 
     try {
@@ -1296,11 +1491,13 @@ export function createVoicePackInstaller(deps: VoicePackInstallerDeps): VoicePac
 }
 
 /**
- * `node:fs/promises` implementation of {@link VoicePackInstallerFileSystem} —
- * the only disk access in this module. Swallows its own error and answers
- * `undefined`, like every other `voice-pack-*` adapter: the full message with
- * its path goes to the log at debug, and the caller reports a path-free
- * failure of its own.
+ * `node:fs` implementation of {@link VoicePackInstallerFileSystem} — the only
+ * disk access in this module. Either way the full message with its path goes
+ * to the log at debug and the caller sees nothing path-shaped: `readFile`
+ * swallows its error and answers `undefined`, like every other `voice-pack-*`
+ * adapter, while `readStream` throws a path-free error (the errno) out of the
+ * iteration, because a read can fail after chunks have already been handed
+ * out and the consumer has to learn it at that point.
  */
 export function createVoicePackInstallerFileSystem(logger: ILogger): VoicePackInstallerFileSystem {
   return {
@@ -1308,9 +1505,28 @@ export function createVoicePackInstallerFileSystem(logger: ILogger): VoicePackIn
       try {
         return await readFile(file);
       } catch (err) {
-        logger.debug(`Voice packs: cannot read "${file}": ${err instanceof Error ? err.message : String(err)}`);
+        logger.debug(`Voice packs: cannot read "${file}": ${errorMessage(err)}`);
 
         return undefined;
+      }
+    },
+
+    async *readStream(file) {
+      try {
+        // 1 MB reads: few enough calls for a 2 GB archive, and small beside
+        // the extractor's per-entry buffer. A later read never overwrites a
+        // chunk `createReadStream` already handed out, so the extractor may
+        // hold one — a stored entry's data is views into these — past the
+        // next read.
+        for await (const chunk of createReadStream(file, { highWaterMark: READ_BACK_CHUNK_BYTES }))
+          yield chunk as Buffer;
+      } catch (err) {
+        logger.debug(`Voice packs: cannot read "${file}": ${errorMessage(err)}`);
+        // The message ends up in the install's log detail, so it carries the
+        // errno and never the path.
+        const code = (err as NodeJS.ErrnoException | undefined)?.code;
+
+        throw new Error(typeof code === "string" ? code : "read failed");
       }
     },
   };
