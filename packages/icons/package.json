@@ -9,8 +9,8 @@
     "test:watch": "node ../../scripts/test-package.mjs --watch"
   },
   "devDependencies": {
-    "@types/node": "26.6.2",
+    "@types/node": "26.6.4",
     "typescript": "5.9.3",
-    "vitest": "5.0.1"
+    "vitest": "5.0.3"
   }
 }
