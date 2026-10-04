@@ -259,6 +259,9 @@ importers:
       '@iracedeck/deck-core':
         specifier: workspace:*
         version: link:../deck-core
+      '@iracedeck/track-data':
+        specifier: workspace:*
+        version: link:../track-data
       '@types/node':
         specifier: 26.6.4
         version: 26.6.4

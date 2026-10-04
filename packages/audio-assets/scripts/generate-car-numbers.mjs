@@ -64,8 +64,6 @@
  * to three lines. Prettier accepts both forms, so nothing catches this
  * except a diff far bigger than the intended change (issue #1127 fix
  * round 1 caught exactly that: 211 unrelated compact arrays flattened).
- * `generate-corner-names-group.mjs` uses the round-tripping idiom too —
- * don't copy it into a new generator.
  *
  * Usage:
  *   node packages/audio-assets/scripts/generate-car-numbers.mjs
