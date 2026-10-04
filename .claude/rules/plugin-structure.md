@@ -193,6 +193,7 @@ import {
   initWindowFocus,
   isIRacingActive,
   resolveSettingsStorePath,
+  onIRacingStarted,
   onIRacingTerminated,
   startMainThreadWatchdog,
   startResourceMonitor,
@@ -227,9 +228,10 @@ startMainThreadWatchdog({
 });
 
 // 2c. Beside it, the resource monitor (#1338): a sample a minute of CPU,
-//     event-loop and memory use; one WARN with the numbers after three high
-//     minutes, an INFO on recovery, a summary at each iRacing exit. The
-//     app-monitor hooks are injected rather than imported (#1176). The CPU
+//     event-loop and memory use, plus one at each session edge; one WARN with
+//     the numbers after three high minutes, an INFO on recovery, a summary at
+//     each iRacing exit. The app-monitor hooks are injected rather than
+//     imported (#1176). The CPU
 //     profile capture it pairs with is created beside the settings-window
 //     controller, writing into `<log dir>/profiles` (Elgato:
 //     `join(dirname(elgatoPluginLogFile()), "profiles")`; Mirabox and Ulanzi:
@@ -237,6 +239,7 @@ startMainThreadWatchdog({
 //     `captureCpuProfile` + `profilesPath`
 startResourceMonitor({
   logger: adapter.createLogger("ResourceMonitor"),
+  onSessionStart: onIRacingStarted,
   onSessionEnd: onIRacingTerminated,
   isSessionActive: isIRacingActive,
 });

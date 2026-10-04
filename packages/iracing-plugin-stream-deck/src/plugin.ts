@@ -149,6 +149,7 @@ import {
   migrateStartupPolicies,
   MIGRATION_PENDING_KEY,
   onGlobalSettingsChange,
+  onIRacingStarted,
   onIRacingTerminated,
   openDirectoryInExplorer,
   openFolderInExplorer,
@@ -335,10 +336,12 @@ startMainThreadWatchdog({
 
 // Report the plugin's own CPU, event-loop and memory use into its log (#1338):
 // one WARN with the numbers after three high minutes, an INFO on recovery, and
-// a summary at each iRacing exit. The app-monitor hooks are injected, as the
-// window service's are (#1176).
+// a summary at each iRacing exit. It samples at both session edges too, so
+// every interval lies wholly inside or outside a session. The app-monitor
+// hooks are injected, as the window service's are (#1176).
 startResourceMonitor({
   logger: adapter.createLogger("ResourceMonitor"),
+  onSessionStart: onIRacingStarted,
   onSessionEnd: onIRacingTerminated,
   isSessionActive: isIRacingActive,
 });
@@ -1325,10 +1328,6 @@ const settingsWindowLogger = adapter.createLogger("SettingsWindow");
 // older build left there is removed) — from wherever the server actually
 // started (see the onStarted hook below and the store-ready block).
 const settingsChannel = createSettingsChannelPublisher({ adapter, logger: settingsWindowLogger });
-// Upstream update check (#1016). Asked only by the settings window's What's New
-// tab, cached for an hour, and gated on the `updateCheck` setting read live —
-// so a user who never opens the window, or who switches the setting off, makes
-// no outbound request at all.
 // Capture CPU profile (#1338): the files go to `profiles` beside the log the
 // SDK writes (`<cwd>/logs/profiles`), the folder a user already sends from.
 const profilesDir = join(dirname(elgatoPluginLogFile()), "profiles");
@@ -1339,6 +1338,10 @@ const cpuProfileCapture = createCpuProfileCapture({
   writeSettings: (partial) => updateGlobalSettings(partial),
 });
 
+// Upstream update check (#1016). Asked only by the settings window's What's New
+// tab, cached for an hour, and gated on the `updateCheck` setting read live —
+// so a user who never opens the window, or who switches the setting off, makes
+// no outbound request at all.
 const updateCheck = createUpdateCheckService({
   isEnabled: () => getGlobalSettings().updateCheck !== false,
   getInstalledVersion: getPluginVersion,
