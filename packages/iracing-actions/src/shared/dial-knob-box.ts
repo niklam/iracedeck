@@ -1,7 +1,8 @@
 /**
  * The Stream Dock knob rendering of the shared dash box (#1013): the same
  * vocabulary as the strip — an inset rounded panel, a short label, a big live
- * value, the #953 side markers, the #1120 pending mark, the #612 warning — but
+ * value, the #953 side markers, the #1120 pending mark, the #612 warning, the
+ * #1230 caption and dim — but
  * composed for the squarer 176×112 screen above the knob: the label becomes a
  * top line, and the value (capped at 50 px) is centred in the room below it, so
  * a value shrunk to fit sits in the middle rather than on the bottom edge.
@@ -13,6 +14,7 @@ import { applyBindingWarning } from "@iracedeck/deck-core";
 import type { DialBoxArgs } from "./dial-box.js";
 import { fitValueFontSize } from "./dial-fit.js";
 import { PENDING_BAR_HEIGHT, renderPendingBar } from "./dial-preview.js";
+import { renderSideMarkers, resolveSideMarks } from "./dial-side-markers.js";
 
 /**
  * The knob screen's size — deck-core's `STREAM_DOCK_KNOB_CANVAS` (176×112),
@@ -50,6 +52,18 @@ const VALUE_CENTER_Y = Math.round((LABEL_Y + PANEL_INNER_BOTTOM) / 2); // 66
 const DEFAULT_IDENTITY_LABEL_SCALE = 0.24;
 const FONT = 'font-family="Arial, sans-serif" font-weight="bold"';
 
+// The optional caption line (#1230): just inside the panel's inner bottom edge.
+const CAPTION_FONT = 14;
+const CAPTION_Y = PANEL_INNER_BOTTOM - 5; // 99
+/** The caption's cap height above its baseline: the line the value and the pending mark must clear. */
+const CAPTION_TOP = CAPTION_Y - Math.round(CAPTION_FONT * 0.72); // 89
+/** The value's cap with a caption below it, so the two never touch. */
+const CAPTIONED_VALUE_CAP = 40;
+/** The value's visual centre with a caption: midway between the label's baseline and the caption's top. */
+const CAPTIONED_VALUE_CENTER_Y = Math.round((LABEL_Y + CAPTION_TOP) / 2); // 59
+/** Opacity of a dimmed box (#1230). */
+const DIMMED_OPACITY = 0.35;
+
 export function renderKnobBox(args: DialBoxArgs): string {
   const {
     abbr,
@@ -58,8 +72,11 @@ export function renderKnobBox(args: DialBoxArgs): string {
     identityLabelScale = DEFAULT_IDENTITY_LABEL_SCALE,
     bindingMissing = false,
     sideMarker,
+    caption = "",
+    dimmed = false,
     pending = null,
   } = args;
+  const hasCaption = caption !== "";
   const displayValue = pending ? pending.text : value;
   const valueColor = pending ? pending.color : colors.value;
   const identityOnly = displayValue === "";
@@ -67,45 +84,46 @@ export function renderKnobBox(args: DialBoxArgs): string {
   const labelFontSize = identityOnly ? Math.round(H * identityLabelScale) : LABEL_FONT;
   // <text> y is the BASELINE (resvg ignores dominant-baseline): a centered
   // identity label adds ~0.36 em; the label-above-value layout uses a fixed top line.
-  const labelY = identityOnly ? Math.round(H * 0.5) + Math.round(labelFontSize * 0.36) : LABEL_Y;
+  // A caption moves the centred identity label up into the room above it.
+  const identityCenterY = hasCaption ? Math.round((INSET + CAPTION_TOP) / 2) : Math.round(H * 0.5);
+  const labelY = identityOnly ? identityCenterY + Math.round(labelFontSize * 0.36) : LABEL_Y;
   const label = `<text x="${W / 2}" y="${labelY}" text-anchor="middle" fill="${colors.label}" ${FONT} font-size="${labelFontSize}">${abbr}</text>`;
 
   let valueText = "";
 
   if (!identityOnly) {
-    const valueFontSize = fitValueFontSize(displayValue, W - 2 * (INSET + STROKE + 8), VALUE_CAP);
+    const valueFontSize = fitValueFontSize(
+      displayValue,
+      W - 2 * (INSET + STROKE + 8),
+      hasCaption ? CAPTIONED_VALUE_CAP : VALUE_CAP,
+    );
     // Baseline = visual centre + ~0.36 em (bold Arial), as for the identity label.
-    const valueY = VALUE_CENTER_Y + Math.round(valueFontSize * 0.36);
+    const valueY = (hasCaption ? CAPTIONED_VALUE_CENTER_Y : VALUE_CENTER_Y) + Math.round(valueFontSize * 0.36);
     valueText = `<text x="${W / 2}" y="${valueY}" text-anchor="middle" fill="${valueColor}" ${FONT} font-size="${valueFontSize}">${displayValue}</text>`;
 
     // Just under the value's baseline, clamped inside the panel.
     if (pending) {
-      const barTop = Math.min(valueY + 4, PANEL_INNER_BOTTOM - PENDING_BAR_HEIGHT);
+      const barFloor = hasCaption ? CAPTION_TOP - 1 : PANEL_INNER_BOTTOM;
+      const barTop = Math.min(valueY + 4, barFloor - PENDING_BAR_HEIGHT);
       valueText += renderPendingBar({ centerX: W / 2, y: barTop, width: W, color: pending.color });
     }
   }
 
-  let markers = "";
+  const markers = sideMarker
+    ? renderSideMarkers({ width: W, labelY, labelFontSize, color: colors.label, marks: resolveSideMarks(sideMarker) })
+    : "";
 
-  if (sideMarker) {
-    const markerH = Math.round(labelFontSize * 0.9);
-    const markerW = Math.round(markerH * 0.7);
-    const cy = labelY - Math.round(labelFontSize * 0.36);
-    const offset = Math.round(W * 0.3);
-    const leftCx = W / 2 - offset;
-    const rightCx = W / 2 + offset;
-    const dim = ' opacity="0.22"';
-    markers =
-      `<polygon data-side="left" points="${leftCx - markerW / 2},${cy} ${leftCx + markerW / 2},${cy - markerH / 2} ${leftCx + markerW / 2},${cy + markerH / 2}" fill="${colors.label}"${sideMarker === "left" ? "" : dim}/>` +
-      `<polygon data-side="right" points="${rightCx + markerW / 2},${cy} ${rightCx - markerW / 2},${cy - markerH / 2} ${rightCx - markerW / 2},${cy + markerH / 2}" fill="${colors.label}"${sideMarker === "right" ? "" : dim}/>`;
-  }
+  const captionText = hasCaption
+    ? `<text data-caption="true" x="${W / 2}" y="${CAPTION_Y}" text-anchor="middle" fill="${colors.label}" ${FONT} font-size="${CAPTION_FONT}">${caption}</text>`
+    : "";
 
-  const content = label + valueText + markers;
+  const content = label + valueText + markers + captionText;
   const panel = `<rect x="${INSET}" y="${INSET}" width="${W - 2 * INSET}" height="${H - 2 * INSET}" rx="${Math.max(0, RADIUS - INSET)}" fill="${colors.background}" stroke="${colors.border}" stroke-width="${STROKE}"/>`;
+
+  const body = panel + (bindingMissing ? applyBindingWarning(content, { width: W, height: H }) : content);
 
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">` +
-    panel +
-    `${bindingMissing ? applyBindingWarning(content, { width: W, height: H }) : content}</svg>`
+    `${dimmed ? `<g data-dimmed="true" opacity="${DIMMED_OPACITY}">${body}</g>` : body}</svg>`
   );
 }

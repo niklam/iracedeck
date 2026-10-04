@@ -238,3 +238,72 @@ describe("renderStripBox — pending long-press preview (#1120)", () => {
     expect(svg).toContain(">RR</text>");
   });
 });
+
+describe("renderStripBox — per-side markers, caption and dim (#1230)", () => {
+  const colors = resolveDialBoxColors(undefined, ACCENT);
+
+  function box(overrides: Partial<Parameters<typeof renderStripBox>[0]> = {}): string {
+    return renderStripBox({ width: 200, height: 100, abbr: "MARKERS", value: "2 / 5", colors, ...overrides });
+  }
+
+  const dimmedSides = (svg: string): string[] =>
+    (svg.match(/<polygon[^>]*>/g) ?? [])
+      .filter((p) => p.includes("opacity"))
+      .map((p) => /data-side="(\w+)"/.exec(p)?.[1] ?? "");
+
+  it("draws the one-sided forms exactly as the per-side form with one side lit", () => {
+    expect(box({ sideMarker: "left" })).toBe(box({ sideMarker: { left: true, right: false } }));
+    expect(box({ sideMarker: "right" })).toBe(box({ sideMarker: { left: false, right: true } }));
+  });
+
+  it("lights both sides, or neither", () => {
+    expect(box({ sideMarker: { left: true, right: true } }).match(/<polygon/g)).toHaveLength(2);
+    expect(dimmedSides(box({ sideMarker: { left: true, right: true } }))).toEqual([]);
+    expect(dimmedSides(box({ sideMarker: { left: false, right: false } }))).toEqual(["left", "right"]);
+  });
+
+  it("an empty caption draws exactly what no caption draws", () => {
+    expect(box({ caption: "" })).toBe(box());
+  });
+
+  it("draws the caption along the bottom in the label color", () => {
+    const svg = box({ caption: "ADD −5 s" });
+
+    expect(svg).toMatch(
+      /<text data-caption="true"[^>]*y="88"[^>]*fill="#e74c3c"[^>]*font-size="13"[^>]*>ADD −5 s<\/text>/,
+    );
+  });
+
+  it("fits the value smaller and centres it between the label and the caption", () => {
+    const plain = /y="(\d+)"[^>]*font-size="(\d+)"[^>]*>3<\/text>/.exec(box({ value: "3" }));
+    const captioned = /y="(\d+)"[^>]*font-size="(\d+)"[^>]*>3<\/text>/.exec(box({ value: "3", caption: "ADD −5 s" }));
+
+    expect(Number(captioned![2])).toBeLessThan(Number(plain![2]));
+    expect(Number(captioned![2])).toBe(40);
+    // Label baseline 28, caption top 88 − round(13 × 0.72) = 79 → centre 54; baseline = 54 + round(40 × 0.36).
+    expect(Number(captioned![1])).toBe(54 + 14);
+  });
+
+  it("keeps the pending mark above the caption", () => {
+    const svg = box({ value: "3", caption: "ADD −5 s", pending: { text: "DELETE", color: "#f39c12" } });
+    const bar = /data-pending-bar="true" x="\d+" y="(\d+)" width="\d+" height="(\d+)"/.exec(svg);
+
+    expect(Number(bar![1]) + Number(bar![2])).toBeLessThan(79);
+  });
+
+  it("centres an identity-only label above the caption", () => {
+    const svg = box({ value: "", caption: "ADD −5 s" });
+
+    // round((5 + 79) / 2) = 42, + round(24 × 0.36) = 9.
+    expect(svg).toMatch(/<text x="100" y="51"[^>]*>MARKERS<\/text>/);
+  });
+
+  it("dims the whole box, panel included, only when asked", () => {
+    expect(box()).not.toContain("data-dimmed");
+
+    const svg = box({ dimmed: true });
+
+    expect(svg).toMatch(/^<svg[^>]*><g data-dimmed="true" opacity="0\.35"><rect x="5" y="5"/);
+    expect(svg).toMatch(/<\/g><\/svg>$/);
+  });
+});

@@ -19,7 +19,10 @@ import { z } from "zod";
 
 import { renderKnobBox } from "./dial-knob-box.js";
 import type { DialPendingPreview } from "./dial-preview.js";
+import type { DialSideMarker } from "./dial-side-markers.js";
 import { renderStripBox } from "./dial-strip-box.js";
+
+export type { DialSideMarker, DialSideMarks } from "./dial-side-markers.js";
 
 /** Default panel background — near-black, ≈ the device screen, so the default look is unchanged. */
 export const DIAL_BOX_BACKGROUND = "#0d0d0d";
@@ -71,12 +74,26 @@ export interface DialBoxArgs {
   identityLabelScale?: number;
   bindingMissing?: boolean;
   /**
-   * Draw fixed left/right triangles flanking the label, lighting the given
-   * side and dimming the other (#953: the LR/RR spring dials). The label stays
-   * centered — the markers occupy fixed slots so the text never shifts when
-   * the user switches between the two sides.
+   * Draw fixed left/right triangles flanking the label. `"left"` / `"right"`
+   * lights that side and dims the other (#953: the LR/RR spring dials);
+   * `{ left, right }` lights each side on its own, so neither, either or both
+   * can be lit (#1230: the sides a turn would jump towards). The label stays
+   * centered — the markers occupy fixed slots so the text never shifts.
+   * Absent, no markers are drawn.
    */
-  sideMarker?: "left" | "right";
+  sideMarker?: DialSideMarker;
+  /**
+   * A small line of text along the bottom of the panel, in the label color
+   * (#1230: what a press does from the car). While set, the value is fitted
+   * smaller and centred between the label and the caption so the three never
+   * overlap. Absent or empty, the box is drawn exactly as without it.
+   */
+  caption?: string;
+  /**
+   * Fade the whole box — panel and content — to show the dial can do nothing
+   * right now (#1230: no store or no telemetry), like a keypad's unavailable look.
+   */
+  dimmed?: boolean;
   /**
    * The pending long-press outcome (issue #1120). While set, the value slot
    * shows this instead of the live value, underlined by the shared pending bar —
