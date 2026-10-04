@@ -159,6 +159,8 @@ Below the settings are the **release notes for every version of iRaceDeck**, new
 
 **Settings file** shows exactly where your configuration lives, with an **Open folder** button that reveals it in Explorer. Copying that one file backs up everything on this page — see [Where Your Settings Are Stored](#where-your-settings-are-stored).
 
+**Capture CPU profile** records 30 seconds of what iRaceDeck is doing and saves it as two files in a `profiles` folder next to the plugin log: a `.cpuprofile` that opens in Chrome's DevTools, and a `.txt` summary listing where the time went. Press it while the problem is happening — a slow deck, or high CPU use in Task Manager — and the line under the button counts down, then shows the saved file's name. **Open folder** beside it opens the `profiles` folder; attach both files to your report. The folder keeps the five newest captures and deletes older ones. See [If iRaceDeck uses a lot of CPU](/docs/getting-started/troubleshooting/#if-iracedeck-uses-a-lot-of-cpu).
+
 ## What Stays in the Property Inspector
 
 A key's Property Inspector is now about that key. It has its own settings at the top, then the **iRaceDeck Settings** button, then its per-key overrides — title, colours, border, graphic scale, flags overlay — and one section at the bottom:
