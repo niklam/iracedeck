@@ -1,7 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import url from "node:url";
-
 import { describe, expect, it } from "vitest";
 
 import { browserDir, SETTINGS_WINDOW_ICON } from "./index.mjs";
@@ -22,10 +21,7 @@ import { browserDir, SETTINGS_WINDOW_ICON } from "./index.mjs";
  */
 const packageRoot = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "../..");
 const repoRoot = path.resolve(packageRoot, "../..");
-const windowPage = path.join(
-  repoRoot,
-  "packages/iracing-actions/src/actions/settings-window/settings-window.ejs",
-);
+const windowPage = path.join(repoRoot, "packages/iracing-actions/src/actions/settings-window/settings-window.ejs");
 
 /**
  * The plugin configs that copy this package's browser assets, discovered rather

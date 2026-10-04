@@ -1,7 +1,3 @@
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-
 import {
   PI_WARNINGS_KEY,
   SETTINGS_WINDOW_HTML as RUNTIME_HTML,
@@ -9,6 +5,9 @@ import {
   SETTINGS_WINDOW_SERVER_WARNING_ID,
   VOICE_PACK_INSTALL_PHASES,
 } from "@iracedeck/deck-core";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { SETTINGS_WINDOW_FLAG as COMPONENTS_FLAG } from "../components/settings-window-context.js";

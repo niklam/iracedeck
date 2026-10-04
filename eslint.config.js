@@ -88,6 +88,8 @@ export default [
     },
   },
   {
-    ignores: ['**/dist/**', '**/node_modules/**', '**/build/**']
+    // Only node-gyp's output roots, mirroring .gitignore: a bare `**/build/**` also hid the
+    // source under packages/*/src/build/ (#1125). scripts/lint-format-ignores.test.mjs guards it.
+    ignores: ['**/dist/**', '**/node_modules/**', 'build/**', 'packages/*/build/**']
   },
 ];

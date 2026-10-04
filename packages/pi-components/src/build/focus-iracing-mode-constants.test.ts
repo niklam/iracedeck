@@ -1,9 +1,8 @@
 // @vitest-environment jsdom
+import { DEFAULT_FOCUS_IRACING_MODE, FOCUS_IRACING_MODES } from "@iracedeck/deck-core";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import url from "node:url";
-
-import { DEFAULT_FOCUS_IRACING_MODE, FOCUS_IRACING_MODES } from "@iracedeck/deck-core";
 import { describe, expect, it } from "vitest";
 
 import { ENABLE_FEATURE_COPY } from "../components/enable-feature.js";

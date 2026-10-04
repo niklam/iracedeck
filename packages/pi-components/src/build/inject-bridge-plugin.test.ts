@@ -112,6 +112,7 @@ describe("assertBridgeInjectionPlugin (#993 phase 2)", () => {
       `<head>${SDPI}\n    ${tag("pi-settings-bridge.js")}</head>`,
       `<head>${tag("pi-settings-bridge.js")}\n    ${SDPI}\n${tag("ulanzi-pi-bridge.js")}</head>`,
     ];
+
     for (const html of cases) {
       const dir = tmpDir();
       writeFileSync(path.join(dir, "car-control.html"), html);
@@ -124,7 +125,10 @@ describe("assertBridgeInjectionPlugin (#993 phase 2)", () => {
   it("accepts any whitespace between the bridge tag and the sdpi tag (indentation is not part of the contract)", () => {
     for (const between of ["", " ", "\n", "\n\t\t", "\r\n        "]) {
       const dir = tmpDir();
-      writeFileSync(path.join(dir, "car-control.html"), `<head>${tag("pi-settings-bridge.js")}${between}${SDPI}</head>`);
+      writeFileSync(
+        path.join(dir, "car-control.html"),
+        `<head>${tag("pi-settings-bridge.js")}${between}${SDPI}</head>`,
+      );
 
       expect(() =>
         assertBridgeInjectionPlugin({ outputDir: dir, expectedBridge: expected }).closeBundle.call({}),

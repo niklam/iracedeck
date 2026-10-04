@@ -3,7 +3,8 @@ node_modules/
 
 # Build outputs
 dist/
-build/
+# node-gyp's build/ roots come from .gitignore, which prettier also reads: a bare
+# `build/` here hid the source under packages/*/src/build/ (#1125).
 *.tsbuildinfo
 bin/
 

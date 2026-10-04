@@ -2,10 +2,9 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import url from "node:url";
-
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-import { ACTIONS_DIR, actionPropertyInspectors } from "./action-templates.js";
+import { actionPropertyInspectors, ACTIONS_DIR } from "./action-templates.js";
 import { piTemplatePlugin } from "./pi-template-plugin.mjs";
 
 /**
@@ -47,7 +46,6 @@ const EXTENDED_SLOTS = ["dial.longPressAction", "dial.tapAction", "dial.longTouc
 /** Wording that names a gesture or a surface a knob does not have (`touch` covers the strip, the "touch display" and Long Touch). */
 const EXTENDED_WORDING = /push \+ turn|push\+turn|press and turn|long[- ]press|\btouch|Tap Display/i;
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyFunction = (...args: any[]) => any;
 
 /** Compile every action template with the given flag value; returns `name → html` for the dial ones. */
@@ -70,7 +68,9 @@ async function compileDialPIs(outputDir: string, dialExtendedGestures: boolean):
 
   await (plugin.generateBundle as AnyFunction).call(context);
 
-  return new Map([...DIAL_TEMPLATES].map((name) => [name, readFileSync(path.join(outputDir, `${name}.html`), "utf-8")]));
+  return new Map(
+    [...DIAL_TEMPLATES].map((name) => [name, readFileSync(path.join(outputDir, `${name}.html`), "utf-8")]),
+  );
 }
 
 /**
@@ -131,7 +131,8 @@ describe("dial Property Inspectors on a knob (#1013)", () => {
       // sdpi write the slot. An attribute (`setting=` / `mode-setting=`), not a
       // CSS selector string in the page script (`sdpi-select[setting=…]`), which
       // binds nothing and simply matches no element.
-      for (const slot of EXTENDED_SLOTS) expect(html, slot).not.toMatch(new RegExp(`[\\s-]setting="${slot.replace(".", "\\.")}"`));
+      for (const slot of EXTENDED_SLOTS)
+        expect(html, slot).not.toMatch(new RegExp(`[\\s-]setting="${slot.replace(".", "\\.")}"`));
     });
 
     it.each(dialNames)("%s: keeps the rotation settings or the Press slot", (name) => {

@@ -1,9 +1,8 @@
+import ejs from "ejs";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import url from "node:url";
-
-import ejs from "ejs";
 import { describe, expect, it } from "vitest";
 
 /**
@@ -82,6 +81,7 @@ describe("global-common-* group partials", () => {
       const html = render(`<%- include('${partial}') %>`);
 
       expect(html, partial).not.toContain("<details");
+
       for (const key of keys) expect(html, `${partial} → ${key}`).toContain(`setting="${key}"`);
     }
   });
@@ -152,6 +152,7 @@ describe("race-engineer partials", () => {
     ]) {
       expect(html, key).toContain(`setting="${key}"`);
     }
+
     expect(html).not.toContain("<details");
   });
 
@@ -182,7 +183,9 @@ describe("race-engineer partials", () => {
 
     // The help line names the level control so nobody hunts for a third slider.
     const afterFrame = html.slice(frame, radar);
-    expect(afterFrame).toMatch(/<div class="ird-supporting-text">\s*Background Volume sets the level of both\.\s*<\/div>/);
+    expect(afterFrame).toMatch(
+      /<div class="ird-supporting-text">\s*Background Volume sets the level of both\.\s*<\/div>/,
+    );
   });
 
   it("race-engineer-callouts emits the per-callout opt-ins", () => {
