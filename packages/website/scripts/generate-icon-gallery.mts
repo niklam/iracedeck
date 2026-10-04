@@ -30,7 +30,7 @@ import { renderBlackBoxStrip } from "../../iracing-actions/src/actions/black-box
 import { renderCarCarousel } from "../../iracing-actions/src/actions/camera-controls/camera-dial-surface.ts";
 import { renderStripCanvasSvg } from "../../iracing-actions/src/actions/fuel-service/fuel-dial-surface.ts";
 import { statusBarOn } from "../../iracing-actions/src/icons/status-bar.ts";
-import { resolveDialBoxColors } from "../../iracing-actions/src/shared/dial-box.ts";
+import { type DialSideMarker, resolveDialBoxColors } from "../../iracing-actions/src/shared/dial-box.ts";
 import { renderStripBox } from "../../iracing-actions/src/shared/dial-strip-box.ts";
 import {
   DYNAMIC_SAMPLE_DATA,
@@ -141,6 +141,8 @@ interface DialBoxSampleSpec {
   value: string;
   /** Only meaningful for identity-only specs (`value: ""`) — see `renderDialBox`'s `identityLabelScale`. */
   identityLabelScale?: number;
+  /** The side triangles beside the label, as the surface passes them — see `renderDialBox`'s `sideMarker`. */
+  sideMarker?: DialSideMarker;
 }
 
 const SETUP_DIAL_SAMPLES: DialBoxSampleSpec[] = [
@@ -155,7 +157,8 @@ const SETUP_DIAL_SAMPLES: DialBoxSampleSpec[] = [
 
 /**
  * Sample abbreviation/accent/value for five of the seven newly merged
- * (#802–#807) dial surfaces that ALSO render through the shared
+ * (#802–#807) dial surfaces, plus Replay Markers (#1230), that ALSO render
+ * through the shared
  * `renderDialBox` — same unexported-per-surface-map convention as
  * `SETUP_DIAL_SAMPLES` above (each surface owns its own `MODE_ABBR`/
  * `MODE_COLOR`, so these are read off the source directly). The other two new
@@ -183,6 +186,10 @@ const SETUP_DIAL_SAMPLES: DialBoxSampleSpec[] = [
  *     rotation behavior) -> IDENTITY_ABBR "DELTA", ACCENT_COLOR "#9b59b6";
  *     identity-only (the surface never subscribes to telemetry), default
  *     scale 0.24 (renderFeedback omits identityLabelScale).
+ *   - replay-markers-dial-surface.ts (#1230): no `dial.setting` (rotation
+ *     always walks the markers) -> DIAL_LABEL "MARKERS", DIAL_ACCENT
+ *     "#3498db"; value-bearing (`k / N` while marker k plays in a replay), with
+ *     both side marks lit where a turn either way would jump.
  */
 const DIAL_BOX_SAMPLES: DialBoxSampleSpec[] = [
   { key: "force-feedback", abbr: "FFB", accent: "#4fc3f7", value: "46.4 Nm" },
@@ -190,6 +197,13 @@ const DIAL_BOX_SAMPLES: DialBoxSampleSpec[] = [
   { key: "cockpit-misc", abbr: "DASH 1", accent: "#3498db", value: "2" },
   { key: "view-adjustment", abbr: "FOV", accent: "#3498db", value: "", identityLabelScale: 0.24 },
   { key: "splits-delta-cycle", abbr: "DELTA", accent: "#9b59b6", value: "", identityLabelScale: 0.24 },
+  {
+    key: "replay-markers",
+    abbr: "MARKERS",
+    accent: "#3498db",
+    value: "2 / 5",
+    sideMarker: { left: true, right: true },
+  },
 ];
 
 function repoRel(p: string): string {
@@ -474,7 +488,8 @@ for (const dirent of readdirSync(ACTIONS_ROOT, { withFileTypes: true })) {
 }
 
 // 6. Dial touch-strip dash-box samples — one per Setup dial surface plus five
-// of the seven post-merge (#802–#807) dial surfaces (all twelve render
+// of the seven post-merge (#802–#807) dial surfaces and Replay Markers (all
+// thirteen render
 // through the shared strip renderer, renderStripBox), plus one representative frame each for
 // the Fuel Service, Audio Controls, Camera Controls (camera-focus-dash), and
 // Black Box Selector dial surfaces, which draw their own custom pixmaps but
@@ -492,6 +507,7 @@ for (const spec of [...SETUP_DIAL_SAMPLES, ...DIAL_BOX_SAMPLES]) {
         value: spec.value,
         colors: resolveDialBoxColors(undefined, spec.accent),
         ...(spec.identityLabelScale !== undefined ? { identityLabelScale: spec.identityLabelScale } : {}),
+        ...(spec.sideMarker !== undefined ? { sideMarker: spec.sideMarker } : {}),
       }),
     ),
     200,
