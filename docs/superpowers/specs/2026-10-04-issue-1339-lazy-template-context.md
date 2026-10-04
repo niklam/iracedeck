@@ -38,7 +38,7 @@ There is no flatten. The lookup walks the source object for that one path and fo
 
 ### 4. Session-info-derived parts survive across frames
 
-The SDK already tracks when iRacing publishes new session info. The `track` namespace and the driver list are memoised on that session-info version, so a frame-to-frame rebuild with unchanged session info reuses them. `sessionInfo.*` needs no memo, because a path walk costs no more than a lookup. The telemetry-derived namespaces (`self` and the neighbours, `session`'s clock fields) are recomputed per context instance as today, because their inputs change every frame.
+The SDK already tracks when iRacing publishes new session info: `IRacingSDK.getSessionInfo()` returns the same parsed object until `SessionInfoUpdate` changes, and a new one after. The `track` namespace and the driver list are therefore memoised on the identity of that object, which is the session-info version without a new API, and which also covers a context built from plain data (tests, the press-time builds). A frame-to-frame rebuild with unchanged session info reuses them. `sessionInfo.*` needs no memo, because a path walk costs no more than a lookup. The telemetry-derived namespaces (`self` and the neighbours, `session`'s clock fields) are recomputed per context instance as today, because their inputs change every frame.
 
 ### 5. Telemetry Display resolves inside its throttle
 
