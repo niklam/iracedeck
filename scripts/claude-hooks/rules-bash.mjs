@@ -75,9 +75,8 @@ const specExistsFor = (files, issue) => files.some((f) => new RegExp(`-issue-${i
 
 /** The pieces of a chained shell command: split at `&&`, `||`, `;`, `|` and newlines. */
 export function segments(command) {
-  return command
-    .split(/\n|&&|\|\||;|\|/)
-    .map((s) => s.trim())
+  return splitAt(command, /\n|&&|\|\||;|\|/)
+    .map(([a, b]) => command.slice(a, b).trim())
     .filter(Boolean);
 }
 
@@ -98,8 +97,10 @@ const argOf = (m) => m?.[2] ?? m?.[3] ?? m?.[4];
  * `cd ../ir-1143 && git push` used to ask with "branch master".
  */
 export function gitCwd(command, cwd, re) {
-  const segs = segments(command);
-  const at = re ? segs.findIndex((s) => re.test(s)) : -1;
+  const ranges = splitAt(command, /\n|&&|\|\||;|\|/).filter(([a, b]) => command.slice(a, b).trim());
+  const segs = ranges.map(([a, b]) => command.slice(a, b).trim());
+  const masked = maskInert(command);
+  const at = re ? ranges.findIndex(([a, b]) => re.test(masked.slice(a, b).trim())) : -1;
   const scope = at >= 0 ? segs[at] : command;
   let base = cwd;
   for (const s of segs.slice(0, at >= 0 ? at : segs.length)) {
@@ -115,7 +116,147 @@ export function words(command) {
   return [...command.matchAll(/"([^"]*)"|'([^']*)'|(\S+)/g)].map((m) => m[1] ?? m[2] ?? m[3]);
 }
 
-const has = (command, re) => re.test(command);
+/**
+ * The command with its INERT text masked (#1321): every character the shell
+ * passes along as data rather than running is replaced by `_`, keeping the
+ * string's length so positions still line up with the raw text. Inert are
+ * single-quoted strings, double-quoted text except its `$(…)` and backtick
+ * substitutions (those run), a `#` comment, and heredoc bodies — all of a
+ * quoted-delimiter body, and an unquoted one except its substitutions.
+ * Anchored rules test this, so a `|`, `;` or line start inside a grep pattern,
+ * a commit message or a PR comment body is not a command boundary.
+ *
+ * A heuristic like the anchor it serves: `$'…'`, nested quotes inside a
+ * substitution and other rarities are read approximately.
+ */
+export function maskInert(command) {
+  if (command === maskInert.last) return maskInert.lastOut;
+  const s = command;
+  const n = s.length;
+  const out = s.split("");
+  const blank = (a, b) => {
+    for (let k = a; k < Math.min(b, n); k++) out[k] = "_";
+  };
+  // The index just past the `)` closing the `(` at `open`, or `limit`.
+  const closeParen = (open, limit) => {
+    let depth = 0;
+    for (let k = open; k < limit; k++) {
+      if (s[k] === "\\") k++;
+      else if (s[k] === "'") k = Math.max(k, s.indexOf("'", k + 1) < 0 ? limit : s.indexOf("'", k + 1));
+      else if (s[k] === "(") depth++;
+      else if (s[k] === ")" && --depth === 0) return k + 1;
+    }
+    return limit;
+  };
+  // Mask [a, b) except the substitutions inside it, which run.
+  const maskExpanding = (a, b) => {
+    let k = a;
+    while (k < b) {
+      if (s[k] === "\\") {
+        blank(k, k + 2);
+        k += 2;
+      } else if (s[k] === "$" && s[k + 1] === "(") k = closeParen(k + 1, b);
+      else if (s[k] === "`") {
+        const end = s.indexOf("`", k + 1);
+        k = end < 0 || end >= b ? b : end + 1;
+      } else out[k++] = "_";
+    }
+  };
+  // The index of the `"` closing a double-quoted string opened before `from`.
+  const closeDouble = (from) => {
+    let k = from;
+    while (k < n) {
+      if (s[k] === "\\") k += 2;
+      else if (s[k] === "$" && s[k + 1] === "(") k = closeParen(k + 1, n);
+      else if (s[k] === "`") k = s.indexOf("`", k + 1) < 0 ? n : s.indexOf("`", k + 1) + 1;
+      else if (s[k] === '"') return k;
+      else k++;
+    }
+    return n;
+  };
+  const pending = [];
+  // Mask the pending heredoc bodies that start at `start`; returns where the command resumes.
+  const consumeHeredocs = (start) => {
+    let at = start;
+    for (const { delim, quoted, strip } of pending) {
+      let p = at;
+      let end = -1;
+      while (p <= n) {
+        const eol = s.indexOf("\n", p) < 0 ? n : s.indexOf("\n", p);
+        const line = s.slice(p, eol).replace(/\r$/, "");
+        if ((strip ? line.replace(/^\t+/, "") : line) === delim) {
+          end = p;
+          if (quoted) blank(at, end);
+          else maskExpanding(at, end);
+          at = eol + 1;
+          break;
+        }
+        if (eol >= n) break;
+        p = eol + 1;
+      }
+      if (end < 0) {
+        if (quoted) blank(at, n);
+        else maskExpanding(at, n);
+        at = n;
+      }
+    }
+    pending.length = 0;
+    return at;
+  };
+  let i = 0;
+  while (i < n) {
+    const ch = s[i];
+    if (ch === "\\") i += 2;
+    else if (ch === "'") {
+      const end = s.indexOf("'", i + 1) < 0 ? n : s.indexOf("'", i + 1);
+      blank(i + 1, end);
+      i = end + 1;
+    } else if (ch === '"') {
+      const end = closeDouble(i + 1);
+      maskExpanding(i + 1, end);
+      i = end + 1;
+    } else if (ch === "#" && (i === 0 || /\s/.test(s[i - 1]))) {
+      const end = s.indexOf("\n", i) < 0 ? n : s.indexOf("\n", i);
+      blank(i, end);
+      i = end;
+    } else if (ch === "<" && s[i + 1] === "<" && s[i + 2] !== "<") {
+      const m = /^<<(-?)\s*(?:'([^'\n]+)'|"([^"\n]+)"|\\?([\w.-]+))/.exec(s.slice(i));
+      if (m) {
+        pending.push({
+          delim: m[2] ?? m[3] ?? m[4],
+          quoted: m[2] !== undefined || m[3] !== undefined,
+          strip: m[1] === "-",
+        });
+        i += m[0].length;
+      } else i += 2;
+    } else if (ch === "\n" && pending.length) i = consumeHeredocs(i + 1);
+    else i++;
+  }
+  maskInert.last = command;
+  maskInert.lastOut = out.join("");
+  return maskInert.lastOut;
+}
+
+/** `[start, end)` ranges of `command` between the separators `sep` finds in its MASKED text. */
+export function splitAt(command, sep) {
+  const masked = maskInert(command);
+  const global = new RegExp(sep.source, sep.flags.includes("g") ? sep.flags : sep.flags + "g");
+  const ranges = [];
+  let start = 0;
+  for (const m of masked.matchAll(global)) {
+    ranges.push([start, m.index]);
+    start = m.index + m[0].length;
+  }
+  ranges.push([start, command.length]);
+  return ranges;
+}
+
+/** Whether `re` matches at command position in `command`, its inert text masked (#1321). */
+export function atCommand(command, re) {
+  return (re.anchored ? re : cmd(re)).test(maskInert(command));
+}
+
+const has = (command, re) => re.test(re.anchored ? maskInert(command) : command);
 
 /**
  * What may stand between a command boundary and the command itself and still
@@ -142,7 +283,10 @@ const COMMAND_LEAD = String.raw`(?:(?:if|then|do|else|elif|while|until|!|\{)\s+|
  */
 export function cmd(re) {
   const flags = new Set([...re.flags, "m"]);
-  return new RegExp(String.raw`(?:^|[|;&(]\s*|\$\(\s*)${COMMAND_LEAD}(?:${re.source})`, [...flags].join(""));
+  const anchored = new RegExp(String.raw`(?:^|[|;&(]\s*|\$\(\s*)${COMMAND_LEAD}(?:${re.source})`, [...flags].join(""));
+  // Read by `has` and `atCommand`: an anchored regex is tested on the masked text.
+  anchored.anchored = true;
+  return anchored;
 }
 
 // ---------------------------------------------------------------------------
@@ -185,11 +329,18 @@ const MERGE_VALUE_FLAGS = new Set([
 /** The segments of a chained command that are a `gh pr merge` (split at `&&`, `||`, `;`, `|`, `&`, newline). */
 export function mergeSegments(command) {
   const lead = new RegExp(String.raw`^[\s($]*${COMMAND_LEAD}gh\s+pr\s+merge\b`);
-  return command.split(/&&|\|\||[;|&\n]/).filter((seg) => lead.test(seg));
+  const masked = maskInert(command);
+  return splitAt(command, /&&|\|\||[;|&\n]/)
+    .filter(([a, b]) => lead.test(masked.slice(a, b)))
+    .map(([a, b]) => command.slice(a, b));
 }
 
-/** Every `gh pr merge` anywhere in the string — the backstop for a separator the split does not know. */
-const mergeMentions = (command) => (command.match(/\bgh\s+pr\s+merge\b/g) ?? []).length;
+/**
+ * Every `gh pr merge` outside inert text — the backstop for a separator the
+ * split does not know. Inert text is masked, so a merge named in a body, a
+ * comment or a heredoc does not count (#1321).
+ */
+const mergeMentions = (command) => (maskInert(command).match(/\bgh\s+pr\s+merge\b/g) ?? []).length;
 
 /**
  * One `gh pr merge` segment's own arguments: the PR ref, the boolean flags and

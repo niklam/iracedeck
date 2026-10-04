@@ -1,7 +1,7 @@
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { checkBash, classifyCheck, cmd, gitCwd, words } from "./rules-bash.mjs";
+import { atCommand, checkBash, classifyCheck, cmd, gitCwd, maskInert, segments, words } from "./rules-bash.mjs";
 
 // Built through `path`, not written as Windows literals: CI runs on Linux, where
 // `C:\repo\master` is a RELATIVE path and every resolve lands under the runner's cwd.
@@ -918,5 +918,56 @@ describe("command-shape traps", () => {
   it("two-dot diff against master", () => {
     deny("git diff origin/master..HEAD --stat");
     passes("git diff origin/master...HEAD --stat");
+  });
+});
+
+// #1321: a trapped shape fires where the shell RUNS it, never where a command
+// merely carries it as data — every case below is one that misfired on 2026-10-03.
+describe("a mention is not a command (#1321)", () => {
+  it("masks inert text without moving anything", () => {
+    const command = `grep -n 'a | b' f && echo "x; $(date) y" # tail`;
+    const masked = maskInert(command);
+    expect(masked).toHaveLength(command.length);
+    expect(masked).toBe(`grep -n '_____' f && echo "___$(date)__" ______`);
+  });
+
+  it("masks a quoted-delimiter heredoc body whole, and keeps an unquoted one's substitutions", () => {
+    expect(maskInert("cat <<'EOF'\nrun $(x)\nEOF\nls")).toBe("cat <<'EOF'\n_________EOF\nls");
+    expect(maskInert("cat <<EOF\nrun $(x)\nEOF\nls")).toBe("cat <<EOF\n____$(x)_EOF\nls");
+    expect(maskInert("cat <<-EOF\n\tbody\n\tEOF\nls")).toBe("cat <<-EOF\n______\tEOF\nls");
+  });
+
+  it("splits a chain where the shell splits it, not at a separator inside quotes", () =>
+    expect(segments(`echo 'a;b' && git status`)).toEqual(["echo 'a;b'", "git status"]));
+
+  it("lets the day's false triggers through", () => {
+    for (const command of [
+      'grep -n "a\\|gh pr merge` | deny" .claude/rules/hooks.md',
+      `git commit -q -F - <<'EOF'\nfix: x (#1)\n\nso \`gh pr merge 7 … & gh pr\nmerge 8 --admin\` read as one\nEOF`,
+      `gh pr comment 1313 --body "two merges joined by & gh pr merge 8 --squash --admin"`,
+      `python - <<'EOF'\nprint("pnpm exec vitest run")\nEOF`,
+      `grep -rn "gh pr merge" scripts`,
+    ])
+      passes(command);
+  });
+
+  it("still catches a real command in every position", () => {
+    for (const command of [
+      "ls; gh pr merge 7 --squash",
+      "ls && gh pr merge 7 --squash",
+      `echo "$(gh pr merge 7 --squash)"`,
+      "cat <<EOF\n$(gh pr merge 7 --squash)\nEOF",
+      "echo 'quoted' && gh pr merge 7 --squash",
+    ])
+      // A merge inside a substitution mid-command is caught but cannot be isolated;
+      // either way it is refused.
+      expect(deny(command)).toMatch(/refusing to merge blind|Could not isolate/);
+    deny(`echo "done" && pnpm exec vitest run`);
+  });
+
+  it("atCommand anchors a plain regex and masks inert text", () => {
+    expect(atCommand("ls && sed -i s/a/b/ f", /sed\s+-i/)).toBe(true);
+    expect(atCommand(`echo "sed -i s/a/b/ f"`, /sed\s+-i/)).toBe(false);
+    expect(atCommand("grep 'gh issue create' f", /gh\s+issue\s+create\b/)).toBe(false);
   });
 });
