@@ -271,6 +271,11 @@ export function maskInert(command) {
         continue;
       }
       let sub = -1;
+      // A `case` list's pattern `)` reads here as a closer — of a substitution
+      // it ends early, and inside `"$(…)"` the rest is then blanked as data with
+      // the lex still "sure" (#1328 review). The lexer does not model case lists,
+      // so meeting one at any depth means the mask cannot be trusted.
+      if (atWord && /^case(?![\w-])/.test(s.slice(i, i + 5))) sure = false;
       if (atWord && ch === "#") {
         // To the end of the line — or of a backtick substitution, whose text bash cuts out first.
         let end = s.indexOf("\n", i);

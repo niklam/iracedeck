@@ -1188,6 +1188,9 @@ describe("the mask fails closed (#1321 review)", () => {
   it("finding 7: an indented line, a backtick and a case arm are command positions", () => {
     merges([
       `if gh pr checks 7; then\n  echo green\n  gh pr merge 7 --squash\nfi`,
+      // #1328 review: a case pattern's `)` inside a quoted substitution.
+      `x="$(case $y in a) gh pr merge 7 --squash;; esac)"`,
+      `cat <<EOF\n$(case $y in a) gh pr merge 7 --squash;; esac)\nEOF`,
       "x=`gh pr merge 7 --squash`",
       "echo `gh pr merge 7 --squash`",
       `case x in *) gh pr merge 7 --squash ;; esac`,
