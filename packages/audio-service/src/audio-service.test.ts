@@ -28,6 +28,7 @@ function createMockNative(): AudioNative {
     startAudioEngine: vi.fn(() => true),
     stopAudioEngine: vi.fn(() => true),
     setSessionIdentity: vi.fn(() => true),
+    setDeviceReroutedCallback: vi.fn<(callback: (() => void) | null) => void>(),
   } as unknown as AudioNative;
 }
 
@@ -857,6 +858,84 @@ describe("AudioService", () => {
 
       expect(getAudio().init()).toBe(true);
       expect(mockLogger.warn).toHaveBeenCalledWith(expect.stringContaining("session identity"));
+    });
+  });
+
+  describe("device reroute log line (#1330)", () => {
+    /** The callback the service last handed to the native layer. */
+    function registeredRerouteCallback(native: AudioNative): () => void {
+      const calls = vi.mocked(native.setDeviceReroutedCallback).mock.calls;
+      const callback = calls.at(-1)?.[0];
+
+      if (!callback) throw new Error("no device-rerouted callback was registered");
+
+      return callback;
+    }
+
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    it("logs one info line, with no parameters, per reroute", () => {
+      const native = createMockNative();
+      initializeAudio(mockLogger as never, native, []);
+      getAudio().init();
+      vi.mocked(mockLogger.info).mockClear();
+
+      registeredRerouteCallback(native)();
+
+      expect(mockLogger.info).toHaveBeenCalledTimes(1);
+      expect(mockLogger.info).toHaveBeenCalledWith("Audio device rerouted");
+    });
+
+    it("registers whether or not a session identity is given", () => {
+      const native = createMockNative();
+      initializeAudio(mockLogger as never, native, []);
+      getAudio().init();
+
+      expect(native.setSessionIdentity).not.toHaveBeenCalled();
+      expect(native.setDeviceReroutedCallback).toHaveBeenCalledTimes(1);
+    });
+
+    it("touches nothing native from the constructor — init() registers it, before the engine exists", () => {
+      const native = createMockNative();
+      initializeAudio(mockLogger as never, native, []);
+
+      expect(native.setDeviceReroutedCallback).not.toHaveBeenCalled();
+
+      getAudio().init();
+
+      expect(vi.mocked(native.setDeviceReroutedCallback).mock.invocationCallOrder[0]).toBeLessThan(
+        vi.mocked(native.initAudioEngine).mock.invocationCallOrder[0],
+      );
+    });
+
+    it("registers once however often init() is called while the engine is ready", () => {
+      const native = createMockNative();
+      initializeAudio(mockLogger as never, native, []);
+      getAudio().init();
+      getAudio().init();
+
+      expect(native.setDeviceReroutedCallback).toHaveBeenCalledTimes(1);
+    });
+
+    it("registers again on the init() after a destroy(), which clears it natively", () => {
+      const native = createMockNative();
+      initializeAudio(mockLogger as never, native, []);
+      getAudio().init();
+      getAudio().destroy();
+      getAudio().init();
+
+      expect(native.setDeviceReroutedCallback).toHaveBeenCalledTimes(2);
+      expect(vi.mocked(native.setDeviceReroutedCallback).mock.invocationCallOrder[1]).toBeGreaterThan(
+        vi.mocked(native.destroyAudioEngine).mock.invocationCallOrder[0],
+      );
+
+      vi.mocked(mockLogger.info).mockClear();
+      registeredRerouteCallback(native)();
+
+      expect(mockLogger.info).toHaveBeenCalledTimes(1);
+      expect(mockLogger.info).toHaveBeenCalledWith("Audio device rerouted");
     });
   });
 
