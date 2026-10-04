@@ -173,7 +173,7 @@ import streamDeck from "@elgato/streamdeck";
 import { AudioNative } from "@iracedeck/audio-native";
 import { getAudio, initializeAudio } from "@iracedeck/audio-service";
 import { MY_ACTION_UUID, MyAction } from "@iracedeck/iracing-actions";
-import { ElgatoPlatformAdapter } from "@iracedeck/deck-adapter-elgato";
+import { ElgatoPlatformAdapter, elgatoPluginLogFile } from "@iracedeck/deck-adapter-elgato";
 import {
   createFileSettingsStore,
   createSettingsFileRejectionReporter,
@@ -213,12 +213,15 @@ const adapter = new ElgatoPlatformAdapter(streamDeck);
 //    setting opts into verbose debug at runtime (see @.claude/rules/logging.md)
 streamDeck.logger.setLevel("info");
 
-// 2b. Start the main-thread watchdog once logging is up (#1330). Its worker
-//     appends stall reports straight to the host's log file, so the target
-//     must be the file the host logger writes (see @.claude/rules/logging.md)
+// 2b. Right after the debug-logging toggle, start the main-thread watchdog
+//     (#1330). Its worker appends stall reports straight to the host's log
+//     file, so the target is the file the host logger writes: Elgato's
+//     `elgatoPluginLogFile()` (<cwd>/logs/<plugin UUID>.0.log); Mirabox and
+//     Ulanzi pass { kind: "daily", dir: logDir }, the directory their adapter's
+//     FileSink writes (see @.claude/rules/logging.md)
 startMainThreadWatchdog({
   logger: adapter.createLogger("MainThreadWatchdog"),
-  target: { kind: "file", path: join(process.cwd(), "logs", `${pluginUuid}.0.log`) },
+  target: { kind: "file", path: elgatoPluginLogFile() },
 });
 
 // 3. Initialize SDK singleton (must come before sim-events-iracing)
