@@ -3,7 +3,9 @@ node_modules/
 
 # Build outputs
 dist/
-build/
+# node-gyp output only, mirroring .gitignore; packages/*/src/build/ is source (#1125)
+/build/
+/packages/*/build/
 *.tsbuildinfo
 bin/
 
