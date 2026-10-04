@@ -171,6 +171,7 @@ import {
   setWarning,
   shouldOpenChangelog,
   spawnAppWindow,
+  startMainThreadWatchdog,
   updateGlobalSettings,
   validateSetupWarningPatterns,
   VERSION_CHECK_STARTUP_GRACE_MS,
@@ -298,7 +299,7 @@ import {
   sanitizeOpponentFlagRangeSeconds,
 } from "@iracedeck/sim-events-iracing";
 import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // Load build-time config (version, platform)
@@ -320,6 +321,17 @@ const applyDebugLogging = (settings: ReturnType<typeof getGlobalSettings>): void
 };
 onGlobalSettingsChange(applyDebugLogging);
 applyDebugLogging(getGlobalSettings());
+
+// Watch the main thread for the rest of the run (#1330). A freeze blocks every
+// logger on this thread, so the watchdog's worker appends its report straight
+// to the file the SDK's logger writes: `@elgato/streamdeck` names it after the
+// plugin UUID, which it reads from the `<uuid>.sdPlugin` working directory,
+// and always writes index 0 (older files are renamed away from it).
+const elgatoPluginUuid = basename(process.cwd()).replace(/\.sdPlugin$/, "");
+startMainThreadWatchdog({
+  logger: adapter.createLogger("MainThreadWatchdog"),
+  target: { kind: "file", path: join(process.cwd(), "logs", `${elgatoPluginUuid}.0.log`) },
+});
 
 // Banner a broken setup-warning regex pattern (issue #625). Validating on every
 // settings change gives immediate PI feedback when a user types an invalid
