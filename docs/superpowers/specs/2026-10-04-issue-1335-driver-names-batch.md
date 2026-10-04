@@ -10,7 +10,7 @@ The standing Discord thread "[Race Engineer] Add your name" collects first names
 
 ## What ships
 
-Eleven new names, Matthias, Brandon, Zoltán, Robin, Manfred, Liam, Ade, Chip, Elias, Andris and Yeray, with one entry in each of the five per-name groups (`names`, `session-start-greeting`, `race-start-greeting`, `race-end-greeting`, `position-overtake-come-on`). They go into both `configs/default.voice.json` and `configs/shawn.voice.json`: 110 entries and 110 clips, following the exact text pattern of the existing entries.
+Twelve new names, Matthias, Brandon, Zoltán, Robin, Manfred, Liam, Ade, Chip, Elias, Andris and Yeray from the thread, plus Jimmy added by the maintainer, with one entry in each of the five per-name groups (`names`, `session-start-greeting`, `race-start-greeting`, `race-end-greeting`, `position-overtake-come-on`). They go into both `configs/default.voice.json` and `configs/shawn.voice.json`: 120 entries and 120 clips, following the exact text pattern of the existing entries.
 
 ## Decisions
 
@@ -24,7 +24,7 @@ Before filing, every new name was checked against the 97 existing names and agai
 
 ### 3. Terse copies Default's takes rather than generating its own
 
-Both voices use the same ElevenLabs voice, model and voice settings, and the five name groups have the same text in both, so a Terse name entry's generation hash is identical to Default's. The existing Terse name clips were nevertheless generated as separate requests when #999 shipped. This batch generates Default only and copies each approved clip, with its `generate.manifest.json` row, to `voice/shawn/…`, as `packages/audio-assets/CLAUDE.md` allows for an entry that is verbatim Default's. The reasons: one paid request per line instead of two, one audition instead of two, and the same take for a name in both packs, so a user who switches packs is not greeted by a different-sounding version of their own name. The Terse dry run then reports all 55 entries as cache hits, which is the proof that the copies are in place.
+Both voices use the same ElevenLabs voice, model and voice settings, and the five name groups have the same text in both, so a Terse name entry's generation hash is identical to Default's. The existing Terse name clips were nevertheless generated as separate requests when #999 shipped. This batch generates Default only and copies each approved clip, with its `generate.manifest.json` row, to `voice/shawn/…`, as `packages/audio-assets/CLAUDE.md` allows for an entry that is verbatim Default's. The reasons: one paid request per line instead of two, one audition instead of two, and the same take for a name in both packs, so a user who switches packs is not greeted by a different-sounding version of their own name. The Terse dry run then reports all 60 entries as cache hits, which is the proof that the copies are in place.
 
 ### 4. Slugs are ASCII; display text keeps diacritics
 
@@ -48,7 +48,7 @@ Default `1.1.2` and Terse `1.0.1` have not been published (the latest releases a
 
 ## Testing
 
-- The Default dry run over the five groups reports exactly the 55 new entries as "WOULD GENERATE" before any paid generation. After copying, the Terse dry run reports all 55 as cache hits and generates nothing.
-- The maintainer auditions all 55 Default takes, listening most carefully to Zoltán, Yeray, Matthias and Ade, whose spoken form an English TTS voice may not match. Matthias and Ade were re-cut after the first audition (decision 5).
+- The Default dry run over the five groups reports exactly the new entries as "WOULD GENERATE" before any paid generation. After copying, the Terse dry run reports all of them as cache hits and generates nothing.
+- The maintainer auditions all 60 Default takes, listening most carefully to Zoltán, Yeray, Matthias and Ade, whose spoken form an English TTS voice may not match. Matthias and Ade were re-cut after the first audition (decision 5).
 - `pnpm test` covers the script-coverage test for both voices and the pack-reference freshness test. `pack:voice` for both packs must succeed and regenerate their catalog entries.
 - Manually, the new names appear in the Your Name dropdown with each pack selected, and a greeting plays with one of them.
