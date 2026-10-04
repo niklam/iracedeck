@@ -123,7 +123,7 @@ Files are named `telemetry-snapshot-YYYYMMDD-HHMMSS-mmm.json` and `.md` — loca
 
 Record 30 seconds of what iRaceDeck itself is doing, for a report about high CPU use, without leaving the car. It is the same capture as **Capture CPU profile** on the [Settings window's Diagnostics tab](/docs/getting-started/settings/#diagnostics), from a key: useful in a race that cannot be paused, when opening the Settings window is not an option.
 
-While the capture runs, the key counts down the seconds left. When the files are saved it shows **SAVED** for 3 seconds, or **FAILED** if the capture could not be saved (the reason is in the plugin log), then its normal icon again. Only one capture runs at a time: a press while one is running, whether it was started from a key or from the Settings window, is ignored, and every Capture CPU Profile key shows the running capture's countdown.
+While the capture runs, the key counts down the seconds left. When the files are saved it shows **SAVED** for 3 seconds, or **FAILED** if the capture fails, whether it could not start or its files could not be saved (the reason is in the plugin log), then its normal icon again. Only one capture runs at a time: a press while one is running, whether it was started from a key or from the Settings window, is ignored, and every Capture CPU Profile key shows the running capture's countdown.
 
 The capture writes two files to the `profiles` folder next to the plugin log, a `.cpuprofile` and a `.txt` summary, and keeps the five newest captures. Open the folder with **Open folder** beside Capture CPU profile on the Diagnostics tab, then attach both files to your report. See [If iRaceDeck uses a lot of CPU](/docs/getting-started/troubleshooting/#if-iracedeck-uses-a-lot-of-cpu).
 
