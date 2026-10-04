@@ -862,6 +862,14 @@ export {
 } from "./settings-window-warning-reporter.js";
 // Reveal the settings file in Explorer (issue #993)
 export { explorerSelectArgs, openDirectoryInExplorer, openFolderInExplorer } from "./open-folder.js";
+// Main-thread watchdog: a worker that reports a blocked main thread into the host's log (issue #1330)
+export {
+  type MainThreadWatchdog,
+  type MainThreadWatchdogOptions,
+  startMainThreadWatchdog,
+  WATCHDOG_DEFAULTS,
+  type WatchdogLogTarget,
+} from "./main-thread-watchdog.js";
 // Settings-channel publisher: store write + the one host mirror per start (issue #993 phase 2)
 export {
   createSettingsChannelPublisher,
