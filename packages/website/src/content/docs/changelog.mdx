@@ -22,6 +22,7 @@ _Unreleased_
 
 - The **Default (Terse)** voice is now called **Default (Short callouts)**, a name that says what you get without needing the word "terse". Only the name changes: if it is your selected voice it stays selected, and an installed copy picks up the new name when it updates itself at the next plugin start. See [Race Engineer Voices](/docs/features/race-engineer-voices/#default-short-callouts).
 - Installing or updating a voice pack no longer loads the whole download into memory, so an install stays light on a running plugin whatever the pack's size, and voice packs of up to 2 GB can now be installed. See [Race Engineer Voices](/docs/features/race-engineer-voices/).
+- Keys showing live values, such as **Telemetry Display**, **Chat** and key titles with `{{…}}`, now use much less CPU and memory, most noticeably in a large field. iRaceDeck now reads only the values your keys show, instead of preparing every driver, telemetry and session value on each update. See [Telemetry Display](/docs/actions/display-session/telemetry-display/).
 
 **Bug Fixes**
 
