@@ -90,6 +90,14 @@ export interface ReplaySighting {
 let sighting: ReplaySighting | null = null;
 
 /**
+ * Set by a live exit (`noteReplayGoToEnd`) until the first read that has left
+ * the replay. iRacing applies the command a tick or two later, so the reads in
+ * between still show the old replay position; recording them would revive the
+ * frame the exit just dropped.
+ */
+let liveExitPending = false;
+
+/**
  * Claim the cursor for a long-running driver. An earlier claim still standing
  * is cancelled first, naming the new owner. `onCancelled` runs synchronously,
  * once, when something takes the cursor — the place to log
@@ -148,6 +156,8 @@ export function clearReplayLanding(): void {
 
 /** Records a read that showed a replay playing at `frame`. */
 export function recordReplaySighting(frame: number, seenAt: number): void {
+  if (liveExitPending) return;
+
   sighting = { frame, seenAt };
 }
 
@@ -159,6 +169,7 @@ export function lastReplaySighting(): ReplaySighting | null {
 /** Drops the sighting: the replay has been left for the car. */
 export function clearReplaySighting(): void {
   sighting = null;
+  liveExitPending = false;
 }
 
 /**
@@ -169,13 +180,16 @@ export function clearReplaySighting(): void {
  * file an Add at that frame instead of the live edge. In a saved replay
  * (`replayOnlySession`, `WeekendInfo.SimMode === "replay"`) the same command
  * only seeks to the end of the file and the replay stays open, so the sighting
- * and its grace stand. A command that was not sent changes nothing. Returns
- * whether the sighting was dropped.
+ * and its grace stand. A command that was not sent changes nothing. Until the
+ * first read that has left the replay, replay reads are not recorded: they are
+ * the ticks before iRacing applies the command. Returns whether the sighting
+ * was dropped.
  */
 export function noteReplayGoToEnd(sent: boolean, replayOnlySession: boolean): boolean {
   if (!sent || replayOnlySession) return false;
 
   sighting = null;
+  liveExitPending = true;
 
   return true;
 }
@@ -185,4 +199,5 @@ export function _resetReplayCursor(): void {
   current = null;
   landing = null;
   sighting = null;
+  liveExitPending = false;
 }

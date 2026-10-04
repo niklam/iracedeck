@@ -191,6 +191,15 @@ describe("the replay state survives the post-seek blip (#1230)", () => {
     expect(read(notPlaying, 10_050)).toMatchObject({ inReplay: false, frame: 90_000 });
   });
 
+  it("a replay read straight after a jump to live, before iRacing switches, does not revive the old frame", () => {
+    read(replayAt(4_000), 10_000);
+    noteReplayGoToEnd(true, false);
+    // The command lands a tick later: this read still shows the old replay position.
+    expect(read(replayAt(4_000), 10_016)).toMatchObject({ inReplay: true, frame: 4_000 });
+
+    expect(read(notPlaying, 10_050)).toMatchObject({ inReplay: false, frame: 90_000 });
+  });
+
   it("in a saved replay a jump to the end keeps the grace: the post-seek blip is still the replay", () => {
     read(replayAt(4_000), 10_000);
     noteReplayGoToEnd(true, true);

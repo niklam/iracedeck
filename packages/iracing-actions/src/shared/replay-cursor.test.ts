@@ -5,6 +5,7 @@ import {
   cancelReplayCursorOwner,
   claimReplayCursor,
   clearReplayLanding,
+  clearReplaySighting,
   currentReplayCursorOwner,
   lastReplaySighting,
   noteReplayGoToEnd,
@@ -137,6 +138,18 @@ describe("replay-cursor", () => {
 
       expect(noteReplayGoToEnd(true, false)).toBe(true);
       expect(lastReplaySighting()).toBeNull();
+    });
+
+    it("after a live exit, replay reads are not recorded until the first read that left the replay", () => {
+      recordReplaySighting(4_000, 10_000);
+      noteReplayGoToEnd(true, false);
+
+      recordReplaySighting(4_000, 10_016);
+      expect(lastReplaySighting()).toBeNull();
+
+      clearReplaySighting();
+      recordReplaySighting(5_000, 20_000);
+      expect(lastReplaySighting()).toEqual({ frame: 5_000, seenAt: 20_000 });
     });
 
     it("a goToEnd that was not sent changes nothing: the sighting and its grace stand", () => {
