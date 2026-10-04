@@ -12,6 +12,8 @@
     "generate:voice-catalog-json": "tsx scripts/generate-voice-catalog-json.mjs",
     "preview": "astro preview",
     "typecheck": "pnpm generate:gallery && astro check",
+    "test": "node ../../scripts/test-package.mjs",
+    "test:watch": "node ../../scripts/test-package.mjs --watch",
     "deploy": "pnpm build && firebase deploy --only hosting"
   },
   "dependencies": {

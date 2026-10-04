@@ -12,8 +12,8 @@
     "clean": "rimraf dist",
     "dev": "tsx watch src/main.ts",
     "start": "node dist/main.js",
-    "test": "vitest run",
-    "test:watch": "vitest"
+    "test": "node ../../scripts/test-package.mjs",
+    "test:watch": "node ../../scripts/test-package.mjs --watch"
   },
   "dependencies": {
     "@fastify/static": "10.1.4",

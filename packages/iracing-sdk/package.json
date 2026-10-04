@@ -10,8 +10,8 @@
     "build": "tsc",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "clean": "rimraf dist",
-    "test": "vitest run",
-    "test:watch": "vitest",
+    "test": "node ../../scripts/test-package.mjs",
+    "test:watch": "node ../../scripts/test-package.mjs --watch",
     "test-native": "node -e \"import('@iracedeck/iracing-native').then(console.log).catch(console.error)\"",
     "telemetry-snapshot": "node dist/cli/telemetry-snapshot.js",
     "telemetry-watch": "node dist/cli/telemetry-watch.js"
