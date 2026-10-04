@@ -871,6 +871,15 @@ export {
   watchdogDailyLogFileName,
   type WatchdogLogTarget,
 } from "./main-thread-watchdog.js";
+// Resource monitor: the plugin's own CPU, event-loop and memory use in its log (issue #1338)
+export {
+  RESOURCE_MONITOR_DEFAULTS,
+  type ResourceMonitor,
+  type ResourceMonitorConfig,
+  type ResourceMonitorOptions,
+  type ResourceSample,
+  startResourceMonitor,
+} from "./resource-monitor.js";
 // Settings-channel publisher: store write + the one host mirror per start (issue #993 phase 2)
 export {
   createSettingsChannelPublisher,
