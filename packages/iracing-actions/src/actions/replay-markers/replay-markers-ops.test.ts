@@ -303,4 +303,11 @@ describe("previewAddMarker", () => {
   it("is null for a duplicate", () => {
     expect(previewAddMarker(context({ subSessionId: 7 }, { subSessionId: 7 }), 33)).toBeNull();
   });
+
+  it("refuses exactly where the store does: 60 frames away is a duplicate, 61 is not", () => {
+    const base = context({ subSessionId: 7 }, { subSessionId: 7 });
+
+    expect(previewAddMarker({ ...base, frame: 1_060 }, 0)).toBeNull();
+    expect(previewAddMarker({ ...base, frame: 1_061 }, 0)?.frame).toBe(1_061);
+  });
 });
