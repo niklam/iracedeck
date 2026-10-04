@@ -1,8 +1,7 @@
+import { CHANGELOG_NOTIFICATION_POLICIES, DEFAULT_CHANGELOG_NOTIFICATION_POLICY } from "@iracedeck/deck-core";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import url from "node:url";
-
-import { DEFAULT_CHANGELOG_NOTIFICATION_POLICY, CHANGELOG_NOTIFICATION_POLICIES } from "@iracedeck/deck-core";
 import { describe, expect, it } from "vitest";
 
 /**

@@ -2,9 +2,9 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
 import { piTemplatePlugin } from "./pi-template-plugin.mjs";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyFunction = (...args: any[]) => any;
 
 describe("piTemplatePlugin", () => {
@@ -99,6 +99,7 @@ describe("piTemplatePlugin", () => {
     if (plugin.buildStart) {
       await (plugin.buildStart as AnyFunction).call(context);
     }
+
     if (plugin.generateBundle) {
       await (plugin.generateBundle as AnyFunction).call(context);
     }
@@ -137,6 +138,7 @@ describe("piTemplatePlugin", () => {
     if (plugin.buildStart) {
       await (plugin.buildStart as AnyFunction).call(context);
     }
+
     if (plugin.generateBundle) {
       await (plugin.generateBundle as AnyFunction).call(context);
     }
@@ -181,10 +183,7 @@ describe("piTemplatePlugin", () => {
 
   it("should report error for invalid template syntax", async () => {
     // Create a template with invalid EJS syntax
-    writeFileSync(
-      path.join(templatesDir, "invalid.ejs"),
-      "<!DOCTYPE html><html><body><%= unclosedTag</body></html>",
-    );
+    writeFileSync(path.join(templatesDir, "invalid.ejs"), "<!DOCTYPE html><html><body><%= unclosedTag</body></html>");
 
     const plugin = piTemplatePlugin({
       templatesDir,
@@ -203,6 +202,7 @@ describe("piTemplatePlugin", () => {
     if (plugin.buildStart) {
       await (plugin.buildStart as AnyFunction).call(context);
     }
+
     if (plugin.generateBundle) {
       await (plugin.generateBundle as AnyFunction).call(context);
     }
@@ -229,6 +229,7 @@ describe("piTemplatePlugin", () => {
     if (plugin.buildStart) {
       await (plugin.buildStart as AnyFunction).call(context);
     }
+
     if (plugin.generateBundle) {
       await (plugin.generateBundle as AnyFunction).call(context);
     }
@@ -259,6 +260,7 @@ describe("piTemplatePlugin", () => {
     if (plugin.buildStart) {
       await (plugin.buildStart as AnyFunction).call(context);
     }
+
     if (plugin.generateBundle) {
       await (plugin.generateBundle as AnyFunction).call(context);
     }
@@ -297,6 +299,7 @@ describe("piTemplatePlugin", () => {
     if (plugin.buildStart) {
       await (plugin.buildStart as AnyFunction).call(context);
     }
+
     if (plugin.generateBundle) {
       await (plugin.generateBundle as AnyFunction).call(context);
     }
@@ -331,6 +334,7 @@ describe("piTemplatePlugin", () => {
     if (plugin.buildStart) {
       await (plugin.buildStart as AnyFunction).call(context);
     }
+
     if (plugin.generateBundle) {
       await (plugin.generateBundle as AnyFunction).call(context);
     }
@@ -367,6 +371,7 @@ describe("piTemplatePlugin", () => {
     if (plugin.buildStart) {
       await (plugin.buildStart as AnyFunction).call(context);
     }
+
     if (plugin.generateBundle) {
       await (plugin.generateBundle as AnyFunction).call(context);
     }
@@ -401,6 +406,7 @@ describe("piTemplatePlugin", () => {
     if (plugin.buildStart) {
       await (plugin.buildStart as AnyFunction).call(context);
     }
+
     if (plugin.generateBundle) {
       await (plugin.generateBundle as AnyFunction).call(context);
     }
@@ -439,6 +445,7 @@ describe("piTemplatePlugin", () => {
     if (plugin.buildStart) {
       await (plugin.buildStart as AnyFunction).call(context);
     }
+
     if (plugin.generateBundle) {
       await (plugin.generateBundle as AnyFunction).call(context);
     }
@@ -483,6 +490,7 @@ describe("piTemplatePlugin", () => {
     if (plugin.buildStart) {
       await (plugin.buildStart as AnyFunction).call(context);
     }
+
     if (plugin.generateBundle) {
       await (plugin.generateBundle as AnyFunction).call(context);
     }

@@ -16,6 +16,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { audioAssetsPath, BUNDLED_VOICE_IDS, processAndCopyAudioAssets, processVoiceTree } from "./index.mjs";
+
 // Real `node:child_process.spawn` is kept — every test here runs ffmpeg for
 // real, on genuine audio, exactly as before — but wrapped so a test can
 // observe (and act on) each invocation's argv. This is the "seam" #1143's
@@ -36,8 +38,6 @@ vi.mock("node:child_process", async (importOriginal) => {
     },
   };
 });
-
-import { audioAssetsPath, BUNDLED_VOICE_IDS, processAndCopyAudioAssets, processVoiceTree } from "./index.mjs";
 
 /** The repository's smallest real clip, so ffmpeg has genuine audio to process. */
 const SAMPLE_CLIP = path.join(audioAssetsPath, "voice/default/lap-time-second/1.mp3");
@@ -96,6 +96,7 @@ function tempDir(prefix: string): string {
 
 afterEach(() => {
   spawnHook.onSpawn = null;
+
   for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
@@ -308,7 +309,11 @@ describe("processVoiceTree — cache freshness", () => {
       const refSrcDir = path.join(root, "src");
 
       writeFile(path.join(refSrcDir, "flags", "blue-01.mp3"), bytes);
-      await processVoiceTree({ srcDir: refSrcDir, destDir: path.join(root, "dest"), cacheDir: path.join(root, "cache") });
+      await processVoiceTree({
+        srcDir: refSrcDir,
+        destDir: path.join(root, "dest"),
+        cacheDir: path.join(root, "cache"),
+      });
 
       return readFileSync(path.join(root, "dest", "flags/blue-01.mp3"));
     };
@@ -502,12 +507,14 @@ describe("processAndCopyAudioAssets — what reaches the plugin's assets/audio",
       `voice/other/${CALLOUT_SCRIPT_FILE}`,
       "voice/other/flags/blue-01.mp3",
     ]);
+
     // Byte-identical scripts, asserted on THIS path because since #1034 stage 3
     // it is the only one that copies a voice at all — the bundled filter above
     // has nothing to prove it on.
     for (const voice of FIXTURE_VOICES) {
       expect(readFileSync(path.join(destRoot, "voice", voice, CALLOUT_SCRIPT_FILE)).equals(SCRIPT_BYTES)).toBe(true);
     }
+
     expect(log.some((line) => line.includes("is published, not bundled"))).toBe(false);
   }, 30_000);
 

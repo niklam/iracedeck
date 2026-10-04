@@ -1,7 +1,6 @@
+import ejs from "ejs";
 import path from "node:path";
 import url from "node:url";
-
-import ejs from "ejs";
 import { describe, expect, it } from "vitest";
 
 /**

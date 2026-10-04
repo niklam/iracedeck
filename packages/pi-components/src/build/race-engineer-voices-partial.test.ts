@@ -1,9 +1,8 @@
 import { DEFAULT_RACE_ENGINEER_VOICE } from "@iracedeck/deck-core";
+import ejs from "ejs";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import url from "node:url";
-
-import ejs from "ejs";
 import { describe, expect, it } from "vitest";
 
 /**

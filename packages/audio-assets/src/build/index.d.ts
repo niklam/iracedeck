@@ -1,4 +1,4 @@
-export const audioAssetsPath: string;
+export declare const audioAssetsPath: string;
 
 export type ProcessAndCopyAudioAssetsOptions = {
   destRoot: string;
@@ -17,9 +17,9 @@ export type ProcessAndCopyAudioAssetsOptions = {
   voices?: "bundled" | "all";
 };
 
-export function processAndCopyAudioAssets(options: ProcessAndCopyAudioAssetsOptions): Promise<void>;
+export declare function processAndCopyAudioAssets(options: ProcessAndCopyAudioAssetsOptions): Promise<void>;
 
-export function processAndCopyAudioAssetsPlugin(options: { sdPlugin: string }): {
+export declare function processAndCopyAudioAssetsPlugin(options: { sdPlugin: string }): {
   name: string;
   generateBundle: () => Promise<void>;
 };
@@ -28,9 +28,9 @@ export type PrebuildAudioAssetCacheOptions = {
   logger?: (message: string) => void;
 };
 
-export function prebuildAudioAssetCache(options?: PrebuildAudioAssetCacheOptions): Promise<void>;
+export declare function prebuildAudioAssetCache(options?: PrebuildAudioAssetCacheOptions): Promise<void>;
 
-export function wipeProcessedCache(): Promise<void>;
+export declare function wipeProcessedCache(): Promise<void>;
 
 export type ProcessVoiceTreeOptions = {
   /**
@@ -60,7 +60,7 @@ export type ProcessVoiceTreeResult = {
   pipelineHash: string;
 };
 
-export function processVoiceTree(options: ProcessVoiceTreeOptions): Promise<ProcessVoiceTreeResult>;
+export declare function processVoiceTree(options: ProcessVoiceTreeOptions): Promise<ProcessVoiceTreeResult>;
 
 /** One published voice pack — see `voice-packs.mjs` for what each field means. */
 export type VoicePackDefinition = {
@@ -76,10 +76,10 @@ export type VoicePackDefinition = {
   bundled: boolean;
 };
 
-export const VOICE_PACKS: readonly VoicePackDefinition[];
+export declare const VOICE_PACKS: readonly VoicePackDefinition[];
 
 /** Voice ids the plugin build's audio copy step keeps inside the distributable. */
-export const BUNDLED_VOICE_IDS: readonly string[];
+export declare const BUNDLED_VOICE_IDS: readonly string[];
 
 /** Every voice of every published pack, bundled or not. */
-export const PUBLISHED_VOICE_IDS: readonly string[];
+export declare const PUBLISHED_VOICE_IDS: readonly string[];
