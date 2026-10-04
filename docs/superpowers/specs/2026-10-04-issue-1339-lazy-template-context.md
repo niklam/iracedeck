@@ -40,7 +40,11 @@ There is no flatten. The lookup walks the source object for that one path and fo
 
 The SDK already tracks when iRacing publishes new session info. The `track` namespace and the driver list are memoised on that session-info version, so a frame-to-frame rebuild with unchanged session info reuses them. `sessionInfo.*` needs no memo, because a path walk costs no more than a lookup. The telemetry-derived namespaces (`self` and the neighbours, `session`'s clock fields) are recomputed per context instance as today, because their inputs change every frame.
 
-### 5. Output is identical
+### 5. Telemetry Display resolves inside its throttle
+
+Measured 2026-10-04 with #1337 applied (35-car AI race, sampling allocation profile): the plugin allocated about 92 MB/s, and two thirds of it was `buildTemplateContextFromData`. It was reached from Telemetry Display's telemetry subscription, which resolves the key's template on every tick before handing the image to its `imageThrottle`. One templated Telemetry Display key therefore rebuilds the shared context every frame. The subscription now schedules the whole update, template resolution included, through the throttle, so a templated key asks for a context at most ten times a second. This is the same shape #1337 gave Chat. Laziness (2–4) makes each build cheap; this makes them rare.
+
+### 6. Output is identical
 
 For any path the old builder produced, the new context returns the same `display` string and the same `raw` value. A path the old builder did not produce is absent (`display` undefined, `raw` not found). This is a pure performance change, with no new variables and no renamed ones.
 
@@ -54,6 +58,7 @@ For any path the old builder produced, the new context returns the same `display
 
 - **Equivalence.** Keep the current builder as a test-only reference. For a set of fixtures (a race with an injected order, practice, qualifying pre-green, a spectator with the camera on another car, disconnected with session info only, and nothing at all), every key in the reference's `display` and `raw` maps must resolve to an identical value through the new context. Also check a sample of absent paths, including `telemetry.CarIdxPosition` and prototype names such as `constructor` and `__proto__`.
 - **Laziness.** A context asked only for `self.position` builds no other namespace and never walks `sessionInfo`. Spy on the namespace builders.
+- **Telemetry Display throttle.** A burst of ticks inside one window asks for at most a leading and a trailing context. A disappearing key drops its pending update.
 - **Memoisation.** Two frames with the same session-info version build the `track` namespace and the driver list once. A version change rebuilds them.
 - **Resolver and evaluator.** The existing `template-resolver` and `expression-evaluator` suites pass unchanged in what they assert, with their fixtures adapted to the lookup interface.
 - **Manual.** The #1337 measurement: the same 6 templated Chat keys in a 35-car race, profiled over the debug port. Template building should drop out of the top of the profile, and every key should render the same text as before.
