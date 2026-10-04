@@ -193,6 +193,7 @@ import {
   initWindowFocus,
   isIRacingActive,
   resolveSettingsStorePath,
+  startMainThreadWatchdog,
   type PluginConfig,
 } from "@iracedeck/deck-core";
 import { initializeEventBus } from "@iracedeck/event-bus";
@@ -211,6 +212,14 @@ const adapter = new ElgatoPlatformAdapter(streamDeck);
 // 2. Enable logging — production defaults to info; the `debugLogging` global
 //    setting opts into verbose debug at runtime (see @.claude/rules/logging.md)
 streamDeck.logger.setLevel("info");
+
+// 2b. Start the main-thread watchdog once logging is up (#1330). Its worker
+//     appends stall reports straight to the host's log file, so the target
+//     must be the file the host logger writes (see @.claude/rules/logging.md)
+startMainThreadWatchdog({
+  logger: adapter.createLogger("MainThreadWatchdog"),
+  target: { kind: "file", path: join(process.cwd(), "logs", `${pluginUuid}.0.log`) },
+});
 
 // 3. Initialize SDK singleton (must come before sim-events-iracing)
 initializeSDK(adapter.createLogger("iRacingSDK"));
