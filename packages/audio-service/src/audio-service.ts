@@ -431,6 +431,7 @@ class AudioService implements IAudioService {
     if (this.engineReady) return true;
 
     this.applySessionIdentity();
+    this.registerDeviceReroutedCallback();
 
     const ok = this.native.initAudioEngine();
 
@@ -458,6 +459,21 @@ class AudioService implements IAudioService {
     if (!this.native.setSessionIdentity(this.identity.displayName, this.identity.iconPath)) {
       this.logger.warn("Audio session identity was not accepted; the Volume Mixer keeps its default name");
     }
+  }
+
+  /**
+   * Log every reroute the native layer reports (#1330): the output following a
+   * default-device change onto a new endpoint. The native layer calls this
+   * before it reapplies the session identity, so a freeze inside that call is
+   * preceded by the line. Info, not debug: a reroute is rare and major, and
+   * the users whose logs we need run at the default level. Registered from
+   * `init()` for the same reason as the identity — `destroyAudioEngine` clears
+   * it natively, so each `init()` after a `destroy()` registers it again.
+   */
+  private registerDeviceReroutedCallback(): void {
+    this.native.setDeviceReroutedCallback(() => {
+      this.logger.info("Audio device rerouted");
+    });
   }
 
   destroy(): void {

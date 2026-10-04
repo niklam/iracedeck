@@ -87,7 +87,7 @@ import {
   type TrackConditionsCalloutId,
 } from "@iracedeck/audio-scenarios/pit-crew";
 import { getAudio, initializeAudio } from "@iracedeck/audio-service";
-import { ElgatoPlatformAdapter } from "@iracedeck/deck-adapter-elgato";
+import { ElgatoPlatformAdapter, elgatoPluginLogFile } from "@iracedeck/deck-adapter-elgato";
 import {
   applyStartupFeatureGates,
   type BundledVoicePack,
@@ -171,6 +171,7 @@ import {
   setWarning,
   shouldOpenChangelog,
   spawnAppWindow,
+  startMainThreadWatchdog,
   updateGlobalSettings,
   validateSetupWarningPatterns,
   VERSION_CHECK_STARTUP_GRACE_MS,
@@ -320,6 +321,15 @@ const applyDebugLogging = (settings: ReturnType<typeof getGlobalSettings>): void
 };
 onGlobalSettingsChange(applyDebugLogging);
 applyDebugLogging(getGlobalSettings());
+
+// Watch the main thread for the rest of the run (#1330). A freeze blocks every
+// logger on this thread, so the watchdog's worker appends its report straight
+// to the file the SDK's logger writes, `<cwd>/logs/<plugin UUID>.0.log`
+// (`elgatoPluginLogFile`, tested against the SDK's own derivation).
+startMainThreadWatchdog({
+  logger: adapter.createLogger("MainThreadWatchdog"),
+  target: { kind: "file", path: elgatoPluginLogFile() },
+});
 
 // Banner a broken setup-warning regex pattern (issue #625). Validating on every
 // settings change gives immediate PI feedback when a user types an invalid

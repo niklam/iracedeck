@@ -16,6 +16,8 @@
 // The Core Audio session API, for naming our session in the Windows Volume
 // Mixer (#1253). miniaudio declares its own `ma_`-prefixed COM interfaces and
 // never includes these headers, so including them after it does not clash.
+// The same guard covers the reroute notification plumbing (g_rerouteTSFN and
+// the device-rerouted callback, #1330): off it, both are no-ops.
 #if defined(_WIN32) && defined(MA_SUPPORT_WASAPI)
 #define IRD_SESSION_IDENTITY_SUPPORTED 1
 #include <audioclient.h>
@@ -146,22 +148,67 @@ static bool g_useSelectedDevice = false;
 // only posts to the JS thread through g_rerouteTSFN, whose handler names the
 // session of whatever engine exists by then. That also means teardownEngine
 // (on the JS thread) can never free a device the handler is still reading.
+//
+// The same handler first calls the JS callback registered by
+// SetDeviceReroutedCallback (#1330), which the audio service turns into a log
+// line. It runs BEFORE the COM call, so should applySessionIdentity ever hang
+// the JS thread, the reroute is already in the log.
 
 #if defined(IRD_SESSION_IDENTITY_SUPPORTED)
 // The identity is "set" while the display name is non-empty.
 static std::wstring g_sessionDisplayName;
 static std::wstring g_sessionIconPath;
 
-// Marshals reroute notifications to the JS thread. Created by
-// SetSessionIdentity on the JS thread, Unref'd so it never keeps the Node
-// event loop alive, and released by DestroyAudioEngine (or cleared by the env
-// cleanup hook when Node tears the environment down first). The mutex
-// serializes the notification thread's NonBlockingCall with the JS thread
-// creating or releasing the handle — the same pattern as g_completionTSFN.
+// Marshals reroute notifications to the JS thread. Created on the JS thread by
+// SetSessionIdentity or SetDeviceReroutedCallback, whichever needs it first,
+// Unref'd so it never keeps the Node event loop alive, and released once
+// neither an identity nor a callback is left (or by DestroyAudioEngine, or
+// cleared by the env cleanup hook when Node tears the environment down first).
+// The mutex serializes the notification thread's NonBlockingCall with the JS
+// thread creating or releasing the handle — the same pattern as
+// g_completionTSFN.
 static Napi::ThreadSafeFunction g_rerouteTSFN;
 static bool g_rerouteTSFNRegistered = false;
 static napi_env g_rerouteTSFNEnv = nullptr;
 static std::mutex g_rerouteTSFNMutex;
+
+// The JS callback SetDeviceReroutedCallback registered (#1330), or nullptr.
+// JS thread only. Heap-held rather than a static Napi::FunctionReference so no
+// static destructor calls napi_delete_reference at process exit, after the
+// environment that owns the reference is gone.
+static Napi::FunctionReference *g_deviceReroutedCallback = nullptr;
+
+/**
+ * Drop the registered device-rerouted callback, if any. JS thread only, while
+ * the environment is alive (deleting the reference calls into Node-API).
+ */
+static void clearDeviceReroutedCallback()
+{
+    delete g_deviceReroutedCallback;
+    g_deviceReroutedCallback = nullptr;
+}
+
+/**
+ * Call the registered device-rerouted callback, if any. JS thread only. A
+ * callback that throws is swallowed: the session identity must still be
+ * reapplied after it, and an exception escaping a ThreadSafeFunction call is
+ * an uncaught exception that would take the plugin down.
+ */
+static void notifyDeviceRerouted(Napi::Env env)
+{
+    if (g_deviceReroutedCallback == nullptr || g_deviceReroutedCallback->IsEmpty())
+    {
+        return;
+    }
+
+    // A local handle, so the callback may clear or replace the registration.
+    Napi::Function callback = g_deviceReroutedCallback->Value();
+    callback.Call({});
+    if (env.IsExceptionPending())
+    {
+        env.GetAndClearPendingException();
+    }
+}
 
 /**
  * Convert a UTF-8 string to UTF-16. Returns false on invalid input.
@@ -238,30 +285,41 @@ static void applySessionIdentity(ma_device *device)
 
 #if defined(IRD_SESSION_IDENTITY_SUPPORTED)
 /**
- * JS-thread end of a reroute notification: name the session of the engine
- * that exists now. It may be a different engine from the one that rerouted
- * (torn down and recreated in between), or none at all; naming a session
- * twice is harmless.
+ * JS-thread end of a reroute notification. First tell the registered
+ * device-rerouted callback (#1330) — before the COM call, so a hang inside it
+ * is preceded by the log line — then name the session of the engine that
+ * exists now. It may be a different engine from the one that rerouted (torn
+ * down and recreated in between), or none at all; naming a session twice is
+ * harmless.
  */
 static Napi::Value OnSessionRerouted(const Napi::CallbackInfo &info)
 {
+    Napi::Env env = info.Env();
+
+    notifyDeviceRerouted(env);
+
+    // Read after the callback: it may have torn the engine down.
     if (g_engine)
     {
         applySessionIdentity(ma_engine_get_device(g_engine));
     }
-    return info.Env().Undefined();
+    return env.Undefined();
 }
 
 /**
  * Env cleanup hook: Node closes the TSFN itself when the environment goes
  * away, so stop the notification thread from calling into it. Registered
- * after the TSFN is created, so it runs before the TSFN's own cleanup.
+ * after the TSFN is created, so it runs before the TSFN's own cleanup. The
+ * device-rerouted callback is only ever registered alongside the TSFN, so it
+ * is forgotten here too — deliberately without deleting the reference, which
+ * Node-API frees itself with the environment.
  */
 static void RerouteTSFNCleanupHook(void * /*arg*/)
 {
     std::lock_guard<std::mutex> lock(g_rerouteTSFNMutex);
     g_rerouteTSFNRegistered = false;
     g_rerouteTSFNEnv = nullptr;
+    g_deviceReroutedCallback = nullptr;
 }
 
 /**
@@ -288,8 +346,11 @@ static void ensureRerouteTSFN(Napi::Env env)
 #endif
 
 /**
- * Release the reroute TSFN, if any. JS thread only; call it once no device
- * exists, so no further notification can arrive.
+ * Release the reroute TSFN, if any. JS thread only. Safe while a device
+ * exists: the notification thread checks g_rerouteTSFNRegistered under the
+ * same mutex before calling into the handle, so a notification arriving
+ * afterwards is dropped. A call already queued is still delivered and finds
+ * whatever identity and callback are left.
  */
 static void releaseRerouteTSFN()
 {
@@ -306,6 +367,20 @@ static void releaseRerouteTSFN()
     g_rerouteTSFNRegistered = false;
 #endif
 }
+
+#if defined(IRD_SESSION_IDENTITY_SUPPORTED)
+/**
+ * Release the reroute TSFN once nothing needs it: no session identity to
+ * reapply and no device-rerouted callback to call. JS thread only.
+ */
+static void releaseRerouteTSFNIfUnused()
+{
+    if (g_sessionDisplayName.empty() && g_deviceReroutedCallback == nullptr)
+    {
+        releaseRerouteTSFN();
+    }
+}
+#endif
 
 /**
  * Engine device notification. Runs on the thread miniaudio reroutes from,
@@ -537,7 +612,8 @@ Napi::Value StopAudioEngine(const Napi::CallbackInfo &info)
 
 /**
  * Destroy the miniaudio engine and all active sounds, and clear the session
- * identity (#1253) — set it again before the next engine.
+ * identity (#1253) and the device-rerouted callback (#1330) — set both again
+ * before the next engine.
  */
 Napi::Value DestroyAudioEngine(const Napi::CallbackInfo &info)
 {
@@ -565,6 +641,7 @@ Napi::Value DestroyAudioEngine(const Napi::CallbackInfo &info)
 #if defined(IRD_SESSION_IDENTITY_SUPPORTED)
     g_sessionDisplayName.clear();
     g_sessionIconPath.clear();
+    clearDeviceReroutedCallback();
 #endif
 
     if (g_audioContext)
@@ -1078,7 +1155,8 @@ Napi::Value SetSessionIdentity(const Napi::CallbackInfo &info)
         // No name, no identity: the icon alone would never be applied.
         g_sessionDisplayName.clear();
         g_sessionIconPath.clear();
-        releaseRerouteTSFN();
+        // The TSFN stays while a device-rerouted callback still needs it.
+        releaseRerouteTSFNIfUnused();
         return Napi::Boolean::New(env, true);
     }
 
@@ -1088,6 +1166,48 @@ Napi::Value SetSessionIdentity(const Napi::CallbackInfo &info)
 #endif
 
     return Napi::Boolean::New(env, true);
+}
+
+/**
+ * Register a JS callback that fires, with no arguments, each time miniaudio
+ * follows a default-device change onto a new endpoint (#1330). It runs on the
+ * JS thread, from the reroute TSFN's handler, BEFORE that handler reapplies
+ * the session identity — so a freeze inside the identity's COM call is
+ * preceded by whatever the callback logs. Works whether or not a session
+ * identity is set. A callback that throws is swallowed. Passing undefined or
+ * null clears it; registering again replaces it; DestroyAudioEngine clears it
+ * too. A no-op off Windows.
+ *
+ * @param callback - Function to call on reroute, or undefined/null to clear
+ */
+Napi::Value SetDeviceReroutedCallback(const Napi::CallbackInfo &info)
+{
+    Napi::Env env = info.Env();
+
+    bool clear = info.Length() < 1 || info[0].IsUndefined() || info[0].IsNull();
+    if (!clear && !info[0].IsFunction())
+    {
+        Napi::TypeError::New(env, "Expected (callback: function | null | undefined)").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+#if defined(IRD_SESSION_IDENTITY_SUPPORTED)
+    clearDeviceReroutedCallback();
+
+    if (clear)
+    {
+        // The TSFN stays while a session identity still needs it.
+        releaseRerouteTSFNIfUnused();
+        return env.Undefined();
+    }
+
+    g_deviceReroutedCallback = new Napi::FunctionReference(Napi::Persistent(info[0].As<Napi::Function>()));
+    ensureRerouteTSFN(env);
+#else
+    (void)clear;
+#endif
+
+    return env.Undefined();
 }
 
 // ============================================================================
@@ -1111,6 +1231,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports)
     exports.Set("setAudioDevice", Napi::Function::New(env, SetAudioDevice));
     exports.Set("setAudioDeviceById", Napi::Function::New(env, SetAudioDeviceById));
     exports.Set("setSessionIdentity", Napi::Function::New(env, SetSessionIdentity));
+    exports.Set("setDeviceReroutedCallback", Napi::Function::New(env, SetDeviceReroutedCallback));
 
     return exports;
 }

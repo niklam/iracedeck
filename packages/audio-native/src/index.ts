@@ -271,6 +271,25 @@ export class AudioNative {
 
     return this.getMock().setSessionIdentity(displayName, iconPath);
   }
+
+  /**
+   * Register a callback that fires, on the JS thread, each time the output
+   * follows a default-device change onto a new endpoint (issue #1330). It
+   * fires before the native layer reapplies the session identity, so a freeze
+   * inside that call is preceded by whatever the callback logs, and it fires
+   * whether or not an identity is set. A callback that throws is swallowed.
+   * Pass `null` to clear it; {@link destroyAudioEngine} clears it too. A no-op
+   * off Windows, and when the loaded native binary predates this method.
+   *
+   * @param callback - Function to call on reroute, or null to clear
+   */
+  setDeviceReroutedCallback(callback: (() => void) | null): void {
+    if (addon) {
+      callAddonSetDeviceReroutedCallback(addon, callback);
+    } else {
+      this.getMock().setDeviceReroutedCallback(callback);
+    }
+  }
 }
 
 /**
@@ -293,4 +312,23 @@ export function callAddonSetSessionIdentity(
   }
 
   return nativeAddon.setSessionIdentity(displayName, iconPath) === true;
+}
+
+/**
+ * Call the addon's `setDeviceReroutedCallback`, or do nothing when the loaded
+ * binary predates it — the same tolerance as
+ * {@link callAddonSetSessionIdentity}: a missing function must not throw inside
+ * `init()` and abort plugin startup over a diagnostic log line (#1330).
+ *
+ * @internal Exported for testing
+ */
+export function callAddonSetDeviceReroutedCallback(
+  nativeAddon: { setDeviceReroutedCallback?: unknown },
+  callback: (() => void) | null,
+): void {
+  if (typeof nativeAddon.setDeviceReroutedCallback !== "function") {
+    return;
+  }
+
+  nativeAddon.setDeviceReroutedCallback(callback);
 }

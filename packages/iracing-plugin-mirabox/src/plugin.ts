@@ -177,6 +177,7 @@ import {
   setWarning,
   shouldOpenChangelog,
   spawnAppWindow,
+  startMainThreadWatchdog,
   updateGlobalSettings,
   validateSetupWarningPatterns,
   VERSION_CHECK_STARTUP_GRACE_MS,
@@ -317,7 +318,8 @@ initPluginConfig(pluginConfig);
 // for support on Mirabox (issue #609). __binDir is <plugin>/bin, so the log dir
 // sits next to it under the plugin root — the same convention the host's own
 // plugins use.
-const adapter = new VSDPlatformAdapter(undefined, join(__binDir, "..", "log"));
+const logDir = join(__binDir, "..", "log");
+const adapter = new VSDPlatformAdapter(undefined, logDir);
 
 // Default to info-level logging in production; the user opts into verbose
 // debug logging from the PI "Enable debug logging" toggle (issue #609). The
@@ -330,6 +332,11 @@ const applyDebugLogging = (settings: ReturnType<typeof getGlobalSettings>): void
 };
 onGlobalSettingsChange(applyDebugLogging);
 applyDebugLogging(getGlobalSettings());
+
+// Watch the main thread for the rest of the run (#1330). A freeze blocks every
+// logger on this thread, so the watchdog's worker appends its report straight
+// to the per-day file the adapter's FileSink writes under `logDir`.
+startMainThreadWatchdog({ logger: adapter.createLogger("MainThreadWatchdog"), target: { kind: "daily", dir: logDir } });
 
 // Banner a broken setup-warning regex pattern (issue #625). Validating on every
 // settings change gives immediate PI feedback when a user types an invalid
