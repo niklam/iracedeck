@@ -1,8 +1,6 @@
 import {
   assembleIcon,
-  CommonSettings,
   ConnectionStateAwareAction,
-  getCommands,
   getGlobalBorderSettings,
   getGlobalColors,
   getGlobalGraphicSettings,
@@ -10,19 +8,19 @@ import {
   getReplaySessionStore,
   hexToGrayscale,
   IconUpdateThrottle,
+  type IDeckDialDownEvent,
+  type IDeckDialRotateEvent,
+  type IDeckDialUpEvent,
   type IDeckDidReceiveSettingsEvent,
   type IDeckKeyDownEvent,
+  type IDeckTouchTapEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
   isReplaySessionStoreInitialized,
-  MARKER_DELETE_WINDOW_FRAMES,
-  type ReplayMarker,
-  type ReplaySessionStore,
   resolveBorderSettings,
   resolveGraphicSettings,
   resolveIconColors,
   resolveTitleSettings,
-  type SubSessionScoped,
 } from "@iracedeck/deck-core";
 import addIconSvg from "@iracedeck/icons/replay-markers/add.svg";
 import confirmAddedIconSvg from "@iracedeck/icons/replay-markers/confirm-added.svg";
@@ -30,76 +28,51 @@ import confirmDeletedIconSvg from "@iracedeck/icons/replay-markers/confirm-delet
 import deleteIconSvg from "@iracedeck/icons/replay-markers/delete.svg";
 import nextIconSvg from "@iracedeck/icons/replay-markers/next.svg";
 import previousIconSvg from "@iracedeck/icons/replay-markers/previous.svg";
-import { ReplayPosMode, resolveReplayFrame, type TelemetryData } from "@iracedeck/iracing-sdk";
-import z from "zod";
 
-import { cancelReplayCursorOwner } from "../../shared/replay-cursor.js";
+import { ReplayMarkersDialSurface } from "./replay-markers-dial-surface.js";
+import {
+  addMarkerAt,
+  CONFIRMATION_FLASH_MS,
+  deleteMarkerAt,
+  jumpToMarkerFrame,
+  type MarkerDirection,
+  readReplayContext,
+  type ReplayContextResult,
+  type ReplayContextSource,
+  resolveJumpTarget,
+  resolveMarkerJumpAnchor,
+} from "./replay-markers-ops.js";
+import {
+  parseReplayMarkersSettings,
+  type ReplayMarkersMode,
+  type ReplayMarkersSettings,
+} from "./replay-markers-settings.js";
+
+// The keypad's helpers moved to their own modules so the dial surface shares
+// them (#1230); re-exported so this module's API is unchanged.
+export { buildMarker, CONFIRMATION_FLASH_MS, pickMarkerToDelete, readSubSessionId } from "./replay-markers-ops.js";
+export {
+  ReplayMarkersDialSettings,
+  ReplayMarkersSettings,
+  SECONDS_BACK_DEFAULT,
+  SECONDS_BACK_MAX,
+} from "./replay-markers-settings.js";
 
 /**
  * Replay Markers (issue #1162): mark a moment and jump back to it. A marker is
  * an absolute replay frame kept in the per-session replay store; Next and
  * Previous jump with one `setPlayPosition` broadcast. Design:
- * `docs/superpowers/specs/2026-09-13-issue-1162-replay-markers.md`.
+ * `docs/superpowers/specs/2026-09-13-issue-1162-replay-markers.md`. Since
+ * #1230 the action is dual-surface: a dial instance routes every event to
+ * {@link ReplayMarkersDialSurface}.
  */
 
-const REPLAY_MARKERS_MODES = ["add", "delete", "next", "previous"] as const;
-
-type ReplayMarkersMode = (typeof REPLAY_MARKERS_MODES)[number];
-
 /** The modes that jump, and so grey out when there is nowhere to jump to. */
-type ReplayMarkersJumpMode = Extract<ReplayMarkersMode, "next" | "previous">;
+type ReplayMarkersJumpMode = Extract<ReplayMarkersMode, MarkerDirection>;
 
 function isJumpMode(mode: ReplayMarkersMode): mode is ReplayMarkersJumpMode {
   return mode === "next" || mode === "previous";
 }
-
-/** Replay frames per second — the recording's fixed rate. */
-const FRAMES_PER_SECOND = 60;
-
-/** @internal Exported for testing */
-export const SECONDS_BACK_DEFAULT = 5;
-/** @internal Exported for testing */
-export const SECONDS_BACK_MAX = 60;
-
-/** How long the Added / Deleted confirmation stays on the key. */
-/** @internal Exported for testing */
-export const CONFIRMATION_FLASH_MS = 1_000;
-
-/**
- * A number typed into the PI arrives as a string. Anything out of range is
- * brought into range, and anything unreadable reads as the default — a bad
- * value here must never fail the whole schema and reset the key's mode.
- */
-function clampSecondsBack(value: number): number {
-  if (!Number.isFinite(value)) return SECONDS_BACK_DEFAULT;
-
-  return Math.min(SECONDS_BACK_MAX, Math.max(0, Math.round(value)));
-}
-
-/**
- * A cleared field arrives as "" (or whitespace, or null), which `z.coerce`
- * would read as 0 — silently marking the press moment itself. Blank reads as
- * unset, so the default applies.
- */
-function blankToUndefined(value: unknown): unknown {
-  if (value === null) return undefined;
-
-  if (typeof value === "string" && value.trim() === "") return undefined;
-
-  return value;
-}
-
-/** @internal Exported for testing */
-export const ReplayMarkersSettings = CommonSettings.extend({
-  mode: z.enum(REPLAY_MARKERS_MODES).default("add"),
-  secondsBack: z
-    .preprocess(blankToUndefined, z.coerce.number().default(SECONDS_BACK_DEFAULT))
-    .transform(clampSecondsBack)
-    .catch(SECONDS_BACK_DEFAULT),
-});
-
-/** @internal Exported for testing */
-export type ReplayMarkersSettings = z.infer<typeof ReplayMarkersSettings>;
 
 /** Title text for each mode (format: "subLabel\nmainLabel"). */
 const REPLAY_MARKERS_TITLES: Record<ReplayMarkersMode, string> = {
@@ -201,76 +174,6 @@ function greyForeground(colors: Record<string, string>): Record<string, string> 
   );
 }
 
-/**
- * @internal Exported for testing
- *
- * The marker an Add press names: `secondsBack` before the current frame,
- * clamped at the recording's start. `pressFrame` keeps the frame the key was
- * pressed at, so Delete from the same spot reaches a marker set far back.
- * Session number and time are descriptive only (a person reading the file),
- * taken from the replay's own session while a replay plays and from the live
- * session otherwise.
- */
-export function buildMarker(telemetry: TelemetryData, currentFrame: number, secondsBack: number): ReplayMarker {
-  const inReplay = telemetry.IsReplayPlaying === true;
-  const sessionNum = (inReplay ? telemetry.ReplaySessionNum : telemetry.SessionNum) ?? 0;
-  const sessionTime = (inReplay ? telemetry.ReplaySessionTime : telemetry.SessionTime) ?? 0;
-
-  return {
-    frame: Math.max(0, currentFrame - secondsBack * FRAMES_PER_SECOND),
-    pressFrame: currentFrame,
-    sessionNum,
-    sessionTimeMs: Math.max(0, Math.round((sessionTime - secondsBack) * 1000)),
-  };
-}
-
-/**
- * @internal Exported for testing
- *
- * The marker a Delete press at `current` removes: the nearest one within
- * {@link MARKER_DELETE_WINDOW_FRAMES}, measured to the marker's frame or to
- * the frame its Add was pressed at (`pressFrame`), whichever is closer. The
- * second distance is what lets Delete from the car reach a marker set with a
- * long Seconds back — the car sits at the live edge, the marker well behind
- * it. Markers without a numeric `pressFrame` (older files) use the frame
- * alone. On a tie the earlier marker goes.
- */
-export function pickMarkerToDelete(markers: readonly ReplayMarker[], current: number): ReplayMarker | null {
-  let best: ReplayMarker | null = null;
-  let bestDistance = Number.POSITIVE_INFINITY;
-
-  for (const marker of markers) {
-    const toFrame = Math.abs(current - marker.frame);
-    const toPress =
-      typeof marker.pressFrame === "number" && Number.isFinite(marker.pressFrame)
-        ? Math.abs(current - marker.pressFrame)
-        : Number.POSITIVE_INFINITY;
-    const distance = Math.min(toFrame, toPress);
-
-    if (distance <= MARKER_DELETE_WINDOW_FRAMES && distance < bestDistance) {
-      best = marker;
-      bestDistance = distance;
-    }
-  }
-
-  return best;
-}
-
-/**
- * @internal Exported for testing
- *
- * `WeekendInfo.SubSessionID` as a finite number, else undefined — the store
- * then takes the call for its active session.
- */
-export function readSubSessionId(sessionInfo: unknown): number | undefined {
-  const weekend = (sessionInfo as Record<string, unknown> | null | undefined)?.WeekendInfo as
-    Record<string, unknown> | undefined;
-  const raw = weekend?.SubSessionID;
-  const value = typeof raw === "number" ? raw : typeof raw === "string" && raw.trim() !== "" ? Number(raw) : NaN;
-
-  return Number.isFinite(value) ? value : undefined;
-}
-
 export const REPLAY_MARKERS_UUID = "com.iracedeck.sd.core.replay-markers" as const;
 
 export class ReplayMarkers extends ConnectionStateAwareAction<ReplayMarkersSettings> {
@@ -280,10 +183,35 @@ export class ReplayMarkers extends ConnectionStateAwareAction<ReplayMarkersSetti
   /** Per Next / Previous context: whether the icon on the key shows the jump as available. */
   private readonly shownAvailable = new Map<string, boolean>();
 
+  /** Where both surfaces read the replay context from. */
+  private readonly contextSource: ReplayContextSource = {
+    getConnectionStatus: () => this.sdkController.getConnectionStatus(),
+    getCurrentTelemetry: () => this.sdkController.getCurrentTelemetry(),
+    getSessionInfo: () => this.sdkController.getSessionInfo(),
+    isStoreInitialized: () => isReplaySessionStoreInitialized(),
+    getStore: () => getReplaySessionStore(),
+  };
+
+  /** The dial half of the action (#1230); every dial event routes here. */
+  private readonly dialSurface = new ReplayMarkersDialSurface({
+    logger: this.logger,
+    readReplayContext: () => this.readReplayContext(),
+  });
+
   override async onWillAppear(ev: IDeckWillAppearEvent<ReplayMarkersSettings>): Promise<void> {
     await super.onWillAppear(ev);
     const contextId = ev.action.id;
     const settings = this.parseSettings(ev.payload.settings);
+
+    if (ev.action.isDial()) {
+      await this.dialSurface.willAppear(ev.action, settings.dial);
+      // The dial's screen follows the replay as it plays and the marker list as
+      // any key or dial edits it; a tick only compares, and renders on a change.
+      this.sdkController.subscribe(contextId, () => this.dialSurface.onTick(contextId));
+
+      return;
+    }
+
     this.activeContexts.set(contextId, settings);
     await this.updateDisplay(ev, settings);
     // Next / Previous follow the replay as it plays and the marker list as any
@@ -295,6 +223,7 @@ export class ReplayMarkers extends ConnectionStateAwareAction<ReplayMarkersSetti
     const contextId = ev.action.id;
     this.imageThrottle.clear(contextId);
     this.sdkController.unsubscribe(contextId);
+    this.dialSurface.willDisappear(contextId);
     this.cancelFlash(contextId);
     this.activeContexts.delete(contextId);
     this.shownAvailable.delete(contextId);
@@ -304,6 +233,13 @@ export class ReplayMarkers extends ConnectionStateAwareAction<ReplayMarkersSetti
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<ReplayMarkersSettings>): Promise<void> {
     await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
+
+    if (ev.action.isDial()) {
+      await this.dialSurface.didReceiveSettings(ev.action, settings.dial);
+
+      return;
+    }
+
     this.activeContexts.set(ev.action.id, settings);
     this.cancelFlash(ev.action.id);
     await this.updateDisplay(ev, settings);
@@ -318,10 +254,31 @@ export class ReplayMarkers extends ConnectionStateAwareAction<ReplayMarkersSetti
     if (confirmation) this.flash(ev.action.id, settings, confirmation);
   }
 
-  private parseSettings(settings: unknown): ReplayMarkersSettings {
-    const parsed = ReplayMarkersSettings.safeParse(settings);
+  override async onDialRotate(ev: IDeckDialRotateEvent<ReplayMarkersSettings>): Promise<void> {
+    const settings = this.parseSettings(ev.payload.settings);
+    this.dialSurface.rotate(ev.action, settings.dial, ev.payload.ticks, ev.payload.pressed === true);
+  }
 
-    return parsed.success ? parsed.data : ReplayMarkersSettings.parse({});
+  override async onDialDown(ev: IDeckDialDownEvent<ReplayMarkersSettings>): Promise<void> {
+    const settings = this.parseSettings(ev.payload.settings);
+    this.dialSurface.down(ev.action, settings.dial);
+  }
+
+  override async onDialUp(ev: IDeckDialUpEvent<ReplayMarkersSettings>): Promise<void> {
+    await this.dialSurface.up(ev.action.id);
+  }
+
+  override async onTouchTap(ev: IDeckTouchTapEvent<ReplayMarkersSettings>): Promise<void> {
+    const settings = this.parseSettings(ev.payload.settings);
+    this.dialSurface.touchTap(ev.action, settings.dial, ev.payload.hold === true);
+  }
+
+  private parseSettings(settings: unknown): ReplayMarkersSettings {
+    return parseReplayMarkersSettings(settings);
+  }
+
+  private readReplayContext(): ReplayContextResult {
+    return readReplayContext(this.contextSource);
   }
 
   /**
@@ -338,33 +295,24 @@ export class ReplayMarkers extends ConnectionStateAwareAction<ReplayMarkersSetti
       return undefined;
     }
 
-    const { telemetry, frame, store, scope } = context;
-
     switch (settings.mode) {
       case "add": {
-        const marker = buildMarker(telemetry, frame, settings.secondsBack);
-        const added = store.markers.add(marker, scope);
+        const { marker, added } = addMarkerAt(context, settings.secondsBack);
         this.logger.info(added ? "Marker added" : "Marker not added");
-        this.logger.debug(`frame=${marker.frame} current=${frame} secondsBack=${settings.secondsBack}`);
+        this.logger.debug(`frame=${marker.frame} current=${context.frame} secondsBack=${settings.secondsBack}`);
 
         return added ? "added" : undefined;
       }
       case "delete": {
-        const target = pickMarkerToDelete(store.markers.list(scope), frame);
-        // Deleting at the chosen marker's own frame removes exactly that one:
-        // it is at distance 0, and Add keeps any other more than 1 s away.
-        const removed = target ? store.markers.deleteNearest(target.frame, scope) : null;
+        const removed = deleteMarkerAt(context);
         this.logger.info(removed ? "Marker deleted" : "No marker near the current frame");
-        this.logger.debug(`current=${frame} removed=${removed?.frame ?? "none"}`);
+        this.logger.debug(`current=${context.frame} removed=${removed?.frame ?? "none"}`);
 
         return removed ? "deleted" : undefined;
       }
       case "next":
       case "previous": {
-        // iRacing honours replay commands only out of the car (irsdk_defines.h:
-        // "camera and replay commands only work when you are out of your car"),
-        // so from the car a jump would be sent, ignored, and logged as done.
-        if (telemetry.IsReplayPlaying !== true) {
+        if (!context.inReplay) {
           this.logger.debug(
             `${settings.mode}: replay not playing, and iRacing ignores replay commands from the car; open the replay first`,
           );
@@ -372,20 +320,23 @@ export class ReplayMarkers extends ConnectionStateAwareAction<ReplayMarkersSetti
           return undefined;
         }
 
-        const target = jumpTarget(settings.mode, store, frame, scope);
+        // From the shared pending landing while the replay has not reached it
+        // (#1230), so a press right after a turn or another press steps on.
+        const anchor = resolveMarkerJumpAnchor(context.frame);
+        const target = resolveJumpTarget(settings.mode, context, anchor);
 
         if (!target) {
           this.logger.info(`No ${settings.mode} marker`);
-          this.logger.debug(`current=${frame}`);
+          this.logger.debug(`current=${context.frame} anchor=${anchor}`);
 
           return undefined;
         }
 
-        // Takes the replay cursor from an in-flight Jump to Fastest Lap walk (#1203).
-        cancelReplayCursorOwner(settings.mode);
-        const success = getCommands().replay.setPlayPosition(ReplayPosMode.Begin, target.frame);
+        // Takes the replay cursor from an in-flight Jump to Fastest Lap walk
+        // (#1203), and records the shared landing when the jump was sent.
+        const success = jumpToMarkerFrame(settings.mode, target.frame);
         this.logger.info(`Jumped to ${settings.mode} marker`);
-        this.logger.debug(`Result: ${success}, current=${frame}, target=${target.frame}`);
+        this.logger.debug(`Result: ${success}, current=${context.frame}, anchor=${anchor}, target=${target.frame}`);
 
         return undefined;
       }
@@ -393,42 +344,16 @@ export class ReplayMarkers extends ConnectionStateAwareAction<ReplayMarkersSetti
   }
 
   /**
-   * Everything a press reads before it acts: connection, store, telemetry and
-   * frame, and the SubSessionID scope. `reason` names what was missing.
-   */
-  private readReplayContext(): ReplayContext | { ok: false; reason: string } {
-    if (!this.sdkController.getConnectionStatus()) return { ok: false, reason: "Not connected to iRacing" };
-
-    if (!isReplaySessionStoreInitialized()) return { ok: false, reason: "Replay session store not initialized" };
-
-    const telemetry = this.sdkController.getCurrentTelemetry();
-    const frame = resolveReplayFrame(telemetry);
-
-    if (!telemetry || frame === null) return { ok: false, reason: "No replay frame in telemetry" };
-
-    const subSessionId = readSubSessionId(this.sdkController.getSessionInfo());
-
-    return {
-      ok: true,
-      telemetry,
-      frame,
-      store: getReplaySessionStore(),
-      scope: subSessionId === undefined ? undefined : { subSessionId },
-    };
-  }
-
-  /**
-   * Whether a Next / Previous press would jump now — the same gates the press
-   * applies, read fresh: connected, a store and a frame, a replay on screen
-   * (iRacing ignores replay commands from the car), and a marker outside the
-   * mode's window in that direction.
+   * Whether a Next / Previous press would jump now — the one predicate the
+   * press and the dial's turn and side marks apply ({@link resolveJumpTarget}),
+   * read fresh: connected, a store and a frame, a replay on screen, and a
+   * marker outside the mode's window in that direction, measured from where a
+   * press would measure (the shared pending landing, #1230).
    */
   private isJumpAvailable(mode: ReplayMarkersJumpMode): boolean {
     const context = this.readReplayContext();
 
-    if (!context.ok || context.telemetry.IsReplayPlaying !== true) return false;
-
-    return jumpTarget(mode, context.store, context.frame, context.scope) !== null;
+    return context.ok && resolveJumpTarget(mode, context, resolveMarkerJumpAnchor(context.frame)) !== null;
   }
 
   /**
@@ -509,22 +434,4 @@ export class ReplayMarkers extends ConnectionStateAwareAction<ReplayMarkersSetti
       this.restingSvg(contextId, this.activeContexts.get(contextId) ?? settings),
     );
   }
-}
-
-type ReplayContext = {
-  ok: true;
-  telemetry: TelemetryData;
-  frame: number;
-  store: ReplaySessionStore;
-  scope: SubSessionScoped | undefined;
-};
-
-/** The marker a Next / Previous press at `frame` jumps to, or null. */
-function jumpTarget(
-  mode: ReplayMarkersJumpMode,
-  store: ReplaySessionStore,
-  frame: number,
-  scope: SubSessionScoped | undefined,
-): ReplayMarker | null {
-  return mode === "next" ? store.markers.next(frame, scope) : store.markers.previous(frame, scope);
 }

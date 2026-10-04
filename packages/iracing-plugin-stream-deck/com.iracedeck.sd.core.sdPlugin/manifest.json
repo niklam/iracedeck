@@ -384,11 +384,21 @@
       "Name": "Replay Markers",
       "UUID": "com.iracedeck.sd.core.replay-markers",
       "Icon": "imgs/actions/replay-markers/icon",
-      "Tooltip": "Mark a replay moment and jump back to it",
+      "Tooltip": "Mark a replay moment and jump back to it; on a dial: turn to step through markers",
       "PropertyInspectorPath": "ui/replay-markers.html",
       "Controllers": [
-        "Keypad"
+        "Keypad",
+        "Encoder"
       ],
+      "Encoder": {
+        "Icon": "imgs/actions/replay-markers/dial",
+        "layout": "layouts/replay-markers.json",
+        "TriggerDescription": {
+          "Rotate": "Next / previous marker",
+          "Push": "Configured action",
+          "Touch": "Configured action"
+        }
+      },
       "States": [
         {
           "Image": "imgs/actions/replay-markers/key",

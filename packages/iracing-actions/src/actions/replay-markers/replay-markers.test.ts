@@ -1,7 +1,8 @@
 import { ReplayPosMode, type TelemetryData } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { _resetReplayCursor, claimReplayCursor } from "../../shared/replay-cursor.js";
+import { _resetReplayCursor, claimReplayCursor, clearReplayLanding } from "../../shared/replay-cursor.js";
+import { REPLAY_EXIT_GRACE_MS } from "./replay-markers-ops.js";
 import {
   buildMarker,
   CONFIRMATION_FLASH_MS,
@@ -10,6 +11,7 @@ import {
   readSubSessionId,
   REPLAY_MARKERS_UUID,
   ReplayMarkers,
+  ReplayMarkersDialSettings,
   ReplayMarkersSettings,
 } from "./replay-markers.js";
 
@@ -36,8 +38,19 @@ vi.mock("@iracedeck/icons/replay-markers/confirm-deleted.svg", () => ({ default:
 
 vi.mock("@iracedeck/deck-core", async () => {
   const { z } = await import("zod");
+  // The real dial-gesture module, by path (zero imports): the dial instances
+  // below classify their releases through it.
+  const dialGesture = await vi.importActual<typeof import("../../../../deck-core/src/dial-gesture.js")>(
+    "../../../../deck-core/src/dial-gesture.js",
+  );
 
   return {
+    createHoldPreview: dialGesture.createHoldPreview,
+    classifyDialRelease: dialGesture.classifyDialRelease,
+    getDualPressThresholdMs: () => 500,
+    applyBindingWarning: (content: string) => `${content}<binding-warning/>`,
+    escapeXml: (str: string) => str,
+    svgToDataUri: (svg: string) => svg,
     // REAL zod semantics for the action's own fields (defaults, coercion, the
     // secondsBack clamp) — only the CommonSettings base fields are absent.
     CommonSettings: {
@@ -63,7 +76,9 @@ vi.mock("@iracedeck/deck-core", async () => {
     getCommands: vi.fn(() => ({ replay: { setPlayPosition: mocks.setPlayPosition } })),
     getReplaySessionStore: vi.fn(() => ({ markers: mocks.markers })),
     isReplaySessionStoreInitialized: mocks.isStoreInitialized,
+    MARKER_DEDUPE_FRAMES: 60,
     MARKER_DELETE_WINDOW_FRAMES: 600,
+    MARKER_PREVIOUS_MIN_BEHIND_FRAMES: 120,
     getGlobalBorderSettings: vi.fn(() => ({})),
     getGlobalColors: vi.fn(() => ({})),
     getGlobalGraphicSettings: vi.fn(() => ({})),
@@ -140,7 +155,7 @@ function makeAction(telemetry: TelemetryData | null = LIVE, subSessionId: unknow
 
 function keyDown(settings: Record<string, unknown>, id = "ctx-1") {
   return {
-    action: { id, setTitle: vi.fn().mockResolvedValue(undefined), isKey: () => true },
+    action: { id, setTitle: vi.fn().mockResolvedValue(undefined), isKey: () => true, isDial: () => false },
     payload: { settings },
   } as never;
 }
@@ -158,6 +173,8 @@ describe("ReplayMarkers", () => {
     mocks.markers.next.mockReturnValue(null);
     mocks.markers.previous.mockReturnValue(null);
     mocks.markers.list.mockReturnValue([]);
+    mocks.setPlayPosition.mockReturnValue(true);
+    _resetReplayCursor();
     vi.useFakeTimers();
   });
 
@@ -190,6 +207,53 @@ describe("ReplayMarkers", () => {
 
     it("an unreadable secondsBack does not reset the mode", () => {
       expect(ReplayMarkersSettings.parse({ mode: "next", secondsBack: "x" }).mode).toBe("next");
+    });
+
+    it("a keypad instance's stored settings parse exactly as before the dial (#1230)", () => {
+      const stored = { mode: "previous", secondsBack: "12", colorOverrides: { backgroundColor: "#123456" } };
+      const { dial, ...keypad } = ReplayMarkersSettings.parse(stored);
+
+      // Every stored key reads as it did, and nothing else appears beside the new `dial`.
+      expect(keypad).toEqual({ mode: "previous", secondsBack: 12, colorOverrides: { backgroundColor: "#123456" } });
+      expect(dial).toEqual(ReplayMarkersDialSettings.parse({}));
+    });
+
+    it("an empty dial fills every default", () => {
+      expect(ReplayMarkersSettings.parse({ dial: {} }).dial).toEqual({
+        secondsBack: 5,
+        pressAction: "add",
+        longPressAction: "delete",
+        tapAction: "none",
+        longTouchAction: "none",
+        colors: { borderColor: "", labelColor: "", valueColor: "", backgroundColor: "" },
+      });
+    });
+
+    it.each([
+      ["7", 7],
+      [90, 60],
+      [-3, 0],
+      ["abc", 5],
+      ["", 5],
+      [null, 5],
+    ])("dial.secondsBack %j reads as %j, as the keypad's does", (input, expected) => {
+      expect(ReplayMarkersSettings.parse({ dial: { secondsBack: input } }).dial.secondsBack).toBe(expected);
+      expect(ReplayMarkersSettings.parse({ secondsBack: input }).secondsBack).toBe(expected);
+    });
+
+    it("an unknown gesture reads as that slot's default without resetting the others", () => {
+      const { dial } = ReplayMarkersSettings.parse({
+        dial: { pressAction: "warp", longPressAction: "add", tapAction: 3, secondsBack: 9 },
+      });
+
+      expect(dial).toMatchObject({ pressAction: "add", longPressAction: "add", tapAction: "none", secondsBack: 9 });
+    });
+
+    it("a non-object dial degrades to the dial defaults and keeps the keypad's mode", () => {
+      const parsed = ReplayMarkersSettings.parse({ mode: "delete", dial: "garbage" });
+
+      expect(parsed.mode).toBe("delete");
+      expect(parsed.dial).toEqual(ReplayMarkersDialSettings.parse({}));
     });
   });
 
@@ -228,7 +292,7 @@ describe("ReplayMarkers", () => {
 
   describe("buildMarker", () => {
     it("live: seconds back from the live edge, with the live session", () => {
-      expect(buildMarker(LIVE, 30_000, 5)).toEqual({
+      expect(buildMarker(LIVE, 30_000, 5, false)).toEqual({
         frame: 29_700,
         pressFrame: 30_000,
         sessionNum: 2,
@@ -237,7 +301,7 @@ describe("ReplayMarkers", () => {
     });
 
     it("replay: seconds back from the frame on screen, with the replay's session", () => {
-      expect(buildMarker(REPLAY, 12_000, 0)).toEqual({
+      expect(buildMarker(REPLAY, 12_000, 0, true)).toEqual({
         frame: 12_000,
         pressFrame: 12_000,
         sessionNum: 1,
@@ -245,8 +309,15 @@ describe("ReplayMarkers", () => {
       });
     });
 
+    it("in a replay's post-seek blip (IsReplayPlaying reads false): still the replay's session", () => {
+      expect(buildMarker({ ...REPLAY, IsReplayPlaying: false } as TelemetryData, 12_000, 0, true)).toMatchObject({
+        sessionNum: 1,
+        sessionTimeMs: 200_000,
+      });
+    });
+
     it("clamps the frame and the time at 0", () => {
-      expect(buildMarker({ ...LIVE, SessionTime: 2 } as TelemetryData, 100, 60)).toMatchObject({
+      expect(buildMarker({ ...LIVE, SessionTime: 2 } as TelemetryData, 100, 60, false)).toMatchObject({
         frame: 0,
         sessionTimeMs: 0,
       });
@@ -465,6 +536,22 @@ describe("ReplayMarkers", () => {
       _resetReplayCursor();
     });
 
+    it("Next in the post-seek blip still jumps, from the replay's last frame", async () => {
+      mocks.markers.next.mockReturnValue({ frame: 15_000, sessionNum: 1, sessionTimeMs: 0 });
+      const { action, sdk } = makeAction(REPLAY);
+      await action.onKeyDown(keyDown({ mode: "next" }));
+      mocks.setPlayPosition.mockClear();
+      mocks.markers.next.mockClear();
+      clearReplayLanding(); // the landing alone: the replay state is what is under test
+
+      sdk.getCurrentTelemetry.mockReturnValue({ ...REPLAY, IsReplayPlaying: false } as TelemetryData);
+      await vi.advanceTimersByTimeAsync(300);
+      await action.onKeyDown(keyDown({ mode: "next" }));
+
+      expect(mocks.markers.next).toHaveBeenCalledWith(12_000, { subSessionId: 86697546 });
+      expect(mocks.setPlayPosition).toHaveBeenCalledWith(ReplayPosMode.Begin, 15_000);
+    });
+
     it.each(["next", "previous"])("%s from the car sends nothing and says why at debug", async (mode) => {
       mocks.markers.next.mockReturnValue({ frame: 31_000, sessionNum: 2, sessionTimeMs: 0 });
       mocks.markers.previous.mockReturnValue({ frame: 29_000, sessionNum: 2, sessionTimeMs: 0 });
@@ -618,6 +705,26 @@ describe("ReplayMarkers", () => {
       expect(redrawn(action)[1]![1]).not.toContain("dimmed");
     });
 
+    it("Next stays available through the post-seek blip, and greys only once the replay is really left", async () => {
+      storeWith([AHEAD]);
+      const { action, sdk } = makeAction(REPLAY);
+      await appear(action, { mode: "next" });
+      expect(shown(action)).not.toContain("dimmed");
+
+      // For ~300 ms after every `setPlayPosition`, telemetry reads IsReplayPlaying false.
+      sdk.getCurrentTelemetry.mockReturnValue({ ...REPLAY, IsReplayPlaying: false } as TelemetryData);
+      await vi.advanceTimersByTimeAsync(300);
+      tick(action);
+      await vi.advanceTimersByTimeAsync(100);
+      expect(redrawn(action)).toHaveLength(0);
+
+      await vi.advanceTimersByTimeAsync(REPLAY_EXIT_GRACE_MS);
+      tick(action);
+      await vi.advanceTimersByTimeAsync(100);
+      expect(redrawn(action)).toHaveLength(1);
+      expect(redrawn(action)[0]![1]).toMatch(/\|dimmed$/);
+    });
+
     it("Previous flips to available once the replay is past the marker's window", async () => {
       storeWith([AHEAD]);
       const { action, sdk } = makeAction({ ...REPLAY, ReplayFrameNum: 15_100 } as TelemetryData);
@@ -736,6 +843,179 @@ describe("ReplayMarkers", () => {
       tick(action, "ctx-2");
       expect(redrawn(action)).toEqual([["ctx-2", expect.stringMatching(/\|dimmed$/)]]);
     });
+  });
+});
+
+describe("ReplayMarkers on a dial (#1230)", () => {
+  const STRIP = { id: "sd-plus-strip", width: 200, height: 100 } as const;
+
+  function dialEvent(settings: Record<string, unknown>, payload: Record<string, unknown> = {}, id = "dial-1") {
+    return {
+      action: {
+        id,
+        isKey: () => false,
+        isDial: () => true,
+        dialCanvas: () => STRIP,
+        setDialCanvas: vi.fn((_uri: string) => Promise.resolve()),
+        setImage: vi.fn((_svg: string) => Promise.resolve()),
+        setTitle: vi.fn((_title: string) => Promise.resolve()),
+        setTriggerDescription: vi.fn((_d: unknown) => Promise.resolve()),
+      },
+      payload: { settings, ...payload },
+    };
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.isStoreInitialized.mockReturnValue(true);
+    mocks.markers.add.mockReturnValue(true);
+    mocks.markers.deleteNearest.mockReturnValue(null);
+    mocks.markers.next.mockReturnValue(null);
+    mocks.markers.previous.mockReturnValue(null);
+    mocks.markers.list.mockReturnValue([]);
+    mocks.setPlayPosition.mockReturnValue(true);
+    _resetReplayCursor();
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("appears on the dial's screen, not as a key, and follows the SDK", async () => {
+    const { action, sdk } = makeAction(REPLAY);
+    const ev = dialEvent({});
+
+    await action.onWillAppear(ev as never);
+
+    expect(action["setKeyImage"]).not.toHaveBeenCalled();
+    expect(ev.action.setDialCanvas).toHaveBeenCalledWith(expect.stringContaining(">MARKERS</text>"));
+    expect(sdk.subscribe).toHaveBeenCalledWith("dial-1", expect.any(Function));
+
+    // A tick reaches the dial surface: a marker added elsewhere shows on the next one.
+    mocks.markers.list.mockReturnValue([{ frame: 1_000, sessionNum: 1, sessionTimeMs: 0 }]);
+    (sdk.subscribe.mock.calls[0]![1] as () => void)();
+    expect(ev.action.setDialCanvas).toHaveBeenLastCalledWith(expect.stringContaining(">1</text>"));
+    expect(action["updateKeyImage"]).not.toHaveBeenCalled();
+  });
+
+  it("a turn jumps through the shared store predicate", async () => {
+    mocks.markers.next.mockReturnValue({ frame: 14_000, sessionNum: 1, sessionTimeMs: 0 });
+    const { action } = makeAction(REPLAY);
+    await action.onWillAppear(dialEvent({}) as never);
+
+    await action.onDialRotate(dialEvent({}, { ticks: 1, pressed: false }) as never);
+
+    expect(mocks.markers.next).toHaveBeenCalledWith(12_000, { subSessionId: 86697546 });
+    expect(mocks.setPlayPosition).toHaveBeenCalledWith(ReplayPosMode.Begin, 14_000);
+  });
+
+  it("a press adds with the dial's own Seconds back, not the keypad's", async () => {
+    const { action } = makeAction(LIVE);
+    const settings = { secondsBack: 20, dial: { secondsBack: 2 } };
+    await action.onWillAppear(dialEvent(settings) as never);
+
+    await action.onDialDown(dialEvent(settings) as never);
+    await action.onDialUp(dialEvent(settings) as never);
+
+    expect(mocks.markers.add).toHaveBeenCalledWith(expect.objectContaining({ frame: 30_000 - 120 }), {
+      subSessionId: 86697546,
+    });
+  });
+
+  it("a touch runs the Tap Display gesture", async () => {
+    mocks.markers.list.mockReturnValue([{ frame: 12_100, sessionNum: 1, sessionTimeMs: 0 }]);
+    mocks.markers.deleteNearest.mockReturnValue({ frame: 12_100, sessionNum: 1, sessionTimeMs: 0 });
+    const { action } = makeAction(REPLAY);
+    const settings = { dial: { tapAction: "delete" } };
+    await action.onWillAppear(dialEvent(settings) as never);
+
+    await action.onTouchTap(dialEvent(settings, { hold: false }) as never);
+
+    expect(mocks.markers.deleteNearest).toHaveBeenCalledWith(12_100, { subSessionId: 86697546 });
+  });
+
+  describe("one shared landing across the keypad and every dial", () => {
+    const FRAMES: Marker[] = [1_000, 2_000, 3_000, 4_000].map((frame) => ({ frame, sessionNum: 1, sessionTimeMs: 0 }));
+    const sent = () => mocks.setPlayPosition.mock.calls.map((c) => c[1]);
+    const replayAt = (frame: number) => ({ ...REPLAY, ReplayFrameNum: frame }) as TelemetryData;
+    const turn = (action: ReplayMarkers, ticks: number) =>
+      action.onDialRotate(dialEvent({}, { ticks, pressed: false }) as never);
+
+    beforeEach(() => {
+      // The store's own windows: next is > 60 frames ahead, previous > 120 behind.
+      mocks.markers.next.mockImplementation(
+        ((frame: number) => FRAMES.find((m) => m.frame - frame > 60) ?? null) as never,
+      );
+      mocks.markers.previous.mockImplementation(
+        ((frame: number) => [...FRAMES].reverse().find((m) => frame - m.frame > 120) ?? null) as never,
+      );
+      mocks.markers.list.mockReturnValue(FRAMES);
+    });
+
+    it("keypad Next right after a dial turn steps beyond the dial's target rather than re-sending it", async () => {
+      const { action } = makeAction(replayAt(500));
+      await action.onWillAppear(dialEvent({}) as never);
+
+      await turn(action, 1);
+      await action.onKeyDown(keyDown({ mode: "next" }, "key-1"));
+
+      expect(sent()).toEqual([1_000, 2_000]);
+    });
+
+    it("a dial turn after keypad Previous within the hold measures from the keypad's landing", async () => {
+      const { action } = makeAction(replayAt(2_500));
+      await action.onWillAppear(dialEvent({}) as never);
+
+      await turn(action, 1);
+      await action.onKeyDown(keyDown({ mode: "previous" }, "key-1"));
+      await turn(action, 1);
+
+      // From the keypad's 2 000, not from the dial's own 3 000 (which would send 4 000).
+      expect(sent()).toEqual([3_000, 2_000, 3_000]);
+    });
+
+    it("a keypad Next key greys out once a dial has jumped to the last marker", async () => {
+      const { action, sdk } = makeAction(replayAt(500));
+      await action.onWillAppear(dialEvent({}) as never);
+      await appear(action, { mode: "next" }, "key-1");
+      expect(vi.mocked(action["setKeyImage"]).mock.calls.at(-1)![1]).not.toContain("dimmed");
+
+      await turn(action, 9);
+      const keyTick = sdk.subscribe.mock.calls.find(([id]) => id === "key-1")![1] as () => void;
+      keyTick();
+
+      expect(sent()).toEqual([4_000]);
+      expect(vi.mocked(action["updateKeyImage"]).mock.calls.at(-1)).toEqual([
+        "key-1",
+        expect.stringMatching(/\|dimmed$/),
+      ]);
+    });
+
+    it("a jump the keypad could not send leaves the dial's landing standing", async () => {
+      const { action } = makeAction(replayAt(500));
+      await action.onWillAppear(dialEvent({}) as never);
+
+      await turn(action, 1);
+      mocks.setPlayPosition.mockReturnValueOnce(false);
+      await action.onKeyDown(keyDown({ mode: "next" }, "key-1"));
+      await turn(action, 1);
+
+      // The keypad's 2 000 never went out; the replay is still headed for the
+      // dial's 1 000, so the dial steps on from there.
+      expect(sent()).toEqual([1_000, 2_000, 2_000]);
+    });
+  });
+
+  it("settings and disappearance stay on the dial side", async () => {
+    const { action, sdk } = makeAction(REPLAY);
+    await action.onWillAppear(dialEvent({}) as never);
+
+    await action.onDidReceiveSettings(dialEvent({ dial: { pressAction: "none" } }) as never);
+    expect(action["setKeyImage"]).not.toHaveBeenCalled();
+
+    await action.onWillDisappear(dialEvent({}) as never);
+    expect(sdk.unsubscribe).toHaveBeenCalledWith("dial-1");
   });
 });
 

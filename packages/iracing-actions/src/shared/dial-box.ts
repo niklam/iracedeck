@@ -1,9 +1,11 @@
 /**
- * The shared Stream Deck+ dial "dash box" — the 200×100 touch-strip pixmap the
- * seven Setup dial surfaces (Brakes, Traction, Fuel, Engine, Aero, Chassis,
- * Hybrid) draw for their encoder slot. Each action was carrying its own copy of
- * this renderer (issue #817); this module is the single source (issue #811),
- * and adds user-adjustable colors.
+ * The shared dial "dash box" — the full-canvas pixmap thirteen dial surfaces
+ * draw on the dial's own screen: the seven Setup dials (Brakes, Traction, Fuel,
+ * Engine, Aero, Chassis, Hybrid), Camera Editor Adjustments, Cockpit Misc,
+ * Force Feedback, Replay Markers, Splits & Reference and View Adjustment. The
+ * Setup actions were each carrying their own copy of this renderer (issue
+ * #817); this module is the single source (issue #811), and adds
+ * user-adjustable colors.
  *
  * The box is a rounded panel floating on the black device screen: the
  * background color fills the area INSIDE the border frame (the outer margin
@@ -19,7 +21,10 @@ import { z } from "zod";
 
 import { renderKnobBox } from "./dial-knob-box.js";
 import type { DialPendingPreview } from "./dial-preview.js";
+import type { DialSideMarker } from "./dial-side-markers.js";
 import { renderStripBox } from "./dial-strip-box.js";
+
+export type { DialSideMarker, DialSideMarks } from "./dial-side-markers.js";
 
 /** Default panel background — near-black, ≈ the device screen, so the default look is unchanged. */
 export const DIAL_BOX_BACKGROUND = "#0d0d0d";
@@ -71,12 +76,26 @@ export interface DialBoxArgs {
   identityLabelScale?: number;
   bindingMissing?: boolean;
   /**
-   * Draw fixed left/right triangles flanking the label, lighting the given
-   * side and dimming the other (#953: the LR/RR spring dials). The label stays
-   * centered — the markers occupy fixed slots so the text never shifts when
-   * the user switches between the two sides.
+   * Draw fixed left/right triangles flanking the label. `"left"` / `"right"`
+   * lights that side and dims the other (#953: the LR/RR spring dials);
+   * `{ left, right }` lights each side on its own, so neither, either or both
+   * can be lit (#1230: the sides a turn would jump towards). The label stays
+   * centered — the markers occupy fixed slots so the text never shifts.
+   * Absent, no markers are drawn.
    */
-  sideMarker?: "left" | "right";
+  sideMarker?: DialSideMarker;
+  /**
+   * A small line of text along the bottom of the panel, in the label color
+   * (#1230: what a press does from the car). While set, the value is fitted
+   * smaller and centred between the label and the caption so the three never
+   * overlap. Absent or empty, the box is drawn exactly as without it.
+   */
+  caption?: string;
+  /**
+   * Fade the whole box — panel and content — to show the dial can do nothing
+   * right now (#1230: no store or no telemetry), like a keypad's unavailable look.
+   */
+  dimmed?: boolean;
   /**
    * The pending long-press outcome (issue #1120). While set, the value slot
    * shows this instead of the live value, underlined by the shared pending bar —
@@ -109,7 +128,7 @@ export function renderDialBox(canvas: DialCanvasProfile, args: DialBoxArgs): str
 }
 
 /**
- * Dash-box appearance settings, spread into each Setup dial's `DialSettings`
+ * Dash-box appearance settings, spread into each dash-box dial's settings
  * schema (issue #811). All slots default so a keypad-only instance or a fresh
  * dial parses cleanly, and every field is `.catch`-guarded so a value written
  * by a newer plugin version degrades to its default instead of failing the

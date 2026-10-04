@@ -808,6 +808,14 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
   // renders nothing for them (like Fuel Service's "switch-mode").
   "replay-markers": entry("mode", allApi(["next", "previous"])),
 
+  // The dial surface of Replay Markers (#1230). Rotation steps through the
+  // markers with one `setPlayPosition` broadcast, so `step` is `api`; the Add and
+  // Delete gesture values are absent, as the keypad's are, because the markers
+  // live in iRaceDeck's own store and send nothing to iRacing. `modeSetting`
+  // names the (control-less) rotation slot, so the PI's status line falls back to
+  // its `default-mode="step"`.
+  "replay-markers-dial": entry("dial.rotation", { step: api }),
+
   "replay-speed": entry("direction", allApi(["increase", "decrease"])),
 
   "replay-transport": entry(

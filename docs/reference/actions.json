@@ -431,7 +431,7 @@
           "id": "com.iracedeck.sd.core.replay-markers",
           "name": "Replay Markers",
           "file": "replay-markers.ts",
-          "encoder": false,
+          "encoder": true,
           "settingsKey": "mode",
           "modes": [
             {

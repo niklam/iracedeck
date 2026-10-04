@@ -13,7 +13,7 @@ import { actionPropertyInspectors } from "./action-templates.js";
  *
  * 1. The partial renders the button, its divider and its warning banner.
  * 2. Every one of the 35 action templates includes it at the right place. On
- *    the 16 dial-capable PIs the key-icon appearance block lives inside
+ *    the 17 dial-capable PIs the key-icon appearance block lives inside
  *    `<div id="keypad-appearance">`, which the PI hides on the dial surface —
  *    so a footer anchored inside that wrapper (the tempting one-line change:
  *    render it from `title-overrides.ejs`) would silently strip every dial user

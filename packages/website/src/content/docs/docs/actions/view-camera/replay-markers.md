@@ -11,6 +11,8 @@ Replay Markers lets you bookmark moments of a session and come back to them in t
 
 A marker is a position in iRacing's replay recording. Jumping to one is a single iRacing replay command, so it is instant and needs no key binding.
 
+On a Stream Deck+ dial or a Mirabox knob, Replay Markers becomes a marker dial: turn it to step through the markers and press it to add one — see [On a dial](#on-a-dial).
+
 ## Where markers are kept
 
 iRaceDeck saves each session's markers to its own file, so they are still there when you open the saved replay days later:
@@ -84,7 +86,7 @@ The key turns grey whenever a press would do nothing — no marker ahead, not in
 #### Details
 
 - **Method:** iRacing API
-- **Dial:** No rotation support
+- **Dial:** Turning the dial clockwise jumps to the next marker — see [On a dial](#on-a-dial) below
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** Yes — greyed out while there is no marker to jump to
 
@@ -103,10 +105,60 @@ Like **Next Marker**, the key turns grey whenever a press would do nothing: no m
 #### Details
 
 - **Method:** iRacing API
-- **Dial:** No rotation support
+- **Dial:** Turning the dial counter-clockwise jumps to the previous marker — see [On a dial](#on-a-dial) below
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** Yes — greyed out while there is no marker to jump to
 
 #### Settings
 
 - No additional settings
+
+## On a dial
+
+Placed on a Stream Deck+ dial or a Mirabox knob, Replay Markers becomes a marker dial. Turning the dial steps through the session's markers in the replay — clockwise to the next marker, counter-clockwise to the previous one — and a press adds a marker, from the car or in the replay. It needs no key binding. Rotation always steps through the markers, so there is no dial **Mode** dropdown; the Property Inspector automatically shows the dial settings below (instead of the keypad Mode and Seconds Back) when the instance sits on a dial. See [Dials](/docs/features/dials/) for how the shared dial gestures work.
+
+Each detent is one marker. A turn lands on the same marker the **Next Marker** and **Previous Marker** keys would from the same moment: a marker less than one second ahead is skipped, and turning back within two seconds of reaching a marker goes to the one before it. A fast spin walks as many markers as the dial reports detents, with no limit, and stops at the first or last marker rather than wrapping around to the other end of the list. However fast you spin, the replay gets a single jump, to the last marker reached, and a quick second turn carries on from the marker you just jumped to even before the replay has caught up there. Turning the dial also stops a running [Jump to Fastest Lap](/docs/actions/view-camera/replay-control/#jump-to-fastest-lap) search, so your jump stands.
+
+Turning only works in the replay. iRacing accepts replay commands only when you are out of the car, so from the car a turn sends nothing — open the replay first. With no marker in the direction you turn, nothing happens either.
+
+#### Details
+
+- **Method:** iRacing API for the jumps; Add Marker and Delete Marker are stored by iRaceDeck — no iRacing command
+- **Dial:** Rotating jumps to the next marker (clockwise) or the previous marker (counter-clockwise), one marker per detent with no cap on a fast spin, stopping at the ends of the list; works in the replay only
+- **Default binding:** No keyboard binding
+- **Telemetry-aware:** Yes — the display shows the marker count, which marker is playing, and which way a turn can jump
+
+#### Controls
+
+- **Elgato Stream Deck+** — dial rotation, a press (short or long), and a touchscreen that shows the marker count. Pushing and turning at the same time steps through the markers like a plain turn, and the release then fires nothing. A touchscreen tap or long tap runs its own configured Tap Display / Long Touch action.
+- **Mirabox knob** — turn and push, with the same display drawn on the screen above the knob; the Push slot only, so to delete markers from a knob set **Press Action** to **Delete Marker** (see [Dials](/docs/features/dials/#mirabox-knobs)).
+
+#### Touch strip
+
+The touch strip (and the screen above a Mirabox knob) shows a "dash box" labelled `MARKERS`:
+
+- **`k / N`** — in the replay, while the moment of marker *k* of *N* is playing: at the marker or up to two seconds past it.
+- **`N`** — the number of markers in the session, anywhere else.
+- **`NONE`** — the session has no markers yet.
+- **Arrows** — the left and right arrows beside the label light up when a counter-clockwise or clockwise turn would jump, and stay dimmed when it would do nothing. From the car both stay dimmed, because no turn can jump from there.
+- **Caption** — from the car, when **Press Action** is **Add Marker**, a small line under the count reads `ADD −5 s` (with your **Seconds Back**), so you can see what a press will do while driving.
+
+After a press, the value briefly shows `ADDED k / N` or `DELETED` for one second; a press that adds or deletes nothing shows nothing. The whole box dims while iRacing is not running or reports no replay position. You can override the border, label, value, and background colors in the **Dash Box Appearance** section of the dial settings.
+
+#### Setting: Seconds Back
+
+How many seconds before the current moment a marker added from the dial is placed. Defaults to **5**, range **0–60** whole seconds — the dial's own value, separate from any key's. From the car the current moment is the live end of the recording; in a replay it is the frame on screen.
+
+#### Setting: Press Action / Long Press
+
+What a short or long press of the dial button does, chosen from:
+
+- **Add Marker** (default for **Press Action**) — adds a marker **Seconds Back** before the current moment, exactly like the [Add Marker](#add-marker) key. It works from the car as well as in the replay, which is why it is the press default.
+- **Delete Marker** (default for **Long Press**) — removes the marker within 10 seconds of the current moment, exactly like the [Delete Marker](#delete-marker) key.
+- **None** — does nothing.
+
+A press is classified when you release the dial — a hold past the [Long-press threshold](/docs/features/dials/#the-long-press-threshold) fires the Long Press action. Hold past the threshold and the strip previews what letting go will do: `DELETE k / N` for the marker that would go, or `ADD −5 s` when Long Press is set to Add Marker. When the release would do nothing — no marker within reach, a marker that would duplicate one already there, or no data from iRacing — the strip stays as it is. See [Seeing the outcome before you let go](/docs/features/dials/#seeing-the-outcome-before-you-let-go). Long Press is Stream Deck+ only.
+
+#### Setting: Tap Display / Long Touch
+
+Optional touch-strip gestures (Stream Deck+ only), each over { Add Marker, Delete Marker, None }. Both default to **None** for VR safety.

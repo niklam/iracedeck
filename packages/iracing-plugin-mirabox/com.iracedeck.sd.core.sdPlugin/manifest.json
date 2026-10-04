@@ -321,10 +321,11 @@
       "Name": "Replay Markers",
       "UUID": "com.iracedeck.sd.core.replay-markers",
       "Icon": "imgs/actions/replay-markers/icon",
-      "Tooltip": "Mark a replay moment and jump back to it",
+      "Tooltip": "Mark a replay moment and jump back to it; on a dial: turn to step through markers",
       "PropertyInspectorPath": "ui/replay-markers.html",
       "Controllers": [
-        "Keypad"
+        "Keypad",
+        "Knob"
       ],
       "States": [
         {

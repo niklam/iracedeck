@@ -8,7 +8,7 @@ Each action folder is self-contained: `<name>.ts`, `<name>.test.ts`, `<name>.ejs
 
 The PI framework — browser web components (`pi-components.js`), EJS partials, the Rollup EJS compile plugin, and the vendored `sdpi-components.js` — lives in `@iracedeck/pi-components`. This plugin's `rollup.config.mjs` consumes it via `import { piTemplatePlugin, partialsDir, browserDir } from "@iracedeck/pi-components/build"`, passes `packages/iracing-actions/src/actions/` as the templates root, copies per-action `icon.svg` / `key.svg` into `com.iracedeck.sd.core.sdPlugin/imgs/actions/<name>/`, and copies the browser assets into `com.iracedeck.sd.core.sdPlugin/ui/` — all at build time.
 
-Committed custom touch layouts for dial-capable actions live under `com.iracedeck.sd.core.sdPlugin/layouts/` (currently `audio-controls.json`, `fuel-service.json`, `setup-brakes.json`).
+Committed custom touch layouts for dial-capable actions live under `com.iracedeck.sd.core.sdPlugin/layouts/`, one per dial-capable action (seventeen today, `replay-markers.json` the newest, #1230).
 
 ## Adding a New Action
 

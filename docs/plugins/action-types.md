@@ -2,7 +2,7 @@
 
 Common action types used across all iRaceDeck Stream Deck plugins.
 
-> **Note:** These types describe key behaviour. Sixteen actions also declare dial support — the Stream Deck+ `Encoder` controller and the Mirabox `Knob` controller (#1013) — and dial support belongs to the action rather than to its type. See `.claude/rules/encoders-and-touchscreen.md` and `docs/reference/stream-deck-plus-encoders.md`.
+> **Note:** These types describe key behaviour. Seventeen actions also declare dial support — the Stream Deck+ `Encoder` controller and the Mirabox `Knob` controller (#1013) — and dial support belongs to the action rather than to its type. See `.claude/rules/encoders-and-touchscreen.md` and `docs/reference/stream-deck-plus-encoders.md`.
 
 ## Button
 

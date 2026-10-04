@@ -9,7 +9,12 @@ import {
 } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
-import { _resetReplayCursor, cancelReplayCursorOwner } from "../../shared/replay-cursor.js";
+import {
+  _resetReplayCursor,
+  cancelReplayCursorOwner,
+  lastReplaySighting,
+  recordReplaySighting,
+} from "../../shared/replay-cursor.js";
 import {
   _getFastestLapSessionCache,
   _resetFastestLapSessionCache,
@@ -4357,6 +4362,56 @@ describe("ReplayControl", () => {
       } finally {
         vi.useRealTimers();
       }
+    });
+  });
+
+  describe("jump-to-live and the Replay Markers replay grace (#1230)", () => {
+    const mockReplay = { goToEnd: vi.fn(() => true) };
+    let action: ReplayControl;
+
+    function fakeEvent(settings: Record<string, unknown>) {
+      return { action: { id: "ctx-live", setTitle: vi.fn(), setImage: vi.fn() }, payload: { settings } };
+    }
+
+    function inSession(simMode: string): void {
+      action["sdkController"].getSessionInfo = vi.fn(() => ({ WeekendInfo: { SimMode: simMode } }) as any);
+    }
+
+    beforeEach(async () => {
+      vi.clearAllMocks();
+      _resetReplayCursor();
+      mockReplay.goToEnd.mockReturnValue(true);
+      const { getCommands } = await import("@iracedeck/deck-core");
+      vi.mocked(getCommands).mockReturnValue({ replay: mockReplay, camera: { switchNum: vi.fn() } } as any);
+      action = new ReplayControl();
+      recordReplaySighting(4_000, 10_000);
+    });
+
+    it("a jump to live in a live session leaves the replay for the car: the sighting is dropped at once", async () => {
+      inSession("full");
+
+      await action.onKeyDown(fakeEvent({ mode: "jump-to-live" }) as any);
+
+      expect(mockReplay.goToEnd).toHaveBeenCalledOnce();
+      expect(lastReplaySighting()).toBeNull();
+    });
+
+    it("a jump to live that was not sent leaves the sighting and its grace", async () => {
+      inSession("full");
+      mockReplay.goToEnd.mockReturnValue(false);
+
+      await action.onKeyDown(fakeEvent({ mode: "jump-to-live" }) as any);
+
+      expect(lastReplaySighting()).toEqual({ frame: 4_000, seenAt: 10_000 });
+    });
+
+    it("in a saved replay the jump only seeks to the end of the file: the sighting and its grace stand", async () => {
+      inSession("replay");
+
+      await action.onKeyDown(fakeEvent({ mode: "jump-to-live" }) as any);
+
+      expect(mockReplay.goToEnd).toHaveBeenCalledOnce();
+      expect(lastReplaySighting()).toEqual({ frame: 4_000, seenAt: 10_000 });
     });
   });
 });

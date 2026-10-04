@@ -109,3 +109,50 @@ describe("renderKnobBox (#1013)", () => {
     expect(renderKnobBox({ abbr: "MIX", value: "3", colors, bindingMissing: true })).toContain("<binding-warning/>");
   });
 });
+
+describe("renderKnobBox — per-side markers, caption and dim (#1230)", () => {
+  function box(overrides: Partial<Parameters<typeof renderKnobBox>[0]> = {}): string {
+    return renderKnobBox({ abbr: "MARKERS", value: "2 / 5", colors, ...overrides });
+  }
+
+  const dimmedSides = (svg: string): string[] =>
+    (svg.match(/<polygon[^>]*>/g) ?? [])
+      .filter((p) => p.includes("opacity"))
+      .map((p) => /data-side="(\w+)"/.exec(p)?.[1] ?? "");
+
+  it("draws the one-sided forms exactly as the per-side form with one side lit", () => {
+    expect(box({ sideMarker: "left" })).toBe(box({ sideMarker: { left: true, right: false } }));
+    expect(box({ sideMarker: "right" })).toBe(box({ sideMarker: { left: false, right: true } }));
+  });
+
+  it("lights both sides, or neither", () => {
+    expect(dimmedSides(box({ sideMarker: { left: true, right: true } }))).toEqual([]);
+    expect(dimmedSides(box({ sideMarker: { left: false, right: false } }))).toEqual(["left", "right"]);
+  });
+
+  it("an empty caption draws exactly what no caption draws", () => {
+    expect(box({ caption: "" })).toBe(box());
+  });
+
+  it("draws the caption inside the panel's bottom edge, with the value capped and centred above it", () => {
+    const svg = box({ value: "3", caption: "ADD −5 s" });
+    const value = /y="(\d+)"[^>]*font-size="(\d+)">3</.exec(svg);
+
+    expect(svg).toMatch(/<text data-caption="true"[^>]*y="99"[^>]*font-size="14">ADD −5 s<\/text>/);
+    expect(Number(value![2])).toBe(40);
+    // Label baseline 28, caption top 99 − 10 = 89 → centre 59.
+    expect(Number(value![1]) - Math.round(Number(value![2]) * 0.36)).toBe(59);
+  });
+
+  it("keeps the pending mark above the caption", () => {
+    const svg = box({ value: "3", caption: "ADD −5 s", pending: { text: "DELETE", color: "#f39c12" } });
+    const bar = /data-pending-bar="true" x="\d+" y="(\d+)" width="\d+" height="(\d+)"/.exec(svg);
+
+    expect(Number(bar![1]) + Number(bar![2])).toBeLessThan(89);
+  });
+
+  it("dims the whole box, panel included, only when asked", () => {
+    expect(box()).not.toContain("data-dimmed");
+    expect(box({ dimmed: true })).toMatch(/^<svg[^>]*><g data-dimmed="true" opacity="0\.35"><rect x="5" y="5"/);
+  });
+});
