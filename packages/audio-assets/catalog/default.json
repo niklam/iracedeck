@@ -9,8 +9,8 @@
       "label": "Default"
     }
   ],
-  "bytes": 15802514,
-  "sha256": "b62d98f5364fa45c8c081f4fc65a92d1af84d41438d23e5ec194afff483d9a72",
+  "bytes": 15805727,
+  "sha256": "42c17d1df66400225cdf9aba70115506ee6bf51e47c9aa958760ecfe07fd8cd8",
   "url": "https://github.com/niklam/iracedeck/releases/download/voices-default-1.1.2/default-1.1.2.zip",
   "minPluginVersion": "3.5.0"
 }
