@@ -113,6 +113,16 @@ describe("global-common-diagnostics.ejs storage row (#993)", () => {
     expect(win).toContain('setting="_settingsStorePath"');
     expect(win).toContain("<ird-open-folder");
   });
+
+  it("renders the Capture CPU profile controls only in the window (#1338)", () => {
+    const pi = render("<%- include('global-common-diagnostics') %>");
+    const win = render("<%- include('global-common-diagnostics', { settingsWindow: true }) %>");
+
+    for (const tag of ["<ird-capture-cpu-profile", "<ird-open-profiles-folder", "<ird-cpu-profile-status"]) {
+      expect(pi).not.toContain(tag);
+      expect(win).toContain(tag);
+    }
+  });
 });
 
 /**

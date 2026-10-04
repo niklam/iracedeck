@@ -78,6 +78,9 @@ export { VoicePackRefresh } from "./voice-pack-refresh.js";
 export { VoicePackCatalog } from "./voice-pack-catalog.js";
 export { OpenVoicePacksFolder } from "./open-voice-packs-folder.js";
 
+// Capture CPU profile - the Diagnostics tab's capture button, its status line and the profiles folder (#1338)
+export { CaptureCpuProfile, CpuProfileStatus, OpenProfilesFolder } from "./cpu-profile-capture.js";
+
 // Update Notice - upstream "a newer version exists" banner for the settings window (#1016)
 export { UPDATE_AVAILABLE_EVENT, UpdateNotice } from "./update-notice.js";
 
