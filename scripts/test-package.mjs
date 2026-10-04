@@ -20,7 +20,10 @@
  * `test:watch` scripts, so `--configLoader native` lives in one place and the
  * per-package run cannot drift from the root run. Any further arguments are
  * forwarded to Vitest after the filter (`pnpm --filter <pkg> test -t "name"`),
- * and the child's exit code is this script's.
+ * and the child's exit code is this script's. Forward OPTIONS only: Vitest ORs
+ * positional filters, so a path given here would widen the run beyond the
+ * package rather than narrow it. Narrow to a file with `pnpm test <path>` at
+ * the root.
  *
  * Why a script at all rather than none: pnpm skips a missing `test` script
  * silently with exit 0, so a package with tests and no working `test` script
@@ -28,7 +31,7 @@
  * docs/superpowers/specs/2026-10-04-issue-1021-per-package-test-runner.md
  */
 import { spawn } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import url from "node:url";
@@ -115,7 +118,10 @@ function main() {
   const root = WORKSPACE_ROOT;
   let args;
   try {
-    const filter = packageFilter(process.cwd(), root);
+    // Real path, because WORKSPACE_ROOT comes from the already-realpath'ed
+    // module URL while a cwd reached through a junction or `subst` drive keeps
+    // that form, and the two would never relate.
+    const filter = packageFilter(realpathSync.native(process.cwd()), root);
     const { scriptName, forwarded } = splitArgs(process.argv.slice(2));
     const rootScripts = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")).scripts ?? {};
     args = [vitestBin(root), ...vitestArgs(rootScripts[scriptName], scriptName), filter, ...forwarded];
@@ -125,8 +131,21 @@ function main() {
     return;
   }
 
-  console.log(`test-package: vitest ${args.slice(1).join(" ")}  (in ${root})`);
+  // stderr, so a reporter writing to stdout (`--reporter=json > out.json`) stays parseable.
+  console.error(`test-package: vitest ${args.slice(1).join(" ")}  (in ${root})`);
   const child = spawn(process.execPath, args, { cwd: root, stdio: "inherit" });
+  // Never exit ahead of Vitest, which would leave it (and, in watch mode, its
+  // worker pool) running orphaned. A Ctrl+C reaches Vitest directly — the
+  // console or the foreground process group delivers it to both — so SIGINT
+  // only keeps this process waiting while Vitest tears itself down; forwarding
+  // it would turn that into a hard kill on Windows. A stop aimed at this
+  // process alone is passed on.
+  process.on("SIGINT", () => {});
+  for (const sig of ["SIGTERM", "SIGHUP"]) {
+    process.on(sig, () => {
+      if (child.exitCode === null && child.signalCode === null) child.kill(sig);
+    });
+  }
   child.on("error", (err) => {
     console.error(`test-package: could not start Vitest: ${err.message}`);
     process.exitCode = 1;

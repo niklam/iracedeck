@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, globSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -103,8 +103,8 @@ describe("vitestBin", () => {
 });
 
 // The real runner, spawned the way pnpm runs it: from a package directory.
-// `packages/logger` has exactly one test file, so the positive control can say
-// precisely what a correct run reports. Test workers set IRACEDECK_MOCK and it
+// `packages/logger` is small, so the positive control is cheap and can count
+// exactly what a correct run reports. Test workers set IRACEDECK_MOCK and it
 // propagates here, which is the same native-mock run the root suite makes.
 describe("scripts/test-package.mjs, run for real", () => {
   const RUNNER = path.join(import.meta.dirname, "test-package.mjs");
@@ -117,13 +117,18 @@ describe("scripts/test-package.mjs, run for real", () => {
     });
 
   it("runs exactly the package's own test files and exits 0 (positive control)", () => {
+    const loggerDir = path.join(WORKSPACE_ROOT, "packages", "logger");
+    const expected = globSync("src/**/*.test.ts", { cwd: loggerDir }).length;
+    expect(expected).toBeGreaterThan(0);
     // `--reporter=verbose` makes Vitest name every file it ran, and proves
-    // arguments after the script reach Vitest.
-    const r = run(path.join(WORKSPACE_ROOT, "packages", "logger"), ["--reporter=verbose"]);
+    // arguments after the script reach Vitest. One worker, because this Vitest
+    // runs inside a worker of the root suite and must not start a second
+    // full-size pool beside it.
+    const r = run(loggerDir, ["--reporter=verbose", "--maxWorkers=1"]);
     const out = `${r.stdout}\n${r.stderr}`;
     expect(r.status, out).toBe(0);
     expect(out).toContain("packages/logger/src/index.test.ts");
-    expect(out).toMatch(/Test Files\s+1 passed \(1\)/);
+    expect(out).toMatch(new RegExp(`Test Files\\s+${expected} passed \\(${expected}\\)`));
     expect(out.match(/packages\/(?!logger\/)[\w-]+\/src\/\S+\.test\.ts/g) ?? []).toEqual([]);
   }, 150_000);
 
