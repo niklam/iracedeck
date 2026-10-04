@@ -30,6 +30,9 @@ import searchSessionTimeIcon from "@iracedeck/icons/replay-navigation/search-ses
 import setPlayPositionIcon from "@iracedeck/icons/replay-navigation/set-play-position.svg";
 import z from "zod";
 
+import { noteReplayGoToEnd } from "../../shared/replay-cursor.js";
+import { isReplayOnlySession } from "../../shared/replay-session.js";
+
 /** ReplayPosMode.Begin — position from beginning of replay */
 const REPLAY_POS_BEGIN = 0;
 
@@ -237,6 +240,10 @@ export class ReplayNavigation extends ConnectionStateAwareAction<ReplayNavigatio
       }
       case "jump-to-end": {
         const success = replay.goToEnd();
+        // In a live session this leaves the replay for the car: Replay Markers
+        // must read live at once, not hold the old replay frame through its
+        // post-seek grace (#1230). In a saved replay it is only a seek.
+        noteReplayGoToEnd(success, isReplayOnlySession(this.sdkController.getSessionInfo()));
         this.logger.info("Jump to end executed");
         this.logger.debug(`Result: ${success}`);
         break;

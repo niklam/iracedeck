@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   _resetReplayCursor,
   cancelReplayCursorOwner,
+  noteReplayGoToEnd,
   pendingReplayLanding,
   recordReplayLanding,
 } from "../../shared/replay-cursor.js";
@@ -181,6 +182,20 @@ describe("the replay state survives the post-seek blip (#1230)", () => {
     read(notPlaying, 12_000);
 
     expect(read(replayAt(7_000), 12_010)).toMatchObject({ inReplay: true, frame: 7_000 });
+  });
+
+  it("a jump to live ends the grace: the next false read is the car at once, at the live edge", () => {
+    read(replayAt(4_000), 10_000);
+    noteReplayGoToEnd(true, false);
+
+    expect(read(notPlaying, 10_050)).toMatchObject({ inReplay: false, frame: 90_000 });
+  });
+
+  it("in a saved replay a jump to the end keeps the grace: the post-seek blip is still the replay", () => {
+    read(replayAt(4_000), 10_000);
+    noteReplayGoToEnd(true, true);
+
+    expect(read(notPlaying, 10_050)).toMatchObject({ inReplay: true, frame: 4_000 });
   });
 
   it("a replay left for the car stays left: the old frame is not revived later", () => {

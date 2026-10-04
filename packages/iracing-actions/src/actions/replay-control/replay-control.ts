@@ -74,8 +74,14 @@ import z from "zod";
 import { CAR_CYCLE_BINDING_KEYS } from "../../shared/car-cycle-bindings.js";
 import { computeCarNumberTarget } from "../../shared/car-cycling.js";
 import { RepeatController } from "../../shared/repeat-controller.js";
-import { cancelReplayCursorOwner, claimReplayCursor, type ReplayCursorClaim } from "../../shared/replay-cursor.js";
+import {
+  cancelReplayCursorOwner,
+  claimReplayCursor,
+  noteReplayGoToEnd,
+  type ReplayCursorClaim,
+} from "../../shared/replay-cursor.js";
 import { isPaused, seekReplayFrame, waitForReplay } from "../../shared/replay-seek.js";
+import { isReplayOnlySession } from "../../shared/replay-session.js";
 
 const REPLAY_CONTROL_MODES = [
   "play-pause",
@@ -2214,6 +2220,10 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
       }
       case "jump-to-live": {
         const success = replay.goToEnd();
+        // In a live session this leaves the replay for the car: Replay Markers
+        // must read live at once, not hold the old replay frame through its
+        // post-seek grace (#1230). In a saved replay it is only a seek.
+        noteReplayGoToEnd(success, isReplayOnlySession(this.sdkController.getSessionInfo()));
         this.logger.info("Jump to live executed");
         this.logger.debug(`Result: ${success}`);
         break;

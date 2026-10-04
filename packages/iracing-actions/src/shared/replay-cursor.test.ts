@@ -6,8 +6,11 @@ import {
   claimReplayCursor,
   clearReplayLanding,
   currentReplayCursorOwner,
+  lastReplaySighting,
+  noteReplayGoToEnd,
   pendingReplayLanding,
   recordReplayLanding,
+  recordReplaySighting,
 } from "./replay-cursor.js";
 
 describe("replay-cursor", () => {
@@ -125,6 +128,29 @@ describe("replay-cursor", () => {
       recordReplayLanding(4_000, 10_000);
       _resetReplayCursor();
       expect(pendingReplayLanding()).toBeNull();
+    });
+  });
+
+  describe("a goToEnd and the replay sighting (#1230)", () => {
+    it("a goToEnd sent in a session that can go live leaves the replay for the car: the sighting is dropped", () => {
+      recordReplaySighting(4_000, 10_000);
+
+      expect(noteReplayGoToEnd(true, false)).toBe(true);
+      expect(lastReplaySighting()).toBeNull();
+    });
+
+    it("a goToEnd that was not sent changes nothing: the sighting and its grace stand", () => {
+      recordReplaySighting(4_000, 10_000);
+
+      expect(noteReplayGoToEnd(false, false)).toBe(false);
+      expect(lastReplaySighting()).toEqual({ frame: 4_000, seenAt: 10_000 });
+    });
+
+    it("in a saved replay a goToEnd is a seek to the end of the file: the sighting stands", () => {
+      recordReplaySighting(4_000, 10_000);
+
+      expect(noteReplayGoToEnd(true, true)).toBe(false);
+      expect(lastReplaySighting()).toEqual({ frame: 4_000, seenAt: 10_000 });
     });
   });
 });

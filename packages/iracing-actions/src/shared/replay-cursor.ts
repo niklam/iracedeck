@@ -31,7 +31,9 @@
  * Replay Markers surfaces hold "in a replay" from this sighting through a short
  * grace rather than taking that blip for the car. One value for the same
  * reason the landing is one: there is one replay. The grace rule is
- * `readReplayContext`'s (`replay-markers-ops.ts`).
+ * `readReplayContext`'s (`replay-markers-ops.ts`). A real exit to live (a
+ * `goToEnd` outside a saved replay, from any action) drops the sighting at
+ * once through {@link noteReplayGoToEnd}, so no grace follows it.
  *
  * Deliberately in-memory and process-wide: every action runs in one plugin
  * process, and nothing here belongs in persisted settings.
@@ -157,6 +159,25 @@ export function lastReplaySighting(): ReplaySighting | null {
 /** Drops the sighting: the replay has been left for the car. */
 export function clearReplaySighting(): void {
   sighting = null;
+}
+
+/**
+ * Tells the sighting that a `goToEnd` command was just sent. In a session that
+ * can go live, a successful `goToEnd` leaves the replay for the car at once,
+ * so the sighting is dropped: a false read straight after it is the car, not
+ * the post-seek blip, and holding the old replay frame through the grace would
+ * file an Add at that frame instead of the live edge. In a saved replay
+ * (`replayOnlySession`, `WeekendInfo.SimMode === "replay"`) the same command
+ * only seeks to the end of the file and the replay stays open, so the sighting
+ * and its grace stand. A command that was not sent changes nothing. Returns
+ * whether the sighting was dropped.
+ */
+export function noteReplayGoToEnd(sent: boolean, replayOnlySession: boolean): boolean {
+  if (!sent || replayOnlySession) return false;
+
+  sighting = null;
+
+  return true;
 }
 
 /** @internal Reset for tests. */

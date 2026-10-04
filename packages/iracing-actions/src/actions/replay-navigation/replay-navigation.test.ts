@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { generateReplayNavigationSvg } from "./replay-navigation.js";
+import { _resetReplayCursor, lastReplaySighting, recordReplaySighting } from "../../shared/replay-cursor.js";
+import { generateReplayNavigationSvg, ReplayNavigation } from "./replay-navigation.js";
 
 vi.mock("@iracedeck/icons/replay-navigation/next-session.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
@@ -52,7 +53,7 @@ vi.mock("@iracedeck/deck-core", () => ({
   },
   ConnectionStateAwareAction: class MockConnectionStateAwareAction {
     logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
-    sdkController = { subscribe: vi.fn(), unsubscribe: vi.fn() };
+    sdkController = { subscribe: vi.fn(), unsubscribe: vi.fn(), getSessionInfo: vi.fn((): unknown => null) };
     updateConnectionState = vi.fn();
     setKeyImage = vi.fn();
     setRegenerateCallback = vi.fn();
@@ -224,6 +225,55 @@ describe("ReplayNavigation", () => {
 
       expect(decoded).toContain("ERASE");
       expect(decoded).toContain("TAPE");
+    });
+  });
+
+  describe("jump-to-end and the Replay Markers replay grace (#1230)", () => {
+    const mockReplay = { goToEnd: vi.fn(() => true) };
+    let action: ReplayNavigation;
+
+    function fakeEvent(settings: Record<string, unknown>) {
+      return { action: { id: "ctx-end", setTitle: vi.fn(), setImage: vi.fn() }, payload: { settings } };
+    }
+
+    function inSession(simMode: string): void {
+      action["sdkController"].getSessionInfo = vi.fn(() => ({ WeekendInfo: { SimMode: simMode } }));
+    }
+
+    beforeEach(async () => {
+      _resetReplayCursor();
+      mockReplay.goToEnd.mockReturnValue(true);
+      const { getCommands } = await import("@iracedeck/deck-core");
+      vi.mocked(getCommands).mockReturnValue({ replay: mockReplay } as any);
+      action = new ReplayNavigation();
+      recordReplaySighting(4_000, 10_000);
+    });
+
+    it("a jump to the end in a live session leaves the replay for the car: the sighting is dropped at once", async () => {
+      inSession("full");
+
+      await action.onKeyDown(fakeEvent({ navigation: "jump-to-end" }) as any);
+
+      expect(mockReplay.goToEnd).toHaveBeenCalledOnce();
+      expect(lastReplaySighting()).toBeNull();
+    });
+
+    it("a jump to the end that was not sent leaves the sighting and its grace", async () => {
+      inSession("full");
+      mockReplay.goToEnd.mockReturnValue(false);
+
+      await action.onKeyDown(fakeEvent({ navigation: "jump-to-end" }) as any);
+
+      expect(lastReplaySighting()).toEqual({ frame: 4_000, seenAt: 10_000 });
+    });
+
+    it("in a saved replay the jump only seeks to the end of the file: the sighting and its grace stand", async () => {
+      inSession("replay");
+
+      await action.onKeyDown(fakeEvent({ navigation: "jump-to-end" }) as any);
+
+      expect(mockReplay.goToEnd).toHaveBeenCalledOnce();
+      expect(lastReplaySighting()).toEqual({ frame: 4_000, seenAt: 10_000 });
     });
   });
 });
