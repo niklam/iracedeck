@@ -868,6 +868,7 @@ export {
   type MainThreadWatchdogOptions,
   startMainThreadWatchdog,
   WATCHDOG_DEFAULTS,
+  watchdogDailyLogFileName,
   type WatchdogLogTarget,
 } from "./main-thread-watchdog.js";
 // Settings-channel publisher: store write + the one host mirror per start (issue #993 phase 2)

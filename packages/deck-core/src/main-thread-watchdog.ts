@@ -15,39 +15,42 @@
  * ## How the worker stays self-contained and its logic stays tested
  *
  * The worker is started from source (`new Worker(src, { eval: true })`) so no
- * plugin needs a second Rollup entry. Its source is assembled from three plain
+ * plugin needs a second Rollup entry. Its source is assembled from four plain
  * functions in this file, each stringified with `Function.prototype.toString()`
  * and passed as an argument expression: `watchdogWorkerMain(watchdogStep,
- * initialWatchdogState)`. The decision logic lives in `watchdogStep`, a pure
- * reducer the unit tests drive directly; `watchdogWorkerMain` is only the thin
- * interpreter of its effects (timers, the inspector session, the file append).
- * Passing the functions as argument expressions rather than by name keeps the
- * source valid after minification renames them. All three must therefore use
- * nothing from module scope — no imports, no constants, no helpers — only their
- * own parameters, locals and globals (`require` is available in an eval
- * worker, which runs as CommonJS). The guard test in
- * `main-thread-watchdog.test.ts` runs the assembled source in a real `Worker`.
+ * initialWatchdogState, watchdogDailyLogFileName)`. The decision logic lives
+ * in `watchdogStep`, a pure reducer the unit tests drive directly;
+ * `watchdogWorkerMain` is only the thin interpreter of its effects (timers,
+ * the inspector session, the file append). Passing the functions as argument
+ * expressions rather than by name keeps the source valid after minification
+ * renames them. All four must therefore use nothing from module scope — no
+ * imports, no constants, no helpers — only their own parameters, locals and
+ * globals. The tests run the assembled source in a real `Worker`, and the
+ * terser-minified module through a real stall.
  */
 import type { ILogger } from "@iracedeck/logger";
+import type { EventEmitter } from "node:events";
 import { Worker } from "node:worker_threads";
 
 /** Where the worker appends its report: the same file the host's own logger writes. */
 export type WatchdogLogTarget =
   /** One fixed file (Elgato: `<cwd>/logs/<plugin UUID>.0.log`). */
   | { kind: "file"; path: string }
-  /** A directory whose file is `<YYYY.M.D>.log`, computed per write (Mirabox, Ulanzi `FileSink`). */
+  /** A directory whose file is `watchdogDailyLogFileName(now)`, computed per write (Mirabox, Ulanzi `FileSink`). */
   | { kind: "daily"; dir: string };
 
 export interface MainThreadWatchdogOptions {
-  /** Main-thread logger, used only for the start-up lines. The reports never go through it. */
+  /** Main-thread logger, for the start-up and worker-health lines. The reports never go through it. */
   logger: ILogger;
   target: WatchdogLogTarget;
   /** Heartbeat and sampling interval. */
   heartbeatMs?: number;
   /** How long the heartbeat must stand still before it is a stall. */
   stallMs?: number;
-  /** How long a pause may take to land before the stall is called native. */
+  /** How long a pause may stay pending before the stall is reported as native without waiting for it. */
   pauseTimeoutMs?: number;
+  /** A pause that lands later than this after it was requested was held up by native code. */
+  jsPauseLatencyMs?: number;
 }
 
 export interface MainThreadWatchdog {
@@ -55,8 +58,13 @@ export interface MainThreadWatchdog {
   stop(): Promise<void>;
 }
 
-/** The spec's values (#1330). */
-export const WATCHDOG_DEFAULTS = { heartbeatMs: 500, stallMs: 5000, pauseTimeoutMs: 2000 } as const;
+/** The spec's values (#1330); the pause latency is 20× the 12 ms the proof of concept measured. */
+export const WATCHDOG_DEFAULTS = {
+  heartbeatMs: 500,
+  stallMs: 5000,
+  pauseTimeoutMs: 2000,
+  jsPauseLatencyMs: 250,
+} as const;
 
 /** One call frame as the inspector's `Debugger.paused` reports it (0-based line and column). */
 export interface WatchdogFrame {
@@ -66,20 +74,23 @@ export interface WatchdogFrame {
   columnNumber: number;
 }
 
+/** Every `now` is a monotonic clock reading (`performance.now()`), never wall time. */
 export type WatchdogEvent =
   /** A sample of the heartbeat counter. */
   | { type: "tick"; beat: number; now: number }
   /** The inspector reported the main thread paused. */
   | { type: "paused"; now: number; frames: WatchdogFrame[] }
-  /** The pause did not land within `pauseTimeoutMs`. */
-  | { type: "pauseTimeout"; now: number }
+  /** Pause `id` did not land within `pauseTimeoutMs`. */
+  | { type: "pauseTimeout"; id: number; now: number }
   /** Opening the session or posting the pause threw. */
   | { type: "pauseFailed"; now: number; reason: string };
 
 export type WatchdogEffect =
   | { type: "write"; level: "ERROR" | "WARN"; lines: string[] }
-  /** Open the session, enable the debugger, request a pause and arm the pause timeout. */
-  | { type: "pause" }
+  /** Open the session, enable the debugger, request a pause and arm pause `id`'s timeout. */
+  | { type: "pause"; id: number }
+  /** Clear the pending pause timeout. */
+  | { type: "cancelPauseTimeout" }
   | { type: "resume" }
   /** Clear the pause timeout, disable the debugger and disconnect the session. */
   | { type: "teardown" };
@@ -88,13 +99,20 @@ export interface WatchdogState {
   lastBeat: number;
   /** When the heartbeat last moved, as the worker saw it. */
   lastChangeAt: number;
+  /** When the worker last sampled; a long gap means the whole process was suspended. */
+  lastTickAt: number;
   stalled: boolean;
   /** Where the diagnosis of the current stall stands. */
   pause: "none" | "pending" | "timedOut" | "landed" | "failed";
+  /** The id of the latest pause request, so a stale timeout is recognised. */
+  pauseId: number;
+  pausePostedAt: number;
 }
 
 export interface WatchdogConfig {
+  heartbeatMs: number;
   stallMs: number;
+  jsPauseLatencyMs: number;
   /** False when the inspector is unavailable: stalls are reported without a location. */
   diagnose: boolean;
 }
@@ -105,7 +123,15 @@ export interface WatchdogConfig {
  * @internal Exported for testing
  */
 export function initialWatchdogState(beat: number, now: number): WatchdogState {
-  return { lastBeat: beat, lastChangeAt: now, stalled: false, pause: "none" };
+  return {
+    lastBeat: beat,
+    lastChangeAt: now,
+    lastTickAt: now,
+    stalled: false,
+    pause: "none",
+    pauseId: 0,
+    pausePostedAt: 0,
+  };
 }
 
 /**
@@ -115,12 +141,19 @@ export function initialWatchdogState(beat: number, now: number): WatchdogState {
  *
  * - The heartbeat moving after a stall writes the recovery line and tears the
  *   session down; moving otherwise only re-arms.
+ * - A gap between the worker's own samples of more than 3 heartbeats means the
+ *   whole process was suspended (sleep), not that the main thread stalled, so
+ *   the stall clock restarts.
  * - Standing still for `stallMs` starts ONE diagnosis per stall: a pause, or,
  *   without the inspector, an undiagnosed report straight away.
- * - A pause that lands first reports "in JavaScript"; a timeout first reports
- *   "in native code", and a pause landing after that reports where the thread
- *   resumed. Every pause is answered with a resume, whatever the state — the
- *   main thread must never be left paused by the watchdog.
+ * - A pause is classified by how long it took to land. Within
+ *   `jsPauseLatencyMs` the thread was running JavaScript; later, it was held in
+ *   native code and has just returned, so the report says native and gives
+ *   where it resumed. A pause still pending at the timeout is reported as
+ *   native at once, and the frames follow if it ever lands.
+ * - Every pause is answered with a resume, whatever the state — the main
+ *   thread must never be left paused by the watchdog — and a timeout for any
+ *   pause but the current one is ignored.
  *
  * @internal Exported for testing
  */
@@ -130,6 +163,7 @@ export function watchdogStep(
   config: WatchdogConfig,
 ): { state: WatchdogState; effects: WatchdogEffect[] } {
   const MAX_FRAMES = 25;
+  const SUSPEND_GAP_HEARTBEATS = 3;
   const seconds = (ms: number): string => (Math.max(0, ms) / 1000).toFixed(1);
   const frameLines = (frames: WatchdogFrame[]): string[] => {
     const lines = frames
@@ -145,8 +179,16 @@ export function watchdogStep(
   };
 
   if (event.type === "tick") {
+    const sampled: WatchdogState = { ...state, lastTickAt: event.now };
+
     if (event.beat !== state.lastBeat) {
-      const next: WatchdogState = { lastBeat: event.beat, lastChangeAt: event.now, stalled: false, pause: "none" };
+      const next: WatchdogState = {
+        ...sampled,
+        lastBeat: event.beat,
+        lastChangeAt: event.now,
+        stalled: false,
+        pause: "none",
+      };
 
       if (!state.stalled) return { state: next, effects: [] };
 
@@ -163,11 +205,15 @@ export function watchdogStep(
       };
     }
 
-    if (state.stalled || event.now - state.lastChangeAt < config.stallMs) return { state, effects: [] };
+    if (!state.stalled && event.now - state.lastTickAt > SUSPEND_GAP_HEARTBEATS * config.heartbeatMs) {
+      return { state: { ...sampled, lastChangeAt: event.now }, effects: [] };
+    }
+
+    if (state.stalled || event.now - state.lastChangeAt < config.stallMs) return { state: sampled, effects: [] };
 
     if (!config.diagnose) {
       return {
-        state: { ...state, stalled: true },
+        state: { ...sampled, stalled: true },
         effects: [
           {
             type: "write",
@@ -180,23 +226,30 @@ export function watchdogStep(
       };
     }
 
-    return { state: { ...state, stalled: true, pause: "pending" }, effects: [{ type: "pause" }] };
+    const pauseId = state.pauseId + 1;
+
+    return {
+      state: { ...sampled, stalled: true, pause: "pending", pauseId, pausePostedAt: event.now },
+      effects: [{ type: "pause", id: pauseId }],
+    };
   }
 
   const blockedFor = seconds(event.now - state.lastChangeAt);
 
   if (event.type === "paused") {
     if (state.pause === "pending") {
+      const lines =
+        event.now - state.pausePostedAt <= config.jsPauseLatencyMs
+          ? [`main thread blocked for ${blockedFor} s in JavaScript`, ...frameLines(event.frames)]
+          : [
+              `main thread blocked for ${seconds(state.pausePostedAt - state.lastChangeAt)} s in native code`,
+              `main thread resumed after ${blockedFor} s; the pause landed at:`,
+              ...frameLines(event.frames),
+            ];
+
       return {
         state: { ...state, pause: "landed" },
-        effects: [
-          {
-            type: "write",
-            level: "ERROR",
-            lines: [`main thread blocked for ${blockedFor} s in JavaScript`, ...frameLines(event.frames)],
-          },
-          { type: "resume" },
-        ],
+        effects: [{ type: "cancelPauseTimeout" }, { type: "write", level: "ERROR", lines }, { type: "resume" }],
       };
     }
 
@@ -218,7 +271,7 @@ export function watchdogStep(
   }
 
   if (event.type === "pauseTimeout") {
-    if (state.pause !== "pending") return { state, effects: [] };
+    if (state.pause !== "pending" || event.id !== state.pauseId) return { state, effects: [] };
 
     return {
       state: { ...state, pause: "timedOut" },
@@ -241,48 +294,80 @@ export function watchdogStep(
   };
 }
 
+/**
+ * The name of a daily target's file for a report written at `now`: the name the
+ * Mirabox and Ulanzi `FileSink` writes, `<YYYY.M.D>.log` with an unpadded
+ * month and day in local time. Their adapters' tests check the two agree.
+ * Self-contained: it is stringified into the worker.
+ */
+export function watchdogDailyLogFileName(now: Date): string {
+  return `${now.getFullYear()}.${now.getMonth() + 1}.${now.getDate()}.log`;
+}
+
 /** What the main thread hands the worker. Serialisable, apart from the shared heartbeat. */
 interface WatchdogWorkerData {
   heartbeat: SharedArrayBuffer;
   target: WatchdogLogTarget;
-  heartbeatMs: number;
   pauseTimeoutMs: number;
+  /** `diagnose` here is the caller's permission; the worker drops it if the inspector is unusable. */
   config: WatchdogConfig;
+}
+
+/** The one message the worker sends: why it reports stalls without a location. */
+interface DiagnosisUnavailableMessage {
+  type: "diagnosisUnavailable";
+  reason: string;
 }
 
 /**
  * The worker's body: the interpreter of `watchdogStep`'s effects. Runs in an
  * eval worker, so it must stay self-contained (see the file header).
  */
-function watchdogWorkerMain(step: typeof watchdogStep, initialState: typeof initialWatchdogState): void {
+function watchdogWorkerMain(
+  step: typeof watchdogStep,
+  initialState: typeof initialWatchdogState,
+  dailyLogFileName: typeof watchdogDailyLogFileName,
+): void {
   // An eval worker runs as CommonJS, unless the process was started with
   // `--input-type=module`, which the worker inherits and which leaves no
   // `require`. `process.getBuiltinModule` covers that case on Node >= 20.16.
   const load = (id: string): unknown =>
     // eslint-disable-next-line @typescript-eslint/no-require-imports -- this source cannot `import`
     typeof require === "function" ? require(id) : process.getBuiltinModule(id);
-  const { workerData } = load("node:worker_threads") as typeof import("node:worker_threads");
+  const { parentPort, workerData } = load("node:worker_threads") as typeof import("node:worker_threads");
   const fs = load("node:fs") as typeof import("node:fs");
   const path = load("node:path") as typeof import("node:path");
   const data = workerData as WatchdogWorkerData;
   const beats = new Int32Array(data.heartbeat);
-  const config: WatchdogConfig = { stallMs: data.config.stallMs, diagnose: data.config.diagnose };
+  const config: WatchdogConfig = { ...data.config };
 
   let inspector: typeof import("node:inspector") | undefined;
 
   if (config.diagnose) {
+    let reason = "";
+
     try {
       inspector = load("node:inspector") as typeof import("node:inspector");
 
-      if (typeof inspector.Session?.prototype?.connectToMainThread !== "function") inspector = undefined;
-    } catch {
+      if (typeof inspector.Session?.prototype?.connectToMainThread !== "function") {
+        inspector = undefined;
+        reason = "this Node's inspector has no Session.connectToMainThread";
+      }
+    } catch (err) {
       inspector = undefined;
+      reason = `node:inspector cannot be loaded (${String(err)})`;
     }
 
-    if (!inspector) config.diagnose = false;
+    if (!inspector) {
+      config.diagnose = false;
+      const message: DiagnosisUnavailableMessage = { type: "diagnosisUnavailable", reason };
+      parentPort?.postMessage(message);
+    }
   }
 
-  let state = initialState(Atomics.load(beats, 0), Date.now());
+  // Stall arithmetic runs on the monotonic clock, so a wall-clock step can
+  // neither fake a stall nor hide one; the log lines keep wall time.
+  let state = initialState(Atomics.load(beats, 0), performance.now());
   let session: import("node:inspector").Session | undefined;
   let pauseTimer: ReturnType<typeof setTimeout> | undefined;
   // A paused call frame names its script by id only (its own `url` is
@@ -290,15 +375,10 @@ function watchdogWorkerMain(step: typeof watchdogStep, initialState: typeof init
   // which `Debugger.enable` replays for every loaded script.
   let scriptUrls = new Map<string, string>();
 
-  const logFile = (now: Date): string =>
-    data.target.kind === "file"
-      ? data.target.path
-      : path.join(data.target.dir, `${now.getFullYear()}.${now.getMonth() + 1}.${now.getDate()}.log`);
-
   const write = (level: string, lines: string[]): void => {
     try {
       const now = new Date();
-      const file = logFile(now);
+      const file = data.target.kind === "file" ? data.target.path : path.join(data.target.dir, dailyLogFileName(now));
       const prefix = `${now.toISOString()} ${level.padEnd(5)} MainThreadWatchdog: `;
       fs.mkdirSync(path.dirname(file), { recursive: true });
       fs.appendFileSync(file, lines.map((line) => `${prefix}${line}\n`).join(""));
@@ -307,10 +387,14 @@ function watchdogWorkerMain(step: typeof watchdogStep, initialState: typeof init
     }
   };
 
-  const teardown = (): void => {
+  const cancelPauseTimeout = (): void => {
     if (pauseTimer !== undefined) clearTimeout(pauseTimer);
 
     pauseTimer = undefined;
+  };
+
+  const teardown = (): void => {
+    cancelPauseTimeout();
 
     if (!session) return;
 
@@ -351,10 +435,16 @@ function watchdogWorkerMain(step: typeof watchdogStep, initialState: typeof init
         }
 
         break;
+      case "cancelPauseTimeout":
+        cancelPauseTimeout();
+        break;
       case "teardown":
         teardown();
         break;
       case "pause":
+        // A previous stall's session and timer are gone by now; this makes sure.
+        teardown();
+
         try {
           const opened = new inspector!.Session();
           opened.connectToMainThread();
@@ -369,23 +459,27 @@ function watchdogWorkerMain(step: typeof watchdogStep, initialState: typeof init
               lineNumber: f.location.lineNumber,
               columnNumber: f.location.columnNumber ?? 0,
             }));
-            dispatch({ type: "paused", now: Date.now(), frames });
+            dispatch({ type: "paused", now: performance.now(), frames });
           });
           opened.post("Debugger.enable");
           opened.post("Debugger.pause");
+          const id = effect.id;
           pauseTimer = setTimeout(() => {
             pauseTimer = undefined;
-            dispatch({ type: "pauseTimeout", now: Date.now() });
+            dispatch({ type: "pauseTimeout", id, now: performance.now() });
           }, data.pauseTimeoutMs);
         } catch (err) {
-          dispatch({ type: "pauseFailed", now: Date.now(), reason: String(err) });
+          dispatch({ type: "pauseFailed", now: performance.now(), reason: String(err) });
         }
 
         break;
     }
   };
 
-  setInterval(() => dispatch({ type: "tick", beat: Atomics.load(beats, 0), now: Date.now() }), data.heartbeatMs);
+  setInterval(
+    () => dispatch({ type: "tick", beat: Atomics.load(beats, 0), now: performance.now() }),
+    config.heartbeatMs,
+  );
 }
 
 /**
@@ -394,7 +488,49 @@ function watchdogWorkerMain(step: typeof watchdogStep, initialState: typeof init
  * @internal Exported for testing
  */
 export function createWatchdogWorkerSource(): string {
-  return `(${watchdogWorkerMain.toString()})(${watchdogStep.toString()}, ${initialWatchdogState.toString()});\n`;
+  const parts = [watchdogStep, initialWatchdogState, watchdogDailyLogFileName].map((fn) => fn.toString());
+
+  return `(${watchdogWorkerMain.toString()})(${parts.join(", ")});\n`;
+}
+
+/**
+ * Wire the main thread's side of the worker: one WARN when the worker reports
+ * that it cannot diagnose, and, when the worker dies (`error` or `exit`), one
+ * WARN plus `onStopped` so the caller stops the heartbeat. Call `expectExit()`
+ * before terminating the worker on purpose, so that exit is not reported.
+ *
+ * @internal Exported for testing
+ */
+export function superviseWatchdogWorker(
+  worker: EventEmitter,
+  logger: ILogger,
+  onStopped: () => void,
+): { expectExit(): void } {
+  let finished = false;
+
+  const stopped = (why: string): void => {
+    if (finished) return;
+
+    finished = true;
+    onStopped();
+    logger.warn(`Main-thread watchdog stopped: ${why}`);
+  };
+
+  worker.on("message", (message: unknown) => {
+    const m = message as Partial<DiagnosisUnavailableMessage> | null;
+
+    if (m?.type === "diagnosisUnavailable") {
+      logger.warn(`Main-thread watchdog cannot tell where a stall is stuck, only that it happened: ${m.reason}`);
+    }
+  });
+  worker.on("error", (err: unknown) => stopped(String(err)));
+  worker.on("exit", (code: number) => stopped(`the worker exited with code ${code}`));
+
+  return {
+    expectExit: () => {
+      finished = true;
+    },
+  };
 }
 
 /**
@@ -409,20 +545,15 @@ export function startMainThreadWatchdog(options: MainThreadWatchdogOptions): Mai
   const heartbeatMs = options.heartbeatMs ?? WATCHDOG_DEFAULTS.heartbeatMs;
   const stallMs = options.stallMs ?? WATCHDOG_DEFAULTS.stallMs;
   const pauseTimeoutMs = options.pauseTimeoutMs ?? WATCHDOG_DEFAULTS.pauseTimeoutMs;
-  const diagnose = process.features.inspector === true;
-
-  if (!diagnose) {
-    logger.warn("Main-thread watchdog runs without the inspector: a stall is reported without where it was stuck");
-  }
+  const jsPauseLatencyMs = options.jsPauseLatencyMs ?? WATCHDOG_DEFAULTS.jsPauseLatencyMs;
 
   const heartbeat = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT);
   const beats = new Int32Array(heartbeat);
   const workerData: WatchdogWorkerData = {
     heartbeat,
     target,
-    heartbeatMs,
     pauseTimeoutMs,
-    config: { stallMs, diagnose },
+    config: { heartbeatMs, stallMs, jsPauseLatencyMs, diagnose: true },
   };
 
   let worker: Worker;
@@ -435,17 +566,17 @@ export function startMainThreadWatchdog(options: MainThreadWatchdogOptions): Mai
     return { stop: async () => {} };
   }
 
-  worker.unref();
-  worker.on("error", (err) => logger.error(`Main-thread watchdog stopped: ${String(err)}`));
-
   const timer = setInterval(() => Atomics.add(beats, 0, 1), heartbeatMs);
   timer.unref();
+  worker.unref();
+  const supervision = superviseWatchdogWorker(worker, logger, () => clearInterval(timer));
 
   logger.info("Main-thread watchdog started");
   logger.debug(`Main-thread watchdog: heartbeat ${heartbeatMs} ms, stall after ${stallMs} ms, target ${target.kind}`);
 
   return {
     stop: async () => {
+      supervision.expectExit();
       clearInterval(timer);
       await worker.terminate();
     },
