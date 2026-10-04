@@ -133,6 +133,35 @@ describe("ird-cpu-profile-status (#1338)", () => {
     expect(el.textContent).toBe("Capture failed: <img src=x onerror=alert(1)>");
   });
 
+  it("restarts the countdown when re-attached during a capture", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(100_000);
+    const el = mount("ird-cpu-profile-status");
+
+    statusCallback?.(JSON.stringify({ state: "capturing", startedAt: 100_000, durationMs: 30_000 }));
+    el.remove();
+    vi.advanceTimersByTime(10_000);
+    document.body.appendChild(el);
+
+    expect(el.textContent).toBe("Capturing… 20 s left");
+    expect(vi.getTimerCount()).toBe(1);
+
+    vi.advanceTimersByTime(5000);
+
+    expect(el.textContent).toBe("Capturing… 15 s left");
+  });
+
+  it("does not start a countdown when re-attached while idle", () => {
+    vi.useFakeTimers();
+    const el = mount("ird-cpu-profile-status");
+
+    el.remove();
+    document.body.appendChild(el);
+
+    expect(vi.getTimerCount()).toBe(0);
+    expect(el.hidden).toBe(true);
+  });
+
   it("stops the countdown when removed from the page", () => {
     vi.useFakeTimers();
     const el = mount("ird-cpu-profile-status");

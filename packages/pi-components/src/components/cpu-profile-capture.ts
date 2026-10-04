@@ -26,11 +26,9 @@
  * <ird-cpu-profile-status></ird-cpu-profile-status>
  * ```
  */
+import { PROFILE_CAPTURE_STATUS_SETTING } from "./cpu-profile-capture-constants.js";
 import { defineSendToPluginButton } from "./send-to-plugin-button.js";
 import { skipUnchanged } from "./settings-change-filter.js";
-
-/** Mirrors `PROFILE_CAPTURE_STATUS_KEY` in deck-core. */
-const STATUS_SETTING = "_profileCaptureStatus";
 
 export const CaptureCpuProfile = defineSendToPluginButton({
   tag: "ird-capture-cpu-profile",
@@ -111,7 +109,14 @@ export class CpuProfileStatus extends HTMLElement {
   private timer: ReturnType<typeof setInterval> | undefined;
 
   connectedCallback(): void {
-    if (this.initialized) return;
+    // A re-attach (the element moved, or a tab re-rendered it) keeps its
+    // subscription but lost its countdown in `disconnectedCallback`, so it
+    // re-renders, which restarts the countdown when a capture is running.
+    if (this.initialized) {
+      this.render();
+
+      return;
+    }
 
     this.initialized = true;
     this.className = "ird-supporting-text";
@@ -127,7 +132,7 @@ export class CpuProfileStatus extends HTMLElement {
     if (!window.SDPIComponents) return;
 
     window.SDPIComponents.useGlobalSettings(
-      STATUS_SETTING,
+      PROFILE_CAPTURE_STATUS_SETTING,
       skipUnchanged((value: string) => {
         this.status = parseCaptureStatus(value);
         this.render();
