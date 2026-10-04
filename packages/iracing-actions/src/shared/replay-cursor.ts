@@ -15,6 +15,16 @@
  *   before sending its command. That cancels the in-flight claim (if any) and
  *   names the command that took the cursor, so the owner can log it.
  *
+ * The module also keeps the one **pending landing** (#1230): the frame the last
+ * Replay Markers jump was sent to. `ReplayFrameNum` reaches a jump's target only
+ * on a later tick, so a second jump arriving first would measure from the old
+ * frame and send the same marker again. iRacing has one replay position, so
+ * the landing is one value too — every marker jump records it, every Replay
+ * Markers surface (keypad and dials) measures from it, and anything else that
+ * takes the cursor (a claim, or any one-shot command) clears it, since the
+ * replay is no longer headed there. The rule for when a landing still anchors
+ * is the marker surfaces' own (`replay-markers-ops.ts`).
+ *
  * Deliberately in-memory and process-wide: every action runs in one plugin
  * process, and nothing here belongs in persisted settings.
  */
@@ -51,6 +61,15 @@ class Claim implements ReplayCursorClaim {
 
 let current: Claim | null = null;
 
+/** Where the last marker jump was sent, and when. */
+export interface ReplayLanding {
+  readonly frame: number;
+  /** `Date.now()` at the send. */
+  readonly sentAt: number;
+}
+
+let landing: ReplayLanding | null = null;
+
 /**
  * Claim the cursor for a long-running driver. An earlier claim still standing
  * is cancelled first, naming the new owner. `onCancelled` runs synchronously,
@@ -58,6 +77,7 @@ let current: Claim | null = null;
  * `walk cancelled by <command>` at the moment it happens.
  */
 export function claimReplayCursor(owner: string, onCancelled?: (by: string) => void): ReplayCursorClaim {
+  landing = null;
   current?.cancel(owner);
   const claim = new Claim(owner, onCancelled);
 
@@ -69,9 +89,12 @@ export function claimReplayCursor(owner: string, onCancelled?: (by: string) => v
 /**
  * Cancel the in-flight claim, if any, before sending a one-shot cursor command.
  * Returns the cancelled owner's name, or `null` when nothing was in flight.
- * Idempotent: a claim already cancelled is not renamed.
+ * Idempotent: a claim already cancelled is not renamed. Clears the pending
+ * landing too, claim or no claim: the command about to be sent moves the replay
+ * somewhere else. A marker jump records its own landing after its send.
  */
 export function cancelReplayCursorOwner(by: string): string | null {
+  landing = null;
   const claim = current;
 
   if (claim === null) return null;
@@ -89,7 +112,23 @@ export function currentReplayCursorOwner(): string | null {
   return current === null || current.cancelledBy !== null ? null : current.owner;
 }
 
+/** Records the frame a marker jump was just sent to. Call it only when the jump was actually sent. */
+export function recordReplayLanding(frame: number, sentAt: number): void {
+  landing = { frame, sentAt };
+}
+
+/** The last marker jump's landing, or `null` once something else took the cursor. Whether it still anchors is the caller's rule. */
+export function pendingReplayLanding(): ReplayLanding | null {
+  return landing;
+}
+
+/** Drops the pending landing: the replay got there, the hold ran out, or there is no replay to land in. */
+export function clearReplayLanding(): void {
+  landing = null;
+}
+
 /** @internal Reset for tests. */
 export function _resetReplayCursor(): void {
   current = null;
+  landing = null;
 }
