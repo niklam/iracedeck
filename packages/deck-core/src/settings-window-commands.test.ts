@@ -230,6 +230,51 @@ describe("createSettingsWindowCommandHandler", () => {
 
     expect(openDirectory).not.toHaveBeenCalled();
   });
+
+  // #1338: both take nothing from the page — no duration, no path.
+  it("starts a CPU profile capture with no arguments, ignoring anything the page sends", () => {
+    const captureCpuProfile = vi.fn();
+    const handle = createSettingsWindowCommandHandler({ writeSettings: vi.fn(), captureCpuProfile });
+
+    handle({ event: "captureCpuProfile", durationMs: 600_000, path: "C:/Windows/evil" });
+
+    expect(captureCpuProfile).toHaveBeenCalledTimes(1);
+    expect(captureCpuProfile).toHaveBeenCalledWith();
+  });
+
+  it("ignores captureCpuProfile when no capture is injected", () => {
+    const handle = createSettingsWindowCommandHandler({ writeSettings: vi.fn() });
+
+    expect(() => handle({ event: "captureCpuProfile" })).not.toThrow();
+  });
+
+  it("opens the injected profiles DIRECTORY on openProfilesFolder, never a path from the page", () => {
+    const openDirectory = vi.fn();
+    const openFolder = vi.fn();
+    const handle = createSettingsWindowCommandHandler({
+      writeSettings: vi.fn(),
+      openDirectory,
+      openFolder,
+      profilesPath: "C:/logs/profiles",
+      voicePacksPath: "C:/packs",
+      storePath: "C:/s/global-settings.json",
+    });
+
+    handle({ event: "openProfilesFolder", path: "C:/Windows/evil" });
+
+    expect(openDirectory).toHaveBeenCalledTimes(1);
+    expect(openDirectory).toHaveBeenCalledWith("C:/logs/profiles");
+    expect(openFolder).not.toHaveBeenCalled();
+  });
+
+  it("ignores openProfilesFolder when no profiles directory is injected", () => {
+    const openDirectory = vi.fn();
+    const handle = createSettingsWindowCommandHandler({ writeSettings: vi.fn(), openDirectory });
+
+    handle({ event: "openProfilesFolder" });
+
+    expect(openDirectory).not.toHaveBeenCalled();
+  });
 });
 
 describe("enableFeatureWrites", () => {

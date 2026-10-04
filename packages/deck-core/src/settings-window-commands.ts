@@ -111,6 +111,16 @@ export interface SettingsWindowCommandDeps {
   openDirectory?: (path: string) => void;
   /** The voice-packs directory; the page never supplies one (issue #1100). */
   voicePacksPath?: string;
+  /**
+   * Start a CPU profile capture (#1338) — the Diagnostics tab's Capture CPU
+   * profile button. Takes nothing from the page: the duration and the folder
+   * the files land in are the plugin's, and anything the page sends beside the
+   * event is ignored. A press during a capture is refused by the capture
+   * service itself, whose state the page already shows as capturing.
+   */
+  captureCpuProfile?: () => void;
+  /** The CPU profiles directory (`<log dir>/profiles`); the page never supplies one (#1338). */
+  profilesPath?: string;
 }
 
 /** The gate whose two keys the Race Engineer opt-in has to move together (#1061). */
@@ -258,6 +268,18 @@ export function createSettingsWindowCommandHandler(
 
       case "openVoicePacksFolder":
         if (deps.openDirectory && deps.voicePacksPath) deps.openDirectory(deps.voicePacksPath);
+
+        break;
+
+      case "captureCpuProfile":
+        deps.captureCpuProfile?.();
+
+        break;
+
+      // A directory opener, like the voice-packs folder: the profiles folder is
+      // where the user goes to pick up the files, not a file to highlight.
+      case "openProfilesFolder":
+        if (deps.openDirectory && deps.profilesPath) deps.openDirectory(deps.profilesPath);
 
         break;
 

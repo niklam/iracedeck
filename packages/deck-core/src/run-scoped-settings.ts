@@ -52,16 +52,25 @@
  * of underscore-prefixed keys ARE durable (`_lastSeenVersion`,
  * `_lastChangelogOpenedAt`), and getting that wrong silently loses user state.
  */
+import { PROFILE_CAPTURE_STATUS_KEY } from "./cpu-profile-capture.js";
 import { PI_WARNINGS_KEY } from "./pi-warnings-constants.js";
 import { VOICE_PACK_STATUS_KEY, VOICE_PACKS_KEY } from "./voice-pack-constants.js";
 
 /**
  * The enrolled keys. Each is an observation about THIS run rather than a user
- * choice: the PI warning banners, and the list of voice packs currently on disk
+ * choice: the PI warning banners, the list of voice packs currently on disk
  * (issue #1034 — persisting it would let a deleted pack reappear after a
- * restart, with nothing in any UI able to clear it).
+ * restart, with nothing in any UI able to clear it), the voice-pack install
+ * status, and the CPU profile capture's state (#1338 — a "capturing" state
+ * read back after a restart would show a countdown for a capture that died
+ * with the previous process).
  */
-export const RUN_SCOPED_SETTING_KEYS: readonly string[] = [PI_WARNINGS_KEY, VOICE_PACKS_KEY, VOICE_PACK_STATUS_KEY];
+export const RUN_SCOPED_SETTING_KEYS: readonly string[] = [
+  PI_WARNINGS_KEY,
+  VOICE_PACKS_KEY,
+  VOICE_PACK_STATUS_KEY,
+  PROFILE_CAPTURE_STATUS_KEY,
+];
 
 /**
  * A copy of `settings` with every enrolled key removed.
