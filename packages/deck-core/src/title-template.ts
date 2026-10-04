@@ -9,7 +9,7 @@
  * package stays zero-dependency: title text is resolved before it flows into
  * resolveTitleSettings/assembleIcon.
  */
-import { resolveTemplate, type TemplateContext } from "@iracedeck/iracing-sdk";
+import { resolveTemplate, type TemplateContext, templateContextFromMaps } from "@iracedeck/iracing-sdk";
 
 import { getController } from "./sdk-singleton.js";
 
@@ -20,10 +20,7 @@ import { getController } from "./sdk-singleton.js";
  * Exported so other display paths that read `getCurrentTemplateContext()`
  * (Chat's key text, #1337) fall back the same way instead of defining their own.
  */
-export const EMPTY_TEMPLATE_CONTEXT: TemplateContext = Object.freeze({
-  display: Object.freeze({}),
-  raw: Object.freeze({}),
-});
+export const EMPTY_TEMPLATE_CONTEXT: TemplateContext = Object.freeze(templateContextFromMaps({}));
 
 /**
  * True when user-entered title text contains a template placeholder.

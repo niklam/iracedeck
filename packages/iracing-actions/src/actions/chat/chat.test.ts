@@ -1,4 +1,4 @@
-import { buildTemplateContext, type TemplateContext } from "@iracedeck/iracing-sdk";
+import { buildTemplateContext, type TemplateContext, templateContextFromMaps } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -77,7 +77,9 @@ vi.mock("@iracedeck/deck-core", async () => ({
       "../../../../deck-core/src/icon-update-throttle.js",
     )
   ).IconUpdateThrottle,
-  EMPTY_TEMPLATE_CONTEXT: { display: {}, raw: {} },
+  EMPTY_TEMPLATE_CONTEXT: (
+    await vi.importActual<typeof import("@iracedeck/iracing-sdk")>("@iracedeck/iracing-sdk")
+  ).templateContextFromMaps({}),
   CommonSettings: {
     extend: () => {
       const defaults = {
@@ -756,7 +758,7 @@ describe("Chat", () => {
       vi.mocked(action["sdkController"].getCurrentTemplateContext).mockReturnValue(
         position === null
           ? null
-          : { display: { "self.position": position }, raw: { "self.position": Number(position) } },
+          : templateContextFromMaps({ "self.position": position }, { "self.position": Number(position) }),
       );
     }
 

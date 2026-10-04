@@ -1,58 +1,38 @@
 /**
- * Template Context Builder
+ * Template Context Reference (#1339) — TEST-ONLY ORACLE
  *
- * Answers template variable lookups from iRacing telemetry and session data.
- * Used by resolveTemplate() to hydrate {{variable}} placeholders (`display`)
- * and {{= expression }} calculations (`raw`).
+ * The eager builder as it stood before #1339 made the template context lazy:
+ * it materialises every variable into a display map and a raw map. It is kept,
+ * verbatim apart from this header, the SDKController entry point and the
+ * dropped `export`s, so the equivalence test can compare every key it produces
+ * with what the lazy context answers for the same path. It deliberately imports
+ * nothing from `template-context.ts`, so a drift in the production helpers shows
+ * up as a failing comparison instead of moving both sides together.
  *
- * The context is lazy (#1339): it answers one dot-notation path at a time and
- * builds a namespace (the path's first segment) only when a path in it is first
- * asked for, keeping it for the rest of that context's life. A template reads two
- * or three variables, so one frame's context costs only the namespaces its
- * templates touch, instead of materialising every driver field and a flatten of
- * all telemetry and the whole session YAML.
+ * Never import it from production code, and never export it from `index.ts`.
+ * Freeze it: a change to template output is made in `template-context.ts` and
+ * the comparison then fails until the expectation is updated deliberately.
  */
 import type { ExpressionValue } from "./expression-evaluator.js";
 import { extractQualifyResults } from "./grid-utils.js";
 import { estimateIRatingChanges, type IRatingEstimates, resolveIRatingEstimateOrder } from "./irating-utils.js";
 import { classPositionFromOrder } from "./position-utils.js";
-import type { SDKController } from "./SDKController.js";
 import { resolveLapsRemaining, resolveShownTimeRemainingS } from "./session-limit.js";
 import { findNearestCarOnTrack } from "./track-utils.js";
 import type { SessionInfo, TelemetryData } from "./types.js";
 
 /** Value type for raw template-context entries. */
-export type TemplateValue = ExpressionValue;
+type TemplateValue = ExpressionValue;
 
 /**
- * The raw value at a path. `found: false` means the context has no such path,
- * which an expression reports as an unknown variable; `found: true` with an
- * `undefined` value is a path that exists but holds nothing.
+ * Flat template maps — all keys use dot-notation (e.g., "self.name", "telemetry.Speed").
  */
-export interface TemplateLookup {
-  found: boolean;
-  value?: TemplateValue;
+export interface ReferenceTemplateMaps {
+  /** Display-formatted strings used by plain {{var}} placeholders. */
+  display: Record<string, string>;
+  /** Full-precision raw values used by {{= expr }} expressions. */
+  raw: Record<string, TemplateValue>;
 }
-
-/**
- * Template variables, answered one dot-notation path at a time
- * (e.g. "self.name", "telemetry.Speed"). Both methods are plain closures, so a
- * detached `context.display` still works.
- */
-export interface TemplateContext {
-  /** Display-formatted string a plain {{path}} renders, or undefined when the path is absent. */
-  display(path: string): string | undefined;
-  /** Full-precision value a {{= expression }} reads. */
-  raw(path: string): TemplateLookup;
-}
-
-/**
- * Where the live race order comes from: the order itself, or a provider called
- * at most once per context, and only when a namespace that needs it is built.
- * `SDKController` passes a provider, because the translator computes the
- * canonical order when asked.
- */
-export type LivePositionsSource = number[] | null | (() => number[] | null);
 
 /**
  * A display/raw map pair for one context namespace.
@@ -61,26 +41,6 @@ interface FieldMaps {
   display: Record<string, string>;
   raw: Record<string, TemplateValue>;
 }
-
-const NOT_FOUND: TemplateLookup = Object.freeze({ found: false });
-
-/**
- * A context over two prebuilt maps, keyed by full path. Own keys only, so
- * prototype names such as "constructor" are absent rather than inherited.
- * Used for each eager namespace, for the empty fallback context, and by tests.
- */
-export function templateContextFromMaps(
-  display: Record<string, string>,
-  raw: Record<string, TemplateValue> = {},
-): TemplateContext {
-  return {
-    display: (path) => (Object.hasOwn(display, path) ? display[path] : undefined),
-    raw: (path) => (Object.hasOwn(raw, path) ? { found: true, value: raw[path] } : NOT_FOUND),
-  };
-}
-
-/** A namespace with no keys: every path in it is absent. */
-const EMPTY_NAMESPACE = templateContextFromMaps({});
 
 /**
  * Raw driver field values — numeric fields stay numbers until display formatting.
@@ -181,108 +141,75 @@ const BOOLEAN_INT_FIELDS = new Set([
   "PlayerCarInPitStall",
 ]);
 
-/** One telemetry or session-info leaf, formatted for both kinds of placeholder. */
-interface LeafEntry {
-  display: string;
-  raw: TemplateLookup;
+interface FlattenOptions {
+  excludePrefix?: string;
 }
 
 /**
- * @internal Exported for testing
- *
- * The per-leaf rule for `telemetry.*` and `sessionInfo.*`: display-formatted
- * string (floats rounded to 2 decimals, booleans and known boolean-semantic
- * integers as Yes/No) and full-precision raw value (numbers stay numbers —
- * including BOOLEAN_INT_FIELDS, which stay 0/1 — booleans stay booleans, strings
- * stay strings). `key` is the leaf's own segment. Returns undefined for what is
- * not a leaf: arrays, objects, null and undefined.
- *
- * This is the rule the pre-#1339 `flattenContext` applied while flattening the
- * whole object; the reference copy of that flatten in
- * `template-context.reference.ts` is what the equivalence test holds it to.
+ * Flattens a nested object into dot-notation keys, producing both maps in one walk:
+ * display-formatted strings (floats rounded to 2 decimals, booleans and known
+ * boolean-semantic integers as Yes/No) and full-precision raw values (numbers stay
+ * numbers — including BOOLEAN_INT_FIELDS, which stay 0/1 — booleans stay booleans,
+ * strings stay strings). Skips arrays and filters keys by prefix.
  */
-export function formatLeaf(key: string, value: unknown): LeafEntry | undefined {
-  if (value === null || value === undefined || typeof value === "object") return undefined;
+function flattenContext(obj: Record<string, unknown>, options?: FlattenOptions): FieldMaps {
+  const display: Record<string, string> = {};
+  const raw: Record<string, TemplateValue> = {};
+  const prefix = options?.excludePrefix;
 
-  if (typeof value === "boolean") {
-    return { display: value ? "Yes" : "No", raw: { found: true, value } };
-  }
+  function walk(current: Record<string, unknown>, path: string): void {
+    for (const key of Object.keys(current)) {
+      if (prefix && key.startsWith(prefix)) continue;
 
-  if (typeof value === "number") {
-    let display: string;
+      const value = current[key];
+      const fullKey = path ? `${path}.${key}` : key;
 
-    if (BOOLEAN_INT_FIELDS.has(key) && (value === 0 || value === 1)) {
-      display = value === 1 ? "Yes" : "No";
-    } else {
-      display = Number.isInteger(value) ? String(value) : value.toFixed(2);
+      if (Array.isArray(value)) continue;
+
+      if (value !== null && value !== undefined && typeof value === "object") {
+        walk(value as Record<string, unknown>, fullKey);
+        continue;
+      }
+
+      if (typeof value === "boolean") {
+        display[fullKey] = value ? "Yes" : "No";
+        raw[fullKey] = value;
+      } else if (typeof value === "number") {
+        const leafKey = fullKey.includes(".") ? fullKey.substring(fullKey.lastIndexOf(".") + 1) : fullKey;
+
+        if (BOOLEAN_INT_FIELDS.has(leafKey) && (value === 0 || value === 1)) {
+          display[fullKey] = value === 1 ? "Yes" : "No";
+        } else {
+          display[fullKey] = Number.isInteger(value) ? String(value) : value.toFixed(2);
+        }
+
+        raw[fullKey] = value;
+      } else if (typeof value === "string") {
+        display[fullKey] = value;
+        raw[fullKey] = value;
+      } else if (value !== null && value !== undefined) {
+        // Exotic primitive (e.g. bigint): display only — not a valid expression value.
+        display[fullKey] = String(value);
+      }
     }
-
-    return { display, raw: { found: true, value } };
   }
 
-  if (typeof value === "string") {
-    return { display: value, raw: { found: true, value } };
-  }
+  walk(obj, "");
 
-  // Exotic primitive (e.g. bigint): display only — not a valid expression value.
-  return { display: String(value), raw: NOT_FOUND };
+  return { display, raw };
 }
 
 /**
- * Walks `root` along a dot-separated path and formats the leaf it ends at.
- *
- * Mirrors what flattening the whole object used to expose, one path at a time:
- * every step must be an own key (so prototype names are absent), a path through
- * or ending at an array is absent, and one ending at an object, null or undefined
- * is absent. `excludePrefix` is checked against EVERY segment, not only the
- * first, because the flatten skipped matching keys at every depth.
- *
- * Splitting on "." assumes no key in the source contains a dot — the flatten
- * would have produced such a key as one path segment the walk cannot address.
- * None does: iRacing's telemetry names are identifiers, and a scan of 91
- * captured session-info documents (198k keys) found no key with a dot (#1339).
+ * Prefixes all keys in a record with a given prefix.
  */
-function leafAt(root: object, path: string, excludePrefix?: string): LeafEntry | undefined {
-  let current: object = root;
-  let start = 0;
+function prefixKeys<T>(prefix: string, record: Record<string, T>): Record<string, T> {
+  const result: Record<string, T> = {};
 
-  for (;;) {
-    const dot = path.indexOf(".", start);
-    const key = dot < 0 ? path.slice(start) : path.slice(start, dot);
-
-    if (excludePrefix && key.startsWith(excludePrefix)) return undefined;
-
-    if (!Object.hasOwn(current, key)) return undefined;
-
-    const value = (current as Record<string, unknown>)[key];
-
-    if (dot < 0) return formatLeaf(key, value);
-
-    if (value === null || typeof value !== "object" || Array.isArray(value)) return undefined;
-
-    current = value;
-    start = dot + 1;
+  for (const [key, value] of Object.entries(record)) {
+    result[`${prefix}.${key}`] = value;
   }
-}
 
-/** A namespace answered by walking a source object per lookup — no flatten, no memo. */
-function walkingNamespace(root: object | null, excludePrefix?: string): TemplateContext {
-  if (!root) return EMPTY_NAMESPACE;
-
-  return {
-    display: (path) => leafAt(root, path, excludePrefix)?.display,
-    raw: (path) => leafAt(root, path, excludePrefix)?.raw ?? NOT_FOUND,
-  };
-}
-
-/**
- * Builds the full template context from current SDK state.
- */
-export function buildTemplateContext(sdkController: SDKController): TemplateContext {
-  const telemetry = sdkController.getCurrentTelemetry();
-  const sessionInfo = sdkController.getSessionInfo();
-
-  return buildTemplateContextFromData(telemetry, sessionInfo, () => sdkController.getLiveRacePositions());
+  return result;
 }
 
 /**
@@ -314,94 +241,34 @@ function fieldsToMaps(fields: Record<string, DriverFieldValue>): FieldMaps {
   return { display, raw };
 }
 
-/** A namespace over one prebuilt display/raw pair. */
-function mapsNamespace(maps: FieldMaps): TemplateContext {
-  return templateContextFromMaps(maps.display, maps.raw);
-}
-
 /**
- * Builds the namespace for one relative-driver group (`track_ahead`,
- * `race_behind`, `focused`, …). A null driver — no car in that slot — yields
- * the empty field set, so every key renders "".
+ * Builds the display/raw field-map pair for one relative-driver group
+ * (`track_ahead`, `race_behind`, `focused`, …). A null driver — no car in that
+ * slot — yields the empty field set, so every key renders "".
  */
-function driverNamespace(
+function driverMaps(
   driver: DriverEntry | null,
   telemetry: TelemetryData | null,
-  inputs: DriverInputs,
-): TemplateContext {
-  return mapsNamespace(
-    fieldsToMaps(
-      driver
-        ? buildDriverFields(driver, telemetry, inputs.order, inputs.playerCarIdx, inputs.estimates)
-        : { ...EMPTY_DRIVER_FIELDS },
-    ),
+  order?: number[],
+  playerCarIdx?: number,
+  estimates?: IRatingEstimates,
+): FieldMaps {
+  return fieldsToMaps(
+    driver ? buildDriverFields(driver, telemetry, order, playerCarIdx, estimates) : { ...EMPTY_DRIVER_FIELDS },
   );
 }
 
 /**
- * The parts of the context that are a pure function of the session info. Shared
- * by every context built from the same session-info object.
+ * Builds template context from raw telemetry and session data.
+ * Returns the combined { display, raw } context with dot-notation keys in both maps.
  */
-interface SessionInfoParts {
-  readonly drivers: DriverEntry[];
-  readonly playerCarIdx: number;
-  /** The `track` namespace, built on the first `track.*` lookup. */
-  track: TemplateContext | undefined;
-}
-
-/**
- * Session-info parts memoised on the identity of the parsed session-info object.
- * `IRacingSDK.getSessionInfo()` returns the same object until iRacing bumps
- * `SessionInfoUpdate` and a new one after, so the identity IS the session-info
- * version, and a frame-to-frame rebuild with unchanged session info reuses these.
- * A WeakMap, so a superseded session-info object (a long session parses many)
- * is not kept alive by its entry.
- */
-const sessionInfoPartsMemo = new WeakMap<object, SessionInfoParts>();
-
-/** The parts with no session info: no drivers, no player, blank track names. */
-const NO_SESSION_INFO_PARTS: SessionInfoParts = {
-  drivers: [],
-  playerCarIdx: -1,
-  track: undefined,
-};
-
-function sessionInfoParts(sessionInfo: SessionInfo | null): SessionInfoParts {
-  if (!sessionInfo) return NO_SESSION_INFO_PARTS;
-
-  let parts = sessionInfoPartsMemo.get(sessionInfo);
-
-  if (!parts) {
-    parts = {
-      drivers: extractDrivers(sessionInfo),
-      playerCarIdx: extractPlayerCarIdx(sessionInfo),
-      track: undefined,
-    };
-    sessionInfoPartsMemo.set(sessionInfo, parts);
-  }
-
-  return parts;
-}
-
-/**
- * The inputs every driver namespace (and `session`, for the SOF) shares:
- * computed once per context, on the first namespace that needs them.
- */
-interface DriverInputs {
-  drivers: DriverEntry[];
-  playerCarIdx: number;
-  /** The canonical live race order, in race sessions only. */
-  order: number[] | undefined;
-  estimates: IRatingEstimates | undefined;
-}
-
-function resolveDriverInputs(
+export function buildReferenceTemplateMaps(
   telemetry: TelemetryData | null,
   sessionInfo: SessionInfo | null,
-  livePositions: LivePositionsSource | undefined,
-): DriverInputs {
-  const { drivers, playerCarIdx } = sessionInfoParts(sessionInfo);
-  const livePositionsNow = typeof livePositions === "function" ? livePositions() : livePositions;
+  livePositions?: number[] | null,
+): ReferenceTemplateMaps {
+  const drivers = extractDrivers(sessionInfo);
+  const playerCarIdx = extractPlayerCarIdx(sessionInfo);
 
   // SINGLE SOURCE OF TRUTH for race position: the translator's canonical live
   // race order (1-based, indexed by carIdx) — the same order Session Info derives
@@ -411,7 +278,7 @@ function resolveDriverInputs(
   // means a strict 1..N ranking, so neighbour selection can't hit duplicate
   // ranks (issue #710). See @.claude/rules/race-positions.md.
   const sessionType = getCurrentSession(sessionInfo, telemetry)?.SessionType as string | undefined;
-  const liveOrder = livePositionsNow && livePositionsNow.length > 0 ? livePositionsNow : undefined;
+  const liveOrder = livePositions && livePositions.length > 0 ? livePositions : undefined;
   const order = sessionType === "Race" ? liveOrder : undefined;
 
   // Estimated iRating change per car ("if the race ended now", #268) — the
@@ -439,156 +306,80 @@ function resolveDriverInputs(
       })
     : undefined;
 
-  return { drivers, playerCarIdx, order, estimates };
-}
+  const selfDriver = drivers.find((d) => d.CarIdx === playerCarIdx);
+  const self = fieldsToMaps(buildSelfFields(selfDriver, playerCarIdx, telemetry, order, estimates));
 
-/**
- * What a namespace builder reads: the context's own telemetry and session info,
- * and the shared driver inputs, computed on first call and then reused.
- */
-interface NamespaceSources {
-  readonly telemetry: TelemetryData | null;
-  readonly sessionInfo: SessionInfo | null;
-  driverInputs(): DriverInputs;
-}
-
-/**
- * @internal Exported for testing — the laziness tests spy on these.
- *
- * One builder per namespace, keyed by the path's first segment. A context calls
- * a builder the first time a path in that namespace is asked for and keeps the
- * result. Looked up through this object at call time, so a spy sees every call.
- */
-export const namespaceBuilders = {
-  self: (s: NamespaceSources): TemplateContext => {
-    const inputs = s.driverInputs();
-    const driver = inputs.drivers.find((d) => d.CarIdx === inputs.playerCarIdx);
-
-    return mapsNamespace(
-      fieldsToMaps(buildSelfFields(driver, inputs.playerCarIdx, s.telemetry, inputs.order, inputs.estimates)),
-    );
-  },
-  track_ahead: (s: NamespaceSources): TemplateContext => {
-    const inputs = s.driverInputs();
-
-    return driverNamespace(
-      findNearestDriverOnTrack(inputs.playerCarIdx, inputs.drivers, s.telemetry, "ahead"),
-      s.telemetry,
-      inputs,
-    );
-  },
-  track_behind: (s: NamespaceSources): TemplateContext => {
-    const inputs = s.driverInputs();
-
-    return driverNamespace(
-      findNearestDriverOnTrack(inputs.playerCarIdx, inputs.drivers, s.telemetry, "behind"),
-      s.telemetry,
-      inputs,
-    );
-  },
-  race_ahead: (s: NamespaceSources): TemplateContext => {
-    const inputs = s.driverInputs();
-
-    return driverNamespace(
-      findDriverByRacePosition(inputs.playerCarIdx, inputs.drivers, s.telemetry, -1, inputs.order),
-      s.telemetry,
-      inputs,
-    );
-  },
-  race_behind: (s: NamespaceSources): TemplateContext => {
-    const inputs = s.driverInputs();
-
-    return driverNamespace(
-      findDriverByRacePosition(inputs.playerCarIdx, inputs.drivers, s.telemetry, +1, inputs.order),
-      s.telemetry,
-      inputs,
-    );
-  },
-  // `focused` can resolve to the player's own car (camera on you) — the shared
-  // inputs carry playerCarIdx, so it uses the same player-authoritative fields as `self`.
-  focused: (s: NamespaceSources): TemplateContext => {
-    const inputs = s.driverInputs();
-
-    return driverNamespace(findDriverByCamCarIdx(inputs.drivers, s.telemetry), s.telemetry, inputs);
-  },
-  session: (s: NamespaceSources): TemplateContext => {
-    const inputs = s.driverInputs();
-
-    return mapsNamespace(buildSessionFields(s.sessionInfo, s.telemetry, inputs.playerCarIdx, inputs.estimates));
-  },
-  // Session info only, so it lives with the memoised parts: built once per session-info object.
-  track: (s: NamespaceSources): TemplateContext => {
-    const parts = sessionInfoParts(s.sessionInfo);
-
-    if (!parts.track) {
-      const fields = buildTrackFields(s.sessionInfo);
-
-      parts.track = templateContextFromMaps(fields, fields);
-    }
-
-    return parts.track;
-  },
-  // `telemetry.CarIdx*` stays out, as it always has: per-car arrays are not template values.
-  telemetry: (s: NamespaceSources): TemplateContext =>
-    walkingNamespace(s.telemetry as Record<string, unknown> | null, "CarIdx"),
-  sessionInfo: (s: NamespaceSources): TemplateContext => walkingNamespace(s.sessionInfo as object | null),
-};
-
-type NamespaceName = keyof typeof namespaceBuilders;
-
-/**
- * @internal Exported for testing
- *
- * Builds a lazy template context over raw telemetry and session data.
- *
- * Nothing is computed here: each namespace builds on its first lookup. The
- * context keeps a reference to `telemetry` and reads it at lookup time, which
- * gives the same answers an eager build would because `IRacingSDK.getTelemetry()`
- * returns a freshly parsed object per call and nothing mutates it afterwards.
- * The live order is the one input read later than before: a provider is called
- * on the first driver or `session` lookup rather than when the context is built,
- * which for the per-frame context in `SDKController` is the same frame.
- */
-export function buildTemplateContextFromData(
-  telemetry: TelemetryData | null,
-  sessionInfo: SessionInfo | null,
-  livePositions?: LivePositionsSource,
-): TemplateContext {
-  let inputs: DriverInputs | undefined;
-  const sources: NamespaceSources = {
+  const trackAhead = driverMaps(
+    findNearestDriverOnTrack(playerCarIdx, drivers, telemetry, "ahead"),
     telemetry,
-    sessionInfo,
-    driverInputs: () => (inputs ??= resolveDriverInputs(telemetry, sessionInfo, livePositions)),
-  };
-  const built: Partial<Record<NamespaceName, TemplateContext>> = {};
+    order,
+    playerCarIdx,
+    estimates,
+  );
+  const trackBehind = driverMaps(
+    findNearestDriverOnTrack(playerCarIdx, drivers, telemetry, "behind"),
+    telemetry,
+    order,
+    playerCarIdx,
+    estimates,
+  );
+  const raceAhead = driverMaps(
+    findDriverByRacePosition(playerCarIdx, drivers, telemetry, -1, order),
+    telemetry,
+    order,
+    playerCarIdx,
+    estimates,
+  );
+  const raceBehind = driverMaps(
+    findDriverByRacePosition(playerCarIdx, drivers, telemetry, +1, order),
+    telemetry,
+    order,
+    playerCarIdx,
+    estimates,
+  );
+  // `focused` can resolve to the player's own car (camera on you) — passing
+  // playerCarIdx makes it use the same player-authoritative fields as `self`.
+  const focused = driverMaps(findDriverByCamCarIdx(drivers, telemetry), telemetry, order, playerCarIdx, estimates);
 
-  /** The namespace a path's first segment names, built on first use; undefined when there is none. */
-  function namespaceOf(name: string): TemplateContext | undefined {
-    if (!Object.hasOwn(namespaceBuilders, name)) return undefined;
+  const sessionFields = buildSessionFields(sessionInfo, telemetry, playerCarIdx, estimates);
+  const trackFields = buildTrackFields(sessionInfo);
 
-    const key = name as NamespaceName;
-
-    return (built[key] ??= namespaceBuilders[key](sources));
-  }
+  const telemetryMaps = telemetry
+    ? flattenContext(telemetry as unknown as Record<string, unknown>, { excludePrefix: "CarIdx" })
+    : { display: {}, raw: {} };
+  const sessionInfoMaps = sessionInfo
+    ? flattenContext(sessionInfo as unknown as Record<string, unknown>)
+    : { display: {}, raw: {} };
 
   return {
-    display: (path) => {
-      const dot = path.indexOf(".");
-
-      return dot < 0 ? undefined : namespaceOf(path.slice(0, dot))?.display(path.slice(dot + 1));
+    display: {
+      ...prefixKeys("self", self.display),
+      ...prefixKeys("track_ahead", trackAhead.display),
+      ...prefixKeys("track_behind", trackBehind.display),
+      ...prefixKeys("race_ahead", raceAhead.display),
+      ...prefixKeys("race_behind", raceBehind.display),
+      ...prefixKeys("focused", focused.display),
+      ...prefixKeys("session", sessionFields.display),
+      ...prefixKeys("track", trackFields),
+      ...prefixKeys("telemetry", telemetryMaps.display),
+      ...prefixKeys("sessionInfo", sessionInfoMaps.display),
     },
-    raw: (path) => {
-      const dot = path.indexOf(".");
-
-      return (dot < 0 ? undefined : namespaceOf(path.slice(0, dot))?.raw(path.slice(dot + 1))) ?? NOT_FOUND;
+    raw: {
+      ...prefixKeys("self", self.raw),
+      ...prefixKeys("track_ahead", trackAhead.raw),
+      ...prefixKeys("track_behind", trackBehind.raw),
+      ...prefixKeys("race_ahead", raceAhead.raw),
+      ...prefixKeys("race_behind", raceBehind.raw),
+      ...prefixKeys("focused", focused.raw),
+      ...prefixKeys("session", sessionFields.raw),
+      ...prefixKeys("track", trackFields),
+      ...prefixKeys("telemetry", telemetryMaps.raw),
+      ...prefixKeys("sessionInfo", sessionInfoMaps.raw),
     },
   };
 }
 
-/**
- * @internal Exported for testing
- */
-export function splitDriverName(userName: string): { firstName: string; lastName: string } {
+function splitDriverName(userName: string): { firstName: string; lastName: string } {
   const trimmed = userName.trim();
   const spaceIndex = trimmed.indexOf(" ");
 
@@ -601,12 +392,10 @@ export function splitDriverName(userName: string): { firstName: string; lastName
 }
 
 /**
- * @internal Exported for testing
- *
  * Finds the physically closest driver on track in a given direction.
  * Delegates to findNearestCarOnTrack with a filter that excludes pace car and spectators.
  */
-export function findNearestDriverOnTrack(
+function findNearestDriverOnTrack(
   playerCarIdx: number,
   drivers: DriverEntry[],
   telemetry: TelemetryData | null,
@@ -631,12 +420,10 @@ export function findNearestDriverOnTrack(
 }
 
 /**
- * @internal Exported for testing
- *
  * Finds a driver by race position relative to the player.
  * offset: -1 for position ahead, +1 for position behind.
  */
-export function findDriverByRacePosition(
+function findDriverByRacePosition(
   playerCarIdx: number,
   drivers: DriverEntry[],
   telemetry: TelemetryData | null,
@@ -665,8 +452,6 @@ export function findDriverByRacePosition(
 }
 
 /**
- * @internal Exported for testing
- *
  * Resolves the driver the camera is currently focused on from `CamCarIdx`.
  * Returns null when no car is focused — `CamCarIdx` is undefined (no telemetry)
  * or a negative sentinel (a scenic/track cam, not a specific car) — or when the
@@ -677,7 +462,7 @@ export function findDriverByRacePosition(
  * intentionally not filtered: a camera focus is a deliberate user selection, so
  * whatever the camera is on is the car the user wants to see.
  */
-export function findDriverByCamCarIdx(drivers: DriverEntry[], telemetry: TelemetryData | null): DriverEntry | null {
+function findDriverByCamCarIdx(drivers: DriverEntry[], telemetry: TelemetryData | null): DriverEntry | null {
   const camCarIdx = telemetry?.CamCarIdx;
 
   if (camCarIdx === undefined || camCarIdx < 0) return null;
@@ -895,10 +680,7 @@ function extractPlayerCarIdx(sessionInfo: SessionInfo | null): number {
   return (driverInfo?.DriverCarIdx as number) ?? -1;
 }
 
-/**
- * @internal Exported for testing
- */
-export function formatTimeRemaining(seconds: number | null | undefined): string {
+function formatTimeRemaining(seconds: number | null | undefined): string {
   if (seconds === null || seconds === undefined || seconds < 0) return "";
 
   const totalSeconds = Math.floor(seconds);

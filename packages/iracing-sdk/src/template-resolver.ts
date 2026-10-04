@@ -3,10 +3,10 @@
  *
  * General-purpose template resolution with two placeholder kinds:
  *
- * - `{{dot.notation}}` — variable lookup against the context's display map
+ * - `{{dot.notation}}` — variable lookup through the context's `display`
  *   (display-formatted strings). Unresolved variables become empty strings.
- * - `{{= expression }}` — safe expression evaluated against the context's raw
- *   map (full-precision values).
+ * - `{{= expression }}` — safe expression evaluated against the context's
+ *   `raw` values (full precision).
  *
  * Expression error behavior is hybrid: a parse error (typo in the expression)
  * leaves the `{{= ... }}` placeholder verbatim in the output so the mistake is
@@ -43,7 +43,7 @@ export function resolveTemplate(template: string, context: TemplateContext): str
       return result === null ? match : result;
     }
 
-    const value = context.display[path as string];
+    const value = context.display(path as string);
 
     return value ?? "";
   });

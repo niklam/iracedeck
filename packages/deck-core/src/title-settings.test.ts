@@ -1,3 +1,4 @@
+import { templateContextFromMaps } from "@iracedeck/iracing-sdk";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { TitleOverrides } from "./common-settings.js";
@@ -143,24 +144,21 @@ describe("resolveTitleSettings", () => {
 
   describe("title template resolution (#899)", () => {
     it("resolves {{…}} placeholders in user-entered titleText", () => {
-      mockGetCurrentTemplateContext.mockReturnValue({
-        display: { "self.car_number": "34" },
-        raw: {},
-      });
+      mockGetCurrentTemplateContext.mockReturnValue(templateContextFromMaps({ "self.car_number": "34" }));
       const action: TitleOverrides = { titleText: "CAR {{self.car_number}}" };
       const result = resolveTitleSettings(GRAPHIC_WITH_TITLE, {}, action, "CODE\nDEFAULT");
       expect(result.titleText).toBe("CAR 34");
     });
 
     it("keeps a template that resolves empty as an empty title instead of falling back to defaults", () => {
-      mockGetCurrentTemplateContext.mockReturnValue({ display: {}, raw: {} });
+      mockGetCurrentTemplateContext.mockReturnValue(templateContextFromMaps({}));
       const action: TitleOverrides = { titleText: "{{unknown.variable}}" };
       const result = resolveTitleSettings(GRAPHIC_WITH_TITLE, {}, action, "CODE\nDEFAULT");
       expect(result.titleText).toBe("");
     });
 
     it("exposes the raw template as layoutText so the graphic layout stays stable across resolutions", () => {
-      mockGetCurrentTemplateContext.mockReturnValue({ display: {}, raw: {} });
+      mockGetCurrentTemplateContext.mockReturnValue(templateContextFromMaps({}));
       const action: TitleOverrides = { titleText: "{{unknown.variable}}" };
       const result = resolveTitleSettings(GRAPHIC_WITH_TITLE, {}, action);
       expect(result.titleText).toBe("");
@@ -174,19 +172,13 @@ describe("resolveTitleSettings", () => {
     });
 
     it("does not resolve templates in action default text", () => {
-      mockGetCurrentTemplateContext.mockReturnValue({
-        display: { "self.car_number": "34" },
-        raw: {},
-      });
+      mockGetCurrentTemplateContext.mockReturnValue(templateContextFromMaps({ "self.car_number": "34" }));
       const result = resolveTitleSettings(GRAPHIC_WITH_TITLE, {}, undefined, "CAR {{self.car_number}}");
       expect(result.titleText).toBe("CAR {{self.car_number}}");
     });
 
     it("does not resolve templates in icon desc default titles", () => {
-      mockGetCurrentTemplateContext.mockReturnValue({
-        display: { "self.car_number": "34" },
-        raw: {},
-      });
+      mockGetCurrentTemplateContext.mockReturnValue(templateContextFromMaps({ "self.car_number": "34" }));
       const graphic = `<svg><desc>{"colors":{},"title":{"text":"CAR {{self.car_number}}"}}</desc></svg>`;
       const result = resolveTitleSettings(graphic, {});
       expect(result.titleText).toBe("CAR {{self.car_number}}");

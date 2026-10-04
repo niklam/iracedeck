@@ -2,12 +2,29 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import {
   clearExpressionCache,
-  evaluateAst,
+  type EvalResult,
+  evaluateAst as evaluateAstWithLookup,
+  type ExpressionValue,
+  type ExprNode,
   formatResult,
   parseExpression,
-  resolveExpression,
+  resolveExpression as resolveExpressionWithLookup,
   tokenize,
+  type VariableLookup,
 } from "./expression-evaluator.js";
+
+/** A lookup over a plain record of variables, answering own keys only — how the template context answers. */
+function lookupOf(vars: Record<string, ExpressionValue>): VariableLookup {
+  return (path) => (Object.hasOwn(vars, path) ? { found: true, value: vars[path] } : { found: false });
+}
+
+function resolveExpression(source: string, vars: Record<string, ExpressionValue>): string | null {
+  return resolveExpressionWithLookup(source, lookupOf(vars));
+}
+
+function evaluateAst(node: ExprNode, vars: Record<string, ExpressionValue>): EvalResult {
+  return evaluateAstWithLookup(node, lookupOf(vars));
+}
 
 beforeEach(() => {
   clearExpressionCache();

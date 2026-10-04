@@ -322,7 +322,11 @@ export class SDKController {
 
     if (this.templateContextDirty || !this.lastTemplateContext || camCarIdx !== this.lastCamCarIdx) {
       const sessionInfo = this.getSessionInfo();
-      this.lastTemplateContext = buildTemplateContextFromData(telemetry, sessionInfo, this.getLiveRacePositions());
+      // The order goes in as a provider: the lazy context asks for it only when a
+      // driver or session variable is read (#1339).
+      this.lastTemplateContext = buildTemplateContextFromData(telemetry, sessionInfo, () =>
+        this.getLiveRacePositions(),
+      );
       this.lastCamCarIdx = camCarIdx;
       this.templateContextDirty = false;
     }

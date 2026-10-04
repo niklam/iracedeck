@@ -4,6 +4,7 @@
  * The harness mocks getController so the flag-overlay subscription
  * registers a callback the test can drive directly via fake timers.
  */
+import { type TemplateContext, templateContextFromMaps } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { BaseAction } from "./base-action.js";
@@ -35,7 +36,10 @@ const { mockGetGlobalSettings } = vi.hoisted(() => ({
 }));
 
 const { mockGetCurrentTemplateContext } = vi.hoisted(() => ({
-  mockGetCurrentTemplateContext: vi.fn(() => ({ display: {} as Record<string, string>, raw: {} })),
+  mockGetCurrentTemplateContext: vi.fn((): TemplateContext => ({
+    display: () => undefined,
+    raw: () => ({ found: false }),
+  })),
 }));
 
 vi.mock("./sdk-singleton.js", () => ({
@@ -347,7 +351,7 @@ describe("BaseAction title template live updates (issue #899)", () => {
     vi.useFakeTimers();
     vi.clearAllMocks();
     mockGetGlobalSettings.mockReturnValue({});
-    mockGetCurrentTemplateContext.mockReturnValue({ display: {}, raw: {} });
+    mockGetCurrentTemplateContext.mockReturnValue(templateContextFromMaps({}));
   });
 
   afterEach(() => {
@@ -398,10 +402,9 @@ describe("BaseAction title template live updates (issue #899)", () => {
   }
 
   function setDisplayValue(value: string | undefined): void {
-    mockGetCurrentTemplateContext.mockReturnValue({
-      display: value === undefined ? {} : { "self.car_number": value },
-      raw: {},
-    });
+    mockGetCurrentTemplateContext.mockReturnValue(
+      templateContextFromMaps(value === undefined ? {} : { "self.car_number": value }),
+    );
   }
 
   it("subscribes to telemetry when a context's user title contains a template", () => {
@@ -429,7 +432,7 @@ describe("BaseAction title template live updates (issue #899)", () => {
     ctx.action.registerRegenerateCallback(CONTEXT_ID, () => {
       const context = mockGetCurrentTemplateContext();
 
-      return `<svg>${context.display["self.car_number"] ?? ""}</svg>`;
+      return `<svg>${context.display("self.car_number") ?? ""}</svg>`;
     });
     expect(ctx.setImageSpy).toHaveBeenLastCalledWith("<svg>34</svg>");
 
@@ -448,7 +451,7 @@ describe("BaseAction title template live updates (issue #899)", () => {
     ctx.action.registerRegenerateCallback(CONTEXT_ID, () => {
       const context = mockGetCurrentTemplateContext();
 
-      return `<svg>${context.display["self.car_number"] ?? ""}</svg>`;
+      return `<svg>${context.display("self.car_number") ?? ""}</svg>`;
     });
 
     vi.advanceTimersByTime(200);
@@ -468,7 +471,7 @@ describe("BaseAction title template live updates (issue #899)", () => {
     ctx.action.registerRegenerateCallback(CONTEXT_ID, () => {
       const context = mockGetCurrentTemplateContext();
 
-      return `<svg>${context.display["self.car_number"] ?? ""}</svg>`;
+      return `<svg>${context.display("self.car_number") ?? ""}</svg>`;
     });
 
     vi.advanceTimersByTime(200);
