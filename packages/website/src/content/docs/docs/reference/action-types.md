@@ -5,7 +5,7 @@ description: Common action types used across iRaceDeck Stream Deck actions.
 
 Common action types used across all iRaceDeck actions.
 
-These types describe how an action behaves on a key. Sixteen actions also work on a dial — a Stream Deck+ dial (encoder) or a Mirabox knob — where they turn, press and draw a live readout on the dial's own screen; dial support belongs to the action rather than to its type. See [Dials](/docs/features/dials/) for how dial gestures work; each action's page says what its dial does.
+These types describe how an action behaves on a key. Seventeen actions also work on a dial — a Stream Deck+ dial (encoder) or a Mirabox knob — where they turn, press and draw a live readout on the dial's own screen; dial support belongs to the action rather than to its type. See [Dials](/docs/features/dials/) for how dial gestures work; each action's page says what its dial does.
 
 ## Button
 

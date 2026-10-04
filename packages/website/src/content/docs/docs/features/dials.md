@@ -39,6 +39,7 @@ It appears on the dials where iRaceDeck can work the result out before you let g
 - **Setup Traction** — TC on/off
 - **Setup Chassis** — which spring side the dial switches to
 - **Camera Controls** — the car number a Focus My Car press will jump to
+- **Replay Markers** — the marker a Delete Marker press will remove, or the marker an Add Marker press will place
 
 Every other dial gesture leaves the strip unchanged while you hold. That is deliberate rather than an omission: iRacing reports nothing back for things like recentering VR, opening a black box or toggling the wipers, and for Focus on Leader or Focus on Incident the sim picks the car itself — so there is nothing iRaceDeck can work out in advance. Showing you a guess would be worse than showing you nothing, because the whole point is that you can trust the change you see.
 
