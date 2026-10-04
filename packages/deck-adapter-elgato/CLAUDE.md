@@ -21,6 +21,7 @@ Elgato Stream Deck adapter that implements `IDeckPlatformAdapter` from `@iracede
 ## Also Contains
 
 - `createSDLogger()` / `SDLoggerLike` — Wraps Elgato's SDK logger into the `ILogger` interface with level filtering. Defaults to `LogLevel.Debug` intentionally: level gating happens at the `streamDeck.logger` layer, so the wrapper keeps forwarding debug and a runtime `debugLogging` flip surfaces scoped debug logs without recreating loggers (see `.claude/rules/logging.md`)
+- `elgatoPluginLogFile(cwd?)` / `elgatoPluginUuid(cwd)` (#1330) — the file `@elgato/streamdeck`'s logger writes, `<cwd>/logs/<plugin UUID>.0.log`, which the SDK does not expose. The Stream Deck plugin passes it to the main-thread watchdog, whose worker appends to that file directly. `log-file.test.ts` checks the UUID against the SDK's own `getPluginUUID` and the path against a real `FileTarget`, so an SDK upgrade that moves the file turns the suite red
 
 ## Build
 
