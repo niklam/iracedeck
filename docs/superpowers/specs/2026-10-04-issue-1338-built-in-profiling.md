@@ -36,6 +36,16 @@ Three parts: one for users and support, one that watches by itself, and one for 
   - Both buttons render only under `locals.settingsWindow`, like the Diagnostics card's existing Open folder.
 - **Logging.** `INFO` "CPU profile capture started" and "CPU profile saved", with the path at `debug`. Unavailable inspector, write failure: `WARN` with the reason, and the state `failed` with that reason.
 
+### 1b. The same capture from a deck key: a Telemetry Control mode (amended 2026-10-04)
+
+Opening the settings window mid-race is not realistic in a race that cannot be paused, so the capture is also a new **Telemetry Control** mode, `capture-profile` (key title `CAPTURE\nPROFILE`), beside its existing `snapshot` mode. Snapshot is already the action's diagnostics capture, and a mode keeps the action's UUID and manifest entries untouched.
+
+- **One capture service, shared.** The capture becomes a deck-core singleton (`initialize…` in each `plugin.ts`, a getter for consumers, the same shape as the audio service). The settings-window command and the key call the same instance, so "one capture at a time", the status key and the files are shared: a key press while a capture started from Settings is running, or the reverse, is refused like any second request.
+- **Key feedback**, because a 30 s capture needs to be visible on the deck. While capturing, the key shows the seconds left, updated once a second through the key's regenerate path. After a save it shows `SAVED` for 3 s. After a failure it shows `FAILED` for 3 s, with the reason in the log (`WARN CPU profile capture failed: …`, as for the button). Otherwise it shows its normal icon.
+- **No key binding and no iRacing traffic.** The mode sends nothing to iRacing, so it has no `comms-catalog.ts` entry and no binding-status line (`stream-deck-actions.md` §Per-Mode Communication: a mode that sends nothing is left out). The key works with or without iRacing running, on every host.
+- **A new icon** `packages/icons/telemetry-control/capture-profile.svg`, following `icons.md`.
+- **Docs:** the Telemetry Control action page gets the mode, and the changelog's #1338 Features line mentions the key.
+
 ### 2. Resource monitor, in the plugin log
 
 - **Sampling.** A deck-core module started by every `plugin.ts` beside the #1330 watchdog. Once a minute, on an `unref`'d timer, it samples:
