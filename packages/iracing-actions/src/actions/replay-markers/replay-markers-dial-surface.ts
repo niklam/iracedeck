@@ -28,6 +28,7 @@ import { type DialBoxArgs, type DialSideMarks, renderDialBox, resolveDialBoxColo
 import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
 import type { DialPendingPreview } from "../../shared/dial-preview.js";
 import { classifyDialReleaseForHost } from "../../shared/dial-release.js";
+import { clearReplayLanding } from "../../shared/replay-cursor.js";
 import {
   addMarkerAt,
   CONFIRMATION_FLASH_MS,
@@ -39,22 +40,10 @@ import {
   previewDeleteMarker,
   type ReplayContextResult,
   resolveJumpTarget,
+  resolveMarkerJumpAnchor,
   walkMarkers,
 } from "./replay-markers-ops.js";
 import type { ReplayMarkersDialGesture, ReplayMarkersDialSettings } from "./replay-markers-settings.js";
-
-/**
- * @internal Exported for testing
- *
- * How long (ms) after a jump the dial measures its next step from the marker it
- * jumped to rather than from the live frame. `ReplayFrameNum` reaches the
- * target only on a later tick, so a second detent arriving first would compute
- * from the old frame and send the same marker again — a fast spin would stick.
- */
-export const DIAL_LANDING_HOLD_MS = 1_000;
-
-/** The replay counts as landed once `ReplayFrameNum` is this close (1 s) to the frame jumped to. */
-const LANDED_WITHIN_FRAMES = 60;
 
 /** The dash box's label. */
 const DIAL_LABEL = "MARKERS";
@@ -84,12 +73,6 @@ const NOOP_HOLD_PREVIEW: HoldPreview = {
   showing: false,
 };
 
-/** The jump the dial last sent, kept until the replay lands there or the hold expires. */
-interface PendingLanding {
-  frame: number;
-  sentAt: number;
-}
-
 /** Per-context runtime state. In memory only. */
 interface ReplayMarkersDialContext {
   action: IDeckActionContext;
@@ -98,7 +81,6 @@ interface ReplayMarkersDialContext {
   pressStart: number;
   /** Whether the dial was turned while held during the current press: the release then fires nothing. */
   rotatedWhilePressed: boolean;
-  landing: PendingLanding | null;
   /** The Added / Deleted confirmation on the value slot, or null. */
   flash: string | null;
   flashTimer: ReturnType<typeof setTimeout> | null;
@@ -113,6 +95,12 @@ interface ReplayMarkersDialContext {
   lastRenderSig: string | null;
 }
 
+/** A dash-box frame and the signature it is compared by. */
+interface BuiltFrame {
+  args: DialBoxArgs;
+  sig: string;
+}
+
 /** What the dial surface needs from the owning action. */
 export interface ReplayMarkersDialHost {
   readonly logger: ILogger;
@@ -120,26 +108,9 @@ export interface ReplayMarkersDialHost {
   readReplayContext(): ReplayContextResult;
 }
 
-/**
- * @internal Exported for testing
- *
- * The frame the next step is measured from: the marker last jumped to while the
- * jump is pending — sent less than {@link DIAL_LANDING_HOLD_MS} ago and the live
- * frame not yet within a second of it — else the live frame.
- */
-export function resolveAnchorFrame(landing: PendingLanding | null, liveFrame: number, nowMs: number): number {
-  if (landing === null || isLandingSettled(landing, liveFrame, nowMs)) return liveFrame;
-
-  return landing.frame;
-}
-
-function isLandingSettled(landing: PendingLanding, liveFrame: number, nowMs: number): boolean {
-  return nowMs - landing.sentAt >= DIAL_LANDING_HOLD_MS || Math.abs(liveFrame - landing.frame) <= LANDED_WITHIN_FRAMES;
-}
-
-/** What Add from the car is captioned with, and what its hold preview reads. */
+/** What Add from the car is captioned with, and what its hold preview reads; 0 s back carries no sign. */
 function addCaption(secondsBack: number): string {
-  return `ADD −${secondsBack} s`;
+  return secondsBack === 0 ? "ADD 0 s" : `ADD −${secondsBack} s`;
 }
 
 /** Human-readable label for a gesture slot (for trigger descriptions). */
@@ -293,7 +264,9 @@ export class ReplayMarkersDialSurface {
       return;
     }
 
-    const anchor = resolveAnchorFrame(ctx.landing, context.frame, Date.now());
+    // The shared pending landing (#1230): a jump any Replay Markers surface
+    // sent that the replay has not reached yet.
+    const anchor = resolveMarkerJumpAnchor(context.frame);
     const first = resolveJumpTarget(direction, context, anchor);
 
     if (!first) {
@@ -307,8 +280,8 @@ export class ReplayMarkersDialSurface {
     }
 
     const target = walkMarkers(context.store.markers.list(context.scope), first, direction, Math.abs(ticks));
+    // Records the shared landing only when the jump was actually sent.
     const success = jumpToMarkerFrame(CURSOR_OWNER[direction], target.frame);
-    ctx.landing = { frame: target.frame, sentAt: Date.now() };
     this.host.logger.info(`Dial jumped to ${direction} marker`);
     this.host.logger.debug(`Result: ${success}, ticks=${ticks}, anchor=${anchor}, target=${target.frame}`);
     this.scheduleRender(ctx);
@@ -371,7 +344,9 @@ export class ReplayMarkersDialSurface {
 
   /**
    * Per SDK tick: settle a landed jump, and redraw only when what the screen
-   * shows would change — a playing replay with an unchanged display pushes nothing.
+   * shows would change — a playing replay with an unchanged display pushes
+   * nothing. A changed tick hands the frame it built to the flush, so it is
+   * built once.
    */
   onTick(actionId: string): void {
     const ctx = this.contexts.get(actionId);
@@ -380,11 +355,13 @@ export class ReplayMarkersDialSurface {
 
     const context = this.host.readReplayContext();
 
-    if (ctx.landing && (!context.ok || isLandingSettled(ctx.landing, context.frame, Date.now()))) {
-      ctx.landing = null;
-    }
+    // No replay context, nothing to land in. A landing the replay reached, or
+    // whose hold ran out, is dropped by the anchor read in `boxArgs`.
+    if (!context.ok) clearReplayLanding();
 
-    if (this.displayedSignature(ctx, context) !== ctx.lastRenderSig) this.scheduleRender(ctx);
+    const frame = this.buildFrame(ctx, context);
+
+    if (frame.sig !== ctx.lastRenderSig) this.scheduleRender(ctx, false, frame);
   }
 
   /** Runs Add or Delete with the keypad's own operations; a press that changes nothing shows nothing. */
@@ -506,7 +483,6 @@ export class ReplayMarkersDialSurface {
       dial,
       pressStart: 0,
       rotatedWhilePressed: false,
-      landing: null,
       flash: null,
       flashTimer: null,
       preview: null,
@@ -529,38 +505,50 @@ export class ReplayMarkersDialSurface {
 
   /** The dash-box arguments for the current state; `pending` and the flash ride every render. */
   private boxArgs(ctx: ReplayMarkersDialContext, context: ReplayContextResult): DialBoxArgs {
-    const anchor = context.ok ? resolveAnchorFrame(ctx.landing, context.frame, Date.now()) : 0;
+    const anchor = context.ok ? resolveMarkerJumpAnchor(context.frame) : 0;
     const view = resolveDialView(context, anchor, ctx.dial);
+    const value = ctx.flash ?? view.value;
 
     return {
       abbr: DIAL_LABEL,
-      value: ctx.flash ?? view.value,
+      value,
       colors: resolveDialBoxColors(ctx.dial.colors, DIAL_ACCENT),
-      sideMarker: view.sides,
+      // A dimmed box with an empty value slot enlarges its label into that
+      // space, where the side marks would overlap it: draw none there.
+      ...(view.dimmed && value === "" ? {} : { sideMarker: view.sides }),
       caption: view.caption,
       dimmed: view.dimmed,
       pending: ctx.preview,
     };
   }
 
-  /** Built from what is displayed — never the raw frame — so an unchanged display is recognised as such. */
-  private displayedSignature(ctx: ReplayMarkersDialContext, context: ReplayContextResult): string {
-    return JSON.stringify(this.boxArgs(ctx, context));
+  /**
+   * The frame for the current state and its signature — built from what is
+   * displayed, never the raw replay frame, so an unchanged display is
+   * recognised as such.
+   */
+  private buildFrame(ctx: ReplayMarkersDialContext, context: ReplayContextResult): BuiltFrame {
+    const args = this.boxArgs(ctx, context);
+
+    return { args, sig: JSON.stringify(args) };
   }
 
   /**
-   * Queues a push of the dial's screen through the throttle. The flush rebuilds
-   * from the state at that moment and pushes only when the signature differs
-   * from the last frame; `force` makes the next flush push regardless (appear,
-   * settings).
+   * Queues a push of the dial's screen through the throttle. The flush pushes
+   * only when the signature differs from the last frame; `force` makes the next
+   * flush push regardless (appear, settings). `built` is a frame the caller
+   * already built from the current state (a tick); without it the flush builds
+   * from the state at that moment. Either way the throttle keeps only the
+   * latest schedule, so a flush never draws an older state than the last one
+   * queued.
    */
-  private scheduleRender(ctx: ReplayMarkersDialContext, force = false): void {
+  private scheduleRender(ctx: ReplayMarkersDialContext, force = false, built?: BuiltFrame): void {
     if (force) ctx.lastRenderSig = null;
 
-    this.renderThrottle.schedule(ctx.action.id, () => this.renderIfChanged(ctx));
+    this.renderThrottle.schedule(ctx.action.id, () => this.renderIfChanged(ctx, built));
   }
 
-  private async renderIfChanged(ctx: ReplayMarkersDialContext): Promise<void> {
+  private async renderIfChanged(ctx: ReplayMarkersDialContext, built?: BuiltFrame): Promise<void> {
     // A context that went away (or was replaced) since the schedule draws nothing.
     if (this.contexts.get(ctx.action.id) !== ctx) return;
 
@@ -569,8 +557,7 @@ export class ReplayMarkersDialSurface {
 
     if (!canvas) return;
 
-    const args = this.boxArgs(ctx, this.host.readReplayContext());
-    const sig = JSON.stringify(args);
+    const { args, sig } = built ?? this.buildFrame(ctx, this.host.readReplayContext());
 
     if (sig === ctx.lastRenderSig) return;
 

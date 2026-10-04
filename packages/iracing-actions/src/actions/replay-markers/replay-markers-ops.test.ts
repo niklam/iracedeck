@@ -1,8 +1,24 @@
-import type { ReplayMarker, ReplaySessionStore } from "@iracedeck/deck-core";
-import type { TelemetryData } from "@iracedeck/iracing-sdk";
-import { describe, expect, it, vi } from "vitest";
+import { getCommands, type ReplayMarker, type ReplaySessionStore } from "@iracedeck/deck-core";
+import { ReplayPosMode, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { markerIndexAt, type ReplayContext, resolveJumpTarget, walkMarkers } from "./replay-markers-ops.js";
+import {
+  _resetReplayCursor,
+  cancelReplayCursorOwner,
+  pendingReplayLanding,
+  recordReplayLanding,
+} from "../../shared/replay-cursor.js";
+import {
+  DIAL_LANDING_HOLD_MS,
+  jumpToMarkerFrame,
+  markerIndexAt,
+  previewAddMarker,
+  type ReplayContext,
+  resolveAnchorFrame,
+  resolveJumpTarget,
+  resolveMarkerJumpAnchor,
+  walkMarkers,
+} from "./replay-markers-ops.js";
 
 vi.mock("@iracedeck/deck-core", () => ({
   getCommands: vi.fn(),
@@ -85,5 +101,118 @@ describe("resolveJumpTarget", () => {
     expect(resolveJumpTarget("next", ctx)).toBeNull();
     expect(resolveJumpTarget("previous", ctx)).toBeNull();
     expect(ctx.store.markers.next).not.toHaveBeenCalled();
+  });
+});
+
+describe("resolveAnchorFrame", () => {
+  it("keeps the target only while pending", () => {
+    const landing = { frame: 2_000, sentAt: 10_000 };
+
+    expect(resolveAnchorFrame(null, 500, 10_000)).toBe(500);
+    expect(resolveAnchorFrame(landing, 500, 10_500)).toBe(2_000);
+    expect(resolveAnchorFrame(landing, 500, 10_000 + DIAL_LANDING_HOLD_MS)).toBe(500);
+    expect(resolveAnchorFrame(landing, 1_950, 10_100)).toBe(1_950);
+  });
+});
+
+describe("the shared landing (#1230)", () => {
+  const setPlayPosition = vi.fn((_mode: number, _frame: number) => true);
+
+  beforeEach(() => {
+    _resetReplayCursor();
+    setPlayPosition.mockReset().mockReturnValue(true);
+    vi.mocked(getCommands).mockReturnValue({ replay: { setPlayPosition } } as never);
+  });
+
+  it("a jump that was sent records its target", () => {
+    expect(jumpToMarkerFrame("next", 4_000, 10_000)).toBe(true);
+
+    expect(setPlayPosition).toHaveBeenCalledWith(ReplayPosMode.Begin, 4_000);
+    expect(pendingReplayLanding()).toEqual({ frame: 4_000, sentAt: 10_000 });
+  });
+
+  it("a jump that was not sent leaves the landing before it standing", () => {
+    jumpToMarkerFrame("dial-next", 2_000, 10_000);
+    setPlayPosition.mockReturnValue(false);
+
+    expect(jumpToMarkerFrame("next", 4_000, 10_100)).toBe(false);
+
+    expect(pendingReplayLanding()).toEqual({ frame: 2_000, sentAt: 10_000 });
+  });
+
+  it("a jump that was not sent records nothing", () => {
+    setPlayPosition.mockReturnValue(false);
+
+    expect(jumpToMarkerFrame("next", 4_000, 10_000)).toBe(false);
+
+    expect(pendingReplayLanding()).toBeNull();
+  });
+
+  it("the anchor is the landing while it is pending, from any surface", () => {
+    jumpToMarkerFrame("dial-next", 4_000, 10_000);
+
+    expect(resolveMarkerJumpAnchor(500, 10_200)).toBe(4_000);
+    expect(pendingReplayLanding()).not.toBeNull();
+  });
+
+  it("a settled landing anchors no more and is dropped, so a later drift cannot revive it", () => {
+    jumpToMarkerFrame("next", 4_000, 10_000);
+
+    expect(resolveMarkerJumpAnchor(3_990, 10_100)).toBe(3_990);
+    expect(pendingReplayLanding()).toBeNull();
+    expect(resolveMarkerJumpAnchor(500, 10_200)).toBe(500);
+  });
+
+  it("an expired landing is dropped", () => {
+    recordReplayLanding(4_000, 10_000);
+
+    expect(resolveMarkerJumpAnchor(500, 10_000 + DIAL_LANDING_HOLD_MS)).toBe(500);
+    expect(pendingReplayLanding()).toBeNull();
+  });
+
+  it("another owner taking the cursor clears it", () => {
+    jumpToMarkerFrame("next", 4_000, 10_000);
+
+    cancelReplayCursorOwner("play-pause");
+
+    expect(resolveMarkerJumpAnchor(500, 10_100)).toBe(500);
+  });
+});
+
+describe("previewAddMarker", () => {
+  function context(active: { subSessionId: number } | null, scope?: { subSessionId: number }): ReplayContext {
+    return {
+      ok: true,
+      telemetry: {
+        IsReplayPlaying: true,
+        ReplayFrameNum: 3_000,
+        ReplaySessionNum: 1,
+        ReplaySessionTime: 50,
+      } as TelemetryData,
+      frame: 3_000,
+      store: {
+        markers: { list: () => markers(1_000) },
+        getActiveSession: () => active,
+      } as unknown as ReplaySessionStore,
+      scope,
+    };
+  }
+
+  it("names the marker an Add would store", () => {
+    expect(previewAddMarker(context({ subSessionId: 7 }, { subSessionId: 7 }), 5)?.frame).toBe(2_700);
+    expect(previewAddMarker(context({ subSessionId: 7 }), 5)?.frame).toBe(2_700);
+  });
+
+  it("is null with no active record, since the store would refuse the Add", () => {
+    expect(previewAddMarker(context(null, { subSessionId: 7 }), 5)).toBeNull();
+    expect(previewAddMarker(context(null), 5)).toBeNull();
+  });
+
+  it("is null when the active record is another session's", () => {
+    expect(previewAddMarker(context({ subSessionId: 8 }, { subSessionId: 7 }), 5)).toBeNull();
+  });
+
+  it("is null for a duplicate", () => {
+    expect(previewAddMarker(context({ subSessionId: 7 }, { subSessionId: 7 }), 33)).toBeNull();
   });
 });

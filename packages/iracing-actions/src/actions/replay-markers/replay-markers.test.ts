@@ -172,6 +172,8 @@ describe("ReplayMarkers", () => {
     mocks.markers.next.mockReturnValue(null);
     mocks.markers.previous.mockReturnValue(null);
     mocks.markers.list.mockReturnValue([]);
+    mocks.setPlayPosition.mockReturnValue(true);
+    _resetReplayCursor();
     vi.useFakeTimers();
   });
 
@@ -827,6 +829,8 @@ describe("ReplayMarkers on a dial (#1230)", () => {
     mocks.markers.next.mockReturnValue(null);
     mocks.markers.previous.mockReturnValue(null);
     mocks.markers.list.mockReturnValue([]);
+    mocks.setPlayPosition.mockReturnValue(true);
+    _resetReplayCursor();
     vi.useFakeTimers();
   });
 
@@ -885,6 +889,78 @@ describe("ReplayMarkers on a dial (#1230)", () => {
     await action.onTouchTap(dialEvent(settings, { hold: false }) as never);
 
     expect(mocks.markers.deleteNearest).toHaveBeenCalledWith(12_100, { subSessionId: 86697546 });
+  });
+
+  describe("one shared landing across the keypad and every dial", () => {
+    const FRAMES: Marker[] = [1_000, 2_000, 3_000, 4_000].map((frame) => ({ frame, sessionNum: 1, sessionTimeMs: 0 }));
+    const sent = () => mocks.setPlayPosition.mock.calls.map((c) => c[1]);
+    const replayAt = (frame: number) => ({ ...REPLAY, ReplayFrameNum: frame }) as TelemetryData;
+    const turn = (action: ReplayMarkers, ticks: number) =>
+      action.onDialRotate(dialEvent({}, { ticks, pressed: false }) as never);
+
+    beforeEach(() => {
+      // The store's own windows: next is > 60 frames ahead, previous > 120 behind.
+      mocks.markers.next.mockImplementation(
+        ((frame: number) => FRAMES.find((m) => m.frame - frame > 60) ?? null) as never,
+      );
+      mocks.markers.previous.mockImplementation(
+        ((frame: number) => [...FRAMES].reverse().find((m) => frame - m.frame > 120) ?? null) as never,
+      );
+      mocks.markers.list.mockReturnValue(FRAMES);
+    });
+
+    it("keypad Next right after a dial turn steps beyond the dial's target rather than re-sending it", async () => {
+      const { action } = makeAction(replayAt(500));
+      await action.onWillAppear(dialEvent({}) as never);
+
+      await turn(action, 1);
+      await action.onKeyDown(keyDown({ mode: "next" }, "key-1"));
+
+      expect(sent()).toEqual([1_000, 2_000]);
+    });
+
+    it("a dial turn after keypad Previous within the hold measures from the keypad's landing", async () => {
+      const { action } = makeAction(replayAt(2_500));
+      await action.onWillAppear(dialEvent({}) as never);
+
+      await turn(action, 1);
+      await action.onKeyDown(keyDown({ mode: "previous" }, "key-1"));
+      await turn(action, 1);
+
+      // From the keypad's 2 000, not from the dial's own 3 000 (which would send 4 000).
+      expect(sent()).toEqual([3_000, 2_000, 3_000]);
+    });
+
+    it("a keypad Next key greys out once a dial has jumped to the last marker", async () => {
+      const { action, sdk } = makeAction(replayAt(500));
+      await action.onWillAppear(dialEvent({}) as never);
+      await appear(action, { mode: "next" }, "key-1");
+      expect(vi.mocked(action["setKeyImage"]).mock.calls.at(-1)![1]).not.toContain("dimmed");
+
+      await turn(action, 9);
+      const keyTick = sdk.subscribe.mock.calls.find(([id]) => id === "key-1")![1] as () => void;
+      keyTick();
+
+      expect(sent()).toEqual([4_000]);
+      expect(vi.mocked(action["updateKeyImage"]).mock.calls.at(-1)).toEqual([
+        "key-1",
+        expect.stringMatching(/\|dimmed$/),
+      ]);
+    });
+
+    it("a jump the keypad could not send leaves the dial's landing standing", async () => {
+      const { action } = makeAction(replayAt(500));
+      await action.onWillAppear(dialEvent({}) as never);
+
+      await turn(action, 1);
+      mocks.setPlayPosition.mockReturnValueOnce(false);
+      await action.onKeyDown(keyDown({ mode: "next" }, "key-1"));
+      await turn(action, 1);
+
+      // The keypad's 2 000 never went out; the replay is still headed for the
+      // dial's 1 000, so the dial steps on from there.
+      expect(sent()).toEqual([1_000, 2_000, 2_000]);
+    });
   });
 
   it("settings and disappearance stay on the dial side", async () => {

@@ -40,6 +40,7 @@ import {
   type ReplayContextResult,
   type ReplayContextSource,
   resolveJumpTarget,
+  resolveMarkerJumpAnchor,
 } from "./replay-markers-ops.js";
 import {
   parseReplayMarkersSettings,
@@ -319,19 +320,23 @@ export class ReplayMarkers extends ConnectionStateAwareAction<ReplayMarkersSetti
           return undefined;
         }
 
-        const target = resolveJumpTarget(settings.mode, context);
+        // From the shared pending landing while the replay has not reached it
+        // (#1230), so a press right after a turn or another press steps on.
+        const anchor = resolveMarkerJumpAnchor(context.frame);
+        const target = resolveJumpTarget(settings.mode, context, anchor);
 
         if (!target) {
           this.logger.info(`No ${settings.mode} marker`);
-          this.logger.debug(`current=${context.frame}`);
+          this.logger.debug(`current=${context.frame} anchor=${anchor}`);
 
           return undefined;
         }
 
-        // Takes the replay cursor from an in-flight Jump to Fastest Lap walk (#1203).
+        // Takes the replay cursor from an in-flight Jump to Fastest Lap walk
+        // (#1203), and records the shared landing when the jump was sent.
         const success = jumpToMarkerFrame(settings.mode, target.frame);
         this.logger.info(`Jumped to ${settings.mode} marker`);
-        this.logger.debug(`Result: ${success}, current=${context.frame}, target=${target.frame}`);
+        this.logger.debug(`Result: ${success}, current=${context.frame}, anchor=${anchor}, target=${target.frame}`);
 
         return undefined;
       }
@@ -342,12 +347,13 @@ export class ReplayMarkers extends ConnectionStateAwareAction<ReplayMarkersSetti
    * Whether a Next / Previous press would jump now — the one predicate the
    * press and the dial's turn and side marks apply ({@link resolveJumpTarget}),
    * read fresh: connected, a store and a frame, a replay on screen, and a
-   * marker outside the mode's window in that direction.
+   * marker outside the mode's window in that direction, measured from where a
+   * press would measure (the shared pending landing, #1230).
    */
   private isJumpAvailable(mode: ReplayMarkersJumpMode): boolean {
     const context = this.readReplayContext();
 
-    return context.ok && resolveJumpTarget(mode, context) !== null;
+    return context.ok && resolveJumpTarget(mode, context, resolveMarkerJumpAnchor(context.frame)) !== null;
   }
 
   /**

@@ -17,14 +17,36 @@ import {
 } from "@iracedeck/deck-core";
 import { ReplayPosMode, resolveReplayFrame, type TelemetryData } from "@iracedeck/iracing-sdk";
 
-import { cancelReplayCursorOwner } from "../../shared/replay-cursor.js";
+import {
+  cancelReplayCursorOwner,
+  clearReplayLanding,
+  pendingReplayLanding,
+  recordReplayLanding,
+  type ReplayLanding,
+} from "../../shared/replay-cursor.js";
 
 /** Replay frames per second — the recording's fixed rate. */
 const FRAMES_PER_SECOND = 60;
 
-/** How long the Added / Deleted confirmation stays on the key or the dial. */
-/** @internal Exported for testing */
+/**
+ * @internal Exported for testing
+ *
+ * How long the Added / Deleted confirmation stays on the key or the dial.
+ */
 export const CONFIRMATION_FLASH_MS = 1_000;
+
+/**
+ * @internal Exported for testing
+ *
+ * How long (ms) after a marker jump the next one is measured from the marker
+ * jumped to rather than from the live frame. `ReplayFrameNum` reaches the
+ * target only on a later tick, so a second jump arriving first would compute
+ * from the old frame and send the same marker again — a fast spin would stick.
+ */
+export const DIAL_LANDING_HOLD_MS = 1_000;
+
+/** The replay counts as landed once `ReplayFrameNum` is this close (1 s) to the frame jumped to. */
+const LANDED_WITHIN_FRAMES = 60;
 
 /** The two ways a jump goes: forward (Next, a clockwise turn) or back (Previous, counter-clockwise). */
 export type MarkerDirection = "next" | "previous";
@@ -163,8 +185,9 @@ export function readReplayContext(source: ReplayContextSource): ReplayContextRes
  *   `previous` (the media-player rule, its 2 s window measured from the anchor
  *   marker).
  *
- * `fromFrame` defaults to the context's live frame; the dial passes the frame it
- * last jumped to while the replay has not landed there yet.
+ * `fromFrame` defaults to the context's live frame; a jump passes
+ * {@link resolveMarkerJumpAnchor} — the shared pending landing while the replay
+ * has not reached it yet.
  */
 export function resolveJumpTarget(
   direction: MarkerDirection,
@@ -221,12 +244,58 @@ export function markerIndexAt(markers: readonly ReplayMarker[], frame: number): 
 }
 
 /**
- * The marker an Add press would store, or null when the store would refuse it
- * as a duplicate (another marker within {@link MARKER_DEDUPE_FRAMES}). Read-only:
- * the dial's hold preview asks this before the release, and the release then
- * calls {@link addMarkerAt}.
+ * @internal Exported for testing
+ *
+ * The frame the next jump is measured from: the marker last jumped to while the
+ * jump is pending — sent less than {@link DIAL_LANDING_HOLD_MS} ago and the live
+ * frame not yet within a second of it — else the live frame.
+ */
+export function resolveAnchorFrame(landing: ReplayLanding | null, liveFrame: number, nowMs: number): number {
+  if (landing === null || isLandingSettled(landing, liveFrame, nowMs)) return liveFrame;
+
+  return landing.frame;
+}
+
+function isLandingSettled(landing: ReplayLanding, liveFrame: number, nowMs: number): boolean {
+  return nowMs - landing.sentAt >= DIAL_LANDING_HOLD_MS || Math.abs(liveFrame - landing.frame) <= LANDED_WITHIN_FRAMES;
+}
+
+/**
+ * The frame every Replay Markers surface measures a jump from — the keypad's
+ * Next / Previous and every dial alike: the one shared pending landing
+ * (`shared/replay-cursor.ts`) while it is pending, else `liveFrame`. A landing
+ * that has settled is dropped here, so a replay that later drifts back near an
+ * old target does not revive it.
+ */
+export function resolveMarkerJumpAnchor(liveFrame: number, nowMs: number = Date.now()): number {
+  const landing = pendingReplayLanding();
+
+  if (landing !== null && isLandingSettled(landing, liveFrame, nowMs)) clearReplayLanding();
+
+  return resolveAnchorFrame(landing, liveFrame, nowMs);
+}
+
+/**
+ * Whether the store holds an active record that a call with `context.scope`
+ * reaches — what `markers.add` needs to store anything.
+ */
+function hasActiveRecordFor(context: ReplayContext): boolean {
+  const active = context.store.getActiveSession();
+
+  if (active === null) return false;
+
+  return context.scope?.subSessionId === undefined || context.scope.subSessionId === active.subSessionId;
+}
+
+/**
+ * The marker an Add press would store, or null when the store would refuse it:
+ * no active record for the context's scope, or a duplicate (another marker
+ * within {@link MARKER_DEDUPE_FRAMES}). Read-only: the dial's hold preview asks
+ * this before the release, and the release then calls {@link addMarkerAt}.
  */
 export function previewAddMarker(context: ReplayContext, secondsBack: number): ReplayMarker | null {
+  if (!hasActiveRecordFor(context)) return null;
+
   const marker = buildMarker(context.telemetry, context.frame, secondsBack);
   const duplicate = context.store.markers
     .list(context.scope)
@@ -260,10 +329,24 @@ export function deleteMarkerAt(context: ReplayContext): ReplayMarker | null {
  * Jumps the replay to `frame` with one `setPlayPosition(Begin, frame)`. First
  * cancels any claim on the replay cursor (#1203) in `owner`'s name, so a jump
  * stops an in-flight Jump to Fastest Lap walk rather than being overridden by
- * its next probe. Call it only when a jump is actually sent.
+ * its next probe. A jump that was sent records `frame` as the shared landing
+ * the next jump, from any Replay Markers surface, measures from (#1230). One
+ * that was not sent moved nothing, so the landing before it stands. Call it
+ * only when a jump is meant to be sent.
  */
-export function jumpToMarkerFrame(owner: string, frame: number): boolean {
+export function jumpToMarkerFrame(owner: string, frame: number, nowMs: number = Date.now()): boolean {
+  const before = pendingReplayLanding();
+
+  // Clears the landing too: the cursor is taken, and this send decides where it goes.
   cancelReplayCursorOwner(owner);
 
-  return getCommands().replay.setPlayPosition(ReplayPosMode.Begin, frame);
+  const sent = getCommands().replay.setPlayPosition(ReplayPosMode.Begin, frame);
+
+  if (sent) {
+    recordReplayLanding(frame, nowMs);
+  } else if (before !== null) {
+    recordReplayLanding(before.frame, before.sentAt);
+  }
+
+  return sent;
 }

@@ -2,14 +2,19 @@ import type { ReplayMarker, ReplaySessionStore } from "@iracedeck/deck-core";
 import { ReplayPosMode, type TelemetryData } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { _resetReplayCursor, claimReplayCursor, currentReplayCursorOwner } from "../../shared/replay-cursor.js";
 import {
-  buildTriggerDescription,
+  _resetReplayCursor,
+  cancelReplayCursorOwner,
+  claimReplayCursor,
+  currentReplayCursorOwner,
+} from "../../shared/replay-cursor.js";
+import { buildTriggerDescription, ReplayMarkersDialSurface } from "./replay-markers-dial-surface.js";
+import {
+  CONFIRMATION_FLASH_MS,
   DIAL_LANDING_HOLD_MS,
-  ReplayMarkersDialSurface,
-  resolveAnchorFrame,
-} from "./replay-markers-dial-surface.js";
-import { CONFIRMATION_FLASH_MS, readReplayContext, resolveJumpTarget } from "./replay-markers-ops.js";
+  readReplayContext,
+  resolveJumpTarget,
+} from "./replay-markers-ops.js";
 import { ReplayMarkersDialSettings } from "./replay-markers-settings.js";
 
 const mocks = vi.hoisted(() => ({
@@ -62,6 +67,8 @@ const env = {
   storeReady: true,
   telemetry: null as TelemetryData | null,
   markers: [] as ReplayMarker[],
+  /** The store's active record; null as before the SDK reported a session. */
+  active: { subSessionId: 42 } as { subSessionId: number } | null,
 };
 
 const storeMarkers = {
@@ -71,7 +78,7 @@ const storeMarkers = {
   previous: vi.fn((frame: number, _scope?: unknown) => markerFns.previousMarker(env.markers, frame)),
   list: vi.fn((_scope?: unknown) => env.markers.map((m) => ({ ...m }))),
 };
-const store = { markers: storeMarkers } as unknown as ReplaySessionStore;
+const store = { markers: storeMarkers, getActiveSession: () => env.active } as unknown as ReplaySessionStore;
 
 function setMarkers(frames: number[]): void {
   env.markers = frames.map((frame) => ({ frame, pressFrame: frame, sessionNum: 0, sessionTimeMs: 0 }));
@@ -176,8 +183,10 @@ describe("ReplayMarkersDialSurface", () => {
     env.connected = true;
     env.storeReady = true;
     env.telemetry = replayAt(500);
+    env.active = { subSessionId: 42 };
     setMarkers([]);
     mocks.thresholdMs.value = 500;
+    mocks.setPlayPosition.mockReturnValue(true);
   });
 
   afterEach(() => {
@@ -349,13 +358,48 @@ describe("ReplayMarkersDialSurface", () => {
       expect(mocks.setPlayPosition.mock.calls.map((c) => c[1])).toEqual([2_000, 4_000]);
     });
 
-    it("resolveAnchorFrame keeps the target only while pending", () => {
-      const landing = { frame: 2_000, sentAt: 10_000 };
+    it("a jump that was not sent leaves no landing: the next turn measures from the live frame", async () => {
+      setMarkers([1_000, 2_000, 3_000]);
+      const surface = makeSurface();
+      const ctx = dialContext();
+      await appear(surface, ctx);
 
-      expect(resolveAnchorFrame(null, 500, 10_000)).toBe(500);
-      expect(resolveAnchorFrame(landing, 500, 10_500)).toBe(2_000);
-      expect(resolveAnchorFrame(landing, 500, 10_000 + DIAL_LANDING_HOLD_MS)).toBe(500);
-      expect(resolveAnchorFrame(landing, 1_950, 10_100)).toBe(1_950);
+      mocks.setPlayPosition.mockReturnValueOnce(false);
+      surface.rotate(ctx as never, dial(), 1, false);
+      surface.rotate(ctx as never, dial(), 1, false);
+
+      expect(mocks.setPlayPosition.mock.calls.map((c) => c[1])).toEqual([1_000, 1_000]);
+    });
+
+    it("is one value shared by every dial: a second dial steps on from the first dial's target", async () => {
+      setMarkers([1_000, 2_000, 3_000]);
+      const first = makeSurface();
+      const second = makeSurface();
+      const a = dialContext("dial-a");
+      const b = dialContext("dial-b");
+      await appear(first, a);
+      await appear(second, b);
+
+      first.rotate(a as never, dial(), 1, false);
+      second.rotate(b as never, dial(), 1, false);
+      first.rotate(a as never, dial(), 1, false);
+
+      expect(mocks.setPlayPosition.mock.calls.map((c) => c[1])).toEqual([1_000, 2_000, 3_000]);
+    });
+
+    it("anything else taking the replay cursor clears it", async () => {
+      setMarkers([1_000, 2_000, 3_000]);
+      const surface = makeSurface();
+      const ctx = dialContext();
+      await appear(surface, ctx);
+
+      surface.rotate(ctx as never, dial(), 1, false);
+      // A Replay Control seek, say: it takes the cursor in its own name.
+      cancelReplayCursorOwner("rewind");
+      surface.rotate(ctx as never, dial(), 1, false);
+
+      // Measured from the live 500 again, not from the 1 000 the dial sent.
+      expect(mocks.setPlayPosition.mock.calls.map((c) => c[1])).toEqual([1_000, 1_000]);
     });
   });
 
@@ -373,6 +417,8 @@ describe("ReplayMarkersDialSurface", () => {
       });
 
       surface.rotate(ctx as never, dial(), 2, false);
+      // The replay lands; a new claim would clear a pending landing anyway.
+      env.telemetry = replayAt(2_000);
       claimReplayCursor("fastest-lap", (by) => {
         cancelledBy.push(by);
         sentWhenCancelled.push(mocks.setPlayPosition.mock.calls.length);
@@ -565,6 +611,19 @@ describe("ReplayMarkersDialSurface", () => {
       expect(lastBox(ctx)).toContain("data-pending-bar");
     });
 
+    it("previews an Add of 0 s back without a negative zero", async () => {
+      env.telemetry = LIVE;
+      const surface = makeSurface();
+      const ctx = dialContext();
+      const d = dial({ longPressAction: "add", secondsBack: 0 });
+      await appear(surface, ctx, d);
+
+      surface.down(ctx as never, d);
+      await vi.advanceTimersByTimeAsync(500);
+
+      expect(shownValue(lastBox(ctx))).toBe("ADD 0 s");
+    });
+
     it.each([
       [
         "a duplicate Add",
@@ -583,6 +642,14 @@ describe("ReplayMarkersDialSurface", () => {
         {},
       ],
       ["absent telemetry", () => (env.telemetry = null), {}],
+      [
+        "an Add the store would refuse, with no active record",
+        () => {
+          env.telemetry = LIVE;
+          env.active = null;
+        },
+        { longPressAction: "add" },
+      ],
       ["a long press set to None", () => setMarkers([500]), { longPressAction: "none" }],
     ])("leaves the screen still for %s", async (_name, arrange, overrides) => {
       arrange();
@@ -738,6 +805,13 @@ describe("ReplayMarkersDialSurface", () => {
       expect(svg).not.toContain("data-dimmed");
     });
 
+    it("captions an Add of 0 s back as ADD 0 s, never a negative zero", async () => {
+      const svg = await shown([1_000], LIVE, dial({ secondsBack: 0 }));
+
+      expect(svg).toMatch(/data-caption="true"[^>]*>ADD 0 s<\/text>/);
+      expect(svg).not.toContain("−0");
+    });
+
     it("no caption in a replay, nor when Press does not add", async () => {
       expect(await shown([1_000], replayAt(500))).not.toContain("data-caption");
       expect(await shown([1_000], LIVE, dial({ pressAction: "delete" }))).not.toContain("data-caption");
@@ -754,6 +828,20 @@ describe("ReplayMarkersDialSurface", () => {
       await appear(surface, ctx);
 
       expect(lastBox(ctx)).toContain('data-dimmed="true"');
+    });
+
+    it.each([
+      ["strip", STRIP],
+      ["knob", KNOB],
+    ] as const)("a dimmed, empty box on the %s draws no side marks over the label", async (_name, canvas) => {
+      setMarkers([1_000]);
+      env.connected = false;
+      const surface = makeSurface();
+      const ctx = dialContext("dial-1", canvas);
+      await appear(surface, ctx);
+
+      expect(lastBox(ctx)).toContain('data-dimmed="true"');
+      expect(lastBox(ctx)).not.toContain("data-side");
     });
 
     it("flashes ADDED k / N for CONFIRMATION_FLASH_MS, then shows the count", async () => {
@@ -821,6 +909,25 @@ describe("ReplayMarkersDialSurface", () => {
       await settle();
 
       expect(shownValue(lastBox(ctx))).toBe("2");
+    });
+
+    it("a changed tick reads the replay context once: the flush draws the frame the tick built", async () => {
+      setMarkers([1_000]);
+      const inner = makeSurface()["host"];
+      const readReplayContext = vi.fn(() => inner.readReplayContext());
+      const surface = new ReplayMarkersDialSurface({ logger: logger as never, readReplayContext });
+      const ctx = dialContext();
+      await appear(surface, ctx);
+      ctx.setDialCanvas.mockClear();
+      readReplayContext.mockClear();
+
+      setMarkers([1_000, 3_000]);
+      surface.onTick(ctx.id);
+      await settle();
+
+      expect(ctx.setDialCanvas).toHaveBeenCalledTimes(1);
+      expect(shownValue(lastBox(ctx))).toBe("2");
+      expect(readReplayContext).toHaveBeenCalledTimes(1);
     });
 
     it("throttles pushes to at most 10 per second", async () => {
