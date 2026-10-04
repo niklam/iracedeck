@@ -6,7 +6,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { resolveTitleTemplate, titleHasTemplate } from "./title-template.js";
+import { EMPTY_TEMPLATE_CONTEXT, resolveTitleTemplate, titleHasTemplate } from "./title-template.js";
 
 const { mockGetCurrentTemplateContext, mockGetController } = vi.hoisted(() => {
   const mockGetCurrentTemplateContext = vi.fn();
@@ -32,6 +32,15 @@ describe("titleHasTemplate", () => {
 
   it("returns true for text containing a placeholder", () => {
     expect(titleHasTemplate("CAR {{track_ahead.car_number}}")).toBe(true);
+  });
+});
+
+describe("EMPTY_TEMPLATE_CONTEXT", () => {
+  it("is empty and frozen, so a shared fallback cannot be mutated by one consumer", () => {
+    expect(EMPTY_TEMPLATE_CONTEXT).toEqual({ display: {}, raw: {} });
+    expect(Object.isFrozen(EMPTY_TEMPLATE_CONTEXT)).toBe(true);
+    expect(Object.isFrozen(EMPTY_TEMPLATE_CONTEXT.display)).toBe(true);
+    expect(Object.isFrozen(EMPTY_TEMPLATE_CONTEXT.raw)).toBe(true);
   });
 });
 

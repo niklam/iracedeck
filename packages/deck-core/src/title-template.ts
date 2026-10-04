@@ -17,8 +17,13 @@ import { getController } from "./sdk-singleton.js";
  * Empty context used when the sim is disconnected or the SDK singleton is not
  * initialized: {{variable}} placeholders render empty and {{= expression }}
  * parse errors stay visible — the same rules Telemetry Display values follow.
+ * Exported so other display paths that read `getCurrentTemplateContext()`
+ * (Chat's key text, #1337) fall back the same way instead of defining their own.
  */
-const EMPTY_CONTEXT: TemplateContext = { display: {}, raw: {} };
+export const EMPTY_TEMPLATE_CONTEXT: TemplateContext = Object.freeze({
+  display: Object.freeze({}),
+  raw: Object.freeze({}),
+});
 
 /**
  * True when user-entered title text contains a template placeholder.
@@ -44,5 +49,5 @@ export function resolveTitleTemplate(text: string): string {
     // SDK singleton not initialized (e.g. tests) — resolve against the empty context
   }
 
-  return resolveTemplate(text, context ?? EMPTY_CONTEXT);
+  return resolveTemplate(text, context ?? EMPTY_TEMPLATE_CONTEXT);
 }
