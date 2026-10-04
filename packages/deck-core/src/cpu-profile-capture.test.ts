@@ -7,15 +7,20 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  _resetCpuProfileCapture,
   captureFileStem,
   type CpuProfile,
   createCpuProfileCapture,
   formatCpuProfileSummary,
+  getCpuProfileCapture,
+  initializeCpuProfileCapture,
   type InspectorSessionLike,
+  isCpuProfileCaptureInitialized,
   PROFILE_CAPTURE_STATUS_KEY,
   pruneCpuProfiles,
   summarizeCpuProfile,
 } from "./cpu-profile-capture.js";
+import { createSettingsWindowCommandHandler } from "./settings-window-commands.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -365,6 +370,96 @@ describe("createCpuProfileCapture (injected session)", () => {
     expect(capture.isCapturing()).toBe(true);
     expect((await first).ok).toBe(true);
     expect(statusesOf(write).map((s) => s.state)).toEqual(["capturing", "saved"]);
+  });
+});
+
+describe("the shared capture service (#1338)", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "ird-capture-shared-"));
+    _resetCpuProfileCapture();
+  });
+
+  afterEach(() => {
+    _resetCpuProfileCapture();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  const options = (write = vi.fn()) => ({
+    profilesDir: dir,
+    logger: makeLogger(),
+    writeSettings: write,
+    durationMs: 50,
+    openSession: async () => fakeSession(syntheticProfile()),
+  });
+
+  it("throws before it is initialized, then hands every consumer the same instance", () => {
+    expect(isCpuProfileCaptureInitialized()).toBe(false);
+    expect(() => getCpuProfileCapture()).toThrow("CPU profile capture not initialized");
+
+    const created = initializeCpuProfileCapture(options());
+
+    expect(isCpuProfileCaptureInitialized()).toBe(true);
+    expect(getCpuProfileCapture()).toBe(created);
+    expect(getCpuProfileCapture()).toBe(getCpuProfileCapture());
+  });
+
+  it("refuses a second initialization", () => {
+    initializeCpuProfileCapture(options());
+
+    expect(() => initializeCpuProfileCapture(options())).toThrow("already initialized");
+  });
+
+  it("refuses a key's request while a capture started from the settings window runs", async () => {
+    initializeCpuProfileCapture(options());
+    const handle = createSettingsWindowCommandHandler({
+      writeSettings: vi.fn(),
+      captureCpuProfile: () => {
+        void getCpuProfileCapture().capture();
+      },
+    });
+
+    handle({ event: "captureCpuProfile" });
+
+    // What the Telemetry Control key does on a press.
+    const fromKey = await getCpuProfileCapture().capture();
+
+    expect(fromKey).toEqual({ ok: false, reason: "a capture is already running", busy: true });
+    expect(getCpuProfileCapture().status().state).toBe("capturing");
+
+    // Let the window's capture finish before the folder is removed.
+    await vi.waitFor(() => expect(getCpuProfileCapture().status().state).toBe("saved"));
+  });
+
+  it("tells status listeners every published state, and stops after unsubscribe", async () => {
+    const capture = initializeCpuProfileCapture(options());
+    const heard: string[] = [];
+    const unsubscribe = capture.onStatus((status) => heard.push(status.state));
+
+    expect(capture.status()).toEqual({ state: "idle" });
+
+    await capture.capture();
+
+    expect(heard).toEqual(["capturing", "saved"]);
+    expect(capture.status().state).toBe("saved");
+
+    unsubscribe();
+    await capture.capture();
+
+    expect(heard).toEqual(["capturing", "saved"]);
+  });
+
+  it("keeps publishing when a status listener throws", async () => {
+    const write = vi.fn();
+    const capture = initializeCpuProfileCapture(options(write));
+
+    capture.onStatus(() => {
+      throw new Error("listener bug");
+    });
+
+    expect((await capture.capture()).ok).toBe(true);
+    expect(write).toHaveBeenCalledTimes(2);
   });
 });
 

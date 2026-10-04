@@ -92,6 +92,15 @@ export interface CpuProfileCapture {
   /** Run one capture. A request while one is running is refused, never queued. */
   capture(): Promise<CpuProfileCaptureResult>;
   isCapturing(): boolean;
+  /** The state last published (`idle` before the first capture). */
+  status(): ProfileCaptureStatus;
+  /**
+   * Hear every published state, the same one `_profileCaptureStatus` carries,
+   * typed rather than as a JSON string — how the Telemetry Control key follows a
+   * capture started from the settings window (#1338). Returns an unsubscribe.
+   * A throwing listener is logged and skipped.
+   */
+  onStatus(listener: (status: ProfileCaptureStatus) => void): () => void;
 }
 
 /** One node of a V8 CPU profile (`Profiler.Profile`). Line and column are 0-based. */
@@ -334,7 +343,20 @@ export function createCpuProfileCapture(options: CpuProfileCaptureOptions): CpuP
   /** The running capture's start, so even the last-resort failure reports when it began. */
   let currentStartedAt: number | undefined;
 
+  let lastStatus: ProfileCaptureStatus = { state: "idle" };
+  const listeners = new Set<(status: ProfileCaptureStatus) => void>();
+
   const publish = (status: ProfileCaptureStatus): void => {
+    lastStatus = status;
+
+    for (const listener of [...listeners]) {
+      try {
+        listener(status);
+      } catch (err) {
+        logger.debug(`A CPU profile capture status listener failed: ${describeError(err)}`);
+      }
+    }
+
     try {
       writeSettings({ [PROFILE_CAPTURE_STATUS_KEY]: JSON.stringify(status) });
     } catch (err) {
@@ -437,5 +459,46 @@ export function createCpuProfileCapture(options: CpuProfileCaptureOptions): CpuP
       }
     },
     isCapturing: () => capturing,
+    status: () => lastStatus,
+    onStatus: (listener) => {
+      listeners.add(listener);
+
+      return () => {
+        listeners.delete(listener);
+      };
+    },
   };
+}
+
+/** The plugin's one capture service (#1338): the settings window and the Telemetry Control key share it. */
+let sharedCapture: CpuProfileCapture | undefined;
+
+/**
+ * Create the plugin's capture service. Called once from each `plugin.ts`, the
+ * same shape as `initializeAudio`; consumers reach it with
+ * {@link getCpuProfileCapture}, so "one capture at a time", the status key and
+ * the files are the same for the settings-window button and the deck key.
+ */
+export function initializeCpuProfileCapture(options: CpuProfileCaptureOptions): CpuProfileCapture {
+  if (sharedCapture) throw new Error("CPU profile capture already initialized");
+
+  sharedCapture = createCpuProfileCapture(options);
+
+  return sharedCapture;
+}
+
+/** The shared capture service. Throws before {@link initializeCpuProfileCapture}. */
+export function getCpuProfileCapture(): CpuProfileCapture {
+  if (!sharedCapture) throw new Error("CPU profile capture not initialized");
+
+  return sharedCapture;
+}
+
+export function isCpuProfileCaptureInitialized(): boolean {
+  return sharedCapture !== undefined;
+}
+
+/** @internal For test isolation only. */
+export function _resetCpuProfileCapture(): void {
+  sharedCapture = undefined;
 }

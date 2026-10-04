@@ -878,7 +878,11 @@ export {
   type CpuProfileCapture,
   type CpuProfileCaptureOptions,
   type CpuProfileCaptureResult,
+  _resetCpuProfileCapture,
   createCpuProfileCapture,
+  getCpuProfileCapture,
+  initializeCpuProfileCapture,
+  isCpuProfileCaptureInitialized,
   PROFILE_CAPTURE_STATUS_KEY,
   type ProfileCaptureStatus,
 } from "./cpu-profile-capture.js";
