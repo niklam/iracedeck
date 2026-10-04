@@ -2537,7 +2537,10 @@ describe("Race Engineer master gate (issue #515)", () => {
     bus.publishEvent("flag.red.raised", {} as never);
     expect(audio._played.length).toBeGreaterThan(0);
 
+    // A second red arrives while the first is speaking. Ungated, it would
+    // family-preempt the first; the closed master gate rejects it at arrival.
     voiceMasterEnabled = false;
+    bus.publishEvent("flag.red.raised", {} as never);
     flush(audio);
     expect(audio.stopChannel).not.toHaveBeenCalledWith(AudioChannel.Voice);
 
