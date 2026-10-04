@@ -40,9 +40,11 @@ There is no flatten. The lookup walks the source object for that one path and fo
 
 The SDK already tracks when iRacing publishes new session info: `IRacingSDK.getSessionInfo()` returns the same parsed object until `SessionInfoUpdate` changes, and a new one after. The `track` namespace and the driver list are therefore memoised on the identity of that object, which is the session-info version without a new API, and which also covers a context built from plain data (tests, the press-time builds). A frame-to-frame rebuild with unchanged session info reuses them. `sessionInfo.*` needs no memo, because a path walk costs no more than a lookup. The telemetry-derived namespaces (`self` and the neighbours, `session`'s clock fields) are recomputed per context instance as today, because their inputs change every frame.
 
-### 5. Telemetry Display resolves inside its throttle
+### 5. Telemetry Display and templated titles resolve inside their throttle
 
 Measured 2026-10-04 with #1337 applied (35-car AI race, sampling allocation profile): the plugin allocated about 92 MB/s, and two thirds of it was `buildTemplateContextFromData`. It was reached from Telemetry Display's telemetry subscription, which resolves the key's template on every tick before handing the image to its `imageThrottle`. One templated Telemetry Display key therefore rebuilds the shared context every frame. The subscription now schedules the whole update, template resolution included, through the throttle, so a templated key asks for a context at most ten times a second. This is the same shape #1337 gave Chat. Laziness (2–4) makes each build cheap; this makes them rare.
+
+User-entered key titles with a template (`BaseAction`'s title-template subscription, #899) had the same shape: each tick re-resolved every tracked title, and only a changed result went to `titleTemplateThrottle`. They move inside the throttle too, so after this change no display path asks for a context on every frame. A value change can now wait for the throttle's trailing edge, up to 100 ms, where it used to render on the frame it changed. That is accepted for a display capped at ten updates a second.
 
 ### 6. Output is identical
 
