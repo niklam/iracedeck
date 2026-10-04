@@ -1664,6 +1664,10 @@
         "text": "Jasper"
       },
       {
+        "name": "jimmy",
+        "text": "Jimmy"
+      },
+      {
         "name": "johan",
         "text": "Johan"
       },
@@ -2235,6 +2239,10 @@
       {
         "name": "jasper",
         "text": "Ok, Jasper,"
+      },
+      {
+        "name": "jimmy",
+        "text": "Ok, Jimmy,"
       },
       {
         "name": "johan",
@@ -6223,6 +6231,10 @@
         "text": "Jasper,"
       },
       {
+        "name": "jimmy",
+        "text": "Jimmy,"
+      },
+      {
         "name": "johan",
         "text": "Johan,"
       },
@@ -6706,6 +6718,10 @@
         "text": "Time to race, Jasper."
       },
       {
+        "name": "jimmy",
+        "text": "Time to race, Jimmy."
+      },
+      {
         "name": "johan",
         "text": "Time to race, Johan."
       },
@@ -7138,6 +7154,10 @@
       {
         "name": "jasper",
         "text": "Come on, Jasper."
+      },
+      {
+        "name": "jimmy",
+        "text": "Come on, Jimmy."
       },
       {
         "name": "johan",

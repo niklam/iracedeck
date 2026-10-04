@@ -49696,6 +49696,86 @@
       "textPreview": "Come on, Zoltán.",
       "generatedAt": "2026-10-04T14:14:36.588Z",
       "requestId": "egtM1kjSLisitJdjIxpU"
+    },
+    "voice/default/names/jimmy.mp3": {
+      "hash": "781af77370621158",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Jimmy",
+      "generatedAt": "2026-10-04T15:48:44.175Z",
+      "requestId": "9mRklaLIkZyDdnL43hDt"
+    },
+    "voice/default/session-start-greeting/jimmy.mp3": {
+      "hash": "46898b01e0582b8f",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Ok, Jimmy,",
+      "generatedAt": "2026-10-04T15:48:44.353Z",
+      "requestId": "JC8f9vJzr2ns5auZvkbI"
+    },
+    "voice/default/race-end-greeting/jimmy.mp3": {
+      "hash": "a69161e02a9984a1",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Jimmy,",
+      "generatedAt": "2026-10-04T15:48:44.511Z",
+      "requestId": "x6mIaHIXcO0zkTbJ2ejt"
+    },
+    "voice/default/race-start-greeting/jimmy.mp3": {
+      "hash": "06fcf6aee1403ae9",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Jimmy.",
+      "generatedAt": "2026-10-04T15:48:44.683Z",
+      "requestId": "O7eRLX1STlMJm2vhfIEW"
+    },
+    "voice/default/position-overtake-come-on/jimmy.mp3": {
+      "hash": "b254799c0a0ec852",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Come on, Jimmy.",
+      "generatedAt": "2026-10-04T15:48:44.845Z",
+      "requestId": "b1xC8XRUZhmWcnUJ8ocP"
+    },
+    "voice/shawn/names/jimmy.mp3": {
+      "hash": "781af77370621158",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Jimmy",
+      "generatedAt": "2026-10-04T15:48:44.175Z",
+      "requestId": "9mRklaLIkZyDdnL43hDt"
+    },
+    "voice/shawn/session-start-greeting/jimmy.mp3": {
+      "hash": "46898b01e0582b8f",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Ok, Jimmy,",
+      "generatedAt": "2026-10-04T15:48:44.353Z",
+      "requestId": "JC8f9vJzr2ns5auZvkbI"
+    },
+    "voice/shawn/race-start-greeting/jimmy.mp3": {
+      "hash": "06fcf6aee1403ae9",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Jimmy.",
+      "generatedAt": "2026-10-04T15:48:44.683Z",
+      "requestId": "O7eRLX1STlMJm2vhfIEW"
+    },
+    "voice/shawn/race-end-greeting/jimmy.mp3": {
+      "hash": "a69161e02a9984a1",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Jimmy,",
+      "generatedAt": "2026-10-04T15:48:44.511Z",
+      "requestId": "x6mIaHIXcO0zkTbJ2ejt"
+    },
+    "voice/shawn/position-overtake-come-on/jimmy.mp3": {
+      "hash": "b254799c0a0ec852",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Come on, Jimmy.",
+      "generatedAt": "2026-10-04T15:48:44.845Z",
+      "requestId": "b1xC8XRUZhmWcnUJ8ocP"
     }
   }
 }

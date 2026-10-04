@@ -27908,6 +27908,16 @@
           "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
         },
         {
+          "base": "jimmy",
+          "texts": [
+            "Jimmy"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [],
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+        },
+        {
           "base": "johan",
           "texts": [
             "Johan"
@@ -38428,6 +38438,18 @@
           "playedBy": null
         },
         {
+          "base": "jimmy",
+          "texts": [
+            "Come on, Jimmy."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "overtake.lost.comeOn"
+          ],
+          "playedBy": null
+        },
+        {
           "base": "johan",
           "texts": [
             "Come on, Johan."
@@ -39895,6 +39917,18 @@
           "playedBy": null
         },
         {
+          "base": "jimmy",
+          "texts": [
+            "Jimmy,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceEnd.greeting"
+          ],
+          "playedBy": null
+        },
+        {
           "base": "johan",
           "texts": [
             "Johan,"
@@ -41216,6 +41250,18 @@
           "base": "jasper",
           "texts": [
             "Time to race, Jasper."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.greeting"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "jimmy",
+          "texts": [
+            "Time to race, Jimmy."
           ],
           "takes": 1,
           "usedBy": [],
@@ -43154,6 +43200,18 @@
           "base": "jasper",
           "texts": [
             "Ok, Jasper,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "sessionStart.greeting"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "jimmy",
+          "texts": [
+            "Ok, Jimmy,"
           ],
           "takes": 1,
           "usedBy": [],
