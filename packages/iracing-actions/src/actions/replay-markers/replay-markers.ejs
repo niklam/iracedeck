@@ -20,7 +20,6 @@
 				</sdpi-select>
 			</sdpi-item>
 
-			<% var __comms = require('./data/action-comms.json')['replay-markers']; %>
 			<ird-binding-status mode-setting="<%= __comms._meta.modeSetting %>" comms='<%= JSON.stringify(__comms) %>'></ird-binding-status>
 
 			<sdpi-item label="Seconds Back" id="seconds-back-item" class="hidden">
@@ -148,12 +147,12 @@
 
 		<!-- Key-icon appearance — keypad only (a dial has no key icon). -->
 		<div id="keypad-appearance">
-		<%- include('title-overrides') %>
+			<%- include('title-overrides') %>
 
-		<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color'], defaults: require('./data/icon-defaults.json')['replay-markers'] }) %>
-		<%- include('border-overrides', { defaults: require('./data/icon-defaults.json')['replay-markers'] }) %>
-		<%- include('graphic-overrides') %>
-		<%- include('common-settings') %>
+			<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color'], defaults: require('./data/icon-defaults.json')['replay-markers'] }) %>
+			<%- include('border-overrides', { defaults: require('./data/icon-defaults.json')['replay-markers'] }) %>
+			<%- include('graphic-overrides') %>
+			<%- include('common-settings') %>
 		</div>
 
 		<style>
