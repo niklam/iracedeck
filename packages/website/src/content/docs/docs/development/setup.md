@@ -64,7 +64,7 @@ pnpm stop:ulanzi && pnpm switch-test-env:ulanzi && pnpm start:ulanzi
 pnpm --filter @iracedeck/iracing-plugin-ulanzi run watch
 ```
 
-Stop the host **before** the build, not merely before the relink: a running UlanziStudio locks the native `iracing_native.node` and `pnpm build` fails with EPERM. UlanziStudio also reads its plugins directory only at start, so a relink always needs a restart to take effect.
+Stop the host **first**: the relink runs inside `switch-test-env:ulanzi`, straight after the build, and a running UlanziStudio holds the plugin folder's files open. UlanziStudio also reads its plugins directory only at start, so a relink or a rebuild always needs a restart to take effect. A running host does not make the build itself fail: when it has a native addon loaded, the build moves that file aside and builds a fresh one.
 
 The junction points at exactly one worktree, so the host belongs to whichever worktree ran the last **successful** link or relink — a link that failed because the destination was already occupied leaves the previous junction untouched. `start:ulanzi` prints the current target to save you debugging someone else's build.
 
@@ -121,7 +121,7 @@ Then, with the deck host running, the loop is: edit clips, or the wording in `pa
 pnpm stage:voices
 ```
 
-Restage rather than rebuild while the host is running. A voice edit makes all three plugin builds run again, and a running deck host holds the native addon open, so `pnpm build` fails with EPERM. `pnpm build` is for when the host is stopped — after a code change, say — and then you start or restart the host. There is no watcher on the voice directory, and `watch` mode does not restage, so run `pnpm stage:voices` after a voice edit. A change destined for a release still needs the flagless `pnpm --filter @iracedeck/audio-assets pack:voice default`, and its regenerated catalog entry committed.
+Restage rather than rebuild while the host is running. A voice edit makes all three plugin builds run again, and a running host would not load those builds until it restarts anyway — the restage is all a voice edit needs, and **Rescan voices** picks it up live. `pnpm build` is for a code change or a mode switch, and the host loads it only when it starts, so stop the host, build, then start it again. There is no watcher on the voice directory, and `watch` mode does not restage, so run `pnpm stage:voices` after a voice edit. A change destined for a release still needs the flagless `pnpm --filter @iracedeck/audio-assets pack:voice default`, and its regenerated catalog entry committed.
 
 What plays is the bytes the packer stages, radio-filtered exactly as a downloaded pack is, never the raw source tree. The plugin scans that directory ahead of the downloaded packs and never installs over what it finds there, so `default` stops being replaced under you. Two things say the mode is on in the plugin: the plugin log's `Voice packs: development root active`, once per start, and the **Installed Voices** list, where the pack is badged *Development build* and shows its directory in place of a Remove button — iRaceDeck never deletes from a directory it did not create.
 
@@ -133,7 +133,7 @@ pnpm dev:voices on     # this worktree is in development mode, even without the 
 pnpm dev:voices auto   # remove the override: this worktree follows IRACEDECK_DEV_VOICES again
 ```
 
-Each verb rebuilds the three plugins and relinks the hosts that are linked to **this** worktree — a host linked to another worktree is reported and left alone, since relinking it would switch that test environment underneath you. Mirabox and UlanziStudio read their plugins directory only at start, so restart whichever of them was relinked; the script prints the commands. If the build fails — typically because a deck host linked to this worktree is running and holds the native addon open — the marker is put back as it was.
+Each verb rebuilds the three plugins and relinks the hosts that are linked to **this** worktree — a host linked to another worktree is reported and left alone, since relinking it would switch that test environment underneath you. Mirabox and UlanziStudio read their plugins directory only at start, so restart whichever of them was relinked; the script prints the commands. If the build fails, the marker is put back as it was. Stop the hosts linked to this worktree before running it: the relink expects them stopped, and they load the new build only at their next start.
 
 Turn the mode off with `pnpm dev:voices off` before testing the real download path — `switch-test-env` and the `relink:*` scripts deliberately leave the marker alone, so nothing else will. Packing a plugin for release (`pack:plugin`) refuses a build made in development mode.
 

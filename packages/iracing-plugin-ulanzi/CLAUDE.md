@@ -36,7 +36,7 @@ No local `pack:plugin` script; CI packages the Ulanzi plugin in `.github/workflo
 
 ## Dev deploy / test
 
-The whole cycle is three commands (#1040), and **the order is load-bearing** — see the lock gotcha below:
+The whole cycle is three commands (#1040), and **the order is load-bearing** — see why the stop comes first, below:
 
 ```bash
 pnpm stop:ulanzi && pnpm switch-test-env:ulanzi && pnpm start:ulanzi
@@ -56,7 +56,7 @@ pnpm stop:ulanzi && pnpm switch-test-env:ulanzi && pnpm start:ulanzi
 
 **First run on a machine with a packaged install:** the installed folder is a real directory rather than a link, so the first `unlink:ulanzi` **moves it aside** to `com.ulanzi.iracedeck.ulanziPlugin.replaced-<timestamp>` instead of deleting it, and says where it went. The suffix deliberately breaks the host's `*.ulanziPlugin` scan pattern so the stale copy is never loaded as a second plugin — delete it yourself once you're sure you don't need it. It is not deleted automatically because it carries the plugin's own `log/` files, which are routinely the evidence someone is mid-diagnosis on, and because `relink` runs inside `switch-test-env`, where any printed warning scrolls past thousands of build lines unread. Once linked, logs land in the worktree instead.
 
-**Native-module lock gotcha:** while UlanziStudio (or Stream Deck) is running, it locks the native `iracing_native.node`, so a full `pnpm build` fails with EPERM. This is why `stop:ulanzi` comes **before** `switch-test-env:ulanzi` and not just before the relink — stopping the host at the relink step is too late, the build has already failed. UlanziStudio also reads its plugins directory at start only, so a relink without a restart changes nothing.
+**Why the stop comes first:** `stop:ulanzi` comes **before** `switch-test-env:ulanzi` because the relink runs inside that command, straight after the build, and a running UlanziStudio holds the plugin folder's files open — there is no point in between to stop it. UlanziStudio also reads its plugins directory at start only, so a relink or a build without a restart changes nothing. A running host no longer fails the build itself: before #1258 it held `iracing_native.node` and `pnpm build` failed with EPERM; now a native addon it has loaded is moved aside into the package's `.locked-native/` and rebuilt (`scripts/lib/native-addon-build.mjs`). A `bin/` runtime-dependency bump that changes keysender's or `@resvg/resvg-js`'s binary while a host holds the old one is not measured, and may still fail the postbuild install.
 
 ## Validation status
 

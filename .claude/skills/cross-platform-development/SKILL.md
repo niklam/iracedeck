@@ -72,8 +72,8 @@ Mock data is placeholder. To update with real telemetry, capture snapshots on Wi
 
 | Script | Behavior |
 |--------|----------|
-| `pnpm build` (root) | Runs `turbo run build`. On Windows, automatically stops Stream Deck before building and restarts it after (only if it was running). |
-| `iracing-native build` | Runs `node-gyp rebuild` on Windows, skips on other platforms; always runs `tsc` |
+| `pnpm build` (root) | Runs `turbo run build`. Stops no deck host; `pnpm build:with-restart` is the variant that stops Stream Deck around the build and restarts it. |
+| `iracing-native build` | Runs `node-gyp rebuild` on Windows (first moving aside a `.node` a running deck host has loaded, #1258), skips on other platforms; always runs `tsc` |
 
 ## Design doc
 

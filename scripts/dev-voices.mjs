@@ -15,8 +15,8 @@
  * The loop it exists for: set `IRACEDECK_DEV_VOICES=1` once in your user
  * environment (or `pnpm dev:voices on` in one worktree), `pnpm build` once
  * with the deck host stopped, then per voice edit `pnpm stage:voices` and
- * **Rescan voices** in the settings window — no plugin build, so a running
- * host (which locks the native addon) is fine.
+ * **Rescan voices** in the settings window — no plugin build and no relink,
+ * so the host keeps running throughout.
  *
  * Argument handling only — the behaviour lives in `lib/dev-voices.mjs`.
  */

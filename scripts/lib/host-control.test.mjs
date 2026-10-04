@@ -43,13 +43,14 @@ describe("stopHost", () => {
   it("fails loudly when the kill is refused, surfacing taskkill's own words", () => {
     // The regression that motivated this module: an elevated host refuses the
     // kill, and reporting that as "was not running" lets `stop && build`
-    // proceed into the EPERM failure the stop step exists to prevent.
+    // proceed under a host still running the old plugin, whose relink can fail
+    // and which does not load the new build until it restarts.
     const log = fakeLog();
     const spawnSync = vi.fn(() => ({ status: 1, stdout: "", stderr: "ERROR: Access is denied." }));
 
     expect(stopHost(HOST, { appPath: APP, spawnSync, log })).toBe(1);
     expect(output(log)).toContain("Access is denied.");
-    expect(output(log)).toContain("EPERM");
+    expect(output(log)).toContain("still running the plugin it started with");
     expect(output(log)).not.toContain("was not running");
   });
 

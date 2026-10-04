@@ -13,9 +13,11 @@
  *
  * Why this is part of the dev loop rather than a convenience: the hosts read
  * their plugins directory at start ONLY, so a relink without a restart changes
- * nothing. And the host must be stopped BEFORE `pnpm build`, not before the
- * relink — a running host holds `iracing_native.node` open and the build fails
- * with EPERM.
+ * nothing. And the stop comes BEFORE `switch-test-env`, not between its build
+ * and its relink: the relink runs inside that command, and a running host
+ * holds the plugin folder's files open. (A running host no longer fails the
+ * build itself on the native addons — since #1258 a loaded `.node` is moved
+ * aside and rebuilt.)
  *
  * This file is argument handling only; the decisions live in
  * `lib/host-control.mjs`, where they can be tested.

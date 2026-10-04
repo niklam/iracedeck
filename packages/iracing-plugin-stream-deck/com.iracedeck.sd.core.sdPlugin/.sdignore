@@ -51,6 +51,9 @@
 **/node_modules/@iracedeck/iracing-native/assets/
 **/node_modules/@iracedeck/iracing-native/scripts/
 **/node_modules/@iracedeck/iracing-native/README.md
+# A binary the build moved aside because a running host had it loaded (#1258)
+**/node_modules/@iracedeck/audio-native/.locked-native/
+**/node_modules/@iracedeck/iracing-native/.locked-native/
 
 # Dev/build config files
 **/tsconfig.json
