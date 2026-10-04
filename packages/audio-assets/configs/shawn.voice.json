@@ -882,6 +882,10 @@
         "text": "Adam"
       },
       {
+        "name": "ade",
+        "text": "Ade"
+      },
+      {
         "name": "al",
         "text": "Al"
       },
@@ -900,6 +904,10 @@
       {
         "name": "andrew",
         "text": "Andrew"
+      },
+      {
+        "name": "andris",
+        "text": "Andris"
       },
       {
         "name": "andy",
@@ -930,6 +938,10 @@
         "text": "Brad"
       },
       {
+        "name": "brandon",
+        "text": "Brandon"
+      },
+      {
         "name": "brenton",
         "text": "Brenton"
       },
@@ -948,6 +960,10 @@
       {
         "name": "champ",
         "text": "Champ"
+      },
+      {
+        "name": "chip",
+        "text": "Chip"
       },
       {
         "name": "chris",
@@ -996,6 +1012,10 @@
       {
         "name": "dylan",
         "text": "Dylan"
+      },
+      {
+        "name": "elias",
+        "text": "Elias"
       },
       {
         "name": "felix",
@@ -1122,8 +1142,16 @@
         "text": "Lex"
       },
       {
+        "name": "liam",
+        "text": "Liam"
+      },
+      {
         "name": "lorenzo",
         "text": "Lorenzo"
+      },
+      {
+        "name": "manfred",
+        "text": "Manfred"
       },
       {
         "name": "marco",
@@ -1156,6 +1184,10 @@
       {
         "name": "matthew",
         "text": "Matthew"
+      },
+      {
+        "name": "matthias",
+        "text": "Matthias"
       },
       {
         "name": "miguel",
@@ -1218,6 +1250,10 @@
         "text": "Robbie"
       },
       {
+        "name": "robin",
+        "text": "Robin"
+      },
+      {
         "name": "ron",
         "text": "Ron"
       },
@@ -1262,8 +1298,16 @@
         "text": "Viperbiker"
       },
       {
+        "name": "yeray",
+        "text": "Yeray"
+      },
+      {
         "name": "zeus",
         "text": "Zeus"
+      },
+      {
+        "name": "zoltan",
+        "text": "Zoltán"
       }
     ],
     "welcome": [
@@ -1407,6 +1451,10 @@
         "text": "Ok, Adam,"
       },
       {
+        "name": "ade",
+        "text": "Ok, Ade,"
+      },
+      {
         "name": "al",
         "text": "Ok, Al,"
       },
@@ -1425,6 +1473,10 @@
       {
         "name": "andrew",
         "text": "Ok, Andrew,"
+      },
+      {
+        "name": "andris",
+        "text": "Ok, Andris,"
       },
       {
         "name": "andy",
@@ -1455,6 +1507,10 @@
         "text": "Ok, Brad,"
       },
       {
+        "name": "brandon",
+        "text": "Ok, Brandon,"
+      },
+      {
         "name": "brenton",
         "text": "Ok, Brenton,"
       },
@@ -1473,6 +1529,10 @@
       {
         "name": "champ",
         "text": "Ok, Champ,"
+      },
+      {
+        "name": "chip",
+        "text": "Ok, Chip,"
       },
       {
         "name": "chris",
@@ -1521,6 +1581,10 @@
       {
         "name": "dylan",
         "text": "Ok, Dylan,"
+      },
+      {
+        "name": "elias",
+        "text": "Ok, Elias,"
       },
       {
         "name": "felix",
@@ -1647,8 +1711,16 @@
         "text": "Ok, Lex,"
       },
       {
+        "name": "liam",
+        "text": "Ok, Liam,"
+      },
+      {
         "name": "lorenzo",
         "text": "Ok, Lorenzo,"
+      },
+      {
+        "name": "manfred",
+        "text": "Ok, Manfred,"
       },
       {
         "name": "marco",
@@ -1681,6 +1753,10 @@
       {
         "name": "matthew",
         "text": "Ok, Matthew,"
+      },
+      {
+        "name": "matthias",
+        "text": "Ok, Matthias,"
       },
       {
         "name": "miguel",
@@ -1743,6 +1819,10 @@
         "text": "Ok, Robbie,"
       },
       {
+        "name": "robin",
+        "text": "Ok, Robin,"
+      },
+      {
         "name": "ron",
         "text": "Ok, Ron,"
       },
@@ -1787,8 +1867,16 @@
         "text": "Ok, Viperbiker,"
       },
       {
+        "name": "yeray",
+        "text": "Ok, Yeray,"
+      },
+      {
         "name": "zeus",
         "text": "Ok, Zeus,"
+      },
+      {
+        "name": "zoltan",
+        "text": "Ok, Zoltán,"
       }
     ],
     "session-start-speed-numbers": [
@@ -5336,6 +5424,10 @@
         "text": "Adam,"
       },
       {
+        "name": "ade",
+        "text": "Ade,"
+      },
+      {
         "name": "al",
         "text": "Al,"
       },
@@ -5354,6 +5446,10 @@
       {
         "name": "andrew",
         "text": "Andrew,"
+      },
+      {
+        "name": "andris",
+        "text": "Andris,"
       },
       {
         "name": "andy",
@@ -5384,6 +5480,10 @@
         "text": "Brad,"
       },
       {
+        "name": "brandon",
+        "text": "Brandon,"
+      },
+      {
         "name": "brenton",
         "text": "Brenton,"
       },
@@ -5402,6 +5502,10 @@
       {
         "name": "champ",
         "text": "Champ,"
+      },
+      {
+        "name": "chip",
+        "text": "Chip,"
       },
       {
         "name": "chris",
@@ -5450,6 +5554,10 @@
       {
         "name": "dylan",
         "text": "Dylan,"
+      },
+      {
+        "name": "elias",
+        "text": "Elias,"
       },
       {
         "name": "felix",
@@ -5576,8 +5684,16 @@
         "text": "Lex,"
       },
       {
+        "name": "liam",
+        "text": "Liam,"
+      },
+      {
         "name": "lorenzo",
         "text": "Lorenzo,"
+      },
+      {
+        "name": "manfred",
+        "text": "Manfred,"
       },
       {
         "name": "marco",
@@ -5610,6 +5726,10 @@
       {
         "name": "matthew",
         "text": "Matthew,"
+      },
+      {
+        "name": "matthias",
+        "text": "Matthias,"
       },
       {
         "name": "miguel",
@@ -5672,6 +5792,10 @@
         "text": "Robbie,"
       },
       {
+        "name": "robin",
+        "text": "Robin,"
+      },
+      {
         "name": "ron",
         "text": "Ron,"
       },
@@ -5716,8 +5840,16 @@
         "text": "Viperbiker,"
       },
       {
+        "name": "yeray",
+        "text": "Yeray,"
+      },
+      {
         "name": "zeus",
         "text": "Zeus,"
+      },
+      {
+        "name": "zoltan",
+        "text": "Zoltán,"
       }
     ],
     "race-end": [
@@ -5769,6 +5901,10 @@
         "text": "Time to race, Adam."
       },
       {
+        "name": "ade",
+        "text": "Time to race, Ade."
+      },
+      {
         "name": "al",
         "text": "Time to race, Al."
       },
@@ -5787,6 +5923,10 @@
       {
         "name": "andrew",
         "text": "Time to race, Andrew."
+      },
+      {
+        "name": "andris",
+        "text": "Time to race, Andris."
       },
       {
         "name": "andy",
@@ -5817,6 +5957,10 @@
         "text": "Time to race, Brad."
       },
       {
+        "name": "brandon",
+        "text": "Time to race, Brandon."
+      },
+      {
         "name": "brenton",
         "text": "Time to race, Brenton."
       },
@@ -5835,6 +5979,10 @@
       {
         "name": "champ",
         "text": "Time to race, Champ."
+      },
+      {
+        "name": "chip",
+        "text": "Time to race, Chip."
       },
       {
         "name": "chris",
@@ -5883,6 +6031,10 @@
       {
         "name": "dylan",
         "text": "Time to race, Dylan."
+      },
+      {
+        "name": "elias",
+        "text": "Time to race, Elias."
       },
       {
         "name": "felix",
@@ -6009,8 +6161,16 @@
         "text": "Time to race, Lex."
       },
       {
+        "name": "liam",
+        "text": "Time to race, Liam."
+      },
+      {
         "name": "lorenzo",
         "text": "Time to race, Lorenzo."
+      },
+      {
+        "name": "manfred",
+        "text": "Time to race, Manfred."
       },
       {
         "name": "marco",
@@ -6043,6 +6203,10 @@
       {
         "name": "matthew",
         "text": "Time to race, Matthew."
+      },
+      {
+        "name": "matthias",
+        "text": "Time to race, Matthias."
       },
       {
         "name": "miguel",
@@ -6105,6 +6269,10 @@
         "text": "Time to race, Robbie."
       },
       {
+        "name": "robin",
+        "text": "Time to race, Robin."
+      },
+      {
         "name": "ron",
         "text": "Time to race, Ron."
       },
@@ -6149,14 +6317,26 @@
         "text": "Time to race, Viperbiker."
       },
       {
+        "name": "yeray",
+        "text": "Time to race, Yeray."
+      },
+      {
         "name": "zeus",
         "text": "Time to race, Zeus."
+      },
+      {
+        "name": "zoltan",
+        "text": "Time to race, Zoltán."
       }
     ],
     "position-overtake-come-on": [
       {
         "name": "adam",
         "text": "Come on, Adam."
+      },
+      {
+        "name": "ade",
+        "text": "Come on, Ade."
       },
       {
         "name": "al",
@@ -6177,6 +6357,10 @@
       {
         "name": "andrew",
         "text": "Come on, Andrew."
+      },
+      {
+        "name": "andris",
+        "text": "Come on, Andris."
       },
       {
         "name": "andy",
@@ -6207,6 +6391,10 @@
         "text": "Come on, Brad."
       },
       {
+        "name": "brandon",
+        "text": "Come on, Brandon."
+      },
+      {
         "name": "brenton",
         "text": "Come on, Brenton."
       },
@@ -6225,6 +6413,10 @@
       {
         "name": "champ",
         "text": "Come on, Champ."
+      },
+      {
+        "name": "chip",
+        "text": "Come on, Chip."
       },
       {
         "name": "chris",
@@ -6273,6 +6465,10 @@
       {
         "name": "dylan",
         "text": "Come on, Dylan."
+      },
+      {
+        "name": "elias",
+        "text": "Come on, Elias."
       },
       {
         "name": "felix",
@@ -6399,8 +6595,16 @@
         "text": "Come on, Lex."
       },
       {
+        "name": "liam",
+        "text": "Come on, Liam."
+      },
+      {
         "name": "lorenzo",
         "text": "Come on, Lorenzo."
+      },
+      {
+        "name": "manfred",
+        "text": "Come on, Manfred."
       },
       {
         "name": "marco",
@@ -6433,6 +6637,10 @@
       {
         "name": "matthew",
         "text": "Come on, Matthew."
+      },
+      {
+        "name": "matthias",
+        "text": "Come on, Matthias."
       },
       {
         "name": "miguel",
@@ -6495,6 +6703,10 @@
         "text": "Come on, Robbie."
       },
       {
+        "name": "robin",
+        "text": "Come on, Robin."
+      },
+      {
         "name": "ron",
         "text": "Come on, Ron."
       },
@@ -6539,8 +6751,16 @@
         "text": "Come on, Viperbiker."
       },
       {
+        "name": "yeray",
+        "text": "Come on, Yeray."
+      },
+      {
         "name": "zeus",
         "text": "Come on, Zeus."
+      },
+      {
+        "name": "zoltan",
+        "text": "Come on, Zoltán."
       }
     ],
     "position-overtake": [
