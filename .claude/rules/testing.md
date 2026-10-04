@@ -48,7 +48,22 @@ Consequences when editing that file — none of these apply to test files or pac
 
 `eslint.config.js` enforces the first two mechanically for `vitest.config.ts` (`no-restricted-globals` plus `@typescript-eslint/consistent-type-imports`), and `pnpm lint` covers the file, so a re-break is caught before the suite is ever started.
 
-To run a subset, pass the filter through the root script — `pnpm test <path>` — so it keeps the native loader. The hook refuses both ways round it: `pnpm exec vitest` silently falls back to the bundling loader, and the per-package `test` scripts (`packages/*/package.json`) exit 1 because `root` stays at the package directory, where the root-relative `include` globs match nothing.
+To run a subset, pass the filter through the root script — `pnpm test <path>` — so it keeps the native loader. The hook refuses `pnpm exec vitest`, which silently falls back to the bundling loader.
+
+## Per-package runs (#1021)
+
+`pnpm --filter <pkg> test`, `pnpm --filter <pkg> test:watch` and `pnpm test` inside a package directory all work, and run exactly the root suite filtered to that package. Every package with a `src/**/*.test.ts` carries the same two scripts, byte for byte:
+
+```json
+"test": "node ../../scripts/test-package.mjs",
+"test:watch": "node ../../scripts/test-package.mjs --watch"
+```
+
+`scripts/test-package.mjs` turns the package directory into the filter `packages/<name>/` (the trailing slash keeps `icon` from matching `icons`), takes the Vitest arguments from the root `test` / `test:watch` scripts so `--configLoader native` lives in one place, runs from the workspace root, and forwards anything after the script name to Vitest. Never write a package's own `vitest run`: Vitest roots itself at the package directory, where the root-relative `include` globs match nothing, so it exits 1 with "No test files found".
+
+A package with **no** tests has **no** `test` script. That is the one case left where pnpm's behaviour does not matter. It skips a missing `test` silently with exit 0, as if it were a lifecycle name, while any other missing script fails with `ERR_PNPM_RECURSIVE_RUN_NO_SCRIPT` (measured on pnpm 12.6.0). So a package that has tests and lacks the script reports a green it never earned. `scripts/package-test-scripts.test.mjs` guards both directions: a package's first test file turns the suite red until the two scripts are added, and a copied `vitest run` does too. For agents, the hook also refuses `pnpm --filter <pkg> <script>` on a package without that script.
+
+`pnpm -r test` works too, but it starts one Vitest per package and is slower than the root run. Root `pnpm test` stays the command for the whole suite and for CI.
 
 ## Testing Stream Deck Actions
 

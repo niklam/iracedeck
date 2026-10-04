@@ -82,8 +82,10 @@ pnpm build:stream-deck
 # Watch mode with hot-reload (restarts Stream Deck automatically)
 pnpm watch:stream-deck
 
-# Run tests
+# Run tests: all of them, a path filter, or one package
 pnpm test
+pnpm test packages/iracing-sdk/
+pnpm --filter @iracedeck/deck-core test
 
 # Lint and format
 pnpm lint:fix

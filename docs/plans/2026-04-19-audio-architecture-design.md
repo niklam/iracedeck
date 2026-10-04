@@ -645,7 +645,7 @@ Per-stage:
 
 ```bash
 pnpm install
-pnpm --filter <stage-package> test
+pnpm test packages/<stage-package>/
 pnpm build
 ```
 
