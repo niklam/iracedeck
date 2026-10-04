@@ -1,0 +1,269 @@
+/**
+ * What a Replay Markers press does, shared by the keypad (#1162) and the dial
+ * (#1230): reading the replay context, Add, Delete, and where a Next /
+ * Previous jump lands. Both surfaces call these functions rather than each
+ * deriving its own, which is what keeps a turn of the dial and a key press
+ * landing on the same marker, and the dial's side marks agreeing with the
+ * keypad's greyed keys. Logging stays with the callers.
+ */
+import {
+  getCommands,
+  MARKER_DEDUPE_FRAMES,
+  MARKER_DELETE_WINDOW_FRAMES,
+  MARKER_PREVIOUS_MIN_BEHIND_FRAMES,
+  type ReplayMarker,
+  type ReplaySessionStore,
+  type SubSessionScoped,
+} from "@iracedeck/deck-core";
+import { ReplayPosMode, resolveReplayFrame, type TelemetryData } from "@iracedeck/iracing-sdk";
+
+import { cancelReplayCursorOwner } from "../../shared/replay-cursor.js";
+
+/** Replay frames per second — the recording's fixed rate. */
+const FRAMES_PER_SECOND = 60;
+
+/** How long the Added / Deleted confirmation stays on the key or the dial. */
+/** @internal Exported for testing */
+export const CONFIRMATION_FLASH_MS = 1_000;
+
+/** The two ways a jump goes: forward (Next, a clockwise turn) or back (Previous, counter-clockwise). */
+export type MarkerDirection = "next" | "previous";
+
+/**
+ * @internal Exported for testing
+ *
+ * The marker an Add press names: `secondsBack` before the current frame,
+ * clamped at the recording's start. `pressFrame` keeps the frame the key was
+ * pressed at, so Delete from the same spot reaches a marker set far back.
+ * Session number and time are descriptive only (a person reading the file),
+ * taken from the replay's own session while a replay plays and from the live
+ * session otherwise.
+ */
+export function buildMarker(telemetry: TelemetryData, currentFrame: number, secondsBack: number): ReplayMarker {
+  const inReplay = telemetry.IsReplayPlaying === true;
+  const sessionNum = (inReplay ? telemetry.ReplaySessionNum : telemetry.SessionNum) ?? 0;
+  const sessionTime = (inReplay ? telemetry.ReplaySessionTime : telemetry.SessionTime) ?? 0;
+
+  return {
+    frame: Math.max(0, currentFrame - secondsBack * FRAMES_PER_SECOND),
+    pressFrame: currentFrame,
+    sessionNum,
+    sessionTimeMs: Math.max(0, Math.round((sessionTime - secondsBack) * 1000)),
+  };
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * The marker a Delete press at `current` removes: the nearest one within
+ * {@link MARKER_DELETE_WINDOW_FRAMES}, measured to the marker's frame or to
+ * the frame its Add was pressed at (`pressFrame`), whichever is closer. The
+ * second distance is what lets Delete from the car reach a marker set with a
+ * long Seconds back — the car sits at the live edge, the marker well behind
+ * it. Markers without a numeric `pressFrame` (older files) use the frame
+ * alone. On a tie the earlier marker goes.
+ */
+export function pickMarkerToDelete(markers: readonly ReplayMarker[], current: number): ReplayMarker | null {
+  let best: ReplayMarker | null = null;
+  let bestDistance = Number.POSITIVE_INFINITY;
+
+  for (const marker of markers) {
+    const toFrame = Math.abs(current - marker.frame);
+    const toPress =
+      typeof marker.pressFrame === "number" && Number.isFinite(marker.pressFrame)
+        ? Math.abs(current - marker.pressFrame)
+        : Number.POSITIVE_INFINITY;
+    const distance = Math.min(toFrame, toPress);
+
+    if (distance <= MARKER_DELETE_WINDOW_FRAMES && distance < bestDistance) {
+      best = marker;
+      bestDistance = distance;
+    }
+  }
+
+  return best;
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * `WeekendInfo.SubSessionID` as a finite number, else undefined — the store
+ * then takes the call for its active session.
+ */
+export function readSubSessionId(sessionInfo: unknown): number | undefined {
+  const weekend = (sessionInfo as Record<string, unknown> | null | undefined)?.WeekendInfo as
+    Record<string, unknown> | undefined;
+  const raw = weekend?.SubSessionID;
+  const value = typeof raw === "number" ? raw : typeof raw === "string" && raw.trim() !== "" ? Number(raw) : NaN;
+
+  return Number.isFinite(value) ? value : undefined;
+}
+
+/** Everything a press reads before it acts: telemetry and its frame, the store, and the SubSessionID scope. */
+export interface ReplayContext {
+  ok: true;
+  telemetry: TelemetryData;
+  frame: number;
+  store: ReplaySessionStore;
+  scope: SubSessionScoped | undefined;
+}
+
+/** Why there is no replay context; `reason` names what was missing. */
+export interface ReplayContextMissing {
+  ok: false;
+  reason: string;
+}
+
+export type ReplayContextResult = ReplayContext | ReplayContextMissing;
+
+/** Where the context is read from: the action's SDK controller, and the store's two accessors. */
+export interface ReplayContextSource {
+  getConnectionStatus(): boolean;
+  getCurrentTelemetry(): TelemetryData | null;
+  getSessionInfo(): unknown;
+  isStoreInitialized(): boolean;
+  getStore(): ReplaySessionStore;
+}
+
+/**
+ * Reads the replay context fresh: connected, a store, telemetry with a frame
+ * (`ReplayFrameNum` in a replay, `ReplayFrameNumEnd` live), and the scope.
+ */
+export function readReplayContext(source: ReplayContextSource): ReplayContextResult {
+  if (!source.getConnectionStatus()) return { ok: false, reason: "Not connected to iRacing" };
+
+  if (!source.isStoreInitialized()) return { ok: false, reason: "Replay session store not initialized" };
+
+  const telemetry = source.getCurrentTelemetry();
+  const frame = resolveReplayFrame(telemetry);
+
+  if (!telemetry || frame === null) return { ok: false, reason: "No replay frame in telemetry" };
+
+  const subSessionId = readSubSessionId(source.getSessionInfo());
+
+  return {
+    ok: true,
+    telemetry,
+    frame,
+    store: source.getStore(),
+    scope: subSessionId === undefined ? undefined : { subSessionId },
+  };
+}
+
+/**
+ * The marker a Next / Previous jump from `fromFrame` lands on, or null when it
+ * would send nothing. The one predicate behind the keypad's greyed Next /
+ * Previous keys, the dial's first step and the dial's side marks:
+ *
+ * - out of a replay it is always null — iRacing honours replay commands only
+ *   out of the car (irsdk_defines.h: "camera and replay commands only work
+ *   when you are out of your car"), so from the car a jump would be sent,
+ *   ignored, and logged as done;
+ * - otherwise the store's own `next` (the first marker more than 1 s ahead) or
+ *   `previous` (the media-player rule, its 2 s window measured from the anchor
+ *   marker).
+ *
+ * `fromFrame` defaults to the context's live frame; the dial passes the frame it
+ * last jumped to while the replay has not landed there yet.
+ */
+export function resolveJumpTarget(
+  direction: MarkerDirection,
+  context: ReplayContext,
+  fromFrame: number = context.frame,
+): ReplayMarker | null {
+  if (context.telemetry.IsReplayPlaying !== true) return null;
+
+  return direction === "next"
+    ? context.store.markers.next(fromFrame, context.scope)
+    : context.store.markers.previous(fromFrame, context.scope);
+}
+
+/**
+ * The marker `steps` markers on from `first` in `direction`, stopping at the
+ * end of the list rather than wrapping — a wrap would jump from the last lap to
+ * the first without the driver seeing why. `steps` of 1 (or less) is `first`
+ * itself. A `first` missing from the list (it cannot be, but the list is a
+ * copy read separately) is returned as is.
+ */
+export function walkMarkers(
+  markers: readonly ReplayMarker[],
+  first: ReplayMarker,
+  direction: MarkerDirection,
+  steps: number,
+): ReplayMarker {
+  const start = markers.findIndex((m) => m.frame === first.frame);
+
+  if (start === -1 || steps <= 1) return first;
+
+  const delta = (direction === "next" ? 1 : -1) * (Math.floor(steps) - 1);
+  const index = Math.min(markers.length - 1, Math.max(0, start + delta));
+
+  return markers[index] ?? first;
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * The index of the marker whose moment is playing at `frame` — at it, or up to
+ * {@link MARKER_PREVIOUS_MIN_BEHIND_FRAMES} (2 s) past it, the window Previous
+ * treats as "still playing" — or -1. `markers` is ordered by frame.
+ */
+export function markerIndexAt(markers: readonly ReplayMarker[], frame: number): number {
+  for (let i = markers.length - 1; i >= 0; i--) {
+    const marker = markers[i];
+
+    if (marker === undefined || marker.frame > frame) continue;
+
+    return frame - marker.frame <= MARKER_PREVIOUS_MIN_BEHIND_FRAMES ? i : -1;
+  }
+
+  return -1;
+}
+
+/**
+ * The marker an Add press would store, or null when the store would refuse it
+ * as a duplicate (another marker within {@link MARKER_DEDUPE_FRAMES}). Read-only:
+ * the dial's hold preview asks this before the release, and the release then
+ * calls {@link addMarkerAt}.
+ */
+export function previewAddMarker(context: ReplayContext, secondsBack: number): ReplayMarker | null {
+  const marker = buildMarker(context.telemetry, context.frame, secondsBack);
+  const duplicate = context.store.markers
+    .list(context.scope)
+    .some((m) => Math.abs(m.frame - marker.frame) <= MARKER_DEDUPE_FRAMES);
+
+  return duplicate ? null : marker;
+}
+
+/** Adds the marker `secondsBack` before the context's frame; `added` is false for a duplicate. */
+export function addMarkerAt(context: ReplayContext, secondsBack: number): { marker: ReplayMarker; added: boolean } {
+  const marker = buildMarker(context.telemetry, context.frame, secondsBack);
+
+  return { marker, added: context.store.markers.add(marker, context.scope) };
+}
+
+/** The marker a Delete press at the context's frame would remove, or null. Read-only. */
+export function previewDeleteMarker(context: ReplayContext): ReplayMarker | null {
+  return pickMarkerToDelete(context.store.markers.list(context.scope), context.frame);
+}
+
+/** Deletes the marker {@link previewDeleteMarker} names; null when there is none in reach. */
+export function deleteMarkerAt(context: ReplayContext): ReplayMarker | null {
+  const target = previewDeleteMarker(context);
+
+  // Deleting at the chosen marker's own frame removes exactly that one: it is
+  // at distance 0, and Add keeps any other more than 1 s away.
+  return target ? context.store.markers.deleteNearest(target.frame, context.scope) : null;
+}
+
+/**
+ * Jumps the replay to `frame` with one `setPlayPosition(Begin, frame)`. First
+ * cancels any claim on the replay cursor (#1203) in `owner`'s name, so a jump
+ * stops an in-flight Jump to Fastest Lap walk rather than being overridden by
+ * its next probe. Call it only when a jump is actually sent.
+ */
+export function jumpToMarkerFrame(owner: string, frame: number): boolean {
+  cancelReplayCursorOwner(owner);
+
+  return getCommands().replay.setPlayPosition(ReplayPosMode.Begin, frame);
+}
