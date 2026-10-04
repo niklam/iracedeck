@@ -11,11 +11,23 @@
 export type ExpressionValue = string | number | boolean;
 
 /**
+ * The value at a variable path. `found: false` means there is no such path,
+ * which an expression reports as an unknown variable; `found: true` with an
+ * `undefined` value is a path that exists but holds nothing. Defined here, not
+ * in the template context, so this module stays free of any context type; the
+ * context's `TemplateLookup` is this type under its own name.
+ */
+export interface VariableLookupResult {
+  found: boolean;
+  value?: ExpressionValue;
+}
+
+/**
  * Resolves a variable path for an expression. `found: false` makes the
  * expression fail as an unknown variable (rendering ""). The template context
- * supplies it, so this module stays free of any context type.
+ * supplies it.
  */
-export type VariableLookup = (path: string) => { found: boolean; value?: ExpressionValue };
+export type VariableLookup = (path: string) => VariableLookupResult;
 
 /**
  * @internal Exported for testing

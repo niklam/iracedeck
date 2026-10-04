@@ -12,7 +12,7 @@
  * templates touch, instead of materialising every driver field and a flatten of
  * all telemetry and the whole session YAML.
  */
-import type { ExpressionValue } from "./expression-evaluator.js";
+import type { ExpressionValue, VariableLookupResult } from "./expression-evaluator.js";
 import { extractQualifyResults } from "./grid-utils.js";
 import { estimateIRatingChanges, type IRatingEstimates, resolveIRatingEstimateOrder } from "./irating-utils.js";
 import { classPositionFromOrder } from "./position-utils.js";
@@ -27,12 +27,10 @@ export type TemplateValue = ExpressionValue;
 /**
  * The raw value at a path. `found: false` means the context has no such path,
  * which an expression reports as an unknown variable; `found: true` with an
- * `undefined` value is a path that exists but holds nothing.
+ * `undefined` value is a path that exists but holds nothing. The evaluator's
+ * lookup result under the context's name: one type, so the two cannot drift.
  */
-export interface TemplateLookup {
-  found: boolean;
-  value?: TemplateValue;
-}
+export type TemplateLookup = VariableLookupResult;
 
 /**
  * Template variables, answered one dot-notation path at a time
@@ -55,9 +53,11 @@ export interface TemplateContext {
 export type LivePositionsSource = number[] | null | (() => number[] | null);
 
 /**
+ * @internal Exported for the test-only reference builder
+ *
  * A display/raw map pair for one context namespace.
  */
-interface FieldMaps {
+export interface FieldMaps {
   display: Record<string, string>;
   raw: Record<string, TemplateValue>;
 }
@@ -124,7 +124,7 @@ type SelfDriverFields = DriverFields & {
  * unquoted numeric scalars (parsed to number), so consumers must normalize
  * through `yamlString` (#869).
  */
-interface DriverEntry {
+export interface DriverEntry {
   CarIdx: number;
   UserName: string | number | null;
   AbbrevName: string | number | null;
@@ -140,7 +140,8 @@ function yamlString(value: string | number | null | undefined): string {
   return value == null ? "" : String(value);
 }
 
-const EMPTY_DRIVER_FIELDS: DriverFields = {
+/** @internal Exported for the test-only reference builder */
+export const EMPTY_DRIVER_FIELDS: Readonly<DriverFields> = {
   name: "",
   first_name: "",
   last_name: "",
@@ -199,7 +200,8 @@ interface LeafEntry {
  *
  * This is the rule the pre-#1339 `flattenContext` applied while flattening the
  * whole object; the reference copy of that flatten in
- * `template-context.reference.ts` is what the equivalence test holds it to.
+ * `template-context-reference.test-helper.ts` is what the equivalence test
+ * holds it to.
  */
 export function formatLeaf(key: string, value: unknown): LeafEntry | undefined {
   if (value === null || value === undefined || typeof value === "object") return undefined;
@@ -294,7 +296,8 @@ export function buildTemplateContext(sdkController: SDKController): TemplateCont
 /** Fields whose display form is the signed, rounded integer (+31 / -15 / 0). */
 const SIGNED_INT_DISPLAY_FIELDS = new Set(["irating_change"]);
 
-function fieldsToMaps(fields: Record<string, DriverFieldValue>): FieldMaps {
+/** @internal Exported for the test-only reference builder */
+export function fieldsToMaps(fields: Record<string, DriverFieldValue>): FieldMaps {
   const display: Record<string, string> = {};
   const raw: Record<string, TemplateValue> = {};
 
@@ -355,16 +358,30 @@ interface SessionInfoParts {
  * `SessionInfoUpdate` and a new one after, so the identity IS the session-info
  * version, and a frame-to-frame rebuild with unchanged session info reuses these.
  * A WeakMap, so a superseded session-info object (a long session parses many)
- * is not kept alive by its entry.
+ * is not kept alive by its entry. That makes it a contract on callers: hand a
+ * new object for every session-info version and never mutate one in place.
+ * Nothing in the repo does — `IRacingSDK` re-parses on `SessionInfoUpdate`, and
+ * the scenario harness's mock replaces its object rather than patching it.
  */
 const sessionInfoPartsMemo = new WeakMap<object, SessionInfoParts>();
 
-/** The parts with no session info: no drivers, no player, blank track names. */
-const NO_SESSION_INFO_PARTS: SessionInfoParts = {
+/**
+ * The parts with no session info: no drivers, no player. Shared by every such
+ * context and frozen, so nothing can memoise into it; the blank `track`
+ * namespace is its own constant below.
+ */
+const NO_SESSION_INFO_PARTS: SessionInfoParts = Object.freeze({
   drivers: [],
   playerCarIdx: -1,
   track: undefined,
-};
+});
+
+/** The `track` namespace with no session info: blank track names. */
+const NO_SESSION_INFO_TRACK: TemplateContext = (() => {
+  const fields = buildTrackFields(null);
+
+  return templateContextFromMaps(fields, fields);
+})();
 
 function sessionInfoParts(sessionInfo: SessionInfo | null): SessionInfoParts {
   if (!sessionInfo) return NO_SESSION_INFO_PARTS;
@@ -511,13 +528,36 @@ export const namespaceBuilders = {
 
     return driverNamespace(findDriverByCamCarIdx(inputs.drivers, s.telemetry), s.telemetry, inputs);
   },
+  // `type`, `time_remaining` and `laps_remaining` read only telemetry and the
+  // current session entry. `sof` needs the driver inputs, whose live-order
+  // provider runs the translator's canonical-order computation, so it is built
+  // on its own first lookup: a clock-only template never asks for the order.
   session: (s: NamespaceSources): TemplateContext => {
-    const inputs = s.driverInputs();
+    const clock = mapsNamespace(buildSessionFields(s.sessionInfo, s.telemetry));
+    let sof: TemplateContext | undefined;
+    const fieldOf = (path: string): TemplateContext => {
+      if (path !== "sof") return clock;
 
-    return mapsNamespace(buildSessionFields(s.sessionInfo, s.telemetry, inputs.playerCarIdx, inputs.estimates));
+      if (!sof) {
+        const inputs = s.driverInputs();
+
+        sof = mapsNamespace(buildSessionSofFields(inputs.playerCarIdx, inputs.estimates));
+      }
+
+      return sof;
+    };
+
+    return {
+      display: (path) => fieldOf(path).display(path),
+      raw: (path) => fieldOf(path).raw(path),
+    };
   },
-  // Session info only, so it lives with the memoised parts: built once per session-info object.
+  // Session info only, so it lives with the memoised parts: built once per
+  // session-info object. Without session info there is nothing to memoise on,
+  // and the blank namespace is the shared constant.
   track: (s: NamespaceSources): TemplateContext => {
+    if (!s.sessionInfo) return NO_SESSION_INFO_TRACK;
+
     const parts = sessionInfoParts(s.sessionInfo);
 
     if (!parts.track) {
@@ -729,6 +769,8 @@ function resolveClassPosition(
 }
 
 /**
+ * @internal Exported for the test-only reference builder
+ *
  * Resolves the shared driver fields (name, car number, live overall/class
  * position, lap counts, iRating, license) for one car. Overall and class
  * position both come from the one canonical race `order` (the single source of
@@ -738,7 +780,7 @@ function resolveClassPosition(
  * only selects the player-authoritative lap counters, so `self` and
  * `focused`-on-the-player still agree (issue #700).
  */
-function buildDriverFields(
+export function buildDriverFields(
   driver: DriverEntry,
   telemetry: TelemetryData | null,
   order?: number[],
@@ -787,11 +829,13 @@ function buildDriverFields(
 }
 
 /**
+ * @internal Exported for the test-only reference builder
+ *
  * Builds the `self` fields: the player-aware driver field set (so `self` and
  * `focused`-on-the-player resolve identically) plus the player-only incident
  * count. Returns the empty set when the player's driver entry isn't found.
  */
-function buildSelfFields(
+export function buildSelfFields(
   driver: DriverEntry | undefined,
   playerCarIdx: number,
   telemetry: TelemetryData | null,
@@ -808,7 +852,8 @@ function buildSelfFields(
   };
 }
 
-function getCurrentSession(
+/** @internal Exported for the test-only reference builder */
+export function getCurrentSession(
   sessionInfo: SessionInfo | null,
   telemetry: TelemetryData | null,
 ): Record<string, unknown> | undefined {
@@ -821,12 +866,16 @@ function getCurrentSession(
   return sessionList?.[sessionNum];
 }
 
-function buildSessionFields(
-  sessionInfo: SessionInfo | null,
-  telemetry: TelemetryData | null,
-  playerCarIdx?: number,
-  estimates?: IRatingEstimates,
-): FieldMaps {
+/**
+ * @internal Exported for the test-only reference builder
+ *
+ * The `session` fields other than `sof`: `type`, `laps_remaining` and
+ * `time_remaining`, which read only telemetry and the current session entry.
+ * `sof` is built apart by `buildSessionSofFields`, because it needs the driver
+ * inputs (the live order and the iRating estimate) and the lazy context builds
+ * those only when `session.sof` itself is asked for (#1339).
+ */
+export function buildSessionFields(sessionInfo: SessionInfo | null, telemetry: TelemetryData | null): FieldMaps {
   const currentSession = getCurrentSession(sessionInfo, telemetry);
 
   // Absent from raw and blank in display when the lap side does not bind —
@@ -842,18 +891,10 @@ function buildSessionFields(
   // wanting math on it should use telemetry.SessionTimeRemain instead.
   const timeRemainingFormatted = formatTimeRemaining(timeRemaining);
 
-  // Strength of Field of the player's class (#268) — blank when the player
-  // isn't in a scored field (non-race, no order, missing iRating, <2-car class).
-  const sof = playerCarIdx !== undefined && playerCarIdx >= 0 ? (estimates?.sofs[playerCarIdx] ?? null) : null;
-
   const raw: Record<string, TemplateValue> = { type, time_remaining: timeRemainingFormatted };
 
   if (lapsRemaining !== null) {
     raw.laps_remaining = lapsRemaining;
-  }
-
-  if (sof !== null) {
-    raw.sof = sof;
   }
 
   return {
@@ -861,13 +902,29 @@ function buildSessionFields(
       type,
       laps_remaining: lapsRemaining !== null ? String(lapsRemaining) : "",
       time_remaining: timeRemainingFormatted,
-      sof: sof !== null ? String(Math.round(sof)) : "",
     },
     raw,
   };
 }
 
-function buildTrackFields(sessionInfo: SessionInfo | null): Record<string, string> {
+/**
+ * @internal Exported for the test-only reference builder
+ *
+ * The `session.sof` field: Strength of Field of the player's class (#268) —
+ * blank in display and absent from raw when the player isn't in a scored field
+ * (non-race, no order, missing iRating, <2-car class).
+ */
+export function buildSessionSofFields(playerCarIdx: number | undefined, estimates?: IRatingEstimates): FieldMaps {
+  const sof = playerCarIdx !== undefined && playerCarIdx >= 0 ? (estimates?.sofs[playerCarIdx] ?? null) : null;
+
+  return {
+    display: { sof: sof !== null ? String(Math.round(sof)) : "" },
+    raw: sof !== null ? { sof } : {},
+  };
+}
+
+/** @internal Exported for the test-only reference builder */
+export function buildTrackFields(sessionInfo: SessionInfo | null): Record<string, string> {
   if (!sessionInfo) return { name: "", short_name: "" };
 
   const weekend = (sessionInfo as Record<string, unknown>).WeekendInfo as Record<string, unknown> | undefined;
@@ -878,7 +935,8 @@ function buildTrackFields(sessionInfo: SessionInfo | null): Record<string, strin
   };
 }
 
-function extractDrivers(sessionInfo: SessionInfo | null): DriverEntry[] {
+/** @internal Exported for the test-only reference builder */
+export function extractDrivers(sessionInfo: SessionInfo | null): DriverEntry[] {
   if (!sessionInfo) return [];
 
   const driverInfo = (sessionInfo as Record<string, unknown>).DriverInfo as Record<string, unknown> | undefined;
@@ -887,7 +945,8 @@ function extractDrivers(sessionInfo: SessionInfo | null): DriverEntry[] {
   return drivers ?? [];
 }
 
-function extractPlayerCarIdx(sessionInfo: SessionInfo | null): number {
+/** @internal Exported for the test-only reference builder */
+export function extractPlayerCarIdx(sessionInfo: SessionInfo | null): number {
   if (!sessionInfo) return -1;
 
   const driverInfo = (sessionInfo as Record<string, unknown>).DriverInfo as Record<string, unknown> | undefined;

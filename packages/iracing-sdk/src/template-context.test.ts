@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { buildReferenceTemplateMaps } from "./template-context-reference.test-helper.js";
 import {
   buildTemplateContextFromData,
   findDriverByCamCarIdx,
@@ -10,7 +11,6 @@ import {
   splitDriverName,
   type TemplateContext,
 } from "./template-context.js";
-import { buildReferenceTemplateMaps } from "./template-context.reference.js";
 import { resolveTemplate } from "./template-resolver.js";
 import { IRSDK_UNLIMITED_LAPS, IRSDK_UNLIMITED_TIME, type SessionInfo, type TelemetryData } from "./types.js";
 
@@ -1895,6 +1895,39 @@ describe("lazy template context: laziness (#1339)", () => {
     expect(built()).toEqual({ track: 1, telemetry: 1, sessionInfo: 1 });
   });
 
+  it("asked only for session clock fields, never asks for the order; session.sof asks once", () => {
+    const built = spyOnBuilders();
+    const provider = vi.fn(() => [0, 3, 1, 2, 4, 0]);
+    const ctx = makeContext(provider);
+
+    expect(ctx.display("session.time_remaining")).not.toBe("");
+    expect(ctx.raw("session.time_remaining").found).toBe(true);
+    expect(ctx.display("session.type")).toBe("Race");
+    ctx.display("session.laps_remaining");
+    ctx.raw("session.laps_remaining");
+
+    expect(built()).toEqual({ session: 1 });
+    expect(provider).not.toHaveBeenCalled();
+
+    expect(ctx.display("session.sof")).not.toBe("");
+    expect(ctx.raw("session.sof").found).toBe(true);
+    ctx.display("session.sof");
+
+    expect(provider).toHaveBeenCalledTimes(1);
+    expect(built()).toEqual({ session: 1 });
+  });
+
+  it("session.sof asked first, through raw, still asks for the order once", () => {
+    const provider = vi.fn(() => [0, 3, 1, 2, 4, 0]);
+    const ctx = makeContext(provider);
+
+    expect(ctx.raw("session.sof").found).toBe(true);
+    expect(ctx.display("session.sof")).not.toBe("");
+    ctx.display("self.position");
+
+    expect(provider).toHaveBeenCalledTimes(1);
+  });
+
   it("builds nothing for a path with no namespace", () => {
     const built = spyOnBuilders();
     const provider = vi.fn(() => [0, 3, 1, 2, 4, 0]);
@@ -1979,6 +2012,19 @@ describe("lazy template context: session-info memo (#1339)", () => {
     expect(after.reads.DriverInfo).toBeGreaterThan(0);
     expect(after.reads.WeekendInfo).toBeGreaterThan(0);
     expect(frame[2]).toBe("Circuit de Spa-Francorchamps");
+  });
+
+  it("answers track blank without session info, and a later context with it still builds its own", () => {
+    const first = buildTemplateContextFromData(makeRichTelemetry(), null);
+    const second = buildTemplateContextFromData(null, null);
+
+    expect(first.display("track.name")).toBe("");
+    expect(first.raw("track.short_name")).toEqual({ found: true, value: "" });
+    expect(second.display("track.short_name")).toBe("");
+    // A later context with session info still builds its own track namespace.
+    expect(buildTemplateContextFromData(null, makeRichSessionInfo("Race")).display("track.name")).toBe(
+      "Spa-Francorchamps",
+    );
   });
 
   it("still recomputes the telemetry-derived namespaces per context", () => {
