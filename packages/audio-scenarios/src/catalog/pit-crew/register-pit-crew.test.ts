@@ -49,6 +49,7 @@ import {
   type PitWindowCalloutId,
   registerPitCrew,
   type RollingStartCalloutId,
+  stopRaceEngineerScenarios,
   type TireWearCalloutId,
 } from "./index.js";
 import { NO_LIMITER_CLIP_SOURCES } from "./no-limiter.js";
@@ -830,23 +831,31 @@ describe("registerPitCrew live gating", () => {
     // Drain the in-flight sequence — gate fires only on event arrival,
     // so the already-fired sequence completes naturally.
     flush(audio);
+    // `_played` is append-only and `stopChannel` never removes from it, so the
+    // clip-list assertion below would pass even if the toggle HAD cut the line.
+    // `stopChannel(Voice)` is reachable only from `cancelActiveFire`, so its
+    // absence is the precise observable for "nothing was cut". It is checked
+    // AFTER the drain: the toggle is a plain variable write no production code
+    // observes, so a cut could only happen in the publish or in the drain, and
+    // the mock's call log covers both (issue #990).
+    expect(audio.stopChannel).not.toHaveBeenCalledWith(AudioChannel.Voice);
 
     expect(voiceClipsPlayed()).toContain(`voice/${VOICE}/flags/red-01.mp3`);
   });
 
   it("toggling a flag off only blocks future fires; the previous one finishes", () => {
-    // First red fires and is allowed to play.
+    // First red fires. Don't flush — it is still mid-playback.
     bus.publishEvent("flag.red.raised", {} as never);
-    flush(audio);
-    const playsAfterFirst = voiceClipsPlayed().length;
-    expect(playsAfterFirst).toBe(1);
 
-    // User disables red. A subsequent red event is gated.
+    // User disables red, and a second red arrives while the first is speaking.
+    // Ungated, it would family-preempt the first; gated, it never reaches the
+    // scheduler, so the first is not cut.
     enabled.set("red", false);
     bus.publishEvent("flag.red.raised", {} as never);
     flush(audio);
+    expect(audio.stopChannel).not.toHaveBeenCalledWith(AudioChannel.Voice);
 
-    expect(voiceClipsPlayed().length).toBe(playsAfterFirst);
+    expect(voiceClipsPlayed()).toEqual([`voice/${VOICE}/flags/red-01.mp3`]);
   });
 
   it("re-enabling a flag restores future fires", () => {
@@ -892,6 +901,7 @@ describe("registerPitCrew live gating", () => {
     enabled.set("meatball", false);
     bus.publishEvent("flag.meatball.raised", {} as never);
     flush(audio);
+    expect(audio.stopChannel).not.toHaveBeenCalledWith(AudioChannel.Voice);
 
     // yellow-cleared completed; no meatball ever played.
     const played = voiceClipsPlayed();
@@ -1089,6 +1099,7 @@ describe("pit-service-requests live gate (issue #468)", () => {
     // Drain the in-flight sequence — gate fires only on event arrival,
     // so the already-fired sequence completes naturally.
     flush(audio);
+    expect(audio.stopChannel).not.toHaveBeenCalledWith(AudioChannel.Voice);
 
     expect(voiceClipsPlayed()).toContain(`voice/${VOICE}/pit-actions/fuel-on-01.mp3`);
   });
@@ -1231,6 +1242,7 @@ describe("autofuel callout live gating (issue #474)", () => {
 
     autoFuelEnabled = false;
     flush(audio);
+    expect(audio.stopChannel).not.toHaveBeenCalledWith(AudioChannel.Voice);
 
     expect(voiceClipsPlayed()).toEqual([AUTO_ON_REFUEL]);
   });
@@ -1269,6 +1281,7 @@ describe("damage callout live gating (issue #489)", () => {
 
     damageEnabled.set("repair-needed", false);
     flush(audio);
+    expect(audio.stopChannel).not.toHaveBeenCalledWith(AudioChannel.Voice);
 
     expect(voiceClipsPlayed().some((p) => p.includes("/damage/repair-needed-"))).toBe(true);
   });
@@ -1325,6 +1338,7 @@ describe("incident callout live gating (issue #530)", () => {
 
     incidentEnabled.set("collision-car", false);
     flush(audio);
+    expect(audio.stopChannel).not.toHaveBeenCalledWith(AudioChannel.Voice);
 
     expect(voiceClipsPlayed().some((p) => p.includes("/incidents/collision-car-"))).toBe(true);
   });
@@ -1521,6 +1535,7 @@ describe("pit-box count-in live gating (issue #600)", () => {
 
     pitBoxEnabled = false;
     flush(audio);
+    expect(audio.stopChannel).not.toHaveBeenCalledWith(AudioChannel.Voice);
 
     expect(voiceClipsPlayed().some((p) => p.includes("/pit-box/five-"))).toBe(true);
   });
@@ -1639,12 +1654,12 @@ describe("pit-status family registration (issue #479 / #951)", () => {
     expect(audio._played.length).toBeGreaterThan(0);
 
     pitStatusEnabled.set("too-far-forward", false);
+    flush(audio);
     // `_played` is append-only and `stopChannel` never removes from it, so a
     // clip-list assertion alone would pass even if the gate HAD cut the line.
     // `stopChannel(Voice)` is reachable only from `cancelActiveFire`, so its
-    // absence is the precise observable for "nothing was cut".
+    // absence after the drain is the precise observable for "nothing was cut".
     expect(audio.stopChannel).not.toHaveBeenCalledWith(AudioChannel.Voice);
-    flush(audio);
 
     expect(voiceClipsPlayed().some((p) => p.includes("/pit-status/too-far-forward-repeat-"))).toBe(true);
   });
@@ -2516,14 +2531,31 @@ describe("Race Engineer master gate (issue #515)", () => {
     expect(voiceClipsPlayed()).toEqual([]);
   });
 
+  // The gate closure itself never cuts. The plugin's master toggle DOES stop an
+  // in-flight callout, deliberately, by calling `stopRaceEngineerScenarios()`
+  // alongside the setting change (#587) — the next test covers that path.
   it("master gate off does not cut an in-flight callout", () => {
     bus.publishEvent("flag.red.raised", {} as never);
     expect(audio._played.length).toBeGreaterThan(0);
 
+    // A second red arrives while the first is speaking. Ungated, it would
+    // family-preempt the first; the closed master gate rejects it at arrival.
     voiceMasterEnabled = false;
+    bus.publishEvent("flag.red.raised", {} as never);
     flush(audio);
+    expect(audio.stopChannel).not.toHaveBeenCalledWith(AudioChannel.Voice);
 
     expect(voiceClipsPlayed()).toContain(`voice/${VOICE}/flags/red-01.mp3`);
+  });
+
+  it("the master toggle's stopRaceEngineerScenarios() cuts an in-flight callout (#587)", () => {
+    bus.publishEvent("flag.red.raised", {} as never);
+    expect(audio._played.length).toBeGreaterThan(0);
+
+    voiceMasterEnabled = false;
+    stopRaceEngineerScenarios();
+
+    expect(audio.stopChannel).toHaveBeenCalledWith(AudioChannel.Voice);
   });
 
   it("master gate flipping back on restores future fires", () => {
