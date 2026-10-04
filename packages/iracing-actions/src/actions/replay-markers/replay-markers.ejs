@@ -6,21 +6,77 @@
 	<body>
 		<%- include('section-header', { title: 'Action Settings' }) %>
 
-		<sdpi-item label="Mode">
-			<sdpi-select id="mode-select" setting="mode" default="add">
-				<option value="add">Add Marker</option>
-				<option value="delete">Delete Marker</option>
-				<option value="next">Next Marker</option>
-				<option value="previous">Previous Marker</option>
-			</sdpi-select>
-		</sdpi-item>
-
 		<% var __comms = require('./data/action-comms.json')['replay-markers']; %>
-		<ird-binding-status mode-setting="<%= __comms._meta.modeSetting %>" comms='<%= JSON.stringify(__comms) %>'></ird-binding-status>
+		<% var __dialComms = require('./data/action-comms.json')['replay-markers-dial']; %>
 
-		<sdpi-item label="Seconds Back" id="seconds-back-item" class="hidden">
-			<sdpi-textfield setting="secondsBack" type="number" min="0" max="60" default="5" placeholder="5"></sdpi-textfield>
-		</sdpi-item>
+		<!-- Keypad settings — hidden when this instance is a dial (#1230). -->
+		<div id="keypad-settings">
+			<sdpi-item label="Mode">
+				<sdpi-select id="mode-select" setting="mode" default="add">
+					<option value="add">Add Marker</option>
+					<option value="delete">Delete Marker</option>
+					<option value="next">Next Marker</option>
+					<option value="previous">Previous Marker</option>
+				</sdpi-select>
+			</sdpi-item>
+
+			<% var __comms = require('./data/action-comms.json')['replay-markers']; %>
+			<ird-binding-status mode-setting="<%= __comms._meta.modeSetting %>" comms='<%= JSON.stringify(__comms) %>'></ird-binding-status>
+
+			<sdpi-item label="Seconds Back" id="seconds-back-item" class="hidden">
+				<sdpi-textfield setting="secondsBack" type="number" min="0" max="60" default="5" placeholder="5"></sdpi-textfield>
+			</sdpi-item>
+		</div>
+
+		<!-- Dial settings — shown only when this instance is a dial (#1230). Rotation
+		     always steps through the markers, so there is no Mode dropdown. -->
+		<div id="dial-settings" class="hidden">
+			<ird-binding-status mode-setting="<%= __dialComms._meta.modeSetting %>" default-mode="step" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
+			<div class="ird-supporting-text">
+				Turn the dial to step through your replay markers (clockwise = next,
+				counter-clockwise = previous). Add Marker and Delete Marker are kept by
+				iRaceDeck and need no key binding.
+			</div>
+
+			<sdpi-item label="Seconds Back">
+				<sdpi-textfield setting="dial.secondsBack" type="number" min="0" max="60" default="5" placeholder="5"></sdpi-textfield>
+			</sdpi-item>
+
+			<sdpi-item label="Press Action">
+				<sdpi-select setting="dial.pressAction" default="add">
+					<option value="add">Add Marker</option>
+					<option value="delete">Delete Marker</option>
+					<option value="none">None</option>
+				</sdpi-select>
+			</sdpi-item>
+			<% if (locals.platform?.features?.dialExtendedGestures !== false) { %>
+			<sdpi-item label="Long Press">
+				<sdpi-select setting="dial.longPressAction" default="delete">
+					<option value="add">Add Marker</option>
+					<option value="delete">Delete Marker</option>
+					<option value="none">None</option>
+				</sdpi-select>
+			</sdpi-item>
+
+			<sdpi-item label="Tap Display">
+				<sdpi-select setting="dial.tapAction" default="none">
+					<option value="none">None</option>
+					<option value="add">Add Marker</option>
+					<option value="delete">Delete Marker</option>
+				</sdpi-select>
+			</sdpi-item>
+
+			<sdpi-item label="Long Touch">
+				<sdpi-select setting="dial.longTouchAction" default="none">
+					<option value="none">None</option>
+					<option value="add">Add Marker</option>
+					<option value="delete">Delete Marker</option>
+				</sdpi-select>
+			</sdpi-item>
+			<% } %>
+
+			<%- include('dial-appearance') %>
+		</div>
 
 		<script>
 			function updateVisibility(mode) {
@@ -29,6 +85,26 @@
 				if (secondsBackItem) {
 					secondsBackItem.classList.toggle("hidden", mode !== "add");
 				}
+			}
+
+			// Which surface this instance sits on: the PI registration's
+			// actionInfo.payload.controller ("Keypad" | "Encoder"; the Mirabox host
+			// may report "Knob"). Anything unknown falls back to the keypad view (#1230).
+			async function resolveController() {
+				try {
+					const client = window.SDPIComponents && window.SDPIComponents.streamDeckClient;
+					const info = client && (await client.getConnectionInfo());
+					const controller = info && info.actionInfo && info.actionInfo.payload && info.actionInfo.payload.controller;
+					return controller === "Encoder" || controller === "Knob" ? "Encoder" : "Keypad";
+				} catch (err) {
+					return "Keypad";
+				}
+			}
+
+			function applyDialView() {
+				document.getElementById("keypad-settings")?.classList.add("hidden");
+				document.getElementById("keypad-appearance")?.classList.add("hidden");
+				document.getElementById("dial-settings")?.classList.remove("hidden");
 			}
 
 			async function initialize() {
@@ -55,6 +131,10 @@
 						}
 					});
 				}
+
+				if ((await resolveController()) === "Encoder") {
+					applyDialView();
+				}
 			}
 
 			if (document.readyState === "loading") {
@@ -66,12 +146,19 @@
 
 		<%- include('action-settings-footer') %>
 
+		<!-- Key-icon appearance — keypad only (a dial has no key icon). -->
+		<div id="keypad-appearance">
 		<%- include('title-overrides') %>
 
 		<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color'], defaults: require('./data/icon-defaults.json')['replay-markers'] }) %>
 		<%- include('border-overrides', { defaults: require('./data/icon-defaults.json')['replay-markers'] }) %>
 		<%- include('graphic-overrides') %>
 		<%- include('common-settings') %>
+		</div>
+
+		<style>
+			.hidden { display: none !important; }
+		</style>
 
 		<%- include('key-bindings-section') %>
 
