@@ -78,7 +78,7 @@ Where the log file lives:
 
 ## If iRaceDeck uses a lot of CPU
 
-iRaceDeck keeps an eye on its own CPU use. When it stays high for three minutes in a row — half a CPU core or more — the plugin log gets a warning with the figures, such as `Plugin CPU use is high: 62.4% of one core, event loop 71.0% busy, over 3 min (rss 340 MB, heap 64/172 MB)`, and a note once it is back to normal. You don't need debug logging on for these lines, so a log you already have may show when it started.
+iRaceDeck keeps an eye on its own CPU use. It checks once a minute, and when three checks in a row find it busy — using half of one CPU core or more, or spending half the time or more working rather than waiting for something to do — the plugin log gets a warning with the figures, such as `Plugin CPU use is high: 62.4% of one core, event loop 71.0% busy, over 3 min (rss 340 MB, heap 64/172 MB)`, and a note once it is back to normal. You don't need debug logging on for these lines, so a log you already have may show when it started.
 
 To show us what is using the CPU:
 
