@@ -87,7 +87,7 @@ import {
   type TrackConditionsCalloutId,
 } from "@iracedeck/audio-scenarios/pit-crew";
 import { getAudio, initializeAudio } from "@iracedeck/audio-service";
-import { ElgatoPlatformAdapter } from "@iracedeck/deck-adapter-elgato";
+import { ElgatoPlatformAdapter, elgatoPluginLogFile } from "@iracedeck/deck-adapter-elgato";
 import {
   applyStartupFeatureGates,
   type BundledVoicePack,
@@ -299,7 +299,7 @@ import {
   sanitizeOpponentFlagRangeSeconds,
 } from "@iracedeck/sim-events-iracing";
 import { readFileSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // Load build-time config (version, platform)
@@ -324,13 +324,11 @@ applyDebugLogging(getGlobalSettings());
 
 // Watch the main thread for the rest of the run (#1330). A freeze blocks every
 // logger on this thread, so the watchdog's worker appends its report straight
-// to the file the SDK's logger writes: `@elgato/streamdeck` names it after the
-// plugin UUID, which it reads from the `<uuid>.sdPlugin` working directory,
-// and always writes index 0 (older files are renamed away from it).
-const elgatoPluginUuid = basename(process.cwd()).replace(/\.sdPlugin$/, "");
+// to the file the SDK's logger writes, `<cwd>/logs/<plugin UUID>.0.log`
+// (`elgatoPluginLogFile`, tested against the SDK's own derivation).
 startMainThreadWatchdog({
   logger: adapter.createLogger("MainThreadWatchdog"),
-  target: { kind: "file", path: join(process.cwd(), "logs", `${elgatoPluginUuid}.0.log`) },
+  target: { kind: "file", path: elgatoPluginLogFile() },
 });
 
 // Banner a broken setup-warning regex pattern (issue #625). Validating on every
