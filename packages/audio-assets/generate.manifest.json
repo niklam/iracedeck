@@ -7378,12 +7378,12 @@
       "requestId": "Y9t4LPvwG8y5NeISg2GS"
     },
     "voice/default/corner-names/curva-quericia-01.mp3": {
-      "hash": "fde7ad2bf953f9cf",
+      "hash": "20019e0ad782c759",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "Curva Quericia.",
-      "generatedAt": "2026-09-14T01:42:33.295Z",
-      "requestId": "QHjNpzwp2wWD1mQFHQCv"
+      "textPreview": "Curva Quercia.",
+      "generatedAt": "2026-10-04T17:30:17.920Z",
+      "requestId": "6l14sh8JsGl1aLtXcLPU"
     },
     "voice/default/corner-names/curva-tramonto-01.mp3": {
       "hash": "ca9d0ee56ac60ebf",
@@ -8658,12 +8658,12 @@
       "requestId": "hvfVFAbV93vgaH8FSXW4"
     },
     "voice/default/corner-names/parabolika-01.mp3": {
-      "hash": "06772a810bb1c77a",
+      "hash": "a0086ef6e397b185",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "Parabolica.",
-      "generatedAt": "2026-09-14T01:42:49.842Z",
-      "requestId": "uWolbOCxTi4mJBfNFJeX"
+      "textPreview": "Parabolika.",
+      "generatedAt": "2026-10-04T17:30:18.110Z",
+      "requestId": "AnLECZbJjuAQOefbAhgr"
     },
     "voice/default/corner-names/peluqui-01.mp3": {
       "hash": "4f74cabed8cbc17b",
@@ -8746,12 +8746,12 @@
       "requestId": "Vb35GAcVGjGCPpIaBmRJ"
     },
     "voice/default/corner-names/primeira-01.mp3": {
-      "hash": "454d92c89cb64eb6",
+      "hash": "cd18e841e9815ff1",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "Primeira.",
-      "generatedAt": "2026-09-14T01:42:51.670Z",
-      "requestId": "FYsjQa8dfIl2VxGAZcho"
+      "generatedAt": "2026-10-04T17:30:18.264Z",
+      "requestId": "3z6DkoCtHzSYewdFp9uK"
     },
     "voice/default/corner-names/quarry-bend-01.mp3": {
       "hash": "92c9cbd2eeb07062",
@@ -10146,12 +10146,12 @@
       "requestId": "CwpVKr9aFgWYMpIeOKFz"
     },
     "voice/default/corner-names/wuerth-01.mp3": {
-      "hash": "5aac790427270af8",
+      "hash": "82a6e99861525157",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "Wuerth.",
-      "generatedAt": "2026-09-14T01:43:03.712Z",
-      "requestId": "BFUo3dZ80Jhhn5VF2LkW"
+      "textPreview": "Würth.",
+      "generatedAt": "2026-10-04T17:30:18.424Z",
+      "requestId": "qgH19bhlvxDXgoEi2gLi"
     },
     "voice/default/corner-names/yokohama-bridge-01.mp3": {
       "hash": "db57b4c0a6ce8c89",
@@ -31362,12 +31362,12 @@
       "requestId": "Y9t4LPvwG8y5NeISg2GS"
     },
     "voice/shawn/corner-names/curva-quericia-01.mp3": {
-      "hash": "fde7ad2bf953f9cf",
+      "hash": "20019e0ad782c759",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "Curva Quericia.",
-      "generatedAt": "2026-09-14T01:42:33.295Z",
-      "requestId": "QHjNpzwp2wWD1mQFHQCv"
+      "textPreview": "Curva Quercia.",
+      "generatedAt": "2026-10-04T17:30:17.920Z",
+      "requestId": "6l14sh8JsGl1aLtXcLPU"
     },
     "voice/shawn/corner-names/curva-tramonto-01.mp3": {
       "hash": "ca9d0ee56ac60ebf",
@@ -32642,12 +32642,12 @@
       "requestId": "SaJ7i1aeVbo7qdVYTjT9"
     },
     "voice/shawn/corner-names/parabolika-01.mp3": {
-      "hash": "06772a810bb1c77a",
+      "hash": "a0086ef6e397b185",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "Parabolica.",
-      "generatedAt": "2026-09-14T01:42:49.842Z",
-      "requestId": "uWolbOCxTi4mJBfNFJeX"
+      "textPreview": "Parabolika.",
+      "generatedAt": "2026-10-04T17:30:18.110Z",
+      "requestId": "AnLECZbJjuAQOefbAhgr"
     },
     "voice/shawn/corner-names/peluqui-01.mp3": {
       "hash": "4f74cabed8cbc17b",
@@ -32730,12 +32730,12 @@
       "requestId": "Vb35GAcVGjGCPpIaBmRJ"
     },
     "voice/shawn/corner-names/primeira-01.mp3": {
-      "hash": "454d92c89cb64eb6",
+      "hash": "cd18e841e9815ff1",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "Primeira.",
-      "generatedAt": "2026-09-14T01:42:51.670Z",
-      "requestId": "FYsjQa8dfIl2VxGAZcho"
+      "generatedAt": "2026-10-04T17:30:18.264Z",
+      "requestId": "3z6DkoCtHzSYewdFp9uK"
     },
     "voice/shawn/corner-names/quarry-bend-01.mp3": {
       "hash": "92c9cbd2eeb07062",
@@ -34130,12 +34130,12 @@
       "requestId": "tSBA0C00iI78ytqiejwA"
     },
     "voice/shawn/corner-names/wuerth-01.mp3": {
-      "hash": "5aac790427270af8",
+      "hash": "82a6e99861525157",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "Wuerth.",
-      "generatedAt": "2026-09-14T01:43:03.712Z",
-      "requestId": "BFUo3dZ80Jhhn5VF2LkW"
+      "textPreview": "Würth.",
+      "generatedAt": "2026-10-04T17:30:18.424Z",
+      "requestId": "qgH19bhlvxDXgoEi2gLi"
     },
     "voice/shawn/corner-names/yokohama-bridge-01.mp3": {
       "hash": "db57b4c0a6ce8c89",
