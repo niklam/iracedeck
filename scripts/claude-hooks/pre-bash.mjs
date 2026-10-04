@@ -53,15 +53,19 @@ if (typeof command === "string" && command.trim()) {
     // ref a new ir-<n> is cut from, which the freshness check has just
     // confirmed current (see `specFilenames` for the fallback).
     //
-    // `specText` reads from wherever the commit will take the bytes, which the
-    // rule works out per file: the INDEX for a spec staged before this command
-    // and not re-added by it, the WORKING copy for everything else — a chained
-    // `git add spec.md && git commit` has staged nothing yet when this hook
-    // runs, and `-a` and pathspec commits take the working copy anyway.
+    // `committedText` reads from wherever the commit will take the bytes, which
+    // each rule works out per file: the INDEX for a file staged before this
+    // command and not re-added by it, the WORKING copy for everything else — a
+    // chained `git add spec.md && git commit` has staged nothing yet when this
+    // hook runs, and `-a` and pathspec commits take the working copy anyway.
+    // Read by the spec rule and the manifest Debug rule (#1338).
     specFiles: memo((dir) => specFilenames(mainRepoRoot(dir) ?? mainRepoRoot(cwd) ?? cwd)),
-    specText: memo((dir, rel, from) =>
+    committedText: memo((dir, rel, from) =>
       from === "index" ? readIndexFile(dir, rel) : readRepoFile(toplevel(dir) ?? mainRepoRoot(cwd) ?? cwd, rel),
     ),
+    // The checkout's root, so a commit or add pathspec (relative to the
+    // command's cwd) can be compared with a root-relative path.
+    toplevel: memo((dir) => toplevel(dir)),
     // Root-relative like `staged`/`modified`, so a `git add <dir>` operand can be
     // matched against them.
     untracked: memo((dir) => lines(git(["ls-files", "--others", "--exclude-standard", "--full-name"], dir))),

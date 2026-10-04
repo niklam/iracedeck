@@ -1,6 +1,7 @@
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { DEBUG_VALUE, ELGATO_MANIFEST } from "../lib/debug-plugin.mjs";
 import {
   checkBash,
   classifyCheck,
@@ -34,11 +35,11 @@ function ctx(overrides = {}) {
     originFresh: () => ({ fresh: true, local: "aaaaaaaaa", remote: "aaaaaaaaa" }),
     // The default describes issues that ALREADY have their spec, so the
     // worktree cases below test placement and freshness as they always did;
-    // the spec-gate cases override with `specFiles: () => []`. `specText`
+    // the spec-gate cases override with `specFiles: () => []`. `committedText`
     // returning undefined is the fail-open contract the commit rule rests on
     // — a spec whose bytes the hook cannot read must still commit.
     specFiles: () => ["2026-01-01-issue-1-topic.md", "2026-01-01-issue-5-topic.md", "2026-01-01-issue-6-topic.md"],
-    specText: () => undefined,
+    committedText: () => undefined,
     tracked: () => false,
     issueLabels: () => undefined,
     linkTargets: () => [],
@@ -622,7 +623,7 @@ describe("git commit", () => {
   // filing-time decision record — so the commit now reads what it carries.
   describe("the required sections", () => {
     const HEADER = "> **Issue:** [#9](u) · **Supersedes:** _none_ · **Superseded by:** _none_";
-    const spec = (body) => ctx({ staged: () => ["docs/superpowers/specs/a.md"], specText: () => body });
+    const spec = (body) => ctx({ staged: () => ["docs/superpowers/specs/a.md"], committedText: () => body });
     const whole = [HEADER, "# T", "## Out of scope", "none", "## Testing", "vitest"].join("\n\n");
 
     it("passes a spec carrying all three", () => passes("git commit -m x", spec(whole)));
@@ -675,11 +676,14 @@ describe("git commit", () => {
         spec([HEADER, "# T", "```text\n# not a heading\n```", "## Out of scope", "x", "## Testing", "y"].join("\n\n")),
       ));
     it("passes when the text cannot be read at all (fail open)", () =>
-      passes("git commit -m x", ctx({ staged: () => ["docs/superpowers/specs/a.md"], specText: () => undefined })));
+      passes(
+        "git commit -m x",
+        ctx({ staged: () => ["docs/superpowers/specs/a.md"], committedText: () => undefined }),
+      ));
     it("leaves an AMENDMENT alone — the requirement is forward-only", () =>
       passes(
         "git commit -m x",
-        ctx({ staged: () => ["docs/superpowers/specs/a.md"], specText: () => "# T", tracked: () => true }),
+        ctx({ staged: () => ["docs/superpowers/specs/a.md"], committedText: () => "# T", tracked: () => true }),
       ));
     it("still checks the new spec in a commit that also amends an old one", () =>
       expect(
@@ -687,7 +691,7 @@ describe("git commit", () => {
           "git commit -m x",
           ctx({
             staged: () => ["docs/superpowers/specs/old.md", "docs/superpowers/specs/new.md"],
-            specText: () => "# T",
+            committedText: () => "# T",
             tracked: (_d, f) => f.endsWith("old.md"),
           }),
         ),
@@ -698,7 +702,7 @@ describe("git commit", () => {
           "git commit -m x",
           ctx({
             staged: () => ["docs/superpowers/specs/a.md", "docs/superpowers/specs/b.md"],
-            specText: (_d, f) => (f.endsWith("a.md") ? whole : "# T"),
+            committedText: (_d, f) => (f.endsWith("a.md") ? whole : "# T"),
           }),
         ),
       ).toMatch(/b\.md/));
@@ -706,7 +710,7 @@ describe("git commit", () => {
       expect(
         deny(
           "git commit -m x",
-          ctx({ branch: () => "ir-1", staged: () => ["docs/superpowers/specs/a.md"], specText: () => "# T" }),
+          ctx({ branch: () => "ir-1", staged: () => ["docs/superpowers/specs/a.md"], committedText: () => "# T" }),
         ),
       ).toMatch(/never on a feature branch/));
 
@@ -715,7 +719,7 @@ describe("git commit", () => {
       const A = "docs/superpowers/specs/a.md";
       // The index copy and the working copy disagree; each case says which one the commit takes.
       const split = (index, worktree, o = {}) =>
-        ctx({ specText: (_d, _f, from) => (from === "index" ? index : worktree), ...o });
+        ctx({ committedText: (_d, _f, from) => (from === "index" ? index : worktree), ...o });
       it("the index, for a spec staged before the command", () => {
         expect(deny("git commit -m x", split("# T", whole, { staged: () => [A] }))).toMatch(/a\.md/);
         passes("git commit -m x", split(whole, "# T", { staged: () => [A] }));
@@ -753,7 +757,7 @@ describe("git commit", () => {
   // staged reached neither the branch rule nor the section check.
   describe("a broad `git add` stages what it selects", () => {
     const NEW = "docs/superpowers/specs/new.md";
-    const broad = (o = {}) => ctx({ untracked: () => [NEW, "src/x.ts"], specText: () => "# T", ...o });
+    const broad = (o = {}) => ctx({ untracked: () => [NEW, "src/x.ts"], committedText: () => "# T", ...o });
     it.each([
       "git add -A && git commit -m x",
       "git add --all && git commit -m x",
@@ -793,6 +797,148 @@ describe("git commit", () => {
     ).toMatch(/pnpm-lock/));
   it("allows it once the lockfile is staged", () =>
     passes("git commit -m x", ctx({ staged: () => ["package.json", "pnpm-lock.yaml"], modified: () => [] })));
+});
+
+describe("git commit: the Elgato manifest never carries a Debug key (#1338)", () => {
+  const M = ELGATO_MANIFEST;
+  const OFF = '{\n  "Nodejs": {\n    "Version": "24"\n  }\n}\n';
+  const ON = OFF.replace('"24"\n', `"24",\n    "Debug": "${DEBUG_VALUE}"\n`);
+  /**
+   * A checkout whose manifest reads `index` when staged bytes are asked for and
+   * `worktree` for the working copy; `reads` records which copies the rule read.
+   */
+  const repo = ({ index = OFF, worktree = OFF, ...o } = {}) => {
+    const reads = [];
+    const c = ctx({
+      toplevel: () => MASTER,
+      committedText: (_d, f, from) => {
+        if (f !== M) return undefined;
+        reads.push(from);
+        return from === "index" ? index : worktree;
+      },
+      ...o,
+    });
+    return Object.assign(c, { reads });
+  };
+  // The maintainer's master: `debug:plugin on` in effect, nothing staged.
+  const dirtyOn = (o = {}) => repo({ worktree: ON, modified: () => [M, "src/a.ts"], ...o });
+
+  it("allows a commit whose manifest carries no Debug key", () => {
+    passes("git commit -m x", repo({ staged: () => [M] }));
+    passes(`git commit -m x -- ${M}`, repo());
+    passes("git commit -am x", repo({ modified: () => [M] }));
+  });
+
+  it("denies a staged manifest carrying the key, naming the fix", () => {
+    const v = deny("git commit -m x", repo({ staged: () => [M], index: ON }));
+    expect(v).toContain(M);
+    expect(v).toContain("pnpm debug:plugin off");
+    expect(v).toMatch(/staged copy/);
+  });
+
+  it("allows other paths while the manifest is dirty with the key but not staged", () => {
+    const c = dirtyOn({ staged: () => ["src/a.ts"] });
+    passes("git commit -m x", c);
+    passes("git commit --only -m x -- src/a.ts", c);
+    passes("git commit -m x src/a.ts", c);
+    passes("git add src/a.ts && git commit -m x", c);
+    passes("git add src && git commit -m x", c);
+    // Never read at all: none of these commits take the manifest.
+    expect(c.reads).toEqual([]);
+  });
+
+  it("does not fire on a mention inside a commit message", () => {
+    const c = dirtyOn({ staged: () => ["src/a.ts"] });
+    passes(`git commit -m "chore: pnpm debug:plugin on, git commit -am ${M} -- ${M}"`, c);
+    passes(`git commit -m "$(cat <<'EOF'\nfix: x -a\n\n${M} "Debug" -- ${M}\nEOF\n)" -- src/a.ts`, c);
+    passes(`git commit -q -F - <<'EOF'\nfix: x\n\ngit commit -a -- ${M}\nEOF`, c);
+    passes(`echo "git commit -am x -- ${M}"`, c);
+  });
+
+  it("reads the working copy for -a, a pathspec, or a chained git add that selects the manifest", () => {
+    for (const command of [
+      "git commit -am x",
+      "git commit -a -m x",
+      "git commit --all -m x",
+      `git commit -m x -- ${M}`,
+      `git commit --only -m x -- ${M}`,
+      `git commit -m x ${M}`,
+      `git commit -m x -- packages/iracing-plugin-stream-deck`,
+      `git commit -m x -- .`,
+      `git commit -m x -- 'packages/*/com.iracedeck.sd.core.sdPlugin/manifest.json'`,
+      `git commit -m "$(cat <<'EOF'\nfix: x\n\n1) the 12" record\nEOF\n)" -- ${M}`,
+      `git add ${M} && git commit -m x`,
+      "git add . && git commit -m x",
+      "git add -A && git commit -m x",
+      "git add -u && git commit -m x",
+      "git add packages/ && git commit -m x",
+    ])
+      expect(deny(command, dirtyOn()), command).toMatch(/working copy/);
+  });
+
+  it("resolves a pathspec against the command's own directory", () => {
+    const sub = path.join(MASTER, "packages", "iracing-plugin-stream-deck");
+    expect(
+      deny("cd packages/iracing-plugin-stream-deck && git commit -m x -- com.iracedeck.sd.core.sdPlugin", dirtyOn()),
+    ).toMatch(/working copy/);
+    passes(`cd ${sub} && git commit -m x -- src`, dirtyOn());
+  });
+
+  it("judges a plain commit on the staged copy, and -a on the working copy", () => {
+    // Staged with the key, switched off since: a plain commit still records the key.
+    deny("git commit -m x", repo({ staged: () => [M], index: ON, worktree: OFF }));
+    passes("git commit -am x", repo({ staged: () => [M], index: ON, worktree: OFF }));
+    // Staged clean, switched on since: the plain commit records the clean copy.
+    passes("git commit -m x", repo({ staged: () => [M], index: OFF, worktree: ON }));
+    deny("git commit -am x", repo({ staged: () => [M], index: OFF, worktree: ON }));
+  });
+
+  it("a pathspec leaves a staged manifest out, unless -i includes the staged files", () => {
+    const c = () => repo({ staged: () => [M], index: ON });
+    passes("git commit -m x -- src/a.ts", c());
+    expect(deny("git commit -i -m x -- src/a.ts", c())).toMatch(/staged copy/);
+    expect(deny("git commit --include -m x -- src/a.ts", c())).toMatch(/staged copy/);
+  });
+
+  it("reads both copies when the selection is decided at run time", () => {
+    for (const command of [
+      `git commit -m x "$P"`,
+      "git commit -m x $(git diff --name-only)",
+      "git commit --pathspec-from-file=f -m x",
+    ]) {
+      const c = dirtyOn();
+      expect(deny(command, c), command).toMatch(/working copy/);
+      expect(c.reads).toContain("index");
+    }
+  });
+
+  it("does not mistake an option's value or an attached option for a flag", () => {
+    const c = dirtyOn();
+    // `-m` takes "-a"; `-S` carries its key id attached; `-C HEAD` reuses a message.
+    passes('git commit -m "-a" -- src/a.ts', c);
+    passes("git commit -Sabc -m x", c);
+    passes("git commit -C HEAD --amend", c);
+  });
+
+  it("names a value the switch did not set without offering the switch", () => {
+    const v = deny("git commit -m x", repo({ staged: () => [M], index: ON.replace(DEBUG_VALUE, "enabled") }));
+    expect(v).toContain('"enabled"');
+    expect(v).toMatch(/by hand/);
+  });
+
+  it("judges unparseable text by a plain search", () => {
+    deny("git commit -m x", repo({ staged: () => [M], index: '{ "Nodejs": { "Debug": "x", } ' }));
+    passes("git commit -m x", repo({ staged: () => [M], index: "{ nope" }));
+  });
+
+  it("passes when the manifest's bytes cannot be read", () =>
+    passes("git commit -am x", repo({ committedText: () => undefined })));
+
+  it("follows git -C to the tree the commit runs in", () => {
+    const c = dirtyOn({ toplevel: () => tree("ir-5") });
+    expect(deny(`git -C ../ir-5 commit -m x -- ${M}`, c)).toMatch(/working copy/);
+    passes(`git -C ../ir-5 commit -m x -- src/a.ts`, c);
+  });
 });
 
 describe("git worktree add", () => {
