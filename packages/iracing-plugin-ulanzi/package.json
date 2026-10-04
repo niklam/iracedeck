@@ -9,9 +9,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "postbuild": "node ../../scripts/install-runtime-deps.mjs com.ulanzi.iracedeck.ulanziPlugin/bin",
     "watch": "rollup -c -w",
-    "clean": "rimraf com.ulanzi.iracedeck.ulanziPlugin/bin/plugin.js com.ulanzi.iracedeck.ulanziPlugin/bin/plugin.js.map",
-    "test": "vitest run",
-    "test:watch": "vitest"
+    "clean": "rimraf com.ulanzi.iracedeck.ulanziPlugin/bin/plugin.js com.ulanzi.iracedeck.ulanziPlugin/bin/plugin.js.map"
   },
   "dependencies": {
     "@iracedeck/audio-assets": "workspace:*",

@@ -26,6 +26,15 @@ describe("pre-bash.mjs, fired as the harness fires it", () => {
     expect(v.permissionDecisionReason).toMatch(/vitest/);
   });
 
+  // Judged against the manifests of the checkout the command runs in — this
+  // one — so it holds in a worktree whose scripts differ from master's (#1021).
+  it("lets a package's own test script run, and refuses one the package lacks", () => {
+    expect(fire("pnpm --filter @iracedeck/logger test")).toBeNull();
+    const v = fire("pnpm --filter @iracedeck/iracing-plugin-mirabox test");
+    expect(v.permissionDecision).toBe("deny");
+    expect(v.permissionDecisionReason).toMatch(/no "test" script/);
+  });
+
   it("refuses two merges in one command before asking GitHub anything", () => {
     const v = fire("gh pr merge 7 --squash & gh pr merge 8 --squash");
     expect(v.permissionDecision).toBe("deny");

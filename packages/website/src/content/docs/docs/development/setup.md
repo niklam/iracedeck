@@ -163,3 +163,5 @@ Turn the mode off with `pnpm dev:voices off` before testing the real download pa
 | `pnpm switch-test-env:ulanzi` | Install + build + relink only Ulanzi |
 | `pnpm dev:voices on` / `off` / `auto` | Override the machine-wide `IRACEDECK_DEV_VOICES` setting for this worktree: development voices on, off, or back to following the variable — see [Auditioning a voice change](#auditioning-a-voice-change) |
 | `pnpm test` | Run all tests |
+| `pnpm test <path>` | Run the tests whose path contains `<path>`, e.g. `pnpm test packages/iracing-sdk/` |
+| `pnpm --filter <package> test` | Run one package's tests (also `pnpm test` inside the package directory) |

@@ -867,9 +867,27 @@ describe("command-shape traps", () => {
   });
   it("vitest outside the root script", () => {
     deny("pnpm exec vitest run x.test.ts");
-    deny("npx vitest");
-    deny("pnpm --filter @iracedeck/logger test");
+    expect(deny("npx vitest")).toMatch(/native config loader/);
     passes("pnpm test packages/x/y.test.ts");
+  });
+  it("pnpm --filter <pkg> test runs the shared runner, so only a missing script is refused (#1021)", () => {
+    const c = ctx({
+      packages: () => ({
+        "@iracedeck/logger": { dir: "x", scripts: ["build", "typecheck", "test", "test:watch"] },
+        "@iracedeck/iracing-plugin-mirabox": { dir: "y", scripts: ["build", "typecheck"] },
+      }),
+    });
+    passes("pnpm --filter @iracedeck/logger test", c);
+    passes("pnpm --filter @iracedeck/logger run test", c);
+    passes("pnpm --filter @iracedeck/logger test:watch", c);
+    passes('pnpm --filter @iracedeck/logger test -t "a name"', c);
+    expect(deny("pnpm --filter @iracedeck/iracing-plugin-mirabox test", c)).toMatch(/no "test" script/);
+    // A passing filtered command does not shield a later one in the chain.
+    expect(
+      deny("pnpm --filter @iracedeck/logger test && pnpm --filter @iracedeck/iracing-plugin-mirabox test", c),
+    ).toMatch(/iracing-plugin-mirabox has no "test" script/);
+    passes("pnpm --filter @iracedeck/logger add zod; pnpm --filter @iracedeck/logger test", c);
+    expect(deny("pnpm --filter @iracedeck/logger test")).toMatch(/no "test" script/);
   });
   it("pnpm --filter with a missing script or package", () => {
     expect(deny("pnpm --filter @iracedeck/logger lint")).toMatch(/no "lint" script/);

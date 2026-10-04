@@ -80,11 +80,11 @@ The `iracing-plugin-stream-deck` Rollup config includes:
 ## Tests
 
 ```bash
-# From monorepo root — scope by path (the root `test` script is `vitest run`)
-pnpm test packages/iracing-actions
+# The whole package (same as `pnpm test` inside packages/iracing-actions)
+pnpm --filter @iracedeck/iracing-actions test
 
-# Or run a specific test file
-npx vitest run packages/iracing-actions/src/actions/splits-delta-cycle/splits-delta-cycle.test.ts
+# Or a specific test file, from the monorepo root
+pnpm test packages/iracing-actions/src/actions/splits-delta-cycle/splits-delta-cycle.test.ts
 ```
 
 Tests mock `@iracedeck/deck-core` (not `@elgato/streamdeck`) — the canonical mock is in `.claude/rules/testing.md`. Binding-aware actions additionally stub `isBindingMissing` on the mock `ConnectionStateAwareAction` (see `splits-delta-cycle/splits-delta-cycle.test.ts`).

@@ -18,6 +18,8 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node ../../scripts/test-package.mjs",
+    "test:watch": "node ../../scripts/test-package.mjs --watch",
     "clean": "rimraf dist"
   },
   "dependencies": {

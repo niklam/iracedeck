@@ -22,7 +22,9 @@
     "generate:callout-scripts": "tsx scripts/generate-callout-scripts.mjs",
     "pack:voice": "node scripts/pack-voice.mjs",
     "stage:dev-voices": "node scripts/stage-dev-voices.mjs",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node ../../scripts/test-package.mjs",
+    "test:watch": "node ../../scripts/test-package.mjs --watch"
   },
   "devDependencies": {
     "@iracedeck/callout-script": "workspace:*",

@@ -10,8 +10,8 @@
     "build": "node scripts/build.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "clean": "node scripts/clean.mjs",
-    "test": "vitest run",
-    "test:watch": "vitest"
+    "test": "node ../../scripts/test-package.mjs",
+    "test:watch": "node ../../scripts/test-package.mjs --watch"
   },
   "files": [
     "dist",

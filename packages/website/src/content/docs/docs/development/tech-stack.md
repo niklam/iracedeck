@@ -66,3 +66,5 @@ Node therefore imports that config directly and strips its types itself, so edit
 - Avoid TypeScript that needs more than type stripping: `enum`, `namespace`, decorators, and constructor parameter properties.
 
 This applies only to the Vite/Vitest config file itself. Test files and package sources are transformed by Vite as usual and are unaffected.
+
+There is one test suite, configured at the root. A package's own `test` and `test:watch` scripts don't configure a suite of their own. They call `scripts/test-package.mjs`, which runs the root suite from the workspace root, filtered to that package's directory, with the root scripts' Vitest arguments. So `pnpm --filter <package> test` runs exactly the tests the root run would, for that package only. A test in the repo checks that every package with tests carries those two scripts unchanged, because pnpm skips a missing `test` script silently and reports success.

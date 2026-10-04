@@ -494,20 +494,26 @@ export const rules = [
   },
   {
     name: "run vitest through the root script",
+    // `pnpm --filter <pkg> test` is NOT refused: since #1021 every package with
+    // tests runs them through `scripts/test-package.mjs`, which keeps the root
+    // config and its native loader. A package without a `test` script is the
+    // next rule's case.
     test: (c) =>
-      (has(c, cmd(/(pnpm\s+exec\s+|npx\s+)vitest\b/)) || has(c, cmd(/pnpm\s+--filter\s+\S+\s+(run\s+)?test\b/))) &&
-      "Run tests as `pnpm test <path>`: `pnpm exec vitest` drops the native config loader and the per-package test scripts match nothing (.claude/rules/testing.md).",
+      has(c, cmd(/(pnpm\s+exec\s+|npx\s+)vitest\b/)) &&
+      "Run tests as `pnpm test <path>` (or `pnpm --filter <pkg> test`): `pnpm exec vitest` and `npx vitest` drop the native config loader (.claude/rules/testing.md).",
   },
   {
     name: "pnpm --filter on a script the package does not have",
     test: (c, ctx) => {
-      const m = c.match(cmd(/pnpm\s+--filter\s+(@iracedeck\/[\w-]+)\s+(?:run\s+)?([\w:-]+)/));
-      if (!m) return null;
-      if (/^(add|remove|install|exec|dlx|update|why|list|ls)$/.test(m[2])) return null;
-      const pkg = ctx.packages()[m[1]];
-      if (!pkg) return `No workspace package named ${m[1]}.`;
-      if (!pkg.scripts.includes(m[2]))
-        return `${m[1]} has no "${m[2]}" script — pnpm --filter exits 0 and does nothing (scripts: ${pkg.scripts.join(", ") || "none"}).`;
+      // Every filtered command in a chain, not just the first: since #1021 a
+      // `pnpm --filter <pkg> test` passes, so it must not shield a later one.
+      for (const m of c.matchAll(cmd(/pnpm\s+--filter\s+(@iracedeck\/[\w-]+)\s+(?:run\s+)?([\w:-]+)/g))) {
+        if (/^(add|remove|install|exec|dlx|update|why|list|ls)$/.test(m[2])) continue;
+        const pkg = ctx.packages()[m[1]];
+        if (!pkg) return `No workspace package named ${m[1]}.`;
+        if (!pkg.scripts.includes(m[2]))
+          return `${m[1]} has no "${m[2]}" script — pnpm --filter exits 0 and does nothing (scripts: ${pkg.scripts.join(", ") || "none"}).`;
+      }
       return null;
     },
   },
