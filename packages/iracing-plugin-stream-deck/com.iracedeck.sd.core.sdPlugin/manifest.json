@@ -394,7 +394,7 @@
         "Icon": "imgs/actions/replay-markers/dial",
         "layout": "layouts/replay-markers.json",
         "TriggerDescription": {
-          "Rotate": "Previous / next marker",
+          "Rotate": "Next / previous marker",
           "Push": "Configured action",
           "Touch": "Configured action"
         }
