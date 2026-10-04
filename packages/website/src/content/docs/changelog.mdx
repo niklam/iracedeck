@@ -22,6 +22,7 @@ _Unreleased_
 
 - The **Default (Terse)** voice is now called **Default (Short callouts)**, a name that says what you get without needing the word "terse". Only the name changes: if it is your selected voice it stays selected, and an installed copy picks up the new name when it updates itself at the next plugin start. See [Race Engineer Voices](/docs/features/race-engineer-voices/#default-short-callouts).
 - Installing or updating a voice pack no longer loads the whole download into memory, so an install stays light on a running plugin whatever the pack's size, and voice packs of up to 2 GB can now be installed. See [Race Engineer Voices](/docs/features/race-engineer-voices/).
+
 **Bug Fixes**
 
 - The Race Engineer's session-start and race-start briefs are no longer lost when iRacing is slow to report the track conditions after a session change, which could silence the qualifying and race briefs of a weekend. He now waits up to 10 seconds for the conditions, then speaks with whatever is known: a missing temperature is left out, and a missing track wetness becomes "Track conditions are still unknown." See [Pit Crew](/docs/actions/audio-voice/pit-crew/#session-start).
