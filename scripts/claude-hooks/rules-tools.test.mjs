@@ -1,7 +1,7 @@
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { generatorsFor, issueFromWorktreePath, missingWorkflows, prRefFrom, remindersFor } from "./rules-post.mjs";
+import { generatorsFor, issueFromWorktreePath, missingWorkflows, remindersFor } from "./rules-post.mjs";
 import { checkAgent, checkAsk, checkEdit, checkSkill } from "./rules-tools.mjs";
 
 const MASTER = "C:\\repo\\iRaceDeck\\master";
@@ -94,13 +94,6 @@ describe("post rules", () => {
     expect(issueFromWorktreePath("C:\\x\\ir-1100")).toBe(1100);
     expect(issueFromWorktreePath("../ir-42")).toBe(42);
     expect(issueFromWorktreePath("C:\\x\\master")).toBeUndefined();
-  });
-  it("reads the PR ref off a gh pr command", () => {
-    expect(prRefFrom("gh pr merge 12 --squash", "merge")).toBe("12");
-    expect(prRefFrom("gh pr merge --squash", "merge")).toBeUndefined();
-    expect(prRefFrom("gh pr merge --squash https://github.com/a/b/pull/3", "merge")).toBe(
-      "https://github.com/a/b/pull/3",
-    );
   });
   it("names the CI workflows a run list is missing", () => {
     expect(missingWorkflows([{ workflowName: "Format" }, { workflowName: "Lint" }])).toEqual(["Tests", "Typecheck"]);

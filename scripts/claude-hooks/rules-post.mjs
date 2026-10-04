@@ -90,14 +90,6 @@ export function issueFromWorktreePath(p) {
   return m ? Number(m[1]) : undefined;
 }
 
-/** The PR reference (`123`, or a URL) named on a `gh pr <verb>` command, or `undefined` for "current branch". */
-export function prRefFrom(command, verb) {
-  const idx = command.indexOf(`pr ${verb}`);
-  if (idx < 0) return undefined;
-  const rest = command.slice(idx + verb.length + 3);
-  return rest.split(/\s+/).find((w) => w && !w.startsWith("-"));
-}
-
 /** The four CI workflows every push to master must run. */
 export const CI_WORKFLOWS = ["Format", "Lint", "Tests", "Typecheck"];
 

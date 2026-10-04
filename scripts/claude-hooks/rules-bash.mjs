@@ -73,18 +73,330 @@ export function missingSpecParts(text) {
 /** A spec is named for its issue; the date and the topic around it are free. */
 const specExistsFor = (files, issue) => files.some((f) => new RegExp(`-issue-${issue}-`).test(f));
 
-/** The pieces of a chained shell command: split at `&&`, `||`, `;`, `|` and newlines. */
-export function segments(command) {
-  return command
-    .split(/\n|&&|\|\||;|\|/)
-    .map((s) => s.trim())
-    .filter(Boolean);
+/**
+ * Lexes a shell command the way bash reads it (#1321), returning three strings
+ * of the command's own length — an index means the same character in each —
+ * and a verdict on the lexing itself:
+ *
+ * - `masked`: the command with its INERT text replaced by `_`: single-quoted
+ *   text (`$'…'` too), double-quoted text and unquoted heredoc bodies except
+ *   the substitutions in them, quoted-delimiter heredoc bodies whole, and `#`
+ *   comments. Substitutions — `$( … )`, backticks, `${ … }`, `$(( … ))` — run,
+ *   so they stay live and are lexed by the same rules: a quote, a heredoc or a
+ *   comment inside one is read as bash reads it. A line continuation becomes
+ *   two spaces, since bash joins the lines.
+ * - `flat`: `masked` with every construct at the top level blanked as well,
+ *   substitutions and escapes included. A word of `flat` that equals its raw
+ *   text is a plain literal word — the only kind `parseMerge` takes as a flag
+ *   or a PR.
+ * - `sure`: false once any construct runs off the end of the string (an open
+ *   quote, substitution, `${`, backtick or heredoc whose terminator line never
+ *   comes), a `)` closes nothing, or a heredoc has no delimiter. Bash refuses
+ *   every one of those, so reaching that state means the lexer misread the
+ *   command — and a misread mask can blank a command bash runs. Consumers fall
+ *   back to the raw text then ({@link trustedMask}).
+ *
+ * One recursive lexer rather than a scanner per context: the three hand-copied
+ * scanners it replaced had already drifted apart, and each gap blanked the rest
+ * of a command (#1321 review).
+ */
+export function maskInert(command) {
+  if (command === maskInert.last) return maskInert.lastOut;
+  const s = command;
+  const n = s.length;
+  const out = s.split("");
+  const flat = s.split("");
+  const pending = [];
+  let sure = true;
+  const blank = (arr, a, b) => {
+    for (let k = a; k < Math.min(b, n); k++) arr[k] = "_";
+  };
+  // The substitution opening at `k`, lexed; returns where it ends, or -1 when none opens there.
+  const substitution = (k, limit, inDouble) => {
+    if (s[k] === "`") return commands(k + 1, limit, "`");
+    if (s[k] !== "$") return -1;
+    if (s[k + 1] === "(") return s[k + 2] === "(" ? arithmetic(k + 3, limit) : commands(k + 2, limit, ")");
+    if (s[k + 1] === "{") return parameter(k + 2, limit, inDouble);
+    return -1;
+  };
+
+  // Single-quoted text from `i`, or ANSI-C `$'…'` text, where `\'` does not close it.
+  const single = (i, limit, ansi) => {
+    for (let k = i; k < limit; k++) {
+      if (ansi && s[k] === "\\") k++;
+      else if (s[k] === "'") {
+        blank(out, i, k);
+        return k + 1;
+      }
+    }
+    blank(out, i, limit);
+    sure = false;
+    return limit;
+  };
+
+  // Double-quoted text (`quoted`), or an unquoted heredoc body up to `limit`: data except its substitutions.
+  const expanding = (i, limit, quoted) => {
+    let k = i;
+    while (k < limit) {
+      if (quoted && s[k] === '"') return k + 1;
+      const sub = substitution(k, limit, true);
+      if (sub >= 0) k = sub;
+      else if (s[k] === "\\") {
+        blank(out, k, Math.min(k + 2, limit));
+        k += 2;
+      } else out[k++] = "_";
+    }
+    if (quoted) sure = false;
+    return limit;
+  };
+
+  // `$(( … ))` or `(( … ))` from `i`: live, with no heredoc or comment inside — `1<<4` is a shift, `16#ff` a base.
+  const arithmetic = (i, limit) => {
+    let depth = 0;
+    let k = i;
+    while (k < limit) {
+      const sub = substitution(k, limit, false);
+      if (sub >= 0) k = sub;
+      else if (s[k] === "\\") k += 2;
+      else if (s[k] === "'") k = single(k + 1, limit, false);
+      else if (s[k] === '"') k = expanding(k + 1, limit, true);
+      else if (s[k] !== ")") {
+        if (s[k] === "(") depth++;
+        k++;
+      } else if (depth > 0) {
+        depth--;
+        k++;
+      } else if (s[k + 1] === ")") return k + 2;
+      else {
+        sure = false;
+        return k + 1;
+      }
+    }
+    sure = false;
+    return limit;
+  };
+
+  // `${ … }` from `i`: live to its `}`, with no comment inside — `${x:- #y}` is one word.
+  const parameter = (i, limit, inDouble) => {
+    let k = i;
+    while (k < limit) {
+      if (s[k] === "}") return k + 1;
+      const sub = substitution(k, limit, inDouble);
+      if (sub >= 0) k = sub;
+      else if (s[k] === "\\") k += 2;
+      else if (s[k] === "'" && !inDouble) k = single(k + 1, limit, false);
+      else if (s[k] === '"') k = expanding(k + 1, limit, true);
+      else k++;
+    }
+    sure = false;
+    return limit;
+  };
+
+  // A heredoc operator's delimiter word from `i` (just past `<<`); queues the body, which starts on the next line.
+  const heredoc = (i, limit) => {
+    let k = i;
+    const strip = s[k] === "-";
+    if (strip) k++;
+    while (s[k] === " " || s[k] === "\t") k++;
+    let delim = "";
+    let quoted = false;
+    while (k < limit && !/[\s;|&<>()`]/.test(s[k])) {
+      if (s[k] === "'" || s[k] === '"') {
+        const end = s.indexOf(s[k], k + 1);
+        if (end < 0 || end >= limit) {
+          sure = false;
+          return limit;
+        }
+        delim += s.slice(k + 1, end);
+        quoted = true;
+        k = end + 1;
+      } else if (s[k] === "\\") {
+        delim += s[k + 1] ?? "";
+        quoted = true;
+        k += 2;
+      } else delim += s[k++];
+    }
+    if (delim) pending.push({ delim, quoted, strip });
+    else sure = false;
+    return k;
+  };
+
+  // The queued heredoc bodies, from `at` (the line after their operators); returns where commands resume.
+  const bodies = (at, limit, top) => {
+    for (const { delim, quoted, strip } of pending.splice(0)) {
+      let p = at;
+      let found = -1;
+      let resume = limit;
+      while (p < limit) {
+        let eol = s.indexOf("\n", p);
+        if (eol < 0 || eol > limit) eol = limit;
+        const line = s.slice(p, eol).replace(/\r$/, "");
+        if ((strip ? line.replace(/^\t+/, "") : line) === delim) {
+          found = p;
+          resume = Math.min(eol + 1, limit);
+          break;
+        }
+        p = eol + 1;
+      }
+      const end = found < 0 ? limit : found;
+      if (quoted) blank(out, at, end);
+      else expanding(at, end, false);
+      if (top) blank(flat, at, end);
+      if (found < 0) {
+        sure = false;
+        return limit;
+      }
+      at = resume;
+    }
+    return at;
+  };
+
+  // Text bash runs as commands: the top level (`close` null), a `$( … )` (")") or a backtick substitution ("`").
+  const commands = (i, limit, close) => {
+    let depth = 0;
+    // Whether `i` starts a word, so a `#` there opens a comment and a `((` an
+    // arithmetic command: after a blank or one of `;&|()`. Kept as state, not
+    // read off the previous character, because in `a\ #b` that blank is escaped
+    // and `#b` goes on with the word.
+    let atWord = true;
+    while (i < limit) {
+      const ch = s[i];
+      const from = i;
+      if (close === "`" && ch === "`") return i + 1;
+      if (ch === "\\" && s[i + 1] === "\n") {
+        // A line continuation: bash removes it, joining the lines; the word, if any, goes on.
+        out[i] = out[i + 1] = " ";
+        if (!close) flat[i] = flat[i + 1] = " ";
+        i += 2;
+        continue;
+      }
+      let sub = -1;
+      // A `case` list's pattern `)` reads here as a closer — of a substitution
+      // it ends early, and inside `"$(…)"` the rest is then blanked as data with
+      // the lex still "sure" (#1328 review). The lexer does not model case lists,
+      // so meeting one at any depth means the mask cannot be trusted.
+      if (atWord && /^case(?![\w-])/.test(s.slice(i, i + 5))) sure = false;
+      if (atWord && ch === "#") {
+        // To the end of the line — or of a backtick substitution, whose text bash cuts out first.
+        let end = s.indexOf("\n", i);
+        if (end < 0 || end > limit) end = limit;
+        const tick = close === "`" ? s.indexOf("`", i) : -1;
+        if (tick >= 0 && tick < end) end = tick;
+        blank(out, i, end);
+        i = end;
+      } else if (atWord && ch === "(" && s[i + 1] === "(") i = arithmetic(i + 2, limit);
+      else if ((sub = substitution(i, limit, false)) >= 0) i = sub;
+      else if (ch === "\\") i += 2;
+      else if (ch === "'") i = single(i + 1, limit, false);
+      else if (ch === "$" && s[i + 1] === "'") i = single(i + 2, limit, true);
+      else if (ch === '"') i = expanding(i + 1, limit, true);
+      else {
+        // Live text: a word, a paren, a here-string, a heredoc operator, a newline.
+        if (ch === "<" && s[i + 1] === "<") i = s[i + 2] === "<" ? i + 3 : heredoc(i + 2, limit);
+        else if (ch === "\n" && pending.length) i = bodies(i + 1, limit, !close);
+        else {
+          if (ch === "(") depth++;
+          else if (ch === ")" && depth > 0) depth--;
+          else if (ch === ")" && close === ")") return i + 1;
+          else if (ch === ")") sure = false; // closes nothing: bash would refuse the command
+          i++;
+        }
+        atWord = " \t\n;&|()".includes(ch);
+        continue;
+      }
+      atWord = false;
+      if (!close) blank(flat, from, i);
+    }
+    if (close) sure = false;
+    return limit;
+  };
+
+  commands(0, n, null);
+  if (pending.length) sure = false;
+  maskInert.last = command;
+  maskInert.lastOut = { masked: out.join(""), flat: flat.join(""), sure };
+  return maskInert.lastOut;
+}
+
+/**
+ * A word, at a word boundary in live text, that hands a STRING or stdin to a
+ * shell — `bash -c '…'`, `eval "…"`, `bash <<'EOF'`, `xargs sh -c`, `trap '…'`,
+ * `timeout 900 bash -c` — or runs its argument (`timeout`, `sudo`, `watch`).
+ * The text those carry is executed, not inert, so masking it would hide the
+ * very commands the rules exist for (#1321 review).
+ */
+const SHELL_FED =
+  /(?:^|[\s;&|(`/])(?:bash|sh|zsh|dash|ksh|fish|eval|xargs|parallel|watch|su|sudo|source|timeout|trap|pwsh|powershell|cmd)(?:\.exe)?(?=[\s;&|)`]|$)/m;
+
+/**
+ * The text the rules read: `{ text, flat, trusted }`. The mask is trusted only
+ * when the lexer is sure of it AND nothing in the live text feeds a string to a
+ * shell; otherwise `text` and `flat` are the raw command — the pre-#1321
+ * behaviour, which over-matches. The pre-hook is a safety gate, so a doubt
+ * costs a false deny on a mention, never a missed command.
+ */
+function view(command) {
+  if (command !== view.last) {
+    const { masked, flat, sure } = maskInert(command);
+    const trusted = sure && !SHELL_FED.test(masked);
+    view.last = command;
+    view.out = trusted ? { text: masked, flat, trusted } : { text: command, flat: command, trusted };
+  }
+  return view.out;
+}
+
+/** The command with its inert text masked where the mask is trusted, else the raw command ({@link view}). */
+export const trustedMask = (command) => view(command).text;
+
+/** `[start, end)` ranges of `text` between the separators `sep` finds in it. */
+function ranges(text, sep) {
+  const global = new RegExp(sep.source, sep.flags.includes("g") ? sep.flags : sep.flags + "g");
+  const out = [];
+  let start = 0;
+  for (const m of text.matchAll(global)) {
+    out.push([start, m.index]);
+    start = m.index + m[0].length;
+  }
+  out.push([start, text.length]);
+  return out;
+}
+
+/** The separators a chain is split at for `cd`/`-C` tracking; the merge and tag rules also split at a lone `&`. */
+const CHAIN = /\n|&&|\|\||;|\|/;
+const CHAIN_AND_BACKGROUND = /&&|\|\||[;|&\n]/;
+
+/**
+ * Every match of `re` in the trusted-masked text, with its capture groups read
+ * from the RAW command at the same indices: the mask decides WHERE a command
+ * is, the raw text says what its arguments are (a quoted path stays readable).
+ * Each result is the array of raw groups, with `index` set.
+ */
+export function* matchesAt(command, re) {
+  const flags = new Set([...re.flags, "g", "d"]);
+  const global = new RegExp(re.source, [...flags].join(""));
+  for (const m of trustedMask(command).matchAll(global)) {
+    const raw = m.indices.map((r) => (r ? command.slice(r[0], r[1]) : undefined));
+    raw.index = m.index;
+    yield raw;
+  }
+}
+
+/** The first of {@link matchesAt}, or `null`. */
+export function matchAt(command, re) {
+  for (const m of matchesAt(command, re)) return m;
+  return null;
 }
 
 const QUOTED_ARG = String.raw`("([^"]+)"|'([^']+)'|(\S+))`;
-const CD_RE = new RegExp(String.raw`^(?:\w+=\S*\s+)*cd\s+${QUOTED_ARG}\s*$`);
-const GIT_C_RE = new RegExp(String.raw`\bgit\s+-C\s+${QUOTED_ARG}`);
-const argOf = (m) => m?.[2] ?? m?.[3] ?? m?.[4];
+const CD_RE = new RegExp(String.raw`^\s*(?:\w+=\S*\s+)*cd\s+${QUOTED_ARG}\s*$`, "d");
+const GIT_C_RE = new RegExp(String.raw`\bgit\s+-C\s+${QUOTED_ARG}`, "d");
+
+/** The argument `re` (a {@link QUOTED_ARG} regex) finds in `text[a, b)`, read from the raw `command`. */
+function argIn(command, text, a, b, re) {
+  const m = re.exec(text.slice(a, b));
+  const at = m?.indices[2] ?? m?.indices[3] ?? m?.indices[4];
+  return at && command.slice(a + at[0], a + at[1]);
+}
 
 /**
  * The working directory of the git command a rule matched: the session cwd,
@@ -96,17 +408,22 @@ const argOf = (m) => m?.[2] ?? m?.[3] ?? m?.[4];
  * there, and deny the add as "inside the repo". The `cd` walk is what lets a
  * session whose cwd is `master` be judged on the tree it pushes from:
  * `cd ../ir-1143 && git push` used to ask with "branch master".
+ *
+ * The chain is split, and each `cd` and `-C` found, in the trusted-masked text,
+ * and the directory then read from the raw text at that spot — so a
+ * `git -C ../master` quoted in a commit message moves nothing (#1321 review).
  */
 export function gitCwd(command, cwd, re) {
-  const segs = segments(command);
-  const at = re ? segs.findIndex((s) => re.test(s)) : -1;
-  const scope = at >= 0 ? segs[at] : command;
+  const text = trustedMask(command);
+  const segs = ranges(text, CHAIN).filter(([a, b]) => command.slice(a, b).trim());
+  const at = re ? segs.findIndex(([a, b]) => re.test(text.slice(a, b))) : -1;
   let base = cwd;
-  for (const s of segs.slice(0, at >= 0 ? at : segs.length)) {
-    const dir = argOf(s.match(CD_RE));
+  for (const [a, b] of segs.slice(0, at >= 0 ? at : segs.length)) {
+    const dir = argIn(command, text, a, b, CD_RE);
     if (dir && dir !== "-") base = path.resolve(base, dir);
   }
-  const dir = argOf(scope.match(GIT_C_RE));
+  const [a, b] = at >= 0 ? segs[at] : [0, command.length];
+  const dir = argIn(command, text, a, b, GIT_C_RE);
   return dir ? path.resolve(base, dir) : base;
 }
 
@@ -115,7 +432,8 @@ export function words(command) {
   return [...command.matchAll(/"([^"]*)"|'([^']*)'|(\S+)/g)].map((m) => m[1] ?? m[2] ?? m[3]);
 }
 
-const has = (command, re) => re.test(command);
+/** An anchored rule ({@link cmd}) tests the trusted-masked text; an unanchored one, which must fire on any occurrence, the raw text. */
+const has = (command, re) => re.test(re.anchored ? trustedMask(command) : command);
 
 /**
  * What may stand between a command boundary and the command itself and still
@@ -123,26 +441,35 @@ const has = (command, re) => re.test(command);
  * that open a command list (`if …; then gh pr merge …` would otherwise pass
  * every trap unchecked, #1307 review), and the wrappers that run the next
  * word as a command, with their own options — the ones that take a value
- * (`env -u NAME`, `env -C DIR`, `env -S STRING`, `exec -a NAME`) with it.
+ * (`env -u NAME`, `env -C DIR`, `env -S STRING`, `exec -a NAME`,
+ * `timeout -k 5`, `xargs -I {}`) with it, and `timeout`'s duration.
  * A value never starts with `-`, so every token has exactly one parse: were a
  * `-u` free to take the next `-u` as its value, a long run of them on a
  * command that does not match backtracks exponentially, and regex time is not
  * bounded by the hook's spawn deadline.
  *
  * A heuristic, not a shell parser: the hooks catch mistakes, not deliberate
- * obfuscation, so a command handed to `bash -c` or `xargs` is out of reach.
+ * obfuscation. A string handed to a shell (`bash -c`, `eval`) is not lexed —
+ * the rules read the raw command then ({@link view}).
  */
-const COMMAND_LEAD = String.raw`(?:(?:if|then|do|else|elif|while|until|!|\{)\s+|(?:time|command|exec|env|nohup)(?:\s+(?:-[uCSa]|--unset|--chdir|--split-string)\s+[^\s-]\S*|\s+-\S+)*\s+|\w+=\S*\s+)*`;
+const COMMAND_LEAD = String.raw`(?:(?:if|then|do|else|elif|while|until|!|\{)\s+|(?:time|command|exec|env|nohup)(?:\s+(?:-[uCSa]|--unset|--chdir|--split-string)\s+[^\s-]\S*|\s+-\S+)*\s+|timeout(?:\s+(?:-[ks]|--kill-after|--signal)\s+[^\s-]\S*|\s+-\S+)*\s+\d[\d.]*[smhd]?\s+|xargs(?:\s+-[IdEeLnPs]\s+[^\s-]\S*|\s+-\S+)*\s+|\w+=\S*\s+)*`;
 
 /**
  * Anchors a command regex to COMMAND POSITION: the start of the string or of
- * a line, or right after `|`, `;`, `&&`, `(` or `$(`, with any leading
- * {@link COMMAND_LEAD}. Without this, a grep, an echo or a docs edit that
- * merely MENTIONS a trapped shape (`grep 'pnpm exec vitest'`) would be denied.
+ * a line (after any indent), or right after `|`, `;`, `&`, `(`, `)` or a
+ * backtick, with any leading {@link COMMAND_LEAD}. Without this, a grep, an
+ * echo or a docs edit that merely MENTIONS a trapped shape
+ * (`grep 'pnpm exec vitest'`) would be denied.
  */
 export function cmd(re) {
   const flags = new Set([...re.flags, "m"]);
-  return new RegExp(String.raw`(?:^|[|;&(]\s*|\$\(\s*)${COMMAND_LEAD}(?:${re.source})`, [...flags].join(""));
+  const anchored = new RegExp(
+    String.raw`(?:^[ \t]*|[|;&()\x60]\s*)${COMMAND_LEAD}(?:${re.source})`,
+    [...flags].join(""),
+  );
+  // Read by `has`: an anchored regex is tested on the trusted-masked text.
+  anchored.anchored = true;
+  return anchored;
 }
 
 // ---------------------------------------------------------------------------
@@ -152,6 +479,23 @@ export const GIT_PUSH = cmd(/git\s+(-C\s+\S+\s+)?push\b/);
 export const GIT_COMMIT = cmd(/git\s+(-C\s+\S+\s+)?commit\b/);
 export const GIT_WORKTREE_ADD = cmd(/git\s+(?:-C\s+\S+\s+)?worktree\s+add\b(.*)$/);
 export const GIT_WORKTREE_REMOVE = cmd(/git\s+(?:-c\s+\S+\s+)?(?:-C\s+\S+\s+)?worktree\s+remove\b(.*)$/);
+
+/**
+ * The target of the `git worktree add` at command position, read from the raw
+ * text: `null` when there is no such command, `undefined` when it names no
+ * target. Shared by the pre-hook rule and the post-hook's board move, so the
+ * card that moves is always the tree the rule judged (#1321 review).
+ */
+export function worktreeAddTarget(command) {
+  const m = matchAt(command, GIT_WORKTREE_ADD);
+  if (!m) return null;
+  const args = words(m[1]);
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "-b" || args[i] === "-B" || args[i] === "--reason") i++;
+    else if (!args[i].startsWith("-")) return args[i];
+  }
+  return undefined;
+}
 
 /** CodeRabbit's login as `gh` reports it — exact, so a look-alike account cannot stand in for it. */
 const CODERABBIT = /^coderabbitai(\[bot\])?$/i;
@@ -182,43 +526,95 @@ const MERGE_VALUE_FLAGS = new Set([
   "-R",
 ]);
 
-/** The segments of a chained command that are a `gh pr merge` (split at `&&`, `||`, `;`, `|`, `&`, newline). */
+/**
+ * The segments of a chained command that are a `gh pr merge`, split at `&&`,
+ * `||`, `;`, `|`, `&` and newline in the trusted-masked text: each a
+ * `{ raw, flat, trusted }` slice for {@link parseMerge}.
+ */
 export function mergeSegments(command) {
   const lead = new RegExp(String.raw`^[\s($]*${COMMAND_LEAD}gh\s+pr\s+merge\b`);
-  return command.split(/&&|\|\||[;|&\n]/).filter((seg) => lead.test(seg));
+  const { text, flat, trusted } = view(command);
+  return ranges(text, CHAIN_AND_BACKGROUND)
+    .filter(([a, b]) => lead.test(text.slice(a, b)))
+    .map(([a, b]) => ({ raw: command.slice(a, b), flat: flat.slice(a, b), trusted }));
 }
 
-/** Every `gh pr merge` anywhere in the string — the backstop for a separator the split does not know. */
+/**
+ * The first `gh pr merge` outside inert text, at command position or not,
+ * parsed ({@link parseMerge}); `undefined` when there is none. The post-hook's
+ * trigger: a merge run through a wrapper the anchor does not know still gets
+ * its board move and CI run list.
+ */
+export function firstMerge(command) {
+  const { text, flat, trusted } = view(command);
+  const m = /\bgh\s+pr\s+merge\b/.exec(text);
+  if (!m) return undefined;
+  const rest = text.slice(m.index).search(CHAIN_AND_BACKGROUND);
+  const end = rest < 0 ? text.length : m.index + rest;
+  return parseMerge({ raw: command.slice(m.index, end), flat: flat.slice(m.index, end), trusted });
+}
+
+/**
+ * Every `gh pr merge` in the RAW text — the backstop for a separator the split
+ * does not know, and for a merge the mask hid. It counts raw text so that it
+ * shares no blind spot with the mask it backs up (#1321 review), and it is
+ * reached only once a merge at command position has matched, so a command that
+ * merely mentions one never pays for it.
+ */
 const mergeMentions = (command) => (command.match(/\bgh\s+pr\s+merge\b/g) ?? []).length;
 
 /**
  * One `gh pr merge` segment's own arguments: the PR ref, the boolean flags and
  * the `--match-head-commit` value (the last one, as gh's flag parser takes
- * it). Read from the segment's words, so a flag inside `--body "…"`, after a
- * `#`, or in another command of the chain is not taken for the merge's own.
+ * it), and whether they were `readable`. Read from the segment's words, so a
+ * flag inside `--body "…"`, after a `#`, behind a redirection or in another
+ * command of the chain is not taken for the merge's own.
+ *
+ * With a trusted mask the words are the `flat` text's: a quoted value is one
+ * word however many newlines, `;` or `--admin` it carries, and only a word
+ * whose raw text equals its flat shape — a plain literal — is taken as a flag,
+ * the PR or the pin. A quoted or substituted PR is unreadable, and the gate
+ * refuses it rather than judging the current branch's PR in its place; a
+ * quoted pin reads as no pin, and a quoted flag as no flag, both of which
+ * refuse or check more, never less. Without a trusted mask the raw segment is
+ * split by {@link words}, as before #1321.
  */
-export function parseMerge(segment) {
-  const w = words(segment);
-  const at = w.findIndex((x, k) => x === "merge" && w[k - 1] === "pr");
+export function parseMerge({ raw, flat, trusted }) {
+  const tokens = trusted
+    ? [...flat.matchAll(/\S+/g)].map((m) => ({ word: raw.slice(m.index, m.index + m[0].length), shape: m[0] }))
+    : words(raw).map((w) => ({ word: w, shape: w }));
+  const literal = (t) => t !== undefined && t.word === t.shape;
+  const at = tokens.findIndex((t, k) => t.shape === "merge" && tokens[k - 1]?.shape === "pr");
   const flags = new Set();
   let ref;
   let pin;
-  for (let k = at + 1; k < w.length; k++) {
-    const a = w[k];
-    if (a.startsWith("#")) break;
-    if (!a.startsWith("-")) {
-      ref ??= a;
+  let positional = false;
+  let readable = at >= 0;
+  for (let k = at + 1; readable && k < tokens.length; k++) {
+    const t = tokens[k];
+    if (t.word.startsWith("#")) break;
+    if (/^\d*[<>]/.test(t.shape)) {
+      // A redirection; a bare operator takes the next word as its target.
+      if (/^\d*(?:[<>]{1,3}-?|[<>]&)$/.test(t.shape)) k++;
       continue;
     }
-    const eq = a.indexOf("=");
-    const name = eq > 0 ? a.slice(0, eq) : a;
+    if (!t.shape.startsWith("-")) {
+      if (!positional) {
+        positional = true;
+        if (literal(t)) ref = t.word;
+        else readable = false;
+      }
+      continue;
+    }
+    const eq = t.shape.indexOf("=");
+    const name = eq > 0 ? t.shape.slice(0, eq) : t.shape;
     if (!MERGE_VALUE_FLAGS.has(name)) flags.add(name);
     else {
-      const value = eq > 0 ? a.slice(eq + 1) : w[++k];
-      if (name === "--match-head-commit") pin = value;
+      const value = eq > 0 ? { word: t.word.slice(eq + 1), shape: t.shape.slice(eq + 1) } : tokens[++k];
+      if (name === "--match-head-commit") pin = literal(value) ? value.word : undefined;
     }
   }
-  return { ref, flags, pin };
+  return { ref, flags, pin, readable };
 }
 
 const names = (paths, mark = () => "") =>
@@ -289,13 +685,20 @@ export const rules = [
     // on 2026-09-08: the hook sees the command, never the conversation, so it
     // prompted just as loudly when the maintainer had asked for the push. The
     // manual-test gate on pushes and PRs is a prose rule (issue-workflow.md).
+    // Judged per command of the chain, so a `--dry-run` on another push, in a
+    // string or in a comment does not wave a real tag push through (#1321
+    // review). The tag itself is read from the raw text: `"v1.2.3"` is a tag too.
     name: "git push: a tag cuts a release",
-    test: (c) =>
-      has(c, GIT_PUSH) &&
-      !has(c, /--dry-run/) &&
-      has(c, /\bpush(?:\s[^|&;]*)?\s(--tags\b|v\d+\.\d+)/) && {
-        ask: "Pushing a tag cuts a release. The maintainer confirms.",
-      },
+    test: (c) => {
+      const text = trustedMask(c);
+      const tagPush = ranges(text, CHAIN_AND_BACKGROUND).some(
+        ([a, b]) =>
+          GIT_PUSH.test(text.slice(a, b)) &&
+          !/--dry-run\b/.test(text.slice(a, b)) &&
+          /\bpush(?:\s[^|&;]*)?\s["']?(--tags\b|v\d+\.\d+)/.test(c.slice(a, b)),
+      );
+      return tagPush && { ask: "Pushing a tag cuts a release. The maintainer confirms." };
+    },
   },
   {
     name: "gh --body @- does not read stdin",
@@ -306,8 +709,16 @@ export const rules = [
   {
     name: "gh pr create: the title must be a complete conventional subject with the issue number",
     test: (c) => {
-      if (!has(c, cmd(/gh\s+pr\s+create\b/))) return null;
-      const title = c.match(/(?:--title|-t)\s+(?:"([^"]*)"|'([^']*)'|(\S+))/);
+      const create = matchAt(c, cmd(/gh\s+pr\s+create\b/));
+      if (!create) return null;
+      // The flag is found in the masked text, after the create, so a `-t` inside
+      // a body is not it; its quoted value is then read from the raw text.
+      const flag = /\s(?:--title|-t)\s+/g;
+      flag.lastIndex = create.index;
+      const f = flag.exec(trustedMask(c));
+      const value = /"([^"]*)"|'([^']*)'|(\S+)/y;
+      value.lastIndex = f ? f.index + f[0].length : 0;
+      const title = f && value.exec(c);
       const t = title?.[1] ?? title?.[2] ?? title?.[3];
       if (t !== undefined && !TITLE_RE.test(t))
         return `PR title "${t}" must be \`<type>(<scope>): <description> (#<issue>)\` — it becomes the squash commit and drives the release notes (.claude/rules/build-and-commit.md).`;
@@ -326,6 +737,8 @@ export const rules = [
           ? "One `gh pr merge` per command: each merge is checked on its own, so run them one at a time."
           : "Could not isolate the `gh pr merge` in this command; run it on its own.";
       const merge = parseMerge(segments[0]);
+      if (!merge.readable)
+        return "Could not read this `gh pr merge`'s own arguments (a quoted or substituted PR, or a merge inside a substitution or heredoc); run it on its own with the PR number or URL as a plain word.";
       const ref = merge.ref;
       const pr = ctx.prView(ref, ctx.cwd);
       if (!pr)
@@ -411,18 +824,7 @@ export const rules = [
   {
     name: "git worktree add: a sibling of the repo, from a fresh origin/master",
     test: (c, ctx) => {
-      const m = c.match(GIT_WORKTREE_ADD);
-      if (!m) return null;
-      const args = words(m[1]);
-      let target;
-      for (let i = 0; i < args.length; i++) {
-        const a = args[i];
-        if (a === "-b" || a === "-B" || a === "--reason") i++;
-        else if (!a.startsWith("-")) {
-          target = a;
-          break;
-        }
-      }
+      const target = worktreeAddTarget(c);
       if (!target) return null;
       const dir = gitCwd(c, ctx.cwd, GIT_WORKTREE_ADD);
       const resolved = path.resolve(dir, target);
@@ -455,7 +857,7 @@ export const rules = [
   {
     name: "git worktree remove: not while a deck host is linked into it",
     test: (c, ctx) => {
-      const m = c.match(GIT_WORKTREE_REMOVE);
+      const m = matchAt(c, GIT_WORKTREE_REMOVE);
       if (!m) return null;
       const target = words(m[1]).find((w) => !w.startsWith("-"));
       if (!target) return null;
@@ -486,11 +888,20 @@ export const rules = [
       "`pnpm build --force` forwards no argv (scripts/build.mjs); use `pnpm build:force`.",
   },
   {
+    // `pipefail` counts only in live text ahead of the pipe — a `set -o pipefail`
+    // earlier in the chain, not the word in a string or a comment (#1321 review).
+    // `>&\d` is the only way past a `>&`, so `2>&1` has one parse: the old
+    // `[^|&;\n]|\d?>&\d` had two for each, and backtracked exponentially on a
+    // long run of them with no pipe at the end.
     name: "a piped pnpm build/test needs pipefail",
-    test: (c) =>
-      has(c, cmd(/pnpm\s+(run\s+)?(build|test|typecheck|lint|format)\b(?:[^|&;\n]|\d?>&\d)*\|/)) &&
-      !has(c, /pipefail/) &&
-      "Piping `pnpm build/test/...` hides its exit code (you get tail's). Prefix `set -o pipefail;` or check the log before claiming green.",
+    test: (c) => {
+      const m = matchAt(c, cmd(/pnpm\s+(run\s+)?(build|test|typecheck|lint|format)\b(?:[^|&;\n]|>&\d)*\|(?!\|)/));
+      return (
+        m &&
+        !/pipefail/.test(trustedMask(c).slice(0, m.index)) &&
+        "Piping `pnpm build/test/...` hides its exit code (you get tail's). Prefix `set -o pipefail;` or check the log before claiming green."
+      );
+    },
   },
   {
     name: "run vitest through the root script",
@@ -507,7 +918,8 @@ export const rules = [
     test: (c, ctx) => {
       // Every filtered command in a chain, not just the first: since #1021 a
       // `pnpm --filter <pkg> test` passes, so it must not shield a later one.
-      for (const m of c.matchAll(cmd(/pnpm\s+--filter\s+(@iracedeck\/[\w-]+)\s+(?:run\s+)?([\w:-]+)/g))) {
+      // Located in the trusted mask, read raw (#1321), so a mention is no command.
+      for (const m of matchesAt(c, cmd(/pnpm\s+--filter\s+(@iracedeck\/[\w-]+)\s+(?:run\s+)?([\w:-]+)/))) {
         if (/^(add|remove|install|exec|dlx|update|why|list|ls)$/.test(m[2])) continue;
         const pkg = ctx.packages()[m[1]];
         if (!pkg) return `No workspace package named ${m[1]}.`;
@@ -520,7 +932,7 @@ export const rules = [
   {
     name: "gh run list --commit needs the full sha",
     test: (c) => {
-      const m = c.match(cmd(/gh\s+run\s+list\b[^|&;]*--commit[= ]([0-9a-f]+)\b/));
+      const m = matchAt(c, cmd(/gh\s+run\s+list\b[^|&;]*--commit[= ]([0-9a-f]+)\b/));
       return (
         m &&
         m[1].length < 40 &&
@@ -548,10 +960,14 @@ export const rules = [
       "`IRACEDECK_MOCK=0` still forces the mock (any non-empty value does). Use `IRACEDECK_REAL_NATIVE=1`.",
   },
   {
+    // The arguments are read raw, since MSYS mangles a quoted path just the
+    // same; the fix counts only in live text up to the `git show` it covers.
     name: "git show <ref/with/slash>:<dot-path> is mangled by MSYS",
     test: (c) =>
-      has(c, cmd(/git\s+show\s+\S*\/\S*:\./)) &&
-      !has(c, /MSYS_NO_PATHCONV/) &&
+      [...matchesAt(c, cmd(/git\s+show\b([^|&;\n]*)/))].some(
+        (m) =>
+          /(?:^|\s)\S*\/\S*:\./.test(m[1]) && !/MSYS_NO_PATHCONV/.test(trustedMask(c).slice(0, m.index + m[0].length)),
+      ) &&
       "Git Bash mangles `git show <ref-with-slash>:<.dot-path>`. Prefix `MSYS_NO_PATHCONV=1`, or use `git -C <tree> show HEAD:…`.",
   },
   {

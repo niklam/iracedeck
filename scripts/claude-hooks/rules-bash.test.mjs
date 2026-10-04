@@ -1,7 +1,20 @@
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { checkBash, classifyCheck, cmd, gitCwd, words } from "./rules-bash.mjs";
+import {
+  checkBash,
+  classifyCheck,
+  cmd,
+  firstMerge,
+  GIT_COMMIT,
+  GIT_WORKTREE_REMOVE,
+  gitCwd,
+  maskInert,
+  matchAt,
+  trustedMask,
+  words,
+  worktreeAddTarget,
+} from "./rules-bash.mjs";
 
 // Built through `path`, not written as Windows literals: CI runs on Linux, where
 // `C:\repo\master` is a RELATIVE path and every resolve lands under the runner's cwd.
@@ -918,5 +931,397 @@ describe("command-shape traps", () => {
   it("two-dot diff against master", () => {
     deny("git diff origin/master..HEAD --stat");
     passes("git diff origin/master...HEAD --stat");
+  });
+});
+
+// #1321: a trapped shape fires where the shell RUNS it, never where a command
+// merely carries it as data — every case below is one that misfired on 2026-10-03.
+describe("a mention is not a command (#1321)", () => {
+  it("masks inert text without moving anything", () => {
+    const command = `grep -n 'a | b' f && echo "x; $(date) y" # tail`;
+    const { masked, flat, sure } = maskInert(command);
+    expect(sure).toBe(true);
+    expect(masked).toBe(`grep -n '_____' f && echo "___$(date)__" ______`);
+    expect(flat).toBe(`grep -n _______ f && echo ______________ ______`);
+  });
+
+  it("masks a quoted-delimiter heredoc body whole, and keeps an unquoted one's substitutions", () => {
+    expect(maskInert("cat <<'EOF'\nrun $(x)\nEOF\nls").masked).toBe("cat <<'EOF'\n_________EOF\nls");
+    expect(maskInert("cat <<EOF\nrun $(x)\nEOF\nls").masked).toBe("cat <<EOF\n____$(x)_EOF\nls");
+    expect(maskInert("cat <<-EOF\n\tbody\n\tEOF\nls").masked).toBe("cat <<-EOF\n______\tEOF\nls");
+  });
+
+  it("splits a chain where the shell splits it, not at a separator inside quotes", () => {
+    const status = cmd(/git\s+status\b/);
+    expect(gitCwd(`echo 'a; cd ../ir-9' && git status`, MASTER, status)).toBe(MASTER);
+    expect(gitCwd(`echo 'a;b' && cd ../ir-5 && git status`, MASTER, status)).toBe(tree("ir-5"));
+  });
+
+  it("lets the day's false triggers through", () => {
+    for (const command of [
+      // The day's grep had an unmatched backtick, which bash refuses; these are the two valid spellings of it.
+      "grep -n 'a\\|gh pr merge` | deny' .claude/rules/hooks.md",
+      'grep -n "a\\|gh pr merge\\` | deny" .claude/rules/hooks.md',
+      `git commit -q -F - <<'EOF'\nfix: x (#1)\n\nso \`gh pr merge 7 … & gh pr\nmerge 8 --admin\` read as one\nEOF`,
+      `gh pr comment 1313 --body "two merges joined by & gh pr merge 8 --squash --admin"`,
+      `python - <<'EOF'\nprint("pnpm exec vitest run")\nEOF`,
+      `grep -rn "gh pr merge" scripts`,
+    ])
+      passes(command);
+  });
+
+  it("still catches a real command in every position", () => {
+    for (const command of [
+      "ls; gh pr merge 7 --squash",
+      "ls && gh pr merge 7 --squash",
+      `echo "$(gh pr merge 7 --squash)"`,
+      "cat <<EOF\n$(gh pr merge 7 --squash)\nEOF",
+      "echo 'quoted' && gh pr merge 7 --squash",
+    ])
+      // A merge inside a substitution mid-command is caught but cannot be isolated
+      // or read; either way it is refused.
+      expect(deny(command)).toMatch(/refusing to merge blind|Could not isolate|Could not read this/);
+    deny(`echo "done" && pnpm exec vitest run`);
+  });
+
+  it("locates a command in the masked text and reads its arguments from the raw text", () => {
+    const remove = matchAt(
+      `echo "x; git worktree remove ../ir-5" && git worktree remove "../ir 6"`,
+      GIT_WORKTREE_REMOVE,
+    );
+    expect(remove[1]).toBe(` "../ir 6"`);
+    expect(matchAt(`echo "sed -i s/a/b/ f"`, cmd(/sed\s+-i/))).toBeNull();
+    expect(matchAt("grep 'gh issue create' f", cmd(/gh\s+issue\s+create\b/))).toBeNull();
+    expect(matchAt("ls && sed -i s/a/b/ f", cmd(/sed\s+-i/))).not.toBeNull();
+  });
+});
+
+// The #1321 review (2026-10-04): the first mask failed OPEN — it blanked text
+// bash executes, so real commands passed every anchored rule. Each case below
+// is a command from that review; the real ones must get the verdict the
+// pre-#1321 hook gave them, the mentions must pass.
+describe("the mask fails closed (#1321 review)", () => {
+  const REAL = /refusing to merge blind|Could not isolate|Could not read this|One `gh pr merge`/;
+  const merges = (commands, c = ctx()) => {
+    for (const command of commands) expect(deny(command, c), command).toMatch(REAL);
+  };
+  const linked = ctx({ linkTargets: () => [{ host: "Stream Deck", target: tree("ir-1013", "plugin") }] });
+  const green = () => ({
+    number: 7,
+    state: "OPEN",
+    headRefOid: "1".repeat(40),
+    headRefName: "ir-7",
+    reviewDecision: "APPROVED",
+    mergeStateStatus: "CLEAN",
+    statusCheckRollup: [{ __typename: "CheckRun", name: "Tests", status: "COMPLETED", conclusion: "SUCCESS" }],
+    reviews: [{ author: { login: "coderabbitai" }, state: "APPROVED", commit: { oid: "1".repeat(40) } }],
+  });
+
+  describe("the lexer is trusted only when it is sure", () => {
+    it("reports an unterminated or impossible construct as unsure", () => {
+      for (const command of [
+        `echo 'open`,
+        `echo "open`,
+        `echo $(open`,
+        "echo `open",
+        "echo ${open",
+        `echo $((1 + 2)`,
+        `cat <<EOF\nno terminator`,
+        `x=$(cat <<'EOF'\nbody\nEOF)\nls`,
+        `cat <<EOF`,
+        `cat << ;`,
+        `case x in x) ls ;; esac`,
+        `echo )`,
+      ])
+        expect(maskInert(command).sure, command).toBe(false);
+    });
+
+    it("lexes here-strings, arithmetic, ANSI-C quotes, odd delimiters and parameter words as bash does", () => {
+      for (const command of [
+        `grep -q OPEN <<< "$(gh pr view 7)"\nls`,
+        `echo $((1<<4))\nls`,
+        `(( x = 1 << 3 ))\nls`,
+        `echo $'it\\'s'`,
+        `cat <<E'OF'\nbody\nEOF\nls`,
+        `cat <<"E"OF\nbody\nEOF\nls`,
+        `cat <<@END\nbody\n@END\nls`,
+        `cat <<END+\nbody\nEND+\nls`,
+        "echo ${x:- #y}",
+        `x="$(echo ")")"`,
+        `git commit -m "$(cat <<'EOF'\nfix: x\n\n1) the 12" record\nEOF\n)"`,
+        "echo `echo a # c` b",
+      ])
+        expect(maskInert(command).sure, command).toBe(true);
+      expect(maskInert("echo ${x:- #y} && ls").masked).toBe("echo ${x:- #y} && ls");
+      expect(maskInert("ls;# don't\nls").masked).toBe("ls;_______\nls");
+      expect(maskInert("echo `echo a # c` b").masked).toBe("echo `echo a ___` b");
+      expect(maskInert(`cat <<E'OF'\ngh pr merge\nEOF`).masked).toBe(`cat <<E'OF'\n____________EOF`);
+    });
+
+    it("reads the raw command when a string or stdin is handed to a shell", () => {
+      for (const command of [
+        `bash -c 'gh pr merge 7'`,
+        `sh -c "x"`,
+        `eval "x"`,
+        `bash <<'EOF'\nx\nEOF`,
+        `timeout 9 bash -c 'x'`,
+        `ls | xargs sh -c 'x'`,
+        `trap 'x' EXIT`,
+      ])
+        expect(trustedMask(command), command).toBe(command);
+      expect(trustedMask(`python - <<'EOF'\nx\nEOF`)).toBe(`python - <<'EOF'\n__EOF`);
+    });
+  });
+
+  it("finding 1: a here-string or an arithmetic `<<` is not a heredoc", () => {
+    merges([
+      `grep -q OPEN <<< "$(gh pr view 7 --json state)"\ngh pr merge 7 --squash --admin`,
+      `IFS=, read -r a b <<< "1,2"\ngh pr merge 7 --squash`,
+      `mapfile -t arr <<< "$x"\ngh pr merge 7 --squash`,
+      `while read -r l; do echo "$l"; done <<< "$list"\ngh pr merge 7 --squash`,
+      `echo $((1<<4))\ngh pr merge 7 --squash`,
+    ]);
+    asks(`read -r a <<< "$x"\ngit push origin v1.2.3`);
+    deny(`echo $((1<<4))\npnpm exec vitest run`);
+    deny(`(( x = 1 << 3 ))\npnpm exec vitest run`);
+    deny(`read -r a <<< "$x"\ngh pr view 1 --json x | jq .x`);
+    deny(
+      `read -r a <<< "$x"\ngit commit -m "docs(specs): x" -- docs/superpowers/specs/2026-01-01-issue-9-x.md`,
+      ctx({ branch: () => "fix/9-x" }),
+    );
+  });
+
+  it("finding 2: text handed to `bash -c`, `sh -c`, `eval` or a shell-fed heredoc is read raw", () => {
+    merges([
+      `timeout 900 bash -c 'until gh pr checks 1321; do sleep 30; done; gh pr merge 1321 --squash'`,
+      `bash <<'EOF'\ncd ../ir-5\ngh pr merge 7 --squash\nEOF`,
+    ]);
+    asks(`sh -c "cd x && git push origin v1.2.3"`);
+    asks(`sh <<'EOF'\ngit push origin v1.2.3\nEOF`);
+    expect(deny(`bash <<'EOF'\ncd ../ir-1013\ngit worktree remove .\nEOF`, linked)).toMatch(/plugin link/);
+    deny(`eval "ls; pnpm exec vitest run"`);
+    deny(`bash <<'EOF'\npnpm exec vitest run scripts\nEOF`);
+    deny(`bash <<'EOF'\ngh pr view 1 --json x | jq .x\nEOF`);
+    deny(`bash <<'EOF'\ngh issue create --title x --milestone 3.3\nEOF`);
+    expect(
+      deny(
+        `bash <<'EOF'\ncd ../ir-5\ngit commit -m "docs(specs): x" -- docs/superpowers/specs/2026-01-01-issue-5-x.md\nEOF`,
+        ctx({ branch: (d) => (d === tree("ir-5") ? "fix/5-x" : "master") }),
+      ),
+    ).toMatch(/never on a feature branch/);
+  });
+
+  it("finding 3: the one-merge backstop counts raw text, so a second merge in executed text is seen", () => {
+    for (const command of [
+      `gh pr merge 7 --squash && bash -c 'gh pr merge 8 --squash --admin'`,
+      `gh pr merge 7 --squash; eval "gh pr merge 8 --admin --squash"`,
+      `gh pr merge 7 --squash\ngrep -q MERGED <<< "$s"\ngh pr merge 8 --squash --admin`,
+      // The cost, in the safe direction: a mention beside a real merge is refused too.
+      `gh pr merge 7 --squash --body "after gh pr merge 6"`,
+    ])
+      expect(deny(command, ctx({ prView: green })), command).toMatch(/One `gh pr merge` per command/);
+  });
+
+  it('finding 4: nested quotes and heredocs inside `"$(…)"` close where bash closes them', () => {
+    merges([
+      `x="$(echo ")")" && gh pr merge 7 --squash`,
+      `x="$(echo "it's")" && echo ')' && echo "z" && gh pr merge 7 --squash`,
+      `git commit -m "$(cat <<'EOF'\nfix: x\n\n1) the 12" record\nEOF\n)" && gh pr merge 5 --squash`,
+      `git commit -m "$(cat <<'EOF'\nfix: don't fire\nEOF\n)" && gh pr comment 5 --body 'Done :)' && gh pr merge 5 --squash --body "merged"`,
+      `echo "$(echo "(")" && case x in x) gh pr merge 7 --squash;; esac`,
+    ]);
+    asks(`git commit -m "$(cat <<'EOF'\nfix: x\n\n1) the 12" record\nEOF\n)" && git push origin v1.2.3`);
+    deny(`git commit -m "$(cat <<'EOF'\nfix: x\n\n1) the 12" record\nEOF\n)" && pnpm build --force`);
+  });
+
+  describe("finding 5: a flag inside a quoted body is not the merge's own", () => {
+    // Approved, green and clean, but CodeRabbit's newest review is at an older
+    // head: only a real `--admin`, or a real pin on a pure rebase, gets it through.
+    const stale = () => ({
+      ...green(),
+      baseRefOid: "4".repeat(40),
+      reviews: [
+        {
+          author: { login: "coderabbitai" },
+          state: "APPROVED",
+          commit: { oid: "2".repeat(40) },
+          submittedAt: "2026-10-03T10:00:00Z",
+        },
+      ],
+    });
+    const seen = [];
+    const c = ctx({
+      prView: (ref) => (seen.push(ref), stale()),
+      baseChangedSince: () => false,
+      replayRebase: () => ({ ok: true, differing: [], conflicted: [], lineMismatch: [] }),
+    });
+    const head = stale().headRefOid;
+
+    it("is refused with the flag only in the body", () => {
+      passes("gh pr merge 7 --squash --admin", c);
+      passes(`gh pr merge 7 --squash --match-head-commit ${head}`, c);
+      for (const command of [
+        `gh pr merge 7 --squash --body="Merges the gate fix.\n--admin is not needed for this one."`,
+        `gh pr merge 7 --squash --body "Fixes the \\"gate\\";\n--admin is not used here"`,
+        `gh pr merge 7 --squash --body="x\n--match-head-commit ${head}"`,
+        `gh pr merge 7 --squash "--admin"`,
+      ])
+        expect(deny(command, c), command).toMatch(/no CodeRabbit review at head/);
+    });
+
+    it("judges the PR gh merges, never a number read out of the body", () => {
+      seen.length = 0;
+      deny(`gh pr merge --squash --body="Done.\n1300 follows up."`, c);
+      expect(seen).toEqual([undefined]);
+    });
+
+    it("refuses a quoted or substituted PR rather than judging the branch's PR in its place", () => {
+      for (const command of [`gh pr merge "7" --squash`, `gh pr merge $(cat pr.txt) --squash`])
+        expect(deny(command, c), command).toMatch(/Could not read this/);
+    });
+  });
+
+  it("finding 6: a misread mask falls back to the raw command instead of blanking the rest", () => {
+    merges([`echo 'unterminated && gh pr merge 7 --squash`, `cat <<EOF\nnever closed\ngh pr merge 7 --squash`]);
+  });
+
+  it("finding 7: an indented line, a backtick and a case arm are command positions", () => {
+    merges([
+      `if gh pr checks 7; then\n  echo green\n  gh pr merge 7 --squash\nfi`,
+      // #1328 review: a case pattern's `)` inside a quoted substitution.
+      `x="$(case $y in a) gh pr merge 7 --squash;; esac)"`,
+      `cat <<EOF\n$(case $y in a) gh pr merge 7 --squash;; esac)\nEOF`,
+      "x=`gh pr merge 7 --squash`",
+      "echo `gh pr merge 7 --squash`",
+      `case x in *) gh pr merge 7 --squash ;; esac`,
+    ]);
+    asks(`if true; then\n  git push origin v9.9.9\nfi`);
+    deny(`for f in a; do\n\tpnpm exec vitest run "$f"\ndone`);
+  });
+
+  it("finding 8: a `git -C` quoted in a commit message moves nothing", () => {
+    const command = `cd ../ir-5 && git commit -m "docs(specs): x (#5)\n\nRepro: git -C ../master log -1"`;
+    expect(gitCwd(command, MASTER, GIT_COMMIT)).toBe(tree("ir-5"));
+    expect(gitCwd(`cd "${tree("ir 5")}" && git -C "../ir 6" status`, MASTER, cmd(/git\s+-C\s+\S+\s+status/))).toBe(
+      tree("ir 6"),
+    );
+    expect(
+      deny(
+        command,
+        ctx({
+          branch: (d) => (d === tree("ir-5") ? "fix/5-x" : "master"),
+          staged: () => ["docs/superpowers/specs/2026-01-01-issue-5-x.md"],
+        }),
+      ),
+    ).toMatch(/never on a feature branch/);
+  });
+
+  it("finding 9: ANSI-C quotes, partly quoted or unusual delimiters and `EOF)` do not blank what follows", () => {
+    merges([
+      "echo $'it\\'s' && gh pr merge 7 --squash",
+      `x=$(cat <<'EOF'\nbody\nEOF)\ngh pr merge 7 --squash`,
+      `cat <<E'OF'\nbody\nEOF\ngh pr merge 7 --squash`,
+      `cat <<"E"OF\nbody\nEOF\ngh pr merge 7 --squash`,
+      `cat <<@END\nbody\n@END\ngh pr merge 7 --squash`,
+      `cat <<END+\nbody\nEND+\ngh pr merge 7 --squash`,
+    ]);
+    passes(`cat <<E'OF'\ngh pr merge 7 --squash --admin\nEOF`);
+    passes(`cat <<@END\npnpm exec vitest run\n@END`);
+  });
+
+  it("finding 10: a comment starts where bash starts one, and nowhere else", () => {
+    merges([
+      `ls;# don't\ngh pr merge 7 --squash`,
+      "echo ${x:- #y} && gh pr merge 7 --squash",
+      "echo ${x/ #/} && gh pr merge 7 --squash",
+      "echo `echo a # c` && gh pr merge 7 --squash",
+    ]);
+    asks(`true;# don't forget\ngit push origin v9.9.9`);
+    passes(`ls # gh pr merge 7 --squash`);
+  });
+
+  it("finding 11: the rules that read their arguments judge the real command, not a mention ahead of it", () => {
+    for (const command of [
+      `echo "step; git worktree remove ../ir-5" && git worktree remove ../ir-1013`,
+      `git commit -q -F - <<'EOF'\nchore: x\n\ngit worktree remove ../ir-999 later\nEOF\ngit worktree remove ../ir-1013`,
+      `echo "note; git -C .. worktree remove ir-1013 " && git worktree remove ../ir-1013`,
+    ])
+      expect(deny(command, linked), command).toMatch(/plugin link/);
+    expect(deny(`echo "next; git worktree add ../ir-5 -b x" && git worktree add .worktrees/ir-6 -b y`)).toMatch(
+      /siblings/,
+    );
+    expect(deny(`echo "x; pnpm --filter @iracedeck/logger build" && pnpm --filter @iracedeck/nope build`)).toMatch(
+      /No workspace package/,
+    );
+    expect(deny(`echo "a | gh run list --commit ${"a".repeat(40)}" && gh run list --commit 37de46c02`)).toMatch(
+      /FULL 40-char sha/,
+    );
+    for (const command of [
+      `git commit -q -F - <<'EOF'\ndocs: x\n\npnpm --filter @iracedeck/nope build\nEOF`,
+      `git commit -q -F - <<'EOF'\ndocs: x\n\ngh run list --commit abc123\nEOF`,
+      `git commit -q -F - <<'EOF'\ndocs: x\n\ngit worktree add ../scratch\nEOF`,
+      `git commit -q -F - <<'EOF'\ndocs: x\n\ngit worktree remove ../ir-1013\nEOF`,
+    ])
+      passes(command, linked);
+    // The --fix rule stays unanchored on purpose: it fires on any occurrence.
+    deny(`grep -rn "code-review.*--fix" .claude/rules`);
+  });
+
+  it("finding 13: the canonical `-m \"$(cat <<'EOF' …)\"` body is a mention", () => {
+    for (const command of [
+      `git commit -m "$(cat <<'EOF'\nfix: x (#1)\n\nso gh pr merge 7 … & gh pr\nmerge 8 --admin read as one\nEOF\n)"`,
+      `git commit -m "$(cat <<'EOF'\nfix: x (#1)\n\npnpm exec vitest run was dropped\nEOF\n)"`,
+      `git commit -m "$(cat <<'EOF'\nfix: x (#1)\n\nrun it as a | jq pipeline\nEOF\n)"`,
+      `gh issue create --title x --body "$(cat <<'EOF'\ngit worktree add ../scratch -b fix/77-x\nEOF\n)"`,
+    ])
+      passes(command);
+    expect(
+      worktreeAddTarget(
+        `gh issue create --title x --body "$(cat <<'EOF'\ngit worktree add ../ir-77 -b fix/77-x\nEOF\n)"`,
+      ),
+    ).toBeNull();
+  });
+
+  it("finding 14: a suppressor counts only in live text that covers the command", () => {
+    asks(`git push --dry-run origin master && git push origin v3.4.0`);
+    asks(`git push origin v1.2.3 # not a --dry-run`);
+    asks(`git push origin "v1.2.3"`);
+    passes(`git push --dry-run origin v3.4.0`);
+    deny(`pnpm build 2>&1 | tail -5 && echo "remember pipefail"`);
+    deny(`pnpm build | tail -5; set -o pipefail`);
+    passes(`set -euo pipefail\npnpm test 2>&1 | tee log`);
+    passes(`pnpm build || echo failed`);
+    deny(`git show origin/master:.claude/x.md # MSYS_NO_PATHCONV later`);
+    deny(`git show "origin/master:.claude/rules/hooks.md"`);
+    deny(`git show HEAD:x && git show origin/master:.claude/x.md`);
+    passes(`export MSYS_NO_PATHCONV=1; git show origin/master:.claude/x.md`);
+  });
+
+  it("judges a long run of `2>&1` in linear time — the old pipefail regex backtracked exponentially", () => {
+    // The short run first: the old regex takes over a second on 26 of them and
+    // fails here, where 4000 would hang the suite.
+    for (const n of [26, 4000]) {
+      const started = Date.now();
+      passes(`pnpm build ${"2>&1 ".repeat(n)}x`);
+      expect(Date.now() - started, `${n} × 2>&1`).toBeLessThan(200);
+    }
+  });
+
+  it("finding 15: the post-hook's worktree target is the add the rule judged", () => {
+    expect(
+      worktreeAddTarget(`# superseded: git worktree add ../ir-1400\ngit worktree add ../ir-1321 -b fix/1321-x`),
+    ).toBe("../ir-1321");
+    expect(
+      worktreeAddTarget(`echo "was: git worktree add ../ir-99" && git worktree add ../ir-1321 -b fix/1321-x`),
+    ).toBe("../ir-1321");
+    expect(worktreeAddTarget("git worktree add --lock --reason why ../ir-5")).toBe("../ir-5");
+    expect(worktreeAddTarget("git status")).toBeNull();
+  });
+
+  it("the post-hook's merge trigger finds a merge behind any wrapper, and only a readable PR", () => {
+    expect(firstMerge("timeout 120 gh pr merge 7 --squash")).toMatchObject({ ref: "7", readable: true });
+    expect(firstMerge("echo 7 | xargs -I{} gh pr merge {} --squash")).toMatchObject({ ref: "{}" });
+    expect(firstMerge(`gh pr merge "7" --squash`)).toMatchObject({ readable: false });
+    expect(firstMerge(`grep -rn "gh pr merge" scripts`)).toBeUndefined();
   });
 });
