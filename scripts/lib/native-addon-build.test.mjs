@@ -10,7 +10,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { asideName, clearAddon, isLockError, releaseNativeAddon, sweepAside } from "./native-addon-build.mjs";
+import {
+  ASIDE_DIR_NAME,
+  asideName,
+  clearAddon,
+  isLockError,
+  releaseNativeAddon,
+  releasePackageAddon,
+  sweepAside,
+} from "./native-addon-build.mjs";
 
 let pkg;
 let addonPath;
@@ -97,6 +105,21 @@ describe("clearAddon", () => {
     expect(fs.readFileSync(asidePath, "utf8")).toBe("old");
   });
 
+  it("names the lock when the move aside fails too", () => {
+    fs.writeFileSync(addonPath, "old");
+    const unmovable = {
+      ...lockedFs([addonPath]),
+      renameSync: () => {
+        throw Object.assign(new Error("EPERM: operation not permitted, rename"), { code: "EPERM" });
+      },
+    };
+
+    expect(() => clearAddon({ addonPath, asideDir, fs: unmovable })).toThrow(
+      /audio_native\.node is held by another process and could not be moved aside .*\(EPERM\)\. Stop the deck host/,
+    );
+    expect(fs.readFileSync(addonPath, "utf8")).toBe("old");
+  });
+
   it("rethrows a failure that is not a lock, leaving the binary where it was", () => {
     fs.writeFileSync(addonPath, "old");
 
@@ -130,12 +153,46 @@ describe("sweepAside", () => {
     expect(fs.readdirSync(asideDir)).toEqual(["audio_native.1.node"]);
   });
 
-  it("rethrows a failure that is not a lock", () => {
+  // Housekeeping must never fail the build it runs in front of (#1258 review).
+  it("reports a failure that is not a lock instead of throwing, keeping the copy", () => {
     fs.mkdirSync(asideDir);
     const broken = join(asideDir, "audio_native.1.node");
     fs.writeFileSync(broken, "a");
 
-    expect(() => sweepAside(asideDir, lockedFs([broken], "EIO"))).toThrow(/EIO/);
+    const swept = sweepAside(asideDir, lockedFs([broken], "EIO"));
+
+    expect(swept).toMatchObject({ removed: 0, kept: 1 });
+    expect(swept.problem).toMatch(/EIO/);
+    expect(fs.existsSync(broken)).toBe(true);
+  });
+
+  it("removes a stray folder in the aside folder too", () => {
+    fs.mkdirSync(join(asideDir, "stray"), { recursive: true });
+    fs.writeFileSync(join(asideDir, "stray", "x"), "x");
+
+    expect(sweepAside(asideDir)).toEqual({ removed: 1, kept: 0 });
+    expect(fs.existsSync(asideDir)).toBe(false);
+  });
+
+  it("tolerates an empty folder that will not delete", () => {
+    fs.mkdirSync(asideDir);
+    const stuck = {
+      ...fs,
+      rmdirSync: () => {
+        throw Object.assign(new Error("EBUSY: resource busy or locked, rmdir"), { code: "EBUSY" });
+      },
+    };
+
+    expect(sweepAside(asideDir, stuck)).toEqual({ removed: 0, kept: 0 });
+  });
+
+  it("reports an unreadable folder instead of throwing", () => {
+    fs.writeFileSync(asideDir, "not a folder");
+
+    const swept = sweepAside(asideDir);
+
+    expect(swept).toMatchObject({ removed: 0, kept: 0 });
+    expect(swept.problem).toBeDefined();
   });
 });
 
@@ -189,5 +246,37 @@ describe("releaseNativeAddon", () => {
     expect(swept).toEqual({ removed: 0, kept: 1 });
     expect(cleared).toEqual({ result: "removed" });
     expect(log.log.mock.calls[0][0]).toContain("still loaded by a running process");
+  });
+});
+
+describe("releaseNativeAddon problems", () => {
+  it("warns about a sweep problem and still clears the binary", () => {
+    fs.mkdirSync(asideDir);
+    const broken = join(asideDir, "audio_native.1.node");
+    fs.writeFileSync(broken, "a");
+    fs.writeFileSync(addonPath, "v2");
+    const log = fakeLog();
+
+    const { cleared } = releaseNativeAddon({ addonPath, asideDir, log, fs: lockedFs([broken], "EIO") });
+
+    expect(cleared).toEqual({ result: "removed" });
+    expect(log.warn.mock.calls[0][0]).toMatch(/^Could not clean up .*EIO.*carrying on with the build\.$/);
+  });
+});
+
+describe("releasePackageAddon", () => {
+  it("clears build/Release/<addon> and sweeps <package>/.locked-native", () => {
+    fs.writeFileSync(addonPath, "old");
+    fs.mkdirSync(join(pkg, ASIDE_DIR_NAME));
+    fs.writeFileSync(join(pkg, ASIDE_DIR_NAME, "audio_native.1.node"), "older");
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    const { swept, cleared } = releasePackageAddon(pkg, "audio_native.node");
+
+    expect(cleared).toEqual({ result: "removed" });
+    expect(swept).toEqual({ removed: 1, kept: 0 });
+    expect(fs.existsSync(addonPath)).toBe(false);
+    expect(fs.existsSync(join(pkg, ".locked-native"))).toBe(false);
+    log.mockRestore();
   });
 });

@@ -46,13 +46,20 @@ export function asideName(addonPath, now) {
   return `${basename(addonPath, ext)}.${now}${ext}`;
 }
 
+/** The package-relative folder a locked binary is moved into; gitignored and `.sdignore`d. */
+export const ASIDE_DIR_NAME = ".locked-native";
+
 /**
  * Deletes every earlier moved-aside copy that is no longer loaded, and the
  * folder itself once it is empty. A copy still held is left for a later run.
  *
+ * Housekeeping only, so it never throws: a failure that is not a lock (an
+ * unreadable folder, a stray entry that will not delete) is returned as
+ * `problem` for the caller to report, and the build goes on.
+ *
  * @param {string} asideDir
  * @param {typeof nodeFs} fs
- * @returns {{ removed: number, kept: number }}
+ * @returns {{ removed: number, kept: number, problem?: string }}
  */
 export function sweepAside(asideDir, fs = nodeFs) {
   let entries;
@@ -61,30 +68,39 @@ export function sweepAside(asideDir, fs = nodeFs) {
     entries = fs.readdirSync(asideDir);
   } catch (error) {
     if (/** @type {NodeJS.ErrnoException} */ (error)?.code === "ENOENT") return { removed: 0, kept: 0 };
-    throw error;
+    return { removed: 0, kept: 0, problem: String(/** @type {Error} */ (error)?.message ?? error) };
   }
 
   let removed = 0;
   let kept = 0;
+  let problem;
 
   for (const entry of entries) {
     try {
-      fs.rmSync(join(asideDir, entry), { force: true });
+      fs.rmSync(join(asideDir, entry), { recursive: true, force: true });
       removed++;
     } catch (error) {
-      if (!isLockError(error)) throw error;
       kept++;
+      if (!isLockError(error)) problem ??= String(/** @type {Error} */ (error)?.message ?? error);
     }
   }
 
-  if (kept === 0) fs.rmdirSync(asideDir);
+  if (kept === 0) {
+    try {
+      fs.rmdirSync(asideDir);
+    } catch {
+      // An empty folder someone has open (Explorer, the indexer) is harmless;
+      // the next sweep removes it.
+    }
+  }
 
-  return { removed, kept };
+  return problem === undefined ? { removed, kept } : { removed, kept, problem };
 }
 
 /**
  * Removes the addon binary so node-gyp can replace it, moving it aside when a
- * running process has it loaded. Any other failure is rethrown.
+ * running process has it loaded. Any other failure is rethrown, and so is a
+ * failed move, with the lock named.
  *
  * @param {{ addonPath: string, asideDir: string, fs?: typeof nodeFs, now?: () => number }} options
  * @returns {{ result: "absent" | "removed" } | { result: "moved", asidePath: string }}
@@ -99,8 +115,21 @@ export function clearAddon({ addonPath, asideDir, fs = nodeFs, now = Date.now })
   }
 
   const asidePath = join(asideDir, asideName(addonPath, now()));
-  fs.mkdirSync(asideDir, { recursive: true });
-  fs.renameSync(addonPath, asidePath);
+
+  try {
+    fs.mkdirSync(asideDir, { recursive: true });
+    fs.renameSync(addonPath, asidePath);
+  } catch (error) {
+    // A loaded image moves; one opened without delete sharing (a debugger, an
+    // AV scan in progress) does not, and node-gyp cannot replace it either.
+    throw new Error(
+      `${basename(addonPath)} is held by another process and could not be moved aside to ${asidePath} ` +
+        `(${/** @type {NodeJS.ErrnoException} */ (error)?.code ?? "unknown error"}). ` +
+        `Stop the deck host using this tree (or whatever else has the file open) and build again.`,
+      { cause: error },
+    );
+  }
+
   return { result: "moved", asidePath };
 }
 
@@ -124,6 +153,10 @@ export function releaseNativeAddon({ addonPath, asideDir, log = console, fs = no
     );
   }
 
+  if (swept.problem !== undefined) {
+    log.warn(`Could not clean up ${asideDir} (${swept.problem}); carrying on with the build.`);
+  }
+
   const cleared = clearAddon({ addonPath, asideDir, fs, now });
 
   if (cleared.result === "moved") {
@@ -135,4 +168,19 @@ export function releaseNativeAddon({ addonPath, asideDir, log = console, fs = no
   }
 
   return { swept, cleared };
+}
+
+/**
+ * {@link releaseNativeAddon} for a native package laid out the way both of
+ * ours are: the binary at `build/Release/<addonFile>`, the aside folder at
+ * `<package>/.locked-native/`.
+ *
+ * @param {string} packageDir
+ * @param {string} addonFile e.g. `"iracing_native.node"`
+ */
+export function releasePackageAddon(packageDir, addonFile) {
+  return releaseNativeAddon({
+    addonPath: join(packageDir, "build", "Release", addonFile),
+    asideDir: join(packageDir, ASIDE_DIR_NAME),
+  });
 }

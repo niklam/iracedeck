@@ -275,10 +275,11 @@ export class AudioNative {
 
 /**
  * Call the addon's `setSessionIdentity`, or report false when the loaded
- * binary predates it. A TypeScript build can run against an older
- * `audio_native.node` — `pnpm build:ts` skips the native build — and a missing
- * function must not throw inside `initializeAudio` and abort plugin startup
- * over a cosmetic feature (#1253).
+ * binary predates it. The TypeScript and the binary are built by separate
+ * steps, so a plugin can start against an older `audio_native.node` (before
+ * #1258, a binary a deck host had loaded survived every rebuild), and a
+ * missing function must not throw inside `initializeAudio` and abort plugin
+ * startup over a cosmetic feature (#1253).
  *
  * @internal Exported for testing
  */
