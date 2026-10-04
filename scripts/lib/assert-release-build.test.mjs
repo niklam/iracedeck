@@ -12,6 +12,7 @@
  * double. The function returns an exit code rather than calling `process.exit`,
  * the shape every `scripts/lib` helper uses.
  */
+import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -22,8 +23,14 @@ import {
   EXIT_USAGE,
   USAGE,
 } from "./assert-release-build.mjs";
+import { DEBUG_VALUE } from "./debug-plugin.mjs";
 
 const CONFIG = "com.iracedeck.sd.core.sdPlugin/bin/config.json";
+// The manifest sits beside `bin/`; the guard derives it from the config path.
+const MANIFEST = path.join("com.iracedeck.sd.core.sdPlugin", "manifest.json");
+const RELEASE_CONFIG = JSON.stringify({ version: "3.3.0", platform: "stream-deck", featureFlags: {} });
+const MANIFEST_OFF = '{\n  "Nodejs": {\n    "Version": "24"\n  },\n  "UUID": "com.iracedeck.sd.core"\n}\n';
+const manifestWith = (value) => MANIFEST_OFF.replace('"24"\n', `"24",\n    "Debug": ${JSON.stringify(value)}\n`);
 
 function fakeLog() {
   return { log: vi.fn(), error: vi.fn() };
@@ -31,6 +38,19 @@ function fakeLog() {
 
 function output(log) {
   return [...log.log.mock.calls, ...log.error.mock.calls].map((args) => args.join(" ")).join("\n");
+}
+
+/** A `fs` port answering each path in `files`; anything else is absent. */
+function filesFs(files) {
+  return {
+    existsSync: (file) => file in files,
+    readFileSync: (file) => {
+      if (!(file in files)) throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+      if (files[file] instanceof Error) throw files[file];
+
+      return files[file];
+    },
+  };
 }
 
 /** A `fs` port answering one path with `contents`; anything else is absent. */
@@ -139,5 +159,62 @@ describe("assertReleaseBuild", () => {
     // The pack script chains on `&&`, so only 0 may continue.
     expect(new Set([EXIT_CLEAN, EXIT_PROBLEM, EXIT_USAGE]).size).toBe(3);
     expect(EXIT_CLEAN).toBe(0);
+  });
+});
+
+describe("assertReleaseBuild — the manifest carries no Debug key (#1338)", () => {
+  it("finds the manifest beside bin/, and passes one without the key", () => {
+    const log = fakeLog();
+    const fs = filesFs({ [CONFIG]: RELEASE_CONFIG, [MANIFEST]: MANIFEST_OFF });
+
+    expect(assertReleaseBuild(CONFIG, { fs, log })).toBe(EXIT_CLEAN);
+    expect(log.error).not.toHaveBeenCalled();
+  });
+
+  it("fails a manifest carrying the switch's Debug value, naming the file and the fix", () => {
+    const log = fakeLog();
+    const fs = filesFs({ [CONFIG]: RELEASE_CONFIG, [MANIFEST]: manifestWith(DEBUG_VALUE) });
+
+    expect(assertReleaseBuild(CONFIG, { fs, log })).toBe(EXIT_PROBLEM);
+    expect(output(log)).toContain(MANIFEST);
+    expect(output(log)).toContain(DEBUG_VALUE);
+    expect(output(log)).toContain("pnpm debug:plugin off");
+  });
+
+  it("fails any Debug value — presence is the property — and names a foreign one", () => {
+    for (const value of ["enabled", "", null, false]) {
+      const log = fakeLog();
+      const fs = filesFs({ [CONFIG]: RELEASE_CONFIG, [MANIFEST]: manifestWith(value) });
+
+      expect(assertReleaseBuild(CONFIG, { fs, log })).toBe(EXIT_PROBLEM);
+      expect(output(log)).toContain(JSON.stringify(value));
+    }
+  });
+
+  it("checks the development config first, so both problems are not hidden behind one", () => {
+    const log = fakeLog();
+    const fs = filesFs({
+      [CONFIG]: JSON.stringify({ [DEV_VOICE_PACKS_ROOT_KEY]: "x" }),
+      [MANIFEST]: manifestWith(DEBUG_VALUE),
+    });
+
+    expect(assertReleaseBuild(CONFIG, { fs, log })).toBe(EXIT_PROBLEM);
+    expect(output(log)).toContain(DEV_VOICE_PACKS_ROOT_KEY);
+  });
+
+  it("fails a manifest it cannot read or parse", () => {
+    for (const contents of ["{ not json", Object.assign(new Error("EBUSY"), { code: "EBUSY" })]) {
+      const log = fakeLog();
+      const fs = filesFs({ [CONFIG]: RELEASE_CONFIG, [MANIFEST]: contents });
+
+      expect(assertReleaseBuild(CONFIG, { fs, log })).toBe(EXIT_PROBLEM);
+      expect(output(log)).toContain(MANIFEST);
+    }
+  });
+
+  it("leaves a folder with no manifest to the packer", () => {
+    const log = fakeLog();
+
+    expect(assertReleaseBuild(CONFIG, { fs: filesFs({ [CONFIG]: RELEASE_CONFIG }), log })).toBe(EXIT_CLEAN);
   });
 });

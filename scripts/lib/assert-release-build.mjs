@@ -20,11 +20,18 @@
  * development build, and one whose `devVoicePacksRoot` a hand edit had emptied
  * is not a release build that happens to look tidy.
  *
+ * Since #1338 the same step also refuses a plugin folder whose `manifest.json`
+ * carries a `Debug` key under `Nodejs` — what the inspector switch
+ * `pnpm debug:plugin on` writes on a developer's machine.
+ *
  * Everything impure is injected and an exit code is RETURNED rather than
  * `process.exit` called — the shape every `scripts/lib` helper uses, and what
  * makes the failure paths testable without a built plugin.
  */
 import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
+
+import { DEBUG_VALUE, manifestDebug } from "./debug-plugin.mjs";
 
 /** The key a development build carries. Mirrors `PluginConfig.devVoicePacksRoot`. */
 export const DEV_VOICE_PACKS_ROOT_KEY = "devVoicePacksRoot";
@@ -83,6 +90,52 @@ export function assertReleaseBuild(configPath, { fs = { existsSync, readFileSync
         "packed or published. Development mode comes from dev.local.json or from IRACEDECK_DEV_VOICES=1 in your " +
         "environment. Run `pnpm dev:voices off` (it writes `voicePacksRoot: false` to dev.local.json, which wins " +
         "over the variable, and rebuilds the three plugins), then pack again.",
+    );
+
+    return EXIT_PROBLEM;
+  }
+
+  return assertNoDebugKey(configPath, { fs, log });
+}
+
+/**
+ * The plugin folder's `manifest.json` must carry no `Debug` key in its
+ * `Nodejs` block (#1338). `pnpm debug:plugin on` puts one there on a
+ * developer's machine, and a packed plugin carrying it would start with an
+ * inspector port for anyone running Stream Deck in developer mode.
+ *
+ * The manifest is found from the config path — `<plugin folder>/bin/config.json`
+ * — so every `pack:plugin` keeps its one argument. Only Elgato manifests are
+ * read by a host for the key, but the check is the same for all three: a
+ * manifest without the key passes, and a folder with no `manifest.json` is left
+ * to the packer, which refuses it on its own.
+ */
+function assertNoDebugKey(configPath, { fs, log }) {
+  const manifestPath = path.join(path.dirname(path.dirname(configPath)), "manifest.json");
+  if (!fs.existsSync(manifestPath)) return EXIT_CLEAN;
+
+  let text;
+  try {
+    text = fs.readFileSync(manifestPath, "utf-8");
+  } catch (error) {
+    log.error(`Error: ${manifestPath} could not be read (${error.message}). Refusing to pack.`);
+
+    return EXIT_PROBLEM;
+  }
+
+  const state = manifestDebug(text);
+  if (!state.ok) {
+    log.error(`Error: ${manifestPath} could not be parsed (${state.error}). Refusing to pack.`);
+
+    return EXIT_PROBLEM;
+  }
+  if (state.present) {
+    log.error(
+      `Error: ${manifestPath} carries "Debug": ${JSON.stringify(state.value)} in its Nodejs block — the plugin would ` +
+        "start with an inspector port, and must not be packed or published. " +
+        (state.value === DEBUG_VALUE
+          ? "Run `pnpm debug:plugin off`, then pack again."
+          : "The switch did not set this value; remove the line by hand, then pack again."),
     );
 
     return EXIT_PROBLEM;
