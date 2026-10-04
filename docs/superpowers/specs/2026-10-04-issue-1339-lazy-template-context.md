@@ -1,0 +1,59 @@
+# Lazy template context
+
+> **Issue:** [#1339](https://github.com/niklam/iracedeck/issues/1339) · **Supersedes:** _none_ · **Superseded by:** _none_
+>
+> Point-in-time design record. The code and `.claude/rules/` are the truth; this is not documentation.
+
+## Problem
+
+`buildTemplateContextFromData` materialises the whole `{{…}}` variable space on every build: six driver namespaces, `session`, `track`, a flatten of every telemetry variable, and a flatten of the entire session-info YAML. The flatten of every driver and every session's results is the largest item. `SDKController.getCurrentTemplateContext()` caches the result for one telemetry frame only, so any templated key keeps it rebuilding. After #1337 stopped Chat multiplying it per key, it was still the largest single item in a 35-car profile (~4% of samples, with YAML parsing at another ~1%), while a template typically reads two or three variables.
+
+## Decision
+
+### 1. The context becomes a lookup, not two prebuilt maps
+
+`TemplateContext` changes from `{ display: Record<string, string>; raw: Record<string, unknown> }` to an object answering one path at a time:
+
+```typescript
+interface TemplateContext {
+  display(path: string): string | undefined;           // what {{path}} renders
+  raw(path: string): { found: boolean; value?: unknown }; // what an expression reads
+}
+```
+
+Nothing enumerates the maps today. The only readers are `resolveTemplate` (`context.display[path]`) and `resolveExpression` (`Object.hasOwn(vars, path)` then `vars[path]`), so the change is confined to those two call sites, their tests, and the code that builds a context. `found` keeps the evaluator's present-but-undefined versus absent distinction, which `Object.hasOwn` gives today.
+
+A Proxy over the old maps was rejected: it would keep the shape while hiding the laziness behind traps (`get`, `has`, `getOwnPropertyDescriptor`) that every future reader would have to know about.
+
+### 2. Namespaces are built on first use, per context
+
+The first path segment selects a namespace: `self`, `track_ahead`, `track_behind`, `race_ahead`, `race_behind`, `focused`, `session`, `track`, `telemetry`, `sessionInfo`.
+
+- A context instance builds a namespace the first time a path in it is asked for, and keeps it for the rest of that instance's life. One frame's context therefore costs only the namespaces its templates touch.
+- The inputs shared by several namespaces, namely the driver list, the player's car index, the race order and the iRating estimate, are computed once per instance, and only when the first driver namespace needs them.
+
+### 3. `telemetry.*` and `sessionInfo.*` resolve by walking the source object
+
+There is no flatten. The lookup walks the source object for that one path and formats the leaf with the **same** per-leaf rule `flattenContext` applies today: booleans as `Yes`/`No`, the `BOOLEAN_INT_FIELDS` set, integers as integers, other numbers to two decimals, strings as-is, and arrays and objects absent from `display`. That rule is extracted into one function used by both, so the two paths cannot drift. `telemetry.CarIdx*` stays excluded, as today.
+
+### 4. Session-info-derived parts survive across frames
+
+The SDK already tracks when iRacing publishes new session info. The `track` namespace and the driver list are memoised on that session-info version, so a frame-to-frame rebuild with unchanged session info reuses them. `sessionInfo.*` needs no memo, because a path walk costs no more than a lookup. The telemetry-derived namespaces (`self` and the neighbours, `session`'s clock fields) are recomputed per context instance as today, because their inputs change every frame.
+
+### 5. Output is identical
+
+For any path the old builder produced, the new context returns the same `display` string and the same `raw` value. A path the old builder did not produce is absent (`display` undefined, `raw` not found). This is a pure performance change, with no new variables and no renamed ones.
+
+## Out of scope
+
+- New template variables, syntax or formatting changes.
+- The #1337 throttle and the per-frame cache invalidation, which stay as they are.
+- Chat's and Race Admin's press-time builds. They now get the cheap context for free and need no change of their own.
+
+## Testing
+
+- **Equivalence.** Keep the current builder as a test-only reference. For a set of fixtures (a race with an injected order, practice, qualifying pre-green, a spectator with the camera on another car, disconnected with session info only, and nothing at all), every key in the reference's `display` and `raw` maps must resolve to an identical value through the new context. Also check a sample of absent paths, including `telemetry.CarIdxPosition` and prototype names such as `constructor` and `__proto__`.
+- **Laziness.** A context asked only for `self.position` builds no other namespace and never walks `sessionInfo`. Spy on the namespace builders.
+- **Memoisation.** Two frames with the same session-info version build the `track` namespace and the driver list once. A version change rebuilds them.
+- **Resolver and evaluator.** The existing `template-resolver` and `expression-evaluator` suites pass unchanged in what they assert, with their fixtures adapted to the lookup interface.
+- **Manual.** The #1337 measurement: the same 6 templated Chat keys in a 35-car race, profiled over the debug port. Template building should drop out of the top of the profile, and every key should render the same text as before.
