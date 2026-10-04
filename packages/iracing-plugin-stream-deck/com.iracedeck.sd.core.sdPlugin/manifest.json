@@ -811,7 +811,7 @@
   ],
   "Nodejs": {
     "Version": "24",
-    "Debug": "enabled"
+    "Debug": "disabled"
   },
   "ApplicationsToMonitor": {
     "windows": [
