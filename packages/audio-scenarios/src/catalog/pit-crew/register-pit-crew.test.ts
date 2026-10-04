@@ -49,6 +49,7 @@ import {
   type PitWindowCalloutId,
   registerPitCrew,
   type RollingStartCalloutId,
+  stopRaceEngineerScenarios,
   type TireWearCalloutId,
 } from "./index.js";
 import { NO_LIMITER_CLIP_SOURCES } from "./no-limiter.js";
@@ -2532,7 +2533,7 @@ describe("Race Engineer master gate (issue #515)", () => {
 
   // The gate closure itself never cuts. The plugin's master toggle DOES stop an
   // in-flight callout, deliberately, by calling `stopRaceEngineerScenarios()`
-  // alongside the setting change (#587) — that path is not exercised here.
+  // alongside the setting change (#587) — the next test covers that path.
   it("master gate off does not cut an in-flight callout", () => {
     bus.publishEvent("flag.red.raised", {} as never);
     expect(audio._played.length).toBeGreaterThan(0);
@@ -2545,6 +2546,16 @@ describe("Race Engineer master gate (issue #515)", () => {
     expect(audio.stopChannel).not.toHaveBeenCalledWith(AudioChannel.Voice);
 
     expect(voiceClipsPlayed()).toContain(`voice/${VOICE}/flags/red-01.mp3`);
+  });
+
+  it("the master toggle's stopRaceEngineerScenarios() cuts an in-flight callout (#587)", () => {
+    bus.publishEvent("flag.red.raised", {} as never);
+    expect(audio._played.length).toBeGreaterThan(0);
+
+    voiceMasterEnabled = false;
+    stopRaceEngineerScenarios();
+
+    expect(audio.stopChannel).toHaveBeenCalledWith(AudioChannel.Voice);
   });
 
   it("master gate flipping back on restores future fires", () => {
