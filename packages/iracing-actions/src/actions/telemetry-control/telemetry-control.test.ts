@@ -1,8 +1,10 @@
 import { homedir as osHomedir } from "node:os";
 import { sep as pathSep } from "node:path";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  CAPTURE_PROFILE_RESULT_HOLD_MS,
+  captureProfileStatusTitle,
   defaultSnapshotDir,
   generateTelemetryControlSvg,
   resolveSnapshotDir,
@@ -20,6 +22,49 @@ const { mockTapBinding, mockMkdirSync, mockWriteFileSync, mockGetCurrentTelemetr
     mockGetSessionInfo: vi.fn(),
   }),
 );
+
+/** A stand-in for deck-core's shared CPU profile capture service (#1338). */
+const captureFake = vi.hoisted(() => {
+  type Status = { state: string; startedAt?: number; durationMs?: number; file?: string; reason?: string };
+  const listeners = new Set<(status: Status) => void>();
+  let current: Status = { state: "idle" };
+  const fake = {
+    initialized: true,
+    listeners,
+    publish(status: Status) {
+      current = status;
+
+      for (const listener of [...listeners]) listener(status);
+    },
+    reset() {
+      listeners.clear();
+      current = { state: "idle" };
+      fake.initialized = true;
+    },
+    service: {
+      // Like the real service: a request while one runs is refused, otherwise
+      // "capturing" is published at once and the capture runs on.
+      capture: vi.fn(async () => {
+        if (current.state === "capturing") return { ok: false, reason: "a capture is already running", busy: true };
+
+        fake.publish({ state: "capturing", startedAt: Date.now(), durationMs: 30_000 });
+
+        return new Promise<never>(() => {});
+      }),
+      isCapturing: () => current.state === "capturing",
+      status: () => current,
+      onStatus: (listener: (status: Status) => void) => {
+        listeners.add(listener);
+
+        return () => {
+          listeners.delete(listener);
+        };
+      },
+    },
+  };
+
+  return fake;
+});
 
 vi.mock("node:fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs")>();
@@ -49,6 +94,9 @@ vi.mock("@iracedeck/icons/telemetry-control/restart-recording.svg", () => ({
 vi.mock("@iracedeck/icons/telemetry-control/snapshot.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
 }));
+vi.mock("@iracedeck/icons/telemetry-control/capture-profile.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">capture-profile</svg>',
+}));
 
 vi.mock("@iracedeck/deck-core", () => ({
   CommonSettings: {
@@ -74,6 +122,7 @@ vi.mock("@iracedeck/deck-core", () => ({
     };
     updateConnectionState = vi.fn();
     setKeyImage = vi.fn();
+    updateKeyImage = vi.fn().mockResolvedValue(true);
     setRegenerateCallback = vi.fn();
     isBindingMissing = vi.fn(() => false);
     setActiveBinding = vi.fn();
@@ -104,6 +153,12 @@ vi.mock("@iracedeck/deck-core", () => ({
 
     return { migrated: { ...rest, mode: action }, changed: true };
   },
+  getCpuProfileCapture: vi.fn(() => {
+    if (!captureFake.initialized) throw new Error("CPU profile capture not initialized");
+
+    return captureFake.service;
+  }),
+  isCpuProfileCaptureInitialized: vi.fn(() => captureFake.initialized),
   getCommands: vi.fn(() => ({
     telem: {
       start: vi.fn(() => true),
@@ -165,6 +220,7 @@ const ALL_ACTIONS = [
   "stop-recording",
   "restart-recording",
   "snapshot",
+  "capture-profile",
 ] as const;
 
 describe("TelemetryControl", () => {
@@ -245,6 +301,7 @@ describe("TelemetryControl", () => {
         "stop-recording": { mainLabel: "RECORDING", subLabel: "STOP" },
         "restart-recording": { mainLabel: "RECORDING", subLabel: "RESTART" },
         snapshot: { mainLabel: "TAKE", subLabel: "SNAPSHOT" },
+        "capture-profile": { mainLabel: "CAPTURE", subLabel: "PROFILE" },
       };
 
       for (const [mode, labels] of Object.entries(expectedLabels)) {
@@ -385,6 +442,159 @@ describe("TelemetryControl", () => {
 
       expect(mockWriteFileSync).not.toHaveBeenCalled();
       expect(mockTapBinding).toHaveBeenCalledWith("telemetryControlToggleLogging");
+    });
+  });
+
+  describe("capture-profile mode (#1338)", () => {
+    type ActionInternals = {
+      logger: Record<"info" | "warn" | "debug", ReturnType<typeof vi.fn>>;
+      updateKeyImage: ReturnType<typeof vi.fn>;
+    };
+
+    function fakeEvent(actionId: string, settings: Record<string, unknown> = { mode: "capture-profile" }) {
+      return {
+        action: { id: actionId, setTitle: vi.fn(), setImage: vi.fn(), setSettings: vi.fn() },
+        payload: { settings },
+      };
+    }
+
+    const internals = (action: TelemetryControl) => action as never as ActionInternals;
+
+    /** The title text of the last image pushed to `contextId`. */
+    function lastTitle(action: TelemetryControl, contextId = "k1"): string {
+      const calls = internals(action).updateKeyImage.mock.calls.filter(([id]) => id === contextId);
+      const svg = decodeURIComponent(String(calls.at(-1)?.[1] ?? ""));
+
+      return svg.replace(/^data:image\/svg\+xml,<svg><svg[^>]*>[^<]*<\/svg>/, "").replace(/<\/svg>$/, "");
+    }
+
+    beforeEach(() => {
+      captureFake.reset();
+      vi.useFakeTimers();
+      vi.setSystemTime(1_000_000);
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("titles the countdown in whole seconds, then the outcome", () => {
+      expect(captureProfileStatusTitle({ kind: "capturing", endsAt: 31_000 }, 1000)).toBe("PROFILING\n30 s");
+      expect(captureProfileStatusTitle({ kind: "capturing", endsAt: 31_000 }, 30_001)).toBe("PROFILING\n1 s");
+      expect(captureProfileStatusTitle({ kind: "capturing", endsAt: 31_000 }, 40_000)).toBe("PROFILING\n0 s");
+      expect(captureProfileStatusTitle({ kind: "saved" }, 0)).toBe("SAVED");
+      expect(captureProfileStatusTitle({ kind: "failed" }, 0)).toBe("FAILED");
+      expect(captureProfileStatusTitle({ kind: "idle" }, 0)).toBeUndefined();
+    });
+
+    it("starts the shared capture on a press, and sends nothing to iRacing", async () => {
+      const action = new TelemetryControl();
+      await action.onWillAppear(fakeEvent("k1") as never);
+      await action.onKeyDown(fakeEvent("k1") as never);
+
+      expect(captureFake.service.capture).toHaveBeenCalledTimes(1);
+      expect(mockTapBinding).not.toHaveBeenCalled();
+    });
+
+    it("counts down once a second while the capture runs", async () => {
+      const action = new TelemetryControl();
+      await action.onWillAppear(fakeEvent("k1") as never);
+      await action.onKeyDown(fakeEvent("k1") as never);
+
+      expect(lastTitle(action)).toBe("PROFILING\n30 s");
+
+      vi.advanceTimersByTime(5000);
+
+      expect(lastTitle(action)).toBe("PROFILING\n25 s");
+    });
+
+    it.each([
+      ["saved", "SAVED", { state: "saved", startedAt: 1_000_000, file: "cpu-x.cpuprofile" }],
+      ["failed", "FAILED", { state: "failed", startedAt: 1_000_000, reason: "disk full" }],
+    ])("shows %s for 3 s, then its normal icon", async (_label, title, outcome) => {
+      const action = new TelemetryControl();
+      await action.onWillAppear(fakeEvent("k1") as never);
+      await action.onKeyDown(fakeEvent("k1") as never);
+      vi.advanceTimersByTime(30_000);
+      captureFake.publish(outcome);
+
+      expect(lastTitle(action)).toBe(title);
+
+      vi.advanceTimersByTime(CAPTURE_PROFILE_RESULT_HOLD_MS - 1);
+
+      expect(lastTitle(action)).toBe(title);
+
+      vi.advanceTimersByTime(1);
+
+      expect(lastTitle(action)).toBe("CAPTURE\nPROFILE");
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("shows a capture started from the Settings window, and a press during it is refused", async () => {
+      const action = new TelemetryControl();
+      await action.onWillAppear(fakeEvent("k1") as never);
+
+      // The window's button, through the same shared service.
+      void captureFake.service.capture();
+
+      expect(lastTitle(action)).toBe("PROFILING\n30 s");
+
+      vi.advanceTimersByTime(10_000);
+      await action.onKeyDown(fakeEvent("k1") as never);
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(captureFake.service.capture).toHaveBeenCalledTimes(2);
+      expect(internals(action).logger.info).toHaveBeenCalledWith("CPU profile capture already running");
+      // Still the window's capture: no restart of the countdown.
+      expect(lastTitle(action)).toBe("PROFILING\n20 s");
+    });
+
+    it("picks up a capture already running when the key appears", async () => {
+      captureFake.publish({ state: "capturing", startedAt: 1_000_000 - 12_000, durationMs: 30_000 });
+
+      const action = new TelemetryControl();
+      await action.onWillAppear(fakeEvent("k1") as never);
+
+      expect(lastTitle(action)).toBe("PROFILING\n18 s");
+    });
+
+    it("stops its timers and its status subscription when the last key disappears", async () => {
+      const action = new TelemetryControl();
+      await action.onWillAppear(fakeEvent("k1") as never);
+      await action.onWillAppear(fakeEvent("k2") as never);
+      await action.onKeyDown(fakeEvent("k1") as never);
+
+      expect(vi.getTimerCount()).toBe(1);
+
+      await action.onWillDisappear(fakeEvent("k1") as never);
+
+      expect(vi.getTimerCount()).toBe(1); // k2 still shows the countdown
+
+      await action.onWillDisappear(fakeEvent("k2") as never);
+
+      expect(vi.getTimerCount()).toBe(0);
+      expect(captureFake.listeners.size).toBe(0);
+    });
+
+    it("stops following the capture when the key switches to another mode", async () => {
+      const action = new TelemetryControl();
+      await action.onWillAppear(fakeEvent("k1") as never);
+      await action.onKeyDown(fakeEvent("k1") as never);
+      await action.onDidReceiveSettings(fakeEvent("k1", { mode: "snapshot" }) as never);
+
+      expect(vi.getTimerCount()).toBe(0);
+      expect(captureFake.listeners.size).toBe(0);
+    });
+
+    it("warns instead of throwing when the plugin has no capture service", async () => {
+      captureFake.initialized = false;
+
+      const action = new TelemetryControl();
+      await action.onWillAppear(fakeEvent("k1") as never);
+      await action.onKeyDown(fakeEvent("k1") as never);
+
+      expect(captureFake.service.capture).not.toHaveBeenCalled();
+      expect(internals(action).logger.warn).toHaveBeenCalledWith("CPU profile capture is not available in this plugin");
     });
   });
 });

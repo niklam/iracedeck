@@ -3,6 +3,7 @@ import {
   CommonSettings,
   ConnectionStateAwareAction,
   getCommands,
+  getCpuProfileCapture,
   getGlobalBorderSettings,
   getGlobalColors,
   getGlobalGraphicSettings,
@@ -11,12 +12,16 @@ import {
   type IDeckDidReceiveSettingsEvent,
   type IDeckKeyDownEvent,
   type IDeckWillAppearEvent,
+  type IDeckWillDisappearEvent,
+  isCpuProfileCaptureInitialized,
   migrateLegacyActionToMode,
+  type ProfileCaptureStatus,
   resolveBorderSettings,
   resolveGraphicSettings,
   resolveIconColors,
   resolveTitleSettings,
 } from "@iracedeck/deck-core";
+import captureProfileIconSvg from "@iracedeck/icons/telemetry-control/capture-profile.svg";
 import markEventIconSvg from "@iracedeck/icons/telemetry-control/mark-event.svg";
 import restartRecordingIconSvg from "@iracedeck/icons/telemetry-control/restart-recording.svg";
 import snapshotIconSvg from "@iracedeck/icons/telemetry-control/snapshot.svg";
@@ -36,6 +41,7 @@ const ACTION_VALUES = [
   "stop-recording",
   "restart-recording",
   "snapshot",
+  "capture-profile",
 ] as const;
 
 type TelemetryControlAction = (typeof ACTION_VALUES)[number];
@@ -47,6 +53,7 @@ const ACTION_ICONS: Record<TelemetryControlAction, string> = {
   "stop-recording": stopRecordingIconSvg,
   "restart-recording": restartRecordingIconSvg,
   snapshot: snapshotIconSvg,
+  "capture-profile": captureProfileIconSvg,
 };
 
 /**
@@ -59,7 +66,43 @@ const TELEMETRY_CONTROL_TITLES: Record<TelemetryControlAction, string> = {
   "stop-recording": "RECORDING\nSTOP",
   "restart-recording": "RECORDING\nRESTART",
   snapshot: "TAKE\nSNAPSHOT",
+  "capture-profile": "CAPTURE\nPROFILE",
 };
+
+/** How long `SAVED` / `FAILED` stays on a Capture Profile key before its normal icon returns (#1338). */
+export const CAPTURE_PROFILE_RESULT_HOLD_MS = 3000;
+
+/** How often a Capture Profile key's countdown is redrawn. */
+const CAPTURE_PROFILE_TICK_MS = 1000;
+
+/**
+ * @internal Exported for testing
+ *
+ * What a Capture Profile key shows, derived from the shared capture service's
+ * state: the countdown while a capture runs, the outcome for a few seconds,
+ * otherwise the normal icon.
+ */
+export type CaptureProfileDisplay =
+  { kind: "idle" } | { kind: "capturing"; endsAt: number } | { kind: "saved" } | { kind: "failed" };
+
+/**
+ * @internal Exported for testing
+ *
+ * The title a Capture Profile key shows instead of its default, or undefined
+ * for its normal title.
+ */
+export function captureProfileStatusTitle(display: CaptureProfileDisplay, now: number): string | undefined {
+  switch (display.kind) {
+    case "capturing":
+      return `PROFILING\n${Math.max(0, Math.ceil((display.endsAt - now) / 1000))} s`;
+    case "saved":
+      return "SAVED";
+    case "failed":
+      return "FAILED";
+    default:
+      return undefined;
+  }
+}
 
 /**
  * @internal Exported for testing
@@ -134,14 +177,28 @@ export type TelemetryControlSettings = z.infer<typeof TelemetryControlSettings>;
  *
  * Generates an SVG data URI icon for the telemetry control action.
  */
-export function generateTelemetryControlSvg(settings: TelemetryControlSettings, bindingMissing = false): string {
+export function generateTelemetryControlSvg(
+  settings: TelemetryControlSettings,
+  bindingMissing = false,
+  statusTitle?: string,
+): string {
   const { mode: actionType } = settings;
 
   const iconSvg = ACTION_ICONS[actionType] || ACTION_ICONS["toggle-logging"];
   const defaultTitle = TELEMETRY_CONTROL_TITLES[actionType] || TELEMETRY_CONTROL_TITLES["toggle-logging"];
 
   const colors = resolveIconColors(iconSvg, getGlobalColors(), settings.colorOverrides);
-  const title = resolveTitleSettings(iconSvg, getGlobalTitleSettings(), settings.titleOverrides, defaultTitle);
+  // A status (Capture Profile's countdown, SAVED, FAILED) replaces the title
+  // text, the user's own included, while it lasts; every other title setting
+  // still applies.
+  const title = statusTitle
+    ? resolveTitleSettings(
+        iconSvg,
+        getGlobalTitleSettings(),
+        { ...settings.titleOverrides, titleText: undefined },
+        statusTitle,
+      )
+    : resolveTitleSettings(iconSvg, getGlobalTitleSettings(), settings.titleOverrides, defaultTitle);
 
   const border = resolveBorderSettings(iconSvg, getGlobalBorderSettings(), settings.borderOverrides);
 
@@ -159,6 +216,13 @@ export function generateTelemetryControlSvg(settings: TelemetryControlSettings, 
 export const TELEMETRY_CONTROL_UUID = "com.iracedeck.sd.core.telemetry-control" as const;
 
 export class TelemetryControl extends ConnectionStateAwareAction<TelemetryControlSettings> {
+  /** Visible Capture Profile keys and their settings (#1338). */
+  private readonly captureContexts = new Map<string, TelemetryControlSettings>();
+  private captureDisplay: CaptureProfileDisplay = { kind: "idle" };
+  private captureTick: ReturnType<typeof setInterval> | undefined;
+  private captureHold: ReturnType<typeof setTimeout> | undefined;
+  private unsubscribeCaptureStatus: (() => void) | undefined;
+
   override async onWillAppear(ev: IDeckWillAppearEvent<TelemetryControlSettings>): Promise<void> {
     await super.onWillAppear(ev);
     const { migrated, changed } = migrateLegacyActionToMode(ev.payload.settings);
@@ -174,8 +238,14 @@ export class TelemetryControl extends ConnectionStateAwareAction<TelemetryContro
     const settings = this.parseSettings(migrated);
     const activeKey = TELEMETRY_CONTROL_GLOBAL_KEYS[settings.mode];
     this.setActiveBinding(activeKey ?? null);
+    this.trackCaptureContext(ev.action.id, settings);
 
     await this.updateDisplay(ev, settings);
+  }
+
+  override async onWillDisappear(ev: IDeckWillDisappearEvent<TelemetryControlSettings>): Promise<void> {
+    this.untrackCaptureContext(ev.action.id);
+    await super.onWillDisappear(ev);
   }
 
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<TelemetryControlSettings>): Promise<void> {
@@ -183,6 +253,7 @@ export class TelemetryControl extends ConnectionStateAwareAction<TelemetryContro
     const settings = this.parseSettings(ev.payload.settings);
     const activeKey = TELEMETRY_CONTROL_GLOBAL_KEYS[settings.mode];
     this.setActiveBinding(activeKey ?? null);
+    this.trackCaptureContext(ev.action.id, settings);
 
     await this.updateDisplay(ev, settings);
   }
@@ -240,6 +311,120 @@ export class TelemetryControl extends ConnectionStateAwareAction<TelemetryContro
       case "snapshot":
         this.captureSnapshot(settings);
         break;
+
+      // The plugin's own CPU profile (#1338): sends nothing to iRacing.
+      case "capture-profile":
+        this.startCpuProfileCapture();
+        break;
+    }
+  }
+
+  /**
+   * Start a capture on the shared service. A press while one runs (from
+   * another key or the settings window) is refused by the service; the key
+   * already shows that capture's countdown. The outcome reaches the key
+   * through the status listener, and the service logs a failure's reason.
+   */
+  private startCpuProfileCapture(): void {
+    if (!isCpuProfileCaptureInitialized()) {
+      this.logger.warn("CPU profile capture is not available in this plugin");
+
+      return;
+    }
+
+    void getCpuProfileCapture()
+      .capture()
+      .then((result) => {
+        if (!result.ok && result.busy) this.logger.info("CPU profile capture already running");
+      });
+  }
+
+  /** Follow (or stop following) a context, depending on whether it is a Capture Profile key. */
+  private trackCaptureContext(contextId: string, settings: TelemetryControlSettings): void {
+    if (settings.mode !== "capture-profile") {
+      this.untrackCaptureContext(contextId);
+
+      return;
+    }
+
+    this.captureContexts.set(contextId, settings);
+
+    if (this.unsubscribeCaptureStatus || !isCpuProfileCaptureInitialized()) return;
+
+    const capture = getCpuProfileCapture();
+    this.unsubscribeCaptureStatus = capture.onStatus((status) => this.applyCaptureStatus(status));
+
+    // A key that appears mid-capture picks the countdown up; an older outcome
+    // is not news to it.
+    const current = capture.status();
+
+    if (current.state === "capturing") this.applyCaptureStatus(current);
+  }
+
+  private untrackCaptureContext(contextId: string): void {
+    if (!this.captureContexts.delete(contextId) || this.captureContexts.size > 0) return;
+
+    this.stopCaptureTimers();
+    this.unsubscribeCaptureStatus?.();
+    this.unsubscribeCaptureStatus = undefined;
+    this.captureDisplay = { kind: "idle" };
+  }
+
+  private stopCaptureTimers(): void {
+    if (this.captureTick !== undefined) clearInterval(this.captureTick);
+
+    if (this.captureHold !== undefined) clearTimeout(this.captureHold);
+
+    this.captureTick = undefined;
+    this.captureHold = undefined;
+  }
+
+  private applyCaptureStatus(status: ProfileCaptureStatus): void {
+    this.stopCaptureTimers();
+
+    switch (status.state) {
+      case "capturing":
+        this.captureDisplay = { kind: "capturing", endsAt: status.startedAt + status.durationMs };
+        this.captureTick = setInterval(() => this.renderCaptureContexts(), CAPTURE_PROFILE_TICK_MS);
+        break;
+      case "saved":
+      case "failed":
+        this.captureDisplay = { kind: status.state };
+        this.captureHold = setTimeout(() => {
+          this.captureHold = undefined;
+          this.captureDisplay = { kind: "idle" };
+          this.renderCaptureContexts();
+        }, CAPTURE_PROFILE_RESULT_HOLD_MS);
+        break;
+      default:
+        this.captureDisplay = { kind: "idle" };
+    }
+
+    this.renderCaptureContexts();
+  }
+
+  /** The SVG a context shows now: its status title when it is a Capture Profile key with something to say. */
+  private renderTelemetryControlSvg(settings: TelemetryControlSettings): string {
+    const statusTitle =
+      settings.mode === "capture-profile" ? captureProfileStatusTitle(this.captureDisplay, Date.now()) : undefined;
+
+    return generateTelemetryControlSvg(
+      settings,
+      this.isBindingMissing(TELEMETRY_CONTROL_GLOBAL_KEYS[settings.mode]),
+      statusTitle,
+    );
+  }
+
+  /**
+   * Redraw every Capture Profile key through the same function its regenerate
+   * callback runs, so a global-settings change mid-capture and the countdown
+   * tick produce the same image.
+   */
+  private renderCaptureContexts(): void {
+    for (const [contextId, settings] of this.captureContexts) {
+      void this.updateKeyImage(contextId, this.renderTelemetryControlSvg(settings)).catch((error: unknown) => {
+        this.logger.debug(`Capture Profile key update failed: ${error instanceof Error ? error.message : error}`);
+      });
     }
   }
 
@@ -303,14 +488,9 @@ export class TelemetryControl extends ConnectionStateAwareAction<TelemetryContro
     ev: IDeckWillAppearEvent<TelemetryControlSettings> | IDeckDidReceiveSettingsEvent<TelemetryControlSettings>,
     settings: TelemetryControlSettings,
   ): Promise<void> {
-    const svgDataUri = generateTelemetryControlSvg(
-      settings,
-      this.isBindingMissing(TELEMETRY_CONTROL_GLOBAL_KEYS[settings.mode]),
-    );
+    const svgDataUri = this.renderTelemetryControlSvg(settings);
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
-    this.setRegenerateCallback(ev.action.id, () =>
-      generateTelemetryControlSvg(settings, this.isBindingMissing(TELEMETRY_CONTROL_GLOBAL_KEYS[settings.mode])),
-    );
+    this.setRegenerateCallback(ev.action.id, () => this.renderTelemetryControlSvg(settings));
   }
 }
