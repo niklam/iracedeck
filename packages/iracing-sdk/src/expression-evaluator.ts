@@ -57,7 +57,8 @@ export type ExprNode =
   | { type: "unary"; op: "-"; operand: ExprNode }
   | { type: "binary"; op: BinaryOperator; left: ExprNode; right: ExprNode }
   | { type: "ternary"; condition: ExprNode; whenTrue: ExprNode; whenFalse: ExprNode }
-  | { type: "call"; name: FunctionName; args: ExprNode[]; fixedDecimals?: number };
+  | { type: "call"; name: FunctionName; args: ExprNode[]; fixedDecimals?: number }
+  | { type: "empty"; path: string };
 
 /**
  * @internal Exported for testing
@@ -327,7 +328,7 @@ class Parser {
   }
 
   private parseCall(name: string): ExprNode {
-    if (!(FUNCTION_NAMES as readonly string[]).includes(name)) {
+    if (name !== "empty" && !(FUNCTION_NAMES as readonly string[]).includes(name)) {
       throw new ExpressionParseError(`Unknown function "${name}"`);
     }
 
@@ -340,7 +341,7 @@ class Parser {
 
     this.expectPunct(")");
 
-    return buildCall(name as FunctionName, args);
+    return name === "empty" ? buildEmpty(args) : buildCall(name as FunctionName, args);
   }
 
   private peek(): Token | undefined {
@@ -443,6 +444,20 @@ function buildCall(name: FunctionName, args: ExprNode[]): ExprNode {
 }
 
 /**
+ * `empty(path)` takes exactly one variable path, so it answers only "is this
+ * value present?" — never whether some larger expression failed (#1348).
+ */
+function buildEmpty(args: ExprNode[]): ExprNode {
+  const [arg] = args;
+
+  if (args.length !== 1 || arg.type !== "variable") {
+    throw new ExpressionParseError("empty() takes exactly one variable");
+  }
+
+  return { type: "empty", path: arg.path };
+}
+
+/**
  * @internal Exported for testing
  *
  * Tokenizes and parses an expression into an AST. Throws on any parse error,
@@ -518,6 +533,16 @@ function isTruthy(value: ExpressionValue): boolean {
   }
 
   return value.length > 0;
+}
+
+/**
+ * Missing, holding nothing, or "" — the three ways a template value can be
+ * absent. 0 and false are values (#1348). `null` cannot reach an expression
+ * today (the context reports it as not found) and is treated as empty in case
+ * a lookup ever passes one through.
+ */
+function isEmptyLookup(result: VariableLookupResult): boolean {
+  return !result.found || result.value == null || result.value === "";
 }
 
 function looseEquals(left: ExpressionValue, right: ExpressionValue): boolean {
@@ -632,6 +657,8 @@ export function evaluateAst(node: ExprNode, lookup: VariableLookup): EvalResult 
       return evaluateAst(isTruthy(evaluateAst(node.condition, lookup).value) ? node.whenTrue : node.whenFalse, lookup);
     case "call":
       return evaluateCall(node, lookup);
+    case "empty":
+      return { value: isEmptyLookup(lookup(node.path)) };
   }
 }
 

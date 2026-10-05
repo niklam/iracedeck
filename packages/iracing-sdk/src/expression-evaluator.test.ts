@@ -483,6 +483,69 @@ describe("functions", () => {
   });
 });
 
+describe("empty()", () => {
+  it("should be true for a variable that does not exist", () => {
+    expect(resolveExpression("empty(missing)", {})).toBe("Yes");
+    expect(resolveExpression("empty(ahead.first_name)", {})).toBe("Yes");
+  });
+
+  it("should be true for an empty string", () => {
+    expect(resolveExpression("empty(name)", { name: "" })).toBe("Yes");
+  });
+
+  it("should be true for a path that is found but holds no value", () => {
+    const lookup: VariableLookup = (path) =>
+      path === "slot.position" ? { found: true, value: undefined } : { found: false };
+
+    expect(resolveExpressionWithLookup("empty(slot.position)", lookup)).toBe("Yes");
+  });
+
+  it("should be false for zero, false, '0' and whitespace", () => {
+    expect(resolveExpression("empty(n)", { n: 0 })).toBe("No");
+    expect(resolveExpression("empty(b)", { b: false })).toBe("No");
+    expect(resolveExpression("empty(s)", { s: "0" })).toBe("No");
+    expect(resolveExpression("empty(s)", { s: " " })).toBe("No");
+  });
+
+  it("should be false for a present value", () => {
+    expect(resolveExpression("empty(n)", { n: 3 })).toBe("No");
+    expect(resolveExpression("empty(name)", { name: "Dale" })).toBe("No");
+  });
+
+  it("should pick the fallback branch without evaluating the other one", () => {
+    const source = "empty(race_ahead.position) ? '--' : 'P' + race_ahead.position";
+
+    expect(resolveExpression(source, {})).toBe("--");
+    expect(resolveExpression(source, { "race_ahead.position": 3 })).toBe("P3");
+  });
+
+  it("should work for the text fallback pattern", () => {
+    const source = "empty(race_ahead.first_name) ? 'Unknown' : race_ahead.first_name";
+
+    expect(resolveExpression(source, { "race_ahead.first_name": "" })).toBe("Unknown");
+    expect(resolveExpression(source, { "race_ahead.first_name": "Dale" })).toBe("Dale");
+  });
+
+  it("should compare like a boolean", () => {
+    expect(resolveExpression("empty(missing) == 1", {})).toBe("Yes");
+    expect(resolveExpression("empty(n) == 0", { n: 5 })).toBe("Yes");
+  });
+
+  it("should still read a variable named empty when it is not called", () => {
+    expect(resolveExpression("empty", { empty: 7 })).toBe("7");
+  });
+
+  it("should reject anything but a single variable path", () => {
+    for (const source of ["empty()", "empty(a, b)", "empty('')", "empty(1)", "empty(a + 1)", "empty(round(a))"]) {
+      expect(resolveExpression(source, { a: 1, b: 2 }), source).toBeNull();
+    }
+  });
+
+  it("should leave a missing variable outside empty() failing the expression", () => {
+    expect(resolveExpression("empty(a) ? missing : 1", {})).toBe("");
+  });
+});
+
 describe("string concatenation", () => {
   it("should concatenate when either operand is a string", () => {
     expect(resolveExpression("'P' + 5", {})).toBe("P5");
