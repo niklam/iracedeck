@@ -60,6 +60,6 @@ Unit tests in `packages/iracing-sdk/src/expression-evaluator.test.ts`:
 - A bare `empty(x)` result renders `Yes` / `No`.
 - A missing variable outside `empty` still renders `""`, a regression guard on decision 3.
 
-A resolver-level case in `template-resolver.test.ts` runs the issue's example through a real context: an empty `race_ahead` slot gives `'Unknown'` for `first_name`, and `'--'` for `position`.
+A case in `template-context.test.ts` runs the issue's example through `resolveTemplate` over a context built by `buildTemplateContextFromData`: an empty `race_ahead` slot gives `'Unknown'` for `first_name`, and `'--'` for `position`.
 
 Manual: on a Telemetry Display key, set `{{= empty(race_ahead.position) ? '--' : 'P' + race_ahead.position }}`. While leading, the key shows `--`. Behind another car it shows that car's position. A typo in the function name (`emty(…)`) leaves the template text visible on the key.
