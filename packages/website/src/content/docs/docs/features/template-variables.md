@@ -40,6 +40,9 @@ Templates also support calculated values with the `{{= expression }}` syntax. Th
 | `abs(x)` | Absolute value |
 | `min(a, b, …)` | Smallest of two or more values |
 | `max(a, b, …)` | Largest of two or more values |
+| `empty(x)` | `Yes` when `x` has no value: the variable does not exist, holds nothing, or is empty text (`''`). `0` and `No` are values, not empty. `x` must be a single variable, such as `race_ahead.position` |
+
+`empty()` is the one place a missing variable does not blank the whole expression, which makes it the way to show a fallback: `{{= empty(race_ahead.position) ? '--' : 'P' + race_ahead.position }}` shows `--` while nobody is ahead of you. Only the branch the condition picks is worked out, so the `'P' + race_ahead.position` part never runs without a car ahead. A misspelled variable inside `empty()` counts as empty too, so a typo shows the fallback rather than a blank.
 
 ### Result formatting
 
@@ -56,6 +59,8 @@ Expressions compute on the raw, full-precision values — not the display-format
 ### Errors
 
 A syntax error (a typo in the expression) leaves the raw `{{= ... }}` text visible on the key so you can spot the mistake. An evaluation problem (unknown variable, division by zero) renders as empty text.
+
+To keep a missing value from blanking the result, check it with `empty()` first (see [Functions](#functions)).
 
 ### Limits
 
@@ -109,6 +114,12 @@ The text fields (`name`, `first_name`, `last_name`, `abbrev_name`, `car_number`,
 
 ```text
 {{= track_ahead.abbrev_name ? track_ahead.abbrev_name : track_ahead.name }}
+```
+
+The number fields (`position`, `class_position`, `lap`, `laps_completed`, `irating`, `irating_change`, `irating_new`, `incidents`) are left out whenever they would render blank, including when there is no car in the slot, so a plain condition on them blanks the whole expression. Use `empty()` instead:
+
+```text
+{{= empty(race_ahead.position) ? '--' : 'P' + race_ahead.position }}
 ```
 
 | Variable | Description |

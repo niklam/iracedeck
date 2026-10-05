@@ -6,6 +6,18 @@
   },
   "releases": [
     {
+      "version": "3.6.0",
+      "date": null,
+      "categories": [
+        {
+          "title": "Features",
+          "items": [
+            "Template expressions have a new <code>empty()</code> function for showing a fallback when a value is missing: <code>{{= empty(race_ahead.position) ? '--' : 'P' + race_ahead.position }}</code> shows <code>--</code> while nobody is ahead of you, where the expression used to go blank. It counts a missing variable and empty text as empty, but not <code>0</code>. See <a href=\"https://iracedeck.com/docs/features/template-variables/#functions\" target=\"_blank\" rel=\"noopener noreferrer\">Template Variables</a>."
+          ]
+        }
+      ]
+    },
+    {
       "version": "3.5.0",
       "date": "2026-10-05",
       "categories": [
