@@ -555,6 +555,38 @@ describe("buildTemplateContextFromData", () => {
     expect(ctx.display("race_behind.name")).toBe("P3 Driver");
   });
 
+  describe("empty() over a built context (#1348)", () => {
+    const drivers = [
+      makeDriver({ CarIdx: 0, UserName: "Player One" }),
+      makeDriver({ CarIdx: 1, UserName: "Rival Two" }),
+    ];
+
+    it("should fall back when there is no car ahead", () => {
+      const ctx = buildTemplateContextFromData(
+        makeTelemetry({ PlayerCarPosition: 1, CarIdxPosition: [1, 2] }),
+        makeSessionInfo(drivers, 0),
+      );
+
+      expect(resolveTemplate("{{= empty(race_ahead.first_name) ? 'Unknown' : race_ahead.first_name }}", ctx)).toBe(
+        "Unknown",
+      );
+      expect(resolveTemplate("{{= empty(race_ahead.position) ? '--' : 'P' + race_ahead.position }}", ctx)).toBe("--");
+      expect(resolveTemplate("{{= empty(ahead.first_name) ? 'Unknown' : ahead.first_name }}", ctx)).toBe("Unknown");
+    });
+
+    it("should show the car ahead when there is one", () => {
+      const ctx = buildTemplateContextFromData(
+        makeTelemetry({ PlayerCarPosition: 2, CarIdxPosition: [2, 1] }),
+        makeSessionInfo(drivers, 0),
+      );
+
+      expect(resolveTemplate("{{= empty(race_ahead.first_name) ? 'Unknown' : race_ahead.first_name }}", ctx)).toBe(
+        "Rival",
+      );
+      expect(resolveTemplate("{{= empty(race_ahead.position) ? '--' : 'P' + race_ahead.position }}", ctx)).toBe("P1");
+    });
+  });
+
   it("should populate focused fields from the camera-focused car (CamCarIdx)", () => {
     const drivers = [
       makeDriver({ CarIdx: 0, UserName: "Player" }),
