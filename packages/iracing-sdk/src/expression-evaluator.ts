@@ -328,7 +328,11 @@ class Parser {
   }
 
   private parseCall(name: string): ExprNode {
-    if (name !== "empty" && !(FUNCTION_NAMES as readonly string[]).includes(name)) {
+    // empty() is a presence test, not a numeric function: it never goes
+    // through evaluateCall's number conversion, so it is not in FUNCTION_NAMES.
+    const isEmpty = name === "empty";
+
+    if (!isEmpty && !(FUNCTION_NAMES as readonly string[]).includes(name)) {
       throw new ExpressionParseError(`Unknown function "${name}"`);
     }
 
@@ -341,7 +345,7 @@ class Parser {
 
     this.expectPunct(")");
 
-    return name === "empty" ? buildEmpty(args) : buildCall(name as FunctionName, args);
+    return isEmpty ? buildEmpty(args) : buildCall(name as FunctionName, args);
   }
 
   private peek(): Token | undefined {

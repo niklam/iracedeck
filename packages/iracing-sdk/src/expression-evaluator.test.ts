@@ -535,6 +535,11 @@ describe("empty()", () => {
     expect(resolveExpression("empty", { empty: 7 })).toBe("7");
   });
 
+  it("should accept a parenthesised variable, since parentheses leave no node of their own", () => {
+    expect(resolveExpression("empty((missing))", {})).toBe("Yes");
+    expect(resolveExpression("empty(((a)))", { a: 1 })).toBe("No");
+  });
+
   it("should reject anything but a single variable path", () => {
     for (const source of ["empty()", "empty(a, b)", "empty('')", "empty(1)", "empty(a + 1)", "empty(round(a))"]) {
       expect(resolveExpression(source, { a: 1, b: 2 }), source).toBeNull();
