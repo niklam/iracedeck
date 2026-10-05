@@ -1,6 +1,7 @@
 # Code Style & Conventions
 
 - Use consistent formatting and linting. Run `pnpm lint:fix` and `pnpm format:fix` before committing.
+- What each gate covers: `lint` / `lint:fix` run ESLint over `packages/*/src/**`, every `.mjs`, `vitest.config.ts` and `test-setup.ts` — every tracked `.ts` and `.mjs` file; `format` / `format:fix` run Prettier over every `.ts`, `.mjs` and `.json` file outside the ignores; lint-staged runs `eslint --fix` and `prettier --write` on staged `.ts` / `.mjs` and `prettier --write` on staged `.json`. A check and its fix variant cover the same files, `lint` and `format` reach every tracked `.ts` / `.mjs` file, and lint-staged handles the extensions the gates check — `scripts/lint-format-coverage.test.mjs` compares them file by file and fails when they drift, as `lint:fix` and `.mjs` once did (#1325). Not covered by either tool: `.ejs` templates, Markdown (`.md` / `.mdx`), and the tracked `.js` files (today the two root configs, the vendored `sdpi-components.js`, and two browser scripts) — never run Prettier on docs, which are not Prettier-aligned and get rewritten whole.
 - Prefer explicit types and interfaces when they improve readability; use `type` for simple data shapes.
 - Use `zod` (with `z.coerce` when appropriate) for action settings validation.
 - Avoid side effects in constructors and public methods; prefer returning new state.

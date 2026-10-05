@@ -15,7 +15,6 @@
 // packages/audio-assets/catalog/<pack-id>.json — written by
 // packages/audio-assets/scripts/pack-voice.mjs. Each file's content is exactly
 // one VoicePackCatalogEntrySchema object (see that script's buildCatalogEntry).
-
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
@@ -93,7 +92,9 @@ export function buildVoiceCatalogData(entriesDir) {
     const result = VoicePackCatalogEntrySchema.safeParse(json);
 
     if (!result.success) {
-      const issues = result.error.issues.map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`).join("; ");
+      const issues = result.error.issues
+        .map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`)
+        .join("; ");
 
       throw new Error(`${relPath}: ${issues}`);
     }
@@ -107,7 +108,9 @@ export function buildVoiceCatalogData(entriesDir) {
     const expectedId = file.slice(0, -".json".length);
 
     if (entry.id !== expectedId) {
-      throw new Error(`${relPath}: entry id "${entry.id}" does not match the file name — expected "${expectedId}.json"`);
+      throw new Error(
+        `${relPath}: entry id "${entry.id}" does not match the file name — expected "${expectedId}.json"`,
+      );
     }
 
     return entry;
@@ -127,7 +130,9 @@ export function buildVoiceCatalogData(entriesDir) {
   const document = VoicePackCatalogSchema.safeParse(data);
 
   if (!document.success) {
-    const issues = document.error.issues.map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`).join("; ");
+    const issues = document.error.issues
+      .map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`)
+      .join("; ");
 
     throw new Error(`${VOICE_CATALOG_ENTRIES_DIR}: the assembled catalog would be refused by every plugin: ${issues}`);
   }

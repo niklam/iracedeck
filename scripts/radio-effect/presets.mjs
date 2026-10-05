@@ -21,10 +21,8 @@ export const presets = [
   // attenuated 16 dB and bumped 4 dB back for output level.
   {
     name: "radio-engineer",
-    description:
-      "Primary radio effect — narrow bandpass + hard soft-clip overdrive. Tinny, bitey, clearly 'radio'.",
-    filterChain:
-      "highpass=f=500,lowpass=f=2400,volume=22dB,asoftclip=type=hard,volume=-16dB,volume=4dB",
+    description: "Primary radio effect — narrow bandpass + hard soft-clip overdrive. Tinny, bitey, clearly 'radio'.",
+    filterChain: "highpass=f=500,lowpass=f=2400,volume=22dB,asoftclip=type=hard,volume=-16dB,volume=4dB",
   },
 
   // Alternate — same chain, hotter pre-gain. Kept as a second option if the
@@ -32,7 +30,6 @@ export const presets = [
   {
     name: "radio-engineer-hot",
     description: "Same as radio-engineer but with 26 dB pre-gain. More squash at the peaks.",
-    filterChain:
-      "highpass=f=500,lowpass=f=2400,volume=26dB,asoftclip=type=hard,volume=-20dB,volume=4dB",
+    filterChain: "highpass=f=500,lowpass=f=2400,volume=26dB,asoftclip=type=hard,volume=-20dB,volume=4dB",
   },
 ];

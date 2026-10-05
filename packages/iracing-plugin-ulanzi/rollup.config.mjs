@@ -20,6 +20,7 @@ import { copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync 
 import path from "node:path";
 import process from "node:process";
 import url from "node:url";
+
 import { DEV_LOCAL_FILE, resolveDevVoicePacksRoot } from "../../scripts/lib/dev-local.mjs";
 import { pluginBuildOnLog } from "../../scripts/lib/rollup-logs.mjs";
 import { runtimePackageJsonPlugin } from "../../scripts/lib/runtime-deps.mjs";
@@ -187,7 +188,14 @@ function copyAssetsPlugin(sdPlugin) {
       if (!existsSync(uiDir)) {
         mkdirSync(uiDir, { recursive: true });
       }
-      for (const jsFile of ["sdpi-components.js", "pi-components.js", "ulanzi-pi-bridge.js", SETTINGS_WINDOW_BRIDGE, SETTINGS_WINDOW_LOGO, SETTINGS_WINDOW_ICON]) {
+      for (const jsFile of [
+        "sdpi-components.js",
+        "pi-components.js",
+        "ulanzi-pi-bridge.js",
+        SETTINGS_WINDOW_BRIDGE,
+        SETTINGS_WINDOW_LOGO,
+        SETTINGS_WINDOW_ICON,
+      ]) {
         const src = path.join(browserDir, jsFile);
         if (!existsSync(src)) {
           this.error(

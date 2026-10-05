@@ -1,13 +1,15 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import url from "node:url";
-
 import { describe, expect, it } from "vitest";
 
 import { GettingStartedParseError, parseGettingStarted } from "./getting-started-parse.mjs";
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
-const REAL_PAGE = path.resolve(__dirname, "../../packages/website/src/content/docs/docs/getting-started/first-steps.md");
+const REAL_PAGE = path.resolve(
+  __dirname,
+  "../../packages/website/src/content/docs/docs/getting-started/first-steps.md",
+);
 
 /** The Starlight frontmatter every real page carries, which the parser must skip. */
 const FRONTMATTER = `---
@@ -133,10 +135,12 @@ More prose.
     // A typo'd marker is invisible on the website AND absent from the pane, so
     // it would never be noticed. It is caught by the raw-HTML guard, which
     // covers every comment that is not a well-formed marker.
-    expect(() => parseGettingStarted(`## S
+    expect(() =>
+      parseGettingStarted(`## S
 
 <!-- ird:actoin oops -->
-`)).toThrow(/raw HTML/);
+`),
+    ).toThrow(/raw HTML/);
   });
 
   it("rejects a marker that is not alone on its line", () => {
@@ -151,39 +155,49 @@ text <!-- ird:action foo --> more
   });
 
   it("rejects raw HTML, which markdown renders and the pane escapes", () => {
-    expect(() => parseGettingStarted(`## S
+    expect(() =>
+      parseGettingStarted(`## S
 
 <div>hi</div>
-`)).toThrow(/raw HTML/);
-    expect(() => parseGettingStarted(`## S
+`),
+    ).toThrow(/raw HTML/);
+    expect(() =>
+      parseGettingStarted(`## S
 
 some <b>bold</b> text
-`)).toThrow(/raw HTML/);
+`),
+    ).toThrow(/raw HTML/);
   });
 
   describe("indented lines", () => {
     // Each of these renders one way on the website and another here, silently.
     it("rejects a nested bullet, which would flatten into one flat list", () => {
-      expect(() => parseGettingStarted(`## S
+      expect(() =>
+        parseGettingStarted(`## S
 
 - outer
   - nested
-`)).toThrow(/indented line/);
+`),
+      ).toThrow(/indented line/);
     });
 
     it("rejects a wrapped continuation, which folds into the bullet on the website", () => {
-      expect(() => parseGettingStarted(`## S
+      expect(() =>
+        parseGettingStarted(`## S
 
 - item one
   wrapped part
-`)).toThrow(/indented line/);
+`),
+      ).toThrow(/indented line/);
     });
 
     it("rejects indented code, which is a code block on the website", () => {
-      expect(() => parseGettingStarted(`## S
+      expect(() =>
+        parseGettingStarted(`## S
 
     const x = 1;
-`)).toThrow(/indented line/);
+`),
+      ).toThrow(/indented line/);
     });
   });
 
@@ -245,9 +259,10 @@ describe("the real Getting Started page", () => {
 
         if (block.type !== "paragraph" || next?.type !== "action") return;
 
-        expect(forwardReference.test(block.text), `"${section.title}" leans on the control after it: ${block.text}`).toBe(
-          false,
-        );
+        expect(
+          forwardReference.test(block.text),
+          `"${section.title}" leans on the control after it: ${block.text}`,
+        ).toBe(false);
       });
     }
   });

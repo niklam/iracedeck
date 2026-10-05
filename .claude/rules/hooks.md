@@ -50,4 +50,4 @@ A **deny** refuses the call and tells the model why. An **ask** forces the permi
 
 - Editing files in another worktree. The coordinator's cwd is `master` while it edits the issue's tree, so a path-based guard would fire on every legitimate edit.
 - The post-review "every worktree is clean" check. The Skill tool returns before a review finishes, so there is no event to hang it on; the SessionStart report shows dirty trees, and the rule in `code-review.md` stands.
-- Lint-staged gaps (`.ejs`, `.mjs` formatting) and the commit trailer: those belong to husky, where they apply to every committer.
+- Lint-staged gaps (`.ejs`, which neither ESLint nor Prettier reads) and the commit trailer: those belong to husky, where they apply to every committer.

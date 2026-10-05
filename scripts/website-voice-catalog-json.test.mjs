@@ -2,10 +2,13 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import url from "node:url";
-
 import { describe, expect, it } from "vitest";
 
-import { buildVoiceCatalogData, serializeVoiceCatalogData, VOICE_CATALOG_ENTRIES_DIR } from "./lib/voice-catalog-data.mjs";
+import {
+  buildVoiceCatalogData,
+  serializeVoiceCatalogData,
+  VOICE_CATALOG_ENTRIES_DIR,
+} from "./lib/voice-catalog-data.mjs";
 
 /**
  * The website publishes https://iracedeck.com/voice-catalog.json from the SAME

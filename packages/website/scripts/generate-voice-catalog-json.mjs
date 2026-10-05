@@ -19,7 +19,11 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import url from "node:url";
 
-import { buildVoiceCatalogData, serializeVoiceCatalogData, VOICE_CATALOG_ENTRIES_DIR } from "../../../scripts/lib/voice-catalog-data.mjs";
+import {
+  buildVoiceCatalogData,
+  serializeVoiceCatalogData,
+  VOICE_CATALOG_ENTRIES_DIR,
+} from "../../../scripts/lib/voice-catalog-data.mjs";
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..", "..", "..");

@@ -16,6 +16,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
+
 import { createDiscordClient } from "../lib/discord-api.mjs";
 import { readConfig, runFollowUp, runList, runReply, runShow, runTag } from "../lib/discord-forum-commands.mjs";
 
@@ -85,7 +86,9 @@ async function main(command, positionals, values) {
         return await runReply({ postId, text, dryRun: values["dry-run"] }, deps);
       }
       case "tag":
-        return requirePostId(postId) ? await runTag({ postId, tagName: rest.join(" "), dryRun: values["dry-run"] }, deps) : 1;
+        return requirePostId(postId)
+          ? await runTag({ postId, tagName: rest.join(" "), dryRun: values["dry-run"] }, deps)
+          : 1;
       case "follow-up":
         return await runFollowUp({ json: values.json }, deps);
       default:

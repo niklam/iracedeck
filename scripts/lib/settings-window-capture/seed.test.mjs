@@ -1,7 +1,6 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-
 import { describe, expect, it } from "vitest";
 
 import { buildSeedSettings, SEED_STORE_PATH } from "./seed.mjs";
@@ -11,9 +10,7 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..")
 /** Every real binding setting name, from the generated catalog. */
 const realBindingKeys = new Set(
   Object.values(
-    JSON.parse(
-      readFileSync(join(repoRoot, "packages/iracing-actions/src/actions/data/key-bindings.json"), "utf-8"),
-    ),
+    JSON.parse(readFileSync(join(repoRoot, "packages/iracing-actions/src/actions/data/key-bindings.json"), "utf-8")),
   )
     .flat()
     .map((binding) => binding.setting),

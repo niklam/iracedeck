@@ -1,7 +1,6 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import url from "node:url";
-
 import { describe, expect, it } from "vitest";
 
 import { CHANGELOG_CATEGORIES, ChangelogParseError, parseChangelog } from "./changelog-parse.mjs";
@@ -117,9 +116,7 @@ _2026-01-01_
 - Wraps \`<name>\` in backticks and **bolds** the rest.
 `);
 
-    expect(releases[0].categories[0].items[0]).toBe(
-      "Wraps `<name>` in backticks and **bolds** the rest.",
-    );
+    expect(releases[0].categories[0].items[0]).toBe("Wraps `<name>` in backticks and **bolds** the rest.");
   });
 
   it("accepts CRLF line endings", () => {

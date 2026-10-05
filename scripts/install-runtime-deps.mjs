@@ -21,6 +21,12 @@ process.exitCode = installRuntimeDeps(process.argv[2], {
   exists: existsSync,
   missingPath: (label) => path.join(tmpdir(), `iracedeck-${process.pid}-no-${label}-npmrc`),
   run: (command, { cwd, env, capture }) =>
-    spawnSync(command, { cwd, env, shell: true, encoding: "utf8", stdio: capture ? ["ignore", "pipe", "inherit"] : "inherit" }),
+    spawnSync(command, {
+      cwd,
+      env,
+      shell: true,
+      encoding: "utf8",
+      stdio: capture ? ["ignore", "pipe", "inherit"] : "inherit",
+    }),
   log: (message) => console.error(message),
 });

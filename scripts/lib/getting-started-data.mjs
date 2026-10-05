@@ -10,7 +10,6 @@
 //
 // This module owns only the artifact's shape and its serialisation, so the
 // generator script is left with nothing but file I/O.
-
 import { renderInlineMarkdown } from "./changelog-inline-html.mjs";
 import { parseGettingStarted } from "./getting-started-parse.mjs";
 

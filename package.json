@@ -29,11 +29,11 @@
     "dev:voices": "node scripts/dev-voices.mjs",
     "stage:voices": "pnpm --filter @iracedeck/audio-assets stage:dev-voices",
     "clean": "turbo run clean",
-    "lint": "eslint \"packages/*/src/**\" \"scripts/**/*.mjs\" vitest.config.ts",
+    "lint": "eslint \"packages/*/src/**\" \"**/*.mjs\" vitest.config.ts test-setup.ts",
     "lint:pack": "node scripts/lint-pack.mjs",
-    "lint:fix": "eslint --fix \"packages/*/src/**\" vitest.config.ts",
-    "format": "prettier --check \"**/*.ts\" \"**/*.json\"",
-    "format:fix": "prettier --write \"**/*.ts\" \"**/*.json\"",
+    "lint:fix": "eslint --fix \"packages/*/src/**\" \"**/*.mjs\" vitest.config.ts test-setup.ts",
+    "format": "prettier --check \"**/*.ts\" \"**/*.mjs\" \"**/*.json\"",
+    "format:fix": "prettier --write \"**/*.ts\" \"**/*.mjs\" \"**/*.json\"",
     "typecheck": "turbo run typecheck",
     "test": "vitest run --configLoader native",
     "test:watch": "vitest --configLoader native",
@@ -95,7 +95,7 @@
     "yaml": "2.9.1"
   },
   "lint-staged": {
-    "*.ts": [
+    "*.{ts,mjs}": [
       "eslint --fix",
       "prettier --write"
     ],

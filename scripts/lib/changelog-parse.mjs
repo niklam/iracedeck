@@ -120,7 +120,10 @@ export function parseChangelog(source) {
     if (heading) {
       const version = heading[1];
       if (!PLAIN_VERSION.test(version)) {
-        throw new ChangelogParseError(`heading "## ${version}" is not a version number (expected e.g. "## 1.2.3")`, lineNumber);
+        throw new ChangelogParseError(
+          `heading "## ${version}" is not a version number (expected e.g. "## 1.2.3")`,
+          lineNumber,
+        );
       }
       if (seenVersions.has(version)) {
         throw new ChangelogParseError(`version ${version} appears twice`, lineNumber);
@@ -193,13 +196,19 @@ export function parseChangelog(source) {
     const bullet = BULLET_LINE.exec(line);
     if (bullet) {
       if (category === null) {
-        throw new ChangelogParseError(`bullet in release ${release.version} appears before any category header`, lineNumber);
+        throw new ChangelogParseError(
+          `bullet in release ${release.version} appears before any category header`,
+          lineNumber,
+        );
       }
       category.items.push(bullet[1]);
       continue;
     }
 
-    throw new ChangelogParseError(`Unrecognised line in release ${release.version}: ${JSON.stringify(line)}`, lineNumber);
+    throw new ChangelogParseError(
+      `Unrecognised line in release ${release.version}: ${JSON.stringify(line)}`,
+      lineNumber,
+    );
   }
 
   closeRelease(lines.length);

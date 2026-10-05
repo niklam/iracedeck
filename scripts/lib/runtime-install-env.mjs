@@ -156,7 +156,11 @@ export function installRuntimeDeps(binDir, { env, exists, missingPath, run, log 
 
   // `--no-fund`: the repo's `.npmrc` `fund=false` used to reach npm through pnpm 10's
   // exported keys; pnpm 11+ exports none of them (#1245).
-  const installed = run("npm install --no-fund", { cwd: binDir, env: runtimeInstallEnv(env, definedKeys), capture: false });
+  const installed = run("npm install --no-fund", {
+    cwd: binDir,
+    env: runtimeInstallEnv(env, definedKeys),
+    capture: false,
+  });
   if (installed.error) {
     log(`install-runtime-deps: \`npm install\` in ${binDir} failed: ${installed.error.message}`);
     return 1;

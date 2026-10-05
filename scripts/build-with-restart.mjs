@@ -4,10 +4,10 @@ const STREAM_DECK_EXE = "StreamDeck.exe";
 
 function getStreamDeckPath() {
   try {
-    const output = execSync(
-      `wmic process where "name='${STREAM_DECK_EXE}'" get ExecutablePath`,
-      { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] },
-    );
+    const output = execSync(`wmic process where "name='${STREAM_DECK_EXE}'" get ExecutablePath`, {
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"],
+    });
     const match = output
       .split("\n")
       .map((line) => line.trim())

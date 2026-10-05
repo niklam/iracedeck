@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-
 /**
  * One-shot comparison harness for the radio-engineer voice filter chain.
  *
@@ -16,7 +15,6 @@
  *
  * Edit SOURCES / VARIANTS at the top to try other clips or filter chains.
  */
-
 import { spawn } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -61,8 +59,7 @@ const VARIANTS = [
   // "safe" option that doesn't change the saturation character.
   {
     name: "03-tail+4dB+limiter",
-    chain:
-      "highpass=f=250,lowpass=f=3500,volume=8dB,asoftclip=type=tanh,volume=-6dB,volume=6dB,alimiter=limit=0.95",
+    chain: "highpass=f=250,lowpass=f=3500,volume=8dB,asoftclip=type=tanh,volume=-6dB,volume=6dB,alimiter=limit=0.95",
   },
   // EBU R128 single-pass loudnorm to broadcast TV target (-16 LUFS).
   // Predictable level regardless of input dynamics.

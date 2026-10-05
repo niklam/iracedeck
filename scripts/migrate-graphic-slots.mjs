@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-
 /**
  * Graphic Slot Migration Script
  *
@@ -8,7 +7,6 @@
  *
  * Usage: node scripts/migrate-graphic-slots.mjs [--dry-run]
  */
-
 import fs from "node:fs";
 import path from "node:path";
 
@@ -22,8 +20,8 @@ const SKIP_CATEGORIES = new Set([
 
 // Specific icons where white artwork should stay fixed
 const SKIP_ICONS = new Set([
-  "car-control/starter.svg",      // red START button has white "START" text
-  "car-control/ignition.svg",     // key icon artwork is semantic
+  "car-control/starter.svg", // red START button has white "START" text
+  "car-control/ignition.svg", // key icon artwork is semantic
 ]);
 
 let totalModified = 0;

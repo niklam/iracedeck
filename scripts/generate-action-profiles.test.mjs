@@ -1,10 +1,9 @@
-import { readFileSync } from "node:fs";
-
 import {
-  deviceProfileName,
   PROFILE_DEVICE_SUFFIXES as DECK_CORE_SUFFIXES,
+  deviceProfileName,
   profileDisplayName,
 } from "@iracedeck/deck-core";
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import { buildProfilesData, MANIFEST_FILE, OUTPUT_FILE, PROFILE_DEVICE_SUFFIXES } from "./generate-action-profiles.mjs";

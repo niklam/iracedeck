@@ -13,6 +13,7 @@
  */
 import { lstatSync, readlinkSync } from "node:fs";
 import { join, win32 } from "node:path";
+
 import { resolvePluginsDirSource } from "./deck-hosts.mjs";
 
 /**
@@ -101,7 +102,10 @@ export function stopHost(host, { appPath, spawnSync, log = console } = {}) {
  *
  * @returns {Promise<number>}
  */
-export function startHost(host, { appPath, spawn, env = process.env, platform = process.platform, log = console } = {}) {
+export function startHost(
+  host,
+  { appPath, spawn, env = process.env, platform = process.platform, log = console } = {},
+) {
   describeLinkTarget(host, { env, platform, log });
 
   return new Promise((resolve) => {

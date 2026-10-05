@@ -16,8 +16,7 @@
  *   node scripts/refactor-icons-to-snippets.mjs --dry-run   # preview only
  *   node scripts/refactor-icons-to-snippets.mjs              # apply changes
  */
-
-import { readFileSync, readdirSync, statSync, writeFileSync } from "fs";
+import { readdirSync, readFileSync, statSync, writeFileSync } from "fs";
 import { join, relative } from "path";
 
 const ROOT = join(import.meta.dirname, "..");
@@ -94,24 +93,15 @@ function transformSvg(content) {
   let result = content;
 
   // 1. Remove background rect with {{backgroundColor}}
-  result = result.replace(
-    /[ \t]*<rect[^>]*fill="{{backgroundColor}}"[^/]*(\/?>|>.*?<\/rect>)\n?/gs,
-    "",
-  );
+  result = result.replace(/[ \t]*<rect[^>]*fill="{{backgroundColor}}"[^/]*(\/?>|>.*?<\/rect>)\n?/gs, "");
 
   // 2. Remove <text> elements containing {{mainLabel}} or {{subLabel}}
   // Handle both single-line and multi-line text elements
   result = result.replace(/[ \t]*<text[^>]*>{{mainLabel}}<\/text>\n?/g, "");
   result = result.replace(/[ \t]*<text[^>]*>{{subLabel}}<\/text>\n?/g, "");
   // Multi-line text elements (where attributes span multiple lines)
-  result = result.replace(
-    /[ \t]*<text[\s\S]*?>\s*{{mainLabel}}\s*<\/text>\n?/g,
-    "",
-  );
-  result = result.replace(
-    /[ \t]*<text[\s\S]*?>\s*{{subLabel}}\s*<\/text>\n?/g,
-    "",
-  );
+  result = result.replace(/[ \t]*<text[\s\S]*?>\s*{{mainLabel}}\s*<\/text>\n?/g, "");
+  result = result.replace(/[ \t]*<text[\s\S]*?>\s*{{subLabel}}\s*<\/text>\n?/g, "");
 
   // 3. Remove <g filter="url(#activity-state)"> opening tag
   result = result.replace(/[ \t]*<g filter="url\(#activity-state\)">\n?/g, "");

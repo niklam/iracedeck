@@ -29,7 +29,12 @@ import { ECOSYSTEMS } from "../packages/website/src/data/brands.ts";
  */
 const namedDevices = ECOSYSTEMS.elgato.devices
   .split(",")
-  .map((entry) => entry.trim().replace(/^and\s+/i, "").replace(/^the\s+/i, ""))
+  .map((entry) =>
+    entry
+      .trim()
+      .replace(/^and\s+/i, "")
+      .replace(/^the\s+/i, ""),
+  )
   .filter(Boolean);
 
 /** `[name, controls]` for every entry in the matrix, e.g. `["Stream Deck Neo", "keys"]`. */

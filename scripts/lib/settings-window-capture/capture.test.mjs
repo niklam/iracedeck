@@ -1,5 +1,4 @@
 import { join } from "node:path";
-
 import { describe, expect, it, vi } from "vitest";
 
 import { captureSettingsWindow, createSeedSettingsHost } from "./capture.mjs";

@@ -82,7 +82,9 @@ export function resolveStatusTag(name, availableTags) {
   const tag = availableTags.find((t) => t.name === name);
 
   if (!tag) {
-    throw new Error(`Status tag "${name}" does not exist on the channel (its tags: ${availableTags.map((t) => t.name).join(", ")})`);
+    throw new Error(
+      `Status tag "${name}" does not exist on the channel (its tags: ${availableTags.map((t) => t.name).join(", ")})`,
+    );
   }
 
   return tag;

@@ -24,12 +24,12 @@ import path from "node:path";
 import url from "node:url";
 
 import { RADIO_ENGINEER_FILTER } from "../presets.mjs";
+import { BUNDLED_VOICE_IDS } from "./voice-packs.mjs";
 
 // The bundled-vs-published voice list rides the same `./build` export the
 // plugin Rollup configs already consume, so the audio copy step can filter to
 // BUNDLED_VOICE_IDS without a second package entry point (#1034).
 export { BUNDLED_VOICE_IDS, PUBLISHED_VOICE_IDS, VOICE_PACKS } from "./voice-packs.mjs";
-import { BUNDLED_VOICE_IDS } from "./voice-packs.mjs";
 
 const require = createRequire(import.meta.url);
 

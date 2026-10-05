@@ -26,18 +26,12 @@ import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { captureSettingsWindow } from "./lib/settings-window-capture/capture.mjs";
-import { buildSeedSettings, buildSeedUpdateStatus } from "./lib/settings-window-capture/seed.mjs";
 import { connectCdp, waitForDebuggerUrl, waitForDevToolsPort } from "./lib/settings-window-capture/cdp.mjs";
+import { buildSeedSettings, buildSeedUpdateStatus } from "./lib/settings-window-capture/seed.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const deckCore = join(repoRoot, "packages", "deck-core", "dist", "index.js");
-const assetsDir = join(
-  repoRoot,
-  "packages",
-  "iracing-plugin-stream-deck",
-  "com.iracedeck.sd.core.sdPlugin",
-  "ui",
-);
+const assetsDir = join(repoRoot, "packages", "iracing-plugin-stream-deck", "com.iracedeck.sd.core.sdPlugin", "ui");
 const outDir = join(repoRoot, "packages", "website", "src", "assets", "settings-window");
 
 /** The version the built page reports — the fixture's "you're on X". */

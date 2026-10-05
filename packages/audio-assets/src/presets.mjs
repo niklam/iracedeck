@@ -43,5 +43,4 @@
  * makes the pad free to tune: no clip is re-generated from the TTS API,
  * and the committed sources are never touched.
  */
-export const RADIO_ENGINEER_FILTER =
-  "highpass=f=250,lowpass=f=3500,volume=8dB,asoftclip=type=tanh,alimiter=limit=0.95";
+export const RADIO_ENGINEER_FILTER = "highpass=f=250,lowpass=f=3500,volume=8dB,asoftclip=type=tanh,alimiter=limit=0.95";

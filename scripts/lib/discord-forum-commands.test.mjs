@@ -8,7 +8,17 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { fetchAllPosts, fetchPostMessages, readConfig, runFollowUp, runList, runReply, runShow, runTag } from "./discord-forum-commands.mjs";
+
+import {
+  fetchAllPosts,
+  fetchPostMessages,
+  readConfig,
+  runFollowUp,
+  runList,
+  runReply,
+  runShow,
+  runTag,
+} from "./discord-forum-commands.mjs";
 
 const GUILD = "1477659500851888219";
 const CHANNEL = "1481298096632889366";
@@ -21,11 +31,26 @@ const TAGS = [
 ];
 
 function thread(id, overrides = {}) {
-  return { id, name: `Post ${id}`, parent_id: CHANNEL, applied_tags: [], message_count: 1, owner_id: "u1", ...overrides };
+  return {
+    id,
+    name: `Post ${id}`,
+    parent_id: CHANNEL,
+    applied_tags: [],
+    message_count: 1,
+    owner_id: "u1",
+    ...overrides,
+  };
 }
 
 function message(id, overrides = {}) {
-  return { id, content: `body ${id}`, timestamp: "2026-09-01T00:00:00.000Z", author: { id: "u1", username: "owwidius" }, reactions: [], ...overrides };
+  return {
+    id,
+    content: `body ${id}`,
+    timestamp: "2026-09-01T00:00:00.000Z",
+    author: { id: "u1", username: "owwidius" },
+    reactions: [],
+    ...overrides,
+  };
 }
 
 /** A fake client: `routes` maps exact paths to bodies; writes are recorded. */
@@ -84,12 +109,20 @@ describe("readConfig", () => {
     // The token must never reach this process's environment: every child
     // (gh, git) would inherit it. A shell-exported value would still win over
     // the file, so the three variables are cleared for the duration.
-    const saved = Object.fromEntries(["DISCORD_BOT_TOKEN", "DISCORD_GUILD_ID", "DISCORD_FEATURE_REQUESTS_CHANNEL_ID"].map((name) => [name, process.env[name]]));
+    const saved = Object.fromEntries(
+      ["DISCORD_BOT_TOKEN", "DISCORD_GUILD_ID", "DISCORD_FEATURE_REQUESTS_CHANNEL_ID"].map((name) => [
+        name,
+        process.env[name],
+      ]),
+    );
     const root = mkdtempSync(join(tmpdir(), "ird-discord-"));
 
     try {
       for (const name of Object.keys(saved)) delete process.env[name];
-      writeFileSync(join(root, ".env.local"), `DISCORD_BOT_TOKEN="tok"\nDISCORD_GUILD_ID=${GUILD}\nDISCORD_FEATURE_REQUESTS_CHANNEL_ID=${CHANNEL}\n`);
+      writeFileSync(
+        join(root, ".env.local"),
+        `DISCORD_BOT_TOKEN="tok"\nDISCORD_GUILD_ID=${GUILD}\nDISCORD_FEATURE_REQUESTS_CHANNEL_ID=${CHANNEL}\n`,
+      );
 
       expect(readConfig(root)).toEqual(CONFIG);
       expect(process.env.DISCORD_BOT_TOKEN).toBeUndefined();
@@ -110,9 +143,15 @@ describe("fetchAllPosts", () => {
 
   it("fails loud when the archived listing still has more after the page cap", async () => {
     const client = fakeClient({});
-    client.get = vi.fn(async (path) => (path === ACTIVE_ROUTE ? { threads: [] } : { threads: [archived("20", "2026-08-01T00:00:00+00:00")], has_more: true }));
+    client.get = vi.fn(async (path) =>
+      path === ACTIVE_ROUTE
+        ? { threads: [] }
+        : { threads: [archived("20", "2026-08-01T00:00:00+00:00")], has_more: true },
+    );
 
-    await expect(fetchAllPosts(client, CONFIG)).rejects.toThrow("archived-thread listing truncated after 20 pages; raise MAX_ARCHIVED_PAGES or report this");
+    await expect(fetchAllPosts(client, CONFIG)).rejects.toThrow(
+      "archived-thread listing truncated after 20 pages; raise MAX_ARCHIVED_PAGES or report this",
+    );
     expect(client.get.mock.calls.filter(([path]) => path.startsWith(ARCHIVED_ROUTE))).toHaveLength(20);
   });
 
@@ -122,15 +161,27 @@ describe("fetchAllPosts", () => {
       [ARCHIVED_ROUTE]: { threads: [thread("20", { thread_metadata: { archived: true } })], has_more: true },
     });
 
-    await expect(fetchAllPosts(client, CONFIG)).rejects.toThrow("archived-thread listing cannot page further: last thread has no archive_timestamp");
+    await expect(fetchAllPosts(client, CONFIG)).rejects.toThrow(
+      "archived-thread listing cannot page further: last thread has no archive_timestamp",
+    );
     expect(client.get).toHaveBeenCalledTimes(2);
   });
 
   it("pages the archived listing on the last archive_timestamp while has_more", async () => {
     const client = fakeClient({
       [ACTIVE_ROUTE]: { threads: [thread("30")] },
-      [ARCHIVED_ROUTE]: { threads: [thread("20", { thread_metadata: { archived: true, archive_timestamp: "2026-08-01T00:00:00+00:00" } })], has_more: true },
-      [`${ARCHIVED_ROUTE}&before=${encodeURIComponent("2026-08-01T00:00:00+00:00")}`]: { threads: [thread("10", { thread_metadata: { archived: true, archive_timestamp: "2026-07-01T00:00:00+00:00" } })], has_more: false },
+      [ARCHIVED_ROUTE]: {
+        threads: [
+          thread("20", { thread_metadata: { archived: true, archive_timestamp: "2026-08-01T00:00:00+00:00" } }),
+        ],
+        has_more: true,
+      },
+      [`${ARCHIVED_ROUTE}&before=${encodeURIComponent("2026-08-01T00:00:00+00:00")}`]: {
+        threads: [
+          thread("10", { thread_metadata: { archived: true, archive_timestamp: "2026-07-01T00:00:00+00:00" } }),
+        ],
+        has_more: false,
+      },
     });
 
     const posts = await fetchAllPosts(client, CONFIG);
@@ -159,7 +210,9 @@ describe("fetchPostMessages", () => {
     let next = 100000;
     client.get = vi.fn(async () => Array.from({ length: 100 }, () => message(String(next--))));
 
-    await expect(fetchPostMessages(client, "30")).rejects.toThrow("post has more than 1000 messages; raise MAX_MESSAGE_PAGES");
+    await expect(fetchPostMessages(client, "30")).rejects.toThrow(
+      "post has more than 1000 messages; raise MAX_MESSAGE_PAGES",
+    );
     expect(client.get).toHaveBeenCalledTimes(10);
   });
 });
@@ -167,7 +220,9 @@ describe("fetchPostMessages", () => {
 describe("runList", () => {
   const routes = {
     [CHANNEL_ROUTE]: { id: CHANNEL, available_tags: TAGS },
-    [ACTIVE_ROUTE]: { threads: [thread("30", { applied_tags: ["t-data"] }), thread("20", { applied_tags: ["t-data", "t-rel"] })] },
+    [ACTIVE_ROUTE]: {
+      threads: [thread("30", { applied_tags: ["t-data"] }), thread("20", { applied_tags: ["t-data", "t-rel"] })],
+    },
     [ARCHIVED_ROUTE]: { threads: [thread("10")], has_more: false },
   };
 
@@ -178,7 +233,9 @@ describe("runList", () => {
 
     expect(code).toBe(0);
     expect(log.log).toHaveBeenCalledTimes(3);
-    expect(log.text()).toMatch(/^30 .*active.*\[Data\].*Post 30\n20 .*\[Data, Released\].*Post 20\n10 .*archived.*Post 10$/s);
+    expect(log.text()).toMatch(
+      /^30 .*active.*\[Data\].*Post 30\n20 .*\[Data, Released\].*Post 20\n10 .*archived.*Post 10$/s,
+    );
   });
 
   it("--untagged keeps posts with no status tag, --json prints the describePost rows", async () => {
@@ -189,12 +246,22 @@ describe("runList", () => {
     expect(code).toBe(0);
     const rows = JSON.parse(log.text());
     expect(rows.map((r) => r.id)).toEqual(["30", "10"]);
-    expect(rows[0]).toMatchObject({ title: "Post 30", tags: ["Data"], statusTag: null, standing: false, link: `https://discord.com/channels/${GUILD}/30` });
+    expect(rows[0]).toMatchObject({
+      title: "Post 30",
+      tags: ["Data"],
+      statusTag: null,
+      standing: false,
+      link: `https://discord.com/channels/${GUILD}/30`,
+    });
   });
 
   it("never lists a standing post as untagged", async () => {
     const log = fakeLog();
-    const standing = { ...routes, [ACTIVE_ROUTE]: { threads: [thread("1516472792260808724")] }, [ARCHIVED_ROUTE]: { threads: [], has_more: false } };
+    const standing = {
+      ...routes,
+      [ACTIVE_ROUTE]: { threads: [thread("1516472792260808724")] },
+      [ARCHIVED_ROUTE]: { threads: [], has_more: false },
+    };
 
     await runList({ untagged: true, json: true }, { config: CONFIG, client: fakeClient(standing), log });
 
@@ -233,13 +300,17 @@ describe("runShow", () => {
     const client = fakeClient({
       [CHANNEL_ROUTE]: { id: CHANNEL, available_tags: TAGS },
       "/channels/30": thread("30"),
-      "/channels/30/messages?limit=100": [message("30", { reactions: [{ emoji: { name: "iRaceDeckHeart" }, count: 2 }] })],
+      "/channels/30/messages?limit=100": [
+        message("30", { reactions: [{ emoji: { name: "iRaceDeckHeart" }, count: 2 }] }),
+      ],
     });
     const log = fakeLog();
 
     await runShow({ postId: "30", json: false }, { config: CONFIG, client, log });
 
-    expect(log.text().split("\n").at(-1)).toBe(`source line: Requested on Discord: https://discord.com/channels/${GUILD}/30 by owwidius (2 ❤️)`);
+    expect(log.text().split("\n").at(-1)).toBe(
+      `source line: Requested on Discord: https://discord.com/channels/${GUILD}/30 by owwidius (2 ❤️)`,
+    );
   });
 
   it("never promotes a reply to starter when the original message was deleted", async () => {
@@ -250,7 +321,11 @@ describe("runShow", () => {
       [CHANNEL_ROUTE]: { id: CHANNEL, available_tags: TAGS },
       "/channels/30": thread("30", { owner_id: "u1" }),
       "/channels/30/messages?limit=100": [
-        message("32", { author: { id: "u2", username: "peter" }, content: "I like this", reactions: [{ emoji: { name: "iRaceDeckHeart" }, count: 5 }] }),
+        message("32", {
+          author: { id: "u2", username: "peter" },
+          content: "I like this",
+          reactions: [{ emoji: { name: "iRaceDeckHeart" }, count: 5 }],
+        }),
       ],
     });
     const log = fakeLog();
@@ -306,10 +381,19 @@ describe("runReply", () => {
     const client = fakeClient(routes);
     const log = fakeLog();
 
-    const code = await runReply({ postId: "30", text: "Thanks — tracked as #1", dryRun: false }, { config: CONFIG, client, log });
+    const code = await runReply(
+      { postId: "30", text: "Thanks — tracked as #1", dryRun: false },
+      { config: CONFIG, client, log },
+    );
 
     expect(code).toBe(0);
-    expect(client.writes).toEqual([{ method: "POST", path: "/channels/30/messages", body: { content: "Thanks — tracked as #1", allowed_mentions: { parse: [] } } }]);
+    expect(client.writes).toEqual([
+      {
+        method: "POST",
+        path: "/channels/30/messages",
+        body: { content: "Thanks — tracked as #1", allowed_mentions: { parse: [] } },
+      },
+    ]);
     expect(log.text()).toBe(`Posted: https://discord.com/channels/${GUILD}/30/m-new`);
   });
 
@@ -330,17 +414,24 @@ describe("runReply", () => {
     const log = fakeLog();
 
     expect(await runReply({ postId: "30", text: "   ", dryRun: false }, { config: CONFIG, client, log })).toBe(1);
-    expect(await runReply({ postId: "30", text: "x".repeat(2001), dryRun: false }, { config: CONFIG, client, log })).toBe(1);
+    expect(
+      await runReply({ postId: "30", text: "x".repeat(2001), dryRun: false }, { config: CONFIG, client, log }),
+    ).toBe(1);
     expect(client.writes).toEqual([]);
     expect(log.errors()).toContain("Error: reply text is empty.");
     expect(log.errors()).toContain("Error: reply is 2001 characters; Discord's limit is 2000. Shorten it.");
   });
 
   it("refuses a standing post and a thread outside the channel", async () => {
-    const client = fakeClient({ "/channels/1516472792260808724": thread("1516472792260808724"), "/channels/77": thread("77", { parent_id: "elsewhere" }) });
+    const client = fakeClient({
+      "/channels/1516472792260808724": thread("1516472792260808724"),
+      "/channels/77": thread("77", { parent_id: "elsewhere" }),
+    });
     const log = fakeLog();
 
-    expect(await runReply({ postId: "1516472792260808724", text: "hi", dryRun: false }, { config: CONFIG, client, log })).toBe(1);
+    expect(
+      await runReply({ postId: "1516472792260808724", text: "hi", dryRun: false }, { config: CONFIG, client, log }),
+    ).toBe(1);
     expect(await runReply({ postId: "77", text: "hi", dryRun: false }, { config: CONFIG, client, log })).toBe(1);
     expect(client.writes).toEqual([]);
     expect(log.errors()).toContain("Error: 1516472792260808724 is a standing post; this tool never writes to it.");
@@ -361,7 +452,9 @@ describe("runTag", () => {
     const code = await runTag({ postId: "30", tagName: "Released", dryRun: false }, { config: CONFIG, client, log });
 
     expect(code).toBe(0);
-    expect(client.writes).toEqual([{ method: "PATCH", path: "/channels/30", body: { applied_tags: ["t-data", "t-rel"] } }]);
+    expect(client.writes).toEqual([
+      { method: "PATCH", path: "/channels/30", body: { applied_tags: ["t-data", "t-rel"] } },
+    ]);
     expect(log.text()).toBe('Tagged "Post 30": [Data, Released]');
   });
 
@@ -387,18 +480,28 @@ describe("runTag", () => {
     const log = fakeLog();
 
     expect(await runTag({ postId: "30", tagName: "Done", dryRun: false }, { config: CONFIG, client, log })).toBe(1);
-    expect(log.errors()).toBe("Error: Unknown status tag \"Done\". Valid: Will Add, In progress, Completed, Released, Won't do");
+    expect(log.errors()).toBe(
+      'Error: Unknown status tag "Done". Valid: Will Add, In progress, Completed, Released, Won\'t do',
+    );
     expect(client.get).not.toHaveBeenCalledWith("/channels/30");
   });
 
   it("refuses a standing post", async () => {
-    const client = fakeClient({ ...routes, "/channels/1516472792260808724": thread("1516472792260808724", { applied_tags: ["t-will"] }) });
+    const client = fakeClient({
+      ...routes,
+      "/channels/1516472792260808724": thread("1516472792260808724", { applied_tags: ["t-will"] }),
+    });
     const log = fakeLog();
 
     // "Released" exists on the fake channel, so the only thing that can stop
     // this write is the standing-post check itself — not a tag lookup failing
     // first (which is what a tag absent from TAGS used to exercise instead).
-    expect(await runTag({ postId: "1516472792260808724", tagName: "Released", dryRun: false }, { config: CONFIG, client, log })).toBe(1);
+    expect(
+      await runTag(
+        { postId: "1516472792260808724", tagName: "Released", dryRun: false },
+        { config: CONFIG, client, log },
+      ),
+    ).toBe(1);
     expect(client.writes).toEqual([]);
     expect(log.errors()).toContain("is a standing post");
     expect(client.get).not.toHaveBeenCalledWith("/channels/1516472792260808724");
@@ -407,7 +510,8 @@ describe("runTag", () => {
 
 describe("runFollowUp", () => {
   const link = (id) => `https://discord.com/channels/${GUILD}/${id}`;
-  const sourced = (id, guild = GUILD) => `Requested on Discord: https://discord.com/channels/${guild}/${id} by someone (1 ❤️)`;
+  const sourced = (id, guild = GUILD) =>
+    `Requested on Discord: https://discord.com/channels/${guild}/${id} by someone (1 ❤️)`;
   const issue = (number, title, overrides = {}) => ({
     number,
     title,
@@ -420,7 +524,8 @@ describe("runFollowUp", () => {
     closedByPullRequestsReferences: [],
     ...overrides,
   });
-  const shipped = (number, title, overrides = {}) => issue(number, title, { state: "CLOSED", stateReason: "COMPLETED", ...overrides });
+  const shipped = (number, title, overrides = {}) =>
+    issue(number, title, { state: "CLOSED", stateReason: "COMPLETED", ...overrides });
 
   const issues = [
     issue(1, "Open, untouched", { body: `x\n\nRequested on Discord: ${link("30")} by a (1 ❤️)` }),
@@ -445,10 +550,12 @@ describe("runFollowUp", () => {
 
   // The exact commands the release lookup runs, as `exec` sees them joined.
   const prView = (pr) => `gh pr view ${pr} --json mergeCommit`;
-  const timeline = (n) => `gh api repos/{owner}/{repo}/issues/${n}/timeline --paginate --jq .[] | select(.event == "closed") | .commit_id | select(. != null)`;
+  const timeline = (n) =>
+    `gh api repos/{owner}/{repo}/issues/${n}/timeline --paginate --jq .[] | select(.event == "closed") | .commit_id | select(. != null)`;
   const gitLog = (n) => `git log --all --fixed-strings --grep=(#${n}) --format=%H%x09%s`;
   const gitTag = (sha) => `git tag --contains ${sha}`;
-  const LIST = "gh issue list --label discord --state all --limit 500 --json number,title,url,state,stateReason,assignees,milestone,body,closedByPullRequestsReferences";
+  const LIST =
+    "gh issue list --label discord --state all --limit 500 --json number,title,url,state,stateReason,assignees,milestone,body,closedByPullRequestsReferences";
 
   /** `lookups` maps a joined command to its stdout, or to an Error to throw. */
   function fakeExec(list = issues, lookups = {}) {
@@ -467,7 +574,10 @@ describe("runFollowUp", () => {
     });
   }
 
-  const lookupCalls = (exec) => exec.mock.calls.map(([file, args]) => [file, ...args].join(" ")).filter((cmd) => cmd !== LIST && cmd !== "git fetch --tags --quiet");
+  const lookupCalls = (exec) =>
+    exec.mock.calls
+      .map(([file, args]) => [file, ...args].join(" "))
+      .filter((cmd) => cmd !== LIST && cmd !== "git fetch --tags --quiet");
 
   const shippedLookups = {
     [prView(33)]: JSON.stringify({ mergeCommit: { oid: "abc123" } }),
@@ -490,13 +600,90 @@ describe("runFollowUp", () => {
     const { rows, exec } = await rowsFor(issues, shippedLookups);
 
     expect(rows).toEqual([
-      { issue: 1, title: "Open, untouched", url: "u/1", state: "OPEN", post: { id: "30", title: "Post 30", link: link("30") }, current: null, expected: "Will Add", version: null, propose: true, note: null },
-      { issue: 2, title: "In progress", url: "u/2", state: "OPEN", post: { id: "20", title: "Post 20", link: link("20") }, current: "Will Add", expected: "In progress", version: null, propose: true, note: null },
-      { issue: 3, title: "Shipped", url: "u/3", state: "CLOSED", post: { id: "10", title: "Post 10", link: link("10") }, current: "Released", expected: "Released", version: "v3.2.0", propose: false, note: null },
-      { issue: 4, title: "No link", url: "u/4", state: "OPEN", post: null, current: null, expected: "Will Add", version: null, propose: false, note: "no source line in the issue body" },
-      { issue: 5, title: "Standing", url: "u/5", state: "CLOSED", post: { id: "1516472792260808724", title: "Post 1516472792260808724", link: link("1516472792260808724") }, current: "Will Add", expected: "Completed", version: null, propose: false, note: "standing post; never changed by this tool" },
-      { issue: 6, title: "Duplicate", url: "u/6", state: "CLOSED", post: { id: "20", title: "Post 20", link: link("20") }, current: "Will Add", expected: null, version: null, propose: false, note: "closed as duplicate; point the post at the canonical issue by hand" },
-      { issue: 7, title: "Other server", url: "u/7", state: "OPEN", post: null, current: null, expected: "Will Add", version: null, propose: false, note: "source line points at another server" },
+      {
+        issue: 1,
+        title: "Open, untouched",
+        url: "u/1",
+        state: "OPEN",
+        post: { id: "30", title: "Post 30", link: link("30") },
+        current: null,
+        expected: "Will Add",
+        version: null,
+        propose: true,
+        note: null,
+      },
+      {
+        issue: 2,
+        title: "In progress",
+        url: "u/2",
+        state: "OPEN",
+        post: { id: "20", title: "Post 20", link: link("20") },
+        current: "Will Add",
+        expected: "In progress",
+        version: null,
+        propose: true,
+        note: null,
+      },
+      {
+        issue: 3,
+        title: "Shipped",
+        url: "u/3",
+        state: "CLOSED",
+        post: { id: "10", title: "Post 10", link: link("10") },
+        current: "Released",
+        expected: "Released",
+        version: "v3.2.0",
+        propose: false,
+        note: null,
+      },
+      {
+        issue: 4,
+        title: "No link",
+        url: "u/4",
+        state: "OPEN",
+        post: null,
+        current: null,
+        expected: "Will Add",
+        version: null,
+        propose: false,
+        note: "no source line in the issue body",
+      },
+      {
+        issue: 5,
+        title: "Standing",
+        url: "u/5",
+        state: "CLOSED",
+        post: { id: "1516472792260808724", title: "Post 1516472792260808724", link: link("1516472792260808724") },
+        current: "Will Add",
+        expected: "Completed",
+        version: null,
+        propose: false,
+        note: "standing post; never changed by this tool",
+      },
+      {
+        issue: 6,
+        title: "Duplicate",
+        url: "u/6",
+        state: "CLOSED",
+        post: { id: "20", title: "Post 20", link: link("20") },
+        current: "Will Add",
+        expected: null,
+        version: null,
+        propose: false,
+        note: "closed as duplicate; point the post at the canonical issue by hand",
+      },
+      {
+        issue: 7,
+        title: "Other server",
+        url: "u/7",
+        state: "OPEN",
+        post: null,
+        current: null,
+        expected: "Will Add",
+        version: null,
+        propose: false,
+        note: "source line points at another server",
+      },
     ]);
     expect(exec).toHaveBeenCalledWith("git", ["fetch", "--tags", "--quiet"]);
   });
@@ -513,13 +700,20 @@ describe("runFollowUp", () => {
   it("prints a readable table by default", async () => {
     const log = fakeLog();
 
-    await runFollowUp({ json: false }, { config: CONFIG, client: fakeClient(routes), log, exec: fakeExec(issues, shippedLookups) });
+    await runFollowUp(
+      { json: false },
+      { config: CONFIG, client: fakeClient(routes), log, exec: fakeExec(issues, shippedLookups) },
+    );
 
     expect(log.text()).toMatch(/#1 .*none -> Will Add {2}PROPOSE\n/s);
     expect(log.text()).toMatch(/#3 .*Released -> Released \(v3\.2\.0\) {2}up to date\n/s);
     expect(log.text()).toMatch(/#4 .*none -> Will Add {2}no change {2}\(note: no source line in the issue body\)\n/s);
-    expect(log.text()).toMatch(/#5 .*Will Add -> Completed {2}no change {2}\(note: standing post; never changed by this tool\)\n/s);
-    expect(log.text()).toMatch(/#6 .*Will Add -> none {2}no change {2}\(note: closed as duplicate; point the post at the canonical issue by hand\)\n/s);
+    expect(log.text()).toMatch(
+      /#5 .*Will Add -> Completed {2}no change {2}\(note: standing post; never changed by this tool\)\n/s,
+    );
+    expect(log.text()).toMatch(
+      /#6 .*Will Add -> none {2}no change {2}\(note: closed as duplicate; point the post at the canonical issue by hand\)\n/s,
+    );
     expect(log.text()).toMatch(/7 Discord-sourced issues, 2 proposed changes\.$/);
   });
 
@@ -528,18 +722,45 @@ describe("runFollowUp", () => {
 
     await runFollowUp({ json: true }, { config: CONFIG, client: fakeClient(routes), log: fakeLog(), exec });
 
-    expect(exec.mock.calls[0]).toEqual(["gh", ["issue", "list", "--label", "discord", "--state", "all", "--limit", "500", "--json", "number,title,url,state,stateReason,assignees,milestone,body,closedByPullRequestsReferences"]]);
+    expect(exec.mock.calls[0]).toEqual([
+      "gh",
+      [
+        "issue",
+        "list",
+        "--label",
+        "discord",
+        "--state",
+        "all",
+        "--limit",
+        "500",
+        "--json",
+        "number,title,url,state,stateReason,assignees,milestone,body,closedByPullRequestsReferences",
+      ],
+    ]);
   });
 
   it("fails loud when the issue listing hits its cap, like the two Discord listings", async () => {
-    const capped = Array.from({ length: 500 }, (_, i) => ({ number: i + 1, title: `Issue ${i + 1}`, url: `u/${i + 1}`, state: "OPEN", stateReason: null, assignees: [], milestone: null, body: "nothing", closedByPullRequestsReferences: [] }));
+    const capped = Array.from({ length: 500 }, (_, i) => ({
+      number: i + 1,
+      title: `Issue ${i + 1}`,
+      url: `u/${i + 1}`,
+      state: "OPEN",
+      stateReason: null,
+      assignees: [],
+      milestone: null,
+      body: "nothing",
+      closedByPullRequestsReferences: [],
+    }));
     const exec = fakeExec(capped, {});
 
-    await expect(runFollowUp({ json: true }, { config: CONFIG, client: fakeClient(routes), log: fakeLog(), exec })).rejects.toThrow("discord-labelled issue listing truncated at 500; raise ISSUE_LIMIT or report this");
+    await expect(
+      runFollowUp({ json: true }, { config: CONFIG, client: fakeClient(routes), log: fakeLog(), exec }),
+    ).rejects.toThrow("discord-labelled issue listing truncated at 500; raise ISSUE_LIMIT or report this");
   });
 
   describe("release detection", () => {
-    const one = (overrides, lookups) => rowsFor([shipped(8, "Closed", { body: sourced("30"), ...overrides })], lookups).then(({ rows }) => rows[0]);
+    const one = (overrides, lookups) =>
+      rowsFor([shipped(8, "Closed", { body: sourced("30"), ...overrides })], lookups).then(({ rows }) => rows[0]);
 
     it("finds the shipping commit through the timeline's closed event when no PR is linked", async () => {
       const row = await one({}, { [timeline(8)]: "def456\n", [gitLog(8)]: "", [gitTag("def456")]: "v3.1.0\n" });
@@ -549,13 +770,28 @@ describe("runFollowUp", () => {
 
     it("reads every timeline page: gh emits one result per page, so each line is a sha", async () => {
       // Two closing commits on two pages arrive as two lines, not one array; both must be looked up and the lowest version wins.
-      const row = await one({}, { [timeline(8)]: "p1sha\np2sha\n", [gitLog(8)]: "", [gitTag("p1sha")]: "v3.3.0\n", [gitTag("p2sha")]: "v3.2.0\nv3.3.0\n" });
+      const row = await one(
+        {},
+        {
+          [timeline(8)]: "p1sha\np2sha\n",
+          [gitLog(8)]: "",
+          [gitTag("p1sha")]: "v3.3.0\n",
+          [gitTag("p2sha")]: "v3.2.0\nv3.3.0\n",
+        },
+      );
 
       expect(row).toMatchObject({ expected: "Released", version: "v3.2.0", propose: true, note: null });
     });
 
     it("finds the shipping commit through its squash-merge subject when nothing else links it", async () => {
-      const row = await one({}, { [timeline(8)]: "", [gitLog(8)]: "fed789\tfeat(actions): the thing (#8) (#9)\n", [gitTag("fed789")]: "v3.1.0\n" });
+      const row = await one(
+        {},
+        {
+          [timeline(8)]: "",
+          [gitLog(8)]: "fed789\tfeat(actions): the thing (#8) (#9)\n",
+          [gitTag("fed789")]: "v3.1.0\n",
+        },
+      );
 
       expect(row).toMatchObject({ expected: "Released", version: "v3.1.0", propose: true, note: null });
     });
@@ -564,17 +800,34 @@ describe("runFollowUp", () => {
       // The spec commit and the body-only mention sit in v3.0.0; neither may
       // even be asked about (no `git tag` entry exists for them, so a lookup
       // would throw and surface as a failed-lookup note).
-      const log = ["aaa111\tdocs(specs): design the thing (#8)", "bbb222\tfix(other): unrelated, cites #8 in its body", "ccc333\tfeat(actions): the thing (#8) (#9)"].join("\n");
+      const log = [
+        "aaa111\tdocs(specs): design the thing (#8)",
+        "bbb222\tfix(other): unrelated, cites #8 in its body",
+        "ccc333\tfeat(actions): the thing (#8) (#9)",
+      ].join("\n");
       const tagged = { [timeline(8)]: "", [gitLog(8)]: `${log}\n` };
 
-      expect(await one({}, { ...tagged, [gitTag("ccc333")]: "" })).toMatchObject({ expected: "Completed", version: null, note: null });
-      expect(await one({}, { ...tagged, [gitTag("ccc333")]: "v3.1.0\n" })).toMatchObject({ expected: "Released", version: "v3.1.0", note: null });
+      expect(await one({}, { ...tagged, [gitTag("ccc333")]: "" })).toMatchObject({
+        expected: "Completed",
+        version: null,
+        note: null,
+      });
+      expect(await one({}, { ...tagged, [gitTag("ccc333")]: "v3.1.0\n" })).toMatchObject({
+        expected: "Released",
+        version: "v3.1.0",
+        note: null,
+      });
     });
 
     it("reports an issue with no linked PR and no closing commit, and still proposes Completed", async () => {
       const row = await one({}, { [timeline(8)]: "", [gitLog(8)]: "" });
 
-      expect(row).toMatchObject({ expected: "Completed", version: null, propose: true, note: "closed without a linked PR or closing commit; Released must be set by hand" });
+      expect(row).toMatchObject({
+        expected: "Completed",
+        version: null,
+        propose: true,
+        note: "closed without a linked PR or closing commit; Released must be set by hand",
+      });
     });
 
     it("takes the lowest stable version across every closing commit", async () => {
@@ -594,10 +847,21 @@ describe("runFollowUp", () => {
     });
 
     it("keeps a failing lookup to its own row", async () => {
-      const list = [shipped(8, "Broken", { body: sourced("30"), closedByPullRequestsReferences: [{ number: 91 }] }), shipped(3, "Shipped", { body: sourced("10"), closedByPullRequestsReferences: [{ number: 33 }] })];
-      const { rows } = await rowsFor(list, { ...shippedLookups, [prView(91)]: new Error("Command failed: gh pr view 91 --json mergeCommit\ngh: Not Found (HTTP 404)") });
+      const list = [
+        shipped(8, "Broken", { body: sourced("30"), closedByPullRequestsReferences: [{ number: 91 }] }),
+        shipped(3, "Shipped", { body: sourced("10"), closedByPullRequestsReferences: [{ number: 33 }] }),
+      ];
+      const { rows } = await rowsFor(list, {
+        ...shippedLookups,
+        [prView(91)]: new Error("Command failed: gh pr view 91 --json mergeCommit\ngh: Not Found (HTTP 404)"),
+      });
 
-      expect(rows[0]).toMatchObject({ expected: "Completed", version: null, propose: true, note: "release lookup failed: Command failed: gh pr view 91 --json mergeCommit" });
+      expect(rows[0]).toMatchObject({
+        expected: "Completed",
+        version: null,
+        propose: true,
+        note: "release lookup failed: Command failed: gh pr view 91 --json mergeCommit",
+      });
       expect(rows[1]).toMatchObject({ expected: "Released", version: "v3.2.0", propose: false, note: null });
     });
   });

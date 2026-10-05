@@ -6,7 +6,6 @@
  *
  * Design record: docs/superpowers/specs/2026-09-04-issue-1114-discord-feature-requests-tracker.md
  */
-import { loadEnvLocal } from "./env-local.mjs";
 import {
   describePost,
   DISCORD_MESSAGE_LIMIT,
@@ -23,6 +22,7 @@ import {
   summarizeReactions,
   tagNamesOf,
 } from "./discord-forum.mjs";
+import { loadEnvLocal } from "./env-local.mjs";
 
 export const REQUIRED_ENV = ["DISCORD_BOT_TOKEN", "DISCORD_GUILD_ID", "DISCORD_FEATURE_REQUESTS_CHANNEL_ID"];
 
@@ -43,10 +43,16 @@ export function readConfig(root, env = { ...process.env }) {
   const missing = REQUIRED_ENV.filter((name) => !env[name]);
 
   if (missing.length > 0) {
-    return { error: `Missing ${missing.join(", ")} — set them in .env.local at the repo root (see .env.local.example).` };
+    return {
+      error: `Missing ${missing.join(", ")} — set them in .env.local at the repo root (see .env.local.example).`,
+    };
   }
 
-  return { token: env.DISCORD_BOT_TOKEN, guildId: env.DISCORD_GUILD_ID, channelId: env.DISCORD_FEATURE_REQUESTS_CHANNEL_ID };
+  return {
+    token: env.DISCORD_BOT_TOKEN,
+    guildId: env.DISCORD_GUILD_ID,
+    channelId: env.DISCORD_FEATURE_REQUESTS_CHANNEL_ID,
+  };
 }
 
 export async function fetchTags(client, channelId) {
@@ -77,7 +83,9 @@ export async function fetchAllPosts(client, { guildId, channelId }) {
     if (!before) throw new Error("archived-thread listing cannot page further: last thread has no archive_timestamp");
   }
 
-  throw new Error(`archived-thread listing truncated after ${MAX_ARCHIVED_PAGES} pages; raise MAX_ARCHIVED_PAGES or report this`);
+  throw new Error(
+    `archived-thread listing truncated after ${MAX_ARCHIVED_PAGES} pages; raise MAX_ARCHIVED_PAGES or report this`,
+  );
 }
 
 /** Every message in a post, oldest first. Discord pages newest-first on `before`. */
@@ -151,7 +159,9 @@ export async function runShow({ postId, json = false }, { config, client, log = 
   // `show --json` is what the issue's "Requested on Discord … by" line credits.
   const starter = messages.find((m) => m.id === postId) ?? null;
   const described = describePost(thread, tags, config.guildId);
-  const author = starter ? { id: starter.author.id, handle: starter.author.username } : { id: thread.owner_id, handle: null };
+  const author = starter
+    ? { id: starter.author.id, handle: starter.author.username }
+    : { id: thread.owner_id, handle: null };
   const votes = starter ? summarizeReactions(starter) : { total: 0, breakdown: [] };
   const post = {
     ...described,
@@ -174,10 +184,16 @@ export async function runShow({ postId, json = false }, { config, client, log = 
 
   log.log(`${post.title}`);
   log.log(`${post.link}`);
-  log.log(`by ${post.author.handle ?? "(unknown)"} on ${post.created.slice(0, 10)}  tags=[${post.tags.join(", ")}]  ${post.archived ? "archived" : "active"}`);
-  log.log(`votes: ${post.votes.total}${post.votes.breakdown.length ? ` (${post.votes.breakdown.map((r) => `${r.name} ${r.count}`).join(", ")})` : ""}`);
+  log.log(
+    `by ${post.author.handle ?? "(unknown)"} on ${post.created.slice(0, 10)}  tags=[${post.tags.join(", ")}]  ${post.archived ? "archived" : "active"}`,
+  );
+  log.log(
+    `votes: ${post.votes.total}${post.votes.breakdown.length ? ` (${post.votes.breakdown.map((r) => `${r.name} ${r.count}`).join(", ")})` : ""}`,
+  );
   log.log("");
-  log.log(post.starter ? post.starter.content : "(The original message was deleted; its author and votes are unknown.)");
+  log.log(
+    post.starter ? post.starter.content : "(The original message was deleted; its author and votes are unknown.)",
+  );
 
   for (const reply of post.replies) {
     log.log("");
@@ -258,7 +274,9 @@ export async function runTag({ postId, tagName, dryRun = false }, { config, clie
 
   // Discord refuses edits to an archived thread; a status change is activity,
   // so un-archiving in the same request is the honest thing to do.
-  const body = thread.thread_metadata?.archived ? { applied_tags: applied, archived: false } : { applied_tags: applied };
+  const body = thread.thread_metadata?.archived
+    ? { applied_tags: applied, archived: false }
+    : { applied_tags: applied };
   const path = `/channels/${postId}`;
 
   if (dryRun) {
@@ -314,7 +332,16 @@ function shippingCommitsOf(exec, issue) {
     if (sha) shas.add(sha);
   }
 
-  for (const sha of lines(exec("gh", ["api", `repos/{owner}/{repo}/issues/${issue.number}/timeline`, "--paginate", "--jq", CLOSING_COMMITS_JQ]))) shas.add(sha);
+  for (const sha of lines(
+    exec("gh", [
+      "api",
+      `repos/{owner}/{repo}/issues/${issue.number}/timeline`,
+      "--paginate",
+      "--jq",
+      CLOSING_COMMITS_JQ,
+    ]),
+  ))
+    shas.add(sha);
 
   const marker = `(#${issue.number})`;
 
@@ -350,7 +377,18 @@ function releasedVersionOf(exec, issue) {
 }
 
 function followUpRow(issue, { config, postsById, exec }) {
-  const base = { issue: issue.number, title: issue.title, url: issue.url, state: issue.state, post: null, current: null, expected: expectedTag(issue), version: null, propose: false, note: null };
+  const base = {
+    issue: issue.number,
+    title: issue.title,
+    url: issue.url,
+    state: issue.state,
+    post: null,
+    current: null,
+    expected: expectedTag(issue),
+    version: null,
+    propose: false,
+    note: null,
+  };
   const source = parseSourceLine(issue.body);
 
   if (!source) return { ...base, note: "no source line in the issue body" };
@@ -363,14 +401,24 @@ function followUpRow(issue, { config, postsById, exec }) {
   const row = { ...base, post: { id: post.id, title: post.title, link: post.link }, current: post.statusTag };
 
   if (post.standing) return { ...row, note: "standing post; never changed by this tool" };
-  if (row.expected === null) return { ...row, note: "closed as duplicate; point the post at the canonical issue by hand" };
+  if (row.expected === null)
+    return { ...row, note: "closed as duplicate; point the post at the canonical issue by hand" };
 
   // Only a completed issue can have shipped, and only a row that may still
   // change is worth the gh/git round trips.
-  const release = issue.state === "CLOSED" && issue.stateReason === "COMPLETED" ? releasedVersionOf(exec, issue) : { version: null, note: null };
+  const release =
+    issue.state === "CLOSED" && issue.stateReason === "COMPLETED"
+      ? releasedVersionOf(exec, issue)
+      : { version: null, note: null };
   const expected = expectedTag(issue, release.version);
 
-  return { ...row, expected, version: release.version, propose: shouldPropose(post.statusTag, expected), note: release.note };
+  return {
+    ...row,
+    expected,
+    version: release.version,
+    propose: shouldPropose(post.statusTag, expected),
+    note: release.note,
+  };
 }
 
 function formatFollowUpRow(row) {
@@ -388,7 +436,18 @@ function formatFollowUpRow(row) {
  * sends. `exec(file, args)` returns stdout, so the GitHub side is fakeable.
  */
 export async function runFollowUp({ json = false }, { config, client, log = console, exec }) {
-  const issues = gh(exec, ["issue", "list", "--label", "discord", "--state", "all", "--limit", String(ISSUE_LIMIT), "--json", ISSUE_FIELDS]);
+  const issues = gh(exec, [
+    "issue",
+    "list",
+    "--label",
+    "discord",
+    "--state",
+    "all",
+    "--limit",
+    String(ISSUE_LIMIT),
+    "--json",
+    ISSUE_FIELDS,
+  ]);
 
   if (issues.length >= ISSUE_LIMIT) {
     throw new Error(`discord-labelled issue listing truncated at ${ISSUE_LIMIT}; raise ISSUE_LIMIT or report this`);

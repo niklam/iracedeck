@@ -17,7 +17,7 @@
  * ]
  */
 import ejs from "ejs";
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 /**
@@ -192,31 +192,35 @@ export function piTemplatePlugin(options) {
           const docsUrl = dataFiles["docs-urls"]?.[templateName] || "";
 
           // Compile the template
-          const html = ejs.render(templateContent, {
-            // Make data files available as 'data' object
-            data: dataFiles,
-            // Plugin version from package.json
-            version: version,
-            // Documentation URL for this action (empty string if not mapped)
-            docsUrl,
-            // Platform feature flags for this plugin build
-            platform: platformFeatures,
-            // Also expose a require function for inline requires (resolved from templatesDir)
-            require: createTemplateRequire(templatesDir),
-            // NOTE: do NOT add a hand-built `locals` key here. EJS already binds
-            // `locals` (its `localsName`) to the full data object at every scope,
-            // and an include merges its parameters into it — so partials can
-            // guard on optional include params via `locals.foo`. A literal
-            // `locals: {...}` entry would shadow that with a fixed subset and
-            // silently hide every include parameter (#992).
-          }, {
-            // Search directories for includes
-            views: [templateDir, ...partialSearchDirs],
-            // Enable async for potential future use
-            async: false,
-            // Filename for better error messages
-            filename: templatePath,
-          });
+          const html = ejs.render(
+            templateContent,
+            {
+              // Make data files available as 'data' object
+              data: dataFiles,
+              // Plugin version from package.json
+              version: version,
+              // Documentation URL for this action (empty string if not mapped)
+              docsUrl,
+              // Platform feature flags for this plugin build
+              platform: platformFeatures,
+              // Also expose a require function for inline requires (resolved from templatesDir)
+              require: createTemplateRequire(templatesDir),
+              // NOTE: do NOT add a hand-built `locals` key here. EJS already binds
+              // `locals` (its `localsName`) to the full data object at every scope,
+              // and an include merges its parameters into it — so partials can
+              // guard on optional include params via `locals.foo`. A literal
+              // `locals: {...}` entry would shadow that with a fixed subset and
+              // silently hide every include parameter (#992).
+            },
+            {
+              // Search directories for includes
+              views: [templateDir, ...partialSearchDirs],
+              // Enable async for potential future use
+              async: false,
+              // Filename for better error messages
+              filename: templatePath,
+            },
+          );
 
           // Write the compiled HTML
           writeFileSync(outputPath, html, "utf-8");
