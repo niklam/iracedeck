@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+
 import { allPluginManifestRelPaths } from "./lib/version-discovery.mjs";
 
 // scripts/third-party-licenses.test.mjs lives in scripts/, so the repo root is one up.

@@ -36,9 +36,7 @@ const has = (name) => args.includes(`--${name}`);
 // so resolve from the package that actually depends on `ws` — the Mirabox
 // adapter — rather than from the workspace root, where it is absent.
 const repo = flag("repo", process.cwd());
-const { WebSocketServer } = createRequire(
-  path.join(repo, "packages", "deck-adapter-mirabox", "package.json"),
-)("ws");
+const { WebSocketServer } = createRequire(path.join(repo, "packages", "deck-adapter-mirabox", "package.json"))("ws");
 
 const port = Number(flag("port", 12345));
 const delayMs = Number(flag("delay", 15)) * 1000;

@@ -1,7 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-
 import { describe, expect, it } from "vitest";
 
 import { parseNavPanes, SETTINGS_WINDOW_TABS } from "./tabs.mjs";
@@ -26,9 +25,7 @@ describe("SETTINGS_WINDOW_TABS", () => {
   });
 
   it("has a screenshot committed for every tab", () => {
-    const missing = SETTINGS_WINDOW_TABS.filter((tab) => !existsSync(join(assetsDir, tab.file))).map(
-      (tab) => tab.file,
-    );
+    const missing = SETTINGS_WINDOW_TABS.filter((tab) => !existsSync(join(assetsDir, tab.file))).map((tab) => tab.file);
 
     expect(missing, `Run "pnpm capture:settings" to generate: ${missing.join(", ")}`).toEqual([]);
   });
@@ -75,8 +72,6 @@ describe("the built Settings window page", () => {
       return;
     }
 
-    expect(parseNavPanes(readFileSync(builtPage, "utf-8"))).toEqual(
-      SETTINGS_WINDOW_TABS.map((tab) => tab.pane),
-    );
+    expect(parseNavPanes(readFileSync(builtPage, "utf-8"))).toEqual(SETTINGS_WINDOW_TABS.map((tab) => tab.pane));
   });
 });

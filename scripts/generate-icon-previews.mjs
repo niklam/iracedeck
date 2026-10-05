@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-
 /**
  * Icon Preview Generator
  *
@@ -8,7 +7,6 @@
  *
  * Usage: node scripts/generate-icon-previews.mjs
  */
-
 import fs from "node:fs";
 import path from "node:path";
 

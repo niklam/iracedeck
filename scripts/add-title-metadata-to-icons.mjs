@@ -13,14 +13,11 @@
  * Usage:
  *   node scripts/add-title-metadata-to-icons.mjs
  */
-
 import { readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 
 const ICONS_DIR = join(import.meta.dirname, "..", "packages", "icons");
-const titles = JSON.parse(
-  readFileSync(join(import.meta.dirname, "data", "icon-title-defaults.json"), "utf-8"),
-);
+const titles = JSON.parse(readFileSync(join(import.meta.dirname, "data", "icon-title-defaults.json"), "utf-8"));
 
 let updated = 0;
 let notFound = 0;

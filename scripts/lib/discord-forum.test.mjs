@@ -5,6 +5,7 @@
  * one line of that spec.
  */
 import { describe, expect, it } from "vitest";
+
 import {
   describePost,
   DISCORD_MESSAGE_LIMIT,
@@ -43,7 +44,15 @@ const TAGS = [
 ];
 
 function thread(id, overrides = {}) {
-  return { id, name: `Post ${id}`, parent_id: CHANNEL, applied_tags: [], message_count: 0, owner_id: "u1", ...overrides };
+  return {
+    id,
+    name: `Post ${id}`,
+    parent_id: CHANNEL,
+    applied_tags: [],
+    message_count: 0,
+    owner_id: "u1",
+    ...overrides,
+  };
 }
 
 describe("constants", () => {
@@ -68,7 +77,10 @@ describe("snowflakeToDate", () => {
 describe("mergePosts", () => {
   it("keeps only this channel's threads, dedupes, marks archived, sorts newest first", () => {
     const active = [thread("30"), thread("99", { parent_id: "other" })];
-    const archivedPages = [{ threads: [thread("20"), thread("30")], has_more: true }, { threads: [thread("10")], has_more: false }];
+    const archivedPages = [
+      { threads: [thread("20"), thread("30")], has_more: true },
+      { threads: [thread("10")], has_more: false },
+    ];
 
     const posts = mergePosts({ active, archivedPages, channelId: CHANNEL });
 
@@ -95,8 +107,15 @@ describe("tags", () => {
 
   it("resolves a status tag by exact name", () => {
     expect(resolveStatusTag("Will Add", TAGS)).toEqual(TAGS[3]);
-    expect(() => resolveStatusTag("Released!", TAGS)).toThrow(/Unknown status tag "Released!"\. Valid: Will Add, In progress, Completed, Released, Won't do/);
-    expect(() => resolveStatusTag("Released", TAGS.filter((t) => t.name !== "Released"))).toThrow(/does not exist on the channel/);
+    expect(() => resolveStatusTag("Released!", TAGS)).toThrow(
+      /Unknown status tag "Released!"\. Valid: Will Add, In progress, Completed, Released, Won't do/,
+    );
+    expect(() =>
+      resolveStatusTag(
+        "Released",
+        TAGS.filter((t) => t.name !== "Released"),
+      ),
+    ).toThrow(/does not exist on the channel/);
   });
 
   it("replaces the status tag and keeps every category tag", () => {
@@ -112,7 +131,12 @@ describe("tags", () => {
 describe("describePost", () => {
   it("flattens a thread into the list row", () => {
     const post = describePost(
-      thread("1481298096632889366", { name: "Wind arrow", applied_tags: ["t-data", "t-rel"], message_count: 5, thread_metadata: { archived: true } }),
+      thread("1481298096632889366", {
+        name: "Wind arrow",
+        applied_tags: ["t-data", "t-rel"],
+        message_count: 5,
+        thread_metadata: { archived: true },
+      }),
       TAGS,
       GUILD,
     );
@@ -153,7 +177,10 @@ describe("links and the source line", () => {
 
   it("only matches a source line at the start of its own line", () => {
     expect(parseSourceLine(`> Requested on Discord: ${postLink(GUILD, "123")} by x (0 ❤️)`)).toBeNull();
-    expect(parseSourceLine(`x\r\nRequested on Discord: ${postLink(GUILD, "123")} by x (0 ❤️)\r\n`)).toEqual({ guildId: GUILD, postId: "123" });
+    expect(parseSourceLine(`x\r\nRequested on Discord: ${postLink(GUILD, "123")} by x (0 ❤️)\r\n`)).toEqual({
+      guildId: GUILD,
+      postId: "123",
+    });
   });
 
   it("formats the source line exactly as the spec states it", () => {
@@ -165,9 +192,20 @@ describe("links and the source line", () => {
 
 describe("summarizeReactions", () => {
   it("totals every emoji and keeps the breakdown", () => {
-    const message = { reactions: [{ emoji: { name: "iRaceDeckHeart" }, count: 4 }, { emoji: { name: "👍" }, count: 1 }] };
+    const message = {
+      reactions: [
+        { emoji: { name: "iRaceDeckHeart" }, count: 4 },
+        { emoji: { name: "👍" }, count: 1 },
+      ],
+    };
 
-    expect(summarizeReactions(message)).toEqual({ total: 5, breakdown: [{ name: "iRaceDeckHeart", count: 4 }, { name: "👍", count: 1 }] });
+    expect(summarizeReactions(message)).toEqual({
+      total: 5,
+      breakdown: [
+        { name: "iRaceDeckHeart", count: 4 },
+        { name: "👍", count: 1 },
+      ],
+    });
     expect(summarizeReactions({})).toEqual({ total: 0, breakdown: [] });
   });
 });

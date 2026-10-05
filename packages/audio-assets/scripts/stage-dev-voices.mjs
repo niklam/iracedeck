@@ -137,7 +137,9 @@ export async function stageDevVoices({
 
   const seconds = ((now() - started) / 1000).toFixed(1);
 
-  log(`Development voices: staged ${staged.length} pack(s) in ${seconds} s — press Rescan voices, or restart the plugin`);
+  log(
+    `Development voices: staged ${staged.length} pack(s) in ${seconds} s — press Rescan voices, or restart the plugin`,
+  );
 
   return { outcome: "staged", staged };
 }

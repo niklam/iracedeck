@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-
 /**
  * Icon viewBox Trimmer (one-off migration for issue #373)
  *
@@ -16,7 +15,6 @@
  *   node scripts/migrate-icons-to-trimmed-viewbox.mjs            # Apply
  *   node scripts/migrate-icons-to-trimmed-viewbox.mjs --dry-run  # Preview
  */
-
 import fs from "node:fs";
 import path from "node:path";
 
@@ -82,7 +80,10 @@ function num(v) {
 }
 
 function shiftPoints(pointsStr, sx, sy) {
-  const tokens = pointsStr.trim().split(/[\s,]+/).map(Number);
+  const tokens = pointsStr
+    .trim()
+    .split(/[\s,]+/)
+    .map(Number);
 
   if (tokens.length % 2 !== 0) return pointsStr;
 
@@ -245,8 +246,13 @@ function processIcon(filePath) {
 
   const bounds = meta.artworkBounds;
 
-  if (!bounds || typeof bounds.x !== "number" || typeof bounds.y !== "number" ||
-      typeof bounds.width !== "number" || typeof bounds.height !== "number") {
+  if (
+    !bounds ||
+    typeof bounds.x !== "number" ||
+    typeof bounds.y !== "number" ||
+    typeof bounds.width !== "number" ||
+    typeof bounds.height !== "number"
+  ) {
     totalSkipped++;
     return;
   }

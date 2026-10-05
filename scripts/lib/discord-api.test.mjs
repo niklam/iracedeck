@@ -5,6 +5,7 @@
  * sleeps for 1.5 ms instead of 1.5 s.
  */
 import { describe, expect, it, vi } from "vitest";
+
 import { createDiscordClient, DISCORD_API_BASE, DiscordApiError } from "./discord-api.mjs";
 
 const TOKEN = "MTIz.secret.token";
@@ -47,7 +48,10 @@ describe("createDiscordClient", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ content: "hi" }),
     });
-    expect(fetchImpl.mock.calls[1][1]).toMatchObject({ method: "PATCH", body: JSON.stringify({ applied_tags: ["2"] }) });
+    expect(fetchImpl.mock.calls[1][1]).toMatchObject({
+      method: "PATCH",
+      body: JSON.stringify({ applied_tags: ["2"] }),
+    });
   });
 
   it("retries a 429 once after retry_after seconds", async () => {

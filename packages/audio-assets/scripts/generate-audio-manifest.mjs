@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-
 /**
  * Generates the two manifests for @iracedeck/audio-assets.
  *
@@ -22,10 +21,10 @@
  * freshness test (manifest.test.ts) fails CI if either committed manifest
  * drifts from the actual file tree.
  */
-
 import fs from "node:fs";
 import path from "node:path";
 import url from "node:url";
+
 import { BUNDLED_VOICE_IDS, SHIPPED_FOLDERS } from "../src/build/index.mjs";
 
 /** The folder whose contents the `voices` option filters. */
@@ -90,27 +89,25 @@ export function buildManifest({ voices } = {}) {
   // Same allow-list the copy step uses, imported rather than restated: a
   // manifest listing a clip the build does not ship is a callout that resolves
   // to nothing, and the two drifting apart is exactly how that happens.
-  const clips = [...SHIPPED_FOLDERS]
-    .sort()
-    .flatMap((folder) =>
-      // `voice/` is the one folder the two slices disagree about. The BUNDLED
-      // manifest is the one a plugin compiles in: it describes what the
-      // distributable ITSELF provides, so it names no voice the build does not
-      // ship. That is what stage 3 turned on — a plugin reserves voice ids off
-      // the manifest it carries, so no downloaded pack may claim one the plugin
-      // already has, and now that `default` has left this slice the DOWNLOADED
-      // `default` pack loads instead of being refused as "provided by the
-      // plugin's bundled audio".
-      //
-      // The AUTHORED manifest names every voice on disk: the set the harness
-      // auditions and this package's own generators and tests read as "the
-      // authored voice", which an empty bundle would otherwise leave without.
-      folder === VOICE_ROOT
-        ? authoredVoiceIds()
-            .filter((voiceId) => voices === "all" || BUNDLED_VOICE_IDS.includes(voiceId))
-            .flatMap((voiceId) => collectClips(path.join(PACKAGE_ROOT, folder, voiceId)))
-        : collectClips(path.join(PACKAGE_ROOT, folder)),
-    );
+  const clips = [...SHIPPED_FOLDERS].sort().flatMap((folder) =>
+    // `voice/` is the one folder the two slices disagree about. The BUNDLED
+    // manifest is the one a plugin compiles in: it describes what the
+    // distributable ITSELF provides, so it names no voice the build does not
+    // ship. That is what stage 3 turned on — a plugin reserves voice ids off
+    // the manifest it carries, so no downloaded pack may claim one the plugin
+    // already has, and now that `default` has left this slice the DOWNLOADED
+    // `default` pack loads instead of being refused as "provided by the
+    // plugin's bundled audio".
+    //
+    // The AUTHORED manifest names every voice on disk: the set the harness
+    // auditions and this package's own generators and tests read as "the
+    // authored voice", which an empty bundle would otherwise leave without.
+    folder === VOICE_ROOT
+      ? authoredVoiceIds()
+          .filter((voiceId) => voices === "all" || BUNDLED_VOICE_IDS.includes(voiceId))
+          .flatMap((voiceId) => collectClips(path.join(PACKAGE_ROOT, folder, voiceId)))
+      : collectClips(path.join(PACKAGE_ROOT, folder)),
+  );
 
   clips.sort();
 
@@ -155,8 +152,7 @@ function main() {
 const invokedPath = process.argv[1];
 if (
   invokedPath &&
-  (import.meta.url === url.pathToFileURL(invokedPath).href ||
-    invokedPath === url.fileURLToPath(import.meta.url))
+  (import.meta.url === url.pathToFileURL(invokedPath).href || invokedPath === url.fileURLToPath(import.meta.url))
 ) {
   main();
 }

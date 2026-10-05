@@ -2,11 +2,14 @@ import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import path from "node:path";
 import url from "node:url";
-
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { VOICE_PACK_CATALOG_MAX_PACKS } from "../packages/deck-core/src/voice-pack-catalog.ts";
-import { buildVoiceCatalogData, serializeVoiceCatalogData, VOICE_CATALOG_ENTRIES_DIR } from "./lib/voice-catalog-data.mjs";
+import {
+  buildVoiceCatalogData,
+  serializeVoiceCatalogData,
+  VOICE_CATALOG_ENTRIES_DIR,
+} from "./lib/voice-catalog-data.mjs";
 
 const repoRoot = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "..");
 

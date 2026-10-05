@@ -145,7 +145,11 @@ describe("installRuntimeDeps", () => {
   });
 
   it("fails rather than installing with an unfiltered environment when npm cannot list its keys", () => {
-    for (const list of [{ status: 1 }, { status: 0, stdout: "not json" }, { status: null, error: new Error("ENOENT") }]) {
+    for (const list of [
+      { status: 1 },
+      { status: 0, stdout: "not json" },
+      { status: null, error: new Error("ENOENT") },
+    ]) {
       const deps = io({ list });
 
       expect(installRuntimeDeps("bin", deps)).toBe(1);

@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-
 /**
  * Icon Migration Script
  *
@@ -12,7 +11,6 @@
  *
  * Usage: node scripts/migrate-icons.mjs [--dry-run]
  */
-
 import fs from "node:fs";
 import path from "node:path";
 

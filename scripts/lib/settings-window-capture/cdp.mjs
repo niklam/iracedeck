@@ -155,11 +155,9 @@ export async function connectCdp(url, deps = {}) {
 
   await new Promise((resolve, reject) => {
     socket.addEventListener("open", resolve, { once: true });
-    socket.addEventListener(
-      "error",
-      () => reject(new Error(`Could not connect to the Chromium debugger at ${url}`)),
-      { once: true },
-    );
+    socket.addEventListener("error", () => reject(new Error(`Could not connect to the Chromium debugger at ${url}`)), {
+      once: true,
+    });
   });
 
   socket.addEventListener("close", () => failAllPending("The Chromium debugger connection closed unexpectedly"));

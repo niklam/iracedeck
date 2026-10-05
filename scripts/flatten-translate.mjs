@@ -1,10 +1,8 @@
 #!/usr/bin/env node
-
 /**
  * Flattens translate(0, -8) transforms in SVG files by applying the offset
  * directly to path coordinates using the svgpath library.
  */
-
 import fs from "node:fs";
 import SvgPath from "svgpath";
 
@@ -38,10 +36,13 @@ for (const file of files) {
 
   // Apply translate to polygon points
   result = result.replace(/(<polygon[^>]*\spoints=")([^"]+)(")/g, (match, pre, points, post) => {
-    const transformed = points.split(/\s+/).map(pair => {
-      const [x, y] = pair.split(",").map(Number);
-      return `${Math.round((x + tx) * 100) / 100},${Math.round((y + ty) * 100) / 100}`;
-    }).join(" ");
+    const transformed = points
+      .split(/\s+/)
+      .map((pair) => {
+        const [x, y] = pair.split(",").map(Number);
+        return `${Math.round((x + tx) * 100) / 100},${Math.round((y + ty) * 100) / 100}`;
+      })
+      .join(" ");
     return pre + transformed + post;
   });
 

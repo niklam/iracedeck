@@ -61,7 +61,9 @@ export function assertBridgeInjectionPlugin({ outputDir, expectedBridge }) {
       // wiring failure this guard exists to catch, reported on its own terms
       // rather than as readdirSync's ENOENT.
       if (!existsSync(outputDir)) {
-        throw new Error(`PI bridge injection check failed: output directory ${outputDir} does not exist (no PI pages generated?)`);
+        throw new Error(
+          `PI bridge injection check failed: output directory ${outputDir} does not exist (no PI pages generated?)`,
+        );
       }
 
       const problems = [];

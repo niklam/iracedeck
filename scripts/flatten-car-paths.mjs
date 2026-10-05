@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-
 /**
  * Flattens the toggle-tires car SVG from 512-space + complex transform chain
  * to native 144x144 coordinates using the svgpath library for accurate
@@ -8,7 +7,6 @@
  * Transform matrix: x' = 0.176*py + 26.944, y' = -0.176*px + 98.056
  * SVG matrix(a,b,c,d,e,f) = matrix(0, -0.176, 0.176, 0, 26.944, 98.056)
  */
-
 import SvgPath from "svgpath";
 
 // The combined transform matrix coefficients
@@ -19,10 +17,8 @@ const MATRIX = [0, -0.176, 0.176, 0, 26.944, 98.056];
 
 // Original paths from the 512-space SVG
 const paths = {
-  rightTopPanel:
-    "M448.118,351.402h47.018v-75.629c-11.104,2.554-29.453,6.744-47.008,10.593L448.118,351.402z",
-  rightBottomPanel:
-    "M495.136,160.599h-47.008v65.035c17.555,3.85,35.904,8.03,47.008,10.584V160.599z",
+  rightTopPanel: "M448.118,351.402h47.018v-75.629c-11.104,2.554-29.453,6.744-47.008,10.593L448.118,351.402z",
+  rightBottomPanel: "M495.136,160.599h-47.008v65.035c17.555,3.85,35.904,8.03,47.008,10.584V160.599z",
   mainBody:
     "M503.763,245.781c0,0-66.446-15.465-92.844-20.383c-26.399-4.899-91.51-16.42-91.51-16.42s-3.008-11.18-4.606-20.27c-2.771-15.672-16.59-31.335-51.624-31.335c-35.024,0-47.018,0-66.369,0c-50.697,0-42.374,48.852-73.067,48.852c-30.692,0-54.215,0-54.215,0v99.549c0,0,23.523,0,54.215,0c30.693,0,22.37,48.863,73.067,48.863c19.351,0,31.335,0,66.369,0s48.853-15.673,51.624-31.346c1.598-9.08,4.606-20.278,4.606-20.278s65.111-11.511,91.51-16.42c26.398-4.91,92.844-20.373,92.844-20.373c4.814-1.06,8.237-5.307,8.237-10.215C512,251.087,508.576,246.83,503.763,245.781z",
   window:
@@ -32,20 +28,14 @@ const paths = {
 console.log("=== Transformed paths (using svgpath library) ===\n");
 
 for (const [name, d] of Object.entries(paths)) {
-  const transformed = new SvgPath(d)
-    .matrix(MATRIX)
-    .round(2)
-    .toString();
+  const transformed = new SvgPath(d).matrix(MATRIX).round(2).toString();
   console.log(`<!-- ${name} -->`);
   console.log(`<path fill="{{graphic1Color}}" d="${transformed}"/>`);
   console.log();
 }
 
 // Window uses background fill (cutout)
-const windowTransformed = new SvgPath(paths.window)
-  .matrix(MATRIX)
-  .round(2)
-  .toString();
+const windowTransformed = new SvgPath(paths.window).matrix(MATRIX).round(2).toString();
 console.log(`<!-- Window (background color fill) -->`);
 console.log(`<path fill="#3a2a2a" d="${windowTransformed}"/>`);
 
@@ -88,7 +78,9 @@ for (const t of tireRects) {
   const y = Math.round(Math.min(y1, y2) * 100) / 100;
   const w = Math.round(Math.abs(x2 - x1) * 100) / 100;
   const h = Math.round(Math.abs(y2 - y1) * 100) / 100;
-  console.log(`${t.id}: <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="2" fill="COLOR" stroke="#888888" stroke-width="1"/>`);
+  console.log(
+    `${t.id}: <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="2" fill="COLOR" stroke="#888888" stroke-width="1"/>`,
+  );
 }
 
 // Overall bounds (car body + tires)
@@ -125,4 +117,6 @@ const maxY = Math.max(...allPoints.map((p) => p.y));
 console.log(`Content: x=${minX.toFixed(1)} to ${maxX.toFixed(1)}, y=${minY.toFixed(1)} to ${maxY.toFixed(1)}`);
 console.log(`Size: ${(maxX - minX).toFixed(1)} x ${(maxY - minY).toFixed(1)}`);
 const pad = 4;
-console.log(`artworkBounds (with ${pad}px pad): {"x":${Math.floor(minX - pad)},"y":${Math.floor(minY - pad)},"width":${Math.ceil(maxX - minX + 2 * pad)},"height":${Math.ceil(maxY - minY + 2 * pad)}}`);
+console.log(
+  `artworkBounds (with ${pad}px pad): {"x":${Math.floor(minX - pad)},"y":${Math.floor(minY - pad)},"width":${Math.ceil(maxX - minX + 2 * pad)},"height":${Math.ceil(maxY - minY + 2 * pad)}}`,
+);

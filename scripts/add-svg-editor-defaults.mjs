@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-
 /**
  * SVG Editor Defaults
  *
@@ -30,7 +29,6 @@
  *   node scripts/add-svg-editor-defaults.mjs            # Apply
  *   node scripts/add-svg-editor-defaults.mjs --dry-run  # Preview
  */
-
 import fs from "node:fs";
 import path from "node:path";
 

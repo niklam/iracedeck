@@ -35,9 +35,7 @@ describe("renderInlineMarkdown", () => {
     });
 
     it("escapes the contents of a code span", () => {
-      expect(renderInlineMarkdown("Wrap `<name>` in backticks.")).toBe(
-        "Wrap <code>&lt;name&gt;</code> in backticks.",
-      );
+      expect(renderInlineMarkdown("Wrap `<name>` in backticks.")).toBe("Wrap <code>&lt;name&gt;</code> in backticks.");
     });
   });
 
@@ -112,7 +110,7 @@ describe("renderInlineMarkdown", () => {
         "The **Camera Controls** dial now counts *down* — `#94` to `#77` — see [the dials page](/docs/features/dials/).",
       ),
     ).toBe(
-      'The <strong>Camera Controls</strong> dial now counts <em>down</em> — <code>#94</code> to <code>#77</code> — ' +
+      "The <strong>Camera Controls</strong> dial now counts <em>down</em> — <code>#94</code> to <code>#77</code> — " +
         'see <a href="https://iracedeck.com/docs/features/dials/" target="_blank" rel="noopener noreferrer">the dials page</a>.',
     );
   });

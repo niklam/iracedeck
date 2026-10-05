@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-
 /**
  * Generates icon-defaults.json for PI templates.
  *
@@ -8,7 +7,6 @@
  *
  * Usage: node scripts/generate-icon-defaults.mjs
  */
-
 import fs from "node:fs";
 import path from "node:path";
 

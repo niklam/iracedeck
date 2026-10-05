@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-
 /**
  * One-off: pad an icon's viewBox by N pixels on every side and shift its
  * artwork coordinates by (+N, +N) so the artwork stays in place visually
@@ -14,7 +13,6 @@
  *
  * Reuses the coordinate shifter from migrate-icons-to-trimmed-viewbox.mjs.
  */
-
 import fs from "node:fs";
 import path from "node:path";
 
@@ -86,20 +84,27 @@ function shiftPathData(d, sx, sy) {
         break;
       case "C":
         for (let i = 0; i + 5 < values.length; i += 6) {
-          values[i] += sx; values[i + 1] += sy;
-          values[i + 2] += sx; values[i + 3] += sy;
-          values[i + 4] += sx; values[i + 5] += sy;
+          values[i] += sx;
+          values[i + 1] += sy;
+          values[i + 2] += sx;
+          values[i + 3] += sy;
+          values[i + 4] += sx;
+          values[i + 5] += sy;
         }
         break;
-      case "S": case "Q":
+      case "S":
+      case "Q":
         for (let i = 0; i + 3 < values.length; i += 4) {
-          values[i] += sx; values[i + 1] += sy;
-          values[i + 2] += sx; values[i + 3] += sy;
+          values[i] += sx;
+          values[i + 1] += sy;
+          values[i + 2] += sx;
+          values[i + 3] += sy;
         }
         break;
       case "A":
         for (let i = 0; i + 6 < values.length; i += 7) {
-          values[i + 5] += sx; values[i + 6] += sy;
+          values[i + 5] += sx;
+          values[i + 6] += sy;
         }
         break;
       case "m":
@@ -117,7 +122,10 @@ function shiftPathData(d, sx, sy) {
 }
 
 function shiftPoints(pointsStr, sx, sy) {
-  const tokens = pointsStr.trim().split(/[\s,]+/).map(Number);
+  const tokens = pointsStr
+    .trim()
+    .split(/[\s,]+/)
+    .map(Number);
 
   if (tokens.length % 2 !== 0) return pointsStr;
 
@@ -176,13 +184,13 @@ for (const filePath of files) {
     continue;
   }
 
-  const [vx, vy, vw, vh] = vbMatch[1].trim().split(/[\s,]+/).map(Number);
+  const [vx, vy, vw, vh] = vbMatch[1]
+    .trim()
+    .split(/[\s,]+/)
+    .map(Number);
   const newW = vw + padL + padR;
   const newH = vh + padT + padB;
-  const newOpen = openMatch[0].replace(
-    /viewBox="[^"]*"/,
-    `viewBox="${num(vx)} ${num(vy)} ${num(newW)} ${num(newH)}"`,
-  );
+  const newOpen = openMatch[0].replace(/viewBox="[^"]*"/, `viewBox="${num(vx)} ${num(vy)} ${num(newW)} ${num(newH)}"`);
 
   const headerEnd = openMatch.index + openMatch[0].length;
   const closingIdx = svg.lastIndexOf("</svg>");

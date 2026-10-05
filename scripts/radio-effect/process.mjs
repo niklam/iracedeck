@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-
 /**
  * Radio-effect spike.
  *
@@ -10,7 +9,6 @@
  * Usage:
  *   node scripts/radio-effect/process.mjs
  */
-
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import { createRequire } from "node:module";

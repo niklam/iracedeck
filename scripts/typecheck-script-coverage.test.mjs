@@ -1,7 +1,6 @@
 import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
@@ -451,8 +450,12 @@ describe("every package with TypeScript is covered by pnpm typecheck", () => {
   it("finds a package's test files without descending into what it must skip", () => {
     const found = testFilesOnDisk(join(repoRoot, "packages", "iracing-actions"));
     expect(found.length).toBeGreaterThan(0);
-    expect(found).toContain(toPosix(join(repoRoot, "packages", "iracing-actions", "src", "actions", "comms-catalog.test.ts")));
-    expect(found.filter((f) => f.includes("/node_modules/") || f.includes("/dist/") || f.includes("/build/"))).toEqual([]);
+    expect(found).toContain(
+      toPosix(join(repoRoot, "packages", "iracing-actions", "src", "actions", "comms-catalog.test.ts")),
+    );
+    expect(found.filter((f) => f.includes("/node_modules/") || f.includes("/dist/") || f.includes("/build/"))).toEqual(
+      [],
+    );
   });
 
   it("has no stale allow-list entries", () => {
