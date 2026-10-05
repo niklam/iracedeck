@@ -31,9 +31,9 @@
     "clean": "turbo run clean",
     "lint": "eslint \"packages/*/src/**\" \"scripts/**/*.mjs\" vitest.config.ts",
     "lint:pack": "node scripts/lint-pack.mjs",
-    "lint:fix": "eslint --fix \"packages/*/src/**\" vitest.config.ts",
-    "format": "prettier --check \"**/*.ts\" \"**/*.json\"",
-    "format:fix": "prettier --write \"**/*.ts\" \"**/*.json\"",
+    "lint:fix": "eslint --fix \"packages/*/src/**\" \"scripts/**/*.mjs\" vitest.config.ts",
+    "format": "prettier --check \"**/*.ts\" \"**/*.mjs\" \"**/*.json\"",
+    "format:fix": "prettier --write \"**/*.ts\" \"**/*.mjs\" \"**/*.json\"",
     "typecheck": "turbo run typecheck",
     "test": "vitest run --configLoader native",
     "test:watch": "vitest --configLoader native",
@@ -95,7 +95,7 @@
     "yaml": "2.9.1"
   },
   "lint-staged": {
-    "*.ts": [
+    "*.{ts,mjs}": [
       "eslint --fix",
       "prettier --write"
     ],

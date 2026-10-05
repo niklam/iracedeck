@@ -90,5 +90,5 @@ Update the _Verified against_ line above whenever the harness is exercised again
 ## Housekeeping
 
 - Not in CI, and that is a recommendation rather than an omission. It drives the built plugin over a real socket with real waits — a meaningful run is 15–60 s of mostly sleeping, to assert what the unit tests already assert deterministically with fake timers. Its value is precisely where determinism ends, which is the worst thing to put in a job people need to trust.
-- **Check these files with `pnpm lint`, not `pnpm lint:fix`.** The two commands do not cover the same set: `lint` includes `scripts/**/*.mjs`, `lint:fix` drops that glob entirely, and neither `format` nor `format:fix` touches `.mjs` at all (both match only `**/*.ts` and `**/*.json`). So a clean `lint:fix` says nothing about this directory, and `pnpm lint` can fail on a file `lint:fix` never looked at, let alone fixed. Keep them lint-clean by hand.
+- These files are linted and formatted like the rest of `scripts/`: `lint` / `lint:fix` include `scripts/**/*.mjs`, and `format` / `format:fix` and the pre-commit task cover `.mjs` (#1325).
 - This landed alongside #1056, the fix it validated. Its permanent home is pending that issue's sibling; if the sibling is declined, the commit that added this directory can be dropped without touching the fix.
