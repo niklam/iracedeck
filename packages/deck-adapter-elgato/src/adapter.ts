@@ -284,9 +284,15 @@ function wrapTouchTapEvent<T>(ev: TouchTapEvent<T & JsonObject>): IDeckTouchTapE
 /** Marks that no global-settings event has arrived yet. */
 const NO_EVENT_YET: unique symbol = Symbol("no global-settings event yet");
 
-/** `@iracedeck/logger` level → the Elgato SDK's level name. The SDK has no "silent"; error is its quietest. */
-const ELGATO_LOG_LEVELS: Record<LogLevel, "trace" | "debug" | "info" | "warn" | "error"> = {
-  [LogLevel.Trace]: "trace",
+/**
+ * `@iracedeck/logger` level → the Elgato SDK's level name. The SDK has no
+ * "silent"; error is its quietest. Trace maps to "debug" because the SDK caps
+ * its logger at `minimumLevel` ("debug" unless the plugin runs under
+ * `--inspect`), and `Logger.setLevel` replaces any level more verbose than that
+ * with "info" — so "trace" would log LESS than "debug" in production.
+ */
+const ELGATO_LOG_LEVELS: Record<LogLevel, "debug" | "info" | "warn" | "error"> = {
+  [LogLevel.Trace]: "debug",
   [LogLevel.Debug]: "debug",
   [LogLevel.Info]: "info",
   [LogLevel.Warn]: "warn",

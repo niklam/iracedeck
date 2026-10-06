@@ -223,7 +223,11 @@ export interface IDeckPlatformAdapter {
    * device's default profile; `page` optionally selects a page within it.
    */
   switchToProfile(deviceId: string, profile?: string, page?: number): Promise<void>;
-  /** Open a URL in the user's browser through the host. */
+  /**
+   * Open a URL in the user's browser through the host. Resolving means the
+   * request was sent to the host, not that a page opened — no host reports
+   * that — and hosts open http(s) URLs only.
+   */
   openUrl(url: string): Promise<void>;
   /** Subscribe to the Property Inspector's "iRaceDeck Settings" request (#992). */
   onOpenSettingsRequest(listener: () => void): void;

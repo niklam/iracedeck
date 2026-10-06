@@ -18,7 +18,8 @@ function createSd() {
 
 describe("ElgatoPlatformAdapter — the #1349 contract members", () => {
   it.each([
-    [LogLevel.Trace, "trace"],
+    // The SDK turns a level above its production minimum ("debug") into "info".
+    [LogLevel.Trace, "debug"],
     [LogLevel.Debug, "debug"],
     [LogLevel.Info, "info"],
     [LogLevel.Warn, "warn"],
