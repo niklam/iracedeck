@@ -131,7 +131,7 @@ it("skips touch and long-press when dialExtendedGestures is false", () => {
 1. Add to all three `platform-features.json` files under `features` (enabled/disabled per platform).
 2. Add its key to `PlatformFeatureFlags` in `packages/deck-core/src/plugin-config.ts`.
 3. Decide whether it needs a compile-time constant. Most flags do:
-   - Add the `__FEATURE_*__` ambient declaration to each of the three plugins' own `src/platform-features.d.ts` and to `plugin-runtime`'s (so both plugin-only code and the bundled `@iracedeck/iracing-actions` sources see it — see "Per-plugin ambient declarations" above).
+   - Add the `__FEATURE_*__` ambient declaration to all five `src/platform-features.d.ts` copies — the three plugins', `plugin-runtime`'s and `iracing-actions`' (each is typechecked as its own program; see "Per-program ambient declarations" above).
    - Add the replace entry to **all three** `rollup.config.mjs` files.
    - Add default to `test-setup.ts` and true/false path tests that `vi.stubGlobal` the constant.
    - A flag that only gates a PI control or a rarely-hit runtime branch (like `profiles`) can skip all three of the above and read `getFeatureFlag(...)` / `locals.platform?.features?.…` instead — see "Runtime-only flags" above.
