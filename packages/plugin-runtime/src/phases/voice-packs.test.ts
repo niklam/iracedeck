@@ -37,6 +37,10 @@ function setup(initialised: boolean) {
   const settings = { initialised };
   const writes: Record<string, unknown>[] = [];
   let deps: ServiceDeps | undefined;
+  const refresh = vi.fn(() => {
+    deps?.applyManifest([]);
+    deps?.onPacksChanged();
+  });
   implement("isGlobalSettingsInitialized", () => settings.initialised);
   implement("updateGlobalSettings", (partial) => writes.push(partial as Record<string, unknown>));
   implement("scanRaceEngineerVoices", () => ["default::default"]);
@@ -48,10 +52,7 @@ function setup(initialised: boolean) {
     deps = d as ServiceDeps;
 
     return {
-      refresh: () => {
-        deps?.applyManifest([]);
-        deps?.onPacksChanged();
-      },
+      refresh,
       installed: () => [
         {
           id: "default",
@@ -82,7 +83,7 @@ function setup(initialised: boolean) {
   callLog.length = 0;
   const voicePacks = initVoicePacks(core, audio);
 
-  return { settings, writes, voicePacks, host, rescan: () => voicePacks.service.refresh() };
+  return { settings, writes, voicePacks, host, refresh, rescan: () => voicePacks.service.refresh() };
 }
 
 const keysOf = (writes: Record<string, unknown>[]): string[] => writes.flatMap((w) => Object.keys(w));
@@ -178,10 +179,12 @@ describe("initVoicePacks (#1104)", () => {
   });
 
   it("rescans and pokes the launch step on the window's Rescan, and asks the catalog on refreshCatalog", () => {
-    const { voicePacks } = setup(true);
+    const { voicePacks, refresh } = setup(true);
     callLog.length = 0;
+    refresh.mockClear();
 
     voicePacks.windowCommands.refreshVoicePacks();
+    expect(refresh).toHaveBeenCalledTimes(1);
     voicePacks.windowCommands.installVoicePack("terse");
     voicePacks.refreshCatalog();
 
