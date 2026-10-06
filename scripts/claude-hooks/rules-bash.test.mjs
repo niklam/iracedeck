@@ -10,6 +10,7 @@ import {
   GIT_COMMIT,
   GIT_WORKTREE_REMOVE,
   gitCwd,
+  issueFromWorktreePath,
   maskInert,
   matchAt,
   trustedMask,
@@ -1462,6 +1463,24 @@ describe("the mask fails closed (#1321 review)", () => {
     ).toBe("../ir-1321");
     expect(worktreeAddTarget("git worktree add --lock --reason why ../ir-5")).toBe("../ir-5");
     expect(worktreeAddTarget("git status")).toBeNull();
+  });
+
+  it("reads the issue off a worktree path's last segment, the tree the add creates (#1358)", () => {
+    expect(issueFromWorktreePath("C:\\x\\ir-1100")).toBe(1100);
+    expect(issueFromWorktreePath("../ir-42")).toBe(42);
+    expect(issueFromWorktreePath("ir-7")).toBe(7);
+    expect(issueFromWorktreePath("C:\\x\\master")).toBeUndefined();
+    // An `ir-` segment higher up is where the add ran, not what it made.
+    expect(issueFromWorktreePath("C:\\x\\ir-1325\\scripts\\ir-1321")).toBe(1321);
+    expect(issueFromWorktreePath("/x/ir-1325/scripts/ir-1321")).toBe(1321);
+    expect(issueFromWorktreePath("C:\\x\\ir-1325\\scripts")).toBeUndefined();
+    expect(issueFromWorktreePath("C:\\x\\ir-1325-old")).toBeUndefined();
+  });
+
+  it("names a tree by its last segment from inside another ir-* tree (#1358)", () => {
+    const sub = tree("ir-1325", "scripts");
+    passes(`git worktree add ../../ir-5 -b fix/5-x`, ctx({ cwd: sub }));
+    expect(deny(`git worktree add ../ir-5/scratch -b fix/5-x`, ctx({ cwd: sub }))).toMatch(/got scratch/);
   });
 
   it("the post-hook's merge trigger finds a merge behind any wrapper, and only a readable PR", () => {

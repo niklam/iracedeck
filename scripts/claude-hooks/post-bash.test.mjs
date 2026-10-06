@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -12,7 +12,12 @@ const HOOK = path.join(import.meta.dirname, "post-bash.mjs");
 // and deterministic — and reports that it could not, which proves it ran.
 const NO_GH = mkdtempSync(path.join(os.tmpdir(), "post-bash-no-gh-"));
 
-function fire(command, { stdout = "", withoutGh = false } = {}) {
+// The repo root, which is the cwd a session hands the hook. Never the test's
+// own directory: a checkout named `ir-<n>` then sits in every path the hook
+// resolves, which is how this suite failed in every worktree (#1358).
+const ROOT = path.resolve(import.meta.dirname, "../..");
+
+function fire(command, { stdout = "", withoutGh = false, cwd = ROOT } = {}) {
   const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !withoutGh || k.toLowerCase() !== "path"));
   if (withoutGh) env.PATH = NO_GH;
   const r = spawnSync(process.execPath, [HOOK], {
@@ -20,7 +25,7 @@ function fire(command, { stdout = "", withoutGh = false } = {}) {
       tool_name: "Bash",
       tool_input: { command },
       tool_response: { stdout },
-      cwd: import.meta.dirname,
+      cwd,
     }),
     encoding: "utf8",
     timeout: 60_000,
@@ -65,5 +70,13 @@ describe("post-bash.mjs triggers", () => {
     });
     expect(note).toMatch(/Worktree for #1321 created/);
     expect(note).not.toMatch(/1400/);
+  });
+
+  it("moves the card of the tree the add created when run from inside another ir-* tree (#1358)", () => {
+    const sub = path.join(mkdtempSync(path.join(os.tmpdir(), "post-bash-tree-")), "ir-1325", "scripts");
+    mkdirSync(sub, { recursive: true });
+    const note = fire("git worktree add ir-1321 -b fix/1321-x", { withoutGh: true, cwd: sub });
+    expect(note).toMatch(/Worktree for #1321 created/);
+    expect(note).not.toMatch(/1325/);
   });
 });

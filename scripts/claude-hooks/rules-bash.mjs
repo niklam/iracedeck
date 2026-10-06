@@ -482,6 +482,18 @@ export const GIT_WORKTREE_ADD = cmd(/git\s+(?:-C\s+\S+\s+)?worktree\s+add\b(.*)$
 export const GIT_WORKTREE_REMOVE = cmd(/git\s+(?:-c\s+\S+\s+)?(?:-C\s+\S+\s+)?worktree\s+remove\b(.*)$/);
 
 /**
+ * Issue number of an `ir-<n>` worktree path, read off its LAST segment — the
+ * directory the add creates — or `undefined`. The pre-hook's naming rule and
+ * the post-hook's board move both read it here, so they agree on the name: an
+ * `ir-` segment higher up (`…/ir-1325/scripts/ir-1321`) is where the add ran,
+ * not what it made (#1358).
+ */
+export function issueFromWorktreePath(p) {
+  const m = String(p).match(/(?:^|[\\/])ir-(\d+)$/);
+  return m ? Number(m[1]) : undefined;
+}
+
+/**
  * The target of the `git worktree add` at command position, read from the raw
  * text: `null` when there is no such command, `undefined` when it names no
  * target. Shared by the pre-hook rule and the post-hook's board move, so the
@@ -863,7 +875,7 @@ export const rules = [
       const resolved = path.resolve(dir, target);
       if (ctx.isInside(resolved, ctx.mainRoot(dir)))
         return `Worktrees are siblings of the repo (${path.join(path.dirname(ctx.mainRoot(dir)), "ir-<issue>")}), never inside it: ${resolved}.`;
-      if (!/(^|[\\/])ir-\d+$/.test(resolved))
+      if (issueFromWorktreePath(resolved) === undefined)
         return `Issue worktrees are named ../ir-<issue> (got ${path.basename(resolved)}).`;
       const fresh = ctx.originFresh(dir);
       if (fresh && !fresh.fresh)
