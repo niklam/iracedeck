@@ -23,7 +23,9 @@ function shellViolations(source) {
   for (const name of FORBIDDEN_NAMES) {
     if (new RegExp(`\\b${name}\\b`).test(source)) violations.push(`names ${name}`);
   }
-  if (/\b[A-Z][A-Z0-9_]*_CALLOUT_SETTING_KEYS\b/.test(source)) violations.push("names a *_CALLOUT_SETTING_KEYS map");
+  if (/\b[A-Z][A-Z0-9_]*_(CALLOUT_SETTING_KEYS|CALLOUTS)\b/.test(source)) {
+    violations.push("names a callout key map or registry family");
+  }
   if (/\bregisterAction\s*\(/.test(source)) violations.push("calls registerAction");
   if (startPluginCall(source) === undefined) violations.push("never calls startPlugin");
 
@@ -107,7 +109,8 @@ describe("the shell check itself (positive controls)", () => {
     ["an import of registerPitCrew", `import { registerPitCrew } from "x";\n${ok}`, "names registerPitCrew"],
     ["the translator constructed here", `initializeSimEventsIracing(bus);\n${ok}`, "names initializeSimEventsIracing"],
     ["the scenario engine constructed here", `initializeAudioScenarios(bus);\n${ok}`, "names initializeAudioScenarios"],
-    ["a callout key map", `const k = FLAG_CALLOUT_SETTING_KEYS;\n${ok}`, "names a *_CALLOUT_SETTING_KEYS map"],
+    ["a callout key map", `const k = FLAG_CALLOUT_SETTING_KEYS;\n${ok}`, "names a callout key map or registry family"],
+    ["a registry family", `const f = FLAG_CALLOUTS;\n${ok}`, "names a callout key map or registry family"],
     ["a registration", `adapter.registerAction("x", h);\n${ok}`, "calls registerAction"],
     ["no startPlugin", "const adapter = new X();\n", "never calls startPlugin"],
     ["82 lines", `${"//\n".repeat(80)}${ok}`, "82 lines (the cap is 80)"],
