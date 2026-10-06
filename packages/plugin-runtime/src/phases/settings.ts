@@ -511,5 +511,5 @@ export function initSettings(core: Core, audio: Audio, voicePacks: VoicePacks): 
     voicePacks.installer.republishStatus();
   });
 
-  return { store: settingsStore, replayStore: replaySessionStore, window: settingsWindow, openSettingsWindow };
+  return { store: settingsStore, replayStore: replaySessionStore, openSettingsWindow };
 }

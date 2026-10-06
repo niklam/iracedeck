@@ -131,6 +131,5 @@ export interface VoicePacks {
 export interface Settings {
   readonly store: SettingsStore;
   readonly replayStore: ReplaySessionStore;
-  readonly window: SettingsWindowController;
   openSettingsWindow(options?: SettingsWindowOpenOptions): ReturnType<SettingsWindowController["open"]>;
 }
