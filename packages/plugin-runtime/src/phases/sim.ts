@@ -2,7 +2,7 @@
  * Phase 2 (#1349): the sim translator, the live race order it feeds the
  * template context, and the query-side runtime the Race Engineer reads.
  */
-import { OPPONENT_PENALTY_FLAG_TO_CALLOUT_ID } from "@iracedeck/audio-scenarios/pit-crew";
+import { OPPONENT_PENALTY_FLAG_TO_CALLOUT_ID, type OpponentFlagCalloutId } from "@iracedeck/audio-scenarios/pit-crew";
 import { calloutKey, OPPONENT_FLAG_CALLOUTS } from "@iracedeck/callout-settings";
 import { getGlobalSettings, isCalloutEnabled } from "@iracedeck/deck-core";
 import { createIracingSimRuntime, type SimRuntime } from "@iracedeck/race-engineer-wiring";
@@ -45,9 +45,14 @@ export function initSim(core: Core): SimRuntime {
     // enabled subject into a collapsed aggregate. The same live lookup the
     // audio layer's gate in registerPitCrew asks; the map translates the bus
     // enum (the meatball is `Repair`) to the callout id, and the registry
-    // resolves that id to its settings key (#1350).
-    getOpponentFlagCalloutEnabled: (flag) =>
-      isCalloutEnabled(calloutKey(OPPONENT_FLAG_CALLOUTS, OPPONENT_PENALTY_FLAG_TO_CALLOUT_ID[flag])),
+    // resolves that id to its settings key (#1350). A flag the map does not
+    // know yet (a new bus value ahead of its callout id) falls open, as it
+    // did before the registry: an unknown flag is never silenced.
+    getOpponentFlagCalloutEnabled: (flag) => {
+      const id: OpponentFlagCalloutId | undefined = OPPONENT_PENALTY_FLAG_TO_CALLOUT_ID[flag];
+
+      return id === undefined || isCalloutEnabled(calloutKey(OPPONENT_FLAG_CALLOUTS, id));
+    },
     // Opponent-flag range (issue #1274) — only a same-class car within this
     // race gap, ahead or behind, is announced. Read live per announce so a
     // settings change applies to the next one; clamp mirrors the schema.

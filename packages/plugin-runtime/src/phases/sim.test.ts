@@ -106,4 +106,22 @@ describe("initSim", () => {
     off = new Set([key]);
     expect(gate(flag), "its own key off").toBe(false);
   });
+
+  it("lets a flag the map does not know through without asking any key", () => {
+    const optionsSeen: Record<string, (...args: unknown[]) => unknown>[] = [];
+    implement("initializeSimEventsIracing", (_bus, _controller, _logger, options) =>
+      optionsSeen.push(options as never),
+    );
+    const asked: unknown[] = [];
+    implement("isCalloutEnabled", (key) => {
+      asked.push(key);
+
+      return false;
+    });
+
+    initSim(initCore(createHost()));
+
+    expect(optionsSeen[0].getOpponentFlagCalloutEnabled("a-flag-added-later")).toBe(true);
+    expect(asked).toEqual([]);
+  });
 });
