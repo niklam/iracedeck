@@ -1,9 +1,9 @@
 import { LogLevel } from "@iracedeck/logger";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createHost } from "../test-support/fake-host.js";
+import { cleanupTempBinDirs, createFakeAdapter, createHost } from "../test-support/fake-host.js";
 import { callLog, implement, resetRecorder } from "../test-support/recorder.js";
 import { initCore } from "./core.js";
 
@@ -28,6 +28,7 @@ vi.mock("../actions.js", async () => (await import("../test-support/module-mocks
 
 describe("initCore", () => {
   beforeEach(() => resetRecorder());
+  afterAll(() => cleanupTempBinDirs());
 
   it("runs config → log level → watchdog → resource monitor → setup-warning check → SDK → bus, in that order", () => {
     initCore(createHost());
@@ -56,6 +57,23 @@ describe("initCore", () => {
       "initializeSDK",
       "initializeEventBus",
     ]);
+  });
+
+  it("creates its loggers under the scopes the host logs always used", () => {
+    const host = createHost();
+
+    initCore(host);
+
+    expect(host.adapter.scopes).toEqual(["MainThreadWatchdog", "ResourceMonitor", "iRacingSDK", "EventBus"]);
+  });
+
+  it("refuses an adapter that writes no log file, before the watchdog starts (#1330)", () => {
+    const host = { ...createHost(), adapter: { ...createFakeAdapter(), logLocation: undefined } };
+
+    expect(() => initCore(host)).toThrow(/log directory/);
+    // Positive control: the phase ran up to the check, so the watchdog's absence is the refusal.
+    expect(callLog).toContain("adapter.setLogLevel");
+    expect(callLog).not.toContain("startMainThreadWatchdog");
   });
 
   it("hands initPluginConfig the bin dir's config.json", () => {

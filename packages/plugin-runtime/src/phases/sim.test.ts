@@ -2,9 +2,9 @@ import {
   OPPONENT_FLAG_CALLOUT_SETTING_KEYS,
   OPPONENT_PENALTY_FLAG_TO_CALLOUT_ID,
 } from "@iracedeck/audio-scenarios/pit-crew";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createHost } from "../test-support/fake-host.js";
+import { cleanupTempBinDirs, createHost } from "../test-support/fake-host.js";
 import { callLog, implement, resetRecorder } from "../test-support/recorder.js";
 import { initCore } from "./core.js";
 import { initSim } from "./sim.js";
@@ -30,20 +30,24 @@ vi.mock("../actions.js", async () => (await import("../test-support/module-mocks
 
 describe("initSim", () => {
   beforeEach(() => resetRecorder());
+  afterAll(() => cleanupTempBinDirs());
 
-  it("constructs the translator, feeds live positions, then hands out the runtime", () => {
-    const core = initCore(createHost());
+  it("constructs the translator, feeds live positions through core.controller, then hands out the runtime", () => {
+    const host = createHost();
+    const core = initCore(host);
     callLog.length = 0;
+    host.adapter.scopes.length = 0;
 
     initSim(core);
 
-    expect(
-      callLog.filter((n) => !n.startsWith("getController") || n.includes(".")).filter((n) => n !== "getGlobalSettings"),
-    ).toEqual([
+    // Unfiltered but for the settings reads: a bare "getController" here would
+    // mean the phase went back to the singleton instead of core.controller.
+    expect(callLog.filter((n) => n !== "getGlobalSettings")).toEqual([
       "initializeSimEventsIracing",
       "getController().setLivePositionsProvider",
       "createIracingSimRuntime",
     ]);
+    expect(host.adapter.scopes).toEqual(["SimEventsIracing"]);
   });
 
   it("returns the runtime createIracingSimRuntime built", () => {

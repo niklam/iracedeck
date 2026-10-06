@@ -1,6 +1,6 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createHost } from "../test-support/fake-host.js";
+import { cleanupTempBinDirs, createHost } from "../test-support/fake-host.js";
 import { callLog, implement, resetRecorder } from "../test-support/recorder.js";
 import { initCore } from "./core.js";
 import { initInput } from "./input.js";
@@ -26,11 +26,14 @@ vi.mock("../actions.js", async () => (await import("../test-support/module-mocks
 
 describe("initInput", () => {
   beforeEach(() => resetRecorder());
+  afterAll(() => cleanupTempBinDirs());
   afterEach(() => vi.unstubAllGlobals());
 
   it("builds the native layer, keyboard, clipboard, then the rasterizer when the flag is on", () => {
-    const core = initCore(createHost());
+    const host = createHost();
+    const core = initCore(host);
     callLog.length = 0;
+    host.adapter.scopes.length = 0;
 
     const input = initInput(core);
 
@@ -42,6 +45,7 @@ describe("initInput", () => {
       "initializeRasterizer",
     ]);
     expect(input.native).toBeDefined();
+    expect(host.adapter.scopes).toEqual(["Keyboard", "Clipboard", "Rasterizer"]);
   });
 
   it("leaves the rasterizer uninitialised when pngRasterization is off (#642)", () => {

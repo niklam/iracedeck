@@ -1,7 +1,7 @@
 import { join } from "node:path";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createHost } from "../test-support/fake-host.js";
+import { cleanupTempBinDirs, createHost } from "../test-support/fake-host.js";
 import { callLog, implement, resetRecorder } from "../test-support/recorder.js";
 import { initAudio } from "./audio.js";
 import { initCore } from "./core.js";
@@ -27,6 +27,7 @@ vi.mock("../actions.js", async () => (await import("../test-support/module-mocks
 
 describe("initAudio", () => {
   beforeEach(() => resetRecorder());
+  afterAll(() => cleanupTempBinDirs());
 
   it("starts audio, registers the two gate listeners, then applies the audio state once", () => {
     const core = initCore(createHost());
@@ -56,5 +57,35 @@ describe("initAudio", () => {
     expect(roots).toEqual([[join(host.binDir, "..", "assets", "audio")]]);
     expect(audio.rootDir).toBe(join(host.binDir, "..", "assets", "audio"));
     expect(audio.armFeatureGateSync).toBe((await import("../actions.js")).armFeatureGateSync);
+  });
+
+  it("creates its loggers under the Audio and FeatureGates scopes", () => {
+    const host = createHost();
+    const core = initCore(host);
+    host.adapter.scopes.length = 0;
+
+    initAudio(core);
+
+    expect(host.adapter.scopes).toEqual(["Audio", "FeatureGates"]);
+  });
+
+  it("registers the audio-state listener first and the gate-sync listener second", () => {
+    const listeners: (() => void)[] = [];
+    const gateLoggers: unknown[] = [];
+    const core = initCore(createHost());
+    implement("onGlobalSettingsChange", (listener) => listeners.push(listener as () => void));
+    implement("syncFeatureGates", (logger) => gateLoggers.push(logger));
+
+    const audio = initAudio(core);
+    expect(listeners).toHaveLength(2);
+
+    callLog.length = 0;
+    listeners[0]();
+    expect(callLog).toEqual(["applyRadarVolume", "applyRadarEnabled", "applyRaceEngineerAudio"]);
+
+    callLog.length = 0;
+    listeners[1]();
+    expect(callLog).toEqual(["syncFeatureGates"]);
+    expect(gateLoggers).toEqual([audio.featureGateLogger]);
   });
 });

@@ -67,7 +67,8 @@ export const MOCK_STREAM_DECK_ACTION_UUIDS = ["sd.switch-profile"] as const;
  * `src/actions.ts`, so no test loads `@iracedeck/iracing-actions`: the hooks
  * recorded, the binding-default maps empty, and two short action lists whose
  * entries create an empty handler. Keep it in step with `actions.ts`'s
- * exports — a phase importing a name missing here reads `undefined`.
+ * exports — when a phase reads a name missing here, Vitest throws
+ * `No "X" export is defined on the "…" mock` at the first access.
  */
 export function actionsMock(): Record<string, unknown> {
   const entry = (uuid: string) => ({ uuid, scope: uuid, create: () => ({}) });
