@@ -1,8 +1,13 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import url from "node:url";
 import { describe, expect, it } from "vitest";
 
+import {
+  discoverPlugins,
+  pluginConfigShapeProblems,
+  readPluginPackage,
+} from "../../../../scripts/lib/plugin-config-shape.mjs";
 import { browserDir, SETTINGS_WINDOW_ICON } from "./index.mjs";
 
 /**
@@ -31,25 +36,13 @@ const windowPage = path.join(repoRoot, "packages/iracing-actions/src/actions/set
 const FACTORY_SOURCE = readFileSync(path.join(repoRoot, "packages/plugin-build/src/plugin-rollup.mjs"), "utf-8");
 
 /**
- * Every plugin's rollup config — each `packages/*` with a `rollup.config.mjs`
- * other than this package's own — discovered rather than listed, so a fourth
- * deck ecosystem is covered the day its package appears, the shape
- * `third-party-licenses.test.mjs` uses. Each must leave the copy to the factory.
+ * Every plugin's rollup config, discovered from the committed plugin manifests
+ * like the other four plugin guards, so a fourth deck ecosystem is covered the
+ * day its package appears — and a package that merely builds with Rollup (this
+ * one included) is never taken for a plugin. Each must leave the copy to the factory.
  */
-function pluginConfigs(): { pkg: string; source: string; devDependencies: Record<string, string> }[] {
-  const packagesDir = path.join(repoRoot, "packages");
-
-  return readdirSync(packagesDir, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && entry.name !== "pi-components")
-    .map((entry) => ({ pkg: entry.name, config: path.join(packagesDir, entry.name, "rollup.config.mjs") }))
-    .filter(({ config }) => existsSync(config))
-    .map(({ pkg, config }) => {
-      const manifest = JSON.parse(readFileSync(path.join(packagesDir, pkg, "package.json"), "utf-8")) as {
-        devDependencies?: Record<string, string>;
-      };
-
-      return { pkg, source: readFileSync(config, "utf-8"), devDependencies: manifest.devDependencies ?? {} };
-    });
+function pluginConfigs(): ({ pkg: string } & ReturnType<typeof readPluginPackage>)[] {
+  return discoverPlugins(repoRoot).map(({ pkg }) => ({ pkg, ...readPluginPackage(repoRoot, pkg) }));
 }
 
 /**
@@ -120,17 +113,12 @@ describe("settings-window favicon (#1156)", () => {
 
     expect(configs.length, "fewer plugin configs than deck ecosystems: discovery broke").toBeGreaterThanOrEqual(3);
 
-    for (const { pkg, source, devDependencies } of configs) {
-      expect(source, `${pkg} must build through the shared factory`).toContain(
-        'import { createPluginRollupConfig } from "@iracedeck/plugin-build";',
-      );
-      expect(source, `${pkg} must build through the shared factory`).toContain(
-        "export default createPluginRollupConfig({",
-      );
-      expect(devDependencies["@iracedeck/plugin-build"], `${pkg} must declare @iracedeck/plugin-build`).toBe(
-        "workspace:*",
-      );
-      expect(source, `${pkg} copies browser assets of its own`).not.toContain("browserDir");
+    for (const { pkg, configSource, packageJson } of configs) {
+      expect(
+        pluginConfigShapeProblems(configSource, packageJson),
+        `${pkg} must build through the shared factory`,
+      ).toEqual([]);
+      expect(configSource, `${pkg} copies browser assets of its own`).not.toContain("browserDir");
     }
   });
 });

@@ -37,6 +37,7 @@ import { describe, expect, it } from "vitest";
 import { parse as parseYaml } from "yaml";
 
 import { pluginExternals } from "../packages/plugin-build/src/externals.mjs";
+import { parseExtraExternals, pluginConfigShapeProblems } from "./lib/plugin-config-shape.mjs";
 import { DECLARING_SECTIONS, runtimePackageJson, WORKSPACE_SCOPE } from "./lib/runtime-deps.mjs";
 import { allPluginManifestRelPaths } from "./lib/version-discovery.mjs";
 
@@ -96,25 +97,6 @@ function readJson(file) {
   return JSON.parse(readFileSync(file, "utf-8"));
 }
 
-/**
- * The literal `extraExternals: [...]` a plugin config passes the factory, or `[]`
- * when it passes none (the same parse `third-party-licenses.test.mjs` makes).
- * Anything but a list of string literals fails: an identifier or a spread would
- * hide entries from every check below.
- */
-function extraExternals(configSource) {
-  if (!/\bextraExternals\b/.test(configSource)) return [];
-  const match = configSource.match(/extraExternals:\s*\[([^\]]*)\]/);
-  expect(match, "extraExternals must be a literal array").not.toBeNull();
-  const entries = match[1]
-    .split(",")
-    .map((entry) => entry.trim())
-    .filter(Boolean);
-  for (const entry of entries) expect(entry, "extraExternals entries must be string literals").toMatch(/^"[^"]+"$/);
-
-  return entries.map((entry) => entry.slice(1, -1));
-}
-
 function escapeRegExp(text) {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -170,8 +152,10 @@ describe("plugins ship the workspace's runtime dependency versions (#1177)", () 
 
   describe.each(PLUGINS)("%s", (pkg, packageName, folder) => {
     const configSource = readFileSync(join(repoRoot, "packages", pkg, "rollup.config.mjs"), "utf-8");
-    const { devDependencies } = readJson(join(repoRoot, "packages", pkg, "package.json"));
-    const externals = pluginExternals(extraExternals(configSource));
+    const packageJson = readJson(join(repoRoot, "packages", pkg, "package.json"));
+    // Strict (scripts/lib/plugin-config-shape.mjs): an identifier or a spread in the
+    // config's extraExternals throws rather than hiding an entry from every check below.
+    const externals = pluginExternals(parseExtraExternals(configSource));
     const thirdParty = externals.filter((name) => !name.startsWith(WORKSPACE_SCOPE));
     const binDir = join(repoRoot, "packages", pkg, folder, "bin");
 
@@ -179,13 +163,8 @@ describe("plugins ship the workspace's runtime dependency versions (#1177)", () 
       expect(thirdParty.length).toBeGreaterThan(0);
     });
 
-    it("builds through the shared factory", () => {
-      expect(configSource).toContain('import { createPluginRollupConfig } from "@iracedeck/plugin-build";');
-      expect(configSource).toContain("export default createPluginRollupConfig({");
-    });
-
-    it("declares @iracedeck/plugin-build, which orders and invalidates its build", () => {
-      expect(devDependencies?.["@iracedeck/plugin-build"]).toBe("workspace:*");
+    it("builds through the shared factory, and declares it (which orders and invalidates its build)", () => {
+      expect(pluginConfigShapeProblems(configSource, packageJson)).toEqual([]);
     });
 
     it("sets no external list and emits no bin/package.json of its own", () => {

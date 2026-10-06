@@ -30,6 +30,7 @@ import { afterAll, describe, expect, it } from "vitest";
 
 import { DEV_VOICE_PACKS_ROOT_KEY } from "./lib/assert-release-build.mjs";
 import { DEFAULT_DEV_VOICE_PACKS_ROOT, DEV_LOCAL_FILE, DEV_VOICES_ENV, readDevLocal } from "./lib/dev-local.mjs";
+import { pluginConfigShapeProblems } from "./lib/plugin-config-shape.mjs";
 import { allPluginManifestRelPaths } from "./lib/version-discovery.mjs";
 
 // scripts/dev-voice-root-guard.test.mjs lives in scripts/, so the repo root is one up.
@@ -190,15 +191,10 @@ describe("the development voice root is build-time only (#1143, #1214)", () => {
 
   describe.each(PLUGINS)("%s", (pkg, packageName, packScript) => {
     const configSource = readFileSync(join(repoRoot, "packages", pkg, "rollup.config.mjs"), "utf-8");
-    const { devDependencies } = JSON.parse(readFileSync(join(repoRoot, "packages", pkg, "package.json"), "utf-8"));
+    const packageJson = JSON.parse(readFileSync(join(repoRoot, "packages", pkg, "package.json"), "utf-8"));
 
-    it("the rollup config builds through the shared factory", () => {
-      expect(configSource).toContain('import { createPluginRollupConfig } from "@iracedeck/plugin-build";');
-      expect(configSource).toContain("export default createPluginRollupConfig({");
-    });
-
-    it("declares @iracedeck/plugin-build, which orders and invalidates its build", () => {
-      expect(devDependencies?.["@iracedeck/plugin-build"]).toBe("workspace:*");
+    it("the rollup config builds through the shared factory, which the package declares", () => {
+      expect(pluginConfigShapeProblems(configSource, packageJson)).toEqual([]);
     });
 
     it("the rollup config leaves the root to the factory", () => {
