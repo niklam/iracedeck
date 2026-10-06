@@ -1,6 +1,6 @@
 # @iracedeck/iracing-actions
 
-The platform-agnostic iRaceDeck action classes — one folder per action under `src/actions/`. Actions contain no platform-specific code — they import from `@iracedeck/deck-core` and are registered by each plugin's entry point (`iracing-plugin-stream-deck`, `iracing-plugin-mirabox`, and `iracing-plugin-ulanzi`, each in its `src/plugin.ts`).
+The platform-agnostic iRaceDeck action classes — one folder per action under `src/actions/`. Actions contain no platform-specific code — they import from `@iracedeck/deck-core` and are registered for all three plugins (`iracing-plugin-stream-deck`, `iracing-plugin-mirabox`, and `iracing-plugin-ulanzi`) through `@iracedeck/plugin-runtime`'s shared action list (`src/actions.ts`, #1349).
 
 ## Package Structure
 
@@ -97,4 +97,4 @@ Tests mock `@iracedeck/deck-core` (not `@elgato/streamdeck`) — the canonical m
 
 ## Adding a New Action
 
-See `packages/iracing-plugin-stream-deck/CLAUDE.md` for the full step-by-step guide. The action source file and PI template (`<name>.ejs`) stay in this package alongside the action code; action registration and `manifest.json` entries are done in every plugin package (`iracing-plugin-stream-deck`, `iracing-plugin-mirabox`, and `iracing-plugin-ulanzi` — each `src/plugin.ts` plus its manifest).
+See `packages/iracing-plugin-stream-deck/CLAUDE.md` for the full step-by-step guide. The action source file and PI template (`<name>.ejs`) stay in this package alongside the action code; action registration goes in `@iracedeck/plugin-runtime`'s shared action list (`src/actions.ts`), once for all three plugins, and the `manifest.json` entries in every plugin package (`iracing-plugin-stream-deck`, `iracing-plugin-mirabox`, and `iracing-plugin-ulanzi`).
