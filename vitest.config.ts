@@ -60,6 +60,7 @@ export default defineConfig({
       "@iracedeck/iracing-sdk": packageSrc("iracing-sdk"),
       "@iracedeck/iracing-native": packageSrc("iracing-native"),
       "@iracedeck/logger": packageSrc("logger"),
+      "@iracedeck/race-engineer-wiring": packageSrc("race-engineer-wiring"),
       "@iracedeck/sim-events-iracing": packageSrc("sim-events-iracing"),
       "@iracedeck/track-data": packageSrc("track-data"),
     },
