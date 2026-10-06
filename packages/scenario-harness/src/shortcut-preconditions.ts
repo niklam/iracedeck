@@ -28,12 +28,23 @@ import { resolvePlayerCarIdx } from "@iracedeck/sim-events-iracing";
  *
  * `player-car-index` — session info names the player's car. Every `caution.*`
  * script variable reads the lineup, which needs it.
+ *
+ * `sdk-connected` — the mock SDK is connected (#1349). The overtake gate reads
+ * the translator's latest telemetry, which a disconnected translator never
+ * receives, so an overtake or gap line would be refused by its own gate while
+ * the button looked as if it had worked.
  */
-export type ShortcutPrecondition = "player-car-index";
+export type ShortcutPrecondition = "player-car-index" | "sdk-connected";
+
+/** The live harness state a precondition is checked against, read by the route on every start. */
+export type HarnessPreconditionState = {
+  sessionInfo: Record<string, unknown> | null;
+  isConnected: boolean;
+};
 
 type PreconditionRule = {
   /** True when the harness satisfies the requirement. */
-  satisfied: (sessionInfo: Record<string, unknown> | null) => boolean;
+  satisfied: (state: HarnessPreconditionState) => boolean;
   /** What is missing and how to fix it. Shown to the tester verbatim. */
   reason: string;
 };
@@ -52,13 +63,21 @@ function namesPlayerCar(sessionInfo: Record<string, unknown> | null): boolean {
 
 const PRECONDITION_RULES: Record<ShortcutPrecondition, PreconditionRule> = {
   "player-car-index": {
-    satisfied: namesPlayerCar,
+    satisfied: (state) => namesPlayerCar(state.sessionInfo),
     reason:
       "Apply a session preset first. This sequence's caution lines read the driver list to work out which car is yours " +
       "(DriverInfo.DriverCarIdx), so without one the follow-car, restart-position and lane lines are all silent while the " +
       'flag lines still play — a half-silent run that reads as broken callouts. The "race" preset is the one the ' +
       'description asks for; "race-oval" is the same 18-car field on an oval, which additionally names the lane a ' +
       "double-file restart forms up in.",
+  },
+  "sdk-connected": {
+    satisfied: (state) => state.isConnected,
+    reason:
+      'Connect the mock SDK first (the "Connected" toggle in the header). This callout checks the overtake gate, which ' +
+      "reads live telemetry: on track, at racing speed, off pit road, nobody alongside. The button puts the car there " +
+      "itself, but a disconnected translator receives no telemetry, so the gate stays shut and the line is silent for " +
+      "the wrong reason.",
   },
 };
 
@@ -74,12 +93,12 @@ const PRECONDITION_RULES: Record<ShortcutPrecondition, PreconditionRule> = {
  */
 export function checkShortcutPreconditions(
   preconditions: readonly ShortcutPrecondition[] | undefined,
-  sessionInfo: Record<string, unknown> | null,
+  state: HarnessPreconditionState,
 ): string | null {
   for (const name of preconditions ?? []) {
     const rule = PRECONDITION_RULES[name];
 
-    if (!rule.satisfied(sessionInfo)) return rule.reason;
+    if (!rule.satisfied(state)) return rule.reason;
   }
 
   return null;

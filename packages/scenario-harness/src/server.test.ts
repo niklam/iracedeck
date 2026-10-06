@@ -83,3 +83,71 @@ describe("POST /api/bus/publish", () => {
     expect(seen).toEqual([]);
   });
 });
+
+describe("POST /api/telemetry", () => {
+  let app: FastifyInstance;
+  let controller: MockSDKController;
+  let ticks: unknown[];
+
+  beforeEach(async () => {
+    initializeEventBus(silentLogger);
+    // Connected and never started: no tick reaches a subscriber unless the
+    // route makes one.
+    controller = new MockSDKController();
+    controller.setConnected(true);
+    ticks = [];
+    controller.subscribe("probe", (telemetry) => ticks.push(telemetry));
+    ticks.length = 0;
+    app = await createServer({
+      controller,
+      adapter: {} as unknown as MockPlatformAdapter,
+      bus: getEventBus(),
+      audio: { setPlaybackObserver: () => {} } as unknown as IAudioService,
+      packageRoot: PACKAGE_ROOT,
+      logger: silentLogger,
+      refreshAudioAssets: async () => {},
+      wipeAudioCache: async () => {},
+    });
+  });
+
+  afterEach(async () => {
+    await app.close();
+    _resetEventBus();
+  });
+
+  it("ticks once, synchronously, after the patch when the body asks (#1349)", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/telemetry",
+      payload: { patch: { Speed: 40 }, tick: true },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(ticks).toHaveLength(1);
+    expect(ticks[0]).toMatchObject({ Speed: 40 });
+  });
+
+  it("leaves the tick to the timer when the body does not ask", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/telemetry",
+      payload: { patch: { Speed: 40 }, holdMs: 100 },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(ticks).toEqual([]);
+    expect(controller.getState().telemetry).toMatchObject({ Speed: 40 });
+  });
+
+  it("rejects a tick that is not a boolean, writing nothing", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/telemetry",
+      payload: { patch: { Speed: 40 }, tick: "yes" },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(ticks).toEqual([]);
+    expect(controller.getState().telemetry).toMatchObject({ Speed: 0 });
+  });
+});

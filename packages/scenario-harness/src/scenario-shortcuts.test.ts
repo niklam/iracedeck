@@ -1,9 +1,5 @@
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
-import {
-  CAUTION_FOLLOW_DELAY_MS,
-  CAUTION_LINEUP_CHANGE_DELAY_MS,
-  overtakeContextAllows,
-} from "@iracedeck/audio-scenarios/pit-crew";
+import { CAUTION_FOLLOW_DELAY_MS, CAUTION_LINEUP_CHANGE_DELAY_MS } from "@iracedeck/audio-scenarios/pit-crew";
 import type { CalloutScript } from "@iracedeck/callout-script";
 import { _resetEventBus, getEventBus, initializeEventBus, type SimEventName } from "@iracedeck/event-bus";
 import {
@@ -16,7 +12,6 @@ import {
   TrkLoc,
 } from "@iracedeck/iracing-sdk";
 import { silentLogger } from "@iracedeck/logger";
-import { createIracingSimRuntime } from "@iracedeck/race-engineer-wiring";
 import {
   _resetSimEventsIracing,
   type CautionLineup,
@@ -50,8 +45,12 @@ function readPreset(kind: "session" | "telemetry", name: string): unknown {
 }
 
 /**
- * Drives the real translator with a telemetry sequence, exactly as the UI's
- * shortcut button does: patch, then tick for `holdMs` of simulated time.
+ * Drives the real translator with a telemetry sequence the way the UI's
+ * shortcut button does with the mock's timer running: patch, then tick for
+ * `holdMs` of simulated time. The tick straight after each patch stands in for
+ * the timer's next one, so this helper cannot tell whether a step is seen
+ * BEFORE a publish that follows it; `overtake-gate-shortcuts.test.ts` asks that
+ * through the route the UI posts to, with the timer paused.
  *
  * The ticking inside the hold is not decoration. The validated clear resolves
  * on whichever TICK first finds the hold window elapsed, so a sequence that
@@ -1423,106 +1422,5 @@ describe('the "Crash into a full-course caution" shortcut (issue #1185)', () => 
     runSequence(controller, shortcut?.telemetrySequence ?? []);
 
     expect(events.map((e) => e.event)).toEqual([...EXPECTED_ORDER, ...EXPECTED_ORDER]);
-  });
-});
-
-describe("the overtake and gap shortcuts meet the real overtake gate (#1349)", () => {
-  // Since slice 2 the harness runs the plugins' own wiring, whose overtake gate
-  // reads live telemetry: on track, at speed, off pit road, nobody alongside.
-  // The overtake and gap callouts both check it in `where:`, so a button that
-  // publishes on the mock's garage telemetry would be silent for the wrong
-  // reason. Each one therefore puts the car on track at speed first.
-  beforeEach(() => {
-    initializeEventBus(silentLogger);
-    vi.useFakeTimers();
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
-    _resetSimEventsIracing();
-    _resetEventBus();
-  });
-
-  const GATED_EVENTS = new Set<string>([
-    "overtake.completed",
-    "overtake.lost",
-    "gap.trendChanged",
-    "gap.thresholdCrossed",
-  ]);
-  const gated = SCENARIO_SHORTCUTS.filter((s) => s.event !== undefined && GATED_EVENTS.has(s.event));
-
-  /** The mock as the harness boots it, connected, with the translator seeded on its default (garage) telemetry. */
-  function connectedAtDefaults(): MockSDKController {
-    const controller = new MockSDKController();
-    controller.setConnected(true);
-    initializeSimEventsIracing(getEventBus(), controller as unknown as SDKController, silentLogger);
-    controller.tickOnce();
-
-    return controller;
-  }
-
-  /** The gate as the wiring composes it, with no incident on record. */
-  function gateAllows(): boolean {
-    const gate = createIracingSimRuntime().getOvertakeTelemetryGate();
-
-    return gate !== null && overtakeContextAllows({ ...gate, msSinceIncident: null });
-  }
-
-  it("covers every shortcut that publishes a gated event, each holding long enough for a tick", () => {
-    expect(gated.map((s) => s.id).sort()).toEqual([
-      "gap-threshold-ahead",
-      "gap-threshold-behind",
-      "gap-trend-ahead-closing",
-      "gap-trend-ahead-opening",
-      "gap-trend-behind-closing",
-      "gap-trend-behind-opening",
-      "overtake-gained-leader",
-      "overtake-gained-multi-class",
-      "overtake-gained-p2",
-      "overtake-gained-p3",
-      "overtake-gained-p5",
-      "overtake-gained-retirement",
-      "overtake-lost-p5",
-    ]);
-
-    // The translator reads a patch on its next tick, not when it lands, so a
-    // step with no hold could publish before the gate has seen the car move.
-    for (const shortcut of gated) {
-      expect(shortcut.telemetrySequence?.length, shortcut.id).toBeGreaterThan(0);
-      expect(
-        shortcut.telemetrySequence?.every((step) => (step.holdMs ?? 0) > 0),
-        shortcut.id,
-      ).toBe(true);
-    }
-  });
-
-  it("does not allow on the mock's default telemetry", () => {
-    connectedAtDefaults();
-
-    expect(createIracingSimRuntime().getOvertakeTelemetryGate()).not.toBeNull();
-    expect(gateAllows()).toBe(false);
-  });
-
-  it.each(gated.map((s) => s.id))("%s puts the car where the gate allows", (id) => {
-    const controller = connectedAtDefaults();
-
-    runSequence(controller, SCENARIO_SHORTCUTS.find((s) => s.id === id)?.telemetrySequence ?? []);
-
-    expect(gateAllows()).toBe(true);
-  });
-
-  it("gets there without publishing anything but the first-on-track event no callout consumes", () => {
-    const controller = connectedAtDefaults();
-    const events: string[] = [];
-
-    for (const name of ALL_EVENT_NAMES) {
-      getEventBus().subscribe(name, (ev) => events.push(ev.event));
-    }
-
-    for (const shortcut of gated) {
-      runSequence(controller, shortcut.telemetrySequence ?? []);
-    }
-
-    expect(events.filter((name) => name !== "driver.firstOnTrack")).toEqual([]);
   });
 });

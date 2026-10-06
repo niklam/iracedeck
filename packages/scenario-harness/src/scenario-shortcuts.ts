@@ -55,7 +55,8 @@ type ScenarioShortcutBase = {
    * Checked by `POST /api/shortcut/start`, which REFUSES the run and hands the
    * UI the rule's reason rather than letting the button proceed into a
    * half-silent sequence. Optional — a shortcut that sets up everything it
-   * needs declares none, which is all of them but the caution three.
+   * needs declares none, which is all of them but the caution three (a
+   * session preset) and the overtake and gap ones (a connected mock SDK).
    */
   requires?: readonly ShortcutPrecondition[];
 };
@@ -67,10 +68,18 @@ type ScenarioShortcutBase = {
  * `patch` is wire-level, not `TelemetryData` — `null` DELETES a key, the
  * sentinel `mutateTelemetry` reads. `holdMs` is the pause AFTER the patch has
  * been applied; omit it on the last step, which has nothing to wait for.
+ *
+ * `tick` asks `/api/telemetry` to tick the translator once, synchronously,
+ * right after the patch lands (#1349). Without it the translator sees the patch
+ * on the mock's next timer tick, and that timer is the tester's to slow (up to
+ * 5 s) or pause, so a step whose ONLY job is to put state in front of the
+ * publish that follows cannot rely on a hold. A step that sets up for the
+ * translator to announce something over time still holds instead.
  */
 export type TelemetryStep = {
   patch: Record<string, unknown>;
   holdMs?: number;
+  tick?: boolean;
 };
 
 /** One bus publication as the harness wires it: the event name and its payload. */
@@ -258,23 +267,35 @@ function radar(label: string, from: string, to: string): BusEventShortcut {
  * track, at least 50 km/h, off pit road, nobody alongside — where it used to
  * be a permissive default, so on the mock's garage telemetry these buttons
  * would be silent for the wrong reason. A step rather than a `telemetryPatch`
- * because the translator sees a patch on its next tick, not when it lands: the
- * hold lets a tick through before the publish. Pit road and the radar are left
- * alone, so a tester who parked the car there hears the real suppression.
+ * because the translator sees a patch on a tick, not when it lands, and the
+ * step's `tick` makes that tick happen before the publish whatever the tick
+ * rate or pause state. Pit road and the radar are left alone, so a tester who
+ * parked the car there hears the real suppression.
+ *
+ * @internal Exported for testing
  */
-const AT_RACING_SPEED: TelemetryStep = {
+export const AT_RACING_SPEED: TelemetryStep = {
   patch: { IsOnTrack: true, PlayerTrackSurface: TrkLoc.OnTrack, Speed: 40 },
-  holdMs: 100,
+  tick: true,
 };
 
-/** An overtake or gap shortcut, put on track at racing speed before it publishes (see {@link AT_RACING_SPEED}). */
-function atRacingSpeed(shortcut: BusEventShortcut): BusEventShortcut {
+/**
+ * An overtake or gap shortcut, put on track at racing speed before it
+ * publishes (see {@link AT_RACING_SPEED}). The step goes ahead of any sequence
+ * the shortcut already carries, and the shortcut refuses to start while the
+ * mock SDK is disconnected, since a disconnected translator sees no telemetry
+ * and the gate stays shut.
+ *
+ * @internal Exported for testing
+ */
+export function atRacingSpeed(shortcut: BusEventShortcut): BusEventShortcut {
+  const note = "Puts the car on track at racing speed first, which the overtake gate reads.";
+
   return {
     ...shortcut,
-    description:
-      `${shortcut.description ?? ""} Puts the car on track at racing speed first, which the overtake gate reads. ` +
-      "Needs the mock SDK CONNECTED; with it disconnected the translator sees no ticks and the button is silent for the wrong reason.",
-    telemetrySequence: [AT_RACING_SPEED],
+    description: shortcut.description === undefined ? note : `${shortcut.description} ${note}`,
+    requires: [...(shortcut.requires ?? []), "sdk-connected"],
+    telemetrySequence: [AT_RACING_SPEED, ...(shortcut.telemetrySequence ?? [])],
   };
 }
 
@@ -1643,7 +1664,20 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     data: {},
     // Must satisfy the DELAYED re-check (#1051): still unengaged and still on
     // pit road at fire time, 2.5s after this event.
-    telemetryPatch: { dcPitSpeedLimiterToggle: false, OnPitRoad: true },
+    //
+    // The car's on-track state is pinned too (#1349), at the garage values the
+    // harness boots with, because the translator's own limiter and pit-speeding
+    // diffs run only for a car on track: an overtake or gap button leaves the
+    // car on track at 144 km/h, where this patch's pit-road entry would make the
+    // translator announce its own `limiter.missing` and a speeding episode on
+    // top of the line this button auditions.
+    telemetryPatch: {
+      dcPitSpeedLimiterToggle: false,
+      OnPitRoad: true,
+      IsOnTrack: false,
+      PlayerTrackSurface: TrkLoc.OffTrack,
+      Speed: 0,
+    },
   },
   {
     id: "limiter-dropped",
