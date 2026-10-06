@@ -174,15 +174,19 @@ const config = {
   // also exactly what bin/package.json installs (runtimePackageJsonPlugin below).
   external: ["@iracedeck/audio-native", "@iracedeck/iracing-native", "@resvg/resvg-js", "yaml", "keysender"],
   plugins: [
-    // Resolve .js imports to .ts files for the raw-TypeScript actions package.
-    // Only applies to relative imports (starting with ".") within the actions package.
+    // Resolve .js imports to .ts files for the raw-TypeScript workspace packages.
+    // Only applies to relative imports (starting with ".") within the raw-TypeScript packages (iracing-actions, plugin-runtime).
     {
       name: "resolve-actions-ts",
       resolveId(source, importer) {
         if (!importer || !source.startsWith(".") || !source.endsWith(".js")) return null;
-        // Only handle imports from the actions package
+        // Only handle imports from within the raw-TypeScript packages (iracing-actions, plugin-runtime)
         const normalizedImporter = importer.replace(/\\/g, "/");
-        if (!normalizedImporter.includes("/iracing-actions/src/")) return null;
+        if (
+          !normalizedImporter.includes("/iracing-actions/src/") &&
+          !normalizedImporter.includes("/plugin-runtime/src/")
+        )
+          return null;
         const tsPath = path.resolve(path.dirname(importer), source.replace(/\.js$/, ".ts"));
         return tsPath;
       },
@@ -314,8 +318,8 @@ const config = {
     },
     typescript({
       mapRoot: isWatching ? "./" : undefined,
-      // Include both the plugin source and the raw-TypeScript actions package
-      include: ["src/**/*.ts", "../iracing-actions/src/**/*.ts"],
+      // Include the plugin source and the raw-TypeScript workspace packages (iracing-actions, plugin-runtime)
+      include: ["src/**/*.ts", "../iracing-actions/src/**/*.ts", "../plugin-runtime/src/**/*.ts"],
       // Without this, @rollup/plugin-typescript reports every type error as a
       // rollup WARNING and emits anyway (see its `emitDiagnostic`), so the build
       // succeeds while shipping broken output — an undefined identifier reached
