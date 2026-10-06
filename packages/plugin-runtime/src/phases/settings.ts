@@ -129,6 +129,7 @@ export function initSettings(core: Core, audio: Audio, voicePacks: VoicePacks): 
     // same/older versions. `type` is the connected deck's type id where the
     // host extension reports one (Stream Deck), omitted otherwise (Mirabox,
     // Ulanzi expose none); the browser opens through the adapter's `openUrl`.
+    // On Mirabox that is best-effort: harmless if the Stream Dock host ignores it.
     // The `changelogNotification` preference (issue #742)
     // decides whether a due changelog opens, is recorded silently, or stays
     // pending (monthly window, anchored on the passthrough
@@ -405,7 +406,7 @@ export function initSettings(core: Core, audio: Audio, voicePacks: VoicePacks): 
       audio.armFeatureGateSync();
 
       // Open the website changelog once when a newer stable version is
-      // detected (issue #680) — via the shared runChangelogVersionCheck above,
+      // detected (issue #680) — via runStartupNotices above,
       // delayed by the #870 startup grace so a mid-session plugin restart (the
       // deck-host auto-update case) can't run the check before the sim-running
       // signals are up and open the page over a live session.
