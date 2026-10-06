@@ -71,8 +71,10 @@ export const SOURCES = Object.freeze({
   devLocalPath: path.join(repoRoot, DEV_LOCAL_FILE),
 });
 
-/** The `config.json` platforms, one per deck host. */
-export const PLATFORMS = Object.freeze(["stream-deck", "mirabox", "ulanzi"]);
+/** The `config.json` platforms, one per deck host; the `Platform` type is derived from this list. */
+export const PLATFORMS = Object.freeze(/** @type {const} */ (["stream-deck", "mirabox", "ulanzi"]));
+
+/** @typedef {(typeof PLATFORMS)[number]} Platform */
 
 const OPTION_KEYS = [
   "configUrl",
@@ -96,7 +98,7 @@ const ASSET_COPY_KEYS = ["actionIcons", "elgatoPluginImgs"];
  * @typedef {object} PluginRollupOptions
  * @property {string} configUrl The calling `rollup.config.mjs`'s `import.meta.url`; its directory is the plugin package.
  * @property {string} sdPluginDir The plugin folder inside the package, relative to it (e.g. `com.iracedeck.sd.core.sdPlugin`).
- * @property {"stream-deck" | "mirabox" | "ulanzi"} platform The `platform` written into `bin/config.json`.
+ * @property {Platform} platform The `platform` written into `bin/config.json`.
  * @property {string[]} [extraExternals] Externals beyond {@link BASE_EXTERNALS}, appended after them (e.g. `ws`).
  * @property {PluginAssetCopy} assetCopy Which static assets the plugin copies.
  * @property {string} [piBridge] The bridge every action PI loads, copied into `ui/` and injected. Default `PI_SETTINGS_BRIDGE`.
@@ -129,6 +131,11 @@ function assertCwdIsPackageDir(packageDir) {
   }
 }
 
+/** @param {unknown} value */
+function isPlainObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
 /**
  * Reject anything the factory would otherwise build with silently: an unknown
  * key (a typo like `stripHtmlLnag` must not fall back to the default), a missing
@@ -137,7 +144,7 @@ function assertCwdIsPackageDir(packageDir) {
  * @param {Record<string, any>} options
  */
 function validateOptions(options) {
-  if (options === null || typeof options !== "object" || Array.isArray(options)) {
+  if (!isPlainObject(options)) {
     fail("options must be an object");
   }
   for (const key of Object.keys(options)) {
@@ -174,7 +181,7 @@ function validateOptions(options) {
       if (extraExternals.indexOf(name) !== index) fail(`option "extraExternals" lists "${name}" twice`);
     }
   }
-  if (assetCopy === null || typeof assetCopy !== "object" || Array.isArray(assetCopy)) {
+  if (!isPlainObject(assetCopy)) {
     fail(`option "assetCopy" must be an object`);
   }
   for (const key of Object.keys(assetCopy)) {
@@ -218,11 +225,6 @@ export function deepMergeObjects(base, override) {
     }
   }
   return result;
-}
-
-/** @param {unknown} value */
-function isPlainObject(value) {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 /**
