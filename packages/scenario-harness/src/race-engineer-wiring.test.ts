@@ -4,8 +4,9 @@
  * The wiring now reads real settings where the harness used to run on the
  * `() => true` defaults, so a gate the harness's seed leaves closed would
  * silence a whole shortcut family. Booted against the seeded memory store,
- * both master gates (`=== true`, seeded on) and a sample of family gates
- * (`!== false`, never seeded) must read open.
+ * both master gates (`=== true`, seeded on) and a sample of callout keys
+ * through the one `isCalloutEnabled` lookup (`!== false`, never seeded) must
+ * read open.
  */
 import type { AudioAssetsManifest } from "@iracedeck/audio-scenarios";
 import {
@@ -79,10 +80,10 @@ describe("the harness's Race Engineer wiring", () => {
     expect(passed.getRadarMasterEnabled?.()).toBe(true);
   });
 
-  it("opens the family gates the seed never names", () => {
-    expect(passed.getCautionCalloutEnabled?.("follow")).toBe(true);
-    expect(passed.getFlagCalloutEnabled?.("green")).toBe(true);
-    expect(passed.getDamageCalloutEnabled?.("repair-needed")).toBe(true);
+  it("opens the callout keys the seed never names", () => {
+    expect(passed.isCalloutEnabled?.("calloutEnabledCautionFollow")).toBe(true);
+    expect(passed.isCalloutEnabled?.("calloutEnabledFlagGreen")).toBe(true);
+    expect(passed.isCalloutEnabled?.("calloutEnabledDamageRepairNeeded")).toBe(true);
   });
 
   it("reads those gates from the live settings, so the harness can close them", () => {
@@ -96,9 +97,9 @@ describe("the harness's Race Engineer wiring", () => {
 
     expect(passed.getRaceEngineerMasterEnabled?.()).toBe(false);
     expect(passed.getRadarMasterEnabled?.()).toBe(false);
-    expect(passed.getCautionCalloutEnabled?.("follow")).toBe(false);
-    expect(passed.getFlagCalloutEnabled?.("green")).toBe(false);
-    expect(passed.getDamageCalloutEnabled?.("repair-needed")).toBe(false);
+    expect(passed.isCalloutEnabled?.("calloutEnabledCautionFollow")).toBe(false);
+    expect(passed.isCalloutEnabled?.("calloutEnabledFlagGreen")).toBe(false);
+    expect(passed.isCalloutEnabled?.("calloutEnabledDamageRepairNeeded")).toBe(false);
   });
 
   it("passes the harness's snapshot stubs as the three snapshot getters", () => {

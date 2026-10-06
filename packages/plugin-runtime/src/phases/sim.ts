@@ -2,11 +2,9 @@
  * Phase 2 (#1349): the sim translator, the live race order it feeds the
  * template context, and the query-side runtime the Race Engineer reads.
  */
-import {
-  OPPONENT_FLAG_CALLOUT_SETTING_KEYS,
-  OPPONENT_PENALTY_FLAG_TO_CALLOUT_ID,
-} from "@iracedeck/audio-scenarios/pit-crew";
-import { getGlobalSettings } from "@iracedeck/deck-core";
+import { OPPONENT_PENALTY_FLAG_TO_CALLOUT_ID } from "@iracedeck/audio-scenarios/pit-crew";
+import { calloutKey, OPPONENT_FLAG_CALLOUTS } from "@iracedeck/callout-settings";
+import { getGlobalSettings, isCalloutEnabled } from "@iracedeck/deck-core";
 import { createIracingSimRuntime, type SimRuntime } from "@iracedeck/race-engineer-wiring";
 import {
   getLiveRacePositions,
@@ -44,13 +42,12 @@ export function initSim(core: Core): SimRuntime {
       sanitizeGapMinChangeSeconds((getGlobalSettings() as Record<string, unknown>).gapCalloutMinChangeSeconds),
     // Opponent-flag opt-ins enforced translator-side (issue #936 review) — a
     // disabled subject must never feed the burst aggregation or redirect an
-    // enabled subject into a collapsed aggregate. Same live-read pattern as
-    // the audio-layer closure in registerPitCrew; the map translates the
-    // bus enum (the meatball is `Repair`) to the callout id's setting key.
+    // enabled subject into a collapsed aggregate. The same live lookup the
+    // audio layer's gate in registerPitCrew asks; the map translates the bus
+    // enum (the meatball is `Repair`) to the callout id, and the registry
+    // resolves that id to its settings key (#1350).
     getOpponentFlagCalloutEnabled: (flag) =>
-      (getGlobalSettings() as Record<string, unknown>)[
-        OPPONENT_FLAG_CALLOUT_SETTING_KEYS[OPPONENT_PENALTY_FLAG_TO_CALLOUT_ID[flag]]
-      ] !== false,
+      isCalloutEnabled(calloutKey(OPPONENT_FLAG_CALLOUTS, OPPONENT_PENALTY_FLAG_TO_CALLOUT_ID[flag])),
     // Opponent-flag range (issue #1274) — only a same-class car within this
     // race gap, ahead or behind, is announced. Read live per announce so a
     // settings change applies to the next one; clamp mirrors the schema.

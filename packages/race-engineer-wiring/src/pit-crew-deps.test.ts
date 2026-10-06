@@ -1,37 +1,4 @@
-import {
-  AUTO_FUEL_CALLOUT_SETTING_KEYS,
-  CAUTION_CALLOUT_SETTING_KEYS,
-  CORNER_NAME_CALLOUT_SETTING_KEYS,
-  DAMAGE_CALLOUT_SETTING_KEYS,
-  FLAG_CALLOUT_SETTING_KEYS,
-  FUEL_CALLOUT_SETTING_KEYS,
-  GAP_CALLOUT_SETTING_KEYS,
-  INCIDENT_CALLOUT_SETTING_KEYS,
-  LAP_TIME_CALLOUT_SETTING_KEYS,
-  NO_LIMITER_CALLOUT_SETTING_KEYS,
-  OPPONENT_FLAG_CALLOUT_SETTING_KEYS,
-  OPPONENT_PIT_CALLOUT_SETTING_KEYS,
-  OVERTAKE_CALLOUT_SETTING_KEYS,
-  PIT_BOX_CALLOUT_SETTING_KEYS,
-  PIT_LIMITER_CALLOUT_SETTING_KEYS,
-  PIT_READBACK_CALLOUT_SETTING_KEYS,
-  PIT_SPEEDING_CALLOUT_SETTING_KEYS,
-  PIT_STATUS_CALLOUT_SETTING_KEYS,
-  PIT_WINDOW_CALLOUT_SETTING_KEYS,
-  type PitCrewDeps,
-  POSITION_CALLOUT_SETTING_KEYS,
-  QUALIFYING_INVALIDATION_CALLOUT_SETTING_KEYS,
-  RACE_END_CALLOUT_SETTING_KEYS,
-  RACE_START_CALLOUT_SETTING_KEYS,
-  RACE_STATUS_CALLOUT_SETTING_KEYS,
-  ROLLING_START_CALLOUT_SETTING_KEYS,
-  SESSION_START_CALLOUT_SETTING_KEYS,
-  SPOTTER_CALLOUT_SETTING_KEYS,
-  START_LIGHT_CALLOUT_SETTING_KEYS,
-  TIRE_WEAR_CALLOUT_SETTING_KEYS,
-  TRACK_CONDITIONS_CALLOUT_SETTING_KEYS,
-} from "@iracedeck/audio-scenarios/pit-crew";
-import { evaluateSetupWarning } from "@iracedeck/deck-core";
+import { _resetGlobalSettings, evaluateSetupWarning, updateGlobalSettings } from "@iracedeck/deck-core";
 import { silentLogger } from "@iracedeck/logger";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -72,47 +39,6 @@ const noCaches: RaceEngineerCaches = {
   lastIncidentAt: () => null,
 };
 
-/** The 30 per-family opt-ins (#1350 replaces them; until then each reads its own key, absent = on). */
-const GATES: [keyof PitCrewDeps, Readonly<Record<string, string>>][] = [
-  ["getAutoFuelCalloutEnabled", AUTO_FUEL_CALLOUT_SETTING_KEYS],
-  ["getCautionCalloutEnabled", CAUTION_CALLOUT_SETTING_KEYS],
-  ["getCornerNameCalloutEnabled", CORNER_NAME_CALLOUT_SETTING_KEYS],
-  ["getDamageCalloutEnabled", DAMAGE_CALLOUT_SETTING_KEYS],
-  ["getFlagCalloutEnabled", FLAG_CALLOUT_SETTING_KEYS],
-  ["getFuelCalloutEnabled", FUEL_CALLOUT_SETTING_KEYS],
-  ["getGapCalloutEnabled", GAP_CALLOUT_SETTING_KEYS],
-  ["getIncidentCalloutEnabled", INCIDENT_CALLOUT_SETTING_KEYS],
-  ["getLapTimeCalloutEnabled", LAP_TIME_CALLOUT_SETTING_KEYS],
-  ["getNoLimiterCalloutEnabled", NO_LIMITER_CALLOUT_SETTING_KEYS],
-  ["getOpponentFlagCalloutEnabled", OPPONENT_FLAG_CALLOUT_SETTING_KEYS],
-  ["getOpponentPitCalloutEnabled", OPPONENT_PIT_CALLOUT_SETTING_KEYS],
-  ["getOvertakeCalloutEnabled", OVERTAKE_CALLOUT_SETTING_KEYS],
-  ["getPitBoxCalloutEnabled", PIT_BOX_CALLOUT_SETTING_KEYS],
-  ["getPitLimiterCalloutEnabled", PIT_LIMITER_CALLOUT_SETTING_KEYS],
-  ["getPitReadbackEnabled", PIT_READBACK_CALLOUT_SETTING_KEYS],
-  ["getPitSpeedingCalloutEnabled", PIT_SPEEDING_CALLOUT_SETTING_KEYS],
-  ["getPitStatusCalloutEnabled", PIT_STATUS_CALLOUT_SETTING_KEYS],
-  ["getPitWindowCalloutEnabled", PIT_WINDOW_CALLOUT_SETTING_KEYS],
-  ["getPositionCalloutEnabled", POSITION_CALLOUT_SETTING_KEYS],
-  ["getQualifyingInvalidationCalloutEnabled", QUALIFYING_INVALIDATION_CALLOUT_SETTING_KEYS],
-  ["getRaceEndCalloutEnabled", RACE_END_CALLOUT_SETTING_KEYS],
-  ["getRaceStartCalloutEnabled", RACE_START_CALLOUT_SETTING_KEYS],
-  ["getRaceStatusCalloutEnabled", RACE_STATUS_CALLOUT_SETTING_KEYS],
-  ["getRollingStartCalloutEnabled", ROLLING_START_CALLOUT_SETTING_KEYS],
-  ["getSessionStartCalloutEnabled", SESSION_START_CALLOUT_SETTING_KEYS],
-  ["getSpotterCalloutEnabled", SPOTTER_CALLOUT_SETTING_KEYS],
-  ["getStartLightCalloutEnabled", START_LIGHT_CALLOUT_SETTING_KEYS],
-  ["getTireWearCalloutEnabled", TIRE_WEAR_CALLOUT_SETTING_KEYS],
-  ["getTrackConditionsCalloutEnabled", TRACK_CONDITIONS_CALLOUT_SETTING_KEYS],
-];
-
-/**
- * How a per-family gate is named among the built dependencies: 29 end in
- * `CalloutEnabled`, plus `getPitReadbackEnabled`. The master gates and
- * `getPitServiceRequestsEnabled` take no id and are tested on their own.
- */
-const FAMILY_GATE_NAME = /(?:Callout|Readback)Enabled$/;
-
 describe("buildPitCrewDeps", () => {
   beforeEach(() => {
     stored.current = {};
@@ -122,36 +48,28 @@ describe("buildPitCrewDeps", () => {
   });
   afterEach(() => vi.restoreAllMocks());
 
-  it("builds all 58 dependencies, so none falls back to DEFAULT_DEPS", () => {
+  it("builds all 28 dependencies, so none falls back to DEFAULT_DEPS", () => {
     const built = buildPitCrewDeps(fakeDeps(), noCaches);
 
-    expect(Object.keys(built)).toHaveLength(58);
+    expect(Object.keys(built)).toHaveLength(28);
 
     for (const [key, value] of Object.entries(built)) expect(value, key).toBeDefined();
   });
 
-  it("has a GATES row for every family gate it builds, and only those", () => {
-    const built = Object.keys(buildPitCrewDeps(fakeDeps(), noCaches)).filter((key) => FAMILY_GATE_NAME.test(key));
-    const tabled = GATES.map(([key]) => key);
+  it("passes deck-core's callout lookup, live: an on key, an off key and an off-default key (#1350)", () => {
+    // `isCalloutEnabled` reads deck-core's own settings cache, not the mocked
+    // `getGlobalSettings` above, so the settings are changed through the real
+    // update path and reset afterwards.
+    const { isCalloutEnabled } = buildPitCrewDeps(fakeDeps(), noCaches);
 
-    expect(new Set(built)).toEqual(new Set(tabled));
-    expect(built).toHaveLength(30);
-    expect(tabled).toHaveLength(30);
-  });
-
-  it.each(GATES)("%s reads its own key per id, live, and an absent key means on", (depKey, keys) => {
-    const gate = buildPitCrewDeps(fakeDeps(), noCaches)[depKey] as (id: string) => boolean;
-
-    for (const id of Object.keys(keys)) expect(gate(id), `${String(depKey)}(${id}) with nothing stored`).toBe(true);
-
-    for (const [id, key] of Object.entries(keys)) {
-      stored.current = { [key]: false };
-
-      expect(gate(id), `${String(depKey)}(${id}) with ${key}=false`).toBe(false);
-
-      for (const [other, otherKey] of Object.entries(keys)) {
-        if (otherKey !== key) expect(gate(other), `${String(depKey)}(${other}) must not read ${key}`).toBe(true);
-      }
+    try {
+      expect(isCalloutEnabled("calloutEnabledFlagGreen"), "an on-default key").toBe(true);
+      expect(isCalloutEnabled("calloutEnabledFuelLapsLeft10"), "an off-default key").toBe(false);
+      updateGlobalSettings({ calloutEnabledFlagGreen: false, calloutEnabledFuelLapsLeft10: true });
+      expect(isCalloutEnabled("calloutEnabledFlagGreen"), "switched off").toBe(false);
+      expect(isCalloutEnabled("calloutEnabledFuelLapsLeft10"), "switched on").toBe(true);
+    } finally {
+      _resetGlobalSettings();
     }
   });
 
@@ -163,14 +81,6 @@ describe("buildPitCrewDeps", () => {
     stored.current = { pitCrewRaceEngineerEnabled: true, pitCrewRadarEnabled: true };
     expect(built.getRaceEngineerMasterEnabled()).toBe(true);
     expect(built.getRadarMasterEnabled()).toBe(true);
-  });
-
-  it("reads pit service requests from its own key", () => {
-    const built = buildPitCrewDeps(fakeDeps(), noCaches);
-
-    expect(built.getPitServiceRequestsEnabled()).toBe(true);
-    stored.current = { calloutEnabledPitServiceRequests: false };
-    expect(built.getPitServiceRequestsEnabled()).toBe(false);
   });
 
   it("asks deck-core's setup-warning rule with the live settings and setup name (#625)", () => {

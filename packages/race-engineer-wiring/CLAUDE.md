@@ -1,18 +1,18 @@
 # @iracedeck/race-engineer-wiring
 
-The Race Engineer's wiring, in one place (#1349): the plugin-side bus caches the engine's conditions read (`caches.ts`), every one of `registerPitCrew`'s 58 dependencies (`pit-crew-deps.ts`), and the call (`wireRaceEngineer`). The three plugins reach it through `@iracedeck/plugin-runtime`'s `initRaceEngineer`; the scenario harness calls it directly, with its three snapshot stubs as `overrides`.
+The Race Engineer's wiring, in one place (#1349): the plugin-side bus caches the engine's conditions read (`caches.ts`), every one of `registerPitCrew`'s 28 dependencies (`pit-crew-deps.ts`), and the call (`wireRaceEngineer`). The three plugins reach it through `@iracedeck/plugin-runtime`'s `initRaceEngineer`; the scenario harness calls it directly, with its three snapshot stubs as `overrides`.
 
 ## Boundaries
 
-- It imports `audio-scenarios`, `deck-core`, `event-bus`, `sim-events-iracing` and `logger`. `deck-core` never imports it (the cycles run one way only). Settings, `evaluateSetupWarning` and `resolveActiveDriverName` come from `deck-core` directly; nothing `deck-core` provides is injected.
+- It imports `audio-scenarios`, `deck-core`, `event-bus`, `sim-events-iracing` and `logger`. `deck-core` never imports it (the cycles run one way only). Settings, `isCalloutEnabled`, `evaluateSetupWarning` and `resolveActiveDriverName` come from `deck-core` directly; nothing `deck-core` provides is injected.
 - It takes one `logger` and makes every logger it needs with `logger.createScope(...)`; the bootstrap passes `adapter.createLogger("RaceEngineer")`, so its lines print as `[RaceEngineer:LapCompleted]` and the like on Mirabox and Ulanzi, and as `RaceEngineer->LapCompleted` on Stream Deck, whose SDK joins scopes with `->`.
 - `voice` is the voice-pack phase's driver-name state, read on every call (the harness passes its seeded list).
 - `SimRuntime` (`sim-runtime.ts`) is the translator's query side as one object. It is iRacing-shaped; making it sim-neutral is #1351.
-- The 30 `get<Family>CalloutEnabled` closures are here unchanged; replacing them is #1350.
+- Every callout opt-in is one dependency, `isCalloutEnabled`, passed straight from `deck-core` (#1350): each family in `registerPitCrew` resolves its own callout id to a key through `@iracedeck/callout-settings`, so a new callout needs no change here.
 
 ## Rules
 
-- A new `PitCrewDeps` key fails `pnpm typecheck` until `buildPitCrewDeps` builds it (`Required<PitCrewDeps>`), so nothing is left to `DEFAULT_DEPS`. A new family gate gets a row in `pit-crew-deps.test.ts`'s `GATES` table.
+- A new `PitCrewDeps` key fails `pnpm typecheck` until `buildPitCrewDeps` builds it (`Required<PitCrewDeps>`), so nothing is left to `DEFAULT_DEPS`.
 - A cache the engine's `where:` clauses read is subscribed in `subscribeRaceEngineerCaches`, which runs before `registerPitCrew`.
 
 ## Build
