@@ -462,7 +462,7 @@ describe("ElgatoPlatformAdapter sendToPlugin → switchToProfile routing", () =>
     _resetProfileSwitcher();
   });
 
-  /** Create the adapter and wire the profile switcher exactly as plugin.ts does. */
+  /** Create the adapter and wire the profile switcher exactly as the plugin's elgato-extension.ts does. */
   function setup() {
     const mock = createSdMock();
     const adapter = new ElgatoPlatformAdapter(mock.sd);

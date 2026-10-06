@@ -20,7 +20,7 @@
  * 3. Use isSimHubReachable() for readiness checks (e.g., overlay state)
  *
  * @example
- * // In plugin.ts (entry point)
+ * // At startup (the shared bootstrap: plugin-runtime's phases/start-services.ts)
  * import { initializeSimHub } from "@iracedeck/deck-core";
  * initializeSimHub(adapter.createLogger("SimHub"));
  *

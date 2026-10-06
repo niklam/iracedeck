@@ -4,7 +4,8 @@
  * The `focusIRacingWindow` global setting grew from a switch into a mode:
  *
  * - `always`   — before every key press, dial press and dial rotation (the
- *                adapter-level hooks in each plugin.ts), as since 3.0 (#930).
+ *                adapter-level hooks in plugin-runtime's
+ *                `phases/register-actions.ts`), as since 3.0 (#930).
  * - `required` — only before something that needs the foreground: a keyboard
  *                binding, chat text, a touch gesture that taps a binding.
  * - `never`    — no focusing at all (the old "off").
