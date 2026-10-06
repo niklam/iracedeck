@@ -1,5 +1,6 @@
 import { defineCalloutFamily } from "../define.js";
 
+/** See `PIT_LIMITER_CALLOUTS` for the shared rationale (#1051). */
 export const NO_LIMITER_CALLOUTS = defineCalloutFamily({
   id: "no-limiter",
   callouts: {

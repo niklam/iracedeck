@@ -9,9 +9,8 @@ export const CAUTION_CALLOUTS = defineCalloutFamily({
      * it picking up the field, an extra caution lap, the one-to-go warning,
      * the car ahead changing during the lineup, your race position on the
      * last caution lap, the pace car peeling off, and the restart itself.
-     * The canonical id↔key mapping lives in this family. All default true — new Race Engineer
-     * functionality ships on — and, like every other `calloutEnabled*` field,
-     * carry no `.catch`: the union-plus-transform chain has no throw path.
+     * The canonical id↔key mapping lives in this family. All default true —
+     * new Race Engineer functionality ships on.
      */
     follow: { key: "calloutEnabledCautionFollow", label: "Who to follow" },
     "pace-car-out": { key: "calloutEnabledCautionPaceCarOut", label: "Pace car out" },

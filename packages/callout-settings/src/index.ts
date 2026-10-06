@@ -114,8 +114,11 @@ export const CALLOUT_FAMILIES = [
   CAUTION_CALLOUTS,
 ] as const;
 
+/** Any family in the registry. A generic helper that must yield a `CalloutSettingKey` constrains on this, not on `CalloutFamily`. */
+export type RegisteredCalloutFamily = (typeof CALLOUT_FAMILIES)[number];
+
 /** Every persisted callout opt-in key. */
-export type CalloutSettingKey = CalloutKeyOf<(typeof CALLOUT_FAMILIES)[number]>;
+export type CalloutSettingKey = CalloutKeyOf<RegisteredCalloutFamily>;
 
 const ENTRIES = new Map<string, CalloutEntry>(
   CALLOUT_FAMILIES.flatMap((family) => Object.values(family.callouts).map((entry) => [entry.key, entry] as const)),

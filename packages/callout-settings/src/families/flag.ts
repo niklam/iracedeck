@@ -41,12 +41,11 @@ export const FLAG_CALLOUTS = defineCalloutFamily({
      * Missing-session-flag callout opt-ins (issue #480). Driver-black
      * (disqualify/furled/dq-scoring-invalid), race-progression
      * (crossed/one-pace-lap-to-go/green-held/ten-to-go/five-to-go), and
-     * caution-waving (yellow-waving/caution-waving) variants. Plus two
-     * grouped start-light opt-ins: `calloutEnabledStartLights` (the 3
-     * gantry lines) and `calloutEnabledStartCountdown` (the 5 numeric
-     * countdown clips). Same forward-compat semantics as the flag callouts
-     * above — default `true` so existing users receive them automatically.
-     * Canonical id↔key mappings in this family and `START_LIGHT_CALLOUTS`.
+     * caution-waving (yellow-waving/caution-waving) variants. Same
+     * forward-compat semantics as the flag callouts above — default `true`
+     * so existing users receive them automatically. Canonical id↔key
+     * mapping in this family; the start-light opt-ins from the same issue
+     * are `START_LIGHT_CALLOUTS`.
      */
     disqualify: { key: "calloutEnabledFlagDisqualify", label: "Disqualified" },
     furled: { key: "calloutEnabledFlagFurled", label: "Black flag furled" },

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
 
 import {
   CALLOUT_FAMILIES,
@@ -6,9 +6,22 @@ import {
   CALLOUT_SETTING_KEYS,
   calloutDefault,
   type CalloutFamily,
+  type CalloutIdOf,
+  calloutKey,
+  type CalloutSettingKey,
+  FLAG_CALLOUTS,
+  type RegisteredCalloutFamily,
 } from "./index.js";
 
 const entries = CALLOUT_FAMILIES.flatMap((f) => Object.values(f.callouts));
+
+/**
+ * The shape a consumer's generic gate takes. The return annotation is the assertion: constrained on `CalloutFamily`
+ * instead, `calloutKey` yields only `calloutEnabled${string}` and this does not compile.
+ */
+function keyOf<F extends RegisteredCalloutFamily>(family: F, id: CalloutIdOf<F>): CalloutSettingKey {
+  return calloutKey(family, id);
+}
 
 describe("callout settings registry", () => {
   it("has 35 families and 100 keys", () => {
@@ -40,6 +53,31 @@ describe("callout settings registry", () => {
     expect(new Set(placed)).toEqual(new Set(CALLOUT_FAMILIES));
 
     for (const g of CALLOUT_PI_GROUPS) expect(g.families.length).toBeGreaterThan(0);
+  });
+
+  it("lists the families in PI group order", () => {
+    expect(CALLOUT_FAMILIES).toEqual(CALLOUT_PI_GROUPS.flatMap((g): readonly CalloutFamily[] => g.families));
+  });
+
+  it("gives every entry only the known fields, so a misspelt one fails", () => {
+    for (const e of entries) {
+      for (const field of Object.keys(e)) expect(["key", "label", "default"]).toContain(field);
+    }
+  });
+
+  it("lets a generic helper over any registered family yield a CalloutSettingKey", () => {
+    expect(keyOf(FLAG_CALLOUTS, "green")).toBe("calloutEnabledFlagGreen");
+    expectTypeOf(keyOf(FLAG_CALLOUTS, "green")).toEqualTypeOf<CalloutSettingKey>();
+    expectTypeOf(calloutKey(FLAG_CALLOUTS, "green")).toExtend<CalloutSettingKey>();
+  });
+
+  it("still rejects an id the family does not have", () => {
+    // Never called: the assertion is that the call does not compile.
+    const misspelt = () =>
+      // @ts-expect-error -- "nope" is not a FLAG_CALLOUTS id
+      keyOf(FLAG_CALLOUTS, "nope");
+
+    expect(misspelt).toBeTypeOf("function");
   });
 
   it("ships exactly the six fuel countdown counts off", () => {

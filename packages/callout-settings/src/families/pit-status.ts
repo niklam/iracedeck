@@ -10,9 +10,8 @@ export const PIT_STATUS_CALLOUTS = defineCalloutFamily({
      *
      * Same forward-compat semantics as the other callout families:
      * default `true` so a future plugin upgrade automatically enables
-     * a new subject for existing users (`.passthrough()` on the schema
-     * makes that property hold without a migration). Canonical id↔key
-     * mapping in this family.
+     * a new subject for existing users without a migration. Canonical
+     * id↔key mapping in this family.
      */
     "in-progress": { key: "calloutEnabledPitStatusInProgress", label: "In progress" },
     complete: { key: "calloutEnabledPitStatusComplete", label: "Complete" },
