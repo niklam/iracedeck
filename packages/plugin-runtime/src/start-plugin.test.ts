@@ -22,15 +22,16 @@ vi.mock("@iracedeck/race-engineer-wiring", async () =>
 vi.mock("./actions.js", async () => (await import("./test-support/module-mocks.js")).actionsMock());
 
 /**
- * Today's plugin.ts order (309 → 1796), one entry per recorded call. Derived
- * from the Stream Deck file under the default settings state the tests
- * implement (`getGlobalSettings` → `{}`, `pngRasterization` on, as all three
- * `platform-features.json` set it); Mirabox and Ulanzi run the same sequence
- * without the profile switcher and the deck-device listeners, which are what
- * `extension.start` stands for. The Race Engineer subscriptions plugin.ts made
- * between the scenario engine and `setScripts` are `wireRaceEngineer` now.
+ * The startup order of the pre-#1349 plugin.ts (origin/master 063a80e86), one
+ * entry per recorded call. Derived from the Stream Deck file under the default
+ * settings state the tests implement (`getGlobalSettings` → `{}`,
+ * `pngRasterization` on, as all three `platform-features.json` set it);
+ * Mirabox and Ulanzi run the same sequence without the profile switcher and
+ * the deck-device listeners, which are what `extension.start` stands for. The
+ * Race Engineer subscriptions that plugin.ts made between the scenario engine
+ * and `setScripts` are `wireRaceEngineer` now.
  * `createIracingSimRuntime` is the runtime's own pure factory (#1351), not a
- * plugin.ts call; it is listed where the sim phase builds it.
+ * call the old plugin.ts made; it is listed where the sim phase builds it.
  */
 function expectedOrder(withExtension: boolean): string[] {
   return [
@@ -183,7 +184,7 @@ describe("startPlugin (#1349)", () => {
     expect(callLog.filter((name) => name.startsWith("extension."))).toEqual([]);
   });
 
-  it("creates the last two phases' loggers under the scopes plugin.ts always used", () => {
+  it("creates the last two phases' loggers under the scopes the pre-#1349 plugin.ts used", () => {
     const host = createHost(createFakeExtension(["sd.switch-profile"]));
 
     startPlugin(host);

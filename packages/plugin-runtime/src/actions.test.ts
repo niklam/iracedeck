@@ -8,8 +8,8 @@ import { SHARED_ACTIONS, STREAM_DECK_ACTIONS } from "./actions.js";
 const packagesDir = join(import.meta.dirname, "..", "..");
 
 /**
- * The logger scope each action always logged under, as plugin.ts:1655-1701
- * registered it before #1349 (UUID values written out, so a renamed constant
+ * The logger scope each action always logged under, as the pre-#1349
+ * plugin.ts (origin/master 063a80e86) registered it (UUID values written out, so a renamed constant
  * cannot move a scope silently). A support log is searched by these names.
  */
 const SHARED_SCOPES: readonly (readonly [string, string])[] = [
