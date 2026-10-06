@@ -335,21 +335,19 @@ describe("the car an overtake or gap shortcut leaves on track changes no other s
     expect(eventsOf("race", overtake, limiterMissing)).toEqual(alone);
   });
 
-  it.each([null, "race"])(
-    "leaves every shortcut publishing what it publishes on its own (session preset: %s)",
-    (preset) => {
-      const changed: string[] = [];
+  // One case per shortcut and session preset, so each stays a few
+  // milliseconds of work under full-suite load and a failure names the
+  // shortcut whose events changed.
+  const CASES = (["none", "race"] as const).flatMap((preset) =>
+    SCENARIO_SHORTCUTS.map((shortcut) => ({ preset, id: shortcut.id, shortcut })),
+  );
 
-      for (const shortcut of SCENARIO_SHORTCUTS) {
-        const alone = eventsOf(preset, null, shortcut);
-        const after = eventsOf(preset, overtake, shortcut);
+  it.each(CASES)(
+    "leaves $id publishing what it publishes on its own (session preset: $preset)",
+    ({ preset, shortcut }) => {
+      const sessionPreset = preset === "none" ? null : preset;
 
-        if (JSON.stringify(after) !== JSON.stringify(alone)) {
-          changed.push(`${shortcut.id}\n  alone: ${alone.join(" | ")}\n  after: ${after.join(" | ")}`);
-        }
-      }
-
-      expect(changed).toEqual([]);
+      expect(eventsOf(sessionPreset, overtake, shortcut)).toEqual(eventsOf(sessionPreset, null, shortcut));
     },
   );
 });
