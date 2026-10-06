@@ -47,6 +47,8 @@ const hoisted = vi.hoisted(() => {
     globalSettings = { ...globalSettings, ...partial };
   });
   const getGlobalSettings = vi.fn(() => globalSettings);
+  // The real lookup reads the parsed cache; here it reads the same mocked settings object.
+  const isCalloutEnabled = vi.fn((key: string) => getGlobalSettings()[key] !== false);
   const globalSettingsListeners = new Set<() => void>();
   const onGlobalSettingsChange = vi.fn((listener: () => void) => {
     globalSettingsListeners.add(listener);
@@ -87,6 +89,7 @@ const hoisted = vi.hoisted(() => {
     driverNameClipPath,
     updateGlobalSettings,
     getGlobalSettings,
+    isCalloutEnabled,
     globalSettingsListeners,
     onGlobalSettingsChange,
     setGlobalSettings: (next: Record<string, unknown>) => {
@@ -195,6 +198,7 @@ vi.mock("@iracedeck/deck-core", async () => {
     getGlobalColors: vi.fn(() => ({})),
     getGlobalGraphicSettings: vi.fn(() => ({})),
     getGlobalSettings: hoisted.getGlobalSettings,
+    isCalloutEnabled: hoisted.isCalloutEnabled,
     getGlobalTitleSettings: vi.fn(() => ({})),
     onGlobalSettingsChange: hoisted.onGlobalSettingsChange,
     renderIconTemplate: vi.fn((template: string, data: Record<string, string>) => {

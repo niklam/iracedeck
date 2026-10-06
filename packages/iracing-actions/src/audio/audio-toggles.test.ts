@@ -23,6 +23,8 @@ const hoisted = vi.hoisted(() => {
     globalSettings = { ...globalSettings, ...partial };
   });
   const getGlobalSettings = vi.fn(() => globalSettings);
+  // The real lookup reads the parsed cache; here it reads the same mocked settings object.
+  const isCalloutEnabled = vi.fn((key: string) => getGlobalSettings()[key] !== false);
   const resolveActiveRaceEngineerVoice = vi.fn(() => "default");
 
   return {
@@ -33,6 +35,7 @@ const hoisted = vi.hoisted(() => {
     isBackgroundTestInFlight,
     updateGlobalSettings,
     getGlobalSettings,
+    isCalloutEnabled,
     resolveActiveRaceEngineerVoice,
     setGlobalSettings: (next: Record<string, unknown>) => {
       globalSettings = next;
@@ -52,6 +55,7 @@ vi.mock("@iracedeck/audio-service", () => ({
 
 vi.mock("@iracedeck/deck-core", () => ({
   getGlobalSettings: hoisted.getGlobalSettings,
+  isCalloutEnabled: hoisted.isCalloutEnabled,
   updateGlobalSettings: hoisted.updateGlobalSettings,
   resolveActiveRaceEngineerVoice: hoisted.resolveActiveRaceEngineerVoice,
 }));

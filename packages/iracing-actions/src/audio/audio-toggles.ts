@@ -12,7 +12,12 @@
  * and test back-compat.
  */
 import { AudioBus, AudioChannel, getAudio } from "@iracedeck/audio-service";
-import { getGlobalSettings, resolveActiveRaceEngineerVoice, updateGlobalSettings } from "@iracedeck/deck-core";
+import {
+  getGlobalSettings,
+  isCalloutEnabled,
+  resolveActiveRaceEngineerVoice,
+  updateGlobalSettings,
+} from "@iracedeck/deck-core";
 import type { ILogger } from "@iracedeck/logger";
 
 import {
@@ -30,7 +35,7 @@ import {
  * takes effect immediately without re-registering anything.
  */
 export function isToggleAckEnabled(): boolean {
-  return (getGlobalSettings() as Record<string, unknown>).calloutEnabledToggleRaceEngineer !== false;
+  return isCalloutEnabled("calloutEnabledToggleRaceEngineer");
 }
 
 /**
@@ -163,7 +168,7 @@ export function playToggleAck(clipName: "going-silent-01" | "resuming-01", logge
  * natural baseline).
  */
 export function isCornerNamesEnabled(): boolean {
-  return (getGlobalSettings() as Record<string, unknown>).calloutEnabledCornerNames !== false;
+  return isCalloutEnabled("calloutEnabledCornerNames");
 }
 
 /**
@@ -171,7 +176,7 @@ export function isCornerNamesEnabled(): boolean {
  * Same defaults-to-enabled live-read shape as {@link isToggleAckEnabled}.
  */
 export function isCornerNamesToggleAckEnabled(): boolean {
-  return (getGlobalSettings() as Record<string, unknown>).calloutEnabledToggleCornerNames !== false;
+  return isCalloutEnabled("calloutEnabledToggleCornerNames");
 }
 
 /**
