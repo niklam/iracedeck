@@ -84,12 +84,6 @@ export function remindersFor(rel) {
   return REMINDERS.filter((r) => r.match(rel)).map((r) => r.text);
 }
 
-/** Issue number named by an `ir-<n>` worktree path, or `undefined`. */
-export function issueFromWorktreePath(p) {
-  const m = String(p).match(/(?:^|[\\/])ir-(\d+)(?:[\\/]|$)/);
-  return m ? Number(m[1]) : undefined;
-}
-
 /** The four CI workflows every push to master must run. */
 export const CI_WORKFLOWS = ["Format", "Lint", "Tests", "Typecheck"];
 

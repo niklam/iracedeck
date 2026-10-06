@@ -482,6 +482,18 @@ export const GIT_WORKTREE_ADD = cmd(/git\s+(?:-C\s+\S+\s+)?worktree\s+add\b(.*)$
 export const GIT_WORKTREE_REMOVE = cmd(/git\s+(?:-c\s+\S+\s+)?(?:-C\s+\S+\s+)?worktree\s+remove\b(.*)$/);
 
 /**
+ * Issue number of an `ir-<n>` worktree path, read off its LAST segment — the
+ * directory the add creates — or `undefined`. The pre-hook's worktree rule
+ * (naming and spec gate) and the post-hook's board move all read it here, so
+ * they agree on the name: an `ir-` segment higher up (`…/ir-1325/repo/ir-1321`)
+ * is not what the add made, and `ir-0` or `ir-0042` names no issue (#1358).
+ */
+export function issueFromWorktreePath(p) {
+  const m = String(p).match(/(?:^|[\\/])ir-([1-9]\d*)$/);
+  return m ? Number(m[1]) : undefined;
+}
+
+/**
  * The target of the `git worktree add` at command position, read from the raw
  * text: `null` when there is no such command, `undefined` when it names no
  * target. Shared by the pre-hook rule and the post-hook's board move, so the
@@ -861,9 +873,16 @@ export const rules = [
       if (!target) return null;
       const dir = gitCwd(c, ctx.cwd, GIT_WORKTREE_ADD);
       const resolved = path.resolve(dir, target);
-      if (ctx.isInside(resolved, ctx.mainRoot(dir)))
-        return `Worktrees are siblings of the repo (${path.join(path.dirname(ctx.mainRoot(dir)), "ir-<issue>")}), never inside it: ${resolved}.`;
-      if (!/(^|[\\/])ir-\d+$/.test(resolved))
+      // A true sibling, not merely "outside master": the main root is the
+      // checkout the git-common-dir belongs to, so a tree nested inside
+      // another ir-* worktree is outside it and would otherwise pass (#1358).
+      // "Same directory" is `isInside` both ways, so the comparison keeps its
+      // case rule: folded on Windows only.
+      const parent = path.dirname(ctx.mainRoot(dir));
+      const sibling = ctx.isInside(path.dirname(resolved), parent) && ctx.isInside(parent, path.dirname(resolved));
+      if (ctx.isInside(resolved, ctx.mainRoot(dir)) || !sibling)
+        return `Worktrees are siblings of the repo (${path.join(parent, "ir-<issue>")}), never inside it or another tree: ${resolved}.`;
+      if (issueFromWorktreePath(resolved) === undefined)
         return `Issue worktrees are named ../ir-<issue> (got ${path.basename(resolved)}).`;
       const fresh = ctx.originFresh(dir);
       if (fresh && !fresh.fresh)
@@ -876,8 +895,8 @@ export const rules = [
       // readable and carry no `enhancement` ARE those exemptions, so the ask
       // stays silent for them; labels that cannot be read (no `gh`, offline)
       // ask, and the prompt names the exemption so it costs one keypress.
-      const issue = resolved.match(/ir-(\d+)$/)?.[1];
-      if (issue && !specExistsFor(ctx.specFiles?.(dir) ?? [], issue)) {
+      const issue = issueFromWorktreePath(resolved);
+      if (!specExistsFor(ctx.specFiles?.(dir) ?? [], issue)) {
         const labels = (ctx.issueLabels?.(issue, dir)?.labels ?? []).map((l) => l?.name ?? l);
         if (!labels.length || labels.includes("enhancement"))
           return {

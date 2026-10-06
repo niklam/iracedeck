@@ -6,8 +6,15 @@
 import path from "node:path";
 
 import { addToBoard, gh, ghJson, git, postContext, readInput, setBoardStatus } from "./lib.mjs";
-import { firstMerge, GIT_WORKTREE_ADD, gitCwd, trustedMask, worktreeAddTarget } from "./rules-bash.mjs";
-import { issueFromWorktreePath, missingWorkflows } from "./rules-post.mjs";
+import {
+  firstMerge,
+  GIT_WORKTREE_ADD,
+  gitCwd,
+  issueFromWorktreePath,
+  trustedMask,
+  worktreeAddTarget,
+} from "./rules-bash.mjs";
+import { missingWorkflows } from "./rules-post.mjs";
 
 const input = await readInput();
 const command = input.tool_input?.command;

@@ -1,8 +1,8 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 
 // The post-hook's triggers, fired as the harness fires them (#1321). Only
 // paths whose step needs no network are used, and the board helpers run dry.
@@ -12,7 +12,18 @@ const HOOK = path.join(import.meta.dirname, "post-bash.mjs");
 // and deterministic — and reports that it could not, which proves it ran.
 const NO_GH = mkdtempSync(path.join(os.tmpdir(), "post-bash-no-gh-"));
 
-function fire(command, { stdout = "", withoutGh = false } = {}) {
+// Scratch for paths the hook resolves. Removed after the suite: a temp dir
+// left holding `ir-<n>` directories is the very shape these hooks key on.
+const SCRATCH = mkdtempSync(path.join(os.tmpdir(), "post-bash-tree-"));
+afterAll(() => {
+  for (const dir of [NO_GH, SCRATCH]) rmSync(dir, { recursive: true, force: true });
+});
+
+// The repo root: the cwd a session hands the hook, which is where an add of
+// `../ir-<n>` is meant to run from (#1358).
+const ROOT = path.resolve(import.meta.dirname, "../..");
+
+function fire(command, { stdout = "", withoutGh = false, cwd = ROOT } = {}) {
   const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !withoutGh || k.toLowerCase() !== "path"));
   if (withoutGh) env.PATH = NO_GH;
   const r = spawnSync(process.execPath, [HOOK], {
@@ -20,7 +31,7 @@ function fire(command, { stdout = "", withoutGh = false } = {}) {
       tool_name: "Bash",
       tool_input: { command },
       tool_response: { stdout },
-      cwd: import.meta.dirname,
+      cwd,
     }),
     encoding: "utf8",
     timeout: 60_000,
@@ -65,5 +76,15 @@ describe("post-bash.mjs triggers", () => {
     });
     expect(note).toMatch(/Worktree for #1321 created/);
     expect(note).not.toMatch(/1400/);
+  });
+
+  it("moves the card of the tree the add created when an ancestor is named ir-<n> too (#1358)", () => {
+    // Every checkout of this suite run from an ir-* worktree has that shape:
+    // the first ir- segment in the path is the ancestor, the last is the add.
+    const repo = path.join(SCRATCH, "ir-1325", "repo", "master");
+    mkdirSync(repo, { recursive: true });
+    const note = fire("git worktree add ../ir-1321 -b fix/1321-x", { withoutGh: true, cwd: repo });
+    expect(note).toMatch(/Worktree for #1321 created/);
+    expect(note).not.toMatch(/1325/);
   });
 });

@@ -1,7 +1,7 @@
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { generatorsFor, issueFromWorktreePath, missingWorkflows, remindersFor } from "./rules-post.mjs";
+import { generatorsFor, missingWorkflows, remindersFor } from "./rules-post.mjs";
 import { checkAgent, checkAsk, checkEdit, checkSkill } from "./rules-tools.mjs";
 
 const MASTER = "C:\\repo\\iRaceDeck\\master";
@@ -89,11 +89,6 @@ describe("post rules", () => {
     expect(remindersFor("packages/deck-core/src/global-settings.ts")[0]).toMatch(/build:force/);
     expect(remindersFor(".claude/rules/testing.md")[0]).toMatch(/show the drafted text/);
     expect(remindersFor("packages/deck-core/src/types.ts")).toEqual([]);
-  });
-  it("reads the issue off a worktree path", () => {
-    expect(issueFromWorktreePath("C:\\x\\ir-1100")).toBe(1100);
-    expect(issueFromWorktreePath("../ir-42")).toBe(42);
-    expect(issueFromWorktreePath("C:\\x\\master")).toBeUndefined();
   });
   it("names the CI workflows a run list is missing", () => {
     expect(missingWorkflows([{ workflowName: "Format" }, { workflowName: "Lint" }])).toEqual(["Tests", "Typecheck"]);
