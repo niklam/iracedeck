@@ -1,6 +1,7 @@
 /**
- * The Rollup log policy the three plugin builds share (#1176), wired into each
- * `packages/iracing-plugin-*\/rollup.config.mjs` as `onLog: pluginBuildOnLog`.
+ * The Rollup log policy the three plugin builds share (#1176), wired as
+ * `onLog: pluginBuildOnLog` into the shared factory every plugin's
+ * `rollup.config.mjs` calls (`packages/plugin-build/src/plugin-rollup.mjs`).
  *
  * Three rules, each narrow on purpose — everything they do not name reaches
  * Rollup's default handler unchanged:

@@ -1,0 +1,63 @@
+# @iracedeck/plugin-build
+
+The one Rollup config the three deck plugins share (#1349). `createPluginRollupConfig(options)` returns it, and each plugin's `rollup.config.mjs` is a single `export default createPluginRollupConfig({ … })` call passing only what differs between the plugins. Build-only: raw ESM (`.mjs` under `// @ts-check`), no build script, nothing emitted, and a `devDependency` of the three plugins — nothing here reaches a shipped bundle. Exports: `.` → `src/plugin-rollup.mjs` (the factory), `./externals` → `src/externals.mjs`. Decision record: the *Rollup* section of `docs/superpowers/specs/2026-10-05-issue-1349-shared-composition-root.md`.
+
+## Options
+
+| Option | Type | Required | Default |
+| --- | --- | --- | --- |
+| `configUrl` | the calling config's `import.meta.url` (a `file:` URL); its directory is the plugin package | yes | — |
+| `sdPluginDir` | the plugin folder, relative to the package (`com.iracedeck.sd.core.sdPlugin`, `com.ulanzi.iracedeck.ulanziPlugin`) | yes | — |
+| `platform` | `"stream-deck"`, `"mirabox"` or `"ulanzi"` (`PLATFORMS`), written into `bin/config.json` | yes | — |
+| `extraExternals` | externals beyond `BASE_EXTERNALS`, appended after them (`["ws"]` on Mirabox and Ulanzi) | no | `[]` |
+| `assetCopy` | `{ actionIcons: string[]; elgatoPluginImgs?: boolean }` — the per-action SVGs copied into `imgs/actions/<name>/` (Stream Deck adds `dial.svg`), and whether `imgs/plugin/` is copied from the Elgato plugin (Mirabox, Ulanzi) | yes | `elgatoPluginImgs: false` |
+| `piBridge` | the bridge every action PI loads, copied into `ui/`, injected and asserted (Ulanzi: `ulanzi-pi-bridge.js`) | no | `PI_SETTINGS_BRIDGE` |
+| `stripHtmlLang` | strip `lang` from `<html>` in the generated PI pages (Mirabox: VSD Craft refuses it) | no | `false` |
+
+**Validation is strict, on purpose.** Every problem throws `createPluginRollupConfig: …` naming the key, because an option the factory silently ignored would build a plugin with the default and nothing would go red: an unknown key (a typo such as `stripHtmlLnag`, and any unknown `assetCopy.*` key), a missing required key, a `platform` outside the three, an `extraExternals` entry that repeats a base external or appears twice, an empty or malformed `actionIcons`, a `configUrl` that is not a `file:` URL, an `sdPluginDir` that is absolute or has a `..` segment, no `<package>/<sdPluginDir>/manifest.json`, and a working directory that is not the package (below).
+
+## Externals (`src/externals.mjs`)
+
+`BASE_EXTERNALS` is what every plugin leaves out of the bundle: `@iracedeck/audio-native`, `@iracedeck/iracing-native`, `@resvg/resvg-js`, `yaml`, `keysender`. `pluginExternals(extraExternals)` returns the base list followed by a plugin's extras, and the factory's `external` is exactly that call — which is also, through `runtimePackageJsonPlugin`, exactly what the plugin's `bin/package.json` installs (`.claude/rules/plugin-structure.md`, *Native Module Dependencies*). The guards import `pluginExternals` rather than parse the file: Prettier spreads the array over several lines. The module has no imports, so a guard can load it without the factory's.
+
+## The steps, in order
+
+`resolve-actions-ts` (the `.js` → `.ts` resolver for the raw-TypeScript `iracing-actions` and `plugin-runtime`), `svg`, `json`, `replace` (the `__FEATURE_*__` constants), `piTemplatePlugin`, the two `injectBridgeScriptPlugin` steps (settings-window bridge, then `piBridge`), `copy-action-icons`, `copy-plugin-imgs` (only with `elgatoPluginImgs`), `processAndCopyAudioAssetsPlugin`, `copy-rasterizer-fonts`, `copy-license-files`, `copy-pi-browser-assets`, `watch-externals`, `typescript` (`noEmitOnError`, #987), `node-resolve`, `commonjs`, `strip-html-lang` (only with `stripHtmlLang`), `terser` (dropped while watching), `runtimePackageJsonPlugin`, `emit-plugin-config`, and `assertBridgeInjectionPlugin`, which stays last so it runs in `closeBundle` after every step that writes a page. `src/plugin-rollup.test.ts` pins the plugin-name order for the default options and for the Mirabox and Ulanzi switches; change the expected list there only for an intended move. What the PI steps do is in `.claude/rules/pi-templates.md`, the log policy and the runtime `package.json` in `plugin-structure.md`, the flags and the dev voice root in `platform-feature-flags.md`.
+
+## Paths: the repo root, the package and the working directory
+
+The factory runs from `packages/plugin-build/src`, not from the plugin, so three anchors are in play:
+
+- **The repo root** (`repoRoot`, three levels above the factory) anchors every source in another package: the action templates and icons, the rasterizer fonts, the Elgato `imgs/plugin`, the root `package.json`, `LICENSE` and `THIRD-PARTY-LICENSES.md`, `feature-flags.local.json` and `dev.local.json`. They are collected in the `@internal` `SOURCES`, and a test checks each exists.
+- **The plugin package** (the directory of `configUrl`) anchors `platform-features.json`, the manifest and the `icons/` watch.
+- **The working directory** is everything else: the input `src/plugin.ts`, the output `<sdPluginDir>/bin/plugin.js`, the `typescript` include globs, every `<sdPluginDir>/…` the copy steps write, and the audio plugin's `sdPlugin`; and `@rollup/plugin-typescript` (its tsconfig lookup) and `node-resolve` (its `rootDir`) read the working directory themselves. So **a plugin build always runs from its own package** — `rollup -c` there, which is what every package script does — and the factory fails fast, naming both paths, when the real working directory is not the config's directory (compared case-insensitively on Windows). A `rollup -c packages/<plugin>/rollup.config.mjs` from the repo root is refused rather than writing a plugin folder at the root.
+
+**Watch mode.** `rollup -c -w` reloads only the config file when it changes; the factory module it imports stays cached across those reloads. An edit to a plugin's own `rollup.config.mjs` still hot-reloads, but an edit to `plugin-rollup.mjs`, `externals.mjs` or a `scripts/lib` helper they import needs the watcher restarted. The feature flags and the dev voice root are resolved inside the call, so they are fixed as of the config's last load (`platform-feature-flags.md`, *Watch mode caveat*).
+
+## The `scripts/lib` helpers it imports
+
+Three helpers stay in `scripts/lib/` and are imported by relative path (`../../../scripts/lib/…`): `rollup-logs.mjs` (`pluginBuildOnLog`, #1176), `runtime-deps.mjs` (`runtimePackageJsonPlugin`, #1177) and `dev-local.mjs` (`resolveDevVoicePacksRoot`, `DEV_LOCAL_FILE`, `isSamePath`, #1143). They stay there because they have callers outside the plugin build — `install-runtime-deps.mjs`, `pnpm dev:voices`, `audio-assets`' `stage:dev-voices` and their guards — and moving them into a package would give those plain-Node scripts a workspace dependency they do not need.
+
+## Turbo
+
+The package has no `build` script, but as a declared dependency its `#build` task is in each plugin build's closure, and its hash covers the package's own files. So an edit to the factory or `externals.mjs` reruns the three plugin builds through the package graph, with no hand-written input. The three `scripts/lib` helpers sit outside the package, so they are named explicitly: each plugin's `#build` already lists them as `$TURBO_ROOT$` inputs, and `@iracedeck/plugin-build#typecheck` declares the same three, because `// @ts-check` types the factory against them.
+
+## Dependencies
+
+It declares what the factory imports: the six `@rollup/plugin-*` packages, `tslib` and `typescript` (the peers of `@rollup/plugin-typescript`), and the `@iracedeck/pi-components` and `@iracedeck/audio-assets` build imports. The plugins no longer declare the Rollup plugins or `tslib`; they keep `rollup` (the CLI their `build` script runs) and `typescript`. `rollup` is a devDependency here, for the types. The lockfile must resolve `@rollup/plugin-typescript` to the same instance the plugins' Rollup runs with — `rollup`, `tslib` and `typescript` at the plugins' versions — so bump `rollup` and `typescript` here and in the three plugins together.
+
+## The guards that read it
+
+Each guard checks the shared property in the factory, and that every plugin config calls the factory (`import { createPluginRollupConfig } from "@iracedeck/plugin-build";` and `export default createPluginRollupConfig({`), declares `@iracedeck/plugin-build` as `workspace:*`, and re-implements none of it. They read the factory's text for literal shapes, so keep those literal — `onLog: pluginBuildOnLog,`, `external: pluginExternals(extraExternals),`, `runtimePackageJsonPlugin({ root: repoRoot }),`, the `repoRoot` definition, the two copy loops and the conditional `devVoicePacksRoot` spread — and keep each config's `extraExternals` a literal array of strings, which the guards parse.
+
+- `scripts/lib/rollup-logs.test.mjs` — the factory sets `onLog: pluginBuildOnLog`; no config has `onLog` or `onwarn`; each plugin `#build` hashes the helper.
+- `scripts/runtime-deps-guard.test.mjs` — the factory emits through `runtimePackageJsonPlugin` and bundles around exactly `pluginExternals(extraExternals)`; no version literal in a config, the factory or `externals.mjs`.
+- `scripts/third-party-licenses.test.mjs` — `copy-license-files` is in the factory, anchored on the repo root; every third-party external has a `THIRD-PARTY-LICENSES.md` entry.
+- `scripts/dev-voice-root-guard.test.mjs` — the dev voice root reaches `bin/config.json` only through the factory's conditional spread.
+- `packages/pi-components/src/build/settings-window-icon.test.ts` — the factory's `copy-pi-browser-assets` list carries `SETTINGS_WINDOW_ICON`.
+
+## Adding a plugin or an option
+
+- **A plugin.** Declare `"@iracedeck/plugin-build": "workspace:*"` in its `devDependencies` (with `rollup` and `typescript` at the other plugins' versions), make `rollup.config.mjs` one call with `configUrl: import.meta.url`, keep its `build` script `rollup -c` in the package, give its `#build` in `turbo.json` the same inputs as the other three, and add the license `.gitignore` entries (`plugin-structure.md`). A new host also means a new `PLATFORMS` entry and the `platform` union in the `PluginRollupOptions` typedef. The guards find plugins on their own (from their manifests, or for the icon guard their `rollup.config.mjs`), so they cover it at once.
+- **An option** (a new difference between plugins). Add it to `OPTION_KEYS` (and `REQUIRED_OPTION_KEYS` if it has no default), the typedef and `validateOptions`, with a default that reproduces today's output so no existing config changes, and cover it in `src/plugin-rollup.test.ts` — the step-order test too when it adds a step.
+- **A compile-time feature flag.** One `replace` entry here, once for all three plugins; the rest of the recipe is in `platform-feature-flags.md`, *Adding a new flag*.

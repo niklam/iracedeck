@@ -309,6 +309,7 @@ flowchart TB
   subgraph boot["Shared bootstrap"]
     prt["plugin-runtime"]:::core
     rew["race-engineer-wiring"]:::audio
+    pbld["plugin-build"]:::core
   end
   subgraph adapters["Device adapters"]
     aelg["deck-adapter-elgato"]:::adp
@@ -346,10 +347,13 @@ flowchart TB
   psd --> prt
   pmb --> prt
   pul --> prt
-  psd --> pic
-  pmb --> pic
-  pul --> pic
+  psd --> pbld
+  pmb --> pbld
+  pul --> pbld
   psd --> dc
+
+  pbld --> pic
+  pbld --> aasset
 
   prt --> acts
   prt --> rew
@@ -395,7 +399,7 @@ flowchart TB
   classDef plugin fill:#596775,color:#fff,stroke:#3c4651;
 ```
 
-To keep this readable, `@iracedeck/logger` (imported by nearly every package) and a few cross-cutting edges are omitted — `plugin-runtime` also pulls in the audio stack, `event-bus`, and `sim-events-iracing` directly; the Mirabox and Ulanzi shells import only their adapter and `plugin-runtime` (and `pi-components` at build time, for their Property Inspectors). The Stream Deck plugin imports the same, plus what its `elgato-extension.ts` needs: `deck-core` for the profile switcher and the `_deckDevices` write — the one plugin → `deck-core` edge, drawn — and `@elgato/streamdeck` for the SDK object's type, which its shell also imports to build the adapter. The shape that matters: `deck-core` is the hub the device adapters share, and the foundation packages at the bottom depend on nothing internal. `rasterizer` is a foundation package too (it wraps `@resvg/resvg-js` and has no internal iRaceDeck dependencies), but note the arrow direction: **`plugin-runtime`** imports it and injects a render function into `deck-core`'s rasterizer service at startup (`initializeRasterizer(...)`, gated by the `pngRasterization` feature flag) — `deck-core` itself never imports `rasterizer`, so there's deliberately no `deck-core → rasterizer` edge here. `callout-script` (#1064) is the other foundation package with more than one importer above it: the voice-pack format — the script grammar and its parser, and since #1134 the `voice-pack.json` schema and the rules a pack is admitted by — with `zod` as its only dependency, imported by `audio-scenarios` (to compile a script against the contracts, and for `lint:pack` to judge a pack by the scanner's own rules), by `deck-core` (to admit a pack and its scripts while scanning), and — the dashed edge, a devDependency — by `audio-assets`, whose generator extracts the committed `voice/<id>/callouts.json` from the authored voice config and validates it with the same parser. It is a separate package precisely so those three never have to import each other: `deck-core` must not depend on the Race Engineer to validate a file. The dashed `pi-components → deck-core` edge is the one import the Property Inspector's browser bundle makes from `deck-core` (#1277): the key map and default-binding parser in `key-binding-defaults.ts`, a dependency-free module published on its own subpath (`@iracedeck/deck-core/key-binding-defaults`), so the binding field and the plugin's startup binding seed share one parser without the browser bundle ever reaching the `deck-core` barrel and its Node code. The bundle's build refuses any other `deck-core` import.
+To keep this readable, `@iracedeck/logger` (imported by nearly every package) and a few cross-cutting edges are omitted — `plugin-runtime` also pulls in the audio stack, `event-bus`, and `sim-events-iracing` directly; the Mirabox and Ulanzi shells import only their adapter and `plugin-runtime`, and at build time `plugin-build`, whose shared Rollup config (`createPluginRollupConfig`) is what imports `pi-components` for the Property Inspectors and `audio-assets` for the sounds. The Stream Deck plugin imports the same, plus what its `elgato-extension.ts` needs: `deck-core` for the profile switcher and the `_deckDevices` write — the one plugin → `deck-core` edge, drawn — and `@elgato/streamdeck` for the SDK object's type, which its shell also imports to build the adapter. The shape that matters: `deck-core` is the hub the device adapters share, and the foundation packages at the bottom depend on nothing internal. `rasterizer` is a foundation package too (it wraps `@resvg/resvg-js` and has no internal iRaceDeck dependencies), but note the arrow direction: **`plugin-runtime`** imports it and injects a render function into `deck-core`'s rasterizer service at startup (`initializeRasterizer(...)`, gated by the `pngRasterization` feature flag) — `deck-core` itself never imports `rasterizer`, so there's deliberately no `deck-core → rasterizer` edge here. `callout-script` (#1064) is the other foundation package with more than one importer above it: the voice-pack format — the script grammar and its parser, and since #1134 the `voice-pack.json` schema and the rules a pack is admitted by — with `zod` as its only dependency, imported by `audio-scenarios` (to compile a script against the contracts, and for `lint:pack` to judge a pack by the scanner's own rules), by `deck-core` (to admit a pack and its scripts while scanning), and — the dashed edge, a devDependency — by `audio-assets`, whose generator extracts the committed `voice/<id>/callouts.json` from the authored voice config and validates it with the same parser. It is a separate package precisely so those three never have to import each other: `deck-core` must not depend on the Race Engineer to validate a file. The dashed `pi-components → deck-core` edge is the one import the Property Inspector's browser bundle makes from `deck-core` (#1277): the key map and default-binding parser in `key-binding-defaults.ts`, a dependency-free module published on its own subpath (`@iracedeck/deck-core/key-binding-defaults`), so the binding field and the plugin's startup binding seed share one parser without the browser bundle ever reaching the `deck-core` barrel and its Node code. The bundle's build refuses any other `deck-core` import.
 
 ## Seams & where the abstraction leaks
 

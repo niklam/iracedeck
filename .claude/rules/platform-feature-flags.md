@@ -2,6 +2,7 @@
 paths:
   - "packages/iracing-plugin-*/**"
   - "packages/plugin-runtime/**"
+  - "packages/plugin-build/**"
   - "feature-flags.local.json*"
   - "dev.local.json*"
   - "scripts/lib/dev-local.mjs"
@@ -25,7 +26,7 @@ Per-plugin build-time flags that gate platform-specific features and temporary k
 - `packages/iracing-plugin-ulanzi/platform-features.json` — committed Ulanzi flags, identical shape to Mirabox today (`dialExtendedGestures` and `profiles` off, `pngRasterization` on) — widen `dialExtendedGestures`/`profiles` only once dial/profile support is verified on Ulanzi hardware.
 - `feature-flags.local.json` — **optional, gitignored** developer override at repo root. Deep-merges over every plugin's committed flags at build time.
 - `feature-flags.local.json.example` — committed example showing the file shape.
-- `dev.local.json` — **optional, gitignored** developer marker at repo root, holding the single key `voicePacksRoot` (#1143): a path turns development voice mode on for this worktree, `false` turns it off, and an absent file follows the machine-wide `IRACEDECK_DEV_VOICES` opt-in (#1214). Not a feature flag: it names a development voice root the plugin scans ahead of the user's packs folder, and it lands in `bin/config.json` as `devVoicePacksRoot` rather than anywhere under `features`. It is documented in this file because it is the same _kind_ of thing — a gitignored root-level marker the same three Rollup configs read at the same point, hashed by turbo the same way, and impossible for a release build to carry. See _`IRACEDECK_DEV_VOICES` and `dev.local.json` — the development voice root_ below.
+- `dev.local.json` — **optional, gitignored** developer marker at repo root, holding the single key `voicePacksRoot` (#1143): a path turns development voice mode on for this worktree, `false` turns it off, and an absent file follows the machine-wide `IRACEDECK_DEV_VOICES` opt-in (#1214). Not a feature flag: it names a development voice root the plugin scans ahead of the user's packs folder, and it lands in `bin/config.json` as `devVoicePacksRoot` rather than anywhere under `features`. It is documented in this file because it is the same _kind_ of thing — a gitignored root-level marker the shared Rollup factory reads at the same point, hashed by turbo the same way, and impossible for a release build to carry. See _`IRACEDECK_DEV_VOICES` and `dev.local.json` — the development voice root_ below.
 - `dev.local.json.example` — committed example showing the file shape.
 
 ## Flag categories
@@ -40,7 +41,7 @@ Per-plugin build-time flags that gate platform-specific features and temporary k
 
 ## How flags reach runtime + PI
 
-All three plugins' `rollup.config.mjs`:
+The shared factory (`@iracedeck/plugin-build`), for each plugin:
 
 1. Read their `platform-features.json`.
 2. If `feature-flags.local.json` exists at the repo root, deep-merge it on top.
@@ -74,7 +75,7 @@ if (__FEATURE_PNG_RASTERIZATION__) {
 
 **Dial extended-gesture gating.** `__FEATURE_DIAL_EXTENDED_GESTURES__` is gated directly in action code (not a shared utility) because the per-platform gesture difference is action logic, not shared rendering. It gates touch input, trigger descriptions, long-press and push+turn classification (flag off → every release classifies as `short`) and the #1120 hold preview, which has nothing to show on a Mirabox knob, whose press never reports its release. Rotation and press are **not** gated, and neither is the dial display — every surface draws through `dialCanvas()` / `setDialCanvas()` on every host (#1013). Reference: `packages/iracing-actions/src/actions/fuel-service/fuel-dial-surface.ts`. See `.claude/rules/encoders-and-touchscreen.md` for why.
 
-**Per-program ambient declarations.** The shared `@iracedeck/iracing-actions` sources and `plugin-runtime`'s are both raw TypeScript compiled as part of each plugin's program, so each plugin's own `src/platform-features.d.ts` declares both constants: `__FEATURE_DIAL_EXTENDED_GESTURES__` for the bundled action sources, `__FEATURE_PNG_RASTERIZATION__` for `plugin-runtime`'s `initInput`. `plugin-runtime` and `iracing-actions` are also typechecked as programs of their own, so each carries the same file. Adding a compile-time flag therefore means declaring it in all five — the three plugins, `plugin-runtime` and `iracing-actions` — besides adding it to the three Rollup `replace` calls.
+**Per-program ambient declarations.** The shared `@iracedeck/iracing-actions` sources and `plugin-runtime`'s are both raw TypeScript compiled as part of each plugin's program, so each plugin's own `src/platform-features.d.ts` declares both constants: `__FEATURE_DIAL_EXTENDED_GESTURES__` for the bundled action sources, `__FEATURE_PNG_RASTERIZATION__` for `plugin-runtime`'s `initInput`. `plugin-runtime` and `iracing-actions` are also typechecked as programs of their own, so each carries the same file. Adding a compile-time flag therefore means declaring it in all five — the three plugins, `plugin-runtime` and `iracing-actions` — besides adding it to the shared factory's one Rollup `replace` call.
 
 **Runtime-only flags.** `profiles` has no ambient declaration and no `__FEATURE_*__` constant — it's checked at runtime instead, either via `getFeatureFlag("profiles")` (TS) or `locals.platform?.features?.profiles` (PI templates, see below). This is a deliberate choice, not an oversight: `profiles` gates a PI accordion and a couple of conditional PI sections, none of which are hot enough to need tree-shaking, so there was no reason to also thread it through `@rollup/plugin-replace` and a per-plugin `.d.ts`.
 
@@ -132,7 +133,7 @@ it("skips touch and long-press when dialExtendedGestures is false", () => {
 2. Add its key to `PlatformFeatureFlags` in `packages/deck-core/src/plugin-config.ts`.
 3. Decide whether it needs a compile-time constant. Most flags do:
    - Add the `__FEATURE_*__` ambient declaration to all five `src/platform-features.d.ts` copies — the three plugins', `plugin-runtime`'s and `iracing-actions`' (each is typechecked as its own program; see "Per-program ambient declarations" above).
-   - Add the replace entry to **all three** `rollup.config.mjs` files.
+   - Add the replace entry to the factory's `replace` values (once): `packages/plugin-build/src/plugin-rollup.mjs`.
    - Add default to `test-setup.ts` and true/false path tests that `vi.stubGlobal` the constant.
    - A flag that only gates a PI control or a rarely-hit runtime branch (like `profiles`) can skip all three of the above and read `getFeatureFlag(...)` / `locals.platform?.features?.…` instead — see "Runtime-only flags" above.
 4. Gate the relevant code (plugin init, `deck-core`, or an action file for a per-platform behavioral difference) and any relevant PI partial.
@@ -196,7 +197,7 @@ Resolution, first match wins:
 | absent, or `{}` | `1` | on, at the default root in this worktree |
 | absent, or `{}` | `0` / unset | off |
 
-`resolveDevVoicePacksRoot(root)` in `scripts/lib/dev-local.mjs` is the ONE place the two inputs are combined, and everything that decides asks it: each plugin's `rollup.config.mjs`, the `stage:dev-voices` task below — so a build cannot stage without pointing the plugin at the stage, or the reverse — and `pnpm dev:voices`, which prints its answer. It returns the root, its `source` (`dev.local.json` or `IRACEDECK_DEV_VOICES`) and `isDefaultRoot`. Both readers are strict, deliberately stricter than the `feature-flags.local.json` read: `readDevLocal` **throws** on an unknown key or on a `voicePacksRoot` that is neither a non-empty string nor `false`, and `readDevVoicesEnv` accepts exactly `1` and `0`, so `true`, `yes` or a stray space fails the build naming the variable — a typo that silently leaves development mode off is a failure a developer chases in the sim rather than in the build log. The variable is validated on every resolve, including the rows a marker decides, so a garbage value in someone's user environment cannot hide behind the one worktree that happens to carry a marker. Each plugin's `rollup.config.mjs` writes the resolved absolute path into `bin/config.json` as `devVoicePacksRoot`, through a **conditional spread** so the key is absent rather than `undefined` when development mode is off, and `getDevVoicePacksRoot()` (`packages/deck-core/src/plugin-config.ts`) is how the plugin reads it back. When it is on, each plugin build prints `[dev-voices] development voice root on via <source>: <root>` — under a machine-wide opt-in the mistake to catch is being ON by accident, not OFF. **A release build cannot carry the mechanism**: the marker is never in git, and CI never sets the variable.
+`resolveDevVoicePacksRoot(root)` in `scripts/lib/dev-local.mjs` is the ONE place the two inputs are combined, and everything that decides asks it: the shared plugin Rollup factory (`packages/plugin-build/src/plugin-rollup.mjs`), the `stage:dev-voices` task below — so a build cannot stage without pointing the plugin at the stage, or the reverse — and `pnpm dev:voices`, which prints its answer. It returns the root, its `source` (`dev.local.json` or `IRACEDECK_DEV_VOICES`) and `isDefaultRoot`. Both readers are strict, deliberately stricter than the `feature-flags.local.json` read: `readDevLocal` **throws** on an unknown key or on a `voicePacksRoot` that is neither a non-empty string nor `false`, and `readDevVoicesEnv` accepts exactly `1` and `0`, so `true`, `yes` or a stray space fails the build naming the variable — a typo that silently leaves development mode off is a failure a developer chases in the sim rather than in the build log. The variable is validated on every resolve, including the rows a marker decides, so a garbage value in someone's user environment cannot hide behind the one worktree that happens to carry a marker. The factory writes the resolved absolute path into each plugin's `bin/config.json` as `devVoicePacksRoot`, through a **conditional spread** so the key is absent rather than `undefined` when development mode is off, and `getDevVoicePacksRoot()` (`packages/deck-core/src/plugin-config.ts`) is how the plugin reads it back. When it is on, each plugin build prints `[dev-voices] development voice root on via <source>: <root>` — under a machine-wide opt-in the mistake to catch is being ON by accident, not OFF. **A release build cannot carry the mechanism**: the marker is never in git, and CI never sets the variable.
 
 What the plugin does with it, gathered here so it need not be pieced back together from four modules:
 

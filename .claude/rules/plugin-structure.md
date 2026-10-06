@@ -3,6 +3,7 @@ paths:
   - "packages/iracing-plugin-*/**"
   - "packages/deck-adapter-*/**"
   - "packages/plugin-runtime/**"
+  - "packages/plugin-build/**"
   - "packages/deck-core/src/plugin-config.ts"
   - "scripts/lib/runtime-deps.mjs"
   - "scripts/lib/rollup-logs.mjs"
@@ -32,7 +33,7 @@ The Ulanzi plugin diverges from the Elgato/Mirabox naming conventions below:
 - Manifest `UUID`: `com.iracedeck.sd.core` (== `PLUGIN_UUID` in `@iracedeck/deck-adapter-ulanzi` — the same UUID the Elgato/Mirabox plugins use). UlanziStudio only requires a 4-segment main-service UUID and does **not** validate the prefix, so iRaceDeck keeps its own namespace.
 - Action UUIDs: `com.iracedeck.sd.core.<action>` — the canonical iRaceDeck UUIDs, declared verbatim in the manifest. No remapping: the plugin registers actions directly, exactly like Mirabox.
 - Manifest is the Ulanzi format (`Type:"JavaScript"`, per-action `Controllers:["Keypad"|"Encoder"]`, `Encoder:{layout:"$UA1"}` for dials, `States:[{Image}]`). `"Information"` controllers are dropped (no Ulanzi equivalent).
-- PI connection: UlanziStudio does not call `connectElgatoStreamDeckSocket`, so the rollup injects `ulanzi-pi-bridge.js` (from `@iracedeck/pi-components`, built from `src/ulanzi-bridge/`) before `sdpi-components.js` into every generated PI HTML except `settings-window.html`, which gets the settings-window bridge instead (#992; `injectBridgeScriptPlugin` from `@iracedeck/pi-components/build`, shared by all three plugins). The bridge monkeypatches `window.WebSocket` and translates Elgato ↔ Ulanzi PI frames, so the shared sdpi-components/`ird-*` stack is reused unchanged. See `packages/iracing-plugin-ulanzi/CLAUDE.md`.
+- PI connection: UlanziStudio does not call `connectElgatoStreamDeckSocket`, so the shared Rollup config injects `ulanzi-pi-bridge.js` (the Ulanzi config's `piBridge` option; from `@iracedeck/pi-components`, built from `src/ulanzi-bridge/`) before `sdpi-components.js` into every generated PI HTML except `settings-window.html`, which gets the settings-window bridge instead (#992; `injectBridgeScriptPlugin` from `@iracedeck/pi-components/build`, shared by all three plugins). The bridge monkeypatches `window.WebSocket` and translates Elgato ↔ Ulanzi PI frames, so the shared sdpi-components/`ird-*` stack is reused unchanged. See `packages/iracing-plugin-ulanzi/CLAUDE.md`.
 
 ## Active Plugins
 - `iracing-plugin-stream-deck` (com.iracedeck.sd.core) — Elgato Stream Deck, uses `@iracedeck/deck-adapter-elgato`
@@ -49,7 +50,7 @@ Use `iracing-plugin-stream-deck` as the reference implementation for Elgato plug
 packages/iracing-plugin-stream-deck-{name}/
 ├── package.json                           # @iracedeck/iracing-plugin-stream-deck-{name}
 ├── tsconfig.json                          # Extends ../../tsconfig.base.json
-├── rollup.config.mjs                      # Update sdPlugin variable only
+├── rollup.config.mjs                      # createPluginRollupConfig({...}) from @iracedeck/plugin-build
 ├── .gitignore                             # node_modules/, *.sdPlugin/bin, *.sdPlugin/logs
 ├── .vscode/
 │   ├── launch.json                        # Debugger attach config
@@ -82,7 +83,7 @@ packages/iracing-plugin-stream-deck-{name}/
 | Action UUIDs | `com.iracedeck.sd.{name}.{action-name}` |
 
 ### After creating the plugin:
-1. Add `"@iracedeck/pi-components": "workspace:*"` and `"@iracedeck/iracing-actions": "workspace:*"` to the plugin's `package.json` dependencies. Wire the rollup config to `piTemplatePlugin`, `partialsDir`, and `browserDir` from `@iracedeck/pi-components/build`, and compute `actionTemplatesDir` locally from the `@iracedeck/iracing-actions` path (see `.claude/rules/pi-templates.md`). The `sdpi-components.js`/`pi-components.js` files are copied automatically by the plugin's rollup build — no manual copy. Per-action `icon.svg`/`key.svg` are copied from each action folder into `{sdPlugin}/imgs/actions/<name>/` by a dedicated rollup plugin step.
+1. Add `"@iracedeck/plugin-build": "workspace:*"` to the plugin's `devDependencies`, beside `"@iracedeck/pi-components": "workspace:*"` and `"@iracedeck/iracing-actions": "workspace:*"` in its `dependencies`, and make `rollup.config.mjs` one `export default createPluginRollupConfig({ configUrl: import.meta.url, … })` call with the plugin's options (see `packages/plugin-build/CLAUDE.md`). The factory does the wiring: the PI templates, the copy of `sdpi-components.js`/`pi-components.js` and the bridges, and the per-action `icon.svg`/`key.svg` copy into `{sdPlugin}/imgs/actions/<name>/` (the files named in `assetCopy.actionIcons`) — no manual copy and no Rollup plugin of the plugin's own.
 2. Run `pnpm install` in the package directory
 3. Run `pnpm build` to verify build succeeds
 4. Run `streamdeck link com.iracedeck.sd.{name}.sdPlugin` to register with Stream Deck
@@ -90,57 +91,51 @@ packages/iracing-plugin-stream-deck-{name}/
 
 ### Rollup Configuration
 
-If the build fails with "Invalid value for option output.file - when building multiple chunks", add `inlineDynamicImports: true` to the output config in `rollup.config.mjs`:
+The three plugins build through one Rollup config: `createPluginRollupConfig` from `@iracedeck/plugin-build` (#1349). A plugin's `rollup.config.mjs` is a single call passing only what differs between the plugins (its folder, platform, extra externals, which assets it copies, its PI bridge, the VSD Craft `lang` strip); every step below lives in the factory, `packages/plugin-build/src/plugin-rollup.mjs`. Its options, step order and the rules for changing it are in `packages/plugin-build/CLAUDE.md`. A plugin build runs from its own package (`rollup -c` there, as every package script does) — the factory refuses any other working directory.
 
-```javascript
-output: {
-  file: `${sdPlugin}/bin/plugin.js`,
-  sourcemap: isWatching,
-  inlineDynamicImports: true  // Add this line
-},
-```
-
-**The build's logs go through one shared policy (#1176).** Every plugin config sets `onLog: pluginBuildOnLog` from `scripts/lib/rollup-logs.mjs` and has no `onwarn` of its own; turbo hashes the helper as an input of each plugin's `#build`. The policy does three things and passes every other log through unchanged:
+**The build's logs go through one shared policy (#1176).** The factory sets `onLog: pluginBuildOnLog` from `scripts/lib/rollup-logs.mjs`, and no config has an `onwarn` of its own; turbo hashes the helper as an input of each plugin's `#build`. The policy does three things and passes every other log through unchanged:
 
 - **A circular dependency among workspace sources fails the build.** When every module in a cycle is one of the repo's own files (inside the repo, outside every `node_modules`, not a virtual `\0` id), `CIRCULAR_DEPENDENCY` is promoted to an error. A warning nobody reads is how the deck-core `sdk-singleton` → `window-focus-service` → `app-monitor` cycle sat on `master` unnoticed. Break a cycle by injecting the function across the seam, the way the window service receives `isIRacingActive`; never widen the policy to silence one. A cycle that runs through any dependency still prints as a warning.
 - **zod's and semver's internal cycles are dropped**, as the configs always did.
 - **`INVALID_ANNOTATION` from inside zod's package is dropped.** Since 4.5.4 (still true in 4.6.x), zod has two comments that mention `@__PURE__` in prose; Rollup removes them and warns six times a build, and the bundle is unaffected. The same code from anywhere else still prints. `scripts/lib/rollup-logs.test.mjs` bundles the installed zod with the plugins' own Rollup and fails once it no longer produces that warning, naming the entry to remove.
 
-A new plugin package wires the same `onLog` and the same turbo input; the guard in `rollup-logs.test.mjs` discovers plugins from their manifests and checks both.
+A new plugin package calls the factory, declares `@iracedeck/plugin-build`, and its `#build` hashes `scripts/lib/rollup-logs.mjs`; the guard in `rollup-logs.test.mjs` discovers plugins from their manifests and checks all three, plus that the factory uses the helper.
 
-`@iracedeck/plugin-runtime` is raw TypeScript like `iracing-actions`: the `typescript` plugin's `include` and the `resolve-actions-ts` resolver name both, and `@rollup/plugin-replace` (no `include` filter) substitutes the `__FEATURE_*__` constants in both. A new plugin's config names both packages the same way.
+`@iracedeck/plugin-runtime` is raw TypeScript like `iracing-actions`: the `typescript` plugin's `include` and the `resolve-actions-ts` resolver name both, and `@rollup/plugin-replace` (no `include` filter) substitutes the `__FEATURE_*__` constants in both. The factory names both packages, so a new plugin gets them by calling it.
 
 ### Native Module Dependencies (keysender, @resvg/resvg-js)
 
 **CRITICAL**: If your plugin uses keyboard functionality (`getKeyboard()`, `initializeKeyboard()`) or PNG rasterization (`initializeRasterizer()`, `@iracedeck/rasterizer`), you MUST:
 
-1. **Mark native modules as external** - Native CommonJS/N-API modules like `keysender` and `@resvg/resvg-js` cannot be bundled into ES modules. Add them to the `external` array:
+1. **Mark native modules as external** - Native CommonJS/N-API modules like `keysender` and `@resvg/resvg-js` cannot be bundled into ES modules. The factory's `external` is `pluginExternals(extraExternals)`: `BASE_EXTERNALS` from `@iracedeck/plugin-build/externals`, which every plugin leaves out, followed by the plugin's own `extraExternals` option (`["ws"]` on Mirabox and Ulanzi). A native module every plugin loads goes in `BASE_EXTERNALS`; one only some plugins load goes in their `extraExternals`:
 ```javascript
-external: ["@iracedeck/audio-native", "@iracedeck/iracing-native", "@resvg/resvg-js", "yaml", "keysender"],
+// packages/plugin-build/src/externals.mjs
+export const BASE_EXTERNALS = ["@iracedeck/audio-native", "@iracedeck/iracing-native", "@resvg/resvg-js", "yaml", "keysender"];
 ```
 
 **Why this matters**: Bundling `keysender` or `@resvg/resvg-js` (native modules) into an ES module output causes runtime errors like "require is not defined". They must be loaded at runtime from `node_modules`. Unlike `keysender`, `@resvg/resvg-js` ships prebuilt binaries for macOS and Linux too, so it needs no mock and no `optionalDependencies` split — it's a plain `dependencies` entry on every platform.
 
-2. **Emit the runtime `package.json` through the shared helper — never type a version** (#1177). The installed plugin's `bin/` runs `npm install` against a `package.json` the build emits beside `plugin.js` — each plugin's `postbuild` runs it through `scripts/install-runtime-deps.mjs` rather than a bare `cd … && npm install`, because the script hands npm only the `npm_config_*` keys npm defines, so npm does not warn about the pnpm-only ones `pnpm run` exports (#1205). `runtimePackageJsonPlugin` from `scripts/lib/runtime-deps.mjs` produces it, and it is the only thing that may:
+2. **Emit the runtime `package.json` through the shared helper — never type a version** (#1177). The installed plugin's `bin/` runs `npm install` against a `package.json` the build emits beside `plugin.js` — each plugin's `postbuild` runs it through `scripts/install-runtime-deps.mjs` rather than a bare `cd … && npm install`, because the script hands npm only the `npm_config_*` keys npm defines, so npm does not warn about the pnpm-only ones `pnpm run` exports (#1205). `runtimePackageJsonPlugin` from `scripts/lib/runtime-deps.mjs` produces it, and it is the only thing that may. The factory carries the one call, so a plugin config never names it:
 ```javascript
-import { runtimePackageJsonPlugin } from "../../scripts/lib/runtime-deps.mjs";
+// packages/plugin-build/src/plugin-rollup.mjs
+import { runtimePackageJsonPlugin } from "../../../scripts/lib/runtime-deps.mjs";
 
 // in plugins: [...]
 runtimePackageJsonPlugin({ root: repoRoot }),
 ```
-It reads the config's own `external` array, so what is left out of the bundle and what `bin/` installs are one list. Each `@iracedeck/*` external becomes a `file:` link to its workspace package (`file:../../../iracing-native`); every other external ships at the exact version the workspace `package.json` files declare for it (the root one and `packages/*`, in `dependencies` / `optionalDependencies` / `devDependencies`), under `optionalDependencies` when every declaration is optional. It **throws** — naming the package and the files — when an external is declared nowhere, at two different versions, or at a range. Version literals in the three configs were invisible to Dependabot and drifted (`yaml` and `ws` shipped behind the workspace, Mirabox's `ws` inside a published advisory); a security bump now reaches users the moment it lands in the workspace. So a new third-party external needs a declaration, at an exact version, in the workspace package whose code loads it — and nothing in the rollup config.
+It reads the config's own `external` array, so what is left out of the bundle and what `bin/` installs are one list. Each `@iracedeck/*` external becomes a `file:` link to its workspace package (`file:../../../iracing-native`); every other external ships at the exact version the workspace `package.json` files declare for it (the root one and `packages/*`, in `dependencies` / `optionalDependencies` / `devDependencies`), under `optionalDependencies` when every declaration is optional. It **throws** — naming the package and the files — when an external is declared nowhere, at two different versions, or at a range. Version literals in the three configs were invisible to Dependabot and drifted (`yaml` and `ws` shipped behind the workspace, Mirabox's `ws` inside a published advisory); a security bump now reaches users the moment it lands in the workspace. So a new third-party external needs a declaration, at an exact version, in the workspace package whose code loads it — and nothing in the factory or a plugin's config.
 
-3. **`keysender` is optional, declared by deck-core, and never built by pnpm.** No workspace source imports it statically — `deck-core/src/keyboard-service.ts` loads it at runtime through a variable module name — but `deck-core` declares it under `optionalDependencies` so Dependabot can see it and the helper has a version to ship. It is deliberately declined — **`keysender: false` under `allowBuilds` in `pnpm-workspace.yaml`**: its install script is `node-gyp rebuild` of Windows-only code, so a workspace `pnpm install` downloads it without compiling it and without asking about it, and Linux CI never tries to build it — the failure that removed it from the workspace in `56f9aff7d`. The copy that runs is the one `npm install` compiles in each plugin's `bin/`, where it is optional so a machine that cannot compile it still gets a working bin. `scripts/runtime-deps-guard.test.mjs` holds all of this: every plugin emits through the helper with no version literal, every shipped third-party external matches the workspace, `keysender` stays optional and declined in `allowBuilds`, and turbo hashes what the helper reads (`scripts/lib/runtime-deps.mjs`, the root `package.json` and `packages/*/package.json` are inputs of each plugin's `#build`, since a conflicting declaration can sit in a package outside the plugin's dependency graph).
+3. **`keysender` is optional, declared by deck-core, and never built by pnpm.** No workspace source imports it statically — `deck-core/src/keyboard-service.ts` loads it at runtime through a variable module name — but `deck-core` declares it under `optionalDependencies` so Dependabot can see it and the helper has a version to ship. It is deliberately declined — **`keysender: false` under `allowBuilds` in `pnpm-workspace.yaml`**: its install script is `node-gyp rebuild` of Windows-only code, so a workspace `pnpm install` downloads it without compiling it and without asking about it, and Linux CI never tries to build it — the failure that removed it from the workspace in `56f9aff7d`. The copy that runs is the one `npm install` compiles in each plugin's `bin/`, where it is optional so a machine that cannot compile it still gets a working bin. `scripts/runtime-deps-guard.test.mjs` holds all of this: the factory emits through the helper and bundles around exactly `pluginExternals(extraExternals)`, every plugin config calls the factory and leaves `external` and the emitter to it, no version literal sits in a config, the factory or `externals.mjs`, every shipped third-party external matches the workspace, `keysender` stays optional and declined in `allowBuilds`, and turbo hashes what the helper reads (`scripts/lib/runtime-deps.mjs`, the root `package.json` and `packages/*/package.json` are inputs of each plugin's `#build`, since a conflicting declaration can sit in a package outside the plugin's dependency graph).
 
 4. **Bundle the rasterizer's fonts** - `@iracedeck/rasterizer` ships bundled Arimo font files (`packages/rasterizer/fonts/`) that must be copied into `{sdPlugin}/assets/fonts/` at build time (a dedicated `generateBundle` copy step, same pattern as the per-action icon copy) so `createSvgRasterizer({ fontsDir })` can find them at runtime.
 
-Reference `iracing-plugin-stream-deck/rollup.config.mjs` for the correct configuration.
+All four are done once, in the factory (`packages/plugin-build/src/plugin-rollup.mjs`); reference it for the correct configuration.
 
 ### License and Third-Party Notices
 
-Every plugin artifact must ship the project `LICENSE` and the aggregated `THIRD-PARTY-LICENSES.md` at the sdPlugin root (issue #905): LICENSE §3/§5/§7 require the license text in every distributed copy, and several shipped components carry notice obligations of their own (the iRacing SDK's BSD-3-Clause notice, the MPL-2.0 source pointer for `@resvg/resvg-js`, the Lovely Sim Racing corner-data attribution). Both files are copied from the repo root by the `copy-license-files` `generateBundle` step in each plugin's `rollup.config.mjs` (same pattern as the rasterizer-fonts copy), and the copies are gitignored in each plugin package — new plugins must add both the copy step and the `.gitignore` entries.
+Every plugin artifact must ship the project `LICENSE` and the aggregated `THIRD-PARTY-LICENSES.md` at the sdPlugin root (issue #905): LICENSE §3/§5/§7 require the license text in every distributed copy, and several shipped components carry notice obligations of their own (the iRacing SDK's BSD-3-Clause notice, the MPL-2.0 source pointer for `@resvg/resvg-js`, the Lovely Sim Racing corner-data attribution). Both files are copied from the repo root by the `copy-license-files` `generateBundle` step in the shared factory (`@iracedeck/plugin-build`, same pattern as the rasterizer-fonts copy), and the copies are gitignored in each plugin package — a new plugin gets the copy step by calling the factory and adds only the `.gitignore` entries.
 
-When a shipped third-party dependency or vendored component is added or removed, update the repo-root `THIRD-PARTY-LICENSES.md` in the same change. `scripts/third-party-licenses.test.mjs` guards the wiring: every non-workspace rollup `external` must have an entry in the file, every plugin config must contain the copy step, and no `.sdignore` pattern may exclude the two files from the packed plugin.
+When a shipped third-party dependency or vendored component is added or removed, update the repo-root `THIRD-PARTY-LICENSES.md` in the same change. `scripts/third-party-licenses.test.mjs` guards the wiring: every non-workspace rollup `external` (`BASE_EXTERNALS` plus each plugin's `extraExternals`) must have an entry in the file, the factory must contain the copy step anchored on the repo root, every plugin config must call the factory and leave the copy to it, and no `.sdignore` pattern may exclude the two files from the packed plugin.
 
 ### Supported Operating Systems
 

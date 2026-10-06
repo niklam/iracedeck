@@ -13,7 +13,7 @@ Mirrors the structure of `@iracedeck/iracing-plugin-stream-deck` but targets Mir
 - Uses `ws` package for WebSocket communication (VSD bundles Node.js 20)
 - `SDKVersion: 2` instead of `3` (initially shipped as `1`, deliberately bumped to `2` in commit `51515173`)
 
-The PI framework setup (templates, partials, browser assets, rollup wiring) follows `.claude/rules/pi-templates.md`. Package-local specifics: generated PI HTML is stripped of the `lang="en"` attribute (`stripHtmlLangPlugin` in `rollup.config.mjs`) because VSD Craft does not accept it, and the plugin-level branding icons in `imgs/plugin/` are still copied from `iracing-plugin-stream-deck` until a dedicated branding package lands.
+The PI framework setup (templates, partials, browser assets, rollup wiring) follows `.claude/rules/pi-templates.md`. Package-local specifics: generated PI HTML is stripped of the `lang="en"` attribute (the factory option `stripHtmlLang: true` in `rollup.config.mjs`) because VSD Craft does not accept it, and the plugin-level branding icons in `imgs/plugin/` are still copied from `iracing-plugin-stream-deck` until a dedicated branding package lands.
 
 ## Manifest maintenance
 
@@ -25,7 +25,7 @@ The PI framework setup (templates, partials, browser assets, rollup wiring) foll
 pnpm build  # Rollup → com.iracedeck.sd.core.sdPlugin/bin/plugin.js, then npm install in bin/
 ```
 
-`pnpm build` is `rollup -c && pnpm run postbuild`; the `postbuild` step runs `npm install` inside `com.iracedeck.sd.core.sdPlugin/bin/` through `scripts/install-runtime-deps.mjs` (which drops the `npm_config_*` keys npm does not define first, #1205) to install the runtime dependencies of the emitted `package.json`. That emitted `package.json` is produced by `runtimePackageJsonPlugin` (`scripts/lib/runtime-deps.mjs`, #1177) from the config's `external` array: every third-party external — `ws` included — ships at the exact version the workspace `package.json` files declare, so bumping `ws` in the workspace is all a bump takes. It used to pin its own `ws` literal, which had fallen behind the workspace into a published advisory; the rollup config must never carry a version again, and `scripts/runtime-deps-guard.test.mjs` fails if it does.
+`pnpm build` is `rollup -c && pnpm run postbuild`; the `postbuild` step runs `npm install` inside `com.iracedeck.sd.core.sdPlugin/bin/` through `scripts/install-runtime-deps.mjs` (which drops the `npm_config_*` keys npm does not define first, #1205) to install the runtime dependencies of the emitted `package.json`. That emitted `package.json` is produced by `runtimePackageJsonPlugin` (`scripts/lib/runtime-deps.mjs`, #1177) from the shared factory's `external` list (`BASE_EXTERNALS` plus this config's `extraExternals: ["ws"]`): every third-party external — `ws` included — ships at the exact version the workspace `package.json` files declare, so bumping `ws` in the workspace is all a bump takes. It used to pin its own `ws` literal, which had fallen behind the workspace into a published advisory; neither this plugin's `rollup.config.mjs` nor the factory in `@iracedeck/plugin-build` may carry a version again, and `scripts/runtime-deps-guard.test.mjs` fails if it does.
 
 ## Packaging
 

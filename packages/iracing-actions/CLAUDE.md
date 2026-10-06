@@ -76,7 +76,7 @@ See `.claude/rules/stream-deck-actions.md` for the full requirements (UUID const
 
 ## Build
 
-This package has **no build step**. It exports raw TypeScript source. Consumer packages (e.g., `iracing-plugin-stream-deck`) bundle it via their Rollup config with `@rollup/plugin-typescript`.
+This package has **no build step**. It exports raw TypeScript source. Consumer packages (e.g., `iracing-plugin-stream-deck`) bundle it via their shared Rollup config (`@iracedeck/plugin-build`) with `@rollup/plugin-typescript`.
 
 The `iracing-plugin-stream-deck` Rollup config includes:
 - `resolve-actions-ts` plugin — resolves `.js` → `.ts` for relative imports within this package

@@ -35,8 +35,9 @@ Deck layer
 - `@iracedeck/deck-adapter-elgato`, `-mirabox`, `-ulanzi` — adapters from each host protocol to deck-core's `IDeckPlatformAdapter`. Each has its own `CLAUDE.md`.
 - `@iracedeck/iracing-actions` — every action, one folder each under `src/actions/<name>/` (`.ts`, test, `.ejs` PI, icons); imports from `@iracedeck/deck-core`, never `@elgato/streamdeck`. Has its own `CLAUDE.md`.
 - `@iracedeck/plugin-runtime` — the composition root the three plugins share (#1349): `startPlugin(host)` runs ten startup phases whose order a test pins, plus the shared action list (`src/actions.ts`). Raw TypeScript compiled by each plugin's Rollup. Has its own `CLAUDE.md`.
+- `@iracedeck/plugin-build` — the build-only package with `createPluginRollupConfig`, the shared Rollup config the three plugins pass their differences to (#1349). Has its own `CLAUDE.md`.
 - `@iracedeck/pi-components` — the shared Property Inspector framework: `ird-*` web components, EJS partials, the Rollup compile/inject plugins, vendored `sdpi-components.js`, and the three bridges. See `pi-templates.md` and `settings-window.md`.
-- `@iracedeck/iracing-plugin-stream-deck`, `-mirabox`, `-ulanzi` — the three plugins, each a shell (`src/plugin.ts`) that builds its adapter and calls `plugin-runtime`'s `startPlugin` (Ulanzi reuses the `com.iracedeck.sd.core` UUIDs verbatim). Each has its own `CLAUDE.md`; the Stream Deck one has the add-an-action walkthrough.
+- `@iracedeck/iracing-plugin-stream-deck`, `-mirabox`, `-ulanzi` — the three plugins, each a shell (`src/plugin.ts`) that builds its adapter and calls `plugin-runtime`'s `startPlugin`, and build through `@iracedeck/plugin-build` (Ulanzi reuses the `com.iracedeck.sd.core` UUIDs verbatim). Each has its own `CLAUDE.md`; the Stream Deck one has the add-an-action walkthrough.
 
 Website
 
