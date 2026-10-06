@@ -83,6 +83,15 @@ import type { RaceEngineerWiringDeps } from "./wire-race-engineer.js";
  * Takes no `overrides`: `wireRaceEngineer` applies them over what this
  * returns, so accepting them here would let a caller pass ones that do nothing.
  */
+/**
+ * A family gate: on unless the user turned that callout off. Each family's
+ * `*_CALLOUT_SETTING_KEYS` maps a callout id to its global-settings key, and an
+ * absent key counts as on (#1350 replaces these gates).
+ */
+function optIn<Id extends string>(keys: Readonly<Record<Id, string>>): (id: Id) => boolean {
+  return (id) => (getGlobalSettings() as Record<string, unknown>)[keys[id]] !== false;
+}
+
 export function buildPitCrewDeps(
   deps: Omit<RaceEngineerWiringDeps, "overrides">,
   caches: RaceEngineerCaches,
@@ -131,34 +140,25 @@ export function buildPitCrewDeps(
     // because `paceCar.deployed` / `paceCar.off` also fire at a rolling start),
     // and the episode that scopes the lineup change's memory of the car last
     // named to one caution (issue #1286).
-    getCautionCalloutEnabled: (id: CautionCalloutId) =>
-      (getGlobalSettings() as Record<string, unknown>)[CAUTION_CALLOUT_SETTING_KEYS[id]] !== false,
+    getCautionCalloutEnabled: optIn<CautionCalloutId>(CAUTION_CALLOUT_SETTING_KEYS),
     getCautionLineup: () => sim.getCautionLineup(),
     getUnderFullCourseCaution: () => sim.isUnderFullCourseCaution(),
     getCautionPhase: () => sim.getCautionPhase(),
     getCautionEpisode: () => sim.getCautionEpisode(),
-    getFlagCalloutEnabled: (id: FlagCalloutId) =>
-      (getGlobalSettings() as Record<string, unknown>)[FLAG_CALLOUT_SETTING_KEYS[id]] !== false,
+    getFlagCalloutEnabled: optIn<FlagCalloutId>(FLAG_CALLOUT_SETTING_KEYS),
     logger: logger.createScope("PitCrewScenarios"),
-    getPitReadbackEnabled: (id: PitReadbackCalloutId) =>
-      (getGlobalSettings() as Record<string, unknown>)[PIT_READBACK_CALLOUT_SETTING_KEYS[id]] !== false,
+    getPitReadbackEnabled: optIn<PitReadbackCalloutId>(PIT_READBACK_CALLOUT_SETTING_KEYS),
     getPitActionsAllowed: () => sim.isPitActionsAllowed(),
     getPitServiceRequestsEnabled: () =>
       (getGlobalSettings() as Record<string, unknown>).calloutEnabledPitServiceRequests !== false,
     getReadbackSnapshot: () => sim.getReadbackSnapshot(),
     // The tire wear report after a pit stop (issue #1108), read live.
-    getTireWearCalloutEnabled: (id: TireWearCalloutId) =>
-      (getGlobalSettings() as Record<string, unknown>)[TIRE_WEAR_CALLOUT_SETTING_KEYS[id]] !== false,
-    getDamageCalloutEnabled: (id: DamageCalloutId) =>
-      (getGlobalSettings() as Record<string, unknown>)[DAMAGE_CALLOUT_SETTING_KEYS[id]] !== false,
-    getPitStatusCalloutEnabled: (id: PitStatusCalloutId) =>
-      (getGlobalSettings() as Record<string, unknown>)[PIT_STATUS_CALLOUT_SETTING_KEYS[id]] !== false,
-    getTrackConditionsCalloutEnabled: (id: TrackConditionsCalloutId) =>
-      (getGlobalSettings() as Record<string, unknown>)[TRACK_CONDITIONS_CALLOUT_SETTING_KEYS[id]] !== false,
-    getIncidentCalloutEnabled: (id: IncidentCalloutId) =>
-      (getGlobalSettings() as Record<string, unknown>)[INCIDENT_CALLOUT_SETTING_KEYS[id]] !== false,
-    getSessionStartCalloutEnabled: (id: SessionStartCalloutId) =>
-      (getGlobalSettings() as Record<string, unknown>)[SESSION_START_CALLOUT_SETTING_KEYS[id]] !== false,
+    getTireWearCalloutEnabled: optIn<TireWearCalloutId>(TIRE_WEAR_CALLOUT_SETTING_KEYS),
+    getDamageCalloutEnabled: optIn<DamageCalloutId>(DAMAGE_CALLOUT_SETTING_KEYS),
+    getPitStatusCalloutEnabled: optIn<PitStatusCalloutId>(PIT_STATUS_CALLOUT_SETTING_KEYS),
+    getTrackConditionsCalloutEnabled: optIn<TrackConditionsCalloutId>(TRACK_CONDITIONS_CALLOUT_SETTING_KEYS),
+    getIncidentCalloutEnabled: optIn<IncidentCalloutId>(INCIDENT_CALLOUT_SETTING_KEYS),
+    getSessionStartCalloutEnabled: optIn<SessionStartCalloutId>(SESSION_START_CALLOUT_SETTING_KEYS),
     getSessionStartSnapshot: () => {
       const conditions = sim.getSessionStartConditions();
 
@@ -170,19 +170,16 @@ export function buildPitCrewDeps(
       // rest of the brief is not about the name (#1284).
       return { ...conditions, driverName: driverName ?? "driver" };
     },
-    getLapTimeCalloutEnabled: (id: LapTimeCalloutId) =>
-      (getGlobalSettings() as Record<string, unknown>)[LAP_TIME_CALLOUT_SETTING_KEYS[id]] !== false,
+    getLapTimeCalloutEnabled: optIn<LapTimeCalloutId>(LAP_TIME_CALLOUT_SETTING_KEYS),
     getLapCompletedSnapshot: () => caches.lapCompleted(),
-    getPositionCalloutEnabled: (id: PositionCalloutId) =>
-      (getGlobalSettings() as Record<string, unknown>)[POSITION_CALLOUT_SETTING_KEYS[id]] !== false,
-    getQualifyingInvalidationCalloutEnabled: (id: QualifyingInvalidationCalloutId) =>
-      (getGlobalSettings() as Record<string, unknown>)[QUALIFYING_INVALIDATION_CALLOUT_SETTING_KEYS[id]] !== false,
+    getPositionCalloutEnabled: optIn<PositionCalloutId>(POSITION_CALLOUT_SETTING_KEYS),
+    getQualifyingInvalidationCalloutEnabled: optIn<QualifyingInvalidationCalloutId>(
+      QUALIFYING_INVALIDATION_CALLOUT_SETTING_KEYS,
+    ),
     getQualifyingInvalidationSnapshot: () => sim.getQualifyingInvalidationSnapshot(),
-    getRaceStatusCalloutEnabled: (id: RaceStatusCalloutId) =>
-      (getGlobalSettings() as Record<string, unknown>)[RACE_STATUS_CALLOUT_SETTING_KEYS[id]] !== false,
+    getRaceStatusCalloutEnabled: optIn<RaceStatusCalloutId>(RACE_STATUS_CALLOUT_SETTING_KEYS),
     getRaceFinishedFired: () => sim.isRaceFinished(),
-    getRaceEndCalloutEnabled: (id: RaceEndCalloutId) =>
-      (getGlobalSettings() as Record<string, unknown>)[RACE_END_CALLOUT_SETTING_KEYS[id]] !== false,
+    getRaceEndCalloutEnabled: optIn<RaceEndCalloutId>(RACE_END_CALLOUT_SETTING_KEYS),
     getRaceFinishedSnapshot: (): RaceFinishedSnapshot | null => {
       const finished = caches.raceFinished();
 
@@ -192,8 +189,7 @@ export function buildPitCrewDeps(
 
       return driverName ? { ...finished, driverName } : null;
     },
-    getRaceStartCalloutEnabled: (id: RaceStartCalloutId) =>
-      (getGlobalSettings() as Record<string, unknown>)[RACE_START_CALLOUT_SETTING_KEYS[id]] !== false,
+    getRaceStartCalloutEnabled: optIn<RaceStartCalloutId>(RACE_START_CALLOUT_SETTING_KEYS),
     getRaceStartSnapshot: () => {
       const conditions = sim.getRaceStartConditions();
 
@@ -205,51 +201,36 @@ export function buildPitCrewDeps(
       // rest of the brief is not about the name (#1284).
       return { ...conditions, driverName: driverName ?? "driver" };
     },
-    getOvertakeCalloutEnabled: (id: OvertakeCalloutId) =>
-      (getGlobalSettings() as Record<string, unknown>)[OVERTAKE_CALLOUT_SETTING_KEYS[id]] !== false,
+    getOvertakeCalloutEnabled: optIn<OvertakeCalloutId>(OVERTAKE_CALLOUT_SETTING_KEYS),
     getOvertakeDriverName: () => resolveActiveDriverName(voice.driverNames, "driver"),
     getLivePosition: () => sim.getLivePosition(),
     getOvertakeGate: getOvertakeGate,
-    getPitBoxCalloutEnabled: (id: PitBoxCalloutId) =>
-      (getGlobalSettings() as Record<string, unknown>)[PIT_BOX_CALLOUT_SETTING_KEYS[id]] !== false,
-    getAutoFuelCalloutEnabled: (id: AutoFuelCalloutId) =>
-      (getGlobalSettings() as Record<string, unknown>)[AUTO_FUEL_CALLOUT_SETTING_KEYS[id]] !== false,
+    getPitBoxCalloutEnabled: optIn<PitBoxCalloutId>(PIT_BOX_CALLOUT_SETTING_KEYS),
+    getAutoFuelCalloutEnabled: optIn<AutoFuelCalloutId>(AUTO_FUEL_CALLOUT_SETTING_KEYS),
     getSetupWarningMismatch: (kind) =>
       evaluateSetupWarning(kind, getGlobalSettings() as Record<string, unknown>, sim.getDriverSetupName()),
-    getSpotterCalloutEnabled: (id: SpotterCalloutId) =>
-      (getGlobalSettings() as Record<string, unknown>)[SPOTTER_CALLOUT_SETTING_KEYS[id]] !== false,
+    getSpotterCalloutEnabled: optIn<SpotterCalloutId>(SPOTTER_CALLOUT_SETTING_KEYS),
     getSpotterTrackDirection: () => sim.getTrackDirection(),
     getSpotterStillThereIntervalMs: () =>
       resolveStillThereIntervalMs((getGlobalSettings() as Record<string, unknown>)[SPOTTER_STILL_THERE_SECONDS_KEY]),
     getSpotterNearestCarGapMeters: () => sim.getNearestCarGapMeters(),
-    getPitWindowCalloutEnabled: (id: PitWindowCalloutId) =>
-      (getGlobalSettings() as Record<string, unknown>)[PIT_WINDOW_CALLOUT_SETTING_KEYS[id]] !== false,
-    getRollingStartCalloutEnabled: (id: RollingStartCalloutId) =>
-      (getGlobalSettings() as Record<string, unknown>)[ROLLING_START_CALLOUT_SETTING_KEYS[id]] !== false,
-    getStartLightCalloutEnabled: (id: StartLightCalloutId) =>
-      (getGlobalSettings() as Record<string, unknown>)[START_LIGHT_CALLOUT_SETTING_KEYS[id]] !== false,
-    getFuelCalloutEnabled: (id: FuelCalloutId) =>
-      (getGlobalSettings() as Record<string, unknown>)[FUEL_CALLOUT_SETTING_KEYS[id]] !== false,
-    getCornerNameCalloutEnabled: (id: CornerNameCalloutId) =>
-      (getGlobalSettings() as Record<string, unknown>)[CORNER_NAME_CALLOUT_SETTING_KEYS[id]] !== false,
+    getPitWindowCalloutEnabled: optIn<PitWindowCalloutId>(PIT_WINDOW_CALLOUT_SETTING_KEYS),
+    getRollingStartCalloutEnabled: optIn<RollingStartCalloutId>(ROLLING_START_CALLOUT_SETTING_KEYS),
+    getStartLightCalloutEnabled: optIn<StartLightCalloutId>(START_LIGHT_CALLOUT_SETTING_KEYS),
+    getFuelCalloutEnabled: optIn<FuelCalloutId>(FUEL_CALLOUT_SETTING_KEYS),
+    getCornerNameCalloutEnabled: optIn<CornerNameCalloutId>(CORNER_NAME_CALLOUT_SETTING_KEYS),
     getCornerNameSnapshot: () => caches.cornerName(),
-    getOpponentPitCalloutEnabled: (id: OpponentPitCalloutId) =>
-      (getGlobalSettings() as Record<string, unknown>)[OPPONENT_PIT_CALLOUT_SETTING_KEYS[id]] !== false,
+    getOpponentPitCalloutEnabled: optIn<OpponentPitCalloutId>(OPPONENT_PIT_CALLOUT_SETTING_KEYS),
     getOpponentPitLivePosition: resolvePendingCarLivePosition,
-    getGapCalloutEnabled: (id: GapCalloutId) =>
-      (getGlobalSettings() as Record<string, unknown>)[GAP_CALLOUT_SETTING_KEYS[id]] !== false,
+    getGapCalloutEnabled: optIn<GapCalloutId>(GAP_CALLOUT_SETTING_KEYS),
     getGapCooldownMs: () =>
       resolveGapCooldownMs((getGlobalSettings() as Record<string, unknown>).gapCalloutCooldownSeconds),
     getLiveGaps: () => sim.getLiveGaps(),
-    getOpponentFlagCalloutEnabled: (id: OpponentFlagCalloutId) =>
-      (getGlobalSettings() as Record<string, unknown>)[OPPONENT_FLAG_CALLOUT_SETTING_KEYS[id]] !== false,
+    getOpponentFlagCalloutEnabled: optIn<OpponentFlagCalloutId>(OPPONENT_FLAG_CALLOUT_SETTING_KEYS),
     getOpponentFlagLivePosition: resolvePendingCarLivePosition,
-    getPitSpeedingCalloutEnabled: (id: PitSpeedingCalloutId) =>
-      (getGlobalSettings() as Record<string, unknown>)[PIT_SPEEDING_CALLOUT_SETTING_KEYS[id]] !== false,
-    getPitLimiterCalloutEnabled: (id: PitLimiterCalloutId) =>
-      (getGlobalSettings() as Record<string, unknown>)[PIT_LIMITER_CALLOUT_SETTING_KEYS[id]] !== false,
-    getNoLimiterCalloutEnabled: (id: NoLimiterCalloutId) =>
-      (getGlobalSettings() as Record<string, unknown>)[NO_LIMITER_CALLOUT_SETTING_KEYS[id]] !== false,
+    getPitSpeedingCalloutEnabled: optIn<PitSpeedingCalloutId>(PIT_SPEEDING_CALLOUT_SETTING_KEYS),
+    getPitLimiterCalloutEnabled: optIn<PitLimiterCalloutId>(PIT_LIMITER_CALLOUT_SETTING_KEYS),
+    getNoLimiterCalloutEnabled: optIn<NoLimiterCalloutId>(NO_LIMITER_CALLOUT_SETTING_KEYS),
     getRaceEngineerMasterEnabled: () =>
       (getGlobalSettings() as Record<string, unknown>).pitCrewRaceEngineerEnabled === true,
     getRadarMasterEnabled: () => (getGlobalSettings() as Record<string, unknown>).pitCrewRadarEnabled === true,

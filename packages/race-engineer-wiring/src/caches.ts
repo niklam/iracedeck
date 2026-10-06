@@ -26,7 +26,7 @@ export function subscribeRaceEngineerCaches(bus: IEventBus, logger: ILogger): Ra
   // Cache the most recent `lap.completed` payload so the lap-time scenario's
   // var resolvers can read frozen lap data at fire time (issue #555).
   // Subscribed BEFORE `registerPitCrew` (which subscribes the scenario engine
-  // to the same event via `defineScenario`) so this listener runs first and
+  // to the same event via `defineContract`) so this listener runs first and
   // the cache is up-to-date by the time the scenario evaluates its
   // `where:` predicate. The 2 000 ms initial pause in the scenario sequence
   // further guarantees the cache is populated by the time the var resolvers
