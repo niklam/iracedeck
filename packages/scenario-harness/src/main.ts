@@ -9,12 +9,7 @@
  */
 import { processAndCopyAudioAssets, wipeProcessedCache } from "@iracedeck/audio-assets/build";
 import { AudioNative } from "@iracedeck/audio-native";
-import {
-  type FrameOptions,
-  getScenarioEngine,
-  initializeAudioScenarios,
-  scanRaceEngineerVoices,
-} from "@iracedeck/audio-scenarios";
+import { type FrameOptions, getScenarioEngine, initializeAudioScenarios } from "@iracedeck/audio-scenarios";
 import { setRadarEnabled } from "@iracedeck/audio-scenarios/pit-crew";
 import { AudioBus, initializeAudio } from "@iracedeck/audio-service";
 import {
@@ -30,7 +25,6 @@ import {
 import { initializeEventBus } from "@iracedeck/event-bus";
 import type { SDKController } from "@iracedeck/iracing-sdk";
 import { createConsoleLogger, LogLevel } from "@iracedeck/logger";
-import { createIracingSimRuntime, wireRaceEngineer } from "@iracedeck/race-engineer-wiring";
 import { initializeSimEventsIracing } from "@iracedeck/sim-events-iracing";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -38,7 +32,7 @@ import { fileURLToPath } from "node:url";
 import { getAudioAssetsManifest, seedGlobalSettings } from "./bootstrap-settings.js";
 import { MockPlatformAdapter } from "./mock-platform-adapter.js";
 import { MockSDKController } from "./mock-sdk-controller.js";
-import { harnessRaceEngineerOverrides } from "./race-engineer-overrides.js";
+import { applyMergedManifest, type HarnessVoiceState, wireHarnessRaceEngineer } from "./race-engineer-wiring.js";
 import { DEFAULT_HOST, DEFAULT_PORT, startServer } from "./server.js";
 import { loadBundledVoiceScripts, loadInstalledVoiceScripts, reloadVoiceScripts } from "./voice-scripts.js";
 
@@ -101,10 +95,10 @@ async function main(): Promise<void> {
   // `<pack>::<voice>` ids (#1144), so a downloaded `default` there is a second,
   // distinct voice — `default::default` beside the source tree's `default` —
   // each playing only its own clips.
-  const { raceEngineerVoices: publishedVoices, driverNames } = seedGlobalSettings(adapter);
-  // A `let`, like the plugins' `raceEngineerVoices`: an installed voice pack
-  // (below) extends the list after the engine is constructed.
-  let raceEngineerVoices: readonly string[] = publishedVoices;
+  // Mutable, like the plugins' voice-pack state: an installed voice pack
+  // (below) extends both lists after the engine is constructed, and the
+  // engine's voice resolver and the Race Engineer wiring read them live.
+  const voices: HarnessVoiceState = seedGlobalSettings(adapter);
 
   // The radio frame's two opt-outs (#1064), read live at frame expansion from
   // the same global-settings cache the plugins read, through the same
@@ -121,7 +115,7 @@ async function main(): Promise<void> {
     // The plugins' own resolver. A stored bare id that is itself in the list —
     // the source tree's `default` — is taken as it is, so it stays pickable
     // beside an installed `default::default` (#1144).
-    () => resolveActiveRaceEngineerVoice(raceEngineerVoices),
+    () => resolveActiveRaceEngineerVoice(voices.raceEngineerVoices),
     getFrameOptions,
   );
 
@@ -130,12 +124,7 @@ async function main(): Promise<void> {
   // Settings come from the seeded memory store below, every gate on; the three
   // snapshot stubs are the only overrides, so a dependency can no longer be
   // missing here.
-  wireRaceEngineer(eventBus, {
-    logger: logger.createScope("RaceEngineer"),
-    sim: createIracingSimRuntime(),
-    voice: { driverNames },
-    overrides: harnessRaceEngineerOverrides(),
-  });
+  wireHarnessRaceEngineer(eventBus, logger, voices);
 
   // ── Callout scripts (#1064) ──────────────────────────────────────────────
   // AFTER `wireRaceEngineer`, never before: `setScripts` compiles eagerly
@@ -152,9 +141,11 @@ async function main(): Promise<void> {
   // scanner over the real file system, so a sideloaded or downloaded pack's
   // clips and script load exactly as they do in a plugin. The scan hands the
   // engine the merged manifest and the merged script map in the plugins'
-  // order (roots, manifest, scripts), and the voice list grows with it — the
-  // seed below is re-issued so the UI's Voice dropdown offers the pack's
-  // voices too. Without the variable the harness is the bundled voice alone.
+  // order (roots, manifest, scripts), and the voice and driver-name lists grow
+  // with it, rescanned from the merged manifest as the plugins do — the seed
+  // below is re-issued so the UI's Voice and Driver Name dropdowns offer the
+  // pack's entries too. Without the variable the harness is the bundled voice
+  // alone.
   const voicePacksRoot = process.env.IRACEDECK_VOICE_PACKS_PATH;
   // Kept for the UI's Reload: with a service the reload is its refresh.
   let voicePacks: VoicePackService | null = null;
@@ -172,7 +163,7 @@ async function main(): Promise<void> {
       logger: voicePacksLogger,
       applyRoots: (roots) => audio.setRoots(roots),
       applyManifest: (merged) => {
-        raceEngineerVoices = scanRaceEngineerVoices(merged);
+        applyMergedManifest(voices, merged);
         engine.setManifest(merged);
       },
       applyScripts: (scripts) => engine.setScripts(scripts),
@@ -180,7 +171,8 @@ async function main(): Promise<void> {
 
     adapter.setGlobalSettings({
       ...adapter.readSettings(),
-      _raceEngineerVoices: JSON.stringify(raceEngineerVoices),
+      _raceEngineerVoices: JSON.stringify(voices.raceEngineerVoices),
+      _driverNames: JSON.stringify(voices.driverNames),
       _voiceLabels: JSON.stringify(voiceDisplayLabels(voicePacks.installed())),
     });
   }
