@@ -156,7 +156,7 @@ flowchart LR
   win["Settings window<br/>(browser --app=, same sdpi-components<br/>+ settings-window-bridge)"]:::ext
   srv["deck-core<br/>settings-window server<br/>loopback · token · Origin/cookie<br/>(runs for the plugin's lifetime)"]:::core
   gs["deck-core<br/>global-settings<br/>(single writer)"]:::core
-  boot["plugin.ts<br/>store-ready startup block"]:::core
+  boot["plugin-runtime initSettings<br/>store-ready startup block"]:::core
   store["SettingsStore<br/>global-settings.json<br/>(per ecosystem, under LOCALAPPDATA)"]:::core
   core(["IDeckPlatformAdapter — SEAM 2"]):::seam
   host["deck host store"]:::ext
@@ -185,20 +185,20 @@ flowchart LR
   classDef core fill:#2d7dd2,color:#fff,stroke:#1f5793;
 ```
 
-The window is the PI framework re-hosted: the same `sdpi-components.js`, `pi-components.js`, and `global-*.ejs` partials, talking to a **fake host** inside the plugin that speaks the global-settings subset of the Elgato PI protocol. Anything the plugin does on the window's behalf — persist its bounds, switch a deck's profile, play an audio preview, reveal the settings file in Explorer, answer SimHub reachability (a direct fetch from the window's origin is cross-origin) — arrives as a `sendToPlugin` command and is validated in `deck-core`. The same cross-origin constraint gives the window's What's New tab its one runtime (#1016): the plugin fetches the changelog artifact the website publishes, keeps only the dated releases newer than the running build, sanitizes their bullets to a four-tag allow-list, and serves the verdict at `GET /updates/status` — cached for an hour, gated on a setting, and silent about every failure, so the compiled-in release notes never depend on it. That is the only request the plugin makes to anything but iRacing and SimHub. The page is opened as a chromeless app window in a Chromium browser with a dedicated profile, and closes itself when its socket to the plugin dies. The server is no longer started on demand: it comes up from the plugin's store-ready startup block and stays up, so its address is known before any UI asks for it — and that same block, in each plugin's `plugin.ts` rather than `deck-core`'s global-settings module, is what mirrors the store, plus the server's `_settingsChannel`, to the deck host for the PIs to bootstrap from — the channel itself is never persisted in the plugin's own file. If the settings file can't be read, the block never runs: no server, no channel.
+The window is the PI framework re-hosted: the same `sdpi-components.js`, `pi-components.js`, and `global-*.ejs` partials, talking to a **fake host** inside the plugin that speaks the global-settings subset of the Elgato PI protocol. Anything the plugin does on the window's behalf — persist its bounds, switch a deck's profile, play an audio preview, reveal the settings file in Explorer, answer SimHub reachability (a direct fetch from the window's origin is cross-origin) — arrives as a `sendToPlugin` command and is validated in `deck-core`. The same cross-origin constraint gives the window's What's New tab its one runtime (#1016): the plugin fetches the changelog artifact the website publishes, keeps only the dated releases newer than the running build, sanitizes their bullets to a four-tag allow-list, and serves the verdict at `GET /updates/status` — cached for an hour, gated on a setting, and silent about every failure, so the compiled-in release notes never depend on it. That is the only request the plugin makes to anything but iRacing and SimHub. The page is opened as a chromeless app window in a Chromium browser with a dedicated profile, and closes itself when its socket to the plugin dies. The server is no longer started on demand: it comes up from the plugin's store-ready startup block and stays up, so its address is known before any UI asks for it — and that same block, in `plugin-runtime`'s settings phase rather than `deck-core`'s global-settings module, is what mirrors the store, plus the server's `_settingsChannel`, to the deck host for the PIs to bootstrap from — the channel itself is never persisted in the plugin's own file. If the settings file can't be read, the block never runs: no server, no channel.
 
 Property Inspectors reach the same server through a bridge script the build injects ahead of `sdpi-components.js` (`pi-settings-bridge.js` on Elgato and Mirabox, the Ulanzi PI bridge on Ulanzi). Both run one shared state machine: when the PI's host socket opens it makes a single plain `getGlobalSettings` read, takes `_settingsChannel` out of the answer, opens the loopback socket, and from then on global-settings frames go to the plugin and the plugin's pushes go to sdpi — the host's are dropped, because the file is truth. Everything else a PI does (per-action settings, `sendToPlugin`, `openUrl`) still goes to the deck host untouched. If there is no channel, the socket is refused, or a phase doesn't settle within three seconds, the PI falls back to the host path with a console warning — it keeps displaying and per-action settings keep working, but global-settings edits made there stay in the deck host's copy, which the plugin no longer reads; a later push carrying a channel it hasn't tried switches it over. So the loopback server is the one writer's front door for every surface, and the guard that protects it accepts a valid token whatever the request's `Origin` — Property Inspectors are `file://` or host-served pages — while a token-less request must still match the loopback origin before its `SameSite=Strict` cookie counts. Details, security model, and rules: `.claude/rules/settings-window.md` and `.claude/rules/global-settings.md`.
 
 ## The replay record
 
-Since #1162 and #1203 the plugin also keeps a small record of its own for each session it sees: the **replay session store** in `deck-core`, one JSON file per `SubSessionID` under `%LOCALAPPDATA%\iRaceDeck\Replay\<Stream Deck | Mirabox | Ulanzi>\`. It has two sections, the user's replay **markers** and the **lap record** — the replay frame at which every car started every lap, and each lap's time — and it is what lets a saved replay opened days later find both again, because the `.rpy` reports the same `SubSessionID` as the live session. It is fed from two directions. A subscriber each `plugin.ts` wires onto the SDK controller opens the store's record whenever the session identity first appears or changes, live or in a replay, and closes it when the SDK disconnects; it knows nothing about what happens inside a session. What happens inside — a car crossing the line, a lap time being posted — is the translator's to detect like any other sim fact, so `sim-events-iracing`'s replay-laps diff publishes `replay.lapStarted` and `replay.lapTimed`, and each `plugin.ts` subscribes to them and hands them to the store, which drops an event for any session but the open one. The actions then read the store synchronously: Replay Markers adds, deletes and walks its markers, and Replay Control's Jump to Fastest Lap looks up the recorded frame before it falls back to searching the replay. Both read the current replay position through `iracing-sdk`'s `resolveReplayFrame`, the one place that knows how to turn telemetry into a frame. Writes are debounced and atomic like the settings store's, with the same synchronous flush on exit; an offline session, which has no `SubSessionID`, is kept in memory only, a corrupt file is moved aside before a fresh one is written, and a file that cannot be read at all is never written over. The folder is per ecosystem because each plugin process holds a whole copy of the session's record and writes it back whole, so two deck hosts running at once on one file would overwrite each other's changes; a merge-on-write was rejected because it would bring back markers the other host had deleted.
+Since #1162 and #1203 the plugin also keeps a small record of its own for each session it sees: the **replay session store** in `deck-core`, one JSON file per `SubSessionID` under `%LOCALAPPDATA%\iRaceDeck\Replay\<Stream Deck | Mirabox | Ulanzi>\`. It has two sections, the user's replay **markers** and the **lap record** — the replay frame at which every car started every lap, and each lap's time — and it is what lets a saved replay opened days later find both again, because the `.rpy` reports the same `SubSessionID` as the live session. It is fed from two directions. A subscriber the shared bootstrap wires onto the SDK controller opens the store's record whenever the session identity first appears or changes, live or in a replay, and closes it when the SDK disconnects; it knows nothing about what happens inside a session. What happens inside — a car crossing the line, a lap time being posted — is the translator's to detect like any other sim fact, so `sim-events-iracing`'s replay-laps diff publishes `replay.lapStarted` and `replay.lapTimed`, and the bootstrap's settings phase subscribes to them and hands them to the store, which drops an event for any session but the open one. The actions then read the store synchronously: Replay Markers adds, deletes and walks its markers, and Replay Control's Jump to Fastest Lap looks up the recorded frame before it falls back to searching the replay. Both read the current replay position through `iracing-sdk`'s `resolveReplayFrame`, the one place that knows how to turn telemetry into a frame. Writes are debounced and atomic like the settings store's, with the same synchronous flush on exit; an offline session, which has no `SubSessionID`, is kept in memory only, a corrupt file is moved aside before a fresh one is written, and a file that cannot be read at all is never written over. The folder is per ecosystem because each plugin process holds a whole copy of the session's record and writes it back whole, so two deck hosts running at once on one file would overwrite each other's changes; a merge-on-write was rejected because it would bring back markers the other host had deleted.
 
 ```mermaid
 flowchart LR
   sdk["iracing-sdk<br/>sdkController"]:::sim
   trans["sim-events-iracing<br/>replay-laps diff"]:::sim
   bus(["event-bus<br/>SEAM 1"]):::seam
-  plugin["plugin.ts<br/>session subscriber + lap subscriptions"]:::core
+  plugin["plugin-runtime<br/>session subscriber + lap subscriptions"]:::core
   store["deck-core<br/>replay session store<br/>markers · laps"]:::core
   file["session_&lt;SubSessionID&gt;.json<br/>(per ecosystem, under LOCALAPPDATA)"]:::ext
   actions["iracing-actions<br/>Replay Markers · Replay Control"]:::core
@@ -262,16 +262,53 @@ flowchart TB
   classDef audio fill:#2e9e5b,color:#fff,stroke:#1f6e40;
 ```
 
+## Startup: one composition root
+
+Every plugin starts the same way (#1349). Its `plugin.ts` is a shell: it builds its host's adapter — and on Stream Deck a `PluginExtension` for what only that host has (bundled profiles, the connected-deck list, the device type) — and calls `plugin-runtime`'s `startPlugin`, which runs ten synchronous phases in a fixed order. Each phase takes what it needs from the earlier ones as arguments, so it cannot run before that exists; an order test pins the rest.
+
+```mermaid
+flowchart TB
+  shell["plugin.ts — the shell<br/>adapter + optional PluginExtension"]:::plugin
+  p1["1 · initCore<br/>config · log level · watchdog · SDK · event bus"]:::core
+  p2["2 · initSim<br/>the sim translator"]:::sim
+  p3["3 · initInput<br/>keyboard · clipboard · rasterizer"]:::core
+  p4["4 · initAudio"]:::audio
+  p5["5 · initVoicePacks"]:::audio
+  p6["6 · initRaceEngineer<br/>scenario engine + race-engineer-wiring"]:::audio
+  p7["7 · initSettings<br/>stores · settings window · store-ready block"]:::core
+  p8["8 · registerActions<br/>shared list + the extension's extras"]:::core
+  p9["9 · startServices<br/>global settings · launch step · SimHub · app monitor"]:::core
+  p10(["10 · adapter.connect()<br/>IDeckPlatformAdapter — SEAM 2"]):::seam
+  bus(["event-bus<br/>SEAM 1"]):::seam
+
+  shell -->|"startPlugin(host)"| p1
+  p1 --> p2 --> p3 --> p4 --> p5 --> p6 --> p7 --> p8 --> p9 --> p10
+  p2 -->|"publishes"| bus
+  p2 -.->|"SimRuntime"| p6
+
+  classDef sim fill:#d9822b,color:#fff,stroke:#9c5e1f;
+  classDef seam fill:#8e44ad,color:#fff,stroke:#5e2d73,stroke-width:3px;
+  classDef core fill:#2d7dd2,color:#fff,stroke:#1f5793;
+  classDef audio fill:#2e9e5b,color:#fff,stroke:#1f6e40;
+  classDef plugin fill:#596775,color:#fff,stroke:#3c4651;
+```
+
+Solid arrows are call order; the dashed one is the one handoff worth naming. `initSim` is the only phase that knows which sim is running: it starts `sim-events-iracing` on the bus and returns a `SimRuntime` — the translator's query side as one object (live positions and gaps, the caution phase and lineup, the overtake gate, …) — which the Race Engineer phase hands to `race-engineer-wiring`. That package builds the bus caches the engine's conditions read and every dependency `registerPitCrew` takes, in one place the scenario harness will share. A second sim would replace what `initSim` starts and what its `SimRuntime` answers; today that runtime is still iRacing-shaped (#1351). Host differences arrive only through the adapter (`setLogLevel`, `logLocation`, `openUrl`, `onOpenSettingsRequest`) or the extension, never by testing for a host name. The phases and the orderings inside them are listed in `.claude/rules/plugin-structure.md`.
+
 ## Package dependency map
 
 The diagrams above show **runtime flow**. This one shows something different: **build-time imports** — which package depends on which. Read the arrows as "imports." They point *downward*, toward the foundation.
 
 ```mermaid
 flowchart TB
-  subgraph plugins["Plugins — compose everything"]
+  subgraph plugins["Plugins — shells over the shared bootstrap"]
     psd["iracing-plugin-stream-deck"]:::plugin
     pmb["iracing-plugin-mirabox"]:::plugin
     pul["iracing-plugin-ulanzi"]:::plugin
+  end
+  subgraph boot["Shared bootstrap"]
+    prt["plugin-runtime"]:::core
+    rew["race-engineer-wiring"]:::audio
   end
   subgraph adapters["Device adapters"]
     aelg["deck-adapter-elgato"]:::adp
@@ -306,15 +343,21 @@ flowchart TB
   psd --> aelg
   pmb --> amb
   pul --> aul
-  psd --> acts
-  pmb --> acts
-  pul --> acts
+  psd --> prt
+  pmb --> prt
+  pul --> prt
   psd --> pic
   pmb --> pic
   pul --> pic
-  psd --> rast
-  pmb --> rast
-  pul --> rast
+
+  prt --> acts
+  prt --> rew
+  prt --> dc
+  prt --> rast
+  rew --> dc
+  rew --> asc
+  rew --> sei
+  rew --> eb
 
   aelg --> dc
   amb --> dc
@@ -351,7 +394,7 @@ flowchart TB
   classDef plugin fill:#596775,color:#fff,stroke:#3c4651;
 ```
 
-To keep this readable, `@iracedeck/logger` (imported by nearly every package) and a few cross-cutting edges are omitted — the three plugins also pull in the audio stack, `event-bus`, and `sim-events-iracing` directly. The shape that matters: `deck-core` is the hub the device adapters share, and the foundation packages at the bottom depend on nothing internal. `rasterizer` is a foundation package too (it wraps `@resvg/resvg-js` and has no internal iRaceDeck dependencies), but note the arrow direction: each **plugin** imports it and injects a render function into `deck-core`'s rasterizer service at startup (`initializeRasterizer(...)`, gated by the `pngRasterization` feature flag) — `deck-core` itself never imports `rasterizer`, so there's deliberately no `deck-core → rasterizer` edge here. `callout-script` (#1064) is the other foundation package with more than one importer above it: the voice-pack format — the script grammar and its parser, and since #1134 the `voice-pack.json` schema and the rules a pack is admitted by — with `zod` as its only dependency, imported by `audio-scenarios` (to compile a script against the contracts, and for `lint:pack` to judge a pack by the scanner's own rules), by `deck-core` (to admit a pack and its scripts while scanning), and — the dashed edge, a devDependency — by `audio-assets`, whose generator extracts the committed `voice/<id>/callouts.json` from the authored voice config and validates it with the same parser. It is a separate package precisely so those three never have to import each other: `deck-core` must not depend on the Race Engineer to validate a file. The dashed `pi-components → deck-core` edge is the one import the Property Inspector's browser bundle makes from `deck-core` (#1277): the key map and default-binding parser in `key-binding-defaults.ts`, a dependency-free module published on its own subpath (`@iracedeck/deck-core/key-binding-defaults`), so the binding field and the plugin's startup binding seed share one parser without the browser bundle ever reaching the `deck-core` barrel and its Node code. The bundle's build refuses any other `deck-core` import.
+To keep this readable, `@iracedeck/logger` (imported by nearly every package) and a few cross-cutting edges are omitted — `plugin-runtime` also pulls in the audio stack, `event-bus`, and `sim-events-iracing` directly; each plugin imports only its adapter and `plugin-runtime` (and `pi-components` at build time, for its Property Inspectors). The shape that matters: `deck-core` is the hub the device adapters share, and the foundation packages at the bottom depend on nothing internal. `rasterizer` is a foundation package too (it wraps `@resvg/resvg-js` and has no internal iRaceDeck dependencies), but note the arrow direction: **`plugin-runtime`** imports it and injects a render function into `deck-core`'s rasterizer service at startup (`initializeRasterizer(...)`, gated by the `pngRasterization` feature flag) — `deck-core` itself never imports `rasterizer`, so there's deliberately no `deck-core → rasterizer` edge here. `callout-script` (#1064) is the other foundation package with more than one importer above it: the voice-pack format — the script grammar and its parser, and since #1134 the `voice-pack.json` schema and the rules a pack is admitted by — with `zod` as its only dependency, imported by `audio-scenarios` (to compile a script against the contracts, and for `lint:pack` to judge a pack by the scanner's own rules), by `deck-core` (to admit a pack and its scripts while scanning), and — the dashed edge, a devDependency — by `audio-assets`, whose generator extracts the committed `voice/<id>/callouts.json` from the authored voice config and validates it with the same parser. It is a separate package precisely so those three never have to import each other: `deck-core` must not depend on the Race Engineer to validate a file. The dashed `pi-components → deck-core` edge is the one import the Property Inspector's browser bundle makes from `deck-core` (#1277): the key map and default-binding parser in `key-binding-defaults.ts`, a dependency-free module published on its own subpath (`@iracedeck/deck-core/key-binding-defaults`), so the binding field and the plugin's startup binding seed share one parser without the browser bundle ever reaching the `deck-core` barrel and its Node code. The bundle's build refuses any other `deck-core` import.
 
 ## Seams & where the abstraction leaks
 
