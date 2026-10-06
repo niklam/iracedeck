@@ -15,12 +15,7 @@ import {
   initializeAudioScenarios,
   scanRaceEngineerVoices,
 } from "@iracedeck/audio-scenarios";
-import {
-  type CornerNameSnapshot,
-  type LapCompletedSnapshot,
-  registerPitCrew,
-  setRadarEnabled,
-} from "@iracedeck/audio-scenarios/pit-crew";
+import { setRadarEnabled } from "@iracedeck/audio-scenarios/pit-crew";
 import { AudioBus, initializeAudio } from "@iracedeck/audio-service";
 import {
   createMemorySettingsStore,
@@ -35,27 +30,16 @@ import {
 import { initializeEventBus } from "@iracedeck/event-bus";
 import type { SDKController } from "@iracedeck/iracing-sdk";
 import { createConsoleLogger, LogLevel } from "@iracedeck/logger";
-import {
-  getCautionEpisode,
-  getCautionLineup,
-  getCautionPhase,
-  getLiveGaps,
-  getLivePosition,
-  getReadbackSnapshot,
-  initializeSimEventsIracing,
-  isPitActionsAllowed,
-  isUnderFullCourseCaution,
-} from "@iracedeck/sim-events-iracing";
+import { createIracingSimRuntime, wireRaceEngineer } from "@iracedeck/race-engineer-wiring";
+import { initializeSimEventsIracing } from "@iracedeck/sim-events-iracing";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { getAudioAssetsManifest, seedGlobalSettings } from "./bootstrap-settings.js";
 import { MockPlatformAdapter } from "./mock-platform-adapter.js";
 import { MockSDKController } from "./mock-sdk-controller.js";
-import { getHarnessQualifyingInvalidationSnapshot } from "./qualifying-invalidation-snapshot.js";
-import { getHarnessRaceStartSnapshot } from "./race-start-snapshot.js";
+import { harnessRaceEngineerOverrides } from "./race-engineer-overrides.js";
 import { DEFAULT_HOST, DEFAULT_PORT, startServer } from "./server.js";
-import { getHarnessSessionStartSnapshot } from "./session-start-snapshot.js";
 import { loadBundledVoiceScripts, loadInstalledVoiceScripts, reloadVoiceScripts } from "./voice-scripts.js";
 
 /**
@@ -117,7 +101,7 @@ async function main(): Promise<void> {
   // `<pack>::<voice>` ids (#1144), so a downloaded `default` there is a second,
   // distinct voice — `default::default` beside the source tree's `default` —
   // each playing only its own clips.
-  const { raceEngineerVoices: publishedVoices } = seedGlobalSettings(adapter);
+  const { raceEngineerVoices: publishedVoices, driverNames } = seedGlobalSettings(adapter);
   // A `let`, like the plugins' `raceEngineerVoices`: an installed voice pack
   // (below) extends the list after the engine is constructed.
   let raceEngineerVoices: readonly string[] = publishedVoices;
@@ -141,79 +125,20 @@ async function main(): Promise<void> {
     getFrameOptions,
   );
 
-  // Cache the most recent `lap.completed` payload so the lap-time scenario's
-  // var resolvers can read frozen lap data at fire time (issue #555). Mirrors
-  // the production plugin pattern — subscribed BEFORE `registerPitCrew` so
-  // this listener runs before the scenario engine's, guaranteeing the cache
-  // is up-to-date by the time the scenario evaluates its `where:` predicate.
-  let lastLapCompleted: LapCompletedSnapshot | null = null;
-  eventBus.subscribe("lap.completed", (ev) => {
-    lastLapCompleted = ev.data;
-  });
-
-  // Cache the most recent `cornerName.approaching` payload so the corner-name
-  // scenario's clip resolver can read it at fire time (issue #888). Same
-  // subscribe-before-registerPitCrew ordering as the lap-time cache above.
-  let lastCornerName: CornerNameSnapshot | null = null;
-  eventBus.subscribe("cornerName.approaching", (ev) => {
-    lastCornerName = ev.data;
-  });
-
-  // Wire the resolvers the harness needs to audition callouts against a real
-  // translator: the pit-action cooldown, so it sees the same suppression
-  // window the production plugins do; and the snapshot resolvers each composer
-  // reads at fire time — readback so deferred replays speak the current queue
-  // (issue #481), session-start (issue #542), lap-time for the best-lap call
-  // (issue #555), qualifying-invalidation, race-start, and corner-name
-  // (issue #888).
-  //
-  // Every other dep keeps its `DEFAULT_DEPS` entry. That includes both master
-  // gates: the harness seeds no `calloutEnabled*` settings and wants
-  // everything audible, so their `() => true` defaults are the point rather
-  // than an omission.
-  registerPitCrew(eventBus, {
-    getPitActionsAllowed: () => isPitActionsAllowed(),
-    getReadbackSnapshot: () => getReadbackSnapshot(),
-    getSessionStartSnapshot: () => getHarnessSessionStartSnapshot(),
-    getLapCompletedSnapshot: () => lastLapCompleted,
-    getQualifyingInvalidationSnapshot: () => getHarnessQualifyingInvalidationSnapshot(),
-    getRaceStartSnapshot: () => getHarnessRaceStartSnapshot(),
-    getCornerNameSnapshot: () => lastCornerName,
-    // The harness boots the REAL translator, so its live gaps are the real
-    // ones — wiring them here is what lets the spoken "gap is N seconds"
-    // readout clause be auditioned at all (issue #933).
-    getLiveGaps: () => getLiveGaps(),
-    // The full-course caution family (issue #1127) reads the lineup and the
-    // caution phase straight off the same real translator, exactly as the
-    // plugins' shared Race Engineer wiring (race-engineer-wiring's
-    // `pit-crew-deps.ts`) wires them. Without these three the family's
-    // `speakGate` (`getCautionPhase`) never admits a single caution line,
-    // the follow / pickup / pace-car-off calls never find the stage they
-    // speak at, and every `caution.*` script variable (`getCautionLineup`)
-    // resolves to nothing — the "Caution → …" shortcuts would look wired but
-    // play no follow/field-caught/lineup-changed/extra-lap/restart lines at
-    // all. A dependency missing HERE has made a call silent for the wrong
-    // reason twice already; `getUnderFullCourseCaution` still feeds the
-    // lap-time and position-change silencings.
-    getCautionLineup: () => getCautionLineup(),
-    getUnderFullCourseCaution: () => isUnderFullCourseCaution(),
-    getCautionPhase: () => getCautionPhase(),
-    // The episode scopes the lineup change's memory of the car last named
-    // (issue #1286); unwired, the default `() => null` would leave the
-    // "Caution → lineup change" shortcut silent.
-    getCautionEpisode: () => getCautionEpisode(),
-    // The position call on the last caution lap speaks the RACE position, not
-    // the lineup's (`caution.racePosition`, the 2026-09-19 correction), so it
-    // reads the same live position the position-change and race-status
-    // vocabularies do. Left at its `() => null` default it would play silence
-    // for the wrong reason — exactly what cost one test run already. The
-    // canonical order needs per-car lap progress to rank anybody, which the
-    // "Caution → …" shortcuts patch in at their one-to-go step.
-    getLivePosition: () => getLivePosition(),
+  // The Race Engineer, wired by the plugins' own `wireRaceEngineer` (#1349
+  // slice 2): the bus caches, then `registerPitCrew` with every dependency.
+  // Settings come from the seeded memory store below, every gate on; the three
+  // snapshot stubs are the only overrides, so a dependency can no longer be
+  // missing here.
+  wireRaceEngineer(eventBus, {
+    logger: logger.createScope("RaceEngineer"),
+    sim: createIracingSimRuntime(),
+    voice: { driverNames },
+    overrides: harnessRaceEngineerOverrides(),
   });
 
   // ── Callout scripts (#1064) ──────────────────────────────────────────────
-  // AFTER `registerPitCrew`, never before: `setScripts` compiles eagerly
+  // AFTER `wireRaceEngineer`, never before: `setScripts` compiles eagerly
   // against the contracts registered above, so an earlier call would compile
   // every entry to "no contract". The bundled script is read from the
   // audio-assets source tree and a missing or malformed one ends the boot

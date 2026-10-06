@@ -1158,6 +1158,9 @@ importers:
       '@iracedeck/logger':
         specifier: workspace:*
         version: link:../logger
+      '@iracedeck/race-engineer-wiring':
+        specifier: workspace:*
+        version: link:../race-engineer-wiring
       '@iracedeck/sim-events-iracing':
         specifier: workspace:*
         version: link:../sim-events-iracing
