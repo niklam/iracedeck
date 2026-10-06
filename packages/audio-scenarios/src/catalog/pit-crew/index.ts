@@ -434,7 +434,8 @@ export {
  */
 export type FlagCalloutId = CalloutIdOf<typeof FLAG_CALLOUTS>;
 
-export const SCENARIO_ID_TO_FLAG_ID: Record<string, FlagCalloutId> = {
+/** @internal Exported for the coverage test (`callout-settings-coverage.test.ts`). */
+export const SCENARIO_ID_TO_FLAG_ID: Readonly<Record<string, FlagCalloutId>> = {
   "pit-crew.flag-yellow-local": "yellow-local",
   "pit-crew.flag-yellow-full": "yellow-full",
   "pit-crew.flag-yellow-cleared": "yellow-cleared",
@@ -472,7 +473,8 @@ export const SCENARIO_ID_TO_FLAG_ID: Record<string, FlagCalloutId> = {
  */
 export type StartLightCalloutId = CalloutIdOf<typeof START_LIGHT_CALLOUTS>;
 
-export const SCENARIO_ID_TO_START_LIGHT_ID: Record<string, StartLightCalloutId> = {
+/** @internal Exported for the coverage test (`callout-settings-coverage.test.ts`). */
+export const SCENARIO_ID_TO_START_LIGHT_ID: Readonly<Record<string, StartLightCalloutId>> = {
   "pit-crew.start-light-ready": "lights",
   "pit-crew.start-light-go": "lights",
   "pit-crew.start-light-countdown-90": "countdown",
@@ -489,7 +491,8 @@ export const SCENARIO_ID_TO_START_LIGHT_ID: Record<string, StartLightCalloutId> 
  */
 export type RollingStartCalloutId = CalloutIdOf<typeof ROLLING_START_CALLOUTS>;
 
-export const SCENARIO_ID_TO_ROLLING_START_ID: Record<string, RollingStartCalloutId> = {
+/** @internal Exported for the coverage test (`callout-settings-coverage.test.ts`). */
+export const SCENARIO_ID_TO_ROLLING_START_ID: Readonly<Record<string, RollingStartCalloutId>> = {
   "pit-crew.rolling-start-pace-car": "pace-car",
 };
 
@@ -501,7 +504,8 @@ export const SCENARIO_ID_TO_ROLLING_START_ID: Record<string, RollingStartCallout
  */
 export type PitWindowCalloutId = CalloutIdOf<typeof PIT_WINDOW_CALLOUTS>;
 
-export const SCENARIO_ID_TO_PIT_WINDOW_ID: Record<string, PitWindowCalloutId> = {
+/** @internal Exported for the coverage test (`callout-settings-coverage.test.ts`). */
+export const SCENARIO_ID_TO_PIT_WINDOW_ID: Readonly<Record<string, PitWindowCalloutId>> = {
   "pit-crew.pit-window-opened": "pit-open-closed",
   "pit-crew.pit-window-closed": "pit-open-closed",
 };
@@ -514,7 +518,8 @@ export const SCENARIO_ID_TO_PIT_WINDOW_ID: Record<string, PitWindowCalloutId> = 
  */
 export type DamageCalloutId = CalloutIdOf<typeof DAMAGE_CALLOUTS>;
 
-export const SCENARIO_ID_TO_DAMAGE_ID: Record<string, DamageCalloutId> = {
+/** @internal Exported for the coverage test (`callout-settings-coverage.test.ts`). */
+export const SCENARIO_ID_TO_DAMAGE_ID: Readonly<Record<string, DamageCalloutId>> = {
   "pit-crew.damage-repair-needed": "repair-needed",
 };
 
@@ -526,7 +531,8 @@ export const SCENARIO_ID_TO_DAMAGE_ID: Record<string, DamageCalloutId> = {
  */
 export type TireWearCalloutId = CalloutIdOf<typeof TIRE_WEAR_CALLOUTS>;
 
-export const SCENARIO_ID_TO_TIRE_WEAR_ID: Record<string, TireWearCalloutId> = {
+/** @internal Exported for the coverage test (`callout-settings-coverage.test.ts`). */
+export const SCENARIO_ID_TO_TIRE_WEAR_ID: Readonly<Record<string, TireWearCalloutId>> = {
   "pit-crew.tire-wear-report": "report",
 };
 
@@ -539,7 +545,8 @@ export const SCENARIO_ID_TO_TIRE_WEAR_ID: Record<string, TireWearCalloutId> = {
  */
 export type PitStatusCalloutId = CalloutIdOf<typeof PIT_STATUS_CALLOUTS>;
 
-export const SCENARIO_ID_TO_PIT_STATUS_ID: Record<string, PitStatusCalloutId> = {
+/** @internal Exported for the coverage test (`callout-settings-coverage.test.ts`). */
+export const SCENARIO_ID_TO_PIT_STATUS_ID: Readonly<Record<string, PitStatusCalloutId>> = {
   "pit-crew.pit-status-in-progress": "in-progress",
   "pit-crew.pit-status-complete": "complete",
   "pit-crew.pit-status-too-far-left": "too-far-left",
@@ -571,7 +578,8 @@ export const SCENARIO_ID_TO_PIT_STATUS_ID: Record<string, PitStatusCalloutId> = 
  */
 export type IncidentCalloutId = CalloutIdOf<typeof INCIDENT_CALLOUTS>;
 
-export const SCENARIO_ID_TO_INCIDENT_ID: Record<string, IncidentCalloutId> = {
+/** @internal Exported for the coverage test (`callout-settings-coverage.test.ts`). */
+export const SCENARIO_ID_TO_INCIDENT_ID: Readonly<Record<string, IncidentCalloutId>> = {
   "pit-crew.incident-off-track": "off-track",
   "pit-crew.incident-out-of-control": "out-of-control",
   "pit-crew.incident-contact-world": "contact-world",
@@ -593,7 +601,8 @@ export type TrackConditionsCalloutId = CalloutIdOf<typeof TRACK_CONDITIONS_CALLO
 // Its scenario-id map lives there too; its ids and keys live in the
 // registry (`POSITION_CALLOUTS` in `@iracedeck/callout-settings`).
 
-export const SCENARIO_ID_TO_TRACK_CONDITIONS_ID: Record<string, TrackConditionsCalloutId> = {
+/** @internal Exported for the coverage test (`callout-settings-coverage.test.ts`). */
+export const SCENARIO_ID_TO_TRACK_CONDITIONS_ID: Readonly<Record<string, TrackConditionsCalloutId>> = {
   "pit-crew.track-conditions-worsening-mostly-dry": "wetness",
   "pit-crew.track-conditions-worsening-very-lightly-wet": "wetness",
   "pit-crew.track-conditions-worsening-lightly-wet": "wetness",
@@ -617,7 +626,8 @@ export const SCENARIO_ID_TO_TRACK_CONDITIONS_ID: Record<string, TrackConditionsC
  */
 export type PitBoxCalloutId = CalloutIdOf<typeof PIT_BOX_CALLOUTS>;
 
-export const SCENARIO_ID_TO_PIT_BOX_ID: Record<string, PitBoxCalloutId> = {
+/** @internal Exported for the coverage test (`callout-settings-coverage.test.ts`). */
+export const SCENARIO_ID_TO_PIT_BOX_ID: Readonly<Record<string, PitBoxCalloutId>> = {
   "pit-crew.pit-box-five": "count-in",
   "pit-crew.pit-box-four": "count-in",
   "pit-crew.pit-box-three": "count-in",
@@ -636,7 +646,8 @@ export const SCENARIO_ID_TO_PIT_BOX_ID: Record<string, PitBoxCalloutId> = {
  */
 export type AutoFuelCalloutId = CalloutIdOf<typeof AUTO_FUEL_CALLOUTS>;
 
-export const SCENARIO_ID_TO_AUTO_FUEL_ID: Record<string, AutoFuelCalloutId> = {
+/** @internal Exported for the coverage test (`callout-settings-coverage.test.ts`). */
+export const SCENARIO_ID_TO_AUTO_FUEL_ID: Readonly<Record<string, AutoFuelCalloutId>> = {
   "pit-crew.auto-fuel-on-refuel": "changed",
   "pit-crew.auto-fuel-on-no-refuel": "changed",
   "pit-crew.auto-fuel-off-refuel": "changed",
@@ -662,7 +673,8 @@ export type PitSpeedingCalloutId = CalloutIdOf<typeof PIT_SPEEDING_CALLOUTS>;
  */
 export type FuelCalloutId = CalloutIdOf<typeof FUEL_CALLOUTS>;
 
-export const SCENARIO_ID_TO_FUEL_ID: Record<string, FuelCalloutId> = {
+/** @internal Exported for the coverage test (`callout-settings-coverage.test.ts`). */
+export const SCENARIO_ID_TO_FUEL_ID: Readonly<Record<string, FuelCalloutId>> = {
   "pit-crew.fuel-laps-left-10": "laps-left-10",
   "pit-crew.fuel-laps-left-9": "laps-left-9",
   "pit-crew.fuel-laps-left-8": "laps-left-8",
