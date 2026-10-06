@@ -45,8 +45,12 @@ function readPreset(kind: "session" | "telemetry", name: string): unknown {
 }
 
 /**
- * Drives the real translator with a telemetry sequence, exactly as the UI's
- * shortcut button does: patch, then tick for `holdMs` of simulated time.
+ * Drives the real translator with a telemetry sequence the way the UI's
+ * shortcut button does with the mock's timer running: patch, then tick for
+ * `holdMs` of simulated time. The tick straight after each patch stands in for
+ * the timer's next one, so this helper cannot tell whether a step is seen
+ * BEFORE a publish that follows it; `overtake-gate-shortcuts.test.ts` asks that
+ * through the route the UI posts to, with the timer paused.
  *
  * The ticking inside the hold is not decoration. The validated clear resolves
  * on whichever TICK first finds the hold window elapsed, so a sequence that

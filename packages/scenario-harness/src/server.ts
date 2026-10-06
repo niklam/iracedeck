@@ -281,8 +281,17 @@ export async function createServer(ctx: HarnessContext): Promise<FastifyInstance
     return ctx.controller.getState();
   });
 
+  // `tick: true` ticks the translator once, synchronously, after the write
+  // (#1349) — the `/api/readback/snapshot` pattern, offered to any caller. A
+  // shortcut step sets it when the publish that follows must find the patch
+  // already seen, which the mock's timer cannot promise: the tester can slow
+  // it to 5 s or pause it.
   app.post("/api/telemetry", async (req, reply) => {
-    const body = req.body as { patch?: unknown; snapshot?: unknown };
+    const body = req.body as { patch?: unknown; snapshot?: unknown; tick?: unknown };
+
+    if (body.tick !== undefined && typeof body.tick !== "boolean") {
+      return reply.code(400).send({ error: "tick must be a boolean" });
+    }
 
     if (body.snapshot !== undefined) {
       if (typeof body.snapshot !== "object" || body.snapshot === null) {
@@ -299,6 +308,8 @@ export async function createServer(ctx: HarnessContext): Promise<FastifyInstance
     } else {
       return reply.code(400).send({ error: "expected `patch` or `snapshot`" });
     }
+
+    if (body.tick === true) ctx.controller.tickOnce();
 
     return ctx.controller.getState();
   });
@@ -543,10 +554,11 @@ export async function createServer(ctx: HarnessContext): Promise<FastifyInstance
 
     if (!shortcut) return reply.code(400).send({ error: `unknown shortcut id "${body.id}"` });
 
-    const refusal = checkShortcutPreconditions(
-      shortcut.requires,
-      ctx.controller.getState().sessionInfo as Record<string, unknown> | null,
-    );
+    const { sessionInfo, isConnected } = ctx.controller.getState();
+    const refusal = checkShortcutPreconditions(shortcut.requires, {
+      sessionInfo: sessionInfo as Record<string, unknown> | null,
+      isConnected,
+    });
 
     if (refusal !== null) return reply.code(409).send({ error: refusal });
 

@@ -28,6 +28,19 @@ export const TIRE_WEAR_REPORT_EXAMPLE: TireWearReport = {
   heaviest: { corner: "rr", zone: "inside" },
 };
 
+/**
+ * Appended to the injector description of every event whose callouts check the
+ * overtake gate (#1349): the harness runs the plugins' own wiring, so that gate
+ * reads live telemetry, and on the mock's boot telemetry it refuses every fire.
+ * The injector publishes exactly what it is given, so it says so instead of
+ * arranging the telemetry itself; the shortcuts for these events do arrange it.
+ * `overtake-gate-shortcuts.test.ts` derives which templates must carry it.
+ */
+export const OVERTAKE_GATE_NOTE =
+  "Its callouts check the overtake gate, which refuses on the mock's boot telemetry: connect the mock SDK and apply " +
+  "the hot-lap telemetry preset (on track, at racing speed, off pit road, nobody alongside) before firing, or the " +
+  "line is silent for the wrong reason. The Overtakes and Gaps shortcuts arrange this themselves.";
+
 export type EventTemplate = {
   name: SimEventName;
   description: string;
@@ -234,7 +247,8 @@ export const EVENT_TEMPLATES = [
   {
     name: "overtake.completed",
     description:
-      "Overtake gained — sustained long enough to count (issue #574). Payload carries the new + previous overall and class position, the physical gap to the just-passed car, and an `isLeader` flag the gained scenario branches on.",
+      "Overtake gained — sustained long enough to count (issue #574). Payload carries the new + previous overall and class position, the physical gap to the just-passed car, and an `isLeader` flag the gained scenario branches on. " +
+      OVERTAKE_GATE_NOTE,
     data: {
       carIdx: 7,
       sustained: 3000,
@@ -247,7 +261,8 @@ export const EVENT_TEMPLATES = [
   {
     name: "overtake.lost",
     description:
-      "Player just lost a position and the new (worse) spot has held (issue #574). Mirror of overtake.completed for the loss direction.",
+      "Player just lost a position and the new (worse) spot has held (issue #574). Mirror of overtake.completed for the loss direction. " +
+      OVERTAKE_GATE_NOTE,
     data: {
       carIdx: 7,
       sustained: 3000,
@@ -283,7 +298,7 @@ export const EVENT_TEMPLATES = [
   },
   {
     name: "gap.trendChanged",
-    description: "Relevant gap development — a contact projection entered the horizon, or a breakaway (issue #933)",
+    description: `Relevant gap development — a contact projection entered the horizon, or a breakaway (issue #933). ${OVERTAKE_GATE_NOTE}`,
     data: {
       side: "ahead",
       direction: "closing",
@@ -295,7 +310,7 @@ export const EVENT_TEMPLATES = [
   },
   {
     name: "gap.thresholdCrossed",
-    description: "Live gap to a standings neighbor dropped under the alert threshold (issue #933)",
+    description: `Live gap to a standings neighbor dropped under the alert threshold (issue #933). ${OVERTAKE_GATE_NOTE}`,
     data: { side: "behind", gapSeconds: 0.9, thresholdSeconds: 1.0, carIdx: 5 },
   },
   {

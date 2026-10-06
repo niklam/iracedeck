@@ -416,9 +416,15 @@ function renderShortcuts() {
           // publish at all. It is the only way to audition what the translator
           // DECIDES (whether a caution's end reports a cleared yellow), since
           // publishing the event steps over the decision.
+          //
+          // The step itself is the request body (#1349): the route reads
+          // `patch` and `tick` and ignores `holdMs`, so a step marked `tick`
+          // has the translator see its patch before the publish below even with
+          // the mock's timer slowed or paused, and the tests post the very
+          // object this does.
           if (s.telemetrySequence) {
             for (const step of s.telemetrySequence) {
-              await post("/api/telemetry", { patch: step.patch });
+              await post("/api/telemetry", step);
 
               if (step.holdMs) await new Promise((resolve) => setTimeout(resolve, step.holdMs));
             }
