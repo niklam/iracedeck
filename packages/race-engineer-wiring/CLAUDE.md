@@ -5,7 +5,7 @@ The Race Engineer's wiring, in one place (#1349): the plugin-side bus caches the
 ## Boundaries
 
 - It imports `audio-scenarios`, `deck-core`, `event-bus`, `sim-events-iracing` and `logger`. `deck-core` never imports it (the cycles run one way only). Settings, `evaluateSetupWarning` and `resolveActiveDriverName` come from `deck-core` directly; nothing `deck-core` provides is injected.
-- It takes one `logger` and makes every logger it needs with `logger.createScope(...)`; the bootstrap passes `adapter.createLogger("RaceEngineer")`, so its lines print as `[RaceEngineer:LapCompleted]` and the like.
+- It takes one `logger` and makes every logger it needs with `logger.createScope(...)`; the bootstrap passes `adapter.createLogger("RaceEngineer")`, so its lines print as `[RaceEngineer:LapCompleted]` and the like on Mirabox and Ulanzi, and as `RaceEngineer->LapCompleted` on Stream Deck, whose SDK joins scopes with `->`.
 - `voice` is the voice-pack phase's driver-name state, read on every call.
 - `SimRuntime` (`sim-runtime.ts`) is the translator's query side as one object. It is iRacing-shaped; making it sim-neutral is #1351.
 - The 30 `get<Family>CalloutEnabled` closures are here unchanged; replacing them is #1350.
@@ -17,4 +17,4 @@ The Race Engineer's wiring, in one place (#1349): the plugin-side bus caches the
 
 ## Build
 
-`pnpm build` runs `tsc` into `dist/` (the harness runs from `dist/`). Tests run against `src/` through the root Vitest alias.
+`pnpm build` runs `tsc` into `dist/`, which is what its consumers resolve: the three plugin bundles, through `plugin-runtime` (raw TypeScript compiled into each bundle, whose import of this package resolves to `dist/`), and from slice 2 of #1349 the scenario harness, which does not import it yet. Tests run against `src/` through the root Vitest alias.
