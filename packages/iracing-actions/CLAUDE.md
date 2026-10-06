@@ -76,12 +76,14 @@ See `.claude/rules/stream-deck-actions.md` for the full requirements (UUID const
 
 ## Build
 
-This package has **no build step**. It exports raw TypeScript source. Consumer packages (e.g., `iracing-plugin-stream-deck`) bundle it via their Rollup config with `@rollup/plugin-typescript`.
+This package has **no build step**. It exports raw TypeScript source. Consumer packages (e.g., `iracing-plugin-stream-deck`) bundle it via their shared Rollup config (`@iracedeck/plugin-build`) with `@rollup/plugin-typescript`.
 
-The `iracing-plugin-stream-deck` Rollup config includes:
-- `resolve-actions-ts` plugin — resolves `.js` → `.ts` for relative imports within this package
-- `typescript({ include: ["src/**/*.ts", "../iracing-actions/src/**/*.ts"] })` — compiles action TypeScript
-- `svgPlugin()` — resolves `@iracedeck/icons/` and local `../../icons/` SVG imports
+The shared factory (`createPluginRollupConfig` in `packages/plugin-build/src/plugin-rollup.mjs`, which all three plugins' `rollup.config.mjs` call) includes:
+- `resolve-actions-ts` plugin — resolves `.js` → `.ts` for relative imports within this package and `@iracedeck/plugin-runtime`, the two raw-TypeScript packages
+- `typescript({ include: ["src/**/*.ts", "../iracing-actions/src/**/*.ts", "../plugin-runtime/src/**/*.ts"] })` — compiles the plugin's, the actions' and the runtime's TypeScript (the globs are relative to the plugin package the build runs in)
+- `svg` plugin — resolves `@iracedeck/icons/` and relative SVG imports (such as `../../icons/`) to their file and imports the SVG as a string
+
+The full step order and options are in `packages/plugin-build/CLAUDE.md`.
 
 ## Tests
 

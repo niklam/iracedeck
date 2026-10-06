@@ -1,8 +1,13 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import url from "node:url";
 import { describe, expect, it } from "vitest";
 
+import {
+  discoverPlugins,
+  pluginConfigShapeProblems,
+  readPluginPackage,
+} from "../../../../scripts/lib/plugin-config-shape.mjs";
 import { browserDir, SETTINGS_WINDOW_ICON } from "./index.mjs";
 
 /**
@@ -13,7 +18,8 @@ import { browserDir, SETTINGS_WINDOW_ICON } from "./index.mjs";
  *
  * Every part of shipping it is silent when it breaks: the asset is a committed
  * binary under a `browser/*` .gitignore that has to name it to keep it, the
- * copy step that puts it beside the page is one entry in a list per plugin, and
+ * copy step that puts it beside the page is one entry in a list in the shared
+ * plugin factory (`@iracedeck/plugin-build`, #1349), and
  * a `<link>` whose href resolves to nothing renders exactly like no link at
  * all. Nothing in a build, a test run or a screenshot capture would say so —
  * the failure is a globe nobody is looking at on a machine nobody is running.
@@ -24,35 +30,35 @@ const repoRoot = path.resolve(packageRoot, "../..");
 const windowPage = path.join(repoRoot, "packages/iracing-actions/src/actions/settings-window/settings-window.ejs");
 
 /**
- * The plugin configs that copy this package's browser assets, discovered rather
- * than listed, so a fourth deck ecosystem is covered the day its package
- * appears — the shape `third-party-licenses.test.mjs` uses.
- *
- * `copyList` is the array the config's copy loop iterates, NOT the whole file:
- * the import line names the constant too, so a whole-file search is satisfied
- * by a config that imports the icon and copies everything except it — which
- * emits no `ui/iracedeck-icon.png` and puts the globe back. Nothing else would
- * catch that: `pnpm lint` globs each package's `src` tree, never a plugin's
- * `rollup.config.mjs`, so the orphaned import is not even an unused-import
- * error.
+ * The shared plugin factory (#1349): the one place a plugin build copies this
+ * package's browser assets into its `ui/`.
  */
-function pluginConfigs(): { pkg: string; copyList: string }[] {
-  const packagesDir = path.join(repoRoot, "packages");
+const FACTORY_SOURCE = readFileSync(path.join(repoRoot, "packages/plugin-build/src/plugin-rollup.mjs"), "utf-8");
 
-  return readdirSync(packagesDir, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => ({ pkg: entry.name, config: path.join(packagesDir, entry.name, "rollup.config.mjs") }))
-    .filter(({ config }) => existsSync(config))
-    .map(({ pkg, config }) => ({ pkg, source: readFileSync(config, "utf-8") }))
-    .filter(({ source }) => source.includes("browserDir"))
-    .map(({ pkg, source }) => ({ pkg, copyList: browserAssetCopyList(source) }));
+/**
+ * Every plugin's rollup config, discovered from the committed plugin manifests
+ * like the other four plugin guards, so a fourth deck ecosystem is covered the
+ * day its package appears — and a package that merely builds with Rollup (this
+ * one included) is never taken for a plugin. Each must leave the copy to the factory.
+ */
+function pluginConfigs(): ({ pkg: string } & ReturnType<typeof readPluginPackage>)[] {
+  return discoverPlugins(repoRoot).map(({ pkg }) => ({ pkg, ...readPluginPackage(repoRoot, pkg) }));
 }
 
 /**
  * The `for (const … of [ … ])` list the browser-assets copy step walks,
  * identified by the one asset every plugin has always copied. Empty when no
  * such loop is found, which fails the assertion rather than passing it — a
- * config whose copy step was restructured must be re-read, not waved through.
+ * factory whose copy step was restructured must be re-read, not waved through.
+ *
+ * The list, NOT the whole file: the import line names the constant too, so a
+ * whole-file search is satisfied by a factory that imports the icon and copies
+ * everything except it — which emits no `ui/iracedeck-icon.png` and puts the
+ * globe back. `pnpm lint` does read the factory and the plugin configs (it
+ * globs every `.mjs` file), so an import left wholly unused is a `no-unused-vars`
+ * error — but not one still used elsewhere in the file, nor one removed along
+ * with its list entry, and the build itself copies whatever the list names
+ * without complaint. Only the list says whether the icon ships.
  */
 function browserAssetCopyList(source: string): string {
   for (const [, list] of source.matchAll(/for \(const \w+ of \[([^\]]*)\]\)/g)) {
@@ -93,13 +99,26 @@ describe("settings-window favicon (#1156)", () => {
     expect(link).toContain(`href="${SETTINGS_WINDOW_ICON}"`);
   });
 
-  it("is copied into every plugin's ui/ beside the page that links it", () => {
+  it("is copied into every plugin's ui/ beside the page that links it, by the shared factory", () => {
+    const copyList = browserAssetCopyList(FACTORY_SOURCE);
+
+    expect(copyList, "the factory's browser-asset copy loop was not found").not.toBe("");
+    expect(copyList.includes("SETTINGS_WINDOW_ICON"), "the factory's browser-asset copy list omits the icon").toBe(
+      true,
+    );
+  });
+
+  it("is left to the factory by every plugin config", () => {
     const configs = pluginConfigs();
 
-    expect(configs.length).toBeGreaterThan(0);
+    expect(configs.length, "fewer plugin configs than deck ecosystems: discovery broke").toBeGreaterThanOrEqual(3);
 
-    for (const { pkg, copyList } of configs) {
-      expect(copyList.includes("SETTINGS_WINDOW_ICON"), `${pkg}'s browser-asset copy list omits the icon`).toBe(true);
+    for (const { pkg, configSource, packageJson } of configs) {
+      expect(
+        pluginConfigShapeProblems(configSource, packageJson),
+        `${pkg} must build through the shared factory`,
+      ).toEqual([]);
+      expect(configSource, `${pkg} copies browser assets of its own`).not.toContain("browserDir");
     }
   });
 });

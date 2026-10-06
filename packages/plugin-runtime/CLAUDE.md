@@ -21,7 +21,7 @@ A data dependency is a parameter, so a phase cannot run before what it needs exi
 
 ## Rules
 
-- Raw TypeScript, no build: each plugin's Rollup compiles `src/` (its `typescript` include and `.js`→`.ts` resolver name this package), and `@rollup/plugin-replace` substitutes the `__FEATURE_*__` constants here as in `iracing-actions`. `platform-features.d.ts` and `svg.d.ts` declare them for this package's own program.
+- Raw TypeScript, no build: each plugin's Rollup compiles `src/` (the `typescript` include and `.js`→`.ts` resolver of the shared config in `@iracedeck/plugin-build` name this package), and `@rollup/plugin-replace` substitutes the `__FEATURE_*__` constants here as in `iracing-actions`. `platform-features.d.ts` and `svg.d.ts` declare them for this package's own program.
 - `src/actions.ts` is the only importer of `@iracedeck/iracing-actions`: the shared action list and the plugin-level hooks. A new action goes in `SHARED_ACTIONS` (or a host extension's `extraActions`) and every manifest; `src/actions.test.ts` fails until they match.
 - Host differences arrive through `IDeckPlatformAdapter` (`setLogLevel`, `logLocation`, `openUrl`, `onOpenSettingsRequest`) or the optional `PluginExtension`. Test for the extension's presence, never for a host name.
 - Never import from `src/index.ts` inside the package (a cycle fails the plugin build). Phases take their shared types from `src/types.ts`.

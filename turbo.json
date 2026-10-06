@@ -100,6 +100,20 @@
       ],
       "outputs": ["com.ulanzi.*.ulanziPlugin/**"]
     },
+    "@iracedeck/plugin-build#build": {
+      "dependsOn": ["^build"],
+      "inputs": ["package.json", "src/*.mjs", "!src/*.test.*"],
+      "outputs": []
+    },
+    "@iracedeck/plugin-build#typecheck": {
+      "dependsOn": ["^build"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/lib/rollup-logs.mjs",
+        "$TURBO_ROOT$/scripts/lib/runtime-deps.mjs",
+        "$TURBO_ROOT$/scripts/lib/dev-local.mjs"
+      ]
+    },
     "@iracedeck/website#typecheck": {
       "dependsOn": ["^build"],
       "inputs": [

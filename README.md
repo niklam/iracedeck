@@ -121,6 +121,7 @@ packages/
   iracing-plugin-mirabox/          Mirabox device plugin
   iracing-plugin-ulanzi/           Ulanzi Deck device plugin
   pi-components/           Shared Property Inspector assets (web components, EJS templates, partials, data)
+  plugin-build/            Shared Rollup config factory for the three plugins (build-only)
   plugin-runtime/          Shared plugin bootstrap (startup phases, shared action list)
   race-engineer-wiring/    Race Engineer wiring shared by the plugins and the harness
   iracing-plugin-stream-deck/      Elgato Stream Deck plugin
@@ -140,6 +141,7 @@ packages/
 | `@iracedeck/iracing-sdk`          | TypeScript SDK for reading telemetry and sending iRacing broadcast commands               |
 | `@iracedeck/logger`               | Shared logging interface with scoped loggers                                              |
 | `@iracedeck/pi-components`        | Shared PI web components, EJS partials, Rollup EJS plugin, and the Ulanzi + settings-window bridges |
+| `@iracedeck/plugin-build`         | Build-only: `createPluginRollupConfig`, the one Rollup config the three plugins share     |
 | `@iracedeck/plugin-runtime`       | The composition root all three plugins share: startup phases and the shared action list  |
 | `@iracedeck/race-engineer-wiring` | The Race Engineer's bus caches and every `registerPitCrew` dependency, shared with the scenario harness |
 | `@iracedeck/iracing-plugin-stream-deck`   | Elgato Stream Deck plugin — shell over `plugin-runtime`, PI templates, manifest           |

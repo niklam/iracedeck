@@ -6,13 +6,20 @@
  * build in the Rollup the plugins use, rather than trusting the docs), and two
  * guards on the world outside this file — that zod still carries the comments
  * the filter exists for, and that every plugin build is wired to the helper.
+ *
+ * Since #1349 the wiring lives in one place: `@iracedeck/plugin-build`'s
+ * `createPluginRollupConfig` sets `onLog`, and each plugin's `rollup.config.mjs`
+ * only calls it. So the wiring guard reads the factory once, then checks that
+ * every plugin config calls it, declares the package (which orders and
+ * invalidates its build), and sets no log handler of its own.
  */
-import { readFileSync, realpathSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 
+import { pluginConfigShapeProblems } from "./plugin-config-shape.mjs";
 import { isInsidePackage, isWorkspaceSource, pluginBuildOnLog, REPO_ROOT } from "./rollup-logs.mjs";
 import { allPluginManifestRelPaths } from "./version-discovery.mjs";
 
@@ -168,14 +175,14 @@ describe("pluginBuildOnLog", () => {
   });
 });
 
-/** Everything a plugin package resolves for itself — the same modules its build uses. */
-function pluginRequire(pkg) {
+/** Everything a workspace package resolves for itself — for a plugin, the same modules its build uses. */
+function packageRequire(pkg) {
   return createRequire(join(REPO_ROOT, "packages", pkg, "package.json"));
 }
 
 /** The plugins' own Rollup, loaded through its ESM entry. */
 async function loadRollup() {
-  const rollupDir = dirname(pluginRequire(PLUGIN_PACKAGES[0]).resolve("rollup/package.json"));
+  const rollupDir = dirname(packageRequire(PLUGIN_PACKAGES[0]).resolve("rollup/package.json"));
   return import(pathToFileURL(join(rollupDir, "dist", "es", "rollup.js")).href);
 }
 
@@ -236,11 +243,48 @@ describe("the policy inside a real Rollup build", () => {
   }, 30_000);
 });
 
-/** The distinct zod installations the plugin packages resolve (they all declare it directly). */
+/** Every workspace package by name: its directory under packages/ and its parsed package.json. */
+const WORKSPACE_PACKAGES = new Map(
+  readdirSync(join(REPO_ROOT, "packages"), { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && existsSync(join(REPO_ROOT, "packages", entry.name, "package.json")))
+    .map((entry) => {
+      const manifest = JSON.parse(readFileSync(join(REPO_ROOT, "packages", entry.name, "package.json"), "utf-8"));
+      return [manifest.name, { dir: entry.name, manifest }];
+    }),
+);
+
+/**
+ * The workspace packages whose zod a plugin bundle can contain: every package in
+ * the plugins' runtime closure (`dependencies`, followed through `workspace:`
+ * links) that declares zod itself. Rollup's node-resolve resolves `zod` from the
+ * importing file, so these are the packages a bundled zod is resolved from —
+ * deck-core, iracing-actions, callout-script and audio-assets today. The plugin
+ * packages are not the place to ask: since #1349 Mirabox and Ulanzi declare no
+ * zod, and resolving it from them would only reach whatever pnpm hoisted.
+ */
+const ZOD_DECLARERS = (() => {
+  const seen = new Set();
+  const queue = PLUGIN_PACKAGES.map(
+    (pkg) => JSON.parse(readFileSync(join(REPO_ROOT, "packages", pkg, "package.json"), "utf-8")).name,
+  );
+  while (queue.length > 0) {
+    const name = queue.shift();
+    if (seen.has(name)) continue;
+    seen.add(name);
+    for (const [dep, range] of Object.entries(WORKSPACE_PACKAGES.get(name).manifest.dependencies ?? {})) {
+      if (range.startsWith("workspace:")) queue.push(dep);
+    }
+  }
+  return [...seen].filter((name) => WORKSPACE_PACKAGES.get(name).manifest.dependencies?.zod !== undefined);
+})();
+
+/** The distinct zod installations those packages resolve, with plain Node resolution. */
 const PLUGIN_ZODS = [
   ...new Map(
-    PLUGIN_PACKAGES.map((pkg) => {
-      const zodDir = dirname(realpathSync(pluginRequire(pkg).resolve("zod/package.json")));
+    ZOD_DECLARERS.map((name) => {
+      const zodDir = dirname(
+        realpathSync(packageRequire(WORKSPACE_PACKAGES.get(name).dir).resolve("zod/package.json")),
+      );
       const { version } = JSON.parse(readFileSync(join(zodDir, "package.json"), "utf-8"));
       return [zodDir, { zodDir, version }];
     }),
@@ -248,7 +292,12 @@ const PLUGIN_ZODS = [
 ];
 
 describe("zod still carries the comments the INVALID_ANNOTATION filter exists for", () => {
-  it("resolves at least one zod from the plugin packages", () => {
+  it("finds the bundled packages that declare zod, among them the actions that import it most", () => {
+    expect(ZOD_DECLARERS).toContain("@iracedeck/iracing-actions");
+    expect(ZOD_DECLARERS).toContain("@iracedeck/deck-core");
+  });
+
+  it("resolves at least one zod from them", () => {
     expect(PLUGIN_ZODS.length).toBeGreaterThan(0);
   });
 
@@ -276,25 +325,40 @@ describe("zod still carries the comments the INVALID_ANNOTATION filter exists fo
 
 describe("every plugin build is wired to the policy", () => {
   const turbo = JSON.parse(readFileSync(join(REPO_ROOT, "turbo.json"), "utf-8"));
+  const FACTORY_SOURCE = readFileSync(join(REPO_ROOT, "packages", "plugin-build", "src", "plugin-rollup.mjs"), "utf-8");
 
   it("discovers the three plugin packages (an empty list would skip every check below)", () => {
     expect(PLUGIN_PACKAGES.length).toBeGreaterThanOrEqual(3);
   });
 
-  describe.each(PLUGIN_PACKAGES)("%s", (pkg) => {
-    const source = readFileSync(join(REPO_ROOT, "packages", pkg, "rollup.config.mjs"), "utf-8");
-    const { name } = JSON.parse(readFileSync(join(REPO_ROOT, "packages", pkg, "package.json"), "utf-8"));
-
+  describe("the shared factory (@iracedeck/plugin-build)", () => {
     it("imports the helper and uses it as onLog", () => {
-      expect(source).toContain('import { pluginBuildOnLog } from "../../scripts/lib/rollup-logs.mjs";');
-      expect(source).toContain("onLog: pluginBuildOnLog,");
+      expect(FACTORY_SOURCE).toContain('import { pluginBuildOnLog } from "../../../scripts/lib/rollup-logs.mjs";');
+      expect(FACTORY_SOURCE).toContain("onLog: pluginBuildOnLog,");
     });
 
-    it("keeps no onwarn of its own, so the policy is the one place a plugin build filters logs", () => {
+    it("keeps no onwarn, so the policy is the one place a plugin build filters logs", () => {
+      expect(FACTORY_SOURCE).not.toMatch(/\bonwarn\b/);
+    });
+  });
+
+  describe.each(PLUGIN_PACKAGES)("%s", (pkg) => {
+    const source = readFileSync(join(REPO_ROOT, "packages", pkg, "rollup.config.mjs"), "utf-8");
+    const packageJson = JSON.parse(readFileSync(join(REPO_ROOT, "packages", pkg, "package.json"), "utf-8"));
+    const { name } = packageJson;
+
+    it("builds through the shared factory, and declares it (which orders and invalidates its build)", () => {
+      expect(pluginConfigShapeProblems(source, packageJson)).toEqual([]);
+    });
+
+    it("sets no log handler of its own, so the factory's policy is the only one", () => {
       expect(source).not.toMatch(/\bonwarn\b/);
+      expect(source).not.toMatch(/\bonLog\b/);
     });
 
     it("hashes the helper as a turbo build input, so a policy change is never served from the cache", () => {
+      // The factory reads the helper by relative path, so it is hashed here by path
+      // rather than through a package dependency.
       expect(turbo.tasks[`${name}#build`]?.inputs).toContain("$TURBO_ROOT$/scripts/lib/rollup-logs.mjs");
     });
   });

@@ -6,12 +6,16 @@
  * config. Dependabot cannot see those, so they drifted: `yaml` stayed on a
  * version the workspace had moved past, and Mirabox's `ws` sat inside a
  * published advisory the workspace's own `ws` was clear of. The emitted file is
- * now produced by `scripts/lib/runtime-deps.mjs` from the config's `external`
+ * now produced by `scripts/lib/runtime-deps.mjs` from the build's `external`
  * array and the workspace `package.json` files; this guard holds the properties
  * that make that true, each one edit away from being lost:
  *
- * - every plugin config emits the file through the shared helper, and carries
- *   no version literal for any runtime dependency;
+ * - every plugin builds through `@iracedeck/plugin-build`'s factory (#1349),
+ *   which emits the file through the shared helper and takes `external` from
+ *   `pluginExternals(extraExternals)`; a plugin config passes only its literal
+ *   `extraExternals` and re-implements neither step;
+ * - neither the factory, `externals.mjs` nor any config carries a version
+ *   literal for any runtime dependency;
  * - for the real workspace, every third-party external resolves to the single
  *   exact version the workspace declares (checked here independently of the
  *   helper's own lookup), and the two native workspace packages keep their
@@ -32,11 +36,19 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { parse as parseYaml } from "yaml";
 
+import { pluginExternals } from "../packages/plugin-build/src/externals.mjs";
+import { parseExtraExternals, pluginConfigShapeProblems } from "./lib/plugin-config-shape.mjs";
 import { DECLARING_SECTIONS, runtimePackageJson, WORKSPACE_SCOPE } from "./lib/runtime-deps.mjs";
 import { allPluginManifestRelPaths } from "./lib/version-discovery.mjs";
 
 // scripts/runtime-deps-guard.test.mjs lives in scripts/, so the repo root is one up.
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+
+const PLUGIN_BUILD_SRC = join(repoRoot, "packages", "plugin-build", "src");
+/** The factory every plugin config calls (#1349); the properties below that it owns are asserted on it once. */
+const FACTORY_SOURCE = readFileSync(join(PLUGIN_BUILD_SRC, "plugin-rollup.mjs"), "utf-8");
+/** Read as text only for the version-literal scan; the list itself is imported. */
+const EXTERNALS_SOURCE = readFileSync(join(PLUGIN_BUILD_SRC, "externals.mjs"), "utf-8");
 
 /** [plugin package dir, package name, plugin folder] triples, discovered from the committed plugin manifests. */
 const PLUGINS = allPluginManifestRelPaths(repoRoot).map((relPath) => {
@@ -85,14 +97,6 @@ function readJson(file) {
   return JSON.parse(readFileSync(file, "utf-8"));
 }
 
-/** The literal `external: [...]` array of a rollup config (the same parse `third-party-licenses.test.mjs` makes). */
-function rollupExternals(configSource) {
-  const match = configSource.match(/external:\s*\[([^\]]*)\]/);
-  expect(match, "rollup config must declare a literal external array").not.toBeNull();
-
-  return [...match[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]);
-}
-
 function escapeRegExp(text) {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -130,9 +134,28 @@ describe("plugins ship the workspace's runtime dependency versions (#1177)", () 
     });
   });
 
+  describe("the shared factory (@iracedeck/plugin-build)", () => {
+    it("emits bin/package.json through the shared helper", () => {
+      expect(FACTORY_SOURCE).toContain(
+        `import { runtimePackageJsonPlugin } from "../../../scripts/lib/runtime-deps.mjs";`,
+      );
+      expect(FACTORY_SOURCE).toContain("runtimePackageJsonPlugin({ root: repoRoot }),");
+      // The hand-written step the helper replaced — a second emitter would
+      // overwrite the helper's file with whatever it typed in.
+      expect(FACTORY_SOURCE).not.toContain('name: "emit-module-package-file"');
+    });
+
+    it("bundles around exactly pluginExternals(extraExternals), the list this guard derives", () => {
+      expect(FACTORY_SOURCE.split("external: pluginExternals(extraExternals),")).toHaveLength(2);
+    });
+  });
+
   describe.each(PLUGINS)("%s", (pkg, packageName, folder) => {
     const configSource = readFileSync(join(repoRoot, "packages", pkg, "rollup.config.mjs"), "utf-8");
-    const externals = rollupExternals(configSource);
+    const packageJson = readJson(join(repoRoot, "packages", pkg, "package.json"));
+    // Strict (scripts/lib/plugin-config-shape.mjs): an identifier or a spread in the
+    // config's extraExternals throws rather than hiding an entry from every check below.
+    const externals = pluginExternals(parseExtraExternals(configSource));
     const thirdParty = externals.filter((name) => !name.startsWith(WORKSPACE_SCOPE));
     const binDir = join(repoRoot, "packages", pkg, folder, "bin");
 
@@ -140,11 +163,15 @@ describe("plugins ship the workspace's runtime dependency versions (#1177)", () 
       expect(thirdParty.length).toBeGreaterThan(0);
     });
 
-    it("emits bin/package.json through the shared helper", () => {
-      expect(configSource).toContain(`import { runtimePackageJsonPlugin } from "../../scripts/lib/runtime-deps.mjs";`);
-      expect(configSource).toContain("runtimePackageJsonPlugin({ root: repoRoot }),");
-      // The hand-written step the helper replaced — a second emitter would
-      // overwrite the helper's file with whatever it typed in.
+    it("builds through the shared factory, and declares it (which orders and invalidates its build)", () => {
+      expect(pluginConfigShapeProblems(configSource, packageJson)).toEqual([]);
+    });
+
+    it("sets no external list and emits no bin/package.json of its own", () => {
+      // Its externals reach the factory only as extraExternals, which the list
+      // above is derived from; a second list or emitter would bypass both.
+      expect(configSource).not.toMatch(/\bexternal\s*:/);
+      expect(configSource).not.toContain("runtimePackageJsonPlugin");
       expect(configSource).not.toContain('name: "emit-module-package-file"');
     });
 
@@ -152,7 +179,13 @@ describe("plugins ship the workspace's runtime dependency versions (#1177)", () 
       const quoted = `["']${escapeRegExp(name)}["']`;
       const bare = /^[A-Za-z_$][\w$]*$/.test(name) ? `|\\b${escapeRegExp(name)}\\b` : "";
       const literal = new RegExp(`(?:${quoted}${bare})\\s*:\\s*["'][~^<>=]*\\d`);
-      expect(configSource, `${pkg}/rollup.config.mjs types a version for ${name}`).not.toMatch(literal);
+      for (const [file, source] of [
+        [`${pkg}/rollup.config.mjs`, configSource],
+        ["plugin-build/src/plugin-rollup.mjs", FACTORY_SOURCE],
+        ["plugin-build/src/externals.mjs", EXTERNALS_SOURCE],
+      ]) {
+        expect(source, `${file} types a version for ${name}`).not.toMatch(literal);
+      }
     });
 
     it.each(thirdParty)("ships %s at the one version the workspace declares", (name) => {

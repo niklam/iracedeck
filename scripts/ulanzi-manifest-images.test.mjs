@@ -37,8 +37,9 @@ function imageRefs() {
  * Map a manifest image reference to its committed source file. The plugin's own
  * `imgs/` tree is build output (gitignored): per-action icons are copied from
  * `@iracedeck/iracing-actions` and plugin-level branding from the Elgato plugin
- * (see the Ulanzi plugin's rollup `copy-assets` step), so existence is checked
- * against those committed sources.
+ * (see the `copy-action-icons` and `copy-plugin-imgs` steps of the shared plugin
+ * Rollup factory, `packages/plugin-build/src/plugin-rollup.mjs`), so existence
+ * is checked against those committed sources.
  */
 function committedSource(ref) {
   const action = ref.match(/^imgs\/actions\/([^/]+)\/(.+)$/);
