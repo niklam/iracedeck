@@ -1,13 +1,12 @@
 import type { CornerNameSnapshot, LapCompletedSnapshot } from "@iracedeck/audio-scenarios/pit-crew";
-import type { IEventBus } from "@iracedeck/event-bus";
+import type { IEventBus, SimEventOf } from "@iracedeck/event-bus";
 import type { ILogger } from "@iracedeck/logger";
 
-/** The `race.finished` payload the race-end snapshot composes with the driver name (#569). */
-export interface RaceFinishedPayload {
-  position: number;
-  classPosition?: number;
-  isMultiClass?: boolean;
-}
+/**
+ * The `race.finished` payload the race-end snapshot composes with the driver
+ * name (#569) — the catalog's own type, so the cache cannot drift from it.
+ */
+export type RaceFinishedPayload = SimEventOf<"race.finished">["data"];
 
 /** The last payloads the Race Engineer's conditions read at fire time. */
 export interface RaceEngineerCaches {
