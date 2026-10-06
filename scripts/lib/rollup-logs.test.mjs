@@ -6,6 +6,12 @@
  * build in the Rollup the plugins use, rather than trusting the docs), and two
  * guards on the world outside this file — that zod still carries the comments
  * the filter exists for, and that every plugin build is wired to the helper.
+ *
+ * Since #1349 the wiring lives in one place: `@iracedeck/plugin-build`'s
+ * `createPluginRollupConfig` sets `onLog`, and each plugin's `rollup.config.mjs`
+ * only calls it. So the wiring guard reads the factory once, then checks that
+ * every plugin config calls it, declares the package (which orders and
+ * invalidates its build), and sets no log handler of its own.
  */
 import { readFileSync, realpathSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -276,25 +282,46 @@ describe("zod still carries the comments the INVALID_ANNOTATION filter exists fo
 
 describe("every plugin build is wired to the policy", () => {
   const turbo = JSON.parse(readFileSync(join(REPO_ROOT, "turbo.json"), "utf-8"));
+  const FACTORY_SOURCE = readFileSync(join(REPO_ROOT, "packages", "plugin-build", "src", "plugin-rollup.mjs"), "utf-8");
 
   it("discovers the three plugin packages (an empty list would skip every check below)", () => {
     expect(PLUGIN_PACKAGES.length).toBeGreaterThanOrEqual(3);
   });
 
-  describe.each(PLUGIN_PACKAGES)("%s", (pkg) => {
-    const source = readFileSync(join(REPO_ROOT, "packages", pkg, "rollup.config.mjs"), "utf-8");
-    const { name } = JSON.parse(readFileSync(join(REPO_ROOT, "packages", pkg, "package.json"), "utf-8"));
-
+  describe("the shared factory (@iracedeck/plugin-build)", () => {
     it("imports the helper and uses it as onLog", () => {
-      expect(source).toContain('import { pluginBuildOnLog } from "../../scripts/lib/rollup-logs.mjs";');
-      expect(source).toContain("onLog: pluginBuildOnLog,");
+      expect(FACTORY_SOURCE).toContain('import { pluginBuildOnLog } from "../../../scripts/lib/rollup-logs.mjs";');
+      expect(FACTORY_SOURCE).toContain("onLog: pluginBuildOnLog,");
     });
 
-    it("keeps no onwarn of its own, so the policy is the one place a plugin build filters logs", () => {
+    it("keeps no onwarn, so the policy is the one place a plugin build filters logs", () => {
+      expect(FACTORY_SOURCE).not.toMatch(/\bonwarn\b/);
+    });
+  });
+
+  describe.each(PLUGIN_PACKAGES)("%s", (pkg) => {
+    const source = readFileSync(join(REPO_ROOT, "packages", pkg, "rollup.config.mjs"), "utf-8");
+    const { name, devDependencies } = JSON.parse(
+      readFileSync(join(REPO_ROOT, "packages", pkg, "package.json"), "utf-8"),
+    );
+
+    it("builds through the shared factory", () => {
+      expect(source).toContain('import { createPluginRollupConfig } from "@iracedeck/plugin-build";');
+      expect(source).toContain("export default createPluginRollupConfig({");
+    });
+
+    it("declares @iracedeck/plugin-build, which orders and invalidates its build", () => {
+      expect(devDependencies?.["@iracedeck/plugin-build"]).toBe("workspace:*");
+    });
+
+    it("sets no log handler of its own, so the factory's policy is the only one", () => {
       expect(source).not.toMatch(/\bonwarn\b/);
+      expect(source).not.toMatch(/\bonLog\b/);
     });
 
     it("hashes the helper as a turbo build input, so a policy change is never served from the cache", () => {
+      // The factory reads the helper by relative path, so it is hashed here by path
+      // rather than through a package dependency.
       expect(turbo.tasks[`${name}#build`]?.inputs).toContain("$TURBO_ROOT$/scripts/lib/rollup-logs.mjs");
     });
   });

@@ -8,8 +8,9 @@
  *
  * Five properties hold that up, and each is one edit away from being lost:
  * the marker is gitignored (so it can never reach a clone or a tag), the key is
- * emitted through a conditional spread in every plugin's rollup config (never
- * unconditionally), turbo hashes the marker as a root input and the variable as
+ * emitted through a conditional spread in the shared plugin factory
+ * (`@iracedeck/plugin-build`, #1349) that every plugin's rollup config calls
+ * (never unconditionally, and never by a config itself), turbo hashes the marker as a root input and the variable as
  * `env` (so toggling either cannot be served a stale plugin folder from the
  * cache — and under turbo's strict env mode an undeclared variable never
  * reaches Rollup at all), no workflow sets the variable, and every plugin build
@@ -59,6 +60,9 @@ const PLUGINS = allPluginManifestRelPaths(repoRoot).map((relPath) => {
 const PACK_ASSERTION = "node ../../scripts/assert-release-build.mjs ";
 
 const turbo = JSON.parse(readFileSync(join(repoRoot, "turbo.json"), "utf-8"));
+
+/** The factory every plugin config calls (#1349); it alone decides the root and emits the key. */
+const FACTORY_SOURCE = readFileSync(join(repoRoot, "packages", "plugin-build", "src", "plugin-rollup.mjs"), "utf-8");
 
 const tempRoots = [];
 
@@ -160,29 +164,49 @@ describe("the development voice root is build-time only (#1143, #1214)", () => {
     });
   });
 
-  describe.each(PLUGINS)("%s", (pkg, packageName, packScript) => {
-    const configSource = readFileSync(join(repoRoot, "packages", pkg, "rollup.config.mjs"), "utf-8");
-
-    it("the rollup config decides the root through the shared resolver", () => {
-      expect(configSource).toContain(
-        `import { DEV_LOCAL_FILE, resolveDevVoicePacksRoot } from "../../scripts/lib/dev-local.mjs";`,
+  describe("the shared plugin factory (@iracedeck/plugin-build)", () => {
+    it("decides the root through the shared resolver", () => {
+      expect(FACTORY_SOURCE).toMatch(
+        /import \{[^}]*\bresolveDevVoicePacksRoot\b[^}]*\} from "\.\.\/\.\.\/\.\.\/scripts\/lib\/dev-local\.mjs";/,
       );
-      expect(configSource).toContain("const devVoices = resolveDevVoicePacksRoot(repoRoot);");
-      // The variable is read by the resolver and nowhere else: a config that
+      expect(FACTORY_SOURCE).toContain("const devVoices = resolveDevVoicePacksRoot(repoRoot);");
+      // The variable is read by the resolver and nowhere else: a factory that
       // consulted process.env itself could disagree with the stage task. The
       // comment naming the variable is fine; a read of it is not.
-      expect(configSource, `${DEV_VOICES_ENV} must be read only through the resolver`).not.toContain(
+      expect(FACTORY_SOURCE, `${DEV_VOICES_ENV} must be read only through the resolver`).not.toContain(
         `process.env.${DEV_VOICES_ENV}`,
       );
-      expect(configSource, "the resolver owns the variable name").not.toContain("DEV_VOICES_ENV");
+      expect(FACTORY_SOURCE, "the resolver owns the variable name").not.toContain("DEV_VOICES_ENV");
     });
 
     it("emits devVoicePacksRoot only through the conditional spread", () => {
-      expect(configSource).toContain(CONDITIONAL_SPREAD);
+      expect(FACTORY_SOURCE).toContain(CONDITIONAL_SPREAD);
       // The key must appear nowhere else — an unconditional `devVoicePacksRoot:`
       // would ship the mechanism in a release build.
-      const occurrences = configSource.split("devVoicePacksRoot").length - 1;
+      const occurrences = FACTORY_SOURCE.split("devVoicePacksRoot").length - 1;
       expect(occurrences, "devVoicePacksRoot must appear only inside the conditional spread").toBe(1);
+    });
+  });
+
+  describe.each(PLUGINS)("%s", (pkg, packageName, packScript) => {
+    const configSource = readFileSync(join(repoRoot, "packages", pkg, "rollup.config.mjs"), "utf-8");
+    const { devDependencies } = JSON.parse(readFileSync(join(repoRoot, "packages", pkg, "package.json"), "utf-8"));
+
+    it("the rollup config builds through the shared factory", () => {
+      expect(configSource).toContain('import { createPluginRollupConfig } from "@iracedeck/plugin-build";');
+      expect(configSource).toContain("export default createPluginRollupConfig({");
+    });
+
+    it("declares @iracedeck/plugin-build, which orders and invalidates its build", () => {
+      expect(devDependencies?.["@iracedeck/plugin-build"]).toBe("workspace:*");
+    });
+
+    it("the rollup config leaves the root to the factory", () => {
+      // A config that read the marker or the environment, or set the key, could
+      // disagree with the factory and the stage task — or ship it unconditionally.
+      expect(configSource).not.toContain("devVoicePacksRoot");
+      expect(configSource).not.toContain("dev-local.mjs");
+      expect(configSource).not.toContain("process.env");
     });
 
     it("packs only a release build, asserted before anything is packed", () => {

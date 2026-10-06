@@ -3,12 +3,16 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
+import { pluginExternals } from "../packages/plugin-build/src/externals.mjs";
 import { allPluginManifestRelPaths } from "./lib/version-discovery.mjs";
 
 // scripts/third-party-licenses.test.mjs lives in scripts/, so the repo root is one up.
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 const NOTICES_FILE = "THIRD-PARTY-LICENSES.md";
+
+/** The factory every plugin config calls (#1349); it owns the license copy step. */
+const FACTORY_SOURCE = readFileSync(join(repoRoot, "packages", "plugin-build", "src", "plugin-rollup.mjs"), "utf-8");
 
 /**
  * [plugin package dir, shipped artifact folder name] pairs, discovered from the
@@ -53,11 +57,21 @@ const COMPONENT_LICENSE_MARKERS = {
 
 const notices = readFileSync(join(repoRoot, NOTICES_FILE), "utf-8");
 
-/** Extract the package names from a rollup config's `external: [...]` array. */
-function rollupExternals(configSource) {
-  const match = configSource.match(/external:\s*\[([^\]]*)\]/);
-  expect(match, "rollup config must declare an external array").not.toBeNull();
-  return [...match[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+/**
+ * The literal `extraExternals: [...]` a plugin config passes the factory, or `[]`
+ * when it passes none (the same parse `runtime-deps-guard.test.mjs` makes).
+ * Anything but a list of string literals fails rather than hiding an entry.
+ */
+function extraExternals(configSource) {
+  if (!/\bextraExternals\b/.test(configSource)) return [];
+  const match = configSource.match(/extraExternals:\s*\[([^\]]*)\]/);
+  expect(match, "extraExternals must be a literal array").not.toBeNull();
+  const entries = match[1]
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  for (const entry of entries) expect(entry, "extraExternals entries must be string literals").toMatch(/^"[^"]+"$/);
+  return entries.map((entry) => entry.slice(1, -1));
 }
 
 /**
@@ -100,12 +114,27 @@ describe("shipped license files (#905)", () => {
     },
   );
 
+  it("the shared plugin factory copies LICENSE and THIRD-PARTY-LICENSES.md from the repo root to the artifact root", () => {
+    expect(FACTORY_SOURCE).toContain('name: "copy-license-files"');
+    // Assert the actual copy invocation — source anchored to the repo root,
+    // destination to the artifact root — not just the filenames appearing
+    // somewhere in the factory. `repoRoot` there is the factory's own anchor.
+    expect(FACTORY_SOURCE).toContain(
+      'const repoRoot = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "../../..");',
+    );
+    expect(FACTORY_SOURCE).toMatch(/for \(const file of \["LICENSE", "THIRD-PARTY-LICENSES\.md"\]\)/);
+    expect(FACTORY_SOURCE).toMatch(/copyFileSync\(path\.join\(repoRoot, file\), path\.join\(sdPluginDir, file\)\)/);
+  });
+
   describe.each(PLUGINS)("%s", (pkg, artifact) => {
     const configPath = join(repoRoot, "packages", pkg, "rollup.config.mjs");
     const configSource = readFileSync(configPath, "utf-8");
+    const { devDependencies } = JSON.parse(readFileSync(join(repoRoot, "packages", pkg, "package.json"), "utf-8"));
 
     it("every non-workspace rollup external is a guarded component", () => {
-      const thirdParty = rollupExternals(configSource).filter((name) => !name.startsWith("@iracedeck/"));
+      const thirdParty = pluginExternals(extraExternals(configSource)).filter(
+        (name) => !name.startsWith("@iracedeck/"),
+      );
       expect(thirdParty.length).toBeGreaterThan(0);
       for (const name of thirdParty) {
         expect(
@@ -115,15 +144,17 @@ describe("shipped license files (#905)", () => {
       }
     });
 
-    it("the rollup config copies LICENSE and THIRD-PARTY-LICENSES.md from the repo root to the artifact root", () => {
-      expect(configSource).toContain('name: "copy-license-files"');
-      // Assert the actual copy invocation — source anchored to the repo root,
-      // destination to the artifact root — not just the filenames appearing
-      // somewhere in the config.
-      expect(configSource).toMatch(/for \(const file of \["LICENSE", "THIRD-PARTY-LICENSES\.md"\]\)/);
-      expect(configSource).toMatch(
-        /copyFileSync\(path\.resolve\(__dirname, "\.\.\/\.\.", file\), path\.join\(sdPlugin, file\)\)/,
-      );
+    it("builds through the shared factory", () => {
+      expect(configSource).toContain('import { createPluginRollupConfig } from "@iracedeck/plugin-build";');
+      expect(configSource).toContain("export default createPluginRollupConfig({");
+    });
+
+    it("declares @iracedeck/plugin-build, which orders and invalidates its build", () => {
+      expect(devDependencies?.["@iracedeck/plugin-build"]).toBe("workspace:*");
+    });
+
+    it("copies no license files of its own (the factory's step is the one copy)", () => {
+      expect(configSource).not.toContain("copy-license-files");
     });
 
     it(".sdignore does not strip the license files from the packed plugin", () => {
