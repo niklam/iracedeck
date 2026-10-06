@@ -25,7 +25,11 @@ export interface RaceEngineerWiringDeps {
   readonly logger: ILogger;
   readonly sim: SimRuntime;
   readonly voice: RaceEngineerVoiceState;
-  /** Wins over what the wiring builds. An explicit `undefined` value erases the built one (and `registerPitCrew` then uses its default). */
+  /**
+   * Wins over what the wiring builds. A key whose value is `undefined` is
+   * dropped rather than spread: spreading it would erase the built dependency,
+   * and `registerPitCrew` would then fall back to its default without a word.
+   */
   readonly overrides?: Partial<PitCrewDeps>;
 }
 
@@ -37,9 +41,16 @@ export interface RaceEngineerWiringDeps {
  */
 export function wireRaceEngineer(bus: IEventBus, deps: RaceEngineerWiringDeps): Readonly<PitCrewDeps> {
   const caches = subscribeRaceEngineerCaches(bus, deps.logger);
-  const pitCrewDeps: PitCrewDeps = { ...buildPitCrewDeps(deps, caches), ...deps.overrides };
+  const pitCrewDeps: PitCrewDeps = { ...buildPitCrewDeps(deps, caches), ...definedOverrides(deps.overrides) };
 
   registerPitCrew(bus, pitCrewDeps);
 
   return pitCrewDeps;
+}
+
+/** The overrides without their `undefined`-valued keys, so none can erase a built dependency. */
+function definedOverrides(overrides: Partial<PitCrewDeps> | undefined): Partial<PitCrewDeps> {
+  return Object.fromEntries(
+    Object.entries(overrides ?? {}).filter(([, value]) => value !== undefined),
+  ) as Partial<PitCrewDeps>;
 }

@@ -52,6 +52,16 @@ describe("wireRaceEngineer", () => {
     expect(Object.keys(passed)).toHaveLength(58);
   });
 
+  it("drops an override whose value is undefined rather than erasing the built dependency", () => {
+    const built = wireRaceEngineer(bus as never, deps()).getSessionStartSnapshot;
+
+    const passed = wireRaceEngineer(bus as never, deps({ overrides: { getSessionStartSnapshot: undefined } }));
+
+    expect(typeof built).toBe("function");
+    expect(typeof passed.getSessionStartSnapshot).toBe("function");
+    expect(Object.values(passed).every((value) => value !== undefined)).toBe(true);
+  });
+
   it("passes no override key when given none", () => {
     const passed = wireRaceEngineer(bus as never, deps());
 
