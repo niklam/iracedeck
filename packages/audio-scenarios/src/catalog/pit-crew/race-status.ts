@@ -56,6 +56,7 @@
  * Different family from lap-time so neither preempts the other.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
+import { type CalloutIdOf, RACE_STATUS_CALLOUTS } from "@iracedeck/callout-settings";
 import type { SimEventOf } from "@iracedeck/event-bus";
 
 import { poolRef, WEIGHT } from "../../dsl.js";
@@ -211,16 +212,7 @@ export function buildRaceStatusContract(
  * Stable identifier for the race-status callout (issue #569). Single subject
  * — the leader branch is selected internally based on effective position.
  */
-export type RaceStatusCalloutId = "status";
-
-/**
- * Canonical mapping from `RaceStatusCalloutId` to its plugin-global setting
- * key in `GlobalSettingsSchema`. Plugin entry points use this to read the
- * live opt-in without duplicating the key string.
- */
-export const RACE_STATUS_CALLOUT_SETTING_KEYS: Record<RaceStatusCalloutId, string> = {
-  status: "calloutEnabledRaceStatus",
-};
+export type RaceStatusCalloutId = CalloutIdOf<typeof RACE_STATUS_CALLOUTS>;
 
 // `as const` for the compile-time completeness check on `SCENARIO_ID_TO_RACE_STATUS_ID`.
 export const RACE_STATUS_SCENARIO_IDS = ["pit-crew.race-status"] as const;

@@ -15,12 +15,14 @@ import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" 
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { type CalloutScript, collectScriptReferences } from "@iracedeck/callout-script";
+import { RACE_STATUS_CALLOUTS } from "@iracedeck/callout-settings";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { WEIGHT } from "../../dsl.js";
 import type { AudioAssetsManifest } from "../../interpreter.js";
 import { _resetAudioScenarios, getScenarioEngine, initializeAudioScenarios } from "../../interpreter.js";
+import { familyGate } from "./callout-gate.test-util.js";
 import { _resetPositionReadoutCooldown, canAnnouncePosition, registerPitCrew } from "./index.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import {
@@ -216,7 +218,7 @@ beforeEach(() => {
   registerPitCrew(bus, {
     logger: mockLogger as never,
     getLapCompletedSnapshot: () => currentSnapshot,
-    getRaceStatusCalloutEnabled: () => raceStatusEnabled,
+    isCalloutEnabled: familyGate(RACE_STATUS_CALLOUTS, () => raceStatusEnabled),
     getRaceFinishedFired: () => raceFinished,
     getLivePosition: () => currentLive,
   });

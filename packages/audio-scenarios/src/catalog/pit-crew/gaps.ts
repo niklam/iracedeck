@@ -50,6 +50,7 @@
  * emission.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
+import { type CalloutIdOf, GAP_CALLOUTS } from "@iracedeck/callout-settings";
 import type { GapSide, SimEventOf } from "@iracedeck/event-bus";
 import type { LiveGaps } from "@iracedeck/sim-events-iracing";
 
@@ -320,16 +321,7 @@ export function buildGapThresholdContract(
  * Stable identifier for each user-toggleable gap callout (issue #933). One
  * id per callout type; each covers both sides (ahead + behind).
  */
-export type GapCalloutId = "trend" | "threshold";
-
-/**
- * Canonical mapping from `GapCalloutId` to its plugin-global setting key in
- * `GlobalSettingsSchema`.
- */
-export const GAP_CALLOUT_SETTING_KEYS: Record<GapCalloutId, string> = {
-  trend: "calloutEnabledGapTrend",
-  threshold: "calloutEnabledGapThreshold",
-};
+export type GapCalloutId = CalloutIdOf<typeof GAP_CALLOUTS>;
 
 // `as const` for the compile-time completeness check on `SCENARIO_ID_TO_GAP_ID`.
 export const GAP_SCENARIO_IDS = ["pit-crew.gap-trend", "pit-crew.gap-threshold"] as const;

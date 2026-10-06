@@ -14,12 +14,14 @@ import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" 
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { type CalloutScript, collectScriptReferences } from "@iracedeck/callout-script";
+import { OVERTAKE_CALLOUTS } from "@iracedeck/callout-settings";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ScenarioContext } from "../../dsl.js";
 import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios, poolMemberPattern } from "../../interpreter.js";
+import { familyGate } from "./callout-gate.test-util.js";
 import { _resetPositionReadoutCooldown, registerPitCrew } from "./index.js";
 import {
   buildOvertakeGainedContract,
@@ -266,7 +268,7 @@ beforeEach(() => {
   registerPitCrew(bus, {
     logger: mockLogger as never,
     getRaceFinishedFired: () => raceFinished,
-    getOvertakeCalloutEnabled: (id) => overtakeEnabled[id],
+    isCalloutEnabled: familyGate(OVERTAKE_CALLOUTS, (id) => overtakeEnabled[id]),
     getOvertakeDriverName: () => currentDriverName,
     getLivePosition: () => currentLive,
     getOvertakeGate: () => currentGate,

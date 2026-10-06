@@ -12,6 +12,7 @@ import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" 
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { type CalloutScript, collectScriptReferences } from "@iracedeck/callout-script";
+import { INCIDENT_CALLOUTS, QUALIFYING_INVALIDATION_CALLOUTS } from "@iracedeck/callout-settings";
 import type { IEventBus, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -24,6 +25,7 @@ import {
   initializeAudioScenarios,
   poolMemberPattern,
 } from "../../interpreter.js";
+import { familyGate } from "./callout-gate.test-util.js";
 import { _resetLastIncidentPoints, INCIDENT_SCENARIO_IDS } from "./incidents.js";
 import { registerPitCrew } from "./index.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
@@ -233,12 +235,13 @@ beforeEach(() => {
   initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
   registerPitCrew(bus, {
     logger: mockLogger as never,
-    getQualifyingInvalidationCalloutEnabled: () => qualifyingEnabled,
     getQualifyingInvalidationSnapshot: () => lastSnapshot,
     // The incident callouts share this contract's event and its weight, and
     // would wait beside it in the bus's queue — keep them out so the
     // parked-fire test below exercises the qualifying fire alone.
-    getIncidentCalloutEnabled: () => false,
+    isCalloutEnabled: (key) =>
+      familyGate(QUALIFYING_INVALIDATION_CALLOUTS, () => qualifyingEnabled)(key) &&
+      familyGate(INCIDENT_CALLOUTS, () => false)(key),
   });
   // After the registration, as the plugins do: the callout's body is looked
   // up in the active voice's compiled script at fire time (issue #1065).
@@ -1012,9 +1015,8 @@ describe("the incident line's yield to the lap-invalidation line (issues #1122, 
     initializeAudioScenarios(bus, audio, YIELD_MANIFEST, mockLogger as never, () => VOICE);
     registerPitCrew(bus, {
       logger: mockLogger as never,
-      getQualifyingInvalidationCalloutEnabled: () => qualifyingEnabled,
       getQualifyingInvalidationSnapshot: () => lastSnapshot,
-      getIncidentCalloutEnabled: () => true,
+      isCalloutEnabled: familyGate(QUALIFYING_INVALIDATION_CALLOUTS, () => qualifyingEnabled),
     });
     getScenarioEngine().setScripts(new Map([[VOICE, YIELD_SCRIPT]]));
   });

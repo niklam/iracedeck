@@ -22,6 +22,7 @@ import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" 
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { type CalloutScript, collectScriptReferences } from "@iracedeck/callout-script";
+import { TRACK_CONDITIONS_CALLOUTS } from "@iracedeck/callout-settings";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { TrackWetness } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -34,6 +35,7 @@ import {
   initializeAudioScenarios,
   poolMemberPattern,
 } from "../../interpreter.js";
+import { familyGate } from "./callout-gate.test-util.js";
 import { registerPitCrew, type TrackConditionsCalloutId } from "./index.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import { _resetRadarEngine } from "./radar-engine.js";
@@ -361,8 +363,8 @@ describe("TRACK_CONDITIONS_CONTRACTS preemption", () => {
   });
 });
 
-// Opt-in gating wired through `registerPitCrew`'s `getTrackConditionsCalloutEnabled`
-// closure (issue #526): one `wetness` subject gates all twelve lines. The
+// Opt-in gating wired through `registerPitCrew`'s `isCalloutEnabled` for the
+// track-conditions family (issue #526): one `wetness` subject gates all twelve lines. The
 // manifest here only carries the track-conditions clips, so unrelated
 // families register with disabled scenarios (pool-validation errors are
 // logged but harmless) — the track-conditions events under test still fire.
@@ -379,7 +381,7 @@ describe("TRACK_CONDITIONS_CONTRACTS opt-in gating (issue #526)", () => {
 
     registerPitCrew(bus, {
       logger: mockLogger as never,
-      getTrackConditionsCalloutEnabled: (id) => wetnessEnabled.get(id) ?? true,
+      isCalloutEnabled: familyGate(TRACK_CONDITIONS_CALLOUTS, (id) => wetnessEnabled.get(id) ?? true),
     });
     getScenarioEngine().setScripts(new Map([[VOICE, TRACK_CONDITIONS_SCRIPT]]));
   });

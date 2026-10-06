@@ -49,6 +49,7 @@
  * stay harness-firable.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
+import { type CalloutIdOf, OPPONENT_PIT_CALLOUTS } from "@iracedeck/callout-settings";
 import type { SimEventOf } from "@iracedeck/event-bus";
 
 import type { ScenarioContract } from "../../dsl.js";
@@ -188,13 +189,7 @@ export const OPPONENT_PIT_CONTRACTS: readonly ScenarioContract[] = [
  * gates the leader line; `nearby` gates the ±2-window lines (ahead / behind /
  * numbered) plus the aggregate tail.
  */
-export type OpponentPitCalloutId = "leader" | "nearby";
-
-/** Canonical id↔setting-key map plugins read the live opt-in through. */
-export const OPPONENT_PIT_CALLOUT_SETTING_KEYS: Record<OpponentPitCalloutId, string> = {
-  leader: "calloutEnabledOpponentPitLeader",
-  nearby: "calloutEnabledOpponentPitNearby",
-};
+export type OpponentPitCalloutId = CalloutIdOf<typeof OPPONENT_PIT_CALLOUTS>;
 
 export const SCENARIO_ID_TO_OPPONENT_PIT_ID: Record<string, OpponentPitCalloutId> = {
   "pit-crew.opponent-pit-leader": "leader",

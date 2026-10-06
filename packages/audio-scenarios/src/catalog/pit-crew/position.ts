@@ -89,6 +89,7 @@
  * fire; the var resolver returning `null` is a defense-in-depth guard.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
+import { type CalloutIdOf, POSITION_CALLOUTS } from "@iracedeck/callout-settings";
 import type { SimEventOf } from "@iracedeck/event-bus";
 
 import { poolRef, WEIGHT } from "../../dsl.js";
@@ -511,16 +512,7 @@ export function buildPositionContract(
  * subject — `change` covers improvement, worsening, and first-fix
  * (intro selection happens inside the script's case).
  */
-export type PositionCalloutId = "change";
-
-/**
- * Canonical mapping from `PositionCalloutId` to its plugin-global setting
- * key in `GlobalSettingsSchema`. Plugin entry points use this to read the
- * live opt-in without duplicating the key string.
- */
-export const POSITION_CALLOUT_SETTING_KEYS: Record<PositionCalloutId, string> = {
-  change: "calloutEnabledPositionChange",
-};
+export type PositionCalloutId = CalloutIdOf<typeof POSITION_CALLOUTS>;
 
 // `as const` so the element type is a literal union the `SCENARIO_ID_TO_POSITION_ID`
 // map below can be typed against — TS errors out at build time if a contract id

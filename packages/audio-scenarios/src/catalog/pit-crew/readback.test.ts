@@ -18,12 +18,14 @@ import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" 
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { type CalloutScript, collectScriptReferences } from "@iracedeck/callout-script";
+import { FLAG_CALLOUTS, PIT_READBACK_CALLOUTS } from "@iracedeck/callout-settings";
 import type { IEventBus, PitReadbackSnapshot, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { WEIGHT } from "../../dsl.js";
 import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios, poolMemberPattern } from "../../interpreter.js";
+import { familyGate } from "./callout-gate.test-util.js";
 import { type FlagCalloutId, type PitReadbackCalloutId, registerPitCrew } from "./index.js";
 import { PIT_BOX_PENDING_HOLD_MS } from "./pit-box.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
@@ -358,9 +360,10 @@ beforeEach(() => {
   // cases below (the count-in cutting a readback, a meatball stashing one)
   // run against the real scheduling neighbours.
   registerPitCrew(bus, {
-    getFlagCalloutEnabled: (id) => flagsEnabled.get(id) ?? true,
     logger: mockLogger as never,
-    getPitReadbackEnabled: (id) => readbackEnabled.get(id) ?? true,
+    isCalloutEnabled: (key) =>
+      familyGate(FLAG_CALLOUTS, (id) => flagsEnabled.get(id) ?? true)(key) &&
+      familyGate(PIT_READBACK_CALLOUTS, (id) => readbackEnabled.get(id) ?? true)(key),
     getReadbackSnapshot: () => currentSnapshot,
   });
   // After the registration, as the plugins do: the readback's body and its

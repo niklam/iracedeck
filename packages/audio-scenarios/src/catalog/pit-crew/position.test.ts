@@ -23,12 +23,14 @@ import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" 
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { type CalloutScript, collectScriptReferences } from "@iracedeck/callout-script";
+import { LAP_TIME_CALLOUTS, POSITION_CALLOUTS } from "@iracedeck/callout-settings";
 import type { IEventBus, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { WEIGHT } from "../../dsl.js";
 import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios, poolMemberPattern } from "../../interpreter.js";
+import { familyGate } from "./callout-gate.test-util.js";
 import { _resetPositionReadoutCooldown, canAnnouncePosition, registerPitCrew } from "./index.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import {
@@ -593,9 +595,9 @@ describe("position-change contract — the catalog's opt-in wrapper", () => {
     engine = initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
     registerPitCrew(bus, {
       logger: mockLogger as never,
-      getLapTimeCalloutEnabled: () => false,
       getLapCompletedSnapshot: () => lastSnapshot,
-      getPositionCalloutEnabled: () => positionEnabled,
+      isCalloutEnabled: (key) =>
+        familyGate(LAP_TIME_CALLOUTS, () => false)(key) && familyGate(POSITION_CALLOUTS, () => positionEnabled)(key),
       getRaceFinishedFired: () => raceFinished,
       getLivePosition: liveFromSnapshot,
       getUnderFullCourseCaution: () => underCaution,

@@ -25,7 +25,6 @@ import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js"
 import { _resetAudioScenarios, initializeAudioScenarios, poolMemberPattern } from "../../interpreter.js";
 import {
   _resetOpponentPitPending,
-  OPPONENT_PIT_CALLOUT_SETTING_KEYS,
   OPPONENT_PIT_CLIP_SOURCES,
   OPPONENT_PIT_CONTRACTS,
   OPPONENT_PIT_SCENARIO_IDS,
@@ -475,12 +474,5 @@ describe("family wiring", () => {
     for (const id of OPPONENT_PIT_SCENARIO_IDS.filter((x) => x !== "pit-crew.opponent-pit-leader")) {
       expect(SCENARIO_ID_TO_OPPONENT_PIT_ID[id]).toBe("nearby");
     }
-  });
-
-  it("exposes the canonical setting keys", () => {
-    expect(OPPONENT_PIT_CALLOUT_SETTING_KEYS).toEqual({
-      leader: "calloutEnabledOpponentPitLeader",
-      nearby: "calloutEnabledOpponentPitNearby",
-    });
   });
 });

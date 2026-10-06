@@ -23,6 +23,7 @@
  * that yield to higher-weight in-flight pit-lane messages.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
+import { type CalloutIdOf, PIT_LIMITER_CALLOUTS } from "@iracedeck/callout-settings";
 import { hasPitLimiter, type TelemetryData } from "@iracedeck/iracing-sdk";
 import { getLatestTelemetry } from "@iracedeck/sim-events-iracing";
 
@@ -213,18 +214,7 @@ export const PIT_LIMITER_CONTRACTS: readonly ScenarioContract[] = [
 export const PIT_LIMITER_SCENARIO_IDS: readonly string[] = PIT_LIMITER_CONTRACTS.map((c) => c.id);
 
 /** Stable identifier for each user-toggleable pit-limiter callout (issue #1051). */
-export type PitLimiterCalloutId = "on-track" | "missing" | "dropped" | "speeding";
-
-/**
- * Canonical id -> plugin-global setting key. Plugins read the live opt-in
- * through this rather than duplicating the key strings.
- */
-export const PIT_LIMITER_CALLOUT_SETTING_KEYS: Record<PitLimiterCalloutId, string> = {
-  "on-track": "calloutEnabledLimiterOnTrack",
-  missing: "calloutEnabledLimiterMissing",
-  dropped: "calloutEnabledLimiterDropped",
-  speeding: "calloutEnabledLimiterSpeeding",
-};
+export type PitLimiterCalloutId = CalloutIdOf<typeof PIT_LIMITER_CALLOUTS>;
 
 /** Scenario id -> callout id, consumed by `wrapCalloutScenario` in `index.ts`. */
 export const SCENARIO_ID_TO_PIT_LIMITER_ID: Record<string, PitLimiterCalloutId> = {

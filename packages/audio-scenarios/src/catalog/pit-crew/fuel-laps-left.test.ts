@@ -22,6 +22,7 @@ import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" 
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { type CalloutScript, collectScriptReferences } from "@iracedeck/callout-script";
+import { FUEL_CALLOUTS } from "@iracedeck/callout-settings";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -33,6 +34,7 @@ import {
   initializeAudioScenarios,
   poolMemberPattern,
 } from "../../interpreter.js";
+import { familyGate } from "./callout-gate.test-util.js";
 import {
   FUEL_LAPS_LEFT_CLIP_SOURCES,
   FUEL_LAPS_LEFT_CONTRACTS,
@@ -397,8 +399,8 @@ describe("FUEL_LAPS_LEFT_CONTRACTS scheduling", () => {
   });
 });
 
-// Opt-in gating wired through `registerPitCrew`'s `getFuelCalloutEnabled`
-// closure (issue #838): one subject per count, so switching a count off
+// Opt-in gating wired through `registerPitCrew`'s `isCalloutEnabled` for the
+// fuel family (issue #838): one subject per count, so switching a count off
 // silences that count alone. The manifest here only carries the fuel clips,
 // so unrelated families register with disabled scenarios (pool-validation
 // errors are logged but harmless) — the fuel events under test still fire.
@@ -415,7 +417,7 @@ describe("FUEL_LAPS_LEFT_CONTRACTS opt-in gating (issue #838)", () => {
 
     registerPitCrew(bus, {
       logger: mockLogger as never,
-      getFuelCalloutEnabled: (id) => fuelEnabled.get(id) ?? true,
+      isCalloutEnabled: familyGate(FUEL_CALLOUTS, (id) => fuelEnabled.get(id) ?? true),
     });
     getScenarioEngine().setScripts(new Map([[VOICE, FUEL_SCRIPT]]));
   });

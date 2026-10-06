@@ -31,7 +31,6 @@ import { poolRef, WEIGHT } from "../../dsl.js";
 import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios, poolMemberPattern } from "../../interpreter.js";
 import {
-  OPPONENT_FLAG_CALLOUT_SETTING_KEYS,
   OPPONENT_FLAG_CLIP_SOURCES,
   OPPONENT_FLAG_CONTRACTS,
   OPPONENT_FLAG_OTHERS_SCENARIO_ID,
@@ -721,15 +720,6 @@ describe("family wiring", () => {
       black: "black",
       repair: "meatball",
       disqualify: "disqualify",
-    });
-  });
-
-  it("exposes the canonical setting keys", () => {
-    expect(OPPONENT_FLAG_CALLOUT_SETTING_KEYS).toEqual({
-      furled: "calloutEnabledOpponentFlagFurled",
-      black: "calloutEnabledOpponentFlagBlack",
-      meatball: "calloutEnabledOpponentFlagMeatball",
-      disqualify: "calloutEnabledOpponentFlagDisqualify",
     });
   });
 });
