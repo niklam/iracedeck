@@ -1475,12 +1475,23 @@ describe("the mask fails closed (#1321 review)", () => {
     expect(issueFromWorktreePath("/x/ir-1325/scripts/ir-1321")).toBe(1321);
     expect(issueFromWorktreePath("C:\\x\\ir-1325\\scripts")).toBeUndefined();
     expect(issueFromWorktreePath("C:\\x\\ir-1325-old")).toBeUndefined();
+    expect(issueFromWorktreePath("C:\\x\\ir-0")).toBeUndefined();
+    expect(issueFromWorktreePath("C:\\x\\ir-0042")).toBeUndefined();
   });
 
-  it("names a tree by its last segment from inside another ir-* tree (#1358)", () => {
-    const sub = tree("ir-1325", "scripts");
-    passes(`git worktree add ../../ir-5 -b fix/5-x`, ctx({ cwd: sub }));
-    expect(deny(`git worktree add ../ir-5/scratch -b fix/5-x`, ctx({ cwd: sub }))).toMatch(/got scratch/);
+  it("denies a worktree nested in another ir-* tree, which is outside master (#1358)", () => {
+    // mainRoot is the checkout the git-common-dir belongs to — master — so
+    // "not inside master" alone let these through.
+    const sub = ctx({ cwd: tree("ir-1325", "scripts") });
+    expect(deny(`git worktree add ir-5 -b fix/5-x`, sub)).toMatch(/siblings/);
+    expect(deny(`git worktree add ../ir-5 -b fix/5-x`, sub)).toMatch(/siblings/);
+    passes(`git worktree add ../../ir-5 -b fix/5-x`, sub);
+  });
+
+  it("refuses a name that is no issue number, and asks the spec gate the same number (#1358)", () => {
+    expect(deny("git worktree add ../ir-0 -b x")).toMatch(/ir-<issue>/);
+    expect(deny("git worktree add ../ir-0042 -b x")).toMatch(/ir-<issue>/);
+    expect(asks("git worktree add ../ir-42 -b x", ctx({ specFiles: () => [] }))).toMatch(/No spec on master for #42 /);
   });
 
   it("the post-hook's merge trigger finds a merge behind any wrapper, and only a readable PR", () => {
