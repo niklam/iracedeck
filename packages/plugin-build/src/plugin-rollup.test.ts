@@ -1,6 +1,16 @@
 import { PI_SETTINGS_BRIDGE, SETTINGS_WINDOW_BRIDGE, SETTINGS_WINDOW_HTML } from "@iracedeck/pi-components/build";
 import typescript from "@rollup/plugin-typescript";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import url from "node:url";
@@ -19,6 +29,13 @@ import {
   SOURCES,
 } from "./plugin-rollup.mjs";
 
+// node:fs passes through to the real module; the copy-list test stubs copyFileSync and mkdirSync
+// for one call so the step's cwd-relative ui folder is never written in the real working directory.
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+
+  return { ...actual, copyFileSync: vi.fn(actual.copyFileSync), mkdirSync: vi.fn(actual.mkdirSync) };
+});
 vi.mock("@rollup/plugin-commonjs", () => ({ default: vi.fn((opts?: unknown) => ({ name: "stub:commonjs", opts })) }));
 vi.mock("@rollup/plugin-json", () => ({ default: vi.fn((opts?: unknown) => ({ name: "stub:json", opts })) }));
 vi.mock("@rollup/plugin-node-resolve", () => ({
@@ -133,9 +150,12 @@ describe("createPluginRollupConfig", () => {
     writeFileSync(path.join(packageDir, SD_PLUGIN_DIR, "manifest.json"), "{}");
     writeFileSync(path.join(packageDir, "platform-features.json"), JSON.stringify(COMMITTED_FEATURES));
     configUrl = url.pathToFileURL(path.join(packageDir, "rollup.config.mjs")).href;
+    // `rollup -c` runs in the plugin package; the factory asserts it.
+    vi.spyOn(process, "cwd").mockReturnValue(packageDir);
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     vi.unstubAllEnvs();
     rmSync(tmp, { recursive: true, force: true });
   });
@@ -161,7 +181,7 @@ describe("createPluginRollupConfig", () => {
       expect(pluginExternals(["ws"])).toEqual([...BASE_EXTERNALS, "ws"]);
     });
 
-    it("orders the plugins as the three configs did, with the optional steps off by default", () => {
+    it("orders the plugins in the common order, with the optional steps off by default", () => {
       expect(pluginsOf(createPluginRollupConfig(options())).map((p) => p.name)).toEqual(expectedNames());
     });
 
@@ -246,6 +266,39 @@ describe("createPluginRollupConfig", () => {
       expect(piInjector.include("x.html")).toBe(true);
       expect(assert.expectedBridge(SETTINGS_WINDOW_HTML)).toBe(SETTINGS_WINDOW_BRIDGE);
       expect(assert.expectedBridge("x.html")).toBe(expected);
+    });
+
+    it.each([
+      ["the default", undefined, PI_SETTINGS_BRIDGE],
+      ["Ulanzi's", "ulanzi-pi-bridge.js", "ulanzi-pi-bridge.js"],
+    ])("copies %s PI bridge into ui/ with the other browser assets", (_label, piBridge, expected) => {
+      const config = createPluginRollupConfig(options(piBridge === undefined ? {} : { piBridge }));
+      // Stubbed for this one call: the step's ui folder is cwd-relative, and the
+      // real working directory is never the temp package.
+      vi.mocked(copyFileSync).mockImplementation(() => undefined);
+      vi.mocked(mkdirSync).mockImplementation(() => undefined);
+      const ctx = { error: vi.fn(), info: vi.fn() };
+      let destinations: string[] = [];
+
+      try {
+        hook(pluginNamed(config, "copy-pi-browser-assets"), "generateBundle").call(ctx);
+        destinations = vi.mocked(copyFileSync).mock.calls.map(([, dest]) => String(dest));
+      } finally {
+        // Back to the pass-through implementations for every other test.
+        vi.mocked(copyFileSync).mockReset();
+        vi.mocked(mkdirSync).mockReset();
+      }
+
+      expect(destinations.map((dest) => path.basename(dest))).toEqual([
+        "sdpi-components.js",
+        "pi-components.js",
+        expected,
+        SETTINGS_WINDOW_BRIDGE,
+        "iracedeck-logo.png",
+        "iracedeck-icon.png",
+      ]);
+
+      for (const dest of destinations) expect(path.dirname(dest)).toBe(path.join(SD_PLUGIN_DIR, "ui"));
     });
   });
 
@@ -341,8 +394,7 @@ describe("createPluginRollupConfig", () => {
   });
 
   describe("the plugin package directory", () => {
-    it("is the directory of configUrl, not the process cwd", () => {
-      expect(process.cwd()).not.toBe(packageDir);
+    it("is the directory of configUrl", () => {
       const config = createPluginRollupConfig(options());
       const addWatchFile = vi.fn();
 
@@ -350,6 +402,29 @@ describe("createPluginRollupConfig", () => {
 
       expect(addWatchFile).toHaveBeenCalledWith(path.join(packageDir, SD_PLUGIN_DIR, "manifest.json"));
       expect(addWatchFile).toHaveBeenCalledWith(path.join(packageDir, "platform-features.json"));
+    });
+
+    it("must be the working directory, compared by real path", () => {
+      const spelled =
+        process.platform === "win32" ? `${packageDir.toUpperCase()}${path.sep}` : `${packageDir}${path.sep}`;
+      vi.mocked(process.cwd).mockReturnValue(spelled);
+
+      expect(() => createPluginRollupConfig(options())).not.toThrow();
+    });
+
+    it("fails fast from any other working directory, naming both paths", () => {
+      vi.mocked(process.cwd).mockReturnValue(tmp);
+      let message = "";
+
+      try {
+        createPluginRollupConfig(options());
+      } catch (error) {
+        message = (error as Error).message;
+      }
+
+      expect(message).toContain("must be run from its package directory");
+      expect(message).toContain(realpathSync.native(tmp));
+      expect(message).toContain(realpathSync.native(packageDir));
     });
 
     it("reads platform-features.json from that directory", () => {
@@ -402,6 +477,18 @@ describe("createPluginRollupConfig", () => {
 
     it("rejects an extra external that is already a base one", () => {
       rejects(options({ extraExternals: ["ws", "yaml"] }), '"extraExternals"', "yaml");
+    });
+
+    it("rejects an extra external listed twice", () => {
+      rejects(options({ extraExternals: ["ws", "ws"] }), '"extraExternals"', '"ws" twice');
+    });
+
+    it.each([
+      ["absolute", path.resolve("com.example.abs.sdPlugin")],
+      ["parent-relative", "../elsewhere/com.example.test.sdPlugin"],
+      ["parent-relative with backslashes", String.raw`sub\..\..\com.example.test.sdPlugin`],
+    ])("rejects an sdPluginDir that is %s", (_label, sdPluginDir) => {
+      rejects(options({ sdPluginDir }), '"sdPluginDir" must be a folder inside the plugin package');
     });
 
     it("rejects an empty or malformed actionIcons list", () => {

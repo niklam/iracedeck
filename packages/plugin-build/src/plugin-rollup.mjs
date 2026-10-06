@@ -1,3 +1,4 @@
+// @ts-check
 import { processAndCopyAudioAssetsPlugin } from "@iracedeck/audio-assets/build";
 import {
   assertBridgeInjectionPlugin,
@@ -17,20 +18,32 @@ import nodeResolve from "@rollup/plugin-node-resolve";
 import replace from "@rollup/plugin-replace";
 import terser from "@rollup/plugin-terser";
 import typescript from "@rollup/plugin-typescript";
-import { copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import url from "node:url";
 
-import { DEV_LOCAL_FILE, resolveDevVoicePacksRoot } from "../../../scripts/lib/dev-local.mjs";
+import { DEV_LOCAL_FILE, isSamePath, resolveDevVoicePacksRoot } from "../../../scripts/lib/dev-local.mjs";
 import { pluginBuildOnLog } from "../../../scripts/lib/rollup-logs.mjs";
 import { runtimePackageJsonPlugin } from "../../../scripts/lib/runtime-deps.mjs";
 import { BASE_EXTERNALS, pluginExternals } from "./externals.mjs";
 
 // The factory runs from packages/plugin-build/src, not from the plugin, so every
 // path that used to be relative to a plugin's own config is anchored on the repo
-// root here. What stays relative is relative to the CWD, which is the plugin
-// package: `rollup -c` runs there, exactly as before the factory existed.
+// root here. Every path that stays relative (the input, the output file, the
+// typescript include globs, the plugin folder) is relative to the CWD, as are
+// @rollup/plugin-typescript's tsconfig lookup and node-resolve's rootDir. So the
+// config must run from its own package (`rollup -c` in the plugin package), and
+// the factory asserts that the CWD is the directory of the calling config.
 const repoRoot = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "../../..");
 
 /**
@@ -90,14 +103,38 @@ const ASSET_COPY_KEYS = ["actionIcons", "elgatoPluginImgs"];
  * @property {boolean} [stripHtmlLang] Strip `lang` from `<html>` in the generated PI pages (VSD Craft requires it). Default false.
  */
 
+/**
+ * @param {string} message
+ * @returns {never}
+ */
 function fail(message) {
   throw new Error(`createPluginRollupConfig: ${message}`);
+}
+
+/**
+ * Fail fast unless the CWD is the plugin package: every relative path in the
+ * config, and the typescript and node-resolve plugins' own lookups, resolve
+ * against it. Both sides are real paths, compared case-insensitively on Windows.
+ *
+ * @param {string} packageDir
+ */
+function assertCwdIsPackageDir(packageDir) {
+  const cwd = realpathSync.native(process.cwd());
+  const expected = realpathSync.native(packageDir);
+  if (!isSamePath(cwd, expected)) {
+    fail(
+      `the config must be run from its package directory (\`rollup -c\` in the plugin package): ` +
+        `the working directory is ${cwd}, but the config is in ${expected}`,
+    );
+  }
 }
 
 /**
  * Reject anything the factory would otherwise build with silently: an unknown
  * key (a typo like `stripHtmlLnag` must not fall back to the default), a missing
  * required key, an unknown platform, or an extra external that is already a base one.
+ *
+ * @param {Record<string, any>} options
  */
 function validateOptions(options) {
   if (options === null || typeof options !== "object" || Array.isArray(options)) {
@@ -115,9 +152,14 @@ function validateOptions(options) {
   if (typeof configUrl !== "string" || !configUrl.startsWith("file:")) {
     fail(`option "configUrl" must be the config's import.meta.url (a file: URL), got ${JSON.stringify(configUrl)}`);
   }
-  if (typeof sdPluginDir !== "string" || sdPluginDir === "" || path.isAbsolute(sdPluginDir)) {
+  if (
+    typeof sdPluginDir !== "string" ||
+    sdPluginDir === "" ||
+    path.isAbsolute(sdPluginDir) ||
+    sdPluginDir.split(/[\\/]/).includes("..")
+  ) {
     fail(
-      `option "sdPluginDir" must be a folder name relative to the plugin package, got ${JSON.stringify(sdPluginDir)}`,
+      `option "sdPluginDir" must be a folder inside the plugin package (relative, no ".."), got ${JSON.stringify(sdPluginDir)}`,
     );
   }
   if (!PLATFORMS.includes(platform)) {
@@ -127,8 +169,9 @@ function validateOptions(options) {
     if (!Array.isArray(extraExternals) || extraExternals.some((name) => typeof name !== "string")) {
       fail(`option "extraExternals" must be an array of package names`);
     }
-    for (const name of extraExternals) {
+    for (const [index, name] of extraExternals.entries()) {
       if (BASE_EXTERNALS.includes(name)) fail(`option "extraExternals" repeats the base external "${name}"`);
+      if (extraExternals.indexOf(name) !== index) fail(`option "extraExternals" lists "${name}" twice`);
     }
   }
   if (assetCopy === null || typeof assetCopy !== "object" || Array.isArray(assetCopy)) {
@@ -140,7 +183,7 @@ function validateOptions(options) {
   if (
     !Array.isArray(assetCopy.actionIcons) ||
     assetCopy.actionIcons.length === 0 ||
-    assetCopy.actionIcons.some((file) => typeof file !== "string")
+    assetCopy.actionIcons.some((/** @type {unknown} */ file) => typeof file !== "string")
   ) {
     fail(`option "assetCopy.actionIcons" must be a non-empty array of file names`);
   }
@@ -160,6 +203,9 @@ function validateOptions(options) {
  * objects are merged recursively; arrays and primitives are replaced.
  *
  * @internal Exported for testing
+ * @param {Record<string, any>} base
+ * @param {Record<string, any>} override
+ * @returns {Record<string, any>}
  */
 export function deepMergeObjects(base, override) {
   const result = { ...base };
@@ -174,6 +220,7 @@ export function deepMergeObjects(base, override) {
   return result;
 }
 
+/** @param {unknown} value */
 function isPlainObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -185,9 +232,15 @@ function isPlainObject(value) {
  * leak into the merged flags or crash the build.
  *
  * @internal Exported for testing
+ * @param {Record<string, any>} committed
+ * @param {Record<string, any>} override
+ * @param {string} [prefix]
+ * @returns {{ known: Record<string, any>, unknown: string[] }}
  */
 export function partitionOverride(committed, override, prefix = "") {
+  /** @type {Record<string, any>} */
   const known = {};
+  /** @type {string[]} */
   const unknown = [];
   for (const key of Object.keys(override)) {
     if (!Object.prototype.hasOwnProperty.call(committed, key)) {
@@ -269,6 +322,8 @@ export function copyActionIcons(templatesDir, destRoot, files) {
 /**
  * Rollup plugin to import SVG files as strings.
  * Handles both relative imports and @iracedeck/icons/ package imports.
+ *
+ * @returns {import("rollup").Plugin}
  */
 function svgPlugin() {
   return {
@@ -296,6 +351,9 @@ function svgPlugin() {
 /**
  * Rollup plugin to strip lang="en" from generated HTML files.
  * VSD Craft requires <html> without a lang attribute.
+ *
+ * @param {string} outputDir
+ * @returns {import("rollup").Plugin}
  */
 function stripHtmlLangPlugin(outputDir) {
   return {
@@ -347,6 +405,7 @@ export function createPluginRollupConfig(options) {
       `no manifest at ${manifestPath}: option "sdPluginDir" (${sdPluginDir}) names no plugin folder in ${packageDir}`,
     );
   }
+  assertCwdIsPackageDir(packageDir);
 
   const rootPackageJson = JSON.parse(readFileSync(SOURCES.rootPackageJson, "utf-8"));
   const actionTemplatesDir = SOURCES.actionTemplatesDir;
@@ -419,6 +478,8 @@ export function createPluginRollupConfig(options) {
         version: rootPackageJson.version,
         platformFeatures,
       }),
+      // Ulanzi's config used to run its two injectors after commonjs, PI bridge first; the
+      // position cannot change output: both are writeBundle hooks with disjoint includes.
       // Settings-window bridge into settings-window.html only (#992): it must load
       // before sdpi-components.js so it can redirect the socket to the plugin's
       // loopback fake host with the launch token.
@@ -516,6 +577,7 @@ export function createPluginRollupConfig(options) {
           if (existsSync(localFeaturesPath)) this.addWatchFile(localFeaturesPath);
           if (existsSync(devLocalPath)) this.addWatchFile(devLocalPath);
           // Recursively watch SVG files in a directory
+          /** @param {string} dir */
           const watchSvgsRecursive = (dir) => {
             try {
               for (const entry of readdirSync(dir, { withFileTypes: true })) {
