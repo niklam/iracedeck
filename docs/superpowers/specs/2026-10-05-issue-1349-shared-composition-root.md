@@ -80,7 +80,7 @@ The bootstrap tests for the extension's presence, never for a host name.
 | 4 | `initAudio` | `Core` | `Audio`, including `armFeatureGateSync` | audio, feature-gate listeners, dormant (13–14) |
 | 5 | `initVoicePacks` | `Core`, `Audio` | `VoicePacks`: state, service, installer, launch step, pushers | the #1104 block, including the first `refresh()` (15, 20) |
 | 6 | `initRaceEngineer` | `Core`, `SimRuntime`, `Audio`, `VoicePacks` | — | `initializeAudioScenarios`, then `wireRaceEngineer`, then `setScripts` (16–19) |
-| 7 | `initSettings` | `Core`, `Audio`, `VoicePacks` | `Settings`: store, window | settings and replay stores, settings window, startup notices, the global-settings listener with its store-ready block, PI-appear re-pushes (21–26) |
+| 7 | `initSettings` | `Core`, `Audio`, `VoicePacks` | `Settings`: store, replay store, `openSettingsWindow` | settings and replay stores, settings window, startup notices, the global-settings listener with its store-ready block, PI-appear re-pushes (21–26) |
 | 8 | `registerActions` | `Core`, `Input` | — | window focus, mouse pointer, focus listeners, then the shared list plus the extension's extras (27–29) |
 | 9 | `startServices` | `Core`, `Input`, `Settings`, `VoicePacks` | — | `initGlobalSettings` → launch step `start()` → key migrations and binding seeds → extension start → settings request → SimHub → binding dispatcher → app monitor → elevation and replay subscribers (30–38) |
 | 10 | `adapter.connect()` | — | — | always last (39) |
