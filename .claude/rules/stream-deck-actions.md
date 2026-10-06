@@ -357,8 +357,8 @@ Global settings are plugin-level settings shared across all action instances. Us
 **IMPORTANT**: You MUST pass the platform adapter and the plugin-owned settings store to `initGlobalSettings()`:
 
 ```typescript
-// plugin.ts
-import { ElgatoPlatformAdapter } from "@iracedeck/deck-adapter-elgato";
+// plugin-runtime: the store in initSettings (src/phases/settings.ts),
+// initGlobalSettings in src/phases/start-services.ts — `adapter` is core.adapter
 import {
   createFileSettingsStore,
   createSettingsFileRejectionReporter,
@@ -382,7 +382,7 @@ initGlobalSettings(adapter, adapter.createLogger("GlobalSettings"), settingsStor
   pluginVersion: getPluginVersion(),
 });
 
-adapter.connect();
+adapter.connect(); // startPlugin's last step
 ```
 
 ### Accessing Global Bindings in Actions (Preferred)

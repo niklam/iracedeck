@@ -10,6 +10,7 @@ paths:
   - "packages/iracing-actions/src/actions/data/**"
   - "packages/deck-adapter-*/**"
   - "packages/iracing-plugin-*/**"
+  - "packages/plugin-runtime/**"
 ---
 
 # Settings Window (#992)
@@ -25,7 +26,7 @@ The server starts from the plugin's **store-ready startup block** (`ensureStarte
 | Request guard | `deck-core/src/settings-window-guard.ts` | Pure: token, then `Origin`, then cookie. |
 | Server | `deck-core/src/settings-window-server.ts` | `node:http` + `ws` on `127.0.0.1`, ephemeral port. Serves `ui/` (confined; traversal → 404), the fake host at `/ws` (window AND PIs), `GET /simhub/roles`, `GET /updates/status`; exposes `token`. |
 | Fake host | server (`attachFakeHost`) | Elgato PI protocol, global subset: `get/setGlobalSettings`, `didReceiveGlobalSettings`, `openUrl` (http(s) only), `logMessage`, `sendToPlugin`. |
-| Settings I/O | injected `SettingsWindowHost` | Bound in `plugin.ts` to `getGlobalSettings` / `updateGlobalSettings` / `onGlobalSettingsChange`; the server never touches the singleton or `settings-store.ts`. |
+| Settings I/O | injected `SettingsWindowHost` | Bound in `plugin-runtime`'s `initSettings` (`src/phases/settings.ts`) to `getGlobalSettings` / `updateGlobalSettings` / `onGlobalSettingsChange`; the server never touches the singleton or `settings-store.ts`. |
 | Commands | `deck-core/src/settings-window-commands.ts` | `createSettingsWindowCommandHandler` validates and routes `sendToPlugin` payloads. |
 | Launcher | `deck-core/src/settings-window-launcher.ts` + `chromium-browser.ts` | Finds Edge/Chrome/Brave (App Paths, then well-known paths; memoized), spawns a detached app window, falls back to the host's `openUrl`. |
 | Controller | `deck-core/src/settings-window.ts` | One server per plugin, reused across opens; `ensureStarted()` → `{ port, token }`; `onStarted` / `onStatus`. |

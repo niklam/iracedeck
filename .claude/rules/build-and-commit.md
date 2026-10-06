@@ -207,7 +207,7 @@ Milestones keep saying *when*. `discord` (a mirrored Discord request), `breaking
 
 When creating issues, always include requirements for updating all affected artifacts beyond the code itself. If the change affects actions, features, or behavior described in any of these, the issue must list them:
 
-- **All plugin packages** — registration in `plugin.ts`, manifest entries, and PI templates for every applicable plugin (`iracing-plugin-stream-deck`, `iracing-plugin-mirabox`)
+- **All plugin packages** — the shared action list in `packages/plugin-runtime/src/actions.ts` (or a host extension's extras), manifest entries, and PI templates for every applicable plugin (`iracing-plugin-stream-deck`, `iracing-plugin-mirabox`, `iracing-plugin-ulanzi`)
 - **Website** (`@iracedeck/website`) — action descriptions, feature lists, action counts, and the changelog page (`changelog.mdx`) for any user-facing change — see `@.claude/rules/changelog.md`; and the developer **Architecture page** (`docs/development/architecture.md`) when the change touches package structure, the abstraction seams, data flow, or the dependency graph
 - **Action documentation** (`docs/`) — action docs, keyboard shortcut tables
 - **Skills** (`iracedeck-actions`, `iracing-telemetry`, etc.) — action/mode/sub-action listings

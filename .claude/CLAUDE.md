@@ -19,13 +19,14 @@ Audio and the Race Engineer (end-to-end walkthrough: `race-engineer-callouts.md`
 - `@iracedeck/audio-assets` — voice clips, `sfx/`, the ElevenLabs generator, per-voice `configs/<voice-id>.voice.json` (lines and callout script), the packer and the catalog. Has its own `CLAUDE.md`.
 - `@iracedeck/callout-script` — the JSON grammar for `voice/<id>/callouts.json`, the shared script-vs-clips coverage rules, and the composite voice id (`<pack>::<voice>`, `qualifyVoiceId`). A `zod`-only leaf so its three consumers need not depend on each other. Has its own `CLAUDE.md`.
 - `@iracedeck/audio-scenarios` — the Race Engineer catalog: code-owned contracts paired with pack-owned scripts, the vocabulary, speak gates, and the pack-author tooling (`pnpm generate:pack-reference`, `pnpm lint:pack`). Has its own `CLAUDE.md`.
+- `@iracedeck/race-engineer-wiring` — the Race Engineer's wiring: the bus caches its conditions read, every `registerPitCrew` dependency and the call (`wireRaceEngineer`), reading settings and deck-core's rules from `deck-core` directly and making its loggers as scopes of one `RaceEngineer` logger. Shared by the plugins (through `plugin-runtime`) and, from slice 2 of #1349, the harness. Has its own `CLAUDE.md`.
 - `@iracedeck/scenario-harness` — local QA web UI (`127.0.0.1:5750`) that auditions callouts against a mock SDK. Every new bus event needs an `src/event-names.ts` entry and every new callout a shortcut button. Has its own `CLAUDE.md`.
 
 Icons and rendering
 
 - `@iracedeck/icons` — Mustache SVG key icons; regenerate `preview/` with `node scripts/generate-icon-previews.mjs` after an edit (freshness-tested). Conventions in `icons.md`.
 - `@iracedeck/icon-composer` — zero-dependency SVG icon assembly, re-exported by deck-core. Has its own `CLAUDE.md`.
-- `@iracedeck/rasterizer` — SVG→PNG via `@resvg/resvg-js` with bundled Arimo fonts (OFL); injected per plugin, gated by `pngRasterization`.
+- `@iracedeck/rasterizer` — SVG→PNG via `@resvg/resvg-js` with bundled Arimo fonts (OFL); injected once by `plugin-runtime`'s `initInput`, gated by `pngRasterization`.
 
 Deck layer
 
@@ -33,8 +34,9 @@ Deck layer
 - `@iracedeck/deck-core` — platform-agnostic base classes, types and services. Has its own `CLAUDE.md`; the settings store and window are in `global-settings.md` / `settings-window.md`, window focus in `keyboard-shortcuts.md`, the development voice root in `platform-feature-flags.md`. It also hosts the voice-pack stack: voices are `<pack id>::<voice id>` (#1144; ours is `default::default`), and no plugin bundles a voice — the launch step installs and updates the managed `default` pack at every start (#1034). It also owns the per-session replay store (`replay-session-store.ts`: markers and the lap record, one file per `SubSessionID` under `%LOCALAPPDATA%\iRaceDeck\Replay\<ecosystem>`, #1162/#1203). Module map in its `CLAUDE.md`.
 - `@iracedeck/deck-adapter-elgato`, `-mirabox`, `-ulanzi` — adapters from each host protocol to deck-core's `IDeckPlatformAdapter`. Each has its own `CLAUDE.md`.
 - `@iracedeck/iracing-actions` — every action, one folder each under `src/actions/<name>/` (`.ts`, test, `.ejs` PI, icons); imports from `@iracedeck/deck-core`, never `@elgato/streamdeck`. Has its own `CLAUDE.md`.
+- `@iracedeck/plugin-runtime` — the composition root the three plugins share (#1349): `startPlugin(host)` runs ten startup phases whose order a test pins, plus the shared action list (`src/actions.ts`). Raw TypeScript compiled by each plugin's Rollup. Has its own `CLAUDE.md`.
 - `@iracedeck/pi-components` — the shared Property Inspector framework: `ird-*` web components, EJS partials, the Rollup compile/inject plugins, vendored `sdpi-components.js`, and the three bridges. See `pi-templates.md` and `settings-window.md`.
-- `@iracedeck/iracing-plugin-stream-deck`, `-mirabox`, `-ulanzi` — the three plugins, registering the shared actions through their adapter (Ulanzi reuses the `com.iracedeck.sd.core` UUIDs verbatim). Each has its own `CLAUDE.md`; the Stream Deck one has the add-an-action walkthrough.
+- `@iracedeck/iracing-plugin-stream-deck`, `-mirabox`, `-ulanzi` — the three plugins, each a shell (`src/plugin.ts`) that builds its adapter and calls `plugin-runtime`'s `startPlugin` (Ulanzi reuses the `com.iracedeck.sd.core` UUIDs verbatim). Each has its own `CLAUDE.md`; the Stream Deck one has the add-an-action walkthrough.
 
 Website
 
@@ -93,7 +95,7 @@ You can import or reference specific rule files from other markdown using `@.cla
 - `logging.md` — log levels, info vs debug, `createScope()`, the `debugLogging` toggle, file logging and retention.
 - `pi-templates.md` — PI EJS templates: layout, partials, shared CSS, Rollup config, key-binding JSON.
 - `platform-feature-flags.md` — build-time flags per plugin, `feature-flags.local.json`, and the development voice root (the `IRACEDECK_DEV_VOICES` opt-in, the `dev.local.json` override, the `stage:dev-voices` build task).
-- `plugin-structure.md` — plugin naming, Rollup config and log policy, native externals and the runtime `bin/package.json`, licenses, `plugin.ts` init order.
+- `plugin-structure.md` — plugin naming, Rollup config and log policy, native externals and the runtime `bin/package.json`, licenses, the shell `plugin.ts` and the startup phases.
 - `profiles-and-devices.md` — Stream Deck profiles and devices (Elgato-only).
 - `race-engineer-callouts.md` — adding or modifying a Race Engineer callout end to end.
 - `race-engineer-callout-examples.md` — one entry per past callout and the pattern it established.

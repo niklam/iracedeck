@@ -54,7 +54,7 @@ You must update the mock alongside the native addon:
 1. `addon.cc` — C++ implementation
 2. `src/index.ts` — Add delegation in `IRacingNative` class (both `addon` and `getMock()` paths)
 3. `src/mock-impl.ts` — Add mock implementation to `IRacingNativeMock`
-4. Continue with the standard cross-package sync (keyboard-service, plugin.ts, tests, rules)
+4. Continue with the standard cross-package sync (keyboard-service, plugin-runtime's `initInput`, tests, rules)
 
 ## Mock data
 

@@ -8,9 +8,7 @@ paths:
   - "packages/scenario-harness/**"
   - "packages/deck-core/src/global-settings.ts"
   - "packages/iracing-actions/src/actions/pit-crew/**"
-  - "packages/iracing-plugin-stream-deck/src/plugin.ts"
-  - "packages/iracing-plugin-mirabox/src/plugin.ts"
-  - "packages/iracing-plugin-ulanzi/src/plugin.ts"
+  - "packages/race-engineer-wiring/src/**"
 ---
 # Race Engineer Callouts
 
@@ -63,7 +61,7 @@ and the only one of these gates that can run seconds after the event arrived.
 | **Website Voice Packs section** | `packages/website/src/content/docs/docs/voice-packs/` — hand-written `index.md` (concept, `/docs/voice-packs/`), `first-pack.md` (tutorial) and `format.md` (the grammar); `reference/{callouts,vocabulary,recording-script}.mdx` render `pack-reference.json` through `src/components/PackReference*.astro` (shape mirrored by hand in `src/pack-reference-types.ts`, with a path-naming runtime parser — the site's sources import nothing from `@iracedeck/audio-scenarios`, whose `pack-reference.ts` the mirror follows). Sidebar group **Voice Packs** in `astro.config.mjs` |
 | **Generated clips** | `packages/audio-assets/voice/<voice>/<group>/<name>.mp3` (gitignored locally; committed once stable) |
 | **Generator cache** | `packages/audio-assets/generate.manifest.json` |
-| **Runtime manifest** | Two files since #1034 stage 3, both rebuilt by `generate:manifest`: `packages/audio-assets/manifest.json` lists every AUTHORED voice and is what this package's generators and tests and the scenario harness read, while `manifest.bundled.json` lists only the voices a plugin distributable carries — the sfx tree alone today — and is what all three plugins import. Either way it is the BUILT-IN half only; installed voice packs add clips at runtime via `mergeManifests` + `IScenarioEngine.setManifest` |
+| **Runtime manifest** | Two files since #1034 stage 3, both rebuilt by `generate:manifest`: `packages/audio-assets/manifest.json` lists every AUTHORED voice and is what this package's generators and tests and the scenario harness read, while `manifest.bundled.json` lists only the voices a plugin distributable carries — the sfx tree alone today — and is what `plugin-runtime`'s voice-pack phase imports, once for all three plugins. Either way it is the BUILT-IN half only; installed voice packs add clips at runtime via `mergeManifests` + `IScenarioEngine.setManifest` |
 | **Installed voice packs** | `%LOCALAPPDATA%\iRaceDeck\Race Engineer\Voices\<pack>\` — scanned by `deck-core`'s `createVoicePackService`; each pack is its own audio root (#1034), and outside it a voice is `<pack id>::<voice id>` (#1144): the service rewrites the pack's `voice/<voice id>/…` clips to `voice/<pack id>::<voice id>/…` and binds the root to those voices, so the engine still sees the one `voice/<id>/…` shape — every pool/validation path and `{voice}` substitution are unchanged — while the audio service resolves each such path only inside its own pack's root, and two packs may ship the same bare voice id |
 | **Bus event catalog** | `packages/event-bus/src/event-catalog.ts` |
 | **Bus public exports** | `packages/event-bus/src/index.ts` (export new enums as values, not just types) |
@@ -75,7 +73,7 @@ and the only one of these gates that can run seconds after the event arrived.
 | **Family wiring (id type, key map, scenario id map, `PitCrewDeps` key)** | `packages/audio-scenarios/src/catalog/pit-crew/index.ts` |
 | **Per-callout opt-in (Zod field)** | `packages/deck-core/src/global-settings.ts` |
 | **Callout checkbox row** | `packages/pi-components/partials/race-engineer-callouts.ejs` (settings window only since #1003 — `pit-crew.ejs` carries no callout rows) |
-| **Plugin closure (live-read)** | `packages/iracing-plugin-stream-deck/src/plugin.ts`, `packages/iracing-plugin-mirabox/src/plugin.ts`, AND `packages/iracing-plugin-ulanzi/src/plugin.ts` (byte-identical in code — mirror each other) |
+| **Wiring closure (live-read)** | `packages/race-engineer-wiring/src/pit-crew-deps.ts` (one place for all three plugins and, from slice 2 of #1349, the harness) |
 | **Scenario-harness button** | `packages/scenario-harness/src/scenario-shortcuts.ts` |
 | **Scenario-harness event template** | `packages/scenario-harness/src/event-names.ts` (compile-time completeness check enforces this) |
 
@@ -92,7 +90,7 @@ and the only one of these gates that can run seconds after the event arrived.
 
 When adding to an existing family (e.g. another flag colour) you skip steps 1–2 and the bus-side wiring; when introducing a brand-new family you do all of it. Step 4 has two halves since #1064 — 4a is the contract in code, 4b is the script entry in the voice config — and every callout does both: the contract decides whether and when, the script entry decides what is said, and neither exists without the other (a contract with no entry is silent; an entry with no contract is a warn and a skip).
 
-**An SFX cue is not a scenario: it skips steps 3 and 4 entirely, and the scenario half of step 5** (issue #912, the first one). A cue that must react instantly plays direct from an imperative engine — `getAudio().playOnChannel(...)`, the `radar-engine.ts` model — instead of firing through the interpreter, so it has no voice lines, no pool, no scenario, no `SCENARIO_ID_TO_*` map and no `wrapCalloutScenario` loop. Step 5 therefore splits: its **wiring** half is still required — the `<Family>CalloutId` type, the `<FAMILY>_CALLOUT_SETTING_KEYS` map and the `registerPitCrew` parameter — while its scenario-registration half does not apply. It still needs everything else too: the bus event (1), the diff and state (2), the Zod field (6), the checkbox row (7), all three plugin closures (8), the fixtures (9) and the harness entries (10). The opt-in is read live inside the engine's own tick rather than by a scenario wrapper. Note what direct playback costs and buys: no weight, family or focus contest — so nothing to tune against other callouts, but equally no interpreter to keep it from overlapping one.
+**An SFX cue is not a scenario: it skips steps 3 and 4 entirely, and the scenario half of step 5** (issue #912, the first one). A cue that must react instantly plays direct from an imperative engine — `getAudio().playOnChannel(...)`, the `radar-engine.ts` model — instead of firing through the interpreter, so it has no voice lines, no pool, no scenario, no `SCENARIO_ID_TO_*` map and no `wrapCalloutScenario` loop. Step 5 therefore splits: its **wiring** half is still required — the `<Family>CalloutId` type, the `<FAMILY>_CALLOUT_SETTING_KEYS` map and the `registerPitCrew` parameter — while its scenario-registration half does not apply. It still needs everything else too: the bus event (1), the diff and state (2), the Zod field (6), the checkbox row (7), the wiring closure (8), the fixtures (9) and the harness entries (10). The opt-in is read live inside the engine's own tick rather than by a scenario wrapper. Note what direct playback costs and buys: no weight, family or focus contest — so nothing to tune against other callouts, but equally no interpreter to keep it from overlapping one.
 
 ### 1. Define the bus event
 
@@ -197,7 +195,7 @@ Other voices script the same ids in their own words, or leave them out — absen
 
 In `packages/audio-scenarios/src/catalog/pit-crew/index.ts`:
 - Add a `<Family>CalloutId` type union of subject ids.
-- Add a `<FAMILY>_CALLOUT_SETTING_KEYS: Record<<Family>CalloutId, string>` map — the canonical id↔key map plugins read from.
+- Add a `<FAMILY>_CALLOUT_SETTING_KEYS: Record<<Family>CalloutId, string>` map — the canonical id↔key map the Race Engineer wiring reads from.
 - Add a `SCENARIO_ID_TO_<FAMILY>_ID` map covering every scenario id in the family.
 - Add a `get<Family>CalloutEnabled?: (id: <Family>CalloutId) => boolean` key to `PitCrewDeps`, its `() => true` default to `DEFAULT_DEPS`, and the matching line to the destructure at the top of `registerPitCrew` (issue #1052). All three: the `satisfies` clause catches a key with no default, but nothing checks the destructure — a missing one surfaces as "cannot find name" wherever you use the closure. **Placement is irrelevant** — the deps are keyed, so position carries no meaning. There is no "masters last" rule to observe any more; putting the key next to its family's neighbours is a readability choice and nothing else.
 - Wrap the family's contracts with `wrapWithMaster(wrapCalloutScenario(c, …))` in an `engine.defineContract(...)` registration loop. The family's `register<Family>Vocabulary(engine)` is called beside the other families' vocabulary registrations, before every loop, so the first `setScripts` compile sees every name.
@@ -213,26 +211,26 @@ In `packages/pi-components/partials/race-engineer-callouts.ejs` — **not** `pit
 - Add (or extend) an `sdpi-item` for the family. The partial is items-only; the settings window wraps them in its "Callouts" card.
 - Use the auto-balancing 2-column grid pattern already in the file: build the array of `{ setting, label }` once, then map to `<sdpi-checkbox>` rows. The grid template comes from `Math.ceil(items.length / 2)` so it scales without per-row maintenance.
 
-### 8. Plugin closure (ALL THREE plugins)
+### 8. Wiring closure
 
-In **all three** plugin entry points — `packages/iracing-plugin-stream-deck/src/plugin.ts`, `packages/iracing-plugin-mirabox/src/plugin.ts`, AND `packages/iracing-plugin-ulanzi/src/plugin.ts` (byte-identical in code — mirror each other):
+In `packages/race-engineer-wiring/src/pit-crew-deps.ts` — one place for all three plugins since #1349, which reach it through `plugin-runtime`'s `initRaceEngineer`:
 - Import the `<FAMILY>_CALLOUT_SETTING_KEYS` map and `<Family>CalloutId` type.
-- Add an entry to the `PitCrewDeps` object passed to `registerPitCrew`, keyed by the name you gave the dep, reading the setting **live on every event arrival**:
+- Add the gate to the object `buildPitCrewDeps` returns, keyed by the name you gave the dep, in the shape every other gate there has, reading the setting **live on every event arrival**:
 
 ```ts
-registerPitCrew(eventBus, {
-  // …existing keys, in no particular order…
-  get<Family>CalloutEnabled: (id: <Family>CalloutId) =>
-    (getGlobalSettings() as Record<string, unknown>)[<FAMILY>_CALLOUT_SETTING_KEYS[id]] !== false,
-});
+// in buildPitCrewDeps's returned object, beside the other gates
+get<Family>CalloutEnabled: (id: <Family>CalloutId) =>
+  (getGlobalSettings() as Record<string, unknown>)[<FAMILY>_CALLOUT_SETTING_KEYS[id]] !== false,
 ```
 
-Live-read (don't capture the value) — a mid-session toggle takes effect on the next event without re-registering scenarios.
+- Add a row to the `GATES` table in `pit-crew-deps.test.ts`; its completeness test fails until every family gate the builder returns has one.
+
+Live-read (don't capture the value) — a mid-session toggle takes effect on the next event without re-registering scenarios. `buildPitCrewDeps` returns `Required<PitCrewDeps>`, so a new `PitCrewDeps` key of any kind fails `pnpm typecheck` until it is built there — nothing is left to `DEFAULT_DEPS` in the plugins. A plugin-side cache an engine `where:` clause reads is subscribed in `subscribeRaceEngineerCaches` (`caches.ts`), which runs before `registerPitCrew`.
 
 ### 9. Update test fixtures
 
 - `packages/deck-core/src/simhub-service.test.ts` constructs an exhaustive `getGlobalSettings()` mock for every callout key — in **two** object literals (the main settings mock AND a second `.passthrough()`/round-trip literal further down). Add the new key to **both** or the type-check fails at build (`grep` the existing nearest key to find every literal).
-- **Call sites of `registerPitCrew(...)` need no edit when you add a key** (issue #1052). Every one names what it passes, so a new `PitCrewDeps` key is simply absent from the ones that don't want it and takes its `DEFAULT_DEPS` entry. Adding a key cannot disturb an existing call site.
+- **Call sites of `registerPitCrew(...)` need no edit when you add a key** (issue #1052), with one deliberate exception: the plugins' deps come from `buildPitCrewDeps`, which must build every key (step 8). Every other call site — the harness, the tests — names what it passes, so a new `PitCrewDeps` key is simply absent from the ones that don't want it and takes its `DEFAULT_DEPS` entry. Adding a key cannot disturb an existing call site.
 - **A new contract with no script entry fails `bundled-scripts.test.ts`** (audio-scenarios), and an edited config with a stale artifact fails `callout-scripts.test.ts` (audio-assets) — both name what is missing. Family tests that fire a scripted contract load the real artifact (`import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" }`) and hand it to `engine.setScripts(new Map([[voice, script]]))` AFTER `registerPitCrew`, as the plugins do — a contract with no script is silent, not unframed, so a test that forgets the artifact sees nothing fire.
 
   This used to be the most dangerous step on the page, and it is worth knowing why so nobody reinstates it. The parameters were positional and nearly all shared a shape, so inserting one shifted every later argument at every call site — and the result still type-checked, because a value landing in the wrong slot was usually assignable to it. It went wrong twice on 2026-08-28: once loudly, once silently and green. If you find surviving advice anywhere about adding `undefined` "at the new position" or keeping the masters last, it predates #1052 and is now wrong.

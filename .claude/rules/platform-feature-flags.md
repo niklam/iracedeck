@@ -1,6 +1,7 @@
 ---
 paths:
   - "packages/iracing-plugin-*/**"
+  - "packages/plugin-runtime/**"
   - "feature-flags.local.json*"
   - "dev.local.json*"
   - "scripts/lib/dev-local.mjs"
@@ -32,7 +33,7 @@ Per-plugin build-time flags that gate platform-specific features and temporary k
 `platform-features.json` has a single top-level `features` object (the former `capabilities` object — `svgFilters`/`svgMasks`/`svgPatterns` — was retired in #642 along with `borderGlow`; PNG rasterization means no code branches on raw SVG engine capability anymore). Current flags:
 
 - `dialExtendedGestures` — the Stream Deck+ dial gestures beyond rotate and press: touch input (`touchTap`), trigger descriptions, long-press and push+turn classification, and the #1120 hold preview (#1013). Elgato `true`, Mirabox `false`, Ulanzi `false`. It no longer gates the dial display: every host with a dial screen renders through `IDeckActionContext.dialCanvas()`.
-- `pngRasterization` — temporary kill-switch for in-plugin PNG rasterization (`@iracedeck/rasterizer`, issue #642). Gates a single call site: `initializeRasterizer(...)` in each plugin's `plugin.ts` (see `.claude/rules/plugin-structure.md`). `true` on Elgato, Mirabox, **and** Ulanzi — it isn't a per-platform capability split like `dialExtendedGestures`, it's a temporary escape hatch for the whole rasterization pipeline. Force it `false` locally to fall back to raw SVG data URIs for comparison/debugging (see `.claude/rules/svg-platform-compatibility.md` for what that fallback means for filter/mask/pattern icons).
+- `pngRasterization` — temporary kill-switch for in-plugin PNG rasterization (`@iracedeck/rasterizer`, issue #642). Gates a single call site: `initializeRasterizer(...)` in `plugin-runtime`'s `initInput` (`src/phases/input.ts`), compiled into each plugin's bundle (see `.claude/rules/plugin-structure.md`). `true` on Elgato, Mirabox, **and** Ulanzi — it isn't a per-platform capability split like `dialExtendedGestures`, it's a temporary escape hatch for the whole rasterization pipeline. Force it `false` locally to fall back to raw SVG data URIs for comparison/debugging (see `.claude/rules/svg-platform-compatibility.md` for what that fallback means for filter/mask/pattern icons).
 - `profiles` — the "Stream Deck Profiles" PI accordion (bundled-profile install buttons) plus profile switching (Race Admin car selector, Camera Focus's `focus-select-car` mode). Elgato-only — Mirabox/Ulanzi hosts have no profile system, so `switchToProfile` is a no-op there regardless of the flag. Elgato `true`, Mirabox `false`, Ulanzi `false`. See `.claude/rules/profiles-and-devices.md`. Unlike `dialExtendedGestures`/`pngRasterization`, `profiles` has **no compile-time constant** — see "Runtime-only flags" below.
 
   > **Note.** There is no dial long-press flag. Dial press / long-press / push+turn are classified at `dialUp` by a duration comparison (`classifyDialRelease` in `packages/deck-core/src/dial-gesture.ts`), with no `setTimeout` to gate, so they work cross-platform with no feature flag. The former `dialLongPress` / `__FEATURE_DIAL_LONG_PRESS__` flag has been removed.
@@ -53,20 +54,27 @@ All three plugins' `rollup.config.mjs`:
 `dialExtendedGestures` and `pngRasterization` are declared as ambient globals in **each plugin's own** `src/platform-features.d.ts` (mirroring `src/svg.d.ts`) — there is no longer a shared `icon-composer`-level declaration file, because no icon-rendering code branches on a flag anymore (border glow is unconditional since #642; see `packages/icon-composer/CLAUDE.md`). Reference the `__FEATURE_*__` constant directly:
 
 ```ts
-// packages/iracing-plugin-stream-deck/src/plugin.ts
+// packages/plugin-runtime/src/phases/input.ts (inside initInput)
 if (__FEATURE_PNG_RASTERIZATION__) {
-  initializeRasterizer(
-    createSvgRasterizer({ fontsDir: join(__binDir, "..", "assets", "fonts") }),
-    adapter.createLogger("Rasterizer"),
-  );
+  const rasterizerLogger = core.adapter.createLogger("Rasterizer");
+
+  try {
+    initializeRasterizer(
+      createSvgRasterizer({ fontsDir: join(core.binDir, "..", "assets", "fonts") }),
+      rasterizerLogger,
+    );
+  } catch (err) {
+    // Fonts missing or resvg init failed — stay uninitialized so adapters fall back to SVG.
+    rasterizerLogger.warn(`PNG rasterization disabled: ${err}`);
+  }
 }
 ```
 
-`__FEATURE_PNG_RASTERIZATION__` gates exactly that one call site, in each plugin's own `plugin.ts`. When the flag is `false`, `initializeRasterizer()` is never called, `deck-core`'s rasterizer service stays uninitialized, and its `toDeviceImage()` passes every image through unchanged (see `packages/deck-core/src/rasterizer-service.ts`) — so every adapter's `setImage`/`setFeedback` call falls back to sending the raw SVG data URI exactly as before #642.
+`__FEATURE_PNG_RASTERIZATION__` gates exactly that one call site, in `plugin-runtime`'s `initInput`, which every plugin bundles. When the flag is `false`, `initializeRasterizer()` is never called, `deck-core`'s rasterizer service stays uninitialized, and its `toDeviceImage()` passes every image through unchanged (see `packages/deck-core/src/rasterizer-service.ts`) — so every adapter's `setImage`/`setFeedback` call falls back to sending the raw SVG data URI exactly as before #642.
 
 **Dial extended-gesture gating.** `__FEATURE_DIAL_EXTENDED_GESTURES__` is gated directly in action code (not a shared utility) because the per-platform gesture difference is action logic, not shared rendering. It gates touch input, trigger descriptions, long-press and push+turn classification (flag off → every release classifies as `short`) and the #1120 hold preview, which has nothing to show on a Mirabox knob, whose press never reports its release. Rotation and press are **not** gated, and neither is the dial display — every surface draws through `dialCanvas()` / `setDialCanvas()` on every host (#1013). Reference: `packages/iracing-actions/src/actions/fuel-service/fuel-dial-surface.ts`. See `.claude/rules/encoders-and-touchscreen.md` for why.
 
-**Per-plugin ambient declarations for bundled action sources.** The shared `@iracedeck/iracing-actions` sources are compiled as part of each plugin's TypeScript program, so `__FEATURE_DIAL_EXTENDED_GESTURES__` must be declared there too — that's why each plugin's own `src/platform-features.d.ts` declares both constants even though `__FEATURE_PNG_RASTERIZATION__` is only ever referenced in that plugin's own `plugin.ts`, not in the bundled action sources.
+**Per-plugin ambient declarations for bundled action sources.** The shared `@iracedeck/iracing-actions` sources are compiled as part of each plugin's TypeScript program, so `__FEATURE_DIAL_EXTENDED_GESTURES__` must be declared there too — that's why each plugin's own `src/platform-features.d.ts` declares both constants even though `__FEATURE_PNG_RASTERIZATION__` is only ever referenced in `plugin-runtime`'s `initInput`, which every plugin bundles, not in the bundled action sources — so `plugin-runtime` carries its own `src/platform-features.d.ts` for its own program too.
 
 **Runtime-only flags.** `profiles` has no ambient declaration and no `__FEATURE_*__` constant — it's checked at runtime instead, either via `getFeatureFlag("profiles")` (TS) or `locals.platform?.features?.profiles` (PI templates, see below). This is a deliberate choice, not an oversight: `profiles` gates a PI accordion and a couple of conditional PI sections, none of which are hot enough to need tree-shaking, so there was no reason to also thread it through `@rollup/plugin-replace` and a per-plugin `.d.ts`.
 
@@ -123,7 +131,7 @@ it("skips touch and long-press when dialExtendedGestures is false", () => {
 1. Add to all three `platform-features.json` files under `features` (enabled/disabled per platform).
 2. Add its key to `PlatformFeatureFlags` in `packages/deck-core/src/plugin-config.ts`.
 3. Decide whether it needs a compile-time constant. Most flags do:
-   - Add the `__FEATURE_*__` ambient declaration to each of the three plugins' own `src/platform-features.d.ts` (so both plugin-only code and the bundled `@iracedeck/iracing-actions` sources see it — see "Per-plugin ambient declarations" above).
+   - Add the `__FEATURE_*__` ambient declaration to each of the three plugins' own `src/platform-features.d.ts` and to `plugin-runtime`'s (so both plugin-only code and the bundled `@iracedeck/iracing-actions` sources see it — see "Per-plugin ambient declarations" above).
    - Add the replace entry to **all three** `rollup.config.mjs` files.
    - Add default to `test-setup.ts` and true/false path tests that `vi.stubGlobal` the constant.
    - A flag that only gates a PI control or a rarely-hit runtime branch (like `profiles`) can skip all three of the above and read `getFeatureFlag(...)` / `locals.platform?.features?.…` instead — see "Runtime-only flags" above.
@@ -149,7 +157,7 @@ EOF
 pnpm build
 
 # Verify bundle (the `if (__FEATURE_PNG_RASTERIZATION__) { initializeRasterizer(...) }`
-# block in plugin.ts is dead code once the constant is replaced with `false`,
+# block in initInput is dead code once the constant is replaced with `false`,
 # so terser drops the call entirely):
 grep -c "initializeRasterizer(" packages/iracing-plugin-stream-deck/com.iracedeck.sd.core.sdPlugin/bin/plugin.js  # -> 0
 
@@ -235,10 +243,11 @@ Every verb validates the variable before it writes anything, then rebuilds the t
 ## Related files
 
 - `@.claude/rules/svg-platform-compatibility.md` — resvg's SVG support baseline and the `pngRasterization` kill-switch caveat.
-- `packages/rasterizer/src/index.ts` — `createSvgRasterizer()`, the `@resvg/resvg-js` wrapper injected by each plugin.
+- `packages/rasterizer/src/index.ts` — `createSvgRasterizer()`, the `@resvg/resvg-js` wrapper `plugin-runtime`'s `initInput` injects.
+- `packages/plugin-runtime/src/platform-features.d.ts` — the ambient `__FEATURE_*__` declarations for the bootstrap's own program.
 - `packages/deck-core/src/rasterizer-service.ts` — `initializeRasterizer()`, `isRasterizerInitialized()`, `toDeviceImage()` (LRU cache, supersede guard, SVG fallback on render error).
 - `packages/deck-core/src/plugin-config.ts` — `PluginConfig`, `PlatformFeatureFlags`, `getFeatureFlag`, `getPlatformFeatures`, `getDevVoicePacksRoot`.
-- `.claude/rules/plugin-structure.md` — the `initializeRasterizer` step in the `plugin.ts` init order.
+- `.claude/rules/plugin-structure.md` — the `initializeRasterizer` step in the startup phases (`initInput`).
 - `.claude/rules/profiles-and-devices.md` — the `profiles` flag's PI accordion and Elgato-only rationale in full.
 - `scripts/lib/dev-local.mjs` — `resolveDevVoicePacksRoot()`, the one resolver of the two inputs; `readDevLocal()`, the strict reader for `dev.local.json`; `readDevVoicesEnv()`, the strict reader for `IRACEDECK_DEV_VOICES`. `scripts/dev-voice-root-guard.test.mjs` is the guard that keeps the mechanism build-time only.
 - `scripts/lib/dev-voices.mjs` — `runDevVoices()`, behind `pnpm dev:voices on|off|auto`.

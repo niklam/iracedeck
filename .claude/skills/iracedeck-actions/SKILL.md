@@ -180,4 +180,4 @@ When actions are added, removed, or modified (new modes, renamed settings, chang
 | `packages/iracing-actions/src/actions/settings/settings.ejs` | Plugin-global Property Inspector |
 | `packages/iracing-actions/icons/` | Dynamic SVG Mustache templates used at runtime |
 | `packages/icons/` | Standalone icon library (Mustache color placeholders + `<desc>`) |
-| `packages/iracing-plugin-stream-deck/src/plugin.ts` | Action registration and initialization |
+| `packages/plugin-runtime/src/actions.ts` | The shared action list (registration); each plugin's `plugin.ts` is a shell over `startPlugin` |
