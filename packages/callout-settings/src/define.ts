@@ -30,8 +30,22 @@ export type CalloutIdOf<F extends CalloutFamily> = keyof F["callouts"] & string;
 /** Distributes over a union of families, so it also names every key of a list. */
 export type CalloutKeyOf<F> = F extends CalloutFamily ? F["callouts"][keyof F["callouts"]]["key"] : never;
 
-export function calloutKey<F extends CalloutFamily>(family: F, id: CalloutIdOf<F>): CalloutKeyOf<F> {
-  return family.callouts[id].key as CalloutKeyOf<F>;
+/**
+ * The key of one callout in a family, typed as exactly that key. Throws a named
+ * error on an id the family does not have — which the types rule out, so it
+ * means an id reached here unchecked (a cast, or data read at runtime).
+ */
+export function calloutKey<F extends CalloutFamily, Id extends CalloutIdOf<F>>(
+  family: F,
+  id: Id,
+): F["callouts"][Id]["key"] & CalloutKeyOf<F> {
+  const entry = family.callouts[id];
+
+  if (!entry) throw new Error(`Unknown callout id "${id}" in family "${family.id}"`);
+
+  // The intersection is the same key; it also states the key is one of F's, which a generic caller over the
+  // registry needs to see it as a CalloutSettingKey (an indexed access on a generic F does not resolve).
+  return entry.key as F["callouts"][Id]["key"] & CalloutKeyOf<F>;
 }
 
 export function calloutIdForKey<F extends CalloutFamily>(family: F, key: string): CalloutIdOf<F> | undefined {

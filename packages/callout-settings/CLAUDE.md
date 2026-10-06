@@ -6,10 +6,10 @@ The Race Engineer callout opt-in registry (#1350). It is the only place a `callo
 
 ## Modules (`src/`)
 
-- `define.ts` — the shapes and typed helpers. `CalloutEntry` (`key`, `label`, optional `default`), `CalloutFamily` (`id`, `callouts`), `defineCalloutFamily` (identity at runtime; its `const` type parameter keeps every id and key a literal type), `CalloutIdOf<F>` and `CalloutKeyOf<F>` (distributes over a union of families), `calloutKey(family, id)` and `calloutIdForKey(family, key)`.
+- `define.ts` — the shapes and typed helpers. `CalloutEntry` (`key`, `label`, optional `default`), `CalloutFamily` (`id`, `callouts`), `defineCalloutFamily` (identity at runtime; its `const` type parameter keeps every id and key a literal type), `CalloutIdOf<F>` and `CalloutKeyOf<F>` (distributes over a union of families), `calloutKey(family, id)` (typed as exactly that id's key; an unknown id, which only an unchecked value can reach, throws naming the family and the id) and `calloutIdForKey(family, key)`.
 - `families/*.ts` — one file per family, 35 in all, each exporting `<PREFIX>_CALLOUTS`. A family is named for the `audio-scenarios` family it serves, and its object keys are that family's callout ids. Five small families (`pit-service-requests`, `setup-warning`, `race-engineer-toggle`, `corner-names-toggle`, `telemetry-connect`) hold the keys no scenario family reads; they are named for what reads them. Entries are in PI order, and the rationale that used to sit on each schema field sits on its entry.
 - `pi-groups.ts` — `CALLOUT_PI_GROUPS`: the 29 headings of the PI and the settings window's Callouts card, in render order, each an ordered list of families.
-- `index.ts` — the public surface: everything above, plus `CALLOUT_FAMILIES` (every family, in PI order), `CalloutSettingKey` (the union of every key, derived), `RegisteredCalloutFamily` (any family in the registry: a generic helper that must yield a `CalloutSettingKey` constrains on it, since `CalloutKeyOf` of a bare `CalloutFamily` is only `` `calloutEnabled${string}` ``), `CALLOUT_SETTING_KEYS`, `calloutEntry(key)` and `calloutDefault(key)`.
+- `index.ts` — the public surface: everything above (each family re-exported by name), plus `CALLOUT_FAMILIES` (every family, in PI order, derived from `CALLOUT_PI_GROUPS` rather than listed), `CalloutSettingKey` (the union of every key, derived), `RegisteredCalloutFamily` (any family placed in a group: a generic helper that must yield a `CalloutSettingKey` constrains on it, since `CalloutKeyOf` of a bare `CalloutFamily` is only `` `calloutEnabled${string}` ``), `CALLOUT_SETTING_KEYS`, `calloutEntry(key)` and `calloutDefault(key)`.
 
 ## The entry and its default
 
@@ -29,4 +29,4 @@ A family is the unit of ownership: the ids are family-scoped (`ack` is an id of 
 
 ## Adding a callout
 
-Add an entry to its family here (a new family file, plus its place in `CALLOUT_PI_GROUPS`, `CALLOUT_FAMILIES` and the index's exports, when the family is new). The schema field, the PI row and the id type follow from it.
+Add an entry to its family here. When the family is new, that is a new family file, its place in one group of `CALLOUT_PI_GROUPS` (which is what registers it: `CALLOUT_FAMILIES` is derived from the groups) and its re-export from `index.ts` (`registry.test.ts` fails on a placed family the index does not export). The schema field, the PI row and the id type follow from it, and no test pins a count to bump.

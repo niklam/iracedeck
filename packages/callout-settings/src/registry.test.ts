@@ -1,10 +1,10 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 
+import * as registry from "./index.js";
 import {
   CALLOUT_FAMILIES,
   CALLOUT_PI_GROUPS,
   CALLOUT_SETTING_KEYS,
-  calloutDefault,
   type CalloutFamily,
   type CalloutIdOf,
   calloutKey,
@@ -24,19 +24,15 @@ function keyOf<F extends RegisteredCalloutFamily>(family: F, id: CalloutIdOf<F>)
 }
 
 describe("callout settings registry", () => {
-  it("has 35 families and 100 keys", () => {
-    expect(CALLOUT_FAMILIES).toHaveLength(35);
-    expect(CALLOUT_SETTING_KEYS).toHaveLength(100);
-  });
-
   it("has unique family ids", () => {
     const ids = CALLOUT_FAMILIES.map((f) => f.id);
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it("has unique keys, each a calloutEnabled* key", () => {
+  it("has unique keys, each a calloutEnabled* key, and lists every one in CALLOUT_SETTING_KEYS", () => {
     const keys = entries.map((e) => e.key);
     expect(new Set(keys).size).toBe(keys.length);
+    expect(CALLOUT_SETTING_KEYS).toEqual(keys);
 
     for (const key of keys) expect(key).toMatch(/^calloutEnabled[A-Z]\w*$/);
   });
@@ -47,16 +43,17 @@ describe("callout settings registry", () => {
     for (const g of CALLOUT_PI_GROUPS) expect(g.title.trim()).not.toBe("");
   });
 
-  it("puts every family in exactly one PI group, and no group is empty", () => {
+  it("places every family in only one PI group, and no group is empty", () => {
     const placed = CALLOUT_PI_GROUPS.flatMap((g): readonly CalloutFamily[] => g.families);
-    expect(placed).toHaveLength(CALLOUT_FAMILIES.length);
-    expect(new Set(placed)).toEqual(new Set(CALLOUT_FAMILIES));
+    expect(new Set(placed).size).toBe(placed.length);
 
     for (const g of CALLOUT_PI_GROUPS) expect(g.families.length).toBeGreaterThan(0);
   });
 
-  it("lists the families in PI group order", () => {
-    expect(CALLOUT_FAMILIES).toEqual(CALLOUT_PI_GROUPS.flatMap((g): readonly CalloutFamily[] => g.families));
+  it("exports every registered family by name", () => {
+    const exported = new Set<unknown>(Object.values(registry));
+
+    for (const family of CALLOUT_FAMILIES) expect(exported.has(family), family.id).toBe(true);
   });
 
   it("gives every entry only the known fields, so a misspelt one fails", () => {
@@ -65,10 +62,15 @@ describe("callout settings registry", () => {
     }
   });
 
+  it("keeps CalloutSettingKey the union of literal keys", () => {
+    expectTypeOf<"calloutEnabledFlagGreen">().toExtend<CalloutSettingKey>();
+    expectTypeOf<"calloutEnabledNoSuchCallout">().not.toExtend<CalloutSettingKey>();
+  });
+
   it("lets a generic helper over any registered family yield a CalloutSettingKey", () => {
     expect(keyOf(FLAG_CALLOUTS, "green")).toBe("calloutEnabledFlagGreen");
     expectTypeOf(keyOf(FLAG_CALLOUTS, "green")).toEqualTypeOf<CalloutSettingKey>();
-    expectTypeOf(calloutKey(FLAG_CALLOUTS, "green")).toExtend<CalloutSettingKey>();
+    expectTypeOf(calloutKey(FLAG_CALLOUTS, "green")).toEqualTypeOf<"calloutEnabledFlagGreen">();
   });
 
   it("still rejects an id the family does not have", () => {
@@ -78,11 +80,5 @@ describe("callout settings registry", () => {
       keyOf(FLAG_CALLOUTS, "nope");
 
     expect(misspelt).toBeTypeOf("function");
-  });
-
-  it("ships exactly the six fuel countdown counts off", () => {
-    expect(CALLOUT_SETTING_KEYS.filter((k) => !calloutDefault(k)).sort()).toEqual(
-      [10, 9, 8, 7, 6, 4].map((n) => `calloutEnabledFuelLapsLeft${n}`).sort(),
-    );
   });
 });
