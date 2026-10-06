@@ -251,6 +251,33 @@ function radar(label: string, from: string, to: string): BusEventShortcut {
   };
 }
 
+/**
+ * The car on track at racing speed (#1349 slice 2): what the overtake gate
+ * reads, which the overtake and gap callouts both check in `where:`. Since the
+ * harness runs the plugins' own wiring, that gate reads live telemetry — on
+ * track, at least 50 km/h, off pit road, nobody alongside — where it used to
+ * be a permissive default, so on the mock's garage telemetry these buttons
+ * would be silent for the wrong reason. A step rather than a `telemetryPatch`
+ * because the translator sees a patch on its next tick, not when it lands: the
+ * hold lets a tick through before the publish. Pit road and the radar are left
+ * alone, so a tester who parked the car there hears the real suppression.
+ */
+const AT_RACING_SPEED: TelemetryStep = {
+  patch: { IsOnTrack: true, PlayerTrackSurface: TrkLoc.OnTrack, Speed: 40 },
+  holdMs: 100,
+};
+
+/** An overtake or gap shortcut, put on track at racing speed before it publishes (see {@link AT_RACING_SPEED}). */
+function atRacingSpeed(shortcut: BusEventShortcut): BusEventShortcut {
+  return {
+    ...shortcut,
+    description:
+      `${shortcut.description ?? ""} Puts the car on track at racing speed first, which the overtake gate reads. ` +
+      "Needs the mock SDK CONNECTED; with it disconnected the translator sees no ticks and the button is silent for the wrong reason.",
+    telemetrySequence: [AT_RACING_SPEED],
+  };
+}
+
 function pitStatus(
   id: string,
   label: string,
@@ -3018,7 +3045,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   // `PlayerCarPosition` through `/api/telemetry` and waiting for the 3000 ms
   // hold + 10 m gap gates to settle. Same-family preempt: fire two in a row
   // to confirm the second cancels the first.
-  {
+  atRacingSpeed({
     id: "overtake-gained-p5",
     category: "Overtakes",
     label: "Gained — now P5",
@@ -3033,8 +3060,8 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
       gapBehindMeters: 15,
       isLeader: false,
     },
-  },
-  {
+  }),
+  atRacingSpeed({
     id: "overtake-gained-leader",
     category: "Overtakes",
     label: "Gained the lead (P2 → P1)",
@@ -3049,8 +3076,8 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
       gapBehindMeters: 15,
       isLeader: true,
     },
-  },
-  {
+  }),
+  atRacingSpeed({
     id: "overtake-lost-p5",
     category: "Overtakes",
     label: "Lost — now P5",
@@ -3064,8 +3091,8 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
       previousPosition: 4,
       gapAheadMeters: 15,
     },
-  },
-  {
+  }),
+  atRacingSpeed({
     id: "overtake-gained-multi-class",
     category: "Overtakes",
     label: "Gained — multi-class (class P3 → P2)",
@@ -3083,8 +3110,8 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
       gapBehindMeters: 15,
       isLeader: false,
     },
-  },
-  {
+  }),
+  atRacingSpeed({
     id: "overtake-gained-p2",
     category: "Overtakes",
     label: "Gained — P3 → P2 (podium line)",
@@ -3099,8 +3126,8 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
       gapBehindMeters: 15,
       isLeader: false,
     },
-  },
-  {
+  }),
+  atRacingSpeed({
     id: "overtake-gained-p3",
     category: "Overtakes",
     label: "Gained — P4 → P3 (podium line)",
@@ -3115,8 +3142,8 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
       gapBehindMeters: 15,
       isLeader: false,
     },
-  },
-  {
+  }),
+  atRacingSpeed({
     id: "overtake-gained-retirement",
     category: "Overtakes",
     label: "Gained — retirement (readout only)",
@@ -3131,7 +3158,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
       isLeader: false,
       fromRetirement: true,
     },
-  },
+  }),
 
   // ── Pit Box (issue #600) ──
   // Fire each count-in mark directly so you hear the clip without driving
@@ -3215,54 +3242,54 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   // the clause skips and you hear the line alone — the real cold-start
   // behavior (issue #835: an unresolvable optional clause skips, never
   // aborts the callout).
-  {
+  atRacingSpeed({
     id: "gap-trend-ahead-closing",
     category: "Gaps",
     label: "Trend: closing on car ahead",
     description: "Contact projection entered the horizon — we're catching the car ahead.",
     event: "gap.trendChanged",
     data: { side: "ahead", direction: "closing", gapSeconds: 1.8, ratePerLap: -0.8, lapsToContact: 2.3, carIdx: 3 },
-  },
-  {
+  }),
+  atRacingSpeed({
     id: "gap-trend-ahead-opening",
     category: "Gaps",
     label: "Trend: car ahead pulling away",
     description: "Breakaway — we're losing touch with the car ahead.",
     event: "gap.trendChanged",
     data: { side: "ahead", direction: "opening", gapSeconds: 3.1, ratePerLap: 0.9, carIdx: 3 },
-  },
-  {
+  }),
+  atRacingSpeed({
     id: "gap-trend-behind-closing",
     category: "Gaps",
     label: "Trend: car behind gaining",
     description: "Contact projection entered the horizon — the car behind is closing in.",
     event: "gap.trendChanged",
     data: { side: "behind", direction: "closing", gapSeconds: 1.4, ratePerLap: -0.6, lapsToContact: 2.3, carIdx: 5 },
-  },
-  {
+  }),
+  atRacingSpeed({
     id: "gap-trend-behind-opening",
     category: "Gaps",
     label: "Trend: dropping the car behind",
     description: "Breakaway — we're pulling away from the car behind.",
     event: "gap.trendChanged",
     data: { side: "behind", direction: "opening", gapSeconds: 2.8, ratePerLap: 0.8, carIdx: 5 },
-  },
-  {
+  }),
+  atRacingSpeed({
     id: "gap-threshold-ahead",
     category: "Gaps",
     label: "Caught the car ahead (threshold)",
     description: "Live gap ahead first dropped under the alert threshold.",
     event: "gap.thresholdCrossed",
     data: { side: "ahead", gapSeconds: 0.9, thresholdSeconds: 1.0, carIdx: 3 },
-  },
-  {
+  }),
+  atRacingSpeed({
     id: "gap-threshold-behind",
     category: "Gaps",
     label: "Car behind within threshold",
     description: "Live gap behind first dropped under the alert threshold.",
     event: "gap.thresholdCrossed",
     data: { side: "behind", gapSeconds: 0.8, thresholdSeconds: 1.0, carIdx: 5 },
-  },
+  }),
 
   // ── Fuel (issue #838) ──
   // Fire each laps-of-fuel-left count directly so you hear the clip without
