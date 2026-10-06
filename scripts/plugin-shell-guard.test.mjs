@@ -25,25 +25,73 @@ function shellViolations(source) {
   }
   if (/\b[A-Z][A-Z0-9_]*_CALLOUT_SETTING_KEYS\b/.test(source)) violations.push("names a *_CALLOUT_SETTING_KEYS map");
   if (/\bregisterAction\s*\(/.test(source)) violations.push("calls registerAction");
-  if (!/\bstartPlugin\s*\(/.test(source)) violations.push("never calls startPlugin");
+  if (startPluginCall(source) === undefined) violations.push("never calls startPlugin");
 
   return violations;
 }
 
 /**
- * How `source` breaks its host's extension rule; empty when it holds. Stream Deck
- * must hand startPlugin its extension — without it the Switch Profile keys are
- * never registered and every other test stays green — and no other host may
- * pass one.
+ * `source` with its `//` and block comments removed and string and template
+ * literals kept whole, so a comment can neither satisfy nor trip a check that
+ * reads code.
  */
-function extensionViolations(pkg, source) {
-  if (pkg === STREAM_DECK) {
-    return /\bextension:\s*createElgatoExtension\s*\(/.test(source)
-      ? []
-      : ["the Stream Deck shell does not pass extension: createElgatoExtension(…)"];
+function stripComments(source) {
+  let out = "";
+  let i = 0;
+  while (i < source.length) {
+    const ch = source[i];
+    if (ch === '"' || ch === "'" || ch === "`") {
+      let j = i + 1;
+      while (j < source.length && source[j] !== ch) j += source[j] === "\\" ? 2 : 1;
+      out += source.slice(i, j + 1);
+      i = j + 1;
+    } else if (source.startsWith("//", i)) {
+      const end = source.indexOf("\n", i);
+      i = end === -1 ? source.length : end;
+    } else if (source.startsWith("/*", i)) {
+      const end = source.indexOf("*/", i + 2);
+      out += " ";
+      i = end === -1 ? source.length : end + 2;
+    } else {
+      out += ch;
+      i += 1;
+    }
   }
 
-  return /\bextension\b/.test(source) ? ["only the Stream Deck host has an extension"] : [];
+  return out;
+}
+
+/** The text of the first `startPlugin(…)` call in `source`'s code (comments stripped), through its closing parenthesis; undefined when there is none. */
+function startPluginCall(source) {
+  const code = stripComments(source);
+  const start = code.search(/\bstartPlugin\s*\(/);
+  if (start === -1) return undefined;
+
+  let depth = 0;
+  for (let i = code.indexOf("(", start); i < code.length; i += 1) {
+    if (code[i] === "(") depth += 1;
+    if (code[i] === ")" && --depth === 0) return code.slice(start, i + 1);
+  }
+
+  return code.slice(start);
+}
+
+/**
+ * How `source` breaks its host's extension rule; empty when it holds. Read from
+ * the `startPlugin(…)` call itself, comments stripped. Stream Deck must hand
+ * startPlugin its extension — without it the Switch Profile keys are never
+ * registered and every other test stays green — and no other host's call may
+ * carry an `extension` property, written out or shorthand.
+ */
+function extensionViolations(pkg, source) {
+  const call = startPluginCall(source) ?? "";
+  if (pkg === STREAM_DECK) {
+    return /[{,]\s*extension\s*:\s*createElgatoExtension\s*\(/.test(call)
+      ? []
+      : ["the Stream Deck shell does not pass extension: createElgatoExtension(…) to startPlugin"];
+  }
+
+  return /[{,]\s*extension\s*[:,}]/.test(call) ? ["only the Stream Deck host has an extension"] : [];
 }
 
 const PLUGIN_PACKAGES = [...new Set(allPluginManifestRelPaths(repoRoot).map((relPath) => relPath.split("/")[1]))];
@@ -67,6 +115,12 @@ describe("the shell check itself (positive controls)", () => {
     expect(shellViolations(source)).toContain(violation);
   });
 
+  it("does not count a startPlugin call that only a comment makes", () => {
+    expect(shellViolations("// startPlugin({ adapter, binDir });\n/* startPlugin(x) */\n")).toContain(
+      "never calls startPlugin",
+    );
+  });
+
   it("passes exactly 80 lines", () => {
     expect(shellViolations(`${"//\n".repeat(78)}${ok}`)).toEqual([]);
   });
@@ -81,11 +135,30 @@ describe("the shell check itself (positive controls)", () => {
     expect(extensionViolations("iracing-plugin-mirabox", ok)).toEqual([]);
   });
 
+  it("ignores the word extension in another host's comments, strings and other code", () => {
+    const mentions = [
+      "// Mirabox has no extension: createElgatoExtension(sd, adapter) is Stream Deck's.",
+      "/* extension: none */",
+      'const note = "extension: none";',
+      "const extension = undefined;",
+      ok,
+    ].join("\n");
+
+    expect(extensionViolations("iracing-plugin-mirabox", mentions)).toEqual([]);
+  });
+
   it.each([
     [STREAM_DECK, "no extension", ok],
     [STREAM_DECK, "the extension built but not passed", `createElgatoExtension(sd, adapter);\n${ok}`],
+    [STREAM_DECK, "the property only in a comment", `// extension: createElgatoExtension(sd, adapter)\n${ok}`],
+    [
+      STREAM_DECK,
+      "the property outside the startPlugin call",
+      `const o = { extension: createElgatoExtension(sd, adapter) };\n${ok}`,
+    ],
     ["iracing-plugin-mirabox", "an extension", "startPlugin({ adapter, binDir, extension: makeOne() });"],
     ["iracing-plugin-ulanzi", "an empty extension", "startPlugin({ adapter, binDir, extension: undefined });"],
+    ["iracing-plugin-ulanzi", "a shorthand extension", "startPlugin({ adapter, extension, binDir });"],
   ])("fails %s with %s", (pkg, _label, source) => {
     expect(extensionViolations(pkg, source)).toHaveLength(1);
   });
