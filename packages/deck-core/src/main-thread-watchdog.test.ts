@@ -575,10 +575,11 @@ describe("startMainThreadWatchdog in a blocked process", () => {
   }, 30000);
 
   it("still works after the module is compiled and minified the way the plugins ship it", async () => {
-    // The plugins' own terser, resolved through @rollup/plugin-terser from the
-    // Stream Deck plugin, with the options it applies to an ES bundle.
-    const pluginRequire = createRequire(join(REPO, "packages", "iracing-plugin-stream-deck", "package.json"));
-    const terserRequire = createRequire(pluginRequire.resolve("@rollup/plugin-terser"));
+    // The plugins' own terser, resolved through @rollup/plugin-terser from
+    // @iracedeck/plugin-build — the package that declares it, whose shared Rollup
+    // config minifies all three plugins — with the options it applies to an ES bundle.
+    const pluginBuildRequire = createRequire(join(REPO, "packages", "plugin-build", "package.json"));
+    const terserRequire = createRequire(pluginBuildRequire.resolve("@rollup/plugin-terser"));
     // terser is not a dependency of this package, so its types are not in reach: declare the one call used.
     const { minify } = terserRequire("terser") as {
       minify(code: string, options: Record<string, unknown>): Promise<{ code?: string }>;
