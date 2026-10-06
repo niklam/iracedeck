@@ -79,8 +79,14 @@ import type { RaceEngineerWiringDeps } from "./wire-race-engineer.js";
  * mid-session toggle takes effect on the next event without re-registering
  * scenarios and without cutting a callout already playing. Per-key rationale
  * lives on `PitCrewDeps` in @iracedeck/audio-scenarios.
+ *
+ * Takes no `overrides`: `wireRaceEngineer` applies them over what this
+ * returns, so accepting them here would let a caller pass ones that do nothing.
  */
-export function buildPitCrewDeps(deps: RaceEngineerWiringDeps, caches: RaceEngineerCaches): Required<PitCrewDeps> {
+export function buildPitCrewDeps(
+  deps: Omit<RaceEngineerWiringDeps, "overrides">,
+  caches: RaceEngineerCaches,
+): Required<PitCrewDeps> {
   const { logger, sim, voice } = deps;
 
   // Compose the overtake gate from live telemetry + the tracked incident time.

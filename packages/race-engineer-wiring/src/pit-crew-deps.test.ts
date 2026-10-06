@@ -59,7 +59,9 @@ function fakeSim(overrides: Partial<Record<keyof SimRuntime, unknown>> = {}): Si
   });
 }
 
-function fakeDeps(extra: Partial<RaceEngineerWiringDeps> = {}): RaceEngineerWiringDeps {
+type BuildDeps = Omit<RaceEngineerWiringDeps, "overrides">;
+
+function fakeDeps(extra: Partial<BuildDeps> = {}): BuildDeps {
   return { logger: silentLogger, sim: fakeSim(), voice: { driverNames: ["adam"] }, ...extra };
 }
 
@@ -104,9 +106,19 @@ const GATES: [keyof PitCrewDeps, Readonly<Record<string, string>>][] = [
   ["getTrackConditionsCalloutEnabled", TRACK_CONDITIONS_CALLOUT_SETTING_KEYS],
 ];
 
+/**
+ * How a per-family gate is named among the built dependencies: 29 end in
+ * `CalloutEnabled`, plus `getPitReadbackEnabled`. The master gates and
+ * `getPitServiceRequestsEnabled` take no id and are tested on their own.
+ */
+const FAMILY_GATE_NAME = /(?:Callout|Readback)Enabled$/;
+
 describe("buildPitCrewDeps", () => {
   beforeEach(() => {
     stored.current = {};
+    // restoreAllMocks below only undoes spies; the two deck-core vi.fn mocks
+    // keep their call history unless it is cleared here.
+    vi.clearAllMocks();
   });
   afterEach(() => vi.restoreAllMocks());
 
@@ -118,8 +130,13 @@ describe("buildPitCrewDeps", () => {
     for (const [key, value] of Object.entries(built)) expect(value, key).toBeDefined();
   });
 
-  it("covers 30 family gates", () => {
-    expect(GATES).toHaveLength(30);
+  it("has a GATES row for every family gate it builds, and only those", () => {
+    const built = Object.keys(buildPitCrewDeps(fakeDeps(), noCaches)).filter((key) => FAMILY_GATE_NAME.test(key));
+    const tabled = GATES.map(([key]) => key);
+
+    expect(new Set(built)).toEqual(new Set(tabled));
+    expect(built).toHaveLength(30);
+    expect(tabled).toHaveLength(30);
   });
 
   it.each(GATES)("%s reads its own key per id, live, and an absent key means on", (depKey, keys) => {
@@ -157,12 +174,12 @@ describe("buildPitCrewDeps", () => {
   });
 
   it("asks deck-core's setup-warning rule with the live settings and setup name (#625)", () => {
-    vi.mocked(evaluateSetupWarning).mockReturnValue(true);
+    vi.mocked(evaluateSetupWarning).mockReturnValueOnce(true);
     stored.current = { setupWarningEnabled: true };
     const sim = fakeSim({ getDriverSetupName: () => "race-dry.sto" });
 
     expect(buildPitCrewDeps(fakeDeps({ sim }), noCaches).getSetupWarningMismatch("qualifying")).toBe(true);
-    expect(evaluateSetupWarning).toHaveBeenCalledWith("qualifying", stored.current, "race-dry.sto");
+    expect(evaluateSetupWarning).toHaveBeenCalledExactlyOnceWith("qualifying", stored.current, "race-dry.sto");
   });
 
   it("makes the PitCrewScenarios logger a scope of its own", () => {

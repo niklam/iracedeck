@@ -1,5 +1,5 @@
 import { silentLogger } from "@iracedeck/logger";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { subscribeRaceEngineerCaches } from "./caches.js";
 
@@ -13,6 +13,9 @@ function fakeBus() {
 }
 
 describe("subscribeRaceEngineerCaches", () => {
+  // Undoes the Date.now spy, even when a test fails before reaching its end.
+  afterEach(() => vi.restoreAllMocks());
+
   it("makes its loggers as scopes of the one it is given", () => {
     const scopes: string[] = [];
     const root = { ...silentLogger, createScope: (scope: string) => (scopes.push(scope), silentLogger) };
