@@ -21,6 +21,7 @@ export type {
   IDeckTouchTapEvent,
   IDeckWillAppearEvent,
   IDeckWillDisappearEvent,
+  LogLocation,
 } from "./types.js";
 
 // Encoder touch-strip feedback types (platform-agnostic)

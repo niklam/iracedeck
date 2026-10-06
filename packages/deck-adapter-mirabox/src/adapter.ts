@@ -17,6 +17,7 @@ import {
   type IDeckEvent,
   type IDeckPlatformAdapter,
   type IDeckWillDisappearEvent,
+  type LogLocation,
   STREAM_DOCK_KNOB_CANVAS,
   toDeviceImage,
 } from "@iracedeck/deck-core";
@@ -214,11 +215,18 @@ export class VSDPlatformAdapter implements IDeckPlatformAdapter {
    */
   private fileSink: FileSink | null = null;
 
+  /**
+   * The per-day directory `FileSink` writes (#609), or `undefined` when built
+   * without one. See {@link IDeckPlatformAdapter.logLocation}.
+   */
+  readonly logLocation: LogLocation | undefined;
+
   /** Scope for the adapter's own protocol normalisation (the dropped host `dialUp`). */
   private readonly dialLogger: ILogger;
 
   constructor(logger?: ILogger, logDir?: string) {
     this.fileSink = logDir ? new FileSink(logDir) : null;
+    this.logLocation = logDir ? { kind: "daily", dir: logDir } : undefined;
     const log = logger ?? this.buildLogger("VSD");
     this.client = new VSDClient(parseConnectionParams(), log.createScope("WebSocket"));
     this.dialLogger = log.createScope("Dial");
@@ -311,9 +319,9 @@ export class VSDPlatformAdapter implements IDeckPlatformAdapter {
    * Register a listener for the Property Inspector's "iRaceDeck Settings"
    * request (issue #992). VSD Craft mimics the Elgato PI protocol, so the
    * button's `sendToPlugin { event: "openSettings" }` arrives as a
-   * `sendToPlugin` frame that `routeEvent` fans out to global handlers. Like
-   * `openUrl`, this is a concrete-adapter method, not an `IDeckPlatformAdapter`
-   * member — the PI→plugin transport differs per host.
+   * `sendToPlugin` frame that `routeEvent` fans out to global handlers. An
+   * `IDeckPlatformAdapter` member since #1349 — the PI→plugin transport differs
+   * per host.
    */
   onOpenSettingsRequest(listener: () => void): void {
     this.client.onGlobalEvent("sendToPlugin", (data) => {

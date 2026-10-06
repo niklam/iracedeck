@@ -73,6 +73,21 @@ export class MockPlatformAdapter implements IDeckPlatformAdapter {
   // best-effort calls from deck-core internals (or future additions) don't
   // crash the dev tool.
 
+  /** The harness writes no log file of its own; nothing in it starts a watchdog. */
+  readonly logLocation = undefined;
+
+  async openUrl(_url: string): Promise<void> {
+    // intentionally unused
+  }
+
+  onOpenSettingsRequest(_listener: () => void): void {
+    // intentionally unused
+  }
+
+  setLogLevel(_level: LogLevel): void {
+    // intentionally unused — the root console logger's level is fixed at construction
+  }
+
   onApplicationDidLaunch(_callback: (application: string) => void): void {
     // intentionally unused
   }

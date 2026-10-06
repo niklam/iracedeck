@@ -38,4 +38,15 @@ describe("VSDPlatformAdapter log level", () => {
     logger.debug("disabled-again");
     expect(debugSpy).toHaveBeenCalledTimes(1);
   });
+
+  it("reports no log location when built without a log directory", () => {
+    expect(new VSDPlatformAdapter().logLocation).toBeUndefined();
+  });
+
+  it("reports its daily log directory as its log location", () => {
+    expect(new VSDPlatformAdapter(undefined, "C:/plugin/log").logLocation).toEqual({
+      kind: "daily",
+      dir: "C:/plugin/log",
+    });
+  });
 });
