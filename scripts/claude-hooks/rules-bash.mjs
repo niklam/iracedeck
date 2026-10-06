@@ -876,8 +876,11 @@ export const rules = [
       // A true sibling, not merely "outside master": the main root is the
       // checkout the git-common-dir belongs to, so a tree nested inside
       // another ir-* worktree is outside it and would otherwise pass (#1358).
+      // "Same directory" is `isInside` both ways, so the comparison keeps its
+      // case rule: folded on Windows only.
       const parent = path.dirname(ctx.mainRoot(dir));
-      if (ctx.isInside(resolved, ctx.mainRoot(dir)) || path.dirname(resolved).toLowerCase() !== parent.toLowerCase())
+      const sibling = ctx.isInside(path.dirname(resolved), parent) && ctx.isInside(parent, path.dirname(resolved));
+      if (ctx.isInside(resolved, ctx.mainRoot(dir)) || !sibling)
         return `Worktrees are siblings of the repo (${path.join(parent, "ir-<issue>")}), never inside it or another tree: ${resolved}.`;
       if (issueFromWorktreePath(resolved) === undefined)
         return `Issue worktrees are named ../ir-<issue> (got ${path.basename(resolved)}).`;

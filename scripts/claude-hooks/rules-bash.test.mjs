@@ -2,6 +2,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { DEBUG_VALUE, ELGATO_MANIFEST } from "../lib/debug-plugin.mjs";
+import { isInside } from "./lib.mjs";
 import {
   checkBash,
   classifyCheck,
@@ -1485,6 +1486,12 @@ describe("the mask fails closed (#1321 review)", () => {
     const sub = ctx({ cwd: tree("ir-1325", "scripts") });
     expect(deny(`git worktree add ir-5 -b fix/5-x`, sub)).toMatch(/siblings/);
     expect(deny(`git worktree add ../ir-5 -b fix/5-x`, sub)).toMatch(/siblings/);
+    // With the real `isInside`, a parent differing only in case is a sibling on
+    // Windows and a different directory everywhere else.
+    const other = path.join(path.dirname(REPO), path.basename(REPO).toUpperCase(), "ir-5");
+    const real = ctx({ isInside });
+    if (process.platform === "win32") passes(`git worktree add "${other}" -b fix/5-x`, real);
+    else expect(deny(`git worktree add "${other}" -b fix/5-x`, real)).toMatch(/siblings/);
     passes(`git worktree add ../../ir-5 -b fix/5-x`, sub);
   });
 
