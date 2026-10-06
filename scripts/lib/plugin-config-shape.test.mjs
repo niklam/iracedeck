@@ -202,6 +202,17 @@ describe("parseExtraExternals", () => {
     expect(parseExtraExternals('extraExternals: [\n  "ws",\n  "left-pad",\n],')).toEqual(["ws", "left-pad"]);
   });
 
+  it("decodes an escaped entry the way JavaScript does, so the guards see the real package", () => {
+    // Built from a char code so no editor or tool can decode the escape early.
+    const escaped = `extraExternals: ["left-${String.fromCharCode(92)}u0070ad"],`;
+    expect(escaped).toContain("u0070");
+    expect(parseExtraExternals(escaped)).toEqual(["left-pad"]);
+  });
+
+  it("throws on an escape it cannot decode instead of returning it raw", () => {
+    expect(() => parseExtraExternals(String.raw`extraExternals: ["left-\x70ad"],`)).toThrow(/cannot decode/);
+  });
+
   it.each([
     ["an identifier", "extraExternals: EXTRAS,"],
     ["an identifier shorthand", "createPluginRollupConfig({ extraExternals });"],

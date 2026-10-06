@@ -203,7 +203,16 @@ export function parseExtraExternals(configSource) {
   if (spread !== -1) {
     throw new Error(`rollup.config.mjs spreads a value, which could carry another extraExternals: ${at(text, spread)}`);
   }
-  return entries.map((entry) => entry.slice(1, -1));
+  // Decode each literal the way JavaScript would ("left-pad" is left-pad),
+  // so the guards look up the package the factory actually receives; an escape
+  // JSON does not read (\x70, an octal) throws rather than pass undecoded.
+  return entries.map((entry) => {
+    try {
+      return JSON.parse(entry);
+    } catch {
+      throw new Error(`extraExternals entry ${entry} uses an escape the guards cannot decode; write the name plainly`);
+    }
+  });
 }
 
 /**
