@@ -26,6 +26,7 @@
  * (#992) already writes through the plugin.
  */
 import { qualifiedVoiceId, qualifyVoiceId, stripTakeSuffix } from "@iracedeck/callout-script";
+import { CALLOUT_SETTING_KEYS, calloutDefault, type CalloutSettingKey } from "@iracedeck/callout-settings";
 import type { ILogger } from "@iracedeck/logger";
 import { gt, valid } from "semver";
 import { z } from "zod";
@@ -90,6 +91,25 @@ export type BindingValue = KeyBindingValue | SimHubBindingValue;
  */
 export function isSimHubBinding(value: BindingValue | null | undefined): value is SimHubBindingValue {
   return value != null && value.type === "simhub";
+}
+
+/**
+ * One Race Engineer callout opt-in. Every `calloutEnabled*` key shares this
+ * shape; which keys exist, and the few that ship off, are declared once in
+ * `@iracedeck/callout-settings` (#1350). No `.catch`, as before: the
+ * union-plus-transform chain has no throw path, which is the exemption
+ * `global-settings.md` names.
+ */
+const calloutEnabledField = (defaultValue: boolean) =>
+  z
+    .union([z.boolean(), z.string()])
+    .transform((val) => val === true || val === "true")
+    .default(defaultValue);
+
+function calloutEnabledFields(): { [K in CalloutSettingKey]: ReturnType<typeof calloutEnabledField> } {
+  return Object.fromEntries(CALLOUT_SETTING_KEYS.map((key) => [key, calloutEnabledField(calloutDefault(key))])) as {
+    [K in CalloutSettingKey]: ReturnType<typeof calloutEnabledField>;
+  };
 }
 
 /**
@@ -250,26 +270,6 @@ export const GlobalSettingsSchema = z
       .transform((val) => val === true || val === "true")
       .default(false),
     /**
-     * Spotter per-callout opt-ins (issue #651). The spoken Spotter proximity
-     * calls are a Race Engineer callout family — there is no standalone master;
-     * they ride `pitCrewRaceEngineerEnabled` like flags/position/lap-time.
-     * "Cars" gates every transition call (car/two cars/one car/three wide/clear/
-     * combined); "StillThere" gates the repeating reminder while alongside (its
-     * cadence is set by `spotterStillThereSeconds`).
-     * Default `true` so users discover the calls (with Race Engineer enabled)
-     * and turn off what they don't want; opt-out takes effect at event-arrival
-     * time without cutting in-flight playback. Canonical id↔key mapping in
-     * `SPOTTER_CALLOUT_SETTING_KEYS` (in `@iracedeck/audio-scenarios`).
-     */
-    calloutEnabledSpotterCars: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    calloutEnabledSpotterStillThere: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    /**
      * "Still there" reminder cadence in seconds (issue #651). While a car is
      * alongside the spotter repeats its reminder every N seconds; user-
      * configurable 1–10 s, default 3. Read live by the spotter engine on each
@@ -377,175 +377,6 @@ export const GlobalSettingsSchema = z
      */
     driverName: z.preprocess((val) => (val === undefined || val === null ? "" : val), z.string().default("")),
     /**
-     * Per-callout opt-in toggles (issue #467). Each subject the Race
-     * Engineer announces has its own boolean — when false, that specific
-     * callout is suppressed at event-arrival time so currently playing
-     * announcements continue uninterrupted but no new callout of that
-     * subject fires until the user re-enables it. All default to true so
-     * existing users automatically receive any newly added callout
-     * subject in a future release (forward-compat by default — the load-
-     * bearing reason this is per-item booleans rather than an array).
-     *
-     * Naming convention: `callout<Polarity><Family><Subject>`. Polarity
-     * is always positive (`Enabled`); the family noun (`Flag`,
-     * `PitAction`, …) groups every member of the family for grep. The
-     * canonical id↔key mapping lives in `@iracedeck/audio-scenarios`
-     * (`FLAG_CALLOUT_SETTING_KEYS`). See `.claude/rules/global-settings.md`
-     * for the full convention.
-     */
-    calloutEnabledFlagYellowLocal: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    calloutEnabledFlagYellowFull: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    calloutEnabledFlagYellowCleared: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    calloutEnabledFlagGreen: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    calloutEnabledFlagBlue: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    calloutEnabledFlagWhite: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    calloutEnabledFlagRed: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    calloutEnabledFlagBlack: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    calloutEnabledFlagCheckered: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    calloutEnabledFlagDebris: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    calloutEnabledFlagMeatball: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    /**
-     * Missing-session-flag callout opt-ins (issue #480). Driver-black
-     * (disqualify/furled/dq-scoring-invalid), race-progression
-     * (crossed/one-pace-lap-to-go/green-held/ten-to-go/five-to-go), and
-     * caution-waving (yellow-waving/caution-waving) variants. Plus two
-     * grouped start-light opt-ins: `calloutEnabledStartLights` (the 3
-     * gantry lines) and `calloutEnabledStartCountdown` (the 5 numeric
-     * countdown clips). Same forward-compat semantics as the flag callouts
-     * above — default `true` so existing users receive them automatically.
-     * Canonical id↔key mappings in `FLAG_CALLOUT_SETTING_KEYS` and
-     * `START_LIGHT_CALLOUT_SETTING_KEYS`.
-     */
-    calloutEnabledFlagDisqualify: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    calloutEnabledFlagFurled: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    // Furled-warning withdrawn callout opt-in (issue #669).
-    calloutEnabledFlagFurledCleared: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    calloutEnabledFlagDqScoringInvalid: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    calloutEnabledFlagCrossed: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    calloutEnabledFlagOnePaceLapToGo: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    calloutEnabledFlagGreenHeld: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    calloutEnabledFlagTenToGo: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    calloutEnabledFlagFiveToGo: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    calloutEnabledFlagYellowWaving: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    calloutEnabledFlagCautionWaving: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    calloutEnabledStartLights: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    calloutEnabledStartCountdown: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    // Rolling-start pace-car callout opt-in (issue #660).
-    calloutEnabledRollingStartPaceCar: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    // Pit-window open/closed callout opt-in (issue #655). One subject covers
-    // both directions (pits opened / closed). Canonical id↔key mapping in
-    // `PIT_WINDOW_CALLOUT_SETTING_KEYS`.
-    calloutEnabledPitOpenClosed: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    // Opponent-pit callout opt-ins (issue #622). Two subjects — the race
-    // leader entering the pits, and same-lap competitors within ±2 effective
-    // positions (class space in multi-class, incl. the aggregate tail).
-    // Canonical id↔key mapping in `OPPONENT_PIT_CALLOUT_SETTING_KEYS`.
-    calloutEnabledOpponentPitLeader: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    calloutEnabledOpponentPitNearby: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    // Opponent-flag callout opt-ins (issue #936). Four subjects — penalty
-    // flags on cars that matter to us (standings neighbours + slow traffic
-    // ahead). Canonical id↔key mapping in `OPPONENT_FLAG_CALLOUT_SETTING_KEYS`.
-    calloutEnabledOpponentFlagFurled: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    calloutEnabledOpponentFlagBlack: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    calloutEnabledOpponentFlagMeatball: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    calloutEnabledOpponentFlagDisqualify: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    /**
      * Opponent-flag range in seconds (issue #1274). Only a car in the user's
      * class within this race gap, ahead or behind, is announced; user-
      * configurable 1–10 s, default 3. Read live by the translator on each
@@ -558,314 +389,6 @@ export const GlobalSettingsSchema = z
     // every setting, not just this one (the `spotterStillThereSeconds`
     // precedent).
     opponentFlagRangeSeconds: z.coerce.number().min(1).max(10).default(3).catch(3),
-    /**
-     * Damage callout opt-in (issue #489). Fires after the rising-edge
-     * debounce on `EngineWarnings & (MandRepNeeded | OptRepNeeded)`. Same
-     * forward-compat semantics as the flag callouts above. Canonical
-     * id↔key mapping in `DAMAGE_CALLOUT_SETTING_KEYS`.
-     */
-    calloutEnabledDamageRepairNeeded: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    /**
-     * Pit-service readback opt-ins (issue #476). Two subjects: the
-     * "We're …" callout on pit entry and the "To confirm: …" callout
-     * after pit exit. Same forward-compat semantics as flag callouts —
-     * default `true` so existing users receive the readback without
-     * editing settings, opt-out toggles them off at event-arrival
-     * time without cutting in-flight playback. Canonical id↔key
-     * mapping in `PIT_READBACK_CALLOUT_SETTING_KEYS`.
-     */
-    calloutEnabledPitReadbackEntry: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    calloutEnabledPitReadbackExit: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    /**
-     * Tire-wear report opt-in (issue #1108). The remaining tread of all four
-     * tires, spoken after a pit stop the driver drove into, right behind the
-     * exit readback. Same forward-compat semantics as the flag callouts —
-     * default `true`, opt-out read at event arrival without cutting an
-     * in-flight report. Canonical id↔key mapping in
-     * `TIRE_WEAR_CALLOUT_SETTING_KEYS`.
-     */
-    calloutEnabledTireWearReport: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    /**
-     * Family-wide gate for the per-toggle pit-service request
-     * confirmations (issue #468). One boolean covers fuel, tire-set,
-     * compound, windshield-tearoff, and fast-repair on/off acks — the
-     * driver either wants the engineer chiming in on every checkbox flip
-     * or they don't, no per-service granularity needed.
-     *
-     * Read live via a closure passed into `registerPitCrew(...)` so a
-     * mid-session toggle takes effect on the next event arrival without
-     * cutting an in-flight clip. Default `true` so existing users keep
-     * the acks they have today.
-     */
-    calloutEnabledPitServiceRequests: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    /**
-     * Auto-fuel callout opt-in (issue #474). Gates the four lines spoken
-     * when the sim's auto-fuel is switched on or off, each naming the fuel
-     * request the change leaves behind (`pitService.autoFuelSwitched`), and
-     * said without the acknowledgment prefix a driver's own toggle gets. A
-     * fuel-bit flip made while auto-fuel is armed is announced by nobody —
-     * telemetry cannot tell the sim's write from the driver's press — so
-     * this key has nothing to do with attributing one. Independent of
-     * `calloutEnabledPitServiceRequests`, since the two preferences are
-     * independent in both directions. Default `true` per the callout
-     * baseline.
-     */
-    calloutEnabledPitServiceAutoFuel: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    /**
-     * Pit-service status callout opt-ins (issue #479). One boolean per
-     * non-`None` `PlayerCarPitSvStatus` target — the silent idle state
-     * has no opt-out because it never reaches the bus.
-     *
-     * Same forward-compat semantics as the other callout families:
-     * default `true` so a future plugin upgrade automatically enables
-     * a new subject for existing users (`.passthrough()` on the schema
-     * makes that property hold without a migration). Canonical id↔key
-     * mapping in `PIT_STATUS_CALLOUT_SETTING_KEYS`.
-     */
-    calloutEnabledPitStatusInProgress: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    calloutEnabledPitStatusComplete: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    calloutEnabledPitStatusTooFarLeft: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    calloutEnabledPitStatusTooFarRight: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    calloutEnabledPitStatusTooFarForward: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    calloutEnabledPitStatusTooFarBack: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    calloutEnabledPitStatusBadAngle: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    calloutEnabledPitStatusCantFixThat: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    /**
-     * Per-incident-type callout opt-ins (issue #530). One boolean per
-     * `irsdk_IncidentFlags` report-byte category surfaced by the bus.
-     * Every category defaults `true` so a fresh install gets full
-     * type-specific coaching (track limits / composure / contact vs
-     * collision-with-penalty) — the user can silence individual
-     * categories from the PI mid-session and the change takes effect on
-     * the next event arrival without cutting an in-flight clip. Same
-     * forward-compat semantics as the other callout families. Canonical
-     * id↔key mapping in `INCIDENT_CALLOUT_SETTING_KEYS`.
-     */
-    calloutEnabledIncidentOffTrack: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    calloutEnabledIncidentOutOfControl: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    calloutEnabledIncidentContactWorld: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    calloutEnabledIncidentCollisionWorld: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    calloutEnabledIncidentContactCar: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    calloutEnabledIncidentCollisionCar: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    /**
-     * Master opt-in for the track-conditions callout family (issue #526).
-     * Single subject for v1 — every (direction × target) combination of the
-     * Race Engineer's track-wetness change announcement is gated by this one
-     * boolean. Forward-compat: future track-related callouts (temperature,
-     * weather type) join the same `Track` family with their own per-subject
-     * keys, following the
-     * `callout<Polarity><Family><Subject>` convention. See the canonical
-     * id↔key mapping in `TRACK_CONDITIONS_CALLOUT_SETTING_KEYS`.
-     */
-    calloutEnabledTrackWetness: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    /**
-     * Opt-in for the session-start readout (issues #542, #668). One boolean
-     * for the whole readout — the engineer's greeting + session-type line +
-     * pit speed limit + track/air temperature + track wetness. Fired when a
-     * practice or qualifying session starts (on `session.changed`, ~3 s in),
-     * whether or not the driver leaves the garage; also fires when the plugin
-     * connects into a practice/qualifying session mid-way (fresh-connect
-     * synthesis). Defaults `true` so a fresh install hears it; the user can
-     * silence it from the PI mid-session and the change takes effect on the
-     * next session without cutting an in-flight clip. Canonical id↔key mapping
-     * in `SESSION_START_CALLOUT_SETTING_KEYS` (in `@iracedeck/audio-scenarios`).
-     */
-    calloutEnabledSessionStart: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    /**
-     * Opt-in for the Race Engineer audible toggle acknowledgement
-     * (issue #554). When enabled, pressing the Race Engineer button on the
-     * Pit Crew action plays a short voice line confirming the new state
-     * ("going silent" on disable, "resuming communication" on enable). UI-side
-     * acknowledgement only — the scenario engine isn't involved. Read live in
-     * `PitCrew.toggleRaceEngineer()`; if disabled, the toggle remains silent
-     * (border/status indicator still updates). Default `true` so existing
-     * users get the ack without editing settings.
-     */
-    calloutEnabledToggleRaceEngineer: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    /**
-     * Corner Names toggle acknowledgment (issue #897). When enabled, the Pit
-     * Crew Corner Names key speaks a short confirmation on every toggle
-     * ("corner calls coming up" / "dropping the corner calls"). Only gates
-     * the ack — the toggle itself always applies, and the ack additionally
-     * requires the Race Engineer master gate to be on. UI-side, no scenario
-     * engine. Read live in `toggleCornerNamesFeature()`. Default `true`.
-     */
-    calloutEnabledToggleCornerNames: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    /**
-     * Opt-in for the Race Engineer radio check fired when iRacing telemetry
-     * starts flowing (issue #554 follow-up). On a false→true transition of
-     * the SDK controller's connection state, the Pit Crew action plays the
-     * driver-name clip followed by `toggle/radio-check-01` — "<name>, …
-     * radio check. Standing by." — so the user has audible confirmation
-     * that the plugin is talking to iRacing. Gated on Race Engineer being
-     * enabled (master gate) AND this opt-in. UI-side, no scenario engine.
-     * Read live so a mid-session PI toggle takes effect on the next
-     * connect. Default `true`.
-     */
-    calloutEnabledTelemetryConnectRadioCheck: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    /**
-     * Opt-in for the lap-time best-lap callout (issue #555). One boolean for
-     * the family — the engineer announces the lap time after S/F when the
-     * driver sets a new personal best (or completes their first valid lap of
-     * the session). Defaults `true` so a fresh install hears it; the user can
-     * silence it from the PI mid-session and the change takes effect on the
-     * next lap completion without cutting an in-flight clip. Canonical id↔key
-     * mapping in `LAP_TIME_CALLOUT_SETTING_KEYS` (in
-     * `@iracedeck/audio-scenarios`).
-     */
-    calloutEnabledLapTimeBestLap: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    /**
-     * Opt-in for the corner-name callouts (issue #888). One boolean for the
-     * family — the engineer announces the upcoming corner's name in practice
-     * and test sessions. Defaults `true`. Canonical id↔key mapping in
-     * `CORNER_NAME_CALLOUT_SETTING_KEYS` (in `@iracedeck/audio-scenarios`).
-     */
-    calloutEnabledCornerNames: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    /**
-     * Opt-in for the position-change callout (issues #566 + #569). One boolean
-     * for the family — the engineer announces the driver's current position
-     * after a qualifying or race lap whose effective position changed. In
-     * qualifying the engineer also speaks a status line when position holds on
-     * a non-PB lap and a dedicated pole call on an improvement to P1; in race
-     * only real changes fire, because the every-3-laps race-status callout
-     * (`calloutEnabledRaceStatus`) owns hold-position updates. Practice /
-     * test sessions stay silent. Defaults `true`; the user can silence it
-     * mid-session and the change takes effect on the next lap completion
-     * without cutting an in-flight clip. Canonical id↔key mapping in
-     * `POSITION_CALLOUT_SETTING_KEYS` (in `@iracedeck/audio-scenarios`).
-     */
-    calloutEnabledPositionChange: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    /**
-     * Opt-in for the qualifying lap-invalidation callout (issue #567). One
-     * boolean for the family — the engineer announces "This lap will be
-     * invalidated." plus a tail picked from the snapshot's `lapsRemaining`
-     * (out-of-laps / per-N counted line / plenty-of-laps fallback). **Fires
-     * only in qualifying sessions** — race / practice stay silent because the
-     * lap-invalidation phrasing only makes sense for a timed qualifying lap.
-     * Defaults `true` so a fresh install hears it; the user can silence it
-     * from the PI mid-session and the change takes effect on the next event
-     * without cutting an in-flight clip. Canonical id↔key mapping in
-     * `QUALIFYING_INVALIDATION_CALLOUT_SETTING_KEYS` (in
-     * `@iracedeck/audio-scenarios`).
-     */
-    calloutEnabledQualifyingLapInvalidated: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    /**
-     * Opt-in for the race-status periodic position update (issue #569). One
-     * boolean for the family — the engineer announces the driver's current
-     * position every 3 laps as long as position holds (counter resets on every
-     * position change). **Fires only in race sessions**; qualifying / practice /
-     * test stay silent because the standings-after-lap model doesn't fit. Leader
-     * gets a dedicated "We're still leading the race. Keep it up." line;
-     * everyone else hears the reused "We're currently P[n]" status. Defaults
-     * `true` so a fresh install hears it. Canonical id↔key mapping in
-     * `RACE_STATUS_CALLOUT_SETTING_KEYS` (in `@iracedeck/audio-scenarios`).
-     */
-    calloutEnabledRaceStatus: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    /**
-     * Opt-ins for the gap callout family (issue #933): the sustained
-     * trend-flip announcement ("we're gaining on the car ahead") and the
-     * threshold-crossing alert ("we've caught the car ahead"), both against
-     * the class-standings neighbors. Default `true`. Canonical id↔key
-     * mapping in `GAP_CALLOUT_SETTING_KEYS` (in `@iracedeck/audio-scenarios`).
-     */
-    calloutEnabledGapTrend: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    calloutEnabledGapThreshold: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
     /**
      * Gap alert threshold in seconds (issue #933): the engineer calls out
      * when a neighbor's gap first drops below this. 0.5–3.0, default 1.0.
@@ -888,146 +411,6 @@ export const GlobalSettingsSchema = z
      * the gate. Read live by the translator's gap diff.
      */
     gapCalloutMinChangeSeconds: z.coerce.number().min(0).max(10).default(1.5).catch(1.5),
-    /**
-     * Opt-in for the race-end final-result callout (issue #569). One boolean
-     * for the family — the engineer greets the driver by name and speaks the
-     * final result after the driver crosses S/F under the checkered flag in a
-     * race session. Per-position branches: P1 ("we won!"), P2 ("second place"),
-     * P3 ("podium"), P4+ ("the race is over. The final result for us is P[n]").
-     * Defaults `true` so a fresh install hears it. Canonical id↔key mapping in
-     * `RACE_END_CALLOUT_SETTING_KEYS` (in `@iracedeck/audio-scenarios`).
-     */
-    calloutEnabledRaceEnd: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    /**
-     * Opt-in for the race-start greeting + qualifying-position readout (issue
-     * #568). One boolean for the family — the engineer fires ~3 s after the
-     * iRacing session changes to a race session (even if the driver is still
-     * in pit/garage), greets the driver by name, reports the grid position,
-     * and reads the track + air temperature + wetness brief. **Replaces** the
-     * session-start callout in race sessions so there is no double-greeting.
-     * Defaults `true` so a fresh install hears it; the user can silence it
-     * from the PI mid-session and the change takes effect on the next
-     * `session.changed` without cutting an in-flight clip. Canonical id↔key
-     * mapping in `RACE_START_CALLOUT_SETTING_KEYS` (in
-     * `@iracedeck/audio-scenarios`).
-     */
-    calloutEnabledRaceStart: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    /**
-     * Opt-ins for the overtake gain / loss callouts (issue #574). Two booleans
-     * — independently toggleable so a driver who wants congratulations but not
-     * chastisement (or vice versa) gets per-direction control. The engineer
-     * fires mid-race when the driver gains a position ("Nice pass. That puts
-     * us to P[n].") or loses one ("Come on, [name]. Don't give up positions
-     * like that. We're now in P[n]."), and the gain side has a dedicated
-     * "we're now leading race" line when the pass takes the player to P1.
-     * Both default `true`. Canonical id↔key mapping in
-     * `OVERTAKE_CALLOUT_SETTING_KEYS` (in `@iracedeck/audio-scenarios`).
-     */
-    calloutEnabledOvertakeGained: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    calloutEnabledOvertakeLost: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    /**
-     * Opt-in for the pit-box count-in (issue #600). One boolean for the whole
-     * countdown — as the driver drives down pit road toward their box the
-     * engineer counts the remaining distance down ("five… four… three… two…
-     * one… pit now") so they know when to stop without overshooting the stall.
-     * The box position comes from `DriverInfo.DriverPitTrkPct`, so it works on
-     * the first stop of a session. Fires whenever the car is on pit road and
-     * approaching the box (including drive-throughs). Defaults `true` so a fresh
-     * install hears it; the user can silence it mid-session and the change takes
-     * effect on the next mark without cutting an in-flight clip. Canonical
-     * id↔key mapping in `PIT_BOX_CALLOUT_SETTING_KEYS` (in
-     * `@iracedeck/audio-scenarios`).
-     */
-    calloutEnabledPitBoxCountIn: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    /**
-     * Per-count opt-ins for the estimated laps-of-fuel-left callouts (issue
-     * #838). One boolean per spoken count 10 → 1 plus the count-0 "box this
-     * lap for fuel" call. Unlike most callout families the defaults are NOT
-     * uniform: 5, 3, 2, 1 and Box ship ON, the rest OFF (the Discord-request
-     * baseline) — a driver who wants the full countdown opts the other counts
-     * in. Canonical id↔key mapping in `FUEL_CALLOUT_SETTING_KEYS` (in
-     * `@iracedeck/audio-scenarios`); the margin slider below tunes the
-     * estimate they all speak.
-     */
-    calloutEnabledFuelLapsLeft10: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(false),
-    calloutEnabledFuelLapsLeft9: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(false),
-    calloutEnabledFuelLapsLeft8: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(false),
-    calloutEnabledFuelLapsLeft7: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(false),
-    calloutEnabledFuelLapsLeft6: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(false),
-    calloutEnabledFuelLapsLeft5: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    calloutEnabledFuelLapsLeft4: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(false),
-    calloutEnabledFuelLapsLeft3: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    calloutEnabledFuelLapsLeft2: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    calloutEnabledFuelLapsLeft1: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    calloutEnabledFuelLapsLeftBox: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    // "We have enough fuel to finish the race. No need to box for fuel." —
-    // fires once per stint in the race endgame (10 or fewer laps to go by
-    // the binding limit) when the tank covers the remaining distance with a
-    // lap in hand — even when no warning was ever close (issue #880).
-    calloutEnabledFuelLapsLeftRaceCovered: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    /**
-     * Opt-in for the repeating pit-road speeding cue (issue #912). One
-     * boolean for the family — a repeating tick sounds while the car is over
-     * the pit-lane speed limit, rather than a spoken line. Defaults `true`
-     * because new Race Engineer functionality ships enabled. Canonical id↔key
-     * mapping in `PIT_SPEEDING_CALLOUT_SETTING_KEYS` (in
-     * `@iracedeck/audio-scenarios`).
-     */
-    calloutEnabledPitSpeedingCue: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
     /**
      * Safety margin in laps subtracted from the raw laps-of-fuel-left
      * estimate before the Race Engineer derives the spoken count (issue
@@ -1057,108 +440,6 @@ export const GlobalSettingsSchema = z
       (val) => (val == null || (typeof val === "string" && val.trim() === "") ? undefined : val),
       z.coerce.number().min(0).max(5).default(1).catch(1),
     ),
-    /**
-     * Setup-name mismatch warning opt-in (issue #625). When on, the Race
-     * Engineer appends a "double-check your setup" nudge after the session-start
-     * (qualifying) and race-start intros when the loaded setup name looks wrong
-     * for the session type. Default true — the family's natural baseline.
-     */
-    calloutEnabledSetupWarning: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    /**
-     * Per-callout opt-ins for the two pit-road speed families (issue #1051).
-     *
-     * TWO families, split by equipment, because they differ by REMEDY and not
-     * merely by wording: a limiter car speeding on pit road is usually speeding
-     * because the limiter is off and the fix is the button; a car without one
-     * has to lift. `calloutEnabledLimiter*` gate the limiter-framed callouts
-     * (`hasPitLimiter` per #639); `calloutEnabledNoLimiter*` gate their mirror
-     * for cars that have no limiter, whose lines never mention one.
-     *
-     * All default true — new Race Engineer functionality ships on — and, like
-     * every other `calloutEnabled*` field, carry no `.catch`: the
-     * union-plus-transform chain has no throw path, which is the exemption
-     * `global-settings.md` names.
-     */
-    // the limiter was engaged while out on track
-    calloutEnabledLimiterOnTrack: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    // pit road entered with the limiter off
-    calloutEnabledLimiterMissing: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    // the limiter came off while still between the cones
-    calloutEnabledLimiterDropped: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    // over the pit limit, on a car that HAS a limiter
-    calloutEnabledLimiterSpeeding: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    // over the pit limit, on a car with NO limiter
-    calloutEnabledNoLimiterSpeeding: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    // pit entry reminder plus the spoken limit, cars with NO limiter
-    calloutEnabledNoLimiterEntry: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    /**
-     * Per-callout opt-ins for the narrated full-course caution sequence
-     * (issue #1127), nine subjects: who to follow, the pace car coming out,
-     * it picking up the field, an extra caution lap, the one-to-go warning,
-     * the car ahead changing during the lineup, your race position on the
-     * last caution lap, the pace car peeling off, and the restart itself.
-     * The canonical id↔key mapping lives in `@iracedeck/audio-scenarios`
-     * (`CAUTION_CALLOUT_SETTING_KEYS`). All default true — new Race Engineer
-     * functionality ships on — and, like every other `calloutEnabled*` field,
-     * carry no `.catch`: the union-plus-transform chain has no throw path.
-     */
-    calloutEnabledCautionFollow: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    calloutEnabledCautionPaceCarOut: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    calloutEnabledCautionFieldCaught: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    calloutEnabledCautionExtraLap: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    calloutEnabledCautionOneToGo: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    calloutEnabledCautionLineupChanged: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    calloutEnabledCautionPaceCarOff: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    calloutEnabledCautionRestart: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    calloutEnabledCautionPosition: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
     /**
      * Case-insensitive regex applied during **qualifying** sessions to flag a
      * race-looking setup name (issue #625). Empty (or any non-string, e.g. a
@@ -1285,6 +566,8 @@ export const GlobalSettingsSchema = z
       .transform((val) => val === true || val === "true")
       .default(true)
       .catch(true),
+    // Every Race Engineer callout opt-in (#1350): declared in @iracedeck/callout-settings.
+    ...calloutEnabledFields(),
   })
   .passthrough();
 
@@ -2185,6 +1468,16 @@ export function initGlobalSettings(
  */
 export function getGlobalSettings(): GlobalSettings {
   return currentSettings;
+}
+
+/**
+ * Whether the user has this Race Engineer callout switched on — the one
+ * lookup every gate uses (#1350). Read live, so a settings change applies to
+ * the next callout. The parsed cache always holds a boolean (the schema
+ * default fills an absent key), so `!== false` and `=== true` agree.
+ */
+export function isCalloutEnabled(key: CalloutSettingKey): boolean {
+  return getGlobalSettings()[key] !== false;
 }
 
 /**

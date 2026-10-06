@@ -15,6 +15,7 @@ import {
   hostMirrorPayload,
   initGlobalSettings,
   type InitGlobalSettingsOptions,
+  isCalloutEnabled,
   isSettingsStoreReady,
   LOAD_ATTEMPTS,
   LOAD_RETRY_DELAY_MS,
@@ -311,6 +312,27 @@ describe("global-settings cache (synchronous update on local writes)", () => {
   });
 });
 
+describe("isCalloutEnabled (#1350)", () => {
+  beforeEach(async () => {
+    _resetGlobalSettings();
+    await initWithStore();
+  });
+
+  it("is true for an on-default key left absent", () => {
+    expect(isCalloutEnabled("calloutEnabledFlagGreen")).toBe(true);
+  });
+
+  it("is false for an off-default key left absent", () => {
+    expect(isCalloutEnabled("calloutEnabledFuelLapsLeft10")).toBe(false);
+  });
+
+  it("follows the stored value", () => {
+    updateGlobalSettings({ calloutEnabledFlagGreen: false, calloutEnabledFuelLapsLeft10: true });
+    expect(isCalloutEnabled("calloutEnabledFlagGreen")).toBe(false);
+    expect(isCalloutEnabled("calloutEnabledFuelLapsLeft10")).toBe(true);
+  });
+});
+
 describe("deleteGlobalSettings (issue #515 migration helper)", () => {
   it("removes the listed keys from the cache", async () => {
     // Seed the store so the keys exist as passthrough values (the schema
@@ -402,55 +424,7 @@ describe("deleteGlobalSettings (issue #515 migration helper)", () => {
   });
 });
 
-describe("flag-callout opt-in defaults (issue #467)", () => {
-  const FLAG_KEYS = [
-    "calloutEnabledFlagYellowLocal",
-    "calloutEnabledFlagYellowFull",
-    "calloutEnabledFlagYellowCleared",
-    "calloutEnabledFlagGreen",
-    "calloutEnabledFlagBlue",
-    "calloutEnabledFlagWhite",
-    "calloutEnabledFlagRed",
-    "calloutEnabledFlagBlack",
-    "calloutEnabledFlagCheckered",
-    "calloutEnabledFlagDebris",
-    "calloutEnabledFlagMeatball",
-  ] as const;
-
-  it.each(FLAG_KEYS)("%s defaults to true", (key) => {
-    const parsed = GlobalSettingsSchema.parse({}) as Record<string, unknown>;
-    expect(parsed[key]).toBe(true);
-  });
-
-  it.each(FLAG_KEYS)('%s coerces the literal string "false" to boolean false', (key) => {
-    const parsed = GlobalSettingsSchema.parse({ [key]: "false" }) as Record<string, unknown>;
-    expect(parsed[key]).toBe(false);
-  });
-
-  it.each(FLAG_KEYS)("%s accepts boolean false directly", (key) => {
-    const parsed = GlobalSettingsSchema.parse({ [key]: false }) as Record<string, unknown>;
-    expect(parsed[key]).toBe(false);
-  });
-
-  it.each(FLAG_KEYS)('%s coerces the literal string "true" to boolean true', (key) => {
-    const parsed = GlobalSettingsSchema.parse({ [key]: "true" }) as Record<string, unknown>;
-    expect(parsed[key]).toBe(true);
-  });
-});
-
-describe("spotter callout defaults (issue #651)", () => {
-  const SPOTTER_CALLOUT_KEYS = ["calloutEnabledSpotterCars", "calloutEnabledSpotterStillThere"] as const;
-
-  it.each(SPOTTER_CALLOUT_KEYS)("%s defaults to true", (key) => {
-    const parsed = GlobalSettingsSchema.parse({}) as Record<string, unknown>;
-    expect(parsed[key]).toBe(true);
-  });
-
-  it.each(SPOTTER_CALLOUT_KEYS)('%s coerces the literal string "false" to boolean false', (key) => {
-    const parsed = GlobalSettingsSchema.parse({ [key]: "false" }) as Record<string, unknown>;
-    expect(parsed[key]).toBe(false);
-  });
-
+describe("spotterStillThereSeconds (issue #651)", () => {
   it("spotterStillThereSeconds defaults to 3", () => {
     const parsed = GlobalSettingsSchema.parse({}) as Record<string, unknown>;
     expect(parsed.spotterStillThereSeconds).toBe(3);
@@ -485,92 +459,6 @@ describe("opponentFlagRangeSeconds (issue #1274)", () => {
       expect(result.data?.spotterStillThereSeconds).toBe(5);
     },
   );
-});
-
-describe("corner-names toggle ack opt-in default (issue #897)", () => {
-  it("defaults calloutEnabledToggleCornerNames to true", () => {
-    const parsed = GlobalSettingsSchema.parse({}) as Record<string, unknown>;
-    expect(parsed.calloutEnabledToggleCornerNames).toBe(true);
-  });
-
-  it('coerces the string "false" to boolean false', () => {
-    const parsed = GlobalSettingsSchema.parse({ calloutEnabledToggleCornerNames: "false" }) as Record<string, unknown>;
-    expect(parsed.calloutEnabledToggleCornerNames).toBe(false);
-  });
-});
-
-describe("pit-limiter / no-limiter callout defaults (issue #1051)", () => {
-  // Both families in one block deliberately: the pair is the unit worth
-  // protecting, and splitting them would make it easy to add a key to one and
-  // forget the other.
-  const BOTH_FAMILY_CALLOUT_KEYS = [
-    "calloutEnabledLimiterOnTrack",
-    "calloutEnabledLimiterMissing",
-    "calloutEnabledLimiterDropped",
-    "calloutEnabledLimiterSpeeding",
-    "calloutEnabledNoLimiterSpeeding",
-    "calloutEnabledNoLimiterEntry",
-  ] as const;
-
-  it.each(BOTH_FAMILY_CALLOUT_KEYS)("%s defaults to true", (key) => {
-    const parsed = GlobalSettingsSchema.parse({}) as Record<string, unknown>;
-
-    expect(parsed[key]).toBe(true);
-  });
-
-  it.each(BOTH_FAMILY_CALLOUT_KEYS)('%s coerces the literal string "false" to boolean false', (key) => {
-    const parsed = GlobalSettingsSchema.parse({ [key]: "false" }) as Record<string, unknown>;
-
-    expect(parsed[key]).toBe(false);
-  });
-});
-
-describe("caution callout defaults (issue #1127)", () => {
-  // Keys must match packages/audio-scenarios/src/catalog/pit-crew/caution.ts
-  // CAUTION_CALLOUT_SETTING_KEYS exactly — the Race Engineer wiring
-  // (race-engineer-wiring's pit-crew-deps.ts) reads this schema's fields by
-  // that map's values, not by a literal name.
-  const CAUTION_CALLOUT_KEYS = [
-    "calloutEnabledCautionFollow",
-    "calloutEnabledCautionPaceCarOut",
-    "calloutEnabledCautionFieldCaught",
-    "calloutEnabledCautionExtraLap",
-    "calloutEnabledCautionOneToGo",
-    "calloutEnabledCautionLineupChanged",
-    "calloutEnabledCautionPaceCarOff",
-    "calloutEnabledCautionRestart",
-    "calloutEnabledCautionPosition",
-  ] as const;
-
-  it.each(CAUTION_CALLOUT_KEYS)("%s defaults to true", (key) => {
-    const parsed = GlobalSettingsSchema.parse({}) as Record<string, unknown>;
-
-    expect(parsed[key]).toBe(true);
-  });
-
-  it.each(CAUTION_CALLOUT_KEYS)('%s coerces the literal string "false" to boolean false', (key) => {
-    const parsed = GlobalSettingsSchema.parse({ [key]: "false" }) as Record<string, unknown>;
-
-    expect(parsed[key]).toBe(false);
-  });
-});
-
-describe("tire-wear callout default (issue #1108)", () => {
-  // Must match packages/audio-scenarios/src/catalog/pit-crew/index.ts
-  // TIRE_WEAR_CALLOUT_SETTING_KEYS — the Race Engineer wiring
-  // (race-engineer-wiring's pit-crew-deps.ts) reads the field by that map's
-  // value, not by a literal name.
-  it("calloutEnabledTireWearReport defaults to true", () => {
-    const parsed = GlobalSettingsSchema.parse({}) as Record<string, unknown>;
-
-    expect(parsed.calloutEnabledTireWearReport).toBe(true);
-  });
-
-  it('calloutEnabledTireWearReport coerces the literal string "false" to boolean false', () => {
-    const parsed = GlobalSettingsSchema.parse({ calloutEnabledTireWearReport: "false" }) as Record<string, unknown>;
-
-    expect(parsed.calloutEnabledTireWearReport).toBe(false);
-  });
 });
 
 describe("gap callout settings (issue #933)", () => {

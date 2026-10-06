@@ -157,6 +157,7 @@ export {
   LOAD_RETRY_DELAY_MS,
   LOAD_ATTEMPTS,
   getGlobalSettings,
+  isCalloutEnabled,
   getGlobalColors,
   onGlobalSettingsChange,
   updateGlobalSettings,
