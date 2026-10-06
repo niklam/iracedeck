@@ -29,6 +29,8 @@ vi.mock("./actions.js", async () => (await import("./test-support/module-mocks.j
  * without the profile switcher and the deck-device listeners, which are what
  * `extension.start` stands for. The Race Engineer subscriptions plugin.ts made
  * between the scenario engine and `setScripts` are `wireRaceEngineer` now.
+ * `createIracingSimRuntime` is the runtime's own pure factory (#1351), not a
+ * plugin.ts call; it is listed where the sim phase builds it.
  */
 function expectedOrder(withExtension: boolean): string[] {
   return [
@@ -110,12 +112,35 @@ function expectedOrder(withExtension: boolean): string[] {
   ];
 }
 
-/** The recorded calls the expectation names, with each run of registrations collapsed to one entry. */
-function observed(expected: readonly string[]): string[] {
-  const names = new Set(expected.map((name) => (name === "adapter.registerAction*" ? "adapter.registerAction" : name)));
+/**
+ * The calls that do something at startup, picked by shape rather than by the
+ * expected names, so a new init, start, listener, registration, subscription,
+ * constructor or factory call surfaces as a difference instead of being
+ * filtered out. Getters (`getController`, `getGlobalSettings`, …), path and
+ * scan helpers, and `().includes` reads stay out.
+ */
+const EFFECTFUL =
+  /^(init|start|on[A-Z]|new |adapter\.|extension\.|apply|validate|migrate|seed|wire|create)|\.(start|subscribe|refresh|init|set[A-Z]\w*)$/;
 
+/**
+ * Pure factories whose product goes straight into a recorded call — that
+ * call's position is the one that matters, so these stay out of the order.
+ */
+const PURE_FACTORIES = new Set([
+  "createVoicePackFileSystem",
+  "createVoicePackStorageFileSystem",
+  "createVoicePackArchiveFileSystem",
+  "createVoicePackInstallerFileSystem",
+  "createSettingsFileRejectionReporter",
+  "createSettingsWindowWarningReporter",
+  "createElevationCheckSubscriber",
+  "createReplaySessionSubscriber",
+]);
+
+/** The effectful recorded calls, with each run of registrations collapsed to one entry. */
+function observed(): string[] {
   return callLog
-    .filter((name) => names.has(name))
+    .filter((name) => EFFECTFUL.test(name) && !PURE_FACTORIES.has(name))
     .map((name) => (name === "adapter.registerAction" ? "adapter.registerAction*" : name))
     .filter((name, i, all) => !(name === "adapter.registerAction*" && all[i - 1] === name));
 }
@@ -141,7 +166,7 @@ describe("startPlugin (#1349)", () => {
     startPlugin(host);
 
     const expected = expectedOrder(true);
-    const actual = observed(expected);
+    const actual = observed();
     expect(actual, describeFirstDifference(actual, expected)).toEqual(expected);
     expect(host.adapter.registered).toEqual(["shared.a", "shared.b", "sd.switch-profile"]);
   });
@@ -152,7 +177,7 @@ describe("startPlugin (#1349)", () => {
     startPlugin(host);
 
     const expected = expectedOrder(false);
-    const actual = observed(expected);
+    const actual = observed();
     expect(actual, describeFirstDifference(actual, expected)).toEqual(expected);
     expect(host.adapter.registered).toEqual(["shared.a", "shared.b"]);
     expect(callLog.filter((name) => name.startsWith("extension."))).toEqual([]);

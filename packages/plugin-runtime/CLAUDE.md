@@ -17,7 +17,7 @@ The composition root the three deck plugins share (#1349). `startPlugin(host)` r
 | 9 | `startServices` | `Core`, `Input`, `Settings`, `VoicePacks` | — |
 | 10 | `adapter.connect()` | — | — |
 
-A data dependency is a parameter, so a phase cannot run before what it needs exists. An ordering with no data edge stays inside one phase, adjacent, with its comment. `src/start-plugin.test.ts` records every init/register/start call against a fake adapter and fails naming the first call that moved — update its `EXPECTED` list only for an intended reorder.
+A data dependency is a parameter, so a phase cannot run before what it needs exists. An ordering with no data edge stays inside one phase, adjacent, with its comment. `src/start-plugin.test.ts` records every effectful startup call (init, start, listener, registration, subscription, constructor, factory) against a fake adapter and fails naming the first call that moved or ran extra — update `expectedOrder()` there only for an intended change, and its `PURE_FACTORIES` set only for a new pure factory whose product goes straight into a recorded call.
 
 ## Rules
 
