@@ -40,7 +40,7 @@ The server starts from the plugin's **store-ready startup block** (`ensureStarte
 | Router | `pi-components/src/settings-channel/router.ts` + `loopback.ts` | Both PI bridges' state machine (`idle → bootstrapping → connecting → loopback`, `fallback`; `BOOTSTRAP_TIMEOUT_MS` 3 s); `loopback.ts` alone builds `ws://127.0.0.1:<port>/ws?t=<token>`. |
 | Ulanzi bridge | `pi-components/src/ulanzi-bridge/` → `browser/ulanzi-pi-bridge.js` | `translate.ts` + the same router in `UlanziBridgeSocket`; one bundle, not two stacked scripts. |
 | Injection | `pi-components/build` `injectBridgeScriptPlugin` + `assertBridgeInjectionPlugin` | Injects in `writeBundle`, asserts in `closeBundle` (rule 13). |
-| Open button | `ird-open-settings` + `open-settings.ejs` (via `action-settings-footer.ejs` / `section-header.ejs`) | Routed by `onOpenSettingsRequest` on each **concrete** adapter, deliberately not on `IDeckPlatformAdapter`. |
+| Open button | `ird-open-settings` + `open-settings.ejs` (via `action-settings-footer.ejs` / `section-header.ejs`) | Routed by `onOpenSettingsRequest`, an `IDeckPlatformAdapter` member since #1349 that each adapter implements over its own PI→plugin transport. |
 
 ### Load-bearing details
 
