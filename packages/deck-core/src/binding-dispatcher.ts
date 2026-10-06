@@ -14,7 +14,7 @@
  * 2. Use getBindingDispatcher() in action code
  *
  * @example
- * // In plugin.ts
+ * // At startup (the shared bootstrap: plugin-runtime's phases/start-services.ts)
  * initializeBindingDispatcher(adapter.createLogger("BindingDispatcher"));
  *
  * // In action code (via ConnectionStateAwareAction delegates)

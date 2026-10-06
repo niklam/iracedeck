@@ -683,6 +683,9 @@ importers:
       '@iracedeck/pi-components':
         specifier: workspace:*
         version: link:../pi-components
+      '@iracedeck/plugin-runtime':
+        specifier: workspace:*
+        version: link:../plugin-runtime
       '@iracedeck/rasterizer':
         specifier: workspace:*
         version: link:../rasterizer
@@ -780,6 +783,9 @@ importers:
       '@iracedeck/pi-components':
         specifier: workspace:*
         version: link:../pi-components
+      '@iracedeck/plugin-runtime':
+        specifier: workspace:*
+        version: link:../plugin-runtime
       '@iracedeck/rasterizer':
         specifier: workspace:*
         version: link:../rasterizer
@@ -874,6 +880,9 @@ importers:
       '@iracedeck/pi-components':
         specifier: workspace:*
         version: link:../pi-components
+      '@iracedeck/plugin-runtime':
+        specifier: workspace:*
+        version: link:../plugin-runtime
       '@iracedeck/rasterizer':
         specifier: workspace:*
         version: link:../rasterizer
@@ -1002,6 +1011,92 @@ importers:
       tslib:
         specifier: 2.8.1
         version: 2.8.1
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: 5.0.3
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(jsdom@30.1.1)(vite@8.3.0(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.46.0)(tsx@4.23.15)(yaml@2.9.1))
+
+  packages/plugin-runtime:
+    dependencies:
+      '@iracedeck/audio-assets':
+        specifier: workspace:*
+        version: link:../audio-assets
+      '@iracedeck/audio-native':
+        specifier: workspace:*
+        version: link:../audio-native
+      '@iracedeck/audio-scenarios':
+        specifier: workspace:*
+        version: link:../audio-scenarios
+      '@iracedeck/audio-service':
+        specifier: workspace:*
+        version: link:../audio-service
+      '@iracedeck/deck-core':
+        specifier: workspace:*
+        version: link:../deck-core
+      '@iracedeck/event-bus':
+        specifier: workspace:*
+        version: link:../event-bus
+      '@iracedeck/iracing-actions':
+        specifier: workspace:*
+        version: link:../iracing-actions
+      '@iracedeck/iracing-native':
+        specifier: workspace:*
+        version: link:../iracing-native
+      '@iracedeck/logger':
+        specifier: workspace:*
+        version: link:../logger
+      '@iracedeck/race-engineer-wiring':
+        specifier: workspace:*
+        version: link:../race-engineer-wiring
+      '@iracedeck/rasterizer':
+        specifier: workspace:*
+        version: link:../rasterizer
+      '@iracedeck/sim-events-iracing':
+        specifier: workspace:*
+        version: link:../sim-events-iracing
+    devDependencies:
+      '@tsconfig/node22':
+        specifier: 22.0.6
+        version: 22.0.6
+      '@types/node':
+        specifier: 26.6.4
+        version: 26.6.4
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: 5.0.3
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(jsdom@30.1.1)(vite@8.3.0(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.46.0)(tsx@4.23.15)(yaml@2.9.1))
+
+  packages/race-engineer-wiring:
+    dependencies:
+      '@iracedeck/audio-scenarios':
+        specifier: workspace:*
+        version: link:../audio-scenarios
+      '@iracedeck/deck-core':
+        specifier: workspace:*
+        version: link:../deck-core
+      '@iracedeck/event-bus':
+        specifier: workspace:*
+        version: link:../event-bus
+      '@iracedeck/logger':
+        specifier: workspace:*
+        version: link:../logger
+      '@iracedeck/sim-events-iracing':
+        specifier: workspace:*
+        version: link:../sim-events-iracing
+    devDependencies:
+      '@tsconfig/node22':
+        specifier: 22.0.6
+        version: 22.0.6
+      '@types/node':
+        specifier: 26.6.4
+        version: 26.6.4
+      rimraf:
+        specifier: 6.1.3
+        version: 6.1.3
       typescript:
         specifier: 5.9.3
         version: 5.9.3

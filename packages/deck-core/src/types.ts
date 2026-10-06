@@ -5,7 +5,7 @@
  * VSDinside, Mirabox, etc.). Actions import these interfaces instead of
  * platform-specific SDKs, enabling code reuse across platforms.
  */
-import type { ILogger } from "@iracedeck/logger";
+import type { ILogger, LogLevel } from "@iracedeck/logger";
 
 import type { DialCanvasProfile } from "./dial-canvas.js";
 import type { DeckFeedbackPayload } from "./feedback-types.js";
@@ -144,6 +144,18 @@ export interface IDeckActionHandler<T = unknown> {
 }
 
 /**
+ * Where a host's own plugin log lives (#1349): one fixed file (Elgato) or a
+ * directory of per-day files (Mirabox, Ulanzi `FileSink`). Defined here, with
+ * the contract that carries it; the main-thread watchdog writes its reports to
+ * the same place (`WatchdogLogTarget` is this type).
+ */
+export type LogLocation =
+  /** One fixed file (Elgato: `<cwd>/logs/<plugin UUID>.0.log`). */
+  | { kind: "file"; path: string }
+  /** A directory whose file is `watchdogDailyLogFileName(now)`, computed per write (Mirabox, Ulanzi `FileSink`). */
+  | { kind: "daily"; dir: string };
+
+/**
  * Platform adapter that bridges platform-specific SDKs to the deck-core abstraction.
  * Each platform (Elgato, VSDinside, Mirabox) implements this interface.
  */
@@ -219,4 +231,21 @@ export interface IDeckPlatformAdapter {
    * device's default profile; `page` optionally selects a page within it.
    */
   switchToProfile(deviceId: string, profile?: string, page?: number): Promise<void>;
+  /**
+   * Open a URL in the user's browser through the host. Resolving means the
+   * request was sent to the host, not that a page opened — no host reports
+   * that — and hosts open http(s) URLs only.
+   */
+  openUrl(url: string): Promise<void>;
+  /** Subscribe to the Property Inspector's "iRaceDeck Settings" request (#992). */
+  onOpenSettingsRequest(listener: () => void): void;
+  /** Set the minimum level of every logger this adapter created, live (#609). */
+  setLogLevel(level: LogLevel): void;
+  /**
+   * The file or directory this adapter's loggers write; `undefined` when it
+   * writes none (an adapter built without a log directory: tests, the scenario
+   * harness). Read once at startup by the bootstrap for the main-thread
+   * watchdog's target and the CPU-profile folder (`<log dir>/profiles`).
+   */
+  readonly logLocation: LogLocation | undefined;
 }

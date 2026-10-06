@@ -7,6 +7,7 @@ Mirrors the structure of `@iracedeck/iracing-plugin-stream-deck` but targets Mir
 ## Key Differences from iracing-plugin-stream-deck
 
 - Uses `VSDPlatformAdapter` instead of `ElgatoPlatformAdapter`
+- `src/plugin.ts` is a shell: it builds the adapter with its `log` directory and calls `@iracedeck/plugin-runtime`'s `startPlugin` (#1349); it passes no host extension, so Switch Profile and the deck-device list are not registered here.
 - **Knob on every dial action** — the seventeen dial-capable actions declare `"Controllers": ["Keypad", "Knob"]` with no `Knob` config block (#1013; #786 had withheld them until knob input was observed). `scripts/manifest-actions-order.test.mjs` keeps this set equal to the Elgato `Encoder` set. A knob has rotate and press only — a knob push never reports its release, so the adapter delivers every press atomically, and pushing the knob or tapping its screen fires Press once — so `dialExtendedGestures` is `false` here: the knob draws its live readout on the screen above it (176×112, through the dial-canvas seam) and the dial PI shows only the rotation settings, the appearance colours and the Press slot. See `.claude/rules/encoders-and-touchscreen.md`.
 - Session Info and Telemetry Display declare `"Controllers": ["Keypad", "Information"]` — Stream Dock's `Information` controller is a read-only info-display area with no Elgato equivalent. Every other action is `["Keypad"]`.
 - Uses `ws` package for WebSocket communication (VSD bundles Node.js 20)
@@ -63,4 +64,4 @@ The link/unlink implementation is shared with the Ulanzi scripts (`scripts/lib/p
 
 ## Window Focus
 
-Window focusing lives in `@iracedeck/deck-core` (`initWindowFocus` / `focusIRacingIfEnabled`); `plugin.ts` injects the native focuser, and the app monitor's `isIRacingActive` for the missing-window log level (#1176). It was previously duplicated per plugin as `src/shared/window-focus.ts` — extracted in #930, which is why this package no longer has a `src/shared/` folder. `plugin.ts` also injects the native pointer mover via `initMousePointer` (#926), for the View Adjustment **Mouse to Sim** mode.
+Window focusing lives in `@iracedeck/deck-core` (`initWindowFocus` / `focusIRacingIfEnabled`); `@iracedeck/plugin-runtime` injects the native focuser (in its `registerActions` phase), and the app monitor's `isIRacingActive` for the missing-window log level (#1176). It was previously duplicated per plugin as `src/shared/window-focus.ts` — extracted in #930, which is why this package no longer has a `src/shared/` folder. `plugin-runtime` also injects the native pointer mover via `initMousePointer` (#926), for the View Adjustment **Mouse to Sim** mode.

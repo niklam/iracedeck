@@ -21,6 +21,7 @@ import {
   type IDeckEvent,
   type IDeckPlatformAdapter,
   type IDeckWillDisappearEvent,
+  type LogLocation,
   toDeviceImage,
 } from "@iracedeck/deck-core";
 import type { ILogger } from "@iracedeck/logger";
@@ -225,8 +226,15 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
    */
   private fileSink: FileSink | null = null;
 
+  /**
+   * The per-day directory `FileSink` writes (#609), or `undefined` when built
+   * without one. See {@link IDeckPlatformAdapter.logLocation}.
+   */
+  readonly logLocation: LogLocation | undefined;
+
   constructor(logger?: ILogger, logDir?: string) {
     this.fileSink = logDir ? new FileSink(logDir) : null;
+    this.logLocation = logDir ? { kind: "daily", dir: logDir } : undefined;
     const log = logger ?? this.buildLogger("Ulanzi");
     this.client = new UlanziClient(parseConnectionParams(), log.createScope("WebSocket"));
 
@@ -376,8 +384,8 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
    * request (issue #992). The shared button's `sendToPlugin { event:
    * "openSettings" }` reaches the plugin as a `sendToPlugin` frame that the
    * client normalizes to a global `openSettings` event (same path as the
-   * PI-appear and openUrl markers). Like `openUrl`, this is a concrete-adapter
-   * method, not an `IDeckPlatformAdapter` member.
+   * PI-appear and openUrl markers). An `IDeckPlatformAdapter` member since
+   * #1349 — the PI→plugin transport differs per host.
    */
   onOpenSettingsRequest(listener: () => void): void {
     this.client.onGlobalEvent("openSettings", () => {

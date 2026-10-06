@@ -344,7 +344,8 @@ export class VoiceSelect extends HTMLElement {
     // `resolveActiveRaceEngineerVoice` applies the same preference order and
     // never writes — so what plays is right regardless. Leaving the setting
     // alone keeps the two in agreement and restores the user's voice for free
-    // when the pack returns — and `plugin.ts` states this same policy in as many
+    // when the pack returns — and the plugin's settings phase
+    // (plugin-runtime's `phases/settings.ts`) states this same policy in as many
     // words for a stale audio device: "We do NOT rewrite the persisted setting".
     if (this.savedValue === "") {
       this.savedValue = fallback;

@@ -11,7 +11,7 @@
  * 2. Use getClipboard() in your actions to write text to the clipboard
  *
  * @example
- * // In plugin.ts (entry point)
+ * // At startup (the shared bootstrap: plugin-runtime's phases/input.ts)
  * import { initializeClipboard } from "@iracedeck/deck-core";
  * import { IRacingNative } from "@iracedeck/iracing-native";
  *

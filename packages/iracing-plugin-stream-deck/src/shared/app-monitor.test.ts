@@ -74,6 +74,10 @@ function createMockAdapter() {
     onDialRotate: vi.fn(),
     connect: vi.fn(),
     switchToProfile: vi.fn(),
+    openUrl: vi.fn(),
+    onOpenSettingsRequest: vi.fn(),
+    setLogLevel: vi.fn(),
+    logLocation: undefined,
     // Helpers for testing
     _simulateLaunch: (app: string) => {
       launchCallbacks.forEach((cb) => cb(app));

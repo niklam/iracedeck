@@ -1,6 +1,6 @@
 # @iracedeck/iracing-plugin-stream-deck
 
-Core Stream Deck plugin for iRaceDeck. Registers actions from `@iracedeck/iracing-actions` with the Elgato Stream Deck via `@iracedeck/deck-adapter-elgato`.
+Core Stream Deck plugin for iRaceDeck. Registers actions from `@iracedeck/iracing-actions` with the Elgato Stream Deck via `@iracedeck/deck-adapter-elgato`. Its `src/plugin.ts` is a shell (#1349): it builds the `ElgatoPlatformAdapter` and the host extension (`src/elgato-extension.ts`: Switch Profile, the profile switcher, the connected-deck list, the device type for the changelog URL) and calls `@iracedeck/plugin-runtime`'s `startPlugin`, which runs the startup phases (`.claude/rules/plugin-structure.md`).
 
 Action implementations live in `packages/iracing-actions/src/actions/<action-name>/`, with one folder per action. Shared utilities (base actions, keyboard service, global settings, icon templates, etc.) live in `packages/deck-core/src/`. Actions import from `@iracedeck/deck-core`. The `src/shared/index.ts` in this package re-exports from `@iracedeck/deck-core` and `@iracedeck/deck-adapter-elgato` for backward compatibility.
 
@@ -72,7 +72,7 @@ export function generate{ActionName}Svg(settings: {ActionName}Settings, bindingM
 export const {ACTION_NAME}_UUID = "com.iracedeck.sd.core.{action-name}" as const;
 
 export class {ActionName} extends ConnectionStateAwareAction<{ActionName}Settings> {
-  // Logger is injected via constructor (from plugin.ts) — no logger field needed.
+  // Logger is injected via constructor (by plugin-runtime's registerActions) — no logger field needed.
   //
   // Lifecycle (see splits-delta-cycle.ts for the full implementation):
   // - onWillAppear / onDidReceiveSettings: call super FIRST, parse settings with
@@ -188,9 +188,9 @@ Match the include set of the reference `splits-delta-cycle/splits-delta-cycle.ej
 
 ### Files to modify
 
-#### 7. Register in Stream Deck plugin — `packages/iracing-plugin-stream-deck/src/plugin.ts`
+#### 7. Register in the shared action list — `packages/plugin-runtime/src/actions.ts`
 
-Add import and registration. **Maintain alphabetical order** in both the import block and the registration block.
+One registration serves all three plugins (#1349); no plugin's `plugin.ts` changes. **Maintain alphabetical order** in both the import block and the list.
 
 First, export the UUID and class from `packages/iracing-actions/src/index.ts`:
 
@@ -198,17 +198,15 @@ First, export the UUID and class from `packages/iracing-actions/src/index.ts`:
 export { {ACTION_NAME}_UUID, {ActionName} } from "./actions/{action-name}/{action-name}.js";
 ```
 
-Then in `plugin.ts`, import from `@iracedeck/iracing-actions` and register via the adapter:
+Then in `packages/plugin-runtime/src/actions.ts`, import from `@iracedeck/iracing-actions` and add an entry to `SHARED_ACTIONS` — the scope is the logger name the action logs under:
 
 ```typescript
 import { {ACTION_NAME}_UUID, {ActionName} } from "@iracedeck/iracing-actions";
-// ...
-adapter.registerAction({ACTION_NAME}_UUID, new {ActionName}(adapter.createLogger("{ActionName}")));
+// ...in SHARED_ACTIONS:
+{ uuid: {ACTION_NAME}_UUID, scope: "{ActionName}", create: (logger) => new {ActionName}(logger) },
 ```
 
-#### 7b. Register in the Mirabox and Ulanzi plugins
-
-Same pattern as above in **both** `packages/iracing-plugin-mirabox/src/plugin.ts` and `packages/iracing-plugin-ulanzi/src/plugin.ts` — import from `@iracedeck/iracing-actions` and register via each platform adapter. Maintain alphabetical order. Their manifests must also be updated: `packages/iracing-plugin-mirabox/com.iracedeck.sd.core.sdPlugin/manifest.json` and `packages/iracing-plugin-ulanzi/com.ulanzi.iracedeck.ulanziPlugin/manifest.json`.
+An action only Stream Deck has goes in `STREAM_DECK_ACTIONS` instead, which the Elgato extension hands the bootstrap as its `extraActions` (Switch Profile is the one today). Add the same UUID and scope to the `SHARED_SCOPES` table in `packages/plugin-runtime/src/actions.test.ts`; that test also fails until every plugin's manifest declares exactly the registered actions — so the manifests come next: this plugin's (step 8), `packages/iracing-plugin-mirabox/com.iracedeck.sd.core.sdPlugin/manifest.json` and `packages/iracing-plugin-ulanzi/com.ulanzi.iracedeck.ulanziPlugin/manifest.json`.
 
 #### 8. Declare in manifest — `com.iracedeck.sd.core.sdPlugin/manifest.json`
 
@@ -285,7 +283,7 @@ node scripts/generate-icon-defaults.mjs
 **Also update the actions reference** when adding, removing, or modifying actions:
 - `docs/reference/actions.json` — add/update the action entry with all modes
 - `.claude/skills/iracedeck-actions/SKILL.md` — update category overview and per-category tables
-- All plugin packages — registration in `plugin.ts` and manifest for `iracing-plugin-stream-deck`, `iracing-plugin-mirabox`, **and** `iracing-plugin-ulanzi`
+- All plugin packages — the shared list in `packages/plugin-runtime/src/actions.ts`, and the manifest for `iracing-plugin-stream-deck`, `iracing-plugin-mirabox`, **and** `iracing-plugin-ulanzi`
 
 ## Telemetry-Aware Icons
 

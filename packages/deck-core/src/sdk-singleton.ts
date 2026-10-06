@@ -10,11 +10,10 @@
  * 2. Import getController()/getCommands() in your actions
  *
  * @example
- * // In plugin.ts (entry point)
- * import streamDeck from "@elgato/streamdeck";
- * import { createSDLogger, initializeSDK } from "./shared/index.js";
+ * // At startup (the shared bootstrap: plugin-runtime's phases/core.ts)
+ * import { initializeSDK } from "@iracedeck/deck-core";
  *
- * initializeSDK(createSDLogger(streamDeck.logger.createScope("iRacingSDK")));
+ * initializeSDK(adapter.createLogger("iRacingSDK"));
  *
  * // In action files
  * import { getController, getCommands } from "./shared/index.js";

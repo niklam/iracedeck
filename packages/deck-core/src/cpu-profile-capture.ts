@@ -474,7 +474,8 @@ export function createCpuProfileCapture(options: CpuProfileCaptureOptions): CpuP
 let sharedCapture: CpuProfileCapture | undefined;
 
 /**
- * Create the plugin's capture service. Called once from each `plugin.ts`, the
+ * Create the plugin's capture service. Called once by the shared bootstrap
+ * (`plugin-runtime`'s settings phase, `phases/settings.ts`), the
  * same shape as `initializeAudio`; consumers reach it with
  * {@link getCpuProfileCapture}, so "one capture at a time", the status key and
  * the files are the same for the settings-window button and the deck key.

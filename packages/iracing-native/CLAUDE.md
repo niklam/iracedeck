@@ -149,6 +149,6 @@ The TypeScript wrapper in `src/index.ts` must mirror every function exported fro
 1. Update `addon.cc` — C++ implementation + register in `Init()`
 2. Update `src/index.ts` — add corresponding TypeScript method to `IRacingNative` class
 3. Update `packages/deck-core/src/keyboard-service.ts` — add callback type, `IKeyboardService` interface method, and `KeyboardService` implementation (re-exported by `packages/iracing-plugin-stream-deck/src/shared/index.ts`)
-4. Update plugin `plugin.ts` files — pass new callbacks to `initializeKeyboard()`
+4. Update `plugin-runtime`'s `initInput` (`packages/plugin-runtime/src/phases/input.ts`, one place for all three plugins) — pass new callbacks to `initializeKeyboard()`
 5. Update tests — `keyboard-service.test.ts`
 6. Update rules — `.claude/rules/keyboard-shortcuts.md`, `.claude/rules/plugin-structure.md`

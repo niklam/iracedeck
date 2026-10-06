@@ -527,8 +527,9 @@ describe("pit-limiter / no-limiter callout defaults (issue #1051)", () => {
 
 describe("caution callout defaults (issue #1127)", () => {
   // Keys must match packages/audio-scenarios/src/catalog/pit-crew/caution.ts
-  // CAUTION_CALLOUT_SETTING_KEYS exactly — the plugins read this schema's
-  // fields by that map's values, not by a literal name in plugin.ts.
+  // CAUTION_CALLOUT_SETTING_KEYS exactly — the Race Engineer wiring
+  // (race-engineer-wiring's pit-crew-deps.ts) reads this schema's fields by
+  // that map's values, not by a literal name.
   const CAUTION_CALLOUT_KEYS = [
     "calloutEnabledCautionFollow",
     "calloutEnabledCautionPaceCarOut",
@@ -556,8 +557,9 @@ describe("caution callout defaults (issue #1127)", () => {
 
 describe("tire-wear callout default (issue #1108)", () => {
   // Must match packages/audio-scenarios/src/catalog/pit-crew/index.ts
-  // TIRE_WEAR_CALLOUT_SETTING_KEYS — the plugins read the field by that map's
-  // value, not by a literal name in plugin.ts.
+  // TIRE_WEAR_CALLOUT_SETTING_KEYS — the Race Engineer wiring
+  // (race-engineer-wiring's pit-crew-deps.ts) reads the field by that map's
+  // value, not by a literal name.
   it("calloutEnabledTireWearReport defaults to true", () => {
     const parsed = GlobalSettingsSchema.parse({}) as Record<string, unknown>;
 

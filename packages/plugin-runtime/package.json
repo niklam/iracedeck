@@ -1,0 +1,39 @@
+{
+  "name": "@iracedeck/plugin-runtime",
+  "version": "3.6.0-dev.0",
+  "description": "The one composition root the three deck plugins share: startPlugin(host), its startup phases and the shared action list.",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": {
+      "import": "./src/index.ts",
+      "types": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node ../../scripts/test-package.mjs",
+    "test:watch": "node ../../scripts/test-package.mjs --watch"
+  },
+  "dependencies": {
+    "@iracedeck/audio-assets": "workspace:*",
+    "@iracedeck/audio-native": "workspace:*",
+    "@iracedeck/audio-scenarios": "workspace:*",
+    "@iracedeck/audio-service": "workspace:*",
+    "@iracedeck/deck-core": "workspace:*",
+    "@iracedeck/event-bus": "workspace:*",
+    "@iracedeck/iracing-actions": "workspace:*",
+    "@iracedeck/iracing-native": "workspace:*",
+    "@iracedeck/logger": "workspace:*",
+    "@iracedeck/race-engineer-wiring": "workspace:*",
+    "@iracedeck/rasterizer": "workspace:*",
+    "@iracedeck/sim-events-iracing": "workspace:*"
+  },
+  "devDependencies": {
+    "@tsconfig/node22": "22.0.6",
+    "@types/node": "26.6.4",
+    "typescript": "5.9.3",
+    "vitest": "5.0.3"
+  }
+}

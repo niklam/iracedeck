@@ -25,7 +25,7 @@
  * 2. Use getKeyboard() in your actions to send key combinations
  *
  * @example
- * // In plugin.ts (entry point)
+ * // At startup (the shared bootstrap: plugin-runtime's phases/input.ts)
  * import { initializeKeyboard } from "./shared/index.js";
  * import { IRacingNative } from "@iracedeck/iracing-native";
  *

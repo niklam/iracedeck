@@ -32,12 +32,10 @@ import type { ILogger } from "@iracedeck/logger";
 import type { EventEmitter } from "node:events";
 import { Worker } from "node:worker_threads";
 
-/** Where the worker appends its report: the same file the host's own logger writes. */
-export type WatchdogLogTarget =
-  /** One fixed file (Elgato: `<cwd>/logs/<plugin UUID>.0.log`). */
-  | { kind: "file"; path: string }
-  /** A directory whose file is `watchdogDailyLogFileName(now)`, computed per write (Mirabox, Ulanzi `FileSink`). */
-  | { kind: "daily"; dir: string };
+import type { LogLocation } from "./types.js";
+
+/** Where the worker appends its report: the same file the host's own logger writes, so the adapter contract's {@link LogLocation}. */
+export type WatchdogLogTarget = LogLocation;
 
 export interface MainThreadWatchdogOptions {
   /** Main-thread logger, for the start-up and worker-health lines. The reports never go through it. */

@@ -121,6 +121,8 @@ packages/
   iracing-plugin-mirabox/          Mirabox device plugin
   iracing-plugin-ulanzi/           Ulanzi Deck device plugin
   pi-components/           Shared Property Inspector assets (web components, EJS templates, partials, data)
+  plugin-runtime/          Shared plugin bootstrap (startup phases, shared action list)
+  race-engineer-wiring/    Race Engineer wiring shared by the plugins and the harness
   iracing-plugin-stream-deck/      Elgato Stream Deck plugin
   website/                 Documentation website (iracedeck.com)
 ```
@@ -138,14 +140,22 @@ packages/
 | `@iracedeck/iracing-sdk`          | TypeScript SDK for reading telemetry and sending iRacing broadcast commands               |
 | `@iracedeck/logger`               | Shared logging interface with scoped loggers                                              |
 | `@iracedeck/pi-components`        | Shared PI web components, EJS partials, Rollup EJS plugin, and the Ulanzi + settings-window bridges |
-| `@iracedeck/iracing-plugin-stream-deck`   | Elgato Stream Deck plugin — registers actions, PI templates, manifest                     |
-| `@iracedeck/iracing-plugin-mirabox`       | Mirabox plugin — registers the same actions for Mirabox devices                           |
-| `@iracedeck/iracing-plugin-ulanzi`        | Ulanzi Deck plugin — registers the same actions for Ulanzi devices                         |
+| `@iracedeck/plugin-runtime`       | The composition root all three plugins share: startup phases and the shared action list  |
+| `@iracedeck/race-engineer-wiring` | The Race Engineer's bus caches and every `registerPitCrew` dependency, shared with the scenario harness |
+| `@iracedeck/iracing-plugin-stream-deck`   | Elgato Stream Deck plugin — shell over `plugin-runtime`, PI templates, manifest           |
+| `@iracedeck/iracing-plugin-mirabox`       | Mirabox plugin — shell over `plugin-runtime` for Mirabox devices                          |
+| `@iracedeck/iracing-plugin-ulanzi`        | Ulanzi Deck plugin — shell over `plugin-runtime` for Ulanzi devices                        |
 | `@iracedeck/website`              | Documentation website at [iracedeck.com](https://iracedeck.com)                           |
 
 ### How it fits together
 
 ```text
+Plugin start (each plugin's plugin.ts is a shell: build the adapter, call startPlugin)
+  -> plugin-runtime (ten startup phases: core, sim, input, audio, voice packs,
+     Race Engineer, settings, actions, services, connect)
+    -> initSim starts the sim translator (sim-events-iracing) and returns its query side
+      -> race-engineer-wiring builds the Race Engineer's dependencies from it
+
 Button press (Stream Deck, Mirabox, or Ulanzi Deck)
   -> adapter (deck-adapter-elgato / deck-adapter-mirabox / deck-adapter-ulanzi)
     -> actions (platform-agnostic action handler)
@@ -233,7 +243,7 @@ Actions live in `packages/iracing-actions/src/actions/<action-name>/`, one folde
 3. `<action-name>.ejs` — Property Inspector template (compiled to `ui/<action-name>.html`)
 4. `icon.svg` + `key.svg` — static category and key icons (copied into each plugin's `imgs/actions/<name>/` at build time)
 5. Mustache SVGs in `packages/icons/<action-name>/` for any dynamic variants
-6. Registration in both `packages/iracing-plugin-stream-deck/src/plugin.ts` and `packages/iracing-plugin-mirabox/src/plugin.ts`
+6. Registration in `packages/plugin-runtime/src/actions.ts` (`SHARED_ACTIONS`), once for all three plugins
 7. Manifest entry in each plugin's `manifest.json`
 8. Entries in `packages/iracing-actions/src/actions/data/{key-bindings,docs-urls,icon-defaults}.json` where applicable
 

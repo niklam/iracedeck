@@ -40,13 +40,15 @@ import {
   type IDeckWillDisappearEvent,
   isDataUri,
   keyImageSizeForDevice,
+  type LogLocation,
   requestProfileSwitch,
   SD_PLUS_STRIP_CANVAS,
   toDeviceImage,
   TOUCH_STRIP_SLOT_WIDTH,
 } from "@iracedeck/deck-core";
-import type { ILogger } from "@iracedeck/logger";
+import { type ILogger, LogLevel } from "@iracedeck/logger";
 
+import { elgatoPluginLogFile } from "./log-file.js";
 import { createSDLogger } from "./sd-logger.js";
 
 /**
@@ -283,6 +285,22 @@ function wrapTouchTapEvent<T>(ev: TouchTapEvent<T & JsonObject>): IDeckTouchTapE
 const NO_EVENT_YET: unique symbol = Symbol("no global-settings event yet");
 
 /**
+ * `@iracedeck/logger` level → the Elgato SDK's level name. The SDK has no
+ * "silent"; error is its quietest. Trace maps to "debug" because the SDK caps
+ * its logger at `minimumLevel` ("debug" unless the plugin runs under
+ * `--inspect`), and `Logger.setLevel` replaces any level more verbose than that
+ * with "info" — so "trace" would log LESS than "debug" in production.
+ */
+const ELGATO_LOG_LEVELS: Record<LogLevel, "debug" | "info" | "warn" | "error"> = {
+  [LogLevel.Trace]: "debug",
+  [LogLevel.Debug]: "debug",
+  [LogLevel.Info]: "info",
+  [LogLevel.Warn]: "warn",
+  [LogLevel.Error]: "error",
+  [LogLevel.Silent]: "error",
+};
+
+/**
  * Elgato Stream Deck platform adapter.
  * Implements IDeckPlatformAdapter by delegating to the Elgato SDK.
  */
@@ -297,6 +315,14 @@ export class ElgatoPlatformAdapter implements IDeckPlatformAdapter {
    */
   private lastEventSettings: unknown = NO_EVENT_YET;
 
+  /**
+   * The file the SDK's own logger writes, `<cwd>/logs/<plugin UUID>.0.log`
+   * (#1330) — derived, since the SDK does not expose it; `log-file.test.ts`
+   * checks the derivation against the SDK. See
+   * {@link IDeckPlatformAdapter.logLocation}.
+   */
+  readonly logLocation: LogLocation = { kind: "file", path: elgatoPluginLogFile() };
+
   constructor(private readonly sd: typeof StreamDeck) {
     // Route "Stream Deck Profiles" settings-accordion button presses — sent from
     // the Property Inspector via `sendToPlugin` — to `switchToProfile`, targeting
@@ -310,13 +336,21 @@ export class ElgatoPlatformAdapter implements IDeckPlatformAdapter {
 
   /**
    * Register a listener for the Property Inspector's "iRaceDeck Settings"
-   * request (issue #992). Like `openUrl`, this is a concrete-adapter method
-   * rather than an `IDeckPlatformAdapter` member: the PI→plugin transport
-   * differs per host, and keeping it off the interface avoids touching every
-   * typed mock adapter.
+   * request (issue #992). An `IDeckPlatformAdapter` member since #1349; the
+   * PI→plugin transport differs per host, so each adapter implements it its
+   * own way.
    */
   onOpenSettingsRequest(listener: () => void): void {
     this.openSettingsListeners.push(listener);
+  }
+
+  /**
+   * Set the SDK logger's level (#609, #1349). The SDK's logger is runtime-mutable
+   * and every scope this adapter created inherits it, so the PI "Enable debug
+   * logging" toggle takes effect without recreating loggers.
+   */
+  setLogLevel(level: LogLevel): void {
+    this.sd.logger.setLevel(ELGATO_LOG_LEVELS[level]);
   }
 
   /**

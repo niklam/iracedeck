@@ -2,6 +2,7 @@
 paths:
   - "packages/iracing-plugin-*/**"
   - "packages/deck-adapter-*/**"
+  - "packages/plugin-runtime/**"
   - "packages/deck-core/src/plugin-config.ts"
   - "scripts/lib/runtime-deps.mjs"
   - "scripts/lib/rollup-logs.mjs"
@@ -19,8 +20,9 @@ The plugin system uses a platform abstraction architecture with these key packag
 - `@iracedeck/deck-adapter-mirabox` — Mirabox adapter implementing `IDeckPlatformAdapter` via WebSocket
 - `@iracedeck/deck-adapter-ulanzi` — Ulanzi Deck adapter implementing `IDeckPlatformAdapter` via WebSocket (normalizes UlanziStudio `cmd` frames into Elgato-style events)
 - `@iracedeck/iracing-actions` — All action implementations (import from `@iracedeck/deck-core`, not platform-specific SDKs)
+- `@iracedeck/plugin-runtime` — the shared composition root: `startPlugin(host)` and the shared action list; each plugin's `plugin.ts` is a shell over it (#1349)
 
-Actions do NOT import from `@elgato/streamdeck` or any platform SDK. They import from `@iracedeck/deck-core` and are registered via the platform adapter in each plugin.
+Actions do NOT import from `@elgato/streamdeck` or any platform SDK. They import from `@iracedeck/deck-core` and are registered via the platform adapter by `plugin-runtime`'s `registerActions`, once for all three plugins.
 
 ### Ulanzi naming + PI bridge (issue #508)
 
@@ -37,7 +39,7 @@ The Ulanzi plugin diverges from the Elgato/Mirabox naming conventions below:
 - `iracing-plugin-mirabox` (com.iracedeck.sd.core) — Mirabox, uses `@iracedeck/deck-adapter-mirabox`
 - `iracing-plugin-ulanzi` (com.iracedeck.sd.core) — Ulanzi Deck, uses `@iracedeck/deck-adapter-ulanzi`
 
-Both plugins register the same actions from `@iracedeck/iracing-actions`. When adding or modifying actions, changes must be applied to **all** plugin packages (registration in `plugin.ts`, manifest entries, PI templates where applicable).
+All three plugins register the same actions from `@iracedeck/iracing-actions`, through `plugin-runtime`'s shared list. When adding or modifying actions, changes must be applied to **all** plugin packages (the shared list in `plugin-runtime/src/actions.ts`, manifest entries, PI templates where applicable).
 
 ## Creating New Plugins
 
@@ -53,7 +55,7 @@ packages/iracing-plugin-stream-deck-{name}/
 │   ├── launch.json                        # Debugger attach config
 │   └── settings.json                      # JSON schema for manifest
 ├── src/
-│   ├── plugin.ts                          # Entry point
+│   ├── plugin.ts                          # Shell: build the adapter (+ extension), call startPlugin
 │   ├── svg.d.ts                           # SVG type declarations
 │   └── actions/                           # Action implementations
 ├── icons/                                 # SVG icon templates
@@ -105,6 +107,8 @@ output: {
 - **`INVALID_ANNOTATION` from inside zod's package is dropped.** Since 4.5.4 (still true in 4.6.x), zod has two comments that mention `@__PURE__` in prose; Rollup removes them and warns six times a build, and the bundle is unaffected. The same code from anywhere else still prints. `scripts/lib/rollup-logs.test.mjs` bundles the installed zod with the plugins' own Rollup and fails once it no longer produces that warning, naming the entry to remove.
 
 A new plugin package wires the same `onLog` and the same turbo input; the guard in `rollup-logs.test.mjs` discovers plugins from their manifests and checks both.
+
+`@iracedeck/plugin-runtime` is raw TypeScript like `iracing-actions`: the `typescript` plugin's `include` and the `resolve-actions-ts` resolver name both, and `@rollup/plugin-replace` (no `include` filter) substitutes the `__FEATURE_*__` constants in both. A new plugin's config names both packages the same way.
 
 ### Native Module Dependencies (keysender, @resvg/resvg-js)
 
@@ -164,214 +168,79 @@ To enable app monitoring (for features like conditional reconnection that pauses
 
 This allows the plugin to receive `applicationDidLaunch` and `applicationDidTerminate` events when iRacing starts/stops.
 
-### Plugin Initialization Order (plugin.ts)
+### Startup phases (`@iracedeck/plugin-runtime`)
 
-The initialization order in `plugin.ts` is critical. The plugin uses `ElgatoPlatformAdapter` to bridge the Elgato SDK to the platform-agnostic `IDeckPlatformAdapter` interface:
+Every plugin starts through one composition root (#1349). Its `plugin.ts` is a shell: it builds the host's `IDeckPlatformAdapter` — and on Stream Deck a `PluginExtension` — and calls `startPlugin(host)`, which runs ten synchronous phases from `packages/plugin-runtime/src/phases/`, called in this order by `src/start-plugin.ts`:
+
+| # | Phase | Takes | Returns | Does |
+| --- | --- | --- | --- | --- |
+| 1 | `initCore` | `PluginHost` | `Core` | build-time config (`initPluginConfig`), the log level, the main-thread watchdog and resource monitor, the setup-warning check, the SDK, the event bus |
+| 2 | `initSim` | `Core` | `SimRuntime` | the sim translator (`initializeSimEventsIracing`), the live race order for the template context, the query-side runtime the Race Engineer reads |
+| 3 | `initInput` | `Core` | `Input` | the keyboard and clipboard over `IRacingNative`, the PNG rasterizer behind `__FEATURE_PNG_RASTERIZATION__` |
+| 4 | `initAudio` | `Core` | `Audio` | the audio engine rooted at the plugin's assets, the bus-volume and Race Engineer / Radar gate syncers |
+| 5 | `initVoicePacks` | `Core`, `Audio` | `VoicePacks` | scanner, storage, catalog, installer, the launch step (constructed, not started), the run-scoped pushes, the settings window's voice-pack commands |
+| 6 | `initRaceEngineer` | `Core`, `SimRuntime`, `Audio`, `VoicePacks` | — | the scenario engine, `race-engineer-wiring`'s `wireRaceEngineer` (caches, then `registerPitCrew`), then `setScripts` |
+| 7 | `initSettings` | `Core`, `Audio`, `VoicePacks` | `Settings` | the settings and replay stores, the startup notices, the CPU profile capture, the settings window, the global-settings listener with its store-ready block |
+| 8 | `registerActions` | `Core`, `Input` | — | window focus and the mouse pointer, the Always-mode focus listeners, then every action: `SHARED_ACTIONS`, then the extension's `extraActions` |
+| 9 | `startServices` | `Core`, `Input`, `Settings`, `VoicePacks` | — | `initGlobalSettings`, the launch step's start, the binding migrations, the extension's `start()`, the settings-window request, SimHub, the binding dispatcher, the app monitor, the elevation and replay-session subscribers |
+| 10 | `adapter.connect()` | — | — | always last: every handler is registered before the host can deliver an event |
+
+A data dependency is a parameter, so a phase cannot run before what it needs exists: `initGlobalSettings` after the first pack refresh, the launch step after `initGlobalSettings`, the settings window after the store. The voice-pack phase's mutable state lives on the `VoicePacks` object, created before the service that calls back into it, so the old module scope's temporal-dead-zone hazard is gone by construction. An ordering with no data edge stays inside one phase, adjacent, with its comment:
+
+- the bus caches before `registerPitCrew` (the engine's `where:` clauses read them), inside `wireRaceEngineer`
+- `setScripts` after `registerPitCrew` — it compiles eagerly against the registered contracts
+- the first-run check before the changelog version check (#1061) — the version check writes the `_lastSeenVersion` key the first-run check reads
+- in the store-ready block, the startup-policy migration → `applyStartupFeatureGates` → `armFeatureGateSync` (#1007) — arming records the post-write values as already applied, so a startup write never sounds like a user toggle
+- the Always-mode focus listeners before the actions, so the listener fires first in the EventEmitter chain
+- SimHub before the binding dispatcher, whose `isReady` checks reachability
+- the voice-pack launch step started in `startServices`, never inside the store-ready block (#1034 ruling 2) — that block never runs on the fail-closed unreadable-file path, and a plugin that cannot read its settings must still end up with a voice
+
+`packages/plugin-runtime/src/start-plugin.test.ts` records every effectful startup call against a fake adapter and fails naming the first call that moved or ran extra; update its `expectedOrder()` only for an intended change. `scripts/plugin-shell-guard.test.mjs` keeps every `plugin.ts` under 80 lines with no wiring: it may not name `registerPitCrew`, `initializeSimEventsIracing`, `initializeAudioScenarios` or a `*_CALLOUT_SETTING_KEYS` map, may not call `registerAction`, must call `startPlugin`, and only Stream Deck passes an extension.
+
+**Host seams.** Host differences reach the bootstrap through `IDeckPlatformAdapter` or the optional `PluginExtension` — the bootstrap tests for the extension's presence, never for a host name:
+
+- `setLogLevel(level)` — `initCore` applies `debugLogging ? LogLevel.Debug : LogLevel.Info` at start and on every settings change (see `@.claude/rules/logging.md`).
+- `logLocation` — the file or per-day directory the host's logger writes. `initCore` hands it to the main-thread watchdog (#1330) as its target and refuses to start without one; the CPU profile capture (#1338) writes into `<log dir>/profiles` beside it (`profilesDirFor`).
+- `openUrl(url)` — the changelog version check and the settings window's browser fallback.
+- `onOpenSettingsRequest(handler)` — a PI's "Open settings" request; `startServices` refreshes the extension's device list and opens the window.
+- `PluginExtension` — what only Stream Deck has, built by `packages/iracing-plugin-stream-deck/src/elgato-extension.ts`: `extraActions` (`STREAM_DECK_ACTIONS`: Switch Profile, #736), `getConnectedDeviceType()` for the changelog URL (#680), `switchProfile` for the settings window's profile buttons (#992), `start()` (the profile switcher and the device connect/disconnect listeners) and `refreshDevices()` (the `_deckDevices` list). Building it has no side effects; `startServices` calls `start()`.
+
+The Mirabox shell, whole but for its header comment (Ulanzi's differs by the adapter; Stream Deck's builds `new ElgatoPlatformAdapter(streamDeck)`, which needs no log directory, and passes `extension: createElgatoExtension(streamDeck, adapter)`):
 
 ```typescript
-import streamDeck from "@elgato/streamdeck";
-import { AudioNative } from "@iracedeck/audio-native";
-import { getAudio, initializeAudio } from "@iracedeck/audio-service";
-import { MY_ACTION_UUID, MyAction } from "@iracedeck/iracing-actions";
-import { ElgatoPlatformAdapter, elgatoPluginLogFile } from "@iracedeck/deck-adapter-elgato";
-import {
-  createFileSettingsStore,
-  createSettingsFileRejectionReporter,
-  focusIRacingIfEnabled,
-  getController,
-  getPluginPlatform,
-  getPluginVersion,
-  initAppMonitor,
-  initGlobalSettings,
-  initializeBindingDispatcher,
-  initializeKeyboard,
-  initializeRasterizer,
-  initializeSDK,
-  initializeSimHub,
-  initMousePointer,
-  initPluginConfig,
-  initWindowFocus,
-  isIRacingActive,
-  resolveSettingsStorePath,
-  onIRacingStarted,
-  onIRacingTerminated,
-  startMainThreadWatchdog,
-  startResourceMonitor,
-  type PluginConfig,
-} from "@iracedeck/deck-core";
-import { initializeEventBus } from "@iracedeck/event-bus";
-import { IRacingNative } from "@iracedeck/iracing-native";
-import { createSvgRasterizer } from "@iracedeck/rasterizer";
-import { initializeSimEventsIracing } from "@iracedeck/sim-events-iracing";
+import { VSDPlatformAdapter } from "@iracedeck/deck-adapter-mirabox";
+import { startPlugin } from "@iracedeck/plugin-runtime";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
-// 0. Load the build-time plugin config (version + platform) FIRST — `getPluginVersion()`
-//    and `getPluginPlatform()` throw until this has run, and step 12 uses the latter
-const pluginConfig: PluginConfig = JSON.parse(readFileSync(join(__binDir, "config.json"), "utf-8"));
-initPluginConfig(pluginConfig);
+// `<plugin>/bin`: where this bundle and its build-time config.json live.
+const binDir = dirname(fileURLToPath(import.meta.url));
 
-// 1. Create the Elgato platform adapter
-const adapter = new ElgatoPlatformAdapter(streamDeck);
+// Tee logs to <plugin>/log/<YYYY.M.D>.log. The Stream Dock host discards plugin
+// stdout, so file logging is what makes the debug toggle actually capture a log
+// for support on Mirabox (issue #609). binDir is <plugin>/bin, so the log dir
+// sits next to it under the plugin root — the same convention the host's own
+// plugins use.
+const adapter = new VSDPlatformAdapter(undefined, join(binDir, "..", "log"));
 
-// 2. Enable logging — production defaults to info; the `debugLogging` global
-//    setting opts into verbose debug at runtime (see @.claude/rules/logging.md)
-streamDeck.logger.setLevel("info");
-
-// 2b. Right after the debug-logging toggle, start the main-thread watchdog
-//     (#1330). Its worker appends stall reports straight to the host's log
-//     file, so the target is the file the host logger writes: Elgato's
-//     `elgatoPluginLogFile()` (<cwd>/logs/<plugin UUID>.0.log); Mirabox and
-//     Ulanzi pass { kind: "daily", dir: logDir }, the directory their adapter's
-//     FileSink writes (see @.claude/rules/logging.md)
-startMainThreadWatchdog({
-  logger: adapter.createLogger("MainThreadWatchdog"),
-  target: { kind: "file", path: elgatoPluginLogFile() },
-});
-
-// 2c. Beside it, the resource monitor (#1338): a sample a minute of CPU,
-//     event-loop and memory use, plus one at each session edge; one WARN with
-//     the numbers after three high minutes, an INFO on recovery, a summary at
-//     each iRacing exit. The app-monitor hooks are injected rather than
-//     imported (#1176). The CPU
-//     profile capture it pairs with is the shared deck-core service,
-//     `initializeCpuProfileCapture(...)` beside the settings-window controller,
-//     writing into `<log dir>/profiles` (Elgato:
-//     `join(dirname(elgatoPluginLogFile()), "profiles")`; Mirabox and Ulanzi:
-//     `join(logDir, "profiles")`); the command handler gets `captureCpuProfile`
-//     (calling `getCpuProfileCapture().capture()`) + `profilesPath`, and the
-//     Telemetry Control key's Capture Profile mode uses the same getter
-startResourceMonitor({
-  logger: adapter.createLogger("ResourceMonitor"),
-  onSessionStart: onIRacingStarted,
-  onSessionEnd: onIRacingTerminated,
-  isSessionActive: isIRacingActive,
-});
-
-// 3. Initialize SDK singleton (must come before sim-events-iracing)
-initializeSDK(adapter.createLogger("iRacingSDK"));
-
-// 4. Initialize event bus (must come before any publisher or subscriber)
-const eventBus = initializeEventBus(adapter.createLogger("EventBus"));
-
-// 5. Wire the iRacing translator: sdkController ticks → semantic events on the bus.
-//    The only package that imports `@iracedeck/iracing-sdk` for telemetry consumption.
-initializeSimEventsIracing(eventBus, getController(), adapter.createLogger("SimEventsIracing"));
-
-// 6. Initialize keyboard (if using keyboard shortcuts)
-const native = new IRacingNative();
-initializeKeyboard(
-  adapter.createLogger("Keyboard"),
-  (scanCodes) => native.sendScanKeys(scanCodes),      // tap (press + release)
-  (scanCodes) => native.sendScanKeyDown(scanCodes),    // press only (key hold)
-  (scanCodes) => native.sendScanKeyUp(scanCodes),      // release only (key release)
-  (chords, holdMs) => native.sendScanKeySequence(chords, holdMs), // atomic multi-chord sequence (#818)
-);
-
-// 7. Rasterize device-bound SVG icons to PNG in-plugin (#642), gated by the
-//    `pngRasterization` platform flag (temporary kill-switch — see
-//    @.claude/rules/platform-feature-flags.md). When the flag is off,
-//    initializeRasterizer() is never called, deck-core's rasterizer service
-//    stays uninitialized, and every adapter falls back to sending SVG as before.
-if (__FEATURE_PNG_RASTERIZATION__) {
-  initializeRasterizer(
-    createSvgRasterizer({ fontsDir: join(__binDir, "..", "assets", "fonts") }),
-    adapter.createLogger("Rasterizer"),
-  );
-}
-
-// 8. Initialize audio engine for pit engineer voice playback.
-//    Third arg = the ORDERED audio roots (#1034). A bare string is an
-//    unrestricted root, which is what the plugin's own assets/audio is; the
-//    voice-pack service appends one { dir, clips, voices } root per installed
-//    pack later via setRoots, each limited to the clips its scan admitted and
-//    bound to its own voices (#1144). Fourth arg = the session identity the
-//    Windows Volume Mixer shows instead of "Node" (#1253), from deck-core.
-const audioNative = new AudioNative();
-initializeAudio(
-  adapter.createLogger("Audio"),
-  audioNative,
-  [join(__binDir, "..", "assets", "audio")],
-  pluginAudioSessionIdentity(__binDir),
-);
-getAudio().init();
-
-// 9. Initialize the window service: focus + mouse-pointer placement (#926).
-//    isIRacingActive picks warn vs debug for a missing window; it is injected
-//    rather than imported inside deck-core, which closed a cycle (#1176).
-initWindowFocus(adapter.createLogger("WindowFocus"), () => native.focusIRacingWindow(), isIRacingActive);
-
-// 9b. Mouse pointer placement for the Mouse to Sim mode (#926)
-initMousePointer(adapter.createLogger("MousePointer"), (x, y) => native.moveMouseToIRacingWindow(x, y));
-
-// 10. Register the Always-mode focus listeners (BEFORE registering actions; the keystroke-side site runs inside the keyboard service and the chat send — #977)
-adapter.onKeyDown(() => focusIRacingIfEnabled());
-adapter.onDialDown(() => focusIRacingIfEnabled());
-adapter.onDialRotate(() => focusIRacingIfEnabled());
-
-// 11. Register actions via the adapter (logger injected via constructor)
-adapter.registerAction(MY_ACTION_UUID, new MyAction(adapter.createLogger("MyAction")));
-
-// 12. Initialize global settings BEFORE connect() - pass adapter AND the
-//     plugin-owned settings store (#993; the file is truth, the host is only a
-//     one-time migration source — see @.claude/rules/global-settings.md)
-const settingsStore = createFileSettingsStore({
-  path: resolveSettingsStorePath({ platform: getPluginPlatform(), env: process.env }),
-  logger: adapter.createLogger("SettingsStore"),
-  onRejected: createSettingsFileRejectionReporter(), // the rejected-file banner (#1036)
-});
-
-// Land the last debounced save on the way out: "exit" handlers run synchronously
-// (the Mirabox/Ulanzi clients terminate via process.exit(0)), so only the
-// SYNCHRONOUS flush can run here — the async flush() would never get a turn.
-process.on("exit", () => settingsStore.flushSync());
-
-initGlobalSettings(adapter, adapter.createLogger("GlobalSettings"), settingsStore, {
-  // Lets a migration a previous version gave up on be re-asked once (#1047).
-  pluginVersion: getPluginVersion(),
-});
-
-// 12b. Settings-channel publisher (#993 phase 2): mirrors store + `_settingsChannel`
-//      to the deck host once per start (the channel is never persisted in the
-//      store; a stale copy from an older build is removed). Handed to
-//      the settings-window controller's `onStarted` hook AND called from the
-//      store-ready block's `ensureStarted().then(...)` — idempotent, so whichever
-//      side actually started the server publishes it.
-const settingsChannel = createSettingsChannelPublisher({ adapter, logger: settingsWindowLogger });
-// createSettingsWindowController({ ..., onStarted: (channel) => settingsChannel.publish(channel) })
-
-// 12c. Start the voice-pack launch step (#1034 stage 3). It is CONSTRUCTED
-//      further up, right after the voice-pack installer, and started HERE —
-//      after initGlobalSettings, which re-arms the settle signal it waits on,
-//      and at module scope rather than inside the store-ready block.
-void voicePackLaunch.start();
-
-// 13. Initialize SimHub service AFTER global settings (reads host/port from settings)
-initializeSimHub(adapter.createLogger("SimHub"));
-
-// 14. Initialize binding dispatcher AFTER global settings, keyboard, and SimHub
-initializeBindingDispatcher(adapter.createLogger("BindingDispatcher"));
-
-// 15. Initialize app monitor BEFORE connect() - pass adapter!
-initAppMonitor(adapter, adapter.createLogger("AppMonitor"));
-
-// 16. Connect LAST
-adapter.connect();
+startPlugin({ adapter, binDir });
 ```
 
-**CRITICAL**:
+**CRITICAL** — what the phases rely on, each now held in one place for all three plugins:
 - Both `initGlobalSettings()` and `initAppMonitor()` take an `IDeckPlatformAdapter` (not `typeof StreamDeck`)
-- `initGlobalSettings()` also takes a required `SettingsStore` (#993). It returns the schema-default cache immediately and loads the file in the background, so nothing may assume settings are present right after the call — gate on `isSettingsStoreReady()` or react in `onGlobalSettingsChange`. The store must be created before the settings-window controller, whose command-handler deps read `settingsStore.path` eagerly, and after `initPluginConfig()` — `getPluginPlatform()` throws without it
-- Every plugin registers `process.on("exit", () => settingsStore.flushSync())` right after creating the store — without it the last ≤250 ms of settings writes are lost when the host stops the plugin
-- The settings channel is published through `createSettingsChannelPublisher` (deck-core), never by hand-rolled `updateGlobalSettings({ _settingsChannel })` + `adapter.setGlobalSettings(...)` in the plugin: it must fire from the controller's `onStarted` hook as well as the store-ready block, and it owns the mirror-skip logging
-- All init calls must be BEFORE `adapter.connect()` (handlers must register first)
-- `initializeEventBus()` must come before any publisher (e.g. `initializeSimEventsIracing`) or subscriber (actions via `getEventBus().subscribe(...)`)
-- `initializeSimEventsIracing()` must come after `initializeSDK()` (requires `getController()`) and after `initializeEventBus()`; it's the only package that reads `sdkController` ticks on behalf of action consumers
-- `initializeAudio()` creates the audio service singleton (third argument = the ordered audio roots, an ARRAY since #1034 — a bare string entry is an unrestricted root, and installed voice packs are appended later as `{ dir, clips, voices }` roots limited to the clips the scan admitted; since #1144 each pack root is BOUND by its `voices` map — composite `<pack id>::<voice id>` → the bare voice folder — so a `voice/<pack>::<voice>/…` path resolves only inside that pack's root, and the ordered walk, which still serves the sfx, never reaches a bound root; the optional fourth argument, `{ displayName, iconPath? }`, names our session in the Windows Volume Mixer (#1253) — every plugin passes deck-core's `pluginAudioSessionIdentity(__binDir)`, which resolves the absolute path of the Elgato plugin's committed `imgs/plugin/iracedeck.ico` (the Mirabox and Ulanzi builds copy it with the rest of that folder), and `getAudio().init()` hands it to the native layer before any engine can exist); `getAudio().init()` starts the miniaudio engine. Both must be called before actions that use audio (e.g., Pit Engineer)
+- `initGlobalSettings()` also takes a required `SettingsStore` (#993). It returns the schema-default cache immediately and loads the file in the background, so nothing may assume settings are present right after the call — gate on `isSettingsStoreReady()` or react in `onGlobalSettingsChange`. The store is created in `initSettings` before the settings-window controller, whose command-handler deps read `settingsStore.path` eagerly, and after `initPluginConfig()` (in `initCore`) — `getPluginPlatform()` throws without it
+- `initSettings` registers `process.on("exit", () => settingsStore.flushSync())` right after creating the store (and the same for the replay store) — without it the last ≤250 ms of settings writes are lost when the host stops the plugin
+- The settings channel is published through `createSettingsChannelPublisher` (deck-core), never by hand-rolled `updateGlobalSettings({ _settingsChannel })` + `adapter.setGlobalSettings(...)`: it must fire from the controller's `onStarted` hook as well as the store-ready block, and it owns the mirror-skip logging
+- All init calls are BEFORE `adapter.connect()` (handlers must register first)
+- `initializeEventBus()` comes before any publisher (e.g. `initializeSimEventsIracing`) or subscriber (actions via `getEventBus().subscribe(...)`); both are in `initCore`, ahead of every other phase
+- `initializeSimEventsIracing()` comes after `initializeSDK()` (requires `getController()`) and after `initializeEventBus()`; it's the only package that reads `sdkController` ticks on behalf of action consumers, and `initSim` is the one place a sim translator is chosen
+- `initializeAudio()` creates the audio service singleton (third argument = the ordered audio roots, an ARRAY since #1034 — a bare string entry is an unrestricted root, and installed voice packs are appended later as `{ dir, clips, voices }` roots limited to the clips the scan admitted; since #1144 each pack root is BOUND by its `voices` map — composite `<pack id>::<voice id>` → the bare voice folder — so a `voice/<pack>::<voice>/…` path resolves only inside that pack's root, and the ordered walk, which still serves the sfx, never reaches a bound root; the optional fourth argument, `{ displayName, iconPath? }`, names our session in the Windows Volume Mixer (#1253) — `initAudio` passes deck-core's `pluginAudioSessionIdentity(binDir)`, which resolves the absolute path of the Elgato plugin's committed `imgs/plugin/iracedeck.ico` (the Mirabox and Ulanzi builds copy it with the rest of that folder), and `getAudio().init()` hands it to the native layer before any engine can exist); `getAudio().init()` starts the miniaudio engine. Both run before actions that use audio (e.g., Pit Engineer)
 - `initWindowFocus` / `focusIRacingIfEnabled` / `focusIRacingNow` come from `@iracedeck/deck-core` (moved there in #930; the unconditional variant added in #926). The focuser is injected, exactly like `initializeKeyboard`'s callbacks, so deck-core stays free of a native import; so is its third argument, `isIRacingActive` (#1176), which the service imported from `app-monitor` until that closed the cycle `sdk-singleton` → `window-focus-service` → `app-monitor` → `sdk-singleton`; deck-core mirrors the native `FocusResult` codes and `focus-result.test.ts` in the Stream Deck plugin guards that mirror. Since #977 the service also exports `focusIRacingBeforeInput`, the keystroke-side site the keyboard service calls before every native key emit and (via `createSDK`'s `beforeKeystrokes` hook, injected by `initializeSDK`) the chat command calls before it types — the mode gate lives in the service, so the three hook registrations are identical in every mode.
 - `initMousePointer` / `movePointerToSim` (#926) are the sibling pointer service, injected the same way and mirrored the same way (`pointer-move-result.test.ts`). Kept separate from the focus service: one owns the foreground, the other owns where the pointer goes
 - `initializeRasterizer()` is gated by `__FEATURE_PNG_RASTERIZATION__` and must come before any code that renders a device image (it can run anywhere before `adapter.connect()`, since `toDeviceImage()` passes images through unchanged until it's called); see `@.claude/rules/platform-feature-flags.md`
-- `initializeSimHub()` must come AFTER `initGlobalSettings()` (reads host/port from settings)
-- `initializeBindingDispatcher()` must come AFTER `initGlobalSettings()`, `initializeKeyboard()`, and `initializeSimHub()`
-- The voice-pack launch step (`createVoicePackLaunchStep`, #1034 stage 3) is constructed right after the installer and started at module scope — it waits for `whenSettingsStoreSettled()` itself and must NOT be moved inside the store-ready block. That block never runs on the fail-closed unreadable-file path, and a plugin that cannot read its settings must still end up with a voice. Its `settled` dep is a THUNK for the same reason `start()` sits after `initGlobalSettings`: that call re-arms the signal, so a promise taken at construction would be the discarded pre-init one. Two more deps are the plugin's: `isPackUsable` (the scanner's last result listing the pack with a voice — what is on disk, as against the record's digest — off which the step force-reinstalls a managed pack whose clips are gone), `onSettingsChange` (`onGlobalSettingsChange` — the step watches the Race Engineer gate itself and re-runs the ensure on the false→true edge, subscribed only once it is past the settle wait so a loaded file's first arrival is never mistaken for a flip; no plugin keeps a listener of its own). The voice-pack service no longer takes a `priorityPacks` order: since #1144 a voice is `<pack id>::<voice id>`, so the managed pack's voice and a sideload's voice of the same bare id are two voices and nothing has to claim first. The plugin pokes the launch step from one place only, the settings window's Rescan command; a poke before the step is ready is latched, and the first ensure then bypasses the catalog TTLs for it. A failure a retry cannot fix is given up for that catalog answer and re-observed hourly, never abandoned for the process
-- Actions are imported from `@iracedeck/iracing-actions` and registered via `adapter.registerAction(UUID, handler)`
-- Logger is injected into each action via constructor: `new MyAction(adapter.createLogger("MyAction"))`
+- `initializeSimHub()` comes AFTER `initGlobalSettings()` (reads host/port from settings)
+- `initializeBindingDispatcher()` comes AFTER `initGlobalSettings()`, `initializeKeyboard()`, and `initializeSimHub()`
+- The voice-pack launch step (`createVoicePackLaunchStep`, #1034 stage 3) is constructed in `initVoicePacks` right after the installer and started in `startServices` — it waits for `whenSettingsStoreSettled()` itself and must NOT be moved inside the store-ready block. That block never runs on the fail-closed unreadable-file path, and a plugin that cannot read its settings must still end up with a voice. Its `settled` dep is a THUNK for the same reason `start()` sits after `initGlobalSettings`: that call re-arms the signal, so a promise taken at construction would be the discarded pre-init one. Two more deps are the bootstrap's: `isPackUsable` (the scanner's last result listing the pack with a voice — what is on disk, as against the record's digest — off which the step force-reinstalls a managed pack whose clips are gone), `onSettingsChange` (`onGlobalSettingsChange` — the step watches the Race Engineer gate itself and re-runs the ensure on the false→true edge, subscribed only once it is past the settle wait so a loaded file's first arrival is never mistaken for a flip; the bootstrap keeps no listener of its own). The voice-pack service no longer takes a `priorityPacks` order: since #1144 a voice is `<pack id>::<voice id>`, so the managed pack's voice and a sideload's voice of the same bare id are two voices and nothing has to claim first. The bootstrap pokes the launch step from one place only, the settings window's Rescan command; a poke before the step is ready is latched, and the first ensure then bypasses the catalog TTLs for it. A failure a retry cannot fix is given up for that catalog answer and re-observed hourly, never abandoned for the process
+- Actions are imported from `@iracedeck/iracing-actions` by `plugin-runtime/src/actions.ts` alone and registered by `registerActions` via `adapter.registerAction(uuid, create(adapter.createLogger(scope)))`; a new action goes in `SHARED_ACTIONS` (or the extension's `extraActions`) and every manifest, and `src/actions.test.ts` fails until they match
+- Logger is injected into each action via constructor: the registration's `create(logger)` receives `adapter.createLogger(scope)`
 - `initAppMonitor` requires `initializeSDK()` to be called first

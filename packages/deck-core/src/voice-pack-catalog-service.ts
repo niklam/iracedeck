@@ -81,8 +81,8 @@ export interface VoicePackCatalogServiceDeps {
    * withholding it after it was.
    *
    * Absent in every release build, where no build carries a development root
-   * at all; the wiring is one line in each plugin's `plugin.ts` and it goes
-   * inert on its own.
+   * at all; the wiring is one line in plugin-runtime's `phases/voice-packs.ts`
+   * and it goes inert on its own.
    */
   isProvidedByDevRoot?: (packId: string) => boolean;
   /** Override the artifact URL. Tests only; never taken from a request. */

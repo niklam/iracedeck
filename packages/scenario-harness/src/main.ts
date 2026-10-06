@@ -184,8 +184,9 @@ async function main(): Promise<void> {
     // readout clause be auditioned at all (issue #933).
     getLiveGaps: () => getLiveGaps(),
     // The full-course caution family (issue #1127) reads the lineup and the
-    // caution phase straight off the same real translator, exactly as every
-    // plugin's `plugin.ts` wires them. Without these three the family's
+    // caution phase straight off the same real translator, exactly as the
+    // plugins' shared Race Engineer wiring (race-engineer-wiring's
+    // `pit-crew-deps.ts`) wires them. Without these three the family's
     // `speakGate` (`getCautionPhase`) never admits a single caution line,
     // the follow / pickup / pace-car-off calls never find the stage they
     // speak at, and every `caution.*` script variable (`getCautionLineup`)

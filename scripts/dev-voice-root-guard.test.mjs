@@ -162,18 +162,6 @@ describe("the development voice root is build-time only (#1143, #1214)", () => {
 
   describe.each(PLUGINS)("%s", (pkg, packageName, packScript) => {
     const configSource = readFileSync(join(repoRoot, "packages", pkg, "rollup.config.mjs"), "utf-8");
-    const pluginSource = readFileSync(join(repoRoot, "packages", pkg, "src", "plugin.ts"), "utf-8");
-
-    it("publishes a pack's `dir` only for a development row", () => {
-      // `_voicePacks` rides a run-scoped global into every Property Inspector
-      // and the deck-host mirror on every push, and `voice-pack-list.ts`
-      // renders `dir` on a development row and nowhere else — so an absolute
-      // path on every other row is payload with no reader. Asserted textually,
-      // across all three plugins at once, because these regions are required
-      // to stay byte-identical and no plugin test reaches the function.
-      expect(pluginSource).toContain('...(pack.provenance === "development" ? { dir: pack.dir } : {}),');
-      expect(pluginSource, "an unconditional `dir:` would publish it on every row").not.toContain("dir: pack.dir,");
-    });
 
     it("the rollup config decides the root through the shared resolver", () => {
       expect(configSource).toContain(
@@ -238,6 +226,24 @@ describe("the development voice root is build-time only (#1143, #1214)", () => {
       const task = turbo.tasks[`${packageName}#build`];
       expect(task?.dependsOn).toContain(STAGE_TASK);
       expect(task?.dependsOn).toContain("^build");
+    });
+  });
+
+  describe("the voice-pack phase (#1349)", () => {
+    const phaseSource = readFileSync(
+      join(repoRoot, "packages", "plugin-runtime", "src", "phases", "voice-packs.ts"),
+      "utf-8",
+    );
+
+    it("publishes a pack's `dir` only for a development row", () => {
+      // `_voicePacks` rides a run-scoped global into every Property Inspector
+      // and the deck-host mirror on every push, and `voice-pack-list.ts`
+      // renders `dir` on a development row and nowhere else — so an absolute
+      // path on every other row is payload with no reader. Since #1349 the
+      // three plugins share this one phase; `voice-packs.test.ts` also
+      // exercises the rule.
+      expect(phaseSource).toContain('...(pack.provenance === "development" ? { dir: pack.dir } : {}),');
+      expect(phaseSource, "an unconditional `dir:` would publish it on every row").not.toContain("dir: pack.dir,");
     });
   });
 });
