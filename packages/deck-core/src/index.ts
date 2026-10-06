@@ -667,6 +667,7 @@ export {
   setupNameMatchesPattern,
   validateSetupWarningPatterns,
   type SetupWarningKind,
+  type SetupWarningSettings,
 } from "./setup-warning.js";
 export { evaluateElevationWarning, ELEVATION_WARNING_ID, ELEVATION_WARNING_MESSAGE } from "./elevation-warning.js";
 export { createElevationCheckSubscriber, type ElevationCheckOptions } from "./elevation-check.js";

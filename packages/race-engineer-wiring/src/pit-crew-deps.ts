@@ -123,8 +123,7 @@ export function buildPitCrewDeps(
     getOvertakeDriverName: () => resolveActiveDriverName(voice.driverNames, "driver"),
     getLivePosition: () => sim.getLivePosition(),
     getOvertakeGate: getOvertakeGate,
-    getSetupWarningMismatch: (kind) =>
-      evaluateSetupWarning(kind, getGlobalSettings() as Record<string, unknown>, sim.getDriverSetupName()),
+    getSetupWarningMismatch: (kind) => evaluateSetupWarning(kind, getGlobalSettings(), sim.getDriverSetupName()),
     getSpotterTrackDirection: () => sim.getTrackDirection(),
     getSpotterStillThereIntervalMs: () =>
       resolveStillThereIntervalMs((getGlobalSettings() as Record<string, unknown>)[SPOTTER_STILL_THERE_SECONDS_KEY]),

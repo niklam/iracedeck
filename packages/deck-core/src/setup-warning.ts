@@ -13,6 +13,7 @@
  * `evaluateSetupWarning` live at fire time and `validateSetupWarningPatterns` when
  * settings change.
  */
+import type { GlobalSettings } from "./global-settings.js";
 import { clearWarning, setWarning } from "./pi-warnings.js";
 import {
   DEFAULT_SETUP_WARNING_QUALIFYING_PATTERN,
@@ -72,17 +73,24 @@ export function resolveSetupWarningPattern(raw: unknown, fallback: string): stri
   return typeof raw === "string" && raw.trim() !== "" ? raw : fallback;
 }
 
+/** The settings {@link evaluateSetupWarning} reads, typed: its opt-in and its two patterns. */
+export type SetupWarningSettings = Pick<
+  GlobalSettings,
+  typeof SETUP_WARNING_ENABLED_KEY | typeof SETUP_WARNING_QUALIFYING_PATTERN_KEY | typeof SETUP_WARNING_RACE_PATTERN_KEY
+>;
+
 /**
  * The live gate consumed by the scenario `if:` clause. True only when the opt-in
- * is on AND the session-kind pattern matches the live setup name. Read fresh on
- * every fire so a mid-session toggle/edit takes effect immediately.
+ * is on AND the session-kind pattern matches the live setup name. Pure: the
+ * caller hands it the parsed settings, read fresh on every fire so a
+ * mid-session toggle/edit takes effect immediately.
  */
 export function evaluateSetupWarning(
   kind: SetupWarningKind,
-  settings: Record<string, unknown>,
+  settings: SetupWarningSettings,
   setupName: string | null | undefined,
 ): boolean {
-  if (settings[SETUP_WARNING_ENABLED_KEY] === false) return false;
+  if (!settings[SETUP_WARNING_ENABLED_KEY]) return false;
 
   const pattern =
     kind === "qualifying"
