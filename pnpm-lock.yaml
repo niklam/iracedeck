@@ -695,9 +695,6 @@ importers:
       ws:
         specifier: 8.22.0
         version: 8.22.0
-      zod:
-        specifier: 4.6.5
-        version: 4.6.5
     devDependencies:
       '@elgato/cli':
         specifier: 1.10.1
@@ -741,9 +738,6 @@ importers:
       typescript:
         specifier: 5.9.3
         version: 5.9.3
-      vitest:
-        specifier: 5.0.3
-        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(jsdom@30.1.1)(vite@8.3.0(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.46.0)(tsx@4.23.15)(yaml@2.9.1))
 
   packages/iracing-plugin-stream-deck:
     dependencies:
@@ -802,9 +796,6 @@ importers:
       '@elgato/cli':
         specifier: 1.10.1
         version: 1.10.1(@types/node@26.6.4)
-      '@elgato/utils':
-        specifier: 0.6.0
-        version: 0.6.0
       '@iracedeck/plugin-build':
         specifier: workspace:*
         version: link:../plugin-build
@@ -898,9 +889,6 @@ importers:
       ws:
         specifier: 8.22.0
         version: 8.22.0
-      zod:
-        specifier: 4.6.5
-        version: 4.6.5
     devDependencies:
       '@iracedeck/plugin-build':
         specifier: workspace:*
@@ -941,9 +929,6 @@ importers:
       typescript:
         specifier: 5.9.3
         version: 5.9.3
-      vitest:
-        specifier: 5.0.3
-        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(jsdom@30.1.1)(vite@8.3.0(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.46.0)(tsx@4.23.15)(yaml@2.9.1))
 
   packages/iracing-sdk:
     dependencies:

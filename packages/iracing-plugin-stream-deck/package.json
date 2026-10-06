@@ -35,7 +35,6 @@
   },
   "devDependencies": {
     "@elgato/cli": "1.10.1",
-    "@elgato/utils": "0.6.0",
     "@iracedeck/plugin-build": "workspace:*",
     "@rollup/plugin-commonjs": "29.0.3",
     "@rollup/plugin-json": "6.1.0",
