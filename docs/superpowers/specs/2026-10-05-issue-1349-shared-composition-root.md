@@ -143,7 +143,7 @@ Each slice is reviewed, manually tested and merged before the next starts.
 
 - #1350: replacing the `calloutEnabled*` closures. They move into `wireRaceEngineer` as they are.
 - #1351: a sim-neutral `SimRuntime` and a second translator.
-- Any behaviour change. Same order, same events, same settings, same logs — except that the Race Engineer's scoped log prefixes gain their parent scope (`[LapCompleted]` becomes `[RaceEngineer:LapCompleted]`).
+- Any behaviour change. Same order, same events, same settings, same logs — except that the Race Engineer's scoped log prefixes gain their parent scope (`[LapCompleted]` becomes `[RaceEngineer:LapCompleted]` on Mirabox and Ulanzi, and `RaceEngineer->LapCompleted` on Stream Deck, whose SDK joins scopes with `->`).
 - The `pi-components` rollup config, which is a separate browser build of a different shape.
 - Moving `iracing-actions`' own wiring (`applyRadar*`, `applyRaceEngineerAudio`) into the shared root.
 
