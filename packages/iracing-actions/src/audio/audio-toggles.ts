@@ -16,7 +16,7 @@ import {
   getGlobalSettings,
   isCalloutEnabled,
   resolveActiveRaceEngineerVoice,
-  updateGlobalSettings,
+  setCalloutEnabled,
 } from "@iracedeck/deck-core";
 import type { ILogger } from "@iracedeck/logger";
 
@@ -197,7 +197,7 @@ export function toggleCornerNamesFeature(logger: ILogger): boolean {
   const next = !isCornerNamesEnabled();
   logger.info(`Corner name callouts ${next ? "enabled" : "disabled"}`);
 
-  updateGlobalSettings({ calloutEnabledCornerNames: next });
+  setCalloutEnabled("calloutEnabledCornerNames", next);
 
   if (isRaceEngineerEnabled() && isCornerNamesToggleAckEnabled()) {
     const voice = resolveActiveRaceEngineerVoice(readJsonStringArray("_raceEngineerVoices"));

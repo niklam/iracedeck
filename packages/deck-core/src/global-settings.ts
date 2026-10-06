@@ -1481,6 +1481,15 @@ export function isCalloutEnabled(key: CalloutSettingKey): boolean {
 }
 
 /**
+ * Switch one Race Engineer callout on or off and persist it — the typed write
+ * beside {@link isCalloutEnabled}, so a caller names a registry key rather than
+ * an untyped literal (#1350). Goes through {@link updateGlobalSettings}.
+ */
+export function setCalloutEnabled(key: CalloutSettingKey, enabled: boolean): void {
+  updateGlobalSettings({ [key]: enabled });
+}
+
+/**
  * Whether the cache reflects the settings store yet — loaded from the file, or
  * migrated once from the deck host (issue #993). Before that it is pure schema
  * defaults (passthrough keys absent), so any consumer deciding on the ABSENCE

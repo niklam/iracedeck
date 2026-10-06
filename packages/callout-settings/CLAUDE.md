@@ -23,7 +23,7 @@ A family is the unit of ownership: the ids are family-scoped (`ack` is an id of 
 
 ## Consumers
 
-- `deck-core` builds a `GlobalSettingsSchema` field for every `CalloutSettingKey` with `.default(calloutDefault(key))`, and exports the typed lookup `isCalloutEnabled(key)`.
+- `deck-core` builds a `GlobalSettingsSchema` field for every `CalloutSettingKey` with `.default(calloutDefault(key))`, and exports the typed lookup `isCalloutEnabled(key)` and write `setCalloutEnabled(key, enabled)`.
 - `audio-scenarios` derives each family's callout id type with `CalloutIdOf<typeof X_CALLOUTS>` and gates through `isCalloutEnabled(calloutKey(X_CALLOUTS, id))`.
 - `pi-components` renders the Callouts rows from `CALLOUT_PI_GROUPS`, with `default="true"` exactly where `calloutDefault(key)` is true.
 

@@ -23,6 +23,8 @@ const hoisted = vi.hoisted(() => {
     globalSettings = { ...globalSettings, ...partial };
   });
   const getGlobalSettings = vi.fn(() => globalSettings);
+  // The real write goes through updateGlobalSettings; so does this one, so the flip is read back.
+  const setCalloutEnabled = vi.fn((key: string, enabled: boolean) => updateGlobalSettings({ [key]: enabled }));
   // The real lookup reads the parsed cache; here it reads the same mocked settings object.
   const isCalloutEnabled = vi.fn((key: string) => getGlobalSettings()[key] !== false);
   const resolveActiveRaceEngineerVoice = vi.fn(() => "default");
@@ -34,6 +36,7 @@ const hoisted = vi.hoisted(() => {
     getAudio,
     isBackgroundTestInFlight,
     updateGlobalSettings,
+    setCalloutEnabled,
     getGlobalSettings,
     isCalloutEnabled,
     resolveActiveRaceEngineerVoice,
@@ -57,6 +60,7 @@ vi.mock("@iracedeck/deck-core", () => ({
   getGlobalSettings: hoisted.getGlobalSettings,
   isCalloutEnabled: hoisted.isCalloutEnabled,
   updateGlobalSettings: hoisted.updateGlobalSettings,
+  setCalloutEnabled: hoisted.setCalloutEnabled,
   resolveActiveRaceEngineerVoice: hoisted.resolveActiveRaceEngineerVoice,
 }));
 
@@ -108,7 +112,7 @@ describe("audio-toggles", () => {
       });
 
       expect(toggleCornerNamesFeature(logger)).toBe(false);
-      expect(hoisted.updateGlobalSettings).toHaveBeenCalledWith({ calloutEnabledCornerNames: false });
+      expect(hoisted.setCalloutEnabled).toHaveBeenCalledWith("calloutEnabledCornerNames", false);
       expect(hoisted.playOnChannel).toHaveBeenCalledWith(0, "voice/default/toggle/corner-names-off-01.mp3");
     });
 
@@ -120,7 +124,7 @@ describe("audio-toggles", () => {
       });
 
       expect(toggleCornerNamesFeature(logger)).toBe(true);
-      expect(hoisted.updateGlobalSettings).toHaveBeenCalledWith({ calloutEnabledCornerNames: true });
+      expect(hoisted.setCalloutEnabled).toHaveBeenCalledWith("calloutEnabledCornerNames", true);
       expect(hoisted.playOnChannel).toHaveBeenCalledWith(0, "voice/default/toggle/corner-names-on-01.mp3");
     });
 
@@ -128,7 +132,7 @@ describe("audio-toggles", () => {
       hoisted.setGlobalSettings({ _raceEngineerVoices: JSON.stringify(["default"]) });
 
       expect(toggleCornerNamesFeature(logger)).toBe(false);
-      expect(hoisted.updateGlobalSettings).toHaveBeenCalledWith({ calloutEnabledCornerNames: false });
+      expect(hoisted.setCalloutEnabled).toHaveBeenCalledWith("calloutEnabledCornerNames", false);
       expect(hoisted.playOnChannel).not.toHaveBeenCalled();
     });
 
@@ -148,7 +152,7 @@ describe("audio-toggles", () => {
       hoisted.setGlobalSettings({ pitCrewRaceEngineerEnabled: true });
 
       expect(toggleCornerNamesFeature(logger)).toBe(false);
-      expect(hoisted.updateGlobalSettings).toHaveBeenCalledWith({ calloutEnabledCornerNames: false });
+      expect(hoisted.setCalloutEnabled).toHaveBeenCalledWith("calloutEnabledCornerNames", false);
       expect(hoisted.playOnChannel).not.toHaveBeenCalled();
     });
   });

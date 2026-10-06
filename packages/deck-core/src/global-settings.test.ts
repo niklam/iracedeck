@@ -26,6 +26,7 @@ import {
   onGlobalSettingsChange,
   resolveActiveDriverName,
   resolveActiveRaceEngineerVoice,
+  setCalloutEnabled,
   updateGlobalSettings,
   whenSettingsStoreSettled,
 } from "./global-settings.js";
@@ -330,6 +331,39 @@ describe("isCalloutEnabled (#1350)", () => {
     updateGlobalSettings({ calloutEnabledFlagGreen: false, calloutEnabledFuelLapsLeft10: true });
     expect(isCalloutEnabled("calloutEnabledFlagGreen")).toBe(false);
     expect(isCalloutEnabled("calloutEnabledFuelLapsLeft10")).toBe(true);
+  });
+});
+
+describe("setCalloutEnabled (#1350)", () => {
+  beforeEach(async () => {
+    _resetGlobalSettings();
+    await initWithStore();
+  });
+
+  it("writes the opt-in through the settings update, both ways", () => {
+    setCalloutEnabled("calloutEnabledFlagGreen", false);
+    expect(getGlobalSettings().calloutEnabledFlagGreen).toBe(false);
+    expect(isCalloutEnabled("calloutEnabledFlagGreen")).toBe(false);
+
+    setCalloutEnabled("calloutEnabledFlagGreen", true);
+    expect(isCalloutEnabled("calloutEnabledFlagGreen")).toBe(true);
+  });
+
+  it("switches an off-default callout on and leaves every other key alone", () => {
+    const before = getGlobalSettings();
+
+    setCalloutEnabled("calloutEnabledFuelLapsLeft10", true);
+
+    expect({ ...getGlobalSettings(), calloutEnabledFuelLapsLeft10: false }).toEqual(before);
+  });
+
+  it("accepts only a registry key", () => {
+    // Never called: the assertion is that the call does not compile.
+    const misspelt = () =>
+      // @ts-expect-error -- not a calloutEnabled* key in the registry
+      setCalloutEnabled("calloutEnabledNoSuchCallout", true);
+
+    expect(misspelt).toBeTypeOf("function");
   });
 });
 

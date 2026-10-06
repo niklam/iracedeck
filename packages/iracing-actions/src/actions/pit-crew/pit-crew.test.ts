@@ -47,6 +47,8 @@ const hoisted = vi.hoisted(() => {
     globalSettings = { ...globalSettings, ...partial };
   });
   const getGlobalSettings = vi.fn(() => globalSettings);
+  // The real write goes through updateGlobalSettings; so does this one, so the flip is read back.
+  const setCalloutEnabled = vi.fn((key: string, enabled: boolean) => updateGlobalSettings({ [key]: enabled }));
   // The real lookup reads the parsed cache; here it reads the same mocked settings object.
   const isCalloutEnabled = vi.fn((key: string) => getGlobalSettings()[key] !== false);
   const globalSettingsListeners = new Set<() => void>();
@@ -88,6 +90,7 @@ const hoisted = vi.hoisted(() => {
     stopRaceEngineerScenarios,
     driverNameClipPath,
     updateGlobalSettings,
+    setCalloutEnabled,
     getGlobalSettings,
     isCalloutEnabled,
     globalSettingsListeners,
@@ -236,6 +239,7 @@ vi.mock("@iracedeck/deck-core", async () => {
     })),
     svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
     updateGlobalSettings: hoisted.updateGlobalSettings,
+    setCalloutEnabled: hoisted.setCalloutEnabled,
   };
 });
 
@@ -1154,7 +1158,7 @@ describe("PitCrew action", () => {
 
       await action.onKeyDown(buildAppearEvent({ mode: "corner-names" }) as never);
 
-      expect(hoisted.updateGlobalSettings).toHaveBeenCalledWith({ calloutEnabledCornerNames: false });
+      expect(hoisted.setCalloutEnabled).toHaveBeenCalledWith("calloutEnabledCornerNames", false);
       expect(hoisted.setRadarEnabled).not.toHaveBeenCalled();
     });
 
@@ -1166,7 +1170,7 @@ describe("PitCrew action", () => {
 
       await action.onKeyDown(buildAppearEvent({ mode: "corner-names" }) as never);
 
-      expect(hoisted.updateGlobalSettings).toHaveBeenCalledWith({ calloutEnabledCornerNames: true });
+      expect(hoisted.setCalloutEnabled).toHaveBeenCalledWith("calloutEnabledCornerNames", true);
     });
 
     it("does not touch the race-engineer or radar gates", async () => {

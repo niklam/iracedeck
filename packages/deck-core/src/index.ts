@@ -158,6 +158,7 @@ export {
   LOAD_ATTEMPTS,
   getGlobalSettings,
   isCalloutEnabled,
+  setCalloutEnabled,
   getGlobalColors,
   onGlobalSettingsChange,
   updateGlobalSettings,
