@@ -100,6 +100,11 @@
       ],
       "outputs": ["com.ulanzi.*.ulanziPlugin/**"]
     },
+    "@iracedeck/plugin-build#build": {
+      "dependsOn": ["^build"],
+      "inputs": ["package.json", "src/*.mjs", "!src/*.test.*"],
+      "outputs": []
+    },
     "@iracedeck/plugin-build#typecheck": {
       "dependsOn": ["^build"],
       "inputs": [
