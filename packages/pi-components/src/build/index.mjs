@@ -2,7 +2,7 @@ import path from "node:path";
 import url from "node:url";
 
 import { assertBridgeInjectionPlugin, injectBridgeScriptPlugin } from "./inject-bridge-plugin.mjs";
-import { calloutPiGroups, piTemplatePlugin } from "./pi-template-plugin.mjs";
+import { piTemplatePlugin } from "./pi-template-plugin.mjs";
 
 const packageRoot = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "../..");
 
@@ -23,4 +23,4 @@ export const SETTINGS_WINDOW_ICON = "iracedeck-icon.png";
 /** The Elgato/Mirabox PI settings bridge, injected into every action PI (#993 phase 2). */
 export const PI_SETTINGS_BRIDGE = "pi-settings-bridge.js";
 
-export { assertBridgeInjectionPlugin, calloutPiGroups, injectBridgeScriptPlugin, piTemplatePlugin };
+export { assertBridgeInjectionPlugin, injectBridgeScriptPlugin, piTemplatePlugin };

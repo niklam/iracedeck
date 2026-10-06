@@ -6,7 +6,10 @@ import path from "node:path";
 import url from "node:url";
 import { describe, expect, it } from "vitest";
 
-import { calloutPiGroups } from "./pi-template-plugin.mjs";
+import { loadCalloutPiGroups } from "./callout-pi-groups.mjs";
+
+/** The rows exactly as the build reads them: from the built registry, in a fresh process. */
+const calloutPiGroups = loadCalloutPiGroups().groups;
 
 /**
  * Renders the REAL `partials/accordion.ejs` (not a fixture) — it wraps a

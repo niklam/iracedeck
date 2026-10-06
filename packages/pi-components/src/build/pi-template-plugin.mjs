@@ -16,27 +16,11 @@
  *   }),
  * ]
  */
-import { CALLOUT_PI_GROUPS, calloutDefault } from "@iracedeck/callout-settings";
 import ejs from "ejs";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-/**
- * The Race Engineer Callouts rows (#1350), flattened for `race-engineer-callouts.ejs`:
- * one entry per PI heading, its rows in registry order. Exported so tests that
- * render the partial directly pass the same data the build does.
- */
-export const calloutPiGroups = CALLOUT_PI_GROUPS.map((group) => ({
-  id: group.id,
-  title: group.title,
-  rows: group.families.flatMap((family) =>
-    Object.values(family.callouts).map((entry) => ({
-      setting: entry.key,
-      label: entry.label,
-      on: calloutDefault(entry.key),
-    })),
-  ),
-}));
+import { loadCalloutPiGroups } from "./callout-pi-groups.mjs";
 
 /**
  * Recursively find all .ejs files in a directory
@@ -132,10 +116,20 @@ export function piTemplatePlugin(options) {
   // Build list of partial search directories
   const partialSearchDirs = [partialsDir, ...additionalPartialsDirs].filter((d) => existsSync(d));
 
+  // The Race Engineer callout rows, read from the built registry once per build
+  // (#1350) and watched, so a family edit in watch mode reaches the window too.
+  let callouts;
+
   return {
     name: "pi-template-plugin",
 
     buildStart() {
+      callouts = loadCalloutPiGroups();
+
+      for (const file of callouts.watchFiles) {
+        this.addWatchFile(file);
+      }
+
       // Watch template files for changes
       if (existsSync(templatesDir)) {
         const ejsFiles = findEjsFiles(templatesDir);
@@ -177,6 +171,9 @@ export function piTemplatePlugin(options) {
 
       // Find all .ejs template files
       const ejsFiles = findEjsFiles(templatesDir);
+
+      // A build that skipped buildStart (a test calling this hook alone) reads them here.
+      const calloutPiGroups = (callouts ?? loadCalloutPiGroups()).groups;
 
       // Load data files
       const dataDir = path.join(templatesDir, "data");

@@ -4,7 +4,7 @@
   window includes it, wrapping these items in its "Callouts" card. The
   headings, their rows, labels and defaults come from the
   @iracedeck/callout-settings registry (#1350), which pi-template-plugin.mjs
-  flattens into `calloutPiGroups`; this partial only lays them out and places
+  reads per build (callout-pi-groups.mjs) and passes as `calloutPiGroups`; this partial only lays them out and places
   the non-callout items (ranges, thresholds) between them. See
   .claude/rules/global-settings.md (per-callout opt-in convention).
 %>
