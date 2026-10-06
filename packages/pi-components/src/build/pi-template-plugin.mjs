@@ -16,9 +16,27 @@
  *   }),
  * ]
  */
+import { CALLOUT_PI_GROUPS, calloutDefault } from "@iracedeck/callout-settings";
 import ejs from "ejs";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+
+/**
+ * The Race Engineer Callouts rows (#1350), flattened for `race-engineer-callouts.ejs`:
+ * one entry per PI heading, its rows in registry order. Exported so tests that
+ * render the partial directly pass the same data the build does.
+ */
+export const calloutPiGroups = CALLOUT_PI_GROUPS.map((group) => ({
+  id: group.id,
+  title: group.title,
+  rows: group.families.flatMap((family) =>
+    Object.values(family.callouts).map((entry) => ({
+      setting: entry.key,
+      label: entry.label,
+      on: calloutDefault(entry.key),
+    })),
+  ),
+}));
 
 /**
  * Recursively find all .ejs files in a directory
@@ -203,6 +221,8 @@ export function piTemplatePlugin(options) {
               docsUrl,
               // Platform feature flags for this plugin build
               platform: platformFeatures,
+              // The Race Engineer callout opt-in rows, from @iracedeck/callout-settings (#1350)
+              calloutPiGroups,
               // Also expose a require function for inline requires (resolved from templatesDir)
               require: createTemplateRequire(templatesDir),
               // NOTE: do NOT add a hand-built `locals` key here. EJS already binds
