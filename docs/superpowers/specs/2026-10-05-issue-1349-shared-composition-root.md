@@ -118,24 +118,24 @@ Settings reach the wiring through `deck-core`'s `getGlobalSettings`, which in th
 
 ### Rollup
 
-`scripts/lib/plugin-rollup.mjs` exports `createPluginRollupConfig(options)`, and each plugin's `rollup.config.mjs` passes only what differs:
+A new build-only package, `@iracedeck/plugin-build`, exports `createPluginRollupConfig(options)`, and each plugin's `rollup.config.mjs` passes only what differs. It is a devDependency of the three plugins and declares the Rollup plugins and the `pi-components` / `audio-assets` build imports itself — a module under `scripts/lib/` cannot import them, since the root declares none (amended during slice 3). Being a declared dependency, it orders and invalidates each plugin's build through turbo's package graph with no hand-written input.
 
 | Option | Stream Deck | Mirabox | Ulanzi |
 | --- | --- | --- | --- |
 | `sdPluginDir` | `com.iracedeck.sd.core.sdPlugin` | `com.iracedeck.sd.core.sdPlugin` | `com.ulanzi.iracedeck.ulanziPlugin` |
 | `platform` | `stream-deck` | `mirabox` | `ulanzi` |
 | `extraExternals` | none | `ws` | `ws` |
-| `assetCopy` | icon, key, dial SVGs + PI browser assets | icon, key + `imgs/plugin` | icon, key + `imgs/plugin` |
-| `piBridge` | `PI_SETTINGS_BRIDGE` | `PI_SETTINGS_BRIDGE` | `ulanzi-pi-bridge.js` |
+| `assetCopy` | icon, key, dial SVGs | icon, key + `imgs/plugin` | icon, key + `imgs/plugin` |
+| `piBridge` | `PI_SETTINGS_BRIDGE` | `PI_SETTINGS_BRIDGE` | `ulanzi-pi-bridge.js` (all three copy the PI browser assets; only the bridge in that list differs) |
 | `stripHtmlLang` | false | true | false |
 
 The factory keeps the existing shared helpers: `pluginBuildOnLog`, `runtimePackageJsonPlugin`, `resolveDevVoicePacksRoot`.
 
 ### Delivery: three slices, one PR each
 
-1. Both packages, the adapter-interface change, the three plugins reduced to shells, and the voice-pack phase (closes #1104). Because `plugin-runtime` ships as raw TypeScript, like `iracing-actions`, each plugin's `rollup.config.mjs` gets two small edits in this slice (its `typescript({ include })` and its source resolver name the new package). The plugins keep all their current dependencies until slice 3, since each rollup config reads several packages by path.
+1. Both packages, the adapter-interface change, the three plugins reduced to shells, and the voice-pack phase (closes #1104). Because `plugin-runtime` ships as raw TypeScript, like `iracing-actions`, each plugin's `rollup.config.mjs` gets two small edits in this slice (its `typescript({ include })` and its source resolver name the new package). The plugins keep all their current dependencies in this slice; slice 3 drops only those slice 1 left unused (`zod` and `vitest` on Mirabox and Ulanzi, `@elgato/utils` on Stream Deck). Workspace packages a plugin now reaches only through `plugin-runtime` stay declared, so the build graph does not change.
 2. The harness moves onto `wireRaceEngineer`.
-3. The shared rollup factory.
+3. The shared rollup factory in `@iracedeck/plugin-build`, and the orphaned-dependency pruning above.
 
 Each slice is reviewed, manually tested and merged before the next starts.
 
