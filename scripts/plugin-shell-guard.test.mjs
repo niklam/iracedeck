@@ -26,6 +26,10 @@ function shellViolations(source) {
   if (/\b[A-Z][A-Z0-9_]*_(CALLOUT_SETTING_KEYS|CALLOUTS)\b/.test(source)) {
     violations.push("names a callout key map or registry family");
   }
+  // Any import of the registry, whatever it imports: a shell has no use for callout settings.
+  if (/["'`]@iracedeck\/callout-settings(?:\/[^"'`]*)?["'`]/.test(source)) {
+    violations.push("imports @iracedeck/callout-settings");
+  }
   if (/\bregisterAction\s*\(/.test(source)) violations.push("calls registerAction");
   if (startPluginCall(source) === undefined) violations.push("never calls startPlugin");
 
@@ -111,6 +115,21 @@ describe("the shell check itself (positive controls)", () => {
     ["the scenario engine constructed here", `initializeAudioScenarios(bus);\n${ok}`, "names initializeAudioScenarios"],
     ["a callout key map", `const k = FLAG_CALLOUT_SETTING_KEYS;\n${ok}`, "names a callout key map or registry family"],
     ["a registry family", `const f = FLAG_CALLOUTS;\n${ok}`, "names a callout key map or registry family"],
+    [
+      "an import of the callout registry",
+      `import { CALLOUT_SETTING_KEYS } from "@iracedeck/callout-settings";\n${ok}`,
+      "imports @iracedeck/callout-settings",
+    ],
+    [
+      "a type-only registry import",
+      `import type { CalloutSettingKey } from '@iracedeck/callout-settings';\n${ok}`,
+      "imports @iracedeck/callout-settings",
+    ],
+    [
+      "a dynamic registry import",
+      `await import("@iracedeck/callout-settings");\n${ok}`,
+      "imports @iracedeck/callout-settings",
+    ],
     ["a registration", `adapter.registerAction("x", h);\n${ok}`, "calls registerAction"],
     ["no startPlugin", "const adapter = new X();\n", "never calls startPlugin"],
     ["82 lines", `${"//\n".repeat(80)}${ok}`, "82 lines (the cap is 80)"],
