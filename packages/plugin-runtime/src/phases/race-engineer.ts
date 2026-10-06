@@ -11,9 +11,12 @@ import { type SimRuntime, wireRaceEngineer } from "@iracedeck/race-engineer-wiri
 import type { Audio, Core, VoicePacks } from "../types.js";
 
 /**
- * `audio` is not read today (the engine takes `getAudio()`); it is the
- * phase's data dependency, so the engine cannot be built before the audio
- * phase has run.
+ * `audio` is an ordering token, not data: nothing here reads it. The engine
+ * takes `getAudio()`, the singleton the audio phase initialised, so the
+ * parameter only makes a caller hold that phase's handoff before it can call
+ * this one. It documents the order the phase table sets and keeps a caller
+ * from reordering the two without a type error; it does not check that the
+ * singleton is the one the handoff describes.
  */
 export function initRaceEngineer(core: Core, sim: SimRuntime, audio: Audio, voicePacks: VoicePacks): void {
   // The radio frame's two opt-outs (#1064), read live at frame expansion so the
