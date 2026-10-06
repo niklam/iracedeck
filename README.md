@@ -113,6 +113,7 @@ packages/
   deck-adapter-mirabox/    Mirabox VSD Craft adapter (WebSocket protocol to deck-core)
   deck-adapter-ulanzi/     Ulanzi Deck adapter (UlanziStudio WebSocket protocol to deck-core)
   deck-core/               Platform-agnostic base classes, types, and shared utilities
+  callout-settings/        Race Engineer callout opt-in registry (zero dependencies)
   icon-composer/           Standalone SVG icon assembly (zero dependencies)
   icons/                   SVG icon templates (Mustache)
   iracing-native/          C++ N-API addon (shared memory, window messaging, scan codes)
@@ -132,6 +133,7 @@ packages/
 | --------------------------------- | ----------------------------------------------------------------------------------------- |
 | `@iracedeck/iracing-actions`              | All 32 action implementations, platform-agnostic                                          |
 | `@iracedeck/deck-core`            | Base classes, types, keyboard service, icon templates, global settings, settings window   |
+| `@iracedeck/callout-settings`     | Every Race Engineer callout opt-in, declared once: the keys, labels and defaults the settings schema, the callout gates and the settings window derive from |
 | `@iracedeck/deck-adapter-elgato`  | Bridges the Elgato SDK to deck-core's `IDeckPlatformAdapter` interface                    |
 | `@iracedeck/deck-adapter-mirabox` | Bridges the Mirabox VSD Craft WebSocket protocol to deck-core                             |
 | `@iracedeck/deck-adapter-ulanzi`  | Bridges the UlanziStudio WebSocket protocol to deck-core                                  |
