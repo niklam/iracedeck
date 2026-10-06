@@ -29,12 +29,29 @@ import {
   SOURCES,
 } from "./plugin-rollup.mjs";
 
-// node:fs passes through to the real module; the copy-list test stubs copyFileSync and mkdirSync
-// for one call so the step's cwd-relative ui folder is never written in the real working directory.
+// node:fs passes through to the real module, with two exceptions. The copy-list test stubs
+// copyFileSync and mkdirSync for one call so the step's cwd-relative ui folder is never written
+// in the real working directory. And existsSync answers false for the repo root's gitignored
+// feature-flags.local.json — exactly that path — so a developer's local override (say, a copy
+// of the committed .example) never decides the flags these tests assert; the factory reads
+// the file only behind that check.
 vi.mock("node:fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs")>();
+  const { default: nodePath } = await import("node:path");
+  const { fileURLToPath } = await import("node:url");
+  const localFeatures = nodePath.resolve(
+    nodePath.dirname(fileURLToPath(import.meta.url)),
+    "../../../feature-flags.local.json",
+  );
 
-  return { ...actual, copyFileSync: vi.fn(actual.copyFileSync), mkdirSync: vi.fn(actual.mkdirSync) };
+  return {
+    ...actual,
+    copyFileSync: vi.fn(actual.copyFileSync),
+    mkdirSync: vi.fn(actual.mkdirSync),
+    existsSync: vi.fn((file: import("node:fs").PathLike) =>
+      typeof file === "string" && nodePath.resolve(file) === localFeatures ? false : actual.existsSync(file),
+    ),
+  };
 });
 vi.mock("@rollup/plugin-commonjs", () => ({ default: vi.fn((opts?: unknown) => ({ name: "stub:commonjs", opts })) }));
 vi.mock("@rollup/plugin-json", () => ({ default: vi.fn((opts?: unknown) => ({ name: "stub:json", opts })) }));
@@ -237,6 +254,14 @@ describe("createPluginRollupConfig", () => {
       });
       expect(stubNamed(config, "stub:audio").opts).toEqual({ sdPlugin: SD_PLUGIN_DIR });
     });
+
+    it("never sees a developer's feature-flags.local.json, and the stub hides nothing else", () => {
+      // The node:fs mock above hides exactly the path the factory reads, whether or
+      // not the file exists in this checkout; every assertion on flags rests on it.
+      expect(existsSync(SOURCES.localFeaturesPath)).toBe(false);
+      expect(existsSync(SOURCES.rootPackageJson)).toBe(true);
+      expect(existsSync(path.join(packageDir, "platform-features.json"))).toBe(true);
+    });
   });
 
   describe("bridges", () => {
@@ -325,10 +350,7 @@ describe("createPluginRollupConfig", () => {
       expect(emitted(createPluginRollupConfig(options({ platform: "mirabox" })))).toEqual({
         version: rootVersion,
         platform: "mirabox",
-        featureFlags: resolvePlatformFeatures(
-          path.join(packageDir, "platform-features.json"),
-          SOURCES.localFeaturesPath,
-        ),
+        featureFlags: COMMITTED_FEATURES,
       });
     });
 
