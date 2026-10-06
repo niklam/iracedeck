@@ -9,7 +9,6 @@ import type { ILogger, LogLevel } from "@iracedeck/logger";
 
 import type { DialCanvasProfile } from "./dial-canvas.js";
 import type { DeckFeedbackPayload } from "./feedback-types.js";
-import type { WatchdogLogTarget } from "./main-thread-watchdog.js";
 
 /**
  * Handle to a single action instance on the device.
@@ -144,8 +143,17 @@ export interface IDeckActionHandler<T = unknown> {
   onTouchTap?(ev: IDeckTouchTapEvent<T>): Promise<void>;
 }
 
-/** Where a host's own plugin log lives (#1349): one fixed file (Elgato) or a directory of per-day files (Mirabox, Ulanzi `FileSink`). */
-export type LogLocation = WatchdogLogTarget;
+/**
+ * Where a host's own plugin log lives (#1349): one fixed file (Elgato) or a
+ * directory of per-day files (Mirabox, Ulanzi `FileSink`). Defined here, with
+ * the contract that carries it; the main-thread watchdog writes its reports to
+ * the same place (`WatchdogLogTarget` is this type).
+ */
+export type LogLocation =
+  /** One fixed file (Elgato: `<cwd>/logs/<plugin UUID>.0.log`). */
+  | { kind: "file"; path: string }
+  /** A directory whose file is `watchdogDailyLogFileName(now)`, computed per write (Mirabox, Ulanzi `FileSink`). */
+  | { kind: "daily"; dir: string };
 
 /**
  * Platform adapter that bridges platform-specific SDKs to the deck-core abstraction.
