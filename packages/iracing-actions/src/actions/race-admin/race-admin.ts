@@ -9,9 +9,7 @@
 import {
   assembleIcon,
   CommonSettings,
-  ConnectionStateAwareAction,
   getClipboard,
-  getCommands,
   getGlobalBorderSettings,
   getGlobalColors,
   getGlobalGraphicSettings,
@@ -33,6 +31,7 @@ import {
   resolveTitleSettings,
   updateGlobalSettings,
 } from "@iracedeck/deck-core";
+import { getCommands, SimIRacingAction } from "@iracedeck/deck-iracing";
 import advanceSessionIconSvg from "@iracedeck/icons/race-admin/advance-session.svg";
 import blackFlagIconSvg from "@iracedeck/icons/race-admin/black-flag.svg";
 import clearAllIconSvg from "@iracedeck/icons/race-admin/clear-all.svg";
@@ -240,7 +239,7 @@ export function generateRaceAdminSvg(
 
 export const RACE_ADMIN_UUID = "com.iracedeck.sd.core.race-admin" as const;
 
-export class RaceAdmin extends ConnectionStateAwareAction<RaceAdminSettings> {
+export class RaceAdmin extends SimIRacingAction<RaceAdminSettings> {
   private activeContexts = new Map<string, RaceAdminSettings>();
   private viewedCarNumbers = new Map<string, string | null>();
   /** CamCarIdx from the latest tick per context (−1 = unknown), for the focus highlight (#790). */

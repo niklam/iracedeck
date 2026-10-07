@@ -1,6 +1,6 @@
 # @iracedeck/iracing-actions
 
-The platform-agnostic iRaceDeck action classes — one folder per action under `src/actions/`. Actions contain no platform-specific code — they import from `@iracedeck/deck-core` and are registered for all three plugins (`iracing-plugin-stream-deck`, `iracing-plugin-mirabox`, and `iracing-plugin-ulanzi`) through `@iracedeck/plugin-runtime`'s shared action list (`src/actions.ts`, #1349).
+The platform-agnostic iRaceDeck action classes — one folder per action under `src/actions/`. Actions contain no platform-specific code — they import from `@iracedeck/deck-core`, and the iRacing side (`SimIRacingAction`, `getCommands()`, the fuel, unit and hotkey helpers) from `@iracedeck/deck-iracing` (#1351), and are registered for all three plugins (`iracing-plugin-stream-deck`, `iracing-plugin-mirabox`, and `iracing-plugin-ulanzi`) through `@iracedeck/plugin-runtime`'s shared action list (`src/actions.ts`, #1349).
 
 ## Package Structure
 
@@ -56,9 +56,9 @@ icons/                                   # Dynamic SVG templates (telemetry-driv
 - `dial-name-icon.ts` — plain two-line action-name image for dial contexts (#775); push it with `pushDialNameIcon`, which sends it only on the `sd-plus-strip` profile — on a Stream Dock knob `setImage` IS the live screen (#1013). The `shared/dial-*` modules import deck-core and zod only; `dial-sim-agnostic.test.ts` keeps them free of `@iracedeck/iracing-sdk` / `@iracedeck/sim-events-iracing`
 - `profile-entries.ts` — shared `_deviceProfiles` PI-dropdown entry building + echo-loop change guard (#790)
 - `repeat-controller.ts` — long-press hold-to-repeat timing controller
-- `replay-cursor.ts` — single, process-wide owner of iRacing's one replay cursor (#1203): a long-running driver (the fastest-lap walk, a record jump waiting for its landing) claims it, and any one-shot replay command in any action cancels the claim before it sends. It also holds the two values the Replay Markers surfaces share (#1230): the pending landing of the last marker jump, and the last replay sighting behind `readReplayContext`'s debounced `inReplay` — iRacing reports `IsReplayPlaying` false for ~300 ms after every `setPlayPosition`, so leaving a replay counts only after `REPLAY_EXIT_GRACE_MS` (1 s) of false � except after a real exit to live: a `goToEnd` (Replay Control's Jump to Live, Replay Navigation's Jump to End) that was sent outside a saved replay drops the sighting at once through `noteReplayGoToEnd`, so an Add pressed straight after it files at the live edge; in a saved replay the same command only seeks to the end of the file, so the grace stands
+- `replay-cursor.ts` — single, process-wide owner of iRacing's one replay cursor (#1203): a long-running driver (the fastest-lap walk, a record jump waiting for its landing) claims it, and any one-shot replay command in any action cancels the claim before it sends. It also holds the two values the Replay Markers surfaces share (#1230): the pending landing of the last marker jump, and the last replay sighting behind `readReplayContext`'s debounced `inReplay` — iRacing reports `IsReplayPlaying` false for ~300 ms after every `setPlayPosition`, so leaving a replay counts only after `REPLAY_EXIT_GRACE_MS` (1 s) of false — except after a real exit to live: a `goToEnd` (Replay Control's Jump to Live, Replay Navigation's Jump to End) that was sent outside a saved replay drops the sighting at once through `noteReplayGoToEnd`, so an Add pressed straight after it files at the live edge; in a saved replay the same command only seeks to the end of the file, so the grace stands
 - `replay-seek.ts` — `seekReplayFrame`, an absolute jump that waits until `ReplayFrameNum` reads the frame sent (#1275): iRacing covers a long jump in steps of at most `maxFramesToSearchPerUpdate` frames, and a command arriving mid-search cuts it short, so nothing may follow a jump until it lands. `waitForReplay` is the same poll for any other condition (the record jump waits for its pause to show). Shared by the fastest-lap walk and the record jump
-- `replay-session.ts` � `isReplayOnlySession(sessionInfo)`: whether the loaded session is a saved replay (`WeekendInfo.SimMode === "replay"`, #604), where a replay command such as `goToEnd` only seeks instead of returning to the car (#1230). A local read; iracing-actions does not import `@iracedeck/sim-events-iracing`, which has its own copy for the translator.
+- `replay-session.ts` — `isReplayOnlySession(sessionInfo)`: whether the loaded session is a saved replay (`WeekendInfo.SimMode === "replay"`, #604), where a replay command such as `goToEnd` only seeks instead of returning to the car (#1230). A local read; iracing-actions does not import `@iracedeck/sim-events-iracing`, which has its own copy for the translator.
 - `setup-view.ts` — registry, formatters, and render helper for the setup actions' "View …" sub-modes (#541)
 - `spotter-bindings.ts` — canonical AI Spotter control↔global-key map (`SPOTTER_GLOBAL_KEYS`, also consumed by `comms-catalog.ts`): the spotter has no SDK surface, and two actions dispatch its bindings — AI Spotter Controls (every control, keypad) and the Audio Controls dial's Spotter mode (louder/quieter on rotation, silence on press as Skip Spotter Call, #809/#1015)
 
@@ -68,7 +68,7 @@ The top-level `icons/` directory holds one 144x144 runtime template per dynamic-
 
 ## Action Pattern
 
-See `.claude/rules/stream-deck-actions.md` for the full requirements (UUID constant, `ConnectionStateAwareAction`, `CommonSettings`, icon assembly, super calls, settings handlers).
+See `.claude/rules/stream-deck-actions.md` for the full requirements (UUID constant, `ConnectionStateAwareAction`, `CommonSettings`, icon assembly, super calls, settings handlers). An action that reads iRacing directly through `this.sdkController` (telemetry, session info, the template context, its own telemetry subscription) extends `@iracedeck/deck-iracing`'s `SimIRacingAction` instead, which adds the typed controller; one that only calls `getCommands()` does not need it. `deck-core`'s `ConnectionStateAwareAction` has no `sdkController`.
 
 ## Comms Catalog (#612)
 
@@ -95,7 +95,7 @@ pnpm --filter @iracedeck/iracing-actions test
 pnpm test packages/iracing-actions/src/actions/splits-delta-cycle/splits-delta-cycle.test.ts
 ```
 
-Tests mock `@iracedeck/deck-core` (not `@elgato/streamdeck`) — the canonical mock is in `.claude/rules/testing.md`. Binding-aware actions additionally stub `isBindingMissing` on the mock `ConnectionStateAwareAction` (see `splits-delta-cycle/splits-delta-cycle.test.ts`).
+Tests mock `@iracedeck/deck-core` (not `@elgato/streamdeck`) — the canonical mock is in `.claude/rules/testing.md`. The iRacing names (`getCommands`, the fuel and unit helpers) are mocked on `@iracedeck/deck-iracing` with `importOriginal`, as that file shows. Binding-aware actions additionally stub `isBindingMissing` on the mock `ConnectionStateAwareAction` (see `splits-delta-cycle/splits-delta-cycle.test.ts`).
 
 ## Adding a New Action
 

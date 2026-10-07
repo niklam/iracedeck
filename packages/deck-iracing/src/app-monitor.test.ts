@@ -1,4 +1,7 @@
 import type { IDeckPlatformAdapter } from "@iracedeck/deck-core";
+import type { ILogger } from "@iracedeck/logger";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
 import {
   _resetAppMonitor,
   initAppMonitor,
@@ -8,9 +11,7 @@ import {
   isIRacingRunning,
   onIRacingStarted,
   onIRacingTerminated,
-} from "@iracedeck/deck-core";
-import type { ILogger } from "@iracedeck/logger";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+} from "./app-monitor.js";
 
 // Mock the sdk-singleton module used internally by app-monitor
 const mockSetReconnectEnabled = vi.fn();
@@ -32,9 +33,7 @@ function driveSdkTick(isConnected: boolean): void {
 }
 
 // Mock sdk-singleton that app-monitor.ts imports internally.
-// The path is relative from this test file to the deck-core source module.
-// vitest resolves relative paths from the test file location.
-vi.mock("../../../deck-core/src/sdk-singleton.js", () => ({
+vi.mock("./sdk-singleton.js", () => ({
   getController: () => mockGetController(),
 }));
 

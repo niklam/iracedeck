@@ -1,13 +1,14 @@
 /**
  * Tests for BaseAction flag-overlay duration auto-stop (issue #490).
  *
- * The harness mocks getController so the flag-overlay subscription
- * registers a callback the test can drive directly via fake timers.
+ * The harness serves a fake sim connection so the flag-overlay and title
+ * subscriptions register callbacks the test can drive directly via fake timers.
  */
-import { type TemplateContext, templateContextFromMaps } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { BaseAction } from "./base-action.js";
+import { createFakeSimConnection, type FakeSimConnection } from "./fake-sim-connection.js";
+import { _resetSimConnection, initializeSimConnection, type OverlayFlag } from "./sim-connection.js";
 import type {
   IDeckActionContext,
   IDeckDidReceiveSettingsEvent,
@@ -15,39 +16,12 @@ import type {
   IDeckWillDisappearEvent,
 } from "./types.js";
 
-type TelemetryCallback = (telemetry: { SessionFlags?: number } | undefined, isConnected: boolean) => void;
-
-const { mockSubscribe, mockUnsubscribe, getCapturedCallback } = vi.hoisted(() => {
-  let captured: TelemetryCallback | null = null;
-
-  return {
-    mockSubscribe: vi.fn((_id: string, cb: TelemetryCallback) => {
-      captured = cb;
-    }),
-    mockUnsubscribe: vi.fn(() => {
-      captured = null;
-    }),
-    getCapturedCallback: () => captured,
-  };
-});
+// The real sim-connection singleton, initialised with a fake per test, so the
+// pre-initialisation queue and its replay are exercised as they run in the plugin.
+const sim: { fake: FakeSimConnection | null } = { fake: null };
 
 const { mockGetGlobalSettings } = vi.hoisted(() => ({
   mockGetGlobalSettings: vi.fn<() => Record<string, unknown>>(() => ({})),
-}));
-
-const { mockGetCurrentTemplateContext } = vi.hoisted(() => ({
-  mockGetCurrentTemplateContext: vi.fn((): TemplateContext => ({
-    display: () => undefined,
-    raw: () => ({ found: false }),
-  })),
-}));
-
-vi.mock("./sdk-singleton.js", () => ({
-  getController: () => ({
-    subscribe: mockSubscribe,
-    unsubscribe: mockUnsubscribe,
-    getCurrentTemplateContext: mockGetCurrentTemplateContext,
-  }),
 }));
 
 vi.mock("./global-settings.js", async (importOriginal) => {
@@ -60,10 +34,14 @@ vi.mock("./global-settings.js", async (importOriginal) => {
   };
 });
 
-// iRacing flag bitfield values used by resolveAllActiveFlags.
-// Mirrors @iracedeck/iracing-native Flags enum (Yellow = 0x08, Blue = 0x20).
-const FLAG_YELLOW = 0x08;
-const FLAG_BLUE = 0x20;
+const FLAG_YELLOW: OverlayFlag = { label: "YELLOW", color: "#f1c40f", textColor: "#1a1a1a", pulse: false };
+const FLAG_BLUE: OverlayFlag = { label: "BLUE", color: "#3498db", textColor: "#ffffff", pulse: false };
+
+beforeEach(() => {
+  _resetSimConnection();
+  sim.fake = createFakeSimConnection();
+  initializeSimConnection(sim.fake.connection);
+});
 
 class TestAction extends BaseAction {
   // Expose the protected `flagOverlayActive` set for assertions.
@@ -95,14 +73,20 @@ interface TestContext {
   action: TestAction;
   fakeAction: IDeckActionContext;
   setImageSpy: ReturnType<typeof vi.fn>;
-  driveTelemetry: (sessionFlags: number | undefined) => void;
+  driveFlags: (flags: OverlayFlag[]) => void;
 }
 
-function createTestContext(): TestContext {
-  const action = new TestAction();
+/**
+ * Make a key context appear on `action` with the flag overlay switched on, the
+ * way the deck host does: appear, first image, then the settings that opt in.
+ */
+function appearWithFlagOverlay(
+  action: TestAction,
+  contextId: string,
+): { fakeAction: IDeckActionContext; setImageSpy: ReturnType<typeof vi.fn> } {
   const setImageSpy = vi.fn().mockResolvedValue(undefined);
   const fakeAction: IDeckActionContext = {
-    id: "ctx-1",
+    id: contextId,
     isKey: () => true,
     isDial: () => false,
     setImage: setImageSpy,
@@ -130,7 +114,7 @@ function createTestContext(): TestContext {
   // awaited setImage call, so void-await is safe here too.
   void action.registerKey(willAppear, "<svg/>");
 
-  // Opt the context into flag overlay + ensure telemetry subscription registers.
+  // Opt the context into flag overlay + ensure the flag subscription registers.
   const settingsEvent = {
     action: fakeAction,
     payload: { settings: { flagsOverlay: true } },
@@ -138,16 +122,24 @@ function createTestContext(): TestContext {
 
   void action.onDidReceiveSettings(settingsEvent);
 
+  return { fakeAction, setImageSpy };
+}
+
+function createTestContext(): TestContext {
+  const action = new TestAction();
+  const { fakeAction, setImageSpy } = appearWithFlagOverlay(action, "ctx-1");
+
   return {
     action,
     fakeAction,
     setImageSpy,
-    driveTelemetry: (sessionFlags) => {
-      const cb = getCapturedCallback();
+    driveFlags: (flags) => {
+      if (sim.fake!.subscribers.size === 0) {
+        throw new Error("Flag callback was never captured — subscription did not register");
+      }
 
-      if (!cb) throw new Error("Telemetry callback was never captured — subscription did not register");
-
-      cb(sessionFlags === undefined ? undefined : { SessionFlags: sessionFlags }, sessionFlags !== undefined);
+      sim.fake!.state.flags = flags;
+      sim.fake!.tick();
     },
   };
 }
@@ -166,7 +158,7 @@ describe("BaseAction flag flash duration (issue #490)", () => {
   it("auto-stops the flash after flagFlashDurationSeconds", () => {
     const ctx = createTestContext();
 
-    ctx.driveTelemetry(FLAG_YELLOW);
+    ctx.driveFlags([FLAG_YELLOW]);
     expect(ctx.action.getOverlayActive().has("ctx-1")).toBe(true);
 
     vi.advanceTimersByTime(5000);
@@ -178,7 +170,7 @@ describe("BaseAction flag flash duration (issue #490)", () => {
     mockGetGlobalSettings.mockReturnValue({ flagFlashDurationSeconds: 0 });
 
     const ctx = createTestContext();
-    ctx.driveTelemetry(FLAG_YELLOW);
+    ctx.driveFlags([FLAG_YELLOW]);
 
     // Advance well past the default duration; flash must still be active.
     vi.advanceTimersByTime(60_000);
@@ -189,12 +181,12 @@ describe("BaseAction flag flash duration (issue #490)", () => {
   it("restarts the auto-stop timer on a new flag transition", () => {
     const ctx = createTestContext();
 
-    ctx.driveTelemetry(FLAG_YELLOW);
+    ctx.driveFlags([FLAG_YELLOW]);
     vi.advanceTimersByTime(4000);
     expect(ctx.action.getOverlayActive().has("ctx-1")).toBe(true);
 
     // New transition (Yellow + Blue is a different state-key than Yellow alone).
-    ctx.driveTelemetry(FLAG_YELLOW | FLAG_BLUE);
+    ctx.driveFlags([FLAG_YELLOW, FLAG_BLUE]);
 
     // 4000 ms after the FIRST trigger, but only 0 ms into the SECOND window.
     vi.advanceTimersByTime(4000);
@@ -205,18 +197,18 @@ describe("BaseAction flag flash duration (issue #490)", () => {
     expect(ctx.action.getOverlayActive().has("ctx-1")).toBe(false);
   });
 
-  it("does not retrigger when the same flag continues in telemetry after auto-stop", () => {
+  it("does not retrigger when the same flag continues after auto-stop", () => {
     const ctx = createTestContext();
 
-    ctx.driveTelemetry(FLAG_YELLOW);
+    ctx.driveFlags([FLAG_YELLOW]);
     vi.advanceTimersByTime(5000);
     expect(ctx.action.getOverlayActive().has("ctx-1")).toBe(false);
 
     const callsBeforeRetick = ctx.setImageSpy.mock.calls.length;
 
-    // Same telemetry value comes in again — onFlagTelemetryUpdate should
-    // short-circuit because lastFlagStateKey is still "YELLOW".
-    ctx.driveTelemetry(FLAG_YELLOW);
+    // Same flags come in again — onFlagUpdate should short-circuit
+    // because lastFlagStateKey is still "YELLOW".
+    ctx.driveFlags([FLAG_YELLOW]);
 
     expect(ctx.setImageSpy.mock.calls.length).toBe(callsBeforeRetick);
     expect(ctx.action.getOverlayActive().has("ctx-1")).toBe(false);
@@ -225,13 +217,81 @@ describe("BaseAction flag flash duration (issue #490)", () => {
   it("restarts the flash when the same flag returns after a clear", () => {
     const ctx = createTestContext();
 
-    ctx.driveTelemetry(FLAG_YELLOW);
+    ctx.driveFlags([FLAG_YELLOW]);
     vi.advanceTimersByTime(5000); // auto-stop fires
 
-    ctx.driveTelemetry(0); // flags clear → stopFlagFlash() resets cache
+    ctx.driveFlags([]); // flags clear → stopFlagFlash() resets cache
 
-    ctx.driveTelemetry(FLAG_YELLOW); // fresh transition — should retrigger
+    ctx.driveFlags([FLAG_YELLOW]); // fresh transition — should retrigger
     expect(ctx.action.getOverlayActive().has("ctx-1")).toBe(true);
+  });
+});
+
+describe("BaseAction flag overlay sim connection (#1351)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.clearAllMocks();
+    mockGetGlobalSettings.mockReturnValue({ flagFlashDurationSeconds: 5 });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("flashes every context that appeared before the sim connection existed, once it is initialised", () => {
+    _resetSimConnection();
+    const action = new TestAction();
+    const contexts = ["ctx-1", "ctx-2", "ctx-3"].map((id) => ({ id, ...appearWithFlagOverlay(action, id) }));
+
+    expect(sim.fake!.subscribers.size).toBe(0);
+
+    initializeSimConnection(sim.fake!.connection);
+    expect(sim.fake!.subscribers.size).toBe(1);
+
+    sim.fake!.state.flags = [FLAG_YELLOW];
+    sim.fake!.tick();
+
+    for (const { id, setImageSpy } of contexts) {
+      expect(action.getOverlayActive().has(id)).toBe(true);
+      // The last image pushed is the flag overlay, not the key's own "<svg/>".
+      expect(setImageSpy.mock.lastCall?.[0]).not.toBe("<svg/>");
+    }
+  });
+
+  it("skips a tick whose activeFlags throws, keeping the previous flag state", () => {
+    const ctx = createTestContext();
+
+    ctx.driveFlags([FLAG_YELLOW]);
+    vi.advanceTimersByTime(5000); // the duration setting ends the flash
+    expect(ctx.action.getOverlayActive().has("ctx-1")).toBe(false);
+
+    const callsBeforeThrow = ctx.setImageSpy.mock.calls.length;
+    const activeFlags = vi.spyOn(sim.fake!.connection, "activeFlags").mockImplementationOnce(() => {
+      throw new Error("boom");
+    });
+
+    expect(() => sim.fake!.tick()).not.toThrow();
+    expect(activeFlags).toHaveBeenCalled();
+    // The throwing tick is skipped: no image is pushed.
+    expect(ctx.setImageSpy.mock.calls.length).toBe(callsBeforeThrow);
+
+    // The next good tick with the same flag does not restart the ended flash.
+    ctx.driveFlags([FLAG_YELLOW]);
+    expect(ctx.action.getOverlayActive().has("ctx-1")).toBe(false);
+    expect(ctx.setImageSpy.mock.calls.length).toBe(callsBeforeThrow);
+  });
+
+  it("clears the overlay when a tick reports the sim disconnected", () => {
+    const ctx = createTestContext();
+
+    ctx.driveFlags([FLAG_YELLOW]);
+    const activeFlags = vi.spyOn(sim.fake!.connection, "activeFlags");
+
+    sim.fake!.state.connected = false;
+    sim.fake!.tick();
+
+    expect(activeFlags).not.toHaveBeenCalled();
+    expect(ctx.action.getOverlayActive().has("ctx-1")).toBe(false);
   });
 });
 
@@ -347,11 +407,18 @@ describe("BaseAction title template live updates (issue #899)", () => {
   const CONTEXT_ID = "ctx-title";
   const TITLE_TEMPLATE_PREFIX = "__title_template__";
 
+  // What the fake connection resolves `{{self.car_number}}` to; undefined
+  // renders it empty, as a disconnected sim does. Every call to
+  // `resolveTitle` is one title resolution.
+  let carNumber: string | undefined;
+  const resolveTitle = vi.fn((text: string) => text.replaceAll("{{self.car_number}}", carNumber ?? ""));
+
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
     mockGetGlobalSettings.mockReturnValue({});
-    mockGetCurrentTemplateContext.mockReturnValue(templateContextFromMaps({}));
+    carNumber = undefined;
+    sim.fake!.state.resolve = resolveTitle;
   });
 
   afterEach(() => {
@@ -392,37 +459,43 @@ describe("BaseAction title template live updates (issue #899)", () => {
       fakeAction,
       setImageSpy,
       driveTick: () => {
-        const call = mockSubscribe.mock.calls.find(([id]) => String(id).startsWith(TITLE_TEMPLATE_PREFIX));
+        const onTick = titleSubscriber();
 
-        if (!call) throw new Error("Title template callback was never captured — subscription did not register");
+        if (!onTick) throw new Error("Title template callback was never captured — subscription did not register");
 
-        (call[1] as () => void)();
+        onTick(true);
       },
     };
   }
 
-  function setDisplayValue(value: string | undefined): void {
-    mockGetCurrentTemplateContext.mockReturnValue(
-      templateContextFromMaps(value === undefined ? {} : { "self.car_number": value }),
-    );
+  function titleSubscriber(): ((isConnected: boolean) => void) | undefined {
+    for (const [id, onTick] of sim.fake!.subscribers) {
+      if (id.startsWith(TITLE_TEMPLATE_PREFIX)) return onTick;
+    }
+
+    return undefined;
   }
 
-  it("subscribes to telemetry when a context's user title contains a template", () => {
+  function setDisplayValue(value: string | undefined): void {
+    carNumber = value;
+  }
+
+  it("subscribes to the sim connection when a context's user title contains a template", () => {
     createTitleContext("CAR {{self.car_number}}");
 
-    expect(mockSubscribe.mock.calls.some(([id]) => String(id).startsWith(TITLE_TEMPLATE_PREFIX))).toBe(true);
+    expect(titleSubscriber()).toBeDefined();
   });
 
   it("does not subscribe for titles without templates", () => {
     createTitleContext("PLAIN TITLE");
 
-    expect(mockSubscribe.mock.calls.some(([id]) => String(id).startsWith(TITLE_TEMPLATE_PREFIX))).toBe(false);
+    expect(titleSubscriber()).toBeUndefined();
   });
 
   it("does not subscribe when no title override is set", () => {
     createTitleContext(undefined);
 
-    expect(mockSubscribe.mock.calls.some(([id]) => String(id).startsWith(TITLE_TEMPLATE_PREFIX))).toBe(false);
+    expect(titleSubscriber()).toBeUndefined();
   });
 
   it("re-renders through the regenerate callback when the resolved title changes", () => {
@@ -430,9 +503,7 @@ describe("BaseAction title template live updates (issue #899)", () => {
 
     setDisplayValue("34");
     ctx.action.registerRegenerateCallback(CONTEXT_ID, () => {
-      const context = mockGetCurrentTemplateContext();
-
-      return `<svg>${context.display("self.car_number") ?? ""}</svg>`;
+      return `<svg>${carNumber ?? ""}</svg>`;
     });
     expect(ctx.setImageSpy).toHaveBeenLastCalledWith("<svg>34</svg>");
 
@@ -444,14 +515,40 @@ describe("BaseAction title template live updates (issue #899)", () => {
     expect(ctx.setImageSpy).toHaveBeenLastCalledWith("<svg>35</svg>");
   });
 
+  it("re-resolves a templated title on tick", () => {
+    const ctx = createTitleContext("{{x}}");
+    const regenerate = vi.fn(() => "<svg>regenerated</svg>");
+
+    ctx.action.registerRegenerateCallback(CONTEXT_ID, regenerate);
+    vi.advanceTimersByTime(200);
+    regenerate.mockClear();
+
+    sim.fake!.state.resolve = () => "A";
+    sim.fake!.tick();
+    expect(regenerate).toHaveBeenCalledOnce();
+
+    // Past the 10 Hz window, a tick that resolves differently regenerates again.
+    vi.advanceTimersByTime(200);
+    sim.fake!.state.resolve = () => "B";
+    sim.fake!.tick();
+    expect(regenerate).toHaveBeenCalledTimes(2);
+  });
+
+  it("subscribes a title tracked before the sim connection existed once it is initialised", () => {
+    _resetSimConnection();
+    createTitleContext("{{self.car_number}}");
+    expect(titleSubscriber()).toBeUndefined();
+
+    initializeSimConnection(sim.fake!.connection);
+    expect(titleSubscriber()).toBeDefined();
+  });
+
   it("does not re-render when the resolved title is unchanged", () => {
     const ctx = createTitleContext("{{self.car_number}}");
 
     setDisplayValue("34");
     ctx.action.registerRegenerateCallback(CONTEXT_ID, () => {
-      const context = mockGetCurrentTemplateContext();
-
-      return `<svg>${context.display("self.car_number") ?? ""}</svg>`;
+      return `<svg>${carNumber ?? ""}</svg>`;
     });
 
     vi.advanceTimersByTime(200);
@@ -469,9 +566,7 @@ describe("BaseAction title template live updates (issue #899)", () => {
 
     setDisplayValue("34");
     ctx.action.registerRegenerateCallback(CONTEXT_ID, () => {
-      const context = mockGetCurrentTemplateContext();
-
-      return `<svg>${context.display("self.car_number") ?? ""}</svg>`;
+      return `<svg>${carNumber ?? ""}</svg>`;
     });
 
     vi.advanceTimersByTime(200);
@@ -491,9 +586,9 @@ describe("BaseAction title template live updates (issue #899)", () => {
   });
 
   describe("resolution inside the throttle (#1339)", () => {
-    // The regenerate callback reads `shown` rather than the template context,
-    // so every getCurrentTemplateContext() call counted here is a title
-    // resolution made by the tick path.
+    // The regenerate callback reads `shown` rather than resolving a title,
+    // so every resolveTitle call counted here is a title resolution made by
+    // the tick path.
     let shown = "34";
     const regenerate = vi.fn(() => `<svg>${shown}</svg>`);
 
@@ -511,7 +606,7 @@ describe("BaseAction title template live updates (issue #899)", () => {
       vi.advanceTimersByTime(200);
       ctx.driveTick();
       vi.advanceTimersByTime(200);
-      mockGetCurrentTemplateContext.mockClear();
+      resolveTitle.mockClear();
       regenerate.mockClear();
       ctx.setImageSpy.mockClear();
 
@@ -527,11 +622,11 @@ describe("BaseAction title template live updates (issue #899)", () => {
       }
 
       // Only the leading tick resolved; the other nine are one pending flush.
-      expect(mockGetCurrentTemplateContext).toHaveBeenCalledTimes(1);
+      expect(resolveTitle).toHaveBeenCalledTimes(1);
 
       vi.advanceTimersByTime(100);
 
-      expect(mockGetCurrentTemplateContext).toHaveBeenCalledTimes(2);
+      expect(resolveTitle).toHaveBeenCalledTimes(2);
     });
 
     it("an unchanged title neither regenerates nor pushes", () => {
@@ -570,7 +665,7 @@ describe("BaseAction title template live updates (issue #899)", () => {
       ctx.driveTick();
       setShown("35");
       ctx.driveTick();
-      mockGetCurrentTemplateContext.mockClear();
+      resolveTitle.mockClear();
 
       const settingsEvent = {
         action: ctx.fakeAction,
@@ -581,13 +676,14 @@ describe("BaseAction title template live updates (issue #899)", () => {
       ctx.setImageSpy.mockClear();
       vi.advanceTimersByTime(200);
 
-      expect(mockGetCurrentTemplateContext).not.toHaveBeenCalled();
+      expect(resolveTitle).not.toHaveBeenCalled();
       expect(ctx.setImageSpy).not.toHaveBeenCalled();
     });
   });
 
   it("stops tracking when settings change to a non-templated title", () => {
     const ctx = createTitleContext("{{self.car_number}}");
+    expect(titleSubscriber()).toBeDefined();
 
     const settingsEvent = {
       action: ctx.fakeAction,
@@ -596,11 +692,12 @@ describe("BaseAction title template live updates (issue #899)", () => {
 
     void ctx.action.onDidReceiveSettings(settingsEvent);
 
-    expect(mockUnsubscribe).toHaveBeenCalled();
+    expect(titleSubscriber()).toBeUndefined();
   });
 
   it("unsubscribes when the last templated context disappears", () => {
     const ctx = createTitleContext("{{self.car_number}}");
+    expect(titleSubscriber()).toBeDefined();
 
     const disappearEvent = {
       action: ctx.fakeAction,
@@ -609,6 +706,6 @@ describe("BaseAction title template live updates (issue #899)", () => {
 
     void ctx.action.onWillDisappear(disappearEvent);
 
-    expect(mockUnsubscribe).toHaveBeenCalled();
+    expect(titleSubscriber()).toBeUndefined();
   });
 });

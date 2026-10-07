@@ -19,19 +19,21 @@ import {
   type DeckTriggerDescription,
   type DialCanvasProfile,
   type DirectionalPair,
-  fuelFromDisplayUnits,
-  fuelToDisplayUnits,
   getDualPressThresholdMs,
-  getFuelUnitSuffix,
   type HoldPreview,
   type IDeckActionContext,
+  resolvePairedAction,
+  svgToDataUri,
+} from "@iracedeck/deck-core";
+import {
+  fuelFromDisplayUnits,
+  fuelToDisplayUnits,
+  getFuelUnitSuffix,
   isAutofuelActive,
   isAutofuelEnabled,
   isFuelFillOn,
   isPitstopActive,
-  resolvePairedAction,
-  svgToDataUri,
-} from "@iracedeck/deck-core";
+} from "@iracedeck/deck-iracing";
 import type { SessionInfo, TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 

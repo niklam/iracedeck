@@ -45,13 +45,6 @@ export {
   type GenerateIconTextOptions,
   // Logger
   LogLevel,
-  // SDK singleton
-  initializeSDK,
-  getSDK,
-  getController,
-  getCommands,
-  isSDKInitialized,
-  _resetSDK,
   // Global settings
   GlobalSettingsSchema,
   type GlobalSettings,
@@ -63,30 +56,12 @@ export {
   onGlobalSettingsChange,
   isGlobalSettingsInitialized,
   _resetGlobalSettings,
-  // Unit conversion
-  LITERS_TO_GALLONS,
-  GALLONS_TO_LITERS,
-  FUEL_UNIT_METRIC,
-  FUEL_UNIT_IMPERIAL,
-  litersToGallons,
-  gallonsToLiters,
-  getFuelUnitSuffix,
-  isMetricUnits,
-  fuelToDisplayUnits,
-  fuelFromDisplayUnits,
-  formatFuelAmount,
-  formatFuelAmountWithPrefix,
-  formatFuelSettingWithUnit,
   // Keyboard types
   KEYBOARD_KEYS,
   type KeyboardKey,
   type KeyboardModifier,
   type KeyCombination,
   type IRacingHotkeyPreset,
-  // iRacing hotkeys
-  IRACING_HOTKEY_PRESETS,
-  getHotkeyPreset,
-  getHotkeysByCategory,
   // Keyboard service
   initializeKeyboard,
   getKeyboard,
@@ -96,11 +71,6 @@ export {
   type ScanKeySender,
   type ScanKeyPresser,
   type ScanKeyReleaser,
-  // App monitor
-  initAppMonitor,
-  isIRacingRunning,
-  isAppMonitorInitialized,
-  _resetAppMonitor,
   // Window focus service
   initWindowFocus,
   focusIRacingIfEnabled,

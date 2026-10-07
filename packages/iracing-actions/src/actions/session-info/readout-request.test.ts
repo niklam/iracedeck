@@ -3,10 +3,12 @@ import { describe, expect, it, vi } from "vitest";
 
 import { type ReadoutItem, readoutKindFor, resolveReadoutFigure } from "./readout-request.js";
 
-// Real conversions: only the two helpers this module uses, from deck-core's source.
-vi.mock("@iracedeck/deck-core", async () => {
-  const units = await vi.importActual<typeof import("../../../../deck-core/src/unit-conversion.js")>(
-    "../../../../deck-core/src/unit-conversion.js",
+// Real conversions: only the two helpers this module uses, from deck-iracing's
+// source. A plain factory, because the real barrel's SimIRacingAction extends a
+// deck-core class this suite does not load.
+vi.mock("@iracedeck/deck-iracing", async () => {
+  const units = await vi.importActual<typeof import("../../../../deck-iracing/src/unit-conversion.js")>(
+    "../../../../deck-iracing/src/unit-conversion.js",
   );
 
   return { celsiusToFahrenheit: units.celsiusToFahrenheit, fuelToDisplayUnits: units.fuelToDisplayUnits };

@@ -2,13 +2,13 @@
  * Maps a native elevation-status probe (issue #610) to a PI warning record.
  *
  * The decision is pure and structurally typed (only `mismatch` is read) so it
- * lives in deck-core without a dependency on `@iracedeck/iracing-native`, and
+ * lives in deck-iracing without a dependency on `@iracedeck/iracing-native`, and
  * both plugins share the exact same wording.
  *
  * The message intentionally carries NO leading emoji — the `ird-warnings`
  * banner renders a level icon (⚠️) itself, so adding one here would double it.
  */
-import type { PiWarning } from "./pi-warnings.js";
+import type { PiWarning } from "@iracedeck/deck-core";
 
 export const ELEVATION_WARNING_ID = "elevation-mismatch";
 

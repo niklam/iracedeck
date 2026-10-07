@@ -51,7 +51,8 @@ Create scoped loggers in the bootstrap phases (`@iracedeck/plugin-runtime`, #134
 
 ```typescript
 // plugin-runtime phase — `adapter` is core.adapter
-import { initializeSDK, initializeKeyboard } from "@iracedeck/deck-core";
+import { initializeKeyboard } from "@iracedeck/deck-core";
+import { initializeSDK } from "@iracedeck/deck-iracing";
 
 // Good: Create scoped logger via adapter and pass to module
 initializeSDK(adapter.createLogger("iRacingSDK"));

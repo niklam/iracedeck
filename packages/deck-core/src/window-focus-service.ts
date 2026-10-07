@@ -28,12 +28,12 @@
  * `sdk-singleton` imports this module for the chat `beforeKeystrokes` hook, and
  * `app-monitor` imports `sdk-singleton` for the controller — so the plugins
  * hand in `isIRacingActive` the way they hand it to `runVersionCheck` as
- * `isSimRunning`.
+ * `isSimRunning`. The elevation check is injected the same way (#1351): the
+ * probe lives in `@iracedeck/deck-iracing`, which depends on deck-core.
  */
 import type { ILogger } from "@iracedeck/logger";
 import { silentLogger } from "@iracedeck/logger";
 
-import { hasElevationMismatch } from "./elevation-check.js";
 import type { FocusIRacingMode } from "./focus-iracing-mode.js";
 import { getGlobalSettings, isSettingsStoreReady } from "./global-settings.js";
 
@@ -76,6 +76,12 @@ export type WindowFocuser = () => FocusResult;
 export type SimRunningCheck = () => boolean;
 
 /**
+ * Whether the plugin and the sim run at different integrity levels (#976);
+ * plugins pass `deck-iracing`'s `hasElevationMismatch`.
+ */
+export type ElevationMismatchCheck = () => boolean;
+
+/**
  * How long after a `FocusTimedOut` the two gated entry points skip the native
  * ask (#977). A timed-out ask blocks the JS thread for the focuser's full
  * ~1000 ms wait, and under `always` a keybind press asks twice — the adapter
@@ -90,6 +96,7 @@ export const FOCUS_TIMEOUT_COOLDOWN_MS = 2000;
 
 let focuser: WindowFocuser | null = null;
 let isSimRunning: SimRunningCheck = () => false;
+let elevationMismatch: ElevationMismatchCheck = () => false;
 let logger: ILogger = silentLogger;
 /**
  * When the last `FocusTimedOut` happened (`Date.now()`), or `null` outside a
@@ -116,8 +123,15 @@ let elevationSkipLogged = false;
  * @param simRunning - Whether iRacing is running; plugins pass `isIRacingActive`.
  *   Required, and set together with the focuser, so there is no moment in which
  *   a focus result can be logged without it.
+ * @param mismatch - Whether the plugin and the sim run at different integrity
+ *   levels; plugins pass `hasElevationMismatch` from `@iracedeck/deck-iracing`.
  */
-export function initWindowFocus(log: ILogger, windowFocuser: WindowFocuser, simRunning: SimRunningCheck): void {
+export function initWindowFocus(
+  log: ILogger,
+  windowFocuser: WindowFocuser,
+  simRunning: SimRunningCheck,
+  mismatch: ElevationMismatchCheck,
+): void {
   if (focuser) {
     throw new Error("Window focus service already initialized. initWindowFocus() should only be called once.");
   }
@@ -125,6 +139,7 @@ export function initWindowFocus(log: ILogger, windowFocuser: WindowFocuser, simR
   logger = log;
   focuser = windowFocuser;
   isSimRunning = simRunning;
+  elevationMismatch = mismatch;
 }
 
 /**
@@ -135,6 +150,15 @@ export function initWindowFocus(log: ILogger, windowFocuser: WindowFocuser, simR
 function simRunningNow(): boolean {
   try {
     return isSimRunning();
+  } catch {
+    return false;
+  }
+}
+
+/** The injected {@link ElevationMismatchCheck}, read as `false` if it throws, like {@link simRunningNow}. */
+function elevationMismatchNow(): boolean {
+  try {
+    return elevationMismatch();
   } catch {
     return false;
   }
@@ -214,7 +238,7 @@ export function focusIRacingBeforeInput(): void {
  * after the gate reopens to debug.
  */
 function blockedByElevationMismatch(): boolean {
-  if (!hasElevationMismatch()) {
+  if (!elevationMismatchNow()) {
     elevationSkipLogged = false;
 
     return false;
@@ -357,6 +381,7 @@ function runFocuser(): FocusResult | null {
 export function _resetWindowFocus(): void {
   focuser = null;
   isSimRunning = () => false;
+  elevationMismatch = () => false;
   logger = silentLogger;
   lastTimedOutAt = null;
   elevationSkipLogged = false;

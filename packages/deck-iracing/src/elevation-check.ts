@@ -16,13 +16,13 @@
  * logs at warn, a pass at info. The raw status detail stays at debug.
  *
  * `getStatus` is injected (structurally typed on `mismatch`, like
- * `evaluateElevationWarning`) so deck-core needs no dependency on
+ * `evaluateElevationWarning`) so deck-iracing needs no dependency on
  * `@iracedeck/iracing-native`.
  */
+import { clearWarning, setWarning } from "@iracedeck/deck-core";
 import type { ILogger } from "@iracedeck/logger";
 
 import { ELEVATION_WARNING_ID, evaluateElevationWarning } from "./elevation-warning.js";
-import { clearWarning, setWarning } from "./pi-warnings.js";
 
 /**
  * The last probe's verdict on the current connection, or `null` when none has

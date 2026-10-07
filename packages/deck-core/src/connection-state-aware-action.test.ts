@@ -1,11 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ConnectionStateAwareAction } from "./connection-state-aware-action.js";
+import { createFakeSimConnection, type FakeSimConnection } from "./fake-sim-connection.js";
+import { _resetSimConnection, initializeSimConnection } from "./sim-connection.js";
+
+// The real sim-connection singleton, initialised with a fake per test, so the
+// pre-initialisation queue and its replay are exercised as they run in the plugin.
+const sim: { fake: FakeSimConnection | null } = { fake: null };
 
 const {
-  mockGetConnectionStatus,
-  mockSubscribe,
-  mockUnsubscribe,
   mockTap,
   mockHold,
   mockRelease,
@@ -15,9 +18,6 @@ const {
   mockOnGlobalSettingsChange,
   mockOnSimHubReachabilityChange,
 } = vi.hoisted(() => ({
-  mockGetConnectionStatus: vi.fn(() => true),
-  mockSubscribe: vi.fn(),
-  mockUnsubscribe: vi.fn(),
   mockTap: vi.fn().mockResolvedValue(true),
   mockHold: vi.fn().mockResolvedValue(undefined),
   mockRelease: vi.fn().mockResolvedValue(undefined),
@@ -26,14 +26,6 @@ const {
   mockIsKeyboardBound: vi.fn((_key: string) => true),
   mockOnGlobalSettingsChange: vi.fn(() => vi.fn()),
   mockOnSimHubReachabilityChange: vi.fn(() => vi.fn()),
-}));
-
-vi.mock("./sdk-singleton.js", () => ({
-  getController: () => ({
-    getConnectionStatus: mockGetConnectionStatus,
-    subscribe: mockSubscribe,
-    unsubscribe: mockUnsubscribe,
-  }),
 }));
 
 vi.mock("./binding-dispatcher.js", () => ({
@@ -134,22 +126,25 @@ describe("ConnectionStateAwareAction", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    _resetSimConnection();
+    sim.fake = createFakeSimConnection();
+    initializeSimConnection(sim.fake.connection);
     action = new TestAction();
   });
 
   // --- Connection state (no active binding) ---
 
   describe("updateConnectionState (no active binding)", () => {
-    it("should set active when iRacing connected", () => {
-      mockGetConnectionStatus.mockReturnValue(true);
+    it("should set active when the sim is connected", () => {
+      sim.fake!.state.connected = true;
 
       action.callUpdateConnectionState();
 
       expect(getSetActive(action)).toHaveBeenCalledWith(true);
     });
 
-    it("should set inactive when iRacing disconnected", () => {
-      mockGetConnectionStatus.mockReturnValue(false);
+    it("should set inactive when the sim is disconnected", () => {
+      sim.fake!.state.connected = false;
 
       action.callUpdateConnectionState();
 
@@ -157,7 +152,7 @@ describe("ConnectionStateAwareAction", () => {
     });
 
     it("should not call setActive when status unchanged", () => {
-      mockGetConnectionStatus.mockReturnValue(true);
+      sim.fake!.state.connected = true;
 
       action.callUpdateConnectionState();
       vi.clearAllMocks();
@@ -168,7 +163,7 @@ describe("ConnectionStateAwareAction", () => {
     });
 
     it("should log state transitions", () => {
-      mockGetConnectionStatus.mockReturnValue(true);
+      sim.fake!.state.connected = true;
 
       action.callUpdateConnectionState();
 
@@ -229,19 +224,19 @@ describe("ConnectionStateAwareAction", () => {
       expect(getSetActive(action)).toHaveBeenCalledWith(false);
     });
 
-    it("should fall back to iRacing status when active binding cleared", () => {
-      // Start with SimHub binding ready, iRacing disconnected
+    it("should fall back to the sim connection status when active binding cleared", () => {
+      // Start with SimHub binding ready, sim disconnected
       mockIsReady.mockReturnValue(true);
-      mockGetConnectionStatus.mockReturnValue(false);
+      sim.fake!.state.connected = false;
       action.callSetActiveBinding("myKey");
       expect(getSetActive(action)).toHaveBeenCalledWith(true);
 
-      // Clear active binding — falls back to iRacing status (disconnected)
+      // Clear active binding — falls back to the sim status (disconnected)
       action.callSetActiveBinding(null);
       expect(getSetActive(action)).toHaveBeenCalledWith(false);
 
-      // iRacing connects — now ready
-      mockGetConnectionStatus.mockReturnValue(true);
+      // Sim connects — now ready
+      sim.fake!.state.connected = true;
       action.callUpdateConnectionState();
       expect(getSetActive(action)).toHaveBeenCalledWith(true);
     });
@@ -253,7 +248,7 @@ describe("ConnectionStateAwareAction", () => {
       vi.clearAllMocks();
 
       mockIsReady.mockReturnValue(true);
-      mockGetConnectionStatus.mockReturnValue(false);
+      sim.fake!.state.connected = false;
 
       action.callUpdateConnectionState();
 
@@ -306,11 +301,11 @@ describe("ConnectionStateAwareAction", () => {
   });
 
   describe("getConnectionStatus", () => {
-    it("should return current iRacing connection status", () => {
-      mockGetConnectionStatus.mockReturnValue(true);
+    it("should return the current sim connection status", () => {
+      sim.fake!.state.connected = true;
       expect(action.callGetConnectionStatus()).toBe(true);
 
-      mockGetConnectionStatus.mockReturnValue(false);
+      sim.fake!.state.connected = false;
       expect(action.callGetConnectionStatus()).toBe(false);
     });
   });
@@ -387,7 +382,7 @@ describe("ConnectionStateAwareAction", () => {
   // --- Lifecycle: onWillAppear / onWillDisappear ---
 
   describe("onWillAppear", () => {
-    it("should subscribe to SDK controller for readiness tracking", async () => {
+    it("should subscribe to the sim connection for readiness tracking", async () => {
       const ev = {
         action: { id: "ctx-1", setTitle: vi.fn(), setImage: vi.fn(), isKey: vi.fn().mockReturnValue(true) },
         payload: { settings: {} },
@@ -395,23 +390,62 @@ describe("ConnectionStateAwareAction", () => {
 
       await action.onWillAppear(ev as never);
 
-      expect(mockSubscribe).toHaveBeenCalledWith("_readiness:ctx-1", expect.any(Function));
+      expect(sim.fake!.subscribers.has("_readiness:ctx-1")).toBe(true);
+    });
+
+    it("re-evaluates readiness on every sim tick", async () => {
+      const ev = {
+        action: { id: "ctx-1", setTitle: vi.fn(), setImage: vi.fn(), isKey: vi.fn().mockReturnValue(true) },
+        payload: { settings: {} },
+      };
+
+      await action.onWillAppear(ev as never);
+
+      sim.fake!.state.connected = true;
+      sim.fake!.tick();
+      expect(getSetActive(action)).toHaveBeenLastCalledWith(true);
+
+      sim.fake!.state.connected = false;
+      sim.fake!.tick();
+      expect(getSetActive(action)).toHaveBeenLastCalledWith(false);
+    });
+
+    it("re-evaluates readiness on a tick after init when the key appeared before the sim connection existed", async () => {
+      const ev = {
+        action: { id: "ctx-1", setTitle: vi.fn(), setImage: vi.fn(), isKey: vi.fn().mockReturnValue(true) },
+        payload: { settings: {} },
+      };
+      _resetSimConnection();
+
+      await action.onWillAppear(ev as never);
+      expect(sim.fake!.subscribers.has("_readiness:ctx-1")).toBe(false);
+
+      initializeSimConnection(sim.fake!.connection);
+      expect(sim.fake!.subscribers.has("_readiness:ctx-1")).toBe(true);
+
+      sim.fake!.state.connected = true;
+      sim.fake!.tick();
+      expect(getSetActive(action)).toHaveBeenLastCalledWith(true);
+
+      sim.fake!.state.connected = false;
+      sim.fake!.tick();
+      expect(getSetActive(action)).toHaveBeenLastCalledWith(false);
     });
   });
 
   describe("onWillDisappear", () => {
-    it("should unsubscribe from SDK controller readiness tracking", async () => {
+    it("should unsubscribe from sim connection readiness tracking", async () => {
       const ev = {
         action: { id: "ctx-1", setTitle: vi.fn(), setImage: vi.fn(), isKey: vi.fn().mockReturnValue(true) },
         payload: { settings: {} },
       };
 
       await action.onWillAppear(ev as never);
-      vi.clearAllMocks();
+      expect(sim.fake!.subscribers.has("_readiness:ctx-1")).toBe(true);
 
       await action.onWillDisappear(ev as never);
 
-      expect(mockUnsubscribe).toHaveBeenCalledWith("_readiness:ctx-1");
+      expect(sim.fake!.subscribers.has("_readiness:ctx-1")).toBe(false);
     });
 
     it("should clean up global settings listener to prevent memory leaks", async () => {
@@ -439,11 +473,11 @@ describe("ConnectionStateAwareAction", () => {
 
       await action.onWillAppear(ev as never);
       await action.onWillDisappear(ev as never);
-      vi.clearAllMocks();
+      expect(sim.fake!.subscribers.has("_readiness:ctx-1")).toBe(false);
 
       await action.onWillAppear(ev as never);
 
-      expect(mockSubscribe).toHaveBeenCalledWith("_readiness:ctx-1", expect.any(Function));
+      expect(sim.fake!.subscribers.has("_readiness:ctx-1")).toBe(true);
     });
   });
 });

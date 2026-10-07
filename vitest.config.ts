@@ -56,6 +56,7 @@ export default defineConfig({
       // entry below would otherwise turn this into `src/index.ts/key-binding-defaults`.
       "@iracedeck/deck-core/key-binding-defaults": packageSrc("deck-core", "src/key-binding-defaults.ts"),
       "@iracedeck/deck-core": packageSrc("deck-core"),
+      "@iracedeck/deck-iracing": packageSrc("deck-iracing"),
       "@iracedeck/event-bus": packageSrc("event-bus"),
       "@iracedeck/icon-composer": packageSrc("icon-composer"),
       "@iracedeck/iracing-sdk": packageSrc("iracing-sdk"),

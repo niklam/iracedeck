@@ -5,6 +5,7 @@ import { cleanupTempBinDirs, createFakeExtension, createHost } from "./test-supp
 import { callLog, describeFirstDifference, implement, resetRecorder } from "./test-support/recorder.js";
 
 vi.mock("@iracedeck/deck-core", async (io) => (await import("./test-support/module-mocks.js")).recordedModule(io));
+vi.mock("@iracedeck/deck-iracing", async (io) => (await import("./test-support/module-mocks.js")).recordedModule(io));
 vi.mock("@iracedeck/event-bus", async (io) => (await import("./test-support/module-mocks.js")).recordedModule(io));
 vi.mock("@iracedeck/sim-events-iracing", async (io) =>
   (await import("./test-support/module-mocks.js")).recordedModule(io),
@@ -170,6 +171,11 @@ describe("startPlugin (#1349)", () => {
     const actual = observed();
     expect(actual, describeFirstDifference(actual, expected)).toEqual(expected);
     expect(host.adapter.registered).toEqual(["shared.a", "shared.b", "sd.switch-profile"]);
+    // initializeSDK also initialises the sim connection the base classes read
+    // (#1351), so it must run before the first action can register.
+    const sdk = callLog.indexOf("initializeSDK");
+    expect(sdk).toBeGreaterThanOrEqual(0);
+    expect(sdk).toBeLessThan(callLog.indexOf("adapter.registerAction"));
   });
 
   it("runs the same order without an extension (Mirabox, Ulanzi), registering only the shared list", () => {

@@ -7,7 +7,6 @@
 import type { AudioAssetsManifest } from "@iracedeck/audio-scenarios";
 import type {
   CalloutScript,
-  getController,
   IDeckActionHandler,
   IDeckPlatformAdapter,
   LogLocation,
@@ -20,6 +19,7 @@ import type {
   VoicePackLaunchStep,
   VoicePackService,
 } from "@iracedeck/deck-core";
+import type { getController } from "@iracedeck/deck-iracing";
 import type { IEventBus } from "@iracedeck/event-bus";
 import type { IRacingNative } from "@iracedeck/iracing-native";
 import type { ILogger } from "@iracedeck/logger";

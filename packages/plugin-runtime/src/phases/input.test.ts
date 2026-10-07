@@ -6,6 +6,7 @@ import { initCore } from "./core.js";
 import { initInput } from "./input.js";
 
 vi.mock("@iracedeck/deck-core", async (io) => (await import("../test-support/module-mocks.js")).recordedModule(io));
+vi.mock("@iracedeck/deck-iracing", async (io) => (await import("../test-support/module-mocks.js")).recordedModule(io));
 vi.mock("@iracedeck/event-bus", async (io) => (await import("../test-support/module-mocks.js")).recordedModule(io));
 vi.mock("@iracedeck/sim-events-iracing", async (io) =>
   (await import("../test-support/module-mocks.js")).recordedModule(io),

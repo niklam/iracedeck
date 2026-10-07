@@ -33,8 +33,8 @@
  * and INFO lines are what reaches their logs.
  *
  * The app-monitor hooks are injected rather than imported, the way the window
- * service receives `isIRacingActive` (#1176): `app-monitor` imports the SDK
- * singleton, and deck-core keeps its modules free of cycles.
+ * service receives `isIRacingActive` (#1176): `app-monitor` lives in
+ * `@iracedeck/deck-iracing`, which depends on deck-core (#1351).
  *
  * Decision record: `docs/superpowers/specs/2026-10-04-issue-1338-built-in-profiling.md`.
  */
@@ -269,9 +269,9 @@ export function createProcessResourceSampler(): ResourceSampler {
 
 export interface ResourceMonitorOptions {
   logger: ILogger;
-  /** Subscribe to iRacing starting; the plugin binds deck-core's `onIRacingStarted`. Returns an unsubscribe. */
+  /** Subscribe to iRacing starting; the plugin binds deck-iracing's `onIRacingStarted`. Returns an unsubscribe. */
   onSessionStart?: (listener: () => void) => () => void;
-  /** Subscribe to iRacing exits; the plugin binds deck-core's `onIRacingTerminated`. Returns an unsubscribe. */
+  /** Subscribe to iRacing exits; the plugin binds deck-iracing's `onIRacingTerminated`. Returns an unsubscribe. */
   onSessionEnd?: (listener: () => void) => () => void;
   /**
    * Whether iRacing is active when the monitor starts; the plugin binds

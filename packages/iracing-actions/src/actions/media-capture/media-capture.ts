@@ -2,7 +2,6 @@ import {
   assembleIcon,
   CommonSettings,
   ConnectionStateAwareAction,
-  getCommands,
   getGlobalBorderSettings,
   getGlobalColors,
   getGlobalGraphicSettings,
@@ -17,6 +16,7 @@ import {
   resolveIconColors,
   resolveTitleSettings,
 } from "@iracedeck/deck-core";
+import { getCommands } from "@iracedeck/deck-iracing";
 import reloadAllTexturesIconSvg from "@iracedeck/icons/media-capture/reload-all-textures.svg";
 import reloadCarTexturesIconSvg from "@iracedeck/icons/media-capture/reload-car-textures.svg";
 import startStopVideoIconSvg from "@iracedeck/icons/media-capture/start-stop-video.svg";

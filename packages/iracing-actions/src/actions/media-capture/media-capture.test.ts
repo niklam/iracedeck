@@ -24,6 +24,24 @@ vi.mock("@iracedeck/icons/media-capture/reload-car-textures.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
 }));
 
+vi.mock("@iracedeck/deck-iracing", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@iracedeck/deck-iracing")>()),
+  getCommands: vi.fn(() => ({
+    videoCapture: {
+      screenshot: vi.fn(() => true),
+      start: vi.fn(() => true),
+      stop: vi.fn(() => true),
+      toggle: vi.fn(() => true),
+      showTimer: vi.fn(() => true),
+      hideTimer: vi.fn(() => true),
+    },
+    texture: {
+      reloadAll: vi.fn(() => true),
+      reloadCar: vi.fn(() => true),
+    },
+  })),
+}));
+
 vi.mock("@iracedeck/deck-core", () => ({
   CommonSettings: {
     extend: (_fields: unknown) => {
@@ -66,20 +84,6 @@ vi.mock("@iracedeck/deck-core", () => ({
 
     return { migrated: { ...rest, mode: action }, changed: true };
   },
-  getCommands: vi.fn(() => ({
-    videoCapture: {
-      screenshot: vi.fn(() => true),
-      start: vi.fn(() => true),
-      stop: vi.fn(() => true),
-      toggle: vi.fn(() => true),
-      showTimer: vi.fn(() => true),
-      hideTimer: vi.fn(() => true),
-    },
-    texture: {
-      reloadAll: vi.fn(() => true),
-      reloadCar: vi.fn(() => true),
-    },
-  })),
   generateBorderParts: vi.fn(() => ({ defs: "", rects: "" })),
   getGlobalBorderSettings: vi.fn(() => ({})),
   getGlobalColors: vi.fn(() => ({})),

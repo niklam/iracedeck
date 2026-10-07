@@ -149,9 +149,9 @@ function toggledEvent(service: PitServiceKind): (on: boolean) => PendingEvent {
 
 /**
  * Whether auto-fuel is armed for the next stop (`dpFuelAutoFillActive`,
- * "pitstop auto fill fuel next stop flag"). deck-core's `isAutofuelActive`
- * rule, inlined because this package does not depend on deck-core: an absent
- * field reads as not active, any non-zero value as active.
+ * "pitstop auto fill fuel next stop flag"). deck-iracing's `isAutofuelActive`
+ * rule, inlined because this package does not depend on the deck layer: an
+ * absent field reads as not active, any non-zero value as active.
  */
 function isAutoFuelActive(telemetry: TelemetryData): boolean {
   return (telemetry.dpFuelAutoFillActive ?? 0) !== 0;

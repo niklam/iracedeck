@@ -6,16 +6,14 @@
  * `startPlugin` connects the adapter.
  */
 import {
-  createElevationCheckSubscriber,
-  createReplaySessionSubscriber,
   getPluginVersion,
-  initAppMonitor,
   initGlobalSettings,
   initializeBindingDispatcher,
   initializeSimHub,
   migrateGlobalSettingsKeys,
   seedBindingDefaultsIfAbsent,
 } from "@iracedeck/deck-core";
+import { createElevationCheckSubscriber, createReplaySessionSubscriber, initAppMonitor } from "@iracedeck/deck-iracing";
 
 import { CAR_CYCLE_BINDING_DEFAULTS, SETUP_CHASSIS_BINDING_KEY_RENAMES } from "../actions.js";
 import type { Core, Input, Settings, VoicePacks } from "../types.js";
@@ -68,7 +66,7 @@ export function startServices(core: Core, input: Input, settings: Settings, voic
   // Detect an Administrator/integrity mismatch with iRacing and surface it as a
   // PI warning banner (issue #610). Both outcomes are logged at the default log
   // level so support logs always capture whether the check ran and what it found
-  // (issue #902) — see createElevationCheckSubscriber in deck-core.
+  // (issue #902) — see createElevationCheckSubscriber in deck-iracing.
   core.controller.subscribe(
     "elevation-check",
     createElevationCheckSubscriber({

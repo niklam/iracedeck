@@ -1,10 +1,8 @@
 import {
   assembleIcon,
   CommonSettings,
-  ConnectionStateAwareAction,
   generateBorderParts,
   generateTitleText,
-  getCommands,
   getGlobalBorderSettings,
   getGlobalColors,
   getGlobalGraphicSettings,
@@ -22,6 +20,7 @@ import {
   resolveTitleSettings,
   svgToDataUri,
 } from "@iracedeck/deck-core";
+import { getCommands, SimIRacingAction } from "@iracedeck/deck-iracing";
 import clearAllCheckboxesIconSvg from "@iracedeck/icons/pit-quick-actions/clear-all-checkboxes.svg";
 import { hasFlag, PitSvFlags, type TelemetryData } from "@iracedeck/iracing-sdk";
 import z from "zod";
@@ -202,7 +201,7 @@ export function generatePitQuickActionsSvg(
  */
 export const PIT_QUICK_ACTIONS_UUID = "com.iracedeck.sd.core.pit-quick-actions" as const;
 
-export class PitQuickActions extends ConnectionStateAwareAction<PitQuickActionsSettings> {
+export class PitQuickActions extends SimIRacingAction<PitQuickActionsSettings> {
   private activeContexts = new Map<string, PitQuickActionsSettings>();
   private lastState = new Map<string, string>();
 

@@ -7,7 +7,6 @@
  * keypad's greyed keys. Logging stays with the callers.
  */
 import {
-  getCommands,
   MARKER_DEDUPE_FRAMES,
   MARKER_DELETE_WINDOW_FRAMES,
   MARKER_PREVIOUS_MIN_BEHIND_FRAMES,
@@ -15,6 +14,7 @@ import {
   type ReplaySessionStore,
   type SubSessionScoped,
 } from "@iracedeck/deck-core";
+import { getCommands } from "@iracedeck/deck-iracing";
 import { ReplayPosMode, resolveReplayFrame, type TelemetryData } from "@iracedeck/iracing-sdk";
 
 import {

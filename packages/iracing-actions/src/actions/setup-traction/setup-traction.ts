@@ -1,7 +1,6 @@
 import {
   assembleIcon,
   CommonSettings,
-  ConnectionStateAwareAction,
   DualPressTracker,
   getDualPressDirections,
   getDualPressThresholdMs,
@@ -25,6 +24,7 @@ import {
   resolveIconColors,
   resolveTitleSettings,
 } from "@iracedeck/deck-core";
+import { SimIRacingAction } from "@iracedeck/deck-iracing";
 import tcSlot1DecreaseIconSvg from "@iracedeck/icons/setup-traction/tc-slot-1-decrease.svg";
 import tcSlot1IncreaseIconSvg from "@iracedeck/icons/setup-traction/tc-slot-1-increase.svg";
 import tcSlot2DecreaseIconSvg from "@iracedeck/icons/setup-traction/tc-slot-2-decrease.svg";
@@ -259,7 +259,7 @@ export function generateTcToggleSvg(
  */
 export const SETUP_TRACTION_UUID = "com.iracedeck.sd.core.setup-traction" as const;
 
-export class SetupTraction extends ConnectionStateAwareAction<SetupTractionSettings> {
+export class SetupTraction extends SimIRacingAction<SetupTractionSettings> {
   /** Current settings per action context, used by the telemetry-tick callback for View sub-modes. */
   private readonly activeContexts = new Map<string, SetupTractionSettings>();
 

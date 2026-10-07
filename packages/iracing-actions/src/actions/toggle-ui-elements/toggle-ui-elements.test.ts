@@ -33,6 +33,16 @@ vi.mock("@iracedeck/icons/toggle-ui-elements/replay-ui.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
 }));
 
+vi.mock("@iracedeck/deck-iracing", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@iracedeck/deck-iracing")>()),
+  getCommands: vi.fn(() => ({
+    camera: {
+      hideUI: vi.fn(),
+      showUI: vi.fn(),
+    },
+  })),
+}));
+
 vi.mock("@iracedeck/deck-core", () => ({
   CommonSettings: {
     extend: (_fields: unknown) => {
@@ -62,12 +72,6 @@ vi.mock("@iracedeck/deck-core", () => ({
 
     return b.key;
   }),
-  getCommands: vi.fn(() => ({
-    camera: {
-      hideUI: vi.fn(),
-      showUI: vi.fn(),
-    },
-  })),
   generateBorderParts: vi.fn(() => ({ defs: "", rects: "" })),
   getGlobalBorderSettings: vi.fn(() => ({})),
   getGlobalColors: vi.fn(() => ({})),

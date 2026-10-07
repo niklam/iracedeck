@@ -2,7 +2,8 @@
  * Phase 8 (#1349): window focus and the mouse pointer, the Always-mode focus
  * listeners, then every action — the shared list, then the host's extras.
  */
-import { focusIRacingIfEnabled, initMousePointer, initWindowFocus, isIRacingActive } from "@iracedeck/deck-core";
+import { focusIRacingIfEnabled, initMousePointer, initWindowFocus } from "@iracedeck/deck-core";
+import { hasElevationMismatch, isIRacingActive } from "@iracedeck/deck-iracing";
 
 import { SHARED_ACTIONS } from "../actions.js";
 import type { Core, Input } from "../types.js";
@@ -13,8 +14,14 @@ export function registerActions(core: Core, input: Input): void {
 
   // Initialize window focus service for focusing iRacing before any action. The
   // app monitor's isIRacingActive is injected rather than imported inside
-  // deck-core, which would close an import cycle through the SDK singleton (#1176).
-  initWindowFocus(adapter.createLogger("WindowFocus"), () => native.focusIRacingWindow(), isIRacingActive);
+  // deck-core, which would close an import cycle through the SDK singleton (#1176),
+  // and the elevation check is injected for the same reason (#1351).
+  initWindowFocus(
+    adapter.createLogger("WindowFocus"),
+    () => native.focusIRacingWindow(),
+    isIRacingActive,
+    hasElevationMismatch,
+  );
 
   // Initialize the mouse pointer service for the Mouse to Sim mode (#926)
   initMousePointer(adapter.createLogger("MousePointer"), (x, y) => native.moveMouseToIRacingWindow(x, y));

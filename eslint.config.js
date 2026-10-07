@@ -69,6 +69,29 @@ export default [
     },
   },
   {
+    // deck-core is the deck layer: it sees a simulator only through its
+    // SimConnection interface. iRacing lives in @iracedeck/deck-iracing (#1351);
+    // scripts/deck-core-sim-boundary.test.mjs proves this rule fires.
+    files: ['packages/deck-core/src/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            '@iracedeck/iracing-sdk',
+            '@iracedeck/iracing-native',
+            '@iracedeck/sim-events-iracing',
+            '@iracedeck/deck-iracing',
+          ].map((name) => ({
+            name,
+            message:
+              'deck-core must not depend on a simulator: use the SimConnection interface, and put iRacing code in @iracedeck/deck-iracing (#1351).',
+          })),
+        },
+      ],
+    },
+  },
+  {
     // The root Vitest config is loaded with `configLoader: 'native'` (see
     // .claude/rules/testing.md), so Node strips its types itself: CommonJS
     // globals do not exist there, and a type-only import missing the `type`

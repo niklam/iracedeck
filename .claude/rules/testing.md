@@ -149,6 +149,20 @@ describe("MyAction", () => {
 });
 ```
 
+An action that extends `@iracedeck/deck-iracing`'s `SimIRacingAction` (#1351) keeps the same `ConnectionStateAwareAction` mock: `SimIRacingAction` extends the mocked class, and the mock's `sdkController` instance field shadows `SimIRacingAction`'s getter, so the test drives the controller as before. The iRacing names that live in `deck-iracing` rather than `deck-core` — `getCommands`, the fuel and unit helpers — are mocked on `@iracedeck/deck-iracing`, spreading `importOriginal` so the real `SimIRacingAction` still loads:
+
+```typescript
+const { mockGetCommands } = vi.hoisted(() => ({
+  mockGetCommands: vi.fn(() => ({ pit: { fuel: vi.fn(() => true) } })),
+}));
+
+vi.mock("@iracedeck/deck-iracing", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@iracedeck/deck-iracing")>()),
+  getCommands: mockGetCommands,
+  getFuelUnitSuffix: vi.fn((displayUnits: number | undefined) => (displayUnits === 1 ? "L" : "gal")),
+}));
+```
+
 ### Settings literals and protected members (#1078)
 
 Test files are typechecked with their package (`pnpm typecheck`), so a test has to type what it hands the code under test. Two rules cover what used to be the bulk of the errors there:

@@ -55,6 +55,11 @@ vi.mock("../../icons/status-bar.js", () => ({
   borderColorForState: (state: string) => ({ on: "#2ecc71", off: "#e74c3c", na: "#888888" })[state],
 }));
 
+vi.mock("@iracedeck/deck-iracing", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@iracedeck/deck-iracing")>()),
+  getCommands: mockGetCommands,
+}));
+
 vi.mock("@iracedeck/deck-core", () => ({
   CommonSettings: {
     extend: () => {
@@ -80,7 +85,6 @@ vi.mock("@iracedeck/deck-core", () => ({
     async onDidReceiveSettings() {}
     async onWillDisappear() {}
   },
-  getCommands: mockGetCommands,
   migrateLegacyActionToMode: (raw: unknown) => {
     if (!raw || typeof raw !== "object") return { migrated: {}, changed: false };
 

@@ -96,6 +96,11 @@ vi.mock("@iracedeck/iracing-sdk", () => ({
   SessionState: { Invalid: 0, GetInCar: 1, Warmup: 2, ParadeLaps: 3, Racing: 4, Checkered: 5, CoolDown: 6 },
 }));
 
+vi.mock("@iracedeck/deck-iracing", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@iracedeck/deck-iracing")>()),
+  getSDK: vi.fn(() => ({ sdk: { getSessionInfo: mockGetSessionInfo } })),
+}));
+
 vi.mock("@iracedeck/deck-core", () => ({
   IconUpdateThrottle: class {
     schedule(_id: string, render: () => unknown): void {
@@ -155,7 +160,6 @@ vi.mock("@iracedeck/deck-core", () => ({
   getGlobalColors: vi.fn(() => ({})),
   getGlobalGraphicSettings: vi.fn(() => ({})),
   getGlobalSettings: vi.fn(() => ({})),
-  getSDK: vi.fn(() => ({ sdk: { getSessionInfo: mockGetSessionInfo } })),
   getKeyboard: vi.fn(() => ({
     sendKeyCombination: vi.fn().mockResolvedValue(true),
     pressKeyCombination: mockPressKeyCombination,

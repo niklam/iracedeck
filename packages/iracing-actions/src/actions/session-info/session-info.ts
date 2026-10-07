@@ -1,5 +1,4 @@
 import {
-  ConnectionStateAwareAction,
   generateBorderParts,
   generateTitleText,
   getGlobalBorderSettings,
@@ -10,13 +9,13 @@ import {
   type IDeckKeyDownEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
-  litersToGallons,
   renderIconTemplate,
   resolveBorderSettings,
   resolveIconColors,
   resolveTitleSettings,
   svgToDataUri,
 } from "@iracedeck/deck-core";
+import { litersToGallons, SimIRacingAction } from "@iracedeck/deck-iracing";
 import {
   getEventBus,
   isEventBusInitialized,
@@ -793,7 +792,7 @@ export function generateSessionInfoSvg(
  */
 export const SESSION_INFO_UUID = "com.iracedeck.sd.core.session-info" as const;
 
-export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings> {
+export class SessionInfo extends SimIRacingAction<SessionInfoSettings> {
   /** Settings per action context for telemetry-driven updates */
   private activeContexts = new Map<string, SessionInfoSettings>();
 

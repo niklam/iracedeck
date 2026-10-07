@@ -1,9 +1,6 @@
 import {
   applyBindingWarning,
   assembleIcon,
-  ConnectionStateAwareAction,
-  fuelToDisplayUnits,
-  gallonsToLiters,
   generateBorderParts,
   generateTitleText,
   getGlobalBorderSettings,
@@ -20,9 +17,6 @@ import {
   type IDeckTouchTapEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
-  isAutofuelActive,
-  isAutofuelEnabled,
-  isFuelFillOn,
   isSimHubReachable,
   renderIconTemplate,
   resolveBorderSettings,
@@ -31,6 +25,14 @@ import {
   resolveTitleSettings,
   svgToDataUri,
 } from "@iracedeck/deck-core";
+import {
+  fuelToDisplayUnits,
+  gallonsToLiters,
+  isAutofuelActive,
+  isAutofuelEnabled,
+  isFuelFillOn,
+  SimIRacingAction,
+} from "@iracedeck/deck-iracing";
 import addFuelIcon from "@iracedeck/icons/fuel-service/add-fuel.svg";
 import clearFuelIcon from "@iracedeck/icons/fuel-service/clear-fuel.svg";
 import lapMarginDecreaseIcon from "@iracedeck/icons/fuel-service/lap-margin-decrease.svg";
@@ -373,7 +375,7 @@ export function generateFuelServiceSvg(
  */
 export const FUEL_SERVICE_UUID = "com.iracedeck.sd.core.fuel-service" as const;
 
-export class FuelService extends ConnectionStateAwareAction<FuelServiceSettings> {
+export class FuelService extends SimIRacingAction<FuelServiceSettings> {
   private activeContexts = new Map<string, FuelServiceSettings>();
   private lastState = new Map<string, string>();
   private readonly repeat = new RepeatController(this.logger);

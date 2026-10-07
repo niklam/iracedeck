@@ -2,10 +2,8 @@ import {
   assembleIcon,
   CAR_SELECTOR_PROFILE,
   CommonSettings,
-  ConnectionStateAwareAction,
   extractGraphicContent,
   generateTitleText,
-  getCommands,
   getGlobalBorderSettings,
   getGlobalColors,
   getGlobalGraphicSettings,
@@ -30,6 +28,7 @@ import {
   resolveTitleSettings,
   svgToDataUri,
 } from "@iracedeck/deck-core";
+import { getCommands, SimIRacingAction } from "@iracedeck/deck-iracing";
 // Cycle icons
 import cameraNextSvg from "@iracedeck/icons/camera-cycle/camera-next.svg";
 import cameraPreviousSvg from "@iracedeck/icons/camera-cycle/camera-previous.svg";
@@ -726,7 +725,7 @@ function resolveGroupGlyph(groupName: string): CarouselGlyph | null {
 export const CAMERA_FOCUS_UUID = "com.iracedeck.sd.core.camera-focus" as const;
 export const CAMERA_CONTROLS_UUID = CAMERA_FOCUS_UUID;
 
-export class CameraControls extends ConnectionStateAwareAction<CameraControlsSettings> {
+export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
   /** Settings per action context for telemetry-driven icon updates */
   private activeContexts = new Map<string, CameraControlsSettings>();
 

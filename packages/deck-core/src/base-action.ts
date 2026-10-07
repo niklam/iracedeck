@@ -6,14 +6,13 @@
  * - Per-instance active/inactive state tracking
  * - Flag overlay support (flashes flag colors when race flags are active)
  */
-import { type FlagInfo, resolveAllActiveFlags } from "@iracedeck/iracing-sdk";
 import { type ILogger, silentLogger } from "@iracedeck/logger";
 
 import { getGlobalSettings, onGlobalSettingsChange } from "./global-settings.js";
 import { IconUpdateThrottle } from "./icon-update-throttle.js";
 import { applyInactiveOverlay, svgToDataUri } from "./overlay-utils.js";
 import { getPluginVersion, isPluginConfigInitialized } from "./plugin-config.js";
-import { getController } from "./sdk-singleton.js";
+import { getSimConnection, type OverlayFlag, type SimConnection } from "./sim-connection.js";
 import { resolveTitleTemplate, titleHasTemplate } from "./title-template.js";
 import type {
   IDeckActionContext,
@@ -85,13 +84,13 @@ export abstract class BaseAction<T = Record<string, unknown>> implements IDeckAc
   /** Auto-stop timer that ends the flash visual after the configured duration */
   private flagFlashAutoStopTimer: ReturnType<typeof setTimeout> | null = null;
 
-  /** Current active flags from telemetry */
-  private currentFlags: FlagInfo[] = [];
+  /** Current active flags from the sim connection */
+  private currentFlags: readonly OverlayFlag[] = [];
 
   /** Flash tick counter — even ticks show flag, odd ticks show original */
   private flagFlashTick = 0;
 
-  /** Shared telemetry subscription ID */
+  /** Shared sim-connection subscription ID */
   private flagTelemetrySubId: string | null = null;
 
   /** Last flag state key for change detection */
@@ -103,7 +102,7 @@ export abstract class BaseAction<T = Record<string, unknown>> implements IDeckAc
   /** Last resolved title per templated context, for change detection */
   private lastResolvedTitles = new Map<string, string>();
 
-  /** Shared telemetry subscription ID for title templates */
+  /** Shared sim-connection subscription ID for title templates */
   private titleTemplateSubId: string | null = null;
 
   /**
@@ -435,7 +434,7 @@ export abstract class BaseAction<T = Record<string, unknown>> implements IDeckAc
    * Generate an SVG for a flag overlay. Most flags use a solid color;
    * the checkered flag uses a 2x2 checker pattern.
    */
-  protected generateFlagOverlaySvg(flagInfo: FlagInfo): string {
+  protected generateFlagOverlaySvg(flagInfo: OverlayFlag): string {
     if (flagInfo.label === "FINISH") {
       return svgToDataUri(
         `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">` +
@@ -452,43 +451,55 @@ export abstract class BaseAction<T = Record<string, unknown>> implements IDeckAc
   }
 
   /**
-   * Ensure a single telemetry subscription exists for flag overlay.
+   * Ensure a single sim-connection subscription exists for the flag overlay.
+   * Made before the sim connection exists, it is queued and replayed onto the
+   * connection when it is initialised.
    */
   private ensureFlagTelemetrySubscription(): void {
     if (this.flagTelemetrySubId) return;
 
     try {
-      const controller = getController();
       const subId = `${BaseAction.FLAG_SUBSCRIPTION_PREFIX}${++BaseAction.flagSubscriptionCounter}`;
 
-      controller.subscribe(subId, (telemetry, isConnected) => {
-        if (!isConnected) {
-          this.onFlagTelemetryUpdate(undefined);
+      getSimConnection().subscribe(subId, (isConnected) => {
+        const flags = isConnected ? this.readActiveFlags(getSimConnection()) : [];
 
-          return;
-        }
-
-        this.onFlagTelemetryUpdate(telemetry?.SessionFlags);
+        if (flags !== null) this.onFlagUpdate(flags);
       });
 
       this.flagTelemetrySubId = subId;
-      this.logger.debug("Flag overlay telemetry subscription started");
+      this.logger.debug("Flag overlay subscription started");
     } catch (err) {
-      this.logger.debug(`Flag overlay: skipping telemetry subscription: ${err}`);
+      this.logger.debug(`Flag overlay: skipping subscription: ${err}`);
     }
   }
 
   /**
-   * Process telemetry update for flag detection.
+   * The connection's active flags, or `null` when reading them throws. A throw
+   * is not a "flags cleared" transition: the caller skips the tick and keeps
+   * the previous state, so a transient failure neither flickers the overlay
+   * nor re-arms a flash whose duration already ended.
    */
-  private onFlagTelemetryUpdate(sessionFlags: number | undefined): void {
-    const flags = resolveAllActiveFlags(sessionFlags);
+  private readActiveFlags(connection: SimConnection): readonly OverlayFlag[] | null {
+    try {
+      return connection.activeFlags();
+    } catch (err) {
+      this.logger.debug(`Flag overlay: reading active flags failed: ${err}`);
+
+      return null;
+    }
+  }
+
+  /**
+   * Process a flag-state update.
+   */
+  private onFlagUpdate(flags: readonly OverlayFlag[]): void {
     const stateKey = flags.map((f) => f.label).join(",");
 
     if (stateKey === this.lastFlagStateKey) return;
 
     this.logger.info("Flag state changed");
-    this.logger.debug(`SessionFlags=0x${sessionFlags?.toString(16) ?? "undefined"}, resolved=[${stateKey || "none"}]`);
+    this.logger.debug(`Active flags=[${stateKey || "none"}]`);
 
     this.lastFlagStateKey = stateKey;
     this.currentFlags = flags;
@@ -567,8 +578,8 @@ export abstract class BaseAction<T = Record<string, unknown>> implements IDeckAc
     this.flagFlashTick = 0;
 
     // INTENTIONAL: lastFlagStateKey and currentFlags stay set so the same
-    // flag still in telemetry doesn't retrigger the flash via
-    // onFlagTelemetryUpdate's state-key short-circuit. stopFlagFlash() is
+    // flag still out doesn't retrigger the flash via
+    // onFlagUpdate's state-key short-circuit. stopFlagFlash() is
     // the only path that wipes that cache (called when flags actually clear).
     this.logger.debug("Flag flash auto-stopped after duration");
   }
@@ -576,7 +587,7 @@ export abstract class BaseAction<T = Record<string, unknown>> implements IDeckAc
   /**
    * Stop the flag flash and reset cached state.
    * Called when flags clear (`flags.length === 0`) or the action
-   * unsubscribes from telemetry — anywhere a fresh transition should
+   * unsubscribes from the sim connection — anywhere a fresh transition should
    * be allowed to retrigger the flash next.
    */
   private stopFlagFlash(): void {
@@ -640,21 +651,20 @@ export abstract class BaseAction<T = Record<string, unknown>> implements IDeckAc
   }
 
   /**
-   * Unsubscribe from telemetry if no contexts need flag overlay.
+   * Unsubscribe from the sim connection if no contexts need flag overlay.
    */
   private cleanupFlagSubscriptionIfUnneeded(): void {
     if (this.flagOverlayContexts.size > 0 || !this.flagTelemetrySubId) return;
 
     try {
-      const controller = getController();
-      controller.unsubscribe(this.flagTelemetrySubId);
+      getSimConnection().unsubscribe(this.flagTelemetrySubId);
     } catch (err) {
-      this.logger.trace(`Flag overlay: unsubscription failed (SDK may not be initialized): ${err}`);
+      this.logger.trace(`Flag overlay: unsubscription failed (no sim connection): ${err}`);
     }
 
     this.flagTelemetrySubId = null;
     this.stopFlagFlash();
-    this.logger.debug("Flag overlay telemetry subscription stopped");
+    this.logger.debug("Flag overlay subscription stopped");
   }
 
   // -------------------------------------------------------------------------
@@ -692,26 +702,26 @@ export abstract class BaseAction<T = Record<string, unknown>> implements IDeckAc
   }
 
   /**
-   * Ensure a single telemetry subscription exists for title templates.
+   * Ensure a single sim-connection subscription exists for title templates.
+   * Queued before the sim connection exists, like the flag overlay's.
    */
   private ensureTitleTemplateSubscription(): void {
     if (this.titleTemplateSubId) return;
 
     try {
-      const controller = getController();
       const subId = `${BaseAction.TITLE_TEMPLATE_SUBSCRIPTION_PREFIX}${++BaseAction.titleTemplateSubscriptionCounter}`;
 
-      controller.subscribe(subId, () => this.onTitleTemplateTick());
+      getSimConnection().subscribe(subId, () => this.onTitleTemplateTick());
 
       this.titleTemplateSubId = subId;
-      this.logger.debug("Title template telemetry subscription started");
+      this.logger.debug("Title template subscription started");
     } catch (err) {
-      this.logger.debug(`Title template: skipping telemetry subscription: ${err}`);
+      this.logger.debug(`Title template: skipping subscription: ${err}`);
     }
   }
 
   /**
-   * A telemetry tick does no work of its own: it schedules each tracked
+   * A sim tick does no work of its own: it schedules each tracked
    * context's refresh through the 10 Hz throttle (issue #493 pattern), and the
    * refresh resolves the template. Resolving per tick asked for a template
    * context on every frame for every templated title, which rebuilds the
@@ -783,18 +793,18 @@ export abstract class BaseAction<T = Record<string, unknown>> implements IDeckAc
   }
 
   /**
-   * Unsubscribe from telemetry if no contexts have templated titles.
+   * Unsubscribe from the sim connection if no contexts have templated titles.
    */
   private cleanupTitleTemplateSubscriptionIfUnneeded(): void {
     if (this.titleTemplateContexts.size > 0 || !this.titleTemplateSubId) return;
 
     try {
-      getController().unsubscribe(this.titleTemplateSubId);
+      getSimConnection().unsubscribe(this.titleTemplateSubId);
     } catch (err) {
-      this.logger.trace(`Title template: unsubscription failed (SDK may not be initialized): ${err}`);
+      this.logger.trace(`Title template: unsubscription failed (no sim connection): ${err}`);
     }
 
     this.titleTemplateSubId = null;
-    this.logger.debug("Title template telemetry subscription stopped");
+    this.logger.debug("Title template subscription stopped");
   }
 }

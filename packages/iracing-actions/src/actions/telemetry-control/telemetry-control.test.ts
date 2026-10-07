@@ -98,6 +98,17 @@ vi.mock("@iracedeck/icons/telemetry-control/capture-profile.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">capture-profile</svg>',
 }));
 
+vi.mock("@iracedeck/deck-iracing", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@iracedeck/deck-iracing")>()),
+  getCommands: vi.fn(() => ({
+    telem: {
+      start: vi.fn(() => true),
+      stop: vi.fn(() => true),
+      restart: vi.fn(() => true),
+    },
+  })),
+}));
+
 vi.mock("@iracedeck/deck-core", () => ({
   CommonSettings: {
     extend: (_fields: unknown) => {
@@ -159,13 +170,6 @@ vi.mock("@iracedeck/deck-core", () => ({
     return captureFake.service;
   }),
   isCpuProfileCaptureInitialized: vi.fn(() => captureFake.initialized),
-  getCommands: vi.fn(() => ({
-    telem: {
-      start: vi.fn(() => true),
-      stop: vi.fn(() => true),
-      restart: vi.fn(() => true),
-    },
-  })),
   generateBorderParts: vi.fn(() => ({ defs: "", rects: "" })),
   getGlobalBorderSettings: vi.fn(() => ({})),
   getGlobalColors: vi.fn(() => ({})),

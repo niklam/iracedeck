@@ -78,12 +78,13 @@ vi.mock("@iracedeck/sim-events-iracing", () => ({
   resolveLeaderLapTimeS: vi.fn(() => null),
 }));
 
+// The real deck-iracing conversions: the temperature items and the readout
+// builder convert with them.
+vi.mock("@iracedeck/deck-iracing", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@iracedeck/deck-iracing")>()),
+}));
+
 vi.mock("@iracedeck/deck-core", async () => ({
-  // Real conversions from deck-core's source: the temperature items and the
-  // readout builder convert with them.
-  ...(await vi.importActual<typeof import("../../../../deck-core/src/unit-conversion.js")>(
-    "../../../../deck-core/src/unit-conversion.js",
-  )),
   // Pass-through stand-in: renders immediately so tests observe pushes without
   // waiting on the 10 Hz coalescing window.
   IconUpdateThrottle: class {

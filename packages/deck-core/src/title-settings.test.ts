@@ -1,7 +1,7 @@
-import { templateContextFromMaps } from "@iracedeck/iracing-sdk";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { TitleOverrides } from "./common-settings.js";
+import { createFakeSimConnection, type FakeSimConnection } from "./fake-sim-connection.js";
 import { getGlobalSettings } from "./global-settings.js";
 import type { GlobalSettings } from "./global-settings.js";
 import {
@@ -20,13 +20,18 @@ vi.mock("./global-settings.js", () => ({
   getGlobalSettings: vi.fn(() => ({})),
 }));
 
-const { mockGetCurrentTemplateContext } = vi.hoisted(() => ({
-  mockGetCurrentTemplateContext: vi.fn(),
+const sim = vi.hoisted(() => ({ fake: null as FakeSimConnection | null, initialized: true }));
+
+vi.mock("./sim-connection.js", () => ({
+  getSimConnection: () => sim.fake!.connection,
+  isSimConnectionInitialized: () => sim.initialized,
 }));
 
-vi.mock("./sdk-singleton.js", () => ({
-  getController: () => ({ getCurrentTemplateContext: mockGetCurrentTemplateContext }),
-}));
+/** Make the fake sim render each `{{name}}` from `values`, and an unknown name empty. */
+function renderTitlesWith(values: Record<string, string>): void {
+  sim.fake!.state.resolve = (text) =>
+    text.replace(/\{\{\s*([^}]+?)\s*\}\}/g, (_match, name: string) => values[name] ?? "");
+}
 
 const GRAPHIC_WITH_TITLE = `<svg><desc>{"colors":{},"title":{"text":"TOGGLE\\nLAP TIMING"}}</desc></svg>`;
 const GRAPHIC_NO_TITLE = `<svg><desc>{"colors":{}}</desc></svg>`;
@@ -35,6 +40,8 @@ const MOCK_GRAPHIC = `<svg><desc>{"colors":{"backgroundColor":"#2a3444","textCol
 
 beforeEach(() => {
   vi.clearAllMocks();
+  sim.fake = createFakeSimConnection();
+  sim.initialized = true;
 });
 
 describe("resolveTitleSettings", () => {
@@ -144,21 +151,21 @@ describe("resolveTitleSettings", () => {
 
   describe("title template resolution (#899)", () => {
     it("resolves {{…}} placeholders in user-entered titleText", () => {
-      mockGetCurrentTemplateContext.mockReturnValue(templateContextFromMaps({ "self.car_number": "34" }));
+      renderTitlesWith({ "self.car_number": "34" });
       const action: TitleOverrides = { titleText: "CAR {{self.car_number}}" };
       const result = resolveTitleSettings(GRAPHIC_WITH_TITLE, {}, action, "CODE\nDEFAULT");
       expect(result.titleText).toBe("CAR 34");
     });
 
     it("keeps a template that resolves empty as an empty title instead of falling back to defaults", () => {
-      mockGetCurrentTemplateContext.mockReturnValue(templateContextFromMaps({}));
+      renderTitlesWith({});
       const action: TitleOverrides = { titleText: "{{unknown.variable}}" };
       const result = resolveTitleSettings(GRAPHIC_WITH_TITLE, {}, action, "CODE\nDEFAULT");
       expect(result.titleText).toBe("");
     });
 
     it("exposes the raw template as layoutText so the graphic layout stays stable across resolutions", () => {
-      mockGetCurrentTemplateContext.mockReturnValue(templateContextFromMaps({}));
+      renderTitlesWith({});
       const action: TitleOverrides = { titleText: "{{unknown.variable}}" };
       const result = resolveTitleSettings(GRAPHIC_WITH_TITLE, {}, action);
       expect(result.titleText).toBe("");
@@ -172,13 +179,13 @@ describe("resolveTitleSettings", () => {
     });
 
     it("does not resolve templates in action default text", () => {
-      mockGetCurrentTemplateContext.mockReturnValue(templateContextFromMaps({ "self.car_number": "34" }));
+      renderTitlesWith({ "self.car_number": "34" });
       const result = resolveTitleSettings(GRAPHIC_WITH_TITLE, {}, undefined, "CAR {{self.car_number}}");
       expect(result.titleText).toBe("CAR {{self.car_number}}");
     });
 
     it("does not resolve templates in icon desc default titles", () => {
-      mockGetCurrentTemplateContext.mockReturnValue(templateContextFromMaps({ "self.car_number": "34" }));
+      renderTitlesWith({ "self.car_number": "34" });
       const graphic = `<svg><desc>{"colors":{},"title":{"text":"CAR {{self.car_number}}"}}</desc></svg>`;
       const result = resolveTitleSettings(graphic, {});
       expect(result.titleText).toBe("CAR {{self.car_number}}");

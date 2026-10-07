@@ -287,7 +287,7 @@ node scripts/generate-icon-defaults.mjs
 
 ## Telemetry-Aware Icons
 
-Some actions update their icon based on live iRacing telemetry via an `sdkController` subscription. The controller polls every 10 ms and dedupes on iRacing's `SessionTick`, so subscriber callbacks fire once per iRacing telemetry frame (~60 Hz; see `packages/iracing-sdk/src/SDKController.ts`, #493). Use this pattern when an action's visual state depends on telemetry data.
+Some actions update their icon based on live iRacing telemetry via an `sdkController` subscription. `this.sdkController` comes from `@iracedeck/deck-iracing`'s `SimIRacingAction`, so such an action extends that class rather than `deck-core`'s `ConnectionStateAwareAction`, which has none (#1351). The controller polls every 10 ms and dedupes on iRacing's `SessionTick`, so subscriber callbacks fire once per iRacing telemetry frame (~60 Hz; see `packages/iracing-sdk/src/SDKController.ts`, #493). Use this pattern when an action's visual state depends on telemetry data.
 
 ### Available telemetry
 

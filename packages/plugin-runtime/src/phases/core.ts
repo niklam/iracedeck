@@ -4,19 +4,21 @@
  * later phases read through `Core`.
  */
 import {
-  getController,
   getGlobalSettings,
-  initializeSDK,
   initPluginConfig,
-  isIRacingActive,
   onGlobalSettingsChange,
-  onIRacingStarted,
-  onIRacingTerminated,
   type PluginConfig,
   startMainThreadWatchdog,
   startResourceMonitor,
   validateSetupWarningPatterns,
 } from "@iracedeck/deck-core";
+import {
+  getController,
+  initializeSDK,
+  isIRacingActive,
+  onIRacingStarted,
+  onIRacingTerminated,
+} from "@iracedeck/deck-iracing";
 import { initializeEventBus } from "@iracedeck/event-bus";
 import { LogLevel } from "@iracedeck/logger";
 import { readFileSync } from "node:fs";

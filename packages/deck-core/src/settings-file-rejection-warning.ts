@@ -10,7 +10,7 @@
  * simply changed. Design: docs/superpowers/specs/2026-08-27-issue-1036-settings-file-rejection-banner.md.
  *
  * The decision is pure — the same split as `settings-window-warning.ts` and
- * `elevation-warning.ts` — and `settings-file-rejection-reporter.ts` is the
+ * `deck-iracing`'s `elevation-warning.ts` — and `settings-file-rejection-reporter.ts` is the
  * only part that writes the warning store.
  *
  * One id at level `error`: the condition speaks for the whole page, so it has

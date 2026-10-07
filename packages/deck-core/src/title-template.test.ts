@@ -1,26 +1,27 @@
 /**
  * Tests for user-entered title template resolution (issue #899).
  *
- * getController is mocked so tests can control the template context;
- * resolveTemplate itself runs for real (pure string processing).
+ * The sim connection is a fake, so these tests pin what title-template.ts
+ * itself decides: the `{{` gate and the fallback when the connection throws.
+ * How a sim renders a template (iRacing's empty context included) is tested
+ * with its connection, in `@iracedeck/deck-iracing`'s sim-iracing-connection.test.ts.
  */
-import { templateContextFromMaps } from "@iracedeck/iracing-sdk";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { EMPTY_TEMPLATE_CONTEXT, resolveTitleTemplate, titleHasTemplate } from "./title-template.js";
+import { createFakeSimConnection, type FakeSimConnection } from "./fake-sim-connection.js";
+import { resolveTitleTemplate, titleHasTemplate } from "./title-template.js";
 
-const { mockGetCurrentTemplateContext, mockGetController } = vi.hoisted(() => {
-  const mockGetCurrentTemplateContext = vi.fn();
+const sim = vi.hoisted(() => ({ fake: null as FakeSimConnection | null, initialized: true }));
 
-  return {
-    mockGetCurrentTemplateContext,
-    mockGetController: vi.fn(() => ({ getCurrentTemplateContext: mockGetCurrentTemplateContext })),
-  };
-});
-
-vi.mock("./sdk-singleton.js", () => ({
-  getController: mockGetController,
+vi.mock("./sim-connection.js", () => ({
+  getSimConnection: () => sim.fake!.connection,
+  isSimConnectionInitialized: () => sim.initialized,
 }));
+
+beforeEach(() => {
+  sim.fake = createFakeSimConnection();
+  sim.initialized = true;
+});
 
 describe("titleHasTemplate", () => {
   it("returns false for undefined", () => {
@@ -36,71 +37,25 @@ describe("titleHasTemplate", () => {
   });
 });
 
-describe("EMPTY_TEMPLATE_CONTEXT", () => {
-  it("is empty and frozen, so a shared fallback cannot be mutated by one consumer", () => {
-    expect(Object.isFrozen(EMPTY_TEMPLATE_CONTEXT)).toBe(true);
-    expect(EMPTY_TEMPLATE_CONTEXT.display("self.name")).toBeUndefined();
-    expect(EMPTY_TEMPLATE_CONTEXT.raw("self.name")).toEqual({ found: false });
-    expect(EMPTY_TEMPLATE_CONTEXT.display("constructor")).toBeUndefined();
-    expect(EMPTY_TEMPLATE_CONTEXT.raw("toString")).toEqual({ found: false });
-  });
-});
-
 describe("resolveTitleTemplate", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+  it("does not consult the connection for text without {{", () => {
+    const resolve = vi.spyOn(sim.fake!.connection, "resolveTitleTemplate");
+
+    expect(resolveTitleTemplate("Plain")).toBe("Plain");
+    expect(resolve).not.toHaveBeenCalled();
   });
 
-  it("returns text without placeholders unchanged and never consults the controller", () => {
-    expect(resolveTitleTemplate("NEXT CAR")).toBe("NEXT CAR");
-    expect(mockGetController).not.toHaveBeenCalled();
-  });
-
-  it("resolves {{variable}} placeholders against the current template context", () => {
-    mockGetCurrentTemplateContext.mockReturnValue(templateContextFromMaps({ "track_ahead.car_number": "34" }));
+  it("resolves templated text through the sim connection", () => {
+    sim.fake!.state.resolve = (text) => text.replace("{{track_ahead.car_number}}", "34");
 
     expect(resolveTitleTemplate("CAR {{track_ahead.car_number}}")).toBe("CAR 34");
   });
 
-  it("resolves {{= expression }} placeholders against the raw context", () => {
-    mockGetCurrentTemplateContext.mockReturnValue(templateContextFromMaps({}, { "self.position": 4 }));
+  it("falls back to the raw text when the connection throws", () => {
+    sim.fake!.state.resolve = () => {
+      throw new Error("boom");
+    };
 
-    expect(resolveTitleTemplate("P{{= self.position + 1 }}")).toBe("P5");
-  });
-
-  it("renders variables empty when the sim is disconnected (null context)", () => {
-    mockGetCurrentTemplateContext.mockReturnValue(null);
-
-    expect(resolveTitleTemplate("CAR {{track_ahead.car_number}}")).toBe("CAR ");
-  });
-
-  it("keeps expression parse errors visible when disconnected", () => {
-    mockGetCurrentTemplateContext.mockReturnValue(null);
-
-    expect(resolveTitleTemplate("{{= self.position + }}")).toBe("{{= self.position + }}");
-  });
-
-  it("falls back to the empty context when a lazily built namespace throws (#1339)", () => {
-    // The live context builds a namespace on its first lookup, inside
-    // resolveTemplate; a builder that throws there must not escape.
-    mockGetCurrentTemplateContext.mockReturnValue({
-      display: () => {
-        throw new Error("malformed driver entry");
-      },
-      raw: () => {
-        throw new Error("malformed driver entry");
-      },
-    });
-
-    expect(resolveTitleTemplate("CAR {{track_ahead.car_number}}")).toBe("CAR ");
-    expect(resolveTitleTemplate("{{= self.position + }}")).toBe("{{= self.position + }}");
-  });
-
-  it("falls back to the empty context when the SDK singleton is not initialized", () => {
-    mockGetController.mockImplementation(() => {
-      throw new Error("SDK not initialized");
-    });
-
-    expect(resolveTitleTemplate("CAR {{track_ahead.car_number}}")).toBe("CAR ");
+    expect(resolveTitleTemplate("v={{x}}")).toBe("v={{x}}");
   });
 });

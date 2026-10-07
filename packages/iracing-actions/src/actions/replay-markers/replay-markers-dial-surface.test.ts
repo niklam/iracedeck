@@ -23,6 +23,13 @@ const mocks = vi.hoisted(() => ({
   thresholdMs: { value: 500 },
 }));
 
+// The dial surface reads the replay commands through deck-iracing; this suite
+// mocks deck-core without a ConnectionStateAwareAction, so the real barrel (whose
+// SimIRacingAction extends it) cannot load.
+vi.mock("@iracedeck/deck-iracing", () => ({
+  getCommands: () => ({ replay: { setPlayPosition: mocks.setPlayPosition } }),
+}));
+
 vi.mock("@iracedeck/deck-core", async () => {
   // deck-core's dial-gesture and icon-update-throttle modules, reached by PATH
   // rather than through the mocked barrel (the `mouse-to-sim.test.ts`
@@ -43,7 +50,6 @@ vi.mock("@iracedeck/deck-core", async () => {
     classifyDialRelease: dialGesture.classifyDialRelease,
     IconUpdateThrottle: throttle.IconUpdateThrottle,
     getDualPressThresholdMs: () => mocks.thresholdMs.value,
-    getCommands: () => ({ replay: { setPlayPosition: mocks.setPlayPosition } }),
     applyBindingWarning: (content: string) => `${content}<binding-warning/>`,
     escapeXml: (str: string) => str,
     // Identity, so a test reads the pushed SVG straight off `setDialCanvas`.

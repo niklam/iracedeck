@@ -26,16 +26,18 @@ vi.mock("./global-settings.js", () => ({
   isSettingsStoreReady: () => state.storeReady,
 }));
 
-vi.mock("./elevation-check.js", () => ({
-  hasElevationMismatch: () => state.elevationMismatch,
-}));
-
 /**
  * The injected "is iRacing running?" check (#1176) — what the plugins bind to
  * the app monitor's `isIRacingActive`. Read through `state` so a test can flip
  * it after initialization, which is how the plugins' predicate behaves too.
  */
 const simRunning = (): boolean => state.iRacingActive;
+
+/**
+ * The injected elevation check (#976, #1351) — what the plugins bind to
+ * `deck-iracing`'s `hasElevationMismatch`. Read through `state` like `simRunning`.
+ */
+const elevationMismatch = (): boolean => state.elevationMismatch;
 
 function createLogger(): ILogger {
   return {
@@ -57,7 +59,7 @@ function createLogger(): ILogger {
 function arrange(result: number): { logger: ILogger; focuser: WindowFocuser } {
   const logger = createLogger();
   const focuser = vi.fn(() => result as FocusResult);
-  initWindowFocus(logger, focuser, simRunning);
+  initWindowFocus(logger, focuser, simRunning, elevationMismatch);
 
   return { logger, focuser };
 }
@@ -125,9 +127,9 @@ describe("window focus service", () => {
     // a second call is a wiring bug, not a silent swap of focuser and logger.
     it("throws when initialized twice", () => {
       arrange(FocusResult.AlreadyFocused);
-      expect(() => initWindowFocus(createLogger(), () => FocusResult.AlreadyFocused, simRunning)).toThrow(
-        /already initialized/i,
-      );
+      expect(() =>
+        initWindowFocus(createLogger(), () => FocusResult.AlreadyFocused, simRunning, elevationMismatch),
+      ).toThrow(/already initialized/i);
     });
 
     it("logs a warning and does not throw when the focuser throws", () => {
@@ -138,6 +140,7 @@ describe("window focus service", () => {
           throw new Error("boom");
         },
         simRunning,
+        elevationMismatch,
       );
 
       expect(() => focusIRacingIfEnabled()).not.toThrow();
@@ -188,6 +191,7 @@ describe("window focus service", () => {
           throw new Error("boom");
         },
         simRunning,
+        elevationMismatch,
       );
       expect(() => focusIRacingBeforeInput()).not.toThrow();
       expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("Failed to focus iRacing window"));
@@ -235,7 +239,7 @@ describe("window focus service", () => {
     it("warns again after the window disappears in between", () => {
       const logger = createLogger();
       let result: number = FocusResult.FocusTimedOut;
-      initWindowFocus(logger, () => result as FocusResult, simRunning);
+      initWindowFocus(logger, () => result as FocusResult, simRunning, elevationMismatch);
 
       focusIRacingIfEnabled();
       vi.advanceTimersByTime(FOCUS_TIMEOUT_COOLDOWN_MS);
@@ -250,7 +254,7 @@ describe("window focus service", () => {
     it("warns again after a focus succeeds in between", () => {
       const logger = createLogger();
       let result: number = FocusResult.FocusTimedOut;
-      initWindowFocus(logger, () => result as FocusResult, simRunning);
+      initWindowFocus(logger, () => result as FocusResult, simRunning, elevationMismatch);
 
       focusIRacingIfEnabled();
       vi.advanceTimersByTime(FOCUS_TIMEOUT_COOLDOWN_MS);
@@ -341,7 +345,7 @@ describe("window focus service", () => {
       const logger = createLogger();
       let result: number = FocusResult.FocusTimedOut;
       const focuser = vi.fn(() => result as FocusResult);
-      initWindowFocus(logger, focuser, simRunning);
+      initWindowFocus(logger, focuser, simRunning, elevationMismatch);
 
       focusIRacingIfEnabled();
       vi.advanceTimersByTime(100);
@@ -357,7 +361,7 @@ describe("window focus service", () => {
       const logger = createLogger();
       let result: number = FocusResult.FocusTimedOut;
       const focuser = vi.fn(() => result as FocusResult);
-      initWindowFocus(logger, focuser, simRunning);
+      initWindowFocus(logger, focuser, simRunning, elevationMismatch);
 
       focusIRacingIfEnabled();
       vi.advanceTimersByTime(100);
@@ -373,7 +377,7 @@ describe("window focus service", () => {
       const logger = createLogger();
       let result: number = FocusResult.FocusTimedOut;
       const focuser = vi.fn(() => result as FocusResult);
-      initWindowFocus(logger, focuser, simRunning);
+      initWindowFocus(logger, focuser, simRunning, elevationMismatch);
 
       focusIRacingIfEnabled();
       vi.advanceTimersByTime(100);
@@ -418,6 +422,16 @@ describe("window focus service", () => {
       focusIRacingBeforeInput();
 
       expect(focuser).not.toHaveBeenCalled();
+    });
+
+    it("treats a throwing elevation check as no mismatch", () => {
+      const focuser = vi.fn(() => FocusResult.AlreadyFocused);
+      initWindowFocus(createLogger(), focuser, simRunning, () => {
+        throw new Error("probe failed");
+      });
+      focusIRacingIfEnabled();
+
+      expect(focuser).toHaveBeenCalledOnce();
     });
 
     it("asks as before when no mismatch is reported — the probe has not run, threw, or passed", () => {
@@ -545,6 +559,7 @@ describe("window focus service", () => {
         () => {
           throw new Error("boom");
         },
+        elevationMismatch,
       );
 
       expect(() => focusIRacingIfEnabled()).not.toThrow();
@@ -598,6 +613,7 @@ describe("focusIRacingNow (issue #926)", () => {
         throw new Error("boom");
       },
       simRunning,
+      elevationMismatch,
     );
 
     expect(focusIRacingNow()).toBeNull();

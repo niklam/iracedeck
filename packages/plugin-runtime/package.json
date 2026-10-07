@@ -23,6 +23,7 @@
     "@iracedeck/audio-service": "workspace:*",
     "@iracedeck/callout-settings": "workspace:*",
     "@iracedeck/deck-core": "workspace:*",
+    "@iracedeck/deck-iracing": "workspace:*",
     "@iracedeck/event-bus": "workspace:*",
     "@iracedeck/iracing-actions": "workspace:*",
     "@iracedeck/iracing-native": "workspace:*",
