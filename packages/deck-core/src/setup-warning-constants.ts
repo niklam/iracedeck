@@ -1,10 +1,12 @@
 /**
  * Setup-name mismatch warning constants (issue #625).
  *
- * A dependency-free leaf so `global-settings.ts` can read the default patterns
- * without importing the matcher module (which pulls in `pi-warnings.ts`, itself
+ * A leaf within deck-core (its one import is the `@iracedeck/callout-settings`
+ * registry) so `global-settings.ts` can read the default patterns without
+ * importing the matcher module (which pulls in `pi-warnings.ts`, itself
  * a consumer of `global-settings.ts`) — keeping the import graph acyclic.
  */
+import { calloutKey, SETUP_WARNING_CALLOUTS } from "@iracedeck/callout-settings";
 
 /** Session kind the warning is evaluated for. */
 export type SetupWarningKind = "qualifying" | "race";
@@ -28,7 +30,10 @@ export const DEFAULT_SETUP_WARNING_RACE_PATTERN = "(^|[ ._-])(qualifying|quali|q
 export const SETUP_WARNING_QUALIFYING_PATTERN_WARNING_ID = "setup-warning-qualifying-pattern-invalid";
 export const SETUP_WARNING_RACE_PATTERN_WARNING_ID = "setup-warning-race-pattern-invalid";
 
-/** Global-settings keys (kept here so producers reference one source of truth). */
-export const SETUP_WARNING_ENABLED_KEY = "calloutEnabledSetupWarning";
+/**
+ * Global-settings keys (kept here so producers reference one source of truth).
+ * The opt-in key is the registry's own (#1350); its type stays the literal.
+ */
+export const SETUP_WARNING_ENABLED_KEY = calloutKey(SETUP_WARNING_CALLOUTS, "warning");
 export const SETUP_WARNING_QUALIFYING_PATTERN_KEY = "setupWarningQualifyingPattern";
 export const SETUP_WARNING_RACE_PATTERN_KEY = "setupWarningRacePattern";

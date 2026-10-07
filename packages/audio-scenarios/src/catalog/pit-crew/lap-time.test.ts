@@ -12,11 +12,13 @@ import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" 
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { type CalloutScript, collectScriptReferences } from "@iracedeck/callout-script";
+import { LAP_TIME_CALLOUTS } from "@iracedeck/callout-settings";
 import type { IEventBus, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AudioAssetsManifest } from "../../interpreter.js";
 import { _resetAudioScenarios, getScenarioEngine, initializeAudioScenarios } from "../../interpreter.js";
+import { familyGate } from "./callout-gate.test-util.js";
 import { registerPitCrew } from "./index.js";
 import {
   buildLapTimeContract,
@@ -224,7 +226,7 @@ beforeEach(() => {
   initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
   registerPitCrew(bus, {
     logger: mockLogger as never,
-    getLapTimeCalloutEnabled: () => lapTimeEnabled,
+    isCalloutEnabled: familyGate(LAP_TIME_CALLOUTS, () => lapTimeEnabled),
     getLapCompletedSnapshot: () => lastSnapshot,
     getRaceFinishedFired: () => raceFinished,
     getUnderFullCourseCaution: () => underCaution,

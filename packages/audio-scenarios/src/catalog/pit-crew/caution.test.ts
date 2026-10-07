@@ -47,7 +47,6 @@ import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js"
 import { _resetAudioScenarios, initializeAudioScenarios } from "../../interpreter.js";
 import {
   buildCautionContracts,
-  CAUTION_CALLOUT_SETTING_KEYS,
   CAUTION_FOLLOW_DELAY_MS,
   CAUTION_LINEUP_CHANGE_DELAY_MS,
   CAUTION_SCENARIO_IDS,
@@ -362,7 +361,7 @@ describe("the caution contracts", () => {
     ]);
   });
 
-  it("maps every scenario id to its callout id and every callout id to its setting key", () => {
+  it("maps every scenario id to its callout id", () => {
     expect(SCENARIO_ID_TO_CAUTION_ID).toEqual({
       "pit-crew.caution-follow": "follow",
       "pit-crew.caution-pace-car-out": "pace-car-out",
@@ -374,22 +373,10 @@ describe("the caution contracts", () => {
       "pit-crew.caution-pace-car-off": "pace-car-off",
       "pit-crew.caution-restart": "restart",
     });
-
-    expect(CAUTION_CALLOUT_SETTING_KEYS).toEqual({
-      follow: "calloutEnabledCautionFollow",
-      "pace-car-out": "calloutEnabledCautionPaceCarOut",
-      "field-caught": "calloutEnabledCautionFieldCaught",
-      "extra-lap": "calloutEnabledCautionExtraLap",
-      "one-to-go": "calloutEnabledCautionOneToGo",
-      "lineup-changed": "calloutEnabledCautionLineupChanged",
-      position: "calloutEnabledCautionPosition",
-      "pace-car-off": "calloutEnabledCautionPaceCarOff",
-      restart: "calloutEnabledCautionRestart",
-    });
   });
 
   it("maps every contract the family builds — an unmapped id makes registerPitCrew throw at plugin startup", () => {
-    // The map is derived from the setting keys through the same id spelling
+    // The map is derived from the registry family through the same id spelling
     // the contracts use, so a callout added to the family can never reach the
     // opt-in wrapper without a mapping. That wrapper's throw takes EVERY Race
     // Engineer callout down, not just this family's.
@@ -402,7 +389,6 @@ describe("the caution contracts", () => {
 
       expect(calloutId, `${c.id} has no callout id`).toBeDefined();
       expect(cautionScenarioId(calloutId)).toBe(c.id);
-      expect(CAUTION_CALLOUT_SETTING_KEYS[calloutId], `${calloutId} has no setting key`).toBeDefined();
     }
   });
 

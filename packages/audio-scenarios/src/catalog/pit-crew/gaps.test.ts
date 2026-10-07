@@ -31,7 +31,6 @@ import {
   buildGapTrendContract,
   canClaimGapCallout,
   GAP_CALLOUT_DEFAULT_COOLDOWN_MS,
-  GAP_CALLOUT_SETTING_KEYS,
   GAP_CLIP_SOURCES,
   GAP_SCENARIO_IDS,
   registerGapVocabulary,
@@ -761,10 +760,8 @@ describe("the bundled script's gap entries (issue #1065)", () => {
 });
 
 describe("catalog wiring", () => {
-  it("maps every contract id to a callout id with a schema setting key", () => {
+  it("maps every contract id to a callout id", () => {
     expect(SCENARIO_ID_TO_GAP_ID["pit-crew.gap-trend"]).toBe("trend");
     expect(SCENARIO_ID_TO_GAP_ID["pit-crew.gap-threshold"]).toBe("threshold");
-    expect(GAP_CALLOUT_SETTING_KEYS.trend).toBe("calloutEnabledGapTrend");
-    expect(GAP_CALLOUT_SETTING_KEYS.threshold).toBe("calloutEnabledGapThreshold");
   });
 });

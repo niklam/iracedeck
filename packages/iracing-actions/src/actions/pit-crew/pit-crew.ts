@@ -9,12 +9,12 @@ import {
   getGlobalBorderSettings,
   getGlobalColors,
   getGlobalGraphicSettings,
-  getGlobalSettings,
   getGlobalTitleSettings,
   type IDeckDidReceiveSettingsEvent,
   type IDeckKeyDownEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
+  isCalloutEnabled,
   onGlobalSettingsChange,
   renderIconTemplate,
   resolveActiveDriverName,
@@ -107,7 +107,7 @@ type Mode = PitCrewSettings["mode"];
  * re-registering anything.
  */
 function isRadioCheckEnabled(): boolean {
-  return (getGlobalSettings() as Record<string, unknown>).calloutEnabledTelemetryConnectRadioCheck !== false;
+  return isCalloutEnabled("calloutEnabledTelemetryConnectRadioCheck");
 }
 
 /**

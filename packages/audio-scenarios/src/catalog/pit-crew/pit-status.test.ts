@@ -11,7 +11,7 @@
  *     `to` does not fire)
  *   - same-family preemption: a positioning correction (TooFarLeft →
  *     TooFarRight) supersedes the in-flight callout
- *   - per-callout opt-out via `registerPitCrew(... getPitStatusCalloutEnabled)`:
+ *   - per-callout opt-out via `registerPitCrew`'s `isCalloutEnabled`:
  *     disabling one id suppresses only that callout
  *   - repeat nags (#951): 5 contracts in their own `pit-status-repeat` family
  *     at a weight strictly below the transition calls, terse (no radio frame),
@@ -37,6 +37,7 @@ import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" 
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { type CalloutScript, collectScriptReferences } from "@iracedeck/callout-script";
+import { PIT_STATUS_CALLOUTS } from "@iracedeck/callout-settings";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { PitSvStatus, TrkLoc } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -44,6 +45,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NO_FRAME, WEIGHT } from "../../dsl.js";
 import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios, poolMemberPattern } from "../../interpreter.js";
+import { familyGate } from "./callout-gate.test-util.js";
 import { type PitStatusCalloutId, registerPitCrew } from "./index.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import {
@@ -1103,14 +1105,10 @@ describe("PIT_STATUS_CONTRACTS per-callout opt-out (via registerPitCrew)", () =>
     audio = createFakeAudio();
     engine = initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
     registerPitCrew(bus, {
-      getFlagCalloutEnabled: () => true,
       logger: mockLogger as never,
-      getPitReadbackEnabled: () => true,
       getPitActionsAllowed: () => true,
-      getPitServiceRequestsEnabled: () => true,
       getReadbackSnapshot: () => null,
-      getDamageCalloutEnabled: () => true,
-      getPitStatusCalloutEnabled: (id) => enabled.get(id) ?? true,
+      isCalloutEnabled: familyGate(PIT_STATUS_CALLOUTS, (id) => enabled.get(id) ?? true),
     });
     // After the registration, as the plugins do: the whole bundled script,
     // since the real registration holds every family's contracts.

@@ -29,6 +29,7 @@
  * the beep means.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
+import { type CalloutIdOf, NO_LIMITER_CALLOUTS } from "@iracedeck/callout-settings";
 import type { SessionStartSnapshot } from "@iracedeck/event-bus";
 import { hasPitLimiter, type TelemetryData } from "@iracedeck/iracing-sdk";
 
@@ -117,18 +118,7 @@ export const NO_LIMITER_CONTRACTS: readonly ScenarioContract[] = [NO_LIMITER_SPE
 export const NO_LIMITER_SCENARIO_IDS: readonly string[] = NO_LIMITER_CONTRACTS.map((c) => c.id);
 
 /** Stable identifier for each user-toggleable no-limiter callout (issue #1051). */
-export type NoLimiterCalloutId = "speeding" | "entry";
-
-/**
- * Canonical id -> plugin-global setting key. The ids name the CONDITION, matching
- * `PitLimiterCalloutId` next door -- the audience is already named by the family,
- * so repeating it in the id ("no-limiter": "calloutEnabledNoLimiterSpeeding")
- * only read as a typo.
- */
-export const NO_LIMITER_CALLOUT_SETTING_KEYS: Record<NoLimiterCalloutId, string> = {
-  speeding: "calloutEnabledNoLimiterSpeeding",
-  entry: "calloutEnabledNoLimiterEntry",
-};
+export type NoLimiterCalloutId = CalloutIdOf<typeof NO_LIMITER_CALLOUTS>;
 
 /** Scenario id -> callout id, consumed by `wrapCalloutScenario` in `index.ts`. */
 export const SCENARIO_ID_TO_NO_LIMITER_ID: Record<string, NoLimiterCalloutId> = {

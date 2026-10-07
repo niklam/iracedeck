@@ -20,6 +20,7 @@ import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" 
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { type CalloutScript, collectScriptReferences } from "@iracedeck/callout-script";
+import { START_LIGHT_CALLOUTS } from "@iracedeck/callout-settings";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -31,6 +32,7 @@ import {
   initializeAudioScenarios,
   poolMemberPattern,
 } from "../../interpreter.js";
+import { familyGate } from "./callout-gate.test-util.js";
 import { registerPitCrew, type StartLightCalloutId } from "./index.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import { _resetRadarEngine } from "./radar-engine.js";
@@ -437,8 +439,8 @@ describe("START_LIGHT_CONTRACTS preemption", () => {
   });
 });
 
-// Opt-in gating wired through `registerPitCrew`'s `getStartLightCalloutEnabled`
-// closure (issue #480). `countdown` gates all four numbers; `lights` gates the
+// Opt-in gating wired through `registerPitCrew`'s `isCalloutEnabled` for the
+// start-light family (issue #480). `countdown` gates all four numbers; `lights` gates the
 // two gantry lines. Each is independent. The manifest here only carries the
 // start-light clips, so unrelated families register with disabled scenarios
 // (pool-validation errors are logged but harmless) — the start-light events
@@ -461,7 +463,7 @@ describe("START_LIGHT_CONTRACTS opt-in gating (issue #480)", () => {
 
     registerPitCrew(bus, {
       logger: mockLogger as never,
-      getStartLightCalloutEnabled: (id) => startLightEnabled.get(id) ?? true,
+      isCalloutEnabled: familyGate(START_LIGHT_CALLOUTS, (id) => startLightEnabled.get(id) ?? true),
     });
     // A contract is silent without a script (issue #1065): the gates are what
     // is under test here, so the lines must be there to be gated.

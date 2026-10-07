@@ -1,7 +1,5 @@
-import {
-  OPPONENT_FLAG_CALLOUT_SETTING_KEYS,
-  OPPONENT_PENALTY_FLAG_TO_CALLOUT_ID,
-} from "@iracedeck/audio-scenarios/pit-crew";
+import type { CalloutSettingKey } from "@iracedeck/callout-settings";
+import { OpponentPenaltyFlag } from "@iracedeck/event-bus";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { cleanupTempBinDirs, createHost } from "../test-support/fake-host.js";
@@ -57,20 +55,15 @@ describe("initSim", () => {
     expect(initSim(initCore(createHost()))).toBe(runtime);
   });
 
-  it("reads each translator option live through its sanitizer, and the opponent-flag opt-ins by callout key", () => {
+  it("hands the translator its six live options", () => {
     const optionsSeen: Record<string, (...args: unknown[]) => unknown>[] = [];
     implement("initializeSimEventsIracing", (_bus, _controller, _logger, options) =>
       optionsSeen.push(options as never),
     );
-    const flag = Object.keys(OPPONENT_PENALTY_FLAG_TO_CALLOUT_ID)[0];
-    const key = OPPONENT_FLAG_CALLOUT_SETTING_KEYS[OPPONENT_PENALTY_FLAG_TO_CALLOUT_ID[flag as never]];
-    let settings: Record<string, unknown> = {};
-    implement("getGlobalSettings", () => settings);
 
     initSim(initCore(createHost()));
-    const options = optionsSeen[0];
 
-    expect(Object.keys(options).sort()).toEqual([
+    expect(Object.keys(optionsSeen[0]).sort()).toEqual([
       "getCornerCalloutLeadSeconds",
       "getFuelLapsLeftMarginLaps",
       "getGapAlertThresholdSeconds",
@@ -78,8 +71,57 @@ describe("initSim", () => {
       "getOpponentFlagCalloutEnabled",
       "getOpponentFlagRangeSeconds",
     ]);
-    expect(options.getOpponentFlagCalloutEnabled(flag)).toBe(true);
-    settings = { [key]: false };
-    expect(options.getOpponentFlagCalloutEnabled(flag)).toBe(false);
+  });
+
+  /**
+   * Each bus flag against the settings key that must gate it, written out
+   * rather than derived: the meatball arrives as `Repair`, and a mapping that
+   * sent it (or any flag) to a sibling's key would silence the wrong callout.
+   */
+  const FLAG_KEYS: readonly (readonly [OpponentPenaltyFlag, CalloutSettingKey])[] = [
+    [OpponentPenaltyFlag.Furled, "calloutEnabledOpponentFlagFurled"],
+    [OpponentPenaltyFlag.Black, "calloutEnabledOpponentFlagBlack"],
+    [OpponentPenaltyFlag.Repair, "calloutEnabledOpponentFlagMeatball"],
+    [OpponentPenaltyFlag.Disqualify, "calloutEnabledOpponentFlagDisqualify"],
+  ];
+
+  it("has a row for every opponent penalty flag", () => {
+    expect(FLAG_KEYS.map(([flag]) => flag).sort()).toEqual(Object.values(OpponentPenaltyFlag).sort());
+  });
+
+  it.each(FLAG_KEYS)("gates the %s opponent flag on %s alone, live", (flag, key) => {
+    const optionsSeen: Record<string, (...args: unknown[]) => unknown>[] = [];
+    implement("initializeSimEventsIracing", (_bus, _controller, _logger, options) =>
+      optionsSeen.push(options as never),
+    );
+    let off = new Set<unknown>();
+    implement("isCalloutEnabled", (asked) => !off.has(asked));
+
+    initSim(initCore(createHost()));
+    const gate = optionsSeen[0].getOpponentFlagCalloutEnabled;
+
+    expect(gate(flag), "every key on").toBe(true);
+    off = new Set(FLAG_KEYS.map(([, other]) => other).filter((other) => other !== key));
+    expect(gate(flag), "every other flag's key off").toBe(true);
+    off = new Set([key]);
+    expect(gate(flag), "its own key off").toBe(false);
+  });
+
+  it("lets a flag the map does not know through without asking any key", () => {
+    const optionsSeen: Record<string, (...args: unknown[]) => unknown>[] = [];
+    implement("initializeSimEventsIracing", (_bus, _controller, _logger, options) =>
+      optionsSeen.push(options as never),
+    );
+    const asked: unknown[] = [];
+    implement("isCalloutEnabled", (key) => {
+      asked.push(key);
+
+      return false;
+    });
+
+    initSim(initCore(createHost()));
+
+    expect(optionsSeen[0].getOpponentFlagCalloutEnabled("a-flag-added-later")).toBe(true);
+    expect(asked).toEqual([]);
   });
 });

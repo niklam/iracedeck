@@ -213,6 +213,7 @@
  * caution, beside any sibling.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
+import { type CalloutIdOf, CAUTION_CALLOUTS } from "@iracedeck/callout-settings";
 import type { SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { Flags, hasFlag, type TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
@@ -234,16 +235,7 @@ const greenHeld = (telemetry: TelemetryData | null): boolean =>
   telemetry !== null && hasFlag(telemetry.SessionFlags ?? 0, Flags.GreenHeld);
 
 /** Stable identifier for each user-toggleable caution callout (issue #1127). */
-export type CautionCalloutId =
-  | "follow"
-  | "pace-car-out"
-  | "field-caught"
-  | "extra-lap"
-  | "one-to-go"
-  | "lineup-changed"
-  | "position"
-  | "pace-car-off"
-  | "restart";
+export type CautionCalloutId = CalloutIdOf<typeof CAUTION_CALLOUTS>;
 
 /**
  * Reader the plugins wire to `getCautionLineup()` from
@@ -667,32 +659,16 @@ export const CAUTION_SCENARIO_IDS: readonly string[] = buildCautionContracts({
 }).map((c) => c.id);
 
 /**
- * Canonical mapping from {@link CautionCalloutId} to its plugin-global setting
- * key in `GlobalSettingsSchema`. Plugin entry points read the live opt-in
- * through it without duplicating the key strings.
- */
-export const CAUTION_CALLOUT_SETTING_KEYS: Record<CautionCalloutId, string> = {
-  follow: "calloutEnabledCautionFollow",
-  "pace-car-out": "calloutEnabledCautionPaceCarOut",
-  "field-caught": "calloutEnabledCautionFieldCaught",
-  "extra-lap": "calloutEnabledCautionExtraLap",
-  "one-to-go": "calloutEnabledCautionOneToGo",
-  "lineup-changed": "calloutEnabledCautionLineupChanged",
-  position: "calloutEnabledCautionPosition",
-  "pace-car-off": "calloutEnabledCautionPaceCarOff",
-  restart: "calloutEnabledCautionRestart",
-};
-
-/**
  * Scenario id → callout id, the map `registerPitCrew`'s opt-in wrapper is
- * given. DERIVED from the setting-key map through {@link cautionScenarioId}
- * rather than written out, because the wrapper THROWS on a scenario id it
+ * given. DERIVED from the family's registry entry (`CAUTION_CALLOUTS` in
+ * `@iracedeck/callout-settings`) through {@link cautionScenarioId} rather than
+ * written out, because the wrapper THROWS on a scenario id it
  * cannot map — at plugin startup, taking every Race Engineer callout down with
  * it, not just this family. A hand-written copy had exactly that failure
  * waiting in it for the next id added to the family.
  */
 export const SCENARIO_ID_TO_CAUTION_ID: Record<string, CautionCalloutId> = Object.fromEntries(
-  (Object.keys(CAUTION_CALLOUT_SETTING_KEYS) as CautionCalloutId[]).map((id) => [cautionScenarioId(id), id]),
+  (Object.keys(CAUTION_CALLOUTS.callouts) as CautionCalloutId[]).map((id) => [cautionScenarioId(id), id]),
 );
 
 /**

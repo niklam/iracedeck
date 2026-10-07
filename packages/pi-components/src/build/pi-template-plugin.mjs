@@ -20,6 +20,8 @@ import ejs from "ejs";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
+import { loadCalloutPiGroups } from "./callout-pi-groups.mjs";
+
 /**
  * Recursively find all .ejs files in a directory
  */
@@ -114,10 +116,20 @@ export function piTemplatePlugin(options) {
   // Build list of partial search directories
   const partialSearchDirs = [partialsDir, ...additionalPartialsDirs].filter((d) => existsSync(d));
 
+  // The Race Engineer callout rows, read from the built registry once per build
+  // (#1350) and watched, so a family edit in watch mode reaches the window too.
+  let callouts;
+
   return {
     name: "pi-template-plugin",
 
     buildStart() {
+      callouts = loadCalloutPiGroups();
+
+      for (const file of callouts.watchFiles) {
+        this.addWatchFile(file);
+      }
+
       // Watch template files for changes
       if (existsSync(templatesDir)) {
         const ejsFiles = findEjsFiles(templatesDir);
@@ -159,6 +171,9 @@ export function piTemplatePlugin(options) {
 
       // Find all .ejs template files
       const ejsFiles = findEjsFiles(templatesDir);
+
+      // A build that skipped buildStart (a test calling this hook alone) reads them here.
+      const calloutPiGroups = (callouts ?? loadCalloutPiGroups()).groups;
 
       // Load data files
       const dataDir = path.join(templatesDir, "data");
@@ -203,6 +218,8 @@ export function piTemplatePlugin(options) {
               docsUrl,
               // Platform feature flags for this plugin build
               platform: platformFeatures,
+              // The Race Engineer callout opt-in rows, from @iracedeck/callout-settings (#1350)
+              calloutPiGroups,
               // Also expose a require function for inline requires (resolved from templatesDir)
               require: createTemplateRequire(templatesDir),
               // NOTE: do NOT add a hand-built `locals` key here. EJS already binds

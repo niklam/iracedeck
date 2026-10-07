@@ -40,6 +40,7 @@
  * (`getRaceFinishedFired`) — no overtake commentary after the checkered.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
+import { type CalloutIdOf, OVERTAKE_CALLOUTS } from "@iracedeck/callout-settings";
 import type { SimEventOf } from "@iracedeck/event-bus";
 
 import type { ScenarioContext, ScenarioContract } from "../../dsl.js";
@@ -265,16 +266,7 @@ export function buildOvertakeLostContract(
  * One id per direction — the opt-in covers both the reaction and the position
  * readout for that direction.
  */
-export type OvertakeCalloutId = "gained" | "lost";
-
-/**
- * Canonical mapping from `OvertakeCalloutId` to its plugin-global setting key
- * in `GlobalSettingsSchema`.
- */
-export const OVERTAKE_CALLOUT_SETTING_KEYS: Record<OvertakeCalloutId, string> = {
-  gained: "calloutEnabledOvertakeGained",
-  lost: "calloutEnabledOvertakeLost",
-};
+export type OvertakeCalloutId = CalloutIdOf<typeof OVERTAKE_CALLOUTS>;
 
 // Both the reaction AND the position-readout contract id for each direction map
 // to the same opt-in, so one toggle silences both. `as const` powers the

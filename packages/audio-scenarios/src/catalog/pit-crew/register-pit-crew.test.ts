@@ -1,5 +1,6 @@
 /**
- * Live-gating tests for `registerPitCrew(bus, getFlagCalloutEnabled)`.
+ * Live-gating tests for `registerPitCrew`'s per-callout opt-ins (its one
+ * `isCalloutEnabled` lookup, #1350).
  *
  * Issue #467 ships per-flag opt-in toggles persisted to plugin-global
  * settings. The plugins pass a closure into `registerPitCrew` that
@@ -21,6 +22,23 @@ import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" 
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { CalloutScript } from "@iracedeck/callout-script";
+import {
+  AUTO_FUEL_CALLOUTS,
+  type CalloutSettingKey,
+  DAMAGE_CALLOUTS,
+  FLAG_CALLOUTS,
+  FUEL_CALLOUTS,
+  INCIDENT_CALLOUTS,
+  NO_LIMITER_CALLOUTS,
+  OPPONENT_PIT_CALLOUTS,
+  PIT_BOX_CALLOUTS,
+  PIT_LIMITER_CALLOUTS,
+  PIT_SERVICE_REQUEST_CALLOUTS,
+  PIT_STATUS_CALLOUTS,
+  PIT_WINDOW_CALLOUTS,
+  ROLLING_START_CALLOUTS,
+  TIRE_WEAR_CALLOUTS,
+} from "@iracedeck/callout-settings";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { PitSvStatus } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from "vitest";
@@ -29,12 +47,12 @@ import type { Scenario, ScenarioContract } from "../../dsl.js";
 import { NO_FRAME, WEIGHT } from "../../dsl.js";
 import type { AudioAssetsManifest } from "../../interpreter.js";
 import { _resetAudioScenarios, getScenarioEngine, initializeAudioScenarios } from "../../interpreter.js";
+import { familyGate } from "./callout-gate.test-util.js";
 import { _setFurledRaisedSpoken } from "./flag-alerts.js";
 import { _resetGapCalloutCooldown } from "./gaps.js";
 import { _resetLastIncidentPoints } from "./incidents.js";
 import {
   _resetOpponentPitPending,
-  AUTO_FUEL_CALLOUT_SETTING_KEYS,
   type AutoFuelCalloutId,
   type DamageCalloutId,
   type FlagCalloutId,
@@ -552,9 +570,9 @@ let opponentPitLivePosition: number | null;
 let rollingStartEnabled: Map<RollingStartCalloutId, boolean>;
 let fuelEnabled: Map<FuelCalloutId, boolean>;
 // Issue #1051. Two SEPARATE spies rather than one shared closure: the two
-// getters sit in adjacent positional slots (49 and 50 of 52) and have the same
-// `(id) => boolean` shape, so only "which spy saw which id" can tell a slot
-// swap from correct wiring. See the slot test in the #1051 describe block.
+// families' gates have the same `(id) => boolean` shape, so only "which spy saw
+// which id" can tell a family swap from correct wiring. See the family test in
+// the #1051 describe block.
 let pitLimiterEnabled: Map<PitLimiterCalloutId, boolean>;
 let noLimiterEnabled: Map<NoLimiterCalloutId, boolean>;
 let getPitLimiterEnabled: (id: PitLimiterCalloutId) => boolean;
@@ -595,27 +613,29 @@ beforeEach(() => {
   const engine = initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
   defineScenarioSpy = vi.spyOn(engine, "defineScenario");
   defineContractSpy = vi.spyOn(engine, "defineContract");
+  // One gate per family the tests below switch; a key no gate owns reads as on.
+  const gates: ReadonlyArray<(key: CalloutSettingKey) => boolean> = [
+    familyGate(FLAG_CALLOUTS, (id) => enabled.get(id) ?? true),
+    familyGate(PIT_SERVICE_REQUEST_CALLOUTS, () => pitServiceRequestsEnabled),
+    familyGate(AUTO_FUEL_CALLOUTS, getAutoFuelCalloutEnabled),
+    familyGate(DAMAGE_CALLOUTS, (id) => damageEnabled.get(id) ?? true),
+    familyGate(PIT_STATUS_CALLOUTS, (id) => pitStatusEnabled.get(id) ?? true),
+    familyGate(INCIDENT_CALLOUTS, (id) => incidentEnabled.get(id) ?? true),
+    familyGate(PIT_BOX_CALLOUTS, () => pitBoxEnabled),
+    familyGate(PIT_WINDOW_CALLOUTS, (id) => pitWindowEnabled.get(id) ?? true),
+    familyGate(TIRE_WEAR_CALLOUTS, (id) => tireWearEnabled.get(id) ?? true),
+    familyGate(ROLLING_START_CALLOUTS, (id) => rollingStartEnabled.get(id) ?? true),
+    familyGate(FUEL_CALLOUTS, (id) => fuelEnabled.get(id) ?? true),
+    familyGate(OPPONENT_PIT_CALLOUTS, (id) => opponentPitEnabled.get(id) ?? true),
+    familyGate(PIT_LIMITER_CALLOUTS, getPitLimiterEnabled),
+    familyGate(NO_LIMITER_CALLOUTS, getNoLimiterEnabled),
+  ];
   registerPitCrew(bus, {
-    getFlagCalloutEnabled: (id) => enabled.get(id) ?? true,
     logger: mockLogger as never,
-    getPitReadbackEnabled: () => true,
     getPitActionsAllowed,
-    getPitServiceRequestsEnabled: () => pitServiceRequestsEnabled,
-    getAutoFuelCalloutEnabled,
     getReadbackSnapshot: () => null,
-    getDamageCalloutEnabled: (id) => damageEnabled.get(id) ?? true,
-    getPitStatusCalloutEnabled: (id) => pitStatusEnabled.get(id) ?? true,
-    getIncidentCalloutEnabled: (id) => incidentEnabled.get(id) ?? true,
-    getPitBoxCalloutEnabled: () => pitBoxEnabled,
-    getPitWindowCalloutEnabled: (id) => pitWindowEnabled.get(id) ?? true,
-    getTireWearCalloutEnabled: (id) => tireWearEnabled.get(id) ?? true,
-    getRollingStartCalloutEnabled: (id) => rollingStartEnabled.get(id) ?? true,
-    getStartLightCalloutEnabled: () => true,
-    getFuelCalloutEnabled: (id) => fuelEnabled.get(id) ?? true,
-    getOpponentPitCalloutEnabled: (id) => opponentPitEnabled.get(id) ?? true,
+    isCalloutEnabled: (key) => gates.every((gate) => gate(key)),
     getOpponentPitLivePosition: () => opponentPitLivePosition,
-    getPitLimiterCalloutEnabled: getPitLimiterEnabled,
-    getNoLimiterCalloutEnabled: getNoLimiterEnabled,
     getRaceEngineerMasterEnabled,
   });
   // After the registration, as the plugins do (issue #1064): the engine
@@ -1135,10 +1155,6 @@ describe("autofuel callout live gating (issue #474)", () => {
     { on: false, refuel: true, clip: `voice/${VOICE}/pit-actions/auto-fuel-off-refuel-01.mp3` },
     { on: false, refuel: false, clip: `voice/${VOICE}/pit-actions/auto-fuel-off-no-refuel-01.mp3` },
   ] as const;
-
-  it("maps its single subject to the setting the plugins read — one checkbox for all four", () => {
-    expect(AUTO_FUEL_CALLOUT_SETTING_KEYS).toEqual({ changed: "calloutEnabledPitServiceAutoFuel" });
-  });
 
   it.each(CASES)(
     "on=$on refuel=$refuel speaks through the real registration, asking the opt-in for `changed`",
@@ -1967,7 +1983,7 @@ describe("laps-of-fuel-left family registration (issue #838)", () => {
 // covered exhaustively in `pit-limiter.test.ts` / `no-limiter.test.ts`. What is
 // only observable HERE is the wiring: that the scenarios reach the engine at
 // all, that the pools they name resolve to clips, and that each family's opt-in
-// arrives in the right positional slot.
+// is asked through its own family.
 describe("pit-limiter / no-limiter family registration (issue #1051)", () => {
   // Two of family A's scenarios carry a `triggerDelay`, so every fire in this
   // block is walked through the clock by `fire()` below.
@@ -2146,15 +2162,13 @@ describe("pit-limiter / no-limiter family registration (issue #1051)", () => {
     expect(played(row.pool)).toBe(true);
   });
 
-  // `getPitLimiterCalloutEnabled` and `getNoLimiterCalloutEnabled` are
-  // positional parameters 49 and 50 of 52, adjacent, both `(id) => boolean`, and
-  // both defaulting to `() => true`. A parameter inserted above them shifts both
-  // silently: nothing throws, no type changes, and every "it fires" test still
-  // passes because the shifted-in getter also returns true. Only the id each spy
-  // is handed distinguishes the two — their unions overlap on "speeding" but
-  // family A alone owns "on-track"/"missing"/"dropped" and family B alone owns
-  // "entry", so a swap shows up as the wrong spy seeing an id it has no member
-  // for.
+  // The two families' gates are built the same way and both default to on, so
+  // a scenario resolved through the wrong family (the pit-limiter loop handed
+  // the no-limiter gate, or the reverse) would pass every "it fires" test. Only
+  // the family each spy is asked for distinguishes the two — their ids overlap
+  // on "speeding" but family A alone owns "on-track"/"missing"/"dropped" and
+  // family B alone owns "entry", so a swap shows up as the wrong spy being
+  // consulted.
   it("consults the pit-limiter getter, and only it, for a family A scenario", () => {
     fire(fireFor("pit-crew.limiter-on-track"));
 

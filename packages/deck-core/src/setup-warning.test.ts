@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { GlobalSettingsSchema } from "./global-settings.js";
 import { clearWarning, setWarning } from "./pi-warnings.js";
 import {
   compileSetupWarningPattern,
@@ -88,33 +89,40 @@ describe("resolveSetupWarningPattern", () => {
   });
 });
 
+/** A partial settings literal, parsed the way the plugin's cache is: every key it leaves out takes its schema default. */
+const settingsOf = (partial: Record<string, unknown>) => GlobalSettingsSchema.parse(partial);
+
 describe("evaluateSetupWarning", () => {
   it("is false when the opt-in is disabled", () => {
-    expect(evaluateSetupWarning("race", { calloutEnabledSetupWarning: false }, "qualifying.sto")).toBe(false);
+    expect(evaluateSetupWarning("race", settingsOf({ calloutEnabledSetupWarning: false }), "qualifying.sto")).toBe(
+      false,
+    );
   });
 
   it("is true on a mismatch with the opt-in unset (default on)", () => {
-    expect(evaluateSetupWarning("race", {}, "qualifying.sto")).toBe(true);
-    expect(evaluateSetupWarning("qualifying", {}, "race.sto")).toBe(true);
+    expect(evaluateSetupWarning("race", settingsOf({}), "qualifying.sto")).toBe(true);
+    expect(evaluateSetupWarning("qualifying", settingsOf({}), "race.sto")).toBe(true);
   });
 
   it("is false when the name looks correct for the session", () => {
-    expect(evaluateSetupWarning("race", {}, "race.sto")).toBe(false);
-    expect(evaluateSetupWarning("qualifying", {}, "qualifying.sto")).toBe(false);
+    expect(evaluateSetupWarning("race", settingsOf({}), "race.sto")).toBe(false);
+    expect(evaluateSetupWarning("qualifying", settingsOf({}), "qualifying.sto")).toBe(false);
   });
 
   it("honors a custom user pattern", () => {
-    const settings = { setupWarningRacePattern: "(^|[ .-])(endurance)([ .-]|$)" };
+    const settings = settingsOf({ setupWarningRacePattern: "(^|[ .-])(endurance)([ .-]|$)" });
     expect(evaluateSetupWarning("race", settings, "endurance.sto")).toBe(true);
     expect(evaluateSetupWarning("race", settings, "qualifying.sto")).toBe(false);
   });
 
   it("falls back to the default when the custom pattern is empty", () => {
-    expect(evaluateSetupWarning("race", { setupWarningRacePattern: "" }, "qualifying.sto")).toBe(true);
+    expect(evaluateSetupWarning("race", settingsOf({ setupWarningRacePattern: "" }), "qualifying.sto")).toBe(true);
   });
 
   it("is false (never crashes) on an invalid custom pattern", () => {
-    expect(evaluateSetupWarning("race", { setupWarningRacePattern: "(unclosed" }, "qualifying.sto")).toBe(false);
+    expect(evaluateSetupWarning("race", settingsOf({ setupWarningRacePattern: "(unclosed" }), "qualifying.sto")).toBe(
+      false,
+    );
   });
 });
 

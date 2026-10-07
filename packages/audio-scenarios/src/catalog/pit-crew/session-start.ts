@@ -71,6 +71,7 @@
  * race-start, not a rejection.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
+import { type CalloutIdOf, SESSION_START_CALLOUTS } from "@iracedeck/callout-settings";
 import { type SessionStartSnapshot, TrackWetness } from "@iracedeck/event-bus";
 import { type TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
@@ -352,16 +353,7 @@ export function buildSessionStartContract(
  * Stable identifier for the session-start callout (issue #542). Single
  * subject — the whole readout is one user-toggleable callout.
  */
-export type SessionStartCalloutId = "session-start";
-
-/**
- * Canonical mapping from `SessionStartCalloutId` to its plugin-global setting
- * key in `GlobalSettingsSchema`. Plugin entry points use this to read the live
- * opt-in without duplicating the key string.
- */
-export const SESSION_START_CALLOUT_SETTING_KEYS: Record<SessionStartCalloutId, string> = {
-  "session-start": "calloutEnabledSessionStart",
-};
+export type SessionStartCalloutId = CalloutIdOf<typeof SESSION_START_CALLOUTS>;
 
 export const SCENARIO_ID_TO_SESSION_START_ID: Record<string, SessionStartCalloutId> = {
   "pit-crew.session-start": "session-start",

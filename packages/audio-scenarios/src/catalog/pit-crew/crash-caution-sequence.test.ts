@@ -40,6 +40,7 @@ import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" 
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { CalloutScript } from "@iracedeck/callout-script";
+import { CAUTION_CALLOUTS } from "@iracedeck/callout-settings";
 import type { IEventBus, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { SessionState } from "@iracedeck/iracing-sdk";
 import type { CautionLineup } from "@iracedeck/sim-events-iracing";
@@ -48,6 +49,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WEIGHT } from "../../dsl.js";
 import type { AudioAssetsManifest } from "../../interpreter.js";
 import { _resetAudioScenarios, getScenarioEngine, initializeAudioScenarios } from "../../interpreter.js";
+import { familyGate } from "./callout-gate.test-util.js";
 import { _resetLastIncidentPoints } from "./incidents.js";
 import { registerPitCrew } from "./index.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
@@ -203,7 +205,7 @@ beforeEach(() => {
     // nothing has named car 7 (the follow call is off).
     getCautionEpisode: () => ({ id: 1, firstFollowCarIdx: 3 }),
     getUnderFullCourseCaution: () => true,
-    getCautionCalloutEnabled: (id) => id !== "follow",
+    isCalloutEnabled: familyGate(CAUTION_CALLOUTS, (id) => id !== "follow"),
   });
   getScenarioEngine().setScripts(new Map([[VOICE, SCRIPT]]));
 });

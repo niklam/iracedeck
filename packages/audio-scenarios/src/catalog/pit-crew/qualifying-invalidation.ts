@@ -99,6 +99,7 @@
  * resolve through the manifest regardless of a base, so nothing is missing.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
+import { type CalloutIdOf, QUALIFYING_INVALIDATION_CALLOUTS } from "@iracedeck/callout-settings";
 import type { QualifyingInvalidationSnapshot, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 
 import type { ScenarioContract } from "../../dsl.js";
@@ -436,16 +437,7 @@ export function buildQualifyingInvalidationContract(
  * Single subject — the whole callout (core line + branched tail) is one
  * user-toggleable unit.
  */
-export type QualifyingInvalidationCalloutId = "lap-invalidated";
-
-/**
- * Canonical mapping from {@link QualifyingInvalidationCalloutId} to its
- * plugin-global setting key in `GlobalSettingsSchema`. Plugin entry points use
- * this to read the live opt-in without duplicating the key string.
- */
-export const QUALIFYING_INVALIDATION_CALLOUT_SETTING_KEYS: Record<QualifyingInvalidationCalloutId, string> = {
-  "lap-invalidated": "calloutEnabledQualifyingLapInvalidated",
-};
+export type QualifyingInvalidationCalloutId = CalloutIdOf<typeof QUALIFYING_INVALIDATION_CALLOUTS>;
 
 // `as const` so the element type is a literal union the
 // `SCENARIO_ID_TO_QUALIFYING_INVALIDATION_ID` `Record` key can be tightened

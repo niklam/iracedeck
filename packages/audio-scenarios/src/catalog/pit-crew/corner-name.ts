@@ -30,6 +30,7 @@
  * the scenario harness.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
+import { type CalloutIdOf, CORNER_NAME_CALLOUTS } from "@iracedeck/callout-settings";
 import type { SimEventOf } from "@iracedeck/event-bus";
 
 import type { ScenarioContract } from "../../dsl.js";
@@ -98,12 +99,7 @@ export function buildCornerNameContract(getSnapshot: CornerNameSnapshotResolver)
 }
 
 /** Stable identifier for the corner-name callout family (issue #888). */
-export type CornerNameCalloutId = "corner-names";
-
-/** Canonical id↔setting-key map plugins read the live opt-in through. */
-export const CORNER_NAME_CALLOUT_SETTING_KEYS: Record<CornerNameCalloutId, string> = {
-  "corner-names": "calloutEnabledCornerNames",
-};
+export type CornerNameCalloutId = CalloutIdOf<typeof CORNER_NAME_CALLOUTS>;
 
 export const SCENARIO_ID_TO_CORNER_NAME_ID: Record<string, CornerNameCalloutId> = {
   "pit-crew.corner-name-approaching": "corner-names",

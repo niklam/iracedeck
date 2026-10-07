@@ -20,6 +20,7 @@ import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" 
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { type CalloutScript, collectScriptReferences } from "@iracedeck/callout-script";
+import { ROLLING_START_CALLOUTS } from "@iracedeck/callout-settings";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -31,6 +32,7 @@ import {
   initializeAudioScenarios,
   poolMemberPattern,
 } from "../../interpreter.js";
+import { familyGate } from "./callout-gate.test-util.js";
 import { registerPitCrew, type RollingStartCalloutId } from "./index.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import { _resetRadarEngine } from "./radar-engine.js";
@@ -326,8 +328,8 @@ describe("ROLLING_START_CONTRACTS triggers", () => {
   });
 });
 
-// Opt-in gating wired through `registerPitCrew`'s `getRollingStartCalloutEnabled`
-// closure (issue #660). Single subject (`pace-car`). The manifest here only
+// Opt-in gating wired through `registerPitCrew`'s `isCalloutEnabled` for the
+// rolling-start family (issue #660). Single subject (`pace-car`). The manifest here only
 // carries the rolling-start clips, so unrelated families register with disabled
 // scenarios (pool-validation errors are logged but harmless) — the rolling-start
 // event under test still fires normally.
@@ -346,7 +348,7 @@ describe("ROLLING_START_CONTRACTS opt-in gating (issue #660)", () => {
 
     registerPitCrew(bus, {
       logger: mockLogger as never,
-      getRollingStartCalloutEnabled: (id) => rollingStartEnabled.get(id) ?? true,
+      isCalloutEnabled: familyGate(ROLLING_START_CALLOUTS, (id) => rollingStartEnabled.get(id) ?? true),
     });
     // A contract is silent without a script (issue #1065): the gate is what is
     // under test here, so the line must be there to be gated.

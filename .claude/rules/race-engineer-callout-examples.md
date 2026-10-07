@@ -5,6 +5,7 @@ paths:
   - "packages/audio-scenarios/**"
   - "packages/audio-assets/**"
   - "packages/callout-script/**"
+  - "packages/callout-settings/**"
   - "packages/scenario-harness/**"
   - "packages/deck-core/src/global-settings.ts"
   - "packages/iracing-actions/src/actions/pit-crew/**"
@@ -12,7 +13,7 @@ paths:
 ---
 # Race Engineer Callout — Reference Implementations
 
-Worked precedents for the how-to in `@.claude/rules/race-engineer-callouts.md`. Each entry names the pattern a past callout established and the reusable lesson — consult one when a new callout needs a variation the checklist doesn't cover (continuous-distance triggers, multi-class projection, replay gating, cause classification, …). The full rationale for any entry also lives in its linked issue/PR.
+Worked precedents for the how-to in `@.claude/rules/race-engineer-callouts.md`. Each entry names the pattern a past callout established and the reusable lesson — consult one when a new callout needs a variation the checklist doesn't cover (continuous-distance triggers, multi-class projection, replay gating, cause classification, …). The full rationale for any entry also lives in its linked issue/PR. Entries record what was wired at the time: where one names an opt-in's per-family key map, its Zod field, its checkbox row or a per-family `get<Family>CalloutEnabled` parameter of `registerPitCrew`, today that is one entry in the `@iracedeck/callout-settings` registry and the family's `enabledIn(...)` gate — steps 5 and 6 of the checklist (#1350).
 
 - **Track Conditions / Wetness change** — issue #526. End-to-end example covering a brand-new family with a new bus enum, directional predicate, single per-callout opt-in covering multiple subjects.
 - **Flag callouts** — issue #467. Per-subject opt-in (one boolean per flag colour); scope-aware predicate (`yellow.scope`); session-type branching (green/white/checkered).

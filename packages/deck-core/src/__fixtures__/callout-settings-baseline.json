@@ -1,0 +1,1002 @@
+{
+  "calloutEnabledCautionExtraLap": {
+    "owner": "caution/extra-lap",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledCautionFieldCaught": {
+    "owner": "caution/field-caught",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledCautionFollow": {
+    "owner": "caution/follow",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledCautionLineupChanged": {
+    "owner": "caution/lineup-changed",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledCautionOneToGo": {
+    "owner": "caution/one-to-go",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledCautionPaceCarOff": {
+    "owner": "caution/pace-car-off",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledCautionPaceCarOut": {
+    "owner": "caution/pace-car-out",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledCautionPosition": {
+    "owner": "caution/position",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledCautionRestart": {
+    "owner": "caution/restart",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledCornerNames": {
+    "owner": "corner-name/corner-names",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledDamageRepairNeeded": {
+    "owner": "damage/repair-needed",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledFlagBlack": {
+    "owner": "flag/black",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledFlagBlue": {
+    "owner": "flag/blue",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledFlagCautionWaving": {
+    "owner": "flag/caution-waving",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledFlagCheckered": {
+    "owner": "flag/checkered",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledFlagCrossed": {
+    "owner": "flag/crossed",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledFlagDebris": {
+    "owner": "flag/debris",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledFlagDisqualify": {
+    "owner": "flag/disqualify",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledFlagDqScoringInvalid": {
+    "owner": "flag/dq-scoring-invalid",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledFlagFiveToGo": {
+    "owner": "flag/five-to-go",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledFlagFurled": {
+    "owner": "flag/furled",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledFlagFurledCleared": {
+    "owner": "flag/furled-cleared",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledFlagGreen": {
+    "owner": "flag/green",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledFlagGreenHeld": {
+    "owner": "flag/green-held",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledFlagMeatball": {
+    "owner": "flag/meatball",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledFlagOnePaceLapToGo": {
+    "owner": "flag/one-pace-lap-to-go",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledFlagRed": {
+    "owner": "flag/red",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledFlagTenToGo": {
+    "owner": "flag/ten-to-go",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledFlagWhite": {
+    "owner": "flag/white",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledFlagYellowCleared": {
+    "owner": "flag/yellow-cleared",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledFlagYellowFull": {
+    "owner": "flag/yellow-full",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledFlagYellowLocal": {
+    "owner": "flag/yellow-local",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledFlagYellowWaving": {
+    "owner": "flag/yellow-waving",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledFuelLapsLeft1": {
+    "owner": "fuel/laps-left-1",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledFuelLapsLeft10": {
+    "owner": "fuel/laps-left-10",
+    "default": false,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledFuelLapsLeft2": {
+    "owner": "fuel/laps-left-2",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledFuelLapsLeft3": {
+    "owner": "fuel/laps-left-3",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledFuelLapsLeft4": {
+    "owner": "fuel/laps-left-4",
+    "default": false,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledFuelLapsLeft5": {
+    "owner": "fuel/laps-left-5",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledFuelLapsLeft6": {
+    "owner": "fuel/laps-left-6",
+    "default": false,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledFuelLapsLeft7": {
+    "owner": "fuel/laps-left-7",
+    "default": false,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledFuelLapsLeft8": {
+    "owner": "fuel/laps-left-8",
+    "default": false,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledFuelLapsLeft9": {
+    "owner": "fuel/laps-left-9",
+    "default": false,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledFuelLapsLeftBox": {
+    "owner": "fuel/laps-left-box",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledFuelLapsLeftRaceCovered": {
+    "owner": "fuel/race-covered",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledGapThreshold": {
+    "owner": "gap/threshold",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledGapTrend": {
+    "owner": "gap/trend",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledIncidentCollisionCar": {
+    "owner": "incident/collision-car",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledIncidentCollisionWorld": {
+    "owner": "incident/collision-world",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledIncidentContactCar": {
+    "owner": "incident/contact-car",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledIncidentContactWorld": {
+    "owner": "incident/contact-world",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledIncidentOffTrack": {
+    "owner": "incident/off-track",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledIncidentOutOfControl": {
+    "owner": "incident/out-of-control",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledLapTimeBestLap": {
+    "owner": "lap-time/best-lap",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledLimiterDropped": {
+    "owner": "pit-limiter/dropped",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledLimiterMissing": {
+    "owner": "pit-limiter/missing",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledLimiterOnTrack": {
+    "owner": "pit-limiter/on-track",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledLimiterSpeeding": {
+    "owner": "pit-limiter/speeding",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledNoLimiterEntry": {
+    "owner": "no-limiter/entry",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledNoLimiterSpeeding": {
+    "owner": "no-limiter/speeding",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledOpponentFlagBlack": {
+    "owner": "opponent-flag/black",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledOpponentFlagDisqualify": {
+    "owner": "opponent-flag/disqualify",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledOpponentFlagFurled": {
+    "owner": "opponent-flag/furled",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledOpponentFlagMeatball": {
+    "owner": "opponent-flag/meatball",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledOpponentPitLeader": {
+    "owner": "opponent-pit/leader",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledOpponentPitNearby": {
+    "owner": "opponent-pit/nearby",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledOvertakeGained": {
+    "owner": "overtake/gained",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledOvertakeLost": {
+    "owner": "overtake/lost",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledPitBoxCountIn": {
+    "owner": "pit-box/count-in",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledPitOpenClosed": {
+    "owner": "pit-window/pit-open-closed",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledPitReadbackEntry": {
+    "owner": "pit-readback/pit-readback-entry",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledPitReadbackExit": {
+    "owner": "pit-readback/pit-readback-exit",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledPitServiceAutoFuel": {
+    "owner": "auto-fuel/changed",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledPitServiceRequests": {
+    "owner": "pit-service-requests/requests",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledPitSpeedingCue": {
+    "owner": "pit-speeding/cue",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledPitStatusBadAngle": {
+    "owner": "pit-status/bad-angle",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledPitStatusCantFixThat": {
+    "owner": "pit-status/cant-fix-that",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledPitStatusComplete": {
+    "owner": "pit-status/complete",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledPitStatusInProgress": {
+    "owner": "pit-status/in-progress",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledPitStatusTooFarBack": {
+    "owner": "pit-status/too-far-back",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledPitStatusTooFarForward": {
+    "owner": "pit-status/too-far-forward",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledPitStatusTooFarLeft": {
+    "owner": "pit-status/too-far-left",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledPitStatusTooFarRight": {
+    "owner": "pit-status/too-far-right",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledPositionChange": {
+    "owner": "position/change",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledQualifyingLapInvalidated": {
+    "owner": "qualifying-invalidation/lap-invalidated",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledRaceEnd": {
+    "owner": "race-end/race-end",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledRaceStart": {
+    "owner": "race-start/race-start",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledRaceStatus": {
+    "owner": "race-status/status",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledRollingStartPaceCar": {
+    "owner": "rolling-start/pace-car",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledSessionStart": {
+    "owner": "session-start/session-start",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledSetupWarning": {
+    "owner": "setup-warning/warning",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledSpotterCars": {
+    "owner": "spotter/cars",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledSpotterStillThere": {
+    "owner": "spotter/still-there",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledStartCountdown": {
+    "owner": "start-light/countdown",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledStartLights": {
+    "owner": "start-light/lights",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledTelemetryConnectRadioCheck": {
+    "owner": "telemetry-connect/radio-check",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledTireWearReport": {
+    "owner": "tire-wear/report",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledToggleCornerNames": {
+    "owner": "corner-names-toggle/ack",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledToggleRaceEngineer": {
+    "owner": "race-engineer-toggle/ack",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledTrackWetness": {
+    "owner": "track-conditions/wetness",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  }
+}

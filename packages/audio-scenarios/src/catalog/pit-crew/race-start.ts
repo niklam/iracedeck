@@ -76,6 +76,7 @@
  * of the brief plays (issue #1284).
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
+import { type CalloutIdOf, RACE_START_CALLOUTS } from "@iracedeck/callout-settings";
 import { type RaceStartSnapshot, TrackWetness } from "@iracedeck/event-bus";
 import { isPostRace, SessionState, type TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
@@ -505,16 +506,7 @@ export function buildRaceStartContract(getSnapshot: RaceStartSnapshotResolver, l
  * so a future second subject (wet-race opener, etc.) can be added by widening
  * the union without restructuring the wiring.
  */
-export type RaceStartCalloutId = "race-start";
-
-/**
- * Canonical mapping from `RaceStartCalloutId` to its plugin-global setting
- * key in `GlobalSettingsSchema`. Plugin entry points use this to read the
- * live opt-in without duplicating the key string.
- */
-export const RACE_START_CALLOUT_SETTING_KEYS: Record<RaceStartCalloutId, string> = {
-  "race-start": "calloutEnabledRaceStart",
-};
+export type RaceStartCalloutId = CalloutIdOf<typeof RACE_START_CALLOUTS>;
 
 // `as const` for the compile-time completeness check on `SCENARIO_ID_TO_RACE_START_ID`.
 export const RACE_START_SCENARIO_IDS = ["pit-crew.race-start"] as const;

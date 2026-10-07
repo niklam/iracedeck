@@ -72,6 +72,7 @@
  * distinct from #464's per-toggle stitching, which merges live.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
+import { type CalloutIdOf, PIT_READBACK_CALLOUTS } from "@iracedeck/callout-settings";
 import type { PitReadbackSnapshot, SimEventOf } from "@iracedeck/event-bus";
 
 import { WEIGHT } from "../../dsl.js";
@@ -433,17 +434,7 @@ export const PIT_READBACK_CLIP_SOURCES: readonly { group: "pit-readback"; base: 
  * subjects today, one per contract id; future fanouts (per-stop reason,
  * per-series tone) would extend this enum.
  */
-export type PitReadbackCalloutId = "pit-readback-entry" | "pit-readback-exit";
-
-/**
- * Canonical mapping from `PitReadbackCalloutId` to its plugin-global
- * setting key in `GlobalSettingsSchema`. Plugin entry points use this to
- * read the live opt-in for each readback without duplicating key strings.
- */
-export const PIT_READBACK_CALLOUT_SETTING_KEYS: Record<PitReadbackCalloutId, string> = {
-  "pit-readback-entry": "calloutEnabledPitReadbackEntry",
-  "pit-readback-exit": "calloutEnabledPitReadbackExit",
-};
+export type PitReadbackCalloutId = CalloutIdOf<typeof PIT_READBACK_CALLOUTS>;
 
 export const SCENARIO_ID_TO_PIT_READBACK_ID: Record<string, PitReadbackCalloutId> = {
   "pit-crew.pit-readback-entry": "pit-readback-entry",

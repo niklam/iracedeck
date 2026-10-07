@@ -14,6 +14,7 @@ import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" 
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { type CalloutScript, collectScriptReferences, type ScriptStep } from "@iracedeck/callout-script";
+import { RACE_START_CALLOUTS } from "@iracedeck/callout-settings";
 import type { IEventBus, RaceStartSnapshot, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { TrackWetness } from "@iracedeck/event-bus";
 import { SessionState } from "@iracedeck/iracing-sdk";
@@ -26,6 +27,7 @@ import {
   initializeAudioScenarios,
   poolMemberPattern,
 } from "../../interpreter.js";
+import { familyGate } from "./callout-gate.test-util.js";
 import { registerPitCrew } from "./index.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import {
@@ -336,7 +338,7 @@ beforeEach(() => {
   registerPitCrew(bus, {
     logger: mockLogger as never,
     getRaceEngineerMasterEnabled: () => masterEnabled,
-    getRaceStartCalloutEnabled: () => raceStartEnabled,
+    isCalloutEnabled: familyGate(RACE_START_CALLOUTS, () => raceStartEnabled),
     getRaceStartSnapshot: () => currentSnapshot,
     getSetupWarningMismatch: (kind) => setupWarningMismatch(kind),
   });

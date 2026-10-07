@@ -51,6 +51,7 @@ export default defineConfig({
       "@iracedeck/audio-scenarios": packageSrc("audio-scenarios"),
       "@iracedeck/audio-service": packageSrc("audio-service"),
       "@iracedeck/callout-script": packageSrc("callout-script"),
+      "@iracedeck/callout-settings": packageSrc("callout-settings"),
       // A subpath before its package: the aliases match by prefix, so the bare
       // entry below would otherwise turn this into `src/index.ts/key-binding-defaults`.
       "@iracedeck/deck-core/key-binding-defaults": packageSrc("deck-core", "src/key-binding-defaults.ts"),

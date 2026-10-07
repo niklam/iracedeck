@@ -79,6 +79,7 @@
  *   emit-time payload position.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
+import { type CalloutIdOf, OPPONENT_FLAG_CALLOUTS } from "@iracedeck/callout-settings";
 import { OpponentPenaltyFlag, type SimEventOf } from "@iracedeck/event-bus";
 
 import type { ScenarioContext, ScenarioContract } from "../../dsl.js";
@@ -86,7 +87,7 @@ import { poolRef, WEIGHT } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
 
 /** The four penalty-flag subjects this family speaks about (issue #936). */
-export type OpponentFlagCalloutId = "furled" | "black" | "meatball" | "disqualify";
+export type OpponentFlagCalloutId = CalloutIdOf<typeof OPPONENT_FLAG_CALLOUTS>;
 
 /** The two per-car relations this family branches on; `"others"` is the aggregate, handled separately. */
 type OpponentFlagCarRelation = "ahead" | "behind";
@@ -268,14 +269,6 @@ export const OPPONENT_FLAG_CONTRACTS: readonly ScenarioContract[] = [
   ...SUBJECTS.flatMap((subject) => RELATIONS.map((relation) => subjectRelationContract(subject, relation))),
   OTHERS_CONTRACT,
 ];
-
-/** Canonical id↔setting-key map plugins read the live opt-in through. */
-export const OPPONENT_FLAG_CALLOUT_SETTING_KEYS: Record<OpponentFlagCalloutId, string> = {
-  furled: "calloutEnabledOpponentFlagFurled",
-  black: "calloutEnabledOpponentFlagBlack",
-  meatball: "calloutEnabledOpponentFlagMeatball",
-  disqualify: "calloutEnabledOpponentFlagDisqualify",
-};
 
 /**
  * Bus enum value → callout id, for the translator-side opt-in resolver the

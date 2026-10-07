@@ -47,6 +47,7 @@
  * partial readouts, no hardcoded bounds.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
+import { type CalloutIdOf, LAP_TIME_CALLOUTS } from "@iracedeck/callout-settings";
 import type { SimEventOf } from "@iracedeck/event-bus";
 
 import type { ScenarioContract } from "../../dsl.js";
@@ -245,16 +246,7 @@ export function buildLapTimeContract(
  * "best lap" covers both the new-PB case and the first-valid-lap case (the
  * intro selector handles the distinction internally).
  */
-export type LapTimeCalloutId = "best-lap";
-
-/**
- * Canonical mapping from `LapTimeCalloutId` to its plugin-global setting key
- * in `GlobalSettingsSchema`. Plugin entry points use this to read the live
- * opt-in without duplicating the key string.
- */
-export const LAP_TIME_CALLOUT_SETTING_KEYS: Record<LapTimeCalloutId, string> = {
-  "best-lap": "calloutEnabledLapTimeBestLap",
-};
+export type LapTimeCalloutId = CalloutIdOf<typeof LAP_TIME_CALLOUTS>;
 
 export const SCENARIO_ID_TO_LAP_TIME_ID: Record<string, LapTimeCalloutId> = {
   "pit-crew.lap-time-best": "best-lap",

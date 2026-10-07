@@ -23,7 +23,13 @@ function shellViolations(source) {
   for (const name of FORBIDDEN_NAMES) {
     if (new RegExp(`\\b${name}\\b`).test(source)) violations.push(`names ${name}`);
   }
-  if (/\b[A-Z][A-Z0-9_]*_CALLOUT_SETTING_KEYS\b/.test(source)) violations.push("names a *_CALLOUT_SETTING_KEYS map");
+  if (/\b[A-Z][A-Z0-9_]*_(CALLOUT_SETTING_KEYS|CALLOUTS)\b/.test(source)) {
+    violations.push("names a callout key map or registry family");
+  }
+  // Any import of the registry, whatever it imports: a shell has no use for callout settings.
+  if (/["'`]@iracedeck\/callout-settings(?:\/[^"'`]*)?["'`]/.test(source)) {
+    violations.push("imports @iracedeck/callout-settings");
+  }
   if (/\bregisterAction\s*\(/.test(source)) violations.push("calls registerAction");
   if (startPluginCall(source) === undefined) violations.push("never calls startPlugin");
 
@@ -107,7 +113,23 @@ describe("the shell check itself (positive controls)", () => {
     ["an import of registerPitCrew", `import { registerPitCrew } from "x";\n${ok}`, "names registerPitCrew"],
     ["the translator constructed here", `initializeSimEventsIracing(bus);\n${ok}`, "names initializeSimEventsIracing"],
     ["the scenario engine constructed here", `initializeAudioScenarios(bus);\n${ok}`, "names initializeAudioScenarios"],
-    ["a callout key map", `const k = FLAG_CALLOUT_SETTING_KEYS;\n${ok}`, "names a *_CALLOUT_SETTING_KEYS map"],
+    ["a callout key map", `const k = FLAG_CALLOUT_SETTING_KEYS;\n${ok}`, "names a callout key map or registry family"],
+    ["a registry family", `const f = FLAG_CALLOUTS;\n${ok}`, "names a callout key map or registry family"],
+    [
+      "an import of the callout registry",
+      `import { CALLOUT_SETTING_KEYS } from "@iracedeck/callout-settings";\n${ok}`,
+      "imports @iracedeck/callout-settings",
+    ],
+    [
+      "a type-only registry import",
+      `import type { CalloutSettingKey } from '@iracedeck/callout-settings';\n${ok}`,
+      "imports @iracedeck/callout-settings",
+    ],
+    [
+      "a dynamic registry import",
+      `await import("@iracedeck/callout-settings");\n${ok}`,
+      "imports @iracedeck/callout-settings",
+    ],
     ["a registration", `adapter.registerAction("x", h);\n${ok}`, "calls registerAction"],
     ["no startPlugin", "const adapter = new X();\n", "never calls startPlugin"],
     ["82 lines", `${"//\n".repeat(80)}${ok}`, "82 lines (the cap is 80)"],

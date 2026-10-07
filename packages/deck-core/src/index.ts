@@ -157,6 +157,8 @@ export {
   LOAD_RETRY_DELAY_MS,
   LOAD_ATTEMPTS,
   getGlobalSettings,
+  isCalloutEnabled,
+  setCalloutEnabled,
   getGlobalColors,
   onGlobalSettingsChange,
   updateGlobalSettings,
@@ -665,6 +667,7 @@ export {
   setupNameMatchesPattern,
   validateSetupWarningPatterns,
   type SetupWarningKind,
+  type SetupWarningSettings,
 } from "./setup-warning.js";
 export { evaluateElevationWarning, ELEVATION_WARNING_ID, ELEVATION_WARNING_MESSAGE } from "./elevation-warning.js";
 export { createElevationCheckSubscriber, type ElevationCheckOptions } from "./elevation-check.js";

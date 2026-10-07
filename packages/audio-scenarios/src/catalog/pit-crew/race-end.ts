@@ -45,6 +45,7 @@
  * moment.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
+import { type CalloutIdOf, RACE_END_CALLOUTS } from "@iracedeck/callout-settings";
 import type { SimEventOf } from "@iracedeck/event-bus";
 
 import { poolRef, WEIGHT } from "../../dsl.js";
@@ -243,16 +244,7 @@ export function buildRaceEndContract(getSnapshot: RaceFinishedSnapshotResolver):
  * Stable identifier for the race-end callout (issue #569). Single subject —
  * the per-position result branch is selected internally.
  */
-export type RaceEndCalloutId = "race-end";
-
-/**
- * Canonical mapping from `RaceEndCalloutId` to its plugin-global setting key
- * in `GlobalSettingsSchema`. Plugin entry points use this to read the live
- * opt-in without duplicating the key string.
- */
-export const RACE_END_CALLOUT_SETTING_KEYS: Record<RaceEndCalloutId, string> = {
-  "race-end": "calloutEnabledRaceEnd",
-};
+export type RaceEndCalloutId = CalloutIdOf<typeof RACE_END_CALLOUTS>;
 
 // `as const` for the compile-time completeness check on `SCENARIO_ID_TO_RACE_END_ID`.
 export const RACE_END_SCENARIO_IDS = ["pit-crew.race-end"] as const;
