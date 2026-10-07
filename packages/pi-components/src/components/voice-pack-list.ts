@@ -92,12 +92,12 @@
  * <ird-voice-pack-list packs="_voicePacks"></ird-voice-pack-list>
  * ```
  */
+import { VOICE_PACKS_KEY } from "@iracedeck/app-constants";
+
 import { sendToPlugin } from "./sdpi-client.js";
 import { skipUnchanged } from "./settings-change-filter.js";
 
 let styleInjected = false;
-
-const DEFAULT_PACKS_SETTING = "_voicePacks";
 
 /**
  * Mirrors `VoicePackProvenanceKind` in deck-core's `voice-pack-scanner.ts`.
@@ -541,7 +541,7 @@ export class VoicePackList extends HTMLElement {
   private hookSettings(): void {
     if (!window.SDPIComponents) return;
 
-    const packsKey = this.getAttribute("packs") ?? DEFAULT_PACKS_SETTING;
+    const packsKey = this.getAttribute("packs") ?? VOICE_PACKS_KEY;
 
     window.SDPIComponents.useGlobalSettings(
       packsKey,

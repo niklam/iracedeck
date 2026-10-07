@@ -26,7 +26,8 @@
  * <ird-cpu-profile-status></ird-cpu-profile-status>
  * ```
  */
-import { PROFILE_CAPTURE_STATUS_SETTING } from "./cpu-profile-capture-constants.js";
+import { PROFILE_CAPTURE_STATUS_KEY } from "@iracedeck/app-constants";
+
 import { defineSendToPluginButton } from "./send-to-plugin-button.js";
 import { skipUnchanged } from "./settings-change-filter.js";
 
@@ -132,7 +133,7 @@ export class CpuProfileStatus extends HTMLElement {
     if (!window.SDPIComponents) return;
 
     window.SDPIComponents.useGlobalSettings(
-      PROFILE_CAPTURE_STATUS_SETTING,
+      PROFILE_CAPTURE_STATUS_KEY,
       skipUnchanged((value: string) => {
         this.status = parseCaptureStatus(value);
         this.render();

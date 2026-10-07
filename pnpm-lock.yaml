@@ -1009,6 +1009,9 @@ importers:
       '@iracedeck/deck-core':
         specifier: workspace:*
         version: link:../deck-core
+      '@iracedeck/fetch-utils':
+        specifier: workspace:*
+        version: link:../fetch-utils
       '@rollup/plugin-node-resolve':
         specifier: 16.0.3
         version: 16.0.3(rollup@4.64.0)

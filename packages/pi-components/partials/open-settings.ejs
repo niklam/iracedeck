@@ -23,8 +23,9 @@
 
   `head-common.ejs` gives the top strip the matching `except`, so the open
   banner appears in exactly one place per page. The id literal is duplicated
-  from deck-core's SETTINGS_WINDOW_OPEN_WARNING_ID (this bundle is browser code
-  and cannot import it); `settings-window-constants.test.ts` guards the pair.
+  from SETTINGS_WINDOW_OPEN_WARNING_ID in `@iracedeck/app-constants` (a partial
+  is markup and cannot import it); `settings-window-constants.test.ts` guards
+  the pair.
 
   Banner and button share ONE outer block, and `extraClass` goes on that block
   rather than on the button's own wrapper. `.ird-section-footer` draws the

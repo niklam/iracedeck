@@ -17,12 +17,13 @@
  * a typo would look active on the very screen someone checks to find out
  * whether it is.
  */
-import { skipUnchanged } from "./settings-change-filter.js";
+import {
+  VOICE_PACK_CATALOG_DEFAULT_BASE,
+  VOICE_PACK_CATALOG_FILENAME,
+  VOICE_PACK_DEV_BASE_URL_KEY,
+} from "@iracedeck/app-constants";
 
-/** Mirrors `VOICE_PACK_DEV_BASE_URL_KEY` in deck-core. */
-const DEV_BASE_SETTING = "_devBaseUrl";
-const CATALOG_FILENAME = "voice-catalog.json";
-const DEFAULT_BASE = "https://iracedeck.com";
+import { skipUnchanged } from "./settings-change-filter.js";
 
 /** How long a rejected value is shown before it is elided; a hand-edited file can hold anything. */
 const MAX_SHOWN_VALUE = 120;
@@ -55,13 +56,18 @@ function truncateValue(value: string): string {
  * The browser's copy of deck-core's `resolveVoicePackCatalogUrl`.
  *
  * Deliberately duplicated rather than imported: this bundle runs in a Property
- * Inspector WebView and never imports from deck-core, the same boundary that
- * keeps `abort-after` in two places. Kept to the same rules — https anywhere,
- * http only to loopback, no query or fragment, and only our own filename joined
- * on — so the row cannot claim an override the plugin would refuse.
+ * Inspector WebView and may import only the two leaf packages, and the
+ * resolver lives with the voice packs in deck-core. The key, the default base
+ * and the filename it joins on come from `@iracedeck/app-constants`, the same
+ * ones the plugin reads. Kept to the same rules — https anywhere, http only to
+ * loopback, no query or fragment, and only our own filename joined on — so the
+ * row cannot claim an override the plugin would refuse.
  */
 function resolveDisplayUrl(base: string): DisplayState {
-  const fallback: DisplayState = { accepted: false, url: `${DEFAULT_BASE}/${CATALOG_FILENAME}` };
+  const fallback: DisplayState = {
+    accepted: false,
+    url: `${VOICE_PACK_CATALOG_DEFAULT_BASE}/${VOICE_PACK_CATALOG_FILENAME}`,
+  };
 
   let url: URL;
 
@@ -77,7 +83,7 @@ function resolveDisplayUrl(base: string): DisplayState {
 
   if (url.search !== "" || url.hash !== "") return fallback;
 
-  return { accepted: true, url: `${url.origin}${url.pathname.replace(/\/+$/, "")}/${CATALOG_FILENAME}` };
+  return { accepted: true, url: `${url.origin}${url.pathname.replace(/\/+$/, "")}/${VOICE_PACK_CATALOG_FILENAME}` };
 }
 
 export class DevBaseUrl extends HTMLElement {
@@ -95,7 +101,7 @@ export class DevBaseUrl extends HTMLElement {
     if (!window.SDPIComponents) return;
 
     window.SDPIComponents.useGlobalSettings(
-      DEV_BASE_SETTING,
+      VOICE_PACK_DEV_BASE_URL_KEY,
       skipUnchanged((value: string) => this.render(value)),
     );
   }

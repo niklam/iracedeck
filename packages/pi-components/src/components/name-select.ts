@@ -52,8 +52,9 @@ const DEFAULT_NAMES_SETTING = "_driverNames";
  * @internal Exported for testing — the `-NN` take suffix, a copy of
  * `TAKE_SUFFIX` in `@iracedeck/callout-script` (the rule the plugin's name
  * list and `resolveActiveDriverName` both fold with, #1173). A copy because
- * this file ships in the PI browser bundle, which resolves no workspace
- * package — and that one would pull `zod` in with it. `name-select.test.ts`
+ * this file ships in the PI browser bundle, which resolves only the two
+ * dependency-free leaves (`@iracedeck/app-constants`, `@iracedeck/fetch-utils`)
+ * — and callout-script would pull `zod` in with it. `name-select.test.ts`
  * pins the copy to the shared rule, so the two cannot drift apart.
  */
 export const NAME_TAKE_SUFFIX = /-(\d{2})$/;

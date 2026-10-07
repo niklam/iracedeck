@@ -24,8 +24,10 @@
  *
  * SYNC NOTE: CommDescriptor / BindingKeyRef below mirror their authoritative
  * counterparts in @iracedeck/deck-core/comm-descriptor.ts. The PI runs in a
- * browser and cannot import from deck-core (Node.js). When the descriptor
- * shape changes, update BOTH locations.
+ * browser and may import only the two dependency-free leaves
+ * (`@iracedeck/app-constants`, `@iracedeck/fetch-utils`), never deck-core
+ * (Node.js), where these live. When the descriptor shape changes, update BOTH
+ * locations.
  */
 import { formatKeyBinding, parseKeyBinding } from "./key-binding-utils.js";
 import { fetchSimHubReachable, SIMHUB_POLL_INTERVAL_MS } from "./simhub-probe.js";

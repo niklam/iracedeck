@@ -2,10 +2,12 @@
 /**
  * Downloadable Race Engineer voice packs — the catalog half of issue #1100.
  *
- * Renders `_voicePackStatus`, `{ catalog, installs }` (see `voice-pack-status.ts`
- * in `@iracedeck/deck-core` for the authoritative shapes; this file re-declares
- * them locally rather than importing, the same call `voice-pack-list.ts` makes
- * for the same reason — see its module comment).
+ * Renders `_voicePackStatus`, `{ catalog, installs }`. The pack, install and
+ * verdict shapes and the two value lists come from `voice-pack-status.ts` in
+ * `@iracedeck/app-constants`, the same module the plugin writes the payload
+ * from. Only the catalog state and the whole-payload type are this file's own,
+ * because the card's catalog state is not the plugin's: it carries `dropped`
+ * (an entry it could not parse) where the plugin's carries `checkedAt`.
  *
  * ONE ROW PER PACK THE USER CAN ACT ON (#1100). `catalog.packs` carries every
  * published pack with a verdict computed by the plugin (`install` / `update` /
@@ -60,47 +62,36 @@
  * <ird-voice-pack-catalog status="_voicePackStatus"></ird-voice-pack-catalog>
  * ```
  */
+import {
+  VOICE_PACK_INSTALL_PHASES,
+  VOICE_PACK_OFFER_VERDICTS,
+  VOICE_PACK_STATUS_KEY,
+  type VoicePackInstallPhase,
+  type VoicePackInstallState,
+  type VoicePackOffer,
+  type VoicePackOfferVerdict,
+} from "@iracedeck/app-constants";
+
 import { sendToPlugin } from "./sdpi-client.js";
 import { skipUnchanged } from "./settings-change-filter.js";
-import { VOICE_PACK_CARD_PHASES } from "./voice-pack-catalog-constants.js";
 
 let styleInjected = false;
 
-const DEFAULT_STATUS_SETTING = "_voicePackStatus";
-
-/** Mirrors `VoicePackOfferVerdict` in deck-core's `voice-pack-status.ts`. */
-const KNOWN_VERDICTS = ["install", "update", "installed", "unsupported"] as const;
-type VoicePackOfferVerdict = (typeof KNOWN_VERDICTS)[number];
-
 function isVerdict(value: unknown): value is VoicePackOfferVerdict {
-  return typeof value === "string" && (KNOWN_VERDICTS as readonly string[]).includes(value);
+  return typeof value === "string" && (VOICE_PACK_OFFER_VERDICTS as readonly string[]).includes(value);
 }
 
-/** Mirrors `VoicePackInstallPhase` in deck-core's `voice-pack-status.ts`; pinned to it, see the constants module. */
-const KNOWN_PHASES = VOICE_PACK_CARD_PHASES;
-type VoicePackInstallPhase = (typeof KNOWN_PHASES)[number];
-
+/**
+ * An install record whose phase is not in the plugin's list is dropped, so the
+ * card reads the list the plugin writes from rather than a copy of it: a copy
+ * that lacked a phase would show an install in progress as nothing at all
+ * (#1102 removed `verifying`).
+ */
 function isPhase(value: unknown): value is VoicePackInstallPhase {
-  return typeof value === "string" && (KNOWN_PHASES as readonly string[]).includes(value);
+  return typeof value === "string" && (VOICE_PACK_INSTALL_PHASES as readonly string[]).includes(value);
 }
 
-type VoicePackOffer = {
-  id: string;
-  label: string;
-  version: string;
-  description?: string;
-  bytes: number;
-  verdict: VoicePackOfferVerdict;
-  minPluginVersion?: string;
-};
-
-type VoicePackInstallState = {
-  phase: VoicePackInstallPhase;
-  receivedBytes?: number;
-  totalBytes?: number;
-  error?: string;
-};
-
+/** The card's own catalog state: `checkedAt` is not rendered, and `dropped` is the card's alone. */
 type VoicePackCatalogState =
   | { state: "unknown" }
   // `dropped` records that at least one published entry could not be parsed, so
@@ -376,7 +367,7 @@ export class VoicePackCatalog extends HTMLElement {
   private hookSettings(): void {
     if (!window.SDPIComponents) return;
 
-    const statusKey = this.getAttribute("status") ?? DEFAULT_STATUS_SETTING;
+    const statusKey = this.getAttribute("status") ?? VOICE_PACK_STATUS_KEY;
 
     window.SDPIComponents.useGlobalSettings(
       statusKey,

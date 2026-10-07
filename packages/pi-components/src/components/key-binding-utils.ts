@@ -120,7 +120,7 @@ export function parseKeyBinding(json: string | null): KeyBindingValue | null {
  * Parse a simple default string like "F1" or "Ctrl+Shift+A" into a KeyBindingValue.
  * Supports modifier aliases (e.g., "Control" → "ctrl").
  *
- * The parse is deck-core's `parseDefaultKeyBinding` — the one the plugin's
+ * The parse is `parseDefaultKeyBinding` from `@iracedeck/app-constants` — the one the plugin's
  * startup seed stores with (#1277) — so a default the plugin writes is
  * byte-identical to the one this field saves. Only the warning is the PI's own.
  */

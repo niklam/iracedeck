@@ -8,7 +8,8 @@
  * narrower helpers are projections of it, so no caller ever needs a second
  * round trip to learn what the first response already said.
  */
-import { abortAfter } from "./abort-after.js";
+import { abortAfter } from "@iracedeck/fetch-utils";
+
 import { inSettingsWindow, SETTINGS_WINDOW_FLAG } from "./settings-window-context.js";
 
 /** Poll interval (ms) used by consumers that watch reachability over time. */
