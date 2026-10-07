@@ -9,7 +9,7 @@ import {
   type SettingsHost,
   setWarning,
 } from "@iracedeck/settings";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createSettingsWindowWarningReporter } from "./settings-window-warning-reporter.js";
 
@@ -27,11 +27,11 @@ const host: SettingsHost = {
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
 /**
- * Global-settings writes since the last reset, counted from the cache's own
+ * Counts global-settings writes since the last reset from the cache's own
  * change fan-out: every `updateGlobalSettings` notifies the listeners exactly
  * once, run-scoped `_warnings` included, which never reach the file.
  */
-let writes = 0;
+const listener = vi.fn();
 
 function warnings(): Array<{ id: string; level: string; message: string }> {
   const raw = (getGlobalSettings() as Record<string, unknown>)._warnings;
@@ -51,10 +51,8 @@ describe("createSettingsWindowWarningReporter", () => {
     _resetGlobalSettings();
     initGlobalSettings(host, silentLogger, createMemorySettingsStore({}));
     await tick();
-    writes = 0;
-    onGlobalSettingsChange(() => {
-      writes += 1;
-    });
+    listener.mockClear();
+    onGlobalSettingsChange(listener);
   });
 
   afterEach(() => {
@@ -148,17 +146,17 @@ describe("createSettingsWindowWarningReporter", () => {
 
     report({ stage: "server", ok: false, error: new Error("EADDRINUSE") });
 
-    expect(writes).toBe(1);
+    expect(listener).toHaveBeenCalledTimes(1);
   });
 
   it("writes nothing when the same failure is reported again", () => {
     const report = createSettingsWindowWarningReporter({ getStorePath: () => undefined });
 
     report({ stage: "server", ok: false, error: new Error("EADDRINUSE") });
-    writes = 0;
+    listener.mockClear();
     report({ stage: "server", ok: false, error: new Error("EADDRINUSE") });
 
-    expect(writes).toBe(0);
+    expect(listener).not.toHaveBeenCalled();
   });
 
   it("writes nothing when a success arrives with no banner posted", () => {
@@ -166,6 +164,6 @@ describe("createSettingsWindowWarningReporter", () => {
 
     report({ stage: "server", ok: true });
 
-    expect(writes).toBe(0);
+    expect(listener).not.toHaveBeenCalled();
   });
 });

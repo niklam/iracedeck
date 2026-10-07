@@ -24,11 +24,11 @@ const host: SettingsHost = {
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
 /**
- * Global-settings writes since the last reset, counted from the cache's own
+ * Counts global-settings writes since the last reset from the cache's own
  * change fan-out: every `updateGlobalSettings` notifies the listeners exactly
  * once, run-scoped `_warnings` included, which never reach the file.
  */
-let writes = 0;
+const listener = vi.fn();
 
 function warnings(): Array<{ id: string; level: string; message: string }> {
   const raw = (getGlobalSettings() as Record<string, unknown>)._warnings;
@@ -94,10 +94,8 @@ describe("createVoiceScriptWarningReporter", () => {
       _resetGlobalSettings();
       initGlobalSettings(host, silentLogger, createMemorySettingsStore({}));
       await tick();
-      writes = 0;
-      onGlobalSettingsChange(() => {
-        writes += 1;
-      });
+      listener.mockClear();
+      onGlobalSettingsChange(listener);
     });
 
     afterEach(() => {
@@ -110,7 +108,7 @@ describe("createVoiceScriptWarningReporter", () => {
       report({ activeVoice: "laconic", scriptedVoices: new Set() });
       report({ activeVoice: "laconic", scriptedVoices: new Set() });
 
-      expect(writes).toBe(1);
+      expect(listener).toHaveBeenCalledTimes(1);
       expect(warnings().map((w) => w.id)).toEqual([VOICE_SCRIPT_WARNING_ID]);
     });
 
@@ -121,12 +119,12 @@ describe("createVoiceScriptWarningReporter", () => {
       report({ activeVoice: "laconic", scriptedVoices: new Set(["laconic"]) });
 
       expect(warnings()).toHaveLength(0);
-      expect(writes).toBe(2);
+      expect(listener).toHaveBeenCalledTimes(2);
 
-      writes = 0;
+      listener.mockClear();
       report({ activeVoice: "laconic", scriptedVoices: new Set(["laconic"]) });
 
-      expect(writes).toBe(0);
+      expect(listener).not.toHaveBeenCalled();
     });
 
     it("replaces the record when the user switches to another unscripted voice", () => {
