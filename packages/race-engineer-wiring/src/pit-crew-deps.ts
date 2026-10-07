@@ -11,7 +11,7 @@ import {
   getGlobalSettings,
   isCalloutEnabled,
   resolveActiveDriverName,
-} from "@iracedeck/deck-core";
+} from "@iracedeck/settings";
 
 import type { RaceEngineerCaches } from "./caches.js";
 import type { RaceEngineerWiringDeps } from "./wire-race-engineer.js";
@@ -20,7 +20,7 @@ import type { RaceEngineerWiringDeps } from "./wire-race-engineer.js";
  * Every `registerPitCrew` dependency (#1349).
  *
  * The callout opt-ins are one live-reading lookup, `isCalloutEnabled` from
- * deck-core (#1350): each family in `registerPitCrew` resolves its own callout
+ * @iracedeck/settings (#1350): each family in `registerPitCrew` resolves its own callout
  * id to a settings key through `@iracedeck/callout-settings`. The gate runs at
  * event-arrival time inside the scenario engine, before fire/expand, so a
  * mid-session toggle takes effect on the next event without re-registering
