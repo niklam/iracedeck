@@ -1,8 +1,4 @@
-import {
-  SETTINGS_WINDOW_HTML as RUNTIME_HTML,
-  SETTINGS_WINDOW_OPEN_WARNING_ID,
-  SETTINGS_WINDOW_SERVER_WARNING_ID,
-} from "@iracedeck/app-constants";
+import { SETTINGS_WINDOW_OPEN_WARNING_ID, SETTINGS_WINDOW_SERVER_WARNING_ID } from "@iracedeck/app-constants";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,7 +6,6 @@ import { describe, expect, it } from "vitest";
 
 import { SETTINGS_WINDOW_FLAG as COMPONENTS_FLAG } from "../components/settings-window-context.js";
 import { SETTINGS_WINDOW_FLAG as BRIDGE_FLAG } from "../settings-window-bridge/index.js";
-import { SETTINGS_WINDOW_HTML as BUILD_HTML } from "./index.mjs";
 
 /**
  * Pins between values that cannot share one declaration. A Property Inspector
@@ -19,18 +14,6 @@ import { SETTINGS_WINDOW_HTML as BUILD_HTML } from "./index.mjs";
  * partials (markup), and the settings-window bridge, a separate browser bundle
  * with its own `rootDir`.
  */
-
-/**
- * The plugin serves `ui/<SETTINGS_WINDOW_HTML>` at runtime and the build
- * injects the bridge into that same file (pi-components/build). They are
- * declared in two packages because build-time modules must not be imported
- * into the runtime bundle — so this test is the single thing keeping them equal.
- */
-describe("settings-window file name (#992)", () => {
-  it("is the same string at build time and at runtime", () => {
-    expect(BUILD_HTML).toBe(RUNTIME_HTML);
-  });
-});
 
 /**
  * The bridge (its own browser bundle, own tsconfig rootDir) SETS the

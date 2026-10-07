@@ -13,6 +13,7 @@
     "test:watch": "node ../../scripts/test-package.mjs --watch"
   },
   "dependencies": {
+    "@iracedeck/app-constants": "workspace:*",
     "@iracedeck/audio-assets": "workspace:*",
     "@iracedeck/pi-components": "workspace:*",
     "@rollup/plugin-commonjs": "29.0.3",

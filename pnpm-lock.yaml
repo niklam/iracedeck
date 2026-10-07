@@ -1051,6 +1051,9 @@ importers:
 
   packages/plugin-build:
     dependencies:
+      '@iracedeck/app-constants':
+        specifier: workspace:*
+        version: link:../app-constants
       '@iracedeck/audio-assets':
         specifier: workspace:*
         version: link:../audio-assets

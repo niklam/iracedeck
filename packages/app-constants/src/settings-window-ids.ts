@@ -9,8 +9,9 @@
  * File name of the compiled settings-window page inside each plugin's `ui/`
  * folder (built from `settings-window.ejs` by the shared PI template plugin,
  * with `settings-window-bridge.js` injected before `sdpi-components.js`).
- * The build side declares the same string in `@iracedeck/pi-components/build`;
- * a shared test guards that they never drift.
+ * The plugin's server reads it to serve the page and the shared plugin build
+ * (`@iracedeck/plugin-build`) to pick that page for the window's bridge, so
+ * the two cannot name different files.
  */
 export const SETTINGS_WINDOW_HTML = "settings-window.html";
 
