@@ -57,7 +57,7 @@ export interface SimConnection {
 }
 ```
 
-It comes with the singleton trio `initializeSimConnection` / `getSimConnection` / `isSimConnectionInitialized` plus `_resetSimConnection`. Before initialisation, `getSimConnection()` returns a pending connection: never connected, no flags, title text as typed (there is no template engine without a sim), and every subscription made on it queued and replayed onto the real connection by `initializeSimConnection`, so a key that appears first is not left untracked. That replaces the try/catch `BaseAction` wraps around a missing SDK today. A throwing `activeFlags()` skips the tick rather than reading as "flags cleared", so a transient failure neither flickers the overlay nor re-arms a finished flash. `IRacingSimConnection` resolves flags from the telemetry the latest tick carried, so the overlay costs no telemetry read of its own.
+It comes with the singleton trio `initializeSimConnection` / `getSimConnection` / `isSimConnectionInitialized` plus `_resetSimConnection`. Before initialisation, `getSimConnection()` returns a pending connection: never connected, no flags, title text as typed (there is no template engine without a sim), and every subscription made on it queued and replayed onto the real connection by `initializeSimConnection`, so a key that appears first is not left untracked. That replaces the try/catch `BaseAction` wraps around a missing SDK today. A throwing `activeFlags()` skips the tick rather than reading as "flags cleared", so a transient failure neither flickers the overlay nor re-arms a finished flash. `SimIRacingConnection` resolves flags from the telemetry the latest tick carried, so the overlay costs no telemetry read of its own.
 
 - **`BaseAction`.** The flag overlay and the title-template watcher subscribe to the connection's tick and pull `activeFlags()` and `resolveTitleTemplate()` on it. `OverlayFlag` is the shape `FlagInfo` already has, and the overlay reads nothing else, so the overlay's drawing does not change.
 - **`ConnectionStateAwareAction`.** It tracks readiness through `getSimConnection()` and loses its `sdkController` getter.
@@ -72,9 +72,10 @@ It comes with the singleton trio `initializeSimConnection` / `getSimConnection` 
 
 **The iRacing side is a new package, `@iracedeck/deck-iracing`,** depending on `deck-core`, `settings`, `replay-store` (for the subscriber) and `iracing-sdk`. It has the same shape `sim-events-iracing` has on the bus side: a future sim is a sibling `deck-<sim>`, chosen in `plugin-runtime` and nowhere else. It holds:
 
-- **`IRacingSimConnection`:** implements `SimConnection` over `SDKController`. It maps `SessionFlags` through `resolveAllActiveFlags` and the template context through `resolveTemplate`, and falls back to `EMPTY_TEMPLATE_CONTEXT`, which moves here too.
-- **`IRacingAction<T> extends ConnectionStateAwareAction<T>`:** adds `protected get sdkController(): SDKController`. The 26 action classes that read the controller extend it; every other action stays on `ConnectionStateAwareAction`.
+- **`SimIRacingConnection`:** implements `SimConnection` over `SDKController`. It maps `SessionFlags` through `resolveAllActiveFlags` and the template context through `resolveTemplate`, and falls back to `EMPTY_TEMPLATE_CONTEXT`, which moves here too.
+- **`SimIRacingAction<T> extends ConnectionStateAwareAction<T>`:** adds `protected get sdkController(): SDKController`. The 26 action classes that read the controller extend it; every other action stays on `ConnectionStateAwareAction`.
 - **`sdk-singleton`** (`initializeSDK`, `getSDK`, `getController`, `getCommands`), whose `initializeSDK` also calls `initializeSimConnection`.
+- **Naming:** a sim's deck-layer classes are `Sim<Game>…` (`SimIRacingAction`, `SimIRacingConnection`; a future `deck-<sim>` exports `SimAssettoCorsaAction` and so on). A bare `IRacing…` reads as an `I`-prefixed interface, which is how this repo names interfaces; the older `IRacingSDK` / `IRacingNative` / `IRacingHotkeyPreset` predate the rule and stay.
 - **The remaining iRacing helpers:** `app-monitor`, `fuel-telemetry`, `unit-conversion`, `iracing-hotkeys`, `elevation-check`, `elevation-warning`, and `replay-session-subscriber` (typed on `SessionInfo`).
 
 **A lint guard keeps the seam.** An ESLint `no-restricted-imports` rule on `packages/deck-core/src/**` forbids `@iracedeck/iracing-sdk`, `@iracedeck/iracing-native`, `@iracedeck/sim-events-iracing` and `@iracedeck/deck-iracing`. `deck-core/package.json` drops the `iracing-sdk` dependency, so even a type-only import fails to resolve.
@@ -122,7 +123,7 @@ The issue is delivered as five PRs, in this order. Each has its own sub-issue (#
 
 1. **The sim seam.** Contents:
    - `sim-connection` and `deck-iracing`;
-   - `IRacingAction` and the 26 base-class switches;
+   - `SimIRacingAction` and the 26 base-class switches;
    - the `hasElevationMismatch` injection;
    - the lint guard, and `iracing-sdk` dropped from `deck-core`'s dependencies;
    - the false claims corrected (below).
@@ -140,7 +141,7 @@ PR 1 corrects these, listing what is actually true as known leaks in the Archite
 - **`.claude/CLAUDE.md` and `sim-events-iracing/src/index.ts`:** "sim-events-iracing is the ONLY package that consumes `iracing-sdk` telemetry".
 - **`architecture.md`:** "a button … never reads telemetry itself".
 
-The truth on `master` at the time of writing: 27 action files read `sdkController`, 15 call `getCommands()`, and 15 `audio-scenarios` catalog files import a sim package, 8 of them reading the raw snapshot through `getLatestTelemetry()` (measured during #1363; the review's 19 counted files that only name a package in comments). After PR 1 the action reads go through `deck-iracing`'s `IRacingAction`, which gives the leak a name and a single place to find it.
+The truth on `master` at the time of writing: 27 action files read `sdkController`, 15 call `getCommands()`, and 15 `audio-scenarios` catalog files import a sim package, 8 of them reading the raw snapshot through `getLatestTelemetry()` (measured during #1363; the review's 19 counted files that only name a package in comments). After PR 1 the action reads go through `deck-iracing`'s `SimIRacingAction`, which gives the leak a name and a single place to find it.
 
 ### What #1349's spec assigned here
 
@@ -167,7 +168,7 @@ Every PR passes the full set by hand before review: `install` → `build` → `t
 - **The guards are proven to fire.** Each check gets a planted violation that has to fail, run once by hand and recorded in the PR:
   - the `no-restricted-imports` rule on `deck-core`, against a planted `@iracedeck/iracing-sdk` import;
   - `app-constants`' no-import test, against a planted import.
-- **The seam has unit tests against a fake `SimConnection`.** They cover the pending connection and its replay of queued subscriptions, readiness tracking in `ConnectionStateAwareAction`, the overlay starting and stopping on `activeFlags()` changes, and the title watcher re-resolving on tick. `IRacingSimConnection` is tested over a fake controller (`MockSDKController` lives in `scenario-harness`): flag mapping, no telemetry read inside a tick, the disconnected empty flags, and the disconnected title fallback.
+- **The seam has unit tests against a fake `SimConnection`.** They cover the pending connection and its replay of queued subscriptions, readiness tracking in `ConnectionStateAwareAction`, the overlay starting and stopping on `activeFlags()` changes, and the title watcher re-resolving on tick. `SimIRacingConnection` is tested over a fake controller (`MockSDKController` lives in `scenario-harness`): flag mapping, no telemetry read inside a tick, the disconnected empty flags, and the disconnected title fallback.
 - **Nothing is lost in a move.** No behaviour changes in PRs 2–5, so the existing suites carry them. Each PR's test-file and test counts are compared with `master`'s, so a test silently dropped by a move shows up. The existing guards (`package-test-scripts`, `typecheck-script-coverage`, `tsconfig-base-inheritance`, `lint-format-coverage`) must stay green with the new packages enrolled, not exempted.
 - **Manual test on a linked Stream Deck per PR, scoped to what moved:**
   1. Keys grey out and return with the sim connection, the flag overlay flashes on a flag, and a templated title updates live.
