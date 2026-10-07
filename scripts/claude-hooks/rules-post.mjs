@@ -65,8 +65,8 @@ export function generatorsFor(rel) {
 /** Edits that need a human step the tooling cannot take for them. */
 export const REMINDERS = [
   {
-    match: (rel) => rel === "packages/deck-core/src/global-settings.ts",
-    text: "GlobalSettingsSchema touched: turbo caches deck-core, so run `pnpm build:force` (not `pnpm build --force`, which forwards nothing) and update the literals in simhub-service.test.ts.",
+    match: (rel) => rel === "packages/settings/src/global-settings.ts",
+    text: "GlobalSettingsSchema touched: turbo caches settings and the packages built against it, so run `pnpm build:force` (not `pnpm build --force`, which forwards nothing) and update the literals in deck-core's simhub-service.test.ts.",
   },
   {
     match: (rel) =>

@@ -86,7 +86,8 @@ describe("post rules", () => {
     expect(generatorsFor("packages/deck-core/src/types.ts")).toEqual([]);
   });
   it("maps reminders", () => {
-    expect(remindersFor("packages/deck-core/src/global-settings.ts")[0]).toMatch(/build:force/);
+    expect(remindersFor("packages/settings/src/global-settings.ts")[0]).toMatch(/build:force/);
+    expect(remindersFor("packages/deck-core/src/global-settings.ts")).toEqual([]);
     expect(remindersFor(".claude/rules/testing.md")[0]).toMatch(/show the drafted text/);
     expect(remindersFor("packages/deck-core/src/types.ts")).toEqual([]);
   });
