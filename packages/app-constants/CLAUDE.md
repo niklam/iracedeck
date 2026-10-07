@@ -11,7 +11,7 @@ The constants every layer shares, and the Property Inspector's browser bundle wi
 
 Three pins over these values live outside the package, because it may depend on no other package and its tests have no Node typings to read another package's files with: deck-core's `mouse-pointer-service.test.ts` holds the default pointer anchors and offsets to the pre-#1029 placement (`DEFAULT_POINTER_X_FRACTION` / `_Y_FRACTION`), deck-core's `sim-pointer-target.partial.test.ts` holds the settings-window control's `default=` attributes to the same constants, and pi-components' `key-binding-input.default-save.test.ts` holds a seeded default byte-identical to the one the binding field saves.
 
-Every name has one import path: `@iracedeck/app-constants`. deck-core re-exports none of them, so an importer never has to guess which package a mock must cover. Key names and values are persisted or run-scoped contracts; `persisted-values.test.ts` pins them, and a value never changes here.
+Every name has one import path: `@iracedeck/app-constants`. deck-core re-exports none of them, so an importer never has to guess which package a mock must cover. Key names and values are persisted or run-scoped contracts, and a value never changes here. `persisted-values.test.ts` pins the setting-key names, the ids, the value sets and the catalog location. It does not pin the key map: the `KEY_CODE_MAP` identifiers and the modifier names are stored inside every saved binding too, so changing one breaks stored bindings even though no test goes red.
 
 ## Admission rule
 

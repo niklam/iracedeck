@@ -2,8 +2,8 @@
  * What this run knows about downloadable voice packs (issue #1034, stage 2).
  *
  * The payload behind `VOICE_PACK_STATUS_KEY`. Pure types and pure builders: the
- * producer is the install service, and the consumers are the settings window's
- * Race Engineer card and the `_warnings` banner any Property Inspector shows.
+ * producer is the install service, and the consumer is the settings window's
+ * Race Engineer card.
  *
  * Everything here is passive by construction, which is the feature's one hard
  * constraint restated as a data shape. An install runs while iRacing is
