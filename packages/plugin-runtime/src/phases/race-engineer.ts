@@ -5,8 +5,8 @@
  */
 import { type FrameOptions, getScenarioEngine, initializeAudioScenarios } from "@iracedeck/audio-scenarios";
 import { getAudio } from "@iracedeck/audio-service";
-import { frameOptionsFromSettings, getGlobalSettings, resolveActiveRaceEngineerVoice } from "@iracedeck/deck-core";
 import { type SimRuntime, wireRaceEngineer } from "@iracedeck/race-engineer-wiring";
+import { frameOptionsFromSettings, getGlobalSettings, resolveActiveRaceEngineerVoice } from "@iracedeck/settings";
 
 import type { Audio, Core, VoicePacks } from "../types.js";
 

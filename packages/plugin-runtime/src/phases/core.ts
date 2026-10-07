@@ -4,13 +4,10 @@
  * later phases read through `Core`.
  */
 import {
-  getGlobalSettings,
   initPluginConfig,
-  onGlobalSettingsChange,
   type PluginConfig,
   startMainThreadWatchdog,
   startResourceMonitor,
-  validateSetupWarningPatterns,
 } from "@iracedeck/deck-core";
 import {
   getController,
@@ -21,6 +18,7 @@ import {
 } from "@iracedeck/deck-iracing";
 import { initializeEventBus } from "@iracedeck/event-bus";
 import { LogLevel } from "@iracedeck/logger";
+import { getGlobalSettings, onGlobalSettingsChange, validateSetupWarningPatterns } from "@iracedeck/settings";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 

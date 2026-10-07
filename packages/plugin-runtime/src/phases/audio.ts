@@ -5,7 +5,8 @@
  */
 import { AudioNative } from "@iracedeck/audio-native";
 import { getAudio, initializeAudio } from "@iracedeck/audio-service";
-import { onGlobalSettingsChange, pluginAudioSessionIdentity } from "@iracedeck/deck-core";
+import { pluginAudioSessionIdentity } from "@iracedeck/deck-core";
+import { onGlobalSettingsChange } from "@iracedeck/settings";
 import { join } from "node:path";
 
 import {

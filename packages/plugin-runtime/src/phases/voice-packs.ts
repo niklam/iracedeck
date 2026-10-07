@@ -26,7 +26,6 @@ import {
 import { getAudio } from "@iracedeck/audio-service";
 import {
   type BundledVoicePack,
-  clearWarning,
   createVoicePackArchiveFileSystem,
   createVoicePackCatalogService,
   createVoicePackFileSystem,
@@ -38,23 +37,26 @@ import {
   createVoicePackStorageFileSystem,
   createVoiceScriptWarningReporter,
   getDevVoicePacksRoot,
-  getGlobalSettings,
   getPluginVersion,
-  isGlobalSettingsInitialized,
   isManagedVoicePack,
-  migrateRaceEngineerVoiceId,
-  onGlobalSettingsChange,
   openDirectoryInExplorer,
   orderRaceEngineerVoices,
   readInstalledVoicePackSha,
-  resolveActiveRaceEngineerVoice,
   resolveVoicePacksPath,
-  setWarning,
-  updateGlobalSettings,
   voiceDisplayLabels,
   VoicePackCatalogEntrySchema,
-  whenSettingsStoreSettled,
 } from "@iracedeck/deck-core";
+import {
+  clearWarning,
+  getGlobalSettings,
+  isGlobalSettingsInitialized,
+  migrateRaceEngineerVoiceId,
+  onGlobalSettingsChange,
+  resolveActiveRaceEngineerVoice,
+  setWarning,
+  updateGlobalSettings,
+  whenSettingsStoreSettled,
+} from "@iracedeck/settings";
 
 import { stopRaceEngineerPlayback } from "../actions.js";
 import type { Audio, Core, VoicePacks, VoicePackState } from "../types.js";

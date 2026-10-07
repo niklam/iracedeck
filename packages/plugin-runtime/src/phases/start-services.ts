@@ -5,15 +5,9 @@
  * monitor, and the two SDK subscribers. Everything here is registered before
  * `startPlugin` connects the adapter.
  */
-import {
-  getPluginVersion,
-  initGlobalSettings,
-  initializeBindingDispatcher,
-  initializeSimHub,
-  migrateGlobalSettingsKeys,
-  seedBindingDefaultsIfAbsent,
-} from "@iracedeck/deck-core";
+import { getPluginVersion, initializeBindingDispatcher, initializeSimHub } from "@iracedeck/deck-core";
 import { createElevationCheckSubscriber, createReplaySessionSubscriber, initAppMonitor } from "@iracedeck/deck-iracing";
+import { initGlobalSettings, migrateGlobalSettingsKeys, seedBindingDefaultsIfAbsent } from "@iracedeck/settings";
 
 import { CAR_CYCLE_BINDING_DEFAULTS, SETUP_CHASSIS_BINDING_KEY_RENAMES } from "../actions.js";
 import type { Core, Input, Settings, VoicePacks } from "../types.js";
