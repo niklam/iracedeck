@@ -129,10 +129,6 @@ export class CpuProfileStatus extends HTMLElement {
     this.stopCountdown();
   }
 
-  /**
-   * Subscribe to capture status changes, updating the message and countdown.
-   * Does nothing when SDPIComponents is unavailable.
-   */
   private hookSettings(): void {
     if (!window.SDPIComponents) return;
 

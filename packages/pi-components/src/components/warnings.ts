@@ -85,10 +85,6 @@ export class WarningsBanner extends HTMLElement {
     styleInjected = true;
   }
 
-  /**
-   * Subscribe to warning changes and render the parsed records.
-   * Does nothing when SDPIComponents is unavailable.
-   */
   private hookSettings(): void {
     if (!window.SDPIComponents) return;
 

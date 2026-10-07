@@ -77,7 +77,6 @@ import { skipUnchanged } from "./settings-change-filter.js";
 
 let styleInjected = false;
 
-/** Return whether the value is one of the shared catalog offer verdicts. */
 function isVerdict(value: unknown): value is VoicePackOfferVerdict {
   return typeof value === "string" && (VOICE_PACK_OFFER_VERDICTS as readonly string[]).includes(value);
 }
@@ -365,10 +364,6 @@ export class VoicePackCatalog extends HTMLElement {
     this.render(EMPTY_STATUS);
   }
 
-  /**
-   * Render changed catalog status values from the `status` attribute's key,
-   * defaulting to `_voicePackStatus`. Does nothing without SDPIComponents.
-   */
   private hookSettings(): void {
     if (!window.SDPIComponents) return;
 

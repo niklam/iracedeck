@@ -538,10 +538,6 @@ export class VoicePackList extends HTMLElement {
     this.armedTimer = null;
   }
 
-  /**
-   * Render changed scan values from the `packs` attribute's key, defaulting to
-   * `_voicePacks`. Does nothing when SDPIComponents is unavailable.
-   */
   private hookSettings(): void {
     if (!window.SDPIComponents) return;
 

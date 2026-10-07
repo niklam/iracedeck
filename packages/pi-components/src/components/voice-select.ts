@@ -225,13 +225,6 @@ export class VoiceSelect extends HTMLElement {
     });
   }
 
-  /**
-   * Subscribe to the selected voice, available voices, and labels, using the
-   * `setting`, `voices`, and `labels` attributes to override their default keys.
-   * Retain the selection's save callback and ignore repeated values per subscription.
-   * Invalid voice-list JSON leaves the prior options in place.
-   * Does nothing when SDPIComponents is unavailable.
-   */
   private hookSettings(): void {
     if (!window.SDPIComponents) return;
 
